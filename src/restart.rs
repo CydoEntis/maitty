@@ -40,7 +40,10 @@ fn file() -> PathBuf {
 pub fn publish(a: &Activity) {
     let path = file();
     let tmp = path.with_extension("activity.tmp");
-    let written = serde_json::to_vec(a).map_err(std::io::Error::other).and_then(|bytes| std::fs::write(&tmp, bytes)).and_then(|_| std::fs::rename(&tmp, &path));
+    let written = serde_json::to_vec(a)
+        .map_err(std::io::Error::other)
+        .and_then(|bytes| std::fs::write(&tmp, bytes))
+        .and_then(|_| std::fs::rename(&tmp, &path));
     if let Err(e) = written {
         tracing::warn!("noting the server's activity: {e}");
     }
@@ -58,7 +61,11 @@ pub fn read() -> Option<Activity> {
 
 fn read_from(data: &std::path::Path, pid_file: &std::path::Path) -> Option<Activity> {
     let a: Activity = serde_json::from_slice(&std::fs::read(data).ok()?).ok()?;
-    let pid: u32 = std::fs::read_to_string(pid_file).ok()?.trim().parse().ok()?;
+    let pid: u32 = std::fs::read_to_string(pid_file)
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
     (a.pid == pid).then_some(a)
 }
 
@@ -74,16 +81,29 @@ pub enum Plan {
 
 /// `saved_agents`: the agents in the saved session, the best guess for a server that
 /// published nothing (one from before this existed).
-pub fn plan_for_mismatch(daemon_protocol: u32, published: Option<&Activity>, saved_agents: usize) -> Plan {
+pub fn plan_for_mismatch(
+    daemon_protocol: u32,
+    published: Option<&Activity>,
+    saved_agents: usize,
+) -> Plan {
     // A server newer than this the app is never replaced by it unasked: that would be a downgrade.
     if daemon_protocol > crate::protocol::PROTOCOL_VERSION {
-        return Plan::Ask { resume: published.map_or(saved_agents, |a| a.sessions), busy: published.map(Activity::busy) };
+        return Plan::Ask {
+            resume: published.map_or(saved_agents, |a| a.sessions),
+            busy: published.map(Activity::busy),
+        };
     }
     match published {
         Some(a) if a.busy() == 0 => Plan::Replace,
-        Some(a) => Plan::Ask { resume: a.sessions, busy: Some(a.busy()) },
+        Some(a) => Plan::Ask {
+            resume: a.sessions,
+            busy: Some(a.busy()),
+        },
         None if saved_agents == 0 => Plan::Replace,
-        None => Plan::Ask { resume: saved_agents, busy: None },
+        None => Plan::Ask {
+            resume: saved_agents,
+            busy: None,
+        },
     }
 }
 
@@ -103,7 +123,11 @@ pub fn wait_until_server_gone() -> Result<()> {
     let start = std::time::Instant::now();
     while crate::cli::server_running() {
         if start.elapsed() > SERVER_GONE_WITHIN {
-            bail!(concat!("the old server is still running; try `", env!("APP_COMMAND"), " kill-server`"));
+            bail!(concat!(
+                "the old server is still running; try `",
+                env!("APP_COMMAND"),
+                " kill-server`"
+            ));
         }
         std::thread::sleep(POLL);
     }
@@ -126,7 +150,9 @@ pub fn relaunch() -> Result<()> {
     #[cfg(not(unix))]
     {
         // No exec here: run the new one in this console and leave with its exit code.
-        let status = cmd.status().with_context(|| format!("starting {}", exe.display()))?;
+        let status = cmd
+            .status()
+            .with_context(|| format!("starting {}", exe.display()))?;
         std::process::exit(status.code().unwrap_or(0));
     }
 }
@@ -147,7 +173,13 @@ mod tests {
     use super::*;
 
     fn activity(working: usize, waiting: usize) -> Activity {
-        Activity { pid: 1, version: "0.40.0".into(), sessions: 4, working, waiting }
+        Activity {
+            pid: 1,
+            version: "0.40.0".into(),
+            sessions: 4,
+            working,
+            waiting,
+        }
     }
 
     const OLDER: u32 = crate::protocol::PROTOCOL_VERSION - 1;
@@ -155,39 +187,82 @@ mod tests {
     #[test]
     fn a_newer_server_is_never_replaced_without_asking() {
         let newer = crate::protocol::PROTOCOL_VERSION + 1;
-        assert!(matches!(plan_for_mismatch(newer, Some(&activity(0, 0)), 0), Plan::Ask { .. }));
-        assert!(matches!(plan_for_mismatch(newer, None, 0), Plan::Ask { .. }));
+        assert!(matches!(
+            plan_for_mismatch(newer, Some(&activity(0, 0)), 0),
+            Plan::Ask { .. }
+        ));
+        assert!(matches!(
+            plan_for_mismatch(newer, None, 0),
+            Plan::Ask { .. }
+        ));
     }
 
     #[test]
     fn an_idle_server_is_replaced_without_asking() {
-        assert_eq!(plan_for_mismatch(OLDER, Some(&activity(0, 0)), 9), Plan::Replace, "what is saved doesn't matter once the server says it is idle");
+        assert_eq!(
+            plan_for_mismatch(OLDER, Some(&activity(0, 0)), 9),
+            Plan::Replace,
+            "what is saved doesn't matter once the server says it is idle"
+        );
     }
 
     #[test]
     fn working_or_waiting_sessions_ask_once_and_count_what_resumes() {
-        assert_eq!(plan_for_mismatch(OLDER, Some(&activity(1, 0)), 0), Plan::Ask { resume: 4, busy: Some(1) });
-        assert_eq!(plan_for_mismatch(OLDER, Some(&activity(0, 2)), 0), Plan::Ask { resume: 4, busy: Some(2) });
+        assert_eq!(
+            plan_for_mismatch(OLDER, Some(&activity(1, 0)), 0),
+            Plan::Ask {
+                resume: 4,
+                busy: Some(1)
+            }
+        );
+        assert_eq!(
+            plan_for_mismatch(OLDER, Some(&activity(0, 2)), 0),
+            Plan::Ask {
+                resume: 4,
+                busy: Some(2)
+            }
+        );
     }
 
     #[test]
     fn a_server_that_published_nothing_is_judged_by_the_saved_agents() {
         assert_eq!(plan_for_mismatch(OLDER, None, 0), Plan::Replace);
-        assert_eq!(plan_for_mismatch(OLDER, None, 3), Plan::Ask { resume: 3, busy: None });
+        assert_eq!(
+            plan_for_mismatch(OLDER, None, 3),
+            Plan::Ask {
+                resume: 3,
+                busy: None
+            }
+        );
     }
 
     #[test]
     fn only_an_older_idle_server_is_replaced_on_launch() {
         assert!(replace_older_idle_server(Some(&activity(0, 0)), "0.41.0"));
-        assert!(!replace_older_idle_server(Some(&activity(1, 0)), "0.41.0"), "never under a working agent");
-        assert!(!replace_older_idle_server(Some(&activity(0, 0)), "0.40.0"), "the same version stays");
-        assert!(!replace_older_idle_server(Some(&activity(0, 0)), "0.39.0"), concat!("a newer server is never replaced by an older ", env!("APP_COMMAND")));
+        assert!(
+            !replace_older_idle_server(Some(&activity(1, 0)), "0.41.0"),
+            "never under a working agent"
+        );
+        assert!(
+            !replace_older_idle_server(Some(&activity(0, 0)), "0.40.0"),
+            "the same version stays"
+        );
+        assert!(
+            !replace_older_idle_server(Some(&activity(0, 0)), "0.39.0"),
+            concat!(
+                "a newer server is never replaced by an older ",
+                env!("APP_COMMAND")
+            )
+        );
         assert!(!replace_older_idle_server(None, "0.41.0"));
     }
 
     #[test]
     fn the_published_activity_belongs_to_the_pid_file_s_process() {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-activity-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-activity-{}"),
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let (data, pid) = (dir.join("a.activity"), dir.join("a.pid"));
         let a = activity(0, 0);
@@ -195,7 +270,11 @@ mod tests {
         std::fs::write(&pid, "1").unwrap();
         assert_eq!(read_from(&data, &pid), Some(a));
         std::fs::write(&pid, "2").unwrap();
-        assert_eq!(read_from(&data, &pid), None, "a file from another server process is ignored");
+        assert_eq!(
+            read_from(&data, &pid),
+            None,
+            "a file from another server process is ignored"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -2,11 +2,11 @@
 //! and the output tail only `Query::CheckOutput` returns. Also what produces one: the
 //! project's check command, run in the session's worktree when an agent's turn ends.
 
+use super::check_source::{Gate, Resolved};
 use super::persist::{self, CheckSlot, SavedPane};
 use super::term::{self, Term};
-use super::check_source::{Gate, Resolved};
 use super::{Daemon, Ev};
-use crate::output_line::{classify, clean, LineKind};
+use crate::output_line::{LineKind, classify, clean};
 use crate::protocol::{CheckInfo, CheckState, ServerMsg, Status, TermId};
 use std::path::Path;
 use std::process::{Child, Stdio};
@@ -58,7 +58,9 @@ pub enum CheckOutcome {
 pub fn state_for(outcome: CheckOutcome) -> CheckState {
     match outcome {
         CheckOutcome::Exited(0) => CheckState::Passed,
-        CheckOutcome::Exited(EXIT_COMMAND_NOT_FOUND | EXIT_COMMAND_NOT_FOUND_CMD) => CheckState::CouldNotRun,
+        CheckOutcome::Exited(EXIT_COMMAND_NOT_FOUND | EXIT_COMMAND_NOT_FOUND_CMD) => {
+            CheckState::CouldNotRun
+        }
         CheckOutcome::Exited(_) => CheckState::Failed,
         CheckOutcome::TimedOut | CheckOutcome::SpawnFailed => CheckState::CouldNotRun,
     }
@@ -66,8 +68,12 @@ pub fn state_for(outcome: CheckOutcome) -> CheckState {
 
 /// The last `CHECK_OUTPUT_MAX_BYTES` of `text`, starting on a character boundary.
 pub fn cap_output(text: &str) -> String {
-    let Some(excess) = text.len().checked_sub(CHECK_OUTPUT_MAX_BYTES) else { return text.to_string() };
-    let start = (excess..=text.len()).find(|&i| text.is_char_boundary(i)).unwrap_or(text.len());
+    let Some(excess) = text.len().checked_sub(CHECK_OUTPUT_MAX_BYTES) else {
+        return text.to_string();
+    };
+    let start = (excess..=text.len())
+        .find(|&i| text.is_char_boundary(i))
+        .unwrap_or(text.len());
     text[start..].to_string()
 }
 
@@ -78,9 +84,18 @@ pub const FIRST_FAILING_LINE_MAX_CHARS: usize = 200;
 /// The line that sums a failed run up: the first that reads as a failure, else the last
 /// that printed anything. Safe to draw and cut short.
 pub fn first_failing_line(output: &str) -> String {
-    let lines: Vec<String> = output.lines().map(|l| clean(l).trim().to_string()).filter(|l| !l.is_empty()).collect();
-    let picked = lines.iter().find(|l| classify(l) == LineKind::Failure).or(lines.last());
-    picked.map_or_else(String::new, |l| l.chars().take(FIRST_FAILING_LINE_MAX_CHARS).collect())
+    let lines: Vec<String> = output
+        .lines()
+        .map(|l| clean(l).trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    let picked = lines
+        .iter()
+        .find(|l| classify(l) == LineKind::Failure)
+        .or(lines.last());
+    picked.map_or_else(String::new, |l| {
+        l.chars().take(FIRST_FAILING_LINE_MAX_CHARS).collect()
+    })
 }
 
 /// One check result: the summary clients see, and its output tail.
@@ -92,7 +107,10 @@ pub struct CheckRecord {
 
 impl CheckRecord {
     pub fn new(info: CheckInfo, output: &str) -> Self {
-        Self { info, output: cap_output(output) }
+        Self {
+            info,
+            output: cap_output(output),
+        }
     }
 }
 
@@ -113,12 +131,23 @@ pub fn run_check(shell: &[String], dir: &Path, line: &str, timeout: Duration) ->
     run_scrubbed(shell, dir, line, timeout, SCRUBBED_ENV)
 }
 
-fn run_scrubbed(shell: &[String], dir: &Path, line: &str, timeout: Duration, scrub: &[&str]) -> CheckRun {
+fn run_scrubbed(
+    shell: &[String],
+    dir: &Path,
+    line: &str,
+    timeout: Duration,
+    scrub: &[&str],
+) -> CheckRun {
     let started = Instant::now();
     let done = |outcome, output: &Output| {
         let text = output.text();
         let unended = u64::from(!text.is_empty() && !text.ends_with('\n'));
-        CheckRun { outcome, output: cap_output(&text), lines: output.newlines() + unended, duration: started.elapsed() }
+        CheckRun {
+            outcome,
+            output: cap_output(&text),
+            lines: output.newlines() + unended,
+            duration: started.elapsed(),
+        }
     };
     let mut child = match check_command(shell, dir, line, scrub).spawn() {
         Ok(child) => child,
@@ -129,7 +158,10 @@ fn run_scrubbed(shell: &[String], dir: &Path, line: &str, timeout: Duration, scr
     };
     let tree = Tree::of(&child);
     let output = Output::default();
-    let readers = [child.stdout.take().map(|r| output.fill_from(r)), child.stderr.take().map(|r| output.fill_from(r))];
+    let readers = [
+        child.stdout.take().map(|r| output.fill_from(r)),
+        child.stderr.take().map(|r| output.fill_from(r)),
+    ];
     let outcome = wait_for(&mut child, &tree, timeout, started);
     let grace_ends = Instant::now() + OUTPUT_DRAIN_GRACE;
     for reader in readers.into_iter().flatten() {
@@ -140,10 +172,25 @@ fn run_scrubbed(shell: &[String], dir: &Path, line: &str, timeout: Duration, scr
     done(outcome, &output)
 }
 
-fn check_command(shell: &[String], dir: &Path, line: &str, scrub: &[&str]) -> std::process::Command {
-    let line = if crate::proc::is_powershell(shell) { format!("{POWERSHELL_NOT_FOUND_TRAP}{}", crate::proc::powershell_line(line)) } else { line.to_string() };
+fn check_command(
+    shell: &[String],
+    dir: &Path,
+    line: &str,
+    scrub: &[&str],
+) -> std::process::Command {
+    let line = if crate::proc::is_powershell(shell) {
+        format!(
+            "{POWERSHELL_NOT_FOUND_TRAP}{}",
+            crate::proc::powershell_line(line)
+        )
+    } else {
+        line.to_string()
+    };
     let mut c = crate::proc::shell(shell, &line, false);
-    c.current_dir(dir).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    c.current_dir(dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     for var in scrub {
         c.env_remove(var);
     }
@@ -211,7 +258,10 @@ fn wait_for(child: &mut Child, tree: &Tree, timeout: Duration, started: Instant)
 struct Output(Arc<Mutex<Vec<u8>>>, Arc<std::sync::atomic::AtomicU64>);
 
 impl Output {
-    fn fill_from<R: std::io::Read + Send + 'static>(&self, mut pipe: R) -> std::thread::JoinHandle<()> {
+    fn fill_from<R: std::io::Read + Send + 'static>(
+        &self,
+        mut pipe: R,
+    ) -> std::thread::JoinHandle<()> {
         let (sink, newlines) = (self.0.clone(), self.1.clone());
         std::thread::spawn(move || {
             let mut chunk = [0u8; READ_CHUNK_BYTES];
@@ -252,7 +302,9 @@ struct Tree {
 impl Tree {
     fn of(child: &Child) -> Self {
         // `process_group(0)` made the child its own group leader, so its pid is the group.
-        Self { group: child.id() as libc::pid_t }
+        Self {
+            group: child.id() as libc::pid_t,
+        }
     }
 
     fn kill(&self) {
@@ -267,8 +319,9 @@ impl Tree {
     fn of(child: &Child) -> Self {
         use std::os::windows::io::AsRawHandle;
         use windows_sys::Win32::System::JobObjects::{
-            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-            JobObjectExtendedLimitInformation, SetInformationJobObject,
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            SetInformationJobObject,
         };
         // SAFETY: plain Win32 calls on a job this function creates and a handle `child` owns.
         // A process that already left (or an error) leaves a job nothing is in; killing it is a no-op.
@@ -321,7 +374,11 @@ pub struct Checkpoint {
 
 impl From<CheckRecord> for Checkpoint {
     fn from(latest: CheckRecord) -> Self {
-        Self { latest, overridden: None, tree: None }
+        Self {
+            latest,
+            overridden: None,
+            tree: None,
+        }
     }
 }
 
@@ -369,7 +426,9 @@ impl Checks {
     }
 
     fn any(&self, states: &[CheckState]) -> bool {
-        self.points.iter().any(|p| states.contains(&p.latest.info.state))
+        self.points
+            .iter()
+            .any(|p| states.contains(&p.latest.info.state))
     }
 
     /// A run has not answered for every checkpoint yet.
@@ -380,7 +439,12 @@ impl Checks {
     /// The work is not known to be good: a checkpoint is running, waiting, failed or waiting
     /// for your approval.
     pub fn holds_done(&self) -> bool {
-        self.any(&[CheckState::Checking, CheckState::Pending, CheckState::Failed, CheckState::NeedsApproval])
+        self.any(&[
+            CheckState::Checking,
+            CheckState::Pending,
+            CheckState::Failed,
+            CheckState::NeedsApproval,
+        ])
     }
 
     /// The first checkpoint waiting its turn starts now.
@@ -388,18 +452,146 @@ impl Checks {
         if self.any(&[CheckState::Checking]) {
             return;
         }
-        if let Some(next) = self.points.iter_mut().find(|p| p.latest.info.state == CheckState::Pending) {
+        if let Some(next) = self
+            .points
+            .iter_mut()
+            .find(|p| p.latest.info.state == CheckState::Pending)
+        {
             next.latest.info.state = CheckState::Checking;
             next.latest.info.started_at = term::unix_now();
         }
     }
+    pub(in crate::daemon) fn begin(
+        &mut self,
+        defs: &[crate::config::CheckDef],
+        plan: &RunPlan,
+        only: Option<String>,
+    ) {
+        self.run += 1;
+        self.run_only = only.clone();
+        match &only {
+            None => {
+                let mut old = std::mem::take(&mut self.points);
+                self.points = defs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, def)| {
+                        let state = if i == 0 {
+                            CheckState::Checking
+                        } else {
+                            CheckState::Pending
+                        };
+                        let overridden = old
+                            .iter_mut()
+                            .find(|p| p.latest.info.name == def.name())
+                            .and_then(|p| p.overridden.take());
+                        Checkpoint {
+                            latest: CheckRecord::new(plan.info(def, state), ""),
+                            overridden,
+                            tree: None,
+                        }
+                    })
+                    .collect();
+            }
+            Some(name) => {
+                let fresh = defs.first().map(|def| plan.info(def, CheckState::Checking));
+                if let Some(point) = self.named_mut(name) {
+                    let info = fresh.unwrap_or_else(|| CheckInfo {
+                        state: CheckState::Checking,
+                        started_at: term::unix_now(),
+                        cwd: plan.dir.clone(),
+                        ..point.latest.info.clone()
+                    });
+                    point.latest = CheckRecord::new(
+                        CheckInfo {
+                            after_turn_ended_at: plan.after_turn_ended_at,
+                            turn: plan.turn,
+                            rerun_queued: false,
+                            ..info
+                        },
+                        "",
+                    );
+                } else if let Some(info) = fresh {
+                    self.points.push(CheckRecord::new(info, "").into());
+                }
+            }
+        }
+    }
+
+    pub(in crate::daemon) fn resolved(&mut self, resolved: Vec<Resolved>, tree: Option<String>) {
+        match self.run_only.clone() {
+            // A single checkpoint's run leaves the others where they were.
+            Some(only) => {
+                if let Some(point) = self.named_mut(&only) {
+                    match resolved.first() {
+                        Some(r) => point.gate(r, &tree),
+                        None => point.latest.info.state = CheckState::CouldNotRun,
+                    }
+                }
+            }
+            None => {
+                let mut old = std::mem::take(&mut self.points);
+                let template = old
+                    .first()
+                    .map(|p| p.latest.info.clone())
+                    .unwrap_or_default();
+                self.points = resolved
+                    .iter()
+                    .map(|r| {
+                        let name = r.def.name();
+                        let mut point = match old.iter().position(|p| p.latest.info.name == name) {
+                            Some(i) => old.remove(i),
+                            None => CheckRecord::new(
+                                CheckInfo {
+                                    name: name.to_string(),
+                                    state: CheckState::Pending,
+                                    ..template.clone()
+                                },
+                                "",
+                            )
+                            .into(),
+                        };
+                        point.gate(r, &tree);
+                        point
+                    })
+                    .collect();
+            }
+        }
+        self.start_next();
+    }
+
+    pub(in crate::daemon) fn record(&mut self, name: &str, result: CheckRun) -> bool {
+        let Some(point) = self
+            .named_mut(name)
+            .filter(|p| p.latest.info.state == CheckState::Checking)
+        else {
+            return false;
+        };
+        let record = &mut point.latest;
+        let info = &mut record.info;
+        info.state = state_for(result.outcome);
+        info.exit_code = match result.outcome {
+            CheckOutcome::Exited(code) => Some(code),
+            CheckOutcome::TimedOut | CheckOutcome::SpawnFailed => None,
+        };
+        info.duration_ms = u64::try_from(result.duration.as_millis()).unwrap_or(u64::MAX);
+        info.line_count = result.lines;
+        record.output = cap_output(&result.output);
+        info.first_failing_line = if info.state == CheckState::Failed {
+            first_failing_line(&record.output)
+        } else {
+            String::new()
+        };
+        self.start_next();
+        true
+    }
 }
 
 /// What a run of a session's checkpoints knows before it starts.
-struct RunPlan {
-    dir: std::path::PathBuf,
-    turn: u32,
-    after_turn_ended_at: u64,
+pub(in crate::daemon) struct RunPlan {
+    pub(super) dir: std::path::PathBuf,
+    pub(super) turn: u32,
+    pub(super) after_turn_ended_at: u64,
 }
 
 impl RunPlan {
@@ -408,7 +600,11 @@ impl RunPlan {
             name: def.name().to_string(),
             command: def.command.clone(),
             state,
-            started_at: if state == CheckState::Checking { term::unix_now() } else { 0 },
+            started_at: if state == CheckState::Checking {
+                term::unix_now()
+            } else {
+                0
+            },
             after_turn_ended_at: self.after_turn_ended_at,
             turn: self.turn,
             cwd: self.dir.clone(),
@@ -417,13 +613,106 @@ impl RunPlan {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CheckOwner {
+    Pane(TermId),
+    Conversation {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
+}
+
+pub(super) struct RunRequest {
+    pub owner: CheckOwner,
+    pub run: u64,
+    pub user: Vec<crate::config::CheckDef>,
+    pub resolver: super::check_source::Resolver,
+    pub shell: Vec<String>,
+    pub project: std::path::PathBuf,
+    pub dir: std::path::PathBuf,
+    pub approvals: super::approvals::Approvals,
+    pub only: Option<String>,
+}
+
+pub(super) fn spawn_run(request: RunRequest, tx: tokio::sync::mpsc::Sender<Ev>) {
+    let RunRequest {
+        owner,
+        run,
+        user,
+        resolver,
+        shell,
+        project,
+        dir,
+        approvals,
+        only,
+    } = request;
+    tokio::task::spawn_blocking(move || {
+        let project = match owner {
+            CheckOwner::Pane(_) => project,
+            CheckOwner::Conversation { .. } => super::git::status(&dir).map_or(project, |g| g.root),
+        };
+        let resolved: Vec<_> = resolver(&user, &project, &dir, &approvals)
+            .into_iter()
+            .filter(|r| only.as_deref().is_none_or(|n| r.def.name() == n))
+            .collect();
+        let tree = super::check_stale::fingerprint(&dir);
+        let to_run: Vec<_> = resolved
+            .iter()
+            .filter(|r| r.gate == Gate::Run)
+            .map(|r| r.def.clone())
+            .collect();
+        let event = match owner {
+            CheckOwner::Pane(term) => Ev::ChecksResolved {
+                term,
+                run,
+                resolved,
+                tree,
+            },
+            CheckOwner::Conversation { id, generation } => Ev::ConversationChecksResolved {
+                id,
+                generation,
+                run,
+                resolved,
+                tree,
+            },
+        };
+        if tx.blocking_send(event).is_err() {
+            return;
+        }
+        for def in to_run {
+            let result = run_check(&shell, &dir, &def.command, def.timeout());
+            let name = def.name().to_string();
+            let event = match owner {
+                CheckOwner::Pane(term) => Ev::CheckRan {
+                    term,
+                    run,
+                    name,
+                    result,
+                },
+                CheckOwner::Conversation { id, generation } => Ev::ConversationCheckRan {
+                    id,
+                    generation,
+                    run,
+                    name,
+                    result,
+                },
+            };
+            if tx.blocking_send(event).is_err() {
+                return;
+            }
+        }
+    });
+}
+
 impl Daemon {
     /// An agent's turn ended: run the project's checkpoints in its worktree, off the loop.
     /// Nothing happens for a shell, for a project with no check, or while a run is still
     /// going (the new turn's code is checked by the next turn end). A re-run queued during
     /// the turn is this run.
     pub(super) fn turn_ended(&mut self, term: TermId) {
-        let Some(t) = self.terms.get_mut(&term) else { return };
+        let Some(t) = self.terms.get_mut(&term) else {
+            return;
+        };
         if std::mem::replace(&mut t.turn_end_handled, true) {
             return;
         }
@@ -441,7 +730,10 @@ impl Daemon {
     /// its turn to end; the results on show stand until then.
     pub(super) fn rerun_check(&mut self, term: TermId, name: Option<&str>) -> anyhow::Result<()> {
         let defs = self.check_defs(term);
-        let t = self.terms.get_mut(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+        let t = self
+            .terms
+            .get_mut(&term)
+            .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
         if t.agent.is_none() || t.spare {
             anyhow::bail!("only an agent's work is checked");
         }
@@ -459,7 +751,12 @@ impl Daemon {
         }
         if t.status == Status::Working {
             let mut queued = false;
-            for p in t.checks.points.iter_mut().filter(|p| name.is_none_or(|n| p.latest.info.name == n)) {
+            for p in t
+                .checks
+                .points
+                .iter_mut()
+                .filter(|p| name.is_none_or(|n| p.latest.info.name == n))
+            {
                 p.latest.info.rerun_queued = true;
                 queued = true;
             }
@@ -469,7 +766,10 @@ impl Daemon {
             self.mark_check_changed(term);
             return Ok(());
         }
-        let turn_ended_at = t.checks.headline().map_or_else(term::unix_now, |c| c.info.after_turn_ended_at);
+        let turn_ended_at = t
+            .checks
+            .headline()
+            .map_or_else(term::unix_now, |c| c.info.after_turn_ended_at);
         self.start_checks(term, name.map(str::to_string), turn_ended_at);
         Ok(())
     }
@@ -477,8 +777,12 @@ impl Daemon {
     /// While a run of pane `term`'s checks is going, mark checkpoint `name` to run once that
     /// run settles (`check_settled`), in the same turn. False when nothing is running.
     pub(super) fn queue_after_run(&mut self, term: TermId, name: &str) -> bool {
-        let Some(t) = self.terms.get_mut(&term).filter(|t| t.checks.running()) else { return false };
-        let Some(point) = t.checks.named_mut(name) else { return false };
+        let Some(t) = self.terms.get_mut(&term).filter(|t| t.checks.running()) else {
+            return false;
+        };
+        let Some(point) = t.checks.named_mut(name) else {
+            return false;
+        };
         point.latest.info.rerun_queued = true;
         self.mark_check_changed(term);
         true
@@ -486,17 +790,33 @@ impl Daemon {
 
     /// Accept a failed result as it is (checkpoint `name`, else the headline one). The result
     /// keeps what failed and its output.
-    pub(super) fn override_check(&mut self, term: TermId, name: Option<&str>, reason: &str, by: String) -> anyhow::Result<()> {
+    pub(super) fn override_check(
+        &mut self,
+        term: TermId,
+        name: Option<&str>,
+        reason: &str,
+        by: String,
+    ) -> anyhow::Result<()> {
         let reason = reason.trim();
         if reason.chars().count() > OVERRIDE_REASON_MAX_CHARS {
             anyhow::bail!("give a reason of at most {OVERRIDE_REASON_MAX_CHARS} characters");
         }
-        let t = self.terms.get_mut(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+        let t = self
+            .terms
+            .get_mut(&term)
+            .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
         let at = match name {
-            Some(name) => t.checks.points.iter().position(|p| p.latest.info.name == name),
+            Some(name) => t
+                .checks
+                .points
+                .iter()
+                .position(|p| p.latest.info.name == name),
             None => t.checks.headline_index(),
         };
-        let Some(point) = at.map(|i| &mut t.checks.points[i]).filter(|p| p.latest.info.state == CheckState::Failed) else {
+        let Some(point) = at
+            .map(|i| &mut t.checks.points[i])
+            .filter(|p| p.latest.info.state == CheckState::Failed)
+        else {
             anyhow::bail!("only a failed check can be overridden");
         };
         let info = &mut point.latest.info;
@@ -512,7 +832,10 @@ impl Daemon {
     /// Take an override back (checkpoint `name`, else the first overridden one): the result
     /// reads as failed again.
     pub(super) fn undo_override(&mut self, term: TermId, name: Option<&str>) -> anyhow::Result<()> {
-        let t = self.terms.get_mut(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+        let t = self
+            .terms
+            .get_mut(&term)
+            .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
         let Some(point) = t
             .checks
             .points
@@ -534,7 +857,11 @@ impl Daemon {
 
     /// Who an override is from: you, or the pane a client acts from, by its name.
     pub(super) fn overrider(&self, client: super::ClientId) -> String {
-        let from = self.clients.get(&client).and_then(|c| c.from).and_then(|p| self.terms.get(&p));
+        let from = self
+            .clients
+            .get(&client)
+            .and_then(|c| c.from)
+            .and_then(|p| self.terms.get(&p));
         from.map_or_else(|| "you".to_string(), Term::who)
     }
 
@@ -558,7 +885,10 @@ impl Daemon {
     /// Look, off the loop, whether each of `terms`' worktrees has a repo checks file; the
     /// answer comes back as `Ev::RepoChecksFound` (`repo_checks_found`).
     pub(super) fn probe_repo_checks(&self, terms: impl IntoIterator<Item = TermId>) {
-        let dirs: Vec<(TermId, std::path::PathBuf)> = terms.into_iter().filter_map(|id| self.terms.get(&id).map(|t| (id, t.worktree()))).collect();
+        let dirs: Vec<(TermId, std::path::PathBuf)> = terms
+            .into_iter()
+            .filter_map(|id| self.terms.get(&id).map(|t| (id, t.worktree())))
+            .collect();
         if dirs.is_empty() {
             return;
         }
@@ -585,15 +915,37 @@ impl Daemon {
     /// any, when its worktree has a repo checks file, the checkpoints it showed last (or one
     /// standing for the file). Resolving off the loop settles what the file really names.
     fn check_defs(&self, term: TermId) -> Vec<crate::config::CheckDef> {
-        let Some(t) = self.terms.get(&term) else { return Vec::new() };
+        let Some(t) = self.terms.get(&term) else {
+            return Vec::new();
+        };
         let project = t.head.as_ref().map_or(&t.cwd, |h| &h.main_root);
-        let yours: Vec<_> = self.cfg.check.iter().filter(|c| super::same_path(&c.project, project)).cloned().collect();
+        let yours: Vec<_> = self
+            .cfg
+            .check
+            .iter()
+            .filter(|c| super::same_path(&c.project, project))
+            .cloned()
+            .collect();
         if !yours.is_empty() || !t.checks.repo_file {
             return yours;
         }
-        let def = |name: &str, command: &str| crate::config::CheckDef { project: project.clone(), name: Some(name.into()), command: command.into(), ..Default::default() };
-        let shown: Vec<_> = t.checks.points.iter().map(|p| def(&p.latest.info.name, &p.latest.info.command)).collect();
-        if shown.is_empty() { vec![def(crate::config::REPO_CHECKS_FILE, "")] } else { shown }
+        let def = |name: &str, command: &str| crate::config::CheckDef {
+            project: project.clone(),
+            name: Some(name.into()),
+            command: command.into(),
+            ..Default::default()
+        };
+        let shown: Vec<_> = t
+            .checks
+            .points
+            .iter()
+            .map(|p| def(&p.latest.info.name, &p.latest.info.command))
+            .collect();
+        if shown.is_empty() {
+            vec![def(crate::config::REPO_CHECKS_FILE, "")]
+        } else {
+            shown
+        }
     }
 
     /// Start a run of checkpoint `only` (or all of them), replacing their results. They read
@@ -601,9 +953,20 @@ impl Daemon {
     /// project's checks are resolved and gated. A project that no longer has a check leaves
     /// the results alone and drops any queued re-run, which has nothing to run.
     fn start_checks(&mut self, term: TermId, only: Option<String>, after_turn_ended_at: u64) {
-        let defs: Vec<_> = self.check_defs(term).into_iter().filter(|d| only.as_deref().is_none_or(|n| d.name() == n)).collect();
-        let (user, resolver, shell, tx) = (self.cfg.check.clone(), self.resolver, self.cfg.shell_command(), self.tx.clone());
-        let Some(t) = self.terms.get_mut(&term) else { return };
+        let defs: Vec<_> = self
+            .check_defs(term)
+            .into_iter()
+            .filter(|d| only.as_deref().is_none_or(|n| d.name() == n))
+            .collect();
+        let (user, resolver, shell, tx) = (
+            self.cfg.check.clone(),
+            self.resolver,
+            self.cfg.shell_command(),
+            self.tx.clone(),
+        );
+        let Some(t) = self.terms.get_mut(&term) else {
+            return;
+        };
         if defs.is_empty() && only.as_deref().is_none_or(|n| t.checks.named(n).is_none()) {
             for p in &mut t.checks.points {
                 p.latest.info.rerun_queued = false;
@@ -611,84 +974,51 @@ impl Daemon {
             return;
         }
         let approvals = self.approvals_for_run(term);
-        let Some(t) = self.terms.get_mut(&term) else { return };
+        let Some(t) = self.terms.get_mut(&term) else {
+            return;
+        };
         let (dir, project) = match &t.head {
             Some(h) => (h.top.clone(), h.main_root.clone()),
             None => (t.cwd.clone(), t.cwd.clone()),
         };
-        let plan = RunPlan { dir: dir.clone(), turn: t.checks.turn, after_turn_ended_at };
+        let plan = RunPlan {
+            dir: dir.clone(),
+            turn: t.checks.turn,
+            after_turn_ended_at,
+        };
         let checks = &mut t.checks;
-        checks.run += 1;
-        checks.run_only = only.clone();
+        checks.begin(&defs, &plan, only.clone());
         let run = checks.run;
-        match &only {
-            None => {
-                let mut old = std::mem::take(&mut checks.points);
-                checks.points = defs
-                    .iter()
-                    .enumerate()
-                    .map(|(i, def)| {
-                        let state = if i == 0 { CheckState::Checking } else { CheckState::Pending };
-                        let overridden = old.iter_mut().find(|p| p.latest.info.name == def.name()).and_then(|p| p.overridden.take());
-                        Checkpoint { latest: CheckRecord::new(plan.info(def, state), ""), overridden, tree: None }
-                    })
-                    .collect();
-            }
-            Some(name) => {
-                let fresh = defs.first().map(|def| plan.info(def, CheckState::Checking));
-                if let Some(point) = checks.named_mut(name) {
-                    let info = fresh.unwrap_or_else(|| CheckInfo { state: CheckState::Checking, started_at: term::unix_now(), cwd: plan.dir.clone(), ..point.latest.info.clone() });
-                    point.latest = CheckRecord::new(CheckInfo { after_turn_ended_at, turn: plan.turn, rerun_queued: false, ..info }, "");
-                } else if let Some(info) = fresh {
-                    checks.points.push(CheckRecord::new(info, "").into());
-                }
-            }
-        }
         self.mark_check_changed(term);
-        tokio::task::spawn_blocking(move || {
-            let resolved: Vec<_> = resolver(&user, &project, &dir, &approvals).into_iter().filter(|r| only.as_deref().is_none_or(|n| r.def.name() == n)).collect();
-            let tree = super::check_stale::fingerprint(&dir);
-            let to_run: Vec<_> = resolved.iter().filter(|r| r.gate == Gate::Run).map(|r| r.def.clone()).collect();
-            let _ = tx.blocking_send(Ev::ChecksResolved { term, run, resolved, tree });
-            for def in to_run {
-                let result = run_check(&shell, &dir, &def.command, def.timeout());
-                let _ = tx.blocking_send(Ev::CheckRan { term, run, name: def.name().to_string(), result });
-            }
-        });
+        spawn_run(
+            RunRequest {
+                owner: CheckOwner::Pane(term),
+                run,
+                user,
+                resolver,
+                shell,
+                project,
+                dir,
+                approvals,
+                only,
+            },
+            tx,
+        );
     }
 
     /// The run's checkpoints are known and gated: put them in place, in order. The ones that
     /// may run wait their turn; the rest are settled already.
-    pub(super) fn checks_resolved(&mut self, term: TermId, run: u64, resolved: Vec<Resolved>, tree: Option<String>) {
-        let Some(t) = self.terms.get_mut(&term).filter(|t| t.checks.run == run) else { return };
-        let checks = &mut t.checks;
-        match checks.run_only.clone() {
-            // A single checkpoint's run leaves the others where they were.
-            Some(only) => {
-                if let Some(point) = checks.named_mut(&only) {
-                    match resolved.first() {
-                        Some(r) => point.gate(r, &tree),
-                        None => point.latest.info.state = CheckState::CouldNotRun,
-                    }
-                }
-            }
-            None => {
-                let mut old = std::mem::take(&mut checks.points);
-                checks.points = resolved
-                    .iter()
-                    .map(|r| {
-                        let name = r.def.name();
-                        let mut point = match old.iter().position(|p| p.latest.info.name == name) {
-                            Some(i) => old.remove(i),
-                            None => CheckRecord::new(CheckInfo { name: name.to_string(), state: CheckState::Pending, ..Default::default() }, "").into(),
-                        };
-                        point.gate(r, &tree);
-                        point
-                    })
-                    .collect();
-            }
-        }
-        checks.start_next();
+    pub(super) fn checks_resolved(
+        &mut self,
+        term: TermId,
+        run: u64,
+        resolved: Vec<Resolved>,
+        tree: Option<String>,
+    ) {
+        let Some(t) = self.terms.get_mut(&term).filter(|t| t.checks.run == run) else {
+            return;
+        };
+        t.checks.resolved(resolved, tree);
         self.mark_check_changed(term);
         self.check_settled(term);
     }
@@ -696,20 +1026,12 @@ impl Daemon {
     /// A checkpoint's run ended: record how, unless the pane went away or a newer run
     /// replaced it meanwhile, and start the next one.
     pub(super) fn check_ran(&mut self, term: TermId, run: u64, name: &str, result: CheckRun) {
-        let Some(t) = self.terms.get_mut(&term).filter(|t| t.checks.run == run) else { return };
-        let Some(point) = t.checks.named_mut(name).filter(|p| p.latest.info.state == CheckState::Checking) else { return };
-        let record = &mut point.latest;
-        let info = &mut record.info;
-        info.state = state_for(result.outcome);
-        info.exit_code = match result.outcome {
-            CheckOutcome::Exited(code) => Some(code),
-            CheckOutcome::TimedOut | CheckOutcome::SpawnFailed => None,
+        let Some(t) = self.terms.get_mut(&term).filter(|t| t.checks.run == run) else {
+            return;
         };
-        info.duration_ms = u64::try_from(result.duration.as_millis()).unwrap_or(u64::MAX);
-        info.line_count = result.lines;
-        record.output = cap_output(&result.output);
-        info.first_failing_line = if info.state == CheckState::Failed { first_failing_line(&record.output) } else { String::new() };
-        t.checks.start_next();
+        if !t.checks.record(name, result) {
+            return;
+        }
         self.mark_check_changed(term);
         self.check_settled(term);
     }
@@ -720,38 +1042,83 @@ impl Daemon {
     /// (`queue_after_run`) starts first, and the news waits for it; while the agent works,
     /// its turn end runs everything anyway.
     fn check_settled(&mut self, term: TermId) {
-        let Some(t) = self.terms.get_mut(&term).filter(|t| !t.checks.running()) else { return };
+        let Some(t) = self.terms.get_mut(&term).filter(|t| !t.checks.running()) else {
+            return;
+        };
         if t.status != Status::Working
-            && let Some(queued) = t.checks.points.iter().find(|p| p.latest.info.rerun_queued).map(|p| p.latest.info.name.clone())
+            && let Some(queued) = t
+                .checks
+                .points
+                .iter()
+                .find(|p| p.latest.info.rerun_queued)
+                .map(|p| p.latest.info.name.clone())
         {
-            let turn_ended_at = t.checks.headline().map_or_else(term::unix_now, |c| c.info.after_turn_ended_at);
+            let turn_ended_at = t
+                .checks
+                .headline()
+                .map_or_else(term::unix_now, |c| c.info.after_turn_ended_at);
             self.start_checks(term, Some(queued), turn_ended_at);
             return;
         }
         let (status, place, turn) = (t.status, t.place(), t.checks.turn);
-        let first = |state| t.checks.points.iter().map(|p| &p.latest.info).find(|i| i.state == state).map(|i| i.command.clone());
+        let first = |state| {
+            t.checks
+                .points
+                .iter()
+                .map(|p| &p.latest.info)
+                .find(|i| i.state == state)
+                .map(|i| i.command.clone())
+        };
         let (failed, approve) = (first(CheckState::Failed), first(CheckState::NeedsApproval));
         let (could_not_run, never) = (first(CheckState::CouldNotRun), first(CheckState::Never));
         let ended = matches!(status, Status::Done | Status::Idle);
         if failed.is_some() {
             if ended {
-                tracing::info!("pane {term}: windows told Blocked by its check (they may play its sound)");
-                self.broadcast(|c| c.attach, ServerMsg::Attention { term, status: Status::Blocked });
-                self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: check failed")));
+                tracing::info!(
+                    "pane {term}: windows told Blocked by its check (they may play its sound)"
+                );
+                self.broadcast(
+                    |c| c.attach,
+                    ServerMsg::Attention {
+                        term,
+                        status: Status::Blocked,
+                    },
+                );
+                self.broadcast(
+                    |c| c.attach,
+                    ServerMsg::Notice(format!("{place}: check failed")),
+                );
                 self.alert(term, Status::Blocked, CHECK_FAILED_WHAT);
             }
         } else if let Some(command) = approve {
             if ended && t.checks.approval_told.replace(turn) != Some(turn) {
-                tracing::info!("pane {term}: windows told Blocked by its check (they may play its sound)");
-                self.broadcast(|c| c.attach, ServerMsg::Attention { term, status: Status::Blocked });
-                self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: approve check: {command}")));
+                tracing::info!(
+                    "pane {term}: windows told Blocked by its check (they may play its sound)"
+                );
+                self.broadcast(
+                    |c| c.attach,
+                    ServerMsg::Attention {
+                        term,
+                        status: Status::Blocked,
+                    },
+                );
+                self.broadcast(
+                    |c| c.attach,
+                    ServerMsg::Notice(format!("{place}: approve check: {command}")),
+                );
                 self.alert(term, Status::Blocked, NEEDS_APPROVAL_WHAT);
             }
         } else if status == Status::Done {
             if could_not_run.is_some() {
-                self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: check could not run")));
+                self.broadcast(
+                    |c| c.attach,
+                    ServerMsg::Notice(format!("{place}: check could not run")),
+                );
             } else if never.is_some() {
-                self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: not checked: never for this repo")));
+                self.broadcast(
+                    |c| c.attach,
+                    ServerMsg::Notice(format!("{place}: not checked: never for this repo")),
+                );
             }
             self.announce(term, Status::Done);
         }
@@ -808,7 +1175,11 @@ impl Term {
 
     /// What an override from this pane is signed with: its name, else its folder's.
     fn who(&self) -> String {
-        [&self.label, &self.name, &self.first_prompt].into_iter().find(|n| !n.trim().is_empty()).cloned().unwrap_or_else(|| self.place())
+        [&self.label, &self.name, &self.first_prompt]
+            .into_iter()
+            .find(|n| !n.trim().is_empty())
+            .cloned()
+            .unwrap_or_else(|| self.place())
     }
 
     /// Take back the checkpoints a pane had before the server restarted, tails read from
@@ -825,7 +1196,11 @@ impl Term {
             // Nothing is queued after a restart.
             info.rerun_queued = false;
             let output = persist::read_check_output(dir, old, &info.name, slot)
-                .or_else(|| migrated.then(|| persist::read_legacy_check_output(dir, old, slot)).flatten())
+                .or_else(|| {
+                    migrated
+                        .then(|| persist::read_legacy_check_output(dir, old, slot))
+                        .flatten()
+                })
                 .unwrap_or_default();
             CheckRecord::new(info, &output)
         };
@@ -834,7 +1209,11 @@ impl Term {
             .iter()
             .map(|info| Checkpoint {
                 latest: record(info, CheckSlot::Latest),
-                overridden: saved.checks_overridden.iter().find(|o| o.name == info.name).map(|o| record(o, CheckSlot::Overridden)),
+                overridden: saved
+                    .checks_overridden
+                    .iter()
+                    .find(|o| o.name == info.name)
+                    .map(|o| record(o, CheckSlot::Overridden)),
                 tree: saved.check_trees.get(&info.name).cloned(),
             })
             .collect();
@@ -842,7 +1221,6 @@ impl Term {
         self.checks.dirty = !self.checks.points.is_empty();
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -867,7 +1245,11 @@ mod tests {
 
     /// A shell whose syntax the tests know: `sh` where there is one, else the user's default.
     fn test_shell() -> Vec<String> {
-        if cfg!(unix) { vec!["sh".into()] } else { crate::config::Config::default().shell_command() }
+        if cfg!(unix) {
+            vec!["sh".into()]
+        } else {
+            crate::config::Config::default().shell_command()
+        }
     }
 
     fn run(line: &str, timeout: Duration) -> CheckRun {
@@ -875,17 +1257,30 @@ mod tests {
     }
 
     const LONG: Duration = Duration::from_secs(60);
+    #[cfg(windows)]
+    const WINDOWS_CHILD_START_TIMEOUT: Duration = Duration::from_secs(45);
 
     #[test]
     fn a_command_that_exits_reads_by_its_code_and_keeps_what_it_printed() {
         let pass = run("echo \"all good\"; exit 0", LONG);
-        assert_eq!((pass.outcome, pass.output.trim()), (CheckOutcome::Exited(0), "all good"));
+        assert_eq!(
+            (pass.outcome, pass.output.trim()),
+            (CheckOutcome::Exited(0), "all good")
+        );
         // PowerShell does not take `1>&2` the way sh does (the exit code came back 1), so
         // it writes to stderr through the console.
-        let to_stderr = if cfg!(windows) { "[Console]::Error.WriteLine('err')" } else { "echo err 1>&2" };
+        let to_stderr = if cfg!(windows) {
+            "[Console]::Error.WriteLine('err')"
+        } else {
+            "echo err 1>&2"
+        };
         let fail = run(&format!("echo out; {to_stderr}; exit 3"), LONG);
         assert_eq!(fail.outcome, CheckOutcome::Exited(3));
-        assert!(fail.output.contains("out") && fail.output.contains("err"), "both streams: {:?}", fail.output);
+        assert!(
+            fail.output.contains("out") && fail.output.contains("err"),
+            "both streams: {:?}",
+            fail.output
+        );
     }
 
     #[test]
@@ -893,15 +1288,45 @@ mod tests {
         let long = "x".repeat(FIRST_FAILING_LINE_MAX_CHARS + 50);
         let cut_multibyte = "é".repeat(FIRST_FAILING_LINE_MAX_CHARS + 1);
         let cases: [(&str, &str, String); 9] = [
-            ("a marker mid-output", "ok a\nFAIL tests/foo: boom\nFAIL tests/bar\n", "FAIL tests/foo: boom".into()),
-            ("an error word anywhere in the line", "running\nthread panicked at src/x.rs\n", "thread panicked at src/x.rs".into()),
-            ("no marker takes the last line", "one\ntwo\n\n  \n", "two".into()),
+            (
+                "a marker mid-output",
+                "ok a\nFAIL tests/foo: boom\nFAIL tests/bar\n",
+                "FAIL tests/foo: boom".into(),
+            ),
+            (
+                "an error word anywhere in the line",
+                "running\nthread panicked at src/x.rs\n",
+                "thread panicked at src/x.rs".into(),
+            ),
+            (
+                "no marker takes the last line",
+                "one\ntwo\n\n  \n",
+                "two".into(),
+            ),
             ("nothing printed", "", String::new()),
             ("only blank lines", "\n  \n\t\n", String::new()),
             ("trimmed", "   FAIL padded   \n", "FAIL padded".into()),
-            ("ansi and control codes removed", "\u{1b}[31mFAIL \u{1b}[1mred\u{1b}[0m\u{7}\n", "FAIL red".into()),
-            ("a long line is cut to the maximum", &format!("FAIL {long}"), format!("FAIL {long}").chars().take(FIRST_FAILING_LINE_MAX_CHARS).collect()),
-            ("a multibyte line is cut on a character", &format!("FAIL {cut_multibyte}"), format!("FAIL {cut_multibyte}").chars().take(FIRST_FAILING_LINE_MAX_CHARS).collect()),
+            (
+                "ansi and control codes removed",
+                "\u{1b}[31mFAIL \u{1b}[1mred\u{1b}[0m\u{7}\n",
+                "FAIL red".into(),
+            ),
+            (
+                "a long line is cut to the maximum",
+                &format!("FAIL {long}"),
+                format!("FAIL {long}")
+                    .chars()
+                    .take(FIRST_FAILING_LINE_MAX_CHARS)
+                    .collect(),
+            ),
+            (
+                "a multibyte line is cut on a character",
+                &format!("FAIL {cut_multibyte}"),
+                format!("FAIL {cut_multibyte}")
+                    .chars()
+                    .take(FIRST_FAILING_LINE_MAX_CHARS)
+                    .collect(),
+            ),
         ];
         for (what, output, want) in cases {
             assert_eq!(first_failing_line(output), want, "{what}");
@@ -910,7 +1335,12 @@ mod tests {
 
     #[test]
     fn a_shell_that_cannot_start_reads_as_not_run() {
-        let run = run_check(&[concat!("/no/such/shell-for-", env!("APP_COMMAND")).into()], &std::env::temp_dir(), "exit 0", LONG);
+        let run = run_check(
+            &[concat!("/no/such/shell-for-", env!("APP_COMMAND")).into()],
+            &std::env::temp_dir(),
+            "exit 0",
+            LONG,
+        );
         assert_eq!(run.outcome, CheckOutcome::SpawnFailed);
         assert_eq!(state_for(run.outcome), CheckState::CouldNotRun);
     }
@@ -920,37 +1350,62 @@ mod tests {
         let run = run(concat!(env!("APP_COMMAND"), "-no-such-command-xyz"), LONG);
         assert_eq!(run.outcome, CheckOutcome::Exited(EXIT_COMMAND_NOT_FOUND));
         assert_eq!(state_for(run.outcome), CheckState::CouldNotRun);
-        assert!(run.output.contains(concat!(env!("APP_COMMAND"), "-no-such-command-xyz")), "it says what was missing: {}", run.output);
+        assert!(
+            run.output
+                .contains(concat!(env!("APP_COMMAND"), "-no-such-command-xyz")),
+            "it says what was missing: {}",
+            run.output
+        );
     }
 
     #[test]
     fn a_failing_command_still_reads_as_failed() {
         let run = run("echo before; exit 3", LONG);
-        assert!(matches!(run.outcome, CheckOutcome::Exited(c) if c != 0 && c != EXIT_COMMAND_NOT_FOUND), "{:?}", run.outcome);
+        assert!(
+            matches!(run.outcome, CheckOutcome::Exited(c) if c != 0 && c != EXIT_COMMAND_NOT_FOUND),
+            "{:?}",
+            run.outcome
+        );
         assert_eq!(state_for(run.outcome), CheckState::Failed);
     }
 
     #[cfg(windows)]
     #[test]
     fn a_quoted_path_still_runs_under_powershell() {
-        let exe = std::env::var("ComSpec").unwrap_or_else(|_| r"C:\Windows\System32\cmd.exe".into());
-        let run = run_check(&["powershell.exe".into()], &std::env::temp_dir(), &format!("\"{exe}\" /c exit 0"), LONG);
+        let exe =
+            std::env::var("ComSpec").unwrap_or_else(|_| r"C:\Windows\System32\cmd.exe".into());
+        let run = run_check(
+            &["powershell.exe".into()],
+            &std::env::temp_dir(),
+            &format!("\"{exe}\" /c exit 0"),
+            LONG,
+        );
         assert_eq!(run.outcome, CheckOutcome::Exited(0), "{}", run.output);
     }
 
     #[test]
     fn a_command_over_its_time_is_stopped_and_reads_as_timed_out() {
-        let slow = if cfg!(windows) { "Start-Sleep 60" } else { "sleep 60" };
+        let slow = if cfg!(windows) {
+            "Start-Sleep 60"
+        } else {
+            "sleep 60"
+        };
         let started = Instant::now();
         let run = run(slow, Duration::from_millis(200));
         assert_eq!(run.outcome, CheckOutcome::TimedOut);
-        assert!(started.elapsed() < Duration::from_secs(30), "it did not wait out the command");
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "it did not wait out the command"
+        );
     }
 
     /// Whether process `pid` is still running (a zombie is not).
     #[cfg(unix)]
     fn alive(pid: &str) -> bool {
-        let out = std::process::Command::new("ps").args(["-o", "stat=", "-p", pid]).output().expect("ps");
+        let out = std::process::Command::new("ps")
+            .args(["-o", "stat=", "-p", pid])
+            .output()
+            .expect("ps");
         let stat = String::from_utf8_lossy(&out.stdout);
         !stat.trim().is_empty() && !stat.trim().starts_with('Z')
     }
@@ -966,7 +1421,10 @@ mod tests {
         let line = format!("sleep 60 & echo $! > '{}'; wait", pidfile.display());
         let run = run_check(&test_shell(), dir.path(), &line, Duration::from_millis(500));
         assert_eq!(run.outcome, CheckOutcome::TimedOut);
-        let pid = std::fs::read_to_string(&pidfile).expect("the shell started its child").trim().to_string();
+        let pid = std::fs::read_to_string(&pidfile)
+            .expect("the shell started its child")
+            .trim()
+            .to_string();
         let gone_by = Instant::now() + Duration::from_secs(10);
         while alive(&pid) && Instant::now() < gone_by {
             std::thread::sleep(CHECK_POLL);
@@ -986,12 +1444,25 @@ mod tests {
         );
         // Under a loaded full test run PowerShell can take seconds to start the child, so the
         // timeout leaves it room to write the pid before the check is stopped.
-        let run = run_check(&crate::config::Config::default().shell_command(), dir.path(), &line, Duration::from_secs(20));
+        let run = run_check(
+            &crate::config::Config::default().shell_command(),
+            dir.path(),
+            &line,
+            WINDOWS_CHILD_START_TIMEOUT,
+        );
         assert_eq!(run.outcome, CheckOutcome::TimedOut);
-        let pid = std::fs::read_to_string(&pidfile).expect("the shell started its child").trim().to_string();
+        let pid = std::fs::read_to_string(&pidfile)
+            .expect("the shell started its child")
+            .trim()
+            .to_string();
         assert!(!pid.is_empty(), "the shell wrote its child's pid");
         let gone_by = Instant::now() + Duration::from_secs(10);
-        let alive = || std::process::Command::new("tasklist").args(["/FI", &format!("PID eq {pid}"), "/NH"]).output().is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&pid));
+        let alive = || {
+            std::process::Command::new("tasklist")
+                .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+                .output()
+                .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&pid))
+        };
         while alive() && Instant::now() < gone_by {
             std::thread::sleep(CHECK_POLL);
         }
@@ -1019,7 +1490,11 @@ mod tests {
         std::fs::create_dir_all(dir.path()).unwrap();
         let pidfile = dir.path().join("check.pid");
         let mut daemon = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "daemon::check::tests::a_check_dies_with_the_daemon_that_started_it", "--nocapture"])
+            .args([
+                "--exact",
+                "daemon::check::tests::a_check_dies_with_the_daemon_that_started_it",
+                "--nocapture",
+            ])
             .env(KILLED_DAEMON_ENV, &pidfile)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -1029,7 +1504,10 @@ mod tests {
         while !pidfile.exists() && Instant::now() < started_by {
             std::thread::sleep(CHECK_POLL);
         }
-        let pid = std::fs::read_to_string(&pidfile).expect("the check started").trim().to_string();
+        let pid = std::fs::read_to_string(&pidfile)
+            .expect("the check started")
+            .trim()
+            .to_string();
         assert!(alive(&pid), "the check runs while its daemon does");
         daemon.kill().unwrap();
         let _ = daemon.wait();
@@ -1047,19 +1525,37 @@ mod tests {
 
     #[test]
     fn the_check_does_not_inherit_the_panes_token_but_keeps_the_rest_of_the_environment() {
-        assert!(SCRUBBED_ENV.contains(&concat!(env!("APP_ENV"), "_PANE_TOKEN")), "the secret is scrubbed");
+        assert!(
+            SCRUBBED_ENV.contains(&concat!(env!("APP_ENV"), "_PANE_TOKEN")),
+            "the secret is scrubbed"
+        );
         // Names nothing else reads, so setting them cannot disturb a test running beside this one.
-        let (secret, plain) = (concat!(env!("APP_ENV"), "_TEST_CHECK_SECRET"), concat!(env!("APP_ENV"), "_TEST_CHECK_PLAIN"));
+        let (secret, plain) = (
+            concat!(env!("APP_ENV"), "_TEST_CHECK_SECRET"),
+            concat!(env!("APP_ENV"), "_TEST_CHECK_PLAIN"),
+        );
         // SAFETY: only this test touches these two names.
         unsafe {
             std::env::set_var(secret, "hunter2");
             std::env::set_var(plain, "visible");
         }
-        let print = if cfg!(windows) { "Get-ChildItem Env: | ForEach-Object { \"$($_.Name)=$($_.Value)\" }" } else { "env" };
+        let print = if cfg!(windows) {
+            "Get-ChildItem Env: | ForEach-Object { \"$($_.Name)=$($_.Value)\" }"
+        } else {
+            "env"
+        };
         let run = run_scrubbed(&test_shell(), &std::env::temp_dir(), print, LONG, &[secret]);
         assert_eq!(run.outcome, CheckOutcome::Exited(0));
-        assert!(run.output.contains(concat!(env!("APP_ENV"), "_TEST_CHECK_PLAIN=visible")), "the rest passes through");
-        assert!(!run.output.contains(secret) && !run.output.contains("hunter2"), "the scrubbed name is gone: {}", run.output);
+        assert!(
+            run.output
+                .contains(concat!(env!("APP_ENV"), "_TEST_CHECK_PLAIN=visible")),
+            "the rest passes through"
+        );
+        assert!(
+            !run.output.contains(secret) && !run.output.contains("hunter2"),
+            "the scrubbed name is gone: {}",
+            run.output
+        );
     }
 
     #[test]
@@ -1073,8 +1569,15 @@ mod tests {
         };
         let run = run(line, LONG);
         assert_eq!(run.outcome, CheckOutcome::Exited(0));
-        assert!(run.output.len() <= CHECK_OUTPUT_MAX_BYTES, "capped: {}", run.output.len());
-        assert!(run.output.trim_end().ends_with("line 200000"), "the end is what is kept");
+        assert!(
+            run.output.len() <= CHECK_OUTPUT_MAX_BYTES,
+            "capped: {}",
+            run.output.len()
+        );
+        assert!(
+            run.output.trim_end().ends_with("line 200000"),
+            "the end is what is kept"
+        );
     }
 
     #[test]
@@ -1083,7 +1586,11 @@ mod tests {
         let exact = "x".repeat(CHECK_OUTPUT_MAX_BYTES);
         assert_eq!(cap_output(&exact), exact, "exactly the cap is kept whole");
         // The cut would fall inside the second 3-byte character, so that one is dropped whole.
-        let text = format!("{}{}", "\u{2713}".repeat(2), "y".repeat(CHECK_OUTPUT_MAX_BYTES - 1));
+        let text = format!(
+            "{}{}",
+            "\u{2713}".repeat(2),
+            "y".repeat(CHECK_OUTPUT_MAX_BYTES - 1)
+        );
         assert_eq!(cap_output(&text), "y".repeat(CHECK_OUTPUT_MAX_BYTES - 1));
     }
 }

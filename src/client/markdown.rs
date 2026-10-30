@@ -16,12 +16,15 @@ const MIN_COLUMN: usize = 3;
 const COLUMN_GAP: &str = " │ ";
 
 pub(super) fn is_markdown(path: &Path) -> bool {
-    path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
 }
 
 /// `text` drawn as lines of at most `width` columns.
 pub(super) fn render(text: &str, width: u16, t: &Theme) -> Vec<Vec<Seg>> {
-    let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+    let options =
+        Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
     let mut r = Renderer::new(width.max(1) as usize, t);
     for event in Parser::new_ext(text, options) {
         r.event(event);
@@ -92,8 +95,13 @@ impl<'t> Renderer<'t> {
                 Some(code) => code.push_str(&s),
                 None => self.inline.push(seg(s.to_string(), self.style())),
             },
-            Event::Code(s) => self.inline.push(seg(s.to_string(), Style::default().fg(self.t.strong).bg(self.t.card2))),
-            Event::InlineHtml(s) | Event::InlineMath(s) | Event::FootnoteReference(s) => self.inline.push(seg(s.to_string(), self.muted())),
+            Event::Code(s) => self.inline.push(seg(
+                s.to_string(),
+                Style::default().fg(self.t.strong).bg(self.t.card2),
+            )),
+            Event::InlineHtml(s) | Event::InlineMath(s) | Event::FootnoteReference(s) => {
+                self.inline.push(seg(s.to_string(), self.muted()))
+            }
             Event::Html(s) | Event::DisplayMath(s) => {
                 for line in s.lines() {
                     let body = cut(&[seg(line.to_string(), self.muted())], self.room());
@@ -108,7 +116,11 @@ impl<'t> Renderer<'t> {
                 self.blank();
             }
             Event::TaskListMarker(done) => {
-                let (mark, colour) = if done { ("[x] ", self.t.done) } else { ("[ ] ", self.t.muted) };
+                let (mark, colour) = if done {
+                    ("[x] ", self.t.done)
+                } else {
+                    ("[ ] ", self.t.muted)
+                };
                 self.inline.push(seg(mark, Style::default().fg(colour)));
             }
         }
@@ -132,7 +144,11 @@ impl<'t> Renderer<'t> {
             Tag::Item => self.start_item(),
             Tag::Table(aligns) => {
                 self.flush();
-                self.table = Some(Table { aligns, rows: Vec::new(), head_rows: 0 });
+                self.table = Some(Table {
+                    aligns,
+                    rows: Vec::new(),
+                    head_rows: 0,
+                });
             }
             Tag::TableHead => {
                 self.bold += 1;
@@ -142,7 +158,9 @@ impl<'t> Renderer<'t> {
             Tag::Emphasis => self.italic += 1,
             Tag::Strong => self.bold += 1,
             Tag::Strikethrough => self.strike += 1,
-            Tag::Link { dest_url, .. } => self.links.push((dest_url.to_string(), self.inline.len())),
+            Tag::Link { dest_url, .. } => {
+                self.links.push((dest_url.to_string(), self.inline.len()))
+            }
             Tag::Image { .. } => self.image = true,
             _ => {}
         }
@@ -235,8 +253,13 @@ impl<'t> Renderer<'t> {
 
     /// The URL follows the link's text, unless the text already is the URL.
     fn end_link(&mut self) {
-        let Some((url, from)) = self.links.pop() else { return };
-        let text: String = self.inline[from.min(self.inline.len())..].iter().map(|(s, _)| s.as_str()).collect();
+        let Some((url, from)) = self.links.pop() else {
+            return;
+        };
+        let text: String = self.inline[from.min(self.inline.len())..]
+            .iter()
+            .map(|(s, _)| s.as_str())
+            .collect();
         if !url.is_empty() && text != url && !url.starts_with("mailto:") {
             self.inline.push(seg(format!(" ({url})"), self.muted()));
         }
@@ -278,7 +301,9 @@ impl<'t> Renderer<'t> {
 
     /// Columns left for text after the quote bars and list indents.
     fn room(&self) -> usize {
-        self.width.saturating_sub(2 * self.quotes + self.indents.iter().sum::<usize>()).max(1)
+        self.width
+            .saturating_sub(2 * self.quotes + self.indents.iter().sum::<usize>())
+            .max(1)
     }
 
     /// The quote bars and list indent a line starts with; an item's first line shows its marker.
@@ -287,7 +312,10 @@ impl<'t> Renderer<'t> {
         let indent: usize = self.indents.iter().sum();
         match self.marker.take() {
             Some(marker) => {
-                segs.push(seg(" ".repeat(indent.saturating_sub(marker.width())), Style::default()));
+                segs.push(seg(
+                    " ".repeat(indent.saturating_sub(marker.width())),
+                    Style::default(),
+                ));
                 segs.push(seg(marker, Style::default().fg(self.t.accent)));
             }
             None => segs.push(seg(" ".repeat(indent), Style::default())),
@@ -346,8 +374,18 @@ impl<'t> Renderer<'t> {
         if columns == 0 {
             return;
         }
-        let natural: Vec<usize> =
-            (0..columns).map(|c| table.rows.iter().filter_map(|r| r.get(c)).map(|cell| width(cell)).max().unwrap_or(0).max(1)).collect();
+        let natural: Vec<usize> = (0..columns)
+            .map(|c| {
+                table
+                    .rows
+                    .iter()
+                    .filter_map(|r| r.get(c))
+                    .map(|cell| width(cell))
+                    .max()
+                    .unwrap_or(0)
+                    .max(1)
+            })
+            .collect();
         let widths = column_widths(&natural, self.room());
         let line = Style::default().fg(self.t.line);
         for (i, row) in table.rows.iter().enumerate() {
@@ -357,11 +395,19 @@ impl<'t> Renderer<'t> {
                     body.push(seg(COLUMN_GAP, line));
                 }
                 let align = table.aligns.get(c).copied().unwrap_or(Alignment::None);
-                body.extend(align_cell(row.get(c).map(Vec::as_slice).unwrap_or(&[]), *w, align));
+                body.extend(align_cell(
+                    row.get(c).map(Vec::as_slice).unwrap_or(&[]),
+                    *w,
+                    align,
+                ));
             }
             self.emit(body);
             if i + 1 == table.head_rows {
-                let rule = widths.iter().map(|w| "─".repeat(*w)).collect::<Vec<_>>().join("─┼─");
+                let rule = widths
+                    .iter()
+                    .map(|w| "─".repeat(*w))
+                    .collect::<Vec<_>>()
+                    .join("─┼─");
                 self.emit(vec![seg(rule, line)]);
             }
         }
@@ -402,7 +448,13 @@ fn column_widths(natural: &[usize], room: usize) -> Vec<usize> {
 /// Narrow the widest columns until they fit `room`, none under `MIN_COLUMN`.
 fn fit_columns(widths: &mut [usize], room: usize) {
     while widths.iter().sum::<usize>() > room {
-        let Some(widest) = widths.iter_mut().filter(|w| **w > MIN_COLUMN).max_by_key(|w| **w) else { return };
+        let Some(widest) = widths
+            .iter_mut()
+            .filter(|w| **w > MIN_COLUMN)
+            .max_by_key(|w| **w)
+        else {
+            return;
+        };
         *widest -= 1;
     }
 }
@@ -527,22 +579,43 @@ mod tests {
     }
 
     fn text(lines: &[Vec<Seg>]) -> Vec<String> {
-        lines.iter().map(|l| l.iter().map(|(s, _)| s.as_str()).collect::<String>().trim_end().to_string()).collect()
+        lines
+            .iter()
+            .map(|l| {
+                l.iter()
+                    .map(|(s, _)| s.as_str())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string()
+            })
+            .collect()
     }
 
     fn style_of(lines: &[Vec<Seg>], word: &str) -> Style {
-        lines.iter().flatten().find(|(s, _)| s.contains(word)).map(|(_, st)| *st).unwrap_or_else(|| panic!("{word} is drawn"))
+        lines
+            .iter()
+            .flatten()
+            .find(|(s, _)| s.contains(word))
+            .map(|(_, st)| *st)
+            .unwrap_or_else(|| panic!("{word} is drawn"))
     }
 
     #[test]
     fn a_first_level_heading_is_bold_and_strong_with_a_rule_under_it() {
         let t = theme();
         let lines = render("# Title\n\n## Part\n\ntext", 20, &t);
-        assert_eq!(text(&lines), ["Title", "─".repeat(20).as_str(), "", "Part", "", "text"]);
+        assert_eq!(
+            text(&lines),
+            ["Title", "─".repeat(20).as_str(), "", "Part", "", "text"]
+        );
         let s = style_of(&lines, "Title");
         assert_eq!(s.fg, Some(t.strong));
         assert!(s.add_modifier.contains(Modifier::BOLD));
-        assert!(style_of(&lines, "Part").add_modifier.contains(Modifier::BOLD));
+        assert!(
+            style_of(&lines, "Part")
+                .add_modifier
+                .contains(Modifier::BOLD)
+        );
     }
 
     #[test]
@@ -550,29 +623,64 @@ mod tests {
         let t = theme();
         let lines = render("an *odd* and **bold** `code`", 40, &t);
         assert_eq!(text(&lines), ["an odd and bold code"]);
-        assert!(style_of(&lines, "odd").add_modifier.contains(Modifier::ITALIC));
-        assert!(style_of(&lines, "bold").add_modifier.contains(Modifier::BOLD));
+        assert!(
+            style_of(&lines, "odd")
+                .add_modifier
+                .contains(Modifier::ITALIC)
+        );
+        assert!(
+            style_of(&lines, "bold")
+                .add_modifier
+                .contains(Modifier::BOLD)
+        );
         assert_eq!(style_of(&lines, "code").bg, Some(t.card2));
     }
 
     #[test]
     fn fenced_code_sits_on_the_raised_ground_across_the_width_and_is_cut_not_wrapped() {
         let t = theme();
-        let lines = render("```rust\nfn main() {}\nlet a_very_long_name_here = 1;\n```", 16, &t);
+        let lines = render(
+            "```rust\nfn main() {}\nlet a_very_long_name_here = 1;\n```",
+            16,
+            &t,
+        );
         let shown = text(&lines);
         assert_eq!(shown[0], " fn main() {}");
-        assert!(shown[1].ends_with('…') && shown[1].width() <= 16, "{:?}", shown[1]);
+        assert!(
+            shown[1].ends_with('…') && shown[1].width() <= 16,
+            "{:?}",
+            shown[1]
+        );
         assert_eq!(lines.len(), 2, "one line per source line");
         for l in &lines {
             assert_eq!(width(l), 16, "the ground reaches the edge");
-            assert!(l.iter().filter(|(s, _)| !s.is_empty()).all(|(_, st)| st.bg == Some(t.card)));
+            assert!(
+                l.iter()
+                    .filter(|(s, _)| !s.is_empty())
+                    .all(|(_, st)| st.bg == Some(t.card))
+            );
         }
     }
 
     #[test]
     fn lists_show_markers_and_indent_their_nested_items_and_wrapped_lines() {
-        let lines = render("- one\n- two words here\n  - inner\n\n1. first\n2. second", 12, &theme());
-        assert_eq!(text(&lines), ["• one", "• two words", "  here", "  • inner", "", "1. first", "2. second"]);
+        let lines = render(
+            "- one\n- two words here\n  - inner\n\n1. first\n2. second",
+            12,
+            &theme(),
+        );
+        assert_eq!(
+            text(&lines),
+            [
+                "• one",
+                "• two words",
+                "  here",
+                "  • inner",
+                "",
+                "1. first",
+                "2. second"
+            ]
+        );
     }
 
     #[test]
@@ -586,8 +694,15 @@ mod tests {
     #[test]
     fn tables_align_their_columns_and_are_cut_to_the_width() {
         let md = "| name | n |\n|:--|--:|\n| alpha | 1 |\n| b | 200 |";
-        assert_eq!(text(&render(md, 40, &theme())), ["name  │   n", "──────┼────", "alpha │   1", "b     │ 200"]);
-        let narrow = text(&render("| a long heading | other long one |\n|--|--|\n| x | y |", 20, &theme()));
+        assert_eq!(
+            text(&render(md, 40, &theme())),
+            ["name  │   n", "──────┼────", "alpha │   1", "b     │ 200"]
+        );
+        let narrow = text(&render(
+            "| a long heading | other long one |\n|--|--|\n| x | y |",
+            20,
+            &theme(),
+        ));
         assert!(narrow.iter().all(|l| l.width() <= 20), "{narrow:?}");
         assert!(narrow[0].contains('…'), "{narrow:?}");
     }
@@ -596,14 +711,20 @@ mod tests {
     fn a_link_shows_its_text_with_the_url_muted_after_it() {
         let t = theme();
         let lines = render("see [the docs](https://x.dev) or <https://y.dev>", 60, &t);
-        assert_eq!(text(&lines), ["see the docs (https://x.dev) or https://y.dev"]);
+        assert_eq!(
+            text(&lines),
+            ["see the docs (https://x.dev) or https://y.dev"]
+        );
         assert_eq!(style_of(&lines, "(https://x.dev)").fg, Some(t.muted));
         assert_eq!(style_of(&lines, "docs").fg, Some(t.accent));
     }
 
     #[test]
     fn a_horizontal_rule_spans_the_width() {
-        assert_eq!(text(&render("a\n\n---\n\nb", 8, &theme())), ["a", "", "────────", "", "b"]);
+        assert_eq!(
+            text(&render("a\n\n---\n\nb", 8, &theme())),
+            ["a", "", "────────", "", "b"]
+        );
     }
 
     #[test]
@@ -614,13 +735,23 @@ mod tests {
 
     #[test]
     fn an_item_that_opens_with_a_list_keeps_its_own_marker() {
-        assert_eq!(text(&render("- - inner\n- outer", 40, &theme())), ["• • inner", "• outer"]);
+        assert_eq!(
+            text(&render("- - inner\n- outer", 40, &theme())),
+            ["• • inner", "• outer"]
+        );
     }
 
     #[test]
     fn an_html_block_is_cut_to_the_width() {
-        let lines = text(&render("<div>some long html that runs on</div>", 12, &theme()));
-        assert!(lines.iter().all(|l| l.width() <= 12) && lines[0].ends_with('…'), "{lines:?}");
+        let lines = text(&render(
+            "<div>some long html that runs on</div>",
+            12,
+            &theme(),
+        ));
+        assert!(
+            lines.iter().all(|l| l.width() <= 12) && lines[0].ends_with('…'),
+            "{lines:?}"
+        );
     }
 
     #[test]
@@ -628,15 +759,25 @@ mod tests {
         let md = "| a | b | c | d | e | f |\n|--|--|--|--|--|--|\n| 1 | 2 | 3 | 4 | 5 | 6 |";
         let lines = text(&render(md, 20, &theme()));
         assert!(lines.iter().all(|l| l.width() <= 20), "{lines:?}");
-        assert!(lines[0].starts_with("a │ b") && lines[2].starts_with("1 │ 2"), "{lines:?}");
+        assert!(
+            lines[0].starts_with("a │ b") && lines[2].starts_with("1 │ 2"),
+            "{lines:?}"
+        );
     }
 
     #[test]
     fn joined_emoji_are_never_split_when_wrapping_or_cutting() {
         const FAMILY: &str = "\u{1F469}\u{200D}\u{1F469}\u{200D}\u{1F467}";
         let wrapped = text(&render(&FAMILY.repeat(3), 4, &theme()));
-        assert!(wrapped.len() > 1 && wrapped.iter().all(|l| l.replace(FAMILY, "").is_empty()), "{wrapped:?}");
-        let code = text(&render(&format!("```\n{}\n```", FAMILY.repeat(3)), 5, &theme()));
+        assert!(
+            wrapped.len() > 1 && wrapped.iter().all(|l| l.replace(FAMILY, "").is_empty()),
+            "{wrapped:?}"
+        );
+        let code = text(&render(
+            &format!("```\n{}\n```", FAMILY.repeat(3)),
+            5,
+            &theme(),
+        ));
         assert_eq!(code[0], format!(" {FAMILY}…"));
     }
 

@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 /// Models to pick from for `agent` ("default" first), or none when it has no choice.
 pub(in crate::client) fn np_models(app: &App, agent: &str) -> Vec<String> {
     let q = app.cfg.quick.agents.iter().find(|q| q.name == agent);
@@ -18,16 +17,26 @@ pub(in crate::client) fn np_models(app: &App, agent: &str) -> Vec<String> {
 }
 
 /// The command line that starts `agent` with `model` (index into np_models) on `task`.
-pub(in crate::client) fn np_command(app: &App, agent: &str, model: usize, task: &str) -> Option<String> {
+pub(in crate::client) fn np_command(
+    app: &App,
+    agent: &str,
+    model: usize,
+    task: &str,
+) -> Option<String> {
     if agent == "shell" {
         return None;
     }
     if let Some(p) = preset_of(app, agent) {
-        let m = np_models(app, &p.agent).iter().position(|m| *m == p.model).unwrap_or(0);
+        let m = np_models(app, &p.agent)
+            .iter()
+            .position(|m| *m == p.model)
+            .unwrap_or(0);
         return np_command(app, &p.agent, m, &p.fill(task));
     }
     let q = app.cfg.quick.agents.iter().find(|q| q.name == agent);
-    let base = q.map(|q| q.command.clone()).unwrap_or_else(|| agent.to_string());
+    let base = q
+        .map(|q| q.command.clone())
+        .unwrap_or_else(|| agent.to_string());
     let task = task.trim();
     let mut cmd = if task.is_empty() {
         base.replace("{prompt}", "").trim().to_string()
@@ -37,43 +46,94 @@ pub(in crate::client) fn np_command(app: &App, agent: &str, model: usize, task: 
         format!("{base} {}", app.cfg.quote_for_shell(task))
     };
     if let Some(m) = np_models(app, agent).get(model).filter(|_| model > 0) {
-        cmd = app.cfg.with_model(&cmd, q.map_or("", |q| q.model_flag.as_str()), m);
+        cmd = app
+            .cfg
+            .with_model(&cmd, q.map_or("", |q| q.model_flag.as_str()), m);
     }
     // An account runs through `<app> account`, which gives it its own sign-in.
     Some(app.cfg.as_account(agent, &cmd))
 }
 
-pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, np: &NewPaneHy) {
+pub(in crate::client) fn draw_new_pane(
+    app: &mut App,
+    f: &mut Frame,
+    area: Rect,
+    t: &Theme,
+    np: &NewPaneHy,
+) {
     let model = app.screen_model();
     let buf = f.buffer_mut();
     dim_all(app, buf, area, t);
     let r = panel(app, buf, area, 86, 21, "New", &[], t);
     let lab = |buf: &mut Buffer, y: u16, text: &str, row: u8| {
-        put(buf, r.x + 3, y, &[seg(text, Style::default().fg(if np.row == row { t.accent } else { t.muted }).bg(t.card).add_modifier(Modifier::BOLD))], r.right());
+        put(
+            buf,
+            r.x + 3,
+            y,
+            &[seg(
+                text,
+                Style::default()
+                    .fg(if np.row == row { t.accent } else { t.muted })
+                    .bg(t.card)
+                    .add_modifier(Modifier::BOLD),
+            )],
+            r.right(),
+        );
     };
     // A row of chips; the selected one is filled. Long rows scroll to keep it in view.
-    let chips = |app: &mut App, buf: &mut Buffer, y: u16, items: &[String], cur: usize, mk: fn(usize) -> ScreenHit| {
+    let chips = |app: &mut App,
+                 buf: &mut Buffer,
+                 y: u16,
+                 items: &[String],
+                 cur: usize,
+                 mk: fn(usize) -> ScreenHit| {
         // The list can shrink under the selection (a session closed while this is open).
         let cur = cur.min(items.len().saturating_sub(1));
         let mut start = 0;
         let room = (r.right() - 2).saturating_sub(r.x + 14) as usize;
-        while start < cur && items[start..=cur].iter().map(|s| s.width() + 3).sum::<usize>() > room {
+        while start < cur
+            && items[start..=cur]
+                .iter()
+                .map(|s| s.width() + 3)
+                .sum::<usize>()
+                > room
+        {
             start += 1;
         }
         let mut x = r.x + 14;
         if start > 0 {
-            put(buf, x - 2, y, &[seg("‹", Style::default().fg(t.muted).bg(t.card))], r.right());
+            put(
+                buf,
+                x - 2,
+                y,
+                &[seg("‹", Style::default().fg(t.muted).bg(t.card))],
+                r.right(),
+            );
         }
         for (i, it) in items.iter().enumerate().skip(start) {
             let txt = format!(" {it} ");
             if x + txt.width() as u16 > r.right() - 2 {
-                put(buf, r.right() - 2, y, &[seg("›", Style::default().fg(t.muted).bg(t.card))], r.right());
+                put(
+                    buf,
+                    r.right() - 2,
+                    y,
+                    &[seg("›", Style::default().fg(t.muted).bg(t.card))],
+                    r.right(),
+                );
                 break;
             }
             let on = i == cur;
-            let cr = Rect { x, y, width: txt.width() as u16, height: 1 };
+            let cr = Rect {
+                x,
+                y,
+                width: txt.width() as u16,
+                height: 1,
+            };
             let st = if on {
-                Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .bg(t.accent)
+                    .fg(t.acc_ink)
+                    .add_modifier(Modifier::BOLD)
             } else if hovered(app, cr) {
                 Style::default().bg(t.hov).fg(t.strong)
             } else {
@@ -89,13 +149,22 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     let muted = Style::default().fg(t.muted).bg(t.card);
     // The task: typed straight away, it's the agent's first prompt.
     lab(buf, r.y + 2, "TASK", 0);
-    let tb = Rect { x: r.x + 14, y: r.y + 2, width: r.right().saturating_sub(r.x + 17), height: 1 };
+    let tb = Rect {
+        x: r.x + 14,
+        y: r.y + 2,
+        width: r.right().saturating_sub(r.x + 17),
+        height: 1,
+    };
     strip(buf, tb, t.card2);
     let s2 = Style::default().bg(t.card2);
     let shown = {
         let w = tb.width.saturating_sub(3) as usize;
         let n = np.task.chars().count();
-        if n > w { np.task.chars().skip(n - w).collect::<String>() } else { np.task.clone() }
+        if n > w {
+            np.task.chars().skip(n - w).collect::<String>()
+        } else {
+            np.task.clone()
+        }
     };
     let mut ts = vec![seg(format!(" {shown}"), s2.fg(t.strong))];
     if np.row == 0 {
@@ -105,7 +174,9 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
         let ph = match preset_of(app, &agent) {
             Some(p) if !p.asks() => format!(" (the preset says: {})", truncate(&p.prompt, 50)),
             Some(_) => " what should it do?".to_string(),
-            None if agent == "shell" || agent.starts_with('⚙') => " (not used for this)".to_string(),
+            None if agent == "shell" || agent.starts_with('⚙') => {
+                " (not used for this)".to_string()
+            }
             None => " what should it do? (optional)".to_string(),
         };
         ts.push(seg(ph, s2.fg(t.muted)));
@@ -115,14 +186,41 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     lab(buf, r.y + 4, "RUN", 1);
     chips(app, buf, r.y + 4, &agents, np.a, ScreenHit::NpRun);
     lab(buf, r.y + 6, "MODEL", 2);
-    let models = if agent.starts_with('★') || agent.starts_with('◇') { Vec::new() } else { np_models(app, &agent) };
-    if let Some(p) = preset_of(app, &agent) {
-        let m = if p.model.is_empty() { "its default".to_string() } else { p.model.clone() };
-        put(buf, r.x + 14, r.y + 6, &[seg(format!("{m} (from the preset)"), muted)], r.right());
-    } else if models.is_empty() {
-        put(buf, r.x + 14, r.y + 6, &[seg("its default", muted)], r.right());
+    let models = if agent.starts_with('★') || agent.starts_with('◇') {
+        Vec::new()
     } else {
-        chips(app, buf, r.y + 6, &models, np.model.min(models.len() - 1), ScreenHit::NpModel);
+        np_models(app, &agent)
+    };
+    if let Some(p) = preset_of(app, &agent) {
+        let m = if p.model.is_empty() {
+            "its default".to_string()
+        } else {
+            p.model.clone()
+        };
+        put(
+            buf,
+            r.x + 14,
+            r.y + 6,
+            &[seg(format!("{m} (from the preset)"), muted)],
+            r.right(),
+        );
+    } else if models.is_empty() {
+        put(
+            buf,
+            r.x + 14,
+            r.y + 6,
+            &[seg("its default", muted)],
+            r.right(),
+        );
+    } else {
+        chips(
+            app,
+            buf,
+            r.y + 6,
+            &models,
+            np.model.min(models.len() - 1),
+            ScreenHit::NpModel,
+        );
     }
     let mut projs: Vec<String> = model.iter().map(|p| p.name.clone()).collect();
     projs.push("other folder…".into());
@@ -132,62 +230,167 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     let proj = model.get(np.p);
     lab(buf, r.y + 10, "WHERE", 4);
     if proj.is_some_and(|p| p.git) && !agent.starts_with('⚙') {
-        chips(app, buf, r.y + 10, &np_places(proj.unwrap()), place as usize, ScreenHit::NpWhere);
+        chips(
+            app,
+            buf,
+            r.y + 10,
+            &np_places(proj.unwrap()),
+            place as usize,
+            ScreenHit::NpWhere,
+        );
     } else {
-        put(buf, r.x + 14, r.y + 10, &[seg(if agent.starts_with('⚙') { "as the recipe says" } else { "in the folder" }, muted)], r.right());
+        put(
+            buf,
+            r.x + 14,
+            r.y + 10,
+            &[seg(
+                if agent.starts_with('⚙') {
+                    "as the recipe says"
+                } else {
+                    "in the folder"
+                },
+                muted,
+            )],
+            r.right(),
+        );
     }
     lab(buf, r.y + 12, "OPEN", 5);
-    chips(app, buf, r.y + 12, &["full screen".into(), "beside this".into()], np.beside as usize, ScreenHit::NpBeside);
+    chips(
+        app,
+        buf,
+        r.y + 12,
+        &["full screen".into(), "beside this".into()],
+        np.beside as usize,
+        ScreenHit::NpBeside,
+    );
 
     // What will happen, in words.
-    let branch = proj.and_then(|p| p.wts.iter().find(|w| w.main)).map(|w| w.branch.clone()).unwrap_or_default();
-    let others = proj.and_then(|p| p.wts.iter().find(|w| w.main)).map(|w| w.sessions.len()).unwrap_or(0);
+    let branch = proj
+        .and_then(|p| p.wts.iter().find(|w| w.main))
+        .map(|w| w.branch.clone())
+        .unwrap_or_default();
+    let others = proj
+        .and_then(|p| p.wts.iter().find(|w| w.main))
+        .map(|w| w.sessions.len())
+        .unwrap_or(0);
     let what = match proj {
         None => "Pick a folder; it becomes a project.".to_string(),
         Some(p) if p.git && !agent.starts_with('⚙') && place >= 3 => {
             let w = p.wts.iter().filter(|w| !w.main).nth(place as usize - 3);
-            format!("{agent} runs in the {} worktree, on {}.", w.map(|w| w.name.as_str()).unwrap_or("?"), w.map(|w| w.branch.as_str()).unwrap_or("?"))
+            format!(
+                "{agent} runs in the {} worktree, on {}.",
+                w.map(|w| w.name.as_str()).unwrap_or("?"),
+                w.map(|w| w.branch.as_str()).unwrap_or("?")
+            )
         }
-        Some(p) if p.git && !agent.starts_with('⚙') && place == 0 => format!("{agent} gets its own new worktree in {}, on a new branch named for you.", p.name),
+        Some(p) if p.git && !agent.starts_with('⚙') && place == 0 => format!(
+            "{agent} gets its own new worktree in {}, on a new branch named for you.",
+            p.name
+        ),
         Some(p) if p.git && !agent.starts_with('⚙') && place == 1 => format!(
             "Switches {} to a new branch, then starts {agent} there.{}",
             p.name,
-            if others > 0 { format!(" The {others} already running in it will be on that branch too.") } else { String::new() }
+            if others > 0 {
+                format!(" The {others} already running in it will be on that branch too.")
+            } else {
+                String::new()
+            }
         ),
-        Some(p) if p.git && !agent.starts_with('⚙') => format!("{agent} runs in {} on {branch}.", p.name),
+        Some(p) if p.git && !agent.starts_with('⚙') => {
+            format!("{agent} runs in {} on {branch}.", p.name)
+        }
         Some(p) if agent == "shell" => format!("A shell in {}.", p.name),
         Some(p) if agent.starts_with('⚙') => {
-            let r = app.cfg.recipes.iter().find(|r| Some(r.name.as_str()) == agent.strip_prefix("⚙ "));
+            let r = app
+                .cfg
+                .recipes
+                .iter()
+                .find(|r| Some(r.name.as_str()) == agent.strip_prefix("⚙ "));
             match r {
-                Some(r) => format!("{}{}", if r.worktree && p.git { "A new worktree running " } else { "Runs " }, r.run.join(" + ")),
+                Some(r) => format!(
+                    "{}{}",
+                    if r.worktree && p.git {
+                        "A new worktree running "
+                    } else {
+                        "Runs "
+                    },
+                    r.run.join(" + ")
+                ),
                 None => String::new(),
             }
         }
-        Some(p) if !p.git => format!("{} isn't a git repo, so {agent} runs in the folder.", p.name),
-        Some(p) if app.cfg.worktree.per_agent => format!("{agent} gets its own new worktree in {}, named for you.", p.name),
+        Some(p) if !p.git => format!(
+            "{} isn't a git repo, so {agent} runs in the folder.",
+            p.name
+        ),
+        Some(p) if app.cfg.worktree.per_agent => format!(
+            "{agent} gets its own new worktree in {}, named for you.",
+            p.name
+        ),
         Some(p) => format!("{agent} runs in {}.", p.name),
     };
     let c = Style::default().bg(t.card);
-    let what = match if agent.starts_with('◇') { None } else { np_command(app, &agent, np.model, &np.task) } {
+    let what = match if agent.starts_with('◇') {
+        None
+    } else {
+        np_command(app, &agent, np.model, &np.task)
+    } {
         Some(cmd) if !np.task.trim().is_empty() || np.model > 0 => format!("{what}  Runs: {cmd}"),
         _ => what,
     };
-    for (i, l) in crate::client::views::wrap(&what, (r.width - 6) as usize).into_iter().take(3).enumerate() {
-        put(buf, r.x + 3, r.y + 14 + i as u16, &[seg(l, c.fg(t.text))], r.right() - 2);
+    for (i, l) in crate::client::views::wrap(&what, (r.width - 6) as usize)
+        .into_iter()
+        .take(3)
+        .enumerate()
+    {
+        put(
+            buf,
+            r.x + 3,
+            r.y + 14 + i as u16,
+            &[seg(l, c.fg(t.text))],
+            r.right() - 2,
+        );
     }
-    let gx = btn(app, buf, r.x + 3, r.y + 18, if np.task.trim().is_empty() { "Open" } else { "Start" }, "Enter", BtnKind::Primary, ScreenHit::NpGo, r.right());
-    put(buf, gx + 2, r.y + 18, &hints(t, &[("↑↓", "rows"), ("←→", "choose"), ("Esc", "close, keeps the task")]), r.right());
+    let gx = btn(
+        app,
+        buf,
+        r.x + 3,
+        r.y + 18,
+        if np.task.trim().is_empty() {
+            "Open"
+        } else {
+            "Start"
+        },
+        "Enter",
+        BtnKind::Primary,
+        ScreenHit::NpGo,
+        r.right(),
+    );
+    put(
+        buf,
+        gx + 2,
+        r.y + 18,
+        &hints(
+            t,
+            &[
+                ("↑↓", "rows"),
+                ("←→", "choose"),
+                ("Esc", "close, keeps the task"),
+            ],
+        ),
+        r.right(),
+    );
 }
 
 // Talk ----------------------------------------------------------------------------------------
-
 
 // Settings ------------------------------------------------------------------------------------
 
 /// A setting the current look ignores: Hairline is always square, has no gaps and no pane
 /// colours (Rounded, Gap and Pane colours are Floating's).
 fn unused_here(app: &App, row: &SRow) -> bool {
-    matches!(row, SRow::Setting(s) if matches!(s.path, "ui.rounded" | "ui.gap" | "ui.pane_colors")) && Look::of(&app.cfg.ui).hairline
+    matches!(row, SRow::Setting(s) if matches!(s.path, "ui.rounded" | "ui.gap" | "ui.pane_colors"))
+        && Look::of(&app.cfg.ui).hairline
 }
 
 /// The values a settings row offers as chips, and which one is current.
@@ -198,17 +401,31 @@ pub(in crate::client) fn chips_for(app: &App, row: &SRow) -> Option<(Vec<String>
     match s.kind {
         Kind::Bool => {
             let on = cur.and_then(|v| v.as_bool()).unwrap_or(false);
-            Some((vec!["on".into(), "off".into()], Some(if on { 0 } else { 1 })))
+            Some((
+                vec!["on".into(), "off".into()],
+                Some(if on { 0 } else { 1 }),
+            ))
         }
         Kind::Choice(_) if s.path == "theme" => None,
         Kind::Choice(opts) => {
-            let curs = cur.and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
-            Some((opts.iter().map(|o| o.to_string()).collect(), opts.iter().position(|o| *o == curs)))
+            let curs = cur
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
+            Some((
+                opts.iter().map(|o| o.to_string()).collect(),
+                opts.iter().position(|o| *o == curs),
+            ))
         }
         Kind::Program(cands) => {
-            let curs = cur.and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+            let curs = cur
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
             let opts = crate::client::modal::program_options(cands, &curs);
-            let i = if curs.is_empty() { Some(0) } else { opts.iter().position(|o| *o == curs) };
+            let i = if curs.is_empty() {
+                Some(0)
+            } else {
+                opts.iter().position(|o| *o == curs)
+            };
             Some((opts, i))
         }
         _ => None,
@@ -226,7 +443,9 @@ pub(in crate::client) fn set_chip(app: &mut App, row: &SRow, vi: usize) {
             None => return,
         },
         Kind::Program(cands) => {
-            let curs = crate::client::modal::current(&app.cfg, s.path).and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+            let curs = crate::client::modal::current(&app.cfg, s.path)
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
             match crate::client::modal::program_options(cands, &curs).get(vi) {
                 Some(o) if o == "default" => "".into(),
                 Some(o) => o.as_str().into(),
@@ -245,7 +464,13 @@ pub(in crate::client) const SETTINGS_LABEL_COLS: u16 = 33;
 const TABS_FULL_COLS: u16 = 86;
 const TABS_SHORT_BELOW_COLS: u16 = 66;
 
-pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, v: &SettingsView) {
+pub(in crate::client) fn draw_settings(
+    app: &mut App,
+    buf: &mut Buffer,
+    r: Rect,
+    t: &Theme,
+    v: &SettingsView,
+) {
     use crate::client::design::settings_group;
     use crate::client::modal::Cat;
     let look = Look::of(&app.cfg.ui);
@@ -271,10 +496,28 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         } else {
             cat.label()
         };
-        let tab_label = if compact_tabs { label.to_string() } else { format!(" {label} ") };
-        let segs = vec![seg(tab_label, Style::default().fg(if on { t.acc_ink } else { t.text }).add_modifier(if on { Modifier::BOLD } else { Modifier::empty() }))];
+        let tab_label = if compact_tabs {
+            label.to_string()
+        } else {
+            format!(" {label} ")
+        };
+        let segs = vec![seg(
+            tab_label,
+            Style::default()
+                .fg(if on { t.acc_ink } else { t.text })
+                .add_modifier(if on {
+                    Modifier::BOLD
+                } else {
+                    Modifier::empty()
+                }),
+        )];
         let w = segs_width(&segs) + 2;
-        let tr = Rect { x, y: r.y + 2, width: w, height: 1 };
+        let tr = Rect {
+            x,
+            y: r.y + 2,
+            width: w,
+            height: 1,
+        };
         let segs = if on {
             pill(look, segs, t.accent, t.card)
         } else {
@@ -291,32 +534,67 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     // Which version this is and the way to update are General's Version row. Up here only what
     // is off: the installed or daemon version differs, or a restart is waiting.
     let window = env!("CARGO_PKG_VERSION");
-    let daemon = if app.snap.daemon_version.is_empty() { "unknown".to_string() } else { app.snap.daemon_version.clone() };
+    let daemon = if app.snap.daemon_version.is_empty() {
+        "unknown".to_string()
+    } else {
+        app.snap.daemon_version.clone()
+    };
     let daemon = daemon.as_str();
     let dot = c.fg(t.muted);
     let known = daemon != "unknown";
     let mismatch = known && daemon != window;
     let vy = r.y + 3;
     // Detail lines only when versions differ or something needs saying.
-    let host = crate::ipc::remote().map(|h| format!("Remote daemon ({h})")).unwrap_or_else(|| "Running daemon".into());
+    let host = crate::ipc::remote()
+        .map(|h| format!("Remote daemon ({h})"))
+        .unwrap_or_else(|| "Running daemon".into());
     let mut lines_used = 0u16;
     // A newer release is out: said first, on every tab, with its button.
     if let Some(next) = app.update_available.clone() {
         lines_used += 1;
         let lead = format!("↑ {} {next} is out — ", env!("APP_COMMAND"));
         let y = vy + lines_used;
-        let x = put(buf, r.x + 4, y, &[seg(lead, c.fg(t.accent).add_modifier(Modifier::BOLD))], r.right() - 3);
+        let x = put(
+            buf,
+            r.x + 4,
+            y,
+            &[seg(lead, c.fg(t.accent).add_modifier(Modifier::BOLD))],
+            r.right() - 3,
+        );
         let btn = button_pill(look, t, "Update now", "", true, t.card);
         let end = put(buf, x, y, &btn, r.right() - 3);
-        hit(app, Rect { x, y, width: end.saturating_sub(x).max(1), height: 1 }, ScreenHit::Update);
+        hit(
+            app,
+            Rect {
+                x,
+                y,
+                width: end.saturating_sub(x).max(1),
+                height: 1,
+            },
+            ScreenHit::Update,
+        );
     }
     let mut say = |buf: &mut Buffer, text: String, style: Style| {
         lines_used += 1;
-        put(buf, r.x + 4, vy + lines_used, &[seg(text, style)], r.right() - 3);
+        put(
+            buf,
+            r.x + 4,
+            vy + lines_used,
+            &[seg(text, style)],
+            r.right() - 3,
+        );
     };
     match &app.installed_version {
-        Some(Ok(v)) if v != window => say(buf, format!("Installed here: {v}   This window: {window}"), c.fg(t.muted)),
-        Some(Err(error)) => say(buf, format!("Installed here: unavailable ({error})"), c.fg(t.err)),
+        Some(Ok(v)) if v != window => say(
+            buf,
+            format!("Installed here: {v}   This window: {window}"),
+            c.fg(t.muted),
+        ),
+        Some(Err(error)) => say(
+            buf,
+            format!("Installed here: unavailable ({error})"),
+            c.fg(t.err),
+        ),
         _ => {}
     }
     if mismatch || !known {
@@ -324,35 +602,70 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     }
     if app.daemon_restartable() {
         let lead = "Restart pending — ";
-        say(buf, lead.into(), c.fg(t.accent).add_modifier(Modifier::BOLD));
+        say(
+            buf,
+            lead.into(),
+            c.fg(t.accent).add_modifier(Modifier::BOLD),
+        );
         let (x, y) = (r.x + 4 + lead.width() as u16, vy + lines_used);
         let btn = button_pill(look, t, "Restart now", "R", true, t.card);
         let end = put(buf, x, y, &btn, r.right() - 3);
-        hit(app, Rect { x, y, width: end.saturating_sub(x).max(1), height: 1 }, ScreenHit::Restart);
-        put(buf, end, y, &[seg("  or when all sessions close", dot)], r.right() - 3);
+        hit(
+            app,
+            Rect {
+                x,
+                y,
+                width: end.saturating_sub(x).max(1),
+                height: 1,
+            },
+            ScreenHit::Restart,
+        );
+        put(
+            buf,
+            end,
+            y,
+            &[seg("  or when all sessions close", dot)],
+            r.right() - 3,
+        );
     } else if app.restart_pending() {
         let note = if crate::ipc::remote().is_some() {
             "Remote daemon differs — update it on its host after its sessions are closed."
         } else {
             "Restart pending — waiting until all sessions are closed."
         };
-        say(buf, note.into(), c.fg(t.accent).add_modifier(Modifier::BOLD));
+        say(
+            buf,
+            note.into(),
+            c.fg(t.accent).add_modifier(Modifier::BOLD),
+        );
     }
     hline(buf, r.x + 3, r.y + 3, r.width.saturating_sub(6), t, t.card);
     let cat = Cat::ALL[v.cat.min(Cat::ALL.len() - 1)];
     if cat == Cat::Check {
-        return crate::client::screen::check_settings::draw_page(app, buf, r, r.y + 5 + lines_used, t);
+        return crate::client::screen::check_settings::draw_page(
+            app,
+            buf,
+            r,
+            r.y + 5 + lines_used,
+            t,
+        );
     }
     if cat == Cat::Agents && !app.claude_hooks_asked {
         app.claude_hooks_asked = true;
         app.spawn_bg(|| {
             let installed = crate::cli::claude_status_hooks_installed();
-            crate::client::Bg::Then(Box::new(move |app: &mut App| app.claude_hooks = Some(installed)))
+            crate::client::Bg::Then(Box::new(move |app: &mut App| {
+                app.claude_hooks = Some(installed)
+            }))
         });
     }
     let rows = crate::client::design::settings_rows(cat);
     let lx = r.x + 6;
-    let vx = if r.width >= 68 { lx + SETTINGS_LABEL_COLS + 1 } else { r.x + (r.width * 54 / 100).max(19) };
+    let vx = if r.width >= 68 {
+        lx + SETTINGS_LABEL_COLS + 1
+    } else {
+        r.x + (r.width * 54 / 100).max(19)
+    };
     // What the selected row does (shown under it).
     let help = match rows.get(v.sel) {
         Some(SRow::Setting(s)) => s.help.to_string(),
@@ -388,7 +701,10 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     // Appearance keeps room at the foot for its preview.
     let preview = cat == Cat::Appearance && r.height >= 30 && r.width >= 46;
     let h = r.height.saturating_sub(if preview { 19 } else { 14 }) as usize;
-    let at = lines.iter().position(|l| matches!(l, L::Row(i) if *i == v.sel)).unwrap_or(0);
+    let at = lines
+        .iter()
+        .position(|l| matches!(l, L::Row(i) if *i == v.sel))
+        .unwrap_or(0);
     // A line under the selection stays in view, unless the selection is the last line.
     let start = (at + 2).min(lines.len()).saturating_sub(h);
     for (k, line) in lines.iter().enumerate().skip(start).take(h) {
@@ -397,34 +713,88 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
             L::Blank => {}
             L::Head(g) => {
                 // A dim caps heading and a rule out to the edge.
-                let end = put(buf, r.x + 4, y, &[seg(*g, c.fg(t.muted).add_modifier(Modifier::BOLD)), seg(" ", c)], r.right());
-                hline(buf, end, y, (r.right().saturating_sub(3)).saturating_sub(end), t, t.card);
+                let end = put(
+                    buf,
+                    r.x + 4,
+                    y,
+                    &[
+                        seg(*g, c.fg(t.muted).add_modifier(Modifier::BOLD)),
+                        seg(" ", c),
+                    ],
+                    r.right(),
+                );
+                hline(
+                    buf,
+                    end,
+                    y,
+                    (r.right().saturating_sub(3)).saturating_sub(end),
+                    t,
+                    t.card,
+                );
             }
             L::Row(i) => {
                 let row = &rows[*i];
                 let sel = *i == v.sel;
-                let rr = Rect { x: r.x + 3, y, width: r.width.saturating_sub(6), height: 1 };
-                let bg = if sel { t.sel_on(t.card) } else if hovered(app, rr) { t.hover_on(t.card) } else { t.card };
+                let rr = Rect {
+                    x: r.x + 3,
+                    y,
+                    width: r.width.saturating_sub(6),
+                    height: 1,
+                };
+                let bg = if sel {
+                    t.sel_on(t.card)
+                } else if hovered(app, rr) {
+                    t.hover_on(t.card)
+                } else {
+                    t.card
+                };
                 if bg != t.card {
                     row_pill(look, buf, rr.x, y, rr.width, bg, t.card);
                 }
                 let st = Style::default().bg(bg);
                 if sel {
-                    put(buf, r.x + 4, y, &[seg("›", st.fg(t.accent).add_modifier(Modifier::BOLD))], r.right());
+                    put(
+                        buf,
+                        r.x + 4,
+                        y,
+                        &[seg("›", st.fg(t.accent).add_modifier(Modifier::BOLD))],
+                        r.right(),
+                    );
                 }
                 let unused = unused_here(app, row);
-                let mut ls = st.fg(if unused { t.muted } else if sel { t.strong } else { t.text });
+                let mut ls = st.fg(if unused {
+                    t.muted
+                } else if sel {
+                    t.strong
+                } else {
+                    t.text
+                });
                 if sel {
                     ls = ls.add_modifier(Modifier::BOLD);
                 }
-                hit(app, Rect { x: r.x + 1, y, width: vx - r.x - 2, height: 1 }, ScreenHit::SetRow(*i));
+                hit(
+                    app,
+                    Rect {
+                        x: r.x + 1,
+                        y,
+                        width: vx - r.x - 2,
+                        height: 1,
+                    },
+                    ScreenHit::SetRow(*i),
+                );
                 let label = match row {
                     SRow::Setting(s) => s.label.to_string(),
                     SRow::Bind { label, .. } => label.to_string(),
                     SRow::Agent(row) => row.label().to_string(),
                     SRow::Version => "Version".into(),
                 };
-                put(buf, lx, y, &[seg(truncate(&label, (vx - lx - 1) as usize), ls)], vx - 1);
+                put(
+                    buf,
+                    lx,
+                    y,
+                    &[seg(truncate(&label, (vx - lx - 1) as usize), ls)],
+                    vx - 1,
+                );
                 // Every option as a chip, unless they would not fit beside the label: then the
                 // current one between arrows.
                 let chips = chips_for(app, row).filter(|(opts, _)| {
@@ -432,34 +802,91 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                     vx as usize + need < r.right() as usize - 3
                 });
                 if unused {
-                    put(buf, vx, y, &[seg(" not in Hairline", st.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 3);
+                    put(
+                        buf,
+                        vx,
+                        y,
+                        &[seg(
+                            " not in Hairline",
+                            st.fg(t.muted).add_modifier(Modifier::ITALIC),
+                        )],
+                        r.right() - 3,
+                    );
                 } else if let Some((opts, cur)) = chips.filter(|_| !(sel && v.editing.is_some())) {
                     let mut cx = vx;
                     for (vi, o) in opts.iter().enumerate() {
                         let on = Some(vi) == cur;
                         // The chosen one a pill; the others plain, the same width.
-                        let segs = if on { pill(look, vec![seg(o.clone(), Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))], t.accent, bg) } else { vec![seg(format!(" {o} "), st.fg(t.muted))] };
+                        let segs = if on {
+                            pill(
+                                look,
+                                vec![seg(
+                                    o.clone(),
+                                    Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD),
+                                )],
+                                t.accent,
+                                bg,
+                            )
+                        } else {
+                            vec![seg(format!(" {o} "), st.fg(t.muted))]
+                        };
                         let w = segs_width(&segs);
                         put(buf, cx, y, &segs, r.right() - 3);
-                        hit(app, Rect { x: cx, y, width: w, height: 1 }, ScreenHit::SetVal(*i, vi));
+                        hit(
+                            app,
+                            Rect {
+                                x: cx,
+                                y,
+                                width: w,
+                                height: 1,
+                            },
+                            ScreenHit::SetVal(*i, vi),
+                        );
                         cx += w + 1;
                     }
                 } else {
                     let shown = crate::client::design::control(app, t, row, v, sel);
-                    let ctrl: Vec<Seg> = shown.into_iter().map(|(x, s)| (x, if s.bg.is_none() { s.bg(bg) } else { s })).collect();
+                    let ctrl: Vec<Seg> = shown
+                        .into_iter()
+                        .map(|(x, s)| (x, if s.bg.is_none() { s.bg(bg) } else { s }))
+                        .collect();
                     put(buf, vx, y, &ctrl, r.right() - 1);
-                    hit(app, Rect { x: vx, y, width: segs_width(&ctrl).max(1), height: 1 }, ScreenHit::SetVal(*i, usize::MAX));
+                    hit(
+                        app,
+                        Rect {
+                            x: vx,
+                            y,
+                            width: segs_width(&ctrl).max(1),
+                            height: 1,
+                        },
+                        ScreenHit::SetVal(*i, usize::MAX),
+                    );
                 }
             }
         }
     }
     if rows.is_empty() {
-        put(buf, lx, top, &[seg("Nothing to change here.", c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right());
+        put(
+            buf,
+            lx,
+            top,
+            &[seg(
+                "Nothing to change here.",
+                c.fg(t.muted).add_modifier(Modifier::ITALIC),
+            )],
+            r.right(),
+        );
     }
     // How panes look with these settings: one focused, one faded.
     if preview {
         let py = r.bottom().saturating_sub(10);
-        put(buf, r.x + 4, py, &[seg("PREVIEW", c.fg(t.muted).add_modifier(Modifier::BOLD))], r.right());
+        put(
+            buf,
+            r.x + 4,
+            py,
+            &[seg("PREVIEW", c.fg(t.muted).add_modifier(Modifier::BOLD))],
+            r.right(),
+        );
         let mini = |app: &mut App, buf: &mut Buffer, mx: u16, focus: bool| {
             let label = if focus { "focused" } else { "dimmed" };
             let mut card_look = Card::new(t, "");
@@ -471,8 +898,17 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                     _ => t.accent,
                 });
             }
-            let mr = Rect { x: mx, y: py + 1, width: 18, height: 3 };
-            let fg = if focus { t.strong } else { blend(t.text, t.card, Look::of(&app.cfg.ui).dim) };
+            let mr = Rect {
+                x: mx,
+                y: py + 1,
+                width: 18,
+                height: 3,
+            };
+            let fg = if focus {
+                t.strong
+            } else {
+                blend(t.text, t.card, Look::of(&app.cfg.ui).dim)
+            };
             let mut st = Style::default().bg(card_look.bg).fg(fg);
             if focus {
                 st = st.add_modifier(Modifier::BOLD);
@@ -490,12 +926,48 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         mini(app, buf, lx + 20, false);
     }
     // The selected row's help, always in the same place.
-    hline(buf, r.x + 3, r.bottom() - 5, r.width.saturating_sub(6), t, t.card);
-    for (k, line) in wrap_two(&help, (r.width - 6) as usize).iter().enumerate().filter(|(_, l)| !l.is_empty()) {
-        put(buf, r.x + 3, r.bottom() - 4 + k as u16, &[seg(line.clone(), c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 2);
+    hline(
+        buf,
+        r.x + 3,
+        r.bottom() - 5,
+        r.width.saturating_sub(6),
+        t,
+        t.card,
+    );
+    for (k, line) in wrap_two(&help, (r.width - 6) as usize)
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| !l.is_empty())
+    {
+        put(
+            buf,
+            r.x + 3,
+            r.bottom() - 4 + k as u16,
+            &[seg(
+                line.clone(),
+                c.fg(t.muted).add_modifier(Modifier::ITALIC),
+            )],
+            r.right() - 2,
+        );
     }
-    let bar = Rect { y: r.bottom().saturating_sub(1), height: 1, ..r };
-    action_bar(buf, bar, t, t.card2, &[("↑↓", "move"), ("←→", "change"), ("Tab", "section"), ("o", "open config.toml"), ("Esc", "close")]);
+    let bar = Rect {
+        y: r.bottom().saturating_sub(1),
+        height: 1,
+        ..r
+    };
+    action_bar(
+        buf,
+        bar,
+        t,
+        t.card2,
+        &[
+            ("↑↓", "move"),
+            ("←→", "change"),
+            ("Tab", "section"),
+            ("o", "open config.toml"),
+            ("Esc", "close"),
+        ],
+    );
 }
 
 /// `text` on up to two lines of `width` columns, broken at spaces; the second ends in `…` if cut.
@@ -511,7 +983,10 @@ pub(in crate::client) fn wrap_two(text: &str, width: usize) -> Vec<String> {
         } else if lines.len() < 2 {
             lines.push(word.to_string());
         } else {
-            return vec![std::mem::take(&mut lines[0]), truncate(&format!("{} {word}", lines[1]), width)];
+            return vec![
+                std::mem::take(&mut lines[0]),
+                truncate(&format!("{} {word}", lines[1]), width),
+            ];
         }
     }
     lines

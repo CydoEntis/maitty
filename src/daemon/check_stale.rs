@@ -47,12 +47,25 @@ pub fn report(probes: &[Probe], tx: &tokio::sync::mpsc::Sender<Ev>) {
 
 /// What changed in `p`'s worktree since each of its trees. Blocks: call it off the loop.
 pub fn probe(p: &Probe) -> Vec<Found> {
-    let Some(now) = fingerprint(&p.dir) else { return Vec::new() };
-    p.trees
+    changes(&p.dir, &p.trees)
+        .into_iter()
+        .map(|(tree, changed)| Found {
+            term: p.term,
+            tree,
+            changed,
+        })
+        .collect()
+}
+
+pub(super) fn changes(dir: &Path, trees: &[String]) -> Vec<(String, Vec<ChangedFile>)> {
+    let Some(now) = fingerprint(dir) else {
+        return Vec::new();
+    };
+    trees
         .iter()
         .filter(|tree| **tree != now)
-        .filter_map(|tree| match changed_files(&p.dir, tree, &now) {
-            Ok(changed) => Some(Found { term: p.term, tree: tree.clone(), changed }),
+        .filter_map(|tree| match changed_files(dir, tree, &now) {
+            Ok(changed) => Some((tree.clone(), changed)),
             Err(e) => {
                 tracing::warn!("couldn't list what changed since a check: {e}");
                 None
@@ -79,7 +92,10 @@ fn parse_name_status(out: &str) -> Vec<ChangedFile> {
         }
         let Some(path) = fields.next() else { break };
         if changed.len() < CHANGED_FILES_MOST {
-            changed.push(ChangedFile { kind, path: path.to_string() });
+            changed.push(ChangedFile {
+                kind,
+                path: path.to_string(),
+            });
         }
     }
     changed
@@ -93,11 +109,24 @@ impl Daemon {
             .values()
             .filter(|t| t.status != Status::Working && !t.checks.running())
             .filter_map(|t| {
-                let mut trees: Vec<String> = t.checks.points.iter().filter(|p| p.latest.info.state == CheckState::Passed).filter_map(|p| p.tree.clone()).collect();
+                let mut trees: Vec<String> = t
+                    .checks
+                    .points
+                    .iter()
+                    .filter(|p| p.latest.info.state == CheckState::Passed)
+                    .filter_map(|p| p.tree.clone())
+                    .collect();
                 trees.sort();
                 trees.dedup();
-                let dir = t.head.as_ref().map_or_else(|| t.cwd.clone(), |h| h.top.clone());
-                (!trees.is_empty()).then_some(Probe { term: t.id, dir, trees })
+                let dir = t
+                    .head
+                    .as_ref()
+                    .map_or_else(|| t.cwd.clone(), |h| h.top.clone());
+                (!trees.is_empty()).then_some(Probe {
+                    term: t.id,
+                    dir,
+                    trees,
+                })
             })
             .collect()
     }
@@ -107,9 +136,18 @@ impl Daemon {
     pub(super) fn checks_went_stale(&mut self, found: Vec<Found>) {
         let now = super::term::unix_now();
         for f in found {
-            let Some(t) = self.terms.get_mut(&f.term).filter(|t| t.status != Status::Working) else { continue };
+            let Some(t) = self
+                .terms
+                .get_mut(&f.term)
+                .filter(|t| t.status != Status::Working)
+            else {
+                continue;
+            };
             let mut changed = false;
-            for p in t.checks.points.iter_mut().filter(|p| p.latest.info.state == CheckState::Passed && p.tree.as_deref() == Some(f.tree.as_str())) {
+            for p in t.checks.points.iter_mut().filter(|p| {
+                p.latest.info.state == CheckState::Passed
+                    && p.tree.as_deref() == Some(f.tree.as_str())
+            }) {
                 let info = &mut p.latest.info;
                 info.state = CheckState::Stale;
                 info.stale_since = Some(now);
@@ -131,15 +169,28 @@ mod tests {
     fn name_status_reads_each_kind_and_a_rename_by_its_new_path() {
         let out = "M\0src/a.rs\0A\0tests/b.rs\0D\0old.txt\0R087\0from.rs\0to.rs\0";
         let got = parse_name_status(out);
-        let want = [('M', "src/a.rs"), ('A', "tests/b.rs"), ('D', "old.txt"), ('R', "to.rs")];
-        assert_eq!(got.iter().map(|c| (c.kind, c.path.as_str())).collect::<Vec<_>>(), want);
+        let want = [
+            ('M', "src/a.rs"),
+            ('A', "tests/b.rs"),
+            ('D', "old.txt"),
+            ('R', "to.rs"),
+        ];
+        assert_eq!(
+            got.iter()
+                .map(|c| (c.kind, c.path.as_str()))
+                .collect::<Vec<_>>(),
+            want
+        );
     }
 
     #[test]
     fn at_most_fifty_changed_files_are_kept() {
         let out: String = (0..80).map(|i| format!("M\0f{i}\0")).collect();
         let got = parse_name_status(&out);
-        assert_eq!((got.len(), got.last().map(|c| c.path.as_str())), (CHANGED_FILES_MOST, Some("f49")));
+        assert_eq!(
+            (got.len(), got.last().map(|c| c.path.as_str())),
+            (CHANGED_FILES_MOST, Some("f49"))
+        );
     }
 
     #[test]
@@ -150,6 +201,13 @@ mod tests {
             return;
         }
         assert_eq!(fingerprint(dir.path()), None);
-        assert!(probe(&Probe { term: 1, dir: dir.path().to_path_buf(), trees: vec!["abc".into()] }).is_empty());
+        assert!(
+            probe(&Probe {
+                term: 1,
+                dir: dir.path().to_path_buf(),
+                trees: vec!["abc".into()]
+            })
+            .is_empty()
+        );
     }
 }

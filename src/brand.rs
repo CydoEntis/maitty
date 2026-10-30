@@ -23,8 +23,17 @@ mod tests {
     #[test]
     fn the_name_comes_from_cargo_toml() {
         assert_eq!(APP_COMMAND, env!("CARGO_PKG_NAME"));
-        assert!(!APP_NAME.is_empty() && APP_NAME.chars().all(|c| c.is_ascii_alphanumeric() || c == ' '), "{APP_NAME}");
+        assert!(
+            !APP_NAME.is_empty()
+                && APP_NAME
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == ' '),
+            "{APP_NAME}"
+        );
         assert_eq!(APP_ENV, APP_COMMAND.to_ascii_uppercase().replace('-', "_"));
-        assert!(previous().all(|p| p != APP_COMMAND), "a previous name is not the current one");
+        assert!(
+            previous().all(|p| p != APP_COMMAND),
+            "a previous name is not the current one"
+        );
     }
 }

@@ -63,7 +63,8 @@ pub fn tone(kind: Kind) -> Vec<u8> {
             // Rings like a struck note: quick in, dying away; an octave above for colour.
             let fade_in = (t * 1000.0 / ATTACK_MS).min(1.0);
             let fade_out = (-4.0 * i as f32 / n as f32).exp();
-            let wave = (std::f32::consts::TAU * hz * t).sin() + 0.25 * (std::f32::consts::TAU * hz * 2.0 * t).sin();
+            let wave = (std::f32::consts::TAU * hz * t).sin()
+                + 0.25 * (std::f32::consts::TAU * hz * 2.0 * t).sin();
             pcm.push((wave / 1.25 * fade_in * fade_out * LEVEL * f32::from(i16::MAX)) as i16);
         }
     }
@@ -123,8 +124,14 @@ pub const ANY_AGAIN_AFTER: std::time::Duration = std::time::Duration::from_secs(
 
 /// Whether an alert for `status` goes now, given the last one for this agent (its status,
 /// when) and the last for any agent. Needs-you after a finish is new, so it goes.
-pub fn should_alert<S: PartialEq>(status: &S, last_here: Option<(&S, std::time::Instant)>, last_any: Option<std::time::Instant>, now: std::time::Instant) -> bool {
-    let same_again = last_here.is_some_and(|(s, at)| s == status && now.saturating_duration_since(at) < SAME_AGAIN_AFTER);
+pub fn should_alert<S: PartialEq>(
+    status: &S,
+    last_here: Option<(&S, std::time::Instant)>,
+    last_any: Option<std::time::Instant>,
+    now: std::time::Instant,
+) -> bool {
+    let same_again = last_here
+        .is_some_and(|(s, at)| s == status && now.saturating_duration_since(at) < SAME_AGAIN_AFTER);
     let crowded = last_any.is_some_and(|at| now.saturating_duration_since(at) < ANY_AGAIN_AFTER);
     !same_again && !crowded
 }
@@ -151,13 +158,19 @@ pub fn notify_soon(title: &str, body: &str, link: Option<String>) {
 /// An alert on your phone: an ntfy message to your topic. Blocks until sent (run it off the
 /// UI thread); what went wrong when it isn't.
 pub fn phone(cfg: &crate::config::Notify, title: &str, body: &str) -> Result<(), String> {
-    let url = phone_url(&cfg.phone_server, &cfg.phone_topic).ok_or("no phone topic set (notify.phone_topic)")?;
+    let url = phone_url(&cfg.phone_server, &cfg.phone_topic)
+        .ok_or("no phone topic set (notify.phone_topic)")?;
     let one_line = |s: &str| s.replace(['\r', '\n'], " ");
     crate::proc::run(
         crate::proc::system_tool("curl")
             .args(["-fsS", "--max-time", "10", "-H"])
             .arg(format!("Title: {}", one_line(title)))
-            .args(["-H", concat!("Tags: ", env!("APP_COMMAND")), "--data-raw", body])
+            .args([
+                "-H",
+                concat!("Tags: ", env!("APP_COMMAND")),
+                "--data-raw",
+                body,
+            ])
             .arg(&url),
     )
     .map(|_| ())
@@ -169,15 +182,30 @@ pub fn phone_url(server: &str, topic: &str) -> Option<String> {
     if topic.is_empty() {
         return None;
     }
-    let server = if server.trim().is_empty() { "https://ntfy.sh" } else { server.trim().trim_end_matches('/') };
+    let server = if server.trim().is_empty() {
+        "https://ntfy.sh"
+    } else {
+        server.trim().trim_end_matches('/')
+    };
     Some(format!("{server}/{topic}"))
 }
 
 /// Where an alert says a session works: its repository and branch (`shop-api · fix/x`), so
 /// worktrees of one repository tell apart; just its folder outside a repository.
-pub fn place_label(repo: Option<&std::path::Path>, folder: &std::path::Path, branch: Option<&str>) -> String {
-    let name = |p: &std::path::Path| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let project = repo.map(name).filter(|n| !n.is_empty()).unwrap_or_else(|| name(folder));
+pub fn place_label(
+    repo: Option<&std::path::Path>,
+    folder: &std::path::Path,
+    branch: Option<&str>,
+) -> String {
+    let name = |p: &std::path::Path| {
+        p.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    let project = repo
+        .map(name)
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| name(folder));
     match branch.map(str::trim).filter(|b| !b.is_empty()) {
         Some(branch) => format!("{project} · {branch}"),
         None => project,
@@ -185,15 +213,30 @@ pub fn place_label(repo: Option<&std::path::Path>, folder: &std::path::Path, bra
 }
 
 /// The phone alert for an agent: who and where always; what it's doing only with `text`.
-pub fn phone_message(agent: &str, place: &str, needs_you: bool, doing: &str, text: bool) -> (String, String) {
-    let title = format!("{agent} {}", if needs_you { "needs you" } else { "finished" });
+pub fn phone_message(
+    agent: &str,
+    place: &str,
+    needs_you: bool,
+    doing: &str,
+    text: bool,
+) -> (String, String) {
+    let title = format!(
+        "{agent} {}",
+        if needs_you { "needs you" } else { "finished" }
+    );
     let doing = doing.trim();
-    let body = if text && !doing.is_empty() { format!("{place} · {doing}") } else { place.to_string() };
+    let body = if text && !doing.is_empty() {
+        format!("{place} · {doing}")
+    } else {
+        place.to_string()
+    };
     (title, body)
 }
 
 fn quiet(cmd: &mut Command) -> &mut Command {
-    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     crate::proc::quiet(cmd)
 }
 
@@ -203,19 +246,34 @@ pub fn notify(title: &str, body: &str, link: Option<&str>) {
     if cfg!(windows) {
         // Windows PowerShell (not pwsh) can load the WinRT toast types. Text goes in through
         // the environment, so nothing in it is ever run.
-        const TOAST: &str = concat!("[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null; \
+        const TOAST: &str = concat!(
+            "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null; \
 $x = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02); \
 $t = $x.GetElementsByTagName('text'); \
-$t.Item(0).AppendChild($x.CreateTextNode($env:", env!("APP_ENV"), "_TITLE)) > $null; \
-$t.Item(1).AppendChild($x.CreateTextNode($env:", env!("APP_ENV"), "_BODY)) > $null; \
+$t.Item(0).AppendChild($x.CreateTextNode($env:",
+            env!("APP_ENV"),
+            "_TITLE)) > $null; \
+$t.Item(1).AppendChild($x.CreateTextNode($env:",
+            env!("APP_ENV"),
+            "_BODY)) > $null; \
 $a = $x.CreateElement('audio'); $a.SetAttribute('silent', 'true'); $x.DocumentElement.AppendChild($a) > $null; \
-if ($env:", env!("APP_ENV"), "_LINK) { $x.DocumentElement.SetAttribute('activationType', 'protocol'); $x.DocumentElement.SetAttribute('launch', $env:", env!("APP_ENV"), "_LINK) }; \
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show([Windows.UI.Notifications.ToastNotification]::new($x))");
-        let _ = quiet(Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", TOAST]))
-            .env(concat!(env!("APP_ENV"), "_TITLE"), title)
-            .env(concat!(env!("APP_ENV"), "_BODY"), body)
-            .env(concat!(env!("APP_ENV"), "_LINK"), link.unwrap_or_default())
-            .status();
+if ($env:",
+            env!("APP_ENV"),
+            "_LINK) { $x.DocumentElement.SetAttribute('activationType', 'protocol'); $x.DocumentElement.SetAttribute('launch', $env:",
+            env!("APP_ENV"),
+            "_LINK) }; \
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show([Windows.UI.Notifications.ToastNotification]::new($x))"
+        );
+        let _ = quiet(Command::new("powershell.exe").args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            TOAST,
+        ]))
+        .env(concat!(env!("APP_ENV"), "_TITLE"), title)
+        .env(concat!(env!("APP_ENV"), "_BODY"), body)
+        .env(concat!(env!("APP_ENV"), "_LINK"), link.unwrap_or_default())
+        .status();
     } else if cfg!(target_os = "macos") {
         // macOS's own notifications can't run anything when clicked; terminal-notifier can.
         if let (Some(link), Ok(exe)) = (link, std::env::current_exe())
@@ -223,22 +281,39 @@ if ($env:", env!("APP_ENV"), "_LINK) { $x.DocumentElement.SetAttribute('activati
         {
             let sh = |s: &str| format!("'{}'", s.replace('\'', r"'\''"));
             let run = format!("{} reveal {}", sh(&exe.to_string_lossy()), sh(link));
-            if quiet(Command::new("terminal-notifier").args(["-title", title, "-message", body, "-execute", &run])).status().is_ok_and(|s| s.success()) {
+            if quiet(
+                Command::new("terminal-notifier")
+                    .args(["-title", title, "-message", body, "-execute", &run]),
+            )
+            .status()
+            .is_ok_and(|s| s.success())
+            {
                 return;
             }
         }
         // AppleScript strings: escape backslashes and quotes.
         let q = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
-        let script = format!("display notification \"{}\" with title \"{}\"", q(body), q(title));
+        let script = format!(
+            "display notification \"{}\" with title \"{}\"",
+            q(body),
+            q(title)
+        );
         let _ = quiet(Command::new("osascript").args(["-e", &script])).status();
     } else {
         // With a link: an action the notification runs when clicked, and wait to hear it.
         // notify-send before 0.7.9 doesn't know --action; then a plain one.
         if let (Some(link), Ok(exe)) = (link, std::env::current_exe()) {
-            let out = crate::proc::quiet(Command::new("notify-send").args([concat!("--app-name=", env!("APP_COMMAND")), "--action=default=Open", "--wait", "--", title, body]))
-                .stdin(Stdio::null())
-                .stderr(Stdio::null())
-                .output();
+            let out = crate::proc::quiet(Command::new("notify-send").args([
+                concat!("--app-name=", env!("APP_COMMAND")),
+                "--action=default=Open",
+                "--wait",
+                "--",
+                title,
+                body,
+            ]))
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output();
             if let Ok(out) = out
                 && out.status.success()
             {
@@ -248,13 +323,20 @@ if ($env:", env!("APP_ENV"), "_LINK) { $x.DocumentElement.SetAttribute('activati
                 return;
             }
         }
-        let _ = quiet(Command::new("notify-send").args([concat!("--app-name=", env!("APP_COMMAND")), "--", title, body])).status();
+        let _ = quiet(Command::new("notify-send").args([
+            concat!("--app-name=", env!("APP_COMMAND")),
+            "--",
+            title,
+            body,
+        ]))
+        .status();
     }
 }
 
 /// Whether a program is on PATH.
 fn on_path(tool: &str) -> bool {
-    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(tool).is_file()))
+    std::env::var_os("PATH")
+        .is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(tool).is_file()))
 }
 
 /// Play `kind`'s sound. Blocks until it has played.
@@ -262,16 +344,28 @@ pub fn play(kind: Kind) {
     let Some(file) = tone_file(kind) else { return };
     if cfg!(windows) {
         // MediaPlayer handles wav, mp3 and wma; it plays asynchronously, so wait a moment.
-        const PLAY: &str = concat!("Add-Type -AssemblyName PresentationCore; $p = New-Object System.Windows.Media.MediaPlayer; \
-$p.Open([Uri]$env:", env!("APP_ENV"), "_SOUND); $p.Volume = 1; $p.Play(); Start-Sleep -Milliseconds 2500");
-        let _ = quiet(Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", PLAY]))
-            .env(concat!(env!("APP_ENV"), "_SOUND"), &file)
-            .status();
+        const PLAY: &str = concat!(
+            "Add-Type -AssemblyName PresentationCore; $p = New-Object System.Windows.Media.MediaPlayer; \
+$p.Open([Uri]$env:",
+            env!("APP_ENV"),
+            "_SOUND); $p.Volume = 1; $p.Play(); Start-Sleep -Milliseconds 2500"
+        );
+        let _ = quiet(Command::new("powershell.exe").args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            PLAY,
+        ]))
+        .env(concat!(env!("APP_ENV"), "_SOUND"), &file)
+        .status();
     } else if cfg!(target_os = "macos") {
         let _ = quiet(Command::new("afplay").arg(&file)).status();
     } else {
         for player in ["paplay", "pw-play"] {
-            if quiet(Command::new(player).arg(&file)).status().is_ok_and(|s| s.success()) {
+            if quiet(Command::new(player).arg(&file))
+                .status()
+                .is_ok_and(|s| s.success())
+            {
                 return;
             }
         }
@@ -285,8 +379,14 @@ mod tests {
 
     #[test]
     fn attention_and_background_completion_have_distinct_sounds() {
-        assert_eq!(Kind::for_status(crate::protocol::Status::Blocked), Some(Kind::Needs));
-        assert_eq!(Kind::for_status(crate::protocol::Status::Done), Some(Kind::Done));
+        assert_eq!(
+            Kind::for_status(crate::protocol::Status::Blocked),
+            Some(Kind::Needs)
+        );
+        assert_eq!(
+            Kind::for_status(crate::protocol::Status::Done),
+            Some(Kind::Done)
+        );
         assert_eq!(Kind::for_status(crate::protocol::Status::Working), None);
         assert_eq!(Kind::for_status(crate::protocol::Status::Idle), None);
     }
@@ -295,11 +395,41 @@ mod tests {
     fn an_agent_rings_once_for_the_same_news_and_a_crowd_rings_once() {
         use std::time::{Duration, Instant};
         let now = Instant::now();
-        assert!(should_alert(&"done", None, None, now), "first time: it goes");
-        assert!(!should_alert(&"done", Some((&"done", now - Duration::from_secs(30))), None, now), "done again 30s later: quiet");
-        assert!(should_alert(&"needs", Some((&"done", now - Duration::from_secs(30))), None, now), "needs you after done: it goes");
-        assert!(should_alert(&"done", Some((&"done", now - Duration::from_secs(300))), None, now), "done again much later: it goes");
-        assert!(!should_alert(&"done", None, Some(now - Duration::from_secs(1)), now), "another agent just rang: one ding for both");
+        assert!(
+            should_alert(&"done", None, None, now),
+            "first time: it goes"
+        );
+        assert!(
+            !should_alert(
+                &"done",
+                Some((&"done", now - Duration::from_secs(30))),
+                None,
+                now
+            ),
+            "done again 30s later: quiet"
+        );
+        assert!(
+            should_alert(
+                &"needs",
+                Some((&"done", now - Duration::from_secs(30))),
+                None,
+                now
+            ),
+            "needs you after done: it goes"
+        );
+        assert!(
+            should_alert(
+                &"done",
+                Some((&"done", now - Duration::from_secs(300))),
+                None,
+                now
+            ),
+            "done again much later: it goes"
+        );
+        assert!(
+            !should_alert(&"done", None, Some(now - Duration::from_secs(1)), now),
+            "another agent just rang: one ding for both"
+        );
     }
 
     #[test]
@@ -309,37 +439,97 @@ mod tests {
             assert_eq!((&wav[..4], &wav[8..16]), (&b"RIFF"[..], &b"WAVEfmt "[..]));
             let riff = u32::from_le_bytes(wav[4..8].try_into().unwrap()) as usize;
             let data = u32::from_le_bytes(wav[40..44].try_into().unwrap()) as usize;
-            assert_eq!((riff, data), (wav.len() - 8, wav.len() - 44), "the sizes it declares are its own");
-            let samples: Vec<i16> = wav[44..].as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)).collect();
+            assert_eq!(
+                (riff, data),
+                (wav.len() - 8, wav.len() - 44),
+                "the sizes it declares are its own"
+            );
+            let samples: Vec<i16> = wav[44..]
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|b| i16::from_le_bytes(*b))
+                .collect();
             let peak = samples.iter().map(|s| s.unsigned_abs()).max().unwrap();
-            assert!(peak > 2000 && f32::from(peak) <= LEVEL * f32::from(i16::MAX) + 1.0, "audible, and no louder than its level: {peak}");
-            assert!(samples[0].unsigned_abs() < 200 && samples[samples.len() - 1].unsigned_abs() < 800, "it starts and ends near silence (no click)");
+            assert!(
+                peak > 2000 && f32::from(peak) <= LEVEL * f32::from(i16::MAX) + 1.0,
+                "audible, and no louder than its level: {peak}"
+            );
+            assert!(
+                samples[0].unsigned_abs() < 200 && samples[samples.len() - 1].unsigned_abs() < 800,
+                "it starts and ends near silence (no click)"
+            );
             let secs = samples.len() as f32 / SAMPLE_RATE as f32;
             assert!((0.2..0.6).contains(&secs), "short: {secs}s");
         }
-        assert!(needs != done && Kind::Needs.notes().len() == 2 && Kind::Done.notes().len() == 1, "two notes for needs you, one for finished");
-        assert!(Kind::Needs.notes()[0].0 < Kind::Needs.notes()[1].0, "needs you rises");
+        assert!(
+            needs != done && Kind::Needs.notes().len() == 2 && Kind::Done.notes().len() == 1,
+            "two notes for needs you, one for finished"
+        );
+        assert!(
+            Kind::Needs.notes()[0].0 < Kind::Needs.notes()[1].0,
+            "needs you rises"
+        );
         assert!(Kind::Needs.file_name() != Kind::Done.file_name());
     }
 
     #[test]
     fn a_phone_alert_says_who_and_where_and_the_task_only_when_asked() {
-        assert_eq!(phone_url("", concat!(env!("APP_COMMAND"), "-x7k2")).as_deref(), Some(concat!("https://ntfy.sh/", env!("APP_COMMAND"), "-x7k2")));
-        assert_eq!(phone_url("https://ntfy.example.com/", concat!(" /", env!("APP_COMMAND"), "-x7k2 ")).as_deref(), Some(concat!("https://ntfy.example.com/", env!("APP_COMMAND"), "-x7k2")));
+        assert_eq!(
+            phone_url("", concat!(env!("APP_COMMAND"), "-x7k2")).as_deref(),
+            Some(concat!("https://ntfy.sh/", env!("APP_COMMAND"), "-x7k2"))
+        );
+        assert_eq!(
+            phone_url(
+                "https://ntfy.example.com/",
+                concat!(" /", env!("APP_COMMAND"), "-x7k2 ")
+            )
+            .as_deref(),
+            Some(concat!(
+                "https://ntfy.example.com/",
+                env!("APP_COMMAND"),
+                "-x7k2"
+            ))
+        );
         assert_eq!(phone_url("https://ntfy.sh", "  "), None, "no topic: off");
         let m = |text| phone_message("claude", "AeVox", true, "Run npm test?", text);
-        assert_eq!(m(false), ("claude needs you".to_string(), "AeVox".to_string()));
+        assert_eq!(
+            m(false),
+            ("claude needs you".to_string(), "AeVox".to_string())
+        );
         assert_eq!(m(true).1, "AeVox · Run npm test?");
-        assert_eq!(phone_message("codex", "shop-api", false, "", true).0, "codex finished");
+        assert_eq!(
+            phone_message("codex", "shop-api", false, "", true).0,
+            "codex finished"
+        );
     }
 
     #[test]
     fn an_alert_names_the_repository_and_branch() {
         use std::path::Path;
         let worktree = Path::new("/code/shop-api-worktrees/grey-wolf");
-        assert_eq!(place_label(Some(Path::new("/code/shop-api")), worktree, Some("fix/early-alerts")), "shop-api · fix/early-alerts", "a worktree reads as its repository");
-        assert_eq!(place_label(Some(Path::new("/code/shop-api")), worktree, Some("1a2b3c4")), "shop-api · 1a2b3c4", "detached: its short commit");
-        assert_eq!(place_label(None, Path::new("/home/me/notes"), None), "notes", "outside a repository: the folder");
-        assert_eq!(place_label(None, Path::new("/home/me/notes"), Some(" ")), "notes");
+        assert_eq!(
+            place_label(
+                Some(Path::new("/code/shop-api")),
+                worktree,
+                Some("fix/early-alerts")
+            ),
+            "shop-api · fix/early-alerts",
+            "a worktree reads as its repository"
+        );
+        assert_eq!(
+            place_label(Some(Path::new("/code/shop-api")), worktree, Some("1a2b3c4")),
+            "shop-api · 1a2b3c4",
+            "detached: its short commit"
+        );
+        assert_eq!(
+            place_label(None, Path::new("/home/me/notes"), None),
+            "notes",
+            "outside a repository: the folder"
+        );
+        assert_eq!(
+            place_label(None, Path::new("/home/me/notes"), Some(" ")),
+            "notes"
+        );
     }
 }

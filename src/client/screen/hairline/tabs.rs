@@ -10,14 +10,32 @@ pub(in crate::client) const TAB_ROWS: u16 = 2;
 const PAD: u16 = 1;
 
 /// The tab row in `r`: the tabs from the pane's padding in, then the rule under them.
-pub(in crate::client) fn draw_tab_row(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
+pub(in crate::client) fn draw_tab_row(
+    app: &mut App,
+    buf: &mut Buffer,
+    r: Rect,
+    model: &[Proj],
+    t: &Theme,
+) {
     if r.height < TAB_ROWS || r.width == 0 {
         return;
     }
     let ink = Ink::of(t);
     fill(buf, Rect { height: 1, ..r }, ink.bg);
-    rule(buf, r.x, r.y + 1, r.width, lone_pane_lit(app, ink, t), ink.bg);
-    let row = Rect { x: r.x + PANE_PAD, width: r.width.saturating_sub(2 * PANE_PAD), height: 1, ..r };
+    rule(
+        buf,
+        r.x,
+        r.y + 1,
+        r.width,
+        lone_pane_lit(app, ink, t),
+        ink.bg,
+    );
+    let row = Rect {
+        x: r.x + PANE_PAD,
+        width: r.width.saturating_sub(2 * PANE_PAD),
+        height: 1,
+        ..r
+    };
     let end = tab_tools(app, buf, row, ink.dim, ink.strong, ink.bg, ink.teal);
     draw_tabs(app, buf, row.x, r.y, end, model, t);
 }
@@ -26,7 +44,10 @@ pub(in crate::client) fn draw_tab_row(app: &mut App, buf: &mut Buffer, r: Rect, 
 /// that pane has no rule of its own and this is the line over it; else `line`.
 fn lone_pane_lit(app: &App, ink: Ink, t: &Theme) -> Color {
     let lone = app.screen.leaf_rects.len() == 1 && app.focused().is_some();
-    match (lone && !side_focused(app) && !sheet_has_keys(app), armed(app)) {
+    match (
+        lone && !side_focused(app) && !sheet_has_keys(app),
+        armed(app),
+    ) {
         (true, true) => t.sky(),
         (true, false) => ink.teal,
         _ => ink.line,
@@ -50,29 +71,81 @@ fn draw_tabs(app: &mut App, buf: &mut Buffer, x: u16, y: u16, end: u16, model: &
     let tabs = app.session_tabs();
     let mut at = x;
     for (n, &i) in tabs.iter().enumerate() {
-        let name = tab_name(&app.screen.tabs[i]).unwrap_or_else(|| session_name(app, model, app.screen.tabs[i].focus));
-        let style = if i == app.screen.tab { st.fg(ink.teal).add_modifier(Modifier::BOLD) } else { st.fg(ink.dim) };
-        let mut label: Vec<Seg> = tab_mark(app, i, t).map(|(g, c)| seg(format!("{g} "), st.fg(c).add_modifier(Modifier::BOLD))).into_iter().collect();
-        label.push(seg(if tabs.len() > 1 { format!("{} {name}", n + 1) } else { name }, style));
-        let close = if i == app.screen.tab { tab_close(app, i, tabs.len()) } else { None };
+        let name = tab_name(&app.screen.tabs[i])
+            .unwrap_or_else(|| session_name(app, model, app.screen.tabs[i].focus));
+        let style = if i == app.screen.tab {
+            st.fg(ink.teal).add_modifier(Modifier::BOLD)
+        } else {
+            st.fg(ink.dim)
+        };
+        let mut label: Vec<Seg> = tab_mark(app, i, t)
+            .map(|(g, c)| seg(format!("{g} "), st.fg(c).add_modifier(Modifier::BOLD)))
+            .into_iter()
+            .collect();
+        label.push(seg(
+            if tabs.len() > 1 {
+                format!("{} {name}", n + 1)
+            } else {
+                name
+            },
+            style,
+        ));
+        let close = if i == app.screen.tab {
+            tab_close(app, i, tabs.len())
+        } else {
+            None
+        };
         if close.is_some() {
-            label.push(seg(format!(" {}", glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close), st.fg(ink.dim)));
+            label.push(seg(
+                format!(
+                    " {}",
+                    glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close
+                ),
+                st.fg(ink.dim),
+            ));
         }
         let w = segs_width(&label);
         if at + w + PAD >= end {
             return;
         }
         put(buf, at, y, &label, end);
-        hit(app, Rect { x: at, y, width: w, height: 1 }, ScreenHit::TabPick(i));
+        hit(
+            app,
+            Rect {
+                x: at,
+                y,
+                width: w,
+                height: 1,
+            },
+            ScreenHit::TabPick(i),
+        );
         if let Some(h) = close {
-            hit(app, Rect { x: at + w - 1, y, width: 1, height: 1 }, h);
+            hit(
+                app,
+                Rect {
+                    x: at + w - 1,
+                    y,
+                    width: 1,
+                    height: 1,
+                },
+                h,
+            );
         }
         divider(buf, at + w + PAD, y, ink);
         at += w + 2 * PAD + 1;
     }
     if at + 1 + PAD < end {
         put(buf, at, y, &[seg("+", st.fg(ink.dim))], end);
-        hit(app, Rect { x: at, y, width: 1, height: 1 }, ScreenHit::NewTab);
+        hit(
+            app,
+            Rect {
+                x: at,
+                y,
+                width: 1,
+                height: 1,
+            },
+            ScreenHit::NewTab,
+        );
         divider(buf, at + 1 + PAD, y, ink);
     }
 }

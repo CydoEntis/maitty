@@ -20,8 +20,15 @@ pub(in crate::client) fn menu_groups() -> Vec<Vec<MenuItem>> {
             ("Pane beside this", Action::SplitRight),
             ("Tab", Action::NewTab),
         ],
-        vec![("Inbox", Action::Jump), ("Search commands", Action::Palette), ("All keys", Action::Help)],
-        vec![("Collapse sidebar", Action::ToggleSidebar), ("Hide sidebar", Action::HideSidebar)],
+        vec![
+            ("Inbox", Action::Jump),
+            ("Search commands", Action::Palette),
+            ("All keys", Action::Help),
+        ],
+        vec![
+            ("Collapse sidebar", Action::ToggleSidebar),
+            ("Hide sidebar", Action::HideSidebar),
+        ],
         vec![("Settings", Action::Settings)],
     ]
 }
@@ -41,7 +48,13 @@ fn menu_label(app: &App, a: &Action, label: &'static str) -> &'static str {
 }
 
 /// The Menu: a card at the bottom left, over the sidebar's foot. Groups a blank row apart.
-pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, sel: usize) {
+pub(in crate::client) fn draw_actions(
+    app: &mut App,
+    f: &mut Frame,
+    area: Rect,
+    t: &Theme,
+    sel: usize,
+) {
     let look = Look::of(&app.cfg.ui);
     let buf = f.buffer_mut();
     dim_all(app, buf, area, t);
@@ -51,14 +64,29 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
     let w = 46.min(area.width.saturating_sub(4));
     let h = (lines + 3).min(area.height.saturating_sub(2));
     let side = grid(app, framed(app, area)).side;
-    let x = (if side.width > 0 { side.x + 1 } else { area.x + 3 }).min(area.right().saturating_sub(w));
+    let x = (if side.width > 0 {
+        side.x + 1
+    } else {
+        area.x + 3
+    })
+    .min(area.right().saturating_sub(w));
     let y = area.bottom().saturating_sub(4 + h).max(area.y);
-    let r = Rect { x, y, width: w, height: h };
+    let r = Rect {
+        x,
+        y,
+        width: w,
+        height: h,
+    };
     let mut c = Card::new(t, "Menu").lit(t.accent);
     c.bg = t.card;
     let inside = card(app, buf, r, &c, t);
     hit(app, r, ScreenHit::Noop);
-    let needs = app.screen_model().iter().flat_map(|p| p.sessions()).filter(|s| s.status == Status::Blocked).count();
+    let needs = app
+        .screen_model()
+        .iter()
+        .flat_map(|p| p.sessions())
+        .filter(|s| s.status == Status::Blocked)
+        .count();
     let mut yy = r.y + 2;
     let mut i = 0usize;
     for (g, items) in groups.iter().enumerate() {
@@ -73,7 +101,12 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
                 i += 1;
                 continue;
             }
-            let rr = Rect { x: r.x + 2, y: yy, width: w.saturating_sub(4), height: 1 };
+            let rr = Rect {
+                x: r.x + 2,
+                y: yy,
+                width: w.saturating_sub(4),
+                height: 1,
+            };
             let on = i == sel || hovered(app, rr);
             if on {
                 row_pill(look, buf, rr.x, yy, rr.width, t.sel_on(t.card), t.card);
@@ -85,11 +118,32 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
                 ls = ls.add_modifier(Modifier::BOLD);
             }
             let label = menu_label(app, a, label);
-            let end = put(buf, r.x + 4, yy, &[seg(label, ls)], r.right().saturating_sub(6));
+            let end = put(
+                buf,
+                r.x + 4,
+                yy,
+                &[seg(label, ls)],
+                r.right().saturating_sub(6),
+            );
             if *a == Action::Jump && needs > 0 {
-                put(buf, end + 1, yy, &[seg(format!("● {needs}"), st.fg(t.blocked).add_modifier(Modifier::BOLD))], r.right().saturating_sub(6));
+                put(
+                    buf,
+                    end + 1,
+                    yy,
+                    &[seg(
+                        format!("● {needs}"),
+                        st.fg(t.blocked).add_modifier(Modifier::BOLD),
+                    )],
+                    r.right().saturating_sub(6),
+                );
             } else if *a == Action::Settings && app.restart_pending() {
-                put(buf, end + 1, yy, &[seg("●", st.fg(t.accent).add_modifier(Modifier::BOLD))], r.right().saturating_sub(6));
+                put(
+                    buf,
+                    end + 1,
+                    yy,
+                    &[seg("●", st.fg(t.accent).add_modifier(Modifier::BOLD))],
+                    r.right().saturating_sub(6),
+                );
             }
             hit(app, rr, ScreenHit::ActionRow(i));
             yy += 1;
@@ -103,11 +157,26 @@ impl App {
         let items = action_items();
         match k.code {
             KeyCode::Esc => self.mode = Mode::Normal,
-            KeyCode::Up => self.mode = Mode::Actions { sel: sel.saturating_sub(1) },
-            KeyCode::Down => self.mode = Mode::Actions { sel: (sel + 1).min(items.len() - 1) },
+            KeyCode::Up => {
+                self.mode = Mode::Actions {
+                    sel: sel.saturating_sub(1),
+                }
+            }
+            KeyCode::Down => {
+                self.mode = Mode::Actions {
+                    sel: (sel + 1).min(items.len() - 1),
+                }
+            }
             KeyCode::Enter => self.actions_run(sel),
-            KeyCode::Char(_) if !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
-                let bound = self.keymap.prefixed.get(&crate::keys::KeySpec::from_event(k));
+            KeyCode::Char(_)
+                if !k
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                let bound = self
+                    .keymap
+                    .prefixed
+                    .get(&crate::keys::KeySpec::from_event(k));
                 if let Some(i) = items.iter().position(|(_, a)| Some(a) == bound) {
                     self.actions_run(i);
                 }
@@ -126,14 +195,24 @@ impl App {
     /// A new tab of the session you're on: a shell where you are (cd and run what you like;
     /// the sidebar groups it by where it works).
     pub(in crate::client) fn new_tab_start(&mut self) {
-        let Some(owner) = self.screen.tabs.get(self.screen.tab).map(|t| t.owner).or(self.focused()) else {
+        let Some(owner) = self
+            .screen
+            .tabs
+            .get(self.screen.tab)
+            .map(|t| t.owner)
+            .or(self.focused())
+        else {
             self.notify("open a session first".into(), true);
             return;
         };
         self.screen_act(&Action::ShellHere);
         // After the command goes, which clears it: this is the one session it is for.
         let known = self.snap.terms.keys().copied().collect();
-        *self.screen.new_tab.borrow_mut() = Some(PendingTab { at: Instant::now(), owner, known });
+        *self.screen.new_tab.borrow_mut() = Some(PendingTab {
+            at: Instant::now(),
+            owner,
+            known,
+        });
     }
 
     /// Rename the session you're on, in its pill: its name is the one the sidebar, the pill and
@@ -141,7 +220,12 @@ impl App {
     pub(in crate::client) fn rename_tab_start(&mut self) {
         let i = self.screen.tab;
         if let Some(tab) = self.screen.tabs.get(i) {
-            let name = self.snap.terms.get(&tab.focus).map(|t| t.label.trim().to_string()).unwrap_or_default();
+            let name = self
+                .snap
+                .terms
+                .get(&tab.focus)
+                .map(|t| t.label.trim().to_string())
+                .unwrap_or_default();
             self.mode = Mode::RenameTab(Box::new(TabName { tab: i, name }));
         }
     }
@@ -156,8 +240,17 @@ impl App {
                     // The daemon owns the name: it outlives this view's tab being rebuilt, and
                     // `screen_sync` reads it back from the snapshot.
                     // A name an older version left on the tab would hide the session's.
-                    match self.snap.workspaces.iter().find_map(|w| w.tabs.iter().find(|t| t.layout.contains(focus)).map(|t| (w.id, t.id))) {
-                        Some((ws, tab)) => self.cmd(Command::RenameTab { ws, tab, name: String::new() }),
+                    match self.snap.workspaces.iter().find_map(|w| {
+                        w.tabs
+                            .iter()
+                            .find(|t| t.layout.contains(focus))
+                            .map(|t| (w.id, t.id))
+                    }) {
+                        Some((ws, tab)) => self.cmd(Command::RenameTab {
+                            ws,
+                            tab,
+                            name: String::new(),
+                        }),
                         None => tab.name = String::new(),
                     }
                     self.cmd(Command::RenamePane { term: focus, name });
@@ -174,7 +267,12 @@ impl App {
             KeyCode::Backspace => {
                 nt.name.pop();
             }
-            KeyCode::Char(c) if !k.modifiers.contains(KeyModifiers::CONTROL) && nt.name.chars().count() < NAME_MAX => nt.name.push(c),
+            KeyCode::Char(c)
+                if !k.modifiers.contains(KeyModifiers::CONTROL)
+                    && nt.name.chars().count() < NAME_MAX =>
+            {
+                nt.name.push(c)
+            }
             _ => {}
         }
         self.mode = Mode::RenameTab(Box::new(nt));

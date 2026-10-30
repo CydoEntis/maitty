@@ -25,7 +25,11 @@ fn install(path: PathBuf, source: &str, exe: &str, uninstall: bool) -> Result<Pa
             path.display()
         ),
         Ok(_) if uninstall => {
-            std::fs::remove_file(&path).context(concat!("remove ", env!("APP_COMMAND"), "'s status extension"))?;
+            std::fs::remove_file(&path).context(concat!(
+                "remove ",
+                env!("APP_COMMAND"),
+                "'s status extension"
+            ))?;
             return Ok(path);
         }
         Ok(_) => {}
@@ -34,10 +38,16 @@ fn install(path: PathBuf, source: &str, exe: &str, uninstall: bool) -> Result<Pa
                 return Ok(path);
             }
         }
-        Err(e) => return Err(e).context(concat!("read ", env!("APP_COMMAND"), "'s status extension")),
+        Err(e) => {
+            return Err(e).context(concat!("read ", env!("APP_COMMAND"), "'s status extension"));
+        }
     }
     let source = fill(source, exe)?;
-    crate::config::write_atomic(&path, source).context(concat!("write ", env!("APP_COMMAND"), "'s status extension"))?;
+    crate::config::write_atomic(&path, source).context(concat!(
+        "write ",
+        env!("APP_COMMAND"),
+        "'s status extension"
+    ))?;
     Ok(path)
 }
 
@@ -149,7 +159,9 @@ fn mastracode_at(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<P
             .or_insert_with(|| serde_json::json!([]))
             .as_array_mut()
             .with_context(|| format!("Mastracode {event} must be a flat array; preserved"))?;
-        entries.retain(|v| v.get(concat!("_", env!("APP_COMMAND"))) != Some(&serde_json::Value::Bool(true)));
+        entries.retain(|v| {
+            v.get(concat!("_", env!("APP_COMMAND"))) != Some(&serde_json::Value::Bool(true))
+        });
         if !uninstall {
             entries.push(serde_json::json!({concat!("_", env!("APP_COMMAND")):true,"type":"command","command":format!("\"{exe}\" hook mastracode --status {status}"),"timeout":10000}));
         }
@@ -172,8 +184,17 @@ pub(super) fn codex_hooks_at(path: &std::path::Path, exe: &str, uninstall: bool)
     codex_hooks_at_for_platform(path, exe, uninstall, cfg!(windows))
 }
 
-fn codex_hooks_at_for_platform(path: &std::path::Path, exe: &str, uninstall: bool, windows: bool) -> Result<()> {
-    const EVENTS: &[(&str, Option<&str>)] = &[("SessionStart", Some("same")), ("SubagentStart", None), ("SubagentStop", None)];
+fn codex_hooks_at_for_platform(
+    path: &std::path::Path,
+    exe: &str,
+    uninstall: bool,
+    windows: bool,
+) -> Result<()> {
+    const EVENTS: &[(&str, Option<&str>)] = &[
+        ("SessionStart", Some("same")),
+        ("SubagentStart", None),
+        ("SubagentStop", None),
+    ];
     const TIMEOUT_SECONDS: i64 = 3;
     regular_target(path)?;
     let text = match std::fs::read_to_string(path) {
@@ -181,7 +202,8 @@ fn codex_hooks_at_for_platform(path: &std::path::Path, exe: &str, uninstall: boo
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(error) => return Err(error).context("read Codex configuration"),
     };
-    let mut doc = text.parse::<toml_edit::DocumentMut>()
+    let mut doc = text
+        .parse::<toml_edit::DocumentMut>()
         .with_context(|| format!("{} has invalid TOML; preserved", path.display()))?;
     if !doc.contains_key("hooks") {
         if uninstall {
@@ -189,7 +211,9 @@ fn codex_hooks_at_for_platform(path: &std::path::Path, exe: &str, uninstall: boo
         }
         doc["hooks"] = toml_edit::Item::Table(toml_edit::Table::new());
     }
-    let hooks = doc["hooks"].as_table_mut().context("Codex hooks must be a table; preserved")?;
+    let hooks = doc["hooks"]
+        .as_table_mut()
+        .context("Codex hooks must be a table; preserved")?;
     let command = format!("{} hook codex", serde_json::to_string(exe)?);
 
     for (event, status) in EVENTS {
@@ -199,13 +223,17 @@ fn codex_hooks_at_for_platform(path: &std::path::Path, exe: &str, uninstall: boo
             }
             hooks[*event] = toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
         }
-        let entries = hooks[*event].as_array_of_tables_mut()
-            .with_context(|| format!("Codex hooks.{event} must be an array of tables; preserved"))?;
+        let entries = hooks[*event].as_array_of_tables_mut().with_context(|| {
+            format!("Codex hooks.{event} must be an array of tables; preserved")
+        })?;
         let mut owned_blocks = Vec::new();
         for (index, entry) in entries.iter_mut().enumerate() {
-            let Some(handlers) = entry.get_mut("hooks") else { continue };
-            let handlers = handlers.as_array_of_tables_mut()
-                .with_context(|| format!("Codex hooks.{event}.hooks must be an array of tables; preserved"))?;
+            let Some(handlers) = entry.get_mut("hooks") else {
+                continue;
+            };
+            let handlers = handlers.as_array_of_tables_mut().with_context(|| {
+                format!("Codex hooks.{event}.hooks must be an array of tables; preserved")
+            })?;
             let before = handlers.len();
             handlers.retain(|handler| {
                 let configured_command = handler.get("command").and_then(toml_edit::Item::as_str);
@@ -221,7 +249,10 @@ fn codex_hooks_at_for_platform(path: &std::path::Path, exe: &str, uninstall: boo
         for index in owned_blocks.into_iter().rev() {
             let only_our_empty_handlers = entries.iter().nth(index).is_some_and(|entry| {
                 entry.len() == 1
-                    && entry.get("hooks").and_then(toml_edit::Item::as_array_of_tables).is_some_and(|a| a.is_empty())
+                    && entry
+                        .get("hooks")
+                        .and_then(toml_edit::Item::as_array_of_tables)
+                        .is_some_and(|a| a.is_empty())
             });
             if only_our_empty_handlers {
                 entries.remove(index);
@@ -230,7 +261,10 @@ fn codex_hooks_at_for_platform(path: &std::path::Path, exe: &str, uninstall: boo
         if !uninstall {
             let mut handler = toml_edit::Table::new();
             handler["type"] = toml_edit::value("command");
-            let command = status.map_or_else(|| command.clone(), |status| format!("{command} --status {status}"));
+            let command = status.map_or_else(
+                || command.clone(),
+                |status| format!("{command} --status {status}"),
+            );
             handler["command"] = toml_edit::value(&command);
             if windows {
                 let windows_command = status.map_or_else(
@@ -254,7 +288,8 @@ fn codex_hooks_at_for_platform(path: &std::path::Path, exe: &str, uninstall: boo
     if hooks.is_empty() {
         doc.remove("hooks");
     }
-    super::back_up_once(path, "toml").context("back up Codex configuration before updating hooks")?;
+    super::back_up_once(path, "toml")
+        .context("back up Codex configuration before updating hooks")?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).context("create Codex configuration directory")?;
     }
@@ -281,7 +316,12 @@ fn kimi_at(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<PathBuf
     let hooks = doc["hooks"]
         .as_array_of_tables_mut()
         .context("Kimi hooks must be an array of tables; preserved")?;
-    hooks.retain(|table| table.get(concat!("_", env!("APP_COMMAND"))).and_then(toml_edit::Item::as_bool) != Some(true));
+    hooks.retain(|table| {
+        table
+            .get(concat!("_", env!("APP_COMMAND")))
+            .and_then(toml_edit::Item::as_bool)
+            != Some(true)
+    });
     if !uninstall {
         for (event, status) in [
             ("SessionStart", "same"),
@@ -350,14 +390,23 @@ fn install_opencode_at(
 ) -> Result<PathBuf> {
     opencode_config::validate_tui_plugin_config(dir)?;
     let assets = [
-        (dir.join(concat!("plugins/", env!("APP_COMMAND"), ".js")), include_str!("opencode.js")),
+        (
+            dir.join(concat!("plugins/", env!("APP_COMMAND"), ".js")),
+            include_str!("opencode.js"),
+        ),
         (
             dir.join(concat!(env!("APP_COMMAND"), "-tui-session.js")),
             include_str!("opencode-tui.js"),
         ),
         (
             dir.join(concat!(env!("APP_COMMAND"), "-opencode/tui.js")),
-            concat!("// Written by `", env!("APP_COMMAND"), " integrate opencode`: TUI v2 entrypoint.\nexport { default } from '../", env!("APP_COMMAND"), "-tui-session.js';\n"),
+            concat!(
+                "// Written by `",
+                env!("APP_COMMAND"),
+                " integrate opencode`: TUI v2 entrypoint.\nexport { default } from '../",
+                env!("APP_COMMAND"),
+                "-tui-session.js';\n"
+            ),
         ),
     ];
     for (path, _) in &assets {
@@ -372,15 +421,25 @@ fn install_opencode_at(
         }
     }
     if uninstall {
-        opencode_config::remove_tui_plugin(dir, concat!("./", env!("APP_COMMAND"), "-tui-session.js"))?;
+        opencode_config::remove_tui_plugin(
+            dir,
+            concat!("./", env!("APP_COMMAND"), "-tui-session.js"),
+        )?;
         opencode_config::remove_cli_plugin(dir, concat!("./", env!("APP_COMMAND"), "-opencode"))?;
     }
     for (path, source) in assets {
         install(path, source, exe, uninstall)?;
     }
     if !uninstall {
-        opencode_config::add_tui_plugin(dir, concat!("./", env!("APP_COMMAND"), "-tui-session.js"))?;
-        opencode_config::add_cli_plugin(dir, state, concat!("./", env!("APP_COMMAND"), "-opencode"))?;
+        opencode_config::add_tui_plugin(
+            dir,
+            concat!("./", env!("APP_COMMAND"), "-tui-session.js"),
+        )?;
+        opencode_config::add_cli_plugin(
+            dir,
+            state,
+            concat!("./", env!("APP_COMMAND"), "-opencode"),
+        )?;
     }
     Ok(dir.join(concat!("plugins/", env!("APP_COMMAND"), ".js")))
 }
@@ -396,35 +455,84 @@ pub(crate) struct StatusAgent {
 
 /// The one list both the CLI and the Connect agents menu offer, so they can't disagree.
 pub(crate) const STATUS_AGENTS: &[StatusAgent] = &[
-    StatusAgent { id: "claude", name: "Claude Code", install: |_, uninstall| super::claude_hooks(uninstall) },
-    StatusAgent { id: "codex", name: "Codex", install: install_codex },
+    StatusAgent {
+        id: "claude",
+        name: "Claude Code",
+        install: |_, uninstall| super::claude_hooks(uninstall),
+    },
+    StatusAgent {
+        id: "codex",
+        name: "Codex",
+        install: install_codex,
+    },
     // Gemini counts its hook timeout in milliseconds.
     StatusAgent {
         id: "gemini",
         name: "Gemini CLI",
         install: |_, uninstall| {
-            super::json_hooks(&super::home_settings("GEMINI_CLI_HOME", ".gemini"), "gemini", super::GEMINI_EVENTS, 5000, uninstall)
+            super::json_hooks(
+                &super::home_settings("GEMINI_CLI_HOME", ".gemini"),
+                "gemini",
+                super::GEMINI_EVENTS,
+                5000,
+                uninstall,
+            )
         },
     },
     // Qwen Code copies Claude's events, and its seconds.
     StatusAgent {
         id: "qwen",
         name: "Qwen Code",
-        install: |_, uninstall| super::json_hooks(&super::qwen_settings(), "qwen", super::CLAUDE_EVENTS, 10, uninstall),
+        install: |_, uninstall| {
+            super::json_hooks(
+                &super::qwen_settings(),
+                "qwen",
+                super::CLAUDE_EVENTS,
+                10,
+                uninstall,
+            )
+        },
     },
-    StatusAgent { id: "opencode", name: "OpenCode", install: install_opencode },
-    StatusAgent { id: "pi", name: "Pi", install: install_pi },
-    StatusAgent { id: "omp", name: "OMP", install: install_omp },
-    StatusAgent { id: "kilo", name: "Kilo", install: install_kilo },
-    StatusAgent { id: "kimi", name: "Kimi", install: install_kimi },
-    StatusAgent { id: "mastracode", name: "Mastra Code", install: install_mastracode },
+    StatusAgent {
+        id: "opencode",
+        name: "OpenCode",
+        install: install_opencode,
+    },
+    StatusAgent {
+        id: "pi",
+        name: "Pi",
+        install: install_pi,
+    },
+    StatusAgent {
+        id: "omp",
+        name: "OMP",
+        install: install_omp,
+    },
+    StatusAgent {
+        id: "kilo",
+        name: "Kilo",
+        install: install_kilo,
+    },
+    StatusAgent {
+        id: "kimi",
+        name: "Kimi",
+        install: install_kimi,
+    },
+    StatusAgent {
+        id: "mastracode",
+        name: "Mastra Code",
+        install: install_mastracode,
+    },
 ];
 
 /// The function that sets up `agent`'s status, or why there is none.
 pub(crate) fn status_installer(agent: &str) -> Result<Install> {
     match STATUS_AGENTS.iter().find(|a| a.id == agent) {
         Some(a) => Ok(a.install),
-        None => bail!("no integration for `{agent}`; any agent can call `{} hook {agent} --status <working|blocked|done|idle>`", env!("APP_COMMAND")),
+        None => bail!(
+            "no integration for `{agent}`; any agent can call `{} hook {agent} --status <working|blocked|done|idle>`",
+            env!("APP_COMMAND")
+        ),
     }
 }
 
@@ -518,7 +626,11 @@ fn status_file(agent: &str) -> Result<PathBuf> {
 
 fn config_dir(agent: &str) -> Result<PathBuf> {
     // These adapters sit in a subfolder (`extensions/`, `plugin/`, `plugins/`) of the agent's folder.
-    let depth = if matches!(agent, "pi" | "omp" | "kilo" | "opencode") { 2 } else { 1 };
+    let depth = if matches!(agent, "pi" | "omp" | "kilo" | "opencode") {
+        2
+    } else {
+        1
+    };
     status_file(agent)?
         .ancestors()
         .nth(depth)
@@ -580,7 +692,10 @@ pub(crate) fn status_adapter_installed(agent: &str, path: &std::path::Path) -> b
                 hooks.values().any(|entries| {
                     entries.as_array().is_some_and(|entries| {
                         entries.iter().any(|entry| {
-                            entry.get(concat!("_", env!("APP_COMMAND"))).and_then(serde_json::Value::as_bool) == Some(true)
+                            entry
+                                .get(concat!("_", env!("APP_COMMAND")))
+                                .and_then(serde_json::Value::as_bool)
+                                == Some(true)
                         })
                     })
                 })
@@ -591,7 +706,9 @@ pub(crate) fn status_adapter_installed(agent: &str, path: &std::path::Path) -> b
             .and_then(|hooks| hooks.as_array().cloned())
             .is_some_and(|hooks| {
                 hooks.iter().any(|hook| {
-                    hook.get(concat!("_", env!("APP_COMMAND"))).and_then(toml::Value::as_bool) == Some(true)
+                    hook.get(concat!("_", env!("APP_COMMAND")))
+                        .and_then(toml::Value::as_bool)
+                        == Some(true)
                 })
             }),
         _ => false,
@@ -610,27 +727,45 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let plugin = dir.join(concat!(env!("APP_COMMAND"), ".js"));
-        std::fs::write(&plugin, concat!("// Written by `", env!("APP_COMMAND"), " integrate pi`\n")).unwrap();
+        std::fs::write(
+            &plugin,
+            concat!("// Written by `", env!("APP_COMMAND"), " integrate pi`\n"),
+        )
+        .unwrap();
         assert!(status_adapter_installed("pi", &plugin));
         std::fs::write(&plugin, "// a different extension\n").unwrap();
         assert!(!status_adapter_installed("pi", &plugin));
 
         let mastra = dir.join("hooks.json");
-        std::fs::write(&mastra, concat!(r#"{"hooks":{"Stop":[{"_"#, env!("APP_COMMAND"), r#"":true}]}}"#)).unwrap();
+        std::fs::write(
+            &mastra,
+            concat!(
+                r#"{"hooks":{"Stop":[{"_"#,
+                env!("APP_COMMAND"),
+                r#"":true}]}}"#
+            ),
+        )
+        .unwrap();
         assert!(status_adapter_installed("mastracode", &mastra));
         std::fs::write(&mastra, r#"{"hooks":{"Stop":[{"command":"mine"}]}}"#).unwrap();
         assert!(!status_adapter_installed("mastracode", &mastra));
 
         let kimi = dir.join("config.toml");
-        std::fs::write(&kimi, concat!("[[hooks]]\n_", env!("APP_COMMAND"), " = true\n")).unwrap();
+        std::fs::write(
+            &kimi,
+            concat!("[[hooks]]\n_", env!("APP_COMMAND"), " = true\n"),
+        )
+        .unwrap();
         assert!(status_adapter_installed("kimi", &kimi));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn opencode_setup_preserves_jsonc_and_migration_then_removes_only_our_entries() {
-        let dir =
-            std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-opencode-config-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-opencode-config-{}"),
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let state = dir.join("state");
         let config = dir.join("tui.jsonc");
@@ -654,7 +789,10 @@ mod tests {
         let removed = std::fs::read_to_string(&config).unwrap();
         assert!(removed.contains("my-plugin") && removed.contains("// keep my theme"));
         assert!(!removed.contains(concat!(env!("APP_COMMAND"), "-tui-session")));
-        assert!(!dir.join(concat!("plugins/", env!("APP_COMMAND"), ".js")).exists());
+        assert!(
+            !dir.join(concat!("plugins/", env!("APP_COMMAND"), ".js"))
+                .exists()
+        );
         std::fs::write(dir.join("tui.json"), "{\"theme\":\"keep-for-migration\"}").unwrap();
         std::fs::remove_file(dir.join("cli.json")).unwrap();
         install_opencode_at(&dir, &state, concat!("/bin/", env!("APP_COMMAND")), false).unwrap();
@@ -664,9 +802,13 @@ mod tests {
         );
         install_opencode_at(&dir, &state, concat!("/bin/", env!("APP_COMMAND")), true).unwrap();
         std::fs::write(&config, "{\"plugin\":false}").unwrap();
-        assert!(install_opencode_at(&dir, &state, concat!("/bin/", env!("APP_COMMAND")), false).is_err());
         assert!(
-            !dir.join(concat!("plugins/", env!("APP_COMMAND"), ".js")).exists(),
+            install_opencode_at(&dir, &state, concat!("/bin/", env!("APP_COMMAND")), false)
+                .is_err()
+        );
+        assert!(
+            !dir.join(concat!("plugins/", env!("APP_COMMAND"), ".js"))
+                .exists(),
             "invalid config must fail before writing assets"
         );
         std::fs::remove_dir_all(dir).unwrap();
@@ -674,7 +816,10 @@ mod tests {
 
     #[test]
     fn native_hook_configs_preserve_custom_hooks_and_use_each_apps_schema() {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-native-config-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-native-config-{}"),
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let mastra = dir.join("hooks.json");
         std::fs::write(
@@ -689,8 +834,18 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&mastra).unwrap()).unwrap();
         assert_eq!(root["hooks"]["Stop"].as_array().unwrap().len(), 2);
         assert_eq!(root["hooks"]["PermissionRequest"][0]["timeout"], 10000);
-        assert!(root["hooks"]["SubagentStart"][0]["command"].as_str().unwrap().ends_with("--status working"));
-        assert!(root["hooks"]["SubagentEnd"][0]["command"].as_str().unwrap().ends_with("--status same"));
+        assert!(
+            root["hooks"]["SubagentStart"][0]["command"]
+                .as_str()
+                .unwrap()
+                .ends_with("--status working")
+        );
+        assert!(
+            root["hooks"]["SubagentEnd"][0]["command"]
+                .as_str()
+                .unwrap()
+                .ends_with("--status same")
+        );
         assert!(
             root["hooks"]["PermissionRequest"][0].get("hooks").is_none(),
             "Mastracode uses flat command arrays"
@@ -708,8 +863,20 @@ mod tests {
         let text = std::fs::read_to_string(&kimi).unwrap();
         assert!(text.contains("# keep my config"));
         let root: toml::Value = toml::from_str(&text).unwrap();
-        assert!(root["hooks"].as_array().unwrap().iter().any(|hook| hook["event"].as_str() == Some("SubagentStart")));
-        assert!(root["hooks"].as_array().unwrap().iter().any(|hook| hook["event"].as_str() == Some("SubagentStop")));
+        assert!(
+            root["hooks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|hook| hook["event"].as_str() == Some("SubagentStart"))
+        );
+        assert!(
+            root["hooks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|hook| hook["event"].as_str() == Some("SubagentStop"))
+        );
         kimi_at(&kimi, concat!("/bin/", env!("APP_COMMAND")), true).unwrap();
         let root: toml::Value = toml::from_str(&std::fs::read_to_string(&kimi).unwrap()).unwrap();
         assert_eq!(root["hooks"].as_array().unwrap().len(), 1);
@@ -719,64 +886,169 @@ mod tests {
 
     #[test]
     fn codex_subagent_hooks_are_live_idempotent_and_leave_other_hooks_intact() {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-codex-hooks-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-codex-hooks-{}"),
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
         std::fs::write(&path, "# keep my settings\nmodel = \"gpt-5\"\nnotify = [\"my-notifier\"]\n[[hooks.SubagentStart]]\nmatcher = \"reviewer\"\n[[hooks.SubagentStart.hooks]]\ntype = \"command\"\ncommand = \"my-start-hook\"\n").unwrap();
 
-        codex_hooks_at_for_platform(&path, concat!(r#"C:\Program Files\"#, env!("APP_NAME"), r#"\"#, env!("APP_COMMAND"), r#".exe"#), false, true).unwrap();
+        codex_hooks_at_for_platform(
+            &path,
+            concat!(
+                r#"C:\Program Files\"#,
+                env!("APP_NAME"),
+                r#"\"#,
+                env!("APP_COMMAND"),
+                r#".exe"#
+            ),
+            false,
+            true,
+        )
+        .unwrap();
         let first = std::fs::read_to_string(&path).unwrap();
-        codex_hooks_at_for_platform(&path, concat!(r#"C:\Program Files\"#, env!("APP_NAME"), r#"\"#, env!("APP_COMMAND"), r#".exe"#), false, true).unwrap();
+        codex_hooks_at_for_platform(
+            &path,
+            concat!(
+                r#"C:\Program Files\"#,
+                env!("APP_NAME"),
+                r#"\"#,
+                env!("APP_COMMAND"),
+                r#".exe"#
+            ),
+            false,
+            true,
+        )
+        .unwrap();
         let second = std::fs::read_to_string(&path).unwrap();
         assert_eq!(first, second, "setup is idempotent");
         assert!(second.contains("# keep my settings") && second.contains("my-notifier"));
         let config: toml::Value = toml::from_str(&second).unwrap();
         for event in ["SessionStart", "SubagentStart", "SubagentStop"] {
             let entries = config["hooks"][event].as_array().unwrap();
-            let app_handlers: Vec<_> = entries.iter().flat_map(|entry| {
-                entry["hooks"].as_array().into_iter().flatten()
-            }).filter(|handler| {
-                handler["command"].as_str().is_some_and(|command| command.contains("hook codex"))
-            }).collect();
+            let app_handlers: Vec<_> = entries
+                .iter()
+                .flat_map(|entry| entry["hooks"].as_array().into_iter().flatten())
+                .filter(|handler| {
+                    handler["command"]
+                        .as_str()
+                        .is_some_and(|command| command.contains("hook codex"))
+                })
+                .collect();
             assert_eq!(app_handlers.len(), 1, "one live handler for {event}");
             let command = app_handlers[0]["command"].as_str().unwrap();
             if event == "SessionStart" {
                 assert!(command.ends_with("hook codex --status same"));
-                assert_eq!(app_handlers[0]["commandWindows"].as_str(), Some(concat!(r#"& "C:\Program Files\"#, env!("APP_NAME"), r#"\"#, env!("APP_COMMAND"), r#".exe" hook codex --status same"#)));
+                assert_eq!(
+                    app_handlers[0]["commandWindows"].as_str(),
+                    Some(concat!(
+                        r#"& "C:\Program Files\"#,
+                        env!("APP_NAME"),
+                        r#"\"#,
+                        env!("APP_COMMAND"),
+                        r#".exe" hook codex --status same"#
+                    ))
+                );
             } else {
                 assert!(command.ends_with("hook codex"));
-                assert_eq!(app_handlers[0]["commandWindows"].as_str(), Some(concat!(r#"& "C:\Program Files\"#, env!("APP_NAME"), r#"\"#, env!("APP_COMMAND"), r#".exe" hook codex"#)));
+                assert_eq!(
+                    app_handlers[0]["commandWindows"].as_str(),
+                    Some(concat!(
+                        r#"& "C:\Program Files\"#,
+                        env!("APP_NAME"),
+                        r#"\"#,
+                        env!("APP_COMMAND"),
+                        r#".exe" hook codex"#
+                    ))
+                );
             }
         }
-        assert_eq!(config["hooks"]["SubagentStart"][0]["matcher"].as_str(), Some("reviewer"));
-        assert_eq!(config["hooks"]["SubagentStart"][0]["hooks"][0]["command"].as_str(), Some("my-start-hook"));
+        assert_eq!(
+            config["hooks"]["SubagentStart"][0]["matcher"].as_str(),
+            Some("reviewer")
+        );
+        assert_eq!(
+            config["hooks"]["SubagentStart"][0]["hooks"][0]["command"].as_str(),
+            Some("my-start-hook")
+        );
 
-        codex_hooks_at(&path, concat!(r#"C:\Program Files\"#, env!("APP_NAME"), r#"\"#, env!("APP_COMMAND"), r#".exe"#), true).unwrap();
+        codex_hooks_at(
+            &path,
+            concat!(
+                r#"C:\Program Files\"#,
+                env!("APP_NAME"),
+                r#"\"#,
+                env!("APP_COMMAND"),
+                r#".exe"#
+            ),
+            true,
+        )
+        .unwrap();
         let removed = std::fs::read_to_string(&path).unwrap();
-        assert!(removed.contains("# keep my settings") && removed.contains("my-notifier") && removed.contains("my-start-hook"));
-        assert!(!removed.contains("hook codex"), concat!("only ", env!("APP_COMMAND"), "'s hooks are removed"));
+        assert!(
+            removed.contains("# keep my settings")
+                && removed.contains("my-notifier")
+                && removed.contains("my-start-hook")
+        );
+        assert!(
+            !removed.contains("hook codex"),
+            concat!("only ", env!("APP_COMMAND"), "'s hooks are removed")
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn codex_linux_hooks_keep_the_bash_command_and_capture_the_root_thread() {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-codex-linux-hooks-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-codex-linux-hooks-{}"),
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
-        codex_hooks_at_for_platform(&path, concat!("/home/test/.local/bin/", env!("APP_COMMAND")), false, false).unwrap();
+        codex_hooks_at_for_platform(
+            &path,
+            concat!("/home/test/.local/bin/", env!("APP_COMMAND")),
+            false,
+            false,
+        )
+        .unwrap();
         let config: toml::Value = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         let start = &config["hooks"]["SessionStart"][0]["hooks"][0];
-        assert_eq!(start["command"].as_str(), Some(concat!("\"/home/test/.local/bin/", env!("APP_COMMAND"), "\" hook codex --status same")));
-        assert!(start.get("commandWindows").is_none(), "Linux config must not contain a PowerShell command");
+        assert_eq!(
+            start["command"].as_str(),
+            Some(concat!(
+                "\"/home/test/.local/bin/",
+                env!("APP_COMMAND"),
+                "\" hook codex --status same"
+            ))
+        );
+        assert!(
+            start.get("commandWindows").is_none(),
+            "Linux config must not contain a PowerShell command"
+        );
         assert!(config["hooks"].get("SubagentStart").is_some());
         assert!(config["hooks"].get("SubagentStop").is_some());
-        codex_hooks_at_for_platform(&path, concat!("/home/test/.local/bin/", env!("APP_COMMAND")), true, false).unwrap();
-        assert!(!std::fs::read_to_string(&path).unwrap().contains("hook codex"));
+        codex_hooks_at_for_platform(
+            &path,
+            concat!("/home/test/.local/bin/", env!("APP_COMMAND")),
+            true,
+            false,
+        )
+        .unwrap();
+        assert!(
+            !std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("hook codex")
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     /// `set_up_every` on a machine with Kimi, Mastra Code and a broken Codex, all under `dir`.
-    fn set_up_every_in(dir: &std::path::Path, uninstall: bool) -> (Vec<(&'static str, Outcome)>, Vec<&'static str>) {
+    fn set_up_every_in(
+        dir: &std::path::Path,
+        uninstall: bool,
+    ) -> (Vec<(&'static str, Outcome)>, Vec<&'static str>) {
         let exe = concat!("/bin/", env!("APP_COMMAND"));
         let kimi = dir.join("kimi/config.toml");
         let mastra = dir.join("mastracode/hooks.json");
@@ -792,18 +1064,31 @@ mod tests {
                 }
             },
         );
-        (results.into_iter().map(|(agent, outcome)| (agent.id, outcome)).collect(), tried)
+        (
+            results
+                .into_iter()
+                .map(|(agent, outcome)| (agent.id, outcome))
+                .collect(),
+            tried,
+        )
     }
 
     #[test]
     fn integrating_every_agent_touches_only_installed_ones_and_keeps_going_past_a_failure() {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-every-agent-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-every-agent-{}"),
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         for agent in ["kimi", "mastracode"] {
             std::fs::create_dir_all(dir.join(agent)).unwrap();
         }
         let (results, tried) = set_up_every_in(&dir, false);
-        assert_eq!(tried, ["codex", "kimi", "mastracode"], "agents that aren't installed are never touched");
+        assert_eq!(
+            tried,
+            ["codex", "kimi", "mastracode"],
+            "agents that aren't installed are never touched"
+        );
         for (id, outcome) in &results {
             let expected = match *id {
                 "codex" => Outcome::Failed("config is broken".into()),
@@ -813,26 +1098,59 @@ mod tests {
             assert_eq!(*outcome, expected, "{id}");
         }
         assert_eq!(results.len(), STATUS_AGENTS.len());
-        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2, "no folder made for a missing agent");
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            2,
+            "no folder made for a missing agent"
+        );
 
         let (again, _) = set_up_every_in(&dir, false);
-        assert!(again.iter().filter(|(id, _)| *id != "codex").all(|(_, o)| *o != Outcome::Changed), "a second run changes nothing");
+        assert!(
+            again
+                .iter()
+                .filter(|(id, _)| *id != "codex")
+                .all(|(_, o)| *o != Outcome::Changed),
+            "a second run changes nothing"
+        );
 
         let (removed, _) = set_up_every_in(&dir, true);
-        assert!(removed.iter().any(|(id, o)| *id == "kimi" && *o == Outcome::Changed));
-        assert!(!std::fs::read_to_string(dir.join("kimi/config.toml")).unwrap().contains("hook kimi"));
-        assert!(!std::fs::read_to_string(dir.join("mastracode/hooks.json")).unwrap().contains("hook mastracode"));
+        assert!(
+            removed
+                .iter()
+                .any(|(id, o)| *id == "kimi" && *o == Outcome::Changed)
+        );
+        assert!(
+            !std::fs::read_to_string(dir.join("kimi/config.toml"))
+                .unwrap()
+                .contains("hook kimi")
+        );
+        assert!(
+            !std::fs::read_to_string(dir.join("mastracode/hooks.json"))
+                .unwrap()
+                .contains("hook mastracode")
+        );
         let (none_left, _) = set_up_every_in(&dir, true);
-        assert!(none_left.iter().all(|(_, o)| matches!(o, Outcome::Unchanged | Outcome::NotInstalled | Outcome::Failed(_))));
+        assert!(none_left.iter().all(|(_, o)| matches!(
+            o,
+            Outcome::Unchanged | Outcome::NotInstalled | Outcome::Failed(_)
+        )));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn status_extensions_preserve_other_files_and_quote_executable_paths() {
-        let dir =
-            std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-status-extension-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-status-extension-{}"),
+            std::process::id()
+        ));
         let path = dir.join(concat!("extensions/", env!("APP_COMMAND"), ".js"));
-        let exe = concat!(r#"C:\Program Files\"#, env!("APP_COMMAND"), r#"\"#, env!("APP_COMMAND"), r#".exe"#);
+        let exe = concat!(
+            r#"C:\Program Files\"#,
+            env!("APP_COMMAND"),
+            r#"\"#,
+            env!("APP_COMMAND"),
+            r#".exe"#
+        );
         let source = include_str!("pi.js");
         install(path.clone(), source, exe, false).unwrap();
         let written = std::fs::read_to_string(&path).unwrap();

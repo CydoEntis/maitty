@@ -23,7 +23,12 @@ impl Dir {
 pub enum Node {
     Leaf(TermId),
     /// `horizontal`: children side by side (`a` left of `b`); otherwise `a` above `b`.
-    Split { horizontal: bool, ratio: f32, a: Box<Node>, b: Box<Node> },
+    Split {
+        horizontal: bool,
+        ratio: f32,
+        a: Box<Node>,
+        b: Box<Node>,
+    },
 }
 
 impl Node {
@@ -83,8 +88,18 @@ impl Node {
         match self {
             Node::Leaf(id) if id == target => None,
             leaf @ Node::Leaf(_) => Some(leaf),
-            Node::Split { horizontal, ratio, a, b } => match (a.remove(target), b.remove(target)) {
-                (Some(a), Some(b)) => Some(Node::Split { horizontal, ratio, a: Box::new(a), b: Box::new(b) }),
+            Node::Split {
+                horizontal,
+                ratio,
+                a,
+                b,
+            } => match (a.remove(target), b.remove(target)) {
+                (Some(a), Some(b)) => Some(Node::Split {
+                    horizontal,
+                    ratio,
+                    a: Box::new(a),
+                    b: Box::new(b),
+                }),
                 (Some(n), None) | (None, Some(n)) => Some(n),
                 (None, None) => None,
             },
@@ -97,7 +112,15 @@ impl Node {
         if a == b || !self.contains(a) || !self.contains(b) {
             return false;
         }
-        self.relabel(&|id| if id == a { b } else if id == b { a } else { id });
+        self.relabel(&|id| {
+            if id == a {
+                b
+            } else if id == b {
+                a
+            } else {
+                id
+            }
+        });
         true
     }
 
@@ -115,10 +138,18 @@ impl Node {
     pub fn map_leaves(&self, f: &mut impl FnMut(TermId) -> Option<TermId>) -> Option<Node> {
         match self {
             Node::Leaf(id) => f(*id).map(Node::Leaf),
-            Node::Split { horizontal, ratio, a, b } => match (a.map_leaves(f), b.map_leaves(f)) {
-                (Some(a), Some(b)) => {
-                    Some(Node::Split { horizontal: *horizontal, ratio: *ratio, a: Box::new(a), b: Box::new(b) })
-                }
+            Node::Split {
+                horizontal,
+                ratio,
+                a,
+                b,
+            } => match (a.map_leaves(f), b.map_leaves(f)) {
+                (Some(a), Some(b)) => Some(Node::Split {
+                    horizontal: *horizontal,
+                    ratio: *ratio,
+                    a: Box::new(a),
+                    b: Box::new(b),
+                }),
                 (Some(n), None) | (None, Some(n)) => Some(n),
                 (None, None) => None,
             },
@@ -127,7 +158,13 @@ impl Node {
 
     /// Move the divider of the nearest split on `dir`'s axis that encloses `target`.
     pub fn resize(&mut self, target: TermId, dir: Dir, delta: f32) -> bool {
-        let Node::Split { horizontal, ratio, a, b } = self else {
+        let Node::Split {
+            horizontal,
+            ratio,
+            a,
+            b,
+        } = self
+        else {
             return false;
         };
         let in_a = a.contains(target);
@@ -142,7 +179,11 @@ impl Node {
         if *horizontal != dir.horizontal() {
             return false;
         }
-        let sign = if matches!(dir, Dir::Right | Dir::Down) { 1.0 } else { -1.0 };
+        let sign = if matches!(dir, Dir::Right | Dir::Down) {
+            1.0
+        } else {
+            -1.0
+        };
         *ratio = (*ratio + sign * delta).clamp(0.1, 0.9);
         true
     }
@@ -155,8 +196,19 @@ impl Node {
         out
     }
 
-    fn collect_splits(&self, area: Rect, path: &mut Vec<bool>, out: &mut Vec<(Rect, bool, Vec<bool>)>) {
-        if let Node::Split { horizontal, ratio, a, b } = self {
+    fn collect_splits(
+        &self,
+        area: Rect,
+        path: &mut Vec<bool>,
+        out: &mut Vec<(Rect, bool, Vec<bool>)>,
+    ) {
+        if let Node::Split {
+            horizontal,
+            ratio,
+            a,
+            b,
+        } = self
+        {
             out.push((area, *horizontal, path.clone()));
             let (ra, rb) = split_rect(area, *horizontal, *ratio);
             path.push(false);
@@ -172,7 +224,9 @@ impl Node {
     pub fn set_ratio(&mut self, path: &[bool], to: f32) {
         match (self, path.split_first()) {
             (Node::Split { ratio, .. }, None) => *ratio = to.clamp(0.1, 0.9),
-            (Node::Split { a, b, .. }, Some((side, rest))) => (if *side { b } else { a }).set_ratio(rest, to),
+            (Node::Split { a, b, .. }, Some((side, rest))) => {
+                (if *side { b } else { a }).set_ratio(rest, to)
+            }
             _ => {}
         }
     }
@@ -181,9 +235,17 @@ impl Node {
     pub fn divider(area: Rect, horizontal: bool, ratio: f32) -> Rect {
         let (ra, _) = split_rect(area, horizontal, ratio);
         if horizontal {
-            Rect { x: ra.right().saturating_sub(1), width: 1, ..area }
+            Rect {
+                x: ra.right().saturating_sub(1),
+                width: 1,
+                ..area
+            }
         } else {
-            Rect { y: ra.bottom().saturating_sub(1), height: 1, ..area }
+            Rect {
+                y: ra.bottom().saturating_sub(1),
+                height: 1,
+                ..area
+            }
         }
     }
 
@@ -191,7 +253,9 @@ impl Node {
     pub fn ratio_at(&self, path: &[bool]) -> Option<f32> {
         match (self, path.split_first()) {
             (Node::Split { ratio, .. }, None) => Some(*ratio),
-            (Node::Split { a, b, .. }, Some((side, rest))) => (if *side { b } else { a }).ratio_at(rest),
+            (Node::Split { a, b, .. }, Some((side, rest))) => {
+                (if *side { b } else { a }).ratio_at(rest)
+            }
             _ => None,
         }
     }
@@ -205,7 +269,12 @@ impl Node {
     fn layout(&self, area: Rect, out: &mut Vec<(TermId, Rect)>) {
         match self {
             Node::Leaf(id) => out.push((*id, area)),
-            Node::Split { horizontal, ratio, a, b } => {
+            Node::Split {
+                horizontal,
+                ratio,
+                a,
+                b,
+            } => {
                 let (ra, rb) = split_rect(area, *horizontal, *ratio);
                 a.layout(ra, out);
                 b.layout(rb, out);
@@ -223,13 +292,27 @@ fn split_rect(area: Rect, horizontal: bool, ratio: f32) -> (Rect, Rect) {
     };
     if horizontal {
         (
-            Rect { width: first, ..area },
-            Rect { x: area.x + first, width: area.width - first, ..area },
+            Rect {
+                width: first,
+                ..area
+            },
+            Rect {
+                x: area.x + first,
+                width: area.width - first,
+                ..area
+            },
         )
     } else {
         (
-            Rect { height: first, ..area },
-            Rect { y: area.y + first, height: area.height - first, ..area },
+            Rect {
+                height: first,
+                ..area
+            },
+            Rect {
+                y: area.y + first,
+                height: area.height - first,
+                ..area
+            },
         )
     }
 }
@@ -243,10 +326,18 @@ pub fn neighbor(rects: &[(TermId, Rect)], from: TermId, dir: Dir) -> Option<Term
         .filter(|(id, _)| *id != from)
         .filter_map(|(id, r)| {
             let (gap, shared) = match dir {
-                Dir::Right if r.x >= f.right() => (r.x - f.right(), overlap(f.y, f.bottom(), r.y, r.bottom())),
-                Dir::Left if r.right() <= f.x => (f.x - r.right(), overlap(f.y, f.bottom(), r.y, r.bottom())),
-                Dir::Down if r.y >= f.bottom() => (r.y - f.bottom(), overlap(f.x, f.right(), r.x, r.right())),
-                Dir::Up if r.bottom() <= f.y => (f.y - r.bottom(), overlap(f.x, f.right(), r.x, r.right())),
+                Dir::Right if r.x >= f.right() => {
+                    (r.x - f.right(), overlap(f.y, f.bottom(), r.y, r.bottom()))
+                }
+                Dir::Left if r.right() <= f.x => {
+                    (f.x - r.right(), overlap(f.y, f.bottom(), r.y, r.bottom()))
+                }
+                Dir::Down if r.y >= f.bottom() => {
+                    (r.y - f.bottom(), overlap(f.x, f.right(), r.x, r.right()))
+                }
+                Dir::Up if r.bottom() <= f.y => {
+                    (f.y - r.bottom(), overlap(f.x, f.right(), r.x, r.right()))
+                }
                 _ => return None,
             };
             (shared > 0).then_some((gap, std::cmp::Reverse(shared), *id))
@@ -315,13 +406,25 @@ mod tests {
         n.set_ratio(&[], 0.3);
         n.set_ratio(&[true], 0.75);
         let before = n.rects(area);
-        let rect = |rects: &[(TermId, Rect)], id| rects.iter().find(|(t, _)| *t == id).map(|(_, r)| *r);
+        let rect =
+            |rects: &[(TermId, Rect)], id| rects.iter().find(|(t, _)| *t == id).map(|(_, r)| *r);
         assert!(n.swap(1, 3));
         let after = n.rects(area);
-        assert_eq!(rect(&after, 3), rect(&before, 1), "3 takes 1's slot, size and all");
+        assert_eq!(
+            rect(&after, 3),
+            rect(&before, 1),
+            "3 takes 1's slot, size and all"
+        );
         assert_eq!(rect(&after, 1), rect(&before, 3));
-        assert_eq!(rect(&after, 2), rect(&before, 2), "the pane not swapped stays");
-        assert_eq!((n.ratio_at(&[]), n.ratio_at(&[true])), (Some(0.3), Some(0.75)));
+        assert_eq!(
+            rect(&after, 2),
+            rect(&before, 2),
+            "the pane not swapped stays"
+        );
+        assert_eq!(
+            (n.ratio_at(&[]), n.ratio_at(&[true])),
+            (Some(0.3), Some(0.75))
+        );
     }
 
     #[test]
@@ -340,7 +443,9 @@ mod tests {
         let mut n = Node::Leaf(1);
         n.split(1, Dir::Right, 2);
         assert!(n.resize(1, Dir::Right, 0.1));
-        let Node::Split { ratio, .. } = n else { panic!() };
+        let Node::Split { ratio, .. } = n else {
+            panic!()
+        };
         assert!((ratio - 0.6).abs() < 1e-6);
         let mut n = Node::Leaf(1);
         n.split(1, Dir::Right, 2);

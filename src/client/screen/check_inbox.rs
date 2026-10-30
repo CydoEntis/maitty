@@ -15,18 +15,23 @@ const EXIT_NOT_FOUND: i32 = 127;
 /// Where a session's check puts it in the Inbox, if anywhere. A failure stays until a later
 /// run replaces it, even after you have looked; unchecked work is listed only until you look.
 pub(super) fn row(s: &Session) -> Option<GoRow> {
+    let term = s.native_term?;
     let info = check::shown(s)?;
     match info.state {
-        CheckState::Failed => Some(GoRow::Failed(s.term)),
-        CheckState::NeedsApproval => Some(GoRow::Approve(s.term)),
-        CheckState::CouldNotRun if s.status == Status::Done => Some(GoRow::NotRun(s.term)),
+        CheckState::Failed => Some(GoRow::Failed(term)),
+        CheckState::NeedsApproval => Some(GoRow::Approve(term)),
+        CheckState::CouldNotRun if s.status == Status::Done => Some(GoRow::NotRun(term)),
         _ => None,
     }
 }
 
 /// The rows of one group, the longest waiting first like the others.
 pub(super) fn rows(model: &[Proj], want: fn(&GoRow) -> bool) -> Vec<GoRow> {
-    let mut found: Vec<(u64, GoRow)> = model.iter().flat_map(Proj::sessions).filter_map(|s| row(s).filter(want).map(|r| (s.since, r))).collect();
+    let mut found: Vec<(u64, GoRow)> = model
+        .iter()
+        .flat_map(Proj::sessions)
+        .filter_map(|s| row(s).filter(want).map(|r| (s.since, r)))
+        .collect();
     found.sort_by_key(|(since, row)| (*since, row.term()));
     found.into_iter().map(|(_, row)| row).collect()
 }
@@ -72,7 +77,11 @@ pub(super) struct Item {
 
 /// What a checkpoint is called on a line: its name, else its command.
 fn label(info: &CheckInfo) -> &str {
-    if info.name.is_empty() { &info.command } else { &info.name }
+    if info.name.is_empty() {
+        &info.command
+    } else {
+        &info.name
+    }
 }
 
 /// One checkpoint's glyph and colour in a list of them.
@@ -94,7 +103,11 @@ fn checkpoint_mark(g: &Glyphs, state: CheckState, t: &Theme) -> (&'static str, C
 fn checkpoints_word(checks: &[CheckInfo], t: &Theme) -> Words {
     let find = |states: &[CheckState]| checks.iter().find(|c| states.contains(&c.state));
     if let Some(c) = find(&[CheckState::Failed, CheckState::CouldNotRun]) {
-        let color = if c.state == CheckState::Failed { t.err } else { t.violet() };
+        let color = if c.state == CheckState::Failed {
+            t.err
+        } else {
+            t.violet()
+        };
         return (format!("failed: {}", label(c)), color, true);
     }
     if let Some(c) = find(&[CheckState::NeedsApproval]) {
@@ -116,7 +129,15 @@ fn checkpoints_lines(g: &Glyphs, checks: &[CheckInfo], t: &Theme) -> (Vec<Words>
     for c in checks {
         let (glyph, color) = checkpoint_mark(g, c.state, t);
         full.push((" · ".into(), t.muted, false));
-        full.push((format!("{} ", label(c)), if c.state == CheckState::Failed { t.err } else { t.text }, false));
+        full.push((
+            format!("{} ", label(c)),
+            if c.state == CheckState::Failed {
+                t.err
+            } else {
+                t.text
+            },
+            false,
+        ));
         full.push((glyph.into(), color, true));
     }
     let mut strip = vec![(format!("{} ", word.0), word.1, word.2)];
@@ -143,19 +164,40 @@ fn not_run_words(info: &CheckInfo) -> String {
 fn check_line(info: &CheckInfo, t: &Theme) -> Vec<Words> {
     let name = label(info);
     match info.state {
-        CheckState::NeedsApproval => vec![(format!("approve check command: {}", info.command), t.blocked, false)],
+        CheckState::NeedsApproval => vec![(
+            format!("approve check command: {}", info.command),
+            t.blocked,
+            false,
+        )],
         CheckState::Failed => {
-            let exit = info.exit_code.map(|c| format!(" · exit {c}")).unwrap_or_default();
+            let exit = info
+                .exit_code
+                .map(|c| format!(" · exit {c}"))
+                .unwrap_or_default();
             let at = crate::clock::local_hm(info.started_at + info.duration_ms / 1000);
             vec![(format!("failed: {name}{exit} · {at}"), t.err, true)]
         }
         CheckState::CouldNotRun => vec![(not_run_words(info), t.violet(), false)],
-        CheckState::Passed => vec![(format!("passed: {name}"), t.done, true), (format!(" · {}", check::duration(info.duration_ms)), t.muted, false)],
+        CheckState::Passed => vec![
+            (format!("passed: {name}"), t.done, true),
+            (
+                format!(" · {}", check::duration(info.duration_ms)),
+                t.muted,
+                false,
+            ),
+        ],
         CheckState::Overridden => vec![(format!("failed, overridden: {name}"), t.text, true)],
         CheckState::Stale => {
             let n = info.changed_files.len();
-            let files = if n == 1 { "1 file".to_string() } else { format!("{n} files") };
-            vec![(format!("stale pass: {name}"), t.text, true), (format!(" · {files} changed since"), t.muted, false)]
+            let files = if n == 1 {
+                "1 file".to_string()
+            } else {
+                format!("{n} files")
+            };
+            vec![
+                (format!("stale pass: {name}"), t.text, true),
+                (format!(" · {files} changed since"), t.muted, false),
+            ]
         }
         CheckState::Never => vec![("not checked: never for this repo".into(), t.violet(), false)],
         CheckState::Checking => vec![(format!("checking {name}"), t.sky(), false)],
@@ -170,7 +212,11 @@ fn failing_line(info: &CheckInfo, g: &Glyphs) -> Option<String> {
         return None;
     }
     let mark = if *g == glyphs::ASCII { g.failed } else { "✗" };
-    Some(if line.starts_with(['✗', '✕', '✘', '×']) { line.to_string() } else { format!("{mark} {line}") })
+    Some(if line.starts_with(['✗', '✕', '✘', '×']) {
+        line.to_string()
+    } else {
+        format!("{mark} {line}")
+    })
 }
 
 fn buttons(row: &GoRow, info: Option<&CheckInfo>) -> Vec<Button> {
@@ -193,10 +239,33 @@ pub(super) fn item(app: &App, model: &[Proj], row: &GoRow, t: &Theme) -> Option<
     let g = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons);
     let info = check::shown(s);
     let mark = glyphs::Kind::of(s.status, info, false).mark(g, t, 0, "");
-    let checks = app.snap.terms.get(&s.term).map(|i| i.checks.clone()).unwrap_or_default();
+    let checks = s
+        .native_term
+        .and_then(|id| app.snap.terms.get(&id))
+        .map(|i| i.checks.clone())
+        .unwrap_or_default();
     let (line, strip) = match (row, info) {
-        (GoRow::Ask(_), _) => (vec![(s.question.clone().unwrap_or_else(|| "waiting on you".into()), t.blocked, false)], None),
-        (GoRow::Quiet(_), _) => (vec![(format!("no output for {} · may be stuck", age(s.quiet_since.unwrap_or(s.since))), t.muted, false)], None),
+        (GoRow::Ask(_), _) => (
+            vec![(
+                s.question
+                    .clone()
+                    .unwrap_or_else(|| "waiting on you".into()),
+                t.blocked,
+                false,
+            )],
+            None,
+        ),
+        (GoRow::Quiet(_), _) => (
+            vec![(
+                format!(
+                    "no output for {} · may be stuck",
+                    age(s.quiet_since.unwrap_or(s.since))
+                ),
+                t.muted,
+                false,
+            )],
+            None,
+        ),
         (_, Some(_)) if checks.len() > 1 => {
             let (full, strip) = checkpoints_lines(g, &checks, t);
             (full, Some(strip))

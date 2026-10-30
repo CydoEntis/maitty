@@ -23,7 +23,9 @@ pub(super) struct Marks {
 impl App {
     /// Feed a pane's output to its screen copy, noting where prompts start.
     pub(super) fn feed(&mut self, term: TermId, data: &[u8]) {
-        let Some(p) = self.parsers.get_mut(&term) else { return };
+        let Some(p) = self.parsers.get_mut(&term) else {
+            return;
+        };
         let marks = self.marks.entry(term).or_default();
         let mut rest = data;
         loop {
@@ -54,7 +56,12 @@ impl App {
             if text.is_empty()
                 && let Some(row) = line.checked_sub(marks.pushed).filter(|r| *r < rows as u64)
             {
-                *text = screen.rows(0, cols).nth(row as usize).unwrap_or_default().trim_end().to_string();
+                *text = screen
+                    .rows(0, cols)
+                    .nth(row as usize)
+                    .unwrap_or_default()
+                    .trim_end()
+                    .to_string();
             }
         }
     }
@@ -63,7 +70,10 @@ impl App {
     pub(super) fn jump_prompt(&mut self, term: TermId, back: bool) {
         let (cur, total) = self.history(term);
         let Some(marks) = self.marks.get(&term) else {
-            self.notify("no commands marked here (the shell doesn't mark its prompts)".into(), false);
+            self.notify(
+                "no commands marked here (the shell doesn't mark its prompts)".into(),
+                false,
+            );
             return;
         };
         let pushed = marks.pushed;
@@ -97,11 +107,19 @@ impl App {
         let keep = p.screen().scrollback();
         let mut found = None;
         for d in 0..=SEARCH {
-            for off in [want.checked_add(d), want.checked_sub(d)].into_iter().flatten().filter(|o| *o <= total) {
+            for off in [want.checked_add(d), want.checked_sub(d)]
+                .into_iter()
+                .flatten()
+                .filter(|o| *o <= total)
+            {
                 p.screen_mut().set_scrollback(off);
                 let screen = p.screen();
                 let (_, cols) = screen.size();
-                if screen.rows(0, cols).next().is_some_and(|r| r.trim_end() == text) {
+                if screen
+                    .rows(0, cols)
+                    .next()
+                    .is_some_and(|r| r.trim_end() == text)
+                {
                     found = Some(off);
                     break;
                 }
@@ -129,7 +147,11 @@ fn process(p: &mut vt100::Parser, marks: &mut Marks, data: &[u8]) {
         (after - before) as u64
     } else if after == before && after > 0 && !full {
         let bottom = p.screen().cursor_position().0 + 1 >= p.screen().size().0;
-        if bottom { data.iter().filter(|b| **b == b'\n').count() as u64 } else { 0 }
+        if bottom {
+            data.iter().filter(|b| **b == b'\n').count() as u64
+        } else {
+            0
+        }
     } else {
         0
     };

@@ -19,7 +19,12 @@ const RECENT_KEPT: usize = 8;
 /// Rows a page key moves in a list.
 const PAGE: usize = 5;
 /// Shown until the user has run something from the overlay.
-const DEFAULT_RECENT: [fn() -> Action; 4] = [|| Action::Jump, || Action::Message, || Action::SplitRight, || Action::ToggleSidebar];
+const DEFAULT_RECENT: [fn() -> Action; 4] = [
+    || Action::Jump,
+    || Action::Message,
+    || Action::SplitRight,
+    || Action::ToggleSidebar,
+];
 
 /// Which of the overlay's three faces is up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,14 +71,45 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
                 r("Split side by side", vec![A::SplitRight], true),
                 r("Split stacked", vec![A::SplitDown], true),
                 r("Close pane", vec![A::ClosePane], true),
-                r("Move focus", vec![A::Focus(Dir::Left), A::Focus(Dir::Up), A::Focus(Dir::Down), A::Focus(Dir::Right)], true),
+                r(
+                    "Move focus",
+                    vec![
+                        A::Focus(Dir::Left),
+                        A::Focus(Dir::Up),
+                        A::Focus(Dir::Down),
+                        A::Focus(Dir::Right),
+                    ],
+                    true,
+                ),
                 r("Collapse sidebar", vec![A::ToggleSidebar], true),
                 r("Hide sidebar", vec![A::HideSidebar], true),
-                r("Resize pane", vec![A::Resize(Dir::Left), A::Resize(Dir::Down), A::Resize(Dir::Up), A::Resize(Dir::Right)], false),
-                r("Swap pane", vec![A::Swap(Dir::Left), A::Swap(Dir::Down), A::Swap(Dir::Up), A::Swap(Dir::Right)], false),
+                r(
+                    "Resize pane",
+                    vec![
+                        A::Resize(Dir::Left),
+                        A::Resize(Dir::Down),
+                        A::Resize(Dir::Up),
+                        A::Resize(Dir::Right),
+                    ],
+                    false,
+                ),
+                r(
+                    "Swap pane",
+                    vec![
+                        A::Swap(Dir::Left),
+                        A::Swap(Dir::Down),
+                        A::Swap(Dir::Up),
+                        A::Swap(Dir::Right),
+                    ],
+                    false,
+                ),
                 r("Select text", vec![A::CopyMode], false),
                 r("Scroll", vec![A::ScrollUp, A::ScrollDown], false),
-                r("Jump between commands", vec![A::PrevPrompt, A::NextPrompt], false),
+                r(
+                    "Jump between commands",
+                    vec![A::PrevPrompt, A::NextPrompt],
+                    false,
+                ),
                 r("Paste image", vec![A::PasteImage], false),
             ],
         ),
@@ -117,12 +153,23 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
 /// The group a command belongs to when no row of `key_groups` lists it.
 fn group_of(a: &Action) -> &'static str {
     use Action as A;
-    if let Some((g, _)) = key_groups().into_iter().find(|(_, rows)| rows.iter().any(|r| r.acts.contains(a))) {
+    if let Some((g, _)) = key_groups()
+        .into_iter()
+        .find(|(_, rows)| rows.iter().any(|r| r.acts.contains(a)))
+    {
         return g;
     }
     match a {
         A::NewWorkspace | A::CloseWorkspace | A::NewSession | A::AgentStatusSetup => "SESSIONS",
-        A::SplitLeft | A::SplitUp | A::FocusNext | A::FocusPrev | A::CloseSplit | A::Search | A::PaneInfo | A::Spawn(..) | A::SideMove(_) => "PANES",
+        A::SplitLeft
+        | A::SplitUp
+        | A::FocusNext
+        | A::FocusPrev
+        | A::CloseSplit
+        | A::Search
+        | A::PaneInfo
+        | A::Spawn(..)
+        | A::SideMove(_) => "PANES",
         A::SpawnTab(_) | A::SelectTab(_) => "TABS",
         A::RemoveWorktree | A::TidyWorktrees | A::NewWorktree(_) => "PROJECT",
         _ => env!("APP_ENV"),
@@ -132,7 +179,9 @@ fn group_of(a: &Action) -> &'static str {
 /// A group name as it reads in a list: "Sessions".
 fn sentence(group: &str) -> String {
     let mut c = group.chars();
-    c.next().map(|f| f.to_string() + &c.as_str().to_lowercase()).unwrap_or_default()
+    c.next()
+        .map(|f| f.to_string() + &c.as_str().to_lowercase())
+        .unwrap_or_default()
 }
 
 /// One command: where it lives, what it is called, the keys that run it and the action
@@ -148,7 +197,11 @@ struct Entry {
 }
 
 fn is_bound(app: &App, a: &Action) -> bool {
-    app.keymap.prefixed.values().chain(app.keymap.global.values()).any(|b| b == a)
+    app.keymap
+        .prefixed
+        .values()
+        .chain(app.keymap.global.values())
+        .any(|b| b == a)
 }
 
 /// The rows of the key map, with the keys they have now; unbound ones have empty `keys`.
@@ -158,19 +211,41 @@ fn leader_entries(app: &App) -> Vec<Entry> {
     for (group, rows) in key_groups() {
         for row in rows {
             listed.extend(row.acts.iter().cloned());
-            let also = row.acts.iter().map(Action::describe).collect::<Vec<_>>().join(" ");
-            out.push(Entry { group: sentence(group), label: row.label.into(), also, keys: key_text(app, &row.acts), act: (row.acts.len() == 1).then(|| row.acts[0].clone()) });
+            let also = row
+                .acts
+                .iter()
+                .map(Action::describe)
+                .collect::<Vec<_>>()
+                .join(" ");
+            out.push(Entry {
+                group: sentence(group),
+                label: row.label.into(),
+                also,
+                keys: key_text(app, &row.acts),
+                act: (row.acts.len() == 1).then(|| row.acts[0].clone()),
+            });
         }
     }
     // Keys of the user's own (a spawn binding, an alias for something else) belong to a group too.
     let mut seen: Vec<Action> = Vec::new();
     for key in &app.keymap.prefixed_order {
-        let Some(a) = app.keymap.prefixed.get(key) else { continue };
-        if matches!(a, Action::None | Action::SendPrefix | Action::SideMove(_)) || listed.contains(a) || seen.contains(a) {
+        let Some(a) = app.keymap.prefixed.get(key) else {
+            continue;
+        };
+        if matches!(a, Action::None | Action::SendPrefix | Action::SideMove(_))
+            || listed.contains(a)
+            || seen.contains(a)
+        {
             continue;
         }
         seen.push(a.clone());
-        out.push(Entry { group: sentence(group_of(a)), label: a.describe(), also: String::new(), keys: key_text(app, std::slice::from_ref(a)), act: Some(a.clone()) });
+        out.push(Entry {
+            group: sentence(group_of(a)),
+            label: a.describe(),
+            also: String::new(),
+            keys: key_text(app, std::slice::from_ref(a)),
+            act: Some(a.clone()),
+        });
     }
     out
 }
@@ -180,26 +255,58 @@ fn direct_entries(app: &App) -> Vec<Entry> {
     let mut out = Vec::new();
     let mut tabs = false;
     let mut focus = false;
-    let mut keys: Vec<_> = app.keymap.global.iter().filter(|(_, a)| **a != Action::None).collect();
+    let mut keys: Vec<_> = app
+        .keymap
+        .global
+        .iter()
+        .filter(|(_, a)| **a != Action::None)
+        .collect();
     keys.sort_by_key(|(key, _)| key.to_config());
     for (key, a) in keys {
         match a {
             Action::SelectTab(_) => {
-                if !tabs && let Some((k1, _)) = app.keymap.global.iter().find(|(_, b)| **b == Action::SelectTab(1)) {
+                if !tabs
+                    && let Some((k1, _)) = app
+                        .keymap
+                        .global
+                        .iter()
+                        .find(|(_, b)| **b == Action::SelectTab(1))
+                {
                     tabs = true;
                     let one = long_key(k1);
-                    out.push(Entry { group: "No leader".into(), label: "Go to tab 1–9".into(), also: String::new(), keys: format!("{}1-9", one.trim_end_matches('1')), act: None });
+                    out.push(Entry {
+                        group: "No leader".into(),
+                        label: "Go to tab 1–9".into(),
+                        also: String::new(),
+                        keys: format!("{}1-9", one.trim_end_matches('1')),
+                        act: None,
+                    });
                 }
             }
             Action::Focus(_) => {
                 if !focus {
                     focus = true;
                     let mods = long_key(key);
-                    let arrows = mods.rsplit_once('+').map(|(m, _)| format!("{m}+arrows")).unwrap_or_else(|| "arrows".into());
-                    out.push(Entry { group: "No leader".into(), label: "Move focus".into(), also: String::new(), keys: arrows, act: None });
+                    let arrows = mods
+                        .rsplit_once('+')
+                        .map(|(m, _)| format!("{m}+arrows"))
+                        .unwrap_or_else(|| "arrows".into());
+                    out.push(Entry {
+                        group: "No leader".into(),
+                        label: "Move focus".into(),
+                        also: String::new(),
+                        keys: arrows,
+                        act: None,
+                    });
                 }
             }
-            other => out.push(Entry { group: "No leader".into(), label: other.describe(), also: String::new(), keys: long_key(key), act: Some(other.clone()) }),
+            other => out.push(Entry {
+                group: "No leader".into(),
+                label: other.describe(),
+                also: String::new(),
+                keys: long_key(key),
+                act: Some(other.clone()),
+            }),
         }
     }
     out
@@ -208,12 +315,26 @@ fn direct_entries(app: &App) -> Vec<Entry> {
 /// Commands with no key: every one the palette used to list, and the rows of the map that
 /// the user has unbound.
 fn search_only_entries(app: &App, leader: &[Entry]) -> Vec<Entry> {
-    let mut out: Vec<Entry> = leader.iter().filter(|e| e.keys.is_empty()).cloned().collect();
+    let mut out: Vec<Entry> = leader
+        .iter()
+        .filter(|e| e.keys.is_empty())
+        .cloned()
+        .collect();
     for a in app.palette_commands() {
-        if is_bound(app, &a) || key_groups().iter().any(|(_, rows)| rows.iter().any(|r| r.acts.contains(&a))) {
+        if is_bound(app, &a)
+            || key_groups()
+                .iter()
+                .any(|(_, rows)| rows.iter().any(|r| r.acts.contains(&a)))
+        {
             continue;
         }
-        out.push(Entry { group: sentence(group_of(&a)), label: a.describe(), also: String::new(), keys: String::new(), act: Some(a) });
+        out.push(Entry {
+            group: sentence(group_of(&a)),
+            label: a.describe(),
+            also: String::new(),
+            keys: String::new(),
+            act: Some(a),
+        });
     }
     out
 }
@@ -225,12 +346,26 @@ fn all_entries(app: &App) -> Vec<Entry> {
     let rest = search_only_entries(app, &leader);
     // A row that stands for a set of keys is found, and run, one key at a time.
     let singles = key_groups().into_iter().flat_map(|(group, rows)| {
-        rows.into_iter().filter(|r| r.acts.len() > 1).flat_map(move |r| r.acts.into_iter().map(move |a| (group, a)))
+        rows.into_iter()
+            .filter(|r| r.acts.len() > 1)
+            .flat_map(move |r| r.acts.into_iter().map(move |a| (group, a)))
     });
     let singles: Vec<Entry> = singles
-        .map(|(group, a)| Entry { group: sentence(group), label: a.describe(), also: String::new(), keys: key_text(app, std::slice::from_ref(&a)), act: Some(a) })
+        .map(|(group, a)| Entry {
+            group: sentence(group),
+            label: a.describe(),
+            also: String::new(),
+            keys: key_text(app, std::slice::from_ref(&a)),
+            act: Some(a),
+        })
         .collect();
-    let mut out: Vec<Entry> = leader.into_iter().filter(|e| !e.keys.is_empty() && e.act.is_some()).chain(singles).chain(direct).chain(rest).collect();
+    let mut out: Vec<Entry> = leader
+        .into_iter()
+        .filter(|e| !e.keys.is_empty() && e.act.is_some())
+        .chain(singles)
+        .chain(direct)
+        .chain(rest)
+        .collect();
     let mut seen: Vec<String> = Vec::new();
     out.retain(|e| {
         let fresh = !seen.contains(&e.label);
@@ -243,17 +378,30 @@ fn all_entries(app: &App) -> Vec<Entry> {
 /// Every command as (name, keys), for tests of what the overlay can reach.
 #[cfg(test)]
 pub(in crate::client) fn keymap_all_rows(app: &App) -> Vec<(String, String)> {
-    all_entries(app).into_iter().map(|e| (e.label, e.keys)).collect()
+    all_entries(app)
+        .into_iter()
+        .map(|e| (e.label, e.keys))
+        .collect()
 }
 
 /// The commands the search shows: the latest run when nothing is typed, else the ones whose
 /// name or group has every typed word (names before groups).
 fn found(app: &App, query: &str) -> Vec<Entry> {
     let all = all_entries(app);
-    let words: Vec<String> = query.to_lowercase().split_whitespace().map(str::to_string).collect();
+    let words: Vec<String> = query
+        .to_lowercase()
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
     if words.is_empty() {
         let mut out: Vec<Entry> = Vec::new();
-        let names = app.screen.saved.recent.iter().filter_map(|n| n.parse::<Action>().ok()).chain(DEFAULT_RECENT.iter().map(|f| f()));
+        let names = app
+            .screen
+            .saved
+            .recent
+            .iter()
+            .filter_map(|n| n.parse::<Action>().ok())
+            .chain(DEFAULT_RECENT.iter().map(|f| f()));
         for a in names {
             if let Some(e) = all.iter().find(|e| e.act.as_ref() == Some(&a))
                 && !out.iter().any(|o| o.label == e.label)
@@ -271,7 +419,10 @@ fn found(app: &App, query: &str) -> Vec<Entry> {
         .filter_map(|e| {
             let label = format!("{} {}", e.label, e.also).to_lowercase();
             let group = e.group.to_lowercase();
-            words.iter().all(|w| label.contains(w.as_str()) || group.contains(w.as_str())).then(|| (words.iter().all(|w| label.contains(w.as_str())), e))
+            words
+                .iter()
+                .all(|w| label.contains(w.as_str()) || group.contains(w.as_str()))
+                .then(|| (words.iter().all(|w| label.contains(w.as_str())), e))
         })
         .collect();
     hits.sort_by_key(|(by_name, _)| !*by_name);
@@ -298,27 +449,68 @@ struct Section {
 /// The map (`all` false: the short one) or All keys, group by group.
 fn grid_sections(app: &App, all: bool) -> Vec<Section> {
     let leader = leader_entries(app);
-    let core: Vec<&str> = key_groups().into_iter().flat_map(|(_, rows)| rows.into_iter().filter(|r| r.core).map(|r| r.label)).collect();
+    let core: Vec<&str> = key_groups()
+        .into_iter()
+        .flat_map(|(_, rows)| rows.into_iter().filter(|r| r.core).map(|r| r.label))
+        .collect();
     let mut out: Vec<Section> = Vec::new();
     for (i, (group, _)) in key_groups().into_iter().enumerate() {
         let name = sentence(group);
         let rows: Vec<GridRow> = leader
             .iter()
-            .filter(|e| e.group == name && !e.keys.is_empty() && (all || core.contains(&e.label.as_str())))
-            .map(|e| GridRow { keys: e.keys.clone(), label: e.label.clone(), act: e.act.clone() })
+            .filter(|e| {
+                e.group == name && !e.keys.is_empty() && (all || core.contains(&e.label.as_str()))
+            })
+            .map(|e| GridRow {
+                keys: e.keys.clone(),
+                label: e.label.clone(),
+                act: e.act.clone(),
+            })
             .collect();
         if !rows.is_empty() {
-            out.push(Section { title: group.to_string(), dim: false, note: "", slots: [(0, 0), (1, 0), (1, 1), (0, 1), (2, 1)][i], rows });
+            out.push(Section {
+                title: group.to_string(),
+                dim: false,
+                note: "",
+                slots: [(0, 0), (1, 0), (1, 1), (0, 1), (2, 1)][i],
+                rows,
+            });
         }
     }
     if all {
-        let direct: Vec<GridRow> = direct_entries(app).into_iter().map(|e| GridRow { keys: e.keys, label: e.label, act: e.act }).collect();
+        let direct: Vec<GridRow> = direct_entries(app)
+            .into_iter()
+            .map(|e| GridRow {
+                keys: e.keys,
+                label: e.label,
+                act: e.act,
+            })
+            .collect();
         if !direct.is_empty() {
-            out.push(Section { title: "WITHOUT THE LEADER".into(), dim: true, note: "press directly", slots: (2, 1), rows: direct });
+            out.push(Section {
+                title: "WITHOUT THE LEADER".into(),
+                dim: true,
+                note: "press directly",
+                slots: (2, 1),
+                rows: direct,
+            });
         }
-        let only: Vec<GridRow> = search_only_entries(app, &leader).into_iter().map(|e| GridRow { keys: String::new(), label: e.label, act: e.act }).collect();
+        let only: Vec<GridRow> = search_only_entries(app, &leader)
+            .into_iter()
+            .map(|e| GridRow {
+                keys: String::new(),
+                label: e.label,
+                act: e.act,
+            })
+            .collect();
         if !only.is_empty() {
-            out.push(Section { title: "SEARCH ONLY".into(), dim: true, note: "", slots: (2, 1), rows: only });
+            out.push(Section {
+                title: "SEARCH ONLY".into(),
+                dim: true,
+                note: "",
+                slots: (2, 1),
+                rows: only,
+            });
         }
     }
     out
@@ -327,11 +519,17 @@ fn grid_sections(app: &App, all: bool) -> Vec<Section> {
 /// What each shown row runs, in the order its rows are numbered (a click on row `i`).
 pub(in crate::client) fn keymap_actions(app: &App, km: &KeyMap) -> Vec<Option<Action>> {
     if let Some(step) = km.step {
-        return step_items(app, step).into_iter().map(|(_, _, _, a)| Some(a)).collect();
+        return step_items(app, step)
+            .into_iter()
+            .map(|(_, _, _, a)| Some(a))
+            .collect();
     }
     match km.view {
         KeyView::Search => found(app, &km.query).into_iter().map(|e| e.act).collect(),
-        view => grid_sections(app, view == KeyView::All).into_iter().flat_map(|s| s.rows.into_iter().map(|r| r.act)).collect(),
+        view => grid_sections(app, view == KeyView::All)
+            .into_iter()
+            .flat_map(|s| s.rows.into_iter().map(|r| r.act))
+            .collect(),
     }
 }
 
@@ -344,10 +542,25 @@ fn step_items(app: &App, step: Step) -> Vec<(char, &'static str, String, Action)
             let n = here.map(|(p, _, _)| p.wts.len()).unwrap_or(0);
             let branch = here.map(|(_, w, _)| w.branch.clone()).unwrap_or_default();
             vec![
-                ('n', "New worktree", "own branch, new folder, new agent".into(), Action::NewWorktree(None)),
-                ('s', "Switch to…", format!("{n} worktree{}", if n == 1 { "" } else { "s" }), Action::Jump),
+                (
+                    'n',
+                    "New worktree",
+                    "own branch, new folder, new agent".into(),
+                    Action::NewWorktree(None),
+                ),
+                (
+                    's',
+                    "Switch to…",
+                    format!("{n} worktree{}", if n == 1 { "" } else { "s" }),
+                    Action::Jump,
+                ),
                 ('m', "Merge into main", branch, Action::Changes),
-                ('d', "Delete worktree", "keeps the branch".into(), Action::RemoveWorktree),
+                (
+                    'd',
+                    "Delete worktree",
+                    "keeps the branch".into(),
+                    Action::RemoveWorktree,
+                ),
             ]
         }
     }
@@ -366,12 +579,24 @@ fn step_key(app: &App, step: Step) -> String {
 }
 
 /// The overlay's card, centred, and the row inside it where the typing goes.
-fn frame(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, title: &str, want_h: u16) -> (Rect, Rect) {
+fn frame(
+    app: &mut App,
+    buf: &mut Buffer,
+    area: Rect,
+    t: &Theme,
+    title: &str,
+    want_h: u16,
+) -> (Rect, Rect) {
     dim_all(app, buf, area, t);
     hit(app, area, ScreenHit::Close);
     let w = MAX_W.min(area.width.saturating_sub(4));
     let h = want_h.min(area.height.saturating_sub(2));
-    let r = Rect { x: area.x + (area.width - w) / 2, y: area.y + (area.height - h) / 2, width: w, height: h };
+    let r = Rect {
+        x: area.x + (area.width - w) / 2,
+        y: area.y + (area.height - h) / 2,
+        width: w,
+        height: h,
+    };
     let mut c = Card::new(t, title).lit(t.sky());
     c.title_fg = t.accent;
     c.bg = t.card;
@@ -383,7 +608,15 @@ fn frame(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, title: &str, wa
 /// The typing row: `› ` and what is typed on a lifted pill.
 fn input_row(app: &App, buf: &mut Buffer, r: Rect, sy: u16, t: &Theme, typed: Vec<Seg>) {
     let look = Look::of(&app.cfg.ui);
-    row_pill(look, buf, r.x + 3, sy, r.width.saturating_sub(6), t.card2, t.card);
+    row_pill(
+        look,
+        buf,
+        r.x + 3,
+        sy,
+        r.width.saturating_sub(6),
+        t.card2,
+        t.card,
+    );
     put(buf, r.x + 5, sy, &typed, r.right().saturating_sub(5));
 }
 
@@ -394,7 +627,13 @@ fn prompt(t: &Theme, tail: Vec<Seg>) -> Vec<Seg> {
     typed
 }
 
-pub(in crate::client) fn draw_keymap(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, km: &KeyMap) {
+pub(in crate::client) fn draw_keymap(
+    app: &mut App,
+    f: &mut Frame,
+    area: Rect,
+    t: &Theme,
+    km: &KeyMap,
+) {
     let buf = f.buffer_mut();
     if let Some(step) = km.step {
         return draw_step(app, buf, area, t, km, step);
@@ -407,7 +646,11 @@ pub(in crate::client) fn draw_keymap(app: &mut App, f: &mut Frame, area: Rect, t
 
 /// The bar of key hints in the overlay's last row.
 fn bar(buf: &mut Buffer, inside: Rect, t: &Theme, keys: &[(&str, &str)]) {
-    let row = Rect { y: inside.bottom().saturating_sub(1), height: 1, ..inside };
+    let row = Rect {
+        y: inside.bottom().saturating_sub(1),
+        height: 1,
+        ..inside
+    };
     action_bar(buf, row, t, t.card2, keys);
 }
 
@@ -419,19 +662,51 @@ fn draw_grid(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap
     let col_w = w.saturating_sub(6) / cols as u16;
     let col_of = |s: &Section| if cols == 3 { s.slots.0 } else { s.slots.1 };
     // Rows the tallest column needs, to size the card.
-    let column_rows = |c: usize| -> usize { sections.iter().filter(|s| col_of(s) == c).map(|s| s.rows.len() + 2).sum::<usize>().saturating_sub(1) };
+    let column_rows = |c: usize| -> usize {
+        sections
+            .iter()
+            .filter(|s| col_of(s) == c)
+            .map(|s| s.rows.len() + 2)
+            .sum::<usize>()
+            .saturating_sub(1)
+    };
     let tallest = (0..cols).map(column_rows).max().unwrap_or(0) as u16;
     // Roomy: air round the typing row, the banner's rule and a note above the bar. A short
     // screen drops those, then the rows scroll (All keys) or the card is as tall as it can be.
     let chrome: u16 = if all { 9 } else { 10 };
     let roomy = area.height.saturating_sub(2) >= chrome + tallest;
-    let want = if roomy { chrome + tallest } else { tallest + chrome / 2 };
-    let title = if all { "All keys".to_string() } else { lead.clone() };
+    let want = if roomy {
+        chrome + tallest
+    } else {
+        tallest + chrome / 2
+    };
+    let title = if all {
+        "All keys".to_string()
+    } else {
+        lead.clone()
+    };
     let (r, inside) = frame(app, buf, area, t, &title, want);
     let cs = Style::default().bg(t.card);
-    let hint = if all { " type to search" } else { " press a key, or type to search" };
+    let hint = if all {
+        " type to search"
+    } else {
+        " press a key, or type to search"
+    };
     let input_y = if roomy { r.y + 2 } else { r.y + 1 };
-    input_row(app, buf, r, input_y, t, prompt(t, vec![seg("█", Style::default().bg(t.card2).fg(t.accent)), seg(hint, Style::default().bg(t.card2).fg(t.muted))]));
+    input_row(
+        app,
+        buf,
+        r,
+        input_y,
+        t,
+        prompt(
+            t,
+            vec![
+                seg("█", Style::default().bg(t.card2).fg(t.accent)),
+                seg(hint, Style::default().bg(t.card2).fg(t.muted)),
+            ],
+        ),
+    );
 
     let mut y0 = input_y + if roomy { 2 } else { 1 };
     if !all {
@@ -470,34 +745,88 @@ fn draw_grid(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap
         index += s.rows.len();
     }
     let longest = (0..cols).map(column_rows).max().unwrap_or(0);
-    let scroll = if all { km.scroll.min(longest.saturating_sub(body_h)) } else { 0 };
+    let scroll = if all {
+        km.scroll.min(longest.saturating_sub(body_h))
+    } else {
+        0
+    };
     for c in 0..cols {
         let x = r.x + 3 + c as u16 * col_w;
         let mut line = 0usize;
         for (si, s) in sections.iter().enumerate().filter(|(_, s)| col_of(s) == c) {
             // The key column is as wide as this group's widest key, not the column's.
-            let kw = s.rows.iter().map(|row| if row.keys.is_empty() { 1 } else { segs_width(&keycaps(t, &row.keys, t.card)) }).max().unwrap_or(1) + 2;
-            let mut head = vec![seg(s.title.clone(), cs.fg(if s.dim { t.muted } else { t.strong }).add_modifier(Modifier::BOLD))];
+            let kw = s
+                .rows
+                .iter()
+                .map(|row| {
+                    if row.keys.is_empty() {
+                        1
+                    } else {
+                        segs_width(&keycaps(t, &row.keys, t.card))
+                    }
+                })
+                .max()
+                .unwrap_or(1)
+                + 2;
+            let mut head = vec![seg(
+                s.title.clone(),
+                cs.fg(if s.dim { t.muted } else { t.strong })
+                    .add_modifier(Modifier::BOLD),
+            )];
             if !s.note.is_empty() {
                 head.push(seg(format!("  {}", s.note), cs.fg(t.muted)));
             }
-            let place = |line: usize| line.checked_sub(scroll).filter(|l| *l < body_h).map(|l| y0 + l as u16);
+            let place = |line: usize| {
+                line.checked_sub(scroll)
+                    .filter(|l| *l < body_h)
+                    .map(|l| y0 + l as u16)
+            };
             if let Some(y) = place(line) {
                 put(buf, x, y, &head, x + col_w);
             }
             line += 1;
             for (ri, row) in s.rows.iter().enumerate() {
                 if let Some(y) = place(line) {
-                    let rr = Rect { x, y, width: col_w.saturating_sub(1), height: 1 };
+                    let rr = Rect {
+                        x,
+                        y,
+                        width: col_w.saturating_sub(1),
+                        height: 1,
+                    };
                     let on = row.act.is_some() && hovered(app, rr);
                     let bg = if on { t.sel_on(t.card) } else { t.card };
                     if on {
-                        row_pill(Look::of(&app.cfg.ui), buf, x.saturating_sub(1), y, rr.width + 1, bg, t.card);
+                        row_pill(
+                            Look::of(&app.cfg.ui),
+                            buf,
+                            x.saturating_sub(1),
+                            y,
+                            rr.width + 1,
+                            bg,
+                            t.card,
+                        );
                     }
-                    let caps = if row.keys.is_empty() { vec![seg("—", Style::default().bg(bg).fg(t.line))] } else { keycaps(t, &row.keys, bg) };
+                    let caps = if row.keys.is_empty() {
+                        vec![seg("—", Style::default().bg(bg).fg(t.line))]
+                    } else {
+                        keycaps(t, &row.keys, bg)
+                    };
                     put(buf, x, y, &caps, x + col_w);
                     let label = truncate(&row.label, col_w.saturating_sub(kw + 1) as usize);
-                    put(buf, x + kw, y, &[seg(label, Style::default().bg(bg).fg(if row.keys.is_empty() { t.muted } else { t.text }))], x + col_w);
+                    put(
+                        buf,
+                        x + kw,
+                        y,
+                        &[seg(
+                            label,
+                            Style::default().bg(bg).fg(if row.keys.is_empty() {
+                                t.muted
+                            } else {
+                                t.text
+                            }),
+                        )],
+                        x + col_w,
+                    );
                     if row.act.is_some() {
                         hit(app, rr, ScreenHit::KeyRow(starts[si] + ri));
                     }
@@ -513,30 +842,70 @@ fn draw_grid(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap
             m.scroll = scroll;
         }
         if roomy {
-            let more = if longest > body_h { "  ↑↓ scroll" } else { "" };
-            put(buf, r.x + 3, note_y, &[seg(format!("Type to search. A dash means no key.{more}"), cs.fg(t.muted))], r.right().saturating_sub(3));
+            let more = if longest > body_h {
+                "  ↑↓ scroll"
+            } else {
+                ""
+            };
+            put(
+                buf,
+                r.x + 3,
+                note_y,
+                &[seg(
+                    format!("Type to search. A dash means no key.{more}"),
+                    cs.fg(t.muted),
+                )],
+                r.right().saturating_sub(3),
+            );
         }
-        bar(buf, inside, t, &[("↑↓", "scroll"), ("Tab", "search"), ("Esc", "close")]);
+        bar(
+            buf,
+            inside,
+            t,
+            &[("↑↓", "scroll"), ("Tab", "search"), ("Esc", "close")],
+        );
     } else {
         if roomy {
-            put(buf, r.x + 3, note_y, &[seg("Keys with › open a second step.", cs.fg(t.muted))], r.right().saturating_sub(3));
+            put(
+                buf,
+                r.x + 3,
+                note_y,
+                &[seg("Keys with › open a second step.", cs.fg(t.muted))],
+                r.right().saturating_sub(3),
+            );
         }
-        bar(buf, inside, t, &[("key", "run it"), ("Tab", "search"), ("?", "show all"), ("Esc", "close")]);
+        bar(
+            buf,
+            inside,
+            t,
+            &[
+                ("key", "run it"),
+                ("Tab", "search"),
+                ("?", "show all"),
+                ("Esc", "close"),
+            ],
+        );
     }
 }
 
 /// `label` with the first place `needle` (any case) occurs in the accent.
 fn highlighted(label: &str, needle: &str, plain: Style, lit: Style) -> Vec<Seg> {
     let hay = label.to_lowercase();
-    let at = if needle.is_empty() { None } else { hay.find(needle).filter(|_| hay.len() == label.len()) };
+    let at = if needle.is_empty() {
+        None
+    } else {
+        hay.find(needle).filter(|_| hay.len() == label.len())
+    };
     match at {
-        Some(i) if label.is_char_boundary(i) && label.is_char_boundary(i + needle.len()) => {
-            [(&label[..i], plain), (&label[i..i + needle.len()], lit), (&label[i + needle.len()..], plain)]
-                .into_iter()
-                .filter(|(s, _)| !s.is_empty())
-                .map(|(s, st)| seg(s, st))
-                .collect()
-        }
+        Some(i) if label.is_char_boundary(i) && label.is_char_boundary(i + needle.len()) => [
+            (&label[..i], plain),
+            (&label[i..i + needle.len()], lit),
+            (&label[i + needle.len()..], plain),
+        ]
+        .into_iter()
+        .filter(|(s, _)| !s.is_empty())
+        .map(|(s, st)| seg(s, st))
+        .collect(),
         _ => vec![seg(label, plain)],
     }
 }
@@ -547,44 +916,125 @@ fn draw_search(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyM
     let (r, inside) = frame(app, buf, area, t, "Search commands", want);
     let cs = Style::default().bg(t.card);
     let ps = Style::default().bg(t.card2);
-    let mut typed = vec![seg(km.query.clone(), ps.fg(t.strong).add_modifier(Modifier::BOLD)), seg("█", ps.fg(t.accent))];
+    let mut typed = vec![
+        seg(
+            km.query.clone(),
+            ps.fg(t.strong).add_modifier(Modifier::BOLD),
+        ),
+        seg("█", ps.fg(t.accent)),
+    ];
     if km.query.is_empty() {
         typed.push(seg(" type what you want to do", ps.fg(t.muted)));
     }
     input_row(app, buf, r, r.y + 2, t, prompt(t, typed));
     let head_y = r.y + 4;
-    let head = if km.query.is_empty() { "RECENT".to_string() } else { format!("{} match{}", list.len(), if list.len() == 1 { "" } else { "es" }) };
-    put(buf, r.x + 4, head_y, &[seg(head, cs.fg(t.muted).add_modifier(Modifier::BOLD))], r.right().saturating_sub(3));
+    let head = if km.query.is_empty() {
+        "RECENT".to_string()
+    } else {
+        format!(
+            "{} match{}",
+            list.len(),
+            if list.len() == 1 { "" } else { "es" }
+        )
+    };
+    put(
+        buf,
+        r.x + 4,
+        head_y,
+        &[seg(head, cs.fg(t.muted).add_modifier(Modifier::BOLD))],
+        r.right().saturating_sub(3),
+    );
     let cap = (inside.bottom().saturating_sub(2)).saturating_sub(head_y + 1) as usize;
     let start = km.sel.saturating_sub(cap.saturating_sub(1));
     let needle = km.query.trim().to_lowercase();
     let first_word = needle.split_whitespace().next().unwrap_or("").to_string();
     for (i, e) in list.iter().enumerate().skip(start).take(cap) {
         let y = head_y + 1 + (i - start) as u16;
-        let rr = Rect { x: r.x + 3, y, width: r.width.saturating_sub(6), height: 1 };
+        let rr = Rect {
+            x: r.x + 3,
+            y,
+            width: r.width.saturating_sub(6),
+            height: 1,
+        };
         let on = i == km.sel || hovered(app, rr);
         let bg = if on { t.sel_on(t.card) } else { t.card };
         if on {
             row_pill(Look::of(&app.cfg.ui), buf, rr.x, y, rr.width, bg, t.card);
-            put(buf, rr.x + 1, y, &[seg("▎", Style::default().bg(bg).fg(t.accent).add_modifier(Modifier::BOLD))], rr.x + 2);
+            put(
+                buf,
+                rr.x + 1,
+                y,
+                &[seg(
+                    "▎",
+                    Style::default()
+                        .bg(bg)
+                        .fg(t.accent)
+                        .add_modifier(Modifier::BOLD),
+                )],
+                rr.x + 2,
+            );
         }
-        let plain = Style::default().bg(bg).fg(if e.keys.is_empty() && e.act.is_none() { t.muted } else { t.strong });
-        let lit = Style::default().bg(bg).fg(t.accent).add_modifier(Modifier::BOLD);
-        let n = if e.label.to_lowercase().contains(&needle) { &needle } else { &first_word };
+        let plain = Style::default()
+            .bg(bg)
+            .fg(if e.keys.is_empty() && e.act.is_none() {
+                t.muted
+            } else {
+                t.strong
+            });
+        let lit = Style::default()
+            .bg(bg)
+            .fg(t.accent)
+            .add_modifier(Modifier::BOLD);
+        let n = if e.label.to_lowercase().contains(&needle) {
+            &needle
+        } else {
+            &first_word
+        };
         let label = highlighted(&e.label, n, plain, lit);
         put(buf, r.x + 5, y, &label, r.right().saturating_sub(34));
-        put(buf, r.right().saturating_sub(32), y, &[seg(e.group.clone(), Style::default().bg(bg).fg(t.muted))], r.right().saturating_sub(4));
+        put(
+            buf,
+            r.right().saturating_sub(32),
+            y,
+            &[seg(e.group.clone(), Style::default().bg(bg).fg(t.muted))],
+            r.right().saturating_sub(4),
+        );
         if !e.keys.is_empty() {
             let caps = keycaps(t, &e.keys, bg);
             let cw = segs_width(&caps);
-            put(buf, r.right().saturating_sub(cw + 5), y, &caps, r.right().saturating_sub(4));
+            put(
+                buf,
+                r.right().saturating_sub(cw + 5),
+                y,
+                &caps,
+                r.right().saturating_sub(4),
+            );
         }
         hit(app, rr, ScreenHit::KeyRow(i));
     }
     if list.is_empty() {
-        put(buf, r.x + 5, head_y + 1, &[seg(format!("Nothing matches \"{}\".", km.query.trim()), cs.fg(t.muted))], r.right().saturating_sub(3));
+        put(
+            buf,
+            r.x + 5,
+            head_y + 1,
+            &[seg(
+                format!("Nothing matches \"{}\".", km.query.trim()),
+                cs.fg(t.muted),
+            )],
+            r.right().saturating_sub(3),
+        );
     }
-    bar(buf, inside, t, &[("↑↓", "move"), ("Enter", "run"), ("Tab", "key map"), ("Esc", "close")]);
+    bar(
+        buf,
+        inside,
+        t,
+        &[
+            ("↑↓", "move"),
+            ("Enter", "run"),
+            ("Tab", "key map"),
+            ("Esc", "close"),
+        ],
+    );
 }
 
 fn draw_step(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap, step: Step) {
@@ -593,17 +1043,46 @@ fn draw_step(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap
     let (r, inside) = frame(app, buf, area, t, &lead, 16);
     let cs = Style::default().bg(t.card);
     let ps = Style::default().bg(t.card2);
-    let typed = vec![seg(step_key(app, step), ps.fg(t.strong).add_modifier(Modifier::BOLD)), seg(format!("  {}", step_name(step)), ps.fg(t.muted)), seg("█", ps.fg(t.accent))];
+    let typed = vec![
+        seg(
+            step_key(app, step),
+            ps.fg(t.strong).add_modifier(Modifier::BOLD),
+        ),
+        seg(format!("  {}", step_name(step)), ps.fg(t.muted)),
+        seg("█", ps.fg(t.accent)),
+    ];
     input_row(app, buf, r, r.y + 2, t, prompt(t, typed));
     let model = app.screen_model();
-    let proj = app.focused().and_then(|f| find(&model, f)).map(|(p, _, _)| p.name.clone()).unwrap_or_default();
-    put(buf, r.x + 4, r.y + 5, &[seg(format!("{} IN {}", step_name(step).to_uppercase(), proj.to_uppercase()), cs.fg(t.muted).add_modifier(Modifier::BOLD))], r.right().saturating_sub(2));
+    let proj = app
+        .focused()
+        .and_then(|f| find(&model, f))
+        .map(|(p, _, _)| p.name.clone())
+        .unwrap_or_default();
+    put(
+        buf,
+        r.x + 4,
+        r.y + 5,
+        &[seg(
+            format!(
+                "{} IN {}",
+                step_name(step).to_uppercase(),
+                proj.to_uppercase()
+            ),
+            cs.fg(t.muted).add_modifier(Modifier::BOLD),
+        )],
+        r.right().saturating_sub(2),
+    );
     for (i, (key, label, detail, _)) in step_items(app, step).into_iter().enumerate() {
         let y = r.y + 7 + i as u16 * 2;
         if y >= inside.bottom().saturating_sub(3) {
             break;
         }
-        let rr = Rect { x: r.x + 3, y, width: r.width.saturating_sub(6), height: 1 };
+        let rr = Rect {
+            x: r.x + 3,
+            y,
+            width: r.width.saturating_sub(6),
+            height: 1,
+        };
         let sel = i == km.sel || hovered(app, rr);
         let bg = if sel { t.sel_on(t.card) } else { t.card };
         if sel {
@@ -611,21 +1090,68 @@ fn draw_step(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap
         }
         put(buf, r.x + 5, y, &keycap(t, &key.to_string()), r.right());
         let st = Style::default().bg(bg);
-        put(buf, r.x + 11, y, &[seg(label, st.fg(if sel { t.strong } else { t.text }).add_modifier(if sel { Modifier::BOLD } else { Modifier::empty() }))], r.x + 31);
-        put(buf, r.x + 32, y, &[seg(detail, st.fg(t.muted))], r.right().saturating_sub(3));
+        put(
+            buf,
+            r.x + 11,
+            y,
+            &[seg(
+                label,
+                st.fg(if sel { t.strong } else { t.text })
+                    .add_modifier(if sel {
+                        Modifier::BOLD
+                    } else {
+                        Modifier::empty()
+                    }),
+            )],
+            r.x + 31,
+        );
+        put(
+            buf,
+            r.x + 32,
+            y,
+            &[seg(detail, st.fg(t.muted))],
+            r.right().saturating_sub(3),
+        );
         hit(app, rr, ScreenHit::KeyRow(i));
     }
-    let mut path = vec![seg(lead, cs.fg(t.accent).add_modifier(Modifier::BOLD)), seg("  ›  ", cs.fg(t.muted))];
+    let mut path = vec![
+        seg(lead, cs.fg(t.accent).add_modifier(Modifier::BOLD)),
+        seg("  ›  ", cs.fg(t.muted)),
+    ];
     path.extend(keycap(t, &step_key(app, step)));
-    path.extend([seg("  ›  ", cs.fg(t.muted)), seg("_", cs.fg(t.muted)), seg("   the path so far", cs.fg(t.muted).add_modifier(Modifier::ITALIC))]);
-    put(buf, r.x + 4, inside.bottom().saturating_sub(2), &path, r.right().saturating_sub(2));
-    bar(buf, inside, t, &[("key", "do it"), ("↑↓", "move"), ("Backspace", "back"), ("Esc", "close")]);
+    path.extend([
+        seg("  ›  ", cs.fg(t.muted)),
+        seg("_", cs.fg(t.muted)),
+        seg(
+            "   the path so far",
+            cs.fg(t.muted).add_modifier(Modifier::ITALIC),
+        ),
+    ]);
+    put(
+        buf,
+        r.x + 4,
+        inside.bottom().saturating_sub(2),
+        &path,
+        r.right().saturating_sub(2),
+    );
+    bar(
+        buf,
+        inside,
+        t,
+        &[
+            ("key", "do it"),
+            ("↑↓", "move"),
+            ("Backspace", "back"),
+            ("Esc", "close"),
+        ],
+    );
 }
 
 impl App {
     /// The leader was pressed `since` and the key map shows by itself now.
     pub(in crate::client) fn keymap_shown(&self, since: Instant) -> bool {
-        self.cfg.ui.which_key && since.elapsed() >= std::time::Duration::from_millis(self.cfg.ui.which_key_delay_ms)
+        self.cfg.ui.which_key
+            && since.elapsed() >= std::time::Duration::from_millis(self.cfg.ui.which_key_delay_ms)
     }
 
     /// Open the key map (from the leader's pause, or the leader key's button), or one of its
@@ -641,8 +1167,10 @@ impl App {
 
     /// Run a command picked in the overlay, and remember it for RECENT.
     fn keymap_do(&mut self, a: Action) {
-        if !matches!(a, Action::Palette | Action::Help | Action::Menu | Action::None)
-            && let Some(name) = a.to_config()
+        if !matches!(
+            a,
+            Action::Palette | Action::Help | Action::Menu | Action::None
+        ) && let Some(name) = a.to_config()
         {
             let recent = &mut self.screen.saved.recent;
             recent.retain(|n| *n != name);
@@ -665,7 +1193,13 @@ impl App {
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
         let n = keymap_actions(self, &km).len();
         let typed = match k.code {
-            KeyCode::Char(c) if !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) => Some(c),
+            KeyCode::Char(c)
+                if !k
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                Some(c)
+            }
             _ => None,
         };
         match k.code {
@@ -676,7 +1210,14 @@ impl App {
                 return;
             }
             KeyCode::Tab if km.step.is_none() => {
-                km = KeyMap::new(if km.view == KeyView::Search { KeyView::Map } else { KeyView::Search }, None);
+                km = KeyMap::new(
+                    if km.view == KeyView::Search {
+                        KeyView::Map
+                    } else {
+                        KeyView::Search
+                    },
+                    None,
+                );
             }
             _ if km.step.is_some() => match k.code {
                 KeyCode::Backspace => km.step = None,
@@ -688,7 +1229,9 @@ impl App {
                 }
                 KeyCode::Char(c) => {
                     if let Some(step) = km.step
-                        && let Some(i) = step_items(self, step).iter().position(|(key, ..)| *key == c)
+                        && let Some(i) = step_items(self, step)
+                            .iter()
+                            .position(|(key, ..)| *key == c)
                     {
                         return self.keymap_run(&km, i);
                     }

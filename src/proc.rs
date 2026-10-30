@@ -9,7 +9,9 @@ use std::process::Command;
 pub fn system_tool(name: &str) -> Command {
     #[cfg(windows)]
     if let Some(root) = std::env::var_os("SystemRoot") {
-        let p = Path::new(&root).join("System32").join(format!("{name}.exe"));
+        let p = Path::new(&root)
+            .join("System32")
+            .join(format!("{name}.exe"));
         if p.is_file() {
             return Command::new(p);
         }
@@ -24,10 +26,64 @@ pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// Don't open a console window for this program (Windows; nothing elsewhere).
 /// Whether a program is on PATH (with Windows' own extensions).
 pub fn on_path(tool: &str) -> bool {
-    let exts: &[&str] = if cfg!(windows) { &["exe", "cmd", "bat", "com"] } else { &[""] };
+    let exts: &[&str] = if cfg!(windows) {
+        &["exe", "cmd", "bat", "com"]
+    } else {
+        &[""]
+    };
     std::env::var_os("PATH").is_some_and(|p| {
-        std::env::split_paths(&p).any(|d| exts.iter().any(|e| if e.is_empty() { d.join(tool).is_file() } else { d.join(format!("{tool}.{e}")).is_file() }))
+        std::env::split_paths(&p).any(|d| {
+            exts.iter().any(|e| {
+                if e.is_empty() {
+                    d.join(tool).is_file()
+                } else {
+                    d.join(format!("{tool}.{e}")).is_file()
+                }
+            })
+        })
     })
+}
+
+/// Find a native executable on PATH. Windows command scripts are excluded because they need a shell.
+pub fn executable_on_path(tool: &str) -> anyhow::Result<std::path::PathBuf> {
+    let path = std::env::var_os("PATH").ok_or_else(|| anyhow::anyhow!("PATH is not set"))?;
+    executable_from_path(tool, &path)
+}
+
+pub(crate) fn resolve_executable_path(path: &Path) -> anyhow::Result<std::path::PathBuf> {
+    #[cfg(unix)]
+    {
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("Executable path has no file name"))?;
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        Ok(std::fs::canonicalize(parent)?.join(file_name))
+    }
+    #[cfg(windows)]
+    {
+        Ok(path.canonicalize()?)
+    }
+}
+
+fn executable_from_path(tool: &str, path: &std::ffi::OsStr) -> anyhow::Result<std::path::PathBuf> {
+    let extensions: &[&str] = if cfg!(windows) { &["exe"] } else { &[""] };
+    for directory in std::env::split_paths(path) {
+        for extension in extensions {
+            let name = if extension.is_empty() {
+                tool.to_string()
+            } else {
+                format!("{tool}.{extension}")
+            };
+            let candidate = directory.join(name);
+            if candidate.is_file() {
+                return resolve_executable_path(&candidate);
+            }
+        }
+    }
+    anyhow::bail!("{tool} is not installed as a native executable on PATH")
 }
 
 pub fn quiet(cmd: &mut Command) -> &mut Command {
@@ -42,7 +98,9 @@ pub fn quiet(cmd: &mut Command) -> &mut Command {
 /// Run to the end: its output on success, else the first line of what it said went wrong.
 pub fn run(cmd: &mut Command) -> Result<String, String> {
     let program = cmd.get_program().to_string_lossy().into_owned();
-    let out = quiet(cmd).output().map_err(|e| format!("couldn't run {program}: {e}"))?;
+    let out = quiet(cmd)
+        .output()
+        .map_err(|e| format!("couldn't run {program}: {e}"))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {
@@ -55,14 +113,22 @@ pub fn run(cmd: &mut Command) -> Result<String, String> {
             .unwrap_or("")
             .trim()
             .to_string();
-        Err(if line.is_empty() { format!("{program} failed") } else { line })
+        Err(if line.is_empty() {
+            format!("{program} failed")
+        } else {
+            line
+        })
     }
 }
 
 /// `git -C <dir> <args>`. Its messages are kept in English, since callers match some of
 /// them.
 pub fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
-    run(Command::new("git").arg("-C").arg(dir).args(args).env("LC_ALL", "C"))
+    run(Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .env("LC_ALL", "C"))
 }
 
 /// A command line run through the user's shell (`shell` as from `Config::shell_command`).
@@ -91,17 +157,27 @@ pub fn shell(shell: &[String], line: &str, interactive: bool) -> Command {
 }
 
 fn shell_name(program: &str) -> String {
-    Path::new(program).file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default()
+    Path::new(program)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default()
 }
 
 /// Whether `shell` (as from `Config::shell_command`) is PowerShell.
 pub fn is_powershell(shell: &[String]) -> bool {
-    matches!(shell_name(shell.first().map_or("sh", String::as_str)).as_str(), "pwsh" | "powershell")
+    matches!(
+        shell_name(shell.first().map_or("sh", String::as_str)).as_str(),
+        "pwsh" | "powershell"
+    )
 }
 
 /// `line` as PowerShell runs it: a quoted path needs `&` in front.
 pub fn powershell_line(line: &str) -> String {
-    if line.starts_with('"') { format!("& {line}") } else { line.to_string() }
+    if line.starts_with('"') {
+        format!("& {line}")
+    } else {
+        line.to_string()
+    }
 }
 
 /// Put this process ahead of what runs in the app's panes. Agents' builds and tests take every
@@ -115,7 +191,9 @@ pub fn ahead_of_the_panes() {
     #[cfg(windows)]
     // SAFETY: both calls take this process's own pseudo-handle, which is always valid.
     unsafe {
-        use windows_sys::Win32::System::Threading::{ABOVE_NORMAL_PRIORITY_CLASS, GetCurrentProcess, SetPriorityClass};
+        use windows_sys::Win32::System::Threading::{
+            ABOVE_NORMAL_PRIORITY_CLASS, GetCurrentProcess, SetPriorityClass,
+        };
         SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
     }
 }
@@ -124,35 +202,116 @@ pub fn ahead_of_the_panes() {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    fn executable_lookup_preserves_a_mise_shim_name() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static NEXT_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
+
+        struct TestDirectory(std::path::PathBuf);
+
+        impl Drop for TestDirectory {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+
+        let directory = loop {
+            let candidate = std::env::temp_dir().join(format!(
+                "{}-mise-shim-{}-{}",
+                env!("APP_COMMAND"),
+                std::process::id(),
+                NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)
+            ));
+            match std::fs::create_dir(&candidate) {
+                Ok(()) => break TestDirectory(candidate),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("create test directory: {error}"),
+            }
+        };
+        let mise = directory.0.join("mise");
+        std::fs::write(&mise, "#!/bin/sh\nprintf '%s\\n' \"$0\" \"$1\"\n").unwrap();
+        std::fs::set_permissions(&mise, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let codex = directory.0.join("codex");
+        symlink(&mise, &codex).unwrap();
+        let path = std::env::join_paths([&directory.0]).unwrap();
+
+        let executable = executable_from_path("codex", &path).unwrap();
+        let output = Command::new(&executable)
+            .arg("app-server")
+            .output()
+            .unwrap();
+
+        let expected = format!(
+            "{}\napp-server\n",
+            std::path::absolute(&codex).unwrap().display()
+        );
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+    }
+
     #[cfg(windows)]
     #[test]
     fn app_runs_ahead_of_its_panes_and_they_stay_normal() {
-        use windows_sys::Win32::System::Threading::{ABOVE_NORMAL_PRIORITY_CLASS, GetCurrentProcess, GetPriorityClass};
+        use windows_sys::Win32::System::Threading::{
+            ABOVE_NORMAL_PRIORITY_CLASS, GetCurrentProcess, GetPriorityClass,
+        };
         ahead_of_the_panes();
         // SAFETY: this process's own pseudo-handle.
-        assert_eq!(unsafe { GetPriorityClass(GetCurrentProcess()) }, ABOVE_NORMAL_PRIORITY_CLASS);
+        assert_eq!(
+            unsafe { GetPriorityClass(GetCurrentProcess()) },
+            ABOVE_NORMAL_PRIORITY_CLASS
+        );
         // What it starts is at normal priority (Windows only hands down the low classes).
-        let out = Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", "(Get-Process -Id $PID).PriorityClass"]).output().expect("powershell runs");
+        let out = Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "(Get-Process -Id $PID).PriorityClass",
+            ])
+            .output()
+            .expect("powershell runs");
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "Normal");
     }
 
     fn args(c: &Command) -> Vec<String> {
-        c.get_args().map(|a| a.to_string_lossy().into_owned()).collect()
+        c.get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
     }
 
     #[test]
     fn shell_lines_for_each_shell() {
         let pwsh = vec!["pwsh.exe".to_string()];
-        assert_eq!(args(&shell(&pwsh, "npm i", false)), ["-NoProfile", "-NonInteractive", "-Command", "npm i"]);
-        assert_eq!(args(&shell(&pwsh, "\"C:/x y/run.ps1\"", true)), ["-NoProfile", "-Command", "& \"C:/x y/run.ps1\""]);
-        assert_eq!(args(&shell(&["cmd.exe".to_string()], "dir", false)), ["/C", "dir"]);
-        assert_eq!(args(&shell(&["/bin/zsh".to_string()], "ls", false)), ["-c", "ls"]);
+        assert_eq!(
+            args(&shell(&pwsh, "npm i", false)),
+            ["-NoProfile", "-NonInteractive", "-Command", "npm i"]
+        );
+        assert_eq!(
+            args(&shell(&pwsh, "\"C:/x y/run.ps1\"", true)),
+            ["-NoProfile", "-Command", "& \"C:/x y/run.ps1\""]
+        );
+        assert_eq!(
+            args(&shell(&["cmd.exe".to_string()], "dir", false)),
+            ["/C", "dir"]
+        );
+        assert_eq!(
+            args(&shell(&["/bin/zsh".to_string()], "ls", false)),
+            ["-c", "ls"]
+        );
     }
 
     #[test]
     fn errors_are_the_first_thing_it_said() {
         let dir = std::env::temp_dir();
-        let e = git(&dir.join(concat!(env!("APP_COMMAND"), "-no-such-repo")), &["status"]).unwrap_err();
+        let e = git(
+            &dir.join(concat!(env!("APP_COMMAND"), "-no-such-repo")),
+            &["status"],
+        )
+        .unwrap_err();
         assert!(!e.is_empty() && !e.contains('\n'), "{e}");
     }
 }

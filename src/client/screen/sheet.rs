@@ -2,8 +2,8 @@
 //! Inbox, Changes, Files). The panes reflow into the rest; below `NARROW` it takes the whole pane
 //! column. One at a time; Esc closes it. Its last row is a pill of key hints.
 
-use super::*;
 use super::inbox::{draw_inbox, inbox_count, inbox_place};
+use super::*;
 use crate::client::overlap::Overlap;
 
 /// What the sheet shows.
@@ -64,7 +64,12 @@ impl SheetKind {
 
 /// The width the sheet showing `kind` wants: what you sized it to, else its default.
 pub(in crate::client) fn wanted_w(app: &App, kind: SheetKind, screen_w: u16) -> u16 {
-    app.screen.saved.sheet_w.get(kind.key()).copied().unwrap_or_else(|| kind.default_w(screen_w))
+    app.screen
+        .saved
+        .sheet_w
+        .get(kind.key())
+        .copied()
+        .unwrap_or_else(|| kind.default_w(screen_w))
 }
 
 /// The widest the sheet can be beside the panes in `col`: they keep `PANES_KEEP` and the gap.
@@ -79,7 +84,12 @@ const DRAWER_TABS: [(SheetKind, &str, &str, Action); 4] = [
     (SheetKind::Files, "Files", "Files", Action::Files),
     (SheetKind::Changes, "Changes", "Chg", Action::Changes),
     (SheetKind::Branch, "Branch", "Br", Action::Branches),
-    (SheetKind::References, "References", "Refs", Action::References),
+    (
+        SheetKind::References,
+        "References",
+        "Refs",
+        Action::References,
+    ),
 ];
 
 /// Where `kind` sits in the tab strip, if it has a tab.
@@ -97,7 +107,9 @@ impl App {
             KeyCode::BackTab => n - 1,
             _ => return false,
         };
-        let Some(cur) = open_sheet(self).and_then(drawer_tab) else { return false };
+        let Some(cur) = open_sheet(self).and_then(drawer_tab) else {
+            return false;
+        };
         self.switch_drawer((cur + step) % n);
         true
     }
@@ -105,7 +117,9 @@ impl App {
     /// Open the strip's tab `to` for the same checkout (`screen_target_dir`), as its leader key
     /// does; the open tab's own key would close it, so that one does nothing.
     pub(in crate::client) fn switch_drawer(&mut self, to: usize) {
-        let Some((kind, _, _, act)) = DRAWER_TABS.get(to) else { return };
+        let Some((kind, _, _, act)) = DRAWER_TABS.get(to) else {
+            return;
+        };
         if open_sheet(self) != Some(*kind) {
             self.act(act.clone());
         }
@@ -121,8 +135,13 @@ impl App {
     /// `[` narrows the open sheet, `]` widens it and `=` puts its default back, while it has
     /// the keys. Returns whether the key was one of them.
     pub(in crate::client) fn sheet_size_key(&mut self, k: &KeyEvent) -> bool {
-        let Some(kind) = open_sheet(self) else { return false };
-        if k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) || !matches!(k.code, KeyCode::Char('[' | ']' | '=')) {
+        let Some(kind) = open_sheet(self) else {
+            return false;
+        };
+        if k.modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+            || !matches!(k.code, KeyCode::Char('[' | ']' | '='))
+        {
             return false;
         }
         // Taking the whole pane column, it has no width of its own to change: the keys do
@@ -184,13 +203,37 @@ pub(in crate::client) fn sheet_has_keys(app: &App) -> bool {
 /// what leaves the panes `PANES_KEEP`), the layout's gap from the panes (Flat: the panes run
 /// under its `│` rule, as beside the sidebar). A screen narrower than `NARROW`, or a column
 /// too narrow for both, gives it the whole column.
-pub(in crate::client) fn split_for_sheet(screen_w: u16, col: Rect, look: Look, frac: f32, want: u16) -> (Rect, Rect) {
+pub(in crate::client) fn split_for_sheet(
+    screen_w: u16,
+    col: Rect,
+    look: Look,
+    frac: f32,
+    want: u16,
+) -> (Rect, Rect) {
     let room = widest(col, look);
-    let full = if screen_w < NARROW || room < SHEET_MIN { col.width } else { want.clamp(SHEET_MIN, room) };
+    let full = if screen_w < NARROW || room < SHEET_MIN {
+        col.width
+    } else {
+        want.clamp(SHEET_MIN, room)
+    };
     let w = (full as f32 * frac.clamp(0.0, 1.0)).round() as u16;
-    let sheet = Rect { x: col.right() - w, width: w, ..col };
-    let beside = if w == 0 || w >= col.width { w } else { w + look.gap };
-    (sheet, Rect { width: col.width.saturating_sub(beside), ..col })
+    let sheet = Rect {
+        x: col.right() - w,
+        width: w,
+        ..col
+    };
+    let beside = if w == 0 || w >= col.width {
+        w
+    } else {
+        w + look.gap
+    };
+    (
+        sheet,
+        Rect {
+            width: col.width.saturating_sub(beside),
+            ..col
+        },
+    )
 }
 
 /// The same-file overlaps the Inbox lists, in a stable order: (repo, overlap).
@@ -199,18 +242,34 @@ pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
     repos.sort();
     repos
         .into_iter()
-        .flat_map(|r| app.screen.overlaps[r].iter().map(move |o| (r.clone(), o.clone())))
+        .flat_map(|r| {
+            app.screen.overlaps[r]
+                .iter()
+                .map(move |o| (r.clone(), o.clone()))
+        })
         .filter(|(r, o)| !app.screen.dismissed.contains(&(r.clone(), o.file.clone())))
         .collect()
 }
 
-pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
+pub(in crate::client) fn draw_sheet(
+    app: &mut App,
+    buf: &mut Buffer,
+    r: Rect,
+    kind: SheetKind,
+    t: &Theme,
+) {
     // Files, Changes, Branch and References are named by the lit tab in their strip, so the
     // title says only what the strip doesn't.
     let (title, sub, close) = match kind {
-        SheetKind::Inbox => ("INBOX".to_string(), inbox_count(app).to_string(), ScreenHit::Close),
+        SheetKind::Inbox => (
+            "INBOX".to_string(),
+            inbox_count(app).to_string(),
+            ScreenHit::Close,
+        ),
         SheetKind::Both => ("Changes".to_string(), String::new(), ScreenHit::ViewClose),
-        SheetKind::Changes | SheetKind::Files => (String::new(), String::new(), ScreenHit::ViewClose),
+        SheetKind::Changes | SheetKind::Files => {
+            (String::new(), String::new(), ScreenHit::ViewClose)
+        }
         SheetKind::Check => ("CHECK".to_string(), check_title(app), ScreenHit::ViewClose),
         SheetKind::Branch => (branch_title(app), String::new(), ScreenHit::ViewClose),
         SheetKind::References => (references_title(app), String::new(), ScreenHit::ViewClose),
@@ -228,7 +287,11 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
         c.right = vec![seg(format!("{title}  "), Style::default().fg(t.muted))];
     }
     // The read-while-working sheets and Changes sit on the desk's ground, like the panes.
-    c.bg = if kind == SheetKind::Both { t.card } else { t.bg };
+    c.bg = if kind == SheetKind::Both {
+        t.card
+    } else {
+        t.bg
+    };
     c.close = Some(close);
     c.docked = true;
     // With tabs on the title row the rule is `line` and only the open tab's stretch of it lights.
@@ -241,8 +304,14 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     hit(app, inside, ScreenHit::Noop);
     let inside = match drawer_tab(kind) {
         Some(cur) if tabs_on_title => {
-            let taken = segs_width(&c.right) + close_width(Look::of(&app.cfg.ui), !c.right.is_empty()) + 4;
-            let row = Rect { y: r.y, height: 1, width: inside.width.saturating_sub(taken), ..inside };
+            let taken =
+                segs_width(&c.right) + close_width(Look::of(&app.cfg.ui), !c.right.is_empty()) + 4;
+            let row = Rect {
+                y: r.y,
+                height: 1,
+                width: inside.width.saturating_sub(taken),
+                ..inside
+            };
             if let Some(tab) = draw_drawer_tabs(app, buf, row, cur, t.bg, t) {
                 for x in tab.x + 1..tab.right().saturating_sub(1) {
                     buf[(x, r.y + 1)].set_fg(if keys { t.accent } else { t.muted });
@@ -251,8 +320,22 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
             inside
         }
         Some(cur) if inside.height > 1 => {
-            draw_drawer_tabs(app, buf, Rect { height: 1, ..inside }, cur, c.bg, t);
-            Rect { y: inside.y + 1, height: inside.height - 1, ..inside }
+            draw_drawer_tabs(
+                app,
+                buf,
+                Rect {
+                    height: 1,
+                    ..inside
+                },
+                cur,
+                c.bg,
+                t,
+            );
+            Rect {
+                y: inside.y + 1,
+                height: inside.height - 1,
+                ..inside
+            }
         }
         _ => inside,
     };
@@ -260,7 +343,11 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     match kind {
         SheetKind::Inbox => draw_inbox(app, buf, body, c.bg, t),
         SheetKind::Changes => {
-            let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };
+            let inner = Rect {
+                x: inside.x + 1,
+                width: inside.width.saturating_sub(2),
+                ..inside
+            };
             if let Some(crate::client::View::Changes(v)) = app.view.take() {
                 crate::client::design::draw_changes(app, buf, inner, t, &v);
                 app.view = Some(crate::client::View::Changes(v));
@@ -278,9 +365,20 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
             }
         }
         SheetKind::Files => {
-            let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };
+            let inner = Rect {
+                x: inside.x + 1,
+                width: inside.width.saturating_sub(2),
+                ..inside
+            };
             if let Some(crate::client::View::Files(mut v)) = app.view.take() {
-                crate::client::design::draw_files(app, buf, inner, t, &mut v, r.width < FILES_BOTH_FROM);
+                crate::client::design::draw_files(
+                    app,
+                    buf,
+                    inner,
+                    t,
+                    &mut v,
+                    r.width < FILES_BOTH_FROM,
+                );
                 app.view = Some(crate::client::View::Files(v));
             }
         }
@@ -312,22 +410,47 @@ fn drawer_tab_labels(app: &App, room: u16) -> Vec<(String, String)> {
         let k = k.split("  ").next().unwrap_or_default().replace(' ', "");
         if k.is_empty() { k } else { format!("{k} ") }
     };
-    let full: Vec<(String, String)> = DRAWER_TABS.iter().map(|(_, name, _, act)| (name.to_string(), key(act))).collect();
-    let names: Vec<(String, String)> = DRAWER_TABS.iter().map(|(_, name, ..)| (name.to_string(), String::new())).collect();
-    let short: Vec<(String, String)> = DRAWER_TABS.iter().map(|(_, _, short, _)| (short.to_string(), String::new())).collect();
+    let full: Vec<(String, String)> = DRAWER_TABS
+        .iter()
+        .map(|(_, name, _, act)| (name.to_string(), key(act)))
+        .collect();
+    let names: Vec<(String, String)> = DRAWER_TABS
+        .iter()
+        .map(|(_, name, ..)| (name.to_string(), String::new()))
+        .collect();
+    let short: Vec<(String, String)> = DRAWER_TABS
+        .iter()
+        .map(|(_, _, short, _)| (short.to_string(), String::new()))
+        .collect();
     // The strip's lead column, then each tab and the ` · ` between them.
-    let strip_w = |tabs: &[(String, String)]| 1 + tabs.iter().map(|(n, k)| tab_w(n, k)).sum::<u16>() + 3 * (tabs.len() as u16 - 1);
-    [full, names].into_iter().find(|tabs| strip_w(tabs) <= room).unwrap_or(short)
+    let strip_w = |tabs: &[(String, String)]| {
+        1 + tabs.iter().map(|(n, k)| tab_w(n, k)).sum::<u16>() + 3 * (tabs.len() as u16 - 1)
+    };
+    [full, names]
+        .into_iter()
+        .find(|tabs| strip_w(tabs) <= room)
+        .unwrap_or(short)
 }
 
 /// The tab strip across the top of Files, Changes and Branch: `Files f · Changes c · Branch b`
 /// with each one's leader key from the keymap, the open one a pill like Settings' tabs (lit
 /// while the panel has the keys). A click switches. Where the whole strip does not fit, the
 /// keys go, then the long names, so every tab stays on screen.
-fn draw_drawer_tabs(app: &mut App, buf: &mut Buffer, row: Rect, cur: usize, ground: Color, t: &Theme) -> Option<Rect> {
+fn draw_drawer_tabs(
+    app: &mut App,
+    buf: &mut Buffer,
+    row: Rect,
+    cur: usize,
+    ground: Color,
+    t: &Theme,
+) -> Option<Rect> {
     let look = Look::of(&app.cfg.ui);
     // Hairline names the open tab in teal whether or not the panel has the keys; its rule says that.
-    let (pill_bg, pill_ink) = if sheet_has_keys(app) || look.hairline { (t.accent, t.acc_ink) } else { (t.btn, t.strong) };
+    let (pill_bg, pill_ink) = if sheet_has_keys(app) || look.hairline {
+        (t.accent, t.acc_ink)
+    } else {
+        (t.btn, t.strong)
+    };
     let tabs = drawer_tab_labels(app, row.width);
     // Hairline keeps the accent for the open tab: the others' keys are dim.
     let key_fg = if look.hairline { t.muted } else { t.accent };
@@ -335,19 +458,39 @@ fn draw_drawer_tabs(app: &mut App, buf: &mut Buffer, row: Rect, cur: usize, grou
     let mut open = None;
     for (i, (name, key)) in tabs.into_iter().enumerate() {
         if i > 0 {
-            put(buf, x, row.y, &[seg("·", Style::default().fg(t.muted).bg(ground))], row.right());
+            put(
+                buf,
+                x,
+                row.y,
+                &[seg("·", Style::default().fg(t.muted).bg(ground))],
+                row.right(),
+            );
             x += 2;
         }
         let w = tab_w(&name, &key);
-        let tr = Rect { x, y: row.y, width: w.min(row.right().saturating_sub(x)), height: 1 };
+        let tr = Rect {
+            x,
+            y: row.y,
+            width: w.min(row.right().saturating_sub(x)),
+            height: 1,
+        };
         let segs = if i == cur {
             open = Some(tr);
             let st = Style::default().fg(pill_ink).add_modifier(Modifier::BOLD);
-            pill(look, vec![seg(format!(" {name} "), st), seg(key, st)], pill_bg, ground)
+            pill(
+                look,
+                vec![seg(format!(" {name} "), st), seg(key, st)],
+                pill_bg,
+                ground,
+            )
         } else {
             let bg = if hovered(app, tr) { t.hov } else { ground };
             let st = Style::default().bg(bg);
-            vec![seg(format!("  {name} "), st.fg(t.text)), seg(key, st.fg(key_fg).add_modifier(Modifier::BOLD)), seg(" ", st)]
+            vec![
+                seg(format!("  {name} "), st.fg(t.text)),
+                seg(key, st.fg(key_fg).add_modifier(Modifier::BOLD)),
+                seg(" ", st),
+            ]
         };
         put(buf, x, row.y, &segs, row.right());
         hit(app, tr, ScreenHit::DrawerTab(i));
@@ -357,8 +500,15 @@ fn draw_drawer_tabs(app: &mut App, buf: &mut Buffer, row: Rect, cur: usize, grou
 }
 
 /// Settings is a modal so it does not take width away from the workspace.
-pub(in crate::client) fn draw_settings_modal(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
-    let Mode::ScreenSettings(view) = &app.mode else { return };
+pub(in crate::client) fn draw_settings_modal(
+    app: &mut App,
+    buf: &mut Buffer,
+    area: Rect,
+    t: &Theme,
+) {
+    let Mode::ScreenSettings(view) = &app.mode else {
+        return;
+    };
     let view = (**view).clone();
     let max_width = area.width.saturating_sub(4).min(128);
     let max_height = area.height.saturating_sub(2).min(48);
@@ -371,25 +521,67 @@ pub(in crate::client) fn draw_settings_modal(app: &mut App, buf: &mut Buffer, ar
     super::dim_all(app, buf, area, t);
     hit(app, area, ScreenHit::Noop);
     let r = panel_at(app, buf, r, "Settings", &[], t);
-    let inside = Rect { x: r.x + 1, y: r.y + 1, width: r.width.saturating_sub(2), height: r.height.saturating_sub(2) };
+    let inside = Rect {
+        x: r.x + 1,
+        y: r.y + 1,
+        width: r.width.saturating_sub(2),
+        height: r.height.saturating_sub(2),
+    };
     if inside.width < 44 {
-        put(buf, inside.x + 2, inside.y + 2, &[seg("Make the window wider", Style::default().fg(t.muted).bg(t.card))], inside.right());
+        put(
+            buf,
+            inside.x + 2,
+            inside.y + 2,
+            &[seg(
+                "Make the window wider",
+                Style::default().fg(t.muted).bg(t.card),
+            )],
+            inside.right(),
+        );
     } else if inside.height < 18 {
-        put(buf, inside.x + 2, inside.y + 2, &[seg("Make the window taller", Style::default().fg(t.muted).bg(t.card))], inside.right());
+        put(
+            buf,
+            inside.x + 2,
+            inside.y + 2,
+            &[seg(
+                "Make the window taller",
+                Style::default().fg(t.muted).bg(t.card),
+            )],
+            inside.right(),
+        );
     } else {
         crate::client::screen::draw_settings(app, buf, inside, t, &view);
     }
 }
 
 /// The sheet's last row: its key hints in an action bar, and a note at the right when there's room.
-pub(in crate::client) fn status_bar(buf: &mut Buffer, inside: Rect, t: &Theme, keys: &[(&str, &str)], note: &[Seg]) {
+pub(in crate::client) fn status_bar(
+    buf: &mut Buffer,
+    inside: Rect,
+    t: &Theme,
+    keys: &[(&str, &str)],
+    note: &[Seg],
+) {
     let y = inside.bottom().saturating_sub(1);
-    let bar = Rect { y, height: 1, ..inside };
+    let bar = Rect {
+        y,
+        height: 1,
+        ..inside
+    };
     action_bar(buf, bar, t, t.card2, keys);
     let nw = segs_width(note);
     let used = segs_width(&cap_hints(t, t.card2, keys)) + 2;
     if nw > 0 && used + nw + 3 <= bar.width {
-        let note: Vec<Seg> = note.iter().map(|(s, st)| (s.clone(), st.bg(t.card2))).collect();
-        put(buf, bar.right().saturating_sub(nw + 2), y, &note, bar.right());
+        let note: Vec<Seg> = note
+            .iter()
+            .map(|(s, st)| (s.clone(), st.bg(t.card2)))
+            .collect();
+        put(
+            buf,
+            bar.right().saturating_sub(nw + 2),
+            y,
+            &note,
+            bar.right(),
+        );
     }
 }

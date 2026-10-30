@@ -2,8 +2,8 @@
 //! git review) and Files (the worktree's file tree with a preview).
 
 use super::files::FileEntry;
-use crate::brand::{APP_COMMAND};
 use super::tasks::Review;
+use crate::brand::APP_COMMAND;
 use crate::protocol::{TermId, WsId};
 use crate::theme::Theme;
 use ratatui::style::{Color, Modifier, Style};
@@ -43,26 +43,54 @@ pub enum ChangesRow {
 pub fn fingerprint(dir: &Path, file: &str) -> u64 {
     let bytes = std::fs::read(dir.join(file)).unwrap_or_else(|_| b"(deleted)".to_vec());
     // FNV-1a: the same everywhere and across versions.
-    bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ *b as u64).wrapping_mul(0x0100_0000_01b3))
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+        (h ^ *b as u64).wrapping_mul(0x0100_0000_01b3)
+    })
 }
 
 /// Which of `files` are still as they were when marked.
-pub fn still_reviewed(dir: &Path, files: &[super::tasks::Changed], marks: Option<&HashMap<String, u64>>) -> HashSet<String> {
-    let Some(marks) = marks else { return HashSet::new() };
-    files.iter().filter(|f| marks.get(&f.path).is_some_and(|m| *m == fingerprint(dir, &f.path))).map(|f| f.path.clone()).collect()
+pub fn still_reviewed(
+    dir: &Path,
+    files: &[super::tasks::Changed],
+    marks: Option<&HashMap<String, u64>>,
+) -> HashSet<String> {
+    let Some(marks) = marks else {
+        return HashSet::new();
+    };
+    files
+        .iter()
+        .filter(|f| {
+            marks
+                .get(&f.path)
+                .is_some_and(|m| *m == fingerprint(dir, &f.path))
+        })
+        .map(|f| f.path.clone())
+        .collect()
 }
 
 impl ChangesView {
     /// The files in the order they're shown (Up/Down follow it).
     pub fn order(&self) -> Vec<usize> {
-        self.rows().into_iter().filter_map(|r| if let ChangesRow::File(i, _) = r { Some(i) } else { None }).collect()
+        self.rows()
+            .into_iter()
+            .filter_map(|r| {
+                if let ChangesRow::File(i, _) = r {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     /// The changed files as a tree: folders, then their files; the ones you've reviewed
     /// sink to the bottom.
     pub fn rows(&self) -> Vec<ChangesRow> {
-        let Some(r) = &self.review else { return Vec::new() };
-        let (done, todo): (Vec<usize>, Vec<usize>) = (0..r.files.len()).partition(|i| self.reviewed.contains(&r.files[*i].path));
+        let Some(r) = &self.review else {
+            return Vec::new();
+        };
+        let (done, todo): (Vec<usize>, Vec<usize>) =
+            (0..r.files.len()).partition(|i| self.reviewed.contains(&r.files[*i].path));
         let mut rows = self.tree(todo);
         if !done.is_empty() {
             rows.push(ChangesRow::Reviewed(done.len()));
@@ -72,14 +100,20 @@ impl ChangesView {
     }
 
     fn tree(&self, mut idx: Vec<usize>) -> Vec<ChangesRow> {
-        let Some(r) = &self.review else { return Vec::new() };
+        let Some(r) = &self.review else {
+            return Vec::new();
+        };
         idx.sort_by(|a, b| r.files[*a].path.cmp(&r.files[*b].path));
         let mut rows = Vec::new();
         let mut open: Vec<String> = Vec::new();
         for i in idx {
             let parts: Vec<&str> = r.files[i].path.split('/').collect();
             let dirs = &parts[..parts.len().saturating_sub(1)];
-            let common = open.iter().zip(dirs.iter()).take_while(|(a, b)| a == *b).count();
+            let common = open
+                .iter()
+                .zip(dirs.iter())
+                .take_while(|(a, b)| a == *b)
+                .count();
             open.truncate(common);
             for (d, name) in dirs.iter().enumerate().skip(common) {
                 rows.push(ChangesRow::Dir(name.to_string(), d));
@@ -248,7 +282,11 @@ pub fn text_between<S: AsRef<str>>(lines: &[S], sel: (Pos, Pos)) -> String {
     for (i, l) in lines.iter().enumerate().take(r1 + 1).skip(r0) {
         let chars = l.as_ref().chars();
         let from = if i == r0 { c0 } else { 0 };
-        let piece: String = if i == r1 { chars.take(c1).skip(from).collect() } else { chars.skip(from).collect() };
+        let piece: String = if i == r1 {
+            chars.take(c1).skip(from).collect()
+        } else {
+            chars.skip(from).collect()
+        };
         out.push_str(&piece);
         if i < r1 {
             out.push('\n');
@@ -259,7 +297,11 @@ pub fn text_between<S: AsRef<str>>(lines: &[S], sel: (Pos, Pos)) -> String {
 
 /// Screen columns a character takes in the preview: tabs four, CJK and emoji two.
 fn cell_width(c: char) -> usize {
-    if c == '\t' { 4 } else { unicode_width::UnicodeWidthChar::width(c).unwrap_or(0) }
+    if c == '\t' {
+        4
+    } else {
+        unicode_width::UnicodeWidthChar::width(c).unwrap_or(0)
+    }
 }
 
 /// The character of `line` drawn at screen column `x` (past the end: the end).
@@ -286,8 +328,14 @@ pub fn word_at(line: &str, col: usize) -> (usize, usize) {
     if !chars.get(col).is_some_and(word) {
         return (col.min(chars.len()), (col + 1).min(chars.len()));
     }
-    let start = chars[..col].iter().rposition(|c| !word(c)).map_or(0, |i| i + 1);
-    let end = chars[col..].iter().position(|c| !word(c)).map_or(chars.len(), |i| col + i);
+    let start = chars[..col]
+        .iter()
+        .rposition(|c| !word(c))
+        .map_or(0, |i| i + 1);
+    let end = chars[col..]
+        .iter()
+        .position(|c| !word(c))
+        .map_or(chars.len(), |i| col + i);
     (start, end)
 }
 
@@ -311,19 +359,43 @@ impl Edit {
     pub fn open(path: &Path) -> Result<Edit, String> {
         let bytes = std::fs::read(path).map_err(|e| format!("can't read it: {e}"))?;
         if bytes.len() > 4 * 1024 * 1024 || bytes.contains(&0) {
-            return Err(concat!("not a text file ", env!("APP_COMMAND"), " can edit (too big or binary); press e for your editor").into());
+            return Err(concat!(
+                "not a text file ",
+                env!("APP_COMMAND"),
+                " can edit (too big or binary); press e for your editor"
+            )
+            .into());
         }
         let seen = fingerprint_bytes(&bytes);
-        let text = String::from_utf8(bytes).map_err(|_| "not UTF-8 text; press e for your editor".to_string())?;
+        let text = String::from_utf8(bytes)
+            .map_err(|_| "not UTF-8 text; press e for your editor".to_string())?;
         // The file's usual line ending: one stray CRLF doesn't turn every line into CRLF.
         let crlf_lines = text.matches("\r\n").count();
         let crlf = crlf_lines * 2 > text.matches('\n').count();
         let trailing_newline = text.ends_with('\n');
-        let mut lines: Vec<String> = text.lines().map(|l| l.trim_end_matches('\r').to_string()).collect();
+        let mut lines: Vec<String> = text
+            .lines()
+            .map(|l| l.trim_end_matches('\r').to_string())
+            .collect();
         if lines.is_empty() {
             lines.push(String::new());
         }
-        Ok(Edit { path: path.to_path_buf(), lines, row: 0, col: 0, dirty: false, warned: false, crlf, trailing_newline, seen, conflict: false, anchor: None, undo: Vec::new(), redo: Vec::new(), last_step: None })
+        Ok(Edit {
+            path: path.to_path_buf(),
+            lines,
+            row: 0,
+            col: 0,
+            dirty: false,
+            warned: false,
+            crlf,
+            trailing_newline,
+            seen,
+            conflict: false,
+            anchor: None,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            last_step: None,
+        })
     }
 
     /// Save, unless the file changed on disk since it was opened (an agent edited it): then
@@ -343,8 +415,14 @@ impl Edit {
         if self.trailing_newline {
             text.push_str(nl);
         }
-        let name = self.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let tmp = self.path.with_file_name(format!(".{name}.{APP_COMMAND}-save"));
+        let name = self
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let tmp = self
+            .path
+            .with_file_name(format!(".{name}.{APP_COMMAND}-save"));
         std::fs::write(&tmp, &text).map_err(|e| format!("couldn't save: {e}"))?;
         if let Err(e) = std::fs::rename(&tmp, &self.path) {
             let _ = std::fs::remove_file(&tmp);
@@ -362,7 +440,11 @@ impl Edit {
     }
 
     fn byte(&self, row: usize, col: usize) -> usize {
-        self.lines[row].char_indices().nth(col).map(|(i, _)| i).unwrap_or(self.lines[row].len())
+        self.lines[row]
+            .char_indices()
+            .nth(col)
+            .map(|(i, _)| i)
+            .unwrap_or(self.lines[row].len())
     }
 
     /// The selection's ends in reading order, if any text is selected.
@@ -420,7 +502,12 @@ impl Edit {
 
     fn snapshot(&self) -> Snapshot {
         let bytes = self.lines.iter().map(|l| l.len() + 1).sum();
-        Snapshot { lines: self.lines.clone(), row: self.row, col: self.col, bytes }
+        Snapshot {
+            lines: self.lines.clone(),
+            row: self.row,
+            col: self.col,
+            bytes,
+        }
     }
 
     fn restore(&mut self, s: Snapshot) {
@@ -431,7 +518,9 @@ impl Edit {
 
     /// Ctrl+Z: back one step. False when there is nothing to undo.
     pub fn undo(&mut self) -> bool {
-        let Some(before) = self.undo.pop() else { return false };
+        let Some(before) = self.undo.pop() else {
+            return false;
+        };
         let now = self.snapshot();
         self.redo.push(now);
         self.restore(before);
@@ -440,7 +529,9 @@ impl Edit {
 
     /// Ctrl+Y: forward again what Ctrl+Z took back. False when there is nothing to redo.
     pub fn redo(&mut self) -> bool {
-        let Some(after) = self.redo.pop() else { return false };
+        let Some(after) = self.redo.pop() else {
+            return false;
+        };
         let now = self.snapshot();
         self.undo.push(now);
         self.restore(after);
@@ -469,7 +560,11 @@ impl Edit {
     /// Before a move: Shift keeps (or starts) the selection, any other move drops it.
     pub fn select(&mut self, extend: bool) {
         self.last_step = None;
-        self.anchor = if extend { Some(self.anchor.unwrap_or((self.row, self.col))) } else { None };
+        self.anchor = if extend {
+            Some(self.anchor.unwrap_or((self.row, self.col)))
+        } else {
+            None
+        };
     }
 
     pub fn select_all(&mut self) {
@@ -523,7 +618,10 @@ impl Edit {
         let at = self.byte(self.row, self.col);
         let rest = self.lines[self.row].split_off(at);
         // Keep the line's indent.
-        let indent: String = self.lines[self.row].chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+        let indent: String = self.lines[self.row]
+            .chars()
+            .take_while(|c| *c == ' ' || *c == '\t')
+            .collect();
         self.row += 1;
         self.col = indent.chars().count();
         self.lines.insert(self.row, format!("{indent}{rest}"));
@@ -554,7 +652,9 @@ impl Edit {
     }
 
     pub fn delete(&mut self) {
-        if self.selection().is_none() && (self.row, self.col) == (self.lines.len() - 1, self.len(self.row)) {
+        if self.selection().is_none()
+            && (self.row, self.col) == (self.lines.len() - 1, self.len(self.row))
+        {
             return;
         }
         self.checkpoint(Some(Step::Delete));
@@ -584,7 +684,9 @@ impl Edit {
             self.col = 0;
             return;
         }
-        self.row = (self.row as isize + drow).min(self.lines.len() as isize - 1).max(0) as usize;
+        self.row = (self.row as isize + drow)
+            .min(self.lines.len() as isize - 1)
+            .max(0) as usize;
         self.col = ((self.col as isize + dcol).max(0) as usize).min(self.len(self.row));
     }
 
@@ -637,13 +739,22 @@ impl FilesTree {
                 .recent_list
                 .iter()
                 .flatten()
-                .filter(|e| self.filter.is_empty() || e.path.to_string_lossy().to_lowercase().contains(&self.filter.to_lowercase()))
+                .filter(|e| {
+                    self.filter.is_empty()
+                        || e.path
+                            .to_string_lossy()
+                            .to_lowercase()
+                            .contains(&self.filter.to_lowercase())
+                })
                 .map(|e| FileNode {
                     path: e.path.clone(),
                     rel: e.path.display().to_string(),
                     label: format!(
                         "{}  {} · {}",
-                        e.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                        e.path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
                         e.place,
                         super::files::ago(e.modified)
                     ),
@@ -658,14 +769,31 @@ impl FilesTree {
                 .all
                 .iter()
                 .filter(|n| !n.is_dir)
-                .filter_map(|n| super::files::fuzzy(&self.filter, &n.rel).map(|s| (s, FileNode { label: n.rel.clone(), depth: 0, ..n.clone() })))
+                .filter_map(|n| {
+                    super::files::fuzzy(&self.filter, &n.rel).map(|s| {
+                        (
+                            s,
+                            FileNode {
+                                label: n.rel.clone(),
+                                depth: 0,
+                                ..n.clone()
+                            },
+                        )
+                    })
+                })
                 .collect();
             hits.sort_by_key(|(s, _)| -s);
             return hits.into_iter().map(|(_, n)| n).enumerate().collect();
         }
         self.all
             .iter()
-            .filter(|n| n.path.ancestors().skip(1).take_while(|a| *a != self.root).all(|a| self.expanded.contains(a)))
+            .filter(|n| {
+                n.path
+                    .ancestors()
+                    .skip(1)
+                    .take_while(|a| *a != self.root)
+                    .all(|a| self.expanded.contains(a))
+            })
             .cloned()
             .enumerate()
             .collect()
@@ -682,19 +810,29 @@ impl FilesTree {
 
     /// The previewed file is markdown, drawn or shown raw.
     pub fn markdown(&self) -> bool {
-        self.preview.as_ref().is_some_and(|(p, _)| super::markdown::is_markdown(p))
+        self.preview
+            .as_ref()
+            .is_some_and(|(p, _)| super::markdown::is_markdown(p))
     }
 
     pub fn toggle_raw(&mut self) {
-        let Some((path, _)) = self.preview.as_ref().filter(|_| self.markdown()) else { return };
-        self.raw = if self.raw.as_ref() == Some(path) { None } else { Some(path.clone()) };
+        let Some((path, _)) = self.preview.as_ref().filter(|_| self.markdown()) else {
+            return;
+        };
+        self.raw = if self.raw.as_ref() == Some(path) {
+            None
+        } else {
+            Some(path.clone())
+        };
         self.drawn_cache = None;
         self.pick = None;
     }
 
     /// The previewed file is markdown and drawn, not shown raw.
     pub fn drawn(&self) -> bool {
-        self.preview.as_ref().is_some_and(|(p, _)| super::markdown::is_markdown(p) && self.raw.as_ref() != Some(p))
+        self.preview
+            .as_ref()
+            .is_some_and(|(p, _)| super::markdown::is_markdown(p) && self.raw.as_ref() != Some(p))
     }
 
     /// Draw the previewed markdown `width` columns wide in `theme`, unless it is shown raw or
@@ -704,20 +842,34 @@ impl FilesTree {
         // would take a line of its own.
         const MIN_WIDTH: u16 = 20;
         let width = width.max(MIN_WIDTH);
-        let Some((path, lines)) = self.preview.as_ref().filter(|_| self.drawn()) else { return };
-        if self.drawn_cache.as_ref().is_some_and(|c| c.path == *path && c.width == width && c.theme == theme) {
+        let Some((path, lines)) = self.preview.as_ref().filter(|_| self.drawn()) else {
+            return;
+        };
+        if self
+            .drawn_cache
+            .as_ref()
+            .is_some_and(|c| c.path == *path && c.width == width && c.theme == theme)
+        {
             return;
         }
         let lines = super::markdown::render(&lines.join("\n"), width, t);
         // Drawn again, the lines are new: a selection in the old ones means nothing now.
         self.pick = None;
-        self.drawn_cache = Some(DrawnCache { path: path.clone(), width, theme: theme.to_string(), lines });
+        self.drawn_cache = Some(DrawnCache {
+            path: path.clone(),
+            width,
+            theme: theme.to_string(),
+            lines,
+        });
     }
 
     /// The drawn markdown from the last `lay_out`, unless the file is shown raw.
     pub(super) fn pretty(&self) -> Option<&[Vec<super::design::Seg>]> {
         let (path, _) = self.preview.as_ref().filter(|_| self.drawn())?;
-        self.drawn_cache.as_ref().filter(|c| c.path == *path).map(|c| c.lines.as_slice())
+        self.drawn_cache
+            .as_ref()
+            .filter(|c| c.path == *path)
+            .map(|c| c.lines.as_slice())
     }
 
     /// Scroll so the editor's cursor is on screen, `page` lines tall.
@@ -739,7 +891,9 @@ impl FilesTree {
     /// The text selected in the file shown, its lines joined by line breaks.
     pub fn picked_text(&self) -> Option<String> {
         let ((r0, c0), (r1, c1)) = self.pick.and_then(|(a, b)| ordered(a, b))?;
-        let lines: Vec<String> = (r0..=r1).map(|i| self.shown_text(i).unwrap_or_default()).collect();
+        let lines: Vec<String> = (r0..=r1)
+            .map(|i| self.shown_text(i).unwrap_or_default())
+            .collect();
         Some(text_between(&lines, ((0, c0), (r1 - r0, c1))))
     }
 
@@ -760,14 +914,20 @@ impl FilesTree {
             return ed.lines.get(i).cloned();
         }
         match self.pretty() {
-            Some(drawn) => drawn.get(i).map(|segs| segs.iter().map(|(s, _)| s.as_str()).collect()),
+            Some(drawn) => drawn
+                .get(i)
+                .map(|segs| segs.iter().map(|(s, _)| s.as_str()).collect()),
             None => self.preview.as_ref().and_then(|(_, l)| l.get(i).cloned()),
         }
     }
 
     /// Columns before the text: line numbers, except on drawn markdown.
     pub fn gutter(&self) -> u16 {
-        if self.edit.is_none() && self.pretty().is_some() { 0 } else { GUTTER }
+        if self.edit.is_none() && self.pretty().is_some() {
+            0
+        } else {
+            GUTTER
+        }
     }
 
     /// The place in the preview's text under the cell (x, y) of `area`, the preview on screen;
@@ -775,8 +935,13 @@ impl FilesTree {
     pub fn text_at(&self, area: ratatui::layout::Rect, x: u16, y: u16) -> Pos {
         let y = y.clamp(area.y, area.bottom().saturating_sub(1));
         let line = self.scroll + (y - area.y) as usize;
-        let Some(text) = self.shown_text(line) else { return self.end() };
-        (line, col_at(&text, x.saturating_sub(area.x + self.gutter()) as usize))
+        let Some(text) = self.shown_text(line) else {
+            return self.end();
+        };
+        (
+            line,
+            col_at(&text, x.saturating_sub(area.x + self.gutter()) as usize),
+        )
     }
 
     /// The end of the preview's last line.
@@ -802,7 +967,11 @@ impl FilesTree {
             self.pick = None;
         }
         if n.is_dir {
-            let kids = self.all.iter().filter(|c| c.path.parent() == Some(n.path.as_path())).count();
+            let kids = self
+                .all
+                .iter()
+                .filter(|c| c.path.parent() == Some(n.path.as_path()))
+                .count();
             self.preview = Some((n.path.clone(), vec![format!("folder · {kids} items")]));
             return;
         }
@@ -816,7 +985,12 @@ impl FilesTree {
 }
 
 pub fn rel_of(root: &Path, path: &Path) -> Option<String> {
-    Some(path.strip_prefix(root).ok()?.to_string_lossy().replace('\\', "/"))
+    Some(
+        path.strip_prefix(root)
+            .ok()?
+            .to_string_lossy()
+            .replace('\\', "/"),
+    )
 }
 
 /// Everything under `root` (honouring .gitignore), folders first at each level.
@@ -832,7 +1006,13 @@ pub fn scan_tree(root: &Path) -> Vec<FileNode> {
             let path = e.into_path();
             let rel = rel_of(root, &path)?;
             let label = path.file_name()?.to_string_lossy().into_owned();
-            Some(FileNode { depth: rel.matches('/').count(), rel, label, path, is_dir })
+            Some(FileNode {
+                depth: rel.matches('/').count(),
+                rel,
+                label,
+                path,
+                is_dir,
+            })
         })
         .collect();
     let key = |n: &FileNode| -> Vec<(u8, String)> {
@@ -840,7 +1020,16 @@ pub fn scan_tree(root: &Path) -> Vec<FileNode> {
         parts
             .iter()
             .enumerate()
-            .map(|(i, p)| (if i + 1 < parts.len() || n.is_dir { 0 } else { 1 }, p.to_lowercase()))
+            .map(|(i, p)| {
+                (
+                    if i + 1 < parts.len() || n.is_dir {
+                        0
+                    } else {
+                        1
+                    },
+                    p.to_lowercase(),
+                )
+            })
             .collect()
     };
     nodes.sort_by_key(key);
@@ -850,15 +1039,22 @@ pub fn scan_tree(root: &Path) -> Vec<FileNode> {
 /// `git status` marks: 'A' for new files, 'M' for anything else changed.
 pub fn git_marks(root: &Path) -> HashMap<String, char> {
     let mut cmd = std::process::Command::new("git");
-    cmd.arg("-C").arg(root).args(["status", "--porcelain=v1", "-uall"]);
+    cmd.arg("-C")
+        .arg(root)
+        .args(["status", "--porcelain=v1", "-uall"]);
     crate::proc::quiet(&mut cmd);
-    let Ok(out) = cmd.output() else { return HashMap::new() };
+    let Ok(out) = cmd.output() else {
+        return HashMap::new();
+    };
     // Paths are relative to the repo top, which may sit above `root`.
     let prefix = {
         let mut c = std::process::Command::new("git");
         c.arg("-C").arg(root).args(["rev-parse", "--show-prefix"]);
         crate::proc::quiet(&mut c);
-        c.output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
+        c.output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default()
     };
     String::from_utf8_lossy(&out.stdout)
         .lines()
@@ -867,7 +1063,11 @@ pub fn git_marks(root: &Path) -> HashMap<String, char> {
             let (xy, path) = l.split_at(3);
             let path = path.rsplit(" -> ").next().unwrap_or(path).trim_matches('"');
             let rel = path.strip_prefix(&prefix)?.to_string();
-            let mark = if xy.starts_with("??") || xy.starts_with('A') { 'A' } else { 'M' };
+            let mark = if xy.starts_with("??") || xy.starts_with('A') {
+                'A'
+            } else {
+                'M'
+            };
             Some((rel, mark))
         })
         .collect()
@@ -876,11 +1076,72 @@ pub fn git_marks(root: &Path) -> HashMap<String, char> {
 // ---- a small syntax highlighter for previews ---------------------------------------------------
 
 const KEYWORDS: &[&str] = &[
-    "import", "from", "export", "default", "const", "let", "var", "function", "return", "if", "else", "for", "while",
-    "async", "await", "class", "new", "type", "interface", "extends", "implements", "fn", "pub", "use", "mod", "struct",
-    "enum", "impl", "match", "mut", "self", "Self", "trait", "where", "def", "elif", "in", "not", "and", "or", "is",
-    "lambda", "with", "as", "try", "catch", "except", "finally", "throw", "raise", "package", "func", "go", "defer",
-    "true", "false", "null", "None", "True", "False", "nil", "undefined", "static", "public", "private", "void",
+    "import",
+    "from",
+    "export",
+    "default",
+    "const",
+    "let",
+    "var",
+    "function",
+    "return",
+    "if",
+    "else",
+    "for",
+    "while",
+    "async",
+    "await",
+    "class",
+    "new",
+    "type",
+    "interface",
+    "extends",
+    "implements",
+    "fn",
+    "pub",
+    "use",
+    "mod",
+    "struct",
+    "enum",
+    "impl",
+    "match",
+    "mut",
+    "self",
+    "Self",
+    "trait",
+    "where",
+    "def",
+    "elif",
+    "in",
+    "not",
+    "and",
+    "or",
+    "is",
+    "lambda",
+    "with",
+    "as",
+    "try",
+    "catch",
+    "except",
+    "finally",
+    "throw",
+    "raise",
+    "package",
+    "func",
+    "go",
+    "defer",
+    "true",
+    "false",
+    "null",
+    "None",
+    "True",
+    "False",
+    "nil",
+    "undefined",
+    "static",
+    "public",
+    "private",
+    "void",
 ];
 
 /// Colour a line of code: keywords magenta, strings green, calls blue, comments grey.
@@ -902,7 +1163,9 @@ pub fn highlight(line: &str, t: &Theme) -> Vec<(String, Style)> {
     while i < chars.len() {
         let c = chars[i];
         // Comments run to the end of the line.
-        if (c == '/' && chars.get(i + 1) == Some(&'/')) || (c == '#' && (i == 0 || chars[i - 1].is_whitespace())) {
+        if (c == '/' && chars.get(i + 1) == Some(&'/'))
+            || (c == '#' && (i == 0 || chars[i - 1].is_whitespace()))
+        {
             flush(&mut text, &mut out);
             out.push((chars[i..].iter().collect(), Style::default().fg(t.muted)));
             return out;
@@ -967,7 +1230,10 @@ mod tests {
 
     #[test]
     fn edit_a_file_in_place() {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-edit-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-edit-{}"),
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("a.ts");
         std::fs::write(&f, "const a = 1;\r\n  if (x) {\r\n").unwrap();
@@ -983,16 +1249,35 @@ mod tests {
         ed.insert('y');
         assert!(ed.dirty);
         assert_eq!(ed.save().unwrap(), Saved::Done);
-        assert_eq!(std::fs::read_to_string(&f).unwrap(), "const a = 12;\r\n  if (x) {\r\n  y\r\n", "edits, the indent kept, CRLF kept");
+        assert_eq!(
+            std::fs::read_to_string(&f).unwrap(),
+            "const a = 12;\r\n  if (x) {\r\n  y\r\n",
+            "edits, the indent kept, CRLF kept"
+        );
         ed.go(0, -100);
         ed.backspace();
-        assert_eq!(ed.lines[1], "  if (x) {  y", "backspace at a line's start joins it to the one above");
+        assert_eq!(
+            ed.lines[1], "  if (x) {  y",
+            "backspace at a line's start joins it to the one above"
+        );
         // Someone else (an agent) changes the file: saving doesn't overwrite it, until asked twice.
         std::fs::write(&f, "agent's version\r\n").unwrap();
         assert_eq!(ed.save().unwrap(), Saved::ChangedOnDisk);
-        assert_eq!(std::fs::read_to_string(&f).unwrap(), "agent's version\r\n", "nothing written");
-        assert_eq!(ed.save().unwrap(), Saved::Done, "the second Ctrl+S overwrites on purpose");
-        assert!(std::fs::read_to_string(&f).unwrap().starts_with("const a = 12;"));
+        assert_eq!(
+            std::fs::read_to_string(&f).unwrap(),
+            "agent's version\r\n",
+            "nothing written"
+        );
+        assert_eq!(
+            ed.save().unwrap(),
+            Saved::Done,
+            "the second Ctrl+S overwrites on purpose"
+        );
+        assert!(
+            std::fs::read_to_string(&f)
+                .unwrap()
+                .starts_with("const a = 12;")
+        );
         // One stray CRLF in an LF file keeps it LF.
         let g = dir.join("b.txt");
         std::fs::write(&g, "a\nb\r\nc\nd\n").unwrap();
@@ -1014,16 +1299,32 @@ mod tests {
 
     #[test]
     fn a_review_mark_clears_when_the_file_changes() {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-review-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-review-{}"),
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.rs"), "one").unwrap();
         std::fs::write(dir.join("b.rs"), "two").unwrap();
-        let f = |p: &str| super::super::tasks::Changed { path: p.into(), added: 1, removed: 0, untracked: false };
+        let f = |p: &str| super::super::tasks::Changed {
+            path: p.into(),
+            added: 1,
+            removed: 0,
+            untracked: false,
+        };
         let files = vec![f("a.rs"), f("b.rs")];
-        let marks: HashMap<String, u64> = [("a.rs".to_string(), fingerprint(&dir, "a.rs")), ("b.rs".to_string(), fingerprint(&dir, "b.rs"))].into();
+        let marks: HashMap<String, u64> = [
+            ("a.rs".to_string(), fingerprint(&dir, "a.rs")),
+            ("b.rs".to_string(), fingerprint(&dir, "b.rs")),
+        ]
+        .into();
         assert_eq!(still_reviewed(&dir, &files, Some(&marks)).len(), 2);
         std::fs::write(dir.join("b.rs"), "two, edited by the agent").unwrap();
-        assert_eq!(still_reviewed(&dir, &files, Some(&marks)), HashSet::from(["a.rs".to_string()]), "b changed since");
+        assert_eq!(
+            still_reviewed(&dir, &files, Some(&marks)),
+            HashSet::from(["a.rs".to_string()]),
+            "b changed since"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
     use super::*;
@@ -1045,7 +1346,15 @@ mod tests {
                 root: PathBuf::new(),
             },
             merge_base: String::new(),
-            files: paths.iter().map(|p| Changed { path: p.to_string(), added: 1, removed: 0, untracked: false }).collect(),
+            files: paths
+                .iter()
+                .map(|p| Changed {
+                    path: p.to_string(),
+                    added: 1,
+                    removed: 0,
+                    untracked: false,
+                })
+                .collect(),
             sel: 0,
             diff: Vec::new(),
             diff_sel: None,
@@ -1058,7 +1367,12 @@ mod tests {
     fn change_tree_groups_folders() {
         let mut v = ChangesView {
             dir: PathBuf::new(),
-            review: Some(review(&["src/rate.ts", "test/rate.test.ts", "src/auth.ts", "README.md"])),
+            review: Some(review(&[
+                "src/rate.ts",
+                "test/rate.test.ts",
+                "src/auth.ts",
+                "README.md",
+            ])),
             error: None,
             agent: String::new(),
             said: String::new(),
@@ -1073,16 +1387,38 @@ mod tests {
             .iter()
             .map(|r| match r {
                 ChangesRow::Dir(n, d) => format!("{}{n}/", "  ".repeat(*d)),
-                ChangesRow::File(i, d) => format!("{}{}", "  ".repeat(*d), v.review.as_ref().unwrap().files[*i].path),
+                ChangesRow::File(i, d) => format!(
+                    "{}{}",
+                    "  ".repeat(*d),
+                    v.review.as_ref().unwrap().files[*i].path
+                ),
                 ChangesRow::Reviewed(n) => format!("REVIEWED {n}"),
             })
             .collect();
-        assert_eq!(shape, ["README.md", "src/", "  src/auth.ts", "  src/rate.ts", "test/", "  test/rate.test.ts"]);
+        assert_eq!(
+            shape,
+            [
+                "README.md",
+                "src/",
+                "  src/auth.ts",
+                "  src/rate.ts",
+                "test/",
+                "  test/rate.test.ts"
+            ]
+        );
         // Reviewed files sink, under their own heading; Up/Down follow what's shown.
         v.reviewed = HashSet::from(["src/auth.ts".to_string(), "README.md".to_string()]);
         let files = &v.review.as_ref().unwrap().files;
         let order: Vec<&str> = v.order().iter().map(|i| files[*i].path.as_str()).collect();
-        assert_eq!(order, ["src/rate.ts", "test/rate.test.ts", "README.md", "src/auth.ts"]);
+        assert_eq!(
+            order,
+            [
+                "src/rate.ts",
+                "test/rate.test.ts",
+                "README.md",
+                "src/auth.ts"
+            ]
+        );
         assert!(v.rows().contains(&ChangesRow::Reviewed(2)));
         v.review = None;
         assert!(v.rows().is_empty());

@@ -25,7 +25,10 @@ use unicode_width::UnicodeWidthStr;
 /// glyph) is drawn with a gradient, so no Nerd Font is needed.
 pub(super) fn frame(buf: &Buffer, t: &Theme) -> String {
     let a = buf.area;
-    let mut out = format!("<pre class=\"frame\" data-cols=\"{}\" data-rows=\"{}\">", a.width, a.height);
+    let mut out = format!(
+        "<pre class=\"frame\" data-cols=\"{}\" data-rows=\"{}\">",
+        a.width, a.height
+    );
     for y in 0..a.height {
         let mut run: Option<(String, String)> = None;
         let mut x = 0;
@@ -77,7 +80,14 @@ fn cell_html(cell: &Cell, t: &Theme) -> (String, String) {
         _ => None,
     };
     if let Some(side) = flat_side {
-        return (format!("background:radial-gradient(ellipse 100% 50% at {side} 50%,{} 98%,{} 100%)", hex(fg), hex(bg)), " ".into());
+        return (
+            format!(
+                "background:radial-gradient(ellipse 100% 50% at {side} 50%,{} 98%,{} 100%)",
+                hex(fg),
+                hex(bg)
+            ),
+            " ".into(),
+        );
     }
     let mut style = format!("color:{};background-color:{}", hex(fg), hex(bg));
     for (bit, css) in [
@@ -89,7 +99,10 @@ fn cell_html(cell: &Cell, t: &Theme) -> (String, String) {
         }
     }
     // One declaration for both lines, since a second `text-decoration` would replace the first.
-    match (m.contains(Modifier::UNDERLINED), m.contains(Modifier::CROSSED_OUT)) {
+    match (
+        m.contains(Modifier::UNDERLINED),
+        m.contains(Modifier::CROSSED_OUT),
+    ) {
         (true, true) => style.push_str(";text-decoration:underline line-through"),
         (true, false) => style.push_str(";text-decoration:underline"),
         (false, true) => style.push_str(";text-decoration:line-through"),
@@ -115,7 +128,10 @@ fn fits_any_font(c: char) -> bool {
 }
 
 fn escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// `c` as an RGB colour; the terminal's default is `default`.
@@ -204,7 +220,14 @@ mod tests {
         let t = night();
         let mut buf = Buffer::empty(Rect::new(0, 0, 4, 1));
         buf.set_string(0, 0, "ab", Style::default());
-        buf.set_string(2, 0, "cd", Style::default().fg(Color::Rgb(1, 2, 3)).add_modifier(Modifier::BOLD));
+        buf.set_string(
+            2,
+            0,
+            "cd",
+            Style::default()
+                .fg(Color::Rgb(1, 2, 3))
+                .add_modifier(Modifier::BOLD),
+        );
         let want = format!(
             "<pre class=\"frame\" data-cols=\"4\" data-rows=\"1\"><span style=\"color:{fg};background-color:{bg}\">ab</span><span style=\"color:#010203;background-color:{bg};font-weight:bold\">cd</span></pre>\n",
             fg = hex(t.fg),
@@ -221,7 +244,10 @@ mod tests {
         buf.set_string(0, 1, "界ab", Style::default());
         let out = frame(&buf, &t);
         assert!(out.contains(">&lt;&amp;&quot;&gt; </span>"), "{out}");
-        assert!(out.contains("><span class=\"g2\">界</span>ab </span>"), "the spacer cell after 界 is skipped: {out}");
+        assert!(
+            out.contains("><span class=\"g2\">界</span>ab </span>"),
+            "the spacer cell after 界 is skipped: {out}"
+        );
     }
 
     #[test]
@@ -230,7 +256,10 @@ mod tests {
         let mut buf = Buffer::empty(Rect::new(0, 0, 4, 1));
         buf.set_string(0, 0, "⎇ a─", Style::default());
         let out = frame(&buf, &t);
-        assert!(out.contains("><span class=\"g\">⎇</span> a─</span>"), "{out}");
+        assert!(
+            out.contains("><span class=\"g\">⎇</span> a─</span>"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -245,9 +274,21 @@ mod tests {
     fn a_half_circle_end_is_drawn_without_a_nerd_font() {
         let t = night();
         let mut buf = Buffer::empty(Rect::new(0, 0, 1, 1));
-        buf.set_string(0, 0, CAP_L, Style::default().fg(Color::Rgb(255, 0, 0)).bg(Color::Rgb(0, 0, 255)));
+        buf.set_string(
+            0,
+            0,
+            CAP_L,
+            Style::default()
+                .fg(Color::Rgb(255, 0, 0))
+                .bg(Color::Rgb(0, 0, 255)),
+        );
         let out = frame(&buf, &t);
-        assert!(out.contains("radial-gradient(ellipse 100% 50% at 100% 50%,#ff0000 98%,#0000ff 100%)\"> </span>"), "{out}");
+        assert!(
+            out.contains(
+                "radial-gradient(ellipse 100% 50% at 100% 50%,#ff0000 98%,#0000ff 100%)\"> </span>"
+            ),
+            "{out}"
+        );
         assert!(!out.contains(CAP_L));
     }
 

@@ -28,11 +28,18 @@ pub struct Tween {
 
 impl Tween {
     pub fn new(from: f32, to: f32, dur: Duration) -> Tween {
-        Tween { from, to, start: Instant::now(), dur }
+        Tween {
+            from,
+            to,
+            start: Instant::now(),
+            dur,
+        }
     }
 
     pub fn at(&self, now: Instant) -> f32 {
-        let p = (now.saturating_duration_since(self.start).as_secs_f32() / self.dur.as_secs_f32().max(1e-6)).min(1.0);
+        let p = (now.saturating_duration_since(self.start).as_secs_f32()
+            / self.dur.as_secs_f32().max(1e-6))
+        .min(1.0);
         self.from + (self.to - self.from) * ease_out(p)
     }
 
@@ -164,15 +171,25 @@ impl Motion {
     /// Something that changes the layout is moving (pane sizes wait for it to stop).
     pub fn layout_moving(&self) -> bool {
         let now = Instant::now();
-        self.side.is_some_and(|t| !t.done(now)) || self.sheet.is_some_and(|t| !t.done(now)) || self.splits.values().any(|(_, t)| t.is_some_and(|t| !t.done(now)))
+        self.side.is_some_and(|t| !t.done(now))
+            || self.sheet.is_some_and(|t| !t.done(now))
+            || self
+                .splits
+                .values()
+                .any(|(_, t)| t.is_some_and(|t| !t.done(now)))
     }
 
     /// Anything at all is moving (keep drawing frames).
     pub fn moving(&self) -> bool {
         let now = Instant::now();
         self.layout_moving()
-            || self.glides.values().any(|(.., t)| t.is_some_and(|t| !t.done(now)))
-            || self.landed.is_some_and(|(_, t)| t.is_some_and(|t| !t.done(now)))
+            || self
+                .glides
+                .values()
+                .any(|(.., t)| t.is_some_and(|t| !t.done(now)))
+            || self
+                .landed
+                .is_some_and(|(_, t)| t.is_some_and(|t| !t.done(now)))
     }
 }
 
@@ -185,7 +202,12 @@ mod tests {
         assert_eq!(ease_out(0.0), 0.0);
         assert_eq!(ease_out(1.0), 1.0);
         assert!(ease_out(0.5) > 0.8, "most of the way by half time");
-        let t = Tween { from: 0.0, to: 10.0, start: Instant::now() - Duration::from_secs(1), dur: SLIDE };
+        let t = Tween {
+            from: 0.0,
+            to: 10.0,
+            start: Instant::now() - Duration::from_secs(1),
+            dur: SLIDE,
+        };
         assert!(t.done(Instant::now()) && t.at(Instant::now()) == 10.0);
     }
 
@@ -194,7 +216,10 @@ mod tests {
         let mut m = Motion::default();
         assert_eq!(m.side(true, true), 1.0, "first sight: already there");
         let mid = m.side(false, true);
-        assert!(mid > 0.0 && m.layout_moving(), "hiding: it slides out ({mid})");
+        assert!(
+            mid > 0.0 && m.layout_moving(),
+            "hiding: it slides out ({mid})"
+        );
         let mut m = Motion::default();
         m.side(true, false);
         assert_eq!(m.side(false, false), 0.0, "motion off: gone at once");
@@ -217,17 +242,25 @@ mod tests {
         let mut m = Motion::default();
         assert_eq!(m.split(1, &[10], 0.5, true), 0.5);
         let r = m.split(1, &[10, 11], 0.5, true);
-        assert!(r > 0.5 && m.layout_moving(), "opened right: the first pane starts wide ({r})");
+        assert!(
+            r > 0.5 && m.layout_moving(),
+            "opened right: the first pane starts wide ({r})"
+        );
         let mut m = Motion::default();
         m.split(1, &[10], 0.5, true);
-        assert!(m.split(1, &[11, 10], 0.5, true) < 0.5, "opened left: the first (new) one starts narrow");
+        assert!(
+            m.split(1, &[11, 10], 0.5, true) < 0.5,
+            "opened left: the first (new) one starts narrow"
+        );
     }
 
     #[test]
     fn a_highlight_glides_to_its_new_row() {
         let mut m = Motion::default();
         assert_eq!(m.glide("side", 1, 5, true), None, "first sight: on its row");
-        let y = m.glide("side", 2, 15, true).expect("moving to the next one");
+        let y = m
+            .glide("side", 2, 15, true)
+            .expect("moving to the next one");
         assert!((5..15).contains(&y), "on its way: {y}");
         assert!(m.moving());
         assert_eq!(Motion::default().glide("side", 1, 5, false), None);

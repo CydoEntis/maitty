@@ -10,8 +10,8 @@
 mod html;
 mod output;
 
-use super::screen::FIXED_NOW;
 use super::reference_fixture::{entry, git, in_repo, now, term, workspace};
+use super::screen::FIXED_NOW;
 use super::*;
 use crate::layout::{Dir, Node};
 use ratatui::Terminal;
@@ -45,23 +45,86 @@ struct Shot {
 }
 
 const SHOTS: &[Shot] = &[
-    Shot { name: "hero", cols: 160, rows: 45, caption: "Agents across three projects; Claude waits for permission to run the tests.", setup: hero },
-    Shot { name: "grid", cols: 160, rows: 45, caption: "Pane colours: four agents in one tab, each in its own colour.", setup: grid },
-    Shot { name: "changes", cols: 160, rows: 45, caption: "Changes: review what an agent changed before you merge it.", setup: changes },
-    Shot { name: "files", cols: 160, rows: 45, caption: "Files: the project's tree beside its README, drawn as markdown.", setup: files },
-    Shot { name: "inbox", cols: 120, rows: 34, caption: "The Inbox: a question, a failed check and finished work, in the order they need you.", setup: inbox },
-    Shot { name: "layout-floating", cols: 120, rows: 34, caption: "Floating: a box per pane, with room between them.", setup: floating },
-    Shot { name: "layout-hairline", cols: 120, rows: 34, caption: "Hairline: no boxes, only lines, the most room for output.", setup: hairline },
-    Shot { name: "layout-colours", cols: 120, rows: 34, caption: "Pane colours: each pane in its own colour.", setup: grid_look },
-    Shot { name: "shortcut", cols: 120, rows: 34, caption: "Shortcut mode: one key moves, splits or opens; Esc goes back to typing.", setup: shortcut },
-    Shot { name: "splash", cols: 120, rows: 34, caption: "The welcome screen: what happened while you were away.", setup: splash },
+    Shot {
+        name: "hero",
+        cols: 160,
+        rows: 45,
+        caption: "Agents across three projects; Claude waits for permission to run the tests.",
+        setup: hero,
+    },
+    Shot {
+        name: "grid",
+        cols: 160,
+        rows: 45,
+        caption: "Pane colours: four agents in one tab, each in its own colour.",
+        setup: grid,
+    },
+    Shot {
+        name: "changes",
+        cols: 160,
+        rows: 45,
+        caption: "Changes: review what an agent changed before you merge it.",
+        setup: changes,
+    },
+    Shot {
+        name: "files",
+        cols: 160,
+        rows: 45,
+        caption: "Files: the project's tree beside its README, drawn as markdown.",
+        setup: files,
+    },
+    Shot {
+        name: "inbox",
+        cols: 120,
+        rows: 34,
+        caption: "The Inbox: a question, a failed check and finished work, in the order they need you.",
+        setup: inbox,
+    },
+    Shot {
+        name: "layout-floating",
+        cols: 120,
+        rows: 34,
+        caption: "Floating: a box per pane, with room between them.",
+        setup: floating,
+    },
+    Shot {
+        name: "layout-hairline",
+        cols: 120,
+        rows: 34,
+        caption: "Hairline: no boxes, only lines, the most room for output.",
+        setup: hairline,
+    },
+    Shot {
+        name: "layout-colours",
+        cols: 120,
+        rows: 34,
+        caption: "Pane colours: each pane in its own colour.",
+        setup: grid_look,
+    },
+    Shot {
+        name: "shortcut",
+        cols: 120,
+        rows: 34,
+        caption: "Shortcut mode: one key moves, splits or opens; Esc goes back to typing.",
+        setup: shortcut,
+    },
+    Shot {
+        name: "splash",
+        cols: 120,
+        rows: 34,
+        caption: "The welcome screen: what happened while you were away.",
+        setup: splash,
+    },
 ];
 
 #[test]
 #[ignore = "writes the website's frames; run on demand"]
 fn export_site_frames() {
     let var = concat!(env!("APP_ENV"), "_SITE_FRAMES");
-    let dir = PathBuf::from(std::env::var(var).unwrap_or_else(|_| panic!("set {var} to the folder to write the frames into")));
+    let dir = PathBuf::from(
+        std::env::var(var)
+            .unwrap_or_else(|_| panic!("set {var} to the folder to write the frames into")),
+    );
     std::fs::create_dir_all(&dir).expect("the frames folder");
     let mut listed = Vec::new();
     for shot in SHOTS {
@@ -91,7 +154,16 @@ fn render(shot: &Shot, theme: &str) -> (String, App) {
     let buf = draw(&mut app, shot.cols, shot.rows);
     if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
         let a = buf.area;
-        let text: String = (0..a.height).map(|y| (0..a.width).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end().to_string() + "\n").collect();
+        let text: String = (0..a.height)
+            .map(|y| {
+                (0..a.width)
+                    .map(|x| buf[(x, y)].symbol())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string()
+                    + "\n"
+            })
+            .collect();
         println!("===== {} {theme}\n{text}", shot.name);
     }
     (html::frame(&buf, &app.theme), app)
@@ -135,34 +207,149 @@ fn world(theme: &str) -> App {
     FIXED_NOW.with(|n| n.set(Some(now())));
     let (tx, _rx) = mpsc::unbounded_channel();
     let (bg_tx, _bg_rx) = mpsc::unbounded_channel();
-    let mut cfg = Config { theme: theme.into(), ..Default::default() };
-    (cfg.ui.layout, cfg.ui.padding, cfg.ui.rounded, cfg.ui.motion) = ("floating".into(), "1".into(), crate::config::Rounding::Full, false);
+    let mut cfg = Config {
+        theme: theme.into(),
+        ..Default::default()
+    };
+    (cfg.ui.layout, cfg.ui.padding, cfg.ui.rounded, cfg.ui.motion) = (
+        "floating".into(),
+        "1".into(),
+        crate::config::Rounding::Full,
+        false,
+    );
     cfg.ui.splash_animation = "never".into();
     let mut app = App::new(cfg, tx, None, bg_tx);
     app.splash = false;
-    let (store, gateway, docs) = (place("acme-store"), place("api-gateway"), place("docs-site"));
+    let (store, gateway, docs) = (
+        place("acme-store"),
+        place("api-gateway"),
+        place("docs-site"),
+    );
     let tree = |repo: &str, name: &str| place(&format!("{repo}-worktrees/{name}"));
-    let (checkout_dir, cart_dir, orders_dir, rate_dir) =
-        (tree("acme-store", "checkout-discounts"), tree("acme-store", "cart-tests"), tree("acme-store", "order-emails"), tree("api-gateway", "rate-limit"));
+    let (checkout_dir, cart_dir, orders_dir, rate_dir) = (
+        tree("acme-store", "checkout-discounts"),
+        tree("acme-store", "cart-tests"),
+        tree("acme-store", "order-emails"),
+        tree("api-gateway", "rate-limit"),
+    );
 
     let sessions = [
-        in_repo(term(CHECKOUT, "checkout-discounts", "claude", Status::Blocked, &checkout_dir, now() - 40), &store, "checkout-discounts"),
-        in_repo(term(CART, "cart-tests", "codex", Status::Working, &cart_dir, now() - 3 * MIN), &store, "cart-tests"),
-        in_repo(term(ORDERS, "order-emails", "codex", Status::Working, &orders_dir, now() - MIN), &store, "order-emails"),
-        in_repo(term(RATE, "rate-limit", "gemini", Status::Done, &rate_dir, now() - 4 * MIN), &gateway, "rate-limit"),
-        in_repo(term(AUTH, "auth-refresh", "opencode", Status::Idle, &gateway, now() - 2 * HOUR), &gateway, "main"),
-        in_repo(term(QUICKSTART, "quickstart", "claude", Status::Done, &docs, now() - 9 * MIN), &docs, "main"),
+        in_repo(
+            term(
+                CHECKOUT,
+                "checkout-discounts",
+                "claude",
+                Status::Blocked,
+                &checkout_dir,
+                now() - 40,
+            ),
+            &store,
+            "checkout-discounts",
+        ),
+        in_repo(
+            term(
+                CART,
+                "cart-tests",
+                "codex",
+                Status::Working,
+                &cart_dir,
+                now() - 3 * MIN,
+            ),
+            &store,
+            "cart-tests",
+        ),
+        in_repo(
+            term(
+                ORDERS,
+                "order-emails",
+                "codex",
+                Status::Working,
+                &orders_dir,
+                now() - MIN,
+            ),
+            &store,
+            "order-emails",
+        ),
+        in_repo(
+            term(
+                RATE,
+                "rate-limit",
+                "gemini",
+                Status::Done,
+                &rate_dir,
+                now() - 4 * MIN,
+            ),
+            &gateway,
+            "rate-limit",
+        ),
+        in_repo(
+            term(
+                AUTH,
+                "auth-refresh",
+                "opencode",
+                Status::Idle,
+                &gateway,
+                now() - 2 * HOUR,
+            ),
+            &gateway,
+            "main",
+        ),
+        in_repo(
+            term(
+                QUICKSTART,
+                "quickstart",
+                "claude",
+                Status::Done,
+                &docs,
+                now() - 9 * MIN,
+            ),
+            &docs,
+            "main",
+        ),
     ];
-    let store_trees = [("main", &store), ("checkout-discounts", &checkout_dir), ("cart-tests", &cart_dir), ("order-emails", &orders_dir)]
-        .map(|(branch, dir)| entry(dir, branch, dir == &store, "acme-store"))
-        .to_vec();
-    let gateway_trees = vec![entry(&gateway, "main", true, "api-gateway"), entry(&rate_dir, "rate-limit", false, "api-gateway")];
-    let mut store_ws = workspace(STORE_WS, "acme-store", &store, &[CHECKOUT, ORDERS], Some(git(&store, "main", store_trees)), 0);
+    let store_trees = [
+        ("main", &store),
+        ("checkout-discounts", &checkout_dir),
+        ("cart-tests", &cart_dir),
+        ("order-emails", &orders_dir),
+    ]
+    .map(|(branch, dir)| entry(dir, branch, dir == &store, "acme-store"))
+    .to_vec();
+    let gateway_trees = vec![
+        entry(&gateway, "main", true, "api-gateway"),
+        entry(&rate_dir, "rate-limit", false, "api-gateway"),
+    ];
+    let mut store_ws = workspace(
+        STORE_WS,
+        "acme-store",
+        &store,
+        &[CHECKOUT, ORDERS],
+        Some(git(&store, "main", store_trees)),
+        0,
+    );
     store_ws.tabs[0].layout = split(&[CHECKOUT, CART], &[]);
     app.snap.workspaces = vec![
         store_ws,
-        workspace(20, "api-gateway", &gateway, &[RATE, AUTH], Some(git(&gateway, "main", gateway_trees)), 1),
-        workspace(DOCS_WS, "docs-site", &docs, &[QUICKSTART], Some(git(&docs, "main", vec![entry(&docs, "main", true, "docs-site")])), 3),
+        workspace(
+            20,
+            "api-gateway",
+            &gateway,
+            &[RATE, AUTH],
+            Some(git(&gateway, "main", gateway_trees)),
+            1,
+        ),
+        workspace(
+            DOCS_WS,
+            "docs-site",
+            &docs,
+            &[QUICKSTART],
+            Some(git(
+                &docs,
+                "main",
+                vec![entry(&docs, "main", true, "docs-site")],
+            )),
+            3,
+        ),
     ];
     app.snap.active_ws = Some(STORE_WS);
     for t in sessions {
@@ -170,7 +357,12 @@ fn world(theme: &str) -> App {
     }
     app.screen_sync();
     pin_fold_colors(&mut app);
-    for (dir, lines) in [(&checkout_dir, (38, 6)), (&cart_dir, (54, 2)), (&orders_dir, (21, 0)), (&rate_dir, (42, 7))] {
+    for (dir, lines) in [
+        (&checkout_dir, (38, 6)),
+        (&cart_dir, (54, 2)),
+        (&orders_dir, (21, 0)),
+        (&rate_dir, (42, 7)),
+    ] {
         app.screen.lines_changed.insert(dir.clone(), lines);
     }
     app
@@ -179,7 +371,13 @@ fn world(theme: &str) -> App {
 /// Each project's −/+ button in the next colour of the palette, in place of the random one the
 /// app picks the first time it draws it.
 fn pin_fold_colors(app: &mut App) {
-    let palette: Vec<_> = app.cfg.ui.workspace_colors.iter().filter_map(|c| crate::theme::parse_color(c)).collect();
+    let palette: Vec<_> = app
+        .cfg
+        .ui
+        .workspace_colors
+        .iter()
+        .filter_map(|c| crate::theme::parse_color(c))
+        .collect();
     for (p, color) in app.screen_model().iter().zip(palette.iter().cycle()) {
         app.screen.fold_colors.insert(p.key.clone(), *color);
     }
@@ -214,8 +412,22 @@ fn split(top: &[TermId], bottom: &[TermId]) -> Node {
 
 /// acme-store's tabs become `layouts`, the first one open on its first pane.
 fn store_tabs(app: &mut App, layouts: Vec<Node>) {
-    let ws = app.snap.workspaces.iter_mut().find(|w| w.id == STORE_WS).expect("acme-store");
-    ws.tabs = layouts.into_iter().zip(STORE_WS + 1..).map(|(layout, id)| TabInfo { id, name: String::new(), focus: layout.first_leaf(), layout }).collect();
+    let ws = app
+        .snap
+        .workspaces
+        .iter_mut()
+        .find(|w| w.id == STORE_WS)
+        .expect("acme-store");
+    ws.tabs = layouts
+        .into_iter()
+        .zip(STORE_WS + 1..)
+        .map(|(layout, id)| TabInfo {
+            id,
+            name: String::new(),
+            focus: layout.first_leaf(),
+            layout,
+        })
+        .collect();
     ws.active_tab = STORE_WS + 1;
     (app.screen.tabs, app.screen.last_focus) = (Vec::new(), None);
     app.screen_sync();
@@ -239,7 +451,21 @@ fn grid_look(app: &mut App) {
 fn grid(app: &mut App) {
     grid_look(app);
     let store = app.snap.workspaces[0].cwd.clone();
-    add(app, in_repo(term(PAYMENTS, "payment-webhooks", "gemini", Status::Done, &store, now() - 7 * MIN), &store, "main"));
+    add(
+        app,
+        in_repo(
+            term(
+                PAYMENTS,
+                "payment-webhooks",
+                "gemini",
+                Status::Done,
+                &store,
+                now() - 7 * MIN,
+            ),
+            &store,
+            "main",
+        ),
+    );
     app.snap.terms.get_mut(&CART).expect("cart-tests").status = Status::Done;
     store_tabs(app, vec![split(&[CHECKOUT, ORDERS], &[PAYMENTS, CART])]);
 }
@@ -260,7 +486,12 @@ fn changes(app: &mut App) {
     app.screen.saved.sheet_w.insert("changes".into(), 100);
     let info = &app.snap.terms[&CHECKOUT];
     let (dir, root) = (info.cwd.clone(), info.root.clone().unwrap_or_default());
-    let changed = |path: &str, added, removed| tasks::Changed { path: path.into(), added, removed, untracked: false };
+    let changed = |path: &str, added, removed| tasks::Changed {
+        path: path.into(),
+        added,
+        removed,
+        untracked: false,
+    };
     let review = tasks::Review {
         task: tasks::TaskRow {
             ws: STORE_WS,
@@ -276,7 +507,11 @@ fn changes(app: &mut App) {
             root,
         },
         merge_base: String::new(),
-        files: vec![changed("src/checkout/total.ts", 6, 2), changed("src/checkout/codes.ts", 14, 3), changed("src/checkout/total.test.ts", 18, 1)],
+        files: vec![
+            changed("src/checkout/total.ts", 6, 2),
+            changed("src/checkout/codes.ts", 14, 3),
+            changed("src/checkout/total.test.ts", 18, 1),
+        ],
         sel: 0,
         diff: TOTAL_DIFF.lines().map(String::from).collect(),
         diff_sel: Some(0),
@@ -288,7 +523,8 @@ fn changes(app: &mut App) {
         review: Some(review),
         error: None,
         agent: "claude".into(),
-        said: "Discount codes now come off the subtotal before shipping. Two new tests cover it.".into(),
+        said: "Discount codes now come off the subtotal before shipping. Two new tests cover it."
+            .into(),
         term: Some(CHECKOUT),
         ws: Some(STORE_WS),
         reviewed: Default::default(),
@@ -321,13 +557,22 @@ fn files(app: &mut App) {
     app.screen_sync();
     let root = app.snap.terms[&QUICKSTART].cwd.clone();
     let mut tree = views::FilesTree::new(root.clone(), Some("main".into()));
-    tree.all = DOCS_TREE.iter().map(|(rel, is_dir)| file_node(&root, rel, *is_dir)).collect();
+    tree.all = DOCS_TREE
+        .iter()
+        .map(|(rel, is_dir)| file_node(&root, rel, *is_dir))
+        .collect();
     tree.expanded.insert(under(&root, "docs"));
     tree.loading = false;
-    tree.git = [("docs/quickstart.md", 'M'), ("docs/deploy.md", 'A')].map(|(rel, mark)| (rel.to_string(), mark)).into();
+    tree.git = [("docs/quickstart.md", 'M'), ("docs/deploy.md", 'A')]
+        .map(|(rel, mark)| (rel.to_string(), mark))
+        .into();
     tree.editing = [("docs/quickstart.md".to_string(), "claude".to_string())].into();
     let readme = under(&root, "README.md");
-    tree.sel = tree.visible().iter().position(|(_, n)| n.path == readme).unwrap_or(0);
+    tree.sel = tree
+        .visible()
+        .iter()
+        .position(|(_, n)| n.path == readme)
+        .unwrap_or(0);
     tree.preview = Some((readme, README.lines().map(String::from).collect()));
     app.show_view(View::Files(Box::new(tree)));
 }
@@ -335,7 +580,13 @@ fn files(app: &mut App) {
 fn file_node(root: &Path, rel: &str, is_dir: bool) -> views::FileNode {
     let path = under(root, rel);
     let label = rel.rsplit('/').next().unwrap_or(rel).to_string();
-    views::FileNode { path, rel: rel.into(), label, depth: rel.matches('/').count(), is_dir }
+    views::FileNode {
+        path,
+        rel: rel.into(),
+        label,
+        depth: rel.matches('/').count(),
+        is_dir,
+    }
 }
 
 /// docs-site's files, in the tree's order: folders first, then by name.
@@ -414,8 +665,17 @@ mod tests {
         for shot in SHOTS {
             for theme in THEMES {
                 let (page, _) = render(shot, theme);
-                assert_eq!(page.matches('\n').count(), shot.rows as usize, "{} {theme}: one line a row", shot.name);
-                assert!(!page.chars().any(|c| ('\u{e000}'..='\u{f8ff}').contains(&c)), "{} {theme}: no private-use glyphs", shot.name);
+                assert_eq!(
+                    page.matches('\n').count(),
+                    shot.rows as usize,
+                    "{} {theme}: one line a row",
+                    shot.name
+                );
+                assert!(
+                    !page.chars().any(|c| ('\u{e000}'..='\u{f8ff}').contains(&c)),
+                    "{} {theme}: no private-use glyphs",
+                    shot.name
+                );
             }
         }
     }

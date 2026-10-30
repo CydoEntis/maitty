@@ -22,43 +22,69 @@ use unicode_width::UnicodeWidthStr;
 /// A path for comparing: one separator, no trailing one, and case folded only where the
 /// file system ignores case (Windows).
 pub(super) fn path_key(p: &Path) -> String {
-    let s = p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_string();
+    let s = p
+        .to_string_lossy()
+        .replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_string();
     if cfg!(windows) { s.to_lowercase() } else { s }
 }
 
 /// The question an agent is asking, read off the bottom of its screen.
 pub(super) fn question(parser: &vt100::Parser) -> Option<String> {
-    static QUEUED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(crate::config::CODEX_QUEUED_QUESTION_PATTERN).unwrap());
+    static QUEUED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(crate::config::CODEX_QUEUED_QUESTION_PATTERN).unwrap()
+    });
     let screen = parser.screen();
     let (rows, cols) = screen.size();
     let lines: Vec<String> = screen.rows(0, cols).collect();
-    let tidy = |l: &str| l.trim().trim_matches(|c: char| "│╭╮╰╯─┃ ".contains(c)).trim().to_string();
+    let tidy = |l: &str| {
+        l.trim()
+            .trim_matches(|c: char| "│╭╮╰╯─┃ ".contains(c))
+            .trim()
+            .to_string()
+    };
     let start = lines.len().saturating_sub(24.min(rows as usize));
     lines[start..]
         .iter()
         .rev()
         .map(|l| tidy(l))
         .filter(|l| !l.is_empty())
-        .filter(|l| !l.starts_with('❯') && !l.starts_with('›') && !l.chars().next().is_some_and(|c| c.is_ascii_digit()))
+        .filter(|l| {
+            !l.starts_with('❯')
+                && !l.starts_with('›')
+                && !l.chars().next().is_some_and(|c| c.is_ascii_digit())
+        })
         .find(|l| l.ends_with('?') || l.starts_with("Do you want") || l.starts_with("Allow"))
-        .or_else(|| lines[start..].iter().any(|l| QUEUED.is_match(l)).then(|| "Unanswered Codex question — open its question list".into()))
+        .or_else(|| {
+            lines[start..]
+                .iter()
+                .any(|l| QUEUED.is_match(l))
+                .then(|| "Unanswered Codex question — open its question list".into())
+        })
 }
 
-impl App {
-
-}
+impl App {}
 
 /// `~\code\shop-api` style path.
 pub(super) fn tilde(p: &Path) -> String {
     // "C:\dev\" and "C:\dev" are the same place; show it one way (but keep "C:\").
     let text = p.to_string_lossy();
     let trimmed = text.trim_end_matches(['\\', '/']);
-    let p = if trimmed.len() > 2 && trimmed.len() < text.len() { Path::new(trimmed) } else { p };
+    let p = if trimmed.len() > 2 && trimmed.len() < text.len() {
+        Path::new(trimmed)
+    } else {
+        p
+    };
     if let Some(home) = directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf())
         && let Ok(rel) = p.strip_prefix(&home)
     {
         let sep = std::path::MAIN_SEPARATOR;
-        return if rel.as_os_str().is_empty() { "~".into() } else { format!("~{sep}{}", rel.display()) };
+        return if rel.as_os_str().is_empty() {
+            "~".into()
+        } else {
+            format!("~{sep}{}", rel.display())
+        };
     }
     p.display().to_string()
 }
@@ -133,20 +159,37 @@ pub(super) enum BtnKind {
 pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Seg> {
     let (bg, fg, kfg) = match kind {
         BtnKind::Primary => (t.accent, t.acc_ink, t.acc_ink),
-        BtnKind::Danger => (t.danger_fill(), t.ink_on(t.danger_fill()), t.ink_on(t.danger_fill())),
+        BtnKind::Danger => (
+            t.danger_fill(),
+            t.ink_on(t.danger_fill()),
+            t.ink_on(t.danger_fill()),
+        ),
         BtnKind::Normal => (t.btn, t.strong, t.accent),
         BtnKind::Risky => (t.btn, t.err, t.accent),
         BtnKind::Ghost => (t.sidebar_bg, t.text, t.accent),
     };
-    let bold = if kind == BtnKind::Ghost { Modifier::empty() } else { Modifier::BOLD };
+    let bold = if kind == BtnKind::Ghost {
+        Modifier::empty()
+    } else {
+        Modifier::BOLD
+    };
     // A pill: the same width as " Label key " was.
     let (l, r) = super::screen::ends(bg);
     let mut v = vec![l];
     if key.is_empty() {
-        v.push(seg(label.to_string(), Style::default().bg(bg).fg(fg).add_modifier(bold)));
+        v.push(seg(
+            label.to_string(),
+            Style::default().bg(bg).fg(fg).add_modifier(bold),
+        ));
     } else {
-        v.push(seg(format!("{label} "), Style::default().bg(bg).fg(fg).add_modifier(bold)));
-        v.push(seg(key.to_string(), Style::default().bg(bg).fg(kfg).add_modifier(Modifier::BOLD)));
+        v.push(seg(
+            format!("{label} "),
+            Style::default().bg(bg).fg(fg).add_modifier(bold),
+        ));
+        v.push(seg(
+            key.to_string(),
+            Style::default().bg(bg).fg(kfg).add_modifier(Modifier::BOLD),
+        ));
     }
     v.push(r);
     super::screen::plain(v)
@@ -156,8 +199,15 @@ pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Se
 /// one cap per part with a dim `+` between. The one place keys are drawn as caps; its ends
 /// follow `ui.rounded`.
 pub(in crate::client) fn keycap(t: &Theme, key: &str) -> Vec<Seg> {
-    let cap = Style::default().bg(t.btn).fg(t.strong).add_modifier(Modifier::BOLD);
-    let parts: Vec<&str> = if key.chars().count() > 1 && key.contains('+') { key.split('+').filter(|p| !p.is_empty()).collect() } else { vec![key] };
+    let cap = Style::default()
+        .bg(t.btn)
+        .fg(t.strong)
+        .add_modifier(Modifier::BOLD);
+    let parts: Vec<&str> = if key.chars().count() > 1 && key.contains('+') {
+        key.split('+').filter(|p| !p.is_empty()).collect()
+    } else {
+        vec![key]
+    };
     let mut out = Vec::new();
     for (i, part) in parts.into_iter().enumerate() {
         if i > 0 {
@@ -251,19 +301,49 @@ pub(super) fn state_label(s: Status) -> &'static str {
 // ---- the layout ------------------------------------------------------------------------------
 
 /// A title bar: name + location on the left, the given segments on the right.
-pub(super) fn title_bar(buf: &mut Buffer, r: Rect, t: &Theme, left: &[Seg], right: &[Seg], focus: bool) {
+pub(super) fn title_bar(
+    buf: &mut Buffer,
+    r: Rect,
+    t: &Theme,
+    left: &[Seg],
+    right: &[Seg],
+    focus: bool,
+) {
     let bg = t.bg;
     fill(buf, Rect { height: 1, ..r }, bg);
-    let ink = |segs: &[Seg], c: Color| -> Vec<Seg> { segs.iter().map(|(s, st)| (s.clone(), st.bg(bg).fg(c))).collect() };
+    let ink = |segs: &[Seg], c: Color| -> Vec<Seg> {
+        segs.iter()
+            .map(|(s, st)| (s.clone(), st.bg(bg).fg(c)))
+            .collect()
+    };
     let rw = segs_width(right);
-    put(buf, r.x + 1, r.y, &ink(left, if focus { t.accent } else { t.strong }), r.right().saturating_sub(rw + 2));
-    put(buf, r.right().saturating_sub(rw), r.y, &ink(right, t.muted), r.right());
+    put(
+        buf,
+        r.x + 1,
+        r.y,
+        &ink(left, if focus { t.accent } else { t.strong }),
+        r.right().saturating_sub(rw + 2),
+    );
+    put(
+        buf,
+        r.right().saturating_sub(rw),
+        r.y,
+        &ink(right, t.muted),
+        r.right(),
+    );
 }
 
 // ---- views that replace the pane area ------------------------------------------------------
 
 /// The bottom action row of a view.
-fn action_row(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, buttons: &[(&str, &str, BtnKind, Hit)], tail: &[Seg]) {
+fn action_row(
+    app: &mut App,
+    buf: &mut Buffer,
+    r: Rect,
+    t: &Theme,
+    buttons: &[(&str, &str, BtnKind, Hit)],
+    tail: &[Seg],
+) {
     let y = r.bottom().saturating_sub(1);
     super::screen::strip(buf, Rect { y, height: 1, ..r }, t.card2);
     // Keycap first: in a tool window you just press the key (no Ctrl+Space).
@@ -272,11 +352,22 @@ fn action_row(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, buttons: &[(&
         let cap = format!(" {key} ");
         let text = format!(" {label} ");
         let w = (cap.width() + text.width()) as u16;
-        let br = Rect { x, y, width: w.min(r.right().saturating_sub(x)), height: 1 };
+        let br = Rect {
+            x,
+            y,
+            width: w.min(r.right().saturating_sub(x)),
+            height: 1,
+        };
         let cap_st = if *kind == BtnKind::Primary {
-            Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD)
+            Style::default()
+                .bg(t.accent)
+                .fg(t.acc_ink)
+                .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().bg(t.btn).fg(t.accent).add_modifier(Modifier::BOLD)
+            Style::default()
+                .bg(t.btn)
+                .fg(t.accent)
+                .add_modifier(Modifier::BOLD)
         };
         let text_st = Style::default().bg(t.card2).fg(t.strong);
         let mut segs = super::screen::chip(key, cap_st);
@@ -284,7 +375,10 @@ fn action_row(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, buttons: &[(&
         x = put(buf, x, y, &segs, r.right()) + 2;
         app.hits.push((br, *hit));
     }
-    let tail: Vec<Seg> = tail.iter().map(|(s, st)| (s.clone(), st.bg(t.card2))).collect();
+    let tail: Vec<Seg> = tail
+        .iter()
+        .map(|(s, st)| (s.clone(), st.bg(t.card2)))
+        .collect();
     put(buf, x + 2, y, &tail, r.right());
 }
 
@@ -295,7 +389,13 @@ pub(super) fn diff_line(t: &Theme, l: &str, old: &mut u32, new: &mut u32) -> Vec
         let nums: Vec<u32> = rest
             .split_whitespace()
             .take(2)
-            .filter_map(|p| p.trim_start_matches(['-', '+']).split(',').next()?.parse().ok())
+            .filter_map(|p| {
+                p.trim_start_matches(['-', '+'])
+                    .split(',')
+                    .next()?
+                    .parse()
+                    .ok()
+            })
             .collect();
         if nums.len() == 2 {
             *old = nums[0];
@@ -305,21 +405,36 @@ pub(super) fn diff_line(t: &Theme, l: &str, old: &mut u32, new: &mut u32) -> Vec
     }
     if let Some(body) = l.strip_prefix('+') {
         *new += 1;
-        return vec![seg("      + ", Style::default().fg(green)), seg(body.to_string(), Style::default().fg(green))];
+        return vec![
+            seg("      + ", Style::default().fg(green)),
+            seg(body.to_string(), Style::default().fg(green)),
+        ];
     }
     if let Some(body) = l.strip_prefix('-') {
         let n = *old;
         *old += 1;
-        return vec![seg(format!("{n:>4}  - "), Style::default().fg(red)), seg(body.to_string(), Style::default().fg(red))];
+        return vec![
+            seg(format!("{n:>4}  - "), Style::default().fg(red)),
+            seg(body.to_string(), Style::default().fg(red)),
+        ];
     }
     let body = l.strip_prefix(' ').unwrap_or(l);
     let n = *new;
     *old += 1;
     *new += 1;
-    vec![seg(format!("{n:>4}    "), Style::default().fg(gray)), seg(body.to_string(), Style::default().fg(t.fg))]
+    vec![
+        seg(format!("{n:>4}    "), Style::default().fg(gray)),
+        seg(body.to_string(), Style::default().fg(t.fg)),
+    ]
 }
 
-pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, v: &super::views::ChangesView) {
+pub(super) fn draw_changes(
+    app: &mut App,
+    buf: &mut Buffer,
+    area: Rect,
+    t: &Theme,
+    v: &super::views::ChangesView,
+) {
     use super::views::ChangesRow;
     fill(buf, area, t.bg);
     let (green, red, yellow) = (t.done, t.err, Color::Rgb(0xe8, 0xc5, 0x65));
@@ -329,22 +444,45 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
     if let Some(r) = &v.review {
         let added: i64 = r.files.iter().map(|f| f.added).sum();
         let removed: i64 = r.files.iter().map(|f| f.removed).sum();
-        let agent = if v.agent.is_empty() { String::new() } else { format!("{} · ", v.agent) };
-        left.push(seg(format!("{} · {agent}", r.task.branch), Style::default().fg(t.muted)));
+        let agent = if v.agent.is_empty() {
+            String::new()
+        } else {
+            format!("{} · ", v.agent)
+        };
+        left.push(seg(
+            format!("{} · {agent}", r.task.branch),
+            Style::default().fg(t.muted),
+        ));
         left.push(seg(format!("+{added}"), Style::default().fg(green)));
         left.push(seg(format!(" −{removed}"), Style::default().fg(red)));
-        left.push(seg(format!(" · {} files", r.files.len()), Style::default().fg(t.muted)));
+        left.push(seg(
+            format!(" · {} files", r.files.len()),
+            Style::default().fg(t.muted),
+        ));
         if !v.reviewed.is_empty() {
             let all = v.reviewed.len() == r.files.len();
-            left.push(seg(format!(" · {} of {} reviewed", v.reviewed.len(), r.files.len()), Style::default().fg(if all { t.done } else { t.muted })));
+            left.push(seg(
+                format!(" · {} of {} reviewed", v.reviewed.len(), r.files.len()),
+                Style::default().fg(if all { t.done } else { t.muted }),
+            ));
         }
     }
     title_bar(buf, area, t, &left, &right, true);
 
-    let body = Rect { y: area.y + 1, height: area.height.saturating_sub(2), ..area };
+    let body = Rect {
+        y: area.y + 1,
+        height: area.height.saturating_sub(2),
+        ..area
+    };
     let Some(r) = &v.review else {
         let msg = v.error.clone().unwrap_or_else(|| "reading changes…".into());
-        put(buf, body.x + 2, body.y + 1, &[seg(msg, Style::default().fg(t.muted))], body.right());
+        put(
+            buf,
+            body.x + 2,
+            body.y + 1,
+            &[seg(msg, Style::default().fg(t.muted))],
+            body.right(),
+        );
         return;
     };
     let fw: u16 = 34.min(body.width / 2);
@@ -355,34 +493,98 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
         if y >= body.bottom().saturating_sub(8) {
             break;
         }
-        let rr = Rect { x: body.x + 1, y, width: fw - 1, height: 1 };
+        let rr = Rect {
+            x: body.x + 1,
+            y,
+            width: fw - 1,
+            height: 1,
+        };
         let sel = matches!(row, ChangesRow::File(fi, _) if *fi == r.sel);
         if sel {
             fill(buf, rr, t.sel_on(t.bg));
-            put(buf, body.x + 1, y, &[seg("▎", Style::default().fg(t.accent).bg(t.sel_on(t.bg)).add_modifier(Modifier::BOLD))], body.right());
+            put(
+                buf,
+                body.x + 1,
+                y,
+                &[seg(
+                    "▎",
+                    Style::default()
+                        .fg(t.accent)
+                        .bg(t.sel_on(t.bg))
+                        .add_modifier(Modifier::BOLD),
+                )],
+                body.right(),
+            );
         }
         let bg = if sel { t.sel_on(t.bg) } else { t.bg };
         let s = Style::default().bg(bg);
         match row {
             ChangesRow::Reviewed(n) => {
-                put(buf, body.x + 2, y, &[seg(format!("REVIEWED · {n}"), s.fg(t.muted).add_modifier(Modifier::BOLD))], body.x + fw);
+                put(
+                    buf,
+                    body.x + 2,
+                    y,
+                    &[seg(
+                        format!("REVIEWED · {n}"),
+                        s.fg(t.muted).add_modifier(Modifier::BOLD),
+                    )],
+                    body.x + fw,
+                );
             }
             ChangesRow::Dir(name, depth) => {
-                put(buf, body.x + 2, y, &[seg(format!("{}▾ {name}", "  ".repeat(*depth)), s.fg(t.text))], body.x + fw);
+                put(
+                    buf,
+                    body.x + 2,
+                    y,
+                    &[seg(
+                        format!("{}▾ {name}", "  ".repeat(*depth)),
+                        s.fg(t.text),
+                    )],
+                    body.x + fw,
+                );
             }
             ChangesRow::File(fi, depth) => {
                 let f = &r.files[*fi];
                 let done = v.reviewed.contains(&f.path);
-                let name = Path::new(&f.path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let name = Path::new(&f.path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
                 let name = if done { format!("✓ {name}") } else { name };
-                let mut ns = s.fg(if sel { t.strong } else if done { t.muted } else { t.fg });
+                let mut ns = s.fg(if sel {
+                    t.strong
+                } else if done {
+                    t.muted
+                } else {
+                    t.fg
+                });
                 if sel {
                     ns = ns.add_modifier(Modifier::BOLD);
                 }
-                put(buf, body.x + 2, y, &[seg(format!("{}  ", "  ".repeat(*depth)), s.fg(t.muted)), seg(name, ns)], body.x + fw - 10);
-                let counts = if f.untracked { format!("+{}", f.added) } else { format!("+{} −{}", f.added, f.removed) };
-                let (letter, lc) = if f.untracked { ("A", green) } else { ("M", yellow) };
-                let mark = vec![seg(counts, s.fg(t.muted)), seg(format!(" {letter}"), s.fg(lc).add_modifier(Modifier::BOLD))];
+                put(
+                    buf,
+                    body.x + 2,
+                    y,
+                    &[
+                        seg(format!("{}  ", "  ".repeat(*depth)), s.fg(t.muted)),
+                        seg(name, ns),
+                    ],
+                    body.x + fw - 10,
+                );
+                let counts = if f.untracked {
+                    format!("+{}", f.added)
+                } else {
+                    format!("+{} −{}", f.added, f.removed)
+                };
+                let (letter, lc) = if f.untracked {
+                    ("A", green)
+                } else {
+                    ("M", yellow)
+                };
+                let mark = vec![
+                    seg(counts, s.fg(t.muted)),
+                    seg(format!(" {letter}"), s.fg(lc).add_modifier(Modifier::BOLD)),
+                ];
                 let mw = segs_width(&mark);
                 put(buf, body.x + fw - mw - 1, y, &mark, body.x + fw);
             }
@@ -391,38 +593,78 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
         y += 1;
     }
     if r.files.is_empty() {
-        put(buf, body.x + 2, body.y + 1, &[seg("No changes yet.", Style::default().fg(t.muted))], body.x + fw);
+        put(
+            buf,
+            body.x + 2,
+            body.y + 1,
+            &[seg("No changes yet.", Style::default().fg(t.muted))],
+            body.x + fw,
+        );
     }
     // What the agent said about it.
     if !v.said.is_empty() {
         let mut sy = y + 1;
-        let who = if v.agent.is_empty() { "AGENT".to_string() } else { v.agent.to_uppercase() };
-        put(buf, body.x + 2, sy, &[seg(format!("{who} SAYS"), Style::default().fg(t.muted).add_modifier(Modifier::BOLD))], body.x + fw);
+        let who = if v.agent.is_empty() {
+            "AGENT".to_string()
+        } else {
+            v.agent.to_uppercase()
+        };
+        put(
+            buf,
+            body.x + 2,
+            sy,
+            &[seg(
+                format!("{who} SAYS"),
+                Style::default().fg(t.muted).add_modifier(Modifier::BOLD),
+            )],
+            body.x + fw,
+        );
         sy += 1;
         for line in super::views::wrap(&v.said, (fw - 3) as usize) {
             if sy >= body.bottom() {
                 break;
             }
-            put(buf, body.x + 2, sy, &[seg(line, Style::default().fg(t.text))], body.x + fw);
+            put(
+                buf,
+                body.x + 2,
+                sy,
+                &[seg(line, Style::default().fg(t.text))],
+                body.x + fw,
+            );
             sy += 1;
         }
     }
     for yy in body.top()..body.bottom() {
         if let Some(px) = buf.cell_mut((body.x + fw, yy)) {
-            px.set_symbol("│").set_style(Style::default().fg(t.line).bg(t.bg));
+            px.set_symbol("│")
+                .set_style(Style::default().fg(t.line).bg(t.bg));
         }
     }
     // Diff of the selected file
     let dx = body.x + fw + 3;
     if let Some(f) = r.files.get(r.sel) {
         let header = vec![
-            seg(f.path.clone(), Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
-            seg(if f.untracked { format!("   +{} new", f.added) } else { format!("   +{} −{}", f.added, f.removed) }, Style::default().fg(t.muted)),
+            seg(
+                f.path.clone(),
+                Style::default().fg(t.strong).add_modifier(Modifier::BOLD),
+            ),
+            seg(
+                if f.untracked {
+                    format!("   +{} new", f.added)
+                } else {
+                    format!("   +{} −{}", f.added, f.removed)
+                },
+                Style::default().fg(t.muted),
+            ),
         ];
         put(buf, dx, body.y + 1, &header, body.right());
     }
     let (mut old, mut new) = (1u32, 1u32);
-    let lines: Vec<Vec<Seg>> = r.diff.iter().map(|l| diff_line(t, l, &mut old, &mut new)).collect();
+    let lines: Vec<Vec<Seg>> = r
+        .diff
+        .iter()
+        .map(|l| diff_line(t, l, &mut old, &mut new))
+        .collect();
     for (k, l) in lines.iter().skip(r.scroll as usize).enumerate() {
         let yy = body.y + 3 + k as u16;
         if yy >= body.bottom() {
@@ -431,7 +673,11 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
         put(buf, dx, yy, l, body.right().saturating_sub(1));
     }
     // Actions
-    let who = if v.agent.is_empty() { "agent".to_string() } else { v.agent.clone() };
+    let who = if v.agent.is_empty() {
+        "agent".to_string()
+    } else {
+        v.agent.clone()
+    };
     let reply = format!("Reply to {who}");
     let base = r.task.base.clone();
     let merge = format!("Merge into {base}");
@@ -441,8 +687,24 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
             buf,
             area,
             t,
-            &[("Yes", "y", BtnKind::Primary, Hit::Button(super::Btn::ViewKey('y'))), ("No", "n", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('n')))],
-            &[seg(q.clone(), Style::default().fg(t.strong).add_modifier(Modifier::BOLD))],
+            &[
+                (
+                    "Yes",
+                    "y",
+                    BtnKind::Primary,
+                    Hit::Button(super::Btn::ViewKey('y')),
+                ),
+                (
+                    "No",
+                    "n",
+                    BtnKind::Normal,
+                    Hit::Button(super::Btn::ViewKey('n')),
+                ),
+            ],
+            &[seg(
+                q.clone(),
+                Style::default().fg(t.strong).add_modifier(Modifier::BOLD),
+            )],
         );
     } else if v.linked {
         action_row(
@@ -451,16 +713,60 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
             area,
             t,
             &[
-                ("Commit", "c", BtnKind::Primary, Hit::Button(super::Btn::ViewKey('c'))),
-                (&merge, "m", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('m'))),
-                ("Open PR", "p", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('p'))),
-                ("Editor", "e", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('e'))),
-                ("Reviewed", "x", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('x'))),
-                (&reply, "r", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('r'))),
+                (
+                    "Commit",
+                    "c",
+                    BtnKind::Primary,
+                    Hit::Button(super::Btn::ViewKey('c')),
+                ),
+                (
+                    &merge,
+                    "m",
+                    BtnKind::Normal,
+                    Hit::Button(super::Btn::ViewKey('m')),
+                ),
+                (
+                    "Open PR",
+                    "p",
+                    BtnKind::Normal,
+                    Hit::Button(super::Btn::ViewKey('p')),
+                ),
+                (
+                    "Editor",
+                    "e",
+                    BtnKind::Normal,
+                    Hit::Button(super::Btn::ViewKey('e')),
+                ),
+                (
+                    "Reviewed",
+                    "x",
+                    BtnKind::Normal,
+                    Hit::Button(super::Btn::ViewKey('x')),
+                ),
+                (
+                    &reply,
+                    "r",
+                    BtnKind::Normal,
+                    Hit::Button(super::Btn::ViewKey('r')),
+                ),
             ],
-            &[seg("d", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)), seg(" discard", Style::default().fg(t.err))],
+            &[
+                seg(
+                    "d",
+                    Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+                ),
+                seg(" discard", Style::default().fg(t.err)),
+            ],
         );
-        app.hits.push((Rect { x: area.right().saturating_sub(1), y: area.bottom() - 1, width: 1, height: 1 }, Hit::Button(super::Btn::ViewKey('d'))));
+        app.hits.push((
+            Rect {
+                x: area.right().saturating_sub(1),
+                y: area.bottom() - 1,
+                width: 1,
+                height: 1,
+            },
+            Hit::Button(super::Btn::ViewKey('d')),
+        ));
     } else {
         action_row(
             app,
@@ -468,11 +774,36 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
             area,
             t,
             &[
-                ("Commit", "c", BtnKind::Primary, Hit::Button(super::Btn::ViewKey('c'))),
-                ("Open PR", "p", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('p'))),
-                ("Editor", "e", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('e'))),
-                ("Reviewed", "x", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('x'))),
-                (&reply, "r", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('r'))),
+                (
+                    "Commit",
+                    "c",
+                    BtnKind::Primary,
+                    Hit::Button(super::Btn::ViewKey('c')),
+                ),
+                (
+                    "Open PR",
+                    "p",
+                    BtnKind::Normal,
+                    Hit::Button(super::Btn::ViewKey('p')),
+                ),
+                (
+                    "Editor",
+                    "e",
+                    BtnKind::Normal,
+                    Hit::Button(super::Btn::ViewKey('e')),
+                ),
+                (
+                    "Reviewed",
+                    "x",
+                    BtnKind::Normal,
+                    Hit::Button(super::Btn::ViewKey('x')),
+                ),
+                (
+                    &reply,
+                    "r",
+                    BtnKind::Normal,
+                    Hit::Button(super::Btn::ViewKey('r')),
+                ),
             ],
             &[seg("Esc close", Style::default().fg(t.muted))],
         );
@@ -481,79 +812,188 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
 
 /// Files: the tree beside the selected file. `one_side` (a narrow panel) shows the tree, or
 /// the file you opened with a `‹` back to the tree.
-pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, v: &mut super::views::FilesTree, one_side: bool) {
+pub(super) fn draw_files(
+    app: &mut App,
+    buf: &mut Buffer,
+    area: Rect,
+    t: &Theme,
+    v: &mut super::views::FilesTree,
+    one_side: bool,
+) {
     fill(buf, area, t.bg);
     app.screen.preview_rect = Rect::default();
-    let branch = v.branch.clone().map(|b| format!(" · {b}")).unwrap_or_default();
+    let branch = v
+        .branch
+        .clone()
+        .map(|b| format!(" · {b}"))
+        .unwrap_or_default();
     let left = vec![
-        seg("files  ", Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
-        seg(format!("{}{branch}", tilde(&v.root)), Style::default().fg(t.muted)),
+        seg(
+            "files  ",
+            Style::default().fg(t.strong).add_modifier(Modifier::BOLD),
+        ),
+        seg(
+            format!("{}{branch}", tilde(&v.root)),
+            Style::default().fg(t.muted),
+        ),
     ];
-    let filter = if v.filtering || !v.filter.is_empty() { format!("/{}  ", v.filter) } else { "/ filter  ".into() };
-    let mode = if v.recent { "r project  " } else { "r recent  " };
+    let filter = if v.filtering || !v.filter.is_empty() {
+        format!("/{}  ", v.filter)
+    } else {
+        "/ filter  ".into()
+    };
+    let mode = if v.recent {
+        "r project  "
+    } else {
+        "r recent  "
+    };
     let right = vec![
         seg(mode, Style::default().fg(t.muted)),
-        seg(filter, Style::default().fg(if v.filtering { t.accent } else { t.muted })),
+        seg(
+            filter,
+            Style::default().fg(if v.filtering { t.accent } else { t.muted }),
+        ),
     ];
     // The panel's card has the ✕.
     title_bar(buf, area, t, &left, &right, true);
 
-    let body = Rect { y: area.y + 1, height: area.height.saturating_sub(2), ..area };
+    let body = Rect {
+        y: area.y + 1,
+        height: area.height.saturating_sub(2),
+        ..area
+    };
     let file_open = v.in_preview || v.edit.is_some();
-    let (show_tree, show_file) = if one_side { (!file_open, file_open) } else { (true, true) };
-    let fw: u16 = if one_side { body.width } else { 44.min(body.width / 2) };
+    let (show_tree, show_file) = if one_side {
+        (!file_open, file_open)
+    } else {
+        (true, true)
+    };
+    let fw: u16 = if one_side {
+        body.width
+    } else {
+        44.min(body.width / 2)
+    };
     if show_tree {
         draw_files_tree(app, buf, body, fw, t, v, one_side);
     }
     if !one_side {
         for yy in body.top()..body.bottom() {
             if let Some(px) = buf.cell_mut((body.x + fw, yy)) {
-                px.set_symbol("│").set_style(Style::default().fg(t.line).bg(t.bg));
+                px.set_symbol("│")
+                    .set_style(Style::default().fg(t.line).bg(t.bg));
             }
         }
     }
-    let px = if one_side { body.x + 3 } else { body.x + fw + 3 };
+    let px = if one_side {
+        body.x + 3
+    } else {
+        body.x + fw + 3
+    };
     if show_file && v.edit.is_none() {
         v.lay_out(body.right().saturating_sub(px + 1), t, &app.cfg.theme);
     }
     let v = &*v;
     if one_side && show_file && v.edit.is_none() {
-        put(buf, body.x + 1, body.y + 1, &[seg("‹", Style::default().fg(t.accent).add_modifier(Modifier::BOLD))], px);
-        app.hits.push((Rect { x: body.x, y: body.y + 1, width: 2, height: 1 }, Hit::Button(super::Btn::ViewKey('h'))));
+        put(
+            buf,
+            body.x + 1,
+            body.y + 1,
+            &[seg(
+                "‹",
+                Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+            )],
+            px,
+        );
+        app.hits.push((
+            Rect {
+                x: body.x,
+                y: body.y + 1,
+                width: 2,
+                height: 1,
+            },
+            Hit::Button(super::Btn::ViewKey('h')),
+        ));
     }
     if let Some((path, lines)) = v.preview.as_ref().filter(|_| show_file) {
-        let rel = path.strip_prefix(&v.root).map(|p| p.display().to_string()).unwrap_or_else(|_| tilde(path));
+        let rel = path
+            .strip_prefix(&v.root)
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| tilde(path));
         #[allow(unused_assignments)]
-        let mut header = vec![seg(rel, Style::default().fg(t.strong).add_modifier(Modifier::BOLD))];
+        let mut header = vec![seg(
+            rel,
+            Style::default().fg(t.strong).add_modifier(Modifier::BOLD),
+        )];
         if let Some(who) = v.editing_by(path) {
-            header.push(seg(format!("   {who} is editing this file"), Style::default().fg(t.muted).add_modifier(Modifier::ITALIC)));
+            header.push(seg(
+                format!("   {who} is editing this file"),
+                Style::default().fg(t.muted).add_modifier(Modifier::ITALIC),
+            ));
         }
-        let prect = Rect { x: px, y: body.y + 3, width: body.right().saturating_sub(px + 1), height: body.bottom().saturating_sub(body.y + 3) };
+        let prect = Rect {
+            x: px,
+            y: body.y + 3,
+            width: body.right().saturating_sub(px + 1),
+            height: body.bottom().saturating_sub(body.y + 3),
+        };
         app.screen.preview_rect = prect;
         match &v.edit {
             Some(ed) => {
                 header = vec![
-                    seg(ed.path.strip_prefix(&v.root).map(|p| p.display().to_string()).unwrap_or_default(), Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
-                    seg(if ed.dirty { "  ● unsaved" } else { "  editing" }, Style::default().fg(t.accent)),
+                    seg(
+                        ed.path
+                            .strip_prefix(&v.root)
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_default(),
+                        Style::default().fg(t.strong).add_modifier(Modifier::BOLD),
+                    ),
+                    seg(
+                        if ed.dirty {
+                            "  ● unsaved"
+                        } else {
+                            "  editing"
+                        },
+                        Style::default().fg(t.accent),
+                    ),
                     seg("   Ctrl+S save · Esc done", Style::default().fg(t.muted)),
                 ];
                 put(buf, px, body.y + 1, &header, body.right());
                 let selection = ed.selection();
-                for (k, l) in ed.lines.iter().enumerate().skip(v.scroll).take(prect.height as usize) {
+                for (k, l) in ed
+                    .lines
+                    .iter()
+                    .enumerate()
+                    .skip(v.scroll)
+                    .take(prect.height as usize)
+                {
                     let yy = prect.y + (k - v.scroll) as u16;
                     let num = Style::default().fg(if k == ed.row { t.accent } else { t.muted });
                     let mut segs = vec![seg(format!("{:>4}  ", k + 1), num)];
                     segs.extend(super::views::highlight(&l.replace('\t', "    "), t));
                     put(buf, px, yy, &segs, prect.right());
-                    if let Some(span) = selection.and_then(|sel| super::views::line_span(sel, k, l.chars().count())) {
-                        paint_selection(buf, (px + super::views::GUTTER, yy), prect.right(), l, span, super::render::select_style(t));
+                    if let Some(span) =
+                        selection.and_then(|sel| super::views::line_span(sel, k, l.chars().count()))
+                    {
+                        paint_selection(
+                            buf,
+                            (px + super::views::GUTTER, yy),
+                            prect.right(),
+                            l,
+                            span,
+                            super::render::select_style(t),
+                        );
                     }
                     if k == ed.row {
                         let cx = px + super::views::GUTTER + ed.cursor_x() as u16;
                         if cx < prect.right() {
                             let cell = &mut buf[(cx, yy)];
-                            let sym = if cell.symbol().trim().is_empty() { " ".to_string() } else { cell.symbol().to_string() };
-                            cell.set_symbol(&sym).set_style(Style::default().bg(t.accent).fg(t.acc_ink));
+                            let sym = if cell.symbol().trim().is_empty() {
+                                " ".to_string()
+                            } else {
+                                cell.symbol().to_string()
+                            };
+                            cell.set_symbol(&sym)
+                                .set_style(Style::default().bg(t.accent).fg(t.acc_ink));
                         }
                     }
                 }
@@ -561,33 +1001,58 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
             None => {
                 if v.in_preview {
                     // One side shows `‹` for the way back, and has little room.
-                    let hint = if one_side { "   i edit" } else { "   ↑↓ PgUp PgDn read · i edit · ← back" };
+                    let hint = if one_side {
+                        "   i edit"
+                    } else {
+                        "   ↑↓ PgUp PgDn read · i edit · ← back"
+                    };
                     header.push(seg(hint, Style::default().fg(t.accent)));
                 }
                 let pretty = v.pretty();
                 let shown = pretty.map_or(lines.len(), <[_]>::len);
-                let at = (shown > prect.height as usize).then(|| format!(" {}–{} of {} ", v.scroll + 1, (v.scroll + prect.height as usize).min(shown), shown));
-                let at_x = body.right().saturating_sub(at.as_ref().map_or(0, |a| a.width() as u16 + 1));
+                let at = (shown > prect.height as usize).then(|| {
+                    format!(
+                        " {}–{} of {} ",
+                        v.scroll + 1,
+                        (v.scroll + prect.height as usize).min(shown),
+                        shown
+                    )
+                });
+                let at_x = body
+                    .right()
+                    .saturating_sub(at.as_ref().map_or(0, |a| a.width() as u16 + 1));
                 put(buf, px, body.y + 1, &header, at_x);
                 // The side the arrows are on gets the accent line.
                 if v.in_preview && !one_side {
                     for yy in body.top()..body.bottom() {
                         if let Some(px) = buf.cell_mut((body.x + fw, yy)) {
-                            px.set_symbol("┃").set_style(Style::default().fg(t.accent).bg(t.bg));
+                            px.set_symbol("┃")
+                                .set_style(Style::default().fg(t.accent).bg(t.bg));
                         }
                     }
                 }
                 match pretty {
                     // Drawn lines are no lines of the file, so they go without numbers.
                     Some(pretty) => {
-                        for (k, l) in pretty.iter().skip(v.scroll).take(prect.height as usize).enumerate() {
+                        for (k, l) in pretty
+                            .iter()
+                            .skip(v.scroll)
+                            .take(prect.height as usize)
+                            .enumerate()
+                        {
                             put(buf, px, prect.y + k as u16, l, prect.right());
                         }
                     }
                     None => {
-                        for (k, l) in lines.iter().enumerate().skip(v.scroll).take(prect.height as usize) {
+                        for (k, l) in lines
+                            .iter()
+                            .enumerate()
+                            .skip(v.scroll)
+                            .take(prect.height as usize)
+                        {
                             let yy = prect.y + (k - v.scroll) as u16;
-                            let mut segs = vec![seg(format!("{:>4}  ", k + 1), Style::default().fg(t.muted))];
+                            let mut segs =
+                                vec![seg(format!("{:>4}  ", k + 1), Style::default().fg(t.muted))];
                             segs.extend(super::views::highlight(l, t));
                             put(buf, px, yy, &segs, prect.right());
                         }
@@ -599,51 +1064,127 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
                         let text = v.shown_text(k).unwrap_or_default();
                         if let Some(span) = super::views::line_span(sel, k, text.chars().count()) {
                             let at = (px + v.gutter(), prect.y + (k - v.scroll) as u16);
-                            paint_selection(buf, at, prect.right(), &text, span, super::render::select_style(t));
+                            paint_selection(
+                                buf,
+                                at,
+                                prect.right(),
+                                &text,
+                                span,
+                                super::render::select_style(t),
+                            );
                         }
                     }
                 }
                 if let Some(at) = at {
-                    put(buf, at_x, body.y + 1, &[seg(at, Style::default().fg(t.muted))], body.right());
+                    put(
+                        buf,
+                        at_x,
+                        body.y + 1,
+                        &[seg(at, Style::default().fg(t.muted))],
+                        body.right(),
+                    );
                 }
             }
         }
     }
     if v.edit.is_some() {
         // The file browser's buttons would type their letters into the file.
-        let chord = |c: char| Hit::Button(super::Btn::ViewChord(KeyCode::Char(c), KeyModifiers::CONTROL));
+        let chord = |c: char| {
+            Hit::Button(super::Btn::ViewChord(
+                KeyCode::Char(c),
+                KeyModifiers::CONTROL,
+            ))
+        };
         let buttons = [
             ("Save", "^S", BtnKind::Primary, chord('s')),
             ("Copy", "^C", BtnKind::Normal, chord('c')),
             ("Paste", "^V", BtnKind::Normal, chord('v')),
             ("Undo", "^Z", BtnKind::Normal, chord('z')),
-            ("Done", "Esc", BtnKind::Normal, Hit::Button(super::Btn::ViewChord(KeyCode::Esc, KeyModifiers::NONE))),
+            (
+                "Done",
+                "Esc",
+                BtnKind::Normal,
+                Hit::Button(super::Btn::ViewChord(KeyCode::Esc, KeyModifiers::NONE)),
+            ),
         ];
         action_row(app, buf, area, t, &buttons, &[]);
         return;
     }
-    let who = app.focused().and_then(|id| app.snap.terms.get(&id)).map(pane_name).unwrap_or_else(|| "the pane".into());
+    let who = app
+        .focused()
+        .and_then(|id| app.snap.terms.get(&id))
+        .map(pane_name)
+        .unwrap_or_else(|| "the pane".into());
     let insert = format!("Insert path into {who}");
-    let mut buttons = vec![(insert.as_str(), "Enter", BtnKind::Primary, Hit::Button(super::Btn::ViewKey('\n')))];
+    let mut buttons = vec![(
+        insert.as_str(),
+        "Enter",
+        BtnKind::Primary,
+        Hit::Button(super::Btn::ViewKey('\n')),
+    )];
     if v.markdown() {
-        buttons.push((if v.drawn() { "Raw" } else { "Pretty" }, "m", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('m'))));
+        buttons.push((
+            if v.drawn() { "Raw" } else { "Pretty" },
+            "m",
+            BtnKind::Normal,
+            Hit::Button(super::Btn::ViewKey('m')),
+        ));
     }
     buttons.extend([
-        ("Edit here", "i", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('i'))),
-        ("Editor", "e", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('e'))),
-        ("Open", "o", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('o'))),
-        ("Copy path", "y", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('y'))),
+        (
+            "Edit here",
+            "i",
+            BtnKind::Normal,
+            Hit::Button(super::Btn::ViewKey('i')),
+        ),
+        (
+            "Editor",
+            "e",
+            BtnKind::Normal,
+            Hit::Button(super::Btn::ViewKey('e')),
+        ),
+        (
+            "Open",
+            "o",
+            BtnKind::Normal,
+            Hit::Button(super::Btn::ViewKey('o')),
+        ),
+        (
+            "Copy path",
+            "y",
+            BtnKind::Normal,
+            Hit::Button(super::Btn::ViewKey('y')),
+        ),
     ]);
-    action_row(app, buf, area, t, &buttons, &[seg("PgUp PgDn / wheel scroll", Style::default().fg(t.muted))]);
+    action_row(
+        app,
+        buf,
+        area,
+        t,
+        &buttons,
+        &[seg(
+            "PgUp PgDn / wheel scroll",
+            Style::default().fg(t.muted),
+        )],
+    );
 }
 
 /// Paint characters `span` of `text`, drawn from `at`, as selected; one past its end is the
 /// line break the selection takes.
-fn paint_selection(buf: &mut Buffer, at: (u16, u16), right: u16, text: &str, span: (usize, usize), style: Style) {
+fn paint_selection(
+    buf: &mut Buffer,
+    at: (u16, u16),
+    right: u16,
+    text: &str,
+    span: (usize, usize),
+    style: Style,
+) {
     let cells = |col: usize| super::views::x_of(text, col).min(usize::from(u16::MAX)) as u16;
     let len = text.chars().count();
     let from = at.0.saturating_add(cells(span.0));
-    let to = at.0.saturating_add(cells(span.1.min(len))).saturating_add(u16::from(span.1 > len));
+    let to =
+        at.0.saturating_add(cells(span.1.min(len)))
+            .saturating_add(u16::from(span.1 > len));
     for x in from..to.min(right) {
         if let Some(cell) = buf.cell_mut((x, at.1)) {
             cell.set_style(style);
@@ -652,7 +1193,15 @@ fn paint_selection(buf: &mut Buffer, at: (u16, u16), right: u16, text: &str, spa
 }
 
 /// The tree (or the recent files) in the left `fw` columns of `body`.
-fn draw_files_tree(app: &mut App, buf: &mut Buffer, body: Rect, fw: u16, t: &Theme, v: &super::views::FilesTree, one_side: bool) {
+fn draw_files_tree(
+    app: &mut App,
+    buf: &mut Buffer,
+    body: Rect,
+    fw: u16,
+    t: &Theme,
+    v: &super::views::FilesTree,
+    one_side: bool,
+) {
     let (green, yellow) = (t.done, Color::Rgb(0xe8, 0xc5, 0x65));
     let rows = v.visible();
     let list_h = body.height.saturating_sub(4) as usize;
@@ -660,49 +1209,124 @@ fn draw_files_tree(app: &mut App, buf: &mut Buffer, body: Rect, fw: u16, t: &The
     for (k, (i, e)) in rows.iter().skip(start).take(list_h).enumerate() {
         let y = body.y + 1 + (k as u16);
         let sel = *i == v.sel;
-        let rr = Rect { x: body.x + 1, y, width: fw - 1, height: 1 };
+        let rr = Rect {
+            x: body.x + 1,
+            y,
+            width: fw - 1,
+            height: 1,
+        };
         let bg = if sel { t.sel_on(t.bg) } else { t.bg };
         if sel {
             fill(buf, rr, bg);
         }
         if sel {
-            put(buf, body.x + 1, y, &[seg(">", Style::default().fg(t.accent).bg(bg).add_modifier(Modifier::BOLD))], body.right());
+            put(
+                buf,
+                body.x + 1,
+                y,
+                &[seg(
+                    ">",
+                    Style::default()
+                        .fg(t.accent)
+                        .bg(bg)
+                        .add_modifier(Modifier::BOLD),
+                )],
+                body.right(),
+            );
         }
         let s = Style::default().bg(bg);
-        let lead = if e.is_dir { if v.expanded.contains(&e.path) { "▾ " } else { "▸ " } } else { "  " };
-        let mut ns = s.fg(if e.is_dir { t.text } else if sel { t.strong } else { t.fg });
+        let lead = if e.is_dir {
+            if v.expanded.contains(&e.path) {
+                "▾ "
+            } else {
+                "▸ "
+            }
+        } else {
+            "  "
+        };
+        let mut ns = s.fg(if e.is_dir {
+            t.text
+        } else if sel {
+            t.strong
+        } else {
+            t.fg
+        });
         if sel {
             ns = ns.add_modifier(Modifier::BOLD);
         }
-        put(buf, body.x + 2, y, &[seg(format!("{}{lead}", "  ".repeat(e.depth)), s.fg(t.muted)), seg(e.label.clone(), ns)], body.x + fw - 5);
+        put(
+            buf,
+            body.x + 2,
+            y,
+            &[
+                seg(format!("{}{lead}", "  ".repeat(e.depth)), s.fg(t.muted)),
+                seg(e.label.clone(), ns),
+            ],
+            body.x + fw - 5,
+        );
         let mut marks: Vec<Seg> = Vec::new();
         if v.editing.contains_key(&e.rel) {
             marks.push(seg(app.cfg.icons.blocked.clone(), s.fg(t.blocked)));
         }
         if let Some(m) = v.git.get(&e.rel) {
-            marks.push(seg(format!(" {m}"), s.fg(if *m == 'A' { green } else { yellow }).add_modifier(Modifier::BOLD)));
+            marks.push(seg(
+                format!(" {m}"),
+                s.fg(if *m == 'A' { green } else { yellow })
+                    .add_modifier(Modifier::BOLD),
+            ));
         }
         let mw = segs_width(&marks);
         put(buf, body.x + fw - mw - 1, y, &marks, body.x + fw);
         // With one side showing, the file isn't beside the tree: a click on the selected file
         // (the second of a double-click too) opens it rather than inserting its path.
         let open = one_side && sel && !e.is_dir;
-        app.hits.push((rr, Hit::Button(if open { super::Btn::ViewKey('l') } else { super::Btn::Row(*i) })));
+        app.hits.push((
+            rr,
+            Hit::Button(if open {
+                super::Btn::ViewKey('l')
+            } else {
+                super::Btn::Row(*i)
+            }),
+        ));
     }
     if rows.is_empty() {
-        let msg = if v.loading { "reading files…" } else if v.recent { "Nothing new in Downloads, Desktop, Documents or here lately." } else { "No files match." };
-        put(buf, body.x + 2, body.y + 1, &[seg(msg, Style::default().fg(t.muted))], body.x + fw);
+        let msg = if v.loading {
+            "reading files…"
+        } else if v.recent {
+            "Nothing new in Downloads, Desktop, Documents or here lately."
+        } else {
+            "No files match."
+        };
+        put(
+            buf,
+            body.x + 2,
+            body.y + 1,
+            &[seg(msg, Style::default().fg(t.muted))],
+            body.x + fw,
+        );
     }
     if !v.recent {
         let legend = vec![
-            seg("M", Style::default().fg(yellow).add_modifier(Modifier::BOLD)),
+            seg(
+                "M",
+                Style::default().fg(yellow).add_modifier(Modifier::BOLD),
+            ),
             seg(" changed   ", Style::default().fg(t.muted)),
             seg("A", Style::default().fg(green).add_modifier(Modifier::BOLD)),
             seg(" new   ", Style::default().fg(t.muted)),
-            seg(app.cfg.icons.blocked.clone(), Style::default().fg(t.blocked)),
+            seg(
+                app.cfg.icons.blocked.clone(),
+                Style::default().fg(t.blocked),
+            ),
             seg(" an agent is editing", Style::default().fg(t.muted)),
         ];
-        put(buf, body.x + 2, body.bottom().saturating_sub(2), &legend, body.x + fw);
+        put(
+            buf,
+            body.x + 2,
+            body.bottom().saturating_sub(2),
+            &legend,
+            body.x + fw,
+        );
     }
 }
 
@@ -741,7 +1365,10 @@ pub(super) fn key_rows() -> Vec<(&'static str, Vec<(&'static str, Vec<crate::key
                 .into_iter()
                 .flat_map(|r| {
                     if r.acts.len() > 1 {
-                        r.acts.into_iter().map(|a| (single_label(&a), vec![a])).collect::<Vec<_>>()
+                        r.acts
+                            .into_iter()
+                            .map(|a| (single_label(&a), vec![a]))
+                            .collect::<Vec<_>>()
                     } else {
                         vec![(r.label, r.acts)]
                     }
@@ -762,7 +1389,12 @@ fn direct_key_rows() -> Vec<(&'static str, Vec<crate::keys::Action>)> {
     use crate::keys::Action as A;
     use crate::layout::Dir::*;
     let label_of = |a: &A| {
-        super::screen::key_groups().into_iter().flat_map(|(_, rows)| rows).find(|r| r.acts == [a.clone()]).map(|r| r.label).unwrap_or("")
+        super::screen::key_groups()
+            .into_iter()
+            .flat_map(|(_, rows)| rows)
+            .find(|r| r.acts == [a.clone()])
+            .map(|r| r.label)
+            .unwrap_or("")
     };
     let mut rows: Vec<(&'static str, Vec<A>)> = crate::keys::ALT_LETTER_KEYS
         .iter()
@@ -780,7 +1412,13 @@ fn direct_key_text(app: &App, acts: &[crate::keys::Action]) -> String {
     let firsts: Vec<String> = acts
         .iter()
         .filter_map(|a| {
-            let mut keys: Vec<_> = app.keymap.global.iter().filter(|(_, b)| *b == a).map(|(k, _)| *k).collect();
+            let mut keys: Vec<_> = app
+                .keymap
+                .global
+                .iter()
+                .filter(|(_, b)| *b == a)
+                .map(|(k, _)| *k)
+                .collect();
             keys.sort_by_key(|k| k.to_config());
             keys.first().map(long_key)
         })
@@ -800,7 +1438,11 @@ fn direct_key_text(app: &App, acts: &[crate::keys::Action]) -> String {
 pub(super) enum SRow {
     Setting(&'static super::modal::Setting),
     /// `direct`: pressed on its own (`[keys.global]`), not after the leader.
-    Bind { label: &'static str, acts: Vec<crate::keys::Action>, direct: bool },
+    Bind {
+        label: &'static str,
+        acts: Vec<crate::keys::Action>,
+        direct: bool,
+    },
     /// A line of the Agents page that is not a setting: what the app can tell about an agent.
     Agent(AgentRow),
     /// General's UPDATES: which version this is, whether it is current, and the way to check
@@ -830,27 +1472,55 @@ impl AgentRow {
 
     pub(super) fn help(self) -> &'static str {
         match self {
-            AgentRow::Claude => concat!(env!("APP_NAME"), " reads working, needs you and done from Claude Code's hooks. Missing? Connect agents installs them, or run ", env!("APP_COMMAND"), " integrate claude."),
-            AgentRow::Codex => concat!(env!("APP_NAME"), " reads Codex's process and screen. For exact status and its helpers, Connect agents installs its hooks."),
-            AgentRow::SetUp => "Connect an agent so it reports working, needs you and done itself. Enter opens the list.",
+            AgentRow::Claude => concat!(
+                env!("APP_NAME"),
+                " reads working, needs you and done from Claude Code's hooks. Missing? Connect agents installs them, or run ",
+                env!("APP_COMMAND"),
+                " integrate claude."
+            ),
+            AgentRow::Codex => concat!(
+                env!("APP_NAME"),
+                " reads Codex's process and screen. For exact status and its helpers, Connect agents installs its hooks."
+            ),
+            AgentRow::SetUp => {
+                "Connect an agent so it reports working, needs you and done itself. Enter opens the list."
+            }
         }
     }
 }
 
 /// The settings' headings in the order they come, each tab's in turn.
 const GROUP_ORDER: [&str; 19] = [
-    "UPDATES", "STARTUP", "INPUT", "SHELL",
-    "THEME", "LAYOUT", "PANES", "STATUS",
-    "NEW SESSIONS", "SIDEBAR", "WORKTREES", "RESTARTS", "HISTORY",
-    "SOUND", "PHONE",
-    AGENT_STATUS_GROUP, "HELPERS", "LIMITS", "AGENTS TALKING TO AGENTS",
+    "UPDATES",
+    "STARTUP",
+    "INPUT",
+    "SHELL",
+    "THEME",
+    "LAYOUT",
+    "PANES",
+    "STATUS",
+    "NEW SESSIONS",
+    "SIDEBAR",
+    "WORKTREES",
+    "RESTARTS",
+    "HISTORY",
+    "SOUND",
+    "PHONE",
+    AGENT_STATUS_GROUP,
+    "HELPERS",
+    "LIMITS",
+    "AGENTS TALKING TO AGENTS",
 ];
 
 /// The small caps heading a settings row sits under.
 pub(super) fn settings_group(row: &SRow) -> &'static str {
     match row {
         SRow::Bind { direct: true, .. } => DIRECT_GROUP,
-        SRow::Bind { label, .. } => key_rows().into_iter().find(|(_, items)| items.iter().any(|(l, _)| l == label)).map(|(g, _)| g).unwrap_or("KEYS"),
+        SRow::Bind { label, .. } => key_rows()
+            .into_iter()
+            .find(|(_, items)| items.iter().any(|(l, _)| l == label))
+            .map(|(g, _)| g)
+            .unwrap_or("KEYS"),
         SRow::Agent(_) => AGENT_STATUS_GROUP,
         SRow::Version => "UPDATES",
         SRow::Setting(s) => match s.path {
@@ -859,8 +1529,11 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_keys" | "ui.alt_arrows" => "INPUT",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
             "theme" => "THEME",
-            "ui.layout" | "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
-            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded" | "ui.cursor" | "ui.cursor_blink" => "PANES",
+            "ui.layout" | "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => {
+                "LAYOUT"
+            }
+            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded"
+            | "ui.cursor" | "ui.cursor_blink" => "PANES",
             "ui.spinner" | "ui.glyphs" => "STATUS",
             "sessions.agent" | "sessions.where" => "NEW SESSIONS",
             "ui.sidebar_tabs" => "SIDEBAR",
@@ -883,10 +1556,15 @@ pub(super) fn theme_label(name: &str) -> String {
     if let Some((_, l)) = crate::theme::DESIGN.iter().find(|(n, _)| *n == name) {
         return l.to_string();
     }
-    name.split('-').map(|w| {
-        let mut c = w.chars();
-        c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
-    }).collect::<Vec<_>>().join(" ")
+    name.split('-')
+        .map(|w| {
+            let mut c = w.chars();
+            c.next()
+                .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// The rows of one settings page.
@@ -902,14 +1580,31 @@ pub(super) fn settings_rows(cat: super::modal::Cat) -> Vec<SRow> {
     rows.extend(super::modal::in_cat(cat).into_iter().map(SRow::Setting));
     // Grouped under their headings, in `GROUP_ORDER` (a heading not there goes last); rows keep
     // their order within a group.
-    rows.sort_by_key(|r| GROUP_ORDER.iter().position(|g| *g == settings_group(r)).unwrap_or(usize::MAX));
+    rows.sort_by_key(|r| {
+        GROUP_ORDER
+            .iter()
+            .position(|g| *g == settings_group(r))
+            .unwrap_or(usize::MAX)
+    });
     if cat == super::modal::Cat::Keys {
         for (_, items) in key_rows() {
             for (label, acts) in items {
-                rows.push(SRow::Bind { label, acts, direct: false });
+                rows.push(SRow::Bind {
+                    label,
+                    acts,
+                    direct: false,
+                });
             }
         }
-        rows.extend(direct_key_rows().into_iter().map(|(label, acts)| SRow::Bind { label, acts, direct: true }));
+        rows.extend(
+            direct_key_rows()
+                .into_iter()
+                .map(|(label, acts)| SRow::Bind {
+                    label,
+                    acts,
+                    direct: true,
+                }),
+        );
     }
     rows
 }
@@ -924,15 +1619,31 @@ pub(crate) struct SettingsView {
     pub scroll: u16,
 }
 
-pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, selected: bool) -> Vec<Seg> {
+pub(super) fn control(
+    app: &App,
+    t: &Theme,
+    row: &SRow,
+    v: &SettingsView,
+    selected: bool,
+) -> Vec<Seg> {
     use super::modal::Kind;
     let cfg = &app.cfg;
     if selected && v.capturing {
-        return super::screen::chip("press the new key…", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD));
+        return super::screen::chip(
+            "press the new key…",
+            Style::default()
+                .bg(t.accent)
+                .fg(t.acc_ink)
+                .add_modifier(Modifier::BOLD),
+        );
     }
     match row {
         SRow::Bind { acts, direct, .. } => {
-            let keys = if *direct { direct_key_text(app, acts) } else { key_text(app, acts) };
+            let keys = if *direct {
+                direct_key_text(app, acts)
+            } else {
+                key_text(app, acts)
+            };
             if keys.is_empty() {
                 vec![seg("not set", Style::default().fg(t.muted))]
             } else {
@@ -943,20 +1654,45 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
         SRow::Version => version_control(app, t),
         SRow::Setting(s) => {
             if s.path == "theme" {
-                let name = if cfg.theme.is_empty() { crate::theme::DEFAULT } else { &cfg.theme };
-                return vec![seg(format!(" {} ", theme_label(crate::theme::canonical(name))), Style::default().fg(t.strong)), seg("Enter browse", Style::default().fg(t.accent))];
+                let name = if cfg.theme.is_empty() {
+                    crate::theme::DEFAULT
+                } else {
+                    &cfg.theme
+                };
+                return vec![
+                    seg(
+                        format!(" {} ", theme_label(crate::theme::canonical(name))),
+                        Style::default().fg(t.strong),
+                    ),
+                    seg("Enter browse", Style::default().fg(t.accent)),
+                ];
             }
             let cur = super::modal::current(cfg, s.path);
             match s.kind {
                 Kind::Spinner => vec![
-                    seg(format!(" {} ", super::modal::display(cfg, s)), Style::default().fg(t.strong)),
+                    seg(
+                        format!(" {} ", super::modal::display(cfg, s)),
+                        Style::default().fg(t.strong),
+                    ),
                     seg("Enter browse", Style::default().fg(t.accent)),
                 ],
                 Kind::Bool => {
                     if cur.and_then(|v| v.as_bool()).unwrap_or(false) {
-                        super::screen::chip("● on ", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD))
+                        super::screen::chip(
+                            "● on ",
+                            Style::default()
+                                .bg(t.accent)
+                                .fg(t.acc_ink)
+                                .add_modifier(Modifier::BOLD),
+                        )
                     } else {
-                        super::screen::chip("○ off", Style::default().bg(t.btn).fg(t.muted).add_modifier(Modifier::BOLD))
+                        super::screen::chip(
+                            "○ off",
+                            Style::default()
+                                .bg(t.btn)
+                                .fg(t.muted)
+                                .add_modifier(Modifier::BOLD),
+                        )
                     }
                 }
                 Kind::Number { min, max, .. } => {
@@ -968,21 +1704,38 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
                         seg(format!(" {val:.2}"), Style::default().fg(t.strong)),
                     ]
                 }
-                Kind::Key => {
-                    keycap(t, &super::modal::display(cfg, s).replace("C-", "Ctrl+"))
-                }
+                Kind::Key => keycap(t, &super::modal::display(cfg, s).replace("C-", "Ctrl+")),
                 Kind::Text | Kind::Folder | Kind::Program(_) => {
                     if selected && let Some(e) = &v.editing {
-                        vec![seg(format!(" {e}"), Style::default().bg(t.card2).fg(t.strong)), seg("█ ", Style::default().bg(t.card2).fg(t.accent))]
+                        vec![
+                            seg(format!(" {e}"), Style::default().bg(t.card2).fg(t.strong)),
+                            seg("█ ", Style::default().bg(t.card2).fg(t.accent)),
+                        ]
                     } else {
                         let shown = super::modal::display(cfg, s);
-                        let shown = if shown.is_empty() || shown == "(shell)" { "(default)".to_string() } else { shown };
-                        super::screen::chip(&truncate(&shown, 28), Style::default().bg(t.btn).fg(t.strong))
+                        let shown = if shown.is_empty() || shown == "(shell)" {
+                            "(default)".to_string()
+                        } else {
+                            shown
+                        };
+                        super::screen::chip(
+                            &truncate(&shown, 28),
+                            Style::default().bg(t.btn).fg(t.strong),
+                        )
                     }
                 }
                 Kind::Choice(_) | Kind::Int { .. } => {
-                    let a = Style::default().fg(if selected { t.accent } else { t.muted }).add_modifier(Modifier::BOLD);
-                    vec![seg("‹ ", a), seg(super::modal::display(cfg, s), Style::default().fg(t.strong).add_modifier(Modifier::BOLD)), seg(" ›", a)]
+                    let a = Style::default()
+                        .fg(if selected { t.accent } else { t.muted })
+                        .add_modifier(Modifier::BOLD);
+                    vec![
+                        seg("‹ ", a),
+                        seg(
+                            super::modal::display(cfg, s),
+                            Style::default().fg(t.strong).add_modifier(Modifier::BOLD),
+                        ),
+                        seg(" ›", a),
+                    ]
                 }
             }
         }
@@ -992,14 +1745,30 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
 /// The Version row's value: this version, then what was found and Update now, or `up to date`
 /// and `u check now`; the daemon's version when it differs from this window's.
 fn version_control(app: &App, t: &Theme) -> Vec<Seg> {
-    let (dot, accent) = (Style::default().fg(t.muted), Style::default().fg(t.accent).add_modifier(Modifier::BOLD));
+    let (dot, accent) = (
+        Style::default().fg(t.muted),
+        Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+    );
     let window = env!("CARGO_PKG_VERSION");
-    let mut out = vec![seg(format!("{} {window}", crate::brand::APP_COMMAND), Style::default().fg(t.strong).add_modifier(Modifier::BOLD)), seg("  ·  ", dot)];
+    let mut out = vec![
+        seg(
+            format!("{} {window}", crate::brand::APP_COMMAND),
+            Style::default().fg(t.strong).add_modifier(Modifier::BOLD),
+        ),
+        seg("  ·  ", dot),
+    ];
     match (&app.update_available, app.updating, app.update_checking) {
         (Some(new), updating, _) => {
             out.push(seg(format!("{new} is out"), accent));
             out.push(seg("  ·  ", dot));
-            out.push(seg(if updating { "updating…" } else { "Enter to update" }, accent));
+            out.push(seg(
+                if updating {
+                    "updating…"
+                } else {
+                    "Enter to update"
+                },
+                accent,
+            ));
         }
         (None, _, true) => out.push(seg("checking…", dot)),
         (None, ..) => {
@@ -1010,7 +1779,10 @@ fn version_control(app: &App, t: &Theme) -> Vec<Seg> {
     }
     let daemon = &app.snap.daemon_version;
     if !daemon.is_empty() && daemon != window {
-        out.extend([seg("  ·  ", dot), seg(format!("daemon {daemon}"), Style::default().fg(t.accent))]);
+        out.extend([
+            seg("  ·  ", dot),
+            seg(format!("daemon {daemon}"), Style::default().fg(t.accent)),
+        ]);
     }
     out
 }
@@ -1033,7 +1805,14 @@ fn agent_control(app: &App, t: &Theme, row: AgentRow) -> Vec<Seg> {
 pub(in crate::client) fn key_text(app: &App, acts: &[crate::keys::Action]) -> String {
     let per: Vec<Vec<String>> = acts
         .iter()
-        .map(|a| app.keymap.prefixed_order.iter().filter(|k| app.keymap.prefixed.get(k) == Some(a)).map(pretty_key).collect())
+        .map(|a| {
+            app.keymap
+                .prefixed_order
+                .iter()
+                .filter(|k| app.keymap.prefixed.get(k) == Some(a))
+                .map(pretty_key)
+                .collect()
+        })
         .collect();
     let mut sets = Vec::new();
     for rank in 0..per.iter().map(Vec::len).max().unwrap_or(0) {
@@ -1061,7 +1840,11 @@ pub(super) fn pretty_key(k: &crate::keys::KeySpec) -> String {
 pub(super) fn long_key(k: &crate::keys::KeySpec) -> String {
     use crossterm::event::KeyModifiers as M;
     let mut out = String::new();
-    for (m, name) in [(M::CONTROL, "Ctrl+"), (M::ALT, "Alt+"), (M::SHIFT, "Shift+")] {
+    for (m, name) in [
+        (M::CONTROL, "Ctrl+"),
+        (M::ALT, "Alt+"),
+        (M::SHIFT, "Shift+"),
+    ] {
         if k.mods.contains(m) {
             out.push_str(name);
         }
@@ -1070,7 +1853,10 @@ pub(super) fn long_key(k: &crate::keys::KeySpec) -> String {
         crossterm::event::KeyCode::Char(' ') => "Space".to_string(),
         crossterm::event::KeyCode::Char(c) => c.to_string(),
         _ => {
-            let bare = crate::keys::KeySpec { mods: M::NONE, ..*k };
+            let bare = crate::keys::KeySpec {
+                mods: M::NONE,
+                ..*k
+            };
             pretty_key(&bare)
         }
     };

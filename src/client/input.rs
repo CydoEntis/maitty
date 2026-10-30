@@ -11,7 +11,10 @@ const DEAD_KEY_HINT_EVERY: std::time::Duration = std::time::Duration::from_secs(
 
 /// How many keys went down in `events`.
 pub(super) fn presses(events: &[Event]) -> usize {
-    events.iter().filter(|ev| matches!(ev, Event::Key(k) if k.kind != KeyEventKind::Release)).count()
+    events
+        .iter()
+        .filter(|ev| matches!(ev, Event::Key(k) if k.kind != KeyEventKind::Release))
+        .count()
 }
 
 /// A burst of keys read at once that is really a paste: plain text with a line break inside
@@ -55,7 +58,10 @@ impl App {
     /// else is handed on one event at a time.
     pub(super) fn on_burst(&mut self, burst: Vec<Event>) {
         // The mouse moving during a paste isn't part of it.
-        let (keys, rest): (Vec<Event>, Vec<Event>) = burst.iter().cloned().partition(|ev| matches!(ev, Event::Key(_)));
+        let (keys, rest): (Vec<Event>, Vec<Event>) = burst
+            .iter()
+            .cloned()
+            .partition(|ev| matches!(ev, Event::Key(_)));
         match paste_from_burst(&keys, self.files_has_the_keys()) {
             Some(text) => {
                 self.dirty = true;
@@ -69,7 +75,9 @@ impl App {
     /// Files has the keys with nothing over it: its letters run commands, and a paste has a
     /// home there (`paste_into_files`). Other views keep a burst as keys.
     fn files_has_the_keys(&self) -> bool {
-        self.view_has_keys() && matches!(self.mode, Mode::Normal) && matches!(self.view, Some(View::Files(_)))
+        self.view_has_keys()
+            && matches!(self.mode, Mode::Normal)
+            && matches!(self.view, Some(View::Files(_)))
     }
 
     pub(super) fn on_event(&mut self, ev: Event) {
@@ -91,7 +99,10 @@ impl App {
         // Another view with the keys has no text box: the pane behind is not what you were
         // looking at, and an empty paste would start an image paste there.
         if self.view_has_keys() && matches!(self.mode, Mode::Normal) {
-            self.notify("the side panel has the keys: Esc closes it, or click a pane to paste there".into(), false);
+            self.notify(
+                "the side panel has the keys: Esc closes it, or click a pane to paste there".into(),
+                false,
+            );
             return;
         }
         match &mut self.mode {
@@ -120,12 +131,18 @@ impl App {
             // A pasted "2" must not count as a choice: the approval takes no paste.
             Mode::Approve(_) => {}
             Mode::ProjectCheck(d) => screen::check_settings::paste_into_draft(d, &s),
-            Mode::ScreenSettings(_) if self.screen.check_page.as_ref().is_some_and(|d| d.editing) => {
+            Mode::ScreenSettings(_)
+                if self.screen.check_page.as_ref().is_some_and(|d| d.editing) =>
+            {
                 if let Some(d) = &mut self.screen.check_page {
                     screen::check_settings::paste_into_draft(d, &s);
                 }
             }
-            Mode::Themes { query, sel, saving: false } => {
+            Mode::Themes {
+                query,
+                sel,
+                saving: false,
+            } => {
                 themes::append_query(query, s.lines().next().unwrap_or(""));
                 *sel = 0;
             }
@@ -144,13 +161,23 @@ impl App {
             _ if s.is_empty() => self.paste_image(),
             _ => {
                 let Some(term) = self.typing_to() else { return };
-                let bracketed = self.parsers.get(&term).is_some_and(|p| p.screen().bracketed_paste());
+                let bracketed = self
+                    .parsers
+                    .get(&term)
+                    .is_some_and(|p| p.screen().bracketed_paste());
                 let body = s.replace("\r\n", "\r").replace('\n', "\r");
-                let data = if bracketed { format!("\x1b[200~{body}\x1b[201~") } else { body };
+                let data = if bracketed {
+                    format!("\x1b[200~{body}\x1b[201~")
+                } else {
+                    body
+                };
                 if let Some(p) = self.parsers.get_mut(&term) {
                     p.screen_mut().set_scrollback(0);
                 }
-                self.send(ClientMsg::Input { term, data: data.into_bytes() });
+                self.send(ClientMsg::Input {
+                    term,
+                    data: data.into_bytes(),
+                });
             }
         }
     }
@@ -166,7 +193,12 @@ impl App {
         match self.mode {
             Mode::Prefix { .. } => self.shortcut_held = true,
             // A view still open has the keys; the mode comes back once it closes.
-            Mode::Normal if self.shortcut_held && self.view.is_none() => self.mode = Mode::Prefix { since: Instant::now(), acted: true },
+            Mode::Normal if self.shortcut_held && self.view.is_none() => {
+                self.mode = Mode::Prefix {
+                    since: Instant::now(),
+                    acted: true,
+                }
+            }
             _ => {}
         }
     }
@@ -184,15 +216,25 @@ impl App {
     /// thinks they are typing sees where their keys went. Once per `DEAD_KEY_HINT_EVERY`, and
     /// never over a toast still showing, so mashing keys doesn't keep it up or hide news.
     fn hint_dead_key(&mut self) {
-        let due = self.dead_key_hint.is_none_or(|at| at.elapsed() >= DEAD_KEY_HINT_EVERY);
-        let showing = self.notice.as_ref().is_some_and(|(_, at, err)| at.elapsed() < screen::toast_hold(*err, self.notice_term.is_some(), self.toast_restart()));
+        let due = self
+            .dead_key_hint
+            .is_none_or(|at| at.elapsed() >= DEAD_KEY_HINT_EVERY);
+        let showing = self.notice.as_ref().is_some_and(|(_, at, err)| {
+            at.elapsed()
+                < screen::toast_hold(*err, self.notice_term.is_some(), self.toast_restart())
+        });
         if !due || showing {
             return;
         }
         self.dead_key_hint = Some(Instant::now());
         // Not `notify`: a hint about keys is not news for the notification history.
         self.notice = Some((DEAD_KEY_HINT.to_string(), Instant::now(), false));
-        (self.notice_term, self.notice_restart, self.notice_card, self.notice_hint) = (None, false, None, true);
+        (
+            self.notice_term,
+            self.notice_restart,
+            self.notice_card,
+            self.notice_hint,
+        ) = (None, false, None, true);
         self.dirty = true;
     }
 
@@ -235,21 +277,39 @@ impl App {
             // split, the same search there; y copies them all.
             if matches!(k.code, KeyCode::Tab | KeyCode::BackTab) && c.input.is_none() {
                 let (term, query) = (c.term, c.query.clone());
-                let picked = c.anchor.is_some().then(|| c.selected_text()).filter(|s| !s.trim().is_empty());
-                let panes: Vec<TermId> = self.screen.tabs.get(self.screen.tab).map(|t| t.layout.leaves()).unwrap_or_default();
-                if panes.len() > 1 && let Some(i) = panes.iter().position(|p| *p == term) {
+                let picked = c
+                    .anchor
+                    .is_some()
+                    .then(|| c.selected_text())
+                    .filter(|s| !s.trim().is_empty());
+                let panes: Vec<TermId> = self
+                    .screen
+                    .tabs
+                    .get(self.screen.tab)
+                    .map(|t| t.layout.leaves())
+                    .unwrap_or_default();
+                if panes.len() > 1
+                    && let Some(i) = panes.iter().position(|p| *p == term)
+                {
                     if let Some(text) = picked {
                         self.copy_set.retain(|(p, _)| *p != term);
                         self.copy_set.push((term, text));
                     }
                     let n = panes.len();
-                    let next = panes[if k.code == KeyCode::Tab { (i + 1) % n } else { (i + n - 1) % n }];
+                    let next = panes[if k.code == KeyCode::Tab {
+                        (i + 1) % n
+                    } else {
+                        (i + n - 1) % n
+                    }];
                     if self.enter_copy(next)
                         && let Mode::Copy(c) = &mut self.mode
                     {
                         c.query = query;
                         c.search_next();
-                        c.message = Some(format!("{} kept · Tab next pane · y copy all", self.copy_set.len()));
+                        c.message = Some(format!(
+                            "{} kept · Tab next pane · y copy all",
+                            self.copy_set.len()
+                        ));
                     }
                 }
                 return;
@@ -271,7 +331,10 @@ impl App {
         match self.mode.clone() {
             Mode::Normal => {
                 if spec == self.keymap.prefix {
-                    self.mode = Mode::Prefix { since: Instant::now(), acted: false };
+                    self.mode = Mode::Prefix {
+                        since: Instant::now(),
+                        acted: false,
+                    };
                 } else if let Some(a) = self.keymap.global.get(&spec).cloned() {
                     self.act(a);
                 } else if self.view_has_keys() {
@@ -296,11 +359,16 @@ impl App {
             Mode::Compose(c) => self.on_compose_key(*c, &k),
             Mode::Why { term, side } => self.on_why_key(term, side, &k),
             Mode::Helpers { term, side } => self.on_helpers_key(term, side, &k),
-            Mode::Confirm(c) if matches!(c.act, crate::client::menu::Act::OverrideCheck(..)) => self.on_override_key(*c, &k),
+            Mode::Confirm(c) if matches!(c.act, crate::client::menu::Act::OverrideCheck(..)) => {
+                self.on_override_key(*c, &k)
+            }
             Mode::Approve(a) => self.on_approve_key(*a, &k),
             Mode::ProjectCheck(d) => self.on_project_check_key(*d, &k),
             // Enter keeps the folder: a stray Enter right after closing must not remove it.
-            Mode::Confirm(c) if k.code == KeyCode::Enter && matches!(c.act, crate::client::menu::Act::RemoveKept(_)) => {
+            Mode::Confirm(c)
+                if k.code == KeyCode::Enter
+                    && matches!(c.act, crate::client::menu::Act::RemoveKept(_)) =>
+            {
                 self.mode = Mode::Normal;
                 self.confirm_done(None);
             }
@@ -314,7 +382,13 @@ impl App {
                     self.confirm_done(Some(c.act));
                 }
                 // Closing: x (as you asked to close) or Delete says yes too.
-                KeyCode::Char('x') | KeyCode::Delete if matches!(c.act, crate::client::menu::Act::End(_) | crate::client::menu::Act::CloseProject(_)) => {
+                KeyCode::Char('x') | KeyCode::Delete
+                    if matches!(
+                        c.act,
+                        crate::client::menu::Act::End(_)
+                            | crate::client::menu::Act::CloseProject(_)
+                    ) =>
+                {
                     self.mode = Mode::Normal;
                     self.confirm_done(Some(c.act));
                 }
@@ -338,7 +412,8 @@ impl App {
                     // A view it opened (Changes, Files, a check) takes the keys, as a popup
                     // does: its own k, arrows and Esc must not run leader actions. Closing it
                     // returns to shortcut mode (`keep_shortcut_mode`).
-                    let opened = self.view_has_keys() && (self.view_opened != opened_before || !had_keys);
+                    let opened =
+                        self.view_has_keys() && (self.view_opened != opened_before || !had_keys);
                     // Nothing opened: the mode holds, the key map stays away. A pane it
                     // started ended the mode (`leave_shortcut_mode`).
                     if self.mode == Mode::Normal && !opened && self.shortcut_held {
@@ -349,7 +424,10 @@ impl App {
                     && let KeyCode::Char(c) = k.code
                 {
                     // The key map is up and this key does nothing: it starts a search.
-                    self.mode = Mode::KeyMap(Box::new(screen::KeyMap { query: c.to_string(), ..screen::KeyMap::new(screen::KeyView::Search, None) }));
+                    self.mode = Mode::KeyMap(Box::new(screen::KeyMap {
+                        query: c.to_string(),
+                        ..screen::KeyMap::new(screen::KeyView::Search, None)
+                    }));
                 } else if !matches!(k.code, KeyCode::Modifier(_)) {
                     self.hint_dead_key();
                 }
@@ -357,7 +435,13 @@ impl App {
             Mode::KeyMap(km) => self.on_keymap_key(*km, &k),
             Mode::Actions { sel } => self.on_actions_key(sel, &k),
             Mode::RenameTab(nt) => self.on_rename_tab_key(*nt, &k),
-            Mode::Worktrees { ws, cmd, items, mut query, mut sel } => {
+            Mode::Worktrees {
+                ws,
+                cmd,
+                items,
+                mut query,
+                mut sel,
+            } => {
                 let rows = self.worktree_rows(items.as_deref(), &query);
                 let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
                 match k.code {
@@ -375,14 +459,23 @@ impl App {
                                     let base = words.next().map(str::to_string);
                                     self.leave_shortcut_mode();
                                     self.notify(format!("creating worktree {branch}…"), false);
-                                    self.cmd(Command::NewWorktree { ws, branch, base, cmd, split: None, from: None });
+                                    self.cmd(Command::NewWorktree {
+                                        ws,
+                                        branch,
+                                        base,
+                                        cmd,
+                                        split: None,
+                                        from: None,
+                                    });
                                 }
                             }
                             None => {}
                         }
                         return;
                     }
-                    KeyCode::Down | KeyCode::Tab => sel = (sel + 1).min(rows.len().saturating_sub(1)),
+                    KeyCode::Down | KeyCode::Tab => {
+                        sel = (sel + 1).min(rows.len().saturating_sub(1))
+                    }
                     KeyCode::Char('n') if ctrl => sel = (sel + 1).min(rows.len().saturating_sub(1)),
                     KeyCode::Up | KeyCode::BackTab => sel = sel.saturating_sub(1),
                     KeyCode::Char('p') if ctrl => sel = sel.saturating_sub(1),
@@ -396,19 +489,36 @@ impl App {
                     }
                     _ => {}
                 }
-                self.mode = Mode::Worktrees { ws, cmd, items, query, sel };
+                self.mode = Mode::Worktrees {
+                    ws,
+                    cmd,
+                    items,
+                    query,
+                    sel,
+                };
             }
             Mode::Prompt { kind, mut input } => {
                 if kind.is_confirm() {
                     self.mode = Mode::Normal;
-                    let yes = matches!(k.code, KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter);
+                    let yes = matches!(
+                        k.code,
+                        KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter
+                    );
                     let force = matches!(k.code, KeyCode::Char('f') | KeyCode::Char('F'));
                     match kind {
-                        PromptKind::ConfirmCloseWorkspace(ws) if yes => self.cmd(Command::CloseWorkspace { ws }),
-                        PromptKind::ConfirmKillServer if yes => self.cmd(Command::KillServer { forget: false }),
+                        PromptKind::ConfirmCloseWorkspace(ws) if yes => {
+                            self.cmd(Command::CloseWorkspace { ws })
+                        }
+                        PromptKind::ConfirmKillServer if yes => {
+                            self.cmd(Command::KillServer { forget: false })
+                        }
                         PromptKind::ConfirmRemoveWorktree(ws) if yes || force => {
                             self.notify("removing worktree…".into(), false);
-                            self.cmd(Command::RemoveWorktree { ws, force, delete_branch: false });
+                            self.cmd(Command::RemoveWorktree {
+                                ws,
+                                force,
+                                delete_branch: false,
+                            });
                         }
                         _ => {}
                     }
@@ -425,7 +535,10 @@ impl App {
                         self.mode = Mode::Prompt { kind, input };
                     }
                     KeyCode::Char('u') if k.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.mode = Mode::Prompt { kind, input: String::new() };
+                        self.mode = Mode::Prompt {
+                            kind,
+                            input: String::new(),
+                        };
                     }
                     KeyCode::Char(c) => {
                         input.push(c);
@@ -440,8 +553,13 @@ impl App {
 
     pub(super) fn forward_key(&mut self, k: &KeyEvent) {
         let Some(term) = self.typing_to() else { return };
-        let app_cursor = self.parsers.get(&term).is_some_and(|p| p.screen().application_cursor());
-        let win32 = cfg!(windows) && self.snap.terms.get(&term).is_some_and(|t| t.win32_input) && keys::wants_win32(k);
+        let app_cursor = self
+            .parsers
+            .get(&term)
+            .is_some_and(|p| p.screen().application_cursor());
+        let win32 = cfg!(windows)
+            && self.snap.terms.get(&term).is_some_and(|t| t.win32_input)
+            && keys::wants_win32(k);
         let data = match win32.then(|| keys::encode_win32(k)).flatten() {
             Some(d) => d,
             None => keys::encode(k, app_cursor),
@@ -460,22 +578,43 @@ impl App {
     /// Shift+PageUp / PageDown (and Shift+Up / Down a line) scroll the history, like any
     /// terminal; full-screen programs get the keys themselves.
     pub(super) fn scroll_key(&mut self, k: &KeyEvent) -> bool {
-        let Some(term) = self.focused() else { return false };
-        let Some(p) = self.parsers.get(&term) else { return false };
+        let Some(term) = self.focused() else {
+            return false;
+        };
+        let Some(p) = self.parsers.get(&term) else {
+            return false;
+        };
         if p.screen().alternate_screen() {
             return false;
         }
-        let agent = self.snap.terms.get(&term).is_some_and(|t| t.agent.is_some());
+        let agent = self
+            .snap
+            .terms
+            .get(&term)
+            .is_some_and(|t| t.agent.is_some());
         let has_history = self.history(term).1 > 0;
         if agent && !has_history && matches!(k.code, KeyCode::PageUp | KeyCode::PageDown) {
             return false;
         }
-        let Some(p) = self.parsers.get(&term) else { return false };
+        let Some(p) = self.parsers.get(&term) else {
+            return false;
+        };
         let s = p.screen();
-        let at_prompt = s.mouse_protocol_mode() == vt100::MouseProtocolMode::None && (!s.application_cursor() || s.bracketed_paste());
-        if k.modifiers.is_empty() && at_prompt && matches!(k.code, KeyCode::PageUp | KeyCode::PageDown) {
+        let at_prompt = s.mouse_protocol_mode() == vt100::MouseProtocolMode::None
+            && (!s.application_cursor() || s.bracketed_paste());
+        if k.modifiers.is_empty()
+            && at_prompt
+            && matches!(k.code, KeyCode::PageUp | KeyCode::PageDown)
+        {
             let page = s.size().0.saturating_sub(1).max(1) as i32;
-            self.scroll_by(term, if k.code == KeyCode::PageUp { page } else { -page });
+            self.scroll_by(
+                term,
+                if k.code == KeyCode::PageUp {
+                    page
+                } else {
+                    -page
+                },
+            );
             return true;
         }
         if !k.modifiers.contains(KeyModifiers::SHIFT) {
@@ -508,7 +647,8 @@ impl App {
         // A selection drag in Files whose release never came (let go outside the window) is
         // over once the mouse moves with no button held, or presses somewhere else; here,
         // before panes and popups take the event.
-        let elsewhere = matches!(m.kind, MouseEventKind::Down(_)) && !self.screen.preview_rect.contains(pos);
+        let elsewhere =
+            matches!(m.kind, MouseEventKind::Down(_)) && !self.screen.preview_rect.contains(pos);
         if (m.kind == MouseEventKind::Moved || elsewhere)
             && let Some(View::Files(v)) = &mut self.view
         {
@@ -533,24 +673,37 @@ impl App {
             && !self.screen.sheet_rect.contains(pos)
             && let Some((term, row, col)) = self.pane_cell(pos)
         {
-            let screen_has_mouse = self.parsers.get(&term).is_some_and(|p| p.screen().mouse_protocol_mode() != vt100::MouseProtocolMode::None);
+            let screen_has_mouse = self.parsers.get(&term).is_some_and(|p| {
+                p.screen().mouse_protocol_mode() != vt100::MouseProtocolMode::None
+            });
             if m.modifiers.contains(KeyModifiers::CONTROL)
-                && let Some(url) = self.parsers.get(&term).and_then(|p| pick::url_at(p.screen(), row, col))
+                && let Some(url) = self
+                    .parsers
+                    .get(&term)
+                    .and_then(|p| pick::url_at(p.screen(), row, col))
             {
                 self.open_link(url);
                 return;
             }
             if m.modifiers.contains(KeyModifiers::CONTROL)
-                && let Some((p, line)) = self.parsers.get(&term).and_then(|p| pick::path_at(p.screen(), row, col))
+                && let Some((p, line)) = self
+                    .parsers
+                    .get(&term)
+                    .and_then(|p| pick::path_at(p.screen(), row, col))
             {
                 self.open_path_from(term, &p, line);
                 return;
             }
-            let double = self.pane_click.is_some_and(|(p, at)| at.elapsed() < DOUBLE_CLICK && p.y == pos.y && p.x.abs_diff(pos.x) <= 1);
+            let double = self.pane_click.is_some_and(|(p, at)| {
+                at.elapsed() < DOUBLE_CLICK && p.y == pos.y && p.x.abs_diff(pos.x) <= 1
+            });
             self.pane_click = Some((pos, Instant::now()));
             if double
                 && !screen_has_mouse
-                && let Some(word) = self.parsers.get(&term).and_then(|p| pick::word_at(p.screen(), row, col))
+                && let Some(word) = self
+                    .parsers
+                    .get(&term)
+                    .and_then(|p| pick::word_at(p.screen(), row, col))
             {
                 self.pane_click = None;
                 self.drag = None;
@@ -603,8 +756,13 @@ impl App {
                     match d {
                         screen::Drag::Side => {
                             let side = self.screen.side_rect;
-                            let w = if self.cfg.ui.sidebar_position == "right" { side.right().saturating_sub(m.column) } else { m.column.saturating_sub(side.x) };
-                            self.screen.saved.side_w = Some(w.clamp(screen::SIDE_MIN, screen::SIDE_MAX));
+                            let w = if self.cfg.ui.sidebar_position == "right" {
+                                side.right().saturating_sub(m.column)
+                            } else {
+                                m.column.saturating_sub(side.x)
+                            };
+                            self.screen.saved.side_w =
+                                Some(w.clamp(screen::SIDE_MIN, screen::SIDE_MAX));
                         }
                         screen::Drag::Sheet => {
                             let right = self.screen.sheet_rect.right();
@@ -624,17 +782,30 @@ impl App {
                                 .hits
                                 .iter()
                                 .rev()
-                                .find(|(r, h)| r.contains(pos) && matches!(h, Hit::Screen(screen::ScreenHit::Session(_) | screen::ScreenHit::ToggleProj(_))))
+                                .find(|(r, h)| {
+                                    r.contains(pos)
+                                        && matches!(
+                                            h,
+                                            Hit::Screen(
+                                                screen::ScreenHit::Session(_)
+                                                    | screen::ScreenHit::ToggleProj(_)
+                                            )
+                                        )
+                                })
                                 .map(|(_, h)| *h);
                             let moved = match over {
                                 // Onto another session: into its group, at its place.
                                 Some(Hit::Screen(screen::ScreenHit::Session(u))) if u != t => {
                                     let model = self.screen_model();
-                                    let into = model.iter().position(|p| p.sessions().any(|s| s.term == u));
-                                    (into.is_some_and(|pi| self.place_session(t, pi))) | self.move_session(t, u)
+                                    let into =
+                                        model.iter().position(|p| p.sessions().any(|s| s.key == u));
+                                    (into.is_some_and(|pi| self.place_session(t, pi)))
+                                        | self.move_session(t, u)
                                 }
                                 // Onto a group's name: into that group.
-                                Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => self.place_session(t, pi),
+                                Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => {
+                                    self.place_session(t, pi)
+                                }
                                 _ => false,
                             };
                             if moved {
@@ -642,7 +813,18 @@ impl App {
                             }
                         }
                         screen::Drag::Group(pi, _) => {
-                            let over = self.hits.iter().rev().find(|(r, h)| r.contains(pos) && matches!(h, Hit::Screen(screen::ScreenHit::ToggleProj(_)))).map(|(_, h)| *h);
+                            let over = self
+                                .hits
+                                .iter()
+                                .rev()
+                                .find(|(r, h)| {
+                                    r.contains(pos)
+                                        && matches!(
+                                            h,
+                                            Hit::Screen(screen::ScreenHit::ToggleProj(_))
+                                        )
+                                })
+                                .map(|(_, h)| *h);
                             if let Some(Hit::Screen(screen::ScreenHit::ToggleProj(to))) = over
                                 && let Some(from) = self.screen.drag_key.clone()
                                 && let Some(target) = self.screen.proj_keys.get(to).cloned()
@@ -652,11 +834,21 @@ impl App {
                                 // other's place.
                                 let mut order: Vec<String> = self.screen.proj_keys.clone();
                                 order.retain(|k| *k != from);
-                                let at = order.iter().position(|k| *k == target).unwrap_or(order.len());
+                                let at = order
+                                    .iter()
+                                    .position(|k| *k == target)
+                                    .unwrap_or(order.len());
                                 let at = if to > pi { at + 1 } else { at };
                                 order.insert(at.min(order.len()), from);
                                 // Groups not on screen keep their place after these.
-                                let rest: Vec<String> = self.screen.saved.order.iter().filter(|k| !order.contains(k)).cloned().collect();
+                                let rest: Vec<String> = self
+                                    .screen
+                                    .saved
+                                    .order
+                                    .iter()
+                                    .filter(|k| !order.contains(k))
+                                    .cloned()
+                                    .collect();
                                 order.extend(rest);
                                 self.screen.saved.order = order;
                                 self.screen.drag = Some(screen::Drag::Group(to, true));
@@ -664,7 +856,15 @@ impl App {
                             }
                         }
                         screen::Drag::Tab(i) => {
-                            let over = self.hits.iter().rev().find(|(r, h)| r.contains(pos) && matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))).map(|(_, h)| *h);
+                            let over = self
+                                .hits
+                                .iter()
+                                .rev()
+                                .find(|(r, h)| {
+                                    r.contains(pos)
+                                        && matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))
+                                })
+                                .map(|(_, h)| *h);
                             if let Some(Hit::Screen(screen::ScreenHit::TabPick(j))) = over
                                 && j != i
                             {
@@ -673,15 +873,22 @@ impl App {
                             }
                         }
                         screen::Drag::Pane { from, .. } => {
-                            self.screen.drag = Some(screen::Drag::Pane { from, over: self.swap_target(from, pos), at: pos });
+                            self.screen.drag = Some(screen::Drag::Pane {
+                                from,
+                                over: self.swap_target(from, pos),
+                                at: pos,
+                            });
                         }
                         screen::Drag::Divider(i) => {
-                            if let Some((r, horizontal, path)) = self.screen.dividers.get(i).cloned() {
+                            if let Some((r, horizontal, path)) =
+                                self.screen.dividers.get(i).cloned()
+                            {
                                 // The line sits in the gap after the left card (as wide as the
                                 // gap setting): put it under the pointer.
                                 let gap = screen::Look::of(&self.cfg.ui).gap.max(1);
                                 let f = if horizontal {
-                                    (m.column + gap).saturating_sub(r.x) as f32 / r.width.max(1) as f32
+                                    (m.column + gap).saturating_sub(r.x) as f32
+                                        / r.width.max(1) as f32
                                 } else {
                                     (m.row + 1).saturating_sub(r.y) as f32 / r.height.max(1) as f32
                                 };
@@ -733,7 +940,12 @@ impl App {
         }
         // A middle click on a tab closes it, as in a browser.
         if m.kind == MouseEventKind::Down(MouseButton::Middle)
-            && let Some(Hit::Screen(screen::ScreenHit::TabPick(i))) = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h)
+            && let Some(Hit::Screen(screen::ScreenHit::TabPick(i))) = self
+                .hits
+                .iter()
+                .rev()
+                .find(|(r, _)| r.contains(pos))
+                .map(|(_, h)| *h)
         {
             self.close_tab(i);
             self.dirty = true;
@@ -746,18 +958,45 @@ impl App {
                 self.right_down = Some(Instant::now());
                 true
             }
-            MouseEventKind::Up(MouseButton::Right) => !self.right_down.take().is_some_and(|at| at.elapsed() < Duration::from_millis(600)),
+            MouseEventKind::Up(MouseButton::Right) => !self
+                .right_down
+                .take()
+                .is_some_and(|at| at.elapsed() < Duration::from_millis(600)),
             _ => false,
         };
-        if right_click && !self.splash && !matches!(self.mode, Mode::ScreenMenu(_) | Mode::Confirm(_)) {
-            let hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
+        if right_click
+            && !self.splash
+            && !matches!(self.mode, Mode::ScreenMenu(_) | Mode::Confirm(_))
+        {
+            let hit = self
+                .hits
+                .iter()
+                .rev()
+                .find(|(r, _)| r.contains(pos))
+                .map(|(_, h)| *h);
             let at = (m.column, m.row);
             match hit {
-                Some(Hit::Screen(screen::ScreenHit::Session(t) | screen::ScreenHit::RowChanges(t))) => self.menu_for_session(t, at),
-                Some(Hit::Screen(screen::ScreenHit::Why(t))) if self.screen.side_rect.contains(pos) => self.menu_for_session(t, at),
-                Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => self.menu_for_project(pi, at),
+                Some(Hit::Screen(screen::ScreenHit::Session(key))) => {
+                    if let Some(term) = self.require_session_term(key) {
+                        self.menu_for_session(term, at);
+                    }
+                }
+                Some(Hit::Screen(screen::ScreenHit::RowChanges(t))) => self.menu_for_session(t, at),
+                Some(Hit::Screen(screen::ScreenHit::Why(t)))
+                    if self.screen.side_rect.contains(pos) =>
+                {
+                    self.menu_for_session(t, at)
+                }
+                Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => {
+                    self.menu_for_project(pi, at)
+                }
                 _ => {
-                    if let Some((term, _)) = self.pane_frames.iter().find(|(_, r)| r.contains(pos)).copied() {
+                    if let Some((term, _)) = self
+                        .pane_frames
+                        .iter()
+                        .find(|(_, r)| r.contains(pos))
+                        .copied()
+                    {
                         self.menu_for_pane(term, at);
                     }
                 }
@@ -785,10 +1024,22 @@ impl App {
             return;
         }
         if m.kind == MouseEventKind::Down(MouseButton::Left) {
-            let hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
+            let hit = self
+                .hits
+                .iter()
+                .rev()
+                .find(|(r, _)| r.contains(pos))
+                .map(|(_, h)| *h);
             // A session's row: it may be dragged within its group; a plain click opens it
             // (on release).
-            if let Some(Hit::Screen(press @ (screen::ScreenHit::Session(t) | screen::ScreenHit::RowChanges(t)))) = hit {
+            let session_press = match hit {
+                Some(Hit::Screen(press @ screen::ScreenHit::Session(key))) => Some((key, press)),
+                Some(Hit::Screen(press @ screen::ScreenHit::RowChanges(term))) => {
+                    Some((self.session_key(term), press))
+                }
+                _ => None,
+            };
+            if let Some((t, press)) = session_press {
                 self.screen.drag = Some(screen::Drag::Session(t, false, press));
                 self.dirty = true;
                 return;
@@ -806,9 +1057,13 @@ impl App {
                 if let screen::ScreenHit::TabPick(i) = hh {
                     self.screen.drag = Some(screen::Drag::Tab(i));
                 }
-                let double = self.last_click.is_some_and(|(prev, at)| prev == h && at.elapsed() < DOUBLE_CLICK);
+                let double = self
+                    .last_click
+                    .is_some_and(|(prev, at)| prev == h && at.elapsed() < DOUBLE_CLICK);
                 self.last_click = Some((h, Instant::now()));
-                if matches!(self.mode, Mode::Prefix { .. } | Mode::Side) && !matches!(hh, screen::ScreenHit::Why(_)) {
+                if matches!(self.mode, Mode::Prefix { .. } | Mode::Side)
+                    && !matches!(hh, screen::ScreenHit::Why(_))
+                {
                     // The cursor goes with the keys: left behind, close would act on its row.
                     self.screen_side_leave();
                 }
@@ -821,9 +1076,14 @@ impl App {
                 return;
             }
             if let Some(h @ Hit::Button(_)) = hit {
-                let double = self.last_click.is_some_and(|(prev, at)| prev == h && at.elapsed() < DOUBLE_CLICK);
+                let double = self
+                    .last_click
+                    .is_some_and(|(prev, at)| prev == h && at.elapsed() < DOUBLE_CLICK);
                 self.last_click = Some((h, Instant::now()));
-                if matches!(self.mode, Mode::Prefix { .. } | Mode::KeyMap(_) | Mode::Actions { .. }) {
+                if matches!(
+                    self.mode,
+                    Mode::Prefix { .. } | Mode::KeyMap(_) | Mode::Actions { .. }
+                ) {
                     self.mode = Mode::Normal;
                 }
                 if self.on_button(h, double) {
@@ -851,85 +1111,162 @@ impl App {
                 }
                 // A pane's title (where its own controls aren't): it may be dragged onto another.
                 if let Some(from) = self.title_of_shared_pane(pos) {
-                    self.screen.drag = Some(screen::Drag::Pane { from, over: None, at: pos });
+                    self.screen.drag = Some(screen::Drag::Pane {
+                        from,
+                        over: None,
+                        at: pos,
+                    });
                 }
-                let hit = self.hits.iter().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
+                let hit = self
+                    .hits
+                    .iter()
+                    .find(|(r, _)| r.contains(pos))
+                    .map(|(_, h)| *h);
                 match hit {
                     Some(Hit::Pane(term)) => self.cmd(Command::FocusPane { term }),
                     Some(Hit::Button(_) | Hit::Screen(_)) => {}
                     None => {
-                        if let Some((term, _)) = self.pane_frames.iter().find(|(_, r)| r.contains(pos))
-                            && Some(*term) != self.focused() {
-                                self.cmd(Command::FocusPane { term: *term });
-                            }
+                        if let Some((term, _)) =
+                            self.pane_frames.iter().find(|(_, r)| r.contains(pos))
+                            && Some(*term) != self.focused()
+                        {
+                            self.cmd(Command::FocusPane { term: *term });
+                        }
                     }
                 }
             }
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
                 let up = m.kind == MouseEventKind::ScrollUp;
                 if matches!(self.mode, Mode::KeyMap(_) | Mode::Actions { .. }) {
-                    self.on_key(KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
+                    self.on_key(KeyEvent::new(
+                        if up { KeyCode::Up } else { KeyCode::Down },
+                        KeyModifiers::NONE,
+                    ));
                     self.dirty = true;
                     return;
                 }
-                let sheet_hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
+                let sheet_hit = self
+                    .hits
+                    .iter()
+                    .rev()
+                    .find(|(r, _)| r.contains(pos))
+                    .map(|(_, h)| *h);
                 if matches!(self.mode, Mode::ScreenSettings(_))
-                    && matches!(sheet_hit, Some(Hit::Screen(screen::ScreenHit::SettingsBody | screen::ScreenHit::SetRow(_) | screen::ScreenHit::SetVal(_, _) | screen::ScreenHit::SetTab(_))))
+                    && matches!(
+                        sheet_hit,
+                        Some(Hit::Screen(
+                            screen::ScreenHit::SettingsBody
+                                | screen::ScreenHit::SetRow(_)
+                                | screen::ScreenHit::SetVal(_, _)
+                                | screen::ScreenHit::SetTab(_)
+                        ))
+                    )
                 {
-                    self.screen_settings_key(&KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
+                    self.screen_settings_key(&KeyEvent::new(
+                        if up { KeyCode::Up } else { KeyCode::Down },
+                        KeyModifiers::NONE,
+                    ));
                     self.dirty = true;
                     return;
                 }
                 if let Mode::Themes { query, sel, saving } = self.mode.clone() {
-                    self.on_theme_key(query, sel, saving, &KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
+                    self.on_theme_key(
+                        query,
+                        sel,
+                        saving,
+                        &KeyEvent::new(
+                            if up { KeyCode::Up } else { KeyCode::Down },
+                            KeyModifiers::NONE,
+                        ),
+                    );
                     return;
                 }
                 if matches!(self.mode, Mode::Spinners(_)) {
-                    self.on_spinner_key(&KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
+                    self.on_spinner_key(&KeyEvent::new(
+                        if up { KeyCode::Up } else { KeyCode::Down },
+                        KeyModifiers::NONE,
+                    ));
                     return;
                 }
                 if self.screen.preview_rect.contains(pos)
                     && let Some(View::Files(v)) = &mut self.view
                 {
-                    let n = v.shown_lines(self.screen.preview_rect.width, &self.theme, &self.cfg.theme);
-                    v.scroll = if up { v.scroll.saturating_sub(3) } else { (v.scroll + 3).min(n.saturating_sub(1)) };
+                    let n =
+                        v.shown_lines(self.screen.preview_rect.width, &self.theme, &self.cfg.theme);
+                    v.scroll = if up {
+                        v.scroll.saturating_sub(3)
+                    } else {
+                        (v.scroll + 3).min(n.saturating_sub(1))
+                    };
                     self.dirty = true;
                     return;
                 }
                 if self.screen.side_rect.contains(pos) {
-                    self.screen.side_scroll = if up { self.screen.side_scroll.saturating_sub(3) } else { self.screen.side_scroll + 3 };
+                    self.screen.side_scroll = if up {
+                        self.screen.side_scroll.saturating_sub(3)
+                    } else {
+                        self.screen.side_scroll + 3
+                    };
                     self.dirty = true;
                     return;
                 }
-                let Some((term, _)) = self.pane_frames.iter().find(|(_, r)| r.contains(pos)).copied() else {
+                let Some((term, _)) = self
+                    .pane_frames
+                    .iter()
+                    .find(|(_, r)| r.contains(pos))
+                    .copied()
+                else {
                     return;
                 };
-                let alt = self.parsers.get(&term).is_some_and(|p| p.screen().alternate_screen());
-                let agent = self.snap.terms.get(&term).is_some_and(|t| t.agent.is_some());
+                let alt = self
+                    .parsers
+                    .get(&term)
+                    .is_some_and(|p| p.screen().alternate_screen());
+                let agent = self
+                    .snap
+                    .terms
+                    .get(&term)
+                    .is_some_and(|t| t.agent.is_some());
                 let no_history = self.history(term).1 == 0;
                 if (alt || no_history) && agent && !m.modifiers.contains(KeyModifiers::SHIFT) {
                     // A full-screen view, or a normal-screen agent with no the app history:
                     // arrow keys would walk its prompt history, so page it at most every 150 ms.
-                    if self.wheel_page.is_none_or(|at| at.elapsed() >= Duration::from_millis(150)) {
+                    if self
+                        .wheel_page
+                        .is_none_or(|at| at.elapsed() >= Duration::from_millis(150))
+                    {
                         self.wheel_page = Some(Instant::now());
                         let paged = self.paged_up.entry(term).or_default();
-                        *paged = if up { *paged + 1 } else { paged.saturating_sub(1) };
+                        *paged = if up {
+                            *paged + 1
+                        } else {
+                            paged.saturating_sub(1)
+                        };
                         if *paged == 0 {
                             self.paged_up.remove(&term);
                         }
                         let key: &[u8] = if up { b"\x1b[5~" } else { b"\x1b[6~" };
-                        self.send(ClientMsg::Input { term, data: key.to_vec() });
+                        self.send(ClientMsg::Input {
+                            term,
+                            data: key.to_vec(),
+                        });
                     }
                 } else if alt {
                     // Full-screen programs scroll themselves: one arrow key per notch.
-                    let app_cursor = self.parsers.get(&term).is_some_and(|p| p.screen().application_cursor());
+                    let app_cursor = self
+                        .parsers
+                        .get(&term)
+                        .is_some_and(|p| p.screen().application_cursor());
                     let key: &[u8] = match (up, app_cursor) {
                         (true, true) => b"\x1bOA",
                         (true, false) => b"\x1b[A",
                         (false, true) => b"\x1bOB",
                         (false, false) => b"\x1b[B",
                     };
-                    self.send(ClientMsg::Input { term, data: key.to_vec() });
+                    self.send(ClientMsg::Input {
+                        term,
+                        data: key.to_vec(),
+                    });
                 } else {
                     self.scroll_by(term, if up { 3 } else { -3 });
                 }
@@ -941,7 +1278,8 @@ impl App {
     /// The pane whose title row is at `pos`, when its tab shows it beside others.
     fn title_of_shared_pane(&self, pos: Position) -> Option<TermId> {
         let (term, r) = self.pane_frames.iter().find(|(_, r)| r.contains(pos))?;
-        let shared = self.screen.leaf_rects.len() > 1 && self.screen.leaf_rects.iter().any(|(id, _)| id == term);
+        let shared = self.screen.leaf_rects.len() > 1
+            && self.screen.leaf_rects.iter().any(|(id, _)| id == term);
         (pos.y == r.y && shared).then_some(*term)
     }
 
@@ -953,42 +1291,63 @@ impl App {
 
     /// Put session `t` where `u` is, within their group (the order you dragged them to).
     /// False when they aren't in the same group.
-    /// Put session `t` in group `pi` (by the sidebar's groups).
-    pub(super) fn place_session(&mut self, t: TermId, pi: usize) -> bool {
+    /// Put session `t` in group `pi` (by the sidebar's groups). Not onto another machine's group.
+    pub(super) fn place_session(&mut self, t: SessionKey, pi: usize) -> bool {
         let model = self.screen_model();
-        let Some(to) = model.get(pi) else { return false };
-        let Some(from) = model.iter().find(|p| p.sessions().any(|s| s.term == t)) else { return false };
+        let Some(to) = model.get(pi) else {
+            return false;
+        };
+        let Some(from) = model.iter().find(|p| p.sessions().any(|s| s.key == t)) else {
+            return false;
+        };
         if from.key == to.key {
             return false;
         }
         let placed = &mut self.screen.saved.placed;
         placed.retain(|(x, ..)| *x != t);
         placed.push((t, to.path.clone(), to.git));
-        let alive: Vec<TermId> = self.snap.terms.keys().copied().collect();
+        let alive: Vec<SessionKey> = model
+            .iter()
+            .flat_map(|p| p.sessions().map(|s| s.key))
+            .collect();
         placed.retain(|(x, ..)| alive.contains(x));
         self.screen_fresh();
         self.dirty = true;
         true
     }
 
-    pub(super) fn move_session(&mut self, t: TermId, u: TermId) -> bool {
+    pub(super) fn move_session(&mut self, t: SessionKey, u: SessionKey) -> bool {
         let model = self.screen_model();
-        let Some(group) = model.iter().find(|p| p.sessions().any(|s| s.term == t)) else { return false };
-        if !group.sessions().any(|s| s.term == u) {
+        let Some(group) = model.iter().find(|p| p.sessions().any(|s| s.key == t)) else {
+            return false;
+        };
+        if !group.sessions().any(|s| s.key == u) {
             return false;
         }
         // The group's sessions as shown, then t moved to u's place.
         let lines = screen::side_lines(self, &model, &self.theme);
-        let mut ids: Vec<TermId> = lines.iter().filter_map(|l| screen::line_term(&model, l)).filter(|id| group.sessions().any(|s| s.term == *id)).collect();
-        let (from, to) = (ids.iter().position(|x| *x == t), ids.iter().position(|x| *x == u));
-        let (Some(from), Some(to)) = (from, to) else { return false };
+        let mut ids: Vec<SessionKey> = lines
+            .iter()
+            .filter_map(|l| screen::line_term(&model, l))
+            .filter(|id| group.sessions().any(|s| s.key == *id))
+            .collect();
+        let (from, to) = (
+            ids.iter().position(|x| *x == t),
+            ids.iter().position(|x| *x == u),
+        );
+        let (Some(from), Some(to)) = (from, to) else {
+            return false;
+        };
         let id = ids.remove(from);
         ids.insert(to, id);
         let order = &mut self.screen.saved.session_order;
         order.retain(|x| !ids.contains(x));
         order.extend(ids);
         // Only sessions that still exist.
-        let alive: Vec<TermId> = self.snap.terms.keys().copied().collect();
+        let alive: Vec<SessionKey> = model
+            .iter()
+            .flat_map(|p| p.sessions().map(|s| s.key))
+            .collect();
         order.retain(|x| alive.contains(x));
         self.screen_fresh();
         self.dirty = true;
@@ -1004,7 +1363,9 @@ impl App {
                 Some(_) => "row-resize",
                 None => "default",
             },
-            Some(Hit::Screen(screen::ScreenHit::SideEdge | screen::ScreenHit::SheetEdge)) => "col-resize",
+            Some(Hit::Screen(screen::ScreenHit::SideEdge | screen::ScreenHit::SheetEdge)) => {
+                "col-resize"
+            }
             _ => "default",
         };
         if self.pointer != want {
@@ -1023,11 +1384,15 @@ impl App {
         if !matches!(self.mode, Mode::Normal) {
             return false;
         }
-        let Some(View::Files(v)) = &mut self.view else { return false };
+        let Some(View::Files(v)) = &mut self.view else {
+            return false;
+        };
         match m.kind {
             MouseEventKind::Down(MouseButton::Left) if area.contains(pos) => {
                 let at = v.text_at(area, pos.x, pos.y);
-                let double = v.last_press.is_some_and(|(p, when)| p == at && when.elapsed() < DOUBLE_CLICK);
+                let double = v
+                    .last_press
+                    .is_some_and(|(p, when)| p == at && when.elapsed() < DOUBLE_CLICK);
                 v.last_press = (!double).then(|| (at, Instant::now()));
                 let word = |text: Option<String>| {
                     let (from, to) = views::word_at(&text.unwrap_or_default(), at.1);
@@ -1056,7 +1421,11 @@ impl App {
                     line += 1;
                 }
                 // Past the last line: its end, so the drag takes all of it.
-                let at = if line >= v.shown_count() { v.end() } else { (line, col) };
+                let at = if line >= v.shown_count() {
+                    v.end()
+                } else {
+                    (line, col)
+                };
                 match v.edit.as_mut() {
                     Some(ed) => ed.move_to(at, true),
                     None => v.pick = v.pick.map(|(from, _)| (from, at)),
@@ -1096,11 +1465,15 @@ impl App {
                     }
                     return true;
                 }
-                let Some((term, start)) = self.drag else { return false };
+                let Some((term, start)) = self.drag else {
+                    return false;
+                };
                 if start == pos || !matches!(self.mode, Mode::Normal) || !self.enter_copy(term) {
                     return false;
                 }
-                let Some((_, r)) = self.panes.iter().find(|(t, _)| *t == term).copied() else { return true };
+                let Some((_, r)) = self.panes.iter().find(|(t, _)| *t == term).copied() else {
+                    return true;
+                };
                 if let Mode::Copy(c) = &mut self.mode {
                     c.mouse = true;
                     let s = c.at_cell(start.y.saturating_sub(r.y), start.x.saturating_sub(r.x));
@@ -1125,8 +1498,12 @@ impl App {
                 false
             }
             MouseEventKind::Down(MouseButton::Left) => {
-                let Mode::Copy(c) = &mut self.mode else { return false };
-                let Some((_, r)) = self.panes.iter().find(|(t, _)| *t == c.term).copied() else { return false };
+                let Mode::Copy(c) = &mut self.mode else {
+                    return false;
+                };
+                let Some((_, r)) = self.panes.iter().find(|(t, _)| *t == c.term).copied() else {
+                    return false;
+                };
                 if !r.contains(pos) {
                     self.mode = Mode::Normal;
                     return true;
@@ -1137,8 +1514,14 @@ impl App {
                 true
             }
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
-                let Mode::Copy(c) = &mut self.mode else { return false };
-                c.scroll(if m.kind == MouseEventKind::ScrollUp { -3 } else { 3 });
+                let Mode::Copy(c) = &mut self.mode else {
+                    return false;
+                };
+                c.scroll(if m.kind == MouseEventKind::ScrollUp {
+                    -3
+                } else {
+                    3
+                });
                 true
             }
             _ => false,
@@ -1146,7 +1529,9 @@ impl App {
     }
 
     pub(super) fn scroll_by(&mut self, term: TermId, delta: i32) {
-        let Some(p) = self.parsers.get_mut(&term) else { return };
+        let Some(p) = self.parsers.get_mut(&term) else {
+            return;
+        };
         // The parser's own offset: vt100 raises it as output arrives, to keep the view still.
         let cur = p.screen().scrollback() as i32;
         p.screen_mut().set_scrollback((cur + delta).max(0) as usize);
@@ -1168,7 +1553,9 @@ impl App {
                 Btn::Row(i) => match &mut self.view {
                     Some(View::Changes(v)) => {
                         let rows = v.rows();
-                        if let (Some(views::ChangesRow::File(fi, _)), Some(r)) = (rows.get(i), v.review.as_mut()) {
+                        if let (Some(views::ChangesRow::File(fi, _)), Some(r)) =
+                            (rows.get(i), v.review.as_mut())
+                        {
                             r.sel = *fi;
                             r.diff_sel = None;
                             r.scroll = 0;
@@ -1215,7 +1602,10 @@ mod tests {
                     c => KeyCode::Char(c),
                 };
                 let press = KeyEvent::new(code, KeyModifiers::NONE);
-                let release = KeyEvent { kind: KeyEventKind::Release, ..press };
+                let release = KeyEvent {
+                    kind: KeyEventKind::Release,
+                    ..press
+                };
                 [Event::Key(press), Event::Key(release)]
             })
             .collect()
@@ -1223,25 +1613,71 @@ mod tests {
 
     #[test]
     fn a_pasted_line_break_is_text_not_send() {
-        assert_eq!(paste_from_burst(&keys("first\nsecond"), false).as_deref(), Some("first\nsecond"));
-        assert_eq!(paste_from_burst(&keys("one\ntwo\n"), false).as_deref(), Some("one\ntwo\n"), "a trailing line break stays in the paste");
-        assert_eq!(paste_from_burst(&keys("yes\n"), false), None, "typed ahead and sent: still keys");
-        assert_eq!(paste_from_burst(&keys("abc"), false), None, "a few letters: keys do the same");
-        assert_eq!(paste_from_burst(&keys("https://example.com/a/long/link"), false).as_deref(), Some("https://example.com/a/long/link"), "one long line at once: pasted whole");
-        assert_eq!(paste_from_burst(&keys("cargo test --workspace\n"), false), None, "a long line typed ahead and sent: still keys");
+        assert_eq!(
+            paste_from_burst(&keys("first\nsecond"), false).as_deref(),
+            Some("first\nsecond")
+        );
+        assert_eq!(
+            paste_from_burst(&keys("one\ntwo\n"), false).as_deref(),
+            Some("one\ntwo\n"),
+            "a trailing line break stays in the paste"
+        );
+        assert_eq!(
+            paste_from_burst(&keys("yes\n"), false),
+            None,
+            "typed ahead and sent: still keys"
+        );
+        assert_eq!(
+            paste_from_burst(&keys("abc"), false),
+            None,
+            "a few letters: keys do the same"
+        );
+        assert_eq!(
+            paste_from_burst(&keys("https://example.com/a/long/link"), false).as_deref(),
+            Some("https://example.com/a/long/link"),
+            "one long line at once: pasted whole"
+        );
+        assert_eq!(
+            paste_from_burst(&keys("cargo test --workspace\n"), false),
+            None,
+            "a long line typed ahead and sent: still keys"
+        );
         assert_eq!(super::presses(&keys("ab")), 2, "releases don't count");
         let mut with_ctrl = keys("a\nb");
-        with_ctrl.push(Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)));
-        assert_eq!(paste_from_burst(&with_ctrl, false), None, "a shortcut in it: keys");
+        with_ctrl.push(Event::Key(KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(
+            paste_from_burst(&with_ctrl, false),
+            None,
+            "a shortcut in it: keys"
+        );
     }
 
     #[test]
     fn where_letters_are_commands_two_keys_at_once_are_a_paste() {
         assert_eq!(paste_from_burst(&keys("eyo"), true).as_deref(), Some("eyo"));
         assert_eq!(paste_from_burst(&keys("e"), true), None, "one key is a key");
-        assert_eq!(paste_from_burst(&keys("jjjj"), true), None, "a held key is keys");
-        assert_eq!(paste_from_burst(&keys("j\n"), true), None, "typed ahead and sent: still keys");
-        assert_eq!(paste_from_burst(&keys("jk\n"), true), None, "typed ahead and sent: still keys");
-        assert_eq!(paste_from_burst(&keys("jk\nl"), true).as_deref(), Some("jk\nl"), "a line break inside: a paste");
+        assert_eq!(
+            paste_from_burst(&keys("jjjj"), true),
+            None,
+            "a held key is keys"
+        );
+        assert_eq!(
+            paste_from_burst(&keys("j\n"), true),
+            None,
+            "typed ahead and sent: still keys"
+        );
+        assert_eq!(
+            paste_from_burst(&keys("jk\n"), true),
+            None,
+            "typed ahead and sent: still keys"
+        );
+        assert_eq!(
+            paste_from_burst(&keys("jk\nl"), true).as_deref(),
+            Some("jk\nl"),
+            "a line break inside: a paste"
+        );
     }
 }

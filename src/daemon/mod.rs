@@ -10,20 +10,21 @@ mod check;
 pub use check::first_failing_line;
 mod check_source;
 mod check_stale;
+mod commands;
+mod contain;
+mod conversation;
 mod git;
 mod helpers;
 mod persist;
-mod scan;
-mod term;
-mod commands;
-mod contain;
 mod restore;
+mod scan;
 mod status;
+mod term;
 mod usage;
 mod worktrees;
 
+use crate::brand::APP_COMMAND;
 use status::*;
-use crate::brand::{APP_COMMAND};
 use worktrees::*;
 
 use crate::config::{CompiledAgent, Config, same_path};
@@ -72,12 +73,51 @@ const LOSS_HOLD: Duration = Duration::from_secs(15);
 #[allow(clippy::large_enum_variant)]
 pub enum Ev {
     Connected(ClientId, mpsc::Sender<ServerMsg>, bool),
+    StructuredConnected {
+        id: ClientId,
+        tx: mpsc::Sender<ServerMsg>,
+        attach: bool,
+        claim: StructuredIdentity,
+    },
     /// The connection's request comes from inside this pane (with this secret).
     From(ClientId, TermId, String),
     Msg(ClientId, ClientMsg),
     Disconnected(ClientId),
+    Conversation(conversation::Event),
+    ConversationValidated {
+        token: u64,
+        result: Result<conversation::transport::Launch, String>,
+    },
+    ConversationStorage {
+        id: crate::conversation::ConversationId,
+        revision: Option<u64>,
+        result: Result<(), String>,
+    },
+    ConversationChecksResolved {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        run: u64,
+        resolved: Vec<check_source::Resolved>,
+        tree: Option<String>,
+    },
+    ConversationCheckRan {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        run: u64,
+        name: String,
+        result: check::CheckRun,
+    },
+    ConversationChecksStale(Vec<conversation::checks::StaleFound>),
+    SessionSaved {
+        ticket: u64,
+        text: String,
+        result: Result<persist::SessionCommit, String>,
+        barrier: Option<u64>,
+    },
     Output(TermId, Vec<u8>),
     Exited(TermId),
+    ProcessExited(TermId),
+    KillTreeFinished(TermId, Result<(), String>),
     Scan(Vec<scan::Found>),
     Git(Vec<(WsId, Option<GitInfo>)>),
     WorktreeCreated {
@@ -91,33 +131,81 @@ pub enum Ev {
         set_up: bool,
         result: Result<(PathBuf, String), String>,
     },
-    WorktreeRemoved { client: ClientId, path: PathBuf, result: Result<(), String> },
+    WorktreeRemoved {
+        client: ClientId,
+        path: PathBuf,
+        result: Result<(), String>,
+    },
     /// Numbers read from Codex's session files (`usage::poll_codex`).
     /// What Codex's session files say: usage, limits, and what runs under each pane's session.
-    CodexUsage { facts: Vec<usage::CodexPaneFacts>, limits: Option<Vec<Limit>> },
+    CodexUsage {
+        facts: Vec<usage::CodexPaneFacts>,
+        limits: Option<Vec<Limit>>,
+    },
     /// A worktree made for an agent started from a shell (`Command::AgentWorktree`).
-    AgentWorktreeMade { client: ClientId, result: Result<PathBuf, String> },
+    AgentWorktreeMade {
+        client: ClientId,
+        result: Result<PathBuf, String>,
+    },
     /// What became of a worktree after you closed its last pane.
-    WorktreeAutoRemoved { client: ClientId, path: PathBuf, result: Removal },
+    WorktreeAutoRemoved {
+        client: ClientId,
+        path: PathBuf,
+        result: Removal,
+    },
     /// App-made worktrees whose folder is already gone.
-    WorktreesVanished { gone: Vec<PathBuf> },
+    WorktreesVanished {
+        gone: Vec<PathBuf>,
+    },
     /// A clean-up you asked for is done: what went (and whether its merged branch went
     /// too), and what stayed and why.
-    WorktreesTidied { client: ClientId, removed: Vec<(String, bool)>, kept: Vec<(String, String)> },
-    WorktreeList { client: ClientId, result: Result<Vec<WorktreeEntry>, String> },
+    WorktreesTidied {
+        client: ClientId,
+        removed: Vec<(String, bool)>,
+        kept: Vec<(String, String)>,
+    },
+    WorktreeList {
+        client: ClientId,
+        result: Result<Vec<WorktreeEntry>, String>,
+    },
+    ConversationDiffReady {
+        client: ClientId,
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        result: Result<crate::conversation::ConversationDiff, String>,
+    },
     /// A worktree hook ran: what to tell people.
     HookRan(String),
     /// A spare worktree for prewarming: (repo, result).
     SpareMade(PathBuf, Result<(PathBuf, String), String>),
     /// A worktree made for an agent to move into: (client, pane, branch, result).
-    MoveReady { client: ClientId, term: TermId, branch: String, result: Result<(PathBuf, String), String> },
+    MoveReady {
+        client: ClientId,
+        term: TermId,
+        branch: String,
+        result: Result<(PathBuf, String), String>,
+    },
     /// A status report, its sender checked (see `HookJob`).
-    HookChecked { msg: ClientMsg, verdict: Option<bool>, chain: Vec<u32> },
+    HookChecked {
+        msg: ClientMsg,
+        verdict: Option<bool>,
+        chain: Vec<u32>,
+    },
     /// A run's checkpoints, resolved and gated, and the worktree's tree as it started (see
     /// `Daemon::turn_ended`).
-    ChecksResolved { term: TermId, run: u64, resolved: Vec<check_source::Resolved>, tree: Option<String> },
+    ChecksResolved {
+        term: TermId,
+        run: u64,
+        resolved: Vec<check_source::Resolved>,
+        tree: Option<String>,
+    },
     /// One checkpoint of run `run` ended.
-    CheckRan { term: TermId, run: u64, name: String, result: check::CheckRun },
+    CheckRan {
+        term: TermId,
+        run: u64,
+        name: String,
+        result: check::CheckRun,
+    },
     /// Passes the git poll found the files changed under.
     ChecksStale(Vec<check_stale::Found>),
     /// Which panes' worktrees have a repo checks file: (pane, the worktree looked in, found).
@@ -129,9 +217,18 @@ pub enum Ev {
 /// How to put back what an automatic workspace changed.
 enum AutoUndo {
     /// The pane moved out of `from_ws`/`from_tab` (beside `beside`).
-    Moved { term: TermId, from_ws: WsId, from_tab: TabId, beside: Option<TermId> },
+    Moved {
+        term: TermId,
+        from_ws: WsId,
+        from_tab: TabId,
+        beside: Option<TermId>,
+    },
     /// The pane was alone, so its workspace was re-homed; restore name and folder.
-    Rehomed { ws: WsId, name: String, cwd: PathBuf },
+    Rehomed {
+        ws: WsId,
+        name: String,
+        cwd: PathBuf,
+    },
 }
 
 struct Client {
@@ -140,6 +237,8 @@ struct Client {
     /// The pane it acts from (its secret checked): what it may do is that pane's grants.
     /// None: you (the app's window, or a terminal outside the app).
     from: Option<TermId>,
+    structured: Option<conversation::Owner>,
+    rejected: bool,
     /// Its queue filled up (a stalled terminal, a slow SSH link): it's dropped, and can
     /// attach again for a fresh copy of everything.
     behind: std::cell::Cell<bool>,
@@ -196,6 +295,22 @@ struct Daemon {
     helper_projects_file: PathBuf,
     /// Worktrees the app created; closing the last thing in one removes it.
     made_worktrees: Vec<PathBuf>,
+    conversations: Vec<crate::conversation::Conversation>,
+    pending_starts: Vec<crate::conversation::PendingStart>,
+    conversation_operations: Vec<crate::conversation::Operation>,
+    conversation_states: BTreeMap<crate::conversation::ConversationId, conversation::State>,
+    conversation_requests: BTreeMap<u64, conversation::commands::Pending>,
+    conversation_request_id: u64,
+    conversation_barriers: BTreeMap<u64, u64>,
+    conversation_histories:
+        BTreeMap<crate::conversation::ConversationId, conversation::history::History>,
+    conversation_cache: Option<conversation::history_storage::Cache>,
+    conversation_cache_dirty: std::collections::BTreeSet<crate::conversation::ConversationId>,
+    conversation_cache_writes: BTreeMap<crate::conversation::ConversationId, u64>,
+    session_path: PathBuf,
+    session_saved_ticket: u64,
+    conversation_runtimes: conversation::Registry,
+    conversation_history: conversation::history::Attachments,
     /// Plan limits by agent, as last reported.
     limits: BTreeMap<String, Vec<Limit>>,
     /// What sessions cost, as it was reported (when, US dollars), over the last day.
@@ -227,11 +342,21 @@ struct Daemon {
 pub fn run() -> Result<()> {
     crate::proc::ahead_of_the_panes();
     init_logging();
-    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build()?;
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()?;
     rt.block_on(async {
         // Refuse to start a second daemon on the same socket.
         if ipc::connect().await.is_ok() {
-            anyhow::bail!(concat!("a ", env!("APP_COMMAND"), " daemon is already running on {}"), ipc::socket_id());
+            anyhow::bail!(
+                concat!(
+                    "a ",
+                    env!("APP_COMMAND"),
+                    " daemon is already running on {}"
+                ),
+                ipc::socket_id()
+            );
         }
         let listener = ipc::listen()?;
         tracing::info!("daemon listening on {}", ipc::socket_id());
@@ -279,9 +404,9 @@ pub fn run() -> Result<()> {
         if d.cfg.restore.enabled
             && let Some(saved) = persist::load()
         {
-            d.restore(saved);
-            d.last_saved = serde_json::to_string(&d.saved()).unwrap_or_default();
+            d.restore_startup(saved);
         }
+        d.initialize_conversation_cache().await?;
         d.run(rx).await;
         Ok(())
     })
@@ -290,28 +415,59 @@ pub fn run() -> Result<()> {
 fn init_logging() {
     let dir = crate::config::data_dir();
     let _ = std::fs::create_dir_all(&dir);
-    if let Ok(file) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("daemon.log")) {
+    if let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("daemon.log"))
+    {
         let _ = tracing_subscriber::fmt()
             .with_writer(Mutex::new(file))
             .with_ansi(false)
             .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_env(concat!(env!("APP_ENV"), "_LOG")).unwrap_or_else(|_| "info".into()),
+                tracing_subscriber::EnvFilter::try_from_env(concat!(env!("APP_ENV"), "_LOG"))
+                    .unwrap_or_else(|_| "info".into()),
             )
             .try_init();
     }
 }
 
-async fn serve(id: ClientId, stream: interprocess::local_socket::tokio::Stream, ev: mpsc::Sender<Ev>) {
+async fn serve(
+    id: ClientId,
+    stream: interprocess::local_socket::tokio::Stream,
+    ev: mpsc::Sender<Ev>,
+) {
     let (mut r, mut w) = ipc::framed(stream);
-    let (attach, from) = match ipc::recv_client(&mut r).await {
-        Ok(Some(ClientMsg::Hello { attach, from, .. })) => (attach, from),
+    let (attach, from, structured) = match ipc::recv_client(&mut r).await {
+        Ok(Some(ClientMsg::Hello {
+            attach,
+            from,
+            structured,
+            ..
+        })) if from.is_none() || structured.is_none() => (attach, from, structured),
         _ => return,
     };
-    if ipc::send(&mut w, &ServerMsg::Welcome { version: PROTOCOL_VERSION }).await.is_err() {
+    if ipc::send(
+        &mut w,
+        &ServerMsg::Welcome {
+            version: PROTOCOL_VERSION,
+        },
+    )
+    .await
+    .is_err()
+    {
         return;
     }
     let (tx, mut rx) = mpsc::channel::<ServerMsg>(CLIENT_QUEUE);
-    if ev.send(Ev::Connected(id, tx, attach)).await.is_err() {
+    let connected = match structured {
+        Some(claim) => Ev::StructuredConnected {
+            id,
+            tx,
+            attach,
+            claim,
+        },
+        None => Ev::Connected(id, tx, attach),
+    };
+    if ev.send(connected).await.is_err() {
         return;
     }
     if let Some((term, token)) = from
@@ -356,10 +512,18 @@ pub(super) fn tidied_note(removed: &[(String, bool)], kept: &[(String, String)])
             1 => " (1 merged branch went too)".to_string(),
             n => format!(" ({n} merged branches went too)"),
         };
-        parts.push(format!("removed {} worktree{}{also}", removed.len(), if removed.len() == 1 { "" } else { "s" }));
+        parts.push(format!(
+            "removed {} worktree{}{also}",
+            removed.len(),
+            if removed.len() == 1 { "" } else { "s" }
+        ));
     }
     parts.extend(kept.iter().map(|(name, why)| format!("kept {name}: {why}")));
-    if parts.is_empty() { "nothing to clean up".into() } else { parts.join("; ") }
+    if parts.is_empty() {
+        "nothing to clean up".into()
+    } else {
+        parts.join("; ")
+    }
 }
 
 /// What a pane may do through the app (see `[mcp] grants`).
@@ -394,71 +558,221 @@ impl Grant {
 }
 
 impl Daemon {
+    fn client_is_agent(&self, id: ClientId) -> bool {
+        self.clients.get(&id).is_some_and(|client| {
+            client.from.is_some() || client.structured.is_some() || client.rejected
+        })
+    }
+    fn conversation_generation_current(&self, owner: conversation::Owner) -> bool {
+        self.conversations
+            .iter()
+            .any(|record| record.id == owner.conversation && record.generation == owner.generation)
+            || self.pending_starts.iter().any(|pending| {
+                pending.id == owner.conversation && pending.generation == owner.generation
+            })
+    }
+    fn structured_current(&self, owner: conversation::Owner) -> bool {
+        self.conversation_runtimes.authenticates(owner)
+            && self.conversation_generation_current(owner)
+    }
     /// May this connection do `g` (to pane `target`)? You always may; a pane may do anything
     /// to itself, and the rest per its grants.
-    pub(super) fn may(&self, client: ClientId, g: Grant, target: Option<TermId>) -> anyhow::Result<()> {
-        let Some(from) = self.clients.get(&client).and_then(|c| c.from) else { return Ok(()) };
+    pub(super) fn may(
+        &self,
+        client: ClientId,
+        g: Grant,
+        target: Option<TermId>,
+    ) -> anyhow::Result<()> {
+        if self
+            .clients
+            .get(&client)
+            .is_some_and(|client| client.rejected)
+        {
+            anyhow::bail!("Structured runtime identity was rejected");
+        }
+        if self
+            .clients
+            .get(&client)
+            .is_some_and(|client| client.structured.is_some())
+        {
+            if self.cfg.mcp.grants.iter().any(|grant| grant == g.name()) {
+                return Ok(());
+            }
+            anyhow::bail!(
+                "this structured runtime may not {} through {APP_COMMAND}",
+                g.says()
+            );
+        }
+        let Some(from) = self.clients.get(&client).and_then(|c| c.from) else {
+            return Ok(());
+        };
         if target == Some(from) && g != Grant::Admin {
             return Ok(());
         }
-        let grants = self.terms.get(&from).and_then(|t| t.grants.clone()).unwrap_or_else(|| self.cfg.mcp.grants.clone());
+        let grants = self
+            .terms
+            .get(&from)
+            .and_then(|t| t.grants.clone())
+            .unwrap_or_else(|| self.cfg.mcp.grants.clone());
         // Letting agents approve prompts (Settings → Agents) is letting them respond.
         let respond_by_setting = g == Grant::Respond && self.cfg.mcp.approve != "never";
         if respond_by_setting || grants.iter().any(|x| x == g.name()) {
             return Ok(());
         }
-        anyhow::bail!("this pane may not {} through {APP_COMMAND} ({APP_COMMAND} grant {from} {} allows it)", g.says(), g.name())
+        anyhow::bail!(
+            "this pane may not {} through {APP_COMMAND} ({APP_COMMAND} grant {from} {} allows it)",
+            g.says(),
+            g.name()
+        )
     }
 
     /// The grant a command needs.
     fn may_command(&self, client: ClientId, cmd: &Command) -> anyhow::Result<()> {
+        let structured = self
+            .clients
+            .get(&client)
+            .is_some_and(|client| client.structured.is_some());
+        if structured
+            && matches!(
+                cmd,
+                Command::ConversationStart { .. }
+                    | Command::NewWorkspace { .. }
+                    | Command::NewTab { .. }
+                    | Command::Split { .. }
+                    | Command::NewWorktree { .. }
+                    | Command::Popup { .. }
+            )
+        {
+            anyhow::bail!(
+                "Structured runtimes cannot start descendants until conversation-owned helper consent is supported"
+            );
+        }
         match cmd {
+            Command::ConversationSend { .. } if structured => self.may(client, Grant::Write, None),
+            Command::ConversationApprove { .. } | Command::ConversationAnswerInput { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can answer provider requests")
+            }
+            Command::ConversationApprove { .. } => self.may(client, Grant::Respond, None),
+            Command::ConversationAnswerInput { .. } => self.may(client, Grant::Respond, None),
+            Command::ConversationCancel { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can cancel a structured turn")
+            }
+            Command::ConversationCancel { .. } => self.may(client, Grant::Write, None),
+            Command::ConversationHandoffToNative { .. }
+                if self
+                    .clients
+                    .get(&client)
+                    .is_some_and(|client| client.from.is_some() || client.structured.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can hand a conversation to native Codex")
+            }
+            Command::ConversationHandoffToNative { .. } => self.may(client, Grant::Write, None),
+            Command::ConversationHandoffToChat { .. }
+                if self
+                    .clients
+                    .get(&client)
+                    .is_some_and(|client| client.from.is_some() || client.structured.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can resume a conversation in chat")
+            }
+            Command::ConversationHandoffToChat { .. } => self.may(client, Grant::Start, None),
+            Command::ConversationTerminalInput { .. }
+            | Command::ConversationTerminalResize { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can type into a native conversation terminal")
+            }
+            Command::ConversationTerminalInput { .. }
+            | Command::ConversationTerminalResize { .. } => self.may(client, Grant::Write, None),
             Command::NewWorkspace { .. }
             | Command::NewTab { .. }
             | Command::Split { .. }
             | Command::NewWorktree { .. }
-            | Command::Popup { .. } => {
-                self.may(client, Grant::Start, None)
+            | Command::Popup { .. } => self.may(client, Grant::Start, None),
+            Command::ClosePane { term } => {
+                self.may(client, Grant::Admin, Some(*term)).or_else(|e| {
+                    // Closing itself is fine.
+                    if self.clients.get(&client).and_then(|c| c.from) == Some(*term) {
+                        Ok(())
+                    } else {
+                        Err(e)
+                    }
+                })
             }
-            Command::ClosePane { term } => self.may(client, Grant::Admin, Some(*term)).or_else(|e| {
-                // Closing itself is fine.
-                if self.clients.get(&client).and_then(|c| c.from) == Some(*term) { Ok(()) } else { Err(e) }
-            }),
             Command::CloseWorkspace { .. }
             | Command::CloseTab { .. }
             | Command::RemoveWorktree { .. }
             | Command::CloseWorktree { .. }
             | Command::TidyWorktrees { .. }
-            | Command::KillServer { .. } => {
-                self.may(client, Grant::Admin, None)
-            }
+            | Command::KillServer { .. } => self.may(client, Grant::Admin, None),
             // Typing into another pane, only later.
-            Command::QueueFollowUp { term, .. } | Command::ClearQueue { term } => self.may(client, Grant::Write, Some(*term)),
+            Command::QueueFollowUp { term, .. } | Command::ClearQueue { term } => {
+                self.may(client, Grant::Write, Some(*term))
+            }
             Command::RerunCheck { term, .. } => self.may(client, Grant::Write, Some(*term)),
             // The pane's own claim never counts, so a pane may not accept its own failure.
             Command::OverrideCheck { term, .. } | Command::UndoOverride { term, .. } => {
-                if self.clients.get(&client).and_then(|c| c.from) == Some(*term) {
+                if self.clients.get(&client).and_then(|c| c.from) == Some(*term)
+                    || self
+                        .clients
+                        .get(&client)
+                        .and_then(|c| c.structured)
+                        .is_some_and(|owner| {
+                            self.terms.get(term).is_some_and(|pane| {
+                                pane.conversation_id == Some(owner.conversation)
+                            })
+                        })
+                {
                     anyhow::bail!("a pane may not override its own check; that is yours to decide");
                 }
                 self.may(client, Grant::Write, Some(*term))
             }
             Command::AnswerHuman { id, .. } => {
-                let asker = self.questions.iter().find(|(q, ..)| q.id == *id).map(|(q, ..)| q.term);
+                let asker = self
+                    .questions
+                    .iter()
+                    .find(|(q, ..)| q.id == *id)
+                    .map(|(q, ..)| q.term);
                 self.may(client, Grant::Respond, asker.filter(|_| false))
             }
             // Only you hand out grants.
-            Command::Grant { .. } if self.clients.get(&client).is_some_and(|c| c.from.is_some()) => {
-                anyhow::bail!(concat!("grants are yours to give: run ", env!("APP_COMMAND"), " grant outside ", env!("APP_COMMAND"), "'s panes, or use the pane's menu"))
+            Command::Grant { .. } if self.client_is_agent(client) => {
+                anyhow::bail!(concat!(
+                    "grants are yours to give: run ",
+                    env!("APP_COMMAND"),
+                    " grant outside ",
+                    env!("APP_COMMAND"),
+                    "'s panes, or use the pane's menu"
+                ))
             }
             // Approving a repo's command is approving what it runs: an agent may not.
             Command::ApproveCheck { .. } | Command::ForgetCheckApproval { .. }
-                if self.clients.get(&client).is_some_and(|c| c.from.is_some()) =>
+                if self.client_is_agent(client) =>
             {
                 anyhow::bail!("check approvals are yours to give, not a pane's")
             }
             // A session may not let itself (or another) start helpers.
-            Command::AnswerHelpers { .. } if self.clients.get(&client).is_some_and(|c| c.from.is_some()) => {
+            Command::AnswerHelpers { .. } if self.client_is_agent(client) => {
                 anyhow::bail!("starting helpers is yours to allow, not a pane's")
+            }
+            _ if structured => {
+                anyhow::bail!("This control is not supported for structured runtime callers")
             }
             _ => Ok(()),
         }
@@ -472,7 +786,14 @@ pub fn forget_session() {
 
 /// Agents in the saved session: what a restart of a server that can't be asked would resume.
 pub fn saved_agent_count() -> usize {
-    persist::load().map_or(0, |s| s.workspaces.iter().flat_map(|w| &w.tabs).flat_map(|t| t.panes.values()).filter(|p| p.agent.is_some()).count())
+    persist::load().map_or(0, |s| {
+        s.workspaces
+            .iter()
+            .flat_map(|w| &w.tabs)
+            .flat_map(|t| t.panes.values())
+            .filter(|p| p.agent.is_some())
+            .count()
+    })
 }
 
 impl Daemon {
@@ -524,6 +845,25 @@ impl Daemon {
             helper_projects: helpers::Projects::default(),
             helper_projects_file: helpers::path(),
             made_worktrees: Vec::new(),
+            conversations: Vec::new(),
+            pending_starts: Vec::new(),
+            conversation_operations: Vec::new(),
+            conversation_states: BTreeMap::new(),
+            conversation_requests: BTreeMap::new(),
+            conversation_request_id: 0,
+            conversation_barriers: BTreeMap::new(),
+            conversation_histories: BTreeMap::new(),
+            conversation_cache: None,
+            conversation_cache_dirty: Default::default(),
+            conversation_cache_writes: Default::default(),
+            session_path: if cfg!(test) {
+                PathBuf::new()
+            } else {
+                persist::path()
+            },
+            session_saved_ticket: 0,
+            conversation_runtimes: conversation::Registry::default(),
+            conversation_history: conversation::history::Attachments::default(),
             limits: BTreeMap::new(),
             spent: Vec::new(),
             turns: Vec::new(),
@@ -567,6 +907,7 @@ impl Daemon {
                     if self.last_save.elapsed() > SAVE_EVERY {
                         self.last_save = Instant::now();
                         self.persist(false);
+                        self.save_conversation_caches();
                     }
                     if self.last_output_save.elapsed() > OUTPUT_SAVE_EVERY && !self.losing() {
                         self.last_output_save = Instant::now();
@@ -578,7 +919,7 @@ impl Daemon {
                 self.dirty = false;
                 self.sync_scan_roots();
                 let snap = self.snapshot();
-                self.broadcast(|_| true, ServerMsg::State(snap));
+                self.broadcast(|client| client.attach, ServerMsg::State(snap));
             }
             if self.should_exit() {
                 tracing::info!("no panes left; exiting");
@@ -595,12 +936,25 @@ impl Daemon {
 
     fn activity(&self) -> crate::restart::Activity {
         let live = || self.terms.values().filter(|t| !t.spare);
+        let structured: Vec<_> = self
+            .conversation_summaries()
+            .into_iter()
+            .filter(|c| c.native_term.is_none())
+            .collect();
         crate::restart::Activity {
             pid: std::process::id(),
             version: env!("CARGO_PKG_VERSION").into(),
-            sessions: live().count(),
-            working: live().filter(|t| t.status == Status::Working).count(),
-            waiting: live().filter(|t| t.status == Status::Blocked).count(),
+            sessions: live().count() + structured.len(),
+            working: live().filter(|t| t.status == Status::Working).count()
+                + structured
+                    .iter()
+                    .filter(|c| c.status == Status::Working)
+                    .count(),
+            waiting: live().filter(|t| t.status == Status::Blocked).count()
+                + structured
+                    .iter()
+                    .filter(|c| c.status == Status::Blocked)
+                    .count(),
         }
     }
 
@@ -622,15 +976,29 @@ impl Daemon {
     fn should_exit(&self) -> bool {
         // A window still showing the app (empty projects, the splash) keeps it open: closing
         // the last pane mustn't close the app under you.
-        if !self.terms.is_empty() || self.pending_ops > 0 || self.clients.values().any(|c| c.attach) || self.losing() {
+        if !self.terms.is_empty()
+            || !self.conversations.is_empty()
+            || !self.pending_starts.is_empty()
+            || self.pending_ops > 0
+            || self.clients.values().any(|c| c.attach)
+            || self.losing()
+        {
             return false;
         }
         // Exit once the last pane is closed and no window is left, or if nobody ever started one.
-        self.had_terms || (self.clients.is_empty() && self.empty_since.elapsed() > EXIT_WHEN_UNUSED_FOR)
+        self.had_terms
+            || (self.clients.is_empty() && self.empty_since.elapsed() > EXIT_WHEN_UNUSED_FOR)
     }
 
     fn broadcast(&self, filter: impl Fn(&Client) -> bool, msg: ServerMsg) {
-        for c in self.clients.values().filter(|c| filter(c)) {
+        for c in self.clients.values().filter(|c| {
+            !c.rejected
+                && filter(c)
+                && c.structured.is_none_or(|owner| {
+                    self.structured_current(owner)
+                        && self.cfg.mcp.grants.iter().any(|grant| grant == "read")
+                })
+        }) {
             c.push(msg.clone());
         }
     }
@@ -648,6 +1016,16 @@ impl Daemon {
 
     fn send(&self, client: ClientId, msg: ServerMsg) {
         if let Some(c) = self.clients.get(&client) {
+            if (c.rejected
+                || c.structured
+                    .is_some_and(|owner| !self.structured_current(owner)))
+                && !matches!(&msg, ServerMsg::Error(_) | ServerMsg::Bye)
+            {
+                c.push(ServerMsg::Error(
+                    "Structured runtime identity is stale or rejected".into(),
+                ));
+                return;
+            }
             c.push(msg);
         }
     }
@@ -674,13 +1052,22 @@ impl Daemon {
         self.git_busy = true;
         self.last_git = Instant::now();
         self.probe_repo_checks(self.terms.keys().copied().collect::<Vec<_>>());
-        let dirs: Vec<(WsId, PathBuf)> = self.workspaces.iter().map(|w| (w.id, w.cwd.clone())).collect();
+        let dirs: Vec<(WsId, PathBuf)> = self
+            .workspaces
+            .iter()
+            .map(|w| (w.id, w.cwd.clone()))
+            .collect();
         let dir_of: HashMap<WsId, PathBuf> = dirs.iter().cloned().collect();
         let tx = self.tx.clone();
         let stale_probes = self.stale_probes();
+        let conversation_stale_probes = self.conversation_stale_probes();
         tokio::task::spawn_blocking(move || {
             check_stale::report(&stale_probes, &tx);
-            let mut res: Vec<(WsId, Option<GitInfo>)> = dirs.into_iter().map(|(id, dir)| (id, git::status(&dir))).collect();
+            conversation::checks::report_stale(&conversation_stale_probes, &tx);
+            let mut res: Vec<(WsId, Option<GitInfo>)> = dirs
+                .into_iter()
+                .map(|(id, dir)| (id, git::status(&dir)))
+                .collect();
             // One worktree listing per repository, shared by its workspaces.
             let mut lists: HashMap<PathBuf, Vec<WorktreeEntry>> = HashMap::new();
             for (_, info) in res.iter_mut() {
@@ -691,9 +1078,14 @@ impl Daemon {
                 g.worktrees = list.clone();
             }
             for (id, info) in res.iter_mut() {
-                let Some(g) = info.as_mut().filter(|g| g.linked) else { continue };
+                let Some(g) = info.as_mut().filter(|g| g.linked) else {
+                    continue;
+                };
                 if let (Some(base), Some(dir)) = (
-                    g.worktrees.iter().find(|e| e.main).map(|e| e.branch.clone()),
+                    g.worktrees
+                        .iter()
+                        .find(|e| e.main)
+                        .map(|e| e.branch.clone()),
                     dir_of.get(id),
                 ) {
                     g.ahead = git::ahead_of(dir, &base);
@@ -709,18 +1101,95 @@ impl Daemon {
         self.drop_lagging_clients();
         match ev {
             Ev::Connected(id, tx, attach) => {
-                let c = Client { tx, attach, from: None, behind: std::cell::Cell::new(false) };
+                let c = Client {
+                    tx,
+                    attach,
+                    from: None,
+                    structured: None,
+                    rejected: false,
+                    behind: std::cell::Cell::new(false),
+                };
                 if attach {
                     c.push(ServerMsg::State(self.snapshot()));
                     for t in self.terms.values() {
-                        c.push(ServerMsg::Replay { term: t.id, cols: t.cols, rows: t.rows, data: t.replay() });
+                        c.push(ServerMsg::Replay {
+                            term: t.id,
+                            cols: t.cols,
+                            rows: t.rows,
+                            data: t.replay(),
+                        });
                     }
                 }
                 self.clients.insert(id, c);
             }
+            Ev::StructuredConnected {
+                id,
+                tx,
+                attach,
+                claim,
+            } => {
+                let owner = self
+                    .conversation_runtimes
+                    .authenticate(&claim)
+                    .filter(|owner| self.conversation_generation_current(*owner));
+                let Some(owner) = owner else {
+                    self.clients.insert(
+                        id,
+                        Client {
+                            tx,
+                            attach: false,
+                            from: None,
+                            structured: None,
+                            rejected: true,
+                            behind: std::cell::Cell::new(false),
+                        },
+                    );
+                    self.send(
+                        id,
+                        ServerMsg::Error(
+                            "Structured runtime identity is invalid or no longer live".into(),
+                        ),
+                    );
+                    return;
+                };
+                let c = Client {
+                    tx,
+                    attach,
+                    from: None,
+                    structured: Some(owner),
+                    rejected: false,
+                    behind: std::cell::Cell::new(false),
+                };
+                self.clients.insert(id, c);
+                if attach {
+                    if let Err(error) = self.may(id, Grant::Read, None) {
+                        self.send(id, ServerMsg::Error(error.to_string()));
+                        if let Some(client) = self.clients.get_mut(&id) {
+                            client.rejected = true;
+                            client.attach = false;
+                        }
+                        return;
+                    }
+                    self.send(id, ServerMsg::State(self.snapshot()));
+                    for term in self.terms.values() {
+                        self.send(
+                            id,
+                            ServerMsg::Replay {
+                                term: term.id,
+                                cols: term.cols,
+                                rows: term.rows,
+                                data: term.replay(),
+                            },
+                        );
+                    }
+                }
+            }
             Ev::From(id, term, token) => {
                 // Only with the pane's secret: anything else can't claim to be it.
-                let ok = self.terms.get(&term).is_some_and(|t| term::same_secret(&t.token, &token));
+                let ok = self
+                    .terms
+                    .get(&term)
+                    .is_some_and(|t| term::same_secret(&t.token, &token));
                 if let Some(c) = self.clients.get_mut(&id) {
                     // A wrong secret still marks it as from a pane (it gets a pane's default
                     // grants), never as you.
@@ -728,9 +1197,15 @@ impl Daemon {
                 }
             }
             Ev::Disconnected(id) => {
+                self.conversation_history.detach(id);
                 self.clients.remove(&id);
                 // The agent that asked went away (cancelled, killed): its question goes too.
-                let gone: Vec<(TermId, Status)> = self.questions.iter().filter(|(_, c, _)| *c == id).map(|(q, _, s)| (q.term, *s)).collect();
+                let gone: Vec<(TermId, Status)> = self
+                    .questions
+                    .iter()
+                    .filter(|(_, c, _)| *c == id)
+                    .map(|(q, _, s)| (q.term, *s))
+                    .collect();
                 if !gone.is_empty() {
                     self.questions.retain(|(_, c, _)| *c != id);
                     for (term, before) in gone {
@@ -739,9 +1214,74 @@ impl Daemon {
                     self.dirty = true;
                 }
             }
+            Ev::Conversation(event) => self.conversation_event(event),
+            Ev::ConversationValidated { token, result } => {
+                self.conversation_validated(token, result)
+            }
+            Ev::SessionSaved {
+                ticket,
+                text,
+                result,
+                barrier,
+            } => {
+                if matches!(result, Ok(persist::SessionCommit::Committed))
+                    && ticket >= self.session_saved_ticket
+                {
+                    self.session_saved_ticket = ticket;
+                    self.last_saved = text;
+                }
+                self.conversation_save_completed(barrier, result);
+            }
+            Ev::ConversationStorage {
+                id,
+                revision,
+                result,
+            } => {
+                if let Some(revision) = revision {
+                    if self.conversation_cache_writes.get(&id) == Some(&revision) {
+                        self.conversation_cache_writes.remove(&id);
+                    }
+                    if result.is_ok()
+                        && self
+                            .conversation_histories
+                            .get(&id)
+                            .is_some_and(|h| h.revision == revision)
+                    {
+                        self.conversation_cache_dirty.remove(&id);
+                    }
+                }
+                if let Err(error) = result {
+                    self.conversation_states.entry(id).or_default().error = Some(error.clone());
+                    self.broadcast(|client| client.attach, ServerMsg::Error(error));
+                }
+                if revision.is_some_and(|revision| {
+                    self.conversation_histories
+                        .get(&id)
+                        .is_some_and(|h| h.revision > revision)
+                }) {
+                    self.cache_conversation(id);
+                }
+            }
+            Ev::ConversationChecksResolved {
+                id,
+                generation,
+                run,
+                resolved,
+                tree,
+            } => self.conversation_checks_resolved(id, generation, run, resolved, tree),
+            Ev::ConversationCheckRan {
+                id,
+                generation,
+                run,
+                name,
+                result,
+            } => self.conversation_check_ran(id, generation, run, &name, result),
+            Ev::ConversationChecksStale(found) => self.conversation_checks_went_stale(found),
             Ev::Msg(id, msg) => self.message(id, msg),
             Ev::Output(tid, data) => {
-                let Some(t) = self.terms.get_mut(&tid) else { return };
+                let Some(t) = self.terms.get_mut(&tid) else {
+                    return;
+                };
                 if t.output(&data) {
                     t.refresh_head();
                     self.dirty = true;
@@ -753,7 +1293,11 @@ impl Daemon {
                     self.broadcast(|c| c.attach, ServerMsg::Clipboard { term: tid, text });
                 }
                 // A bell from a pane you aren't looking at marks it until you do.
-                if self.terms.get_mut(&tid).is_some_and(|t| std::mem::take(&mut t.parser.callbacks_mut().rang)) {
+                if self
+                    .terms
+                    .get_mut(&tid)
+                    .is_some_and(|t| std::mem::take(&mut t.parser.callbacks_mut().rang))
+                {
                     let seen = self.focused_term() == Some(tid) && self.has_viewer();
                     if let Some(t) = self.terms.get_mut(&tid)
                         && !seen
@@ -770,15 +1314,32 @@ impl Daemon {
                 if self.terms.get(&tid).is_some_and(|t| t.asleep) {
                     return;
                 }
+                if self.conversation_handoff_to_chat_term_event(tid, false, None) {
+                    return;
+                }
                 if self.terms.contains_key(&tid) {
                     self.last_loss = Some(Instant::now());
                     self.remove_term(tid);
                 }
             }
+            Ev::ProcessExited(tid) => {
+                if self.conversation_handoff_to_chat_term_event(tid, true, None) {
+                    return;
+                }
+                if self.terms.contains_key(&tid) {
+                    self.last_loss = Some(Instant::now());
+                    self.remove_term(tid);
+                }
+            }
+            Ev::KillTreeFinished(tid, result) => {
+                self.conversation_handoff_to_chat_term_event(tid, false, Some(result));
+            }
             Ev::Scan(found) => {
                 let mut started = Vec::new();
                 for f in found {
-                    let Some(t) = self.terms.get_mut(&f.term) else { continue };
+                    let Some(t) = self.terms.get_mut(&f.term) else {
+                        continue;
+                    };
                     // Redraw for memory only when it moved by a few MB.
                     let observed_at = term::unix_now();
                     if t.last_process != observed_at {
@@ -817,8 +1378,15 @@ impl Daemon {
                             t.hooked_process_seen = true;
                             continue;
                         }
-                        let custom = !self.agents.iter().any(|a| Some(&a.name) == t.agent.as_ref());
-                        if custom || (!t.hooked_process_seen && t.last_hook_at.is_some_and(|at| at.elapsed() < INTEGRATION_STARTUP_GRACE)) {
+                        let custom = !self
+                            .agents
+                            .iter()
+                            .any(|a| Some(&a.name) == t.agent.as_ref());
+                        if custom
+                            || (!t.hooked_process_seen
+                                && t.last_hook_at
+                                    .is_some_and(|at| at.elapsed() < INTEGRATION_STARTUP_GRACE))
+                        {
                             continue;
                         }
                         t.hooked = false;
@@ -835,10 +1403,20 @@ impl Daemon {
                     if t.asleep {
                         continue;
                     }
+                    // A conversation pane's agent and exact session are assigned by the
+                    // daemon when it starts the provider. Process-name detection is only a
+                    // best-effort status signal; for example Codex can appear as `node`.
+                    if t.conversation_id.is_some() && t.agent != f.agent {
+                        continue;
+                    }
                     // Started as this agent (woken, moved, restored) and its process isn't up
                     // yet: it is still that agent, not a shell that lost its name and its
                     // conversation.
-                    if !hook_expired && f.agent.is_none() && t.agent.is_some() && t.born.elapsed() < AGENT_SHOWS_WITHIN {
+                    if !hook_expired
+                        && f.agent.is_none()
+                        && t.agent.is_some()
+                        && t.born.elapsed() < AGENT_SHOWS_WITHIN
+                    {
                         continue;
                     }
                     if t.agent != f.agent {
@@ -853,10 +1431,18 @@ impl Daemon {
                             }
                             started.push(f.term);
                         }
-                        t.status = if f.agent.is_some() { Status::Idle } else { Status::None };
+                        t.status = if f.agent.is_some() {
+                            Status::Idle
+                        } else {
+                            Status::None
+                        };
                         t.status_since = term::unix_now();
                         t.last_turn_end = Instant::now();
-                        t.status_why = if f.agent.is_some() { "process: an agent started".into() } else { String::new() };
+                        t.status_why = if f.agent.is_some() {
+                            "process: an agent started".into()
+                        } else {
+                            String::new()
+                        };
                         if f.agent.is_none() {
                             t.session = None;
                             t.summary.clear();
@@ -884,7 +1470,15 @@ impl Daemon {
                     }
                 }
             }
-            Ev::WorktreeCreated { client, branch, cmd, split, by, set_up, result } => {
+            Ev::WorktreeCreated {
+                client,
+                branch,
+                cmd,
+                split,
+                by,
+                set_up,
+                result,
+            } => {
                 // The repo's own setup comes first (an install, a .env), so what starts in the
                 // new worktree starts with it ready, not halfway through. A spare was set up
                 // when it was made.
@@ -893,12 +1487,28 @@ impl Daemon {
                     && !self.adopted.as_ref().is_some_and(|a| same_path(a, path))
                     && let Some(job) = self.hook_job(path, true)
                 {
-                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    self.send(client, ServerMsg::Notice(format!("setting up {name} before anything starts in it")));
+                    let name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    self.send(
+                        client,
+                        ServerMsg::Notice(format!(
+                            "setting up {name} before anything starts in it"
+                        )),
+                    );
                     let tx = self.tx.clone();
                     tokio::task::spawn_blocking(move || {
                         let _ = tx.blocking_send(Ev::HookRan(job()));
-                        let _ = tx.blocking_send(Ev::WorktreeCreated { client, branch, cmd, split, by, set_up: true, result });
+                        let _ = tx.blocking_send(Ev::WorktreeCreated {
+                            client,
+                            branch,
+                            cmd,
+                            split,
+                            by,
+                            set_up: true,
+                            result,
+                        });
                     });
                     return;
                 }
@@ -914,11 +1524,26 @@ impl Daemon {
                             } else {
                                 crate::layout::Dir::Down
                             };
-                            self.command(client, Command::Split { term, dir, cmd, cwd: Some(path.clone()) })?;
+                            self.command(
+                                client,
+                                Command::Split {
+                                    term,
+                                    dir,
+                                    cmd,
+                                    cwd: Some(path.clone()),
+                                },
+                            )?;
                         }
                         None => {
                             let _ = &repo;
-                            self.command(client, Command::NewWorkspace { cwd: Some(path.clone()), name: None, cmd })?;
+                            self.command(
+                                client,
+                                Command::NewWorkspace {
+                                    cwd: Some(path.clone()),
+                                    name: None,
+                                    cmd,
+                                },
+                            )?;
                         }
                     }
                     Ok(path)
@@ -938,7 +1563,10 @@ impl Daemon {
                             w.worktree = true;
                         }
                         self.poll_git_soon();
-                        self.send(client, ServerMsg::Notice(format!("worktree {branch} at {}", path.display())));
+                        self.send(
+                            client,
+                            ServerMsg::Notice(format!("worktree {branch} at {}", path.display())),
+                        );
                         self.send(client, ServerMsg::Reply(Reply::Ok));
                     }
                     Err(e) => self.send(client, ServerMsg::Error(format!("{e:#}"))),
@@ -954,16 +1582,33 @@ impl Daemon {
                             self.made_worktrees.push(top);
                         }
                         self.poll_git_soon();
-                        self.send(client, ServerMsg::Reply(Reply::Text(path.to_string_lossy().into_owned())));
+                        self.send(
+                            client,
+                            ServerMsg::Reply(Reply::Text(path.to_string_lossy().into_owned())),
+                        );
                     }
                     Err(e) => self.send(client, ServerMsg::Error(e)),
                 }
                 self.dirty = true;
             }
             Ev::HookRan(msg) => self.broadcast(|_| true, ServerMsg::Notice(msg)),
-            Ev::HookChecked { msg, verdict, chain } => self.apply_hook(msg, verdict, chain),
-            Ev::ChecksResolved { term, run, resolved, tree } => self.checks_resolved(term, run, resolved, tree),
-            Ev::CheckRan { term, run, name, result } => self.check_ran(term, run, &name, result),
+            Ev::HookChecked {
+                msg,
+                verdict,
+                chain,
+            } => self.apply_hook(msg, verdict, chain),
+            Ev::ChecksResolved {
+                term,
+                run,
+                resolved,
+                tree,
+            } => self.checks_resolved(term, run, resolved, tree),
+            Ev::CheckRan {
+                term,
+                run,
+                name,
+                result,
+            } => self.check_ran(term, run, &name, result),
             Ev::ChecksStale(found) => self.checks_went_stale(found),
             Ev::RepoChecksFound(found) => self.repo_checks_found(found),
             Ev::CheckOutputsUnsaved(terms) => self.check_outputs_unsaved(&terms),
@@ -995,7 +1640,35 @@ impl Daemon {
                 Ok(list) => self.send(client, ServerMsg::Reply(Reply::Worktrees(list))),
                 Err(e) => self.send(client, ServerMsg::Error(e)),
             },
-            Ev::MoveReady { client, term, branch, result } => {
+            Ev::ConversationDiffReady {
+                client,
+                id,
+                generation,
+                result,
+            } => {
+                if !self.clients.contains_key(&client) {
+                    return;
+                }
+                if !self.conversations.iter().any(|conversation| {
+                    conversation.id == id && conversation.generation == generation
+                }) {
+                    self.send(
+                        client,
+                        ServerMsg::Error("Conversation changed while reading its diff".into()),
+                    );
+                    return;
+                }
+                match result {
+                    Ok(diff) => self.send(client, ServerMsg::Reply(Reply::ConversationDiff(diff))),
+                    Err(error) => self.send(client, ServerMsg::Error(error)),
+                }
+            }
+            Ev::MoveReady {
+                client,
+                term,
+                branch,
+                result,
+            } => {
                 self.pending_ops -= 1;
                 match result {
                     Ok((path, _)) => {
@@ -1018,26 +1691,48 @@ impl Daemon {
                 }
                 self.dirty = true;
             }
-            Ev::WorktreeAutoRemoved { client, path, result } => {
+            Ev::WorktreeAutoRemoved {
+                client,
+                path,
+                result,
+            } => {
                 self.pending_ops -= 1;
-                let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
                 let msg = match &result {
-                    Removal::Removed { with_branch: true } => format!("removed worktree {name} and its merged branch"),
-                    Removal::Removed { with_branch: false } => format!("removed worktree {name} (its branch is kept)"),
-                    Removal::Kept(why) | Removal::Unmerged(why) => format!("kept worktree {name}: {why}"),
+                    Removal::Removed { with_branch: true } => {
+                        format!("removed worktree {name} and its merged branch")
+                    }
+                    Removal::Removed { with_branch: false } => {
+                        format!("removed worktree {name} (its branch is kept)")
+                    }
+                    Removal::Kept(why) | Removal::Unmerged(why) => {
+                        format!("kept worktree {name}: {why}")
+                    }
                 };
                 // The daemon log is the only record of why a folder went, or stayed.
                 tracing::info!("{msg} ({}) after its last pane was closed", path.display());
                 match result {
-                    Removal::Unmerged(why) => self.send(client, ServerMsg::AskRemoveWorktree { path, name, why }),
-                    Removal::Removed { .. } | Removal::Kept(_) => self.send(client, ServerMsg::Notice(msg)),
+                    Removal::Unmerged(why) => {
+                        self.send(client, ServerMsg::AskRemoveWorktree { path, name, why })
+                    }
+                    Removal::Removed { .. } | Removal::Kept(_) => {
+                        self.send(client, ServerMsg::Notice(msg))
+                    }
                 }
                 self.dirty = true;
             }
             Ev::WorktreesVanished { gone } => {
-                self.made_worktrees.retain(|m| !gone.iter().any(|g| same_path(g, m)));
+                self.made_worktrees
+                    .retain(|m| !gone.iter().any(|g| same_path(g, m)));
             }
-            Ev::WorktreesTidied { client, removed, kept } => {
+            Ev::WorktreesTidied {
+                client,
+                removed,
+                kept,
+            } => {
                 self.pending_ops -= 1;
                 self.send(client, ServerMsg::Notice(tidied_note(&removed, &kept)));
                 self.send(client, ServerMsg::Reply(Reply::Ok));
@@ -1045,11 +1740,18 @@ impl Daemon {
                 self.dirty = true;
             }
             Ev::CodexUsage { facts, limits } => self.codex_usage(facts, limits),
-            Ev::WorktreeRemoved { client, path, result } => {
+            Ev::WorktreeRemoved {
+                client,
+                path,
+                result,
+            } => {
                 self.pending_ops -= 1;
                 match result {
                     Ok(()) => {
-                        self.send(client, ServerMsg::Notice(format!("removed worktree {}", path.display())));
+                        self.send(
+                            client,
+                            ServerMsg::Notice(format!("removed worktree {}", path.display())),
+                        );
                         self.send(client, ServerMsg::Reply(Reply::Ok));
                     }
                     Err(e) => self.send(client, ServerMsg::Error(e)),
@@ -1059,12 +1761,62 @@ impl Daemon {
     }
 
     fn message(&mut self, client: ClientId, msg: ClientMsg) {
+        if self
+            .clients
+            .get(&client)
+            .is_some_and(|client| client.rejected)
+        {
+            self.send(
+                client,
+                ServerMsg::Error("Structured runtime identity was rejected".into()),
+            );
+            return;
+        }
+        if let Some(owner) = self
+            .clients
+            .get(&client)
+            .and_then(|client| client.structured)
+            && !self.structured_current(owner)
+        {
+            self.send(
+                client,
+                ServerMsg::Error("Structured runtime identity is stale or revoked".into()),
+            );
+            return;
+        }
+        if self
+            .clients
+            .get(&client)
+            .is_some_and(|client| client.structured.is_some())
+        {
+            let allowed = match &msg {
+                ClientMsg::Query(_) => self.may(client, Grant::Read, None),
+                ClientMsg::Resize { .. } => self.may(client, Grant::Write, None),
+                ClientMsg::Hook { .. } | ClientMsg::Usage { .. } => Err(anyhow::anyhow!(
+                    "Structured callers cannot report pane status or usage"
+                )),
+                _ => Ok(()),
+            };
+            if let Err(error) = allowed {
+                self.send(client, ServerMsg::Error(error.to_string()));
+                return;
+            }
+        }
         match msg {
             ClientMsg::Hello { .. } => {}
             ClientMsg::Input { term, data } => {
                 // Typing into another pane needs write; into one that's asking, respond.
-                let asking = self.terms.get(&term).is_some_and(|t| t.status == Status::Blocked);
-                if let Err(e) = self.may(client, Grant::Write, Some(term)).and_then(|_| if asking { self.may(client, Grant::Respond, Some(term)) } else { Ok(()) }) {
+                let asking = self
+                    .terms
+                    .get(&term)
+                    .is_some_and(|t| t.status == Status::Blocked);
+                if let Err(e) = self.may(client, Grant::Write, Some(term)).and_then(|_| {
+                    if asking {
+                        self.may(client, Grant::Respond, Some(term))
+                    } else {
+                        Ok(())
+                    }
+                }) {
                     self.send(client, ServerMsg::Error(format!("{e:#}")));
                     return;
                 }
@@ -1087,23 +1839,44 @@ impl Daemon {
                     self.dirty = true;
                 }
             }
-            ClientMsg::Hook { term, ref token, pid, .. } => {
+            ClientMsg::Hook {
+                term,
+                ref token,
+                pid,
+                ..
+            } => {
                 // Only the pane's own processes may report its status. They carry its secret;
                 // when the chain can be traced it must also lead back to the pane, so a desktop
                 // app that inherited the pane's environment still can't. The chain is walked on
                 // the hook thread (it's slow on Windows), in arrival order.
-                let Some(pane) = self.terms.get(&term) else { return };
+                let Some(pane) = self.terms.get(&term) else {
+                    return;
+                };
                 if !term::same_secret(&pane.token, token) {
                     tracing::info!("ignoring a status report for pane {term} without its secret");
                     return;
                 }
-                let job = HookJob { root: pane.pid.filter(|_| pid != 0), pid, known: pane.trusted.clone(), msg };
+                let job = HookJob {
+                    root: pane.pid.filter(|_| pid != 0),
+                    pid,
+                    known: pane.trusted.clone(),
+                    msg,
+                };
                 if self.hook_jobs.send(job).is_err() {
                     tracing::error!("the hook thread is gone; status reports are lost");
                 }
             }
-            ClientMsg::Usage { term, token, usage, limits } => {
-                if self.terms.get(&term).is_some_and(|t| term::same_secret(&t.token, &token)) {
+            ClientMsg::Usage {
+                term,
+                token,
+                usage,
+                limits,
+            } => {
+                if self
+                    .terms
+                    .get(&term)
+                    .is_some_and(|t| term::same_secret(&t.token, &token))
+                {
                     self.report_usage(term, usage, limits);
                 }
             }
@@ -1121,23 +1894,135 @@ impl Daemon {
             }
             ClientMsg::Query(q) => {
                 let reply = match q {
+                    Query::List
+                        if self
+                            .clients
+                            .get(&client)
+                            .is_some_and(|client| client.structured.is_some())
+                            && self.may(client, Grant::Read, None).is_err() =>
+                    {
+                        ServerMsg::Error("Structured runtime lacks the read grant".into())
+                    }
+                    Query::ConversationRead { id, cursor, limit } => {
+                        if let Err(error) = self.conversation_read(client, id, cursor, limit) {
+                            self.send(client, ServerMsg::Error(error.to_string()));
+                        }
+                        return;
+                    }
+                    Query::ConversationDiff { id, generation } => {
+                        if let Err(error) = self.may(client, Grant::Read, None) {
+                            self.send(client, ServerMsg::Error(format!("{error:#}")));
+                            return;
+                        }
+                        let Some(conversation) =
+                            self.conversations.iter().find(|item| item.id == id)
+                        else {
+                            self.send(client, ServerMsg::Error("No such conversation".into()));
+                            return;
+                        };
+                        if conversation.generation != generation {
+                            self.send(
+                                client,
+                                ServerMsg::Error("Conversation diff request is stale".into()),
+                            );
+                            return;
+                        }
+                        let dir = conversation
+                            .binding
+                            .worktree
+                            .as_ref()
+                            .unwrap_or(&conversation.binding.cwd)
+                            .clone();
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let result =
+                                git::conversation_diff(&dir).map_err(|error| format!("{error:#}"));
+                            let _ = tx.blocking_send(Ev::ConversationDiffReady {
+                                client,
+                                id,
+                                generation,
+                                result,
+                            });
+                        });
+                        return;
+                    }
+                    Query::ConversationTerminalScreen { id, generation } => {
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) {
+                            self.send(
+                                client,
+                                ServerMsg::Error(
+                                    "Only a human client can view a native conversation terminal"
+                                        .into(),
+                                ),
+                            );
+                            return;
+                        }
+                        if let Err(error) = self.may(client, Grant::Read, None) {
+                            self.send(client, ServerMsg::Error(format!("{error:#}")));
+                            return;
+                        }
+                        let screen = self.conversation_terminal_screen(id, generation);
+                        match screen {
+                            Ok(screen) => ServerMsg::Reply(Reply::Text(screen)),
+                            Err(error) => ServerMsg::Error(error.to_string()),
+                        }
+                    }
+                    Query::ConversationTerminalReplay { id, generation } => {
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) {
+                            self.send(
+                                client,
+                                ServerMsg::Error(
+                                    "Only a human client can view a native conversation terminal"
+                                        .into(),
+                                ),
+                            );
+                            return;
+                        }
+                        if let Err(error) = self.may(client, Grant::Read, None) {
+                            self.send(client, ServerMsg::Error(format!("{error:#}")));
+                            return;
+                        }
+                        match self.conversation_terminal_replay(id, generation) {
+                            Ok(replay) => ServerMsg::Reply(Reply::TerminalReplay(replay)),
+                            Err(error) => ServerMsg::Error(error.to_string()),
+                        }
+                    }
                     Query::List => ServerMsg::Reply(Reply::List(self.snapshot())),
                     Query::Read { term } if self.may(client, Grant::Read, Some(term)).is_err() => {
-                        ServerMsg::Error(format!("{:#}", self.may(client, Grant::Read, Some(term)).unwrap_err()))
+                        ServerMsg::Error(format!(
+                            "{:#}",
+                            self.may(client, Grant::Read, Some(term)).unwrap_err()
+                        ))
                     }
                     Query::Read { term } => match self.terms.get(&term) {
                         Some(t) => ServerMsg::Reply(Reply::Text(t.parser.screen().contents())),
                         None => ServerMsg::Error(format!("no pane {term}")),
                     },
-                    Query::CheckOutput { term, .. } if self.may(client, Grant::Read, Some(term)).is_err() => {
-                        ServerMsg::Error(format!("{:#}", self.may(client, Grant::Read, Some(term)).unwrap_err()))
+                    Query::CheckOutput { term, .. }
+                        if self.may(client, Grant::Read, Some(term)).is_err() =>
+                    {
+                        ServerMsg::Error(format!(
+                            "{:#}",
+                            self.may(client, Grant::Read, Some(term)).unwrap_err()
+                        ))
                     }
-                    Query::CheckOutput { term, name } => match self.check_output(term, name.as_deref()) {
-                        Some(output) => ServerMsg::Reply(Reply::Text(output.to_string())),
-                        None => ServerMsg::Error(format!("no check output for pane {term}")),
-                    },
+                    Query::CheckOutput { term, name } => {
+                        match self.check_output(term, name.as_deref()) {
+                            Some(output) => ServerMsg::Reply(Reply::Text(output.to_string())),
+                            None => ServerMsg::Error(format!("no check output for pane {term}")),
+                        }
+                    }
                     Query::Worktrees { ws } => {
-                        let Some(dir) = self.workspaces.iter().find(|w| w.id == ws).map(|w| w.cwd.clone()) else {
+                        let Some(dir) = self
+                            .workspaces
+                            .iter()
+                            .find(|w| w.id == ws)
+                            .map(|w| w.cwd.clone())
+                        else {
                             self.send(client, ServerMsg::Error(format!("no workspace {ws}")));
                             return;
                         };
@@ -1159,11 +2044,11 @@ impl Daemon {
     }
 
     fn focused_term(&self) -> Option<TermId> {
-        let ws = self.active_ws.and_then(|id| self.workspaces.iter().find(|w| w.id == id))?;
+        let ws = self
+            .active_ws
+            .and_then(|id| self.workspaces.iter().find(|w| w.id == id))?;
         ws.tab().map(|t| t.focus)
     }
-
-
 
     fn snapshot(&self) -> Snapshot {
         let terms: BTreeMap<TermId, TermInfo> = self
@@ -1171,68 +2056,97 @@ impl Daemon {
             .values()
             .filter(|t| !t.spare)
             .map(|t| {
-                (t.id, TermInfo {
-                    id: t.id,
-                    cols: t.cols,
-                    rows: t.rows,
-                    title: t.title().to_string(),
-                    process: t.process.clone(),
-                    remote: t.remote.clone(),
-                    popup: t.popup,
-                    agent: t.agent.clone(),
-                    // Asking for helpers needs you, whatever the agent's own hooks say meanwhile.
-                    status: if t.helpers.asked.is_empty() { t.status } else { Status::Blocked },
-                    cwd: t.cwd.clone(),
-                    summary: t.summary.clone(),
-                    name: if t.name.is_empty() { t.first_prompt.clone() } else { t.name.clone() },
-                    model: t.model.clone(),
-                    label: t.label.clone(),
-                    mem: t.mem,
-                    cpu: t.cpu,
-                    bell: t.bell,
-                    said: t.said.clone(),
-                    branch: t.head.as_ref().map(|h| h.branch.clone()),
-                    linked: t.head.as_ref().is_some_and(|h| h.linked),
-                    root: t.head.as_ref().map(|h| h.main_root.clone()),
-                    top: t.head.as_ref().map(|h| h.top.clone()),
-                    since: t.status_since,
-                    status_why: t.status_why.clone(),
-                    why_hook: t.last_hook.as_ref().map(|h| h.0.clone()).unwrap_or_default(),
-                    why_hook_at: t.last_hook.as_ref().map(|h| h.1).unwrap_or(0),
-                    why_screen: t.last_screen.as_ref().map(|h| h.0.clone()).unwrap_or_default(),
-                    why_screen_at: t.last_screen.as_ref().map(|h| h.1).unwrap_or(0),
-                    why_process_at: t.last_process,
-                    quiet_since: t.quiet_since,
-                    pid: t.pid.unwrap_or(0),
-                    asleep: t.asleep,
-                    win32_input: t.win32_input,
-                    usage: t.usage.clone(),
-                    resume_at: t.resume_at,
-                    checks: t.checks.infos(),
-                    subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
-                    started_by: t.started_by,
-                    tab_of: t.tab_of.filter(|o| self.terms.contains_key(o)),
-                    helper_ask: t.helpers.asked.clone(),
-                    queued: t.queue.iter().cloned().collect(),
-                    subagent_activity: t.subagent_activity.clone(),
-                    session: t.session.clone(),
-                })
+                (
+                    t.id,
+                    TermInfo {
+                        conversation_id: t.conversation_id,
+                        id: t.id,
+                        cols: t.cols,
+                        rows: t.rows,
+                        title: t.title().to_string(),
+                        process: t.process.clone(),
+                        remote: t.remote.clone(),
+                        popup: t.popup,
+                        agent: t.agent.clone(),
+                        // Asking for helpers needs you, whatever the agent's own hooks say meanwhile.
+                        status: if t.helpers.asked.is_empty() {
+                            t.status
+                        } else {
+                            Status::Blocked
+                        },
+                        cwd: t.cwd.clone(),
+                        summary: t.summary.clone(),
+                        name: if t.name.is_empty() {
+                            t.first_prompt.clone()
+                        } else {
+                            t.name.clone()
+                        },
+                        model: t.model.clone(),
+                        label: t.label.clone(),
+                        mem: t.mem,
+                        cpu: t.cpu,
+                        bell: t.bell,
+                        said: t.said.clone(),
+                        branch: t.head.as_ref().map(|h| h.branch.clone()),
+                        linked: t.head.as_ref().is_some_and(|h| h.linked),
+                        root: t.head.as_ref().map(|h| h.main_root.clone()),
+                        top: t.head.as_ref().map(|h| h.top.clone()),
+                        since: t.status_since,
+                        status_why: t.status_why.clone(),
+                        why_hook: t
+                            .last_hook
+                            .as_ref()
+                            .map(|h| h.0.clone())
+                            .unwrap_or_default(),
+                        why_hook_at: t.last_hook.as_ref().map(|h| h.1).unwrap_or(0),
+                        why_screen: t
+                            .last_screen
+                            .as_ref()
+                            .map(|h| h.0.clone())
+                            .unwrap_or_default(),
+                        why_screen_at: t.last_screen.as_ref().map(|h| h.1).unwrap_or(0),
+                        why_process_at: t.last_process,
+                        quiet_since: t.quiet_since,
+                        pid: t.pid.unwrap_or(0),
+                        asleep: t.asleep,
+                        win32_input: t.win32_input,
+                        usage: t.usage.clone(),
+                        resume_at: t.resume_at,
+                        checks: t.checks.infos(),
+                        subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
+                        started_by: t.started_by,
+                        tab_of: t.tab_of.filter(|o| self.terms.contains_key(o)),
+                        helper_ask: t.helpers.asked.clone(),
+                        queued: t.queue.iter().cloned().collect(),
+                        subagent_activity: t.subagent_activity.clone(),
+                        session: t.session.clone(),
+                    },
+                )
             })
             .collect();
         Snapshot {
+            conversations: self.conversation_summaries(),
             daemon_version: env!("CARGO_PKG_VERSION").into(),
             workspaces: self.workspaces.clone(),
             active_ws: self.active_ws,
             terms,
             questions: self.questions.iter().map(|(q, ..)| q.clone()).collect(),
-            limits: self.limits.iter().map(|(a, l)| (a.clone(), l.clone())).collect(),
+            limits: self
+                .limits
+                .iter()
+                .map(|(a, l)| (a.clone(), l.clone()))
+                .collect(),
             spent_today: self.spent_today(),
             today: usage::today(&self.turns, &self.spent, term::unix_now()),
         }
     }
 
     fn sync_scan_roots(&self) {
-        let roots = self.terms.values().filter_map(|t| t.pid.map(|p| (t.id, p))).collect();
+        let roots = self
+            .terms
+            .values()
+            .filter_map(|t| t.pid.map(|p| (t.id, p)))
+            .collect();
         self.scan.lock().unwrap().roots = roots;
     }
 
@@ -1247,16 +2161,27 @@ impl Daemon {
     fn teach(&self, cmd: &str) -> String {
         let mut words = cmd.split_whitespace();
         let first = words.next().unwrap_or("");
-        let is_claude = std::path::Path::new(first).file_stem().is_some_and(|s| s.eq_ignore_ascii_case("claude"));
+        let is_claude = std::path::Path::new(first)
+            .file_stem()
+            .is_some_and(|s| s.eq_ignore_ascii_case("claude"));
         if !self.cfg.teach_agents || !is_claude || cmd.contains("--append-system-prompt") {
             return cmd.to_string();
         }
-        let note = concat!("You are running inside ", env!("APP_NAME"), ", a terminal where one person runs many coding agents. If the user asks you to do the work in a worktree (or on a separate branch so you don't touch their checkout), run `", env!("APP_COMMAND"), " worktree --move <short-branch-name>` with the Bash tool before editing anything, then end your turn: ", env!("APP_NAME"), " creates the worktree and restarts you there in this same conversation.");
+        let note = concat!(
+            "You are running inside ",
+            env!("APP_NAME"),
+            ", a terminal where one person runs many coding agents. If the user asks you to do the work in a worktree (or on a separate branch so you don't touch their checkout), run `",
+            env!("APP_COMMAND"),
+            " worktree --move <short-branch-name>` with the Bash tool before editing anything, then end your turn: ",
+            env!("APP_NAME"),
+            " creates the worktree and restarts you there in this same conversation."
+        );
         let rest = cmd[first.len()..].trim_start();
         format!(
             "{first} --append-system-prompt {} --allowedTools {} {rest}",
             self.cfg.quote_for_shell(note),
-            self.cfg.quote_for_shell(concat!("Bash(", env!("APP_COMMAND"), " worktree:*)"))
+            self.cfg
+                .quote_for_shell(concat!("Bash(", env!("APP_COMMAND"), " worktree:*)"))
         )
         .trim_end()
         .to_string()
@@ -1265,7 +2190,10 @@ impl Daemon {
     /// The pane a start comes from, if it comes from one. Only a connection that proved it
     /// is that pane (its secret) counts: a session can't be hung on a pane by naming it.
     fn starter(&mut self, client: ClientId) -> Option<TermId> {
-        self.next_starter.take().or_else(|| self.clients.get(&client).and_then(|c| c.from)).filter(|t| self.terms.contains_key(t))
+        self.next_starter
+            .take()
+            .or_else(|| self.clients.get(&client).and_then(|c| c.from))
+            .filter(|t| self.terms.contains_key(t))
     }
 
     /// The pane a start comes from, once it may start `task` and there's room for it. A
@@ -1274,6 +2202,15 @@ impl Daemon {
     /// `sessions.helpers_at_once` of its own working at once the start is refused, with what to
     /// do instead.
     fn starting(&mut self, client: ClientId, task: &str) -> Result<Option<TermId>> {
+        if self
+            .clients
+            .get(&client)
+            .is_some_and(|client| client.structured.is_some())
+        {
+            anyhow::bail!(
+                "Structured runtimes cannot start descendants until conversation-owned helper consent is supported"
+            );
+        }
         // A worktree asked for earlier was let through then: don't strand it now.
         let let_through = self.next_starter.is_some();
         let by = self.starter(client);
@@ -1282,12 +2219,47 @@ impl Daemon {
         {
             self.may_start_helper(by, task)?;
             let most = self.cfg.helpers_at_once();
-            let busy = self.terms.values().filter(|t| t.started_by == Some(by) && (t.status == Status::Working || t.born.elapsed() < HELPER_SETTLES)).count();
+            let busy = self.busy_helpers(by, None);
             if busy >= most {
-                anyhow::bail!("{busy} helpers are already working, and {most} at once is the limit (Settings, Sessions). Wait for one to finish, then start this one.");
+                anyhow::bail!(
+                    "{busy} helpers are already working, and {most} at once is the limit (Settings, Sessions). Wait for one to finish, then start this one."
+                );
             }
         }
         Ok(by)
+    }
+
+    fn busy_helpers(
+        &self,
+        by: TermId,
+        except: Option<crate::conversation::ConversationId>,
+    ) -> usize {
+        let native = self
+            .terms
+            .values()
+            .filter(|t| {
+                t.started_by == Some(by)
+                    && (t.status == Status::Working || t.born.elapsed() < HELPER_SETTLES)
+            })
+            .count();
+        native
+            + self
+                .conversation_states
+                .iter()
+                .filter(|(id, state)| {
+                    Some(**id) != except
+                        && state.started_by == Some(by)
+                        && (self.conversation_runtimes.owns(**id)
+                            || self
+                                .conversation_requests
+                                .values()
+                                .any(|p| p.conversation() == **id))
+                        && (state.status == Status::Working
+                            || state
+                                .started_at
+                                .is_some_and(|at| at.elapsed() < HELPER_SETTLES))
+                })
+                .count()
     }
 
     /// Note which pane's agent started `term`.
@@ -1297,12 +2269,21 @@ impl Daemon {
         }
     }
 
-    fn spawn(&mut self, cmd: Option<&str>, cwd: &std::path::Path, cols: u16, rows: u16) -> Result<TermId> {
+    fn spawn(
+        &mut self,
+        cmd: Option<&str>,
+        cwd: &std::path::Path,
+        cols: u16,
+        rows: u16,
+    ) -> Result<TermId> {
         // An account's command is taught as the command inside it, and keeps its account.
         let (account, inner) = cmd.map(|c| self.cfg.split_account(c)).unwrap_or((None, ""));
         let taught = cmd.map(|_| {
             let taught = self.teach(inner);
-            account.as_deref().map(|a| self.cfg.as_account(a, &taught)).unwrap_or(taught)
+            account
+                .as_deref()
+                .map(|a| self.cfg.as_account(a, &taught))
+                .unwrap_or(taught)
         });
         let cmd = taught.as_deref();
         let id = self.next();
@@ -1317,7 +2298,19 @@ impl Daemon {
             self.adopt = Some((dir, term));
         }
         let once = std::mem::take(&mut self.next_once);
-        let mut t = Term::spawn(&self.cfg, SpawnSpec { id, cmd, cwd, cols, rows, once }, self.tx.clone())?;
+        let mut t = Term::spawn(
+            &self.cfg,
+            SpawnSpec {
+                id,
+                cmd,
+                direct: None,
+                cwd,
+                cols,
+                rows,
+                once,
+            },
+            self.tx.clone(),
+        )?;
         t.account = account;
         self.terms.insert(id, t);
         self.had_terms = true;
@@ -1336,13 +2329,19 @@ impl Daemon {
     }
 
     fn ws_mut(&mut self, id: WsId) -> Result<&mut WorkspaceInfo> {
-        self.workspaces.iter_mut().find(|w| w.id == id).ok_or_else(|| anyhow::anyhow!("no workspace {id}"))
+        self.workspaces
+            .iter_mut()
+            .find(|w| w.id == id)
+            .ok_or_else(|| anyhow::anyhow!("no workspace {id}"))
     }
 
     fn locate(&self, term: TermId) -> Option<(WsId, TabId)> {
-        self.workspaces
-            .iter()
-            .find_map(|w| w.tabs.iter().find(|t| t.layout.contains(term)).map(|t| (w.id, t.id)))
+        self.workspaces.iter().find_map(|w| {
+            w.tabs
+                .iter()
+                .find(|t| t.layout.contains(term))
+                .map(|t| (w.id, t.id))
+        })
     }
 
     fn close_term(&mut self, term: TermId) {
@@ -1395,10 +2394,18 @@ impl Daemon {
                 }
             }
         }
-        let before = self.workspaces.iter().position(|w| Some(w.id) == self.active_ws);
+        let before = self
+            .workspaces
+            .iter()
+            .position(|w| Some(w.id) == self.active_ws);
         self.workspaces.retain(|w| !w.tabs.is_empty());
-        if self.active_ws.is_none_or(|id| !self.workspaces.iter().any(|w| w.id == id)) {
-            let i = before.unwrap_or(0).min(self.workspaces.len().saturating_sub(1));
+        if self
+            .active_ws
+            .is_none_or(|id| !self.workspaces.iter().any(|w| w.id == id))
+        {
+            let i = before
+                .unwrap_or(0)
+                .min(self.workspaces.len().saturating_sub(1));
             self.active_ws = self.workspaces.get(i).map(|w| w.id);
         }
     }
@@ -1426,15 +2433,37 @@ mod logic_tests;
 mod tests {
     #[test]
     fn worktrees_of_trusted_repos_are_trusted() {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-trust-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-trust-{}"),
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("claude.json");
-        std::fs::write(&f, r#"{"projects":{"c:/code/app":{"hasTrustDialogAccepted":true}},"other":1}"#).unwrap();
-        super::trust_in(&f, std::path::Path::new("C:/code/app"), std::path::Path::new("C:/code/app-worktrees/x"));
-        super::trust_in(&f, std::path::Path::new("C:/code/nope"), std::path::Path::new("C:/code/nope-wt"));
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
-        assert_eq!(v["projects"]["C:/code/app-worktrees/x"]["hasTrustDialogAccepted"], true);
-        assert!(v["projects"].get("C:/code/nope-wt").is_none(), "never trusts what you didn't");
+        std::fs::write(
+            &f,
+            r#"{"projects":{"c:/code/app":{"hasTrustDialogAccepted":true}},"other":1}"#,
+        )
+        .unwrap();
+        super::trust_in(
+            &f,
+            std::path::Path::new("C:/code/app"),
+            std::path::Path::new("C:/code/app-worktrees/x"),
+        );
+        super::trust_in(
+            &f,
+            std::path::Path::new("C:/code/nope"),
+            std::path::Path::new("C:/code/nope-wt"),
+        );
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        assert_eq!(
+            v["projects"]["C:/code/app-worktrees/x"]["hasTrustDialogAccepted"],
+            true
+        );
+        assert!(
+            v["projects"].get("C:/code/nope-wt").is_none(),
+            "never trusts what you didn't"
+        );
         assert_eq!(v["other"], 1, "the rest of the file is kept");
         let _ = std::fs::remove_dir_all(&dir);
     }

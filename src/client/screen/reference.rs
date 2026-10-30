@@ -17,14 +17,26 @@ impl Ref {
     /// Row `i` as this package draws it where the reference's sample data differs; `new` is
     /// clipped like a drawn row, which keeps the inside's last column clear.
     pub fn set_row(&mut self, i: usize, new: &str) {
-        self.rows[i] = new.chars().take(self.area.width.saturating_sub(1) as usize).collect::<String>().trim_end().to_string();
+        self.rows[i] = new
+            .chars()
+            .take(self.area.width.saturating_sub(1) as usize)
+            .collect::<String>()
+            .trim_end()
+            .to_string();
     }
 
     /// A failure offers Send to agent after Override, a button the reference predates. On a
     /// screen under 100 columns it takes the evidence sheet's room for Open session, and the
     /// Inbox has no room for it.
     pub fn offers_send_to_agent(&mut self, screen_w: u16) {
-        let (from, to) = if screen_w >= 100 { ("Override… O", "Override… O   Send to agent m") } else { ("Override… O   Open session o", "Override… O   Send to agent m") };
+        let (from, to) = if screen_w >= 100 {
+            ("Override… O", "Override… O   Send to agent m")
+        } else {
+            (
+                "Override… O   Open session o",
+                "Override… O   Send to agent m",
+            )
+        };
         for i in 0..self.rows.len() {
             if self.rows[i].contains(from) {
                 let new = self.rows[i].replacen(from, to, 1);
@@ -39,20 +51,39 @@ impl Ref {
 pub(super) fn reference(preset: &str, layout: &str, w: u16, h: u16) -> Ref {
     let head = format!("===== {preset} | {layout} | {w}x{h} | ");
     let mut lines = FRAMES.lines();
-    let found = lines.by_ref().find(|l| l.starts_with(&head)).unwrap_or_else(|| panic!("no reference for {head}"));
+    let found = lines
+        .by_ref()
+        .find(|l| l.starts_with(&head))
+        .unwrap_or_else(|| panic!("no reference for {head}"));
     let geometry = &found[head.len()..];
     let (at, size) = geometry.split_once(' ').expect("x,y WxH");
     let (x, y) = at.split_once(',').expect("x,y");
     let (rw, rh) = size.split_once('x').expect("WxH");
     let n = |s: &str| s.parse::<u16>().expect("a number");
-    let area = Rect { x: n(x), y: n(y), width: n(rw), height: n(rh) };
-    let rows = lines.take(area.height as usize).map(str::to_string).collect();
+    let area = Rect {
+        x: n(x),
+        y: n(y),
+        width: n(rw),
+        height: n(rh),
+    };
+    let rows = lines
+        .take(area.height as usize)
+        .map(str::to_string)
+        .collect();
     Ref { area, rows }
 }
 
 /// The text of `area` in `buf`, one row per line, trailing spaces trimmed.
 pub(super) fn text(buf: &Buffer, area: Rect) -> Vec<String> {
-    (area.y..area.bottom()).map(|y| (area.x..area.right()).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end().to_string()).collect()
+    (area.y..area.bottom())
+        .map(|y| {
+            (area.x..area.right())
+                .map(|x| buf[(x, y)].symbol())
+                .collect::<String>()
+                .trim_end()
+                .to_string()
+        })
+        .collect()
 }
 
 /// The layout names the references use, in the fixture's order.
@@ -76,7 +107,10 @@ fn same_row(got: &str, want: &str) -> bool {
     }
     // The caps are wider than the plain words, so a narrow sheet gives up hints (never `Esc`)
     // or cuts the row sooner: what is drawn is the reference's words in order.
-    let (g, w): (Vec<String>, Vec<String>) = (bare(got).split_whitespace().map(str::to_string).collect(), want.split_whitespace().map(str::to_string).collect());
+    let (g, w): (Vec<String>, Vec<String>) = (
+        bare(got).split_whitespace().map(str::to_string).collect(),
+        want.split_whitespace().map(str::to_string).collect(),
+    );
     let mut rest = w.iter();
     let mut at_end = false;
     g.iter().all(|word| {

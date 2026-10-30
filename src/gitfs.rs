@@ -6,8 +6,22 @@ use std::path::{Path, PathBuf};
 
 /// Names for branches the app makes up (a new worktree nobody named).
 pub const WT_NAMES: [&str; 16] = [
-    "quick-fox", "calm-heron", "bright-owl", "steady-elk", "brave-wren", "swift-lynx", "keen-otter", "bold-raven",
-    "wise-badger", "lucky-hare", "sly-marten", "warm-finch", "deep-pike", "grey-wolf", "red-kite", "tall-crane",
+    "quick-fox",
+    "calm-heron",
+    "bright-owl",
+    "steady-elk",
+    "brave-wren",
+    "swift-lynx",
+    "keen-otter",
+    "bold-raven",
+    "wise-badger",
+    "lucky-hare",
+    "sly-marten",
+    "warm-finch",
+    "deep-pike",
+    "grey-wolf",
+    "red-kite",
+    "tall-crane",
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -33,23 +47,51 @@ fn read_head(git_dir: &Path) -> Option<String> {
 
 /// The checkout `dir` is inside, if any.
 pub fn head(dir: &Path) -> Option<Head> {
-    let top = dir.ancestors().find(|a| a.join(".git").exists())?.to_path_buf();
+    let top = dir
+        .ancestors()
+        .find(|a| a.join(".git").exists())?
+        .to_path_buf();
     let dot = top.join(".git");
     if dot.is_dir() {
-        return Some(Head { branch: read_head(&dot)?, linked: false, main_root: top.clone(), top });
+        return Some(Head {
+            branch: read_head(&dot)?,
+            linked: false,
+            main_root: top.clone(),
+            top,
+        });
     }
     // A linked worktree: ".git" is a file "gitdir: <main>/.git/worktrees/<name>".
     let text = std::fs::read_to_string(&dot).ok()?;
     let gitdir = PathBuf::from(text.trim().strip_prefix("gitdir:")?.trim());
-    let gitdir = if gitdir.is_absolute() { gitdir } else { top.join(gitdir) };
+    let gitdir = if gitdir.is_absolute() {
+        gitdir
+    } else {
+        top.join(gitdir)
+    };
     // Only <repo>/.git/worktrees/<name> is a linked worktree; a submodule's git dir
     // (<super>/.git/modules/<name>) makes it a repo of its own.
-    if gitdir.parent().and_then(|p| p.file_name()).is_none_or(|n| n != "worktrees") {
-        return Some(Head { branch: read_head(&gitdir)?, linked: false, main_root: top.clone(), top });
+    if gitdir
+        .parent()
+        .and_then(|p| p.file_name())
+        .is_none_or(|n| n != "worktrees")
+    {
+        return Some(Head {
+            branch: read_head(&gitdir)?,
+            linked: false,
+            main_root: top.clone(),
+            top,
+        });
     }
-    let main_git = gitdir.ancestors().find(|a| a.file_name().is_some_and(|n| n == ".git"))?;
+    let main_git = gitdir
+        .ancestors()
+        .find(|a| a.file_name().is_some_and(|n| n == ".git"))?;
     let main_root = main_git.parent()?.to_path_buf();
-    Some(Head { branch: read_head(&gitdir)?, linked: true, main_root, top })
+    Some(Head {
+        branch: read_head(&gitdir)?,
+        linked: true,
+        main_root,
+        top,
+    })
 }
 
 /// The branch the main checkout is on (the base for a worktree's changes).
@@ -61,15 +103,26 @@ pub fn main_branch(main_root: &Path) -> Option<String> {
 mod tests {
     #[test]
     fn a_submodule_is_its_own_repo() {
-        let root = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-submod-{}"), std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-submod-{}"),
+            std::process::id()
+        ));
         let modgit = root.join("super").join(".git").join("modules").join("lib");
         let sub = root.join("super").join("lib");
         std::fs::create_dir_all(&modgit).unwrap();
         std::fs::create_dir_all(&sub).unwrap();
-        std::fs::write(modgit.join("HEAD"), "ref: refs/heads/main
-").unwrap();
-        std::fs::write(sub.join(".git"), "gitdir: ../.git/modules/lib
-").unwrap();
+        std::fs::write(
+            modgit.join("HEAD"),
+            "ref: refs/heads/main
+",
+        )
+        .unwrap();
+        std::fs::write(
+            sub.join(".git"),
+            "gitdir: ../.git/modules/lib
+",
+        )
+        .unwrap();
         let h = super::head(&sub).unwrap();
         assert!(!h.linked, "not a linked worktree");
         assert_eq!(h.main_root, sub);
@@ -80,15 +133,32 @@ mod tests {
 
     #[test]
     fn reads_main_and_linked_checkouts() {
-        let base = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-gitfs-{}"), std::process::id()));
+        let base = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-gitfs-{}"),
+            std::process::id()
+        ));
         let main = base.join("repo");
         let wt = base.join("repo-feat");
         std::fs::create_dir_all(main.join(".git").join("worktrees").join("feat")).unwrap();
         std::fs::create_dir_all(main.join("src")).unwrap();
         std::fs::create_dir_all(&wt).unwrap();
         std::fs::write(main.join(".git").join("HEAD"), "ref: refs/heads/main\n").unwrap();
-        std::fs::write(main.join(".git").join("worktrees").join("feat").join("HEAD"), "ref: refs/heads/feat/x\n").unwrap();
-        std::fs::write(wt.join(".git"), format!("gitdir: {}\n", main.join(".git").join("worktrees").join("feat").display())).unwrap();
+        std::fs::write(
+            main.join(".git")
+                .join("worktrees")
+                .join("feat")
+                .join("HEAD"),
+            "ref: refs/heads/feat/x\n",
+        )
+        .unwrap();
+        std::fs::write(
+            wt.join(".git"),
+            format!(
+                "gitdir: {}\n",
+                main.join(".git").join("worktrees").join("feat").display()
+            ),
+        )
+        .unwrap();
 
         let h = head(&main.join("src")).unwrap();
         assert_eq!((h.branch.as_str(), h.linked), ("main", false));
@@ -97,7 +167,10 @@ mod tests {
         assert_eq!((h.branch.as_str(), h.linked), ("feat/x", true));
         assert_eq!(h.main_root, main);
         assert_eq!(main_branch(&h.main_root).as_deref(), Some("main"));
-        assert!(head(&std::env::temp_dir().join(concat!(env!("APP_COMMAND"), "-nowhere-x"))).is_none() || true);
+        assert!(
+            head(&std::env::temp_dir().join(concat!(env!("APP_COMMAND"), "-nowhere-x"))).is_none()
+                || true
+        );
         let _ = std::fs::remove_dir_all(base);
     }
 }

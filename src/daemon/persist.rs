@@ -1,8 +1,8 @@
 //! The saved session: enough to rebuild every workspace, tab and pane after the server (or
 //! the machine) restarts. Written atomically, a few seconds after the model settles.
 
-use crate::layout::Node;
 use super::check;
+use crate::layout::Node;
 use crate::protocol::{CheckInfo, SubagentActivity, TermId};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -11,6 +11,12 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Saved {
+    #[serde(default)]
+    pub conversations: Vec<crate::conversation::Conversation>,
+    #[serde(default)]
+    pub pending_starts: Vec<crate::conversation::PendingStart>,
+    #[serde(default)]
+    pub conversation_operations: Vec<crate::conversation::Operation>,
     pub workspaces: Vec<SavedWs>,
     /// Index into `workspaces`.
     pub active: usize,
@@ -44,6 +50,8 @@ pub struct SavedTab {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SavedPane {
+    #[serde(default)]
+    pub conversation_id: Option<crate::conversation::ConversationId>,
     pub cwd: Option<PathBuf>,
     /// The command the pane was started with, if not a plain shell.
     pub cmd: Option<String>,
@@ -78,10 +86,18 @@ pub struct SavedPane {
     pub subagent_activity: Vec<SubagentActivity>,
     /// The latest result of each checkpoint; their output tails are kept beside the pane's
     /// output files. A pane saved with a single `check` loads it as one checkpoint.
-    #[serde(default, alias = "check", deserialize_with = "crate::protocol::one_or_many_checks")]
+    #[serde(
+        default,
+        alias = "check",
+        deserialize_with = "crate::protocol::one_or_many_checks"
+    )]
     pub checks: Vec<CheckInfo>,
     /// The failed results the user overrode, kept so each override stays visible.
-    #[serde(default, alias = "check_overridden", deserialize_with = "crate::protocol::one_or_many_checks")]
+    #[serde(
+        default,
+        alias = "check_overridden",
+        deserialize_with = "crate::protocol::one_or_many_checks"
+    )]
     pub checks_overridden: Vec<CheckInfo>,
     /// The worktree's tree id each checkpoint's latest run saw, by checkpoint name, so a pass
     /// can still go stale after a restart.
@@ -90,7 +106,8 @@ pub struct SavedPane {
 }
 
 pub fn path() -> PathBuf {
-    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
+    let label =
+        std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
     crate::config::data_dir().join(format!("session-{label}.json"))
 }
 
@@ -105,18 +122,99 @@ pub fn load() -> Option<Saved> {
     }
 }
 
-pub fn save(saved: &Saved) -> Result<()> {
-    if cfg!(test) {
-        return Ok(());
-    }
-    let path = path();
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SessionCommit {
+    Committed,
+    Superseded { committed_ticket: u64 },
+}
+
+static SESSION_TICKETS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+#[derive(Default)]
+struct SessionWritten {
+    replaced_ticket: u64,
+    committed_ticket: u64,
+}
+
+type SessionWriters = BTreeMap<PathBuf, std::sync::Arc<std::sync::Mutex<SessionWritten>>>;
+static SESSION_WRITERS: std::sync::Mutex<Option<SessionWriters>> = std::sync::Mutex::new(None);
+
+/// Allocate before dispatching a captured snapshot; completion order must not order writes.
+pub(super) fn next_session_ticket() -> Result<u64> {
+    SESSION_TICKETS
+        .fetch_update(
+            std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed,
+            |ticket| ticket.checked_add(1),
+        )
+        .map_err(|_| anyhow::anyhow!("session save revision exhausted"))
+}
+
+pub(super) fn save_session_ticket(
+    path: &Path,
+    ticket: u64,
+    saved: &Saved,
+) -> Result<SessionCommit> {
+    use anyhow::Context;
+    use std::io::Write;
+    anyhow::ensure!(
+        path.is_absolute() && path.file_name().is_some(),
+        "session save requires an absolute file path"
+    );
+    anyhow::ensure!(ticket > 0, "session save requires a revision");
+    crate::conversation::validate_metadata(
+        &saved.conversations,
+        &saved.pending_starts,
+        &saved.conversation_operations,
+    )
+    .map_err(|e| anyhow::anyhow!("invalid conversation registry: {e:?}"))?;
+    let bytes = serde_json::to_vec_pretty(saved).context("encoding saved session")?;
+    let dir = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("session save requires a parent directory"))?;
+    private_dir(dir).context("creating private session directory")?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| anyhow::anyhow!("session save requires a file name"))?;
+    let key = std::fs::canonicalize(dir)
+        .context("resolving session directory")?
+        .join(name);
+    let writer = {
+        let mut writers = SESSION_WRITERS
+            .lock()
+            .map_err(|_| anyhow::anyhow!("session writer registry poisoned"))?;
+        writers
+            .get_or_insert_with(Default::default)
+            .entry(key)
+            .or_default()
+            .clone()
+    };
+    let mut written = writer
+        .lock()
+        .map_err(|_| anyhow::anyhow!("session writer poisoned"))?;
+    if ticket < written.replaced_ticket || ticket <= written.committed_ticket {
+        return Ok(SessionCommit::Superseded {
+            committed_ticket: written.committed_ticket,
+        });
     }
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(saved)?)?;
-    std::fs::rename(&tmp, &path)?;
-    Ok(())
+    let mut file = create_private(&tmp).context("opening private session temporary file")?;
+    file.write_all(&bytes).context("writing saved session")?;
+    file.sync_all().context("syncing saved session")?;
+    drop(file);
+    std::fs::rename(&tmp, path).context("replacing saved session")?;
+    // A rename already excludes older snapshots even if directory durability fails.
+    written.replaced_ticket = ticket;
+    #[cfg(unix)]
+    std::fs::File::open(dir)
+        .and_then(|dir| dir.sync_all())
+        .context("syncing session directory")?;
+    written.committed_ticket = ticket;
+    Ok(SessionCommit::Committed)
+}
+
+#[cfg(test)]
+pub(super) fn save_in(path: &Path, saved: &Saved) -> Result<()> {
+    save_session_ticket(path, next_session_ticket()?, saved).map(|_| ())
 }
 
 pub fn forget() {
@@ -130,7 +228,7 @@ pub fn forget() {
 
 /// Saved output can hold secrets that were on screen: its folder is yours alone on unix
 /// (on Windows it sits in your own profile).
-fn private_dir(dir: &Path) -> std::io::Result<()> {
+pub(super) fn private_dir(dir: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
     #[cfg(unix)]
     {
@@ -142,7 +240,7 @@ fn private_dir(dir: &Path) -> std::io::Result<()> {
 
 /// A new file only you can read on unix, for saved output. Set again after opening, so a
 /// leftover file from an older the app is fixed too; the rename that follows carries it over.
-fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
+pub(super) fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
     let mut open = std::fs::OpenOptions::new();
     open.write(true).create(true).truncate(true);
     #[cfg(unix)]
@@ -168,9 +266,13 @@ pub fn forget_outputs() -> std::io::Result<()> {
 /// restarts (an update, a reboot): one file per pane, named by its id.
 pub fn output_dir() -> PathBuf {
     if cfg!(test) {
-        return std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-test-output-{}"), std::process::id()));
+        return std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-test-output-{}"),
+            std::process::id()
+        ));
     }
-    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
+    let label =
+        std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
     crate::config::data_dir().join(format!("output-{label}"))
 }
 
@@ -198,9 +300,13 @@ impl CheckSlot {
 /// file in it as a pane's output.
 pub fn check_output_dir() -> PathBuf {
     if cfg!(test) {
-        return std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-test-check-output-{}"), std::process::id()));
+        return std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-test-check-output-{}"),
+            std::process::id()
+        ));
     }
-    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
+    let label =
+        std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
     crate::config::data_dir().join(format!("check-output-{label}"))
 }
 
@@ -221,19 +327,39 @@ pub struct CheckTail {
 /// could leave the folder or clash with the separators is replaced; a name that had to be
 /// changed also gets a short hash of itself, so `a-b` and `a.b` keep files of their own.
 fn check_output_file(dir: &Path, term: TermId, name: &str, slot: CheckSlot) -> PathBuf {
-    dir.join(format!("{term}-{}-{}.txt", check_file_key(name), slot.file_suffix()))
+    dir.join(format!(
+        "{term}-{}-{}.txt",
+        check_file_key(name),
+        slot.file_suffix()
+    ))
 }
 
 /// Hex digits of a changed name's hash in its file name.
 const NAME_HASH_DIGITS: usize = 8;
 
 fn check_file_key(name: &str) -> String {
-    let safe: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' }).collect();
+    let safe: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
     if !safe.is_empty() && safe == name {
         return safe;
     }
-    let base = if safe.is_empty() { UNNAMED_CHECKPOINT } else { &safe };
-    format!("{base}-{}", &crate::protocol::command_hash(name)[..NAME_HASH_DIGITS])
+    let base = if safe.is_empty() {
+        UNNAMED_CHECKPOINT
+    } else {
+        &safe
+    };
+    format!(
+        "{base}-{}",
+        &crate::protocol::command_hash(name)[..NAME_HASH_DIGITS]
+    )
 }
 
 /// Where a tail was kept before checkpoints had names: one per pane and slot.
@@ -243,7 +369,9 @@ fn legacy_check_output_file(dir: &Path, term: TermId, slot: CheckSlot) -> PathBu
 
 fn is_legacy_check_output(file: &str) -> bool {
     let rest = file.split_once('-').map_or("", |(_, rest)| rest);
-    [CheckSlot::Latest, CheckSlot::Overridden].iter().any(|s| rest == format!("{}.txt", s.file_suffix()))
+    [CheckSlot::Latest, CheckSlot::Overridden]
+        .iter()
+        .any(|s| rest == format!("{}.txt", s.file_suffix()))
 }
 
 /// What a folder of check tails has had written to it, so a slow background save can't put
@@ -254,15 +382,24 @@ struct CheckWritten {
     cleaned: u64,
 }
 
-static CHECK_WRITTEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, CheckWritten>>> = std::sync::Mutex::new(None);
+static CHECK_WRITTEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, CheckWritten>>> =
+    std::sync::Mutex::new(None);
 
 /// Keep each check output tail in `dir`, and drop the files of panes not in `live` and those
 /// named the old way (read once, at restore). Saves run one at a time; a tail already written
 /// by a newer `ticket` (from `save_ticket`) is left alone. One file failing doesn't stop the
 /// rest. Returns the panes whose tail was not written, so the caller can try again.
-pub fn save_check_outputs(dir: &Path, ticket: u64, outputs: &[CheckTail], live: &[TermId]) -> Vec<TermId> {
+pub fn save_check_outputs(
+    dir: &Path,
+    ticket: u64,
+    outputs: &[CheckTail],
+    live: &[TermId],
+) -> Vec<TermId> {
     let mut guard = CHECK_WRITTEN.lock().unwrap_or_else(|e| e.into_inner());
-    let written = guard.get_or_insert_with(Default::default).entry(dir.to_path_buf()).or_default();
+    let written = guard
+        .get_or_insert_with(Default::default)
+        .entry(dir.to_path_buf())
+        .or_default();
     let mut failed: Vec<TermId> = Vec::new();
     if !outputs.is_empty()
         && let Err(e) = private_dir(dir)
@@ -270,7 +407,13 @@ pub fn save_check_outputs(dir: &Path, ticket: u64, outputs: &[CheckTail], live: 
         tracing::warn!("saving checks' output: {e}");
         return outputs.iter().map(|o| o.term).collect();
     }
-    for CheckTail { term, name, slot, text } in outputs {
+    for CheckTail {
+        term,
+        name,
+        slot,
+        text,
+    } in outputs
+    {
         let key = (*term, name.clone(), *slot);
         if written.tails.get(&key).is_some_and(|&t| t > ticket) {
             continue;
@@ -299,7 +442,10 @@ pub fn save_check_outputs(dir: &Path, ticket: u64, outputs: &[CheckTail], live: 
         for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
             let name = e.file_name();
             let name = name.to_str().unwrap_or_default();
-            let id = name.split('-').next().and_then(|n| n.parse::<TermId>().ok());
+            let id = name
+                .split('-')
+                .next()
+                .and_then(|n| n.parse::<TermId>().ok());
             if id.is_none_or(|id| !live.contains(&id)) || is_legacy_check_output(name) {
                 let _ = std::fs::remove_file(e.path());
             }
@@ -336,7 +482,8 @@ struct Written {
     cleaned: u64,
 }
 
-static WRITTEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, Written>>> = std::sync::Mutex::new(None);
+static WRITTEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, Written>>> =
+    std::sync::Mutex::new(None);
 static TICKETS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// A number for a save, taken when its output is gathered: a higher one is a newer picture.
@@ -351,10 +498,18 @@ pub fn save_outputs(ticket: u64, outputs: &[(TermId, Vec<u8>)], live: &[TermId])
     save_outputs_in(&output_dir(), ticket, outputs, live)
 }
 
-fn save_outputs_in(dir: &Path, ticket: u64, outputs: &[(TermId, Vec<u8>)], live: &[TermId]) -> Result<()> {
+fn save_outputs_in(
+    dir: &Path,
+    ticket: u64,
+    outputs: &[(TermId, Vec<u8>)],
+    live: &[TermId],
+) -> Result<()> {
     use std::io::Write;
     let mut guard = WRITTEN.lock().unwrap_or_else(|e| e.into_inner());
-    let written = guard.get_or_insert_with(Default::default).entry(dir.to_path_buf()).or_default();
+    let written = guard
+        .get_or_insert_with(Default::default)
+        .entry(dir.to_path_buf())
+        .or_default();
     private_dir(dir)?;
     let mut first_err: Option<anyhow::Error> = None;
     for (term, bytes) in outputs {
@@ -384,7 +539,11 @@ fn save_outputs_in(dir: &Path, ticket: u64, outputs: &[(TermId, Vec<u8>)], live:
         written.cleaned = ticket;
         written.panes.retain(|id, _| live.contains(id));
         for e in std::fs::read_dir(dir)?.flatten() {
-            let id = e.path().file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse::<TermId>().ok());
+            let id = e
+                .path()
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.parse::<TermId>().ok());
             if id.is_none_or(|id| !live.contains(&id)) {
                 let _ = std::fs::remove_file(e.path());
             }
@@ -427,7 +586,11 @@ impl Drop for ScratchDir {
 pub(super) fn scratch_dir() -> ScratchDir {
     static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    ScratchDir(std::env::temp_dir().join(format!("{}-test-scratch-{}-{n}", crate::brand::APP_COMMAND, std::process::id())))
+    ScratchDir(std::env::temp_dir().join(format!(
+        "{}-test-scratch-{}-{n}",
+        crate::brand::APP_COMMAND,
+        std::process::id()
+    )))
 }
 
 #[cfg(test)]
@@ -435,8 +598,178 @@ mod tests {
     use super::*;
     use crate::protocol::CheckState;
 
+    #[test]
+    fn session_newer_commit_fences_an_older_full_snapshot() {
+        let dir = scratch_dir();
+        let path = dir.path().join("session.json");
+        let old = Saved::default();
+        let new = Saved {
+            conversations: vec![crate::conversation::tests::conversation()],
+            ..Default::default()
+        };
+        let old_ticket = next_session_ticket().unwrap();
+        let new_ticket = next_session_ticket().unwrap();
+        assert_eq!(
+            save_session_ticket(&path, new_ticket, &new).unwrap(),
+            SessionCommit::Committed
+        );
+        assert_eq!(
+            save_session_ticket(&path, old_ticket, &old).unwrap(),
+            SessionCommit::Superseded {
+                committed_ticket: new_ticket
+            }
+        );
+        let actual: Saved = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(actual.conversations, new.conversations);
+        assert_eq!(files_in(dir.path()), ["session.json"]);
+    }
+
+    #[test]
+    fn session_full_snapshots_keep_the_latest_conversation_revision() {
+        let dir = scratch_dir();
+        let path = dir.path().join("session.json");
+        let mut old = Saved {
+            conversations: vec![crate::conversation::tests::conversation()],
+            ..Default::default()
+        };
+        let old_ticket = next_session_ticket().unwrap();
+        old.conversations[0].generation += 1;
+        let new_ticket = next_session_ticket().unwrap();
+        assert_eq!(
+            save_session_ticket(&path, new_ticket, &old).unwrap(),
+            SessionCommit::Committed
+        );
+        old.conversations[0].generation -= 1;
+        assert_eq!(
+            save_session_ticket(&path, old_ticket, &old).unwrap(),
+            SessionCommit::Superseded {
+                committed_ticket: new_ticket
+            }
+        );
+        let actual: Saved = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(
+            actual.conversations[0].generation,
+            old.conversations[0].generation + 1
+        );
+    }
+
+    #[test]
+    fn session_failed_new_write_does_not_fence_a_retry() {
+        let dir = scratch_dir();
+        let path = dir.path().join("session.json");
+        let saved = Saved::default();
+        let ticket = next_session_ticket().unwrap();
+        private_dir(dir.path()).unwrap();
+        let temporary = path.with_extension("json.tmp");
+        std::fs::create_dir(&temporary).unwrap();
+        assert!(save_session_ticket(&path, ticket, &saved).is_err());
+        assert!(!path.exists());
+        std::fs::remove_dir(&temporary).unwrap();
+        assert_eq!(
+            save_session_ticket(&path, ticket, &saved).unwrap(),
+            SessionCommit::Committed
+        );
+    }
+
+    #[test]
+    fn session_repeated_ticket_cannot_replace_committed_contents() {
+        let dir = scratch_dir();
+        let path = dir.path().join("session.json");
+        let saved = Saved::default();
+        let ticket = next_session_ticket().unwrap();
+        assert_eq!(
+            save_session_ticket(&path, ticket, &saved).unwrap(),
+            SessionCommit::Committed
+        );
+        let changed = Saved {
+            active: 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            save_session_ticket(&path, ticket, &changed).unwrap(),
+            SessionCommit::Superseded {
+                committed_ticket: ticket
+            }
+        );
+        let actual: Saved = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(actual.active, 0);
+    }
+
+    #[test]
+    fn session_writer_rejects_a_relative_or_missing_destination() {
+        let saved = Saved::default();
+        for path in [Path::new(""), Path::new("session.json")] {
+            assert!(save_session_ticket(path, next_session_ticket().unwrap(), &saved).is_err());
+        }
+    }
+
+    #[test]
+    fn conversation_metadata_is_private_atomic_and_independent_of_output() {
+        let dir = scratch_dir();
+        let path = dir.path().join("session.json");
+        let record = crate::conversation::tests::conversation();
+        let saved = Saved {
+            conversations: vec![record.clone()],
+            ..Default::default()
+        };
+        save_in(&path, &saved).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let back: Saved = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.conversations, [record]);
+        assert_eq!(files_in(dir.path()), ["session.json"]);
+        assert!(
+            !text.contains("approval")
+                && !text.contains("prompt")
+                && !text.contains("response")
+                && !text.contains("token")
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            assert_eq!(
+                std::fs::metadata(dir.path()).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_registry_cannot_replace_a_valid_saved_session() {
+        let dir = scratch_dir();
+        let path = dir.path().join("session.json");
+        let record = crate::conversation::tests::conversation();
+        let mut saved = Saved {
+            conversations: vec![record.clone()],
+            ..Default::default()
+        };
+        save_in(&path, &saved).unwrap();
+        let previous = std::fs::read(&path).unwrap();
+        saved.conversations.push(record);
+        assert!(save_in(&path, &saved).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), previous);
+    }
+
+    #[test]
+    fn legacy_saved_sessions_have_no_conversation_authority() {
+        let saved: Saved = serde_json::from_str(r#"{"workspaces":[],"active":0}"#).unwrap();
+        assert!(saved.conversations.is_empty());
+        let pane: SavedPane =
+            serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":"codex","session":"old"}"#)
+                .unwrap();
+        assert_eq!(pane.conversation_id, None);
+    }
+
     fn tail(term: TermId, name: &str, slot: CheckSlot, text: &str) -> CheckTail {
-        CheckTail { term, name: name.into(), slot, text: text.into() }
+        CheckTail {
+            term,
+            name: name.into(),
+            slot,
+            text: text.into(),
+        }
     }
 
     #[cfg(unix)]
@@ -449,8 +782,20 @@ mod tests {
         std::fs::create_dir_all(dir.path()).unwrap();
         std::fs::write(&old, concat!("from an older ", env!("APP_COMMAND"))).unwrap();
         std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(save_check_outputs(dir.path(), save_ticket(), &[tail(7, "test", CheckSlot::Latest, "tail")], &[7]).is_empty());
-        assert_eq!((mode(dir.path()), mode(&old)), (0o700, 0o600), "a check tail, and the older file it replaced");
+        assert!(
+            save_check_outputs(
+                dir.path(),
+                save_ticket(),
+                &[tail(7, "test", CheckSlot::Latest, "tail")],
+                &[7]
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            (mode(dir.path()), mode(&old)),
+            (0o700, 0o600),
+            "a check tail, and the older file it replaced"
+        );
         let pane = dir.path().join("pane.bin");
         let mut f = create_private(&pane).unwrap();
         std::io::Write::write_all(&mut f, b"secret").unwrap();
@@ -458,7 +803,11 @@ mod tests {
     }
 
     fn files_in(dir: &Path) -> Vec<String> {
-        let mut files: Vec<String> = std::fs::read_dir(dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        let mut files: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
         files.sort();
         files
     }
@@ -471,17 +820,38 @@ mod tests {
         let new = super::save_ticket();
         super::save_outputs_in(dir.path(), new, &[(term, b"newer".to_vec())], &[term]).unwrap();
         super::save_outputs_in(dir.path(), old, &[(term, b"older".to_vec())], &[term]).unwrap();
-        assert_eq!(super::take_output_in(dir.path(), term).as_deref(), Some(b"newer".as_slice()));
+        assert_eq!(
+            super::take_output_in(dir.path(), term).as_deref(),
+            Some(b"newer".as_slice())
+        );
     }
 
     #[test]
     fn check_results_round_trip_and_older_panes_load_without_them() {
-        let info = CheckInfo { command: "npm test".into(), name: "test".into(), state: CheckState::Failed, exit_code: Some(1), ..Default::default() };
-        let build = CheckInfo { name: "build".into(), ..info.clone() };
-        let pane = SavedPane { checks: vec![build.clone(), info.clone()], checks_overridden: vec![info.clone()], ..Default::default() };
+        let info = CheckInfo {
+            command: "npm test".into(),
+            name: "test".into(),
+            state: CheckState::Failed,
+            exit_code: Some(1),
+            ..Default::default()
+        };
+        let build = CheckInfo {
+            name: "build".into(),
+            ..info.clone()
+        };
+        let pane = SavedPane {
+            checks: vec![build.clone(), info.clone()],
+            checks_overridden: vec![info.clone()],
+            ..Default::default()
+        };
         let back: SavedPane = serde_json::from_str(&serde_json::to_string(&pane).unwrap()).unwrap();
-        assert_eq!((back.checks, back.checks_overridden), (vec![build, info.clone()], vec![info]));
-        let old: SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#).expect("a pane saved before checks");
+        assert_eq!(
+            (back.checks, back.checks_overridden),
+            (vec![build, info.clone()], vec![info])
+        );
+        let old: SavedPane =
+            serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#)
+                .expect("a pane saved before checks");
         assert_eq!((old.checks, old.checks_overridden), (vec![], vec![]));
     }
 
@@ -493,39 +863,97 @@ mod tests {
                "check_overridden":{"command":"npm test","state":"Overridden"}}"#,
         )
         .expect("a pane saved by protocol 43");
-        let states = |c: &[CheckInfo]| c.iter().map(|c| (c.command.clone(), c.state)).collect::<Vec<_>>();
-        assert_eq!(states(&old.checks), [("npm test".to_string(), CheckState::Failed)]);
-        assert_eq!(states(&old.checks_overridden), [("npm test".to_string(), CheckState::Overridden)]);
-        let none: SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null,"check":null}"#).unwrap();
+        let states = |c: &[CheckInfo]| {
+            c.iter()
+                .map(|c| (c.command.clone(), c.state))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            states(&old.checks),
+            [("npm test".to_string(), CheckState::Failed)]
+        );
+        assert_eq!(
+            states(&old.checks_overridden),
+            [("npm test".to_string(), CheckState::Overridden)]
+        );
+        let none: SavedPane = serde_json::from_str(
+            r#"{"cwd":null,"cmd":null,"agent":null,"session":null,"check":null}"#,
+        )
+        .unwrap();
         assert!(none.checks.is_empty());
     }
 
     #[test]
     fn each_checkpoint_keeps_its_own_output_file() {
         let dir = scratch_dir();
-        let outputs = [tail(7, "build", CheckSlot::Latest, "built"), tail(7, "test", CheckSlot::Latest, "FAIL a"), tail(7, "test", CheckSlot::Overridden, "FAIL b")];
+        let outputs = [
+            tail(7, "build", CheckSlot::Latest, "built"),
+            tail(7, "test", CheckSlot::Latest, "FAIL a"),
+            tail(7, "test", CheckSlot::Overridden, "FAIL b"),
+        ];
         assert!(save_check_outputs(dir.path(), save_ticket(), &outputs, &[7]).is_empty());
-        assert_eq!(files_in(dir.path()), ["7-build-latest.txt", "7-test-latest.txt", "7-test-overridden.txt"]);
-        assert_eq!(read_check_output(dir.path(), 7, "build", CheckSlot::Latest).as_deref(), Some("built"));
-        assert_eq!(read_check_output(dir.path(), 7, "test", CheckSlot::Latest).as_deref(), Some("FAIL a"));
+        assert_eq!(
+            files_in(dir.path()),
+            [
+                "7-build-latest.txt",
+                "7-test-latest.txt",
+                "7-test-overridden.txt"
+            ]
+        );
+        assert_eq!(
+            read_check_output(dir.path(), 7, "build", CheckSlot::Latest).as_deref(),
+            Some("built")
+        );
+        assert_eq!(
+            read_check_output(dir.path(), 7, "test", CheckSlot::Latest).as_deref(),
+            Some("FAIL a")
+        );
     }
 
     #[test]
     fn a_name_cannot_lead_a_tail_out_of_its_folder() {
         let dir = scratch_dir();
-        let outputs = [tail(7, "../x/y", CheckSlot::Latest, "t"), tail(7, "", CheckSlot::Latest, "u")];
+        let outputs = [
+            tail(7, "../x/y", CheckSlot::Latest, "t"),
+            tail(7, "", CheckSlot::Latest, "u"),
+        ];
         assert!(save_check_outputs(dir.path(), save_ticket(), &outputs, &[7]).is_empty());
-        assert_eq!(files_in(dir.path()), [format!("7-{}-latest.txt", check_file_key("../x/y")), format!("7-{}-latest.txt", check_file_key(""))]);
-        assert!(check_file_key("../x/y").starts_with("___x_y-") && check_file_key("").starts_with("check-"));
+        assert_eq!(
+            files_in(dir.path()),
+            [
+                format!("7-{}-latest.txt", check_file_key("../x/y")),
+                format!("7-{}-latest.txt", check_file_key(""))
+            ]
+        );
+        assert!(
+            check_file_key("../x/y").starts_with("___x_y-")
+                && check_file_key("").starts_with("check-")
+        );
     }
 
     #[test]
     fn names_that_read_alike_keep_tails_of_their_own() {
         let dir = scratch_dir();
-        let outputs = [tail(7, "a-b", CheckSlot::Latest, "dash"), tail(7, "a.b", CheckSlot::Latest, "dot"), tail(7, "a_b", CheckSlot::Latest, "underscore"), tail(7, "check", CheckSlot::Latest, "named"), tail(7, "", CheckSlot::Latest, "unnamed")];
+        let outputs = [
+            tail(7, "a-b", CheckSlot::Latest, "dash"),
+            tail(7, "a.b", CheckSlot::Latest, "dot"),
+            tail(7, "a_b", CheckSlot::Latest, "underscore"),
+            tail(7, "check", CheckSlot::Latest, "named"),
+            tail(7, "", CheckSlot::Latest, "unnamed"),
+        ];
         assert!(save_check_outputs(dir.path(), save_ticket(), &outputs, &[7]).is_empty());
-        for (name, text) in [("a-b", "dash"), ("a.b", "dot"), ("a_b", "underscore"), ("check", "named"), ("", "unnamed")] {
-            assert_eq!(read_check_output(dir.path(), 7, name, CheckSlot::Latest).as_deref(), Some(text), "{name:?}");
+        for (name, text) in [
+            ("a-b", "dash"),
+            ("a.b", "dot"),
+            ("a_b", "underscore"),
+            ("check", "named"),
+            ("", "unnamed"),
+        ] {
+            assert_eq!(
+                read_check_output(dir.path(), 7, name, CheckSlot::Latest).as_deref(),
+                Some(text),
+                "{name:?}"
+            );
         }
     }
 
@@ -534,24 +962,64 @@ mod tests {
         let dir = scratch_dir();
         std::fs::create_dir_all(dir.path()).unwrap();
         std::fs::write(dir.path().join("7-latest.txt"), "old tail").unwrap();
-        assert_eq!(read_legacy_check_output(dir.path(), 7, CheckSlot::Latest).as_deref(), Some("old tail"));
-        assert_eq!(read_check_output(dir.path(), 7, "test", CheckSlot::Latest), None, "not a named checkpoint's");
-        assert!(save_check_outputs(dir.path(), save_ticket(), &[tail(7, "test", CheckSlot::Latest, "new tail")], &[7]).is_empty());
-        assert_eq!(files_in(dir.path()), ["7-test-latest.txt"], "the next save drops the old file");
-        assert_eq!(read_check_output(dir.path(), 7, "test", CheckSlot::Latest).as_deref(), Some("new tail"));
+        assert_eq!(
+            read_legacy_check_output(dir.path(), 7, CheckSlot::Latest).as_deref(),
+            Some("old tail")
+        );
+        assert_eq!(
+            read_check_output(dir.path(), 7, "test", CheckSlot::Latest),
+            None,
+            "not a named checkpoint's"
+        );
+        assert!(
+            save_check_outputs(
+                dir.path(),
+                save_ticket(),
+                &[tail(7, "test", CheckSlot::Latest, "new tail")],
+                &[7]
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            files_in(dir.path()),
+            ["7-test-latest.txt"],
+            "the next save drops the old file"
+        );
+        assert_eq!(
+            read_check_output(dir.path(), 7, "test", CheckSlot::Latest).as_deref(),
+            Some("new tail")
+        );
     }
 
     #[test]
     fn check_output_is_kept_per_slot_read_back_and_dropped_with_its_pane() {
         let dir = scratch_dir();
         let (kept, gone): (crate::protocol::TermId, crate::protocol::TermId) = (7, 8);
-        let outputs = [tail(kept, "test", CheckSlot::Latest, "FAIL a"), tail(kept, "test", CheckSlot::Overridden, "FAIL b"), tail(gone, "test", CheckSlot::Latest, "FAIL c")];
+        let outputs = [
+            tail(kept, "test", CheckSlot::Latest, "FAIL a"),
+            tail(kept, "test", CheckSlot::Overridden, "FAIL b"),
+            tail(gone, "test", CheckSlot::Latest, "FAIL c"),
+        ];
         assert!(save_check_outputs(dir.path(), save_ticket(), &outputs, &[kept, gone]).is_empty());
         assert!(save_check_outputs(dir.path(), save_ticket(), &[], &[kept]).is_empty());
-        assert_eq!(read_check_output(dir.path(), gone, "test", CheckSlot::Latest), None, "a closed pane's tail goes");
-        assert_eq!(read_check_output(dir.path(), kept, "test", CheckSlot::Overridden).as_deref(), Some("FAIL b"));
-        assert_eq!(read_check_output(dir.path(), kept, "test", CheckSlot::Latest).as_deref(), Some("FAIL a"));
-        assert_eq!(read_check_output(dir.path(), kept, "test", CheckSlot::Latest).as_deref(), Some("FAIL a"), "reading leaves it for the next restart");
+        assert_eq!(
+            read_check_output(dir.path(), gone, "test", CheckSlot::Latest),
+            None,
+            "a closed pane's tail goes"
+        );
+        assert_eq!(
+            read_check_output(dir.path(), kept, "test", CheckSlot::Overridden).as_deref(),
+            Some("FAIL b")
+        );
+        assert_eq!(
+            read_check_output(dir.path(), kept, "test", CheckSlot::Latest).as_deref(),
+            Some("FAIL a")
+        );
+        assert_eq!(
+            read_check_output(dir.path(), kept, "test", CheckSlot::Latest).as_deref(),
+            Some("FAIL a"),
+            "reading leaves it for the next restart"
+        );
     }
 
     #[test]
@@ -559,9 +1027,28 @@ mod tests {
         let dir = scratch_dir();
         let term: crate::protocol::TermId = 3;
         let (old, new) = (save_ticket(), save_ticket());
-        assert!(save_check_outputs(dir.path(), new, &[tail(term, "test", CheckSlot::Latest, "newer")], &[term]).is_empty());
-        assert!(save_check_outputs(dir.path(), old, &[tail(term, "test", CheckSlot::Latest, "older")], &[term]).is_empty());
-        assert_eq!(read_check_output(dir.path(), term, "test", CheckSlot::Latest).as_deref(), Some("newer"));
+        assert!(
+            save_check_outputs(
+                dir.path(),
+                new,
+                &[tail(term, "test", CheckSlot::Latest, "newer")],
+                &[term]
+            )
+            .is_empty()
+        );
+        assert!(
+            save_check_outputs(
+                dir.path(),
+                old,
+                &[tail(term, "test", CheckSlot::Latest, "older")],
+                &[term]
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            read_check_output(dir.path(), term, "test", CheckSlot::Latest).as_deref(),
+            Some("newer")
+        );
     }
 
     #[test]
@@ -570,7 +1057,15 @@ mod tests {
         std::fs::create_dir_all(dir.path()).unwrap();
         let blocker = dir.path().join("not-a-folder");
         std::fs::write(&blocker, "x").unwrap();
-        let failed = save_check_outputs(&blocker, save_ticket(), &[tail(4, "test", CheckSlot::Latest, "t"), tail(5, "test", CheckSlot::Overridden, "u")], &[4, 5]);
+        let failed = save_check_outputs(
+            &blocker,
+            save_ticket(),
+            &[
+                tail(4, "test", CheckSlot::Latest, "t"),
+                tail(5, "test", CheckSlot::Overridden, "u"),
+            ],
+            &[4, 5],
+        );
         assert_eq!(failed, [4, 5]);
     }
 
@@ -579,15 +1074,36 @@ mod tests {
         let (a, b) = (scratch_dir(), scratch_dir());
         let term: crate::protocol::TermId = 6;
         let (old, new) = (save_ticket(), save_ticket());
-        assert!(save_check_outputs(a.path(), new, &[tail(term, "test", CheckSlot::Latest, "a")], &[term]).is_empty());
-        assert!(save_check_outputs(b.path(), old, &[tail(term, "test", CheckSlot::Latest, "b")], &[term]).is_empty());
-        assert_eq!(read_check_output(b.path(), term, "test", CheckSlot::Latest).as_deref(), Some("b"));
+        assert!(
+            save_check_outputs(
+                a.path(),
+                new,
+                &[tail(term, "test", CheckSlot::Latest, "a")],
+                &[term]
+            )
+            .is_empty()
+        );
+        assert!(
+            save_check_outputs(
+                b.path(),
+                old,
+                &[tail(term, "test", CheckSlot::Latest, "b")],
+                &[term]
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            read_check_output(b.path(), term, "test", CheckSlot::Latest).as_deref(),
+            Some("b")
+        );
     }
 
     #[test]
     fn sessions_saved_with_workflow_runs_still_restore_the_workspace() {
-        let saved: Saved = serde_json::from_str(r#"{"workflows":[{"id":7}],"workspaces":[],"active":0,"made_worktrees":[]}"#)
-            .expect("unknown legacy workflow data is ignored");
+        let saved: Saved = serde_json::from_str(
+            r#"{"workflows":[{"id":7}],"workspaces":[],"active":0,"made_worktrees":[]}"#,
+        )
+        .expect("unknown legacy workflow data is ignored");
         assert!(saved.workspaces.is_empty());
     }
 }

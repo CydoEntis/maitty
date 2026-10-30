@@ -12,7 +12,11 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 /// Is `pid` inside the process tree under `ancestor`? Walks up the parents.
 /// `Some(true)` with the pids passed (to trust next time), `Some(false)` when the walk reached
 /// the top without meeting it, `None` when it can't tell (a process already exited).
-pub fn descends_from(pid: u32, ancestor: u32, known: &std::collections::HashSet<u32>) -> (Option<bool>, Vec<u32>) {
+pub fn descends_from(
+    pid: u32,
+    ancestor: u32,
+    known: &std::collections::HashSet<u32>,
+) -> (Option<bool>, Vec<u32>) {
     let mut sys = System::new();
     let mut chain = Vec::new();
     let mut cur = pid;
@@ -22,8 +26,14 @@ pub fn descends_from(pid: u32, ancestor: u32, known: &std::collections::HashSet<
         }
         chain.push(cur);
         let p = Pid::from_u32(cur);
-        sys.refresh_processes_specifics(ProcessesToUpdate::Some(&[p]), true, ProcessRefreshKind::nothing());
-        let Some(proc_) = sys.process(p) else { return (None, chain) };
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[p]),
+            true,
+            ProcessRefreshKind::nothing(),
+        );
+        let Some(proc_) = sys.process(p) else {
+            return (None, chain);
+        };
         match proc_.parent() {
             Some(parent) if parent.as_u32() != cur && parent.as_u32() != 0 => cur = parent.as_u32(),
             _ => return (Some(false), chain),
@@ -63,7 +73,11 @@ pub struct Found {
 /// and command line. Slow (reads the process table): not for every tick.
 pub fn leaf_program(root: u32) -> Option<(String, Vec<String>)> {
     let mut sys = System::new();
-    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always));
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
+    );
     let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
     for (pid, p) in sys.processes() {
         if let Some(parent) = p.parent() {
@@ -91,7 +105,17 @@ pub fn leaf_program(root: u32) -> Option<(String, Vec<String>)> {
     }
     // The shallowest non-shell program is what you started (its helpers are deeper); fall
     // back to the deepest.
-    let shells = ["pwsh", "powershell", "cmd", "bash", "zsh", "fish", "nu", "sh", "dash"];
+    let shells = [
+        "pwsh",
+        "powershell",
+        "cmd",
+        "bash",
+        "zsh",
+        "fish",
+        "nu",
+        "sh",
+        "dash",
+    ];
     let pick = queue
         .iter()
         .filter(|(_, d)| *d > 0)
@@ -103,7 +127,13 @@ pub fn leaf_program(root: u32) -> Option<(String, Vec<String>)> {
         .map(|p| p.pid())
         .or(best.map(|b| b.2))?;
     let p = sys.process(pick)?;
-    Some((stem(p.name()), p.cmd().iter().map(|a| a.to_string_lossy().into_owned()).collect()))
+    Some((
+        stem(p.name()),
+        p.cmd()
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect(),
+    ))
 }
 
 /// Programs that put the pane on another machine.
@@ -113,7 +143,10 @@ const REMOTE_CLIENTS: &[&str] = &["ssh", "mosh", "mosh-client", "autossh", "et"]
 /// (or an option's value), without `user@` or `ssh://`.
 pub fn remote_host(args: &[String]) -> Option<String> {
     // ssh options that take a value.
-    const WITH_VALUE: &[&str] = &["-b", "-B", "-c", "-D", "-E", "-e", "-F", "-I", "-i", "-J", "-L", "-l", "-m", "-O", "-o", "-p", "-Q", "-R", "-S", "-W", "-w", "--ssh", "--port"];
+    const WITH_VALUE: &[&str] = &[
+        "-b", "-B", "-c", "-D", "-E", "-e", "-F", "-I", "-i", "-J", "-L", "-l", "-m", "-O", "-o",
+        "-p", "-Q", "-R", "-S", "-W", "-w", "--ssh", "--port",
+    ];
     let mut it = args.iter().skip(1);
     while let Some(a) = it.next() {
         if a == "--" {
@@ -154,7 +187,11 @@ pub fn start(shared: Arc<Mutex<Shared>>, tx: mpsc::Sender<Ev>) {
                     sys.refresh_processes_specifics(
                         ProcessesToUpdate::All,
                         true,
-                        ProcessRefreshKind::nothing().with_cmd(UpdateKind::OnlyIfNotSet).with_cwd(UpdateKind::Always).with_memory().with_cpu(),
+                        ProcessRefreshKind::nothing()
+                            .with_cmd(UpdateKind::OnlyIfNotSet)
+                            .with_cwd(UpdateKind::Always)
+                            .with_memory()
+                            .with_cpu(),
                     );
                     let found = scan(&sys, &roots, &agents);
                     if tx.blocking_send(Ev::Scan(found)).is_err() {
@@ -174,7 +211,9 @@ fn stem(name: &std::ffi::OsStr) -> String {
 
 fn scan(sys: &System, roots: &[(TermId, u32)], agents: &[CompiledAgent]) -> Vec<Found> {
     // A process's usage is a share of one core; a pane's is told as a share of them all.
-    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f32;
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1) as f32;
     let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
     for (pid, p) in sys.processes() {
         if let Some(parent) = p.parent() {
@@ -202,8 +241,13 @@ fn scan(sys: &System, roots: &[(TermId, u32)], agents: &[CompiledAgent]) -> Vec<
                     cpu += p.cpu_usage();
                     let name = stem(p.name());
                     if !IGNORED.contains(&name.as_str()) {
-                        if remote.is_none() && depth > 0 && REMOTE_CLIENTS.contains(&name.as_str()) {
-                            let args: Vec<String> = p.cmd().iter().map(|a| a.to_string_lossy().into_owned()).collect();
+                        if remote.is_none() && depth > 0 && REMOTE_CLIENTS.contains(&name.as_str())
+                        {
+                            let args: Vec<String> = p
+                                .cmd()
+                                .iter()
+                                .map(|a| a.to_string_lossy().into_owned())
+                                .collect();
                             remote = remote_host(&args);
                         }
                         if agent.is_none() && depth > 0 {
@@ -224,21 +268,43 @@ fn scan(sys: &System, roots: &[(TermId, u32)], agents: &[CompiledAgent]) -> Vec<
                     }
                 }
             }
-            let cwd = sys.process(root).and_then(|p| p.cwd()).map(|p| p.to_path_buf());
-            Found { term, process: deepest.map(|d| d.2).unwrap_or_default(), agent, cwd, agent_cwd, mem, cpu: cpu / cores, remote }
+            let cwd = sys
+                .process(root)
+                .and_then(|p| p.cwd())
+                .map(|p| p.to_path_buf());
+            Found {
+                term,
+                process: deepest.map(|d| d.2).unwrap_or_default(),
+                agent,
+                cwd,
+                agent_cwd,
+                mem,
+                cpu: cpu / cores,
+                remote,
+            }
         })
         .collect()
 }
 
 fn match_agent(name: &str, cmd: &[std::ffi::OsString], agents: &[CompiledAgent]) -> Option<String> {
-    if let Some(a) = agents.iter().find(|a| a.process.iter().any(|p| p == name)
-        || (a.builtin_process && a.name == "muse" && name.strip_prefix("muse-bin-").is_some_and(|v| v.starts_with(|c: char| c.is_ascii_digit())))) {
+    if let Some(a) = agents.iter().find(|a| {
+        a.process.iter().any(|p| p == name)
+            || (a.builtin_process
+                && a.name == "muse"
+                && name
+                    .strip_prefix("muse-bin-")
+                    .is_some_and(|v| v.starts_with(|c: char| c.is_ascii_digit())))
+    }) {
         return Some(a.name.clone());
     }
     if agents.iter().all(|a| a.cmdline.is_empty()) || cmd.is_empty() {
         return None;
     }
-    let line = cmd.iter().map(|s| s.to_string_lossy()).collect::<Vec<_>>().join(" ");
+    let line = cmd
+        .iter()
+        .map(|s| s.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
     agents
         .iter()
         .find(|a| {
@@ -247,9 +313,33 @@ fn match_agent(name: &str, cmd: &[std::ffi::OsString], agents: &[CompiledAgent])
             }
             entrypoint(name, cmd).is_some_and(|entry| {
                 let entry = entry.replace('\\', "/").to_ascii_lowercase();
-                a.cmdline.iter().any(|c| entry.contains(&c.replace('\\', "/").to_ascii_lowercase()))
-                    && ["/cli.js", "/cli.mjs", "/cli", "/codex.js", "/bin.js", "/index.js", "/letta.js", "/main.py", "/main.mjs", "/opencode", "/opencode.exe", "/amp", "/auggie", "/grok", "/aider", "/hermes", "/hermes-agent", "/cline", "/cline.exe", "/.cline"]
-                        .iter().any(|suffix| entry.ends_with(suffix))
+                a.cmdline
+                    .iter()
+                    .any(|c| entry.contains(&c.replace('\\', "/").to_ascii_lowercase()))
+                    && [
+                        "/cli.js",
+                        "/cli.mjs",
+                        "/cli",
+                        "/codex.js",
+                        "/bin.js",
+                        "/index.js",
+                        "/letta.js",
+                        "/main.py",
+                        "/main.mjs",
+                        "/opencode",
+                        "/opencode.exe",
+                        "/amp",
+                        "/auggie",
+                        "/grok",
+                        "/aider",
+                        "/hermes",
+                        "/hermes-agent",
+                        "/cline",
+                        "/cline.exe",
+                        "/.cline",
+                    ]
+                    .iter()
+                    .any(|suffix| entry.ends_with(suffix))
             })
         })
         .map(|a| a.name.clone())
@@ -258,16 +348,42 @@ fn match_agent(name: &str, cmd: &[std::ffi::OsString], agents: &[CompiledAgent])
 /// Inspect only the interpreter's executed file. Search and eval arguments often quote
 /// agent package names while inspecting another session.
 fn entrypoint<'a>(name: &str, cmd: &'a [std::ffi::OsString]) -> Option<std::borrow::Cow<'a, str>> {
-    if !["node", "nodejs", "bun", "deno", "python", "python3", "python3.11", "python3.12", "python3.13", "python3.14"].contains(&name) {
+    if ![
+        "node",
+        "nodejs",
+        "bun",
+        "deno",
+        "python",
+        "python3",
+        "python3.11",
+        "python3.12",
+        "python3.13",
+        "python3.14",
+    ]
+    .contains(&name)
+    {
         return None;
     }
     for arg in cmd.iter().skip(1) {
         let arg = arg.to_string_lossy();
-        if ["-e", "--eval", "-p", "--print", "-c", "-m", "--test", "test"].contains(&arg.as_ref()) {
+        if [
+            "-e", "--eval", "-p", "--print", "-c", "-m", "--test", "test",
+        ]
+        .contains(&arg.as_ref())
+        {
             return None;
         }
         if arg.starts_with('-') {
-            if ["-r", "--require", "--import", "--loader", "--experimental-loader", "--inspect-port"].contains(&arg.as_ref()) {
+            if [
+                "-r",
+                "--require",
+                "--import",
+                "--loader",
+                "--experimental-loader",
+                "--inspect-port",
+            ]
+            .contains(&arg.as_ref())
+            {
                 return None;
             }
             continue;
@@ -306,17 +422,32 @@ mod remote_tests {
     use super::remote_host;
 
     fn host(line: &str) -> Option<String> {
-        remote_host(&line.split_whitespace().map(String::from).collect::<Vec<_>>())
+        remote_host(
+            &line
+                .split_whitespace()
+                .map(String::from)
+                .collect::<Vec<_>>(),
+        )
     }
 
     #[test]
     fn the_machine_an_ssh_command_reaches() {
         assert_eq!(host("ssh build-box").as_deref(), Some("build-box"));
         assert_eq!(host("ssh vox@10.0.0.4").as_deref(), Some("10.0.0.4"));
-        assert_eq!(host("ssh -p 2222 -i ~/.ssh/key me@pi.local uptime").as_deref(), Some("pi.local"), "options and their values are skipped");
-        assert_eq!(host("ssh -A -o StrictHostKeyChecking=no gpu").as_deref(), Some("gpu"));
+        assert_eq!(
+            host("ssh -p 2222 -i ~/.ssh/key me@pi.local uptime").as_deref(),
+            Some("pi.local"),
+            "options and their values are skipped"
+        );
+        assert_eq!(
+            host("ssh -A -o StrictHostKeyChecking=no gpu").as_deref(),
+            Some("gpu")
+        );
         assert_eq!(host("ssh ssh://me@host:22").as_deref(), Some("host"));
-        assert_eq!(host("mosh --ssh=ssh -p 22 me@remote").as_deref(), Some("remote"));
+        assert_eq!(
+            host("mosh --ssh=ssh -p 22 me@remote").as_deref(),
+            Some("remote")
+        );
         assert_eq!(host("ssh -V"), None);
     }
 }
@@ -329,17 +460,36 @@ mod agent_tests {
         assert_eq!(agents.len(), 29);
         for agent in &agents {
             let process = &agent.process[0];
-            assert_eq!(super::match_agent(process, &[], &agents).as_deref(), Some(agent.name.as_str()));
+            assert_eq!(
+                super::match_agent(process, &[], &agents).as_deref(),
+                Some(agent.name.as_str())
+            );
         }
         for process in ["muse-bin-0.9.3", "muse-bin-1"] {
-            assert_eq!(super::match_agent(process, &[], &agents).as_deref(), Some("muse"));
+            assert_eq!(
+                super::match_agent(process, &[], &agents).as_deref(),
+                Some("muse")
+            );
         }
         for (name, args) in [
             ("rg", vec!["rg", "@openai/codex"]),
-            ("powershell", vec!["powershell", "-Command", "node /npm/@openai/codex/bin/cli.js"]),
+            (
+                "powershell",
+                vec![
+                    "powershell",
+                    "-Command",
+                    "node /npm/@openai/codex/bin/cli.js",
+                ],
+            ),
             ("node", vec!["node", "-e", "/npm/@openai/codex/bin/cli.js"]),
-            ("node", vec!["node", "--test", "/npm/@openai/codex/bin/cli.js"]),
-            ("node", vec!["node", "inspect.js", "/npm/@openai/codex/bin/cli.js"]),
+            (
+                "node",
+                vec!["node", "--test", "/npm/@openai/codex/bin/cli.js"],
+            ),
+            (
+                "node",
+                vec!["node", "inspect.js", "/npm/@openai/codex/bin/cli.js"],
+            ),
             ("node", vec!["node", "/npm/@openai/codex/cli.test.js"]),
         ] {
             let cmd = args.into_iter().map(Into::into).collect::<Vec<_>>();
@@ -350,12 +500,26 @@ mod agent_tests {
     #[test]
     fn recognizes_current_pi_and_deepseek_node_packages() {
         let agents = crate::config::Config::default().agent_defs();
-        for (package, expected) in [("@earendil-works/pi-coding-agent/dist/bundle/cli.js", "pi"), ("@mariozechner/pi-coding-agent/dist/cli.js", "pi"), ("@deepseek-ai/dsh/lib/bin.js", "deepseek"), ("opencode-ai/bin/opencode", "opencode"),
-            ("@openai/codex/bin/codex.js", "codex"), ("@cline/cli-windows-x64/bin/cline.exe", "cline"),
-            ("@oh-my-pi/pi-coding-agent/dist/cli.js", "omp"), ("mastracode/dist/cli.js", "mastracode"),
-            ("@moonshot-ai/kimi-code/dist/main.mjs", "kimi"), ("@letta-ai/letta-code/letta.js", "letta")] {
-            let cmd = ["node".into(), format!("C:/npm/node_modules/{package}").into()];
-            assert_eq!(super::match_agent("node", &cmd, &agents).as_deref(), Some(expected));
+        for (package, expected) in [
+            ("@earendil-works/pi-coding-agent/dist/bundle/cli.js", "pi"),
+            ("@mariozechner/pi-coding-agent/dist/cli.js", "pi"),
+            ("@deepseek-ai/dsh/lib/bin.js", "deepseek"),
+            ("opencode-ai/bin/opencode", "opencode"),
+            ("@openai/codex/bin/codex.js", "codex"),
+            ("@cline/cli-windows-x64/bin/cline.exe", "cline"),
+            ("@oh-my-pi/pi-coding-agent/dist/cli.js", "omp"),
+            ("mastracode/dist/cli.js", "mastracode"),
+            ("@moonshot-ai/kimi-code/dist/main.mjs", "kimi"),
+            ("@letta-ai/letta-code/letta.js", "letta"),
+        ] {
+            let cmd = [
+                "node".into(),
+                format!("C:/npm/node_modules/{package}").into(),
+            ];
+            assert_eq!(
+                super::match_agent("node", &cmd, &agents).as_deref(),
+                Some(expected)
+            );
         }
     }
 }

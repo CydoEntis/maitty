@@ -1,0 +1,9 @@
+{
+  "id": 1,
+  "result": {
+    "codexHome": "/synthetic/codex-home",
+    "platformFamily": "unix",
+    "platformOs": "linux",
+    "userAgent": "synthetic-contract-test/0.164.0"
+  }
+}

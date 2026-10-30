@@ -56,7 +56,12 @@ fn local_offset(_unix: u64) -> i64 {
         return 0;
     }
     // Bias is minutes to add to local time to get UTC.
-    let bias = tz.Bias + if id == TIME_ZONE_ID_DAYLIGHT { tz.DaylightBias } else { tz.StandardBias };
+    let bias = tz.Bias
+        + if id == TIME_ZONE_ID_DAYLIGHT {
+            tz.DaylightBias
+        } else {
+            tz.StandardBias
+        };
     -i64::from(bias) * 60
 }
 
@@ -79,7 +84,11 @@ mod tests {
         assert_eq!(time_of_day(AT, 2 * 3600), (16, 22, 5));
         assert_eq!(time_of_day(AT, -5 * 3600 - 1800), (8, 52, 5));
         assert_eq!(time_of_day(AT, 10 * 3600), (0, 22, 5), "past midnight east");
-        assert_eq!(time_of_day(AT - 15 * 3600, -3600), (22, 22, 5), "before midnight west");
+        assert_eq!(
+            time_of_day(AT - 15 * 3600, -3600),
+            (22, 22, 5),
+            "before midnight west"
+        );
         assert_eq!(time_of_day(0, -3600), (23, 0, 0), "before the epoch's day");
     }
 
@@ -87,7 +96,13 @@ mod tests {
     fn local_times_are_padded_clock_faces() {
         let (hm, hms) = (local_hm(AT), local_hms(AT));
         assert!(hms.starts_with(&hm), "{hm} / {hms}");
-        let digits = |s: &str| s.split(':').all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_digit()));
-        assert!(hm.len() == 5 && hms.len() == 8 && digits(&hm) && digits(&hms), "{hm} / {hms}");
+        let digits = |s: &str| {
+            s.split(':')
+                .all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_digit()))
+        };
+        assert!(
+            hm.len() == 5 && hms.len() == 8 && digits(&hm) && digits(&hms),
+            "{hm} / {hms}"
+        );
     }
 }

@@ -23,7 +23,11 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     app.pane_frames.clear();
     let area = f.area();
     let hairline = super::screen::Look::of(&app.cfg.ui).hairline;
-    let t = if hairline { super::screen::flat_theme(&app.theme) } else { app.theme.clone() };
+    let t = if hairline {
+        super::screen::flat_theme(&app.theme)
+    } else {
+        app.theme.clone()
+    };
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
     super::screen::set_round(app.cfg.ui.rounding().caps());
     super::screen::set_plain(hairline.then_some(&t));
@@ -37,7 +41,10 @@ pub fn draw(app: &mut App, f: &mut Frame) {
         use std::io::Write;
         let _ = write!(std::io::stdout(), "]11;#{r:02x}{g:02x}{b:02x}");
         app.osc_bg = Some(t.bg);
-    } else if (terminal_bg || !matches!(t.bg, Color::Rgb(..))) && app.osc_bg.is_some() && !cfg!(test) {
+    } else if (terminal_bg || !matches!(t.bg, Color::Rgb(..)))
+        && app.osc_bg.is_some()
+        && !cfg!(test)
+    {
         // Switched to the terminal's own background mid-run: hand its colour back now, not
         // only at exit.
         use std::io::Write;
@@ -51,7 +58,16 @@ pub fn draw(app: &mut App, f: &mut Frame) {
         super::design::fill(buf, area, t.bg);
         let msg = "make the window bigger";
         let x = area.x + area.width.saturating_sub(msg.width() as u16) / 2;
-        super::design::put(buf, x, area.y + area.height / 2, &[super::design::seg(msg, Style::default().fg(t.muted).bg(t.bg))], area.right());
+        super::design::put(
+            buf,
+            x,
+            area.y + area.height / 2,
+            &[super::design::seg(
+                msg,
+                Style::default().fg(t.muted).bg(t.bg),
+            )],
+            area.right(),
+        );
         return;
     }
     if app.splash {
@@ -75,7 +91,19 @@ const HOVER_TINT: f32 = 0.10;
 /// (they light their own line).
 fn tints(h: &super::Hit) -> bool {
     use super::screen::ScreenHit as S;
-    !matches!(h, super::Hit::Pane(_) | super::Hit::Screen(S::Noop | S::SideFocus | S::SettingsBody | S::Divider(_) | S::SideEdge | S::SheetEdge | S::ScrollBar(_)))
+    !matches!(
+        h,
+        super::Hit::Pane(_)
+            | super::Hit::Screen(
+                S::Noop
+                    | S::SideFocus
+                    | S::SettingsBody
+                    | S::Divider(_)
+                    | S::SideEdge
+                    | S::SheetEdge
+                    | S::ScrollBar(_)
+            )
+    )
 }
 
 /// Tint the topmost clickable region under the pointer, the one a click there would hit, once:
@@ -84,7 +112,9 @@ fn tints(h: &super::Hit) -> bool {
 /// the room overlays draw in) is ground, not a control.
 fn tint_hovered(app: &App, buf: &mut Buffer, t: &crate::theme::Theme) {
     let Some(at) = app.hover else { return };
-    let Some((r, h)) = app.hover_hit(at) else { return };
+    let Some((r, h)) = app.hover_hit(at) else {
+        return;
+    };
     let backdrop = *r == buf.area || *r == super::screen::above_bar(app, buf.area);
     if !tints(h) || backdrop {
         return;
@@ -95,7 +125,8 @@ fn tint_hovered(app: &App, buf: &mut Buffer, t: &crate::theme::Theme) {
 /// Lay the pointer's tint over `r`, its ends rounded like every other shape when that is on.
 pub(super) fn tint(buf: &mut Buffer, r: Rect, t: &crate::theme::Theme) {
     let r = r.intersection(buf.area);
-    let lit = |c: Color| crate::theme::mix(if c == Color::Reset { t.bg } else { c }, t.text, HOVER_TINT);
+    let lit =
+        |c: Color| crate::theme::mix(if c == Color::Reset { t.bg } else { c }, t.text, HOVER_TINT);
     let behind = super::screen::ends_behind(buf, r);
     for y in r.top()..r.bottom() {
         for x in r.left()..r.right() {
@@ -172,7 +203,9 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let np = np.clone();
             super::screen::draw_new_pane(app, f, area, &t, &np);
         }
-        Mode::ScreenSettings(_) => super::screen::draw_settings_modal(app, f.buffer_mut(), area, &t),
+        Mode::ScreenSettings(_) => {
+            super::screen::draw_settings_modal(app, f.buffer_mut(), area, &t)
+        }
         Mode::Approve(a) => {
             let a = (**a).clone();
             super::screen::draw_approve(app, f.buffer_mut(), area, &t, &a);
@@ -190,14 +223,25 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             super::spinners::draw(app, f, area, &t, &view);
         }
         Mode::Prompt { kind, input } => {
-            let (label, input, confirm) = (kind.label().to_string(), input.clone(), kind.is_confirm());
+            let (label, input, confirm) =
+                (kind.label().to_string(), input.clone(), kind.is_confirm());
             draw_prompt(app, f, area, &t, &label, &input, confirm)
         }
         Mode::RenameTab(tab) => {
             let name = tab.name.clone();
-            draw_prompt(app, f, area, &t, "Rename session (empty: automatic)", &name, false);
+            draw_prompt(
+                app,
+                f,
+                area,
+                &t,
+                "Rename session (empty: automatic)",
+                &name,
+                false,
+            );
         }
-        Mode::Worktrees { items, query, sel, .. } => {
+        Mode::Worktrees {
+            items, query, sel, ..
+        } => {
             let rows = app.worktree_rows(items.as_deref(), query);
             let (loading, query, sel) = (items.is_none(), query.clone(), *sel);
             draw_worktrees(app, f, area, &t, &rows, &query, sel, loading);
@@ -216,7 +260,8 @@ pub fn blend(a: Color, b: Color, t: f32) -> Color {
     };
     match (rgb(a), rgb(b)) {
         (Some(x), Some(y)) => {
-            let m = |p: u8, q: u8| (p as f32 + (q as f32 - p as f32) * t.clamp(0.0, 1.0)).round() as u8;
+            let m =
+                |p: u8, q: u8| (p as f32 + (q as f32 - p as f32) * t.clamp(0.0, 1.0)).round() as u8;
             Color::Rgb(m(x.0, y.0), m(x.1, y.1), m(x.2, y.2))
         }
         _ if t >= 0.5 => b,
@@ -227,7 +272,11 @@ pub fn blend(a: Color, b: Color, t: f32) -> Color {
 /// Which working-spinner frame to show: it turns with motion on and rests on its
 /// third frame with motion off.
 fn working_step(app: &App, len: usize) -> usize {
-    if app.motion_on() { (app.spinner_frame() % len as u64) as usize } else { REST_FRAME.min(len - 1) }
+    if app.motion_on() {
+        (app.spinner_frame() % len as u64) as usize
+    } else {
+        REST_FRAME.min(len - 1)
+    }
 }
 
 /// The frame the working spinner holds without motion (the third, as the reference frames draw it).
@@ -237,7 +286,8 @@ pub(super) fn status_icon(app: &App, s: Status) -> String {
     let i = &app.cfg.icons;
     match s {
         Status::Working if !app.cfg.ui.spinner.is_empty() => {
-            let ascii = super::screen::glyphs::chosen(&app.cfg.ui.glyphs, i) == &super::screen::glyphs::ASCII;
+            let ascii = super::screen::glyphs::chosen(&app.cfg.ui.glyphs, i)
+                == &super::screen::glyphs::ASCII;
             if ascii && app.cfg.ui.spinner == crate::config::BARS_FRAMES {
                 crate::config::BARS_ASCII[working_step(app, crate::config::BARS_ASCII.len())].into()
             } else {
@@ -272,7 +322,9 @@ const SELECT_TINT: f32 = 0.38;
 
 /// Selected text: copy mode's, and the Files preview's.
 pub(super) fn select_style(t: &crate::theme::Theme) -> Style {
-    Style::default().bg(blend(t.bg, t.sky(), SELECT_TINT)).fg(t.strong)
+    Style::default()
+        .bg(blend(t.bg, t.sky(), SELECT_TINT))
+        .fg(t.strong)
 }
 
 /// `y copy · Esc cancel` as keycaps, for the end of a selection.
@@ -324,12 +376,14 @@ pub(super) fn render_copy(c: &Copy, area: Rect, buf: &mut Buffer, t: &crate::the
         if x < area.right() {
             if c.cur.0 == li && c.cur.1 >= n {
                 if let Some(px) = buf.cell_mut((x, y)) {
-                    px.set_symbol(" ").set_style(Style::default().add_modifier(Modifier::REVERSED));
+                    px.set_symbol(" ")
+                        .set_style(Style::default().add_modifier(Modifier::REVERSED));
                 }
             } else if c.selected(li, n)
-                && let Some(px) = buf.cell_mut((x, y)) {
-                    px.set_symbol(" ").set_style(select);
-                }
+                && let Some(px) = buf.cell_mut((x, y))
+            {
+                px.set_symbol(" ").set_style(select);
+            }
         }
     }
     // A mouse selection is copied when the button is released, so it needs no keys.
@@ -340,14 +394,21 @@ pub(super) fn render_copy(c: &Copy, area: Rect, buf: &mut Buffer, t: &crate::the
         put(buf, area.x + end, area.y + row, &hints, area.right());
     }
     let bar = if let Some(input) = &c.input {
-        Some((format!("{}{input}", if c.backward { "?" } else { "/" }), t.accent))
+        Some((
+            format!("{}{input}", if c.backward { "?" } else { "/" }),
+            t.accent,
+        ))
     } else {
         c.message.clone().map(|m| (m, t.blocked))
     };
     if let Some((text, color)) = bar
         && area.height > 0
     {
-        let r = Rect { y: area.bottom() - 1, height: 1, ..area };
+        let r = Rect {
+            y: area.bottom() - 1,
+            height: 1,
+            ..area
+        };
         Paragraph::new(Span::styled(text, Style::default().fg(t.bg).bg(color)))
             .style(Style::default().bg(color))
             .render(r, buf);
@@ -397,12 +458,7 @@ pub(super) fn terminal_surface_bg(screen: &vt100::Screen, default_bg: Color) -> 
     }
     let palette = PALETTE.get();
     let panel = PANEL.get();
-    let corners = [
-        (0, 0),
-        (0, cols - 1),
-        (rows - 1, 0),
-        (rows - 1, cols - 1),
-    ];
+    let corners = [(0, 0), (0, cols - 1), (rows - 1, 0), (rows - 1, cols - 1)];
     let backgrounds: [Option<Color>; 4] = corners.map(|(row, col)| {
         let cell = screen.cell(row, col)?;
         let mut bg = if cell.inverse() {
@@ -420,7 +476,12 @@ pub(super) fn terminal_surface_bg(screen: &vt100::Screen, default_bg: Color) -> 
     });
 
     for bg in backgrounds.iter().flatten() {
-        if backgrounds.iter().filter(|sample| sample.as_ref() == Some(bg)).count() >= MIN_MATCHING_CORNERS {
+        if backgrounds
+            .iter()
+            .filter(|sample| sample.as_ref() == Some(bg))
+            .count()
+            >= MIN_MATCHING_CORNERS
+        {
             return *bg;
         }
     }
@@ -429,13 +490,20 @@ pub(super) fn terminal_surface_bg(screen: &vt100::Screen, default_bg: Color) -> 
 
 /// Draw a terminal screen. Cells with the default background get `default_bg` (the
 /// workspace tint); programs' own background colours are left alone.
-pub(super) fn render_screen(screen: &vt100::Screen, area: Rect, buf: &mut Buffer, default_bg: Color) {
+pub(super) fn render_screen(
+    screen: &vt100::Screen,
+    area: Rect,
+    buf: &mut Buffer,
+    default_bg: Color,
+) {
     let (rows, cols) = screen.size();
     let pal = PALETTE.get();
     let panel = PANEL.get();
     for row in 0..area.height.min(rows) {
         for col in 0..area.width.min(cols) {
-            let Some(cell) = screen.cell(row, col) else { continue };
+            let Some(cell) = screen.cell(row, col) else {
+                continue;
+            };
             if cell.is_wide_continuation() {
                 continue;
             }
@@ -488,66 +556,169 @@ fn draw_worktrees(
 ) {
     use super::design::{put, seg};
     let buf = f.buffer_mut();
-    let (r, list, start) = super::screen::query_list(app, buf, area, t, "Worktrees", 84, rows.len().max(12), query, "pick one, or type a new branch", sel);
+    let (r, list, start) = super::screen::query_list(
+        app,
+        buf,
+        area,
+        t,
+        "Worktrees",
+        84,
+        rows.len().max(12),
+        query,
+        "pick one, or type a new branch",
+        sel,
+    );
     let c = Style::default().bg(t.card);
     if loading {
-        put(buf, list.x + 2, list.y, &[seg("reading worktrees…", c.fg(t.muted).add_modifier(Modifier::ITALIC))], list.right());
+        put(
+            buf,
+            list.x + 2,
+            list.y,
+            &[seg(
+                "reading worktrees…",
+                c.fg(t.muted).add_modifier(Modifier::ITALIC),
+            )],
+            list.right(),
+        );
     } else if rows.is_empty() {
-        put(buf, list.x + 2, list.y, &[seg("type a branch name to make a worktree", c.fg(t.muted).add_modifier(Modifier::ITALIC))], list.right());
+        put(
+            buf,
+            list.x + 2,
+            list.y,
+            &[seg(
+                "type a branch name to make a worktree",
+                c.fg(t.muted).add_modifier(Modifier::ITALIC),
+            )],
+            list.right(),
+        );
     }
-    for (i, row) in rows.iter().enumerate().skip(start).take(list.height as usize) {
+    for (i, row) in rows
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(list.height as usize)
+    {
         let y = list.y + (i - start) as u16;
-        let rr = Rect { y, height: 1, ..list };
+        let rr = Rect {
+            y,
+            height: 1,
+            ..list
+        };
         let on = i == sel;
         let st = super::screen::list_row(app, f.buffer_mut(), rr, on, t);
         let line = match row {
             super::WtRow::Existing(w) => {
-                let open = app.snap.workspaces.iter().any(|x| super::same_dir(&x.cwd, &w.path));
+                let open = app
+                    .snap
+                    .workspaces
+                    .iter()
+                    .any(|x| super::same_dir(&x.cwd, &w.path));
                 let mut l = vec![
-                    seg(if open { "● " } else { "○ " }, st.fg(if open { t.accent } else { t.muted })),
-                    seg(truncate(&w.branch, 28), st.fg(if on { t.strong } else { t.text }).add_modifier(Modifier::BOLD)),
+                    seg(
+                        if open { "● " } else { "○ " },
+                        st.fg(if open { t.accent } else { t.muted }),
+                    ),
+                    seg(
+                        truncate(&w.branch, 28),
+                        st.fg(if on { t.strong } else { t.text })
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ];
                 if w.main {
                     l.push(seg("  main", st.fg(t.accent)));
                 }
-                l.push(seg(format!("   {}", truncate(&w.path.display().to_string(), rr.width.saturating_sub(42) as usize)), st.fg(t.muted)));
+                l.push(seg(
+                    format!(
+                        "   {}",
+                        truncate(
+                            &w.path.display().to_string(),
+                            rr.width.saturating_sub(42) as usize
+                        )
+                    ),
+                    st.fg(t.muted),
+                ));
                 l
             }
-            super::WtRow::Create(text) => vec![seg("+ ", st.fg(t.done)), seg("new worktree ", st.fg(t.text)), seg(text.clone(), st.fg(t.done).add_modifier(Modifier::BOLD))],
+            super::WtRow::Create(text) => vec![
+                seg("+ ", st.fg(t.done)),
+                seg("new worktree ", st.fg(t.text)),
+                seg(text.clone(), st.fg(t.done).add_modifier(Modifier::BOLD)),
+            ],
         };
-        put(f.buffer_mut(), rr.x + 3, y, &line, rr.right().saturating_sub(1));
+        put(
+            f.buffer_mut(),
+            rr.x + 3,
+            y,
+            &line,
+            rr.right().saturating_sub(1),
+        );
     }
-    super::screen::panel_bar(f.buffer_mut(), r, t, &[("↑↓", "move"), ("Enter", "open"), ("Esc", "close")]);
+    super::screen::panel_bar(
+        f.buffer_mut(),
+        r,
+        t,
+        &[("↑↓", "move"), ("Enter", "open"), ("Esc", "close")],
+    );
 }
 
-fn draw_prompt(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme, label: &str, input: &str, confirm: bool) {
+fn draw_prompt(
+    app: &mut App,
+    f: &mut Frame,
+    area: Rect,
+    t: &crate::theme::Theme,
+    label: &str,
+    input: &str,
+    confirm: bool,
+) {
     use super::design::{put, seg};
     let buf = f.buffer_mut();
     super::screen::dim_all(app, buf, area, t);
     let title = label.trim().trim_end_matches(':');
     let mut chars = title.chars();
-    let title: String = chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default();
+    let title: String = chars
+        .next()
+        .map(|c| c.to_uppercase().collect::<String>() + chars.as_str())
+        .unwrap_or_default();
     let r = super::screen::panel(app, buf, area, 64, 7, &title, &[], t);
     // A one-line prompt needs no frame: the title bar and the field carry it. In Hairline its
     // card is the ground, so only the line box shows where it is: that stays.
     if !super::screen::plain_on() {
         for y in r.y + 1..r.bottom() {
             for x in [r.x, r.right() - 1] {
-                buf[(x, y)].set_symbol(" ").set_style(Style::default().bg(t.card));
+                buf[(x, y)]
+                    .set_symbol(" ")
+                    .set_style(Style::default().bg(t.card));
             }
         }
         for x in r.x..r.right() {
-            buf[(x, r.bottom() - 1)].set_symbol(" ").set_style(Style::default().bg(t.card));
+            buf[(x, r.bottom() - 1)]
+                .set_symbol(" ")
+                .set_style(Style::default().bg(t.card));
         }
     }
     if confirm {
         super::screen::panel_bar(buf, r, t, &[("y", "yes"), ("n", "no")]);
         return;
     }
-    let field = Rect { x: r.x + 2, y: r.y + 2, width: r.width.saturating_sub(4), height: 1 };
+    let field = Rect {
+        x: r.x + 2,
+        y: r.y + 2,
+        width: r.width.saturating_sub(4),
+        height: 1,
+    };
     super::screen::strip(buf, field, t.card2);
     let s2 = Style::default().bg(t.card2);
-    put(buf, field.x + 1, field.y, &[seg("› ", s2.fg(t.accent).add_modifier(Modifier::BOLD)), seg(input.to_string(), s2.fg(t.strong)), seg("█", s2.fg(t.accent))], field.right());
+    put(
+        buf,
+        field.x + 1,
+        field.y,
+        &[
+            seg("› ", s2.fg(t.accent).add_modifier(Modifier::BOLD)),
+            seg(input.to_string(), s2.fg(t.strong)),
+            seg("█", s2.fg(t.accent)),
+        ],
+        field.right(),
+    );
     super::screen::panel_bar(buf, r, t, &[("Enter", "save"), ("Esc", "cancel")]);
 }
 
@@ -561,7 +732,13 @@ mod tests {
     fn the_terminal_palette_is_per_thread() {
         let red = Color::Rgb(0xe0, 0x50, 0x50);
         set_palette(Some([red; 7]), None);
-        std::thread::spawn(|| set_palette(None, None)).join().unwrap();
-        assert_eq!(themed(Color::Indexed(1), &PALETTE.get()), red, "another thread's palette leaked into this one");
+        std::thread::spawn(|| set_palette(None, None))
+            .join()
+            .unwrap();
+        assert_eq!(
+            themed(Color::Indexed(1), &PALETTE.get()),
+            red,
+            "another thread's palette leaked into this one"
+        );
     }
 }

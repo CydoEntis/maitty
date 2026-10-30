@@ -4,7 +4,6 @@ use super::*;
 
 // ---- behaviour -----------------------------------------------------------------------------
 
-
 pub(in crate::client) use crate::gitfs::WT_NAMES;
 
 /// How long a new tab waits for its shell to arrive from the server, which takes moments; past
@@ -12,7 +11,6 @@ pub(in crate::client) use crate::gitfs::WT_NAMES;
 const NEW_TAB_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 impl App {
-
     /// Where a session that just got the focus shows: beside the one it was opened from, in
     /// a new tab, in the tab that already shows it, or in place of the one you were on.
     pub(in crate::client) fn screen_place(&mut self, f: TermId, prev: Option<TermId>) {
@@ -21,7 +19,10 @@ impl App {
             Some((p, _)) if p == f => None,
             Some((p, at)) => {
                 self.screen.pending_split = None;
-                if prev == Some(p) && at.elapsed().as_secs() < 20 && self.snap.terms.contains_key(&p) {
+                if prev == Some(p)
+                    && at.elapsed().as_secs() < 20
+                    && self.snap.terms.contains_key(&p)
+                {
                     Some(p)
                 } else {
                     self.screen.split_dir = None;
@@ -48,10 +49,19 @@ impl App {
         };
         if let Some(owner) = new_tab.filter(|o| *o != f) {
             take_out(&mut self.screen.tabs, f);
-            self.screen.tabs.push(ScreenTab { layout: Node::Leaf(f), focus: f, owner, used: 0, name: String::new() });
+            self.screen.tabs.push(ScreenTab {
+                layout: Node::Leaf(f),
+                focus: f,
+                owner,
+                used: 0,
+                name: String::new(),
+            });
             self.screen.tab = self.screen.tabs.len() - 1;
             // The daemon keeps whose tab it is, so a restart brings it back as that session's.
-            self.cmd(Command::SetTabOf { term: f, owner: Some(owner) });
+            self.cmd(Command::SetTabOf {
+                term: f,
+                owner: Some(owner),
+            });
             return;
         }
         if let Some(p) = beside {
@@ -59,20 +69,38 @@ impl App {
             let i = match self.screen.tabs.iter().position(|t| t.layout.contains(p)) {
                 Some(i) => i,
                 None => {
-                    self.screen.tabs.push(ScreenTab { layout: Node::Leaf(p), focus: p, owner: p, used: 0, name: String::new() });
+                    self.screen.tabs.push(ScreenTab {
+                        layout: Node::Leaf(p),
+                        focus: p,
+                        owner: p,
+                        used: 0,
+                        name: String::new(),
+                    });
                     self.screen.tabs.len() - 1
                 }
             };
             // Beside a wide one, under a tall one.
-            let wide = self.screen.leaf_rects.iter().find(|(id, _)| *id == p).is_none_or(|(_, r)| r.width >= r.height * 3);
-            let dir = self.screen.split_dir.take().unwrap_or(if wide { Dir::Right } else { Dir::Down });
+            let wide = self
+                .screen
+                .leaf_rects
+                .iter()
+                .find(|(id, _)| *id == p)
+                .is_none_or(|(_, r)| r.width >= r.height * 3);
+            let dir =
+                self.screen
+                    .split_dir
+                    .take()
+                    .unwrap_or(if wide { Dir::Right } else { Dir::Down });
             let tab = &mut self.screen.tabs[i];
             tab.layout.split(p, dir, f);
             tab.focus = f;
             let owner = tab.owner;
             self.screen.tab = i;
             if owner != f {
-                self.cmd(Command::SetTabOf { term: f, owner: Some(owner) });
+                self.cmd(Command::SetTabOf {
+                    term: f,
+                    owner: Some(owner),
+                });
             }
             return;
         }
@@ -85,8 +113,16 @@ impl App {
             return;
         }
         // A session with tabs: the one you were last on (unless you're already in one of them).
-        let here = self.screen.tabs.get(self.screen.tab).is_some_and(|t| t.owner == f && t.layout.contains(f));
-        if !here && let Some(i) = (0..self.screen.tabs.len()).filter(|i| self.screen.tabs[*i].owner == f).max_by_key(|i| self.screen.tabs[*i].used) {
+        let here = self
+            .screen
+            .tabs
+            .get(self.screen.tab)
+            .is_some_and(|t| t.owner == f && t.layout.contains(f));
+        if !here
+            && let Some(i) = (0..self.screen.tabs.len())
+                .filter(|i| self.screen.tabs[*i].owner == f)
+                .max_by_key(|i| self.screen.tabs[*i].used)
+        {
             self.screen.tab = i;
             let to = self.screen.tabs[i].focus;
             if to != f {
@@ -100,14 +136,21 @@ impl App {
             return;
         }
         if self.screen.tabs.is_empty() {
-            self.screen.tabs.push(ScreenTab { layout: Node::Leaf(f), focus: f, owner: f, used: 0, name: String::new() });
+            self.screen.tabs.push(ScreenTab {
+                layout: Node::Leaf(f),
+                focus: f,
+                owner: f,
+                used: 0,
+                name: String::new(),
+            });
             self.screen.tab = 0;
             return;
         }
         // The one you were on was closed: the rest of its split stays as it is, and the focus
         // goes to what's left there (not to whatever the server picked).
         let tab = &mut self.screen.tabs[self.screen.tab];
-        if let Some(gone) = prev.filter(|o| tab.layout.contains(*o) && !self.snap.terms.contains_key(o))
+        if let Some(gone) =
+            prev.filter(|o| tab.layout.contains(*o) && !self.snap.terms.contains_key(o))
             && tab.layout.leaves().len() > 1
             && let Some(rest) = tab.layout.clone().remove(gone)
         {
@@ -120,9 +163,22 @@ impl App {
         // Not shown anywhere: it shows on its own, full size. A view that's one session's only
         // tab with nothing beside it is reused (this one first); a split or another session's
         // tabs stay as they are (pick its row to get them back).
-        let lone = |tabs: &[ScreenTab], i: usize| tabs[i].layout.leaves().len() == 1 && tabs.iter().filter(|u| u.owner == tabs[i].owner).count() == 1;
-        let fresh = ScreenTab { layout: Node::Leaf(f), focus: f, owner: f, used: 0, name: String::new() };
-        let reuse = if lone(&self.screen.tabs, self.screen.tab) { Some(self.screen.tab) } else { (0..self.screen.tabs.len()).find(|i| lone(&self.screen.tabs, *i)) };
+        let lone = |tabs: &[ScreenTab], i: usize| {
+            tabs[i].layout.leaves().len() == 1
+                && tabs.iter().filter(|u| u.owner == tabs[i].owner).count() == 1
+        };
+        let fresh = ScreenTab {
+            layout: Node::Leaf(f),
+            focus: f,
+            owner: f,
+            used: 0,
+            name: String::new(),
+        };
+        let reuse = if lone(&self.screen.tabs, self.screen.tab) {
+            Some(self.screen.tab)
+        } else {
+            (0..self.screen.tabs.len()).find(|i| lone(&self.screen.tabs, *i))
+        };
         match reuse {
             Some(i) => {
                 self.screen.tabs[i] = fresh;
@@ -145,7 +201,12 @@ impl App {
             *pending = None;
             return None;
         }
-        let is_its_shell = !asked.known.contains(&f) && self.snap.terms.get(&f).is_some_and(|t| t.started_by.is_none());
+        let is_its_shell = !asked.known.contains(&f)
+            && self
+                .snap
+                .terms
+                .get(&f)
+                .is_some_and(|t| t.started_by.is_none());
         if !is_its_shell {
             return None;
         }
@@ -155,14 +216,20 @@ impl App {
     /// The tabs of the session you're on, in order: only its own, never another session's.
     /// Both the tab row and the number keys walk this list.
     pub(in crate::client) fn session_tabs(&self) -> Vec<usize> {
-        let Some(owner) = self.screen.tabs.get(self.screen.tab).map(|t| t.owner) else { return Vec::new() };
-        (0..self.screen.tabs.len()).filter(|i| self.screen.tabs[*i].owner == owner).collect()
+        let Some(owner) = self.screen.tabs.get(self.screen.tab).map(|t| t.owner) else {
+            return Vec::new();
+        };
+        (0..self.screen.tabs.len())
+            .filter(|i| self.screen.tabs[*i].owner == owner)
+            .collect()
     }
 
     /// Close a session's tab and what's in it (one of several: its last tab is the session,
     /// closed from the sidebar). With an agent in it, a second click within a few seconds.
     pub(in crate::client) fn close_tab(&mut self, i: usize) {
-        let Some(tab) = self.screen.tabs.get(i) else { return };
+        let Some(tab) = self.screen.tabs.get(i) else {
+            return;
+        };
         // Asked first, as closing a pane is.
         self.menu_act(crate::client::menu::Act::End(tab.layout.leaves()));
     }
@@ -171,7 +238,11 @@ impl App {
     /// now. The tab you're on stays the one you're on.
     pub(in crate::client) fn move_tab(&mut self, from: usize, to: usize) -> usize {
         let n = self.screen.tabs.len();
-        if from >= n || to >= n || from == to || self.screen.tabs[from].owner != self.screen.tabs[to].owner {
+        if from >= n
+            || to >= n
+            || from == to
+            || self.screen.tabs[from].owner != self.screen.tabs[to].owner
+        {
             return from;
         }
         let current = self.screen.tab;
@@ -194,11 +265,24 @@ impl App {
     /// server's tab follows when it holds both, so a restart keeps the new order. False when
     /// no tab here shows both.
     pub(in crate::client) fn swap_panes(&mut self, a: TermId, b: TermId) -> bool {
-        let Some(tab) = self.screen.tabs.iter_mut().find(|t| t.layout.contains(a) && t.layout.contains(b)) else { return false };
+        let Some(tab) = self
+            .screen
+            .tabs
+            .iter_mut()
+            .find(|t| t.layout.contains(a) && t.layout.contains(b))
+        else {
+            return false;
+        };
         if !tab.layout.swap(a, b) {
             return false;
         }
-        if self.snap.workspaces.iter().flat_map(|w| &w.tabs).any(|t| t.layout.contains(a) && t.layout.contains(b)) {
+        if self
+            .snap
+            .workspaces
+            .iter()
+            .flat_map(|w| &w.tabs)
+            .any(|t| t.layout.contains(a) && t.layout.contains(b))
+        {
             self.cmd(Command::SwapPanes { a, b });
         }
         self.dirty = true;
@@ -207,7 +291,14 @@ impl App {
 
     /// Stop showing `t` beside the others (it keeps running). False when it's on its own.
     pub(in crate::client) fn screen_unshow(&mut self, t: TermId) -> bool {
-        let Some(i) = self.screen.tabs.iter().position(|tab| tab.layout.contains(t)) else { return false };
+        let Some(i) = self
+            .screen
+            .tabs
+            .iter()
+            .position(|tab| tab.layout.contains(t))
+        else {
+            return false;
+        };
         let tab = &mut self.screen.tabs[i];
         if tab.layout.leaves().len() < 2 {
             return false;
@@ -223,7 +314,6 @@ impl App {
         true
     }
 
-
     /// Show a session: it becomes the focused one.
     pub(in crate::client) fn screen_focus(&mut self, term: TermId) {
         self.screen.show_own = Some(term);
@@ -234,34 +324,66 @@ impl App {
 
     /// Start a session in `cwd` running `cmd` (None: a shell), beside the focused one or
     /// on its own.
-    pub(in crate::client) fn screen_new_session(&mut self, cwd: PathBuf, cmd: Option<String>, beside: bool) {
+    pub(in crate::client) fn screen_new_session(
+        &mut self,
+        cwd: PathBuf,
+        cmd: Option<String>,
+        beside: bool,
+    ) {
         self.leave_shortcut_mode();
         self.screen_start_pane(cwd, cmd, beside);
     }
 
     /// Start a pane without touching shortcut mode: for one nobody asked for (the shell that
     /// replaces the last session closed), which must not end a mode the user is in.
-    pub(in crate::client) fn screen_start_pane(&mut self, cwd: PathBuf, cmd: Option<String>, beside: bool) {
+    pub(in crate::client) fn screen_start_pane(
+        &mut self,
+        cwd: PathBuf,
+        cmd: Option<String>,
+        beside: bool,
+    ) {
         if beside && let Some(f) = self.focused() {
             self.screen.pending_split = Some((f, Instant::now()));
         }
         self.screen.cursor = None;
         self.mode = Mode::Normal;
-        self.cmd(Command::NewWorkspace { cwd: Some(cwd), name: None, cmd });
+        self.cmd(Command::NewWorkspace {
+            cwd: Some(cwd),
+            name: None,
+            cmd,
+        });
     }
 
     /// A new worktree of a project running `cmd`: on `branch` if given (an existing one),
     /// else on a new branch with a generated name.
-    pub(in crate::client) fn screen_new_worktree(&mut self, proj: &Proj, cmd: Option<String>, beside: bool, branch: Option<String>) {
-        let taken: HashSet<String> = proj.wts.iter().flat_map(|w| [w.name.clone(), w.branch.clone()]).chain(proj.branches.iter().cloned()).collect();
-        let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as usize).unwrap_or(0);
+    pub(in crate::client) fn screen_new_worktree(
+        &mut self,
+        proj: &Proj,
+        cmd: Option<String>,
+        beside: bool,
+        branch: Option<String>,
+    ) {
+        let taken: HashSet<String> = proj
+            .wts
+            .iter()
+            .flat_map(|w| [w.name.clone(), w.branch.clone()])
+            .chain(proj.branches.iter().cloned())
+            .collect();
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as usize)
+            .unwrap_or(0);
         let branch = branch.unwrap_or_else(|| {
             (0..WT_NAMES.len())
                 .map(|i| WT_NAMES[(n + i) % WT_NAMES.len()].to_string())
                 .find(|b| !taken.contains(b))
                 .unwrap_or_else(|| format!("{}-{}", WT_NAMES[n % WT_NAMES.len()], n % 1000))
         });
-        let Some(ws) = self.active_ws().map(|w| w.id).or_else(|| self.snap.workspaces.first().map(|w| w.id)) else {
+        let Some(ws) = self
+            .active_ws()
+            .map(|w| w.id)
+            .or_else(|| self.snap.workspaces.first().map(|w| w.id))
+        else {
             self.notify("start something first".into(), true);
             return;
         };
@@ -270,11 +392,23 @@ impl App {
         }
         self.leave_shortcut_mode();
         self.notify(format!("new worktree {branch} in {}", proj.name), false);
-        self.cmd(Command::NewWorktree { ws, branch, base: None, cmd, split: None, from: Some(proj.path.clone()) });
+        self.cmd(Command::NewWorktree {
+            ws,
+            branch,
+            base: None,
+            cmd,
+            split: None,
+            from: Some(proj.path.clone()),
+        });
     }
 
     /// A new worktree running `cmd` (on `branch` if given), full screen.
-    pub(in crate::client) fn screen_start_worktree(&mut self, proj: &Proj, cmd: Option<String>, branch: Option<String>) {
+    pub(in crate::client) fn screen_start_worktree(
+        &mut self,
+        proj: &Proj,
+        cmd: Option<String>,
+        branch: Option<String>,
+    ) {
         self.screen_new_worktree(proj, cmd, false, branch);
     }
 
@@ -283,16 +417,26 @@ impl App {
         // Into a session either way, new or already running: you go there to type.
         self.leave_shortcut_mode();
         self.splash = false;
-        let root = crate::gitfs::head(&path).map(|h| h.main_root).unwrap_or_else(|| path.clone());
+        let root = crate::gitfs::head(&path)
+            .map(|h| h.main_root)
+            .unwrap_or_else(|| path.clone());
         let key = path_key(&root);
         let model = self.screen_model();
         let existing = model.iter().find(|p| p.key == key);
-        let found = existing.and_then(|p| p.sessions().min_by_key(|s| (rank(s.status), s.term)).map(|s| (p.name.clone(), s.term)));
+        let found = existing.and_then(|p| {
+            p.sessions()
+                .min_by_key(|s| (rank(s.status), s.key))
+                .map(|s| (p.name.clone(), s.key))
+        });
         let is_new = existing.is_none();
         self.screen.proj = Some(key.clone());
         match found {
             Some((name, term)) => {
-                self.screen_focus(term);
+                if let Some(id) = self.session_term(term) {
+                    self.screen_focus(id);
+                } else {
+                    self.screen_side_set(SideItem::Sess(term));
+                }
                 self.notify(format!("Switched to {name}"), false);
             }
             None => {
@@ -300,7 +444,13 @@ impl App {
                     self.screen.fresh.insert(key);
                 }
                 self.screen_new_session(root.clone(), None, false);
-                self.notify(format!("Opened {} with a shell; + New starts an agent", folder_name(&root)), false);
+                self.notify(
+                    format!(
+                        "Opened {} with a shell; + New starts an agent",
+                        folder_name(&root)
+                    ),
+                    false,
+                );
             }
         }
     }
@@ -319,15 +469,33 @@ impl App {
     /// The + New chooser, for the current project (or the sidebar cursor's).
     pub(in crate::client) fn screen_open_new_pane(&mut self, beside: bool) {
         let model = self.screen_model();
-        let key = self.screen.cursor.and_then(|c| model.iter().find(|p| p.sessions().any(|s| s.term == c)).map(|p| p.key.clone())).or(self.screen.proj.clone());
-        let p = model.iter().position(|p| Some(&p.key) == key.as_ref()).unwrap_or(0);
+        let key = self
+            .screen
+            .cursor
+            .and_then(|c| {
+                model
+                    .iter()
+                    .find(|p| p.sessions().any(|s| s.key == c))
+                    .map(|p| p.key.clone())
+            })
+            .or(self.screen.proj.clone());
+        let p = model
+            .iter()
+            .position(|p| Some(&p.key) == key.as_ref())
+            .unwrap_or(0);
         self.screen_new(p, beside);
     }
 
     pub(in crate::client) fn screen_settings(&mut self) {
         self.refresh_installed_version();
         self.screen.check_page = None;
-        self.mode = Mode::ScreenSettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        self.mode = Mode::ScreenSettings(Box::new(SView {
+            cat: 0,
+            sel: 0,
+            editing: None,
+            capturing: false,
+            scroll: 0,
+        }));
     }
 
     /// Move the sidebar cursor; bare keys then work on the sidebar until Esc or Enter.
@@ -336,7 +504,12 @@ impl App {
         if items.is_empty() {
             return;
         }
-        let cur = match (&self.screen.cursor_proj, self.screen.cursor.or(self.focused())) {
+        let cur = match (
+            &self.screen.cursor_proj,
+            self.screen
+                .cursor
+                .or(self.focused().map(|id| self.session_key(id))),
+        ) {
             (Some(k), _) => items.iter().position(|i| *i == SideItem::Proj(k.clone())),
             (None, Some(t)) => items.iter().position(|i| *i == SideItem::Sess(t)),
             _ => None,
@@ -359,7 +532,10 @@ impl App {
             (None, Some(t)) => items.iter().position(|i| *i == SideItem::Sess(t)),
             _ => None,
         }?;
-        items.get(cur + 1).or_else(|| cur.checked_sub(1).and_then(|i| items.get(i))).cloned()
+        items
+            .get(cur + 1)
+            .or_else(|| cur.checked_sub(1).and_then(|i| items.get(i)))
+            .cloned()
     }
 
     /// A confirm answered (`act` when yes): do it, and go back to the sidebar if it was
@@ -403,8 +579,14 @@ impl App {
                 self.screen.cursor_proj = None;
                 self.screen.cursor = Some(t);
                 // Resting on a finished agent counts as seeing it.
-                if self.snap.terms.get(&t).is_some_and(|i| i.status == Status::Done) {
-                    self.cmd(Command::MarkSeen { term: t });
+                if let Some(term) = self.session_term(t)
+                    && self
+                        .snap
+                        .terms
+                        .get(&term)
+                        .is_some_and(|i| i.status == Status::Done)
+                {
+                    self.cmd(Command::MarkSeen { term });
                 }
             }
         }
@@ -419,10 +601,18 @@ impl App {
     /// Fold or unfold a project (true: open it).
     /// A new colour for a project's +/− button, never the one it had.
     pub(in crate::client) fn pick_fold_color(&mut self, key: &str) {
-        let mut palette: Vec<Color> = self.cfg.ui.workspace_colors.iter().filter_map(|c| crate::theme::parse_color(c)).collect();
+        let mut palette: Vec<Color> = self
+            .cfg
+            .ui
+            .workspace_colors
+            .iter()
+            .filter_map(|c| crate::theme::parse_color(c))
+            .collect();
         let had = self.screen.fold_colors.get(key).copied();
         palette.retain(|c| Some(*c) != had);
-        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos() as usize);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.subsec_nanos() as usize);
         if let Some(c) = palette.get(nanos % palette.len().max(1)) {
             self.screen.fold_colors.insert(key.to_string(), *c);
         }
@@ -445,19 +635,22 @@ impl App {
 
     /// Actions that work differently in this layout. Returns true if handled.
     pub(in crate::client) fn screen_act(&mut self, a: &Action) -> bool {
-        let focused = self.focused();
+        let focused = self.selected_term();
         match a {
             Action::Settings => self.screen_settings(),
             Action::StartSession => self.screen_start_session(None),
             // A plain shell in the project's own folder (the repo itself, not a worktree).
             Action::ShellHere => {
                 let dir = self
-                    .screen
-                    .cursor
-                    .or(self.focused())
+                    .selected_term()
                     .and_then(|t| self.snap.terms.get(&t))
                     .map(|t| t.root.clone().unwrap_or_else(|| t.cwd.clone()))
-                    .or_else(|| self.screen_model().iter().find(|p| Some(&p.key) == self.screen.proj.as_ref()).map(|p| p.path.clone()))
+                    .or_else(|| {
+                        self.screen_model()
+                            .iter()
+                            .find(|p| Some(&p.key) == self.screen.proj.as_ref())
+                            .map(|p| p.path.clone())
+                    })
                     .unwrap_or_else(|| self.here_dir());
                 self.screen.cursor = None;
                 self.screen_new_session(dir, None, false);
@@ -465,7 +658,7 @@ impl App {
             // One place: what needs you on top, and type to go anywhere.
             Action::Message | Action::Why => {
                 let side = self.mode == Mode::Side || self.screen.cursor.is_some();
-                match self.screen.cursor.or(self.focused()) {
+                match self.selected_term() {
                     Some(term) if *a == Action::Message => self.start_compose(term, side, None),
                     Some(term) => self.mode = Mode::Why { term, side },
                     None => self.notify("no session to ask about".into(), true),
@@ -479,10 +672,14 @@ impl App {
                     self.jump_prompt(t, *a == Action::PrevPrompt);
                 }
             }
-            Action::Focus(d) => match focused.and_then(|f| crate::layout::neighbor(&self.screen.leaf_rects, f, *d)) {
+            Action::Focus(d) => match focused
+                .and_then(|f| crate::layout::neighbor(&self.screen.leaf_rects, f, *d))
+            {
                 Some(to) => self.cmd(Command::FocusPane { term: to }),
                 // Past the left edge: the sidebar.
-                None if *d == crate::layout::Dir::Left && !self.side_hidden => self.screen_side_move(0),
+                None if *d == crate::layout::Dir::Left && !self.side_hidden => {
+                    self.screen_side_move(0)
+                }
                 None => {}
             },
             Action::Swap(d) => {
@@ -499,7 +696,11 @@ impl App {
                 {
                     let i = shown.iter().position(|x| *x == f).unwrap_or(0);
                     let n = shown.len();
-                    let to = if *a == Action::FocusNext { shown[(i + 1) % n] } else { shown[(i + n - 1) % n] };
+                    let to = if *a == Action::FocusNext {
+                        shown[(i + 1) % n]
+                    } else {
+                        shown[(i + n - 1) % n]
+                    };
                     self.cmd(Command::FocusPane { term: to });
                 }
             }
@@ -553,17 +754,24 @@ impl App {
                 }
             }
             Action::RenameWorkspace => {
-                if let Some(t) = self.screen.cursor.or(focused) {
+                if let Some(t) = self.selected_term() {
                     self.menu_do(crate::client::menu::Act::RenamePane(t));
                 }
             }
-            Action::SplitRight | Action::SplitDown | Action::SplitLeft | Action::SplitUp | Action::Spawn(..) => {
+            Action::SplitRight
+            | Action::SplitDown
+            | Action::SplitLeft
+            | Action::SplitUp
+            | Action::Spawn(..) => {
                 self.screen.split_dir = Some(match a {
                     Action::SplitDown | Action::SplitUp => crate::layout::Dir::Down,
                     Action::Spawn(d, _) => *d,
                     _ => crate::layout::Dir::Right,
                 });
-                let cwd = focused.and_then(|f| self.snap.terms.get(&f)).map(|t| t.cwd.clone()).unwrap_or_else(|| self.here_dir());
+                let cwd = focused
+                    .and_then(|f| self.snap.terms.get(&f))
+                    .map(|t| t.cwd.clone())
+                    .unwrap_or_else(|| self.here_dir());
                 let cmd = match a {
                     Action::Spawn(_, c) => Some(c.clone()),
                     _ => None,
@@ -582,12 +790,20 @@ impl App {
             Action::Resize(d) => {
                 use crate::layout::Dir;
                 let grow = matches!(d, Dir::Right | Dir::Down);
-                let many = self.screen.tabs.get(self.screen.tab).is_some_and(|tab| tab.layout.leaves().len() > 1);
+                let many = self
+                    .screen
+                    .tabs
+                    .get(self.screen.tab)
+                    .is_some_and(|tab| tab.layout.leaves().len() > 1);
                 if let (true, Some(f)) = (many, focused) {
                     let tab = self.screen.tab;
                     self.screen.tabs[tab].layout.resize(f, *d, 0.05);
                 } else {
-                    let w = self.screen.saved.side_w.unwrap_or(self.screen.side_rect.width.max(SIDE_MIN));
+                    let w = self
+                        .screen
+                        .saved
+                        .side_w
+                        .unwrap_or(self.screen.side_rect.width.max(SIDE_MIN));
                     let w = if grow { w + 2 } else { w.saturating_sub(2) };
                     self.screen.saved.side_w = Some(w.clamp(SIDE_MIN, SIDE_MAX));
                 }
@@ -599,9 +815,14 @@ impl App {
                 self.mode = Mode::Normal;
                 // Open with the keys: f closes it; set aside by a click into a pane: f hands it
                 // the keys back.
-                if *a == Action::Files && matches!(self.view, Some(crate::client::View::Files(_))) && !self.view_has_keys() {
+                if *a == Action::Files
+                    && matches!(self.view, Some(crate::client::View::Files(_)))
+                    && !self.view_has_keys()
+                {
                     self.view_set_aside = None;
-                } else if *a == Action::Files && matches!(self.view, Some(crate::client::View::Files(_))) {
+                } else if *a == Action::Files
+                    && matches!(self.view, Some(crate::client::View::Files(_)))
+                {
                     self.view = None;
                 } else if *a == Action::Files {
                     self.open_files(dir);
@@ -625,7 +846,10 @@ impl App {
         let proj = self.screen.cursor_proj.clone();
         let model = self.screen_model();
         if spec == self.keymap.prefix {
-            self.mode = Mode::Prefix { since: Instant::now(), acted: false };
+            self.mode = Mode::Prefix {
+                since: Instant::now(),
+                acted: false,
+            };
             return;
         }
         // A key that needs no leader acts here as it does over a pane, on the sidebar's row
@@ -634,19 +858,33 @@ impl App {
             self.act(a);
             return;
         }
-        let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
-        if k.code == KeyCode::Enter && proj.is_none() && let Some(c) = self.screen.cursor && self.helpers_asked(c) {
+        let plain = !k
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        if k.code == KeyCode::Enter
+            && proj.is_none()
+            && let Some(c) = self.screen.cursor.and_then(|key| self.session_term(key))
+            && self.helpers_asked(c)
+        {
             self.open_helpers(c, true);
             return;
         }
-        if k.code == KeyCode::Enter && proj.is_none() && let Some(c) = self.screen.cursor && self.approval_waits(c) {
+        if k.code == KeyCode::Enter
+            && proj.is_none()
+            && let Some(c) = self.screen.cursor.and_then(|key| self.session_term(key))
+            && self.approval_waits(c)
+        {
             self.screen_side_leave();
             self.open_approval(c);
             return;
         }
         match spec.code {
-            KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.screen_side_move(-1),
-            KeyCode::Down | KeyCode::Char('j') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.screen_side_move(1),
+            KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.screen_side_move(-1)
+            }
+            KeyCode::Down | KeyCode::Char('j') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.screen_side_move(1)
+            }
             KeyCode::Home => {
                 if let Some(first) = self.screen.side_items.first().cloned() {
                     self.screen_side_set(first);
@@ -658,21 +896,33 @@ impl App {
                 }
             }
             // The collapsed column: ↑ ↓ ← → and 1–9 (only while it has the keys) switch sessions.
-            KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right | KeyCode::Char('1'..='9') if super::draw::strip_on(self) && plain => self.strip_switch(spec.code),
+            KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Char('1'..='9')
+                if super::draw::strip_on(self) && plain =>
+            {
+                self.strip_switch(spec.code)
+            }
             KeyCode::Right => match &proj {
                 Some(key) => self.screen_fold(key, Some(true)),
                 None => {
                     // Into the pane.
                     if let Some(c) = self.screen.cursor {
-                        self.screen_focus(c);
+                        if let Some(term) = self.require_session_term(c) {
+                            self.screen_focus(term);
+                            self.screen_side_leave();
+                        }
+                    } else {
+                        self.screen_side_leave();
                     }
-                    self.screen_side_leave();
                 }
             },
             KeyCode::Left => match (&proj, self.screen.cursor) {
                 (Some(key), _) => self.screen_fold(key, Some(false)),
                 (None, Some(t)) => {
-                    if let Some(p) = model.iter().find(|p| p.sessions().any(|s| s.term == t)) {
+                    if let Some(p) = model.iter().find(|p| p.sessions().any(|s| s.key == t)) {
                         self.screen_side_set(SideItem::Proj(p.key.clone()));
                     }
                 }
@@ -680,26 +930,51 @@ impl App {
             },
             KeyCode::Enter => match (&proj, self.screen.cursor) {
                 (Some(key), _) => self.screen_fold(key, None),
-                (None, Some(c)) if self.check_wants_a_look(c) => {
+                (None, Some(c))
+                    if self
+                        .session_term(c)
+                        .is_some_and(|id| self.check_wants_a_look(id)) =>
+                {
                     self.screen_side_leave();
-                    self.open_check_sheet(c);
+                    if let Some(term) = self.session_term(c) {
+                        self.open_check_sheet(term);
+                    }
                 }
                 (None, c) => {
                     if let Some(c) = c {
-                        self.screen_focus(c);
+                        if let Some(term) = self.require_session_term(c) {
+                            self.screen_focus(term);
+                            self.screen_side_leave();
+                        }
+                    } else {
+                        self.screen_side_leave();
                     }
-                    self.screen_side_leave();
                 }
             },
             KeyCode::Esc => self.screen_side_leave(),
-            _ if spec == self.keymap.prefix => self.mode = Mode::Prefix { since: Instant::now(), acted: false },
+            _ if spec == self.keymap.prefix => {
+                self.mode = Mode::Prefix {
+                    since: Instant::now(),
+                    acted: false,
+                }
+            }
             // Nothing else acts from the sidebar: an action is the leader and its key, or a key
             // with no leader (ADR 0014, ADR 0029).
             // Anything else is typing: leave the sidebar and hand the key over.
             _ => {
+                if let Some(key) = self.screen.cursor
+                    && self.require_session_term(key).is_none()
+                {
+                    return;
+                }
                 self.screen_side_leave();
                 if let Some(term) = self.focused() {
-                    let data = crate::keys::encode(k, self.parsers.get(&term).is_some_and(|p| p.screen().application_cursor()));
+                    let data = crate::keys::encode(
+                        k,
+                        self.parsers
+                            .get(&term)
+                            .is_some_and(|p| p.screen().application_cursor()),
+                    );
                     if !data.is_empty() {
                         self.send(crate::protocol::ClientMsg::Input { term, data });
                     }
@@ -711,17 +986,38 @@ impl App {
     /// A key on the collapsed strip: ← → step to the neighbouring session, 1–9 jump to that one.
     /// The session opens in the pane, and the keys stay on the strip.
     fn strip_switch(&mut self, code: KeyCode) {
-        let sessions: Vec<TermId> = self.screen.side_items.iter().filter_map(|i| if let SideItem::Sess(t) = i { Some(*t) } else { None }).collect();
-        let here = sessions.iter().position(|t| Some(*t) == self.screen.cursor.or(self.focused()));
+        let sessions: Vec<SessionKey> = self
+            .screen
+            .side_items
+            .iter()
+            .filter_map(|i| {
+                if let SideItem::Sess(t) = i {
+                    Some(*t)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let here = sessions.iter().position(|t| {
+            Some(*t)
+                == self
+                    .screen
+                    .cursor
+                    .or(self.focused().map(|id| self.session_key(id)))
+        });
         let to = match code {
             KeyCode::Left | KeyCode::Up => here.map_or(0, |i| i.saturating_sub(1)),
-            KeyCode::Right | KeyCode::Down => here.map_or(0, |i| (i + 1).min(sessions.len().saturating_sub(1))),
+            KeyCode::Right | KeyCode::Down => {
+                here.map_or(0, |i| (i + 1).min(sessions.len().saturating_sub(1)))
+            }
             KeyCode::Char(c) => c.to_digit(10).map_or(0, |d| d as usize - 1),
             _ => return,
         };
         if let Some(&term) = sessions.get(to) {
             self.screen_side_set(SideItem::Sess(term));
-            self.cmd(Command::FocusPane { term });
+            if let Some(term) = self.session_term(term) {
+                self.cmd(Command::FocusPane { term });
+            }
         }
     }
 
@@ -729,18 +1025,28 @@ impl App {
     pub(in crate::client) fn open_goto(&mut self) {
         let rows = goto_rows(&self.screen_model(), "", heads_up(self).len());
         let sel = rows.iter().position(GoRow::pickable).unwrap_or(0);
-        self.mode = Mode::GoTo { query: String::new(), sel };
+        self.mode = Mode::GoTo {
+            query: String::new(),
+            sel,
+        };
     }
 
     /// Answer an agent's numbered question from the Inbox: its option `key`, as if typed there.
     pub(in crate::client) fn inbox_answer(&mut self, term: TermId, key: char, name: &str) {
-        let label = self.answer_options(term).get((key as u8 - b'1') as usize).cloned().unwrap_or_else(|| key.to_string());
+        let label = self
+            .answer_options(term)
+            .get((key as u8 - b'1') as usize)
+            .cloned()
+            .unwrap_or_else(|| key.to_string());
         self.answer(term, key);
         self.notify(format!("answered {name}: {label}"), false);
     }
 
     /// A question an agent asked you with `<app> ask-human`, waiting in this pane.
-    pub(in crate::client) fn pending_question(&self, term: TermId) -> Option<&crate::protocol::HumanQuestion> {
+    pub(in crate::client) fn pending_question(
+        &self,
+        term: TermId,
+    ) -> Option<&crate::protocol::HumanQuestion> {
         self.snap.questions.iter().find(|q| q.term == term)
     }
 
@@ -757,24 +1063,39 @@ impl App {
     /// the agent as its own numbered prompt expects.
     pub(in crate::client) fn answer(&mut self, term: TermId, key: char) {
         match self.pending_question(term).map(|q| q.id) {
-            Some(id) => self.cmd(Command::AnswerHuman { id, choice: (key as u8).saturating_sub(b'1') as usize }),
-            None => self.send(crate::protocol::ClientMsg::Input { term, data: key.to_string().into_bytes() }),
+            Some(id) => self.cmd(Command::AnswerHuman {
+                id,
+                choice: (key as u8).saturating_sub(b'1') as usize,
+            }),
+            None => self.send(crate::protocol::ClientMsg::Input {
+                term,
+                data: key.to_string().into_bytes(),
+            }),
         }
     }
 
     /// The folder Files / Changes / PR act on: the sidebar cursor's, else the focused one's.
     pub(in crate::client) fn screen_target_dir(&self) -> PathBuf {
-        self.screen
-            .cursor
-            .or(self.focused())
+        self.selected_term()
             .and_then(|t| self.snap.terms.get(&t))
             .map(|t| t.top.clone().unwrap_or_else(|| t.cwd.clone()))
+            .or_else(|| match self.screen.cursor {
+                Some(SessionKey::Conversation(id)) => self
+                    .snap
+                    .conversations
+                    .iter()
+                    .find(|c| c.id == id)
+                    .map(|c| c.worktree.clone().unwrap_or_else(|| c.cwd.clone())),
+                _ => None,
+            })
             .unwrap_or_else(|| self.here_dir())
     }
 
     /// Picking for a setting: save the folder and go back to Settings, on that row.
     fn finder_chose(&mut self, fd: &Finder, p: PathBuf) -> bool {
-        let Some(path) = fd.for_setting else { return false };
+        let Some(path) = fd.for_setting else {
+            return false;
+        };
         self.save_setting(path, p.display().to_string().into());
         self.back_to_setting(path);
         true
@@ -789,11 +1110,19 @@ impl App {
             .find_map(|(ci, c)| {
                 crate::client::design::settings_rows(*c)
                     .iter()
-                    .position(|r| matches!(r, crate::client::design::SRow::Setting(s) if s.path == path))
+                    .position(
+                        |r| matches!(r, crate::client::design::SRow::Setting(s) if s.path == path),
+                    )
                     .map(|i| (ci, i))
             })
             .unwrap_or((0, 0));
-        self.mode = Mode::ScreenSettings(Box::new(SView { cat, sel, editing: None, capturing: false, scroll: 0 }));
+        self.mode = Mode::ScreenSettings(Box::new(SView {
+            cat,
+            sel,
+            editing: None,
+            capturing: false,
+            scroll: 0,
+        }));
     }
 
     pub(in crate::client) fn finder_enter(&mut self, mut fd: Finder) {
@@ -873,7 +1202,12 @@ impl App {
         };
         let agents = np_agents(self, np.p);
         let agent = agents.get(np.a).cloned().unwrap_or_else(|| "shell".into());
-        let main = p.wts.iter().find(|w| w.main).map(|w| w.path.clone()).unwrap_or_else(|| p.path.clone());
+        let main = p
+            .wts
+            .iter()
+            .find(|w| w.main)
+            .map(|w| w.path.clone())
+            .unwrap_or_else(|| p.path.clone());
         let cmd = np_command(self, &agent, np.model, &np.task);
         if !self.screen.saved.draft.is_empty() {
             self.screen.saved.draft.clear();
@@ -892,8 +1226,14 @@ impl App {
             1 => {
                 // A new branch right in the repo folder (no worktree).
                 let taken: HashSet<String> = p.wts.iter().map(|w| w.branch.clone()).collect();
-                let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as usize).unwrap_or(0);
-                let name = (0..WT_NAMES.len()).map(|i| WT_NAMES[(n + i) % WT_NAMES.len()].to_string()).find(|b| !taken.contains(b)).unwrap_or_else(|| format!("branch-{}", n % 10_000));
+                let n = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as usize)
+                    .unwrap_or(0);
+                let name = (0..WT_NAMES.len())
+                    .map(|i| WT_NAMES[(n + i) % WT_NAMES.len()].to_string())
+                    .find(|b| !taken.contains(b))
+                    .unwrap_or_else(|| format!("branch-{}", n % 10_000));
                 let (pname, beside) = (p.name.clone(), np.beside);
                 self.spawn_bg(move || {
                     let mut git = std::process::Command::new("git");
@@ -905,7 +1245,16 @@ impl App {
                             app.notify(format!("{pname} is on a new branch, {name}"), false);
                             app.screen_new_session(main, cmd, beside);
                         }
-                        Ok(o) => app.notify(format!("couldn't make a branch: {}", String::from_utf8_lossy(&o.stderr).lines().next().unwrap_or("git failed")), true),
+                        Ok(o) => app.notify(
+                            format!(
+                                "couldn't make a branch: {}",
+                                String::from_utf8_lossy(&o.stderr)
+                                    .lines()
+                                    .next()
+                                    .unwrap_or("git failed")
+                            ),
+                            true,
+                        ),
                         Err(e) => app.notify(format!("couldn't run git: {e}"), true),
                     }))
                 });
@@ -914,14 +1263,22 @@ impl App {
                 Some(w) => self.screen_new_session(w.path.clone(), cmd, np.beside),
                 None => {
                     self.mode = Mode::ScreenPane(np.clone());
-                    self.notify("that worktree is no longer available; choose where to start again".into(), true);
+                    self.notify(
+                        "that worktree is no longer available; choose where to start again".into(),
+                        true,
+                    );
                 }
             },
             _ => self.screen_new_session(main, cmd, np.beside),
         }
     }
 
-    pub(in crate::client) fn on_goto_key(&mut self, mut query: String, mut sel: usize, k: &KeyEvent) {
+    pub(in crate::client) fn on_goto_key(
+        &mut self,
+        mut query: String,
+        mut sel: usize,
+        k: &KeyEvent,
+    ) {
         // With nothing typed, `[` `]` `=` size the sheet; once you search they are text.
         if query.is_empty() && self.sheet_size_key(k) {
             self.mode = Mode::GoTo { query, sel };
@@ -946,8 +1303,13 @@ impl App {
             i
         };
         let sel_row = rows.get(land(sel, true)).cloned();
-        let sel_item = sel_row.as_ref().filter(|r| !matches!(r, GoRow::Sess(..))).and_then(GoRow::term);
-        let sel_check = sel_item.and_then(|t| find(&model, t)).and_then(|(.., s)| super::check::shown(s).cloned());
+        let sel_item = sel_row
+            .as_ref()
+            .filter(|r| !matches!(r, GoRow::Sess(..)))
+            .and_then(GoRow::term);
+        let sel_check = sel_item
+            .and_then(|t| find(&model, t))
+            .and_then(|(.., s)| super::check::shown(s).cloned());
         // A merge or throw-away asked in a finished row: Enter does it, Esc doesn't, the rest wait.
         if let Some((term, merge, false)) = self.screen.inbox_confirm {
             match k.code {
@@ -957,7 +1319,12 @@ impl App {
                         let dir = wt.path.clone();
                         if merge {
                             if let Some((task, ..)) = self.task_for(&dir) {
-                                self.spawn_bg(move || crate::client::Bg::Merged(crate::client::tasks::merge(&task), dir));
+                                self.spawn_bg(move || {
+                                    crate::client::Bg::Merged(
+                                        crate::client::tasks::merge(&task),
+                                        dir,
+                                    )
+                                });
                             }
                         } else {
                             self.throw_away(&dir);
@@ -982,12 +1349,17 @@ impl App {
             // With nothing typed, a number answers the agent you're on.
             // A session asking to start helpers has no numbered answer to type: its question
             // opens (a number there would be typed into the agent).
-            KeyCode::Char('1'..='9') if query.is_empty() && matches!(sel_row, Some(GoRow::Ask(t)) if self.helpers_asked(t)) => {
+            KeyCode::Char('1'..='9')
+                if query.is_empty()
+                    && matches!(sel_row, Some(GoRow::Ask(t)) if self.helpers_asked(t)) =>
+            {
                 if let Some(GoRow::Ask(term)) = sel_row {
                     return self.open_helpers_from_inbox(term, query, sel);
                 }
             }
-            KeyCode::Char(c @ '1'..='9') if query.is_empty() && matches!(sel_row, Some(GoRow::Ask(_))) => {
+            KeyCode::Char(c @ '1'..='9')
+                if query.is_empty() && matches!(sel_row, Some(GoRow::Ask(_))) =>
+            {
                 if let Some(GoRow::Ask(term)) = sel_row {
                     let name = self.session_name(term);
                     self.inbox_answer(term, c, &name);
@@ -995,21 +1367,36 @@ impl App {
             }
             // Seen: a finished one leaves the list.
             // A heads-up: both diffs, a note to the first agent, or dismiss it.
-            KeyCode::Char(c @ ('d' | 'm' | 'k')) if query.is_empty() && matches!(sel_row, Some(GoRow::Heads(_))) => {
-                let Some(GoRow::Heads(i)) = sel_row else { return };
-                let Some((repo, o)) = heads_up(self).get(i).cloned() else { return };
+            KeyCode::Char(c @ ('d' | 'm' | 'k'))
+                if query.is_empty() && matches!(sel_row, Some(GoRow::Heads(_))) =>
+            {
+                let Some(GoRow::Heads(i)) = sel_row else {
+                    return;
+                };
+                let Some((repo, o)) = heads_up(self).get(i).cloned() else {
+                    return;
+                };
                 match c {
                     'd' => return self.open_both(repo, o),
                     'm' => return self.tell_about(&repo, &o, 0, Some((query, sel))),
                     _ => self.dismiss_heads_up(&repo, &o),
                 }
-                self.mode = Mode::GoTo { query, sel: sel.saturating_sub(1) };
+                self.mode = Mode::GoTo {
+                    query,
+                    sel: sel.saturating_sub(1),
+                };
                 return;
             }
             // A finished one: its diff (in the sheet), or merge it or throw it away (asked first).
-            KeyCode::Char(c @ ('d' | 'M' | 'x')) if query.is_empty() && matches!(sel_row, Some(GoRow::Done(_))) => {
-                let Some(GoRow::Done(term)) = sel_row else { return };
-                let Some((_, wt, _)) = find(&model, term) else { return };
+            KeyCode::Char(c @ ('d' | 'M' | 'x'))
+                if query.is_empty() && matches!(sel_row, Some(GoRow::Done(_))) =>
+            {
+                let Some(GoRow::Done(term)) = sel_row else {
+                    return;
+                };
+                let Some((_, wt, _)) = find(&model, term) else {
+                    return;
+                };
                 match c {
                     'd' => {
                         let dir = wt.path.clone();
@@ -1018,19 +1405,33 @@ impl App {
                         return;
                     }
                     _ if !wt.main => self.screen.inbox_confirm = Some((term, c == 'M', false)),
-                    _ => self.notify("the main folder isn't a worktree: open Changes (d) to commit".into(), false),
+                    _ => self.notify(
+                        "the main folder isn't a worktree: open Changes (d) to commit".into(),
+                        false,
+                    ),
                 }
                 self.mode = Mode::GoTo { query, sel };
                 return;
             }
             // m on a failure: a message to its agent with the failure written in.
-            KeyCode::Char('m') if query.is_empty() && let Some(GoRow::Failed(term)) = sel_row => {
-                let name = self.snap.terms.get(&term).and_then(|t| t.check()).map(|c| c.name.clone()).unwrap_or_default();
+            KeyCode::Char('m')
+                if query.is_empty()
+                    && let Some(GoRow::Failed(term)) = sel_row =>
+            {
+                let name = self
+                    .snap
+                    .terms
+                    .get(&term)
+                    .and_then(|t| t.check())
+                    .map(|c| c.name.clone())
+                    .unwrap_or_default();
                 self.send_failure(term, name, None, Some((query, sel)));
                 return;
             }
             // m: a follow-up, inside the row.
-            KeyCode::Char('m') if query.is_empty() && matches!(sel_row, Some(GoRow::Ask(_) | GoRow::Done(_))) => {
+            KeyCode::Char('m')
+                if query.is_empty() && matches!(sel_row, Some(GoRow::Ask(_) | GoRow::Done(_))) =>
+            {
                 if let Some(GoRow::Ask(term) | GoRow::Done(term)) = sel_row {
                     self.start_compose(term, false, Some((query, sel)));
                 }
@@ -1046,7 +1447,12 @@ impl App {
             }
             // An item's check: run it again, accept a failure (asked first), take that back, or
             // its settings. Where it doesn't act, the key is typed.
-            KeyCode::Char(c @ ('r' | 'O' | 'u' | ',')) if query.is_empty() && sel_check.as_ref().is_some_and(|i| super::check_inbox::check_key_acts(c, i)) => {
+            KeyCode::Char(c @ ('r' | 'O' | 'u' | ','))
+                if query.is_empty()
+                    && sel_check
+                        .as_ref()
+                        .is_some_and(|i| super::check_inbox::check_key_acts(c, i)) =>
+            {
                 let Some(term) = sel_item else { return };
                 self.do_check_key(term, None, c);
                 if c == 'O' && matches!(self.mode, Mode::Confirm(_)) {
@@ -1067,19 +1473,35 @@ impl App {
                     self.screen_fresh();
                 }
             }
-            KeyCode::Enter if let Some(t) = sel_row.as_ref().and_then(GoRow::term) && self.approval_waits(t) => {
+            KeyCode::Enter
+                if let Some(t) = sel_row.as_ref().and_then(GoRow::term)
+                    && self.approval_waits(t) =>
+            {
                 self.open_approval(t);
                 self.screen.inbox_return = Some((query, sel));
                 return;
             }
             // The project's check settings, for a row about a session.
-            KeyCode::Char(',') if query.is_empty() && let Some(t) = sel_row.as_ref().and_then(GoRow::term) => return self.open_project_check(t),
+            KeyCode::Char(',')
+                if query.is_empty()
+                    && let Some(t) = sel_row.as_ref().and_then(GoRow::term) =>
+            {
+                return self.open_project_check(t);
+            }
             KeyCode::Enter => {
-                let stale = sel_check.as_ref().is_some_and(|i| i.state == crate::protocol::CheckState::Stale);
+                let stale = sel_check
+                    .as_ref()
+                    .is_some_and(|i| i.state == crate::protocol::CheckState::Stale);
                 match sel_row {
-                    Some(GoRow::Ask(t)) if query.is_empty() && self.helpers_asked(t) => return self.open_helpers_from_inbox(t, query, sel),
-                    Some(GoRow::Ask(t)) if query.is_empty() => return self.start_compose(t, false, Some((query, sel))),
-                    Some(GoRow::Approve(t) | GoRow::Failed(t) | GoRow::NotRun(t)) => self.open_check_sheet(t),
+                    Some(GoRow::Ask(t)) if query.is_empty() && self.helpers_asked(t) => {
+                        return self.open_helpers_from_inbox(t, query, sel);
+                    }
+                    Some(GoRow::Ask(t)) if query.is_empty() => {
+                        return self.start_compose(t, false, Some((query, sel)));
+                    }
+                    Some(GoRow::Approve(t) | GoRow::Failed(t) | GoRow::NotRun(t)) => {
+                        self.open_check_sheet(t)
+                    }
                     Some(GoRow::Done(t)) if stale && query.is_empty() => {
                         self.do_check_key(t, None, 'r');
                         self.mode = Mode::GoTo { query, sel };
@@ -1109,7 +1531,12 @@ impl App {
             }
             _ => {}
         }
-        if query.is_empty() && !matches!(k.code, KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown) {
+        if query.is_empty()
+            && !matches!(
+                k.code,
+                KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown
+            )
+        {
             sel = land(sel, true);
         }
         self.mode = Mode::GoTo { query, sel };
@@ -1119,8 +1546,16 @@ impl App {
         let n = self.history.len();
         match k.code {
             KeyCode::Esc => self.mode = Mode::Normal,
-            KeyCode::Down => self.mode = Mode::History { sel: (sel + 1).min(n.saturating_sub(1)) },
-            KeyCode::Up => self.mode = Mode::History { sel: sel.saturating_sub(1) },
+            KeyCode::Down => {
+                self.mode = Mode::History {
+                    sel: (sel + 1).min(n.saturating_sub(1)),
+                }
+            }
+            KeyCode::Up => {
+                self.mode = Mode::History {
+                    sel: sel.saturating_sub(1),
+                }
+            }
             KeyCode::Char('c') => {
                 self.history.clear();
                 self.mode = Mode::History { sel: 0 };
@@ -1139,9 +1574,6 @@ impl App {
         }
     }
 
-
-
-
     /// + New for project `p`, with the task you didn't start last time.
     pub(in crate::client) fn screen_new(&mut self, p: usize, beside: bool) {
         let mut np = NewPaneHy::new(p, beside);
@@ -1155,7 +1587,11 @@ impl App {
         let agents = np_agents(self, np.p);
         let nag = agents.len();
         let agent = agents.get(np.a).cloned().unwrap_or_default();
-        let nmodels = if agent.starts_with('★') || agent.starts_with('◇') { 0 } else { np_models(self, &agent).len() };
+        let nmodels = if agent.starts_with('★') || agent.starts_with('◇') {
+            0
+        } else {
+            np_models(self, &agent).len()
+        };
         let nplaces = model.get(np.p).map(|p| np_places(p).len()).unwrap_or(3);
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
         let d: i32 = match k.code {
@@ -1210,7 +1646,10 @@ impl App {
                 3 => {
                     np.p = cyc(np.p, d, nproj);
                     np.place = np.place.filter(|p| *p < 3);
-                    if agent.starts_with('◇') { np.a = 0; np.model = 0; }
+                    if agent.starts_with('◇') {
+                        np.a = 0;
+                        np.model = 0;
+                    }
                 }
                 4 => {
                     let cur = np.place_for(&agent, self.cfg.worktree.per_agent) as usize;
@@ -1230,8 +1669,12 @@ impl App {
         let last = opts.len().saturating_sub(1);
         let sel = self.screen.splash_sel.min(last);
         match k.code {
-            KeyCode::Up | KeyCode::BackTab | KeyCode::Char('k') => self.screen.splash_sel = sel.saturating_sub(1),
-            KeyCode::Down | KeyCode::Tab | KeyCode::Char('j') => self.screen.splash_sel = (sel + 1).min(last),
+            KeyCode::Up | KeyCode::BackTab | KeyCode::Char('k') => {
+                self.screen.splash_sel = sel.saturating_sub(1)
+            }
+            KeyCode::Down | KeyCode::Tab | KeyCode::Char('j') => {
+                self.screen.splash_sel = (sel + 1).min(last)
+            }
             KeyCode::Enter => self.screen_splash_open(sel),
             KeyCode::Char('?' | ',') => {
                 if let KeyCode::Char(c) = k.code {
@@ -1288,11 +1731,13 @@ impl App {
             }
             // Opens it, and the arrows keep walking the sidebar until you type or press Enter.
             ScreenHit::Session(t) => {
-                self.screen_focus(t);
+                if let Some(term) = self.session_term(t) {
+                    self.screen_focus(term);
+                }
                 self.screen_side_set(SideItem::Sess(t));
             }
             ScreenHit::RowChanges(t) => {
-                self.screen.cursor = Some(t);
+                self.screen.cursor = Some(self.session_key(t));
                 self.act(Action::Changes);
             }
             // From the splash's banner too, which then goes.
@@ -1305,7 +1750,10 @@ impl App {
                 self.ask_restart();
             }
             ScreenHit::Why(term) => {
-                self.mode = Mode::Why { term, side: matches!(self.mode, Mode::Side) };
+                self.mode = Mode::Why {
+                    term,
+                    side: matches!(self.mode, Mode::Side),
+                };
             }
             ScreenHit::CheckEvidence(term) => self.open_check_sheet(term),
             ScreenHit::TidyRow(i) => self.tidy_click(i),
@@ -1320,13 +1768,20 @@ impl App {
             ScreenHit::Divider(i) => self.screen.drag = Some(Drag::Divider(i)),
             ScreenHit::ShellIn(pi) => {
                 if let Some(p) = self.screen_model().get(pi) {
-                    let dir = p.wts.iter().find(|w| w.main).map(|w| w.path.clone()).unwrap_or_else(|| p.path.clone());
+                    let dir = p
+                        .wts
+                        .iter()
+                        .find(|w| w.main)
+                        .map(|w| w.path.clone())
+                        .unwrap_or_else(|| p.path.clone());
                     self.screen_new_session(dir, None, false);
                 }
             }
             ScreenHit::RowMenuSess(t) => {
                 let at = self.hover.map(|p| (p.x, p.y)).unwrap_or((0, 0));
-                self.menu_for_session(t, at);
+                if let Some(term) = self.require_session_term(t) {
+                    self.menu_for_session(term, at);
+                }
             }
             ScreenHit::RowMenuProj(i) => {
                 let at = self.hover.map(|p| (p.x, p.y)).unwrap_or((0, 0));
@@ -1361,7 +1816,11 @@ impl App {
             ScreenHit::TabSplit => self.act(Action::SplitRight),
             ScreenHit::TabZoom => {
                 let tab = self.screen.tab;
-                self.screen.zoom = if self.screen.zoom == Some(tab) { None } else { Some(tab) };
+                self.screen.zoom = if self.screen.zoom == Some(tab) {
+                    None
+                } else {
+                    Some(tab)
+                };
             }
             ScreenHit::SideFocus => self.act(Action::BrowseTree),
             ScreenHit::ExpandSidebar => self.act(Action::ToggleSidebar),
@@ -1369,7 +1828,12 @@ impl App {
             ScreenHit::Actions => self.act(Action::Menu),
             ScreenHit::ActionRow(i) => self.actions_run(i),
             ScreenHit::Leader => self.open_keymap(None),
-            ScreenHit::ShortcutMode => self.mode = Mode::Prefix { since: Instant::now(), acted: false },
+            ScreenHit::ShortcutMode => {
+                self.mode = Mode::Prefix {
+                    since: Instant::now(),
+                    acted: false,
+                }
+            }
             ScreenHit::BarKey(i) => self.press_from_bar(i),
             ScreenHit::KeyRow(i) => {
                 if let Mode::KeyMap(km) = &self.mode {
@@ -1382,14 +1846,24 @@ impl App {
             }
             ScreenHit::Close => {
                 // A confirm's Esc chip, or a click outside it, answers no, as Esc does.
-                if matches!(&self.mode, Mode::Confirm(c) if !matches!(c.act, crate::client::menu::Act::OverrideCheck(..))) {
+                if matches!(&self.mode, Mode::Confirm(c) if !matches!(c.act, crate::client::menu::Act::OverrideCheck(..)))
+                {
                     self.mode = Mode::Normal;
                     self.confirm_done(None);
                 } else if matches!(self.mode, Mode::Spinners(_)) {
-                    if let Mode::Spinners(view) = &self.mode && view.saving { return; }
+                    if let Mode::Spinners(view) = &self.mode
+                        && view.saving
+                    {
+                        return;
+                    }
                     self.back_to_setting("ui.spinner");
                 } else if let Mode::Themes { query, sel, saving } = self.mode.clone() {
-                    self.on_theme_key(query, sel, saving, &KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                    self.on_theme_key(
+                        query,
+                        sel,
+                        saving,
+                        &KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+                    );
                 } else {
                     self.mode = Mode::Normal;
                 }
@@ -1421,7 +1895,11 @@ impl App {
                     np.row = 0;
                 }
             }
-            ScreenHit::NpProj(i) | ScreenHit::NpRun(i) | ScreenHit::NpBeside(i) | ScreenHit::NpWhere(i) | ScreenHit::NpModel(i) => {
+            ScreenHit::NpProj(i)
+            | ScreenHit::NpRun(i)
+            | ScreenHit::NpBeside(i)
+            | ScreenHit::NpWhere(i)
+            | ScreenHit::NpModel(i) => {
                 if let Mode::ScreenPane(np) = &mut self.mode {
                     match h {
                         ScreenHit::NpWhere(_) => {
@@ -1470,24 +1948,44 @@ impl App {
             ScreenHit::SpinnerPick(i) => self.spinner_pick(i),
             ScreenHit::ThemePick(i) => {
                 if let Mode::Themes { query, sel, saving } = self.mode.clone() {
-                    if saving { return; }
-                    self.mode = Mode::Themes { query: query.clone(), sel: i, saving: false };
+                    if saving {
+                        return;
+                    }
+                    self.mode = Mode::Themes {
+                        query: query.clone(),
+                        sel: i,
+                        saving: false,
+                    };
                     if sel == i || double {
-                        self.on_theme_key(query, i, false, &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                        self.on_theme_key(
+                            query,
+                            i,
+                            false,
+                            &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                        );
                     }
                 }
             }
             ScreenHit::SetRow(i) | ScreenHit::SetVal(i, _) => {
-                let Mode::ScreenSettings(v) = &mut self.mode else { return };
+                let Mode::ScreenSettings(v) = &mut self.mode else {
+                    return;
+                };
                 let again = v.sel == i;
                 v.sel = i;
-                let cat = crate::client::modal::Cat::ALL[v.cat.min(crate::client::modal::Cat::ALL.len() - 1)];
+                let cat = crate::client::modal::Cat::ALL
+                    [v.cat.min(crate::client::modal::Cat::ALL.len() - 1)];
                 let row = crate::client::design::settings_rows(cat).get(i).cloned();
                 let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
                 match (h, row) {
-                    (ScreenHit::SetVal(_, vi), Some(row @ SRow::Setting(_))) if vi != usize::MAX && chips_for(self, &row).is_some() => set_chip(self, &row, vi),
+                    (ScreenHit::SetVal(_, vi), Some(row @ SRow::Setting(_)))
+                        if vi != usize::MAX && chips_for(self, &row).is_some() =>
+                    {
+                        set_chip(self, &row, vi)
+                    }
                     (ScreenHit::SetVal(..), Some(_)) => self.screen_settings_key(&enter),
-                    (ScreenHit::SetRow(_), Some(_)) if again || double => self.screen_settings_key(&enter),
+                    (ScreenHit::SetRow(_), Some(_)) if again || double => {
+                        self.screen_settings_key(&enter)
+                    }
                     _ => {}
                 }
             }
@@ -1566,7 +2064,10 @@ impl App {
                     && t == term
                 {
                     let from_bottom = r.bottom().saturating_sub(pos.y + 1) as usize;
-                    self.scroll_to(term, (from_bottom * total / r.height.max(1) as usize).min(total));
+                    self.scroll_to(
+                        term,
+                        (from_bottom * total / r.height.max(1) as usize).min(total),
+                    );
                 }
             }
         }
@@ -1576,8 +2077,13 @@ impl App {
     /// what the key does there, the mode staying for the next one. The click itself took the
     /// mode down (`on_mouse`), so it is put back first.
     fn press_from_bar(&mut self, i: usize) {
-        let Some(key) = self.screen.bar_keys.get(i).copied() else { return };
-        self.mode = Mode::Prefix { since: Instant::now(), acted: true };
+        let Some(key) = self.screen.bar_keys.get(i).copied() else {
+            return;
+        };
+        self.mode = Mode::Prefix {
+            since: Instant::now(),
+            acted: true,
+        };
         self.shortcut_held = true;
         self.on_key(KeyEvent::new(key.code, key.mods));
     }
@@ -1587,7 +2093,9 @@ impl App {
         if self.on_check_page_key(k) {
             return;
         }
-        let Mode::ScreenSettings(v) = self.mode.clone() else { return };
+        let Mode::ScreenSettings(v) = self.mode.clone() else {
+            return;
+        };
         let mut v = *v;
         let open = self.on_settings_view_key(&mut v, k);
         if !open {

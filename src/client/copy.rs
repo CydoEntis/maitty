@@ -2,8 +2,8 @@
 //! selection and search. Entering takes a snapshot; output keeps flowing underneath.
 
 use crate::protocol::TermId;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::buffer::Buffer;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 use std::time::{Duration, Instant};
 use unicode_width::UnicodeWidthChar;
@@ -63,7 +63,11 @@ pub struct Copy {
 
 /// Pieces copied from several panes, one after another under each pane's name.
 pub fn join_pieces(pieces: &[(String, String)]) -> String {
-    pieces.iter().map(|(name, text)| format!("── {name} ──\n{}", text.trim_end())).collect::<Vec<_>>().join("\n\n")
+    pieces
+        .iter()
+        .map(|(name, text)| format!("── {name} ──\n{}", text.trim_end()))
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 pub enum Outcome {
@@ -110,7 +114,11 @@ impl Copy {
         let lines = all_lines(parser);
         let rows = rows as usize;
         let top = lines.len().saturating_sub(rows + scroll);
-        let cur = if scroll == 0 { (top + crow as usize, ccol as usize) } else { (top, 0) };
+        let cur = if scroll == 0 {
+            (top + crow as usize, ccol as usize)
+        } else {
+            (top, 0)
+        };
         let mut c = Copy {
             term,
             lines,
@@ -159,7 +167,12 @@ impl Copy {
         let h = self.height.max(1);
         let max_top = self.lines.len().saturating_sub(h);
         self.top = (self.top as isize + delta).clamp(0, max_top as isize) as usize;
-        self.cur.0 = self.cur.0.min((self.top + h).saturating_sub(1)).max(self.top).min(self.last_line());
+        self.cur.0 = self
+            .cur
+            .0
+            .min((self.top + h).saturating_sub(1))
+            .max(self.top)
+            .min(self.last_line());
         self.cur.1 = self.cur.1.min(self.line_len(self.cur.0));
     }
 
@@ -186,12 +199,21 @@ impl Copy {
     /// Normalised selection: (start, end) inclusive of `end`'s character.
     pub fn selection(&self) -> Option<((usize, usize), (usize, usize))> {
         let a = self.anchor?;
-        let (s, e) = if a <= self.cur { (a, self.cur) } else { (self.cur, a) };
-        if self.line_mode { Some(((s.0, 0), (e.0, usize::MAX))) } else { Some((s, e)) }
+        let (s, e) = if a <= self.cur {
+            (a, self.cur)
+        } else {
+            (self.cur, a)
+        };
+        if self.line_mode {
+            Some(((s.0, 0), (e.0, usize::MAX)))
+        } else {
+            Some((s, e))
+        }
     }
 
     pub fn selected(&self, line: usize, col: usize) -> bool {
-        self.selection().is_some_and(|(s, e)| (line, col) >= s && (line, col) <= e)
+        self.selection()
+            .is_some_and(|(s, e)| (line, col) >= s && (line, col) <= e)
     }
 
     /// The selected cells that are on screen, as (row, first column, one past the last
@@ -204,7 +226,9 @@ impl Copy {
         }
         for row in 0..self.height {
             let li = self.top + row;
-            let Some(line) = self.lines.get(li) else { break };
+            let Some(line) = self.lines.get(li) else {
+                break;
+            };
             let mut span: Option<(u16, u16)> = None;
             let mut x = 0u16;
             let mut n = 0;
@@ -235,12 +259,18 @@ impl Copy {
     }
 
     pub fn selected_text(&self) -> String {
-        let Some((s, e)) = self.selection() else { return String::new() };
+        let Some((s, e)) = self.selection() else {
+            return String::new();
+        };
         let mut out = Vec::new();
         for l in s.0..=e.0.min(self.last_line()) {
             let chars: Vec<char> = self.lines[l].chars().collect();
             let from = if l == s.0 { s.1.min(chars.len()) } else { 0 };
-            let to = if l == e.0 { e.1.saturating_add(1).min(chars.len()) } else { chars.len() };
+            let to = if l == e.0 {
+                e.1.saturating_add(1).min(chars.len())
+            } else {
+                chars.len()
+            };
             out.push(chars[from..to.max(from)].iter().collect::<String>());
         }
         out.join("\n")
@@ -252,8 +282,12 @@ impl Copy {
 
     /// Char ranges of the current query in a line.
     pub fn matches(&self, line: usize) -> Vec<(usize, usize)> {
-        let Some(q) = self.query.as_deref().filter(|q| !q.is_empty()) else { return Vec::new() };
-        let Some(text) = self.lines.get(line) else { return Vec::new() };
+        let Some(q) = self.query.as_deref().filter(|q| !q.is_empty()) else {
+            return Vec::new();
+        };
+        let Some(text) = self.lines.get(line) else {
+            return Vec::new();
+        };
         find_all(text, q, Self::insensitive(q))
     }
 
@@ -264,12 +298,18 @@ impl Copy {
 
     /// Jump to the next match in the current direction (reversed by `flip`). Wraps around.
     fn search(&mut self, flip: bool) {
-        let Some(q) = self.query.clone().filter(|q| !q.is_empty()) else { return };
+        let Some(q) = self.query.clone().filter(|q| !q.is_empty()) else {
+            return;
+        };
         let back = self.backward ^ flip;
         let ci = Self::insensitive(&q);
         let n = self.lines.len();
         for step in 0..=n {
-            let l = if back { (self.cur.0 + n - step % n) % n } else { (self.cur.0 + step) % n };
+            let l = if back {
+                (self.cur.0 + n - step % n) % n
+            } else {
+                (self.cur.0 + step) % n
+            };
             let hits = find_all(&self.lines[l], &q, ci);
             let hit = if back {
                 hits.iter().rev().find(|(s, _)| step > 0 || *s < self.cur.1)
@@ -291,7 +331,11 @@ impl Copy {
     fn word_forward(&mut self) {
         let (mut l, mut c) = self.cur;
         loop {
-            let chars: Vec<char> = self.lines.get(l).map(|s| s.chars().collect()).unwrap_or_default();
+            let chars: Vec<char> = self
+                .lines
+                .get(l)
+                .map(|s| s.chars().collect())
+                .unwrap_or_default();
             // Skip the rest of the current word, then whitespace.
             while c < chars.len() && !chars[c].is_whitespace() {
                 c += 1;
@@ -305,7 +349,11 @@ impl Copy {
             }
             l += 1;
             c = 0;
-            if self.lines[l].chars().next().is_some_and(|ch| !ch.is_whitespace()) {
+            if self.lines[l]
+                .chars()
+                .next()
+                .is_some_and(|ch| !ch.is_whitespace())
+            {
                 self.move_to((l, 0));
                 return;
             }
@@ -315,7 +363,11 @@ impl Copy {
     fn word_backward(&mut self) {
         let (mut l, mut c) = self.cur;
         loop {
-            let chars: Vec<char> = self.lines.get(l).map(|s| s.chars().collect()).unwrap_or_default();
+            let chars: Vec<char> = self
+                .lines
+                .get(l)
+                .map(|s| s.chars().collect())
+                .unwrap_or_default();
             while c > 0 && chars.get(c - 1).is_some_and(|ch| ch.is_whitespace()) {
                 c -= 1;
             }
@@ -373,7 +425,10 @@ impl Copy {
             KeyCode::PageDown => self.scroll(h as isize),
             KeyCode::Char('h') | KeyCode::Left => self.move_to((l, c.saturating_sub(1))),
             KeyCode::Char('l') | KeyCode::Right => self.move_to((l, (c + 1).min(self.line_len(l)))),
-            KeyCode::Char('k') | KeyCode::Up => self.move_to((l.saturating_sub(1), c.min(self.line_len(l.saturating_sub(1))))),
+            KeyCode::Char('k') | KeyCode::Up => self.move_to((
+                l.saturating_sub(1),
+                c.min(self.line_len(l.saturating_sub(1))),
+            )),
             KeyCode::Char('j') | KeyCode::Down => {
                 let n = (l + 1).min(self.last_line());
                 self.move_to((n, c.min(self.line_len(n))));
@@ -382,10 +437,15 @@ impl Copy {
             KeyCode::Char('b') => self.word_backward(),
             KeyCode::Char('0') | KeyCode::Home => self.move_to((l, 0)),
             KeyCode::Char('^') => {
-                let first = self.lines[l].chars().position(|ch| !ch.is_whitespace()).unwrap_or(0);
+                let first = self.lines[l]
+                    .chars()
+                    .position(|ch| !ch.is_whitespace())
+                    .unwrap_or(0);
                 self.move_to((l, first));
             }
-            KeyCode::Char('$') | KeyCode::End => self.move_to((l, self.line_len(l).saturating_sub(1))),
+            KeyCode::Char('$') | KeyCode::End => {
+                self.move_to((l, self.line_len(l).saturating_sub(1)))
+            }
             KeyCode::Char('g') => self.move_to((0, 0)),
             KeyCode::Char('G') => self.move_to((self.last_line(), 0)),
             KeyCode::Char('H') => self.move_to((self.top, 0)),
@@ -407,7 +467,9 @@ impl Copy {
                     self.line_mode = true;
                 }
             }
-            KeyCode::Char('y') | KeyCode::Enter if self.anchor.is_some() => return Outcome::Yank(self.selected_text()),
+            KeyCode::Char('y') | KeyCode::Enter if self.anchor.is_some() => {
+                return Outcome::Yank(self.selected_text());
+            }
             KeyCode::Char('y') | KeyCode::Char('Y') => return Outcome::Yank(self.lines[l].clone()),
             KeyCode::Enter => return Outcome::Exit,
             KeyCode::Char('/') => {
@@ -428,9 +490,17 @@ impl Copy {
 
 /// Non-overlapping occurrences of `q` in `text` as char ranges.
 fn find_all(text: &str, q: &str, insensitive: bool) -> Vec<(usize, usize)> {
-    let (hay, needle) = if insensitive { (text.to_lowercase(), q.to_lowercase()) } else { (text.to_string(), q.to_string()) };
+    let (hay, needle) = if insensitive {
+        (text.to_lowercase(), q.to_lowercase())
+    } else {
+        (text.to_string(), q.to_string())
+    };
     // Lowercasing can change byte lengths; fall back to exact matching if it did.
-    let (hay, needle) = if hay.len() == text.len() { (hay, needle) } else { (text.to_string(), q.to_string()) };
+    let (hay, needle) = if hay.len() == text.len() {
+        (hay, needle)
+    } else {
+        (text.to_string(), q.to_string())
+    };
     let qlen = needle.chars().count();
     hay.match_indices(&needle)
         .map(|(b, _)| {
@@ -459,10 +529,12 @@ pub fn clipboard_reader() -> impl FnOnce() -> Result<String, String> + Send + 's
 #[cfg(not(test))]
 pub fn clipboard_reader() -> impl FnOnce() -> Result<String, String> + Send + 'static {
     || {
-        arboard::Clipboard::new().and_then(|mut c| c.get_text()).map_err(|e| match e {
-            arboard::Error::ContentNotAvailable => NO_TEXT.to_string(),
-            e => format!("can't read the clipboard: {e}"),
-        })
+        arboard::Clipboard::new()
+            .and_then(|mut c| c.get_text())
+            .map_err(|e| match e {
+                arboard::Error::ContentNotAvailable => NO_TEXT.to_string(),
+                e => format!("can't read the clipboard: {e}"),
+            })
     }
 }
 
@@ -481,7 +553,9 @@ pub fn to_clipboard(text: &str) -> bool {
 #[cfg(not(test))]
 pub fn to_clipboard(text: &str) -> bool {
     use std::io::Write;
-    let native = arboard::Clipboard::new().and_then(|mut c| c.set_text(text.to_string())).is_ok();
+    let native = arboard::Clipboard::new()
+        .and_then(|mut c| c.set_text(text.to_string()))
+        .is_ok();
     let osc = format!("\x1b]52;c;{}\x07", base64(text.as_bytes()));
     let mut out = std::io::stdout();
     let _ = out.write_all(osc.as_bytes());
@@ -493,7 +567,11 @@ fn base64(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
         let n = (b[0] as u32) << 16 | (b[1] as u32) << 8 | b[2] as u32;
         for i in 0..4 {
             if i <= chunk.len() {
@@ -521,18 +599,28 @@ mod tests {
     #[test]
     fn captures_history_beyond_screen() {
         let c = copy_of("one\ntwo\nthree\nfour\nfive\nsix");
-        assert_eq!(&c.lines[..6], &["one", "two", "three", "four", "five", "six"]);
+        assert_eq!(
+            &c.lines[..6],
+            &["one", "two", "three", "four", "five", "six"]
+        );
     }
 
     #[test]
     fn selected_spans_are_the_cells_on_screen() {
         let mut c = copy_of("alpha beta\ngamma\ndelta");
-        assert!(c.selected_spans().is_empty(), "nothing is selected before an anchor");
+        assert!(
+            c.selected_spans().is_empty(),
+            "nothing is selected before an anchor"
+        );
         let first = c.lines.iter().position(|l| l == "alpha beta").unwrap();
         c.anchor = Some((first, 6));
         c.cur = (first + 1, 2);
         let rows = (first - c.top) as u16;
-        assert_eq!(c.selected_spans(), vec![(rows, 6, 10 + 1), (rows + 1, 0, 3)], "the first line from the anchor (and the blank cell past it), the last up to the cursor");
+        assert_eq!(
+            c.selected_spans(),
+            vec![(rows, 6, 10 + 1), (rows + 1, 0, 3)],
+            "the first line from the anchor (and the blank cell past it), the last up to the cursor"
+        );
     }
 
     #[test]

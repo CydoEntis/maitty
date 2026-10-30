@@ -20,7 +20,10 @@ pub(super) struct Picker {
 
 impl Picker {
     fn frames(&self) -> Vec<String> {
-        SPINNERS.get(self.sel).map(|(_, frames)| frames.iter().map(|frame| (*frame).into()).collect()).unwrap_or_default()
+        SPINNERS
+            .get(self.sel)
+            .map(|(_, frames)| frames.iter().map(|frame| (*frame).into()).collect())
+            .unwrap_or_default()
     }
 }
 
@@ -32,8 +35,15 @@ fn last() -> usize {
 impl App {
     pub(super) fn open_spinners(&mut self) {
         let name = crate::config::spinner_name(&self.cfg.ui.spinner);
-        let sel = SPINNERS.iter().position(|(label, _)| *label == name).unwrap_or(0);
-        self.mode = Mode::Spinners(Box::new(Picker { sel, saving: false, error: None }));
+        let sel = SPINNERS
+            .iter()
+            .position(|(label, _)| *label == name)
+            .unwrap_or(0);
+        self.mode = Mode::Spinners(Box::new(Picker {
+            sel,
+            saving: false,
+            error: None,
+        }));
     }
 
     pub(super) fn spinner_pick(&mut self, index: usize) {
@@ -83,7 +93,10 @@ impl App {
         view.error = None;
         self.mode = Mode::Spinners(Box::new(view));
         self.spawn_bg(move || {
-            let value = frames.iter().map(String::as_str).collect::<toml_edit::Array>();
+            let value = frames
+                .iter()
+                .map(String::as_str)
+                .collect::<toml_edit::Array>();
             let result = modal::write(PATH, value.into()).and_then(|()| Config::load());
             Bg::Then(Box::new(move |app| match result {
                 Ok(cfg) => {
@@ -113,22 +126,72 @@ pub(super) fn draw(app: &mut App, frame: &mut Frame, area: Rect, theme: &Theme, 
     let tick = app.spinner_frame() as usize;
     let current = crate::config::spinner_name(&app.cfg.ui.spinner);
     for (i, (name, frames)) in SPINNERS.iter().enumerate().skip(start).take(rows) {
-        let row = Rect { x: r.x + 2, y: r.y + 2 + (i - start) as u16, width: r.width.saturating_sub(4), height: 1 };
+        let row = Rect {
+            x: r.x + 2,
+            y: r.y + 2 + (i - start) as u16,
+            width: r.width.saturating_sub(4),
+            height: 1,
+        };
         let style = list_row(app, buf, row, view.sel == i, theme);
-        let glyph = frames.get(tick % frames.len().max(1)).copied().unwrap_or(&app.cfg.icons.working);
-        put(buf, row.x + 3, row.y, &[seg(format!("{glyph}  {name}"), style.fg(theme.text))], row.right().saturating_sub(11));
+        let glyph = frames
+            .get(tick % frames.len().max(1))
+            .copied()
+            .unwrap_or(&app.cfg.icons.working);
+        put(
+            buf,
+            row.x + 3,
+            row.y,
+            &[seg(format!("{glyph}  {name}"), style.fg(theme.text))],
+            row.right().saturating_sub(11),
+        );
         if current == *name {
-            put(buf, row.right().saturating_sub(10), row.y, &[seg("● Applied", style.fg(theme.accent))], row.right());
+            put(
+                buf,
+                row.right().saturating_sub(10),
+                row.y,
+                &[seg("● Applied", style.fg(theme.accent))],
+                row.right(),
+            );
         }
         hit(app, row, ScreenHit::SpinnerPick(i));
     }
     let frames = view.frames();
-    let glyph = frames.get(tick % frames.len().max(1)).unwrap_or(&app.cfg.icons.working);
-    put(buf, r.x + 3, r.bottom() - 5, &[seg(format!("Preview: {glyph} working"), Style::default().fg(theme.text))], r.right() - 3);
-    let detail = view.error.as_deref().unwrap_or(if view.saving { "Saving…" } else { "Preview only until you apply." });
-    let tone = if view.error.is_some() { theme.err } else { theme.muted };
-    put(buf, r.x + 3, r.bottom() - 3, &[seg(detail, Style::default().fg(tone))], r.right() - 3);
-    panel_bar(buf, r, theme, &[("↑↓", "preview"), ("Enter", "apply"), ("Esc", "back")]);
+    let glyph = frames
+        .get(tick % frames.len().max(1))
+        .unwrap_or(&app.cfg.icons.working);
+    put(
+        buf,
+        r.x + 3,
+        r.bottom() - 5,
+        &[seg(
+            format!("Preview: {glyph} working"),
+            Style::default().fg(theme.text),
+        )],
+        r.right() - 3,
+    );
+    let detail = view.error.as_deref().unwrap_or(if view.saving {
+        "Saving…"
+    } else {
+        "Preview only until you apply."
+    });
+    let tone = if view.error.is_some() {
+        theme.err
+    } else {
+        theme.muted
+    };
+    put(
+        buf,
+        r.x + 3,
+        r.bottom() - 3,
+        &[seg(detail, Style::default().fg(tone))],
+        r.right() - 3,
+    );
+    panel_bar(
+        buf,
+        r,
+        theme,
+        &[("↑↓", "preview"), ("Enter", "apply"), ("Esc", "back")],
+    );
 }
 
 #[cfg(test)]
@@ -148,9 +211,18 @@ mod tests {
 
     fn draw(app: &mut App, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-        terminal.draw(|f| super::super::render::draw(app, f)).unwrap();
+        terminal
+            .draw(|f| super::super::render::draw(app, f))
+            .unwrap();
         let buffer = terminal.backend().buffer();
-        let text = (0..height).map(|y| (0..width).map(|x| buffer[(x, y)].symbol()).collect::<String>()).collect::<Vec<_>>().join("\n");
+        let text = (0..height)
+            .map(|y| {
+                (0..width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         if std::env::var_os(concat!(env!("APP_ENV"), "_SHOW")).is_some() {
             println!("{text}");
         }
@@ -172,18 +244,36 @@ mod tests {
             if w >= 80 {
                 assert!(text.contains("Working spinner") && text.contains("Preview:"));
             } else {
-                assert!(text.contains("make the window bigger"), "unsupported sizes retain the app's resize hint");
+                assert!(
+                    text.contains("make the window bigger"),
+                    "unsupported sizes retain the app's resize hint"
+                );
             }
             let original = app.cfg.ui.spinner.clone();
             let preset = 2;
-            let hit = app.hits.iter().find(|(_, hit)| *hit == Hit::Screen(ScreenHit::SpinnerPick(preset))).map(|(rect, _)| *rect);
+            let hit = app
+                .hits
+                .iter()
+                .find(|(_, hit)| *hit == Hit::Screen(ScreenHit::SpinnerPick(preset)))
+                .map(|(rect, _)| *rect);
             if let Some(rect) = hit {
-                app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: rect.x, row: rect.y, modifiers: KeyModifiers::NONE });
+                app.on_mouse(MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    column: rect.x,
+                    row: rect.y,
+                    modifiers: KeyModifiers::NONE,
+                });
                 assert!(matches!(&app.mode, Mode::Spinners(v) if v.sel == preset));
-                assert_eq!(app.cfg.ui.spinner, original, "preview does not apply a choice");
+                assert_eq!(
+                    app.cfg.ui.spinner, original,
+                    "preview does not apply a choice"
+                );
             }
             app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
-            assert!(matches!(&app.mode, Mode::Spinners(v) if v.sel == last()), "End stops at the last spinner; there is no custom row");
+            assert!(
+                matches!(&app.mode, Mode::Spinners(v) if v.sel == last()),
+                "End stops at the last spinner; there is no custom row"
+            );
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
             assert!(
                 matches!(&app.mode, Mode::ScreenSettings(v) if matches!(design::settings_rows(modal::Cat::Appearance).get(v.sel), Some(design::SRow::Setting(s)) if s.path == PATH))
@@ -198,7 +288,10 @@ mod tests {
         for gone in ["Circle", "Arrows", "Static"] {
             assert!(!names.contains(&gone), "{gone} is gone: {names:?}");
         }
-        assert!(SPINNERS.iter().all(|(_, frames)| !frames.is_empty()), "every style animates");
+        assert!(
+            SPINNERS.iter().all(|(_, frames)| !frames.is_empty()),
+            "every style animates"
+        );
     }
 
     #[test]
@@ -208,9 +301,18 @@ mod tests {
         let statuses = [Status::Blocked, Status::Done, Status::Idle, Status::None];
         let before = statuses.map(|status| super::super::render::status_icon(&app, status));
         app.cfg.ui.spinner = vec!["a".into()];
-        assert_eq!(super::super::render::status_icon(&app, Status::Working), "a");
-        assert_eq!(statuses.map(|status| super::super::render::status_icon(&app, status)), before);
+        assert_eq!(
+            super::super::render::status_icon(&app, Status::Working),
+            "a"
+        );
+        assert_eq!(
+            statuses.map(|status| super::super::render::status_icon(&app, status)),
+            before
+        );
         app.cfg.ui.spinner.clear();
-        assert_eq!(super::super::render::status_icon(&app, Status::Working), app.cfg.icons.working);
+        assert_eq!(
+            super::super::render::status_icon(&app, Status::Working),
+            app.cfg.icons.working
+        );
     }
 }

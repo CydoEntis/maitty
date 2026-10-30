@@ -4,19 +4,19 @@
 //! screen: jump, new pane, talk and keys. Settings uses a centred modal; review uses a right-hand sheet
 //! beside the panes.
 //!
-//! The daemon only knows workspaces, tabs and terminals. Here every terminal is a session;
-//! its project and worktree come from where it runs (`TermInfo::root` / `top`), so a shell
-//! that `cd`s into another repo moves to that project by itself.
+//! Sidebar rows identify panes or durable conversations; terminal topology stays pane-owned.
+//! Projects and worktrees come from daemon metadata, so a shell that changes its repository
+//! moves to that project by itself.
 
 use super::design::{
-    BtnKind, SRow, Seg, SettingsView, button, cap_hints, cap_hints_fit, cap_hints_gap, fill, glyph, key_text, keycaps, path_key, put,
-    question, seg, segs_width, state_label, tilde,
+    BtnKind, SRow, Seg, SettingsView, button, cap_hints, cap_hints_fit, cap_hints_gap, fill, glyph,
+    key_text, keycaps, path_key, put, question, seg, segs_width, state_label, tilde,
 };
 use super::render::{blend, render_screen, truncate};
-use crate::brand::{APP_COMMAND};
 use super::{App, Hit, Mode};
+use crate::brand::APP_COMMAND;
 use crate::keys::Action;
-use crate::protocol::{CheckInfo, Status, SubagentActivity, TermId, TermInfo};
+use crate::protocol::{CheckInfo, SessionKey, Status, SubagentActivity, TermId, TermInfo};
 use crate::theme::Theme;
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
@@ -46,10 +46,12 @@ pub(super) struct Saved {
     pub closed: Vec<String>,
     /// Sessions in the order you dragged them to (within a group; what needs you still
     /// comes first).
-    pub session_order: Vec<TermId>,
+    #[serde(deserialize_with = "read_session_order")]
+    pub session_order: Vec<SessionKey>,
     /// Sessions you dragged into another group: the session, that group's folder, and
     /// whether it's a git repo. Kept while the session lives.
-    pub placed: Vec<(TermId, PathBuf, bool)>,
+    #[serde(deserialize_with = "read_placed")]
+    pub placed: Vec<(SessionKey, PathBuf, bool)>,
     /// Projects whose BRANCHES list is unfolded.
     pub open_branches: Vec<String>,
     /// Sidebar width you dragged it to, and the split's share for the left (or top) half.
@@ -67,6 +69,34 @@ pub(super) struct Saved {
     pub recent: Vec<String>,
     /// The side sheet's width per kind of view (`SheetKind::key`), as you sized it.
     pub sheet_w: HashMap<String, u16>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum SavedSessionKey {
+    Legacy(TermId),
+    Key(SessionKey),
+}
+impl SavedSessionKey {
+    fn key(self) -> SessionKey {
+        match self {
+            Self::Legacy(id) => SessionKey::Pane(id),
+            Self::Key(key) => key,
+        }
+    }
+}
+fn read_session_order<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<SessionKey>, D::Error> {
+    Vec::<SavedSessionKey>::deserialize(d)
+        .map(|keys| keys.into_iter().map(SavedSessionKey::key).collect())
+}
+fn read_placed<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Vec<(SessionKey, PathBuf, bool)>, D::Error> {
+    Vec::<(SavedSessionKey, PathBuf, bool)>::deserialize(d).map(|rows| {
+        rows.into_iter()
+            .map(|(key, path, git)| (key.key(), path, git))
+            .collect()
+    })
 }
 
 #[derive(Debug, Default)]
@@ -109,7 +139,7 @@ pub(super) struct Screen {
     pub leaf_rects: Vec<(TermId, Rect)>,
     pub dividers: Vec<(Rect, bool, Vec<bool>)>,
     /// Sidebar cursor (keyboard browsing; bare keys work while it's set).
-    pub cursor: Option<TermId>,
+    pub cursor: Option<SessionKey>,
     /// The sidebar cursor on a project row instead (its key).
     pub cursor_proj: Option<String>,
     /// What the sidebar cursor walks over, top to bottom.
@@ -131,7 +161,7 @@ pub(super) struct Screen {
     /// The screen's width when it was drawn (Changes starts at half of it).
     pub sheet_screen_w: u16,
     /// Drawn this frame: sidebar sessions in order, project keys, worktree and branch rows.
-    pub visible: Vec<TermId>,
+    pub visible: Vec<SessionKey>,
     pub proj_keys: Vec<String>,
     pub wt_keys: Vec<(String, PathBuf)>,
     /// The keys the mode bar's suggestions press, drawn this frame.
@@ -185,7 +215,7 @@ pub(super) struct Screen {
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum SideItem {
     Proj(String),
-    Sess(TermId),
+    Sess(SessionKey),
 }
 
 /// A tab asked for and not yet answered: whose it is, and the panes that existed when it was
@@ -239,7 +269,13 @@ pub(super) struct KeyMap {
 
 impl KeyMap {
     pub(super) fn new(view: KeyView, step: Option<Step>) -> KeyMap {
-        KeyMap { view, query: String::new(), step, sel: 0, scroll: 0 }
+        KeyMap {
+            view,
+            query: String::new(),
+            step,
+            sel: 0,
+            scroll: 0,
+        }
     }
 }
 
@@ -257,12 +293,16 @@ pub(super) enum Drag {
     Group(usize, bool),
     /// A session's row (moved yet?; what was pressed, the row or its `+N −N`): dragged onto
     /// another in its group it takes that place, released where it was the press acts.
-    Session(TermId, bool, ScreenHit),
+    Session(SessionKey, bool, ScreenHit),
     /// A tab's pill (its index now): dragged onto another tab it takes that place.
     Tab(usize),
     /// A pane pressed by its title: the pane it would swap with if let go now, and where the
     /// pointer is (its name follows it).
-    Pane { from: TermId, over: Option<TermId>, at: Position },
+    Pane {
+        from: TermId,
+        over: Option<TermId>,
+        at: Position,
+    },
 }
 
 /// The sidebar's width limits.
@@ -284,7 +324,10 @@ impl Screen {
             return Screen::default();
         }
         let saved = crate::config::read_state(&saved_path());
-        Screen { saved, ..Default::default() }
+        Screen {
+            saved,
+            ..Default::default()
+        }
     }
 
     pub fn save(&self) {
@@ -334,11 +377,20 @@ pub(super) const NP_ROWS: u8 = 6;
 
 impl NewPaneHy {
     pub fn new(p: usize, beside: bool) -> NewPaneHy {
-        NewPaneHy { p, a: 0, row: 0, beside, place: None, task: String::new(), model: 0 }
+        NewPaneHy {
+            p,
+            a: 0,
+            row: 0,
+            beside,
+            place: None,
+            task: String::new(),
+            model: 0,
+        }
     }
 
     pub fn place_for(&self, agent: &str, per_agent: bool) -> u8 {
-        self.place.unwrap_or(if agent != "shell" && per_agent { 0 } else { 2 })
+        self.place
+            .unwrap_or(if agent != "shell" && per_agent { 0 } else { 2 })
     }
 }
 
@@ -346,7 +398,8 @@ impl NewPaneHy {
 
 #[derive(Debug, Clone)]
 pub(super) struct Session {
-    pub term: TermId,
+    pub key: SessionKey,
+    pub native_term: Option<TermId>,
     /// What the row says: your name for it, else its worktree, else repo/branch on a
     /// feature branch, else the folder it's in.
     pub name: String,
@@ -428,7 +481,10 @@ pub(super) fn rank(s: Status) -> u8 {
 /// The sidebar has the keys, or the why popover opened from one of its rows does (it
 /// gives them back to the sidebar when it closes).
 pub(super) fn side_focused(app: &App) -> bool {
-    matches!(app.mode, Mode::Side | Mode::Why { side: true, .. } | Mode::Helpers { side: true, .. })
+    matches!(
+        app.mode,
+        Mode::Side | Mode::Why { side: true, .. } | Mode::Helpers { side: true, .. }
+    )
 }
 
 /// A split is one session: the pane it was split from keeps its row, the panes opened
@@ -440,8 +496,16 @@ pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
     owners.dedup();
     for owner in owners {
         // Everything in the session's tabs, besides the session itself.
-        let beside: Vec<TermId> = tabs.iter().filter(|t| t.owner == owner).flat_map(|t| t.layout.leaves()).filter(|id| *id != owner).collect();
-        let has_row = projs.iter().flat_map(|p| p.sessions()).any(|s| s.term == owner);
+        let beside: Vec<TermId> = tabs
+            .iter()
+            .filter(|t| t.owner == owner)
+            .flat_map(|t| t.layout.leaves())
+            .filter(|id| *id != owner)
+            .collect();
+        let has_row = projs
+            .iter()
+            .flat_map(|p| p.sessions())
+            .any(|s| s.native_term == Some(owner));
         if beside.is_empty() || !has_row {
             continue;
         }
@@ -449,7 +513,8 @@ pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
         for p in projs.iter_mut() {
             for w in &mut p.wts {
                 w.sessions.retain(|s| {
-                    let gone = beside.contains(&s.term);
+                    let gone = matches!(s.key, SessionKey::Pane(_))
+                        && s.native_term.is_some_and(|id| beside.contains(&id));
                     if gone {
                         members.push(s.clone());
                     }
@@ -457,10 +522,19 @@ pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
                 });
             }
         }
-        let Some(row) = projs.iter_mut().flat_map(|p| p.wts.iter_mut()).flat_map(|w| w.sessions.iter_mut()).find(|s| s.term == owner) else {
+        let Some(row) = projs
+            .iter_mut()
+            .flat_map(|p| p.wts.iter_mut())
+            .flat_map(|w| w.sessions.iter_mut())
+            .find(|s| s.native_term == Some(owner))
+        else {
             continue;
         };
-        if let Some(m) = members.into_iter().filter(|m| rank(m.status) < rank(row.status)).min_by_key(|m| rank(m.status)) {
+        if let Some(m) = members
+            .into_iter()
+            .filter(|m| rank(m.status) < rank(row.status))
+            .min_by_key(|m| rank(m.status))
+        {
             row.status = m.status;
             row.since = m.since;
             row.question = m.question;
@@ -469,7 +543,9 @@ pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
 }
 
 pub(super) fn folder_name(p: &Path) -> String {
-    p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string())
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| p.display().to_string())
 }
 
 /// Unix seconds now, or the time a test pinned for this thread so its frames read the same
@@ -479,7 +555,10 @@ pub(in crate::client) fn now_secs() -> u64 {
     if let Some(now) = FIXED_NOW.with(std::cell::Cell::get) {
         return now;
     }
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -529,10 +608,18 @@ pub(super) fn choices(parser: Option<&vt100::Parser>) -> Vec<String> {
         let (_, cols) = screen.size();
         let lines: Vec<String> = screen.rows(0, cols).collect();
         for l in lines.iter().rev().filter(|l| !l.trim().is_empty()).take(16) {
-            let t = l.trim().trim_matches(|c: char| "│┃ ".contains(c)).trim_start_matches(['❯', '>', ' ']).trim();
+            let t = l
+                .trim()
+                .trim_matches(|c: char| "│┃ ".contains(c))
+                .trim_start_matches(['❯', '>', ' '])
+                .trim();
             let mut chars = t.chars();
-            let (Some(d), Some('.')) = (chars.next(), chars.next()) else { continue };
-            let Some(n) = d.to_digit(10).filter(|n| (1..=9).contains(n)) else { continue };
+            let (Some(d), Some('.')) = (chars.next(), chars.next()) else {
+                continue;
+            };
+            let Some(n) = d.to_digit(10).filter(|n| (1..=9).contains(n)) else {
+                continue;
+            };
             let rest = chars.as_str().trim();
             if rest.is_empty() || out.iter().any(|(k, _)| *k == n as u8) {
                 continue;
@@ -554,6 +641,50 @@ pub(super) fn choices(parser: Option<&vt100::Parser>) -> Vec<String> {
 }
 
 impl App {
+    pub(super) fn session_key(&self, term: TermId) -> SessionKey {
+        self.snap
+            .conversations
+            .iter()
+            .find(|c| c.native_term == Some(term))
+            .map(|c| SessionKey::Conversation(c.id))
+            .or_else(|| {
+                self.snap
+                    .terms
+                    .get(&term)
+                    .and_then(|t| t.conversation_id)
+                    .map(SessionKey::Conversation)
+            })
+            .unwrap_or(SessionKey::Pane(term))
+    }
+
+    pub(super) fn session_term(&self, key: SessionKey) -> Option<TermId> {
+        match key {
+            SessionKey::Pane(id) => self.snap.terms.contains_key(&id).then_some(id),
+            SessionKey::Conversation(id) => self
+                .snap
+                .conversations
+                .iter()
+                .find(|c| c.id == id)
+                .and_then(|c| c.native_term)
+                .filter(|id| self.snap.terms.contains_key(id)),
+        }
+    }
+
+    pub(super) fn selected_term(&self) -> Option<TermId> {
+        match self.screen.cursor {
+            Some(key) => self.session_term(key),
+            None => self.focused(),
+        }
+    }
+
+    pub(super) fn require_session_term(&mut self, key: SessionKey) -> Option<TermId> {
+        let term = self.session_term(key);
+        if term.is_none() {
+            self.notify("This conversation has no native terminal.".into(), true);
+        }
+        term
+    }
+
     /// Every terminal, by project (repo) and worktree.
     /// Forget the cached model (things may have changed).
     pub(super) fn screen_fresh(&self) {
@@ -573,18 +704,33 @@ impl App {
     fn screen_model_build(&self) -> Vec<Proj> {
         let mut projs: Vec<Proj> = Vec::new();
         let order = &self.screen.saved.order;
-        let fallback: Vec<Color> = self.cfg.ui.workspace_colors.iter().filter_map(|c| crate::theme::parse_color(c)).collect();
+        let fallback: Vec<Color> = self
+            .cfg
+            .ui
+            .workspace_colors
+            .iter()
+            .filter_map(|c| crate::theme::parse_color(c))
+            .collect();
         let add_proj = |projs: &mut Vec<Proj>, path: &Path, git: bool| -> usize {
             let key = path_key(path);
             if let Some(i) = projs.iter().position(|p| p.key == key) {
                 projs[i].git |= git;
                 return i;
             }
-            let ci = order.iter().position(|k| *k == key).unwrap_or(order.len() + projs.len());
+            let ci = order
+                .iter()
+                .position(|k| *k == key)
+                .unwrap_or(order.len() + projs.len());
             projs.push(Proj {
                 key: key.clone(),
                 path: path.to_path_buf(),
-                name: self.screen.saved.names.get(&key).cloned().unwrap_or_else(|| folder_name(path)),
+                name: self
+                    .screen
+                    .saved
+                    .names
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(|| folder_name(path)),
                 color: self.theme.project(ci, &fallback),
                 wts: Vec::new(),
                 fresh: self.screen.fresh.contains(&key),
@@ -599,28 +745,68 @@ impl App {
                 return i;
             }
             // The repo folder goes by the branch it's on; a worktree by its folder.
-            let name = if !branch.is_empty() && (main || folder_name(path).starts_with("spare-")) { branch.clone() } else { folder_name(path) };
-            p.wts.push(Wt { key, path: path.to_path_buf(), name, branch, main, sessions: Vec::new() });
+            let name = if !branch.is_empty() && (main || folder_name(path).starts_with("spare-")) {
+                branch.clone()
+            } else {
+                folder_name(path)
+            };
+            p.wts.push(Wt {
+                key,
+                path: path.to_path_buf(),
+                name,
+                branch,
+                main,
+                sessions: Vec::new(),
+            });
             p.wts.len() - 1
         };
 
         for w in &self.snap.workspaces {
             let leaves: Vec<TermId> = w.tabs.iter().flat_map(|t| t.layout.leaves()).collect();
             for id in &leaves {
-                let Some(t) = self.snap.terms.get(id) else { continue };
-                let placed = self.screen.saved.placed.iter().find(|(x, ..)| x == id);
+                let Some(t) = self.snap.terms.get(id) else {
+                    continue;
+                };
+                let key = t
+                    .conversation_id
+                    .map(SessionKey::Conversation)
+                    .unwrap_or(SessionKey::Pane(*id));
+                if self
+                    .snap
+                    .conversations
+                    .iter()
+                    .any(|c| key == SessionKey::Conversation(c.id) || c.native_term == Some(*id))
+                {
+                    continue;
+                }
+                let placed = self.screen.saved.placed.iter().find(|(x, ..)| *x == key);
                 let (root, top, branch, main, git) = match (&t.root, &t.top) {
                     // Dragged into another group: it stays there.
                     _ if let Some((_, p, g)) = placed => {
-                        let branch = if t.root.as_ref().is_some_and(|r| path_key(r) == path_key(p)) { t.branch.clone().unwrap_or_default() } else { String::new() };
+                        let branch = if t.root.as_ref().is_some_and(|r| path_key(r) == path_key(p))
+                        {
+                            t.branch.clone().unwrap_or_default()
+                        } else {
+                            String::new()
+                        };
                         (p.clone(), p.clone(), branch, true, *g)
                     }
                     (Some(r), Some(tp)) => {
                         let main = path_key(r) == path_key(tp);
-                        (r.clone(), tp.clone(), t.branch.clone().unwrap_or_default(), main, true)
+                        (
+                            r.clone(),
+                            tp.clone(),
+                            t.branch.clone().unwrap_or_default(),
+                            main,
+                            true,
+                        )
                     }
                     _ => {
-                        let cwd = if t.cwd.as_os_str().is_empty() { w.cwd.clone() } else { t.cwd.clone() };
+                        let cwd = if t.cwd.as_os_str().is_empty() {
+                            w.cwd.clone()
+                        } else {
+                            t.cwd.clone()
+                        };
                         (cwd.clone(), cwd, String::new(), true, false)
                     }
                 };
@@ -636,13 +822,21 @@ impl App {
                 // What it asks: its ask-human question, else what its screen asks.
                 let question = if t.helper_ask.is_empty() {
                     (t.status == Status::Blocked)
-                        .then(|| self.snap.questions.iter().find(|q| q.term == *id).map(|q| q.text.clone()).or_else(|| self.parsers.get(id).and_then(question)))
+                        .then(|| {
+                            self.snap
+                                .questions
+                                .iter()
+                                .find(|q| q.term == *id)
+                                .map(|q| q.text.clone())
+                                .or_else(|| self.parsers.get(id).and_then(question))
+                        })
                         .flatten()
                 } else {
                     Some(helpers_line(t.helper_ask.len()))
                 };
                 projs[pi].wts[wi].sessions.push(Session {
-                    term: *id,
+                    key,
+                    native_term: Some(*id),
                     name,
                     title,
                     agent: match &t.agent {
@@ -653,13 +847,22 @@ impl App {
                     status: t.status,
                     since: t.since,
                     quiet_since: t.quiet_since,
-                    quiet_seen: t.quiet_since.is_some_and(|at| self.screen.quiet_seen.get(id) == Some(&at)),
+                    quiet_seen: t
+                        .quiet_since
+                        .is_some_and(|at| self.screen.quiet_seen.get(id) == Some(&at)),
                     question,
                     is_agent: t.agent.is_some(),
                     asleep: t.asleep,
                     subagents: t.subagents.clone(),
-                    subagent_activity: t.subagent_activity.iter()
-                        .filter(|activity| activity.parent.as_deref().is_none_or(|parent| Some(parent) == t.session.as_deref()))
+                    subagent_activity: t
+                        .subagent_activity
+                        .iter()
+                        .filter(|activity| {
+                            activity
+                                .parent
+                                .as_deref()
+                                .is_none_or(|parent| Some(parent) == t.session.as_deref())
+                        })
                         .filter(|activity| activity.state.active())
                         .cloned()
                         .collect(),
@@ -681,6 +884,48 @@ impl App {
                 }
             }
         }
+        for c in &self.snap.conversations {
+            let key = SessionKey::Conversation(c.id);
+            let placed = self.screen.saved.placed.iter().find(|(id, ..)| *id == key);
+            let path = placed.map(|(_, path, _)| path.as_path()).unwrap_or(&c.cwd);
+            let git = placed.is_some_and(|(_, _, git)| *git);
+            let pi = add_proj(&mut projs, path, git);
+            let wt = if placed.is_some() {
+                path
+            } else {
+                c.worktree.as_deref().unwrap_or(&c.cwd)
+            };
+            let wi = add_wt(&mut projs[pi], wt, String::new(), true);
+            let provider = match c.provider {
+                crate::conversation::Provider::Codex => "Codex",
+                crate::conversation::Provider::Claude => "Claude",
+            };
+            let checks = c.checks.clone();
+            let check = crate::protocol::headline(&checks).cloned();
+            projs[pi].wts[wi].sessions.push(Session {
+                key,
+                native_term: c.native_term.filter(|id| self.snap.terms.contains_key(id)),
+                name: format!("{provider} {}", c.id.0),
+                title: format!("{provider} conversation"),
+                agent: provider.to_lowercase(),
+                status: c.status,
+                since: now_secs(),
+                quiet_since: None,
+                quiet_seen: false,
+                question: None,
+                is_agent: true,
+                asleep: false,
+                subagents: Vec::new(),
+                subagent_activity: Vec::new(),
+                resume_at: None,
+                started_by: None,
+                helpers_wanted: 0,
+                queued: Vec::new(),
+                check,
+                checks,
+                context: None,
+            });
+        }
         fold_splits(&mut projs, &self.screen.tabs);
         // Groups come from where sessions are: one left with none (its only pane is inside a
         // split elsewhere) goes.
@@ -701,29 +946,59 @@ impl App {
     fn restored_tabs(&self) -> Vec<ScreenTab> {
         let previous = &self.screen.tabs;
         let owner_of = |leaves: &[TermId]| {
-            let kept = leaves.iter().find_map(|id| self.snap.terms.get(id).and_then(|t| t.tab_of)).filter(|o| self.snap.terms.contains_key(o));
-            let prior = previous.iter().find(|tab| tab.layout.leaves().iter().any(|id| leaves.contains(id))).map(|tab| tab.owner);
+            let kept = leaves
+                .iter()
+                .find_map(|id| self.snap.terms.get(id).and_then(|t| t.tab_of))
+                .filter(|o| self.snap.terms.contains_key(o));
+            let prior = previous
+                .iter()
+                .find(|tab| tab.layout.leaves().iter().any(|id| leaves.contains(id)))
+                .map(|tab| tab.owner);
             kept.or(prior).unwrap_or(leaves[0])
         };
-        let sources: Vec<&crate::protocol::TabInfo> = self.snap.workspaces.iter().flat_map(|w| &w.tabs).collect();
-        let owners: Vec<TermId> = sources.iter().map(|s| owner_of(&s.layout.leaves())).collect();
+        let sources: Vec<&crate::protocol::TabInfo> =
+            self.snap.workspaces.iter().flat_map(|w| &w.tabs).collect();
+        let owners: Vec<TermId> = sources
+            .iter()
+            .map(|s| owner_of(&s.layout.leaves()))
+            .collect();
         let shown = |i: usize| {
             let leaves = sources[i].layout.leaves();
             // A split, a tab of another session's, or a session's own pane that has other tabs.
-            leaves.len() > 1 || owners[i] != leaves[0] || owners.iter().enumerate().any(|(j, o)| j != i && *o == leaves[0])
+            leaves.len() > 1
+                || owners[i] != leaves[0]
+                || owners
+                    .iter()
+                    .enumerate()
+                    .any(|(j, o)| j != i && *o == leaves[0])
         };
         let mut out: Vec<ScreenTab> = (0..sources.len())
             .filter(|&i| shown(i))
             .map(|i| {
                 let source = sources[i];
                 let leaves = source.layout.leaves();
-                let prior = previous.iter().find(|tab| tab.layout.leaves().iter().any(|id| leaves.contains(id)));
+                let prior = previous
+                    .iter()
+                    .find(|tab| tab.layout.leaves().iter().any(|id| leaves.contains(id)));
                 ScreenTab {
                     layout: source.layout.clone(),
-                    focus: if source.layout.contains(source.focus) { source.focus } else { source.layout.first_leaf() },
+                    focus: if source.layout.contains(source.focus) {
+                        source.focus
+                    } else {
+                        source.layout.first_leaf()
+                    },
                     owner: owners[i],
                     used: prior.map_or(0, |tab| tab.used),
-                    name: prior.map_or_else(|| source.name.clone(), |tab| if tab.name.is_empty() { source.name.clone() } else { tab.name.clone() }),
+                    name: prior.map_or_else(
+                        || source.name.clone(),
+                        |tab| {
+                            if tab.name.is_empty() {
+                                source.name.clone()
+                            } else {
+                                tab.name.clone()
+                            }
+                        },
+                    ),
                 }
             })
             .collect();
@@ -733,6 +1008,33 @@ impl App {
     }
 
     pub(super) fn screen_sync(&mut self) {
+        let logical_key = |key| match key {
+            SessionKey::Pane(id) => self.session_key(id),
+            SessionKey::Conversation(_) => key,
+        };
+        let order = self
+            .screen
+            .saved
+            .session_order
+            .iter()
+            .copied()
+            .map(logical_key)
+            .collect::<Vec<_>>();
+        let placed = self
+            .screen
+            .saved
+            .placed
+            .iter()
+            .map(|(key, path, git)| (logical_key(*key), path.clone(), *git))
+            .collect::<Vec<_>>();
+        let cursor = self.screen.cursor.map(logical_key);
+        if order != self.screen.saved.session_order || placed != self.screen.saved.placed {
+            self.screen.saved.session_order = order;
+            self.screen.saved.placed = placed;
+            self.screen.save();
+        }
+        self.screen.cursor = cursor;
+
         // The daemon owns pane topology and restores it across client restarts. Rebuild the
         // visible tabs from that snapshot before handling focus changes, which otherwise
         // turns the first focused restored pane into a one-leaf tab and strands its siblings.
@@ -740,7 +1042,12 @@ impl App {
             let restored = self.restored_tabs();
             if !restored.is_empty() {
                 self.screen.tabs = restored;
-                self.screen.tab = self.screen.tabs.iter().position(|tab| tab.layout.contains(self.focused().unwrap_or(tab.focus))).unwrap_or(0);
+                self.screen.tab = self
+                    .screen
+                    .tabs
+                    .iter()
+                    .position(|tab| tab.layout.contains(self.focused().unwrap_or(tab.focus)))
+                    .unwrap_or(0);
             }
         }
         let focus = self.focused();
@@ -757,14 +1064,27 @@ impl App {
         }
         // You closed the last session: a shell in your home folder takes its place, so there's
         // always somewhere to type (and closing a project never closes the app).
-        if focus.is_none() && self.screen.last_focus.is_some() && self.snap.terms.is_empty() {
+        if focus.is_none()
+            && self.screen.last_focus.is_some()
+            && self.snap.terms.is_empty()
+            && self.snap.conversations.is_empty()
+        {
             self.screen.last_focus = None;
             self.splash = false;
-            let home = self.cfg.start_dir().or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf())).unwrap_or_else(std::env::temp_dir);
+            let home = self
+                .cfg
+                .start_dir()
+                .or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf()))
+                .unwrap_or_else(std::env::temp_dir);
             self.screen_start_pane(home, None, false);
             return;
         }
-        let proj_of = |t: TermId| model.iter().find(|p| p.sessions().any(|s| s.term == t)).map(|p| p.key.clone());
+        let proj_of = |t: TermId| {
+            model
+                .iter()
+                .find(|p| p.sessions().any(|s| s.native_term == Some(t)))
+                .map(|p| p.key.clone())
+        };
         if focus != self.screen.last_focus {
             self.screen.follow = true;
             if let Some(f) = focus {
@@ -788,22 +1108,44 @@ impl App {
             .cloned()
             .filter_map(|tab| {
                 let layout = tab.layout.map_leaves(&mut |id| alive(id).then_some(id))?;
-                let focus = if layout.contains(tab.focus) { tab.focus } else { layout.first_leaf() };
-                Some(ScreenTab { layout, focus, ..tab })
+                let focus = if layout.contains(tab.focus) {
+                    tab.focus
+                } else {
+                    layout.first_leaf()
+                };
+                Some(ScreenTab {
+                    layout,
+                    focus,
+                    ..tab
+                })
             })
             .collect();
         tabs.dedup_by(|a, b| a.layout == b.layout);
         // Views get rebuilt as you move between sessions; the name you gave lives in the daemon.
         for tab in tabs.iter_mut() {
-            let saved = self.snap.workspaces.iter().flat_map(|w| &w.tabs).find(|s| s.layout.contains(tab.focus)).map(|s| s.name.as_str());
+            let saved = self
+                .snap
+                .workspaces
+                .iter()
+                .flat_map(|w| &w.tabs)
+                .find(|s| s.layout.contains(tab.focus))
+                .map(|s| s.name.as_str());
             if let Some(name) = saved {
                 tab.name = name.to_string();
             }
         }
         // A session that ended with other tabs left: the first of those becomes the session.
-        let gone: Vec<TermId> = tabs.iter().map(|t| t.owner).filter(|o| !alive(*o)).collect();
+        let gone: Vec<TermId> = tabs
+            .iter()
+            .map(|t| t.owner)
+            .filter(|o| !alive(*o))
+            .collect();
         for o in gone {
-            if let Some(next) = tabs.iter().find(|t| t.owner == o).map(|t| t.layout.first_leaf()) {
+            if let Some(next) = tabs
+                .iter()
+                .find(|t| t.owner == o)
+                .map(|t| t.layout.first_leaf())
+            {
                 for t in tabs.iter_mut().filter(|t| t.owner == o) {
                     t.owner = next;
                 }
@@ -813,9 +1155,19 @@ impl App {
             self.screen_fresh();
         }
         self.screen.tabs = tabs;
-        self.screen.tab = self.screen.tab.min(self.screen.tabs.len().saturating_sub(1));
-        if self.screen.proj.as_ref().is_none_or(|k| !model.iter().any(|p| &p.key == k)) {
-            self.screen.proj = focus.and_then(proj_of).or_else(|| model.first().map(|p| p.key.clone()));
+        self.screen.tab = self
+            .screen
+            .tab
+            .min(self.screen.tabs.len().saturating_sub(1));
+        if self
+            .screen
+            .proj
+            .as_ref()
+            .is_none_or(|k| !model.iter().any(|p| &p.key == k))
+        {
+            self.screen.proj = focus
+                .and_then(proj_of)
+                .or_else(|| model.first().map(|p| p.key.clone()));
         }
         self.recipe_followup();
         if !cfg!(test) {
@@ -829,19 +1181,34 @@ impl App {
     fn check_overlaps(&mut self, model: &[Proj]) {
         let mut repos: HashMap<PathBuf, Vec<Wt>> = HashMap::new();
         for p in model.iter().filter(|p| p.git) {
-            repos.entry(p.path.clone()).or_default().extend(p.wts.iter().filter(|w| !w.sessions.is_empty()).cloned());
+            repos
+                .entry(p.path.clone())
+                .or_default()
+                .extend(p.wts.iter().filter(|w| !w.sessions.is_empty()).cloned());
         }
         for (repo, mut wts) in repos {
             wts.sort_by(|a, b| a.path.cmp(&b.path));
             wts.dedup_by(|a, b| a.path == b.path);
-            if wts.len() < 2 || self.screen.overlap_at.get(&repo).is_some_and(|t| t.elapsed() < OVERLAP_EVERY) {
+            if wts.len() < 2
+                || self
+                    .screen
+                    .overlap_at
+                    .get(&repo)
+                    .is_some_and(|t| t.elapsed() < OVERLAP_EVERY)
+            {
                 continue;
             }
             self.screen.overlap_at.insert(repo.clone(), Instant::now());
             let tx = self.bg.clone();
             std::thread::spawn(move || {
-                let checkouts: Vec<(String, PathBuf)> = wts.iter().map(|w| (w.name.clone(), w.path.clone())).collect();
-                let _ = tx.send(super::Bg::Overlaps(repo, crate::client::overlap::between(&checkouts)));
+                let checkouts: Vec<(String, PathBuf)> = wts
+                    .iter()
+                    .map(|w| (w.name.clone(), w.path.clone()))
+                    .collect();
+                let _ = tx.send(super::Bg::Overlaps(
+                    repo,
+                    crate::client::overlap::between(&checkouts),
+                ));
             });
         }
     }
@@ -849,9 +1216,20 @@ impl App {
     /// Every few seconds per checkout with a session in it: its uncommitted lines, for the
     /// `+N −N` on its rows (off the UI thread; the answer comes back as `Bg::LinesChanged`).
     fn count_changed_lines(&mut self, model: &[Proj]) {
-        let dirs: Vec<PathBuf> = model.iter().filter(|p| p.git).flat_map(|p| p.wts.iter()).filter(|w| !w.sessions.is_empty()).map(|w| w.path.clone()).collect();
+        let dirs: Vec<PathBuf> = model
+            .iter()
+            .filter(|p| p.git)
+            .flat_map(|p| p.wts.iter())
+            .filter(|w| !w.sessions.is_empty())
+            .map(|w| w.path.clone())
+            .collect();
         for dir in dirs {
-            if self.screen.lines_at.get(&dir).is_some_and(|t| t.elapsed() < LINES_EVERY) {
+            if self
+                .screen
+                .lines_at
+                .get(&dir)
+                .is_some_and(|t| t.elapsed() < LINES_EVERY)
+            {
                 continue;
             }
             self.screen.lines_at.insert(dir.clone(), Instant::now());
@@ -880,9 +1258,19 @@ fn row_name(t: &TermInfo, root: &Path, top: &Path, main: bool, git: bool) -> Str
     if git && !main {
         return folder_name(top);
     }
-    let cwd = if t.cwd.as_os_str().is_empty() { top } else { t.cwd.as_path() };
+    let cwd = if t.cwd.as_os_str().is_empty() {
+        top
+    } else {
+        t.cwd.as_path()
+    };
     // An agent by its name; a program (vim, a harness the app doesn't know) by its own.
-    let kind = t.agent.clone().unwrap_or_else(|| if t.is_shell() || t.process.is_empty() { "shell".into() } else { t.process.clone() });
+    let kind = t.agent.clone().unwrap_or_else(|| {
+        if t.is_shell() || t.process.is_empty() {
+            "shell".into()
+        } else {
+            t.process.clone()
+        }
+    });
     match cwd.strip_prefix(root) {
         Ok(rel) if !rel.as_os_str().is_empty() => rel.display().to_string().replace('\\', "/"),
         // The project's own folder: the agent's (or shell's) name.
@@ -890,7 +1278,6 @@ fn row_name(t: &TermInfo, root: &Path, top: &Path, main: bool, git: bool) -> Str
         Err(_) => folder_name(cwd),
     }
 }
-
 
 fn session_title(t: &TermInfo, name: &str, top: &Path) -> String {
     if !t.label.trim().is_empty() {
@@ -902,8 +1289,16 @@ fn session_title(t: &TermInfo, name: &str, top: &Path) -> String {
     if t.agent.is_some() {
         // Its name (from /rename, else the first thing it was asked) stays put; the latest
         // prompt shows under it.
-        let s = if t.name.trim().is_empty() { t.summary.trim() } else { t.name.trim() };
-        return if s.is_empty() { WAITING.into() } else { s.to_string() };
+        let s = if t.name.trim().is_empty() {
+            t.summary.trim()
+        } else {
+            t.name.trim()
+        };
+        return if s.is_empty() {
+            WAITING.into()
+        } else {
+            s.to_string()
+        };
     }
     if t.is_shell() {
         return match t.cwd.strip_prefix(top) {
@@ -923,13 +1318,13 @@ pub(super) enum ScreenHit {
     /// Fold / unfold a project.
     ToggleProj(usize),
     /// The sidebar's "+ new": a plain shell in the selected project.
-    Session(TermId),
+    Session(SessionKey),
     /// A button on the selected Inbox item: the key it stands for (`\n` Enter, `\x1b` Esc).
     InboxKey(char),
     CloseSplit(TermId),
     Divider(usize),
     /// The ⋯ on a hovered sidebar row: its menu.
-    RowMenuSess(TermId),
+    RowMenuSess(SessionKey),
     /// Start a shell in this project (its "nothing running" line).
     ShellIn(usize),
     RowMenuProj(usize),
@@ -1033,10 +1428,25 @@ pub(super) fn hovered(app: &App, r: Rect) -> bool {
 
 /// A design button (" Label key "); records its hit.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn btn(app: &mut App, buf: &mut Buffer, x: u16, y: u16, label: &str, key: &str, kind: BtnKind, h: ScreenHit, max_x: u16) -> u16 {
+pub(super) fn btn(
+    app: &mut App,
+    buf: &mut Buffer,
+    x: u16,
+    y: u16,
+    label: &str,
+    key: &str,
+    kind: BtnKind,
+    h: ScreenHit,
+    max_x: u16,
+) -> u16 {
     let t = app.theme.clone();
     let segs = button(&t, label, key, kind);
-    let r = Rect { x, y, width: segs_width(&segs).min(max_x.saturating_sub(x)), height: 1 };
+    let r = Rect {
+        x,
+        y,
+        width: segs_width(&segs).min(max_x.saturating_sub(x)),
+        height: 1,
+    };
     let nx = put(buf, x, y, &segs, max_x);
     hit(app, r, h);
     nx
@@ -1051,10 +1461,8 @@ pub(super) fn k(app: &App, a: &Action) -> String {
     }
 }
 
-mod rail;
 mod behaviour;
 mod branch_sheet;
-mod references_sheet;
 mod card;
 mod check;
 mod check_actions;
@@ -1065,31 +1473,37 @@ mod check_modals_tests;
 pub(in crate::client) mod check_settings;
 mod check_sheet;
 mod dialogs;
+mod draw;
 mod failure_note;
 pub(in crate::client) mod glyphs;
-mod keyoverlay;
-mod newsession;
-mod leader;
-mod popups;
-mod heads;
-mod popover;
-mod helpers_ask;
-mod draw;
 mod hairline;
+mod heads;
+mod helpers_ask;
+mod keyoverlay;
+mod leader;
+mod newsession;
+mod popover;
+mod popups;
+mod rail;
+mod references_sheet;
+pub(in crate::client) use self::hairline::{flat_theme, plain, plain_on, set_plain};
 #[cfg(test)]
 pub(in crate::client) use self::rail::RAIL_W;
-pub(in crate::client) use self::hairline::{flat_theme, plain, plain_on, set_plain};
-mod mode_bar;
-mod side;
-mod side_tabs;
-mod sheet;
-mod inbox;
-mod splash;
-mod tidy;
 #[cfg(test)]
 mod frame_tests;
+mod inbox;
+mod mode_bar;
 #[cfg(test)]
 mod panes_apart_tests;
 #[cfg(test)]
 mod reference;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, references_sheet::*, check_actions::*, check_approve::*, keyoverlay::*};
+mod sheet;
+mod side;
+mod side_tabs;
+mod splash;
+mod tidy;
+pub(in crate::client) use self::{
+    branch_sheet::*, card::*, check_actions::*, check_approve::*, check_sheet::*, dialogs::*,
+    draw::*, heads::*, helpers_ask::*, keyoverlay::*, leader::*, mode_bar::*, popover::*,
+    popups::*, references_sheet::*, sheet::*, side::*, splash::*, tidy::*,
+};

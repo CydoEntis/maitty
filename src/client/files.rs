@@ -14,7 +14,6 @@ pub struct FileEntry {
     pub place: String,
 }
 
-
 /// Subsequence match, scoring consecutive runs and matches at word starts. `None` = no match.
 pub fn fuzzy(query: &str, text: &str) -> Option<i32> {
     let t: Vec<char> = text.to_lowercase().chars().collect();
@@ -48,26 +47,49 @@ fn entry(path: PathBuf, place: &str) -> Option<FileEntry> {
     if !meta.is_file() {
         return None;
     }
-    Some(FileEntry { modified: meta.modified().ok()?, size: meta.len(), path, place: place.to_string() })
+    Some(FileEntry {
+        modified: meta.modified().ok()?,
+        size: meta.len(),
+        path,
+        place: place.to_string(),
+    })
 }
 
 /// Files touched in the last few days in the usual drop zones and the project, newest first.
 pub fn scan_recent(root: &Path) -> Vec<FileEntry> {
     let now = SystemTime::now();
-    let fresh = |e: &FileEntry, days: u64| now.duration_since(e.modified).unwrap_or_default() < Duration::from_secs(days * 86_400);
+    let fresh = |e: &FileEntry, days: u64| {
+        now.duration_since(e.modified).unwrap_or_default() < Duration::from_secs(days * 86_400)
+    };
     let mut out = Vec::new();
     if let Some(u) = directories::UserDirs::new() {
-        let places = [("Downloads", u.download_dir()), ("Desktop", u.desktop_dir()), ("Documents", u.document_dir())];
+        let places = [
+            ("Downloads", u.download_dir()),
+            ("Desktop", u.desktop_dir()),
+            ("Documents", u.document_dir()),
+        ];
         for (name, dir) in places {
             let Some(dir) = dir else { continue };
-            for e in ignore::WalkBuilder::new(dir).max_depth(Some(2)).standard_filters(false).hidden(true).build().flatten().take(5000) {
+            for e in ignore::WalkBuilder::new(dir)
+                .max_depth(Some(2))
+                .standard_filters(false)
+                .hidden(true)
+                .build()
+                .flatten()
+                .take(5000)
+            {
                 if let Some(fe) = entry(e.into_path(), name).filter(|f| fresh(f, 7)) {
                     out.push(fe);
                 }
             }
         }
     }
-    for e in ignore::WalkBuilder::new(root).max_depth(Some(12)).build().flatten().take(20_000) {
+    for e in ignore::WalkBuilder::new(root)
+        .max_depth(Some(12))
+        .build()
+        .flatten()
+        .take(20_000)
+    {
         if let Some(fe) = entry(e.into_path(), "project").filter(|f| fresh(f, 2)) {
             out.push(fe);
         }
@@ -81,16 +103,29 @@ pub fn scan_recent(root: &Path) -> Vec<FileEntry> {
 /// The first lines of a text file, or a one-line description of anything else.
 pub fn preview(path: &Path) -> Vec<String> {
     use std::io::Read;
-    let Ok(mut f) = std::fs::File::open(path) else { return vec!["(can't open)".into()] };
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return vec!["(can't open)".into()];
+    };
     let mut buf = vec![0u8; 2 * 1024 * 1024];
     let n = f.read(&mut buf).unwrap_or(0);
     buf.truncate(n);
     if buf.contains(&0) {
         let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-        let kind = path.extension().map(|e| e.to_string_lossy().to_uppercase()).unwrap_or_else(|| "binary".into());
-        return vec![format!("{kind} file, {}", human_size(size)), String::new(), "Enter puts its path in your prompt.".into()];
+        let kind = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_uppercase())
+            .unwrap_or_else(|| "binary".into());
+        return vec![
+            format!("{kind} file, {}", human_size(size)),
+            String::new(),
+            "Enter puts its path in your prompt.".into(),
+        ];
     }
-    String::from_utf8_lossy(&buf).lines().take(50_000).map(|l| l.replace('\t', "    ")).collect()
+    String::from_utf8_lossy(&buf)
+        .lines()
+        .take(50_000)
+        .map(|l| l.replace('\t', "    "))
+        .collect()
 }
 
 pub fn human_size(n: u64) -> String {
@@ -103,7 +138,10 @@ pub fn human_size(n: u64) -> String {
 }
 
 pub fn ago(t: SystemTime) -> String {
-    let s = SystemTime::now().duration_since(t).unwrap_or_default().as_secs();
+    let s = SystemTime::now()
+        .duration_since(t)
+        .unwrap_or_default()
+        .as_secs();
     match s {
         0..60 => "just now".into(),
         60..3600 => format!("{}m ago", s / 60),
@@ -115,7 +153,11 @@ pub fn ago(t: SystemTime) -> String {
 /// A path ready to type into a prompt: quoted when it has spaces.
 pub fn quote_path(p: &Path) -> String {
     let s = p.display().to_string();
-    if s.contains(' ') { format!("\"{s}\"") } else { s }
+    if s.contains(' ') {
+        format!("\"{s}\"")
+    } else {
+        s
+    }
 }
 
 /// Whether a file looks like text: no NUL in its first 8 KB (only those are read).
@@ -220,13 +262,22 @@ fn shell_open(target: &std::ffi::OsStr) -> std::io::Result<()> {
     // without it the call can report success and open nothing. COM is closed again only when
     // this call is what opened it (a result of 0 or more).
     unsafe {
-        let com = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        let com = CoInitializeEx(
+            std::ptr::null_mut(),
+            COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE,
+        );
         let opened = ShellExecuteExW(&mut info) != 0;
         let failed = std::io::Error::last_os_error();
         if com >= 0 {
             CoUninitialize();
         }
-        if opened { Ok(()) } else { Err(std::io::Error::other(format!("Windows couldn't open it ({failed})"))) }
+        if opened {
+            Ok(())
+        } else {
+            Err(std::io::Error::other(format!(
+                "Windows couldn't open it ({failed})"
+            )))
+        }
     }
 }
 
@@ -241,9 +292,15 @@ const OPENER_WAIT: std::time::Duration = std::time::Duration::from_secs(4);
 fn run_opener(mut cmd: std::process::Command) -> std::io::Result<()> {
     use std::io::Read;
     let tool = cmd.get_program().to_string_lossy().into_owned();
-    cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped());
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound { std::io::Error::other(format!("{tool} isn't installed (it opens links and files)")) } else { e }
+        if e.kind() == std::io::ErrorKind::NotFound {
+            std::io::Error::other(format!("{tool} isn't installed (it opens links and files)"))
+        } else {
+            e
+        }
     })?;
     let started = std::time::Instant::now();
     while started.elapsed() < OPENER_WAIT {
@@ -255,7 +312,12 @@ fn run_opener(mut cmd: std::process::Command) -> std::io::Result<()> {
             if let Some(mut e) = child.stderr.take() {
                 let _ = e.read_to_string(&mut err);
             }
-            let why = err.lines().map(str::trim).find(|l| !l.is_empty()).map(String::from).unwrap_or_else(|| format!("{tool} failed ({status})"));
+            let why = err
+                .lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .map(String::from)
+                .unwrap_or_else(|| format!("{tool} failed ({status})"));
             return Err(std::io::Error::other(why));
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -311,17 +373,37 @@ mod open_tests {
     #[test]
     #[ignore]
     fn opens_a_link_from_a_background_thread() {
-        let opened = std::thread::spawn(|| super::open_default(std::path::Path::new("https://example.com/"))).join().unwrap();
+        let opened = std::thread::spawn(|| {
+            super::open_default(std::path::Path::new("https://example.com/"))
+        })
+        .join()
+        .unwrap();
         assert!(opened.is_ok(), "{opened:?}");
-        let missing = std::thread::spawn(|| super::open_default(std::path::Path::new(concat!(r"C:
-o\suchile-", env!("APP_COMMAND"), r".txt")))).join().unwrap();
+        let missing = std::thread::spawn(|| {
+            super::open_default(std::path::Path::new(concat!(
+                r"C:
+o\suchile-",
+                env!("APP_COMMAND"),
+                r".txt"
+            )))
+        })
+        .join()
+        .unwrap();
         assert!(missing.is_err(), "a file that isn't there says so");
     }
 
     #[test]
     fn web_links_open_and_nothing_else() {
-        assert!(super::is_web_link("https://x.io") && super::is_web_link("http://localhost:5173/") && super::is_web_link("HTTP://X.IO"));
-        assert!(!super::is_web_link("file:///etc/passwd") && !super::is_web_link("javascript:alert(1)") && !super::is_web_link("ssh://box"));
+        assert!(
+            super::is_web_link("https://x.io")
+                && super::is_web_link("http://localhost:5173/")
+                && super::is_web_link("HTTP://X.IO")
+        );
+        assert!(
+            !super::is_web_link("file:///etc/passwd")
+                && !super::is_web_link("javascript:alert(1)")
+                && !super::is_web_link("ssh://box")
+        );
     }
 }
 
@@ -329,7 +411,10 @@ o\suchile-", env!("APP_COMMAND"), r".txt")))).join().unwrap();
 mod sniff_tests {
     #[test]
     fn only_the_start_of_a_file_is_read() {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-sniff-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-sniff-{}"),
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let (text, bin) = (dir.join("a.txt"), dir.join("b.bin"));
         // A NUL past the first 8 KB isn't looked at.

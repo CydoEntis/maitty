@@ -21,11 +21,24 @@ pub(in crate::client) fn helpers_line(n: usize) -> String {
 /// The same in `room` columns: the short form on a narrow sidebar, so it is not cut off.
 pub(in crate::client) fn helpers_line_in(n: usize, room: usize) -> String {
     let full = helpers_line(n);
-    if full.width() <= room { full } else { format!("wants {n} helper{}", if n == 1 { "" } else { "s" }) }
+    if full.width() <= room {
+        full
+    } else {
+        format!("wants {n} helper{}", if n == 1 { "" } else { "s" })
+    }
 }
 
-pub(in crate::client) fn draw_helpers_pop(app: &mut App, buf: &mut Buffer, screen: Rect, side: Rect, term: TermId, t: &Theme) {
-    let Some(info) = app.snap.terms.get(&term).cloned() else { return };
+pub(in crate::client) fn draw_helpers_pop(
+    app: &mut App,
+    buf: &mut Buffer,
+    screen: Rect,
+    side: Rect,
+    term: TermId,
+    t: &Theme,
+) {
+    let Some(info) = app.snap.terms.get(&term).cloned() else {
+        return;
+    };
     if info.helper_ask.is_empty() {
         return;
     }
@@ -37,18 +50,49 @@ pub(in crate::client) fn draw_helpers_pop(app: &mut App, buf: &mut Buffer, scree
     let iw = w as usize - 4;
     let agent = info.agent.clone().unwrap_or_else(|| "agent".into());
     let n = info.helper_ask.len();
-    let intro = wrap(&format!("{agent} wants to split this into {n} helper{}, each in its own worktree:", if n == 1 { "" } else { "s" }), iw);
+    let intro = wrap(
+        &format!(
+            "{agent} wants to split this into {n} helper{}, each in its own worktree:",
+            if n == 1 { "" } else { "s" }
+        ),
+        iw,
+    );
     let listed = n.min(TASKS_LISTED);
     let more = n - listed;
-    let note = wrap("Their permission prompts come to your Inbox. Nothing merges.", iw);
-    let h = (1 + 1 + intro.len() + listed + usize::from(more > 0) + 1 + note.len() + 1 + 1 + 1) as u16;
+    let note = wrap(
+        "Their permission prompts come to your Inbox. Nothing merges.",
+        iw,
+    );
+    let h =
+        (1 + 1 + intro.len() + listed + usize::from(more > 0) + 1 + note.len() + 1 + 1 + 1) as u16;
 
     let (r, _) = frame_beside_row(app, buf, screen, side, term, (x0, w, h), t);
     let card = Style::default().bg(t.card);
     let name = app.session_name(term);
-    put(buf, r.x + 2, r.y, &plain(vec![seg(" START HELPERS? ", Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD)), seg(format!("· {name} "), card.fg(t.muted))]), r.right() - 2);
+    put(
+        buf,
+        r.x + 2,
+        r.y,
+        &plain(vec![
+            seg(
+                " START HELPERS? ",
+                Style::default()
+                    .fg(t.acc_ink)
+                    .bg(t.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            seg(format!("· {name} "), card.fg(t.muted)),
+        ]),
+        r.right() - 2,
+    );
     let later = " Esc later ";
-    put(buf, (r.right() - 2).saturating_sub(later.width() as u16), r.y, &[seg(later, card.fg(t.muted))], r.right() - 2);
+    put(
+        buf,
+        (r.right() - 2).saturating_sub(later.width() as u16),
+        r.y,
+        &[seg(later, card.fg(t.muted))],
+        r.right() - 2,
+    );
 
     let (x, right) = (r.x + 2, r.right() - 2);
     let mut y = r.y + 2;
@@ -57,11 +101,26 @@ pub(in crate::client) fn draw_helpers_pop(app: &mut App, buf: &mut Buffer, scree
         y += 1;
     }
     for task in info.helper_ask.iter().take(listed) {
-        put(buf, x, y, &[seg("  · ", card.fg(t.muted)), seg(truncate(task, iw.saturating_sub(4)), card.fg(t.strong))], right);
+        put(
+            buf,
+            x,
+            y,
+            &[
+                seg("  · ", card.fg(t.muted)),
+                seg(truncate(task, iw.saturating_sub(4)), card.fg(t.strong)),
+            ],
+            right,
+        );
         y += 1;
     }
     if more > 0 {
-        put(buf, x, y, &[seg(format!("  + {more} more"), card.fg(t.muted))], right);
+        put(
+            buf,
+            x,
+            y,
+            &[seg(format!("  + {more} more"), card.fg(t.muted))],
+            right,
+        );
         y += 1;
     }
     y += 1;
@@ -70,24 +129,67 @@ pub(in crate::client) fn draw_helpers_pop(app: &mut App, buf: &mut Buffer, scree
         y += 1;
     }
     y += 1;
-    let project = app.screen_model().iter().find(|p| p.sessions().any(|s| s.term == term)).map(|p| p.name.clone()).unwrap_or_else(|| "this project".into());
+    let project = app
+        .screen_model()
+        .iter()
+        .find(|p| p.sessions().any(|s| s.native_term == Some(term)))
+        .map(|p| p.name.clone())
+        .unwrap_or_else(|| "this project".into());
     // The full words if the three buttons fit side by side, else shorter ones.
     let named = format!("Always in {}", truncate(&project, 14));
-    let tiers = [(named.as_str(), "No, do it alone"), ("Always here", "No, do it alone"), ("Always", "No, alone")];
+    let tiers = [
+        (named.as_str(), "No, do it alone"),
+        ("Always here", "No, do it alone"),
+        ("Always", "No, alone"),
+    ];
     let fits = |(always, no): &(&str, &str)| {
-        let width = |label: &str, key: &str| segs_width(&button(t, label, key, BtnKind::Normal)) as usize;
+        let width =
+            |label: &str, key: &str| segs_width(&button(t, label, key, BtnKind::Normal)) as usize;
         width("Allow", "1") + width(always, "2") + width(no, "3") + 2 <= iw
     };
     let (always, no) = tiers.iter().find(|tier| fits(tier)).unwrap_or(&tiers[2]);
-    let mut bx = btn(app, buf, x, y, "Allow", "1", BtnKind::Primary, ScreenHit::HelperAnswer(term, HelperChoice::Allow), right) + 1;
-    bx = btn(app, buf, bx, y, always, "2", BtnKind::Normal, ScreenHit::HelperAnswer(term, HelperChoice::Always), right) + 1;
-    btn(app, buf, bx, y, no, "3", BtnKind::Normal, ScreenHit::HelperAnswer(term, HelperChoice::No), right);
+    let mut bx = btn(
+        app,
+        buf,
+        x,
+        y,
+        "Allow",
+        "1",
+        BtnKind::Primary,
+        ScreenHit::HelperAnswer(term, HelperChoice::Allow),
+        right,
+    ) + 1;
+    bx = btn(
+        app,
+        buf,
+        bx,
+        y,
+        always,
+        "2",
+        BtnKind::Normal,
+        ScreenHit::HelperAnswer(term, HelperChoice::Always),
+        right,
+    ) + 1;
+    btn(
+        app,
+        buf,
+        bx,
+        y,
+        no,
+        "3",
+        BtnKind::Normal,
+        ScreenHit::HelperAnswer(term, HelperChoice::No),
+        right,
+    );
 }
 
 impl App {
     /// Whether session `term` has asked to start helpers and waits for you.
     pub(in crate::client) fn helpers_asked(&self, term: TermId) -> bool {
-        self.snap.terms.get(&term).is_some_and(|t| !t.helper_ask.is_empty())
+        self.snap
+            .terms
+            .get(&term)
+            .is_some_and(|t| !t.helper_ask.is_empty())
     }
 
     /// Open the question beside `term`'s row; `side`: back to the sidebar after.
@@ -100,7 +202,12 @@ impl App {
 
     /// Open the question from the Inbox's row `sel` (typed `query`): closing it, or answering,
     /// goes back to the Inbox on that row.
-    pub(in crate::client) fn open_helpers_from_inbox(&mut self, term: TermId, query: String, sel: usize) {
+    pub(in crate::client) fn open_helpers_from_inbox(
+        &mut self,
+        term: TermId,
+        query: String,
+        sel: usize,
+    ) {
         self.open_helpers(term, false);
         if matches!(self.mode, Mode::Helpers { .. }) {
             self.screen.inbox_return = Some((query, sel));
@@ -117,7 +224,9 @@ impl App {
 
     /// Send your answer, say what it did, and close the question.
     pub(in crate::client) fn answer_helpers(&mut self, term: TermId, choice: HelperChoice) {
-        let Mode::Helpers { side, .. } = self.mode else { return };
+        let Mode::Helpers { side, .. } = self.mode else {
+            return;
+        };
         if !self.helpers_asked(term) {
             self.helpers_back(side);
             return;
@@ -127,14 +236,18 @@ impl App {
         self.helpers_back(side);
         let said = match choice {
             HelperChoice::Allow => format!("{who} may start helpers"),
-            HelperChoice::Always => format!("helpers may always start here · {who} is starting them"),
+            HelperChoice::Always => {
+                format!("helpers may always start here · {who} is starting them")
+            }
             HelperChoice::No => format!("{who} will do it alone"),
         };
         self.notify(said, false);
     }
 
     pub(in crate::client) fn on_helpers_key(&mut self, term: TermId, side: bool, k: &KeyEvent) {
-        let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        let plain = !k
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
         match k.code {
             KeyCode::Esc => self.helpers_back(side),
             KeyCode::Char('1') if plain => self.answer_helpers(term, HelperChoice::Allow),

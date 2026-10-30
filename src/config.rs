@@ -1,14 +1,15 @@
 //! `config.toml`: everything user-facing is configurable here. Every field has a default,
 //! so a config file only needs the keys you want to change.
 
+use crate::brand::APP_COMMAND;
 use crate::keys::{self, Action, KeySpec};
-use crate::brand::{APP_COMMAND};
 use crate::theme::{Theme, ThemeOverrides};
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 pub const EXAMPLE: &str = include_str!("../config.example.toml");
 pub const CODEX_QUEUED_QUESTION_PATTERN: &str = r"(?m)^[ \t]*\?[ \t]+[1-9][0-9]*[ \t]+questions?[ \t]*$|^[ \t]*enter[ \t]+submit[ \t]+ctrl\+\][ \t]+skip[ \t]+shift\+[^\r\n]*main prompt[ \t]*$";
@@ -169,7 +170,12 @@ pub struct Sessions {
 
 impl Default for Sessions {
     fn default() -> Self {
-        Sessions { agent: "last used".into(), place: "new worktree".into(), helpers: "ask".into(), helpers_at_once: "3".into() }
+        Sessions {
+            agent: "last used".into(),
+            place: "new worktree".into(),
+            helpers: "ask".into(),
+            helpers_at_once: "3".into(),
+        }
     }
 }
 
@@ -177,17 +183,31 @@ impl Default for Sessions {
 /// `[sessions] helpers_at_once` is set: it becomes the nearest of `HELPERS_AT_ONCE`, and 0 the
 /// largest. The file itself is not rewritten.
 fn fold_legacy_helpers(value: &mut toml::Table) {
-    let sessions_set = value.get("sessions").and_then(toml::Value::as_table).is_some_and(|t| t.contains_key("helpers_at_once"));
-    let old = value.get("mcp").and_then(toml::Value::as_table).and_then(|t| t.get("helpers_at_once")).and_then(toml::Value::as_integer);
-    let (false, Some(old)) = (sessions_set, old) else { return };
+    let sessions_set = value
+        .get("sessions")
+        .and_then(toml::Value::as_table)
+        .is_some_and(|t| t.contains_key("helpers_at_once"));
+    let old = value
+        .get("mcp")
+        .and_then(toml::Value::as_table)
+        .and_then(|t| t.get("helpers_at_once"))
+        .and_then(toml::Value::as_integer);
+    let (false, Some(old)) = (sessions_set, old) else {
+        return;
+    };
     let nearest = match old {
         ..=2 if old > 0 => "2",
         3 => "3",
         _ => "4",
     };
-    let sessions = value.entry("sessions").or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let sessions = value
+        .entry("sessions")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
     if let Some(t) = sessions.as_table_mut() {
-        t.insert("helpers_at_once".into(), toml::Value::String(nearest.into()));
+        t.insert(
+            "helpers_at_once".into(),
+            toml::Value::String(nearest.into()),
+        );
     }
 }
 
@@ -233,7 +253,10 @@ impl<'de> Deserialize<'de> for Rounding {
                 "full" => Ok(Rounding::Full),
                 "corners" => Ok(Rounding::Corners),
                 "off" => Ok(Rounding::Off),
-                _ => Err(serde::de::Error::custom(format!("ui.rounded is \"{name}\"; use one of: {}", Rounding::NAMES.join(", ")))),
+                _ => Err(serde::de::Error::custom(format!(
+                    "ui.rounded is \"{name}\"; use one of: {}",
+                    Rounding::NAMES.join(", ")
+                ))),
             },
         }
     }
@@ -242,9 +265,13 @@ impl<'de> Deserialize<'de> for Rounding {
 /// An old `ui.corners = "rounded"` is `ui.rounded = "corners"` unless the file sets that itself,
 /// now that one setting rounds everything. The file itself is not rewritten.
 fn fold_legacy_corners(value: &mut toml::Table) {
-    let Some(ui) = value.get_mut("ui").and_then(toml::Value::as_table_mut) else { return };
+    let Some(ui) = value.get_mut("ui").and_then(toml::Value::as_table_mut) else {
+        return;
+    };
     let corners = ui.remove("corners");
-    if !ui.contains_key("rounded") && corners.as_ref().and_then(toml::Value::as_str) == Some("rounded") {
+    if !ui.contains_key("rounded")
+        && corners.as_ref().and_then(toml::Value::as_str) == Some("rounded")
+    {
         ui.insert("rounded".into(), toml::Value::String("corners".into()));
     }
 }
@@ -256,13 +283,22 @@ pub const SIDEBAR_TABS: &[&str] = &["all", "busy", "off"];
 pub const CURSOR_SHAPES: &[&str] = &["terminal", "block", "underline", "bar"];
 
 fn validate_cursor(ui: &Ui) -> Result<()> {
-    anyhow::ensure!(CURSOR_SHAPES.contains(&ui.cursor.as_str()), "ui.cursor is \"{}\"; use one of: {}", ui.cursor, CURSOR_SHAPES.join(", "));
+    anyhow::ensure!(
+        CURSOR_SHAPES.contains(&ui.cursor.as_str()),
+        "ui.cursor is \"{}\"; use one of: {}",
+        ui.cursor,
+        CURSOR_SHAPES.join(", ")
+    );
     Ok(())
 }
 
 fn validate_sessions(s: &Sessions) -> Result<()> {
     let one_of = |key: &str, value: &str, allowed: &[&str]| -> Result<()> {
-        anyhow::ensure!(allowed.contains(&value), "sessions.{key} is \"{value}\"; use one of: {}", allowed.join(", "));
+        anyhow::ensure!(
+            allowed.contains(&value),
+            "sessions.{key} is \"{value}\"; use one of: {}",
+            allowed.join(", ")
+        );
         Ok(())
     };
     one_of("agent", &s.agent, NEW_AGENTS)?;
@@ -303,8 +339,6 @@ pub struct Worktree {
     pub prewarm: String,
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Mcp {
@@ -327,8 +361,19 @@ impl Default for Mcp {
         Mcp {
             approve: "never".into(),
             safe: [
-                "npm test", "npm run test", "npm run lint", "pnpm test", "yarn test", "cargo test", "cargo check", "cargo clippy", "pytest",
-                "go test", "git status", "git diff", "git log",
+                "npm test",
+                "npm run test",
+                "npm run lint",
+                "pnpm test",
+                "yarn test",
+                "cargo test",
+                "cargo check",
+                "cargo clippy",
+                "pytest",
+                "go test",
+                "git status",
+                "git diff",
+                "git log",
             ]
             .map(String::from)
             .to_vec(),
@@ -359,7 +404,10 @@ impl RetiredLayout {
             (_, _, true) => "Floating with Pane colours on",
             _ => "Floating",
         };
-        format!("The {} layout is now {now}. Change it in Settings › Appearance", self.name)
+        format!(
+            "The {} layout is now {now}. Change it in Settings › Appearance",
+            self.name
+        )
     }
 }
 
@@ -387,14 +435,19 @@ impl LayoutKind {
 impl Ui {
     /// The look chosen; anything but "hairline" is Floating.
     pub fn layout_kind(&self) -> LayoutKind {
-        if self.layout == "hairline" { LayoutKind::Hairline } else { LayoutKind::Floating }
+        if self.layout == "hairline" {
+            LayoutKind::Hairline
+        } else {
+            LayoutKind::Floating
+        }
     }
 
     /// An older file's look, kept as near as the two looks allow (ADR 0027): Tiled (and Cards
     /// with `panes = "tiled"`) is Floating with no gaps, Grid is Floating with pane colours,
     /// and Compact (once "flat") is Hairline. The file itself is not rewritten.
     pub fn fold_retired_layout(&mut self) {
-        let tiled = self.layout == "tiled" || (matches!(self.layout.as_str(), "" | "cards") && self.panes == "tiled");
+        let tiled = self.layout == "tiled"
+            || (matches!(self.layout.as_str(), "" | "cards") && self.panes == "tiled");
         let retired = if tiled {
             self.gap = "0".into();
             Some("Tiled")
@@ -406,14 +459,27 @@ impl Ui {
         } else {
             None
         };
-        let kind = if retired == Some("Compact") { LayoutKind::Hairline } else { self.layout_kind() };
+        let kind = if retired == Some("Compact") {
+            LayoutKind::Hairline
+        } else {
+            self.layout_kind()
+        };
         self.layout = kind.name().into();
-        self.retired_layout = retired.map(|name| RetiredLayout { name, kind, gap: tiled, pane_colors: name == "Grid" });
+        self.retired_layout = retired.map(|name| RetiredLayout {
+            name,
+            kind,
+            gap: tiled,
+            pane_colors: name == "Grid",
+        });
     }
 
     /// The rounding drawn: `rounded`, except that Hairline is always square (ADR 0026).
     pub fn rounding(&self) -> Rounding {
-        if self.layout_kind() == LayoutKind::Hairline { Rounding::Off } else { self.rounded }
+        if self.layout_kind() == LayoutKind::Hairline {
+            Rounding::Off
+        } else {
+            self.rounded
+        }
     }
 }
 
@@ -438,7 +504,9 @@ pub struct CheckDef {
 impl CheckDef {
     /// What the checkpoint is called: its `name`, else the command's last word (`npm test`: `test`).
     pub fn name(&self) -> &str {
-        self.name.as_deref().unwrap_or_else(|| self.command.split_whitespace().last().unwrap_or_default())
+        self.name
+            .as_deref()
+            .unwrap_or_else(|| self.command.split_whitespace().last().unwrap_or_default())
     }
 
     pub fn timeout(&self) -> std::time::Duration {
@@ -448,13 +516,23 @@ impl CheckDef {
 
 impl Default for CheckDef {
     fn default() -> Self {
-        Self { project: PathBuf::new(), name: None, command: String::new(), timeout_s: CHECK_TIMEOUT_S_DEFAULT }
+        Self {
+            project: PathBuf::new(),
+            name: None,
+            command: String::new(),
+            timeout_s: CHECK_TIMEOUT_S_DEFAULT,
+        }
     }
 }
 
 /// Whether two paths name the same place, ignoring separator style, a trailing separator and case.
 pub fn same_path(a: &Path, b: &Path) -> bool {
-    let n = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let n = |p: &Path| {
+        p.to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_lowercase()
+    };
     n(a) == n(b)
 }
 
@@ -463,7 +541,10 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
 pub fn validate_checks(checks: &[CheckDef]) -> Result<()> {
     for (i, c) in checks.iter().enumerate() {
         let n = i + 1;
-        anyhow::ensure!(!c.project.as_os_str().is_empty(), "[[check]] #{n} needs a `project`");
+        anyhow::ensure!(
+            !c.project.as_os_str().is_empty(),
+            "[[check]] #{n} needs a `project`"
+        );
         validate_check(n, c, &c.project.display().to_string())?;
         anyhow::ensure!(
             !c.project.to_string_lossy().starts_with('~'),
@@ -471,7 +552,10 @@ pub fn validate_checks(checks: &[CheckDef]) -> Result<()> {
             c.project.display()
         );
         anyhow::ensure!(
-            !checks[..i].iter().any(|o| same_path(&o.project, &c.project) && o.name().eq_ignore_ascii_case(c.name())),
+            !checks[..i]
+                .iter()
+                .any(|o| same_path(&o.project, &c.project)
+                    && o.name().eq_ignore_ascii_case(c.name())),
             "[[check]] #{n}: {} already has a check named `{}`; give each a different `name`",
             c.project.display(),
             c.name()
@@ -482,9 +566,18 @@ pub fn validate_checks(checks: &[CheckDef]) -> Result<()> {
 
 /// The rules a check meets wherever it is named: in config or in a repo's file (`place`).
 fn validate_check(n: usize, c: &CheckDef, place: &str) -> Result<()> {
-    anyhow::ensure!(!c.command.trim().is_empty(), "[[check]] #{n} ({place}) needs a `command`");
-    anyhow::ensure!(c.timeout_s > 0, "[[check]] #{n} ({place}) needs a `timeout_s` above 0");
-    anyhow::ensure!(c.name.as_deref().is_none_or(|s| !s.trim().is_empty()), "[[check]] #{n} ({place}) has an empty `name`");
+    anyhow::ensure!(
+        !c.command.trim().is_empty(),
+        "[[check]] #{n} ({place}) needs a `command`"
+    );
+    anyhow::ensure!(
+        c.timeout_s > 0,
+        "[[check]] #{n} ({place}) needs a `timeout_s` above 0"
+    );
+    anyhow::ensure!(
+        c.name.as_deref().is_none_or(|s| !s.trim().is_empty()),
+        "[[check]] #{n} ({place}) has an empty `name`"
+    );
     Ok(())
 }
 
@@ -497,7 +590,10 @@ pub fn repo_checks_path(worktree: &Path) -> PathBuf {
     if new.exists() {
         return new;
     }
-    crate::brand::previous().map(|p| worktree.join(format!(".{p}/checks.toml"))).find(|old| old.exists()).unwrap_or(new)
+    crate::brand::previous()
+        .map(|p| worktree.join(format!(".{p}/checks.toml")))
+        .find(|old| old.exists())
+        .unwrap_or(new)
 }
 
 /// The checks in a repository's `.<app>/checks.toml`, refused as a whole when any is unusable,
@@ -522,11 +618,17 @@ pub fn parse_repo_checks(text: &str) -> Result<Vec<CheckDef>> {
     fn timeout_default() -> u64 {
         CHECK_TIMEOUT_S_DEFAULT
     }
-    let file: RepoChecks = toml::from_str(text).with_context(|| format!("reading {REPO_CHECKS_FILE}"))?;
+    let file: RepoChecks =
+        toml::from_str(text).with_context(|| format!("reading {REPO_CHECKS_FILE}"))?;
     let checks: Vec<CheckDef> = file
         .check
         .into_iter()
-        .map(|c| CheckDef { project: PathBuf::new(), name: c.name, command: c.command, timeout_s: c.timeout_s })
+        .map(|c| CheckDef {
+            project: PathBuf::new(),
+            name: c.name,
+            command: c.command,
+            timeout_s: c.timeout_s,
+        })
         .collect();
     for (i, c) in checks.iter().enumerate() {
         let n = i + 1;
@@ -534,11 +636,16 @@ pub fn parse_repo_checks(text: &str) -> Result<Vec<CheckDef>> {
         // You approve what you read: a line break or other control character could hide part
         // of the command from the approval modal.
         anyhow::ensure!(
-            !c.command.chars().chain(c.name().chars()).any(char::is_control),
+            !c.command
+                .chars()
+                .chain(c.name().chars())
+                .any(char::is_control),
             "[[check]] #{n} ({REPO_CHECKS_FILE}): a `command` or `name` may not hold a line break, tab or other control character"
         );
         anyhow::ensure!(
-            !checks[..i].iter().any(|o| o.name().eq_ignore_ascii_case(c.name())),
+            !checks[..i]
+                .iter()
+                .any(|o| o.name().eq_ignore_ascii_case(c.name())),
             "[[check]] #{n} ({REPO_CHECKS_FILE}): another check is named `{}`; give each a different `name`",
             c.name()
         );
@@ -575,7 +682,13 @@ pub struct Preset {
 
 impl Default for Preset {
     fn default() -> Self {
-        Preset { name: String::new(), agent: "claude".into(), model: String::new(), prompt: String::new(), place: "beside".into() }
+        Preset {
+            name: String::new(),
+            agent: "claude".into(),
+            model: String::new(),
+            prompt: String::new(),
+            place: "beside".into(),
+        }
     }
 }
 
@@ -601,7 +714,11 @@ impl Preset {
 
 impl Default for Recipe {
     fn default() -> Self {
-        Recipe { name: String::new(), worktree: true, run: Vec::new() }
+        Recipe {
+            name: String::new(),
+            worktree: true,
+            run: Vec::new(),
+        }
     }
 }
 
@@ -721,7 +838,19 @@ pub struct AgentDef {
 }
 
 /// Shells, by their program name.
-const SHELL_PROGRAMS: &[&str] = &["pwsh", "powershell", "cmd", "bash", "zsh", "fish", "nu", "sh", "dash", "elvish", "xonsh"];
+const SHELL_PROGRAMS: &[&str] = &[
+    "pwsh",
+    "powershell",
+    "cmd",
+    "bash",
+    "zsh",
+    "fish",
+    "nu",
+    "sh",
+    "dash",
+    "elvish",
+    "xonsh",
+];
 
 /// Whether `program` (a name or a file name, any case, `.exe` or not) is a shell.
 pub fn is_shell(program: &str) -> bool {
@@ -730,7 +859,10 @@ pub fn is_shell(program: &str) -> bool {
 }
 
 /// Programs that run an agent's script rather than being the agent: they can't name it.
-const INTERPRETERS: &[&str] = &["node", "nodejs", "bun", "deno", "python", "python3", "py", "ruby", "java", "uv", "uvx", "npx", "pnpm", "tsx", "ts-node"];
+const INTERPRETERS: &[&str] = &[
+    "node", "nodejs", "bun", "deno", "python", "python3", "py", "ruby", "java", "uv", "uvx", "npx",
+    "pnpm", "tsx", "ts-node",
+];
 
 /// What the app learns from a program you say is an agent: matched by its name, or (run by
 /// node, python, …) by its package or script. The usual screen signs of a working agent;
@@ -741,21 +873,33 @@ pub fn agent_from_command(program: &str, args: &[String]) -> Option<AgentDef> {
         return None;
     }
     let (name, process, cmdline) = if INTERPRETERS.contains(&program.as_str()) {
-        let script = args.iter().skip(1).find(|a| !a.starts_with('-') && !["run", "x", "exec", "dlx"].contains(&a.as_str()))?;
+        let script = args
+            .iter()
+            .skip(1)
+            .find(|a| !a.starts_with('-') && !["run", "x", "exec", "dlx"].contains(&a.as_str()))?;
         let path = script.replace('\\', "/");
         let name = match path.split_once("node_modules/") {
             // An npm package: its name (the part after a scope).
             Some((_, rest)) => {
                 let mut parts = rest.split('/');
                 let first = parts.next().unwrap_or_default();
-                if first.starts_with('@') { parts.next().unwrap_or(first) } else { first }.to_string()
+                if first.starts_with('@') {
+                    parts.next().unwrap_or(first)
+                } else {
+                    first
+                }
+                .to_string()
             }
             None => {
                 let file = path.rsplit('/').next().unwrap_or(&path);
                 let stem = file.rsplit_once('.').map_or(file, |(s, _)| s);
                 // cli.js, main.py, index.ts: the folder says more.
                 if ["cli", "main", "index", "__main__", "app", "run"].contains(&stem) {
-                    path.rsplit('/').nth(1).filter(|d| !d.is_empty() && *d != "dist" && *d != "bin").unwrap_or(stem).to_string()
+                    path.rsplit('/')
+                        .nth(1)
+                        .filter(|d| !d.is_empty() && *d != "dist" && *d != "bin")
+                        .unwrap_or(stem)
+                        .to_string()
                 } else {
                     stem.to_string()
                 }
@@ -769,8 +913,16 @@ pub fn agent_from_command(program: &str, args: &[String]) -> Option<AgentDef> {
         name,
         process,
         cmdline,
-        working_patterns: [r"esc to interrupt", r"esc to cancel", r"ctrl\+c to (stop|interrupt|cancel)"].map(String::from).to_vec(),
-        blocked_patterns: [r"Do you want to", r"\(y/n\)", r"\[y/N\]"].map(String::from).to_vec(),
+        working_patterns: [
+            r"esc to interrupt",
+            r"esc to cancel",
+            r"ctrl\+c to (stop|interrupt|cancel)",
+        ]
+        .map(String::from)
+        .to_vec(),
+        blocked_patterns: [r"Do you want to", r"\(y/n\)", r"\[y/N\]"]
+            .map(String::from)
+            .to_vec(),
         resume: None,
         resume_last: None,
         enabled: None,
@@ -789,13 +941,22 @@ fn add_agent_to(file: &std::path::Path, def: &AgentDef) -> Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(e).context("reading config"),
     };
-    let mut doc: toml_edit::DocumentMut = text.parse().context("config.toml has a syntax error; fix it first")?;
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .context("config.toml has a syntax error; fix it first")?;
     if !doc.contains_key("agents") {
-        doc.insert("agents", toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new()));
+        doc.insert(
+            "agents",
+            toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new()),
+        );
     }
-    let agents = doc["agents"].as_array_of_tables_mut().context("`agents` in config.toml isn't a list of [[agents]]")?;
+    let agents = doc["agents"]
+        .as_array_of_tables_mut()
+        .context("`agents` in config.toml isn't a list of [[agents]]")?;
     agents.retain(|t| t.get("name").and_then(|n| n.as_str()) != Some(def.name.as_str()));
-    let list = |xs: &[String]| toml_edit::value(xs.iter().map(String::as_str).collect::<toml_edit::Array>());
+    let list = |xs: &[String]| {
+        toml_edit::value(xs.iter().map(String::as_str).collect::<toml_edit::Array>())
+    };
     let mut t = toml_edit::Table::new();
     t.insert("name", toml_edit::value(def.name.as_str()));
     if !def.process.is_empty() {
@@ -859,9 +1020,12 @@ impl Default for Ui {
             which_key: false,
             mouse: true,
             spinner: SPINNERS[0].1.iter().map(|frame| (*frame).into()).collect(),
-            workspace_colors: ["#a593ff", "#5aa9ff", "#ff7ab6", "#3dd6c0", "#e8c565", "#ff9f6b", "#c792ea", "#7fd8a4"]
-                .map(String::from)
-                .to_vec(),
+            workspace_colors: [
+                "#a593ff", "#5aa9ff", "#ff7ab6", "#3dd6c0", "#e8c565", "#ff9f6b", "#c792ea",
+                "#7fd8a4",
+            ]
+            .map(String::from)
+            .to_vec(),
             splash: true,
             splash_animation: "cold start".into(),
             update_check: true,
@@ -898,14 +1062,27 @@ impl Default for Quick {
             env: BTreeMap::new(),
         };
         Quick {
-            agents: vec![a("claude", "claude {prompt}", &["opus", "sonnet", "haiku"], "--model"), a("codex", "codex {prompt}", &[], "-m")],
+            agents: vec![
+                a(
+                    "claude",
+                    "claude {prompt}",
+                    &["opus", "sonnet", "haiku"],
+                    "--model",
+                ),
+                a("codex", "codex {prompt}", &[], "-m"),
+            ],
         }
     }
 }
 
 impl Default for Restore {
     fn default() -> Self {
-        Restore { enabled: true, agents: true, commands: true, output: true }
+        Restore {
+            enabled: true,
+            agents: true,
+            commands: true,
+            output: true,
+        }
     }
 }
 
@@ -937,7 +1114,12 @@ pub const SPINNERS: &[(&str, &[&str])] = &[
     ("Arc", &["◜", "◝", "◞", "◟"]),
     ("Moon", &["◓", "◑", "◒", "◐"]),
     ("Star", &["✶", "✷", "✸", "✹"]),
-    ("Blocks", &["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂"]),
+    (
+        "Blocks",
+        &[
+            "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂",
+        ],
+    ),
     ("Bars", BARS_FRAMES),
 ];
 /// The reference frames' working spinner: three Braille bars, two columns wide. The ASCII glyph set
@@ -947,7 +1129,10 @@ pub const BARS_ASCII: &[&str] = &[". ", "o ", "O ", "o "];
 pub const MAX_SPINNER_FRAMES: usize = 64;
 
 pub fn spinner_name(frames: &[String]) -> &'static str {
-    SPINNERS.iter().find(|(_, preset)| frames == *preset).map_or("Custom", |(name, _)| name)
+    SPINNERS
+        .iter()
+        .find(|(_, preset)| frames == *preset)
+        .map_or("Custom", |(name, _)| name)
 }
 
 /// One column, or two when every character is Braille: the 3-bar spinner needs two cells, and
@@ -956,15 +1141,24 @@ fn fits_cells(frame: &str) -> bool {
     use unicode_width::UnicodeWidthStr;
     match frame.width() {
         1 => true,
-        2 => frame.chars().all(|c| ('\u{2800}'..='\u{28ff}').contains(&c)),
+        2 => frame
+            .chars()
+            .all(|c| ('\u{2800}'..='\u{28ff}').contains(&c)),
         _ => false,
     }
 }
 
 pub fn validate_spinner(frames: &[String]) -> Result<()> {
-    anyhow::ensure!(frames.len() <= MAX_SPINNER_FRAMES, "a working spinner can have at most {MAX_SPINNER_FRAMES} frames");
-    anyhow::ensure!(frames.iter().all(|frame| !frame.trim().is_empty() && !frame.chars().any(char::is_control) && fits_cells(frame)),
-        "each spinner frame must fit one terminal column (two for Braille) and contain no control characters");
+    anyhow::ensure!(
+        frames.len() <= MAX_SPINNER_FRAMES,
+        "a working spinner can have at most {MAX_SPINNER_FRAMES} frames"
+    );
+    anyhow::ensure!(
+        frames.iter().all(|frame| !frame.trim().is_empty()
+            && !frame.chars().any(char::is_control)
+            && fits_cells(frame)),
+        "each spinner frame must fit one terminal column (two for Braille) and contain no control characters"
+    );
     Ok(())
 }
 
@@ -975,11 +1169,20 @@ mod spinner_tests {
     #[test]
     fn presets_and_custom_frames_are_safe_single_column_indicators() {
         for (name, frames) in SPINNERS {
-            let frames = frames.iter().map(|frame| (*frame).into()).collect::<Vec<_>>();
+            let frames = frames
+                .iter()
+                .map(|frame| (*frame).into())
+                .collect::<Vec<_>>();
             validate_spinner(&frames).unwrap();
             assert_eq!(spinner_name(&frames), *name);
         }
-        for frames in [vec!["".into()], vec![" ".into()], vec!["🌈".into()], vec!["\x1b[31m".into()], vec!["a".into(); MAX_SPINNER_FRAMES+1]] {
+        for frames in [
+            vec!["".into()],
+            vec![" ".into()],
+            vec!["🌈".into()],
+            vec!["\x1b[31m".into()],
+            vec!["a".into(); MAX_SPINNER_FRAMES + 1],
+        ] {
             assert!(validate_spinner(&frames).is_err());
         }
     }
@@ -988,7 +1191,11 @@ mod spinner_tests {
     fn the_bars_spinner_is_two_braille_cells_and_other_wide_frames_stay_out() {
         use unicode_width::UnicodeWidthStr;
         assert_eq!(BARS_FRAMES.len(), 10);
-        assert!(BARS_FRAMES.iter().all(|f| f.width() == 2 && f.chars().count() == 2));
+        assert!(
+            BARS_FRAMES
+                .iter()
+                .all(|f| f.width() == 2 && f.chars().count() == 2)
+        );
         assert!(BARS_ASCII.iter().all(|f| f.is_ascii() && f.width() == 2));
         for bad in ["ab", "🌈", "⣰a", "⣰⡄⣰"] {
             assert!(validate_spinner(&[bad.to_string()]).is_err(), "{bad}");
@@ -1019,7 +1226,12 @@ impl Default for Icons {
 
 impl Default for Detection {
     fn default() -> Self {
-        Detection { working_window_ms: 1500, echo_grace_ms: 300, scan_interval_ms: 1000, pattern_rows: 12 }
+        Detection {
+            working_window_ms: 1500,
+            echo_grace_ms: 300,
+            scan_interval_ms: 1000,
+            pattern_rows: 12,
+        }
     }
 }
 
@@ -1036,7 +1248,13 @@ impl Default for Notify {
     }
 }
 
-fn agent(name: &str, process: &[&str], cmdline: &[&str], working: &[&str], blocked: &[&str]) -> AgentDef {
+fn agent(
+    name: &str,
+    process: &[&str],
+    cmdline: &[&str],
+    working: &[&str],
+    blocked: &[&str],
+) -> AgentDef {
     let v = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect();
     AgentDef {
         name: name.into(),
@@ -1059,62 +1277,193 @@ fn resumable(mut a: AgentDef, resume: &str, last: &str) -> AgentDef {
 /// A built-in or configured agent kind, named plainly (letters, digits, - _ .).
 fn known_agent(cfg: &Config, name: &str) -> bool {
     !name.is_empty()
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
         && cfg.agent_defs().iter().any(|d| d.name == name)
 }
 
 pub fn builtin_agents() -> Vec<AgentDef> {
     vec![
-        resumable(agent(
-            "claude",
-            &["claude", "claude-code"],
-            &["@anthropic-ai/claude-code", "claude-code/cli"],
-            // "esc to interrupt", or the spinner line: "Misting… (5s · ↓ 219 tokens)".
-            &[r"esc to interrupt", r"…\s*\(\d+[smh][^)]*tokens"],
-            &[
-                r"Do you want to (proceed|make this edit|create|run|allow)",
-                r"❯ 1\. Yes",
-                r"Would you like to proceed",
-                r"Do you trust the files",
-                // Its question and permission dialogs.
-                r"Enter to select",
-                r"Esc to cancel",
-            ],
-        ), "claude --resume {session}", "claude --continue"),
-        resumable(agent(
-            "codex",
-            &["codex"],
-            &["@openai/codex"],
-            // Finished answers can discuss the shortcut; only a complete activity row counts.
-            &[r"(?m)^[ \t]*(?:•[ \t]*)?[^()\r\n]+ \((?:\d+[smh][^()\r\n]*[•·-][ \t]*)?esc to interrupt[^()\r\n]*\)(?:[ \t]+[·•][ \t]+[^\r\n]*)?[ \t]*$"],
-            &[r"Allow command\?", r"Would you like to (run|make|apply)", r"approve this", r"Trust this folder\?", r"› 1\. Yes"],
-        ), "codex resume {session}", "codex resume --last"),
-        agent("gemini", &["gemini"], &["@google/gemini-cli"], &[r"esc to cancel"], &[r"Allow execution", r"Apply this change\?"]),
-        resumable(agent("opencode", &["opencode", "opencode2", "open-code"], &["opencode-ai"], &[r"esc interrupt"], &[r"Permission required"]), "opencode --session {session}", "opencode --continue"),
-        agent("cursor", &["cursor-agent"], &[], &[r"ctrl\+c to stop"], &[r"Run this command\?"]),
-        resumable(agent("copilot", &["copilot", "github-copilot", "ghcs"], &["@github/copilot"], &[r"esc to cancel"], &[r"Do you want to"]), "copilot --resume {session}", "copilot --continue"),
-        agent("amp", &["amp", "amp-local"], &["@sourcegraph/amp"], &[r"esc to cancel"], &[r"Allow\?"]),
-        agent("qwen", &["qwen", "qwen-code"], &["@qwen-code/qwen-code"], &[r"esc to cancel"], &[r"Allow execution"]),
-        agent("aider", &["aider"], &["aider-chat", "\\aider", "/aider"], &[], &[r"\(Y\)es/\(N\)o"]),
+        resumable(
+            agent(
+                "claude",
+                &["claude", "claude-code"],
+                &["@anthropic-ai/claude-code", "claude-code/cli"],
+                // "esc to interrupt", or the spinner line: "Misting… (5s · ↓ 219 tokens)".
+                &[r"esc to interrupt", r"…\s*\(\d+[smh][^)]*tokens"],
+                &[
+                    r"Do you want to (proceed|make this edit|create|run|allow)",
+                    r"❯ 1\. Yes",
+                    r"Would you like to proceed",
+                    r"Do you trust the files",
+                    // Its question and permission dialogs.
+                    r"Enter to select",
+                    r"Esc to cancel",
+                ],
+            ),
+            "claude --resume {session}",
+            "claude --continue",
+        ),
+        resumable(
+            agent(
+                "codex",
+                &["codex"],
+                &["@openai/codex"],
+                // Finished answers can discuss the shortcut; only a complete activity row counts.
+                &[
+                    r"(?m)^[ \t]*(?:•[ \t]*)?[^()\r\n]+ \((?:\d+[smh][^()\r\n]*[•·-][ \t]*)?esc to interrupt[^()\r\n]*\)(?:[ \t]+[·•][ \t]+[^\r\n]*)?[ \t]*$",
+                ],
+                &[
+                    r"Allow command\?",
+                    r"Would you like to (run|make|apply)",
+                    r"approve this",
+                    r"Trust this folder\?",
+                    r"› 1\. Yes",
+                ],
+            ),
+            "codex resume {session}",
+            "codex resume --last",
+        ),
+        agent(
+            "gemini",
+            &["gemini"],
+            &["@google/gemini-cli"],
+            &[r"esc to cancel"],
+            &[r"Allow execution", r"Apply this change\?"],
+        ),
+        resumable(
+            agent(
+                "opencode",
+                &["opencode", "opencode2", "open-code"],
+                &["opencode-ai"],
+                &[r"esc interrupt"],
+                &[r"Permission required"],
+            ),
+            "opencode --session {session}",
+            "opencode --continue",
+        ),
+        agent(
+            "cursor",
+            &["cursor-agent"],
+            &[],
+            &[r"ctrl\+c to stop"],
+            &[r"Run this command\?"],
+        ),
+        resumable(
+            agent(
+                "copilot",
+                &["copilot", "github-copilot", "ghcs"],
+                &["@github/copilot"],
+                &[r"esc to cancel"],
+                &[r"Do you want to"],
+            ),
+            "copilot --resume {session}",
+            "copilot --continue",
+        ),
+        agent(
+            "amp",
+            &["amp", "amp-local"],
+            &["@sourcegraph/amp"],
+            &[r"esc to cancel"],
+            &[r"Allow\?"],
+        ),
+        agent(
+            "qwen",
+            &["qwen", "qwen-code"],
+            &["@qwen-code/qwen-code"],
+            &[r"esc to cancel"],
+            &[r"Allow execution"],
+        ),
+        agent(
+            "aider",
+            &["aider"],
+            &["aider-chat", "\\aider", "/aider"],
+            &[],
+            &[r"\(Y\)es/\(N\)o"],
+        ),
         agent("goose", &["goose"], &[], &[], &[]),
         agent("crush", &["crush"], &[], &[], &[]),
         agent("droid", &["droid"], &[], &[], &[]),
-        agent("pi", &["pi"], &["@mariozechner/pi-coding-agent", "@earendil-works/pi-coding-agent"], &[], &[]),
+        agent(
+            "pi",
+            &["pi"],
+            &[
+                "@mariozechner/pi-coding-agent",
+                "@earendil-works/pi-coding-agent",
+            ],
+            &[],
+            &[],
+        ),
         agent("kiro", &["kiro-cli", "kiro", "q"], &[], &[], &[]),
-        agent("grok", &["grok", "grok-build"], &["@vibe-kit/grok-cli", "grok-cli"], &[r"esc to interrupt"], &[r"Do you want to"]),
+        agent(
+            "grok",
+            &["grok", "grok-build"],
+            &["@vibe-kit/grok-cli", "grok-cli"],
+            &[r"esc to interrupt"],
+            &[r"Do you want to"],
+        ),
         agent("auggie", &["auggie"], &["@augmentcode/auggie"], &[], &[]),
-        agent("kimi", &["kimi", "kimi-code"], &["kimi-cli", "@moonshot-ai/kimi-code"], &[], &[]),
+        agent(
+            "kimi",
+            &["kimi", "kimi-code"],
+            &["kimi-cli", "@moonshot-ai/kimi-code"],
+            &[],
+            &[],
+        ),
         // The DeepSeek harness (dsh-TUI), whatever alias starts it.
-        agent("deepseek", &["dsh", "dsh-tui", "deepseek"], &["@deepseek-ai/dsh", "dsh-tui", "deepseek-harness"], &[r"esc to interrupt", r"esc to cancel"], &[r"Do you want to", r"\(y/n\)"]),
+        agent(
+            "deepseek",
+            &["dsh", "dsh-tui", "deepseek"],
+            &["@deepseek-ai/dsh", "dsh-tui", "deepseek-harness"],
+            &[r"esc to interrupt", r"esc to cancel"],
+            &[r"Do you want to", r"\(y/n\)"],
+        ),
         agent("devin", &["devin", "devin-cli"], &[], &[], &[]),
-        agent("agy", &["agy", "antigravity", "antigravity-cli"], &[], &[], &[]),
-        agent("cline", &["cline", ".cline"], &["@cline/cli", "/cline/bin/"], &[], &[]),
+        agent(
+            "agy",
+            &["agy", "antigravity", "antigravity-cli"],
+            &[],
+            &[],
+            &[],
+        ),
+        agent(
+            "cline",
+            &["cline", ".cline"],
+            &["@cline/cli", "/cline/bin/"],
+            &[],
+            &[],
+        ),
         agent("omp", &["omp"], &["@oh-my-pi/pi-coding-agent"], &[], &[]),
-        agent("mastracode", &["mastracode", "mastra-code"], &["mastracode/dist/cli"], &[], &[]),
-        agent("hermes", &["hermes", "hermes-agent"], &["hermes_cli/main.py", "/bin/hermes", "/bin/hermes-agent"], &[], &[]),
+        agent(
+            "mastracode",
+            &["mastracode", "mastra-code"],
+            &["mastracode/dist/cli"],
+            &[],
+            &[],
+        ),
+        agent(
+            "hermes",
+            &["hermes", "hermes-agent"],
+            &["hermes_cli/main.py", "/bin/hermes", "/bin/hermes-agent"],
+            &[],
+            &[],
+        ),
         agent("kilo", &["kilo", "kilo-code"], &["@kilocode/cli"], &[], &[]),
-        agent("qodercli", &["qodercli", "qoderclicn", "qoder", "qodercn"], &[], &[], &[]),
-        agent("letta", &["letta", "letta-code"], &["@letta-ai/letta-code"], &[], &[]),
+        agent(
+            "qodercli",
+            &["qodercli", "qoderclicn", "qoder", "qodercn"],
+            &[],
+            &[],
+            &[],
+        ),
+        agent(
+            "letta",
+            &["letta", "letta-code"],
+            &["@letta-ai/letta-code"],
+            &[],
+            &[],
+        ),
         agent("maki", &["maki"], &[], &[], &[]),
         agent("muse", &["muse", "muse-code", "muse-cli"], &[], &[], &[]),
     ]
@@ -1125,9 +1474,10 @@ pub fn config_path() -> PathBuf {
         return PathBuf::from(p);
     }
     if cfg!(windows)
-        && let Some(d) = directories::BaseDirs::new() {
-            return d.config_dir().join(env!("APP_COMMAND")).join("config.toml");
-        }
+        && let Some(d) = directories::BaseDirs::new()
+    {
+        return d.config_dir().join(env!("APP_COMMAND")).join("config.toml");
+    }
     // XDG-style on macOS too: that's where terminal people look.
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -1136,18 +1486,33 @@ pub fn config_path() -> PathBuf {
     base.join(env!("APP_COMMAND")).join("config.toml")
 }
 
+pub fn codex_config_dir() -> PathBuf {
+    std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            directories::BaseDirs::new()
+                .map(|dirs| dirs.home_dir().join(".codex"))
+                .unwrap_or_default()
+        })
+}
+
 /// Write a file so a reader (or a crash) never sees half of it: write a temporary file
 /// beside it, then swap it in.
 pub fn write_atomic(path: &std::path::Path, data: impl AsRef<[u8]>) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let tmp = path.with_file_name(format!(".{name}.{APP_COMMAND}-tmp"));
     std::fs::write(&tmp, data)?;
-    keep_mode(path, &tmp).and_then(|()| std::fs::rename(&tmp, path)).inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })
+    keep_mode(path, &tmp)
+        .and_then(|()| std::fs::rename(&tmp, path))
+        .inspect_err(|_| {
+            let _ = std::fs::remove_file(&tmp);
+        })
 }
 
 /// Gives the new file the old one's permissions, so swapping it in never widens a private
@@ -1166,24 +1531,82 @@ fn keep_mode(_old: &std::path::Path, _new: &std::path::Path) -> std::io::Result<
     Ok(())
 }
 
-
 /// Read a JSON state file; one that's there but won't parse is kept as `<name>.bak` (so a
 /// bad write or a hand edit loses nothing) and the defaults are used.
 pub fn read_state<T: serde::de::DeserializeOwned + Default>(path: &std::path::Path) -> T {
-    let Ok(text) = std::fs::read_to_string(path) else { return T::default() };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return T::default();
+    };
     match serde_json::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
-            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             let bak = path.with_file_name(format!("{name}.bak"));
-            tracing::warn!("{} doesn't parse ({e}); kept it as {}", path.display(), bak.display());
+            tracing::warn!(
+                "{} doesn't parse ({e}); kept it as {}",
+                path.display(),
+                bak.display()
+            );
             let _ = std::fs::copy(path, &bak);
             T::default()
         }
     }
 }
 
+const DATA_DIR_ENV: &str = concat!(env!("APP_ENV"), "_DATA_DIR");
+
+struct DataDirectory {
+    path: PathBuf,
+    overridden: bool,
+}
+
+static DATA_DIRECTORY: OnceLock<DataDirectory> = OnceLock::new();
+
+/// Call before migration, logging or state access, while startup is single-threaded.
+pub fn initialize_data_dir() -> Result<()> {
+    if DATA_DIRECTORY.get().is_some() {
+        return Ok(());
+    }
+    let directory = resolve_data_directory(std::env::var_os(DATA_DIR_ENV))?;
+    DATA_DIRECTORY.get_or_init(|| directory);
+    Ok(())
+}
+
+fn resolve_data_directory(value: Option<std::ffi::OsString>) -> Result<DataDirectory> {
+    let Some(value) = value else {
+        return Ok(DataDirectory {
+            path: default_data_dir(),
+            overridden: false,
+        });
+    };
+    let path = PathBuf::from(value);
+    anyhow::ensure!(
+        path.is_absolute(),
+        "{DATA_DIR_ENV} must be a nonempty absolute directory path"
+    );
+    match std::fs::metadata(&path) {
+        Ok(metadata) => anyhow::ensure!(metadata.is_dir(), "{DATA_DIR_ENV} must name a directory"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).with_context(|| format!("validating {DATA_DIR_ENV}")),
+    }
+    Ok(DataDirectory {
+        path,
+        overridden: true,
+    })
+}
+
 pub fn data_dir() -> PathBuf {
+    // Unit tests that construct services directly do not run the startup entry point.
+    DATA_DIRECTORY
+        .get()
+        .map(|directory| directory.path.clone())
+        .unwrap_or_else(default_data_dir)
+}
+
+fn default_data_dir() -> PathBuf {
     directories::ProjectDirs::from("", "", env!("APP_COMMAND"))
         .map(|d| d.data_local_dir().to_path_buf())
         .unwrap_or_else(std::env::temp_dir)
@@ -1208,7 +1631,11 @@ const MIGRATED: &str = "migrated-from";
 /// hydra's default theme moved to the new one) and its data (saved sessions, pane history, UI
 /// state) over once. The old folders are left in place.
 pub fn migrate_old_names() {
-    if std::env::var_os(concat!(env!("APP_ENV"), "_CONFIG")).is_some() {
+    if DATA_DIRECTORY
+        .get()
+        .is_some_and(|directory| directory.overridden)
+        || std::env::var_os(concat!(env!("APP_ENV"), "_CONFIG")).is_some()
+    {
         return;
     }
     let new_cfg = config_path();
@@ -1219,14 +1646,22 @@ pub fn migrate_old_names() {
     }
     // The names the app had before, newest first: the first found is brought over.
     for old in crate::brand::previous() {
-        let old_cfg_dir = new_dir.as_ref().and_then(|d| d.parent()).map(|d| d.join(old));
-        let old_data = directories::ProjectDirs::from("", "", old).map(|d| d.data_local_dir().to_path_buf());
-        let has_cfg = old_cfg_dir.as_ref().is_some_and(|d| d.join("config.toml").exists());
+        let old_cfg_dir = new_dir
+            .as_ref()
+            .and_then(|d| d.parent())
+            .map(|d| d.join(old));
+        let old_data =
+            directories::ProjectDirs::from("", "", old).map(|d| d.data_local_dir().to_path_buf());
+        let has_cfg = old_cfg_dir
+            .as_ref()
+            .is_some_and(|d| d.join("config.toml").exists());
         let has_data = old_data.as_ref().is_some_and(|d| d.is_dir());
         if !has_cfg && !has_data {
             continue;
         }
-        let cfg = old_cfg_dir.filter(|_| !new_cfg.exists()).zip(new_dir.clone());
+        let cfg = old_cfg_dir
+            .filter(|_| !new_cfg.exists())
+            .zip(new_dir.clone());
         bring_over(old, cfg, old_data.as_deref(), &new_data);
         tracing::info!("brought {old}'s config and data over");
         return;
@@ -1235,15 +1670,26 @@ pub fn migrate_old_names() {
 
 /// Copy an old install's config folder (`cfg`: from, to) and data folder over, the old
 /// default theme moved to the new one, and leave the marker.
-fn bring_over(old: &str, cfg: Option<(PathBuf, PathBuf)>, old_data: Option<&Path>, new_data: &Path) {
+fn bring_over(
+    old: &str,
+    cfg: Option<(PathBuf, PathBuf)>,
+    old_data: Option<&Path>,
+    new_data: &Path,
+) {
     if let Some((from, to)) = cfg {
         copy_renamed(&from, &to, old);
         for name in ["config.toml", "config.local.toml"] {
             let f = to.join(name);
             if let Ok(text) = std::fs::read_to_string(&f) {
                 let moved = text
-                    .replace("theme = \"hydra\"", &format!("theme = \"{}\"", crate::theme::DEFAULT))
-                    .replace("theme = \"drover\"", &format!("theme = \"{}\"", crate::theme::DEFAULT));
+                    .replace(
+                        "theme = \"hydra\"",
+                        &format!("theme = \"{}\"", crate::theme::DEFAULT),
+                    )
+                    .replace(
+                        "theme = \"drover\"",
+                        &format!("theme = \"{}\"", crate::theme::DEFAULT),
+                    );
                 let _ = std::fs::write(&f, moved);
             }
         }
@@ -1259,7 +1705,9 @@ fn bring_over(old: &str, cfg: Option<(PathBuf, PathBuf)>, old_data: Option<&Path
 /// the new name. What's already there is kept; a running server's pid and socket files aren't
 /// copied (they belong to the old one).
 fn copy_renamed(from: &Path, to: &Path, old: &str) {
-    let Ok(entries) = std::fs::read_dir(from) else { return };
+    let Ok(entries) = std::fs::read_dir(from) else {
+        return;
+    };
     let _ = std::fs::create_dir_all(to);
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
@@ -1285,7 +1733,11 @@ fn copy_renamed(from: &Path, to: &Path, old: &str) {
 fn retired_theme(theme: &str) -> Option<&'static str> {
     let plain = theme
         .split_once('-')
-        .filter(|(p, _)| std::iter::once(crate::brand::APP_COMMAND).chain(crate::brand::previous()).any(|n| n == *p))
+        .filter(|(p, _)| {
+            std::iter::once(crate::brand::APP_COMMAND)
+                .chain(crate::brand::previous())
+                .any(|n| n == *p)
+        })
         .map_or(theme, |(_, rest)| rest);
     match plain {
         "dark" | "walnut" | "night" => Some("night"),
@@ -1313,12 +1765,15 @@ impl Config {
         if std::env::var_os(concat!(env!("APP_ENV"), "_CONFIG")).is_none()
             && let Ok(s) = std::fs::read_to_string(&local)
         {
-            let over: toml::Table = toml::from_str(&s).with_context(|| format!("parsing {}", local.display()))?;
+            let over: toml::Table =
+                toml::from_str(&s).with_context(|| format!("parsing {}", local.display()))?;
             merge(&mut value, over);
         }
         fold_legacy_helpers(&mut value);
         fold_legacy_corners(&mut value);
-        let mut cfg: Config = toml::Value::Table(value).try_into().with_context(|| format!("parsing {}", path.display()))?;
+        let mut cfg: Config = toml::Value::Table(value)
+            .try_into()
+            .with_context(|| format!("parsing {}", path.display()))?;
         // Config files written from the old example spell out the old "done" icon; it's a
         // green dot now (any other choice is kept).
         if cfg.icons.done == OLD_DONE_ICON {
@@ -1368,7 +1823,11 @@ impl Config {
     }
 
     pub fn shell_command(&self) -> Vec<String> {
-        let shell = self.shell.clone().filter(|s| !s.is_empty()).unwrap_or_else(default_shell);
+        let shell = self
+            .shell
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(default_shell);
         let mut v = vec![shell];
         v.extend(self.shell_args.iter().cloned());
         v
@@ -1376,20 +1835,28 @@ impl Config {
 
     /// An agent entry with an environment of its own (an account), by name.
     pub fn account(&self, name: &str) -> Option<&QuickAgent> {
-        self.quick.agents.iter().find(|a| a.name == name && !a.env.is_empty())
+        self.quick
+            .agents
+            .iter()
+            .find(|a| a.name == name && !a.env.is_empty())
     }
 
     /// What goes in front of an account's command: `<app> account <name> -- `. The session
     /// then runs with that account's environment, and the command line itself says which
     /// account it is, so nothing else has to remember.
     fn account_prefix(&self, name: &str) -> String {
-        format!(concat!(env!("APP_COMMAND"), " account {} -- "), self.quote_for_shell(name))
+        format!(
+            concat!(env!("APP_COMMAND"), " account {} -- "),
+            self.quote_for_shell(name)
+        )
     }
 
     /// `cmd` as account `name` runs it (unchanged for an agent that isn't an account).
     pub fn as_account(&self, name: &str, cmd: &str) -> String {
         match self.account(name) {
-            Some(a) if !cmd.starts_with(&self.account_prefix(&a.name)) => format!("{}{cmd}", self.account_prefix(&a.name)),
+            Some(a) if !cmd.starts_with(&self.account_prefix(&a.name)) => {
+                format!("{}{cmd}", self.account_prefix(&a.name))
+            }
             _ => cmd.to_string(),
         }
     }
@@ -1434,9 +1901,20 @@ impl Config {
     /// `cmd` with `flag model` right after its program (`--model` when `flag` is empty). A
     /// model with anything but plain name characters is quoted, since it comes from config.
     pub fn with_model(&self, cmd: &str, flag: &str, model: &str) -> String {
-        let flag = if flag.is_empty() { DEFAULT_MODEL_FLAG } else { flag };
-        let plain = !model.is_empty() && model.chars().all(|c| c.is_ascii_alphanumeric() || "-_.:/@+=".contains(c));
-        let model = if plain { model.to_string() } else { self.quote_for_shell(model) };
+        let flag = if flag.is_empty() {
+            DEFAULT_MODEL_FLAG
+        } else {
+            flag
+        };
+        let plain = !model.is_empty()
+            && model
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "-_.:/@+=".contains(c));
+        let model = if plain {
+            model.to_string()
+        } else {
+            self.quote_for_shell(model)
+        };
         match cmd.split_once(' ') {
             Some((first, rest)) => format!("{first} {flag} {model} {rest}"),
             None => format!("{cmd} {flag} {model}"),
@@ -1445,32 +1923,54 @@ impl Config {
 
     /// The agent started when none is named: the first quick agent, else claude.
     pub fn default_agent(&self) -> String {
-        self.quick.agents.first().map(|a| a.name.clone()).unwrap_or_else(|| "claude".into())
+        self.quick
+            .agents
+            .first()
+            .map(|a| a.name.clone())
+            .unwrap_or_else(|| "claude".into())
     }
 
     /// The command line that starts `agent` (default: [`Config::default_agent`]) on `model`
     /// (`None`: its default) with `prompt` as its first prompt.
-    pub fn agent_command(&self, agent: Option<&str>, model: Option<&str>, prompt: &str) -> Result<String, String> {
-        let agent = agent.map(String::from).unwrap_or_else(|| self.default_agent());
+    pub fn agent_command(
+        &self,
+        agent: Option<&str>,
+        model: Option<&str>,
+        prompt: &str,
+    ) -> Result<String, String> {
+        let agent = agent
+            .map(String::from)
+            .unwrap_or_else(|| self.default_agent());
         self.agent_command_quoted(&agent, model, &self.quote_for_shell(prompt))
     }
 
     /// As [`Config::agent_command`], with a prompt that is already quoted for the shell.
-    pub fn agent_command_quoted(&self, agent: &str, model: Option<&str>, quoted: &str) -> Result<String, String> {
+    pub fn agent_command_quoted(
+        &self,
+        agent: &str,
+        model: Option<&str>,
+        quoted: &str,
+    ) -> Result<String, String> {
         let quick = self.quick.agents.iter().find(|a| a.name == agent);
         let cmd = match quick {
             Some(a) => a.command.replace("{prompt}", quoted),
             // Only agents the app knows, by plain name: anything else would run as a command.
             None if known_agent(self, agent) => format!("{agent} {quoted}"),
             None => {
-                let mut names: Vec<String> = self.quick.agents.iter().map(|a| a.name.clone()).collect();
+                let mut names: Vec<String> =
+                    self.quick.agents.iter().map(|a| a.name.clone()).collect();
                 names.extend(self.agent_defs().into_iter().map(|d| d.name));
                 names.dedup();
-                return Err(format!("unknown agent \"{agent}\"; use one of: {}", names.join(", ")));
+                return Err(format!(
+                    "unknown agent \"{agent}\"; use one of: {}",
+                    names.join(", ")
+                ));
             }
         };
         let cmd = match model {
-            Some(model) => self.with_model(&cmd, quick.map_or("", |a| a.model_flag.as_str()), model),
+            Some(model) => {
+                self.with_model(&cmd, quick.map_or("", |a| a.model_flag.as_str()), model)
+            }
             None => cmd,
         };
         Ok(self.as_account(agent, &cmd))
@@ -1485,10 +1985,14 @@ impl Config {
         let mut build = |defaults: &[(&str, &str)], user: &BTreeMap<String, String>| {
             let mut map: HashMap<KeySpec, Action> = HashMap::new();
             let mut order: Vec<KeySpec> = Vec::new();
-            let pairs = if !self.keys.replace_defaults { defaults } else { Default::default() }
-                .iter()
-                .map(|(k, a)| (k.to_string(), a.to_string()))
-                .chain(user.iter().map(|(k, a)| (k.clone(), a.clone())));
+            let pairs = if !self.keys.replace_defaults {
+                defaults
+            } else {
+                Default::default()
+            }
+            .iter()
+            .map(|(k, a)| (k.to_string(), a.to_string()))
+            .chain(user.iter().map(|(k, a)| (k.clone(), a.clone())));
             for (k, a) in pairs {
                 match (k.parse::<KeySpec>(), a.parse::<Action>()) {
                     (Ok(k), Ok(Action::None)) => {
@@ -1508,16 +2012,34 @@ impl Config {
         let (prefixed, prefixed_order) = build(keys::DEFAULT_PREFIX_KEYS, &self.keys.prefix);
         let globals: Vec<(&str, &str)> = keys::DEFAULT_GLOBAL_KEYS
             .iter()
-            .chain(if self.ui.alt_arrows { keys::ALT_ARROW_KEYS } else { &[] })
-            .chain(if self.ui.alt_keys { keys::ALT_LETTER_KEYS } else { &[] })
+            .chain(if self.ui.alt_arrows {
+                keys::ALT_ARROW_KEYS
+            } else {
+                &[]
+            })
+            .chain(if self.ui.alt_keys {
+                keys::ALT_LETTER_KEYS
+            } else {
+                &[]
+            })
             .copied()
             .collect();
         let (global, _) = build(&globals, &self.keys.global);
-        Keymap { prefix, prefixed, prefixed_order, global, warnings }
+        Keymap {
+            prefix,
+            prefixed,
+            prefixed_order,
+            global,
+            warnings,
+        }
     }
 
     pub fn agent_defs(&self) -> Vec<CompiledAgent> {
-        let mut defs: Vec<AgentDef> = if self.agents_replace_defaults { Vec::new() } else { builtin_agents() };
+        let mut defs: Vec<AgentDef> = if self.agents_replace_defaults {
+            Vec::new()
+        } else {
+            builtin_agents()
+        };
         for user in &self.agents {
             match defs.iter_mut().find(|d| d.name == user.name) {
                 Some(d) => {
@@ -1546,15 +2068,25 @@ impl Config {
             }
         }
         let re = |ps: &[String]| -> Vec<Regex> {
-            ps.iter().filter_map(|p| Regex::new(&format!("(?i){p}")).ok()).collect()
+            ps.iter()
+                .filter_map(|p| Regex::new(&format!("(?i){p}")).ok())
+                .collect()
         };
         defs.into_iter()
             .filter(|d| d.enabled != Some(false))
             .map(|d| CompiledAgent {
-                builtin_process: !self.agents_replace_defaults && builtin_agents().iter().any(|a| a.name == d.name)
-                    && !self.agents.iter().any(|a| a.name == d.name && !a.cmdline.is_empty()),
-                builtin_screen: !self.agents_replace_defaults && builtin_agents().iter().any(|a| a.name == d.name)
-                    && !self.agents.iter().any(|a| a.name == d.name && (!a.working_patterns.is_empty() || !a.blocked_patterns.is_empty())),
+                builtin_process: !self.agents_replace_defaults
+                    && builtin_agents().iter().any(|a| a.name == d.name)
+                    && !self
+                        .agents
+                        .iter()
+                        .any(|a| a.name == d.name && !a.cmdline.is_empty()),
+                builtin_screen: !self.agents_replace_defaults
+                    && builtin_agents().iter().any(|a| a.name == d.name)
+                    && !self.agents.iter().any(|a| {
+                        a.name == d.name
+                            && (!a.working_patterns.is_empty() || !a.blocked_patterns.is_empty())
+                    }),
                 process: d.process.iter().map(|p| p.to_ascii_lowercase()).collect(),
                 cmdline: d.cmdline.clone(),
                 blocked: re(&d.blocked_patterns),
@@ -1610,23 +2142,145 @@ fn which(exe: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    struct DataDirectoryFixture(PathBuf);
+
+    impl DataDirectoryFixture {
+        fn new() -> Self {
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            loop {
+                let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let path = std::env::temp_dir().join(format!(
+                    concat!(env!("APP_COMMAND"), "-data-directory-{}-{}"),
+                    std::process::id(),
+                    id
+                ));
+                match std::fs::create_dir(&path) {
+                    Ok(()) => return Self(path),
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(error) => panic!("creating data-directory fixture: {error}"),
+                }
+            }
+        }
+    }
+
+    impl Drop for DataDirectoryFixture {
+        fn drop(&mut self) {
+            if let Err(error) = std::fs::remove_dir_all(&self.0) {
+                // Cleanup must not replace a test's original panic.
+                eprintln!("removing data-directory fixture: {error}");
+            }
+        }
+    }
+
+    #[test]
+    fn data_directory_override_requires_an_absolute_nonempty_path() {
+        for value in ["", ".", "relative/state"] {
+            let error = resolve_data_directory(Some(value.into()))
+                .err()
+                .expect("invalid override");
+            assert!(error.to_string().contains("nonempty absolute directory"));
+        }
+    }
+
+    #[test]
+    fn data_directory_override_accepts_existing_and_missing_directories() {
+        let fixture = DataDirectoryFixture::new();
+        for path in [fixture.0.clone(), fixture.0.join("not-created")] {
+            let configured = resolve_data_directory(Some(path.clone().into_os_string())).unwrap();
+            assert_eq!(configured.path, path);
+            assert!(configured.overridden);
+        }
+        assert!(
+            !fixture.0.join("not-created").exists(),
+            "validation does not create state"
+        );
+    }
+
+    #[test]
+    fn data_directory_override_rejects_an_existing_file() {
+        let fixture = DataDirectoryFixture::new();
+        let file = fixture.0.join("state");
+        std::fs::write(&file, "not a directory").unwrap();
+        let error = resolve_data_directory(Some(file.into_os_string()))
+            .err()
+            .expect("file refused");
+        assert!(error.to_string().contains("must name a directory"));
+    }
+
+    #[test]
+    fn data_directory_without_override_keeps_the_platform_default() {
+        let configured = resolve_data_directory(None).unwrap();
+        assert_eq!(configured.path, default_data_dir());
+        assert!(!configured.overridden);
+    }
+
+    #[test]
+    fn data_directory_is_captured_once_in_an_isolated_process() {
+        const CHILD_ENV: &str = concat!(env!("APP_ENV"), "_DATA_DIRECTORY_TEST_CHILD");
+        if let Some(path) = std::env::var_os(CHILD_ENV) {
+            let path = PathBuf::from(path);
+            initialize_data_dir().unwrap();
+            assert_eq!(data_dir(), path);
+            write_atomic(&data_dir().join("probe.json"), "{\"isolated\":true}").unwrap();
+            std::fs::rename(&path, path.with_file_name("moved-state")).unwrap();
+            std::fs::write(&path, "replacement file").unwrap();
+            initialize_data_dir().unwrap();
+            assert_eq!(
+                data_dir(),
+                path,
+                "initialization does not revalidate or switch roots"
+            );
+            assert!(DATA_DIRECTORY.get().unwrap().overridden);
+            return;
+        }
+        let fixture = DataDirectoryFixture::new();
+        let path = fixture.0.join("state");
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "config::tests::data_directory_is_captured_once_in_an_isolated_process",
+                "--nocapture",
+            ])
+            .env(CHILD_ENV, &path)
+            .env(DATA_DIR_ENV, &path)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "isolated child failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            std::fs::read_to_string(fixture.0.join("moved-state/probe.json")).unwrap(),
+            "{\"isolated\":true}"
+        );
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "replacement file");
+    }
     #[cfg(unix)]
     #[test]
     fn an_atomic_write_keeps_a_private_files_mode() {
         use std::os::unix::fs::PermissionsExt;
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-atomic-mode-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-atomic-mode-{}"),
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("settings.json");
         std::fs::write(&file, "{}").unwrap();
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
         super::write_atomic(&file, "{\"a\":1}").unwrap();
-        assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(
+            std::fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn a_config_that_still_sorts_the_sidebar_by_attention_loads_and_the_key_does_nothing() {
-        let c: super::Config = toml::from_str("[ui]\nattention_sort = true\nlayout = \"hairline\"\n").expect("a retired key is not an error");
+        let c: super::Config =
+            toml::from_str("[ui]\nattention_sort = true\nlayout = \"hairline\"\n")
+                .expect("a retired key is not an error");
         assert_eq!(c.ui.layout, "hairline", "the rest of the file is read");
     }
 
@@ -1634,18 +2288,41 @@ mod tests {
     fn a_check_table_reads_and_its_timeout_defaults() {
         let c: super::Config = toml::from_str("[[check]]\nproject = \"/work/app\"\ncommand = \"npm test\"\n\n[[check]]\nproject = \"/work/lib\"\ncommand = \"cargo test\"\ntimeout_s = 90\n").unwrap();
         super::validate_checks(&c.check).unwrap();
-        let got: Vec<_> = c.check.iter().map(|c| (c.project.to_str().unwrap(), c.command.as_str(), c.timeout_s)).collect();
-        assert_eq!(got, [("/work/app", "npm test", super::CHECK_TIMEOUT_S_DEFAULT), ("/work/lib", "cargo test", 90)]);
+        let got: Vec<_> = c
+            .check
+            .iter()
+            .map(|c| (c.project.to_str().unwrap(), c.command.as_str(), c.timeout_s))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("/work/app", "npm test", super::CHECK_TIMEOUT_S_DEFAULT),
+                ("/work/lib", "cargo test", 90)
+            ]
+        );
         assert_eq!(super::CHECK_TIMEOUT_S_DEFAULT, 600);
-        assert!(super::Config::default().check.is_empty(), "no check unless the user names one");
+        assert!(
+            super::Config::default().check.is_empty(),
+            "no check unless the user names one"
+        );
     }
 
     #[test]
     fn a_retired_theme_moves_to_night_or_day() {
-        for (old, now) in [("dark", "night"), ("walnut", "night"), ("seshi-night", "night"), ("light", "day"), ("vibecasso-day", "day")] {
+        for (old, now) in [
+            ("dark", "night"),
+            ("walnut", "night"),
+            ("seshi-night", "night"),
+            ("light", "day"),
+            ("vibecasso-day", "day"),
+        ] {
             assert_eq!(retired_theme(old), Some(now), "{old}");
         }
-        assert_eq!(retired_theme("tokyo-night"), None, "a theme of another name is kept");
+        assert_eq!(
+            retired_theme("tokyo-night"),
+            None,
+            "a theme of another name is kept"
+        );
         assert_eq!(retired_theme("harbor-day"), None);
     }
 
@@ -1660,10 +2337,22 @@ mod tests {
             ("[[check]]\ncommand = \"t\"\n", "project"),
             ("[[check]]\nproject = \"/a\"\ncommand = \"  \"\n", "command"),
             ("[[check]]\nproject = \"/a\"\n", "command"),
-            ("[[check]]\nproject = \"/a\"\ncommand = \"t\"\ntimeout_s = 0\n", "timeout_s"),
-            ("[[check]]\nproject = \"/a\"\ncommand = \"t\"\n[[check]]\nproject = \"/a\"\ncommand = \"t\"\n", "already has a check"),
-            ("[[check]]\nproject = \"/a\"\ncommand = \"t\"\nname = \" \"\n", "empty `name`"),
-            ("[[check]]\nproject = \"/a\"\ncommand = \"t\"\ntimeout_s = -5\n", "timeout_s"),
+            (
+                "[[check]]\nproject = \"/a\"\ncommand = \"t\"\ntimeout_s = 0\n",
+                "timeout_s",
+            ),
+            (
+                "[[check]]\nproject = \"/a\"\ncommand = \"t\"\n[[check]]\nproject = \"/a\"\ncommand = \"t\"\n",
+                "already has a check",
+            ),
+            (
+                "[[check]]\nproject = \"/a\"\ncommand = \"t\"\nname = \" \"\n",
+                "empty `name`",
+            ),
+            (
+                "[[check]]\nproject = \"/a\"\ncommand = \"t\"\ntimeout_s = -5\n",
+                "timeout_s",
+            ),
         ] {
             let err = check(bad).expect_err(bad);
             assert!(err.contains(why), "{bad:?} -> {err}");
@@ -1676,9 +2365,14 @@ mod tests {
             let c: super::Config = toml::from_str(&format!("[[check]]\nproject = '{a}'\ncommand = \"t\"\n[[check]]\nproject = '{b}'\ncommand = \"t\"\n")).unwrap();
             super::validate_checks(&c.check)
         };
-        let err = check("/a", "/a/").expect_err("a trailing slash is the same project").to_string();
+        let err = check("/a", "/a/")
+            .expect_err("a trailing slash is the same project")
+            .to_string();
         assert!(err.contains("already has a check"), "{err}");
-        assert!(check("C:\\work\\App", "c:/work/app/").is_err(), "separators and case do not make a project");
+        assert!(
+            check("C:\\work\\App", "c:/work/app/").is_err(),
+            "separators and case do not make a project"
+        );
         assert!(check("/a", "/b").is_ok());
     }
 
@@ -1689,15 +2383,27 @@ mod tests {
         )
         .unwrap();
         super::validate_checks(&c.check).unwrap();
-        assert_eq!(c.check.iter().map(super::CheckDef::name).collect::<Vec<_>>(), ["build", "test", "lint"]);
+        assert_eq!(
+            c.check
+                .iter()
+                .map(super::CheckDef::name)
+                .collect::<Vec<_>>(),
+            ["build", "test", "lint"]
+        );
         let twice: super::Config = toml::from_str("[[check]]\nproject = \"/a\"\ncommand = \"npm test\"\n[[check]]\nproject = \"/a\"\nname = \"TEST\"\ncommand = \"cargo test\"\n").unwrap();
-        let err = super::validate_checks(&twice.check).expect_err("a name is one checkpoint, whatever its case").to_string();
+        let err = super::validate_checks(&twice.check)
+            .expect_err("a name is one checkpoint, whatever its case")
+            .to_string();
         assert!(err.contains("already has a check named"), "{err}");
     }
 
     #[test]
     fn a_checkpoint_is_named_by_its_command_s_last_word_unless_named() {
-        let def = |name: Option<&str>, command: &str| super::CheckDef { name: name.map(String::from), command: command.into(), ..Default::default() };
+        let def = |name: Option<&str>, command: &str| super::CheckDef {
+            name: name.map(String::from),
+            command: command.into(),
+            ..Default::default()
+        };
         assert_eq!(def(None, "npm test").name(), "test");
         assert_eq!(def(None, "cargo clippy").name(), "clippy");
         assert_eq!(def(None, "  make  ").name(), "make");
@@ -1708,9 +2414,33 @@ mod tests {
     #[test]
     fn a_repo_s_checks_file_parses_with_defaults() {
         let got = super::parse_repo_checks("[[check]]\ncommand = \"npm run build\"\n\n[[check]]\nname = \"unit\"\ncommand = \"npm test\"\ntimeout_s = 90\n").unwrap();
-        let got: Vec<_> = got.iter().map(|c| (c.name(), c.command.as_str(), c.timeout_s, c.project.as_os_str().is_empty())).collect();
-        assert_eq!(got, [("build", "npm run build", super::CHECK_TIMEOUT_S_DEFAULT, true), ("unit", "npm test", 90, true)]);
-        assert!(super::parse_repo_checks("").unwrap().is_empty(), "an empty file names no check");
+        let got: Vec<_> = got
+            .iter()
+            .map(|c| {
+                (
+                    c.name(),
+                    c.command.as_str(),
+                    c.timeout_s,
+                    c.project.as_os_str().is_empty(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            got,
+            [
+                (
+                    "build",
+                    "npm run build",
+                    super::CHECK_TIMEOUT_S_DEFAULT,
+                    true
+                ),
+                ("unit", "npm test", 90, true)
+            ]
+        );
+        assert!(
+            super::parse_repo_checks("").unwrap().is_empty(),
+            "an empty file names no check"
+        );
     }
 
     #[test]
@@ -1719,35 +2449,84 @@ mod tests {
             ("[[check]]\ncommand = \" \"\n", "command"),
             ("[[check]]\nname = \"x\"\n", "command"),
             ("[[check]]\ncommand = \"t\"\ntimeout_s = 0\n", "timeout_s"),
-            ("[[check]]\ncommand = \"npm test\"\n[[check]]\nname = \"Test\"\ncommand = \"cargo test\"\n", "another check is named"),
-            ("[[check]]\ncommand = \"t\"\nproject = \"/elsewhere\"\n", "project"),
+            (
+                "[[check]]\ncommand = \"npm test\"\n[[check]]\nname = \"Test\"\ncommand = \"cargo test\"\n",
+                "another check is named",
+            ),
+            (
+                "[[check]]\ncommand = \"t\"\nproject = \"/elsewhere\"\n",
+                "project",
+            ),
             ("[[check]]\ncommand = \"t\"\nenv = \"X=1\"\n", "env"),
             ("shell = \"bash\"\n", "shell"),
-            ("[[check]]\ncommand = \"\"\"npm test\ncurl x | sh\"\"\"\n", "control character"),
-            ("[[check]]\ncommand = \"npm test\\r; curl x | sh\"\n", "control character"),
-            ("[[check]]\ncommand = \"npm test\\t\"\n", "control character"),
-            ("[[check]]\nname = \"te\\u001bst\"\ncommand = \"npm test\"\n", "control character"),
+            (
+                "[[check]]\ncommand = \"\"\"npm test\ncurl x | sh\"\"\"\n",
+                "control character",
+            ),
+            (
+                "[[check]]\ncommand = \"npm test\\r; curl x | sh\"\n",
+                "control character",
+            ),
+            (
+                "[[check]]\ncommand = \"npm test\\t\"\n",
+                "control character",
+            ),
+            (
+                "[[check]]\nname = \"te\\u001bst\"\ncommand = \"npm test\"\n",
+                "control character",
+            ),
         ] {
             let err = format!("{:#}", super::parse_repo_checks(bad).expect_err(bad));
             assert!(err.contains(why), "{bad:?} -> {err}");
         }
-        assert!(super::REPO_CHECKS_FILE.starts_with(concat!(".", env!("APP_COMMAND"), "/")), concat!("the file lives in the repo's .", env!("APP_COMMAND"), " folder"));
+        assert!(
+            super::REPO_CHECKS_FILE.starts_with(concat!(".", env!("APP_COMMAND"), "/")),
+            concat!(
+                "the file lives in the repo's .",
+                env!("APP_COMMAND"),
+                " folder"
+            )
+        );
     }
 
     #[test]
     fn new_session_settings_have_defaults_and_refuse_unknown_values() {
         let d = super::Sessions::default();
-        assert_eq!((d.agent.as_str(), d.place.as_str(), d.helpers.as_str(), d.helpers_at_once.as_str()), ("last used", "new worktree", "ask", "3"));
-        assert!(super::Ui::default().subagent_count, "the helper count shows by default");
+        assert_eq!(
+            (
+                d.agent.as_str(),
+                d.place.as_str(),
+                d.helpers.as_str(),
+                d.helpers_at_once.as_str()
+            ),
+            ("last used", "new worktree", "ask", "3")
+        );
+        assert!(
+            super::Ui::default().subagent_count,
+            "the helper count shows by default"
+        );
         let c: super::Config = toml::from_str("[sessions]\nwhere = \"this folder\"\nhelpers = \"never\"\n[ui]\nsubagent_count = false\n").unwrap();
-        assert_eq!((c.sessions.place.as_str(), c.sessions.helpers.as_str(), c.sessions.agent.as_str()), ("this folder", "never", "last used"));
+        assert_eq!(
+            (
+                c.sessions.place.as_str(),
+                c.sessions.helpers.as_str(),
+                c.sessions.agent.as_str()
+            ),
+            ("this folder", "never", "last used")
+        );
         assert!(!c.ui.subagent_count);
         assert!(super::validate_sessions(&c.sessions).is_ok());
-        let old: super::Config = toml::from_str("[sessions]\nplus_starts = \"with options\"\n").expect("the removed plus_starts key is ignored");
+        let old: super::Config = toml::from_str("[sessions]\nplus_starts = \"with options\"\n")
+            .expect("the removed plus_starts key is ignored");
         assert!(super::validate_sessions(&old.sessions).is_ok());
         let bad: super::Config = toml::from_str("[sessions]\nhelpers_at_once = \"9\"\n").unwrap();
-        let err = super::validate_sessions(&bad.sessions).unwrap_err().to_string();
-        assert!(err.contains("sessions.helpers_at_once") && err.contains("2, 3, 4"), "{err}");
+        let err = super::validate_sessions(&bad.sessions)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("sessions.helpers_at_once") && err.contains("2, 3, 4"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -1762,26 +2541,50 @@ mod tests {
         let read = |text: &str| {
             let mut t: toml::Table = toml::from_str(text).unwrap();
             super::fold_legacy_helpers(&mut t);
-            toml::Value::Table(t).try_into::<super::Config>().unwrap().helpers_at_once()
+            toml::Value::Table(t)
+                .try_into::<super::Config>()
+                .unwrap()
+                .helpers_at_once()
         };
         assert_eq!(read(""), 3, "the default");
         assert_eq!(read("[sessions]\nhelpers_at_once = \"2\"\n"), 2);
-        assert_eq!(read("[mcp]\nhelpers_at_once = 6\n"), 4, "the old key still counts, held to what Settings offers");
-        assert_eq!(read("[mcp]\nhelpers_at_once = 0\n"), 4, "no limit is no longer offered");
+        assert_eq!(
+            read("[mcp]\nhelpers_at_once = 6\n"),
+            4,
+            "the old key still counts, held to what Settings offers"
+        );
+        assert_eq!(
+            read("[mcp]\nhelpers_at_once = 0\n"),
+            4,
+            "no limit is no longer offered"
+        );
         assert_eq!(read("[mcp]\nhelpers_at_once = 1\n"), 2);
         assert_eq!(read("[mcp]\nhelpers_at_once = 3\n"), 3);
-        assert_eq!(read("[mcp]\nhelpers_at_once = 6\n[sessions]\nhelpers_at_once = \"3\"\n"), 3, "the new key wins, even at its default");
+        assert_eq!(
+            read("[mcp]\nhelpers_at_once = 6\n[sessions]\nhelpers_at_once = \"3\"\n"),
+            3,
+            "the new key wins, even at its default"
+        );
     }
 
     #[test]
     fn rounded_default_off_and_read_from_the_file_old_switch_or_name() {
         use super::Rounding;
         assert_eq!(super::Ui::default().rounded, Rounding::Off);
-        for (written, read) in [("true", Rounding::Full), ("false", Rounding::Off), ("\"full\"", Rounding::Full), ("\"corners\"", Rounding::Corners), ("\"off\"", Rounding::Off)] {
+        for (written, read) in [
+            ("true", Rounding::Full),
+            ("false", Rounding::Off),
+            ("\"full\"", Rounding::Full),
+            ("\"corners\"", Rounding::Corners),
+            ("\"off\"", Rounding::Off),
+        ] {
             let c: super::Config = toml::from_str(&format!("[ui]\nrounded = {written}\n")).unwrap();
             assert_eq!(c.ui.rounded, read, "{written}");
         }
-        assert!(toml::from_str::<super::Config>("[ui]\nrounded = \"very\"\n").is_err(), "an unknown name is refused");
+        assert!(
+            toml::from_str::<super::Config>("[ui]\nrounded = \"very\"\n").is_err(),
+            "an unknown name is refused"
+        );
     }
 
     #[test]
@@ -1789,11 +2592,17 @@ mod tests {
         let ui = super::Ui::default();
         assert_eq!((ui.cursor.as_str(), ui.cursor_blink), ("terminal", true));
         for shape in super::CURSOR_SHAPES {
-            let c: super::Config = toml::from_str(&format!("[ui]\ncursor = \"{shape}\"\ncursor_blink = false\n")).unwrap();
+            let c: super::Config = toml::from_str(&format!(
+                "[ui]\ncursor = \"{shape}\"\ncursor_blink = false\n"
+            ))
+            .unwrap();
             assert!(super::validate_cursor(&c.ui).is_ok(), "{shape}");
         }
         let c: super::Config = toml::from_str("[ui]\ncursor = \"beam\"\n").unwrap();
-        assert!(super::validate_cursor(&c.ui).is_err(), "an unknown shape is refused, not ignored");
+        assert!(
+            super::validate_cursor(&c.ui).is_err(),
+            "an unknown shape is refused, not ignored"
+        );
     }
 
     #[test]
@@ -1814,53 +2623,106 @@ mod tests {
         let read = |text: &str| {
             let mut t: toml::Table = toml::from_str(text).unwrap();
             super::fold_legacy_corners(&mut t);
-            toml::Value::Table(t).try_into::<super::Config>().unwrap().ui.rounded
+            toml::Value::Table(t)
+                .try_into::<super::Config>()
+                .unwrap()
+                .ui
+                .rounded
         };
         assert_eq!(read("[ui]\ncorners = \"rounded\"\n"), Rounding::Corners);
         assert_eq!(read("[ui]\ncorners = \"square\"\n"), Rounding::Off);
         assert_eq!(read("[ui]\ncorners = \"flush\"\n"), Rounding::Off);
-        assert_eq!(read("[ui]\ncorners = \"rounded\"\nrounded = false\n"), Rounding::Off, "the new key wins once it is set");
-        assert_eq!(read("[ui]\ncorners = \"rounded\"\nrounded = true\n"), Rounding::Full);
+        assert_eq!(
+            read("[ui]\ncorners = \"rounded\"\nrounded = false\n"),
+            Rounding::Off,
+            "the new key wins once it is set"
+        );
+        assert_eq!(
+            read("[ui]\ncorners = \"rounded\"\nrounded = true\n"),
+            Rounding::Full
+        );
         assert_eq!(read(""), Rounding::Off);
     }
 
     #[test]
     fn a_project_starting_with_a_tilde_is_refused_because_it_is_never_expanded() {
-        let c: super::Config = toml::from_str("[[check]]\nproject = \"~/work/app\"\ncommand = \"t\"\n").unwrap();
-        let err = super::validate_checks(&c.check).expect_err("~ is not expanded").to_string();
+        let c: super::Config =
+            toml::from_str("[[check]]\nproject = \"~/work/app\"\ncommand = \"t\"\n").unwrap();
+        let err = super::validate_checks(&c.check)
+            .expect_err("~ is not expanded")
+            .to_string();
         assert!(err.contains("~") && err.contains("full path"), "{err}");
     }
 
     #[test]
     fn the_example_config_documents_the_check_keys() {
         for key in ["[[check]]", "project", "command", "timeout_s"] {
-            assert!(super::EXAMPLE.lines().any(|l| l.starts_with("# ") && l.contains(key)), "{key}");
+            assert!(
+                super::EXAMPLE
+                    .lines()
+                    .any(|l| l.starts_with("# ") && l.contains(key)),
+                "{key}"
+            );
         }
     }
 
     #[test]
     fn a_model_goes_right_after_the_program_quoted_only_when_it_needs_it() {
-        let c = super::Config { shell: Some("bash".into()), ..Default::default() };
-        assert_eq!(c.with_model("claude 'fix it'", "", "sonnet"), "claude --model sonnet 'fix it'");
-        assert_eq!(c.with_model("codex", "-m", "gpt-6.1-sol"), "codex -m gpt-6.1-sol");
-        assert_eq!(c.with_model("claude 'x'", "--model", "a;rm -rf ~"), "claude --model 'a;rm -rf ~' 'x'");
-        assert_eq!(c.with_model("claude", "", "it's"), "claude --model 'it'\\''s'");
+        let c = super::Config {
+            shell: Some("bash".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            c.with_model("claude 'fix it'", "", "sonnet"),
+            "claude --model sonnet 'fix it'"
+        );
+        assert_eq!(
+            c.with_model("codex", "-m", "gpt-6.1-sol"),
+            "codex -m gpt-6.1-sol"
+        );
+        assert_eq!(
+            c.with_model("claude 'x'", "--model", "a;rm -rf ~"),
+            "claude --model 'a;rm -rf ~' 'x'"
+        );
+        assert_eq!(
+            c.with_model("claude", "", "it's"),
+            "claude --model 'it'\\''s'"
+        );
     }
 
     #[test]
     fn an_agent_entry_with_an_env_is_an_account() {
         let toml = "[[quick.agents]]\nname = \"claude\"\ncommand = \"claude {prompt}\"\n\n[[quick.agents]]\nname = \"claude work\"\ncommand = \"claude {prompt}\"\nenv = { CLAUDE_CONFIG_DIR = \"~/.claude-work\" }\n";
-        for (shell, prefix) in [("pwsh.exe", concat!(env!("APP_COMMAND"), " account 'claude work' -- ")), ("bash", concat!(env!("APP_COMMAND"), " account 'claude work' -- "))] {
+        for (shell, prefix) in [
+            (
+                "pwsh.exe",
+                concat!(env!("APP_COMMAND"), " account 'claude work' -- "),
+            ),
+            (
+                "bash",
+                concat!(env!("APP_COMMAND"), " account 'claude work' -- "),
+            ),
+        ] {
             let mut c: super::Config = toml::from_str(toml).unwrap();
             c.shell = Some(shell.into());
-            assert!(c.account("claude").is_none() && c.account("claude work").is_some(), "only the one with an env");
+            assert!(
+                c.account("claude").is_none() && c.account("claude work").is_some(),
+                "only the one with an env"
+            );
             // Its command says which account it is; the plain agent's is left alone.
             let cmd = c.as_account("claude work", "claude --resume abc");
             assert_eq!(cmd, format!("{prefix}claude --resume abc"), "{shell}");
             assert_eq!(c.as_account("claude", "claude 'hi'"), "claude 'hi'");
-            assert_eq!(c.as_account("claude work", &cmd), cmd, "never wrapped twice");
+            assert_eq!(
+                c.as_account("claude work", &cmd),
+                cmd,
+                "never wrapped twice"
+            );
             // And it can be read back off the command line.
-            assert_eq!(c.split_account(&cmd), (Some("claude work".to_string()), "claude --resume abc"));
+            assert_eq!(
+                c.split_account(&cmd),
+                (Some("claude work".to_string()), "claude --resume abc")
+            );
             assert_eq!(c.split_account("claude 'hi'"), (None, "claude 'hi'"));
         }
     }
@@ -1879,67 +2741,148 @@ mod tests {
         let old = "[[profiles]]\nname='planner'\nagent='codex'\nmodel='gpt-5'\n\n[[workflows]]\nname='feature'\nplanner='planner'\nworker='worker'\nreviewer='reviewer'\n";
         let cfg: super::Config = toml::from_str(old).expect("legacy user settings remain readable");
         assert_eq!(cfg.theme, super::Config::default().theme);
-        assert!(old.contains("[[profiles]]") && old.contains("[[workflows]]"), "loading does not edit the user's config text");
+        assert!(
+            old.contains("[[profiles]]") && old.contains("[[workflows]]"),
+            "loading does not edit the user's config text"
+        );
     }
 
     #[test]
     fn a_program_becomes_an_agent() {
         let args = |s: &str| s.split_whitespace().map(String::from).collect::<Vec<_>>();
         let native = super::agent_from_command("deepseek", &args("deepseek --model x")).unwrap();
-        assert_eq!((native.name.as_str(), native.process.clone(), native.cmdline.is_empty()), ("deepseek", vec!["deepseek".to_string()], true), "by its name, whatever alias ran it");
-        let npm = super::agent_from_command("node", &args("node /home/vox/.npm/lib/node_modules/@acme/deepseek-harness/dist/cli.js")).unwrap();
-        assert_eq!((npm.name.as_str(), npm.process.is_empty(), npm.cmdline.clone()), ("deepseek-harness", true, vec!["deepseek-harness".to_string()]), "node: by its package");
-        let py = super::agent_from_command("python3", &args("python3 -u /opt/harness/main.py")).unwrap();
+        assert_eq!(
+            (
+                native.name.as_str(),
+                native.process.clone(),
+                native.cmdline.is_empty()
+            ),
+            ("deepseek", vec!["deepseek".to_string()], true),
+            "by its name, whatever alias ran it"
+        );
+        let npm = super::agent_from_command(
+            "node",
+            &args("node /home/vox/.npm/lib/node_modules/@acme/deepseek-harness/dist/cli.js"),
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                npm.name.as_str(),
+                npm.process.is_empty(),
+                npm.cmdline.clone()
+            ),
+            (
+                "deepseek-harness",
+                true,
+                vec!["deepseek-harness".to_string()]
+            ),
+            "node: by its package"
+        );
+        let py =
+            super::agent_from_command("python3", &args("python3 -u /opt/harness/main.py")).unwrap();
         assert_eq!(py.name, "harness", "a main.py goes by its folder");
-        assert!(super::agent_from_command("bash", &args("bash")).is_none(), "a shell isn't an agent");
-        assert!(super::agent_from_command("node", &args("node")).is_none(), "nothing to go on");
-        assert!(native.working_patterns.iter().any(|p| p == "esc to interrupt"));
+        assert!(
+            super::agent_from_command("bash", &args("bash")).is_none(),
+            "a shell isn't an agent"
+        );
+        assert!(
+            super::agent_from_command("node", &args("node")).is_none(),
+            "nothing to go on"
+        );
+        assert!(
+            native
+                .working_patterns
+                .iter()
+                .any(|p| p == "esc to interrupt")
+        );
     }
 
     #[test]
     fn adding_an_agent_keeps_the_rest_of_the_config() {
-        let file = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-agents-{}.toml"), std::process::id()));
-        std::fs::write(&file, "# mine\ntheme = \"default\"\n\n[ui]\nsplash = true\n\n[notify]\ndesktop = true\n").unwrap();
+        let file = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-agents-{}.toml"),
+            std::process::id()
+        ));
+        std::fs::write(
+            &file,
+            "# mine\ntheme = \"default\"\n\n[ui]\nsplash = true\n\n[notify]\ndesktop = true\n",
+        )
+        .unwrap();
         let def = super::agent_from_command("dst", &["dst".to_string()]).unwrap();
         super::add_agent_to(&file, &def).unwrap();
         super::add_agent_to(&file, &def).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("# mine") && text.contains("theme = \"default\""), "the rest stays: {text}");
-        assert_eq!(text.matches("[[agents]]").count(), 1, "the same name once: {text}");
-        assert!(text.find("[[agents]]") > text.find("[notify]"), "added at the end: {text}");
+        assert!(
+            text.contains("# mine") && text.contains("theme = \"default\""),
+            "the rest stays: {text}"
+        );
+        assert_eq!(
+            text.matches("[[agents]]").count(),
+            1,
+            "the same name once: {text}"
+        );
+        assert!(
+            text.find("[[agents]]") > text.find("[notify]"),
+            "added at the end: {text}"
+        );
         let cfg: super::Config = toml::from_str(&text).unwrap();
-        assert!(cfg.agent_defs().iter().any(|a| a.name == "dst"), concat!("and ", env!("APP_COMMAND"), " reads it back"));
+        assert!(
+            cfg.agent_defs().iter().any(|a| a.name == "dst"),
+            concat!("and ", env!("APP_COMMAND"), " reads it back")
+        );
         let _ = std::fs::remove_file(&file);
     }
 
     #[test]
     fn the_start_folder() {
         let mut cfg = super::Config::default();
-        assert_eq!(cfg.start_dir(), None, concat!("empty: wherever you run ", env!("APP_COMMAND")));
+        assert_eq!(
+            cfg.start_dir(),
+            None,
+            concat!("empty: wherever you run ", env!("APP_COMMAND"))
+        );
         cfg.ui.start_dir = "~".into();
-        let home = directories::BaseDirs::new().unwrap().home_dir().to_path_buf();
+        let home = directories::BaseDirs::new()
+            .unwrap()
+            .home_dir()
+            .to_path_buf();
         assert_eq!(cfg.start_dir(), Some(home), "~ is home");
         let here = std::env::temp_dir();
         cfg.ui.start_dir = here.display().to_string();
         assert_eq!(cfg.start_dir(), Some(here));
         cfg.ui.start_dir = "/no/such/folder/anywhere".into();
-        assert_eq!(cfg.start_dir(), None, "a folder that isn't there is ignored");
+        assert_eq!(
+            cfg.start_dir(),
+            None,
+            "a folder that isn't there is ignored"
+        );
     }
 
     #[test]
     fn state_files_swap_in_and_keep_a_bad_copy() {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-state-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-state-{}"),
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("s.json");
         super::write_atomic(&f, "[1,2]").unwrap();
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "[1,2]");
-        assert!(!dir.join(concat!(".s.json.", env!("APP_COMMAND"), "-tmp")).exists(), "no temporary file left behind");
+        assert!(
+            !dir.join(concat!(".s.json.", env!("APP_COMMAND"), "-tmp"))
+                .exists(),
+            "no temporary file left behind"
+        );
         let v: Vec<u32> = super::read_state(&f);
         assert_eq!(v, vec![1, 2]);
         std::fs::write(&f, "[1,2").unwrap();
         let v: Vec<u32> = super::read_state(&f);
         assert!(v.is_empty(), "a broken file gives the defaults");
-        assert_eq!(std::fs::read_to_string(dir.join("s.json.bak")).unwrap(), "[1,2", "and is kept as .bak");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("s.json.bak")).unwrap(),
+            "[1,2",
+            "and is kept as .bak"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1947,32 +2890,75 @@ mod tests {
 
     #[test]
     fn an_old_install_is_brought_over_once() {
-        let base = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-migrate-{}"), std::process::id()));
-        let (old_cfg, new_cfg, old_data, new_data) = (base.join("cfg-hydra"), base.join(concat!("cfg-", env!("APP_COMMAND"))), base.join("data-hydra"), base.join(concat!("data-", env!("APP_COMMAND"))));
+        let base = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-migrate-{}"),
+            std::process::id()
+        ));
+        let (old_cfg, new_cfg, old_data, new_data) = (
+            base.join("cfg-hydra"),
+            base.join(concat!("cfg-", env!("APP_COMMAND"))),
+            base.join("data-hydra"),
+            base.join(concat!("data-", env!("APP_COMMAND"))),
+        );
         std::fs::create_dir_all(old_cfg.join("ext")).unwrap();
         std::fs::create_dir_all(old_data.join("output-default")).unwrap();
-        std::fs::write(old_cfg.join("config.toml"), "theme = \"hydra\"
+        std::fs::write(
+            old_cfg.join("config.toml"),
+            "theme = \"hydra\"
 shell = \"pwsh\"
-").unwrap();
+",
+        )
+        .unwrap();
         std::fs::write(old_cfg.join("ext").join("x.toml"), "").unwrap();
         std::fs::write(old_data.join("hydra-ui.json"), "{}").unwrap();
         std::fs::write(old_data.join("session-default.json"), "[]").unwrap();
         std::fs::write(old_data.join("output-default").join("1.log"), "hi").unwrap();
         std::fs::write(old_data.join("hydra-me-default.sock.pid"), "123").unwrap();
-        bring_over("hydra", Some((old_cfg.clone(), new_cfg.clone())), Some(&old_data), &new_data);
+        bring_over(
+            "hydra",
+            Some((old_cfg.clone(), new_cfg.clone())),
+            Some(&old_data),
+            &new_data,
+        );
         let cfg = std::fs::read_to_string(new_cfg.join("config.toml")).unwrap();
-        assert!(cfg.contains(&format!("theme = \"{}\"", crate::theme::DEFAULT)) && cfg.contains("shell = \"pwsh\""), "settings kept, the old default theme moved: {cfg}");
-        assert!(new_cfg.join("ext").join("x.toml").exists(), "folders inside come too");
-        assert!(new_data.join(concat!(env!("APP_COMMAND"), "-ui.json")).exists() && !new_data.join("hydra-ui.json").exists(), "files named after the old app take the new name");
-        assert!(new_data.join("session-default.json").exists() && new_data.join("output-default").join("1.log").exists(), "saved sessions and pane history");
-        assert!(!new_data.join(concat!(env!("APP_COMMAND"), "-me-default.sock.pid")).exists(), "not the old server's pid");
-        assert!(new_data.join(MIGRATED).exists() && old_data.join("hydra-ui.json").exists(), "marked done; the old folders stay");
+        assert!(
+            cfg.contains(&format!("theme = \"{}\"", crate::theme::DEFAULT))
+                && cfg.contains("shell = \"pwsh\""),
+            "settings kept, the old default theme moved: {cfg}"
+        );
+        assert!(
+            new_cfg.join("ext").join("x.toml").exists(),
+            "folders inside come too"
+        );
+        assert!(
+            new_data
+                .join(concat!(env!("APP_COMMAND"), "-ui.json"))
+                .exists()
+                && !new_data.join("hydra-ui.json").exists(),
+            "files named after the old app take the new name"
+        );
+        assert!(
+            new_data.join("session-default.json").exists()
+                && new_data.join("output-default").join("1.log").exists(),
+            "saved sessions and pane history"
+        );
+        assert!(
+            !new_data
+                .join(concat!(env!("APP_COMMAND"), "-me-default.sock.pid"))
+                .exists(),
+            "not the old server's pid"
+        );
+        assert!(
+            new_data.join(MIGRATED).exists() && old_data.join("hydra-ui.json").exists(),
+            "marked done; the old folders stay"
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
     fn local_settings_win() {
-        let mut base: toml::Table = toml::from_str("theme = 'monokai'\n[ui]\nmouse = true\nsplash = true\n").unwrap();
+        let mut base: toml::Table =
+            toml::from_str("theme = 'monokai'\n[ui]\nmouse = true\nsplash = true\n").unwrap();
         let over: toml::Table = toml::from_str("shell = 'zsh'\n[ui]\nsplash = false\n").unwrap();
         merge(&mut base, over);
         let cfg: Config = toml::Value::Table(base).try_into().unwrap();
@@ -2005,30 +2991,64 @@ shell = \"pwsh\"
             (ui.layout_kind(), ui.gap, ui.pane_colors)
         };
         let floating = |gap: &str, colors: bool| (LayoutKind::Floating, gap.to_string(), colors);
-        assert_eq!(ui("[ui]
-panes = 'tiled'"), floating("0", false), "no layout line: Cards, tiled");
-        assert_eq!(ui("[ui]
+        assert_eq!(
+            ui("[ui]
+panes = 'tiled'"),
+            floating("0", false),
+            "no layout line: Cards, tiled"
+        );
+        assert_eq!(
+            ui("[ui]
 layout = 'cards'
-panes = 'tiled'"), floating("0", false));
-        assert_eq!(ui("[ui]
+panes = 'tiled'"),
+            floating("0", false)
+        );
+        assert_eq!(
+            ui("[ui]
 layout = 'tiled'
-gap = '2'"), floating("0", false), "tiled had no gaps");
-        assert_eq!(ui("[ui]
+gap = '2'"),
+            floating("0", false),
+            "tiled had no gaps"
+        );
+        assert_eq!(
+            ui("[ui]
 layout = 'cards'
-panes = 'floating'"), floating("1", false));
+panes = 'floating'"),
+            floating("1", false)
+        );
         assert_eq!(ui(""), floating("1", false), "the default");
-        assert_eq!(ui("[ui]
+        assert_eq!(
+            ui("[ui]
 layout = 'floating'
-panes = 'tiled'"), floating("1", false), "a new name wins over a leftover panes");
-        assert_eq!(ui("[ui]
-layout = 'grid'"), floating("1", true), "grid is floating in colour");
-        assert_eq!(ui("[ui]
-layout = 'compact'").0, LayoutKind::Hairline);
-        assert_eq!(ui("[ui]
+panes = 'tiled'"),
+            floating("1", false),
+            "a new name wins over a leftover panes"
+        );
+        assert_eq!(
+            ui("[ui]
+layout = 'grid'"),
+            floating("1", true),
+            "grid is floating in colour"
+        );
+        assert_eq!(
+            ui("[ui]
+layout = 'compact'")
+            .0,
+            LayoutKind::Hairline
+        );
+        assert_eq!(
+            ui("[ui]
 layout = 'flat'
-panes = 'floating'").0, LayoutKind::Hairline);
-        assert_eq!(ui("[ui]
-layout = 'hairline'").0, LayoutKind::Hairline);
+panes = 'floating'")
+            .0,
+            LayoutKind::Hairline
+        );
+        assert_eq!(
+            ui("[ui]
+layout = 'hairline'")
+            .0,
+            LayoutKind::Hairline
+        );
     }
 
     #[test]
@@ -2038,16 +3058,45 @@ layout = 'hairline'").0, LayoutKind::Hairline);
             ui.fold_retired_layout();
             ui.retired_layout.map(|r| r.note())
         };
-        assert_eq!(note("[ui]
-layout = 'compact'").as_deref(), Some("The Compact layout is now Hairline, lines only. Change it in Settings › Appearance"));
-        assert_eq!(note("[ui]
-layout = 'tiled'").as_deref(), Some("The Tiled layout is now Floating with no gap. Change it in Settings › Appearance"));
-        assert_eq!(note("[ui]
-layout = 'grid'").as_deref(), Some("The Grid layout is now Floating with Pane colours on. Change it in Settings › Appearance"));
-        for kept in ["", "[ui]
-layout = 'floating'", "[ui]
-layout = 'cards'", "[ui]
-layout = 'hairline'"] {
+        assert_eq!(
+            note(
+                "[ui]
+layout = 'compact'"
+            )
+            .as_deref(),
+            Some(
+                "The Compact layout is now Hairline, lines only. Change it in Settings › Appearance"
+            )
+        );
+        assert_eq!(
+            note(
+                "[ui]
+layout = 'tiled'"
+            )
+            .as_deref(),
+            Some(
+                "The Tiled layout is now Floating with no gap. Change it in Settings › Appearance"
+            )
+        );
+        assert_eq!(
+            note(
+                "[ui]
+layout = 'grid'"
+            )
+            .as_deref(),
+            Some(
+                "The Grid layout is now Floating with Pane colours on. Change it in Settings › Appearance"
+            )
+        );
+        for kept in [
+            "",
+            "[ui]
+layout = 'floating'",
+            "[ui]
+layout = 'cards'",
+            "[ui]
+layout = 'hairline'",
+        ] {
             assert_eq!(note(kept), None, "{kept:?}: nothing to say");
         }
     }
@@ -2055,19 +3104,28 @@ layout = 'hairline'"] {
     #[test]
     fn hairline_is_always_square() {
         let ui = |toml: &str| toml::from_str::<Config>(toml).unwrap().ui;
-        assert_eq!(ui("[ui]\nlayout = 'hairline'\nrounded = 'full'").rounding(), Rounding::Off);
-        assert_eq!(ui("[ui]\nlayout = 'tiled'\nrounded = 'full'").rounding(), Rounding::Full, "other looks keep the setting");
+        assert_eq!(
+            ui("[ui]\nlayout = 'hairline'\nrounded = 'full'").rounding(),
+            Rounding::Off
+        );
+        assert_eq!(
+            ui("[ui]\nlayout = 'tiled'\nrounded = 'full'").rounding(),
+            Rounding::Full,
+            "other looks keep the setting"
+        );
     }
 
     #[test]
     fn removed_visibility_settings_are_ignored() {
-        let c: Config = toml::from_str("sleep_after = '15m'\nsettle_after = '3d'").expect("older config remains readable");
+        let c: Config = toml::from_str("sleep_after = '15m'\nsettle_after = '3d'")
+            .expect("older config remains readable");
         assert_eq!(c.prefix, Config::default().prefix);
     }
 
     #[test]
     fn old_wake_animation_setting_is_ignored() {
-        let c: Config = toml::from_str("[ui]\nwake_animation = 'off'").expect("older config remains readable");
+        let c: Config =
+            toml::from_str("[ui]\nwake_animation = 'off'").expect("older config remains readable");
         assert!(c.ui.motion);
     }
 
@@ -2089,45 +3147,90 @@ layout = 'hairline'"] {
     #[test]
     fn alt_arrows_move_between_panes_unless_turned_off() {
         let alt_left = "alt+left".parse().unwrap();
-        assert_eq!(Config::default().keymap().global[&alt_left], Action::Focus(crate::layout::Dir::Left));
+        assert_eq!(
+            Config::default().keymap().global[&alt_left],
+            Action::Focus(crate::layout::Dir::Left)
+        );
         let off: Config = toml::from_str("[ui]\nalt_arrows = false").unwrap();
-        assert!(!off.keymap().global.contains_key(&alt_left), "off: the program gets them");
+        assert!(
+            !off.keymap().global.contains_key(&alt_left),
+            "off: the program gets them"
+        );
     }
 
     fn sh_config(quick: Vec<QuickAgent>) -> Config {
-        Config { shell: Some("sh".into()), quick: Quick { agents: quick }, ..Default::default() }
+        Config {
+            shell: Some("sh".into()),
+            quick: Quick { agents: quick },
+            ..Default::default()
+        }
     }
 
     fn quick(name: &str, command: &str, env: &[(&str, &str)]) -> QuickAgent {
-        QuickAgent { name: name.into(), command: command.into(), env: env.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), ..Default::default() }
+        QuickAgent {
+            name: name.into(),
+            command: command.into(),
+            env: env
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn a_quick_agent_gets_the_quoted_prompt_in_place_of_the_marker() {
         let c = sh_config(vec![quick("claude", "claude --fast {prompt}", &[])]);
-        assert_eq!(c.agent_command(Some("claude"), None, "fix it's test").unwrap(), r"claude --fast 'fix it'\''s test'");
+        assert_eq!(
+            c.agent_command(Some("claude"), None, "fix it's test")
+                .unwrap(),
+            r"claude --fast 'fix it'\''s test'"
+        );
     }
 
     #[test]
     fn an_account_agent_runs_through_its_account() {
-        let c = sh_config(vec![quick("work", "claude {prompt}", &[("CLAUDE_CONFIG_DIR", "~/.claude-work")])]);
-        assert_eq!(c.agent_command(Some("work"), None, "go").unwrap(), concat!(env!("APP_COMMAND"), " account 'work' -- claude 'go'"));
+        let c = sh_config(vec![quick(
+            "work",
+            "claude {prompt}",
+            &[("CLAUDE_CONFIG_DIR", "~/.claude-work")],
+        )]);
+        assert_eq!(
+            c.agent_command(Some("work"), None, "go").unwrap(),
+            concat!(env!("APP_COMMAND"), " account 'work' -- claude 'go'")
+        );
     }
 
     #[test]
     fn powershell_doubles_curly_quotes_so_they_cannot_end_the_prompt() {
         for shell in ["pwsh.exe", "powershell"] {
-            let c = Config { shell: Some(shell.into()), ..Default::default() };
-            let q = c.quote_for_shell("don\u{2019}t; Write-Output INJECTED; # \u{2018}a\u{201A}b\u{201B} it's");
-            assert_eq!(q, "'don\u{2019}\u{2019}t; Write-Output INJECTED; # \u{2018}\u{2018}a\u{201A}\u{201A}b\u{201B}\u{201B} it''s'", "{shell}");
+            let c = Config {
+                shell: Some(shell.into()),
+                ..Default::default()
+            };
+            let q = c.quote_for_shell(
+                "don\u{2019}t; Write-Output INJECTED; # \u{2018}a\u{201A}b\u{201B} it's",
+            );
+            assert_eq!(
+                q,
+                "'don\u{2019}\u{2019}t; Write-Output INJECTED; # \u{2018}\u{2018}a\u{201A}\u{201A}b\u{201B}\u{201B} it''s'",
+                "{shell}"
+            );
         }
-        assert_eq!(sh_config(vec![]).quote_for_shell("don\u{2019}t"), "'don\u{2019}t'", "sh keeps it as is");
+        assert_eq!(
+            sh_config(vec![]).quote_for_shell("don\u{2019}t"),
+            "'don\u{2019}t'",
+            "sh keeps it as is"
+        );
     }
 
     #[test]
     fn a_built_in_agent_not_in_quick_runs_by_its_name() {
         let c = sh_config(vec![]);
-        assert_eq!(c.agent_command(Some("codex"), None, "go").unwrap(), "codex 'go'");
+        assert_eq!(
+            c.agent_command(Some("codex"), None, "go").unwrap(),
+            "codex 'go'"
+        );
     }
 
     #[test]
@@ -2135,15 +3238,25 @@ layout = 'hairline'"] {
         let c = sh_config(vec![quick("mine", "mine {prompt}", &[])]);
         for bad in ["not-an-agent", "rm -rf;x"] {
             let err = c.agent_command(Some(bad), None, "go").expect_err(bad);
-            assert!(err.starts_with(&format!("unknown agent \"{bad}\"; use one of: mine, ")) && err.contains("claude"), "{err}");
+            assert!(
+                err.starts_with(&format!("unknown agent \"{bad}\"; use one of: mine, "))
+                    && err.contains("claude"),
+                "{err}"
+            );
         }
     }
 
     #[test]
     fn no_agent_picks_the_first_quick_agent_else_claude() {
-        let c = sh_config(vec![quick("codex", "codex -x {prompt}", &[]), quick("claude", "claude {prompt}", &[])]);
+        let c = sh_config(vec![
+            quick("codex", "codex -x {prompt}", &[]),
+            quick("claude", "claude {prompt}", &[]),
+        ]);
         assert_eq!(c.agent_command(None, None, "go").unwrap(), "codex -x 'go'");
-        assert_eq!(sh_config(vec![]).agent_command(None, None, "go").unwrap(), "claude 'go'");
+        assert_eq!(
+            sh_config(vec![]).agent_command(None, None, "go").unwrap(),
+            "claude 'go'"
+        );
     }
 
     #[test]

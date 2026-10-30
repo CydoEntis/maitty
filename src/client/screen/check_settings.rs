@@ -24,7 +24,11 @@ const COMMAND_PLACEHOLDER: &str = "e.g. npm test";
 const NO_CHECK: &str = "No check set.";
 /// The empty state's words as the reference breaks them; a narrower host wraps them.
 const EMPTY_LINES: [&str; 2] = [
-    concat!("No check set. ", env!("APP_NAME"), " can run one command itself when an agent's"),
+    concat!(
+        "No check set. ",
+        env!("APP_NAME"),
+        " can run one command itself when an agent's"
+    ),
     "turn ends; the session isn't done until it passes. Agents keep working.",
 ];
 const NOT_A_LIST: &str = "`check` in config.toml is not a list of [[check]] tables";
@@ -54,7 +58,15 @@ pub(in crate::client) struct CheckDraft {
 
 impl CheckDraft {
     pub fn new(project: PathBuf) -> CheckDraft {
-        CheckDraft { project, point: 0, row: DraftRow::Command, command: None, editing: false, timeout_s: None, saving: false }
+        CheckDraft {
+            project,
+            point: 0,
+            row: DraftRow::Command,
+            command: None,
+            editing: false,
+            timeout_s: None,
+            saving: false,
+        }
     }
 }
 
@@ -101,14 +113,27 @@ impl Point {
 pub(in crate::client) fn step_timeout(secs: u64, dir: i64) -> u64 {
     let last = TIMEOUT_STEPS_S[TIMEOUT_STEPS_S.len() - 1];
     if dir > 0 {
-        TIMEOUT_STEPS_S.iter().copied().find(|s| *s > secs).unwrap_or(last)
+        TIMEOUT_STEPS_S
+            .iter()
+            .copied()
+            .find(|s| *s > secs)
+            .unwrap_or(last)
     } else {
-        TIMEOUT_STEPS_S.iter().rev().copied().find(|s| *s < secs).unwrap_or(TIMEOUT_STEPS_S[0])
+        TIMEOUT_STEPS_S
+            .iter()
+            .rev()
+            .copied()
+            .find(|s| *s < secs)
+            .unwrap_or(TIMEOUT_STEPS_S[0])
     }
 }
 
 fn timeout_label(secs: u64) -> String {
-    if secs >= SECS_PER_MIN && secs.is_multiple_of(SECS_PER_MIN) { format!("{} min", secs / SECS_PER_MIN) } else { format!("{secs} s") }
+    if secs >= SECS_PER_MIN && secs.is_multiple_of(SECS_PER_MIN) {
+        format!("{} min", secs / SECS_PER_MIN)
+    } else {
+        format!("{secs} s")
+    }
 }
 
 // ---- config.toml ---------------------------------------------------------------------------
@@ -117,8 +142,16 @@ fn timeout_label(secs: u64) -> String {
 #[derive(Debug, Clone)]
 pub(in crate::client) enum CheckEdit {
     /// The checkpoint `name` (a new one when None or not found) runs `command`.
-    Set { project: PathBuf, name: Option<String>, command: String, timeout_s: u64 },
-    Remove { project: PathBuf, name: String },
+    Set {
+        project: PathBuf,
+        name: Option<String>,
+        command: String,
+        timeout_s: u64,
+    },
+    Remove {
+        project: PathBuf,
+        name: String,
+    },
 }
 
 impl CheckEdit {
@@ -128,14 +161,28 @@ impl CheckEdit {
 
     pub fn apply(&self, doc: &mut toml_edit::DocumentMut) -> Result<()> {
         match self {
-            CheckEdit::Set { project, name, command, timeout_s } => {
-                let list = doc.entry("check").or_insert(Item::ArrayOfTables(ArrayOfTables::new())).as_array_of_tables_mut().context(NOT_A_LIST)?;
+            CheckEdit::Set {
+                project,
+                name,
+                command,
+                timeout_s,
+            } => {
+                let list = doc
+                    .entry("check")
+                    .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
+                    .as_array_of_tables_mut()
+                    .context(NOT_A_LIST)?;
                 let timeout = i64::try_from(*timeout_s).unwrap_or(i64::MAX);
-                let at = name.as_deref().and_then(|n| list.iter().position(|t| is_for(t, project, n)));
+                let at = name
+                    .as_deref()
+                    .and_then(|n| list.iter().position(|t| is_for(t, project, n)));
                 match at.and_then(|i| list.get_mut(i)) {
                     Some(table) => {
                         // Without a `name` it is named by its command: keep the name it had.
-                        if let Some(n) = name.as_deref().filter(|n| !table.contains_key("name") && !named_by(command, n)) {
+                        if let Some(n) = name
+                            .as_deref()
+                            .filter(|n| !table.contains_key("name") && !named_by(command, n))
+                        {
                             table.insert("name", toml_edit::value(n));
                         }
                         set_keeping_decor(table, "command", command.as_str().into());
@@ -143,7 +190,10 @@ impl CheckEdit {
                     }
                     None => {
                         let mut table = Table::new();
-                        table.insert("project", toml_edit::value(project.to_string_lossy().as_ref()));
+                        table.insert(
+                            "project",
+                            toml_edit::value(project.to_string_lossy().as_ref()),
+                        );
                         if let Some(n) = name.as_deref().filter(|n| !named_by(command, n)) {
                             table.insert("name", toml_edit::value(n));
                         }
@@ -154,7 +204,9 @@ impl CheckEdit {
                 }
             }
             CheckEdit::Remove { project, name } => {
-                let Some(item) = doc.get_mut("check") else { return Ok(()) };
+                let Some(item) = doc.get_mut("check") else {
+                    return Ok(());
+                };
                 let list = item.as_array_of_tables_mut().context(NOT_A_LIST)?;
                 let at = list.iter().position(|t| is_for(t, project, name));
                 if let Some(i) = at {
@@ -171,19 +223,31 @@ impl CheckEdit {
 
 /// A command with no `name` beside it is called by its last word (`CheckDef::name`).
 fn named_by(command: &str, name: &str) -> bool {
-    command.split_whitespace().last().is_some_and(|w| w.eq_ignore_ascii_case(name))
+    command
+        .split_whitespace()
+        .last()
+        .is_some_and(|w| w.eq_ignore_ascii_case(name))
 }
 
 /// Whether a `[[check]]` table names `project`.
 pub(super) fn is_project(table: &Table, project: &Path) -> bool {
-    table.get("project").and_then(Item::as_str).is_some_and(|p| same_path(Path::new(p), project))
+    table
+        .get("project")
+        .and_then(Item::as_str)
+        .is_some_and(|p| same_path(Path::new(p), project))
 }
 
 fn is_for(table: &Table, project: &Path, name: &str) -> bool {
     let own = is_project(table, project);
     let named = match table.get("name").and_then(Item::as_str) {
         Some(n) => n.eq_ignore_ascii_case(name),
-        None => named_by(table.get("command").and_then(Item::as_str).unwrap_or_default(), name),
+        None => named_by(
+            table
+                .get("command")
+                .and_then(Item::as_str)
+                .unwrap_or_default(),
+            name,
+        ),
     };
     own && named
 }
@@ -205,14 +269,22 @@ pub(super) fn set_keeping_decor(table: &mut Table, key: &str, mut value: toml_ed
 
 /// The project Settings edits: the repository of the workspace you are in.
 pub(super) fn project_of(app: &App) -> Option<PathBuf> {
-    app.active_ws().map(|w| w.git.as_ref().map_or_else(|| w.cwd.clone(), |g| g.root.clone()))
+    app.active_ws().map(|w| {
+        w.git
+            .as_ref()
+            .map_or_else(|| w.cwd.clone(), |g| g.root.clone())
+    })
 }
 
 /// What the Check page's keys act on, as `on_check_page_key` finds it: none with no project
 /// open, else the draft if it is this project's, and whether the project has a checkpoint yet.
 pub(super) fn page_target(app: &App) -> Option<(Option<&CheckDraft>, bool)> {
     let project = project_of(app)?;
-    let draft = app.screen.check_page.as_ref().filter(|d| same_path(&d.project, &project));
+    let draft = app
+        .screen
+        .check_page
+        .as_ref()
+        .filter(|d| same_path(&d.project, &project));
     Some((draft, has_points(app, &project)))
 }
 
@@ -235,18 +307,36 @@ fn points(app: &App, project: &Path) -> Vec<Point> {
         .check
         .iter()
         .filter(|d| same_path(&d.project, project))
-        .map(|d| Point { name: d.name().to_string(), command: d.command.clone(), timeout_s: d.timeout_s, source: CheckSource::User, result: None })
+        .map(|d| Point {
+            name: d.name().to_string(),
+            command: d.command.clone(),
+            timeout_s: d.timeout_s,
+            source: CheckSource::User,
+            result: None,
+        })
         .collect();
     let terms = || app.snap.terms.values().filter(|t| in_project(t, project));
-    for c in terms().flat_map(|t| &t.checks).filter(|c| matches!(c.source, CheckSource::Repo { .. })) {
+    for c in terms()
+        .flat_map(|t| &t.checks)
+        .filter(|c| matches!(c.source, CheckSource::Repo { .. }))
+    {
         if !out.iter().any(|p| p.name.eq_ignore_ascii_case(&c.name)) {
-            out.push(Point { name: c.name.clone(), command: c.command.clone(), timeout_s: CHECK_TIMEOUT_S_DEFAULT, source: c.source.clone(), result: None });
+            out.push(Point {
+                name: c.name.clone(),
+                command: c.command.clone(),
+                timeout_s: CHECK_TIMEOUT_S_DEFAULT,
+                source: c.source.clone(),
+                result: None,
+            });
         }
     }
     for p in &mut out {
         p.result = terms()
             .flat_map(|t| t.checks.iter().map(move |c| (c, t)))
-            .filter(|(c, _)| c.name.eq_ignore_ascii_case(&p.name) || (c.name.is_empty() && c.command == p.command))
+            .filter(|(c, _)| {
+                c.name.eq_ignore_ascii_case(&p.name)
+                    || (c.name.is_empty() && c.command == p.command)
+            })
             .max_by_key(|(c, _)| c.started_at)
             .map(|(c, t)| (c.clone(), app.session_name(t.id)));
     }
@@ -254,7 +344,9 @@ fn points(app: &App, project: &Path) -> Vec<Point> {
 }
 
 fn selected(points: &[Point], d: &CheckDraft) -> Option<Point> {
-    points.get(d.point.min(points.len().saturating_sub(1))).cloned()
+    points
+        .get(d.point.min(points.len().saturating_sub(1)))
+        .cloned()
 }
 
 /// The rows the arrows walk, top to bottom.
@@ -276,7 +368,12 @@ fn run_target(app: &App, project: &Path) -> Option<TermId> {
         .filter(|t| in_project(t, project) && !t.checks.is_empty())
         .max_by_key(|t| t.checks.iter().map(|c| c.started_at).max())
         .map(|t| t.id)
-        .or_else(|| app.focused().and_then(|f| app.snap.terms.get(&f)).filter(agent).map(|t| t.id))
+        .or_else(|| {
+            app.focused()
+                .and_then(|f| app.snap.terms.get(&f))
+                .filter(agent)
+                .map(|t| t.id)
+        })
         .or_else(|| app.snap.terms.values().filter(agent).map(|t| t.id).min())
 }
 
@@ -294,48 +391,135 @@ fn decision(p: &Point) -> &'static str {
 // ---- drawing -------------------------------------------------------------------------------
 
 fn label(text: &str, on: bool, t: &Theme) -> Seg {
-    let style = if on { Style::default().fg(t.accent).add_modifier(Modifier::BOLD) } else { Style::default().fg(t.muted) };
+    let style = if on {
+        Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(t.muted)
+    };
     seg(format!("{text:<LABEL_COLS$}"), style.bg(t.card))
 }
 
 /// What the latest run came to, and a second line when there is something to do about it.
 fn status(app: &App, t: &Theme, p: &Point) -> (Vec<Seg>, Option<&'static str>) {
     let m = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons);
-    let bold = |c: Color| Style::default().fg(c).bg(t.card).add_modifier(Modifier::BOLD);
+    let bold = |c: Color| {
+        Style::default()
+            .fg(c)
+            .bg(t.card)
+            .add_modifier(Modifier::BOLD)
+    };
     let Some((info, on)) = &p.result else {
-        return (vec![seg(format!("{} never run", m.pend), bold(t.strong)), seg(" · runs after the next turn ends", Style::default().fg(t.muted).bg(t.card))], None);
+        return (
+            vec![
+                seg(format!("{} never run", m.pend), bold(t.strong)),
+                seg(
+                    " · runs after the next turn ends",
+                    Style::default().fg(t.muted).bg(t.card),
+                ),
+            ],
+            None,
+        );
     };
     let at = crate::clock::local_hm(info.started_at);
     let first_word = info.command.split_whitespace().next().unwrap_or_default();
     match info.state {
-        CheckState::Passed => (vec![seg(format!("{} passed on {on} {at} · {}", m.done, check::duration(info.duration_ms)), bold(t.done))], None),
+        CheckState::Passed => (
+            vec![seg(
+                format!(
+                    "{} passed on {on} {at} · {}",
+                    m.done,
+                    check::duration(info.duration_ms)
+                ),
+                bold(t.done),
+            )],
+            None,
+        ),
         CheckState::Failed => {
-            let code = info.exit_code.map(|c| format!(" · exit {c}")).unwrap_or_default();
-            (vec![seg(format!("{} failed on {on} {at}{code}", m.failed), bold(t.err))], None)
+            let code = info
+                .exit_code
+                .map(|c| format!(" · exit {c}"))
+                .unwrap_or_default();
+            (
+                vec![seg(
+                    format!("{} failed on {on} {at}{code}", m.failed),
+                    bold(t.err),
+                )],
+                None,
+            )
         }
         CheckState::CouldNotRun => {
             let why = match info.exit_code {
                 Some(EXIT_NOT_FOUND) => format!("{first_word}: not found (exit {EXIT_NOT_FOUND})"),
-                Some(EXIT_NOT_EXECUTABLE) => format!("{first_word}: not executable (exit {EXIT_NOT_EXECUTABLE})"),
+                Some(EXIT_NOT_EXECUTABLE) => {
+                    format!("{first_word}: not executable (exit {EXIT_NOT_EXECUTABLE})")
+                }
                 Some(code) => format!("exit {code}"),
                 None => "it did not finish".into(),
             };
-            let fix = (info.exit_code == Some(EXIT_NOT_FOUND)).then_some("Not on the worktree's PATH. Install it or change the command.");
-            (vec![seg(format!("{} could not run on {on} {at} · {why}", m.couldnt), bold(t.violet()))], fix)
+            let fix = (info.exit_code == Some(EXIT_NOT_FOUND))
+                .then_some("Not on the worktree's PATH. Install it or change the command.");
+            (
+                vec![seg(
+                    format!("{} could not run on {on} {at} · {why}", m.couldnt),
+                    bold(t.violet()),
+                )],
+                fix,
+            )
         }
-        CheckState::Checking => (vec![seg(format!("{} checking on {on} since {at}", check::glyph(app, info)), bold(t.sky()))], None),
-        CheckState::Overridden => (vec![seg(format!("{} failed, overridden on {on} {at}", m.over), bold(t.text))], None),
-        CheckState::Stale => (vec![seg(format!("{} stale pass on {on} {at} · {} files changed", m.stale, info.changed_files.len()), bold(t.text))], None),
-        CheckState::NeedsApproval => (vec![seg(format!("{} waiting for your approval on {on}", m.needs), bold(t.blocked))], None),
-        CheckState::Never => (vec![seg(format!("{} not checked: never for this repo", m.couldnt), bold(t.violet()))], None),
-        CheckState::Pending => (vec![seg(format!("{} next on {on}", m.pend), bold(t.muted))], None),
+        CheckState::Checking => (
+            vec![seg(
+                format!("{} checking on {on} since {at}", check::glyph(app, info)),
+                bold(t.sky()),
+            )],
+            None,
+        ),
+        CheckState::Overridden => (
+            vec![seg(
+                format!("{} failed, overridden on {on} {at}", m.over),
+                bold(t.text),
+            )],
+            None,
+        ),
+        CheckState::Stale => (
+            vec![seg(
+                format!(
+                    "{} stale pass on {on} {at} · {} files changed",
+                    m.stale,
+                    info.changed_files.len()
+                ),
+                bold(t.text),
+            )],
+            None,
+        ),
+        CheckState::NeedsApproval => (
+            vec![seg(
+                format!("{} waiting for your approval on {on}", m.needs),
+                bold(t.blocked),
+            )],
+            None,
+        ),
+        CheckState::Never => (
+            vec![seg(
+                format!("{} not checked: never for this repo", m.couldnt),
+                bold(t.violet()),
+            )],
+            None,
+        ),
+        CheckState::Pending => (
+            vec![seg(format!("{} next on {on}", m.pend), bold(t.muted))],
+            None,
+        ),
     }
 }
 
 fn source_words(p: &Point) -> String {
     match &p.source {
         CheckSource::User => "you, in settings · no approval needed".into(),
-        CheckSource::Repo { file, commit, .. } => format!("{file} · {} · {}", commit.as_deref().unwrap_or("not committed"), decision(p)),
+        CheckSource::Repo { file, commit, .. } => format!(
+            "{file} · {} · {}",
+            commit.as_deref().unwrap_or("not committed"),
+            decision(p)
+        ),
     }
 }
 
@@ -348,10 +532,16 @@ fn field(buf: &mut Buffer, x: u16, y: u16, right: u16, t: &Theme, value: &str, e
         }
     }
     let mut segs = if value.is_empty() && !editing {
-        vec![seg(COMMAND_PLACEHOLDER, ground.fg(t.muted).add_modifier(Modifier::ITALIC))]
+        vec![seg(
+            COMMAND_PLACEHOLDER,
+            ground.fg(t.muted).add_modifier(Modifier::ITALIC),
+        )]
     } else {
         let keep = right.saturating_sub(x + 3) as usize;
-        let tail: String = value.chars().skip(value.chars().count().saturating_sub(keep)).collect();
+        let tail: String = value
+            .chars()
+            .skip(value.chars().count().saturating_sub(keep))
+            .collect();
         vec![seg(tail, ground.fg(t.strong).add_modifier(Modifier::BOLD))]
     };
     if editing {
@@ -361,30 +551,104 @@ fn field(buf: &mut Buffer, x: u16, y: u16, right: u16, t: &Theme, value: &str, e
 }
 
 /// ‹ › for stepping a row, clickable; returns the x after them.
-fn arrows(app: &mut App, buf: &mut Buffer, x: u16, y: u16, on: bool, t: &Theme, hit_of: fn(bool) -> DraftHit) -> u16 {
-    let st = Style::default().bg(t.card).fg(if on { t.accent } else { t.muted });
-    put(buf, x, y, &[seg("‹ ›", if on { st.add_modifier(Modifier::BOLD) } else { st })], x + 3);
-    hit(app, Rect { x, y, width: 1, height: 1 }, ScreenHit::CheckDraft(hit_of(false)));
-    hit(app, Rect { x: x + 2, y, width: 1, height: 1 }, ScreenHit::CheckDraft(hit_of(true)));
+fn arrows(
+    app: &mut App,
+    buf: &mut Buffer,
+    x: u16,
+    y: u16,
+    on: bool,
+    t: &Theme,
+    hit_of: fn(bool) -> DraftHit,
+) -> u16 {
+    let st = Style::default()
+        .bg(t.card)
+        .fg(if on { t.accent } else { t.muted });
+    put(
+        buf,
+        x,
+        y,
+        &[seg(
+            "‹ ›",
+            if on {
+                st.add_modifier(Modifier::BOLD)
+            } else {
+                st
+            },
+        )],
+        x + 3,
+    );
+    hit(
+        app,
+        Rect {
+            x,
+            y,
+            width: 1,
+            height: 1,
+        },
+        ScreenHit::CheckDraft(hit_of(false)),
+    );
+    hit(
+        app,
+        Rect {
+            x: x + 2,
+            y,
+            width: 1,
+            height: 1,
+        },
+        ScreenHit::CheckDraft(hit_of(true)),
+    );
     x + 3
 }
 
 /// The content of either host from (`x`, `y`) to `right`, buttons on `buttons_y`.
-fn draw_content(app: &mut App, buf: &mut Buffer, (x, y, right, buttons_y): (u16, u16, u16, u16), t: &Theme, d: &CheckDraft) {
+fn draw_content(
+    app: &mut App,
+    buf: &mut Buffer,
+    (x, y, right, buttons_y): (u16, u16, u16, u16),
+    t: &Theme,
+    d: &CheckDraft,
+) {
     let card = Style::default().bg(t.card);
     let text = card.fg(t.text);
     let all = points(app, &d.project);
     let point = selected(&all, d);
     let mut y = y;
-    put(buf, x, y, &[seg(" CHECK ", Style::default().bg(t.btn).fg(t.strong).add_modifier(Modifier::BOLD))], right);
+    put(
+        buf,
+        x,
+        y,
+        &[seg(
+            " CHECK ",
+            Style::default()
+                .bg(t.btn)
+                .fg(t.strong)
+                .add_modifier(Modifier::BOLD),
+        )],
+        right,
+    );
     y += 2;
     let typed = d.command.clone();
     let on = |row: DraftRow| d.row == row;
     let command_at = |app: &mut App, buf: &mut Buffer, y: u16, value: &str| {
-        put(buf, x, y, &[label("Command", on(DraftRow::Command), t)], right);
+        put(
+            buf,
+            x,
+            y,
+            &[label("Command", on(DraftRow::Command), t)],
+            right,
+        );
         let fx = x + LABEL_COLS as u16;
         field(buf, fx, y, right, t, value, d.editing);
-        hit(app, Rect { x: fx, y, width: right.saturating_sub(fx), height: 1 }, ScreenHit::CheckDraft(DraftHit::Command));
+        hit(
+            app,
+            Rect {
+                x: fx,
+                y,
+                width: right.saturating_sub(fx),
+                height: 1,
+            },
+            ScreenHit::CheckDraft(DraftHit::Command),
+        );
     };
     let Some(p) = point else {
         let width = right.saturating_sub(x) as usize;
@@ -394,72 +658,241 @@ fn draw_content(app: &mut App, buf: &mut Buffer, (x, y, right, buttons_y): (u16,
         }
         for (i, line) in lines.iter().enumerate() {
             let segs = match line.strip_prefix(NO_CHECK) {
-                Some(rest) if i == 0 => vec![seg(NO_CHECK, card.fg(t.strong).add_modifier(Modifier::BOLD)), seg(rest, text)],
+                Some(rest) if i == 0 => vec![
+                    seg(NO_CHECK, card.fg(t.strong).add_modifier(Modifier::BOLD)),
+                    seg(rest, text),
+                ],
                 _ => vec![seg(line.as_str(), text)],
             };
             put(buf, x, y + i as u16, &segs, right);
         }
         let y = y + lines.len() as u16 + 1;
         command_at(app, buf, y, typed.as_deref().unwrap_or_default());
-        put(buf, x, y + 2, &[seg("Projects without a check look exactly as they do today.", card.fg(t.muted))], right);
+        put(
+            buf,
+            x,
+            y + 2,
+            &[seg(
+                "Projects without a check look exactly as they do today.",
+                card.fg(t.muted),
+            )],
+            right,
+        );
         return draw_buttons(app, buf, x, buttons_y, right, None);
     };
     command_at(app, buf, y, typed.as_deref().unwrap_or(&p.command));
     y += 2;
-    put(buf, x, y, &[label("Runs", false, t), seg("after each turn ends · in the session's worktree", text)], right);
+    put(
+        buf,
+        x,
+        y,
+        &[
+            label("Runs", false, t),
+            seg("after each turn ends · in the session's worktree", text),
+        ],
+        right,
+    );
     y += 1;
-    let tx = put(buf, x, y, &[label("Timeout", on(DraftRow::Timeout), t), seg(timeout_label(d.timeout_s.unwrap_or(p.timeout_s)), text), seg("  ", card)], right);
+    let tx = put(
+        buf,
+        x,
+        y,
+        &[
+            label("Timeout", on(DraftRow::Timeout), t),
+            seg(timeout_label(d.timeout_s.unwrap_or(p.timeout_s)), text),
+            seg("  ", card),
+        ],
+        right,
+    );
     arrows(app, buf, tx, y, on(DraftRow::Timeout), t, DraftHit::Timeout);
     y += 1;
     let (words, fix) = status(app, t, &p);
-    put(buf, x, y, &[vec![label("Status", false, t)], words].concat(), right);
+    put(
+        buf,
+        x,
+        y,
+        &[vec![label("Status", false, t)], words].concat(),
+        right,
+    );
     if let Some(fix) = fix {
         y += 1;
-        put(buf, x, y, &[label("", false, t), seg(fix, card.fg(t.muted))], right);
+        put(
+            buf,
+            x,
+            y,
+            &[label("", false, t), seg(fix, card.fg(t.muted))],
+            right,
+        );
     }
     y += 1;
-    put(buf, x, y, &[label("Source", false, t), seg(source_words(&p), text)], right);
+    put(
+        buf,
+        x,
+        y,
+        &[label("Source", false, t), seg(source_words(&p), text)],
+        right,
+    );
     y += 2;
-    let head = Style::default().bg(t.card).fg(if on(DraftRow::Points) { t.accent } else { t.muted }).add_modifier(Modifier::BOLD);
+    let head = Style::default()
+        .bg(t.card)
+        .fg(if on(DraftRow::Points) {
+            t.accent
+        } else {
+            t.muted
+        })
+        .add_modifier(Modifier::BOLD);
     let n = all.len();
     let at = d.point.min(n - 1) + 1;
     if n > 1 {
-        let ax = put(buf, x, y, &[seg("CHECKPOINTS  ", head), seg(format!("{at} of {n} · "), card.fg(t.muted))], right);
+        let ax = put(
+            buf,
+            x,
+            y,
+            &[
+                seg("CHECKPOINTS  ", head),
+                seg(format!("{at} of {n} · "), card.fg(t.muted)),
+            ],
+            right,
+        );
         let ex = arrows(app, buf, ax, y, on(DraftRow::Points), t, DraftHit::Point);
         put(buf, ex, y, &[seg(" switch", card.fg(t.muted))], right);
     } else {
-        put(buf, x, y, &[seg("CHECKPOINTS  ", head), seg("1 of 1 · room for more kinds later", card.fg(t.muted))], right);
+        put(
+            buf,
+            x,
+            y,
+            &[
+                seg("CHECKPOINTS  ", head),
+                seg("1 of 1 · room for more kinds later", card.fg(t.muted)),
+            ],
+            right,
+        );
     }
     draw_buttons(app, buf, x, buttons_y, right, Some(&p));
 }
 
 fn draw_buttons(app: &mut App, buf: &mut Buffer, x: u16, y: u16, right: u16, p: Option<&Point>) {
-    let mut bx = btn(app, buf, x, y, "Save", "Ctrl+S", BtnKind::Primary, ScreenHit::CheckDraft(DraftHit::Save), right) + 1;
+    let mut bx = btn(
+        app,
+        buf,
+        x,
+        y,
+        "Save",
+        "Ctrl+S",
+        BtnKind::Primary,
+        ScreenHit::CheckDraft(DraftHit::Save),
+        right,
+    ) + 1;
     if let Some(p) = p {
-        bx = btn(app, buf, bx, y, "Run now", "r", BtnKind::Normal, ScreenHit::CheckDraft(DraftHit::RunNow), right) + 1;
-        let remove = if p.repos_own() { "Forget choice" } else { "Remove" };
-        bx = btn(app, buf, bx, y, remove, "Del", BtnKind::Risky, ScreenHit::CheckDraft(DraftHit::Remove), right) + 1;
+        bx = btn(
+            app,
+            buf,
+            bx,
+            y,
+            "Run now",
+            "r",
+            BtnKind::Normal,
+            ScreenHit::CheckDraft(DraftHit::RunNow),
+            right,
+        ) + 1;
+        let remove = if p.repos_own() {
+            "Forget choice"
+        } else {
+            "Remove"
+        };
+        bx = btn(
+            app,
+            buf,
+            bx,
+            y,
+            remove,
+            "Del",
+            BtnKind::Risky,
+            ScreenHit::CheckDraft(DraftHit::Remove),
+            right,
+        ) + 1;
     }
-    btn(app, buf, bx, y, "Cancel", "Esc", BtnKind::Normal, ScreenHit::CheckDraft(DraftHit::Cancel), right);
+    btn(
+        app,
+        buf,
+        bx,
+        y,
+        "Cancel",
+        "Esc",
+        BtnKind::Normal,
+        ScreenHit::CheckDraft(DraftHit::Cancel),
+        right,
+    );
 }
 
 /// The `PROJECT · <name>` modal.
-pub(in crate::client) fn draw_project_check(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, d: &CheckDraft) {
+pub(in crate::client) fn draw_project_check(
+    app: &mut App,
+    buf: &mut Buffer,
+    area: Rect,
+    t: &Theme,
+    d: &CheckDraft,
+) {
     dim_all(app, buf, area, t);
     let w = MODAL_W.min(area.width.saturating_sub(2));
     let h = MODAL_H.min(area.height.saturating_sub(2));
-    let r = panel(app, buf, area, w, h, &format!("PROJECT · {}", folder_name(&d.project)), &[], t);
-    draw_content(app, buf, (r.x + 2, r.y + 2, r.right().saturating_sub(2), r.bottom().saturating_sub(2)), t, d);
+    let r = panel(
+        app,
+        buf,
+        area,
+        w,
+        h,
+        &format!("PROJECT · {}", folder_name(&d.project)),
+        &[],
+        t,
+    );
+    draw_content(
+        app,
+        buf,
+        (
+            r.x + 2,
+            r.y + 2,
+            r.right().saturating_sub(2),
+            r.bottom().saturating_sub(2),
+        ),
+        t,
+        d,
+    );
 }
 
 /// The Check page of Settings, inside `r` (the Settings card) from row `top`.
 pub(in crate::client) fn draw_page(app: &mut App, buf: &mut Buffer, r: Rect, top: u16, t: &Theme) {
     let Some(project) = project_of(app) else {
-        put(buf, r.x + 4, top, &[seg("Open a session in a project to set its check.", Style::default().bg(t.card).fg(t.muted))], r.right());
+        put(
+            buf,
+            r.x + 4,
+            top,
+            &[seg(
+                "Open a session in a project to set its check.",
+                Style::default().bg(t.card).fg(t.muted),
+            )],
+            r.right(),
+        );
         return;
     };
-    let d = app.screen.check_page.clone().filter(|d| same_path(&d.project, &project)).unwrap_or_else(|| CheckDraft::new(project));
-    draw_content(app, buf, (r.x + 4, top, r.right().saturating_sub(3), r.bottom().saturating_sub(2)), t, &d);
+    let d = app
+        .screen
+        .check_page
+        .clone()
+        .filter(|d| same_path(&d.project, &project))
+        .unwrap_or_else(|| CheckDraft::new(project));
+    draw_content(
+        app,
+        buf,
+        (
+            r.x + 4,
+            top,
+            r.right().saturating_sub(3),
+            r.bottom().saturating_sub(2),
+        ),
+        t,
+        &d,
+    );
 }
 
 // ---- keys ----------------------------------------------------------------------------------
@@ -472,7 +905,9 @@ enum Outcome {
 impl App {
     /// The `PROJECT · <name>` modal for `term`'s project.
     pub(in crate::client) fn open_project_check(&mut self, term: TermId) {
-        let Some(t) = self.snap.terms.get(&term) else { return };
+        let Some(t) = self.snap.terms.get(&term) else {
+            return;
+        };
         self.mode = Mode::ProjectCheck(Box::new(CheckDraft::new(project_of_term(t))));
     }
 
@@ -480,14 +915,18 @@ impl App {
         self.mode = Mode::Normal;
         match self.draft_key(&mut d, k) {
             Outcome::Close => {}
-            Outcome::Stay if matches!(self.mode, Mode::Normal) => self.mode = Mode::ProjectCheck(Box::new(d)),
+            Outcome::Stay if matches!(self.mode, Mode::Normal) => {
+                self.mode = Mode::ProjectCheck(Box::new(d))
+            }
             Outcome::Stay => {}
         }
     }
 
     /// Keys on the Check page of Settings. False leaves the key to Settings (Tab, Esc, o).
     pub(in crate::client) fn on_check_page_key(&mut self, k: &KeyEvent) -> bool {
-        let Mode::ScreenSettings(v) = &self.mode else { return false };
+        let Mode::ScreenSettings(v) = &self.mode else {
+            return false;
+        };
         if modal::Cat::ALL.get(v.cat) != Some(&modal::Cat::Check) {
             return false;
         }
@@ -499,8 +938,15 @@ impl App {
             self.notify("open a session in a project to set its check".into(), true);
             return true;
         };
-        let mut d = self.screen.check_page.take().filter(|d| same_path(&d.project, &project)).unwrap_or_else(|| CheckDraft::new(project));
-        let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        let mut d = self
+            .screen
+            .check_page
+            .take()
+            .filter(|d| same_path(&d.project, &project))
+            .unwrap_or_else(|| CheckDraft::new(project));
+        let plain = !k
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
         if !d.editing && plain && k.code == KeyCode::Char('o') {
             self.screen.check_page = Some(d);
             return false;
@@ -519,7 +965,9 @@ impl App {
             DraftHit::RunNow => key(KeyCode::Char('r')),
             DraftHit::Remove => key(KeyCode::Delete),
             DraftHit::Cancel => key(KeyCode::Esc),
-            DraftHit::Command | DraftHit::Timeout(_) | DraftHit::Point(_) => return self.draft_point_at(h),
+            DraftHit::Command | DraftHit::Timeout(_) | DraftHit::Point(_) => {
+                return self.draft_point_at(h);
+            }
         };
         self.on_key(k);
     }
@@ -527,8 +975,14 @@ impl App {
     /// A click on a row: go to it and do what its key does.
     fn draft_point_at(&mut self, h: DraftHit) {
         let (row, code) = match h {
-            DraftHit::Timeout(up) => (DraftRow::Timeout, if up { KeyCode::Right } else { KeyCode::Left }),
-            DraftHit::Point(up) => (DraftRow::Points, if up { KeyCode::Right } else { KeyCode::Left }),
+            DraftHit::Timeout(up) => (
+                DraftRow::Timeout,
+                if up { KeyCode::Right } else { KeyCode::Left },
+            ),
+            DraftHit::Point(up) => (
+                DraftRow::Points,
+                if up { KeyCode::Right } else { KeyCode::Left },
+            ),
             _ => (DraftRow::Command, KeyCode::Enter),
         };
         let d = match &mut self.mode {
@@ -537,8 +991,13 @@ impl App {
             _ => None,
         };
         let Some(d) = d else {
-            if let Some(project) = project_of(self).filter(|_| matches!(self.mode, Mode::ScreenSettings(_))) {
-                self.screen.check_page = Some(CheckDraft { row, ..CheckDraft::new(project) });
+            if let Some(project) =
+                project_of(self).filter(|_| matches!(self.mode, Mode::ScreenSettings(_)))
+            {
+                self.screen.check_page = Some(CheckDraft {
+                    row,
+                    ..CheckDraft::new(project)
+                });
                 self.on_key(KeyEvent::new(code, KeyModifiers::NONE));
             }
             return;
@@ -552,7 +1011,9 @@ impl App {
 
     fn draft_key(&mut self, d: &mut CheckDraft, k: &KeyEvent) -> Outcome {
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
-        let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        let plain = !k
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
         let all = points(self, &d.project);
         let point = selected(&all, d);
         match k.code {
@@ -563,7 +1024,11 @@ impl App {
             KeyCode::Up | KeyCode::Down => {
                 let rows = rows(&all);
                 let at = rows.iter().position(|r| *r == d.row).unwrap_or(0);
-                let to = if k.code == KeyCode::Up { at.saturating_sub(1) } else { (at + 1).min(rows.len() - 1) };
+                let to = if k.code == KeyCode::Up {
+                    at.saturating_sub(1)
+                } else {
+                    (at + 1).min(rows.len() - 1)
+                };
                 d.row = rows[to];
             }
             KeyCode::Left | KeyCode::Right => {
@@ -572,15 +1037,25 @@ impl App {
                     DraftRow::Timeout => self.step_draft_timeout(d, point.as_ref(), dir),
                     DraftRow::Points if all.len() > 1 => {
                         let n = all.len() as i64;
-                        *d = CheckDraft { point: (d.point as i64 + dir).rem_euclid(n) as usize, row: DraftRow::Points, ..CheckDraft::new(d.project.clone()) };
+                        *d = CheckDraft {
+                            point: (d.point as i64 + dir).rem_euclid(n) as usize,
+                            row: DraftRow::Points,
+                            ..CheckDraft::new(d.project.clone())
+                        };
                     }
                     _ => {}
                 }
             }
-            KeyCode::Char('r') if plain && point.is_some() => self.run_point_now(&d.project, point.as_ref()),
+            KeyCode::Char('r') if plain && point.is_some() => {
+                self.run_point_now(&d.project, point.as_ref())
+            }
             KeyCode::Delete => self.remove_point(d, point.as_ref()),
-            KeyCode::Enter if d.row == DraftRow::Command => self.start_editing(d, point.as_ref(), None),
-            KeyCode::Char(c) if plain && d.row == DraftRow::Command => self.start_editing(d, point.as_ref(), Some(c)),
+            KeyCode::Enter if d.row == DraftRow::Command => {
+                self.start_editing(d, point.as_ref(), None)
+            }
+            KeyCode::Char(c) if plain && d.row == DraftRow::Command => {
+                self.start_editing(d, point.as_ref(), Some(c))
+            }
             _ => {}
         }
         Outcome::Stay
@@ -592,17 +1067,28 @@ impl App {
                 CheckSource::Repo { file, .. } => file.as_str(),
                 CheckSource::User => "",
             };
-            return self.notify(format!("this command comes from the repo's {file}: change it there"), false);
+            return self.notify(
+                format!("this command comes from the repo's {file}: change it there"),
+                false,
+            );
         }
-        let command = d.command.get_or_insert_with(|| p.map(|p| p.command.clone()).unwrap_or_default());
+        let command = d
+            .command
+            .get_or_insert_with(|| p.map(|p| p.command.clone()).unwrap_or_default());
         command.extend(typed);
         d.editing = true;
     }
 
     fn step_draft_timeout(&mut self, d: &mut CheckDraft, p: Option<&Point>, dir: i64) {
         match p {
-            None => self.notify("set a command first; the timeout belongs to it".into(), false),
-            Some(p) if p.repos_own() => self.notify("this checkpoint's timeout comes from the repo's file".into(), false),
+            None => self.notify(
+                "set a command first; the timeout belongs to it".into(),
+                false,
+            ),
+            Some(p) if p.repos_own() => self.notify(
+                "this checkpoint's timeout comes from the repo's file".into(),
+                false,
+            ),
             Some(p) => d.timeout_s = Some(step_timeout(d.timeout_s.unwrap_or(p.timeout_s), dir)),
         }
     }
@@ -611,7 +1097,10 @@ impl App {
         let Some(p) = p else { return };
         match run_target(self, project) {
             Some(term) => self.rerun_checkpoint(term, Some(p.name.clone())),
-            None => self.notify("no agent has run in this project yet: the check runs when its turn ends".into(), false),
+            None => self.notify(
+                "no agent has run in this project yet: the check runs when its turn ends".into(),
+                false,
+            ),
         }
     }
 
@@ -619,10 +1108,23 @@ impl App {
     fn remove_point(&mut self, d: &mut CheckDraft, p: Option<&Point>) {
         let Some(p) = p else { return };
         if p.repos_own() {
-            self.cmd(Command::ForgetCheckApproval { project: d.project.clone(), name: p.name.clone() });
-            return self.notify(format!("Forgot your choice. {} asks again before running {}.", folder_name(&d.project), p.name), false);
+            self.cmd(Command::ForgetCheckApproval {
+                project: d.project.clone(),
+                name: p.name.clone(),
+            });
+            return self.notify(
+                format!(
+                    "Forgot your choice. {} asks again before running {}.",
+                    folder_name(&d.project),
+                    p.name
+                ),
+                false,
+            );
         }
-        let edit = CheckEdit::Remove { project: d.project.clone(), name: p.name.clone() };
+        let edit = CheckEdit::Remove {
+            project: d.project.clone(),
+            name: p.name.clone(),
+        };
         d.saving = true;
         self.save_check(edit, "Removed.", false);
     }
@@ -646,7 +1148,12 @@ impl App {
         });
     }
 
-    pub(in crate::client) fn check_saved(&mut self, result: Result<Config>, said: &str, close: bool) {
+    pub(in crate::client) fn check_saved(
+        &mut self,
+        result: Result<Config>,
+        said: &str,
+        close: bool,
+    ) {
         let host = match &self.mode {
             Mode::ProjectCheck(_) => Some(Host::Modal),
             Mode::ScreenSettings(_) => Some(Host::Page),
@@ -684,11 +1191,21 @@ impl App {
 
 /// What Ctrl+S writes for the shown checkpoint `p` (None: a first one) and what to say once it
 /// is written; or why there is nothing to write.
-fn draft_edit(d: &CheckDraft, p: Option<&Point>) -> Result<(CheckEdit, &'static str), &'static str> {
+fn draft_edit(
+    d: &CheckDraft,
+    p: Option<&Point>,
+) -> Result<(CheckEdit, &'static str), &'static str> {
     let typed = d.command.as_deref().map(str::trim);
     let Some(p) = p else {
-        let command = typed.filter(|c| !c.is_empty()).ok_or("type a command first")?;
-        let edit = CheckEdit::Set { project: d.project.clone(), name: None, command: command.into(), timeout_s: CHECK_TIMEOUT_S_DEFAULT };
+        let command = typed
+            .filter(|c| !c.is_empty())
+            .ok_or("type a command first")?;
+        let edit = CheckEdit::Set {
+            project: d.project.clone(),
+            name: None,
+            command: command.into(),
+            timeout_s: CHECK_TIMEOUT_S_DEFAULT,
+        };
         return Ok((edit, "Saved. Runs after the next turn ends."));
     };
     if p.repos_own() {
@@ -702,18 +1219,30 @@ fn draft_edit(d: &CheckDraft, p: Option<&Point>) -> Result<(CheckEdit, &'static 
     if command == p.command && timeout_s == p.timeout_s {
         return Err("nothing changed");
     }
-    Ok((CheckEdit::Set { project: d.project.clone(), name: Some(p.name.clone()), command, timeout_s }, "Saved."))
+    Ok((
+        CheckEdit::Set {
+            project: d.project.clone(),
+            name: Some(p.name.clone()),
+            command,
+            timeout_s,
+        },
+        "Saved.",
+    ))
 }
 
 /// Pasted text goes into the command being typed.
 pub(in crate::client) fn paste_into_draft(d: &mut CheckDraft, text: &str) {
     if d.editing {
-        d.command.get_or_insert_default().push_str(text.lines().next().unwrap_or_default());
+        d.command
+            .get_or_insert_default()
+            .push_str(text.lines().next().unwrap_or_default());
     }
 }
 
 fn edit_key(d: &mut CheckDraft, k: &KeyEvent) {
-    let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+    let plain = !k
+        .modifiers
+        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
     let command = d.command.get_or_insert_default();
     match k.code {
         KeyCode::Enter | KeyCode::Up | KeyCode::Down => d.editing = false,
@@ -731,30 +1260,101 @@ mod tests {
     use super::*;
 
     fn point(name: &str, command: &str, source: CheckSource) -> Point {
-        Point { name: name.into(), command: command.into(), timeout_s: CHECK_TIMEOUT_S_DEFAULT, source, result: None }
+        Point {
+            name: name.into(),
+            command: command.into(),
+            timeout_s: CHECK_TIMEOUT_S_DEFAULT,
+            source,
+            result: None,
+        }
     }
 
     #[test]
     fn ctrl_s_writes_the_shown_checkpoint_by_name_or_a_first_one() {
-        let d = |command: Option<&str>| CheckDraft { command: command.map(String::from), ..CheckDraft::new("/a".into()) };
+        let d = |command: Option<&str>| CheckDraft {
+            command: command.map(String::from),
+            ..CheckDraft::new("/a".into())
+        };
         let unit = point("unit", "npm test", CheckSource::User);
-        let Ok((CheckEdit::Set { name, command, timeout_s, .. }, said)) = draft_edit(&d(Some(" npm test -- --run ")), Some(&unit)) else { panic!("an edit") };
-        assert_eq!((name.as_deref(), command.as_str(), timeout_s, said), (Some("unit"), "npm test -- --run", CHECK_TIMEOUT_S_DEFAULT, "Saved."));
-        let Ok((CheckEdit::Set { name, command, .. }, said)) = draft_edit(&d(Some("cargo test")), None) else { panic!("a first one") };
-        assert_eq!((name, command.as_str(), said), (None, "cargo test", "Saved. Runs after the next turn ends."));
-        let timeout = CheckDraft { timeout_s: Some(900), ..d(None) };
-        assert!(matches!(draft_edit(&timeout, Some(&unit)), Ok((CheckEdit::Set { timeout_s: 900, .. }, _))), "a new timeout alone is a change");
+        let Ok((
+            CheckEdit::Set {
+                name,
+                command,
+                timeout_s,
+                ..
+            },
+            said,
+        )) = draft_edit(&d(Some(" npm test -- --run ")), Some(&unit))
+        else {
+            panic!("an edit")
+        };
+        assert_eq!(
+            (name.as_deref(), command.as_str(), timeout_s, said),
+            (
+                Some("unit"),
+                "npm test -- --run",
+                CHECK_TIMEOUT_S_DEFAULT,
+                "Saved."
+            )
+        );
+        let Ok((CheckEdit::Set { name, command, .. }, said)) =
+            draft_edit(&d(Some("cargo test")), None)
+        else {
+            panic!("a first one")
+        };
+        assert_eq!(
+            (name, command.as_str(), said),
+            (None, "cargo test", "Saved. Runs after the next turn ends.")
+        );
+        let timeout = CheckDraft {
+            timeout_s: Some(900),
+            ..d(None)
+        };
+        assert!(
+            matches!(
+                draft_edit(&timeout, Some(&unit)),
+                Ok((CheckEdit::Set { timeout_s: 900, .. }, _))
+            ),
+            "a new timeout alone is a change"
+        );
     }
 
     #[test]
     fn ctrl_s_says_why_when_there_is_nothing_to_write() {
-        let d = |command: Option<&str>| CheckDraft { command: command.map(String::from), ..CheckDraft::new("/a".into()) };
+        let d = |command: Option<&str>| CheckDraft {
+            command: command.map(String::from),
+            ..CheckDraft::new("/a".into())
+        };
         let unit = point("unit", "npm test", CheckSource::User);
-        let repo = point("test", "npm test", CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: None, committed_at: None, uncommitted: true });
-        assert_eq!(draft_edit(&d(None), Some(&unit)).err(), Some("nothing changed"));
-        assert_eq!(draft_edit(&d(Some("npm test")), Some(&unit)).err(), Some("nothing changed"));
-        assert_eq!(draft_edit(&d(Some("  ")), Some(&unit)).err(), Some("a check needs a command; Del removes it"));
-        assert_eq!(draft_edit(&d(None), None).err(), Some("type a command first"));
-        assert!(draft_edit(&d(Some("rm -rf ~")), Some(&repo)).is_err(), "a repo's command is changed in the repo");
+        let repo = point(
+            "test",
+            "npm test",
+            CheckSource::Repo {
+                file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(),
+                commit: None,
+                committed_at: None,
+                uncommitted: true,
+            },
+        );
+        assert_eq!(
+            draft_edit(&d(None), Some(&unit)).err(),
+            Some("nothing changed")
+        );
+        assert_eq!(
+            draft_edit(&d(Some("npm test")), Some(&unit)).err(),
+            Some("nothing changed")
+        );
+        assert_eq!(
+            draft_edit(&d(Some("  ")), Some(&unit)).err(),
+            Some("a check needs a command; Del removes it")
+        );
+        assert_eq!(
+            draft_edit(&d(None), None).err(),
+            Some("type a command first")
+        );
+        assert!(
+            draft_edit(&d(Some("rm -rf ~")), Some(&repo)).is_err(),
+            "a repo's command is changed in the repo"
+        );
     }
 }

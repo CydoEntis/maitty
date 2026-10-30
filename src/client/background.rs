@@ -26,7 +26,8 @@ impl App {
         }
         match msg {
             ServerMsg::State(s) => {
-                self.settling.retain(|id, (status, _)| s.terms.get(id).is_some_and(|t| t.status == *status));
+                self.settling
+                    .retain(|id, (status, _)| s.terms.get(id).is_some_and(|t| t.status == *status));
                 self.parsers.retain(|id, _| s.terms.contains_key(id));
                 for (id, t) in &s.terms {
                     if !self.parsers.contains_key(id) {
@@ -46,22 +47,41 @@ impl App {
                 }
                 self.snap = s;
                 if self.daemon_restart_reconnect {
-                    let daemon_matches_install = self.installed_version.as_ref().and_then(|v| v.as_ref().ok())
+                    let daemon_matches_install = self
+                        .installed_version
+                        .as_ref()
+                        .and_then(|v| v.as_ref().ok())
                         .is_some_and(|installed| installed == &self.snap.daemon_version);
                     self.daemon_restart_requested = false;
                     self.daemon_restart_reconnect = false;
                     if daemon_matches_install {
-                        self.notify(concat!("The ", env!("APP_NAME"), " daemon restarted with the update.").into(), false);
+                        self.notify(
+                            concat!(
+                                "The ",
+                                env!("APP_NAME"),
+                                " daemon restarted with the update."
+                            )
+                            .into(),
+                            false,
+                        );
                     }
                 }
                 if first {
                     self.on_first_state();
                 }
+                if !self.snap.conversations.is_empty() {
+                    self.splash = false;
+                }
                 self.screen_sync();
                 self.check_view_sync();
                 self.maybe_restart_daemon(last_session_closed);
             }
-            ServerMsg::Replay { term, cols, rows, data } => {
+            ServerMsg::Replay {
+                term,
+                cols,
+                rows,
+                data,
+            } => {
                 let p = self.new_parser(rows, cols);
                 self.parsers.insert(term, p);
                 self.marks.remove(&term);
@@ -116,7 +136,13 @@ impl App {
                 let n = text.chars().count();
                 copy::to_clipboard(&text);
                 let who = self.session_name(term);
-                self.notify(format!("{who} copied {n} character{} to your clipboard", if n == 1 { "" } else { "s" }), false);
+                self.notify(
+                    format!(
+                        "{who} copied {n} character{} to your clipboard",
+                        if n == 1 { "" } else { "s" }
+                    ),
+                    false,
+                );
             }
             ServerMsg::Error(e) => {
                 // The output a failure waited for may be what failed; a later reply is not its.
@@ -127,7 +153,9 @@ impl App {
                 self.undo_hint = false;
                 self.notify(n, false)
             }
-            ServerMsg::AskRemoveWorktree { path, name, why } => self.ask_remove_worktree(path, name, why),
+            ServerMsg::AskRemoveWorktree { path, name, why } => {
+                self.ask_remove_worktree(path, name, why)
+            }
             ServerMsg::AutoWorkspace(n) => {
                 self.notify(n, false);
                 self.undo_hint = true;
@@ -139,7 +167,9 @@ impl App {
             ServerMsg::Raise => crate::reveal::raise_window(),
             // The server stopped for the update: an older window can't speak to the new one, so
             // the installed the app takes its place; a current window just connects again.
-            ServerMsg::Bye if self.daemon_restart_requested && self.window_stale() => self.relaunch_window(),
+            ServerMsg::Bye if self.daemon_restart_requested && self.window_stale() => {
+                self.relaunch_window()
+            }
             ServerMsg::Bye if self.daemon_restart_requested => self.daemon_restart_reconnect = true,
             ServerMsg::Bye => self.quit = Some("server exited".into()),
             ServerMsg::Reply(Reply::Worktrees(list)) => {
@@ -161,24 +191,45 @@ impl App {
                 return;
             }
         }
-        if self.snap.workspaces.is_empty() || open.is_some() {
-            let cwd = open.or_else(|| self.cfg.start_dir()).or_else(|| std::env::current_dir().ok());
-            self.cmd(Command::NewWorkspace { cwd, name: None, cmd: None });
+        if (self.snap.workspaces.is_empty() && self.snap.conversations.is_empty()) || open.is_some()
+        {
+            let cwd = open
+                .or_else(|| self.cfg.start_dir())
+                .or_else(|| std::env::current_dir().ok());
+            self.cmd(Command::NewWorkspace {
+                cwd,
+                name: None,
+                cmd: None,
+            });
         }
     }
 
     /// Whether another session's agent started this one (and is still there to hear of it).
     fn is_helper(&self, term: TermId) -> bool {
-        self.snap.terms.get(&term).and_then(|t| t.started_by).is_some_and(|by| self.snap.terms.contains_key(&by))
+        self.snap
+            .terms
+            .get(&term)
+            .and_then(|t| t.started_by)
+            .is_some_and(|by| self.snap.terms.contains_key(&by))
     }
 
     /// Recheck queued alerts after short-lived prompts and automatic continuations settle.
     pub(super) fn settle_alerts(&mut self) {
         let now = Instant::now();
-        let due: Vec<_> = self.settling.iter().filter(|(_, (_, at))| *at <= now).map(|(t, (s, _))| (*t, *s)).collect();
+        let due: Vec<_> = self
+            .settling
+            .iter()
+            .filter(|(_, (_, at))| *at <= now)
+            .map(|(t, (s, _))| (*t, *s))
+            .collect();
         for (term, status) in due {
             self.settling.remove(&term);
-            if self.snap.terms.get(&term).is_some_and(|t| t.status == status) {
+            if self
+                .snap
+                .terms
+                .get(&term)
+                .is_some_and(|t| t.status == status)
+            {
                 self.alert_now(term, status);
                 self.dirty = true;
             }
@@ -188,7 +239,12 @@ impl App {
     /// Needs-you alerts ring even in the focused pane; background completions use a soft note.
     /// With no window open the server shows a desktop notification instead.
     fn alert_now(&mut self, term: TermId, status: Status) {
-        if !self.snap.terms.get(&term).is_some_and(|t| t.status == status) {
+        if !self
+            .snap
+            .terms
+            .get(&term)
+            .is_some_and(|t| t.status == status)
+        {
             return;
         }
         if status == Status::Done && self.focused() == Some(term) && self.window_focused {
@@ -200,7 +256,9 @@ impl App {
             && crate::alert::should_alert(
                 &status,
                 self.alerted.get(&term).map(|(s, at)| (s, *at)),
-                self.last_alert.filter(|(previous, _)| *previous == kind).map(|(_, at)| at),
+                self.last_alert
+                    .filter(|(previous, _)| *previous == kind)
+                    .map(|(_, at)| at),
                 now,
             )
         {
@@ -212,7 +270,11 @@ impl App {
             return;
         }
         let who = self.describe_term(term);
-        let what = if status == Status::Blocked { "needs you" } else { "finished" };
+        let what = if status == Status::Blocked {
+            "needs you"
+        } else {
+            "finished"
+        };
         self.notify(format!("{who} {what}"), false);
         self.notice_term = Some(term);
     }
@@ -222,9 +284,23 @@ impl App {
         let mut events = Vec::new();
         for (id, t) in &new.terms {
             let old = self.snap.terms.get(id);
-            let name = if t.label.trim().is_empty() { t.display_name() } else { t.label.trim().to_string() };
-            let place = t.top.as_ref().or(t.root.as_ref()).and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            let who = if place.is_empty() { name } else { format!("{name} in {place}") };
+            let name = if t.label.trim().is_empty() {
+                t.display_name()
+            } else {
+                t.label.trim().to_string()
+            };
+            let place = t
+                .top
+                .as_ref()
+                .or(t.root.as_ref())
+                .and_then(|p| p.file_name())
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let who = if place.is_empty() {
+                name
+            } else {
+                format!("{name} in {place}")
+            };
             if old.is_some_and(|o| o.status != t.status) {
                 match t.status {
                     Status::Working => {
@@ -232,8 +308,22 @@ impl App {
                     }
                     Status::Blocked => events.push((*id, '!', format!("{who} needs you"))),
                     Status::Done => {
-                        let said = t.said.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string();
-                        events.push((*id, '✓', if said.is_empty() { format!("{who} finished") } else { format!("{who} finished: {said}") }));
+                        let said = t
+                            .said
+                            .lines()
+                            .find(|l| !l.trim().is_empty())
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        events.push((
+                            *id,
+                            '✓',
+                            if said.is_empty() {
+                                format!("{who} finished")
+                            } else {
+                                format!("{who} finished: {said}")
+                            },
+                        ));
                     }
                     _ => {}
                 }
@@ -246,7 +336,9 @@ impl App {
 
     /// The Changes view's selected file has no diff yet: work it out in the background.
     pub(super) fn request_diff(&mut self) {
-        let Some(View::Changes(v)) = &mut self.view else { return };
+        let Some(View::Changes(v)) = &mut self.view else {
+            return;
+        };
         let Some(r) = v.review.as_mut() else { return };
         if r.diff_sel == Some(r.sel) {
             return;
@@ -263,6 +355,11 @@ impl App {
         let job = move || {
             let _ = tx.send(f());
         };
+        #[cfg(test)]
+        if self.run_background_jobs_inline {
+            job();
+            return;
+        }
         // Tests (and anything else outside the runtime) get a plain thread.
         if tokio::runtime::Handle::try_current().is_ok() {
             tokio::task::spawn_blocking(job);
@@ -341,7 +438,11 @@ impl App {
                         Ok(r) => {
                             let keep = v.review.as_ref().map(|o| o.sel);
                             let mut r = *r;
-                            v.reviewed = views::still_reviewed(&v.dir, &r.files, self.screen.saved.reviewed.get(&design::path_key(&v.dir)));
+                            v.reviewed = views::still_reviewed(
+                                &v.dir,
+                                &r.files,
+                                self.screen.saved.reviewed.get(&design::path_key(&v.dir)),
+                            );
                             if let Some(sel) = keep {
                                 r.sel = sel.min(r.files.len().saturating_sub(1));
                                 r.diff_sel = None;
@@ -349,7 +450,10 @@ impl App {
                             let first = keep.is_none();
                             v.review = Some(r);
                             // Start on the first file not reviewed yet.
-                            if first && let Some(i) = v.order().first().copied() && let Some(r) = v.review.as_mut() {
+                            if first
+                                && let Some(i) = v.order().first().copied()
+                                && let Some(r) = v.review.as_mut()
+                            {
                                 r.sel = i;
                                 r.diff_sel = None;
                             }
@@ -374,7 +478,10 @@ impl App {
                     .terms
                     .values()
                     .filter(|t| matches!(t.status, Status::Working | Status::Blocked))
-                    .find(|t| crate::gitfs::head(&t.cwd).is_some_and(|h| design::path_key(&h.top) == design::path_key(&root)))
+                    .find(|t| {
+                        crate::gitfs::head(&t.cwd)
+                            .is_some_and(|h| design::path_key(&h.top) == design::path_key(&root))
+                    })
                     .and_then(|t| t.agent.clone());
                 if let Some(View::Files(v)) = &mut self.view
                     && v.root == root
@@ -443,12 +550,18 @@ impl App {
             (Bg::Overlaps(repo, found), _) => {
                 // Say each overlap once, when it first shows up.
                 let seen = self.screen.overlaps.get(&repo).cloned().unwrap_or_default();
-                let new: Vec<_> = found.iter().filter(|o| !seen.contains(o)).cloned().collect();
+                let new: Vec<_> = found
+                    .iter()
+                    .filter(|o| !seen.contains(o))
+                    .cloned()
+                    .collect();
                 if let Some(msg) = super::overlap::say(&new) {
                     self.notify(msg, false);
                 }
                 // A dismissed one that has cleared may say so again next time.
-                self.screen.dismissed.retain(|(r, f)| r != &repo || found.iter().any(|o| &o.file == f));
+                self.screen
+                    .dismissed
+                    .retain(|(r, f)| r != &repo || found.iter().any(|o| &o.file == f));
                 self.screen.overlaps.insert(repo, found);
             }
             (Bg::Merged(result, dir), _) => {
@@ -456,7 +569,12 @@ impl App {
                 self.screen.inbox_confirm = None;
                 match result {
                     Ok(msg) => {
-                        self.notify(format!("{msg}; closing its sessions and removing the worktree and branch"), false);
+                        self.notify(
+                            format!(
+                                "{msg}; closing its sessions and removing the worktree and branch"
+                            ),
+                            false,
+                        );
                         self.cmd(Command::CloseWorktree { path: dir });
                         if matches!(self.view, Some(View::Changes(_))) {
                             self.view = None;

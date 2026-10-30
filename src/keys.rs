@@ -15,7 +15,8 @@ impl KeySpec {
     /// Normalise an incoming event so it compares equal to a parsed spec: for characters the
     /// shift state is already in the character itself ('N', '%'), so SHIFT is dropped.
     pub fn from_event(ev: &KeyEvent) -> Self {
-        let mut mods = ev.modifiers & (KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT);
+        let mut mods =
+            ev.modifiers & (KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT);
         let mut code = ev.code;
         if let KeyCode::Char(c) = code {
             // Windows reports Caps Lock as an uppercase character without Shift; terminals
@@ -144,7 +145,10 @@ impl FromStr for KeySpec {
             }
         }
         if spec.code == KeyCode::Tab && spec.mods.contains(KeyModifiers::SHIFT) {
-            spec = KeySpec { code: KeyCode::BackTab, mods: spec.mods - KeyModifiers::SHIFT };
+            spec = KeySpec {
+                code: KeyCode::BackTab,
+                mods: spec.mods - KeyModifiers::SHIFT,
+            };
         }
         Ok(spec)
     }
@@ -643,7 +647,12 @@ pub const ALT_ARROW_KEYS: &[(&str, &str)] = &[
 /// A mouse event as the bytes a program that turned on mouse reporting expects, at (col,
 /// row) inside its screen (0-based). None: the program didn't ask for this kind of event;
 /// empty: it's the program's, but there's nothing to send.
-pub fn mouse_bytes(screen: &vt100::Screen, m: &crossterm::event::MouseEvent, col: u16, row: u16) -> Option<Vec<u8>> {
+pub fn mouse_bytes(
+    screen: &vt100::Screen,
+    m: &crossterm::event::MouseEvent,
+    col: u16,
+    row: u16,
+) -> Option<Vec<u8>> {
     use crossterm::event::{MouseButton as B, MouseEventKind as K};
     use vt100::{MouseProtocolEncoding as E, MouseProtocolMode as M};
     let mode = screen.mouse_protocol_mode();
@@ -680,7 +689,12 @@ pub fn mouse_bytes(screen: &vt100::Screen, m: &crossterm::event::MouseEvent, col
     };
     let (x, y) = (col as u32 + 1, row as u32 + 1);
     Some(match screen.mouse_protocol_encoding() {
-        E::Sgr => format!("\x1b[<{};{x};{y}{}", code + mods, if release { 'm' } else { 'M' }).into_bytes(),
+        E::Sgr => format!(
+            "\x1b[<{};{x};{y}{}",
+            code + mods,
+            if release { 'm' } else { 'M' }
+        )
+        .into_bytes(),
         enc => {
             // X10 style: release is button 3; values are offset by 32.
             let c = if release { 3 + mods } else { code + mods };
@@ -689,7 +703,12 @@ pub fn mouse_bytes(screen: &vt100::Screen, m: &crossterm::event::MouseEvent, col
                 let v = v + 32;
                 if enc == E::Utf8 {
                     let mut b = [0; 4];
-                    out.extend_from_slice(char::from_u32(v).unwrap_or(' ').encode_utf8(&mut b).as_bytes());
+                    out.extend_from_slice(
+                        char::from_u32(v)
+                            .unwrap_or(' ')
+                            .encode_utf8(&mut b)
+                            .as_bytes(),
+                    );
                 } else {
                     out.push(v.min(255) as u8);
                 }
@@ -704,7 +723,11 @@ pub fn mouse_bytes(screen: &vt100::Screen, m: &crossterm::event::MouseEvent, col
 /// its usual encoding (so Claude's Shift+Enter, Ctrl+C and friends behave as before).
 pub fn wants_win32(ev: &KeyEvent) -> bool {
     let m = ev.modifiers;
-    let (ctrl, alt, shift) = (m.contains(KeyModifiers::CONTROL), m.contains(KeyModifiers::ALT), m.contains(KeyModifiers::SHIFT));
+    let (ctrl, alt, shift) = (
+        m.contains(KeyModifiers::CONTROL),
+        m.contains(KeyModifiers::ALT),
+        m.contains(KeyModifiers::SHIFT),
+    );
     match ev.code {
         // Ctrl+Alt+symbol is AltGr typing a character: leave it.
         KeyCode::Char(c) if ctrl && alt && !c.is_ascii_alphabetic() => false,
@@ -719,7 +742,11 @@ pub fn wants_win32(ev: &KeyEvent) -> bool {
 /// A key as Windows' win32-input-mode records (`CSI Vk;Sc;Uc;Kd;Cs;Rc _`), down then up.
 pub fn encode_win32(ev: &KeyEvent) -> Option<Vec<u8>> {
     let m = ev.modifiers;
-    let (ctrl, alt, shift) = (m.contains(KeyModifiers::CONTROL), m.contains(KeyModifiers::ALT), m.contains(KeyModifiers::SHIFT));
+    let (ctrl, alt, shift) = (
+        m.contains(KeyModifiers::CONTROL),
+        m.contains(KeyModifiers::ALT),
+        m.contains(KeyModifiers::SHIFT),
+    );
     let (vk, uc, enhanced): (u16, u32, bool) = match ev.code {
         KeyCode::Char(c) => {
             let up = c.to_ascii_uppercase();
@@ -752,7 +779,11 @@ pub fn encode_win32(ev: &KeyEvent) -> Option<Vec<u8>> {
                     _ => return None,
                 }
             };
-            let uc = if ctrl && up.is_ascii_alphabetic() { up as u32 - 0x40 } else { c as u32 };
+            let uc = if ctrl && up.is_ascii_alphabetic() {
+                up as u32 - 0x40
+            } else {
+                c as u32
+            };
             (vk, uc, false)
         }
         KeyCode::Enter => (0x0D, 13, false),
@@ -828,7 +859,11 @@ pub fn encode(ev: &KeyEvent, app_cursor: bool) -> Vec<u8> {
         }
     };
     let tilde = |n: u8| -> Vec<u8> {
-        if param > 1 { format!("\x1b[{n};{param}~").into_bytes() } else { format!("\x1b[{n}~").into_bytes() }
+        if param > 1 {
+            format!("\x1b[{n};{param}~").into_bytes()
+        } else {
+            format!("\x1b[{n}~").into_bytes()
+        }
     };
     let mut out = match ev.code {
         KeyCode::Char(c) => {
@@ -866,19 +901,59 @@ pub fn encode(ev: &KeyEvent, app_cursor: bool) -> Vec<u8> {
         KeyCode::Backspace if ctrl => vec![0x08],
         KeyCode::Backspace => vec![0x7f],
         KeyCode::Esc => vec![0x1b],
-        KeyCode::Up => return if app_cursor && param == 1 { b"\x1bOA".to_vec() } else { csi_mod("\x1b[A", 'A') },
-        KeyCode::Down => return if app_cursor && param == 1 { b"\x1bOB".to_vec() } else { csi_mod("\x1b[B", 'B') },
-        KeyCode::Right => return if app_cursor && param == 1 { b"\x1bOC".to_vec() } else { csi_mod("\x1b[C", 'C') },
-        KeyCode::Left => return if app_cursor && param == 1 { b"\x1bOD".to_vec() } else { csi_mod("\x1b[D", 'D') },
-        KeyCode::Home => return if app_cursor && param == 1 { b"\x1bOH".to_vec() } else { csi_mod("\x1b[H", 'H') },
-        KeyCode::End => return if app_cursor && param == 1 { b"\x1bOF".to_vec() } else { csi_mod("\x1b[F", 'F') },
+        KeyCode::Up => {
+            return if app_cursor && param == 1 {
+                b"\x1bOA".to_vec()
+            } else {
+                csi_mod("\x1b[A", 'A')
+            };
+        }
+        KeyCode::Down => {
+            return if app_cursor && param == 1 {
+                b"\x1bOB".to_vec()
+            } else {
+                csi_mod("\x1b[B", 'B')
+            };
+        }
+        KeyCode::Right => {
+            return if app_cursor && param == 1 {
+                b"\x1bOC".to_vec()
+            } else {
+                csi_mod("\x1b[C", 'C')
+            };
+        }
+        KeyCode::Left => {
+            return if app_cursor && param == 1 {
+                b"\x1bOD".to_vec()
+            } else {
+                csi_mod("\x1b[D", 'D')
+            };
+        }
+        KeyCode::Home => {
+            return if app_cursor && param == 1 {
+                b"\x1bOH".to_vec()
+            } else {
+                csi_mod("\x1b[H", 'H')
+            };
+        }
+        KeyCode::End => {
+            return if app_cursor && param == 1 {
+                b"\x1bOF".to_vec()
+            } else {
+                csi_mod("\x1b[F", 'F')
+            };
+        }
         KeyCode::Insert => return tilde(2),
         KeyCode::Delete => return tilde(3),
         KeyCode::PageUp => return tilde(5),
         KeyCode::PageDown => return tilde(6),
         KeyCode::F(n @ 1..=4) => {
             let fin = (b'P' + n - 1) as char;
-            return if param > 1 { format!("\x1b[1;{param}{fin}").into_bytes() } else { format!("\x1bO{fin}").into_bytes() };
+            return if param > 1 {
+                format!("\x1b[1;{param}{fin}").into_bytes()
+            } else {
+                format!("\x1bO{fin}").into_bytes()
+            };
         }
         KeyCode::F(n) => {
             let code = match n {
@@ -921,11 +996,17 @@ mod tests {
             let spec: KeySpec = key.parse().unwrap();
             assert!(keys.insert(spec), "{key} is bound twice");
             assert!(actions.insert(*action), "{action} has two keys");
-            assert!(!spec.mods.contains(KeyModifiers::SHIFT), "{key} needs Shift");
+            assert!(
+                !spec.mods.contains(KeyModifiers::SHIFT),
+                "{key} needs Shift"
+            );
             if let KeyCode::Char(c) = spec.code
                 && !SHIFTED_ALLOWED.contains(&(*key, *action))
             {
-                assert!(!c.is_uppercase() && !SHIFTED.contains(c), "{key} needs Shift");
+                assert!(
+                    !c.is_uppercase() && !SHIFTED.contains(c),
+                    "{key} needs Shift"
+                );
             }
         }
     }
@@ -933,24 +1014,48 @@ mod tests {
     #[test]
     fn question_mark_matches_with_or_without_shift_reported() {
         let spec: KeySpec = "?".parse().unwrap();
-        assert_eq!(spec, KeySpec::from_event(&ev(KeyCode::Char('?'), KeyModifiers::SHIFT)), "Windows and most terminals report Shift");
-        assert_eq!(spec, KeySpec::from_event(&ev(KeyCode::Char('?'), KeyModifiers::NONE)));
+        assert_eq!(
+            spec,
+            KeySpec::from_event(&ev(KeyCode::Char('?'), KeyModifiers::SHIFT)),
+            "Windows and most terminals report Shift"
+        );
+        assert_eq!(
+            spec,
+            KeySpec::from_event(&ev(KeyCode::Char('?'), KeyModifiers::NONE))
+        );
     }
 
     fn ev(code: KeyCode, mods: KeyModifiers) -> KeyEvent {
-        KeyEvent { code, modifiers: mods, kind: KeyEventKind::Press, state: KeyEventState::NONE }
+        KeyEvent {
+            code,
+            modifiers: mods,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
     }
 
     #[test]
     fn parse_and_match() {
         let spec: KeySpec = "ctrl+b".parse().unwrap();
-        assert_eq!(spec, KeySpec::from_event(&ev(KeyCode::Char('b'), KeyModifiers::CONTROL)));
+        assert_eq!(
+            spec,
+            KeySpec::from_event(&ev(KeyCode::Char('b'), KeyModifiers::CONTROL))
+        );
         let spec: KeySpec = "%".parse().unwrap();
-        assert_eq!(spec, KeySpec::from_event(&ev(KeyCode::Char('%'), KeyModifiers::SHIFT)));
+        assert_eq!(
+            spec,
+            KeySpec::from_event(&ev(KeyCode::Char('%'), KeyModifiers::SHIFT))
+        );
         let spec: KeySpec = "shift+n".parse().unwrap();
-        assert_eq!(spec, KeySpec::from_event(&ev(KeyCode::Char('N'), KeyModifiers::SHIFT)));
+        assert_eq!(
+            spec,
+            KeySpec::from_event(&ev(KeyCode::Char('N'), KeyModifiers::SHIFT))
+        );
         let spec: KeySpec = "N".parse().unwrap();
-        assert_eq!(spec, KeySpec::from_event(&ev(KeyCode::Char('N'), KeyModifiers::SHIFT)));
+        assert_eq!(
+            spec,
+            KeySpec::from_event(&ev(KeyCode::Char('N'), KeyModifiers::SHIFT))
+        );
         let caps_lock_n = KeyEvent::new_with_kind_and_state(
             KeyCode::Char('N'),
             KeyModifiers::NONE,
@@ -964,46 +1069,131 @@ mod tests {
             "n".parse().unwrap()
         );
         let space: KeySpec = "ctrl+space".parse().unwrap();
-        assert_eq!(space, KeySpec::from_event(&ev(KeyCode::Char(' '), KeyModifiers::CONTROL)));
-        assert_eq!(space, KeySpec::from_event(&ev(KeyCode::Char('@'), KeyModifiers::CONTROL | KeyModifiers::SHIFT)));
-        assert_eq!(space, KeySpec::from_event(&ev(KeyCode::Char('2'), KeyModifiers::CONTROL)));
+        assert_eq!(
+            space,
+            KeySpec::from_event(&ev(KeyCode::Char(' '), KeyModifiers::CONTROL))
+        );
+        assert_eq!(
+            space,
+            KeySpec::from_event(&ev(
+                KeyCode::Char('@'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT
+            ))
+        );
+        assert_eq!(
+            space,
+            KeySpec::from_event(&ev(KeyCode::Char('2'), KeyModifiers::CONTROL))
+        );
         let spec: KeySpec = "alt+left".parse().unwrap();
-        assert_eq!(spec, KeySpec::from_event(&ev(KeyCode::Left, KeyModifiers::ALT)));
-        assert_eq!("ctrl++".parse::<KeySpec>().unwrap().code, KeyCode::Char('+'));
+        assert_eq!(
+            spec,
+            KeySpec::from_event(&ev(KeyCode::Left, KeyModifiers::ALT))
+        );
+        assert_eq!(
+            "ctrl++".parse::<KeySpec>().unwrap().code,
+            KeyCode::Char('+')
+        );
         // Windows key records for what VT can't say; the rest unchanged.
         let k = |code, m| KeyEvent::new(code, m);
         let cs = KeyModifiers::CONTROL | KeyModifiers::SHIFT;
         assert!(wants_win32(&k(KeyCode::Char('A'), cs)));
         assert!(wants_win32(&k(KeyCode::Enter, KeyModifiers::CONTROL)));
-        assert!(!wants_win32(&k(KeyCode::Char('c'), KeyModifiers::CONTROL)), "Ctrl+C stays ^C");
-        assert!(!wants_win32(&k(KeyCode::Enter, KeyModifiers::SHIFT)), "Shift+Enter stays the agents' newline");
-        assert_eq!(encode(&k(KeyCode::Enter, KeyModifiers::SHIFT), false), b"\x1b\r".to_vec(), "Shift+Enter: a newline, not send");
-        assert_eq!(encode(&k(KeyCode::Enter, KeyModifiers::NONE), false), b"\r".to_vec());
-        assert!(!wants_win32(&k(KeyCode::Char('@'), KeyModifiers::CONTROL | KeyModifiers::ALT)), "AltGr typing");
-        assert_eq!(encode_win32(&k(KeyCode::Char('A'), cs)).unwrap(), b"\x1b[65;0;1;1;24;1_\x1b[65;0;1;0;24;1_".to_vec());
-        assert_eq!(encode_win32(&k(KeyCode::Up, KeyModifiers::NONE)).unwrap(), b"\x1b[38;0;0;1;256;1_\x1b[38;0;0;0;256;1_".to_vec());
+        assert!(
+            !wants_win32(&k(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+            "Ctrl+C stays ^C"
+        );
+        assert!(
+            !wants_win32(&k(KeyCode::Enter, KeyModifiers::SHIFT)),
+            "Shift+Enter stays the agents' newline"
+        );
+        assert_eq!(
+            encode(&k(KeyCode::Enter, KeyModifiers::SHIFT), false),
+            b"\x1b\r".to_vec(),
+            "Shift+Enter: a newline, not send"
+        );
+        assert_eq!(
+            encode(&k(KeyCode::Enter, KeyModifiers::NONE), false),
+            b"\r".to_vec()
+        );
+        assert!(
+            !wants_win32(&k(
+                KeyCode::Char('@'),
+                KeyModifiers::CONTROL | KeyModifiers::ALT
+            )),
+            "AltGr typing"
+        );
+        assert_eq!(
+            encode_win32(&k(KeyCode::Char('A'), cs)).unwrap(),
+            b"\x1b[65;0;1;1;24;1_\x1b[65;0;1;0;24;1_".to_vec()
+        );
+        assert_eq!(
+            encode_win32(&k(KeyCode::Up, KeyModifiers::NONE)).unwrap(),
+            b"\x1b[38;0;0;1;256;1_\x1b[38;0;0;0;256;1_".to_vec()
+        );
         // Cursor styles.
         assert_eq!(last_cursor_style(b"x\x1b[2 qy\x1b[6 q"), Some(6));
         assert_eq!(last_cursor_style(b"\x1b[ q"), Some(0));
         assert_eq!(last_cursor_style(b"\x1b[2J"), None);
         // Mouse: nothing until the program asks; then SGR or X10 like any terminal.
         use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-        let ev = |kind| MouseEvent { kind, column: 0, row: 0, modifiers: KeyModifiers::NONE };
+        let ev = |kind| MouseEvent {
+            kind,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        };
         let mut p = vt100::Parser::new(10, 40, 0);
-        assert_eq!(mouse_bytes(p.screen(), &ev(MouseEventKind::ScrollUp), 4, 2), None);
+        assert_eq!(
+            mouse_bytes(p.screen(), &ev(MouseEventKind::ScrollUp), 4, 2),
+            None
+        );
         p.process(b"[?1002h[?1006h");
-        assert_eq!(mouse_bytes(p.screen(), &ev(MouseEventKind::ScrollUp), 4, 2), Some(b"[<64;5;3M".to_vec()));
-        assert_eq!(mouse_bytes(p.screen(), &ev(MouseEventKind::Down(MouseButton::Left)), 0, 0), Some(b"[<0;1;1M".to_vec()));
-        assert_eq!(mouse_bytes(p.screen(), &ev(MouseEventKind::Up(MouseButton::Left)), 0, 0), Some(b"[<0;1;1m".to_vec()));
-        assert_eq!(mouse_bytes(p.screen(), &ev(MouseEventKind::Moved), 0, 0), None, "plain motion only with any-motion mode");
+        assert_eq!(
+            mouse_bytes(p.screen(), &ev(MouseEventKind::ScrollUp), 4, 2),
+            Some(b"[<64;5;3M".to_vec())
+        );
+        assert_eq!(
+            mouse_bytes(
+                p.screen(),
+                &ev(MouseEventKind::Down(MouseButton::Left)),
+                0,
+                0
+            ),
+            Some(b"[<0;1;1M".to_vec())
+        );
+        assert_eq!(
+            mouse_bytes(p.screen(), &ev(MouseEventKind::Up(MouseButton::Left)), 0, 0),
+            Some(b"[<0;1;1m".to_vec())
+        );
+        assert_eq!(
+            mouse_bytes(p.screen(), &ev(MouseEventKind::Moved), 0, 0),
+            None,
+            "plain motion only with any-motion mode"
+        );
         let mut x10 = vt100::Parser::new(10, 40, 0);
         x10.process(b"[?1000h");
-        assert_eq!(mouse_bytes(x10.screen(), &ev(MouseEventKind::ScrollDown), 0, 0), Some(vec![0x1b, b'[', b'M', 32 + 65, 33, 33]));
+        assert_eq!(
+            mouse_bytes(x10.screen(), &ev(MouseEventKind::ScrollDown), 0, 0),
+            Some(vec![0x1b, b'[', b'M', 32 + 65, 33, 33])
+        );
         for (_, a) in DEFAULT_PREFIX_KEYS {
             let act: Action = a.parse().unwrap();
-            assert_eq!(act.to_config().unwrap().parse::<Action>().unwrap(), act, "{a}");
+            assert_eq!(
+                act.to_config().unwrap().parse::<Action>().unwrap(),
+                act,
+                "{a}"
+            );
         }
-        for s in ["ctrl+b", "ctrl+space", "alt+a", "%", "N", "f5", "shift+tab", "ctrl+left"] {
+        for s in [
+            "ctrl+b",
+            "ctrl+space",
+            "alt+a",
+            "%",
+            "N",
+            "f5",
+            "shift+tab",
+            "ctrl+left",
+        ] {
             let k: KeySpec = s.parse().unwrap();
             assert_eq!(k.to_config().parse::<KeySpec>().unwrap(), k, "{s}");
         }
@@ -1015,10 +1205,31 @@ mod tests {
 
     #[test]
     fn encoding() {
-        assert_eq!(encode(&ev(KeyCode::Char('c'), KeyModifiers::CONTROL), false), vec![3]);
-        assert_eq!(encode(&ev(KeyCode::Char('x'), KeyModifiers::ALT), false), b"\x1bx");
-        assert_eq!(encode(&ev(KeyCode::Up, KeyModifiers::NONE), true), b"\x1bOA");
-        assert_eq!(encode(&ev(KeyCode::Up, KeyModifiers::CONTROL), true), b"\x1b[1;5A");
-        assert_eq!(encode(&ev(KeyCode::Char('@'), KeyModifiers::CONTROL | KeyModifiers::ALT), false), b"@");
+        assert_eq!(
+            encode(&ev(KeyCode::Char('c'), KeyModifiers::CONTROL), false),
+            vec![3]
+        );
+        assert_eq!(
+            encode(&ev(KeyCode::Char('x'), KeyModifiers::ALT), false),
+            b"\x1bx"
+        );
+        assert_eq!(
+            encode(&ev(KeyCode::Up, KeyModifiers::NONE), true),
+            b"\x1bOA"
+        );
+        assert_eq!(
+            encode(&ev(KeyCode::Up, KeyModifiers::CONTROL), true),
+            b"\x1b[1;5A"
+        );
+        assert_eq!(
+            encode(
+                &ev(
+                    KeyCode::Char('@'),
+                    KeyModifiers::CONTROL | KeyModifiers::ALT
+                ),
+                false
+            ),
+            b"@"
+        );
     }
 }

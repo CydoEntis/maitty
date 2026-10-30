@@ -28,8 +28,9 @@ pub fn children_die_with_us() {
 #[cfg(windows)]
 fn make_job() -> Result<usize, String> {
     use windows_sys::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+        SetInformationJobObject,
     };
     use windows_sys::Win32::System::Threading::GetCurrentProcess;
     // SAFETY: plain Win32 calls with valid arguments; the job handle is kept open for the

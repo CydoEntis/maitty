@@ -32,8 +32,8 @@
 //! - the mode bar along the bottom (ADR 0024) is not the reference's: `reference_fixture::cells` draws
 //!   a row taller and leaves out that row, the bar's.
 
-use super::screen::{CAP_L, CAP_R, GoRow, goto_rows};
 use super::reference_fixture::{Layout, Stage, cells, frame, world};
+use super::screen::{CAP_L, CAP_R, GoRow, goto_rows};
 use super::*;
 use crate::protocol::{CheckSource, CheckState};
 
@@ -72,10 +72,22 @@ fn blocks(file: &str) -> Vec<Block> {
             };
             skipping = layout.is_none();
             let Some(layout) = layout else { continue };
-            let (w, h) = parts[1].split_once('x').map(|(w, h)| (w.parse().unwrap(), h.parse().unwrap())).unwrap();
-            out.push(Block { layout, w, h, glyphs: parts[2].into(), rows: Vec::new() });
+            let (w, h) = parts[1]
+                .split_once('x')
+                .map(|(w, h)| (w.parse().unwrap(), h.parse().unwrap()))
+                .unwrap();
+            out.push(Block {
+                layout,
+                w,
+                h,
+                glyphs: parts[2].into(),
+                rows: Vec::new(),
+            });
         } else if !skipping && let Some(b) = out.last_mut() {
-            let mut row: Vec<char> = line.replace('\\', std::path::MAIN_SEPARATOR_STR).chars().collect();
+            let mut row: Vec<char> = line
+                .replace('\\', std::path::MAIN_SEPARATOR_STR)
+                .chars()
+                .collect();
             row.resize(b.w as usize, ' ');
             b.rows.push(row);
         }
@@ -174,8 +186,16 @@ fn frames(id: &str) -> &'static str {
 // ---- the app's side: the fixture's world with the preset open --------------------------------
 
 fn with_check(app: &mut App, command: &str) {
-    let site = app.snap.terms[&1].root.clone().expect("fix-footer is in a repo");
-    app.cfg.check = vec![crate::config::CheckDef { project: site, name: None, command: command.into(), ..Default::default() }];
+    let site = app.snap.terms[&1]
+        .root
+        .clone()
+        .expect("fix-footer is in a repo");
+    app.cfg.check = vec![crate::config::CheckDef {
+        project: site,
+        name: None,
+        command: command.into(),
+        ..Default::default()
+    }];
 }
 
 /// The sample's words where the fixture has none of its own.
@@ -193,8 +213,14 @@ fn sample_words(app: &mut App) {
 
 fn select_in_inbox(app: &mut App, term: TermId) {
     let rows = goto_rows(&app.screen_model(), "", 0);
-    let sel = rows.iter().position(|r: &GoRow| r.term() == Some(term)).expect("the item is listed");
-    app.mode = Mode::GoTo { query: String::new(), sel };
+    let sel = rows
+        .iter()
+        .position(|r: &GoRow| r.term() == Some(term))
+        .expect("the item is listed");
+    app.mode = Mode::GoTo {
+        query: String::new(),
+        sel,
+    };
 }
 
 fn open(id: &str) -> App {
@@ -208,14 +234,19 @@ fn open(id: &str) -> App {
             let check = &mut app.snap.terms.get_mut(&1).unwrap().checks[0];
             check.previous_command = Some("npm test".into());
             check.command = "npm test && node scripts/seed.js".into();
-            check.source = CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: Some("9f3c2a1".into()), committed_at: Some(super::reference_fixture::now() - 2 * HOUR), uncommitted: false };
+            check.source = CheckSource::Repo {
+                file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(),
+                commit: Some("9f3c2a1".into()),
+                committed_at: Some(super::reference_fixture::now() - 2 * HOUR),
+                uncommitted: false,
+            };
         }
         _ => {}
     }
     match over {
         Over::Rows => {
             app.mode = Mode::Side;
-            app.screen.cursor = Some(1);
+            app.screen.cursor = Some(SessionKey::Pane(1));
         }
         Over::Evidence | Over::Override => {
             let (output, lines) = match id {
@@ -235,7 +266,12 @@ fn open(id: &str) -> App {
             }
         }
         Over::Inbox => select_in_inbox(&mut app, if id == "C2" { 3 } else { 1 }),
-        Over::Why => app.mode = Mode::Why { term: 1, side: true },
+        Over::Why => {
+            app.mode = Mode::Why {
+                term: 1,
+                side: true,
+            }
+        }
         Over::Settings => app.open_project_check(1),
         Over::Approve => {
             app.open_approval(1);
@@ -266,37 +302,91 @@ struct Geometry {
 fn geometry(id: &str, b: &Block) -> Geometry {
     let (_, over) = preset(id);
     let (w, h) = (b.w, b.h);
-    let side_w = if w >= 200 { 40 } else if w >= 140 { 34 } else { 26 };
+    let side_w = if w >= 200 {
+        40
+    } else if w >= 140 {
+        34
+    } else {
+        26
+    };
     let gut = u16::from(b.layout == Layout::Floating);
     let sheet = matches!(over, Over::Evidence | Over::Inbox | Over::Override);
     let beside = sheet && w >= 140;
     let px = side_w + gut;
     let pw = w - px;
     let pane_w = if beside { pw - 72 - gut } else { pw };
-    let pane = (!(sheet && !beside)).then(|| Rect { x: px + 1, y: 1, width: pane_w - 2, height: h - 2 });
+    let pane = (!(sheet && !beside)).then(|| Rect {
+        x: px + 1,
+        y: 1,
+        width: pane_w - 2,
+        height: h - 2,
+    });
     // A modal or popover, and the reference's hard shadow a cell right and down.
-    let with_shadow = |r: Rect| vec![r, Rect { x: r.x + 1, y: r.y + 1, ..r }];
-    let modal = |mw: u16, mh: u16| with_shadow(Rect { x: (w - mw) / 2, y: (h - mh) / 2, width: mw, height: mh });
+    let with_shadow = |r: Rect| {
+        vec![
+            r,
+            Rect {
+                x: r.x + 1,
+                y: r.y + 1,
+                ..r
+            },
+        ]
+    };
+    let modal = |mw: u16, mh: u16| {
+        with_shadow(Rect {
+            x: (w - mw) / 2,
+            y: (h - mh) / 2,
+            width: mw,
+            height: mh,
+        })
+    };
     let overlays = match over {
         Over::Override => modal((w - 2).min(70), 15),
         Over::Approve => modal((w - 2).min(84), (h - 1).min(20) - u16::from(h < 30)),
         Over::Settings => modal((w - 2).min(80), (h - 2).min(20)),
         Over::Why => {
             let x = (side_w + 2).min(w - 40);
-            with_shadow(Rect { x, y: if h < 30 { 3 } else { 5 }, width: 60.min(w - x - 2), height: 8 })
+            with_shadow(Rect {
+                x,
+                y: if h < 30 { 3 } else { 5 },
+                width: 60.min(w - x - 2),
+                height: 8,
+            })
         }
         _ => Vec::new(),
     };
-    let side_inner = Rect { x: 1, y: 1, width: side_w - 2, height: h - 2 };
+    let side_inner = Rect {
+        x: 1,
+        y: 1,
+        width: side_w - 2,
+        height: h - 2,
+    };
     let sheet = sheet.then(|| {
-        let (sx, sw) = if beside { (px + pane_w + gut, 72) } else { (px, pw) };
-        Rect { x: sx + 1, y: 1, width: sw - 2, height: h - 2 }
+        let (sx, sw) = if beside {
+            (px + pane_w + gut, 72)
+        } else {
+            (px, pw)
+        };
+        Rect {
+            x: sx + 1,
+            y: 1,
+            width: sw - 2,
+            height: h - 2,
+        }
     });
-    Geometry { pane, pane_end: px + pane_w - 1, sheet, overlays, side_inner }
+    Geometry {
+        pane,
+        pane_end: px + pane_w - 1,
+        sheet,
+        overlays,
+        side_inner,
+    }
 }
 
 fn covered(g: &Geometry, x: u16, y: u16) -> bool {
-    g.overlays.iter().any(|r| r.contains(ratatui::layout::Position { x, y }))
+    g.overlays
+        .iter()
+        .any(|r| r.contains(ratatui::layout::Position { x, y }))
 }
 
 /// `from` in `row` starting at `at`, replaced by `to`, the rest of `row` shifted to keep its
@@ -316,14 +406,24 @@ fn find(row: &[char], needle: &str) -> Option<usize> {
 
 /// Replace `from` with `to` in `row` within `[start, end)`, keeping the columns after `end`.
 fn swap(row: &mut Vec<char>, from: &str, to: &str, start: usize, end: usize) -> bool {
-    let Some(i) = find(&row[start..end], from).map(|i| i + start) else { return false };
-    splice(row, i, from.chars().count(), &to.chars().collect::<Vec<_>>(), end);
+    let Some(i) = find(&row[start..end], from).map(|i| i + start) else {
+        return false;
+    };
+    splice(
+        row,
+        i,
+        from.chars().count(),
+        &to.chars().collect::<Vec<_>>(),
+        end,
+    );
     true
 }
 
 /// From `marker` to `end`, `to` in place of whatever the reference had (it clips there).
 fn swap_tail(row: &mut Vec<char>, marker: &str, to: &str, start: usize, end: usize) -> bool {
-    let Some(i) = find(&row[start..end], marker).map(|i| i + start) else { return false };
+    let Some(i) = find(&row[start..end], marker).map(|i| i + start) else {
+        return false;
+    };
     let mut new: Vec<char> = to.chars().collect();
     new.truncate(end - i);
     new.resize(end - i, ' ');
@@ -333,19 +433,41 @@ fn swap_tail(row: &mut Vec<char>, marker: &str, to: &str, start: usize, end: usi
 
 /// The sidebar's inner rows as the app lists the sample: folder order, quick-fox unseen, a
 /// failed row's third line, and the fixture's checkpoints.
-fn app_sidebar(id: &str, stage: Stage, rows: Vec<Vec<char>>, inner_w: usize, ascii: bool) -> Vec<Vec<char>> {
-    let (glyph_ok, glyph_bad, glyph_need) = if ascii { ('+', 'x', '!') } else { ('✓', '✕', '●') };
+fn app_sidebar(
+    id: &str,
+    stage: Stage,
+    rows: Vec<Vec<char>>,
+    inner_w: usize,
+    ascii: bool,
+) -> Vec<Vec<char>> {
+    let (glyph_ok, glyph_bad, glyph_need) = if ascii {
+        ('+', 'x', '!')
+    } else {
+        ('✓', '✕', '●')
+    };
     let end = inner_w;
     let mut rows = rows;
     for row in &mut rows {
         // The reference keeps the row's old command after the repo changed it.
         if id == "A4" {
-            swap_tail(row, "approve check: npm test", "approve check: npm test && node scripts/seed.js", 0, end);
+            swap_tail(
+                row,
+                "approve check: npm test",
+                "approve check: npm test && node scripts/seed.js",
+                0,
+                end,
+            );
         }
         for sp in SPINNER {
             if let Some(i) = find(row, &format!("{sp} add-payments")) {
                 let to: Vec<char> = format!("{ANY} add-payments ").chars().collect();
-                splice(row, i, sp.chars().count() + " add-payments".chars().count(), &to, end);
+                splice(
+                    row,
+                    i,
+                    sp.chars().count() + " add-payments".chars().count(),
+                    &to,
+                    end,
+                );
             }
         }
         // The app leaves the agent's name off a working line; it is in the pane's title.
@@ -359,18 +481,45 @@ fn app_sidebar(id: &str, stage: Stage, rows: Vec<Vec<char>>, inner_w: usize, asc
             if find(row, "affiliate-site").is_some() {
                 swap(row, "· 4 ", "· 2 ", 0, end);
             }
-            swap_tail(row, "failed: test", &format!("failed: test {glyph_ok}{glyph_bad}"), 0, end);
-            swap_tail(row, "needs you: approval", &format!("needs you: test {glyph_ok}{glyph_need}"), 0, end);
+            swap_tail(
+                row,
+                "failed: test",
+                &format!("failed: test {glyph_ok}{glyph_bad}"),
+                0,
+                end,
+            );
+            swap_tail(
+                row,
+                "needs you: approval",
+                &format!("needs you: test {glyph_ok}{glyph_need}"),
+                0,
+                end,
+            );
             if find(row, &format!("test {glyph_bad}")).is_some() {
-                swap_tail(row, "commits", &format!("build {glyph_ok} · test {glyph_bad}"), 0, end);
+                swap_tail(
+                    row,
+                    "commits",
+                    &format!("build {glyph_ok} · test {glyph_bad}"),
+                    0,
+                    end,
+                );
             } else {
-                swap_tail(row, "commits", &format!("build {glyph_ok} · test {glyph_need}"), 0, end);
+                swap_tail(
+                    row,
+                    "commits",
+                    &format!("build {glyph_ok} · test {glyph_need}"),
+                    0,
+                    end,
+                );
             }
         }
     }
     let text = |r: &Vec<char>| r.iter().collect::<String>();
     // Line 3: the first failing line on a failed row, nothing on any other.
-    if let Some(i) = rows.iter().position(|r| text(r).contains("footer shows current year")) {
+    if let Some(i) = rows
+        .iter()
+        .position(|r| text(r).contains("footer shows current year"))
+    {
         if stage == Stage::Failed {
             let at = find(&rows[i], "footer shows current year").unwrap();
             swap_tail(&mut rows[i], "footer shows current year", FAILING, at, end);
@@ -422,7 +571,11 @@ fn app_sidebar(id: &str, stage: Stage, rows: Vec<Vec<char>>, inner_w: usize, asc
 /// out (and, in the Why popover, adds the Enter key); its words are tested on their own.
 fn mask_key_bar(row: &mut [char], x0: usize, x1: usize) {
     let inside: String = row[x0..x1].iter().collect();
-    if inside.contains("Esc ") && ["select", "re-run", "evidence", "back", "close"].iter().any(|w| inside.contains(w)) {
+    if inside.contains("Esc ")
+        && ["select", "re-run", "evidence", "back", "close"]
+            .iter()
+            .any(|w| inside.contains(w))
+    {
         row[x0..x1].fill(ANY);
     }
 }
@@ -433,13 +586,19 @@ fn mask_key_bar(row: &mut [char], x0: usize, x1: usize) {
 /// the corner. Every other cell of the modal is still the reference's.
 fn as_bordered_header(row: &mut [char], bottom: &[char], x0: usize, x1: usize) {
     let bar: String = row[x0..x1].iter().collect();
-    let title = bar.trim().strip_suffix("Esc close").unwrap_or_else(|| panic!("the reference's title bar: {bar:?}")).trim_end();
+    let title = bar
+        .trim()
+        .strip_suffix("Esc close")
+        .unwrap_or_else(|| panic!("the reference's title bar: {bar:?}"))
+        .trim_end();
     let top = |c: char| match c {
         '└' => '┌',
         '┘' => '┐',
         c => c,
     };
-    let tail: Vec<char> = format!(" Esc close ─{}", top(bottom[x1 - 1])).chars().collect();
+    let tail: Vec<char> = format!(" Esc close ─{}", top(bottom[x1 - 1]))
+        .chars()
+        .collect();
     let mut header: Vec<char> = format!("{}─ {title} ", top(bottom[x0])).chars().collect();
     header.resize(x1 - x0 - tail.len(), '─');
     header.extend(tail);
@@ -457,12 +616,23 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
         .expect("the stage's rows");
     let si = g.side_inner;
     let ascii = b.glyphs == "ascii";
-    let inner_of = |rows: &[Vec<char>]| -> Vec<Vec<char>> { (si.y..si.bottom()).map(|y| rows[y as usize][si.x as usize..si.right() as usize].to_vec()).collect() };
+    let inner_of = |rows: &[Vec<char>]| -> Vec<Vec<char>> {
+        (si.y..si.bottom())
+            .map(|y| rows[y as usize][si.x as usize..si.right() as usize].to_vec())
+            .collect()
+    };
     let mut side = app_sidebar(id, stage, inner_of(&source.rows), si.width as usize, ascii);
     // 16's project has a check that never ran; the reference names it only once there is a result.
     if id == "16" {
-        let passed = blocks(frames("03")).into_iter().find(|s| s.layout == b.layout && (s.w, s.h) == (b.w, b.h) && s.glyphs == b.glyphs).expect("03");
-        let head = |rows: &[Vec<char>]| rows.iter().position(|r| find(r, "affiliate-site").is_some()).expect("the folder");
+        let passed = blocks(frames("03"))
+            .into_iter()
+            .find(|s| s.layout == b.layout && (s.w, s.h) == (b.w, b.h) && s.glyphs == b.glyphs)
+            .expect("03");
+        let head = |rows: &[Vec<char>]| {
+            rows.iter()
+                .position(|r| find(r, "affiliate-site").is_some())
+                .expect("the folder")
+        };
         let with_meta = inner_of(&passed.rows);
         let i = head(&side);
         side[i] = with_meta[head(&with_meta)].clone();
@@ -486,10 +656,18 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
         }
     }
     // A modal's title row is a border now; it holds no key bar, so no mask passes over it.
-    let modal = matches!(preset(id).1, Over::Override | Over::Approve | Over::Settings);
+    let modal = matches!(
+        preset(id).1,
+        Over::Override | Over::Approve | Over::Settings
+    );
     let header = g.overlays.first().filter(|_| modal).map(|m| {
         let bottom = want[m.bottom() as usize - 1].clone();
-        as_bordered_header(&mut want[m.y as usize], &bottom, m.x as usize, m.right() as usize);
+        as_bordered_header(
+            &mut want[m.y as usize],
+            &bottom,
+            m.x as usize,
+            m.right() as usize,
+        );
         m.y as usize
     });
     // The sample's second tab is add-payments, a session of its own in the app (the sidebar
@@ -498,7 +676,13 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
     let top = &mut want[0];
     let w = top.len();
     swap(top, " 2  add-payments ", &fill.repeat(17), 0, w);
-    swap(top, " 1  fix-footer ", &format!(" fix-footer {}", fill.repeat(3)), 0, w);
+    swap(
+        top,
+        " 1  fix-footer ",
+        &format!(" fix-footer {}", fill.repeat(3)),
+        0,
+        w,
+    );
     // The reference draws the tab chips over the pane's mark when they meet; the app gives the
     // mark its room.
     if g.pane.is_some() {
@@ -511,12 +695,25 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
         // Text inside a sheet stops a column before its right edge.
         let (x0, x1) = (s.x as usize, s.right() as usize - 1);
         let room = s.width as usize - 4;
-        let (ok, bad, need) = if ascii { ('+', 'x', '!') } else { ('✓', '✕', '●') };
+        let (ok, bad, need) = if ascii {
+            ('+', 'x', '!')
+        } else {
+            ('✓', '✕', '●')
+        };
         let line = |word: &str, last: char| {
             let full = format!("{word} · build {ok} · test {last}");
-            if full.chars().count() <= room { full } else { format!("{word} {ok}{last}") }
+            if full.chars().count() <= room {
+                full
+            } else {
+                format!("{word} {ok}{last}")
+            }
         };
-        for (y, row) in want.iter_mut().enumerate().take(s.bottom() as usize).skip(s.y as usize) {
+        for (y, row) in want
+            .iter_mut()
+            .enumerate()
+            .take(s.bottom() as usize)
+            .skip(s.y as usize)
+        {
             if Some(y) != header {
                 mask_key_bar(row, x0, x1);
             }
@@ -526,30 +723,78 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
             if b.w >= 100 {
                 swap(row, "Override… O", "Override… O   Send to agent m", x0, x1);
             } else {
-                swap(row, "Override… O   Open session o", "Override… O   Send to agent m", x0, x1);
+                swap(
+                    row,
+                    "Override… O   Open session o",
+                    "Override… O   Send to agent m",
+                    x0,
+                    x1,
+                );
             }
             // The sample's approval item is a minute younger than its row; the app reads one age.
-            if stage == Stage::Approve && find(&row[x0..x1], "fix-footer").is_some() && let Some(i) = find(&row[x0..x1], "1m") {
+            if stage == Stage::Approve
+                && find(&row[x0..x1], "fix-footer").is_some()
+                && let Some(i) = find(&row[x0..x1], "1m")
+            {
                 row[x0 + i..x0 + i + 2].fill(ANY);
             }
             if stage == Stage::Multi {
-                swap_tail(row, "needs you: approval", &line("needs you: test", need), x0, x1);
-                swap_tail(row, "failed: test · commits", &line("failed: test", bad), x0, x1);
-                swap_tail(row, &format!("failed: test {ok}{bad}"), &line("failed: test", bad), x0, x1);
+                swap_tail(
+                    row,
+                    "needs you: approval",
+                    &line("needs you: test", need),
+                    x0,
+                    x1,
+                );
+                swap_tail(
+                    row,
+                    "failed: test · commits",
+                    &line("failed: test", bad),
+                    x0,
+                    x1,
+                );
+                swap_tail(
+                    row,
+                    &format!("failed: test {ok}{bad}"),
+                    &line("failed: test", bad),
+                    x0,
+                    x1,
+                );
                 swap_tail(row, "Several checkpoints read as one line", "", x0, x1);
             }
             // A command you said never to never ran: no run time, and its source names the
             // file's commit (when you chose is not part of the result).
             if stage == Stage::Never {
-                swap_tail(row, "14:22:05 · took", "did not run · after turn 3 ended 14:21:51", x0, x1);
-                swap_tail(row, concat!(".", env!("APP_COMMAND"), "/checks.toml · "), concat!(".", env!("APP_COMMAND"), "/checks.toml · a1b2c3d · you chose never"), x0, x1);
+                swap_tail(
+                    row,
+                    "14:22:05 · took",
+                    "did not run · after turn 3 ended 14:21:51",
+                    x0,
+                    x1,
+                );
+                swap_tail(
+                    row,
+                    concat!(".", env!("APP_COMMAND"), "/checks.toml · "),
+                    concat!(
+                        ".",
+                        env!("APP_COMMAND"),
+                        "/checks.toml · a1b2c3d · you chose never"
+                    ),
+                    x0,
+                    x1,
+                );
             }
         }
     }
     // The sample's "1 of 59 tests failed" is read from vitest's output; the app does not parse
     // a command's output.
     for pop in &g.overlays {
-        for (y, row) in want.iter_mut().enumerate().take(pop.bottom() as usize).skip(pop.y as usize) {
+        for (y, row) in want
+            .iter_mut()
+            .enumerate()
+            .take(pop.bottom() as usize)
+            .skip(pop.y as usize)
+        {
             if Some(y) != header {
                 mask_key_bar(row, pop.x as usize, pop.right() as usize - 1);
             }
@@ -558,7 +803,11 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
     if let Some(pop) = g.overlays.first().filter(|_| preset(id).1 == Over::Why) {
         // Its text stops a column before its right edge.
         let (x0, x1) = (pop.x as usize, pop.right() as usize - 1);
-        for row in want.iter_mut().take(pop.bottom() as usize).skip(pop.y as usize) {
+        for row in want
+            .iter_mut()
+            .take(pop.bottom() as usize)
+            .skip(pop.y as usize)
+        {
             swap_tail(row, " · 1 of 59", "", x0, x1);
         }
     }
@@ -577,7 +826,12 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
     if matches!(preset(id).1, Over::Why)
         && let Some(frame) = g.overlays.first()
     {
-        let ring = Rect { x: frame.x.saturating_sub(1), y: frame.y.saturating_sub(1), width: frame.width + 2, height: frame.height + 2 };
+        let ring = Rect {
+            x: frame.x.saturating_sub(1),
+            y: frame.y.saturating_sub(1),
+            width: frame.width + 2,
+            height: frame.height + 2,
+        };
         for y in ring.y..ring.bottom().min(b.h) {
             for x in ring.x..ring.right().min(b.w) {
                 if !frame.contains(ratatui::layout::Position { x, y }) {
@@ -592,7 +846,11 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
     if let Some(p) = g.pane {
         let top = 1;
         for row in want.iter_mut().take(top + 1) {
-            for cell in row.iter_mut().take((g.pane_end as usize + 1).min(b.w as usize)).skip(p.x as usize - 1) {
+            for cell in row
+                .iter_mut()
+                .take((g.pane_end as usize + 1).min(b.w as usize))
+                .skip(p.x as usize - 1)
+            {
                 *cell = ANY;
             }
         }
@@ -637,15 +895,31 @@ fn conforms(id: &str) {
         for (y, (gr, wr)) in got.iter().zip(&want).enumerate() {
             let same = gr.len() == wr.len() && gr.iter().zip(wr).all(|(a, w)| a == w || *w == ANY);
             if !same {
-                let shown = |r: &Vec<char>| r.iter().map(|c| if *c == ANY { '░' } else { *c }).collect::<String>().trim_end().to_string();
-                diff.push_str(&format!("≠{y:>2} got  |{}\n    want |{}\n", shown(gr), shown(wr)));
+                let shown = |r: &Vec<char>| {
+                    r.iter()
+                        .map(|c| if *c == ANY { '░' } else { *c })
+                        .collect::<String>()
+                        .trim_end()
+                        .to_string()
+                };
+                diff.push_str(&format!(
+                    "≠{y:>2} got  |{}\n    want |{}\n",
+                    shown(gr),
+                    shown(wr)
+                ));
             }
         }
         if !diff.is_empty() {
-            report.push_str(&format!("===== {id} | {:?} | {}x{} | {}\n{diff}", b.layout, b.w, b.h, b.glyphs));
+            report.push_str(&format!(
+                "===== {id} | {:?} | {}x{} | {}\n{diff}",
+                b.layout, b.w, b.h, b.glyphs
+            ));
         }
     }
-    assert!(report.is_empty(), "{id}: the frames differ from the reference\n{report}");
+    assert!(
+        report.is_empty(),
+        "{id}: the frames differ from the reference\n{report}"
+    );
 }
 
 #[test]
@@ -783,17 +1057,24 @@ fn the_sidebar_keeps_its_focus_while_its_why_popover_is_open() {
     let border = |app: &mut App| {
         (app.cfg.ui.layout, app.cfg.ui.panes) = ("cards".into(), "floating".into());
         app.screen_fresh();
-        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45)).expect("a test terminal");
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45))
+            .expect("a test terminal");
         term.draw(|f| render::draw(app, f)).expect("a frame");
         let r = app.screen.side_rect;
         let buf = term.backend().buffer();
-        (r.y..r.bottom()).map(|y| buf[(r.x, y)].fg).collect::<Vec<_>>()
+        (r.y..r.bottom())
+            .map(|y| buf[(r.x, y)].fg)
+            .collect::<Vec<_>>()
     };
     let mut app = open("13");
     assert!(matches!(app.mode, Mode::Why { side: true, .. }));
     let why = border(&mut app);
     app.mode = Mode::Side;
-    assert_eq!(why, border(&mut app), "lit as when the sidebar has the keys");
+    assert_eq!(
+        why,
+        border(&mut app),
+        "lit as when the sidebar has the keys"
+    );
     app.mode = Mode::Normal;
     assert_ne!(why, border(&mut app), "and not as when the pane has them");
 }
@@ -805,8 +1086,15 @@ fn at(buf: &ratatui::buffer::Buffer, needle: &str) -> (u16, u16) {
     let want: Vec<String> = needle.chars().map(String::from).collect();
     let a = buf.area;
     for y in a.top()..a.bottom() {
-        let row: Vec<&str> = (a.left()..a.right()).map(|x| buf[(x, y)].symbol()).collect();
-        if let Some(x) = (0..row.len().saturating_sub(want.len() - 1)).find(|&x| row[x..x + want.len()].iter().zip(&want).all(|(g, w)| *g == w)) {
+        let row: Vec<&str> = (a.left()..a.right())
+            .map(|x| buf[(x, y)].symbol())
+            .collect();
+        if let Some(x) = (0..row.len().saturating_sub(want.len() - 1)).find(|&x| {
+            row[x..x + want.len()]
+                .iter()
+                .zip(&want)
+                .all(|(g, w)| *g == w)
+        }) {
             return (x as u16, y);
         }
     }
@@ -821,11 +1109,18 @@ fn a_failed_check_reads_in_err_on_its_row_its_sheet_and_its_pane() {
     // The sidebar's row (its bar first; the tab row says the state too).
     let (x, y) = at(&buf, "▎ ✕ fix-footer");
     assert_eq!(buf[(x + 2, y)].fg, t.err, "the row's glyph");
-    assert_eq!(buf[(x, y)].fg, t.accent, "the open row's bar is the accent, as any selected row's");
+    assert_eq!(
+        buf[(x, y)].fg,
+        t.accent,
+        "the open row's bar is the accent, as any selected row's"
+    );
     let (x, y) = at(&buf, "✕ failed   exit 1");
     assert_eq!(buf[(x, y)].bg, t.err, "the sheet's result chip");
     let (_, y) = at(&buf, "✕ fix-footer");
-    assert_eq!(y, 0, "the tab says it by its glyph, on the row over the pane's box; a lone pane has no title");
+    assert_eq!(
+        y, 0,
+        "the tab says it by its glyph, on the row over the pane's box; a lone pane has no title"
+    );
 }
 
 #[test]
@@ -833,7 +1128,11 @@ fn a_modal_title_is_on_the_accent() {
     for id in ["12", "A2"] {
         let mut app = open(id);
         let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
-        let title = if id == "12" { "OVERRIDE A FAILED CHECK" } else { "A REPO WANTS TO RUN A COMMAND" };
+        let title = if id == "12" {
+            "OVERRIDE A FAILED CHECK"
+        } else {
+            "A REPO WANTS TO RUN A COMMAND"
+        };
         let (x, y) = at(&buf, title);
         assert_eq!(buf[(x, y)].bg, app.theme.accent, "{id}");
     }
@@ -865,7 +1164,10 @@ fn pill_caps_only_round_the_buttons_ends() {
 }
 
 fn press(app: &mut App, code: crossterm::event::KeyCode) {
-    app.on_key(crossterm::event::KeyEvent::new(code, crossterm::event::KeyModifiers::NONE));
+    app.on_key(crossterm::event::KeyEvent::new(
+        code,
+        crossterm::event::KeyModifiers::NONE,
+    ));
 }
 
 /// The reference keeps the Inbox under a modal opened from it; Esc goes back to
@@ -875,15 +1177,34 @@ fn esc_from_a_modal_opened_in_the_inbox_goes_back_to_the_inbox() {
     use crossterm::event::KeyCode;
     for (id, opens) in [("11", KeyCode::Char('O')), ("A1", KeyCode::Enter)] {
         let mut app = open(id);
-        let Mode::GoTo { sel: before, .. } = app.mode else { panic!("{id}: the Inbox is open") };
+        let Mode::GoTo { sel: before, .. } = app.mode else {
+            panic!("{id}: the Inbox is open")
+        };
         press(&mut app, opens);
-        assert!(matches!(app.mode, Mode::Confirm(_) | Mode::Approve(_)), "{id}: a modal: {:?}", app.mode);
-        assert!(frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("INBOX"), "{id}: the Inbox stays under it");
+        assert!(
+            matches!(app.mode, Mode::Confirm(_) | Mode::Approve(_)),
+            "{id}: a modal: {:?}",
+            app.mode
+        );
+        assert!(
+            frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("INBOX"),
+            "{id}: the Inbox stays under it"
+        );
         press(&mut app, KeyCode::Esc);
-        assert!(matches!(app.mode, Mode::GoTo { sel, .. } if sel == before), "{id}: back on its item: {:?}", app.mode);
-        assert!(frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("INBOX"), "{id}");
+        assert!(
+            matches!(app.mode, Mode::GoTo { sel, .. } if sel == before),
+            "{id}: back on its item: {:?}",
+            app.mode
+        );
+        assert!(
+            frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("INBOX"),
+            "{id}"
+        );
         press(&mut app, KeyCode::Esc);
-        assert!(!matches!(app.mode, Mode::GoTo { .. }), "{id}: and Esc closes the Inbox after");
+        assert!(
+            !matches!(app.mode, Mode::GoTo { .. }),
+            "{id}: and Esc closes the Inbox after"
+        );
     }
 }
 
@@ -891,8 +1212,21 @@ fn esc_from_a_modal_opened_in_the_inbox_goes_back_to_the_inbox() {
 fn finished_lists_the_session_with_a_check_result_first_then_the_newest() {
     for stage in [Stage::Stale, Stage::Over, Stage::Never, Stage::Passed] {
         let app = world(stage);
-        let done: Vec<TermId> = goto_rows(&app.screen_model(), "", 0).iter().filter_map(|r| if let GoRow::Done(t) = r { Some(*t) } else { None }).collect();
-        assert_eq!(done, [1, 4], "{stage:?}: fix-footer (2m, checked) before quick-fox (9h)");
+        let done: Vec<TermId> = goto_rows(&app.screen_model(), "", 0)
+            .iter()
+            .filter_map(|r| {
+                if let GoRow::Done(t) = r {
+                    Some(*t)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(
+            done,
+            [1, 4],
+            "{stage:?}: fix-footer (2m, checked) before quick-fox (9h)"
+        );
     }
 }
 
@@ -902,21 +1236,40 @@ fn not_now_keeps_its_last_cell_beside_an_armed_always() {
     let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
     let (x, y) = at(&buf, "Not now Esc");
     assert_eq!(x + 11, 120, "where the reference puts its end");
-    assert_eq!(buf[(120, y)].bg, app.theme.btn, "the button's trailing space is drawn");
+    assert_eq!(
+        buf[(120, y)].bg,
+        app.theme.btn,
+        "the button's trailing space is drawn"
+    );
 }
 
 /// The reference makes the whole inside of a pane's card its focus region, padding and all; the
 /// terminal inside it still gets its own clicks.
 #[test]
 fn a_click_anywhere_inside_a_panes_card_is_the_pane() {
-    for (id, layout) in [("01", Layout::Floating), ("07", Layout::Floating), ("07", Layout::Tiled)] {
+    for (id, layout) in [
+        ("01", Layout::Floating),
+        ("07", Layout::Floating),
+        ("07", Layout::Tiled),
+    ] {
         let mut app = open(id);
         app.mode = Mode::Normal;
         let _ = cells(&mut app, layout, 160, 45, "unicode");
         let (_, card) = app.pane_frames[0];
         let (_, term) = app.panes[0];
-        let top = |x: u16, y: u16| app.hits.iter().rev().find(|(r, _)| r.contains(ratatui::layout::Position { x, y })).map(|(_, h)| *h);
-        for (x, y) in [(card.x + 1, card.y + 2), (term.x - 1, term.y), (card.right() - 2, card.bottom() - 2), (term.x, term.y)] {
+        let top = |x: u16, y: u16| {
+            app.hits
+                .iter()
+                .rev()
+                .find(|(r, _)| r.contains(ratatui::layout::Position { x, y }))
+                .map(|(_, h)| *h)
+        };
+        for (x, y) in [
+            (card.x + 1, card.y + 2),
+            (term.x - 1, term.y),
+            (card.right() - 2, card.bottom() - 2),
+            (term.x, term.y),
+        ] {
             assert_eq!(top(x, y), Some(Hit::Pane(1)), "{id} {layout:?}: ({x},{y})");
         }
     }
@@ -929,8 +1282,13 @@ fn overriding_from_the_inbox_opens_the_evidence() {
     let mut app = open("11");
     press(&mut app, KeyCode::Char('O'));
     press(&mut app, KeyCode::Enter);
-    assert!(matches!(&app.view, Some(View::Check(v)) if v.term == 1), "the evidence sheet");
-    assert!(frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("CHECK · fix-footer › test"));
+    assert!(
+        matches!(&app.view, Some(View::Check(v)) if v.term == 1),
+        "the evidence sheet"
+    );
+    assert!(
+        frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("CHECK · fix-footer › test")
+    );
 }
 
 /// A working row speaks in the working colour: its spinner and its name, in every theme.
@@ -943,7 +1301,11 @@ fn a_working_row_s_mark_and_name_are_the_working_colour() {
         let work = app.theme.accent;
         let (x, y) = at(&buf, "add-payments");
         assert_eq!(buf[(x - 2, y)].fg, work, "{name}: the spinner");
-        assert_eq!(buf[(x, y)].fg, work, "{name}: the name (motion off holds it still)");
+        assert_eq!(
+            buf[(x, y)].fg,
+            work,
+            "{name}: the name (motion off holds it still)"
+        );
     }
 }
 
@@ -963,7 +1325,11 @@ fn needs_you_is_amber_and_failed_red_in_app_dark() {
     let (x, y) = at(&buf, "warm-finch");
     assert_eq!(buf[(x - 2, y)].fg, t.blocked, "the asking row's glyph");
     let (x, y) = at(&buf, "asks:");
-    assert_eq!(buf[(x, y)].fg, t.muted, "the question is quiet: the glyph says it needs you");
+    assert_eq!(
+        buf[(x, y)].fg,
+        t.muted,
+        "the question is quiet: the glyph says it needs you"
+    );
 }
 
 /// A result that could not run is violet, apart from failed red, needs-you amber and working.
@@ -987,18 +1353,26 @@ fn backspace_in_the_inbox_only_edits_its_search() {
                 let mut app = reference_fixture::world(stage);
                 app.cfg.ui.padding = "1".into();
                 app.open_goto();
-                let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
+                let mut term =
+                    ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
                 for c in keys.chars() {
-                    app.on_key(crate::client::KeyEvent::new(crate::client::KeyCode::Char(c), crate::client::KeyModifiers::NONE));
+                    app.on_key(crate::client::KeyEvent::new(
+                        crate::client::KeyCode::Char(c),
+                        crate::client::KeyModifiers::NONE,
+                    ));
                 }
                 for _ in 0..3 {
-                    term.draw(|f| crate::client::render::draw(&mut app, f)).unwrap();
-                    app.on_key(crate::client::KeyEvent::new(crate::client::KeyCode::Backspace, crate::client::KeyModifiers::NONE));
+                    term.draw(|f| crate::client::render::draw(&mut app, f))
+                        .unwrap();
+                    app.on_key(crate::client::KeyEvent::new(
+                        crate::client::KeyCode::Backspace,
+                        crate::client::KeyModifiers::NONE,
+                    ));
                     assert!(app.quit.is_none(), "{stage:?}");
                 }
-                term.draw(|f| crate::client::render::draw(&mut app, f)).unwrap();
+                term.draw(|f| crate::client::render::draw(&mut app, f))
+                    .unwrap();
             }
         }
     }
 }
-

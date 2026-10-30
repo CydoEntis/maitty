@@ -2,10 +2,10 @@
 //! is at; the review screen shows what it changed and ships it (commit, merge, PR) or throws
 //! it away.
 
+use crate::proc::git;
 use crate::protocol::{TermId, WsId};
 use std::path::PathBuf;
 use std::process::Command;
-use crate::proc::git;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Stage {
@@ -71,7 +71,11 @@ pub struct DiffJob {
 
 impl Review {
     pub fn diff_job(&self) -> DiffJob {
-        DiffJob { dir: self.task.dir.clone(), merge_base: self.merge_base.clone(), file: self.files.get(self.sel).cloned() }
+        DiffJob {
+            dir: self.task.dir.clone(),
+            merge_base: self.merge_base.clone(),
+            file: self.files.get(self.sel).cloned(),
+        }
     }
 }
 
@@ -84,12 +88,27 @@ fn changed_since(dir: &std::path::Path, from: &str) -> Result<Vec<Changed>, Stri
             let mut it = l.splitn(3, '\t');
             let added = it.next()?.parse().unwrap_or(0);
             let removed = it.next()?.parse().unwrap_or(0);
-            Some(Changed { added, removed, path: it.next()?.to_string(), untracked: false })
+            Some(Changed {
+                added,
+                removed,
+                path: it.next()?.to_string(),
+                untracked: false,
+            })
         })
         .collect();
-    for path in git(dir, &["ls-files", "--others", "--exclude-standard"])?.lines().filter(|l| !l.is_empty()) {
-        let added = read_head(&dir.join(path), UNTRACKED_READ_CAP).map(|s| s.lines().count() as i64).unwrap_or(0);
-        files.push(Changed { path: path.to_string(), added, removed: 0, untracked: true });
+    for path in git(dir, &["ls-files", "--others", "--exclude-standard"])?
+        .lines()
+        .filter(|l| !l.is_empty())
+    {
+        let added = read_head(&dir.join(path), UNTRACKED_READ_CAP)
+            .map(|s| s.lines().count() as i64)
+            .unwrap_or(0);
+        files.push(Changed {
+            path: path.to_string(),
+            added,
+            removed: 0,
+            untracked: true,
+        });
     }
     Ok(files)
 }
@@ -98,15 +117,28 @@ fn changed_since(dir: &std::path::Path, from: &str) -> Result<Vec<Changed>, Stri
 /// shows as `+N −N`.
 pub fn uncommitted_lines(dir: &std::path::Path) -> Result<(i64, i64), String> {
     let files = changed_since(dir, "HEAD")?;
-    Ok(files.iter().fold((0, 0), |(a, r), f| (a + f.added, r + f.removed)))
+    Ok(files
+        .iter()
+        .fold((0, 0), |(a, r), f| (a + f.added, r + f.removed)))
 }
 
 /// Everything the task changed since it branched: commits plus uncommitted and new files.
 pub fn load_review(task: TaskRow) -> Result<Review, String> {
     let dir = &task.dir;
-    let merge_base = git(dir, &["merge-base", "HEAD", &task.base])?.trim().to_string();
+    let merge_base = git(dir, &["merge-base", "HEAD", &task.base])?
+        .trim()
+        .to_string();
     let files = changed_since(dir, &merge_base)?;
-    let mut r = Review { task, merge_base, files, sel: 0, diff: Vec::new(), diff_sel: Some(0), scroll: 0, confirm: None };
+    let mut r = Review {
+        task,
+        merge_base,
+        files,
+        sel: 0,
+        diff: Vec::new(),
+        diff_sel: Some(0),
+        scroll: 0,
+        confirm: None,
+    };
     r.diff = file_diff(&r);
     Ok(r)
 }
@@ -117,15 +149,23 @@ pub fn file_diff(r: &Review) -> Vec<String> {
 }
 
 pub fn diff_of(job: &DiffJob) -> Vec<String> {
-    let Some(f) = &job.file else { return vec!["No changes yet.".into()] };
+    let Some(f) = &job.file else {
+        return vec!["No changes yet.".into()];
+    };
     if f.untracked {
-        let body = read_head(&job.dir.join(&f.path), UNTRACKED_READ_CAP).unwrap_or_else(|_| "(binary or unreadable)".into());
+        let body = read_head(&job.dir.join(&f.path), UNTRACKED_READ_CAP)
+            .unwrap_or_else(|_| "(binary or unreadable)".into());
         let mut out = vec![format!("new file {}", f.path)];
         out.extend(body.lines().take(2000).map(|l| format!("+{l}")));
         return out;
     }
     match git(&job.dir, &["diff", &job.merge_base, "--", &f.path]) {
-        Ok(d) => d.lines().skip_while(|l| !l.starts_with("@@")).take(4000).map(|l| l.replace('\t', "    ")).collect(),
+        Ok(d) => d
+            .lines()
+            .skip_while(|l| !l.starts_with("@@"))
+            .take(4000)
+            .map(|l| l.replace('\t', "    "))
+            .collect(),
         Err(e) => vec![e],
     }
 }
@@ -135,20 +175,31 @@ fn commit_all(t: &TaskRow) -> Result<bool, String> {
         return Ok(false);
     }
     git(&t.dir, &["add", "-A"])?;
-    let msg = if t.summary.is_empty() { t.name.clone() } else { t.summary.clone() };
+    let msg = if t.summary.is_empty() {
+        t.name.clone()
+    } else {
+        t.summary.clone()
+    };
     git(&t.dir, &["commit", "-m", &msg])?;
     Ok(true)
 }
 
 pub fn commit(t: &TaskRow) -> Result<String, String> {
-    Ok(if commit_all(t)? { format!("committed {} on {}", t.name, t.branch) } else { "nothing to commit".into() })
+    Ok(if commit_all(t)? {
+        format!("committed {} on {}", t.name, t.branch)
+    } else {
+        "nothing to commit".into()
+    })
 }
 
 /// Commit what's left, then merge the task branch into the main checkout's branch.
 pub fn merge(t: &TaskRow) -> Result<String, String> {
     commit_all(t)?;
     if !git(&t.root, &["status", "--porcelain"])?.trim().is_empty() {
-        return Err(format!("{} has uncommitted changes; commit or stash them first", t.root.display()));
+        return Err(format!(
+            "{} has uncommitted changes; commit or stash them first",
+            t.root.display()
+        ));
     }
     let msg = format!("Merge {}", t.branch);
     if let Err(e) = git(&t.root, &["merge", "--no-ff", &t.branch, "-m", &msg]) {
@@ -164,14 +215,24 @@ pub fn pull_request(t: &TaskRow) -> Result<String, String> {
     commit_all(t)?;
     git(&t.dir, &["push", "-u", "origin", &t.branch])?;
     let mut cmd = Command::new("gh");
-    cmd.current_dir(&t.dir).args(["pr", "create", "--fill", "--head", &t.branch]);
+    cmd.current_dir(&t.dir)
+        .args(["pr", "create", "--fill", "--head", &t.branch]);
     crate::proc::quiet(&mut cmd);
-    let out = cmd.output().map_err(|e| format!("running gh: {e} (is the GitHub CLI installed?)"))?;
+    let out = cmd
+        .output()
+        .map_err(|e| format!("running gh: {e} (is the GitHub CLI installed?)"))?;
     let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).lines().next().unwrap_or("gh pr create failed").to_string());
+        return Err(String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .next()
+            .unwrap_or("gh pr create failed")
+            .to_string());
     }
-    Ok(format!("opened {}", text.lines().last().unwrap_or("the pull request")))
+    Ok(format!(
+        "opened {}",
+        text.lines().last().unwrap_or("the pull request")
+    ))
 }
 
 #[cfg(test)]
@@ -193,8 +254,15 @@ mod tests {
         assert_eq!(super::uncommitted_lines(&repo), Ok((0, 0)), "all committed");
         std::fs::write(repo.join("a.txt"), "one\n2\n").unwrap();
         std::fs::write(repo.join("new.txt"), "x\ny\n").unwrap();
-        assert_eq!(super::uncommitted_lines(&repo), Ok((3, 2)), "one line changed and one removed, plus a new file's two");
-        assert!(super::uncommitted_lines(&repo.join("missing")).is_err(), "no checkout there");
+        assert_eq!(
+            super::uncommitted_lines(&repo),
+            Ok((3, 2)),
+            "one line changed and one removed, plus a new file's two"
+        );
+        assert!(
+            super::uncommitted_lines(&repo.join("missing")).is_err(),
+            "no checkout there"
+        );
         let _ = std::fs::remove_dir_all(&repo);
     }
 }

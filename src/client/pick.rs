@@ -5,7 +5,14 @@
 /// continuation cell is empty).
 fn cells(screen: &vt100::Screen, row: u16) -> Vec<String> {
     let (_, cols) = screen.size();
-    (0..cols).map(|c| screen.cell(row, c).map(|x| x.contents().to_string()).unwrap_or_default()).collect()
+    (0..cols)
+        .map(|c| {
+            screen
+                .cell(row, c)
+                .map(|x| x.contents().to_string())
+                .unwrap_or_default()
+        })
+        .collect()
 }
 
 fn text(cells: &[String], from: usize, to: usize) -> String {
@@ -17,7 +24,10 @@ fn text(cells: &[String], from: usize, to: usize) -> String {
 pub fn url_at(screen: &vt100::Screen, row: u16, col: u16) -> Option<String> {
     let cells = cells(screen, row);
     let col = col as usize;
-    let line: Vec<char> = cells.iter().map(|c| c.chars().next().unwrap_or(' ')).collect();
+    let line: Vec<char> = cells
+        .iter()
+        .map(|c| c.chars().next().unwrap_or(' '))
+        .collect();
     let s: String = line.iter().collect();
     for scheme in ["https://", "http://"] {
         let mut from = 0;
@@ -30,8 +40,14 @@ pub fn url_at(screen: &vt100::Screen, row: u16, col: u16) -> Option<String> {
             let mut url: String = line[start..end].iter().collect();
             loop {
                 let last = url.chars().last();
-                let unbalanced = |o: char, c: char| url.ends_with(c) && url.matches(c).count() > url.matches(o).count();
-                if matches!(last, Some('.' | ',' | ';' | ':' | '!' | '?' | '\'' | '"')) || unbalanced('(', ')') || unbalanced('[', ']') || unbalanced('{', '}') {
+                let unbalanced = |o: char, c: char| {
+                    url.ends_with(c) && url.matches(c).count() > url.matches(o).count()
+                };
+                if matches!(last, Some('.' | ',' | ';' | ':' | '!' | '?' | '\'' | '"'))
+                    || unbalanced('(', ')')
+                    || unbalanced('[', ']')
+                    || unbalanced('{', '}')
+                {
                     url.pop();
                 } else {
                     break;
@@ -55,7 +71,11 @@ pub fn url_at(screen: &vt100::Screen, row: u16, col: u16) -> Option<String> {
 pub fn path_at(screen: &vt100::Screen, row: u16, col: u16) -> Option<(String, Option<u32>)> {
     let cells = cells(screen, row);
     let col = (col as usize).min(cells.len().saturating_sub(1));
-    let sep = |c: &str| c.is_empty() || c.chars().all(|ch| ch.is_whitespace() || "()[]{},;\"'`<>|*".contains(ch));
+    let sep = |c: &str| {
+        c.is_empty()
+            || c.chars()
+                .all(|ch| ch.is_whitespace() || "()[]{},;\"'`<>|*".contains(ch))
+    };
     if sep(&cells[col]) {
         return None;
     }
@@ -67,12 +87,17 @@ pub fn path_at(screen: &vt100::Screen, row: u16, col: u16) -> Option<(String, Op
     while b < cells.len() && !sep(&cells[b]) {
         b += 1;
     }
-    let mut w = text(&cells, a, b).trim_end_matches(['.', ',', ':', ';', '!', '?']).to_string();
+    let mut w = text(&cells, a, b)
+        .trim_end_matches(['.', ',', ':', ';', '!', '?'])
+        .to_string();
     // path:line(:col)
     let mut line = None;
     let parts: Vec<&str> = w.rsplitn(3, ':').collect();
     if parts.len() >= 2 && parts[0].chars().all(|c| c.is_ascii_digit()) && !parts[0].is_empty() {
-        let (num, rest) = if parts.len() == 3 && parts[1].chars().all(|c| c.is_ascii_digit()) && !parts[1].is_empty() {
+        let (num, rest) = if parts.len() == 3
+            && parts[1].chars().all(|c| c.is_ascii_digit())
+            && !parts[1].is_empty()
+        {
             (parts[1], parts[2].to_string())
         } else {
             (parts[0], w[..w.len() - parts[0].len() - 1].to_string())
@@ -80,7 +105,14 @@ pub fn path_at(screen: &vt100::Screen, row: u16, col: u16) -> Option<(String, Op
         line = num.parse().ok();
         w = rest;
     }
-    let looks = w.contains('/') || w.contains('\\') || std::path::Path::new(&w).extension().is_some_and(|e| e.len() <= 8 && e.to_string_lossy().chars().all(|c| c.is_ascii_alphanumeric()));
+    let looks = w.contains('/')
+        || w.contains('\\')
+        || std::path::Path::new(&w).extension().is_some_and(|e| {
+            e.len() <= 8
+                && e.to_string_lossy()
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric())
+        });
     (looks && !w.starts_with("http") && w.len() > 1).then_some((w, line))
 }
 
@@ -90,7 +122,11 @@ pub fn word_at(screen: &vt100::Screen, row: u16, col: u16) -> Option<String> {
     }
     let cells = cells(screen, row);
     let col = (col as usize).min(cells.len().saturating_sub(1));
-    let sep = |c: &str| c.is_empty() || c.chars().all(|ch| ch.is_whitespace() || "|()[]{},;!\"'`<>".contains(ch));
+    let sep = |c: &str| {
+        c.is_empty()
+            || c.chars()
+                .all(|ch| ch.is_whitespace() || "|()[]{},;!\"'`<>".contains(ch))
+    };
     if sep(&cells[col]) {
         return None;
     }
@@ -99,7 +135,9 @@ pub fn word_at(screen: &vt100::Screen, row: u16, col: u16) -> Option<String> {
         a -= 1;
     }
     let mut b = col + 1;
-    while b < cells.len() && (!sep(&cells[b]) || (cells[b].is_empty() && b > 0 && !sep(&cells[b - 1]))) {
+    while b < cells.len()
+        && (!sep(&cells[b]) || (cells[b].is_empty() && b > 0 && !sep(&cells[b - 1])))
+    {
         if cells[b].is_empty() {
             // A wide character's second cell belongs to it.
             b += 1;
@@ -107,7 +145,9 @@ pub fn word_at(screen: &vt100::Screen, row: u16, col: u16) -> Option<String> {
         }
         b += 1;
     }
-    let w = text(&cells, a, b).trim_end_matches(['.', ':', ',']).to_string();
+    let w = text(&cells, a, b)
+        .trim_end_matches(['.', ':', ','])
+        .to_string();
     (!w.is_empty()).then_some(w)
 }
 
@@ -118,12 +158,30 @@ mod tests {
     #[test]
     fn paths_agents_print() {
         let mut p = vt100::Parser::new(4, 100, 0);
-        p.process("• View the tileset (artifacts/undead/terrain/v2/revenant-environment.png)\r\n".as_bytes());
+        p.process(
+            "• View the tileset (artifacts/undead/terrain/v2/revenant-environment.png)\r\n"
+                .as_bytes(),
+        );
         p.process(b"see src/client/screen.rs:42 and README.md. Plain words here.\r\n");
         let s = p.screen();
-        assert_eq!(path_at(s, 0, 30), Some(("artifacts/undead/terrain/v2/revenant-environment.png".into(), None)), "inside the brackets, without them");
-        assert_eq!(path_at(s, 1, 8), Some(("src/client/screen.rs".into(), Some(42))), "path:line");
-        assert_eq!(path_at(s, 1, 33), Some(("README.md".into(), None)), "a file name, the full stop dropped");
+        assert_eq!(
+            path_at(s, 0, 30),
+            Some((
+                "artifacts/undead/terrain/v2/revenant-environment.png".into(),
+                None
+            )),
+            "inside the brackets, without them"
+        );
+        assert_eq!(
+            path_at(s, 1, 8),
+            Some(("src/client/screen.rs".into(), Some(42))),
+            "path:line"
+        );
+        assert_eq!(
+            path_at(s, 1, 33),
+            Some(("README.md".into(), None)),
+            "a file name, the full stop dropped"
+        );
         assert_eq!(path_at(s, 1, 46), None, "plain words aren't paths");
     }
 
@@ -132,7 +190,10 @@ mod tests {
         let mut p = vt100::Parser::new(3, 80, 0);
         p.process(b"see https://example.com/a(b). and src/main.rs:12 now");
         let s = p.screen();
-        assert_eq!(url_at(s, 0, 10).as_deref(), Some("https://example.com/a(b)"));
+        assert_eq!(
+            url_at(s, 0, 10).as_deref(),
+            Some("https://example.com/a(b)")
+        );
         assert_eq!(url_at(s, 0, 1), None);
         assert_eq!(word_at(s, 0, 36).as_deref(), Some("src/main.rs:12"));
         assert_eq!(word_at(s, 0, 3), None, "a space");

@@ -1,0 +1,20 @@
+{
+  "description": "Hand-authored synthetic method inventory based on isolated codex-cli 0.164.0 generated schemas. Not a generated schema or captured session.",
+  "clientRequests": {"oneOf": [
+    {"properties":{"params":{"$ref":"#/definitions/ConfigReadParams"},"method":{"enum":["config/read"],"type":"string"}},"required":["id","method","params"]},
+    {"properties":{"params":{"$ref":"#/definitions/InitializeParams"},"method":{"enum":["initialize"],"type":"string"}},"required":["id","method","params"]},
+    {"properties":{"params":{"$ref":"#/definitions/ThreadStartParams"},"method":{"enum":["thread/start"],"type":"string"}},"required":["id","method","params"]},
+    {"properties":{"params":{"$ref":"#/definitions/ThreadResumeParams"},"method":{"enum":["thread/resume"],"type":"string"}},"required":["id","method","params"]},
+    {"properties":{"params":{"$ref":"#/definitions/ThreadReadParams"},"method":{"enum":["thread/read"],"type":"string"}},"required":["id","method","params"]},
+    {"properties":{"params":{"$ref":"#/definitions/ThreadTurnsListParams"},"method":{"enum":["thread/turns/list"],"type":"string"}},"required":["id","method","params"]},
+    {"properties":{"params":{"$ref":"#/definitions/ThreadItemsListParams"},"method":{"enum":["thread/items/list"],"type":"string"}},"required":["id","method","params"]},
+    {"properties":{"params":{"$ref":"#/definitions/TurnStartParams"},"method":{"enum":["turn/start"],"type":"string"}},"required":["id","method","params"]},
+    {"properties":{"params":{"$ref":"#/definitions/TurnInterruptParams"},"method":{"enum":["turn/interrupt"],"type":"string"}},"required":["id","method","params"]}
+  ]},
+  "serverRequests": {"oneOf": [
+    {"properties":{"params":{"$ref":"#/definitions/CommandExecutionRequestApprovalParams"},"method":{"enum":["item/commandExecution/requestApproval"],"type":"string"}},"required":["id","method","params"]},
+    {"properties":{"params":{"$ref":"#/definitions/FileChangeRequestApprovalParams"},"method":{"enum":["item/fileChange/requestApproval"],"type":"string"}},"required":["id","method","params"]},
+    {"properties":{"params":{"$ref":"#/definitions/PermissionsRequestApprovalParams"},"method":{"enum":["item/permissions/requestApproval"],"type":"string"}},"required":["id","method","params"]},
+    {"properties":{"params":{"$ref":"#/definitions/ToolRequestUserInputParams"},"method":{"enum":["item/tool/requestUserInput"],"type":"string"}},"required":["id","method","params"]}
+  ]}
+}

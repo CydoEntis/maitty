@@ -80,7 +80,9 @@ fn word() -> String {
 /// The letters drawn in the second colour: the first "AI" the name hides, if it hides one.
 fn ai_letters() -> std::ops::Range<usize> {
     let w: Vec<char> = word().chars().collect();
-    w.windows(2).position(|p| p == ['A', 'I']).map_or(0..0, |i| i..i + 2)
+    w.windows(2)
+        .position(|p| p == ['A', 'I'])
+        .map_or(0..0, |i| i..i + 2)
 }
 
 fn letter(ch: char) -> Option<&'static [&'static str; 5]> {
@@ -89,13 +91,21 @@ fn letter(ch: char) -> Option<&'static [&'static str; 5]> {
 
 /// Font columns the wordmark spans, gaps included.
 fn logo_columns() -> u16 {
-    let widths: Vec<u16> = word().chars().filter_map(letter).map(|g| g[0].len() as u16).collect();
+    let widths: Vec<u16> = word()
+        .chars()
+        .filter_map(letter)
+        .map(|g| g[0].len() as u16)
+        .collect();
     widths.iter().sum::<u16>() + widths.len().saturating_sub(1) as u16
 }
 
 /// Cells per font pixel at this width.
 fn pixel_width(screen_w: u16) -> u16 {
-    if screen_w >= WIDE_PIXELS_FROM && logo_columns() * 2 + 2 <= screen_w { 2 } else { 1 }
+    if screen_w >= WIDE_PIXELS_FROM && logo_columns() * 2 + 2 <= screen_w {
+        2
+    } else {
+        1
+    }
 }
 
 fn logo_width(screen_w: u16) -> u16 {
@@ -116,13 +126,27 @@ fn ease_out(t: f32, from: f32, frames: f32) -> f32 {
 /// The wordmark at `(x, y)` as filled cell backgrounds (a `█` leaves seams between rows). Each
 /// letter rises from the deep to its colour, left to right; nothing moves. `t` is the intro's
 /// frame, `SETTLED` its end.
-pub(in crate::client) fn draw_logo(buf: &mut Buffer, (mut x, y): (u16, u16), pw: u16, t: u64, th: &Theme) {
+pub(in crate::client) fn draw_logo(
+    buf: &mut Buffer,
+    (mut x, y): (u16, u16),
+    pw: u16,
+    t: u64,
+    th: &Theme,
+) {
     let c = th.splash();
     let ai = ai_letters();
     for (k, ch) in word().chars().enumerate() {
         let Some(g) = letter(ch) else { continue };
         let lit = ease_out(t as f32, k as f32 * RISE_STAGGER, RISE_FRAMES);
-        let colour = mix(c.deep, if ai.contains(&k) { c.wordmark_ai } else { c.wordmark }, lit);
+        let colour = mix(
+            c.deep,
+            if ai.contains(&k) {
+                c.wordmark_ai
+            } else {
+                c.wordmark
+            },
+            lit,
+        );
         for (r, row) in g.iter().enumerate() {
             for (col, b) in row.bytes().enumerate() {
                 if b != b'#' {
@@ -146,7 +170,9 @@ fn draw_swell(buf: &mut Buffer, (x, y): (u16, u16), w: u16, roll: u64, t: u64, t
     for k in 0..w {
         let edge = (k.min(w - 1 - k) as f32 / SWELL_FADE).min(1.0);
         let step = (k as u64 + roll / SWELL_STEP) as usize % SWELL.len();
-        let style = Style::default().fg(mix(th.bg, th.splash().swell, edge * shown)).bg(th.bg);
+        let style = Style::default()
+            .fg(mix(th.bg, th.splash().swell, edge * shown))
+            .bg(th.bg);
         put(buf, x + k, y, &[seg(SWELL[step], style)], x + k + 1);
     }
 }
@@ -156,7 +182,11 @@ fn draw_swell(buf: &mut Buffer, (x, y): (u16, u16), w: u16, roll: u64, t: u64, t
 pub(in crate::client) fn splash_options(app: &App) -> Vec<(String, String, char)> {
     let mut v = Vec::new();
     if !app.snap.terms.is_empty() {
-        v.push(("Resume where you left off".to_string(), "r".to_string(), 'r'));
+        v.push((
+            "Resume where you left off".to_string(),
+            "r".to_string(),
+            'r',
+        ));
     }
     v.push(("New session".to_string(), "n".to_string(), 'n'));
     v.push(("Open a project…".to_string(), "o".to_string(), 'o'));
@@ -194,47 +224,93 @@ fn away_line(app: &App, model: &[Proj], t: &Theme, width: u16) -> Vec<Seg> {
     let working = all.iter().filter(|s| s.status == Status::Working).count();
     let needs = all.iter().filter(|s| check::needs_you(s)).count();
     let finished = all.iter().filter(|s| check::finished(s)).count();
-    let failed = all.iter().filter(|s| check::shown(s).is_some_and(check::failed)).count();
+    let failed = all
+        .iter()
+        .filter(|s| check::shown(s).is_some_and(check::failed))
+        .count();
     if needs + working + finished + failed == 0 {
         return Vec::new();
     }
     let gap = || seg("   ", Style::default().bg(t.bg));
     let mut counts = vec![
-        seg(format!("{} {needs} need you", app.cfg.icons.blocked), Style::default().fg(t.blocked).bg(t.bg).add_modifier(Modifier::BOLD)),
+        seg(
+            format!("{} {needs} need you", app.cfg.icons.blocked),
+            Style::default()
+                .fg(t.blocked)
+                .bg(t.bg)
+                .add_modifier(Modifier::BOLD),
+        ),
         gap(),
-        seg(format!("{} {working} still working", glyph(app, Status::Working)), Style::default().fg(t.text).bg(t.bg)),
+        seg(
+            format!("{} {working} still working", glyph(app, Status::Working)),
+            Style::default().fg(t.text).bg(t.bg),
+        ),
         gap(),
-        seg(format!("{} {finished} finished", app.cfg.icons.done), Style::default().fg(t.done).bg(t.bg)),
+        seg(
+            format!("{} {finished} finished", app.cfg.icons.done),
+            Style::default().fg(t.done).bg(t.bg),
+        ),
     ];
     if failed > 0 {
         let noun = if failed == 1 { "check" } else { "checks" };
         counts.push(gap());
-        counts.push(seg(format!("{} {failed} {noun} failed", check::failed_mark(app)), Style::default().fg(t.err).bg(t.bg).add_modifier(Modifier::BOLD)));
+        counts.push(seg(
+            format!("{} {failed} {noun} failed", check::failed_mark(app)),
+            Style::default()
+                .fg(t.err)
+                .bg(t.bg)
+                .add_modifier(Modifier::BOLD),
+        ));
     }
     // The lead-in gives way before a count is cut off.
-    let mut v = vec![seg("while you were away   ", Style::default().fg(t.muted).bg(t.bg))];
+    let mut v = vec![seg(
+        "while you were away   ",
+        Style::default().fg(t.muted).bg(t.bg),
+    )];
     v.extend(counts.iter().cloned());
-    if width < NARROW || segs_width(&v) > width { counts } else { v }
+    if width < NARROW || segs_width(&v) > width {
+        counts
+    } else {
+        v
+    }
 }
 
 /// A key on a card: the accent when the card is chosen.
 fn cap(key: &str, on: bool, t: &Theme) -> Vec<Seg> {
-    let st = if on { Style::default().bg(t.accent).fg(t.acc_ink) } else { Style::default().bg(t.btn).fg(t.strong) };
+    let st = if on {
+        Style::default().bg(t.accent).fg(t.acc_ink)
+    } else {
+        Style::default().bg(t.btn).fg(t.strong)
+    };
     chip(key, st.add_modifier(Modifier::BOLD))
 }
 
 /// The version, barely there.
 fn foot(t: &Theme) -> Seg {
-    seg(format!(concat!(env!("APP_COMMAND"), " {}"), env!("CARGO_PKG_VERSION")), Style::default().fg(t.line).bg(t.bg))
+    seg(
+        format!(
+            concat!(env!("APP_COMMAND"), " {}"),
+            env!("CARGO_PKG_VERSION")
+        ),
+        Style::default().fg(t.line).bg(t.bg),
+    )
 }
 
 /// A newer release, or one installed and waiting for a restart: what the splash's banner says,
 /// and what `u` and a click on it do.
 fn release_news(app: &App) -> Option<(String, &'static str, ScreenHit)> {
     if let Some(v) = &app.update_available {
-        Some((format!(concat!("↑ ", env!("APP_COMMAND"), " {} is out"), v), "update", ScreenHit::Update))
+        Some((
+            format!(concat!("↑ ", env!("APP_COMMAND"), " {} is out"), v),
+            "update",
+            ScreenHit::Update,
+        ))
     } else if app.restart_needed() {
-        Some(("↻ a new version is installed".to_string(), "restart", ScreenHit::Restart))
+        Some((
+            "↻ a new version is installed".to_string(),
+            "restart",
+            ScreenHit::Restart,
+        ))
     } else {
         None
     }
@@ -245,16 +321,37 @@ const BANNER_ROWS: u16 = 4;
 
 /// The release banner at `r`: boxed as the look boxes a pane (ADR 0028), the news in the accent
 /// and `u` with what it does at the right; a click on it does the same.
-fn draw_banner(app: &mut App, buf: &mut Buffer, r: Rect, (news, what, hit_as): (String, &str, ScreenHit), t: &Theme) {
+fn draw_banner(
+    app: &mut App,
+    buf: &mut Buffer,
+    r: Rect,
+    (news, what, hit_as): (String, &str, ScreenHit),
+    t: &Theme,
+) {
     let look = Look::of(&app.cfg.ui);
     let ground = if look.hairline { t.bg } else { t.card };
     fill(buf, r, ground);
     panel_box(buf, r, look, Style::default().fg(t.accent).bg(ground));
     let y = r.y + 1;
     let mut key = crate::client::design::keycap(t, "u");
-    key.push(seg(format!(" {what}"), Style::default().fg(t.text).bg(ground)));
+    key.push(seg(
+        format!(" {what}"),
+        Style::default().fg(t.text).bg(ground),
+    ));
     let key_x = r.right().saturating_sub(segs_width(&key) + 2);
-    put(buf, r.x + 2, y, &[seg(news, Style::default().fg(t.accent).bg(ground).add_modifier(Modifier::BOLD))], key_x.saturating_sub(1));
+    put(
+        buf,
+        r.x + 2,
+        y,
+        &[seg(
+            news,
+            Style::default()
+                .fg(t.accent)
+                .bg(ground)
+                .add_modifier(Modifier::BOLD),
+        )],
+        key_x.saturating_sub(1),
+    );
     put(buf, key_x, y, &key, r.right().saturating_sub(1));
     hit(app, r, hit_as);
 }
@@ -263,8 +360,16 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     if app.splash_play.is_none() {
         app.splash_play = Some(plays(app));
     }
-    let clock = if app.motion_on() { app.started.elapsed().as_millis() as u64 / 50 } else { 0 };
-    let intro = if app.splash_play == Some(true) { clock } else { SETTLED };
+    let clock = if app.motion_on() {
+        app.started.elapsed().as_millis() as u64 / 50
+    } else {
+        0
+    };
+    let intro = if app.splash_play == Some(true) {
+        clock
+    } else {
+        SETTLED
+    };
     let model = app.screen_model();
     let opts = splash_options(app);
     let compact = area.height < COMPACT_BELOW;
@@ -276,37 +381,89 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     let away_rows = if away.is_empty() { 0 } else { 2 };
     let news = release_news(app);
     let banner_rows = if news.is_some() { BANNER_ROWS } else { 0 };
-    let cards: u16 = opts.iter().map(|o| rows_of(o.2)).sum::<u16>() + between * opts.len().saturating_sub(1) as u16;
+    let cards: u16 = opts.iter().map(|o| rows_of(o.2)).sum::<u16>()
+        + between * opts.len().saturating_sub(1) as u16;
     let height = LOGO_ROWS + 1 + 2 + 1 + away_rows + before_cards + banner_rows + cards + 1 + 1;
-    let mut y = area.y + (area.height.saturating_sub(height) / 2).saturating_sub(between).max(1);
+    let mut y = area.y
+        + (area.height.saturating_sub(height) / 2)
+            .saturating_sub(between)
+            .max(1);
     let center = |w: u16| area.x + area.width.saturating_sub(w) / 2;
     fill(f.buffer_mut(), area, t.bg);
 
     if logo_fits(area.width) {
-        draw_logo(f.buffer_mut(), (center(logo_width(area.width)), y), pixel_width(area.width), intro, t);
+        draw_logo(
+            f.buffer_mut(),
+            (center(logo_width(area.width)), y),
+            pixel_width(area.width),
+            intro,
+            t,
+        );
     } else {
         let name = crate::brand::APP_NAME;
-        let style = Style::default().fg(t.splash().wordmark).bg(t.bg).add_modifier(Modifier::BOLD);
-        put(f.buffer_mut(), center(name.width() as u16), y + LOGO_ROWS / 2, &[seg(name, style)], area.right());
+        let style = Style::default()
+            .fg(t.splash().wordmark)
+            .bg(t.bg)
+            .add_modifier(Modifier::BOLD);
+        put(
+            f.buffer_mut(),
+            center(name.width() as u16),
+            y + LOGO_ROWS / 2,
+            &[seg(name, style)],
+            area.right(),
+        );
     }
     y += LOGO_ROWS + 1;
     let swell_w = (logo_width(area.width) + SWELL_REACH * 2).min(area.width);
-    draw_swell(f.buffer_mut(), (center(swell_w), y), swell_w, clock, intro, t);
+    draw_swell(
+        f.buffer_mut(),
+        (center(swell_w), y),
+        swell_w,
+        clock,
+        intro,
+        t,
+    );
     y += 2;
     let tag = concat!(env!("APP_TAGLINE"), ".");
     let shown = ((intro as f32 - TAG_FROM) / TAG_FRAMES).clamp(0.0, 1.0);
-    let style = Style::default().fg(mix(t.bg, t.text, shown)).bg(t.bg).add_modifier(Modifier::ITALIC);
-    put(f.buffer_mut(), center(tag.width() as u16), y, &[seg(tag, style)], area.right());
+    let style = Style::default()
+        .fg(mix(t.bg, t.text, shown))
+        .bg(t.bg)
+        .add_modifier(Modifier::ITALIC);
+    put(
+        f.buffer_mut(),
+        center(tag.width() as u16),
+        y,
+        &[seg(tag, style)],
+        area.right(),
+    );
     y += 1;
     if !away.is_empty() {
-        put(f.buffer_mut(), center(segs_width(&away)), y + 1, &away, area.right());
+        put(
+            f.buffer_mut(),
+            center(segs_width(&away)),
+            y + 1,
+            &away,
+            area.right(),
+        );
         y += away_rows;
     }
     y += before_cards;
     // A release waiting: over the cards, where it can't be missed.
     if let Some(news) = news {
         let mw = CARD_MAX.min(area.width.saturating_sub(8));
-        draw_banner(app, f.buffer_mut(), Rect { x: center(mw), y, width: mw, height: 3 }, news, t);
+        draw_banner(
+            app,
+            f.buffer_mut(),
+            Rect {
+                x: center(mw),
+                y,
+                width: mw,
+                height: 3,
+            },
+            news,
+            t,
+        );
         y += banner_rows;
     }
 
@@ -317,22 +474,55 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     for (i, (label, key, c)) in opts.iter().enumerate() {
         let on = i == sel;
         let rows = rows_of(*c);
-        let card = Rect { x: mx, y, width: mw, height: rows };
+        let card = Rect {
+            x: mx,
+            y,
+            width: mw,
+            height: rows,
+        };
         let bg = if on { t.card2 } else { t.bg };
         let buf = f.buffer_mut();
         fill(buf, card, bg);
         if on {
             for j in 0..rows {
-                put(buf, mx, y + j, &[seg("▌", Style::default().fg(t.accent).bg(bg))], mx + 1);
+                put(
+                    buf,
+                    mx,
+                    y + j,
+                    &[seg("▌", Style::default().fg(t.accent).bg(bg))],
+                    mx + 1,
+                );
             }
         }
-        let label_style = if on { Style::default().fg(t.strong).bg(bg).add_modifier(Modifier::BOLD) } else { Style::default().fg(t.text).bg(bg) };
+        let label_style = if on {
+            Style::default()
+                .fg(t.strong)
+                .bg(bg)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(t.text).bg(bg)
+        };
         let keys = cap(key, on, t);
         let key_x = card.right().saturating_sub(segs_width(&keys) + 1);
-        put(buf, mx + 2, y, &[seg(label.clone(), label_style)], key_x.saturating_sub(1));
+        put(
+            buf,
+            mx + 2,
+            y,
+            &[seg(label.clone(), label_style)],
+            key_x.saturating_sub(1),
+        );
         put(buf, key_x, y, &keys, card.right());
         if rows == 2 {
-            put(buf, mx + 2, y + 1, &[seg(last_place(app, &model), Style::default().fg(t.muted).bg(bg))], card.right().saturating_sub(2));
+            put(
+                buf,
+                mx + 2,
+                y + 1,
+                &[seg(
+                    last_place(app, &model),
+                    Style::default().fg(t.muted).bg(bg),
+                )],
+                card.right().saturating_sub(2),
+            );
         }
         hit(app, card, ScreenHit::SplashCard(i));
         y += rows + between;
@@ -340,20 +530,41 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     y += 1 - between;
 
     let mut hints = Vec::new();
-    for (i, (k, what)) in [("↑↓", "choose"), ("Enter", "open"), ("?", "keys")].into_iter().enumerate() {
+    for (i, (k, what)) in [("↑↓", "choose"), ("Enter", "open"), ("?", "keys")]
+        .into_iter()
+        .enumerate()
+    {
         if i > 0 {
             hints.push(seg("   ", Style::default().bg(t.bg)));
         }
         hints.extend(crate::client::design::keycap(t, k));
-        hints.push(seg(format!(" {what}"), Style::default().fg(t.muted).bg(t.bg)));
+        hints.push(seg(
+            format!(" {what}"),
+            Style::default().fg(t.muted).bg(t.bg),
+        ));
     }
     let hx = center(segs_width(&hints));
     put(f.buffer_mut(), hx, y, &hints, area.right());
-    hit(app, Rect { x: hx, y, width: segs_width(&hints), height: 1 }, ScreenHit::SplashKey('?'));
+    hit(
+        app,
+        Rect {
+            x: hx,
+            y,
+            width: segs_width(&hints),
+            height: 1,
+        },
+        ScreenHit::SplashKey('?'),
+    );
 
     let foot = foot(t);
     let fw = segs_width(std::slice::from_ref(&foot));
-    put(f.buffer_mut(), area.right().saturating_sub(fw + 2), area.bottom().saturating_sub(1), &[foot], area.right());
+    put(
+        f.buffer_mut(),
+        area.right().saturating_sub(fw + 2),
+        area.bottom().saturating_sub(1),
+        &[foot],
+        area.right(),
+    );
 }
 
 /// True the first time this version runs (its number is not what the last start left in the data
@@ -364,7 +575,9 @@ pub(in crate::client) fn first_start_of_this_version() -> bool {
     if std::fs::read_to_string(&file).is_ok_and(|v| v.trim() == now) {
         return false;
     }
-    if let Err(e) = std::fs::create_dir_all(file.parent().unwrap_or(&file)).and_then(|()| std::fs::write(&file, now)) {
+    if let Err(e) = std::fs::create_dir_all(file.parent().unwrap_or(&file))
+        .and_then(|()| std::fs::write(&file, now))
+    {
         tracing::warn!("could not record the splash version: {e}");
     }
     true
@@ -377,7 +590,11 @@ mod tests {
 
     fn lit(buf: &Buffer, bg: Color) -> Vec<(u16, u16, Color)> {
         let a = buf.area;
-        (a.top()..a.bottom()).flat_map(|y| (a.left()..a.right()).map(move |x| (x, y))).filter(|&(x, y)| buf[(x, y)].bg != bg).map(|(x, y)| (x, y, buf[(x, y)].bg)).collect()
+        (a.top()..a.bottom())
+            .flat_map(|y| (a.left()..a.right()).map(move |x| (x, y)))
+            .filter(|&(x, y)| buf[(x, y)].bg != bg)
+            .map(|(x, y)| (x, y, buf[(x, y)].bg))
+            .collect()
     }
 
     fn theme() -> Theme {
@@ -395,43 +612,86 @@ mod tests {
 
     #[test]
     fn the_settled_wordmark_is_every_pixel_as_a_filled_cell() {
-        let pixels: usize = word().chars().filter_map(letter).map(|g| g.iter().map(|r| r.matches('#').count()).sum::<usize>()).sum();
+        let pixels: usize = word()
+            .chars()
+            .filter_map(letter)
+            .map(|g| g.iter().map(|r| r.matches('#').count()).sum::<usize>())
+            .sum();
         for pw in [1u16, 2] {
             let cells = wordmark(SETTLED, pw);
-            assert_eq!(cells.len(), pixels * pw as usize, "pw {pw}: one filled cell per pixel, no seams");
-            assert!(cells.iter().all(|(_, y, _)| (4..4 + LOGO_ROWS).contains(y)), "five rows tall");
+            assert_eq!(
+                cells.len(),
+                pixels * pw as usize,
+                "pw {pw}: one filled cell per pixel, no seams"
+            );
+            assert!(
+                cells.iter().all(|(_, y, _)| (4..4 + LOGO_ROWS).contains(y)),
+                "five rows tall"
+            );
         }
     }
 
     #[test]
     fn the_ai_the_name_hides_is_in_its_own_colour() {
         let c = theme().splash();
-        let colours: Vec<Color> = wordmark(SETTLED, 1).into_iter().map(|(.., col)| col).collect();
-        assert!(colours.iter().all(|col| [c.wordmark, c.wordmark_ai].contains(col)));
-        assert_eq!(colours.contains(&c.wordmark_ai), !ai_letters().is_empty(), "the A and I stand out when the name has them");
+        let colours: Vec<Color> = wordmark(SETTLED, 1)
+            .into_iter()
+            .map(|(.., col)| col)
+            .collect();
+        assert!(
+            colours
+                .iter()
+                .all(|col| [c.wordmark, c.wordmark_ai].contains(col))
+        );
+        assert_eq!(
+            colours.contains(&c.wordmark_ai),
+            !ai_letters().is_empty(),
+            "the A and I stand out when the name has them"
+        );
     }
 
     #[test]
     fn the_letters_rise_from_the_deep_left_to_right_without_moving() {
         let deep = theme().splash().deep;
         let at = |frame| wordmark(frame, 1);
-        let place = |cells: Vec<(u16, u16, Color)>| cells.into_iter().map(|(x, y, _)| (x, y)).collect::<Vec<_>>();
-        assert_eq!(place(at(0)), place(at(SETTLED)), "every pixel is in place from the first frame");
-        assert!(at(0).iter().all(|(.., c)| *c == deep), "frame 0: all deep water");
+        let place = |cells: Vec<(u16, u16, Color)>| {
+            cells
+                .into_iter()
+                .map(|(x, y, _)| (x, y))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            place(at(0)),
+            place(at(SETTLED)),
+            "every pixel is in place from the first frame"
+        );
+        assert!(
+            at(0).iter().all(|(.., c)| *c == deep),
+            "frame 0: all deep water"
+        );
         let mid = at(5);
         let first = mid.iter().min_by_key(|(x, ..)| *x).unwrap().2;
         let last = mid.iter().max_by_key(|(x, ..)| *x).unwrap().2;
-        assert!(first != deep && last == deep, "the first letter has risen, the last not yet");
+        assert!(
+            first != deep && last == deep,
+            "the first letter has risen, the last not yet"
+        );
     }
 
     #[test]
     fn the_font_spells_any_name_and_the_wordmark_never_overflows() {
         for ch in ('A'..='Z').chain('0'..='9') {
             let g = letter(ch).unwrap_or_else(|| panic!("no glyph for {ch}"));
-            assert!(g.iter().all(|row| row.len() == g[0].len()), "{ch}: every row the same width");
+            assert!(
+                g.iter().all(|row| row.len() == g[0].len()),
+                "{ch}: every row the same width"
+            );
         }
         for w in [60, 80, 109, 110, 160] {
-            assert!(!logo_fits(w) || logo_width(w) + 2 <= w, "{w} columns: the wordmark fits with a margin");
+            assert!(
+                !logo_fits(w) || logo_width(w) + 2 <= w,
+                "{w} columns: the wordmark fits with a margin"
+            );
         }
         assert_eq!(pixel_width(109), 1);
         assert_eq!(pixel_width(110), 2, "two-cell pixels from 110 columns");

@@ -2,8 +2,8 @@
 //! `--remote host` the same messages go through `ssh host <app> proxy` instead, to the
 //! server on that machine.
 
-use crate::protocol::{self, ClientMsg, ServerMsg};
 use crate::brand::{APP_COMMAND, APP_ENV};
+use crate::protocol::{self, ClientMsg, ServerMsg};
 use anyhow::{Context, Result, bail};
 use futures_util::{SinkExt, StreamExt};
 use interprocess::local_socket::tokio::{RecvHalf, SendHalf, Stream, prelude::*};
@@ -20,6 +20,57 @@ pub type Writer = FramedWrite<Box<dyn tokio::io::AsyncWrite + Send + Unpin>, Len
 type Halves = (RecvHalf, SendHalf);
 
 const MAX_FRAME: usize = 64 * 1024 * 1024;
+pub(crate) const STRUCTURED_ENV: [&str; 4] = [
+    concat!(env!("APP_ENV"), "_CONVERSATION_ID"),
+    concat!(env!("APP_ENV"), "_CONVERSATION_GENERATION"),
+    concat!(env!("APP_ENV"), "_CONVERSATION_CONNECTION"),
+    concat!(env!("APP_ENV"), "_CONVERSATION_AUTH"),
+];
+pub(crate) const RUNTIME_ROUTE_ENV: [&str; 6] = [
+    concat!(env!("APP_ENV"), "_SOCKET"),
+    concat!(env!("APP_ENV"), "_CONFIG"),
+    concat!(env!("APP_ENV"), "_DATA_DIR"),
+    concat!(env!("APP_ENV"), "_REMOTE"),
+    concat!(env!("APP_ENV"), "_SSH"),
+    concat!(env!("APP_ENV"), "_REMOTE_CMD"),
+];
+
+pub(crate) fn has_structured_identity() -> bool {
+    STRUCTURED_ENV
+        .iter()
+        .any(|key| std::env::var_os(key).is_some())
+}
+
+fn structured_identity(
+    values: [Option<std::ffi::OsString>; 4],
+) -> Result<Option<protocol::StructuredIdentity>> {
+    if values.iter().all(Option::is_none) {
+        return Ok(None);
+    }
+    let parsed = || -> Option<_> {
+        let number = |index: usize| {
+            values[index]
+                .as_ref()?
+                .to_str()?
+                .parse::<u64>()
+                .ok()
+                .filter(|number| *number != 0)
+        };
+        let token = values[3].as_ref()?.to_str()?.to_owned();
+        if token.is_empty() || token.chars().any(char::is_control) {
+            return None;
+        }
+        Some(protocol::StructuredIdentity {
+            conversation: crate::conversation::ConversationId(number(0)?),
+            generation: number(1)?,
+            connection: number(2)?,
+            token,
+        })
+    };
+    parsed()
+        .map(Some)
+        .ok_or_else(|| anyhow::anyhow!("Structured runtime identity is incomplete or malformed"))
+}
 
 /// The running server is another the app version: the two can't talk (see PROTOCOL_VERSION).
 #[derive(Debug)]
@@ -31,7 +82,17 @@ impl std::fmt::Display for OtherVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            concat!("the running server is another ", env!("APP_COMMAND"), " version (protocol v{}, this one v{}); run ", env!("APP_COMMAND"), " in a terminal to restart it, or `", env!("APP_COMMAND"), " kill-server` and run ", env!("APP_COMMAND"), " again"),
+            concat!(
+                "the running server is another ",
+                env!("APP_COMMAND"),
+                " version (protocol v{}, this one v{}); run ",
+                env!("APP_COMMAND"),
+                " in a terminal to restart it, or `",
+                env!("APP_COMMAND"),
+                " kill-server` and run ",
+                env!("APP_COMMAND"),
+                " again"
+            ),
             self.daemon,
             protocol::PROTOCOL_VERSION
         )
@@ -42,7 +103,9 @@ impl std::error::Error for OtherVersion {}
 
 /// The protocol of the running server when an error says it is another the app version.
 pub fn other_version(e: &anyhow::Error) -> Option<u32> {
-    e.chain().find_map(|c| c.downcast_ref::<OtherVersion>()).map(|o| o.daemon)
+    e.chain()
+        .find_map(|c| c.downcast_ref::<OtherVersion>())
+        .map(|o| o.daemon)
 }
 
 /// Where the server notes its process id, so the app of another version can still stop it.
@@ -52,7 +115,8 @@ pub fn pid_file() -> std::path::PathBuf {
 
 /// Server identity. `<APP>_SOCKET` picks a separate server (like `tmux -L`).
 pub fn socket_id() -> String {
-    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
+    let label =
+        std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
     let user = std::env::var("USERNAME")
         .or_else(|_| std::env::var("USER"))
         .unwrap_or_else(|_| "user".into());
@@ -82,32 +146,50 @@ fn socket_dir() -> Result<std::path::PathBuf> {
     use std::os::unix::fs::{DirBuilderExt, MetadataExt};
     // SAFETY: getuid has no preconditions and can't fail.
     let uid = unsafe { libc::getuid() };
-    let base = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).filter(|p| p.is_dir()).unwrap_or_else(std::env::temp_dir);
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_dir())
+        .unwrap_or_else(std::env::temp_dir);
     let dir = base.join(format!("{APP_COMMAND}-{uid}"));
     match std::fs::DirBuilder::new().mode(0o700).create(&dir) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e).with_context(|| format!("creating {}", dir.display())),
     }
-    let meta = std::fs::symlink_metadata(&dir).with_context(|| format!("checking {}", dir.display()))?;
+    let meta =
+        std::fs::symlink_metadata(&dir).with_context(|| format!("checking {}", dir.display()))?;
     if !meta.is_dir() || meta.uid() != uid || meta.mode() & 0o077 != 0 {
-        anyhow::bail!(concat!("{} isn't a private folder of yours; remove it and start ", env!("APP_COMMAND"), " again"), dir.display());
+        anyhow::bail!(
+            concat!(
+                "{} isn't a private folder of yours; remove it and start ",
+                env!("APP_COMMAND"),
+                " again"
+            ),
+            dir.display()
+        );
     }
     Ok(dir)
 }
 
 fn codec() -> LengthDelimitedCodec {
-    LengthDelimitedCodec::builder().max_frame_length(MAX_FRAME).new_codec()
+    LengthDelimitedCodec::builder()
+        .max_frame_length(MAX_FRAME)
+        .new_codec()
 }
 
 pub fn framed(stream: Stream) -> (Reader, Writer) {
     let (r, w) = stream.split();
-    (FramedRead::new(Box::new(r), codec()), FramedWrite::new(Box::new(w), codec()))
+    (
+        FramedRead::new(Box::new(r), codec()),
+        FramedWrite::new(Box::new(w), codec()),
+    )
 }
 
 /// The machine whose server this talks to (`--remote`), if not this one.
 pub fn remote() -> Option<String> {
-    std::env::var(concat!(env!("APP_ENV"), "_REMOTE")).ok().filter(|s| !s.trim().is_empty())
+    std::env::var(concat!(env!("APP_ENV"), "_REMOTE"))
+        .ok()
+        .filter(|s| !s.trim().is_empty())
 }
 
 /// What ssh said when it failed (shown instead of a bare "connection closed").
@@ -119,7 +201,8 @@ async fn connect_remote(host: &str) -> Result<(Reader, Writer)> {
     let ssh = std::env::var(concat!(env!("APP_ENV"), "_SSH")).unwrap_or_else(|_| "ssh".into());
     let mut words = ssh.split_whitespace();
     let prog = words.next().unwrap_or("ssh").to_string();
-    let remote_cmd = std::env::var(concat!(env!("APP_ENV"), "_REMOTE_CMD")).unwrap_or_else(|_| env!("APP_COMMAND").into());
+    let remote_cmd = std::env::var(concat!(env!("APP_ENV"), "_REMOTE_CMD"))
+        .unwrap_or_else(|_| env!("APP_COMMAND").into());
     let mut cmd = tokio::process::Command::new(&prog);
     cmd.args(words)
         .arg("-T")
@@ -133,7 +216,9 @@ async fn connect_remote(host: &str) -> Result<(Reader, Writer)> {
     {
         cmd.creation_flags(crate::proc::CREATE_NO_WINDOW);
     }
-    let mut child = cmd.spawn().with_context(|| format!("running {prog} (is OpenSSH installed?)"))?;
+    let mut child = cmd
+        .spawn()
+        .with_context(|| format!("running {prog} (is OpenSSH installed?)"))?;
     let stdin = child.stdin.take().context("ssh stdin")?;
     let stdout = child.stdout.take().context("ssh stdout")?;
     if let Some(mut err) = child.stderr.take() {
@@ -145,7 +230,16 @@ async fn connect_remote(host: &str) -> Result<(Reader, Writer)> {
         });
     }
     // ssh lives as long as the connection's writing half.
-    Ok((FramedRead::new(Box::new(stdout), codec()), FramedWrite::new(Box::new(SshIn { stdin, _child: child }), codec())))
+    Ok((
+        FramedRead::new(Box::new(stdout), codec()),
+        FramedWrite::new(
+            Box::new(SshIn {
+                stdin,
+                _child: child,
+            }),
+            codec(),
+        ),
+    ))
 }
 
 /// ssh's stdin, holding ssh itself: dropping the connection ends it (kill_on_drop), so
@@ -156,15 +250,25 @@ struct SshIn {
 }
 
 impl tokio::io::AsyncWrite for SshIn {
-    fn poll_write(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &[u8]) -> std::task::Poll<std::io::Result<usize>> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
         std::pin::Pin::new(&mut self.stdin).poll_write(cx, buf)
     }
 
-    fn poll_flush(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
         std::pin::Pin::new(&mut self.stdin).poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
         std::pin::Pin::new(&mut self.stdin).poll_shutdown(cx)
     }
 }
@@ -175,7 +279,7 @@ pub async fn proxy() -> Result<()> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut stream = connect().await;
     if stream.is_err() {
-        spawn_daemon(None)?;
+        spawn_daemon(None, false)?;
         for _ in 0..60 {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             stream = connect().await;
@@ -184,7 +288,13 @@ pub async fn proxy() -> Result<()> {
             }
         }
     }
-    let (mut sr, mut sw) = stream.context(concat!("couldn't reach or start the ", env!("APP_COMMAND"), " server here"))?.split();
+    let (mut sr, mut sw) = stream
+        .context(concat!(
+            "couldn't reach or start the ",
+            env!("APP_COMMAND"),
+            " server here"
+        ))?
+        .split();
     let up = async {
         let mut stdin = tokio::io::stdin();
         let mut buf = vec![0u8; 64 * 1024];
@@ -257,19 +367,35 @@ pub async fn recv_client(r: &mut Reader) -> Result<Option<ClientMsg>> {
 
 /// Connect and complete the handshake.
 pub async fn open(attach: bool) -> Result<(Reader, Writer)> {
+    let structured = structured_identity(STRUCTURED_ENV.map(std::env::var_os))?;
     let (mut r, mut w) = match remote() {
         Some(host) => connect_remote(&host).await?,
         None => framed(connect().await?),
     };
     // A command run inside a pane says which (with the pane's secret): what it may do is
     // that pane's to say. the app's own window is you.
-    let from = (!attach)
+    let from = (!attach && structured.is_none())
         .then(|| {
-            let term = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok()?.parse().ok()?;
-            Some((term, std::env::var(concat!(env!("APP_ENV"), "_PANE_TOKEN")).unwrap_or_default()))
+            let term = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID"))
+                .ok()?
+                .parse()
+                .ok()?;
+            Some((
+                term,
+                std::env::var(concat!(env!("APP_ENV"), "_PANE_TOKEN")).unwrap_or_default(),
+            ))
         })
         .flatten();
-    send(&mut w, &ClientMsg::Hello { version: protocol::PROTOCOL_VERSION, attach, from }).await?;
+    send(
+        &mut w,
+        &ClientMsg::Hello {
+            version: protocol::PROTOCOL_VERSION,
+            attach,
+            from,
+            structured,
+        },
+    )
+    .await?;
     let first = match recv_server(&mut r).await {
         Ok(m) => m,
         Err(e) if remote().is_some() => return Err(e.context(ssh_failure())),
@@ -286,13 +412,38 @@ pub async fn open(attach: bool) -> Result<(Reader, Writer)> {
     }
 }
 
+/// Connect as the local human user, without inheriting a pane's runtime identity or remote host.
+pub async fn open_for_user(attach: bool) -> Result<(Reader, Writer)> {
+    let (mut reader, mut writer) = framed(connect().await?);
+    send(
+        &mut writer,
+        &ClientMsg::Hello {
+            version: protocol::PROTOCOL_VERSION,
+            attach,
+            from: None,
+            structured: None,
+        },
+    )
+    .await?;
+    match recv_server(&mut reader).await? {
+        Some(ServerMsg::Welcome { version }) if version == protocol::PROTOCOL_VERSION => {
+            Ok((reader, writer))
+        }
+        Some(ServerMsg::Welcome { version }) => Err(OtherVersion { daemon: version }.into()),
+        Some(ServerMsg::Error(error)) => bail!(error),
+        _ => bail!("unexpected handshake from daemon"),
+    }
+}
+
 fn ssh_failure() -> String {
     // Give ssh a moment to say why.
     std::thread::sleep(std::time::Duration::from_millis(300));
     let err = SSH_ERR.lock().unwrap().clone();
     let host = remote().unwrap_or_default();
     if err.contains("not found") || err.contains("not recognized") {
-        format!("{host} has no `{APP_COMMAND}` on its PATH for ssh; install it there, or set {APP_ENV}_REMOTE_CMD to its full path ({err})")
+        format!(
+            "{host} has no `{APP_COMMAND}` on its PATH for ssh; install it there, or set {APP_ENV}_REMOTE_CMD to its full path ({err})"
+        )
     } else if err.is_empty() {
         format!("couldn't reach {APP_COMMAND} on {host} over ssh")
     } else {
@@ -302,31 +453,46 @@ fn ssh_failure() -> String {
 
 /// Connect, starting the daemon in the background if none is running.
 pub async fn open_or_spawn(attach: bool) -> Result<(Reader, Writer)> {
-    open_or_spawn_with(attach, None).await
+    open_or_spawn_with(attach, None, false).await
 }
 
 /// Reconnect after replacing the executable, spawning the newly installed image if needed.
 pub async fn open_or_spawn_installed(attach: bool) -> Result<(Reader, Writer)> {
     let exe = crate::update::installed_executable()?;
-    open_or_spawn_with(attach, Some(exe)).await
+    open_or_spawn_with(attach, Some(exe), false).await
 }
 
-async fn open_or_spawn_with(attach: bool, exe: Option<std::path::PathBuf>) -> Result<(Reader, Writer)> {
-    // Over ssh the far side starts its own server.
-    if remote().is_some() {
+/// Connect as the local user, starting the bundled daemon image when none is running.
+pub async fn open_or_spawn_for_user(
+    attach: bool,
+    daemon_executable: std::path::PathBuf,
+) -> Result<(Reader, Writer)> {
+    open_or_spawn_with(attach, Some(daemon_executable), true).await
+}
+
+async fn open_or_spawn_with(
+    attach: bool,
+    exe: Option<std::path::PathBuf>,
+    for_user: bool,
+) -> Result<(Reader, Writer)> {
+    if !for_user && has_structured_identity() {
         return open(attach).await;
     }
-    match open(attach).await {
+    // Over ssh the far side starts its own server.
+    if !for_user && remote().is_some() {
+        return open(attach).await;
+    }
+    match open_identity(attach, for_user).await {
         Ok(c) => return Ok(c),
         // A server is running: starting another would only fail to take its socket.
         Err(e) if other_version(&e).is_some() => return Err(e),
         Err(_) => {}
     }
-    spawn_daemon(exe.as_deref())?;
+    spawn_daemon(exe.as_deref(), for_user)?;
     let mut last = None;
     for _ in 0..60 {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        match open(attach).await {
+        match open_identity(attach, for_user).await {
             Ok(c) => return Ok(c),
             Err(e) => last = Some(e),
         }
@@ -334,13 +500,40 @@ async fn open_or_spawn_with(attach: bool, exe: Option<std::path::PathBuf>) -> Re
     Err(last.unwrap_or_else(|| anyhow::anyhow!("daemon did not start")))
 }
 
-fn spawn_daemon(exe: Option<&std::path::Path>) -> Result<()> {
+async fn open_identity(attach: bool, for_user: bool) -> Result<(Reader, Writer)> {
+    if for_user {
+        open_for_user(attach).await
+    } else {
+        open(attach).await
+    }
+}
+
+fn spawn_daemon(exe: Option<&std::path::Path>, for_user: bool) -> Result<()> {
+    daemon_command(exe, for_user)?
+        .spawn()
+        .context("starting the daemon")?;
+    Ok(())
+}
+
+fn daemon_command(exe: Option<&std::path::Path>, for_user: bool) -> Result<std::process::Command> {
     let current = std::env::current_exe()?;
     let mut cmd = std::process::Command::new(exe.unwrap_or(&current));
     cmd.arg("daemon")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
+    if for_user {
+        // A GUI started inside a pane still represents the local human, not that pane.
+        for key in STRUCTURED_ENV.into_iter().chain([
+            concat!(env!("APP_ENV"), "_TERM_ID"),
+            concat!(env!("APP_ENV"), "_PANE_TOKEN"),
+            concat!(env!("APP_ENV"), "_REMOTE"),
+            concat!(env!("APP_ENV"), "_SSH"),
+            concat!(env!("APP_ENV"), "_REMOTE_CMD"),
+        ]) {
+            cmd.env_remove(key);
+        }
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -359,16 +552,80 @@ fn spawn_daemon(exe: Option<&std::path::Path>) -> Result<()> {
             });
         }
     }
-    cmd.spawn().context("starting the daemon")?;
-    Ok(())
+    Ok(cmd)
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
+    fn desktop_daemon_command_is_fixed_and_clears_inherited_runtime_routes() {
+        let command = super::daemon_command(None, true).unwrap();
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            [std::ffi::OsStr::new("daemon")]
+        );
+        let removed = command
+            .get_envs()
+            .filter(|(_, value)| value.is_none())
+            .map(|(key, _)| key.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        for key in super::STRUCTURED_ENV.into_iter().chain([
+            concat!(env!("APP_ENV"), "_TERM_ID"),
+            concat!(env!("APP_ENV"), "_PANE_TOKEN"),
+            concat!(env!("APP_ENV"), "_REMOTE"),
+            concat!(env!("APP_ENV"), "_SSH"),
+            concat!(env!("APP_ENV"), "_REMOTE_CMD"),
+        ]) {
+            assert!(removed.iter().any(|removed| removed == key));
+        }
+        for key in [
+            concat!(env!("APP_ENV"), "_CONFIG"),
+            concat!(env!("APP_ENV"), "_DATA_DIR"),
+            concat!(env!("APP_ENV"), "_SOCKET"),
+        ] {
+            assert!(!removed.iter().any(|removed| removed == key));
+        }
+    }
+
+    #[test]
+    fn structured_identity_is_explicit_and_partial_claims_never_become_human() {
+        assert!(
+            super::structured_identity([None, None, None, None])
+                .unwrap()
+                .is_none()
+        );
+        for values in [
+            [Some("1".into()), None, None, None],
+            [None, None, None, Some("".into())],
+            [
+                Some("1".into()),
+                Some("0".into()),
+                Some("1".into()),
+                Some("secret".into()),
+            ],
+        ] {
+            assert!(super::structured_identity(values).is_err());
+        }
+        let claim = super::structured_identity([
+            Some("1".into()),
+            Some("2".into()),
+            Some("3".into()),
+            Some("synthetic-token".into()),
+        ])
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            (claim.conversation.0, claim.generation, claim.connection),
+            (1, 2, 3)
+        );
+        assert!(!format!("{claim:?}").contains("synthetic-token"));
+    }
+    #[test]
     fn a_bad_message_is_a_decode_error() {
         let e = crate::protocol::decode::<crate::protocol::ServerMsg>(&[0xc1, 0xff]).unwrap_err();
         assert!(super::is_decode_error(&e));
-        assert!(!super::is_decode_error(&anyhow::anyhow!("connection reset")));
+        assert!(!super::is_decode_error(&anyhow::anyhow!(
+            "connection reset"
+        )));
     }
 }

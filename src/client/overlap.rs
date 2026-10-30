@@ -18,14 +18,24 @@ pub struct Overlap {
 /// doesn't ignore.
 fn uncommitted(dir: &Path) -> Vec<String> {
     let mut files: Vec<String> = Vec::new();
-    for args in [&["diff", "--name-only", "HEAD"][..], &["ls-files", "--others", "--exclude-standard"][..]] {
+    for args in [
+        &["diff", "--name-only", "HEAD"][..],
+        &["ls-files", "--others", "--exclude-standard"][..],
+    ] {
         files.extend(names(crate::proc::git(dir, args)));
     }
     files
 }
 
 fn names(out: Result<String, String>) -> Vec<String> {
-    out.map(|o| o.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect()).unwrap_or_default()
+    out.map(|o| {
+        o.lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 /// The files two or more of these checkouts (name, folder) have each changed since their
@@ -36,12 +46,24 @@ fn names(out: Result<String, String>) -> Vec<String> {
 /// counts as its own change, and two branches cut from the same place "share" hundreds of
 /// files neither of them touched.
 pub fn between(checkouts: &[(String, PathBuf)]) -> Vec<Overlap> {
-    let head = |dir: &Path| crate::proc::git(dir, &["rev-parse", "HEAD"]).ok().map(|h| h.trim().to_string());
-    let at: Vec<(&String, &PathBuf, Option<String>, Vec<String>)> = checkouts.iter().map(|(name, dir)| (name, dir, head(dir), uncommitted(dir))).collect();
+    let head = |dir: &Path| {
+        crate::proc::git(dir, &["rev-parse", "HEAD"])
+            .ok()
+            .map(|h| h.trim().to_string())
+    };
+    let at: Vec<(&String, &PathBuf, Option<String>, Vec<String>)> = checkouts
+        .iter()
+        .map(|(name, dir)| (name, dir, head(dir), uncommitted(dir)))
+        .collect();
     // What a checkout committed since a commit: asked once per (checkout, commit).
     let mut since: BTreeMap<(usize, String), Vec<String>> = BTreeMap::new();
     let mut changed = |i: usize, base: &str| -> Vec<String> {
-        let committed = since.entry((i, base.to_string())).or_insert_with(|| names(crate::proc::git(at[i].1, &["diff", "--name-only", base, "HEAD"])));
+        let committed = since.entry((i, base.to_string())).or_insert_with(|| {
+            names(crate::proc::git(
+                at[i].1,
+                &["diff", "--name-only", base, "HEAD"],
+            ))
+        });
         let mut files: Vec<String> = committed.iter().chain(at[i].3.iter()).cloned().collect();
         files.sort();
         files.dedup();
@@ -50,8 +72,12 @@ pub fn between(checkouts: &[(String, PathBuf)]) -> Vec<Overlap> {
     let mut by_file: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for a in 0..at.len() {
         for b in a + 1..at.len() {
-            let (Some(ha), Some(hb)) = (&at[a].2, &at[b].2) else { continue };
-            let Ok(base) = crate::proc::git(at[a].1, &["merge-base", ha, hb]) else { continue };
+            let (Some(ha), Some(hb)) = (&at[a].2, &at[b].2) else {
+                continue;
+            };
+            let Ok(base) = crate::proc::git(at[a].1, &["merge-base", ha, hb]) else {
+                continue;
+            };
             let (fa, fb) = (changed(a, base.trim()), changed(b, base.trim()));
             for file in fa.into_iter().filter(|f| fb.binary_search(f).is_ok()) {
                 let who = by_file.entry(file).or_default();
@@ -93,19 +119,31 @@ mod tests {
     use crate::brand::APP_COMMAND;
 
     fn o(file: &str, checkouts: &[&str]) -> Overlap {
-        Overlap { file: file.into(), checkouts: checkouts.iter().map(|c| c.to_string()).collect() }
+        Overlap {
+            file: file.into(),
+            checkouts: checkouts.iter().map(|c| c.to_string()).collect(),
+        }
     }
 
     #[test]
     fn overlaps_are_said_in_a_line() {
-        assert_eq!(say(&[o("src/checkout.ts", &["orders", "rate-limit"])]).as_deref(), Some("orders and rate-limit both changed checkout.ts"));
-        assert_eq!(say(&[o("x.rs", &["a", "b", "c"]), o("y.rs", &["a", "b"])]).as_deref(), Some("3 checkouts changed x.rs (and 1 more file)"));
+        assert_eq!(
+            say(&[o("src/checkout.ts", &["orders", "rate-limit"])]).as_deref(),
+            Some("orders and rate-limit both changed checkout.ts")
+        );
+        assert_eq!(
+            say(&[o("x.rs", &["a", "b", "c"]), o("y.rs", &["a", "b"])]).as_deref(),
+            Some("3 checkouts changed x.rs (and 1 more file)")
+        );
         assert_eq!(say(&[]), None, "nothing shared: nothing to say");
     }
 
     /// A repo on `main` with one commit (checkout.ts, shared.ts), and a way to run git in it.
     fn repo(tag: &str) -> (PathBuf, PathBuf, impl Fn(&Path, &[&str]) -> String) {
-        let root = std::env::temp_dir().join(format!("{APP_COMMAND}-overlap-{tag}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "{APP_COMMAND}-overlap-{tag}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         let repo = root.join("repo");
         std::fs::create_dir_all(&repo).unwrap();
@@ -124,7 +162,17 @@ mod tests {
     fn a_file_two_checkouts_each_changed_is_an_overlap() {
         let (root, repo, git) = repo("each");
         let wt = root.join("orders");
-        git(&repo, &["worktree", "add", "-q", "-b", "orders", wt.to_str().unwrap()]);
+        git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "orders",
+                wt.to_str().unwrap(),
+            ],
+        );
         // The worktree commits a change and adds a new file; the main folder edits the same
         // file without committing, and another one only it touches.
         std::fs::write(wt.join("checkout.ts"), "b").unwrap();
@@ -132,8 +180,15 @@ mod tests {
         std::fs::write(wt.join("new.ts"), "c").unwrap();
         std::fs::write(repo.join("checkout.ts"), "d").unwrap();
         std::fs::write(repo.join("shared.ts"), "d").unwrap();
-        let found = between(&[("main folder".into(), repo.clone()), ("orders".into(), wt.clone())]);
-        assert_eq!(found, vec![o("checkout.ts", &["main folder", "orders"])], "only the file both changed");
+        let found = between(&[
+            ("main folder".into(), repo.clone()),
+            ("orders".into(), wt.clone()),
+        ]);
+        assert_eq!(
+            found,
+            vec![o("checkout.ts", &["main folder", "orders"])],
+            "only the file both changed"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -150,8 +205,30 @@ mod tests {
         // Two agents each cut a branch from dev and change one file of their own, plus one
         // they both touch. The main folder goes back to main, where the app used to measure from.
         let (a, b) = (root.join("a"), root.join("b"));
-        git(&repo, &["worktree", "add", "-q", "-b", "feat-a", a.to_str().unwrap(), "dev"]);
-        git(&repo, &["worktree", "add", "-q", "-b", "feat-b", b.to_str().unwrap(), "dev"]);
+        git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "feat-a",
+                a.to_str().unwrap(),
+                "dev",
+            ],
+        );
+        git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "feat-b",
+                b.to_str().unwrap(),
+                "dev",
+            ],
+        );
         git(&repo, &["switch", "-q", "main"]);
         std::fs::write(a.join("only-a.ts"), "a").unwrap();
         std::fs::write(b.join("only-b.ts"), "b").unwrap();
@@ -160,11 +237,30 @@ mod tests {
             git(dir, &["add", "."]);
             git(dir, &["commit", "-qm", "mine"]);
         }
-        let found = between(&[("a".into(), a.clone()), ("b".into(), b.clone()), ("main folder".into(), repo.clone())]);
-        assert_eq!(found, vec![o("dev0.ts", &["a", "b"])], "the one file both changed, not the forty they both inherited");
+        let found = between(&[
+            ("a".into(), a.clone()),
+            ("b".into(), b.clone()),
+            ("main folder".into(), repo.clone()),
+        ]);
+        assert_eq!(
+            found,
+            vec![o("dev0.ts", &["a", "b"])],
+            "the one file both changed, not the forty they both inherited"
+        );
         // A branch that's simply behind another shares nothing with it.
         let c = root.join("c");
-        git(&repo, &["worktree", "add", "-q", "-b", "feat-c", c.to_str().unwrap(), "dev"]);
+        git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "feat-c",
+                c.to_str().unwrap(),
+                "dev",
+            ],
+        );
         assert!(between(&[("a".into(), a), ("c".into(), c)]).is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }

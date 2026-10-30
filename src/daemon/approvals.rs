@@ -40,7 +40,7 @@ pub struct Approval {
 /// A yes to one pane's checkpoint running one exact command, one time. Never saved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct OnceGrant {
-    term: TermId,
+    owner: super::check::CheckOwner,
     name: String,
     command_sha256: String,
 }
@@ -82,13 +82,17 @@ impl Approvals {
         let a = self.find(repo, name)?;
         match a.decision {
             Decision::Never => Some(Decision::Never),
-            Decision::Always => (a.command_sha256 == command_hash(command)).then_some(Decision::Always),
+            Decision::Always => {
+                (a.command_sha256 == command_hash(command)).then_some(Decision::Always)
+            }
         }
     }
 
     /// The decision kept for `repo`'s checkpoint `name`, whatever command it was given to.
     pub fn find(&self, repo: &Path, name: &str) -> Option<&Approval> {
-        self.decisions.iter().find(|a| same_path(&a.repo, repo) && a.name.eq_ignore_ascii_case(name))
+        self.decisions
+            .iter()
+            .find(|a| same_path(&a.repo, repo) && a.name.eq_ignore_ascii_case(name))
     }
 
     /// Remember `decision` for `repo`'s checkpoint `name` running `command`, in place of any
@@ -108,13 +112,18 @@ impl Approvals {
     /// Drop what was decided for `repo`'s checkpoint `name`. False when nothing was.
     pub fn forget(&mut self, repo: &Path, name: &str) -> bool {
         let before = self.decisions.len();
-        self.decisions.retain(|a| !(same_path(&a.repo, repo) && a.name.eq_ignore_ascii_case(name)));
+        self.decisions
+            .retain(|a| !(same_path(&a.repo, repo) && a.name.eq_ignore_ascii_case(name)));
         self.decisions.len() != before
     }
 
     /// Let pane `term`'s checkpoint `name` run `command` one time.
     pub fn grant_once(&mut self, term: TermId, name: &str, command: &str) {
-        let grant = OnceGrant { term, name: name.to_string(), command_sha256: command_hash(command) };
+        let grant = OnceGrant {
+            owner: super::check::CheckOwner::Pane(term),
+            name: name.to_string(),
+            command_sha256: command_hash(command),
+        };
         if !self.once.contains(&grant) {
             self.once.push(grant);
         }
@@ -123,15 +132,26 @@ impl Approvals {
     /// The decisions plus pane `term`'s one-time grants, which leave `self`: what one run of
     /// its checks may use. The run they are handed to spends them, used or not.
     pub fn for_run(&mut self, term: TermId) -> Approvals {
-        let (mine, rest) = std::mem::take(&mut self.once).into_iter().partition(|g| g.term == term);
+        self.for_owner(super::check::CheckOwner::Pane(term))
+    }
+
+    pub(super) fn for_owner(&mut self, owner: super::check::CheckOwner) -> Approvals {
+        let (mine, rest) = std::mem::take(&mut self.once)
+            .into_iter()
+            .partition(|g| g.owner == owner);
         self.once = rest;
-        Approvals { decisions: self.decisions.clone(), once: mine }
+        Approvals {
+            decisions: self.decisions.clone(),
+            once: mine,
+        }
     }
 
     /// Whether a one-time grant handed to this run covers checkpoint `name` running `command`.
     pub fn granted_once(&self, name: &str, command: &str) -> bool {
         let hash = command_hash(command);
-        self.once.iter().any(|g| g.name.eq_ignore_ascii_case(name) && g.command_sha256 == hash)
+        self.once
+            .iter()
+            .any(|g| g.name.eq_ignore_ascii_case(name) && g.command_sha256 == hash)
     }
 }
 
@@ -142,7 +162,8 @@ pub(super) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         std::fs::create_dir_all(dir).with_context(|| format!("making {}", dir.display()))?;
     }
     let tmp = path.with_extension("json.tmp");
-    let mut f = std::fs::File::create(&tmp).with_context(|| format!("writing {}", tmp.display()))?;
+    let mut f =
+        std::fs::File::create(&tmp).with_context(|| format!("writing {}", tmp.display()))?;
     f.write_all(bytes)?;
     f.sync_all()?;
     drop(f);
@@ -181,7 +202,8 @@ impl Change {
 
 /// The newest change written for each checkpoint of each file; changes are written one at a
 /// time and an older one for the same checkpoint is dropped.
-static WRITTEN: std::sync::Mutex<std::collections::BTreeMap<(PathBuf, PathBuf, String), u64>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+static WRITTEN: std::sync::Mutex<std::collections::BTreeMap<(PathBuf, PathBuf, String), u64>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
 static SAVE_TICKETS: AtomicU64 = AtomicU64::new(1);
 
 /// Write one answer into the file as it is now, not this daemon's whole copy: every daemon
@@ -206,7 +228,13 @@ impl Daemon {
     /// and Never are kept by that command's hash. Then the checkpoint runs again and its gate
     /// says what that means; while another checkpoint of the pane runs, it runs after that
     /// one. Panes are refused before this (`may_command`).
-    pub(super) fn approve_check(&mut self, term: TermId, name: &str, choice: ApprovalChoice, shown_sha256: &str) -> Result<()> {
+    pub(super) fn approve_check(
+        &mut self,
+        term: TermId,
+        name: &str,
+        choice: ApprovalChoice,
+        shown_sha256: &str,
+    ) -> Result<()> {
         let (repo, name, command) = self.waiting_for_approval(term, name)?;
         if command_hash(&command) != shown_sha256 {
             anyhow::bail!("{name}'s command changed since it was shown; look at it again");
@@ -219,7 +247,8 @@ impl Daemon {
         match decision {
             None => self.approvals.grant_once(term, &name, &command),
             Some(decision) => {
-                self.approvals.decide(&repo, &name, &command, decision, super::term::unix_now());
+                self.approvals
+                    .decide(&repo, &name, &command, decision, super::term::unix_now());
                 if let Some(a) = self.approvals.find(&repo, &name) {
                     self.save_approval(Change::Decide(a.clone()));
                 }
@@ -236,7 +265,10 @@ impl Daemon {
         if !self.approvals.forget(project, name) {
             anyhow::bail!("nothing is remembered for {name} in {}", project.display());
         }
-        self.save_approval(Change::Forget { repo: project.to_path_buf(), name: name.to_string() });
+        self.save_approval(Change::Forget {
+            repo: project.to_path_buf(),
+            name: name.to_string(),
+        });
         Ok(())
     }
 
@@ -247,7 +279,10 @@ impl Daemon {
 
     /// The repo, name and command of pane `term`'s checkpoint `name`, if it waits for you.
     fn waiting_for_approval(&self, term: TermId, name: &str) -> Result<(PathBuf, String, String)> {
-        let t = self.terms.get(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+        let t = self
+            .terms
+            .get(&term)
+            .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
         let info = t
             .checks
             .points
@@ -255,7 +290,10 @@ impl Daemon {
             .map(|p| &p.latest.info)
             .find(|i| i.state == CheckState::NeedsApproval && i.name.eq_ignore_ascii_case(name))
             .ok_or_else(|| anyhow::anyhow!("{name} isn't waiting for your approval"))?;
-        let repo = t.head.as_ref().map_or_else(|| t.cwd.clone(), |h| h.main_root.clone());
+        let repo = t
+            .head
+            .as_ref()
+            .map_or_else(|| t.cwd.clone(), |h| h.main_root.clone());
         Ok((repo, info.name.clone(), info.command.clone()))
     }
 
@@ -277,34 +315,106 @@ mod tests {
     use super::*;
 
     fn approval(repo: &str, name: &str, command: &str, decision: Decision) -> Approval {
-        Approval { repo: repo.into(), name: name.into(), command_sha256: command_hash(command), command: command.into(), decision, at: 100 }
+        Approval {
+            repo: repo.into(),
+            name: name.into(),
+            command_sha256: command_hash(command),
+            command: command.into(),
+            decision,
+            at: 100,
+        }
     }
 
     fn approvals(list: Vec<Approval>) -> Approvals {
-        Approvals { decisions: list, ..Default::default() }
+        Approvals {
+            decisions: list,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_panes_once_grant_does_not_cover_a_conversation_with_the_same_number() {
+        let mut approvals = Approvals::default();
+        approvals.grant_once(3, "verify", "echo checkpoint");
+        let conversation = super::super::check::CheckOwner::Conversation {
+            id: crate::conversation::ConversationId(3),
+            generation: 1,
+        };
+        assert!(
+            !approvals
+                .for_owner(conversation)
+                .granted_once("verify", "echo checkpoint")
+        );
+        assert!(
+            approvals
+                .for_run(3)
+                .granted_once("verify", "echo checkpoint")
+        );
     }
 
     #[test]
     fn a_command_hashes_to_its_sha256_in_hex() {
-        assert_eq!(command_hash(""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-        assert_ne!(command_hash("npm test"), command_hash("npm test "), "the exact command, not a near one");
+        assert_eq!(
+            command_hash(""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_ne!(
+            command_hash("npm test"),
+            command_hash("npm test "),
+            "the exact command, not a near one"
+        );
     }
 
     #[test]
     fn always_holds_only_for_the_exact_command_it_was_given_to() {
-        let a = approvals(vec![approval("/code/site", "test", "npm test", Decision::Always)]);
-        assert_eq!(a.lookup(Path::new("/code/site"), "test", "npm test"), Some(Decision::Always));
-        assert_eq!(a.lookup(Path::new("/code/site"), "test", "npm test && node seed.js"), None, "a changed command asks again");
-        assert_eq!(a.lookup(Path::new("/code/site/"), "TEST", "npm test"), Some(Decision::Always), "same repo and name however spelled");
-        assert_eq!(a.lookup(Path::new("/code/other"), "test", "npm test"), None, "another repo");
-        assert_eq!(a.lookup(Path::new("/code/site"), "build", "npm test"), None, "another checkpoint");
+        let a = approvals(vec![approval(
+            "/code/site",
+            "test",
+            "npm test",
+            Decision::Always,
+        )]);
+        assert_eq!(
+            a.lookup(Path::new("/code/site"), "test", "npm test"),
+            Some(Decision::Always)
+        );
+        assert_eq!(
+            a.lookup(Path::new("/code/site"), "test", "npm test && node seed.js"),
+            None,
+            "a changed command asks again"
+        );
+        assert_eq!(
+            a.lookup(Path::new("/code/site/"), "TEST", "npm test"),
+            Some(Decision::Always),
+            "same repo and name however spelled"
+        );
+        assert_eq!(
+            a.lookup(Path::new("/code/other"), "test", "npm test"),
+            None,
+            "another repo"
+        );
+        assert_eq!(
+            a.lookup(Path::new("/code/site"), "build", "npm test"),
+            None,
+            "another checkpoint"
+        );
     }
 
     #[test]
     fn never_holds_whatever_the_command_becomes() {
-        let a = approvals(vec![approval("/code/site", "test", "npm test", Decision::Never)]);
-        assert_eq!(a.lookup(Path::new("/code/site"), "test", "npm test"), Some(Decision::Never));
-        assert_eq!(a.lookup(Path::new("/code/site"), "test", "rm -rf ~"), Some(Decision::Never));
+        let a = approvals(vec![approval(
+            "/code/site",
+            "test",
+            "npm test",
+            Decision::Never,
+        )]);
+        assert_eq!(
+            a.lookup(Path::new("/code/site"), "test", "npm test"),
+            Some(Decision::Never)
+        );
+        assert_eq!(
+            a.lookup(Path::new("/code/site"), "test", "rm -rf ~"),
+            Some(Decision::Never)
+        );
     }
 
     #[test]
@@ -312,7 +422,14 @@ mod tests {
         let (repo, mut a) = (Path::new("/code/site"), Approvals::default());
         a.decide(repo, "test", "npm test", Decision::Always, 1);
         a.decide(repo, "TEST", "npm t", Decision::Never, 2);
-        assert_eq!(a.decisions, vec![Approval { name: "TEST".into(), at: 2, ..approval("/code/site", "test", "npm t", Decision::Never) }]);
+        assert_eq!(
+            a.decisions,
+            vec![Approval {
+                name: "TEST".into(),
+                at: 2,
+                ..approval("/code/site", "test", "npm t", Decision::Never)
+            }]
+        );
         assert!(a.forget(Path::new("/code/site/"), "test"));
         assert!(!a.forget(repo, "test"), "nothing left to forget");
         assert_eq!(a.lookup(repo, "test", "npm t"), None);
@@ -320,15 +437,32 @@ mod tests {
 
     #[test]
     fn a_once_grant_goes_to_one_run_of_its_own_pane_and_only_for_its_command() {
-        let mut a = approvals(vec![approval("/code/site", "build", "make", Decision::Always)]);
+        let mut a = approvals(vec![approval(
+            "/code/site",
+            "build",
+            "make",
+            Decision::Always,
+        )]);
         a.grant_once(3, "test", "npm test");
         a.grant_once(4, "test", "npm test");
         let run = a.for_run(3);
         assert!(run.granted_once("test", "npm test"));
-        assert!(!run.granted_once("test", "npm test && curl evil"), "the exact command");
-        assert_eq!(run.decisions, a.decisions, "the run sees your decisions too");
-        assert!(!a.for_run(3).granted_once("test", "npm test"), "spent by the run it went to");
-        assert!(a.for_run(4).granted_once("test", "npm test"), "another pane's grant is its own");
+        assert!(
+            !run.granted_once("test", "npm test && curl evil"),
+            "the exact command"
+        );
+        assert_eq!(
+            run.decisions, a.decisions,
+            "the run sees your decisions too"
+        );
+        assert!(
+            !a.for_run(3).granted_once("test", "npm test"),
+            "spent by the run it went to"
+        );
+        assert!(
+            a.for_run(4).granted_once("test", "npm test"),
+            "another pane's grant is its own"
+        );
     }
 
     #[test]
@@ -336,11 +470,20 @@ mod tests {
         let dir = super::super::persist::scratch_dir();
         let file = dir.path().join(FILE_NAME);
         assert_eq!(Approvals::load(&file).unwrap(), Approvals::default());
-        let mut a = approvals(vec![approval("/code/site", "test", "npm test", Decision::Always), approval("/code/site", "build", "make", Decision::Never)]);
+        let mut a = approvals(vec![
+            approval("/code/site", "test", "npm test", Decision::Always),
+            approval("/code/site", "build", "make", Decision::Never),
+        ]);
         a.grant_once(3, "lint", "npm run lint");
         a.save(&file).unwrap();
-        assert_eq!(Approvals::load(&file).unwrap(), approvals(a.decisions.clone()));
-        assert!(!file.with_extension("json.tmp").exists(), "nothing left half-written");
+        assert_eq!(
+            Approvals::load(&file).unwrap(),
+            approvals(a.decisions.clone())
+        );
+        assert!(
+            !file.with_extension("json.tmp").exists(),
+            "nothing left half-written"
+        );
     }
 
     fn ticket() -> u64 {
@@ -354,7 +497,15 @@ mod tests {
         let (old, new) = (ticket(), ticket());
         let never = approval("/code/site", "test", "npm test", Decision::Never);
         write_change(Change::Decide(never.clone()), &file, new).unwrap();
-        write_change(Change::Forget { repo: "/code/site".into(), name: "TEST".into() }, &file, old).unwrap();
+        write_change(
+            Change::Forget {
+                repo: "/code/site".into(),
+                name: "TEST".into(),
+            },
+            &file,
+            old,
+        )
+        .unwrap();
         assert_eq!(Approvals::load(&file).unwrap(), approvals(vec![never]));
     }
 
@@ -366,8 +517,19 @@ mod tests {
         approvals(vec![theirs.clone()]).save(&file).unwrap();
         let mine = approval("/code/site", "test", "npm test", Decision::Never);
         write_change(Change::Decide(mine.clone()), &file, ticket()).unwrap();
-        assert_eq!(Approvals::load(&file).unwrap(), approvals(vec![theirs.clone(), mine]));
-        write_change(Change::Forget { repo: "/code/site".into(), name: "test".into() }, &file, ticket()).unwrap();
+        assert_eq!(
+            Approvals::load(&file).unwrap(),
+            approvals(vec![theirs.clone(), mine])
+        );
+        write_change(
+            Change::Forget {
+                repo: "/code/site".into(),
+                name: "test".into(),
+            },
+            &file,
+            ticket(),
+        )
+        .unwrap();
         assert_eq!(Approvals::load(&file).unwrap(), approvals(vec![theirs]));
     }
 
@@ -377,7 +539,14 @@ mod tests {
         std::fs::create_dir_all(dir.path()).unwrap();
         let file = dir.path().join(FILE_NAME);
         std::fs::write(&file, "{ not json").unwrap();
-        assert!(write_change(Change::Decide(approval("/code/site", "test", "npm test", Decision::Never)), &file, ticket()).is_err());
+        assert!(
+            write_change(
+                Change::Decide(approval("/code/site", "test", "npm test", Decision::Never)),
+                &file,
+                ticket()
+            )
+            .is_err()
+        );
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "{ not json");
     }
 
@@ -392,6 +561,9 @@ mod tests {
 
     #[test]
     fn they_are_kept_in_app_s_data_folder() {
-        assert_eq!(path(), crate::config::data_dir().join("check-approvals.json"));
+        assert_eq!(
+            path(),
+            crate::config::data_dir().join("check-approvals.json")
+        );
     }
 }

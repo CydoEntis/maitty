@@ -1,14 +1,71 @@
 //! Commands from clients and the CLI.
 
 use super::*;
-use crate::brand::{APP_COMMAND};
+use crate::brand::APP_COMMAND;
 
 impl Daemon {
     /// Apply a command. `Ok(false)` means the reply is sent later (background git work).
     pub(super) fn command(&mut self, client: ClientId, cmd: Command) -> Result<bool> {
         match cmd {
+            Command::ConversationStart { target } => {
+                self.conversation_start(client, target)?;
+                return Ok(false);
+            }
+            Command::ConversationSend {
+                id,
+                generation,
+                operation,
+                text,
+            } => {
+                self.conversation_send(client, id, generation, operation, text)?;
+                return Ok(false);
+            }
+            Command::ConversationApprove {
+                id,
+                generation,
+                request_id,
+                decision,
+            } => {
+                self.conversation_approve(client, id, generation, request_id, decision)?;
+                return Ok(false);
+            }
+            Command::ConversationAnswerInput {
+                id,
+                generation,
+                request_id,
+                answers,
+            } => {
+                self.conversation_answer_input(client, id, generation, request_id, answers)?;
+                return Ok(false);
+            }
+            Command::ConversationCancel { id, generation } => {
+                self.conversation_cancel(client, id, generation)?;
+                return Ok(false);
+            }
+            Command::ConversationHandoffToNative { id, generation } => {
+                self.conversation_handoff_to_native(client, id, generation)?;
+                return Ok(false);
+            }
+            Command::ConversationHandoffToChat { id, generation } => {
+                self.conversation_handoff_to_chat(client, id, generation)?;
+                return Ok(false);
+            }
+            Command::ConversationTerminalInput {
+                id,
+                generation,
+                data,
+            } => self.conversation_terminal_input(client, id, generation, data)?,
+            Command::ConversationTerminalResize {
+                id,
+                generation,
+                cols,
+                rows,
+            } => self.conversation_terminal_resize(client, id, generation, cols, rows)?,
             Command::NewWorkspace { cwd, name, cmd } => {
-                let cwd = cwd.map(clean_path).filter(|p| p.is_dir()).unwrap_or_else(home);
+                let cwd = cwd
+                    .map(clean_path)
+                    .filter(|p| p.is_dir())
+                    .unwrap_or_else(home);
                 let (cols, rows) = self.guess_size();
                 let by = self.starting(client, &helpers::task_label(cmd.as_deref(), None))?;
                 let term = self.spawn(cmd.as_deref(), &cwd, cols, rows)?;
@@ -22,7 +79,12 @@ impl Daemon {
                     id,
                     name,
                     cwd,
-                    tabs: vec![TabInfo { id: tab, name: String::new(), layout: Node::Leaf(term), focus: term }],
+                    tabs: vec![TabInfo {
+                        id: tab,
+                        name: String::new(),
+                        layout: Node::Leaf(term),
+                        focus: term,
+                    }],
                     active_tab: tab,
                     git: None,
                     worktree: false,
@@ -47,7 +109,9 @@ impl Daemon {
                 self.cleanup_worktrees(client, tops);
             }
             Command::RenameWorkspace { ws, name } => self.ws_mut(ws)?.name = name,
-            Command::SetGroup { ws, group } => self.ws_mut(ws)?.group = group.filter(|g| !g.trim().is_empty()),
+            Command::SetGroup { ws, group } => {
+                self.ws_mut(ws)?.group = group.filter(|g| !g.trim().is_empty())
+            }
             Command::SetWorkspaceColor { ws, color } => self.ws_mut(ws)?.color = color,
             Command::SelectWorkspace { ws } => {
                 self.ws_mut(ws)?.is_new = false;
@@ -61,7 +125,12 @@ impl Daemon {
                 self.started(term, by);
                 let id = self.next();
                 let w = self.ws_mut(ws)?;
-                w.tabs.push(TabInfo { id, name: name.unwrap_or_default(), layout: Node::Leaf(term), focus: term });
+                w.tabs.push(TabInfo {
+                    id,
+                    name: name.unwrap_or_default(),
+                    layout: Node::Leaf(term),
+                    focus: term,
+                });
                 w.active_tab = id;
                 self.active_ws = Some(ws);
             }
@@ -95,17 +164,37 @@ impl Daemon {
                 }
                 self.active_ws = Some(ws);
             }
-            Command::Split { term, dir, cmd, cwd } => {
-                let (ws, tab) = self.locate(term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+            Command::Split {
+                term,
+                dir,
+                cmd,
+                cwd,
+            } => {
+                let (ws, tab) = self
+                    .locate(term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
                 // New panes start where asked, else where the pane being split is.
                 let ws_cwd = self.ws_mut(ws)?.cwd.clone();
                 let cwd = cwd
                     .map(clean_path)
                     .filter(|c| c.is_dir())
-                    .or_else(|| self.terms.get(&term).map(|t| t.cwd.clone()).filter(|c| c.is_dir()))
+                    .or_else(|| {
+                        self.terms
+                            .get(&term)
+                            .map(|t| t.cwd.clone())
+                            .filter(|c| c.is_dir())
+                    })
                     .unwrap_or(ws_cwd);
-                let (cols, rows) = self.terms.get(&term).map(|t| (t.cols, t.rows)).unwrap_or((80, 24));
-                let (cols, rows) = if dir.horizontal() { (cols / 2, rows) } else { (cols, rows / 2) };
+                let (cols, rows) = self
+                    .terms
+                    .get(&term)
+                    .map(|t| (t.cols, t.rows))
+                    .unwrap_or((80, 24));
+                let (cols, rows) = if dir.horizontal() {
+                    (cols / 2, rows)
+                } else {
+                    (cols, rows / 2)
+                };
                 let by = self.starting(client, &helpers::task_label(cmd.as_deref(), None))?;
                 let new = self.spawn(cmd.as_deref(), &cwd, cols, rows)?;
                 self.started(new, by);
@@ -121,10 +210,25 @@ impl Daemon {
                 self.cleanup_worktrees(client, tops);
             }
             Command::PaneToWorkspace { term } => {
-                let (ws, _) = self.locate(term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
-                let cwd = self.terms.get(&term).map(|t| t.cwd.clone()).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
-                let name = cwd.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| cwd.display().to_string());
-                let alone = self.ws_mut(ws)?.tabs.iter().map(|t| t.layout.leaves().len()).sum::<usize>() == 1;
+                let (ws, _) = self
+                    .locate(term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                let cwd = self
+                    .terms
+                    .get(&term)
+                    .map(|t| t.cwd.clone())
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                let name = cwd
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| cwd.display().to_string());
+                let alone = self
+                    .ws_mut(ws)?
+                    .tabs
+                    .iter()
+                    .map(|t| t.layout.leaves().len())
+                    .sum::<usize>()
+                    == 1;
                 if alone {
                     // Nothing to move: the workspace simply moves to where its pane is.
                     let w = self.ws_mut(ws)?;
@@ -141,7 +245,12 @@ impl Daemon {
                         id,
                         name,
                         cwd,
-                        tabs: vec![TabInfo { id: tab, name: String::new(), layout: Node::Leaf(term), focus: term }],
+                        tabs: vec![TabInfo {
+                            id: tab,
+                            name: String::new(),
+                            layout: Node::Leaf(term),
+                            focus: term,
+                        }],
                         active_tab: tab,
                         git: None,
                         worktree: false,
@@ -154,17 +263,33 @@ impl Daemon {
                 self.poll_git_soon();
             }
             Command::MoveToWorktree { term, branch } => {
-                let t = self.terms.get(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                let t = self
+                    .terms
+                    .get(&term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
                 if t.agent.is_none() {
                     anyhow::bail!("only an agent can move into a worktree");
                 }
                 if self.resume_cmd(t).is_none() {
-                    anyhow::bail!("this agent can't be resumed elsewhere (no session id yet; try after its first turn)");
+                    anyhow::bail!(
+                        "this agent can't be resumed elsewhere (no session id yet; try after its first turn)"
+                    );
                 }
-                let dir = t.head.as_ref().map(|h| h.main_root.clone()).unwrap_or_else(|| t.cwd.clone());
+                let dir = t
+                    .head
+                    .as_ref()
+                    .map(|h| h.main_root.clone())
+                    .unwrap_or_else(|| t.cwd.clone());
                 let branch = branch.unwrap_or_else(|| {
-                    let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
-                    format!("{}-{:04x}", t.agent.clone().unwrap_or_else(|| "agent".into()), n & 0xffff)
+                    let n = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.subsec_nanos())
+                        .unwrap_or(0);
+                    format!(
+                        "{}-{:04x}",
+                        t.agent.clone().unwrap_or_else(|| "agent".into()),
+                        n & 0xffff
+                    )
                 });
                 let template = self.cfg.worktree.dir.clone();
                 let tx = self.tx.clone();
@@ -172,7 +297,12 @@ impl Daemon {
                 let b = branch.clone();
                 tokio::task::spawn_blocking(move || {
                     let result = create_trusted_worktree(&dir, &b, None, &template);
-                    let _ = tx.blocking_send(Ev::MoveReady { client, term, branch: b, result });
+                    let _ = tx.blocking_send(Ev::MoveReady {
+                        client,
+                        term,
+                        branch: b,
+                        result,
+                    });
                 });
                 return Ok(false);
             }
@@ -182,7 +312,11 @@ impl Daemon {
                 }
             }
             Command::MarkSeen { term } => {
-                if self.terms.get(&term).is_some_and(|t| t.status == Status::Done) {
+                if self
+                    .terms
+                    .get(&term)
+                    .is_some_and(|t| t.status == Status::Done)
+                {
                     self.set_status(term, Status::Idle, "you looked at it");
                 }
                 if let Some(t) = self.terms.get_mut(&term) {
@@ -197,7 +331,9 @@ impl Daemon {
                 self.wake(term);
             }
             Command::FocusPane { term } => {
-                let (ws, tab) = self.locate(term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                let (ws, tab) = self
+                    .locate(term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
                 if let Some(t) = self.terms.get_mut(&term) {
                     t.bell = false;
                 }
@@ -208,32 +344,54 @@ impl Daemon {
                     t.focus = term;
                 }
                 self.active_ws = Some(ws);
-                if self.terms.get(&term).is_some_and(|t| t.status == Status::Done) {
+                if self
+                    .terms
+                    .get(&term)
+                    .is_some_and(|t| t.status == Status::Done)
+                {
                     self.set_status(term, Status::Idle, "you looked at it");
                 }
             }
             Command::ResizePane { term, dir, delta } => {
-                let (ws, tab) = self.locate(term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                let (ws, tab) = self
+                    .locate(term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
                 if let Some(t) = self.ws_mut(ws)?.tabs.iter_mut().find(|t| t.id == tab) {
                     t.layout.resize(term, dir, delta);
                 }
             }
             Command::SwapPanes { a, b } => {
-                let at = self.locate(a).ok_or_else(|| anyhow::anyhow!("no pane {a}"))?;
+                let at = self
+                    .locate(a)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {a}"))?;
                 if self.locate(b) != Some(at) {
-                    anyhow::bail!("panes {a} and {b} aren't in the same tab: only panes side by side can swap");
+                    anyhow::bail!(
+                        "panes {a} and {b} aren't in the same tab: only panes side by side can swap"
+                    );
                 }
                 let (ws, tab) = at;
                 if let Some(t) = self.ws_mut(ws)?.tabs.iter_mut().find(|t| t.id == tab) {
                     t.layout.swap(a, b);
                 }
             }
-            Command::NewWorktree { ws, branch, base, cmd, split, from } => {
-                let by = self.starting(client, &helpers::task_label(cmd.as_deref(), Some(&branch)))?;
+            Command::NewWorktree {
+                ws,
+                branch,
+                base,
+                cmd,
+                split,
+                from,
+            } => {
+                let by =
+                    self.starting(client, &helpers::task_label(cmd.as_deref(), Some(&branch)))?;
                 let ws_dir = self.ws_mut(ws)?.cwd.clone();
-                let dir = from.map(clean_path).filter(|d| d.is_dir()).unwrap_or(ws_dir);
+                let dir = from
+                    .map(clean_path)
+                    .filter(|d| d.is_dir())
+                    .unwrap_or(ws_dir);
                 let template = self.cfg.worktree.dir.clone();
-                let cmd = cmd.or_else(|| Some(self.cfg.worktree.command.clone()).filter(|c| !c.is_empty()));
+                let cmd = cmd
+                    .or_else(|| Some(self.cfg.worktree.command.clone()).filter(|c| !c.is_empty()));
                 let repo = crate::gitfs::head(&dir).map(|h| h.main_root);
                 if base.is_none()
                     && let (Some(repo), Some(c)) = (&repo, &cmd)
@@ -246,18 +404,36 @@ impl Daemon {
                     if let Some(t) = self.terms.get_mut(&term)
                         && !task.is_empty()
                     {
-                        t.pending_input = Some((format!("{task}\r").into_bytes(), Instant::now() + Duration::from_secs(20)));
+                        t.pending_input = Some((
+                            format!("{task}\r").into_bytes(),
+                            Instant::now() + Duration::from_secs(20),
+                        ));
                     }
                     self.adopt = Some((path.clone(), term));
                     self.adopted = Some(path.clone());
                     self.pending_ops += 1;
                     let tx = self.tx.clone();
                     tokio::task::spawn_blocking(move || {
-                        let renamed = std::process::Command::new("git").arg("-C").arg(&path).args(["branch", "-m", &branch]).output().is_ok_and(|o| o.status.success());
+                        let renamed = std::process::Command::new("git")
+                            .arg("-C")
+                            .arg(&path)
+                            .args(["branch", "-m", &branch])
+                            .output()
+                            .is_ok_and(|o| o.status.success());
                         if !renamed {
-                            tracing::warn!("couldn't rename the spare worktree's branch to {branch}");
+                            tracing::warn!(
+                                "couldn't rename the spare worktree's branch to {branch}"
+                            );
                         }
-                        let _ = tx.blocking_send(Ev::WorktreeCreated { client, branch, cmd, split, by, set_up: false, result: Ok((path, String::new())) });
+                        let _ = tx.blocking_send(Ev::WorktreeCreated {
+                            client,
+                            branch,
+                            cmd,
+                            split,
+                            by,
+                            set_up: false,
+                            result: Ok((path, String::new())),
+                        });
                     });
                     self.prewarm(repo.clone());
                     return Ok(false);
@@ -268,9 +444,16 @@ impl Daemon {
                 let tx = self.tx.clone();
                 self.pending_ops += 1;
                 tokio::task::spawn_blocking(move || {
-                    let result =
-                        create_trusted_worktree(&dir, &branch, base.as_deref(), &template);
-                    let _ = tx.blocking_send(Ev::WorktreeCreated { client, branch, cmd, split, by, set_up: false, result });
+                    let result = create_trusted_worktree(&dir, &branch, base.as_deref(), &template);
+                    let _ = tx.blocking_send(Ev::WorktreeCreated {
+                        client,
+                        branch,
+                        cmd,
+                        split,
+                        by,
+                        set_up: false,
+                        result,
+                    });
                 });
                 return Ok(false);
             }
@@ -278,7 +461,11 @@ impl Daemon {
                 // Only for a shell starting an agent: not from outside a pane, and not for an
                 // agent an agent starts (it works where its parent does).
                 let dir = clean_path(dir);
-                let from = self.clients.get(&client).and_then(|c| c.from).and_then(|t| self.terms.get(&t));
+                let from = self
+                    .clients
+                    .get(&client)
+                    .and_then(|c| c.from)
+                    .and_then(|t| self.terms.get(&t));
                 let wanted = self.cfg.worktree.per_agent
                     && from.is_some_and(|t| t.agent.is_none())
                     && crate::gitfs::head(&dir).is_some_and(|h| !h.linked);
@@ -297,8 +484,21 @@ impl Daemon {
             }
             Command::CloseWorktree { path } => {
                 let path = clean_path(path);
-                let head = crate::gitfs::head(&path).filter(|h| h.linked).ok_or_else(|| anyhow::anyhow!("{} is not a linked git worktree", path.display()))?;
-                let terms: Vec<TermId> = self.terms.values().filter(|t| t.head.as_ref().is_some_and(|h| same_path(&h.top, &head.top))).map(|t| t.id).collect();
+                let head = crate::gitfs::head(&path)
+                    .filter(|h| h.linked)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("{} is not a linked git worktree", path.display())
+                    })?;
+                let terms: Vec<TermId> = self
+                    .terms
+                    .values()
+                    .filter(|t| {
+                        t.head
+                            .as_ref()
+                            .is_some_and(|h| same_path(&h.top, &head.top))
+                    })
+                    .map(|t| t.id)
+                    .collect();
                 for t in terms {
                     self.close_term(t);
                 }
@@ -313,21 +513,33 @@ impl Daemon {
                     }
                     // Give the closed programs a moment to let go of the folder (Windows locks it).
                     std::thread::sleep(Duration::from_millis(800));
-                    let result = git::remove_worktree(&top, false, true).map_err(|e| format!("{e:#}"));
-                    let _ = tx.blocking_send(Ev::WorktreeRemoved { client, path: top, result });
+                    let result =
+                        git::remove_worktree(&top, false, true).map_err(|e| format!("{e:#}"));
+                    let _ = tx.blocking_send(Ev::WorktreeRemoved {
+                        client,
+                        path: top,
+                        result,
+                    });
                 });
                 return Ok(false);
             }
             Command::TidyWorktrees { items } => {
                 let (go, mut kept) = self.tidy_plan(items);
-                self.made_worktrees.retain(|m| !go.iter().any(|(top, _)| same_path(top, m)));
-                let jobs: Vec<_> = go.into_iter().map(|(top, force)| (self.hook_job(&top, false), top, force)).collect();
+                self.made_worktrees
+                    .retain(|m| !go.iter().any(|(top, _)| same_path(top, m)));
+                let jobs: Vec<_> = go
+                    .into_iter()
+                    .map(|(top, force)| (self.hook_job(&top, false), top, force))
+                    .collect();
                 let tx = self.tx.clone();
                 self.pending_ops += 1;
                 tokio::task::spawn_blocking(move || {
                     let mut removed = Vec::new();
                     for (hook, top, force) in jobs {
-                        let name = top.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                        let name = top
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default();
                         if let Some(h) = hook {
                             let _ = h();
                         }
@@ -335,15 +547,34 @@ impl Daemon {
                         let branch = git::branch_of(&top);
                         match git::remove_worktree(&top, force, false) {
                             // A branch already merged has nothing left in it: it goes too.
-                            Ok(()) => removed.push((name, repo.zip(branch).is_some_and(|(repo, b)| git::delete_if_merged(&repo, &b)))),
-                            Err(e) => kept.push((name, format!("{e:#}").lines().next().unwrap_or("git wouldn't remove it").to_string())),
+                            Ok(()) => removed.push((
+                                name,
+                                repo.zip(branch)
+                                    .is_some_and(|(repo, b)| git::delete_if_merged(&repo, &b)),
+                            )),
+                            Err(e) => kept.push((
+                                name,
+                                format!("{e:#}")
+                                    .lines()
+                                    .next()
+                                    .unwrap_or("git wouldn't remove it")
+                                    .to_string(),
+                            )),
                         }
                     }
-                    let _ = tx.blocking_send(Ev::WorktreesTidied { client, removed, kept });
+                    let _ = tx.blocking_send(Ev::WorktreesTidied {
+                        client,
+                        removed,
+                        kept,
+                    });
                 });
                 return Ok(false);
             }
-            Command::RemoveWorktree { ws, force, delete_branch } => {
+            Command::RemoveWorktree {
+                ws,
+                force,
+                delete_branch,
+            } => {
                 let w = self.ws_mut(ws)?;
                 let path = w.cwd.clone();
                 if !w.worktree && !w.git.as_ref().is_some_and(|g| g.linked) {
@@ -360,17 +591,28 @@ impl Daemon {
                     if let Some(h) = hook {
                         let _ = h();
                     }
-                    let result = git::remove_worktree(&path, force, delete_branch).map_err(|e| format!("{e:#}"));
-                    let _ = tx.blocking_send(Ev::WorktreeRemoved { client, path, result });
+                    let result = git::remove_worktree(&path, force, delete_branch)
+                        .map_err(|e| format!("{e:#}"));
+                    let _ = tx.blocking_send(Ev::WorktreeRemoved {
+                        client,
+                        path,
+                        result,
+                    });
                 });
                 return Ok(false);
             }
             Command::MovePane { term, to, name } => {
-                let (from_ws, _) = self.locate(term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                let (from_ws, _) = self
+                    .locate(term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
                 if to == Some(from_ws) {
                     return Ok(true);
                 }
-                let cwd = self.terms.get(&term).map(|t| t.cwd.clone()).unwrap_or_else(home);
+                let cwd = self
+                    .terms
+                    .get(&term)
+                    .map(|t| t.cwd.clone())
+                    .unwrap_or_else(home);
                 self.detach(term);
                 match to.filter(|id| self.workspaces.iter().any(|w| w.id == *id)) {
                     // Into an existing group: beside its focused pane.
@@ -387,7 +629,12 @@ impl Daemon {
                                 let id = self.next_id;
                                 self.next_id += 1;
                                 let w = self.ws_mut(target)?;
-                                w.tabs.push(TabInfo { id, name: String::new(), layout: Node::Leaf(term), focus: term });
+                                w.tabs.push(TabInfo {
+                                    id,
+                                    name: String::new(),
+                                    layout: Node::Leaf(term),
+                                    focus: term,
+                                });
                                 w.active_tab = id;
                             }
                         }
@@ -399,13 +646,20 @@ impl Daemon {
                         let tab = self.next();
                         let color = self.free_color();
                         let name = name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| {
-                            cwd.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "group".into())
+                            cwd.file_name()
+                                .map(|n| n.to_string_lossy().into_owned())
+                                .unwrap_or_else(|| "group".into())
                         });
                         self.workspaces.push(WorkspaceInfo {
                             id,
                             name,
                             cwd,
-                            tabs: vec![TabInfo { id: tab, name: String::new(), layout: Node::Leaf(term), focus: term }],
+                            tabs: vec![TabInfo {
+                                id: tab,
+                                name: String::new(),
+                                layout: Node::Leaf(term),
+                                focus: term,
+                            }],
                             active_tab: tab,
                             git: None,
                             worktree: false,
@@ -419,23 +673,39 @@ impl Daemon {
                 self.poll_git_soon();
             }
             Command::UndoAutoWorkspace => {
-                let undo = self.auto_undo.take().ok_or_else(|| anyhow::anyhow!("nothing to undo"))?;
+                let undo = self
+                    .auto_undo
+                    .take()
+                    .ok_or_else(|| anyhow::anyhow!("nothing to undo"))?;
                 self.undo_auto(undo)?;
             }
             Command::Popup { cmd, cwd } => {
-                let cwd = cwd.map(clean_path).filter(|p| p.is_dir()).unwrap_or_else(home);
+                let cwd = cwd
+                    .map(clean_path)
+                    .filter(|p| p.is_dir())
+                    .unwrap_or_else(home);
                 let (cols, rows) = self.guess_size();
                 self.next_once = true;
                 // Most of the screen; the client sizes it exactly once it's drawn.
-                let term = self.spawn(Some(&cmd), &cwd, cols.saturating_mul(4) / 5, rows.saturating_mul(3) / 4)?;
+                let term = self.spawn(
+                    Some(&cmd),
+                    &cwd,
+                    cols.saturating_mul(4) / 5,
+                    rows.saturating_mul(3) / 4,
+                )?;
                 if let Some(t) = self.terms.get_mut(&term) {
                     t.popup = true;
                 }
                 self.dirty = true;
             }
             Command::TeachAgent { term } => {
-                let pid = self.terms.get(&term).and_then(|t| t.pid).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
-                let (program, args) = scan::leaf_program(pid).ok_or_else(|| anyhow::anyhow!("nothing is running in that pane"))?;
+                let pid = self
+                    .terms
+                    .get(&term)
+                    .and_then(|t| t.pid)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                let (program, args) = scan::leaf_program(pid)
+                    .ok_or_else(|| anyhow::anyhow!("nothing is running in that pane"))?;
                 let def = crate::config::agent_from_command(&program, &args)
                     .ok_or_else(|| anyhow::anyhow!("{program} has nothing to recognise it by; add it under [[agents]] in config.toml"))?;
                 crate::config::add_agent(&def)?;
@@ -443,27 +713,63 @@ impl Daemon {
                 self.command(client, Command::ReloadConfig)?;
                 self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{name} is an agent now: {APP_COMMAND} shows when it's working, needs you or done")));
             }
-            Command::AskHuman { term, text, options } => {
-                let options = if options.is_empty() { vec!["Yes".to_string(), "No".to_string()] } else { options };
+            Command::AskHuman {
+                term,
+                text,
+                options,
+            } => {
+                let options = if options.is_empty() {
+                    vec!["Yes".to_string(), "No".to_string()]
+                } else {
+                    options
+                };
                 let id = self.next() as u64;
-                let before = self.terms.get(&term).map(|t| t.status).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
-                self.questions.push((HumanQuestion { id, term, text, options }, client, before));
+                let before = self
+                    .terms
+                    .get(&term)
+                    .map(|t| t.status)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                self.questions.push((
+                    HumanQuestion {
+                        id,
+                        term,
+                        text,
+                        options,
+                    },
+                    client,
+                    before,
+                ));
                 // It needs you: the sidebar, a notification, the Inbox.
-                self.set_status(term, Status::Blocked, concat!("it asked you (", env!("APP_COMMAND"), " ask)"));
+                self.set_status(
+                    term,
+                    Status::Blocked,
+                    concat!("it asked you (", env!("APP_COMMAND"), " ask)"),
+                );
                 self.dirty = true;
                 return Ok(false);
             }
             Command::AnswerHuman { id, choice } => {
-                let i = self.questions.iter().position(|(q, ..)| q.id == id).ok_or_else(|| anyhow::anyhow!("that question was already answered"))?;
+                let i = self
+                    .questions
+                    .iter()
+                    .position(|(q, ..)| q.id == id)
+                    .ok_or_else(|| anyhow::anyhow!("that question was already answered"))?;
                 let (q, asker, _) = self.questions.remove(i);
-                let answer = q.options.get(choice).cloned().ok_or_else(|| anyhow::anyhow!("no answer {choice}"))?;
+                let answer = q
+                    .options
+                    .get(choice)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("no answer {choice}"))?;
                 self.send(asker, ServerMsg::Reply(Reply::Text(answer)));
                 // Back to work with the answer.
                 self.set_status(q.term, Status::Working, "you answered it");
                 self.dirty = true;
             }
             Command::QueueFollowUp { term, text } => {
-                let t = self.terms.get_mut(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                let t = self
+                    .terms
+                    .get_mut(&term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
                 let text = text.trim();
                 if t.agent.is_none() {
                     anyhow::bail!("only an agent takes a follow-up");
@@ -484,20 +790,37 @@ impl Daemon {
                 }
             }
             Command::RerunCheck { term, name } => self.rerun_check(term, name.as_deref())?,
-            Command::OverrideCheck { term, name, reason } => self.override_check(term, name.as_deref(), &reason, self.overrider(client))?,
+            Command::OverrideCheck { term, name, reason } => {
+                self.override_check(term, name.as_deref(), &reason, self.overrider(client))?
+            }
             Command::UndoOverride { term, name } => self.undo_override(term, name.as_deref())?,
-            Command::ApproveCheck { term, name, choice, command_sha256 } => self.approve_check(term, &name, choice, &command_sha256)?,
-            Command::ForgetCheckApproval { project, name } => self.forget_check_approval(&project, &name)?,
+            Command::ApproveCheck {
+                term,
+                name,
+                choice,
+                command_sha256,
+            } => self.approve_check(term, &name, choice, &command_sha256)?,
+            Command::ForgetCheckApproval { project, name } => {
+                self.forget_check_approval(&project, &name)?
+            }
             Command::AnswerHelpers { term, choice } => self.answer_helpers(term, choice)?,
             Command::Grant { term, grants } => {
                 let known = ["read", "write", "start", "respond", "admin"];
-                if let Some(bad) = grants.iter().flatten().find(|g| !known.contains(&g.as_str())) {
+                if let Some(bad) = grants
+                    .iter()
+                    .flatten()
+                    .find(|g| !known.contains(&g.as_str()))
+                {
                     anyhow::bail!("no such grant: {bad} (read, write, start, respond, admin)");
                 }
-                self.terms.get_mut(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?.grants = grants;
+                self.terms
+                    .get_mut(&term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?
+                    .grants = grants;
             }
             Command::ReloadConfig => {
                 self.cfg = Config::load()?;
+                self.configure_conversation_cache()?;
                 self.drop_saved_outputs();
                 self.agents = self.cfg.agent_defs();
                 let mut s = self.scan.lock().unwrap();
@@ -506,10 +829,14 @@ impl Daemon {
             }
             Command::KillServer { forget } => {
                 tracing::info!("kill-server requested (forget: {forget})");
+                let session_save = if forget {
+                    None
+                } else {
+                    self.persist_shutdown()
+                };
                 if forget {
                     persist::forget();
                 } else {
-                    self.persist(true);
                     self.save_outputs(true);
                 }
                 for t in self.terms.values_mut() {
@@ -523,7 +850,12 @@ impl Daemon {
                     save_spare(None);
                 }
                 self.broadcast(|_| true, ServerMsg::Bye);
-                tokio::spawn(async {
+                tokio::spawn(async move {
+                    if let Some(save) = session_save
+                        && let Err(error) = save.await
+                    {
+                        tracing::error!(%error,"final session persistence task failed");
+                    }
                     tokio::time::sleep(Duration::from_millis(150)).await;
                     // Removed while this still answers, so a server started next can't
                     // have its own files taken.
@@ -538,24 +870,50 @@ impl Daemon {
 
     /// The repo (main checkout) a workspace stands for, or its folder outside git.
     pub(super) fn ws_repo(&self, w: &WorkspaceInfo) -> PathBuf {
-        w.git.as_ref().map(|g| g.root.clone()).or_else(|| repo_of(&w.cwd)).unwrap_or_else(|| w.cwd.clone())
+        w.git
+            .as_ref()
+            .map(|g| g.root.clone())
+            .or_else(|| repo_of(&w.cwd))
+            .unwrap_or_else(|| w.cwd.clone())
     }
 
     /// An agent just started in `term`. If its folder is inside a repo that its workspace
     /// isn't, move the pane to that repo's workspace, creating it if needed.
     pub(super) fn auto_workspace(&mut self, term: TermId) {
-        let Some(cwd) = self.terms.get(&term).map(|t| t.cwd.clone()) else { return };
+        let Some(cwd) = self.terms.get(&term).map(|t| t.cwd.clone()) else {
+            return;
+        };
         let Some(repo) = repo_of(&cwd) else { return };
-        let Some((ws, tab)) = self.locate(term) else { return };
-        let Some(cur) = self.workspaces.iter().find(|w| w.id == ws) else { return };
+        let Some((ws, tab)) = self.locate(term) else {
+            return;
+        };
+        let Some(cur) = self.workspaces.iter().find(|w| w.id == ws) else {
+            return;
+        };
         if same_path(&self.ws_repo(cur), &repo) {
             return;
         }
-        let agent = self.terms.get(&term).and_then(|t| t.agent.clone()).unwrap_or_else(|| "an agent".into());
-        let name = repo.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| repo.display().to_string());
-        let alone = cur.tabs.iter().map(|t| t.layout.leaves().len()).sum::<usize>() == 1;
-        let target = self.workspaces.iter().find(|w| w.id != ws && same_path(&self.ws_repo(w), &repo)).map(|w| w.id);
-        
+        let agent = self
+            .terms
+            .get(&term)
+            .and_then(|t| t.agent.clone())
+            .unwrap_or_else(|| "an agent".into());
+        let name = repo
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| repo.display().to_string());
+        let alone = cur
+            .tabs
+            .iter()
+            .map(|t| t.layout.leaves().len())
+            .sum::<usize>()
+            == 1;
+        let target = self
+            .workspaces
+            .iter()
+            .find(|w| w.id != ws && same_path(&self.ws_repo(w), &repo))
+            .map(|w| w.id);
+
         let msg = match (target, alone) {
             // The repo already has a workspace: the pane joins it.
             (Some(target), _) => {
@@ -564,22 +922,42 @@ impl Daemon {
                 if let Some(w) = self.workspaces.iter_mut().find(|w| w.id == target) {
                     let id = self.next_id;
                     self.next_id += 1;
-                    w.tabs.push(TabInfo { id, name: String::new(), layout: Node::Leaf(term), focus: term });
+                    w.tabs.push(TabInfo {
+                        id,
+                        name: String::new(),
+                        layout: Node::Leaf(term),
+                        focus: term,
+                    });
                     w.active_tab = id;
                 }
                 self.active_ws = Some(target);
-                self.auto_undo = Some(AutoUndo::Moved { term, from_ws: ws, from_tab: tab, beside });
-                format!("You started {agent} in {}, so it joined {name}.", cwd.display())
+                self.auto_undo = Some(AutoUndo::Moved {
+                    term,
+                    from_ws: ws,
+                    from_tab: tab,
+                    beside,
+                });
+                format!(
+                    "You started {agent} in {}, so it joined {name}.",
+                    cwd.display()
+                )
             }
             // Its own workspace was just this pane: re-home that workspace.
             (None, true) => {
                 let w = self.workspaces.iter_mut().find(|w| w.id == ws).unwrap();
-                self.auto_undo = Some(AutoUndo::Rehomed { ws, name: w.name.clone(), cwd: w.cwd.clone() });
+                self.auto_undo = Some(AutoUndo::Rehomed {
+                    ws,
+                    name: w.name.clone(),
+                    cwd: w.cwd.clone(),
+                });
                 w.name = name.clone();
                 w.cwd = repo.clone();
                 w.git = None;
                 w.is_new = true;
-                format!("You started {agent} in {}, so it became a workspace.", cwd.display())
+                format!(
+                    "You started {agent} in {}, so it became a workspace.",
+                    cwd.display()
+                )
             }
             // Otherwise a new workspace for the repo, holding the pane.
             (None, false) => {
@@ -592,7 +970,12 @@ impl Daemon {
                     id,
                     name,
                     cwd: repo.clone(),
-                    tabs: vec![TabInfo { id: tid, name: String::new(), layout: Node::Leaf(term), focus: term }],
+                    tabs: vec![TabInfo {
+                        id: tid,
+                        name: String::new(),
+                        layout: Node::Leaf(term),
+                        focus: term,
+                    }],
                     active_tab: tid,
                     git: None,
                     worktree: false,
@@ -601,8 +984,16 @@ impl Daemon {
                     group: None,
                 });
                 self.active_ws = Some(id);
-                self.auto_undo = Some(AutoUndo::Moved { term, from_ws: ws, from_tab: tab, beside });
-                format!("You started {agent} in {}, so it became a workspace.", cwd.display())
+                self.auto_undo = Some(AutoUndo::Moved {
+                    term,
+                    from_ws: ws,
+                    from_tab: tab,
+                    beside,
+                });
+                format!(
+                    "You started {agent} in {}, so it became a workspace.",
+                    cwd.display()
+                )
             }
         };
         self.poll_git_soon();
@@ -611,7 +1002,13 @@ impl Daemon {
     }
 
     pub(super) fn tab_focus(&self, ws: WsId, tab: TabId) -> Option<TermId> {
-        self.workspaces.iter().find(|w| w.id == ws)?.tabs.iter().find(|t| t.id == tab).map(|t| t.focus)
+        self.workspaces
+            .iter()
+            .find(|w| w.id == ws)?
+            .tabs
+            .iter()
+            .find(|t| t.id == tab)
+            .map(|t| t.focus)
     }
 
     pub(super) fn undo_auto(&mut self, undo: AutoUndo) -> Result<()> {
@@ -623,7 +1020,12 @@ impl Daemon {
                 w.git = None;
                 w.is_new = false;
             }
-            AutoUndo::Moved { term, from_ws, from_tab, beside } => {
+            AutoUndo::Moved {
+                term,
+                from_ws,
+                from_tab,
+                beside,
+            } => {
                 if !self.terms.contains_key(&term) {
                     anyhow::bail!("that pane has closed");
                 }
@@ -640,7 +1042,12 @@ impl Daemon {
                             _ => {
                                 let id = self.next_id;
                                 self.next_id += 1;
-                                w.tabs.push(TabInfo { id, name: String::new(), layout: Node::Leaf(term), focus: term });
+                                w.tabs.push(TabInfo {
+                                    id,
+                                    name: String::new(),
+                                    layout: Node::Leaf(term),
+                                    focus: term,
+                                });
                                 w.active_tab = id;
                             }
                         }

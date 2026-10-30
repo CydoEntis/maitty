@@ -5,7 +5,13 @@
 use std::path::{Path, PathBuf};
 
 /// Files that read or rewrite what an old install left on disk, and their tests, which name it.
-const CARRY_OVER_FILES: [&str; 5] = ["src/cli.rs", "src/config.rs", "src/project.rs", "src/theme.rs", "src/client/themes.rs"];
+const CARRY_OVER_FILES: [&str; 5] = [
+    "src/cli.rs",
+    "src/config.rs",
+    "src/project.rs",
+    "src/theme.rs",
+    "src/client/themes.rs",
+];
 
 /// Source the app is built from: Rust and the adapters it installs. Reference frames (`.txt`)
 /// are fixtures that show the name and are updated by hand with a rename.
@@ -14,7 +20,10 @@ fn sources(dir: &Path, out: &mut Vec<PathBuf>) {
         let path = entry.expect("dir entry").path();
         if path.is_dir() {
             sources(&path, out);
-        } else if path.extension().is_some_and(|e| e == "rs" || e == "js" || e == "mjs") {
+        } else if path
+            .extension()
+            .is_some_and(|e| e == "rs" || e == "js" || e == "mjs")
+        {
             out.push(path);
         }
     }
@@ -37,7 +46,11 @@ fn lines_naming(names: &[String], skip: &[&str]) -> Vec<String> {
     sources(&root.join("src"), &mut files);
     let mut hits = Vec::new();
     for file in files {
-        let rel = file.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/");
+        let rel = file
+            .strip_prefix(root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
         if skip.contains(&rel.as_str()) {
             continue;
         }
@@ -54,9 +67,15 @@ fn lines_naming(names: &[String], skip: &[&str]) -> Vec<String> {
 
 #[test]
 fn the_apps_name_is_never_written_out() {
-    let names = [env!("APP_COMMAND"), env!("APP_NAME")].map(str::to_lowercase).to_vec();
+    let names = [env!("APP_COMMAND"), env!("APP_NAME")]
+        .map(str::to_lowercase)
+        .to_vec();
     let hits = lines_naming(&names, &[]);
-    assert!(hits.is_empty(), "take the name from brand (env!(\"APP_COMMAND\") and friends), not as text:\n{}", hits.join("\n"));
+    assert!(
+        hits.is_empty(),
+        "take the name from brand (env!(\"APP_COMMAND\") and friends), not as text:\n{}",
+        hits.join("\n")
+    );
 }
 
 /// The installers run on their own (`curl … | sh`), so each names the app once; it must be
@@ -66,15 +85,33 @@ fn the_installers_install_the_command_cargo_toml_builds() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let named = |file: &str, prefix: &str| {
         let text = std::fs::read_to_string(root.join(file)).expect("installer readable");
-        text.lines().find_map(|l| l.strip_prefix(prefix)).map(|v| v.trim().trim_matches(['"', '\'']).to_string())
+        text.lines()
+            .find_map(|l| l.strip_prefix(prefix))
+            .map(|v| v.trim().trim_matches(['"', '\'']).to_string())
     };
-    assert_eq!(named("install.sh", "APP=").as_deref(), Some(env!("APP_COMMAND")), "install.sh's APP");
-    assert_eq!(named("install.ps1", "$app = ").as_deref(), Some(env!("APP_COMMAND")), "install.ps1's $app");
+    assert_eq!(
+        named("install.sh", "APP=").as_deref(),
+        Some(env!("APP_COMMAND")),
+        "install.sh's APP"
+    );
+    assert_eq!(
+        named("install.ps1", "$app = ").as_deref(),
+        Some(env!("APP_COMMAND")),
+        "install.ps1's $app"
+    );
 }
 
 #[test]
 fn names_the_app_had_before_stay_in_carry_over_code() {
-    let previous: Vec<String> = env!("APP_PREVIOUS").split(',').filter(|p| !p.is_empty()).map(str::to_lowercase).collect();
+    let previous: Vec<String> = env!("APP_PREVIOUS")
+        .split(',')
+        .filter(|p| !p.is_empty())
+        .map(str::to_lowercase)
+        .collect();
     let hits = lines_naming(&previous, &CARRY_OVER_FILES);
-    assert!(hits.is_empty(), "name parts by role, not by a name the app had before:\n{}", hits.join("\n"));
+    assert!(
+        hits.is_empty(),
+        "name parts by role, not by a name the app had before:\n{}",
+        hits.join("\n")
+    );
 }

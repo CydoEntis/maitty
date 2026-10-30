@@ -56,7 +56,10 @@ pub(in crate::client) const UNICODE: Glyphs = Glyphs {
 
 /// Unicode, with a session marked by a coloured dot: `●` for every state that wants you or says
 /// something, `○` for idle and asleep; working and checking keep their moving marks.
-pub(in crate::client) const DOTS: Glyphs = Glyphs { dots: true, ..UNICODE };
+pub(in crate::client) const DOTS: Glyphs = Glyphs {
+    dots: true,
+    ..UNICODE
+};
 
 pub(in crate::client) const ASCII: Glyphs = Glyphs {
     ring: ["-", "\\", "|", "/"],
@@ -101,7 +104,12 @@ pub(in crate::client) fn chosen(setting: &str, icons: &Icons) -> &'static Glyphs
         "unicode" => &UNICODE,
         "ascii" => &ASCII,
         "nerd" => &NERD,
-        _ if [&icons.blocked, &icons.done, &icons.idle].iter().all(|icon| icon.is_ascii()) => &ASCII,
+        _ if [&icons.blocked, &icons.done, &icons.idle]
+            .iter()
+            .all(|icon| icon.is_ascii()) =>
+        {
+            &ASCII
+        }
         _ => &DOTS,
     }
 }
@@ -134,8 +142,18 @@ pub(in crate::client) struct Mark<'a> {
 }
 
 impl Kind {
-    pub fn mark<'a>(self, g: &'static Glyphs, t: &Theme, ring_step: usize, working: &'a str) -> Mark<'a> {
-        Mark { glyph: self.glyph(g, ring_step, working), color: self.color(t), word: self.word() }
+    pub fn mark<'a>(
+        self,
+        g: &'static Glyphs,
+        t: &Theme,
+        ring_step: usize,
+        working: &'a str,
+    ) -> Mark<'a> {
+        Mark {
+            glyph: self.glyph(g, ring_step, working),
+            color: self.color(t),
+            word: self.word(),
+        }
     }
 
     /// While the agent works or asks, its last check is about an older turn and says nothing.
@@ -194,7 +212,11 @@ impl Kind {
     /// Its glyph. Working shows the user's spinner frame and checking the ring at `ring_step`.
     pub fn glyph<'a>(self, g: &'static Glyphs, ring_step: usize, working: &'a str) -> &'a str {
         if g.dots && !matches!(self, Kind::Working | Kind::Checking) {
-            return if matches!(self, Kind::Idle | Kind::Asleep) { g.idle } else { g.needs };
+            return if matches!(self, Kind::Idle | Kind::Asleep) {
+                g.idle
+            } else {
+                g.needs
+            };
         }
         match self {
             Kind::Working => working,
@@ -219,7 +241,10 @@ mod tests {
     const SETS: [(&str, &Glyphs); 3] = [("unicode", &UNICODE), ("ascii", &ASCII), ("nerd", &NERD)];
 
     fn info(state: CheckState) -> CheckInfo {
-        CheckInfo { state, ..Default::default() }
+        CheckInfo {
+            state,
+            ..Default::default()
+        }
     }
 
     /// Every state the reference names: what it is made of and how it must read in each set.
@@ -227,25 +252,137 @@ mod tests {
     fn every_state_reads_by_glyph_colour_and_word_in_every_set() {
         let t = Theme::named(crate::theme::DEFAULT);
         let cases = [
-            (Status::Working, None, false, Kind::Working, ["⠹", "⠹", "⠹"], t.accent, "working"),
-            (Status::Done, Some(CheckState::Checking), false, Kind::Checking, ["◜", "-", "◜"], t.sky(), "checking"),
-            (Status::Blocked, None, false, Kind::Needs, ["●", "!", "\u{f0f3}"], t.blocked, "needs you"),
-            (Status::Done, Some(CheckState::NeedsApproval), false, Kind::Approve, ["●", "!", "\u{f0f3}"], t.blocked, "needs you"),
-            (Status::Done, None, false, Kind::Done, ["✓", "+", "\u{f00c}"], t.done, "done"),
-            (Status::Done, Some(CheckState::Passed), false, Kind::Passed, ["✓", "+", "\u{f00c}"], t.done, "done"),
-            (Status::Done, Some(CheckState::Stale), false, Kind::Stale, ["◷", "~", "\u{f017}"], t.text, "done · stale"),
-            (Status::Done, Some(CheckState::Failed), false, Kind::Failed, ["✕", "x", "\u{f00d}"], t.err, "failed"),
-            (Status::Done, Some(CheckState::Overridden), false, Kind::Over, ["⊘", "/", "\u{f05e}"], t.text, "done · overridden"),
-            (Status::Done, Some(CheckState::CouldNotRun), false, Kind::Couldnt, ["?", "?", "\u{f128}"], t.violet(), "not checked"),
-            (Status::Done, Some(CheckState::Never), false, Kind::Never, ["?", "?", "\u{f128}"], t.violet(), "not checked"),
-            (Status::Idle, None, false, Kind::Idle, ["○", "o", "\u{f10c}"], t.muted, "idle"),
-            (Status::Idle, None, true, Kind::Asleep, ["z", "z", "z"], t.muted, "asleep"),
+            (
+                Status::Working,
+                None,
+                false,
+                Kind::Working,
+                ["⠹", "⠹", "⠹"],
+                t.accent,
+                "working",
+            ),
+            (
+                Status::Done,
+                Some(CheckState::Checking),
+                false,
+                Kind::Checking,
+                ["◜", "-", "◜"],
+                t.sky(),
+                "checking",
+            ),
+            (
+                Status::Blocked,
+                None,
+                false,
+                Kind::Needs,
+                ["●", "!", "\u{f0f3}"],
+                t.blocked,
+                "needs you",
+            ),
+            (
+                Status::Done,
+                Some(CheckState::NeedsApproval),
+                false,
+                Kind::Approve,
+                ["●", "!", "\u{f0f3}"],
+                t.blocked,
+                "needs you",
+            ),
+            (
+                Status::Done,
+                None,
+                false,
+                Kind::Done,
+                ["✓", "+", "\u{f00c}"],
+                t.done,
+                "done",
+            ),
+            (
+                Status::Done,
+                Some(CheckState::Passed),
+                false,
+                Kind::Passed,
+                ["✓", "+", "\u{f00c}"],
+                t.done,
+                "done",
+            ),
+            (
+                Status::Done,
+                Some(CheckState::Stale),
+                false,
+                Kind::Stale,
+                ["◷", "~", "\u{f017}"],
+                t.text,
+                "done · stale",
+            ),
+            (
+                Status::Done,
+                Some(CheckState::Failed),
+                false,
+                Kind::Failed,
+                ["✕", "x", "\u{f00d}"],
+                t.err,
+                "failed",
+            ),
+            (
+                Status::Done,
+                Some(CheckState::Overridden),
+                false,
+                Kind::Over,
+                ["⊘", "/", "\u{f05e}"],
+                t.text,
+                "done · overridden",
+            ),
+            (
+                Status::Done,
+                Some(CheckState::CouldNotRun),
+                false,
+                Kind::Couldnt,
+                ["?", "?", "\u{f128}"],
+                t.violet(),
+                "not checked",
+            ),
+            (
+                Status::Done,
+                Some(CheckState::Never),
+                false,
+                Kind::Never,
+                ["?", "?", "\u{f128}"],
+                t.violet(),
+                "not checked",
+            ),
+            (
+                Status::Idle,
+                None,
+                false,
+                Kind::Idle,
+                ["○", "o", "\u{f10c}"],
+                t.muted,
+                "idle",
+            ),
+            (
+                Status::Idle,
+                None,
+                true,
+                Kind::Asleep,
+                ["z", "z", "z"],
+                t.muted,
+                "asleep",
+            ),
         ];
         for (status, state, asleep, kind, glyphs, color, word) in cases {
             let check = state.map(info);
-            assert_eq!(Kind::of(status, check.as_ref(), asleep), kind, "{status:?} {state:?}");
+            assert_eq!(
+                Kind::of(status, check.as_ref(), asleep),
+                kind,
+                "{status:?} {state:?}"
+            );
             for ((name, set), glyph) in SETS.iter().zip(glyphs) {
-                assert_eq!(kind.mark(set, &t, 0, "⠹"), Mark { glyph, color, word }, "{kind:?} in {name}");
+                assert_eq!(
+                    kind.mark(set, &t, 0, "⠹"),
+                    Mark { glyph, color, word },
+                    "{kind:?} in {name}"
+                );
             }
         }
     }
@@ -267,50 +404,115 @@ mod tests {
             (Kind::Never, t.violet(), "not checked"),
         ];
         for (kind, color, word) in said {
-            assert_eq!(kind.mark(&DOTS, &t, 0, "⠹"), Mark { glyph: "●", color, word }, "{kind:?}");
+            assert_eq!(
+                kind.mark(&DOTS, &t, 0, "⠹"),
+                Mark {
+                    glyph: "●",
+                    color,
+                    word
+                },
+                "{kind:?}"
+            );
         }
         for (kind, word) in [(Kind::Idle, "idle"), (Kind::Asleep, "asleep")] {
-            assert_eq!(kind.mark(&DOTS, &t, 0, "⠹"), Mark { glyph: "○", color: t.muted, word }, "{kind:?}");
+            assert_eq!(
+                kind.mark(&DOTS, &t, 0, "⠹"),
+                Mark {
+                    glyph: "○",
+                    color: t.muted,
+                    word
+                },
+                "{kind:?}"
+            );
         }
-        assert_eq!(Kind::Working.mark(&DOTS, &t, 0, "⠹").glyph, "⠹", "working keeps your spinner");
-        assert_eq!(Kind::Checking.mark(&DOTS, &t, 1, "").glyph, DOTS.ring[1], "checking keeps its ring");
-        assert_eq!(DOTS.done, UNICODE.done, "a check's own ✓ and ✕ keep their shapes");
+        assert_eq!(
+            Kind::Working.mark(&DOTS, &t, 0, "⠹").glyph,
+            "⠹",
+            "working keeps your spinner"
+        );
+        assert_eq!(
+            Kind::Checking.mark(&DOTS, &t, 1, "").glyph,
+            DOTS.ring[1],
+            "checking keeps its ring"
+        );
+        assert_eq!(
+            DOTS.done, UNICODE.done,
+            "a check's own ✓ and ✕ keep their shapes"
+        );
         assert_eq!(DOTS.failed, UNICODE.failed);
     }
 
     #[test]
     fn a_check_says_nothing_while_the_agent_works_or_asks() {
         let failed = info(CheckState::Failed);
-        assert_eq!(Kind::of(Status::Working, Some(&failed), false), Kind::Working);
+        assert_eq!(
+            Kind::of(Status::Working, Some(&failed), false),
+            Kind::Working
+        );
         assert_eq!(Kind::of(Status::Blocked, Some(&failed), false), Kind::Needs);
-        assert_eq!(Kind::of(Status::Idle, Some(&failed), false), Kind::Failed, "seen, it still failed");
-        assert_eq!(Kind::of(Status::Done, Some(&info(CheckState::Pending)), false), Kind::Checking, "a run is still going");
+        assert_eq!(
+            Kind::of(Status::Idle, Some(&failed), false),
+            Kind::Failed,
+            "seen, it still failed"
+        );
+        assert_eq!(
+            Kind::of(Status::Done, Some(&info(CheckState::Pending)), false),
+            Kind::Checking,
+            "a run is still going"
+        );
     }
 
     #[test]
     fn the_ring_turns_through_its_four_frames() {
         for (_, set) in SETS {
             let frames: Vec<&str> = (0..5).map(|i| Kind::Checking.glyph(set, i, "")).collect();
-            assert_eq!(frames, [set.ring[0], set.ring[1], set.ring[2], set.ring[3], set.ring[0]]);
+            assert_eq!(
+                frames,
+                [
+                    set.ring[0],
+                    set.ring[1],
+                    set.ring[2],
+                    set.ring[3],
+                    set.ring[0]
+                ]
+            );
         }
     }
 
     #[test]
     fn every_glyph_is_one_cell_but_the_ascii_branch() {
         for (name, g) in SETS {
-            let all = [g.needs, g.done, g.failed, g.over, g.couldnt, g.stale, g.idle, g.asleep, g.pend, g.bar, g.close, g.fold, g.warn, g.arrow];
-            for s in all.iter().chain(&g.ring).chain((name != "ascii").then_some(&g.branch)) {
+            let all = [
+                g.needs, g.done, g.failed, g.over, g.couldnt, g.stale, g.idle, g.asleep, g.pend,
+                g.bar, g.close, g.fold, g.warn, g.arrow,
+            ];
+            for s in all
+                .iter()
+                .chain(&g.ring)
+                .chain((name != "ascii").then_some(&g.branch))
+            {
                 assert_eq!((s.chars().count(), s.width()), (1, 1), "{s:?} in {name}");
             }
         }
         assert_eq!(ASCII.branch, "git:");
-        assert!(ASCII.ring.iter().chain([&ASCII.needs, &ASCII.done, &ASCII.stale]).all(|s| s.is_ascii()));
+        assert!(
+            ASCII
+                .ring
+                .iter()
+                .chain([&ASCII.needs, &ASCII.done, &ASCII.stale])
+                .all(|s| s.is_ascii())
+        );
     }
 
     #[test]
     fn auto_is_dots_unless_the_icons_are_plain_and_a_setting_wins() {
         let fancy = Icons::default();
-        let plain = Icons { blocked: "!".into(), done: "*".into(), idle: "-".into(), ..Icons::default() };
+        let plain = Icons {
+            blocked: "!".into(),
+            done: "*".into(),
+            idle: "-".into(),
+            ..Icons::default()
+        };
         assert_eq!(chosen("auto", &fancy), &DOTS);
         assert_eq!(chosen("dots", &plain), &DOTS);
         assert_eq!(chosen("auto", &plain), &ASCII);

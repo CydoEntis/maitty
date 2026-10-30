@@ -16,7 +16,12 @@ pub fn classify(line: &str) -> LineKind {
     let lower = l.to_lowercase();
     if l.starts_with(['✓', '✔']) || l.starts_with("ok ") || l.starts_with("PASS") {
         LineKind::Pass
-    } else if l.starts_with(['✗', '✕', '✘']) || l.starts_with("FAIL") || ["error", "failed", "panicked"].iter().any(|w| lower.contains(w)) {
+    } else if l.starts_with(['✗', '✕', '✘'])
+        || l.starts_with("FAIL")
+        || ["error", "failed", "panicked"]
+            .iter()
+            .any(|w| lower.contains(w))
+    {
         LineKind::Failure
     } else {
         LineKind::Plain
@@ -38,7 +43,10 @@ pub fn clean(line: &str) -> String {
                     chars.next();
                 } else if chars.next_if_eq(&']').is_some() {
                     // A title or link: up to the bell, or the ESC that ends it.
-                    while chars.next_if(|c| !matches!(c, '\u{7}' | '\u{1b}')).is_some() {}
+                    while chars
+                        .next_if(|c| !matches!(c, '\u{7}' | '\u{1b}'))
+                        .is_some()
+                    {}
                     if chars.next() == Some('\u{1b}') {
                         chars.next();
                     }

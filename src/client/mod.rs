@@ -1,14 +1,16 @@
 //! The TUI client: renders the daemon's snapshot, keeps a terminal emulator per pane, and
 //! turns keys into either pane input or commands.
 
+mod actions;
+mod background;
+mod branch;
 mod copy;
-mod marks;
 mod design;
 mod files;
-mod markdown;
 mod find;
-mod branch;
-mod screen;
+mod input;
+mod markdown;
+mod marks;
 mod menu;
 mod modal;
 mod motion;
@@ -16,18 +18,16 @@ mod overlap;
 mod pick;
 mod recipes;
 mod render;
-mod tasks;
-mod views;
-mod actions;
-mod background;
-mod input;
-mod view_keys;
-mod themes;
-mod spinners;
 pub mod restart_prompt;
+mod screen;
+mod spinners;
+mod tasks;
+mod themes;
+mod view_keys;
+mod views;
 
+use crate::brand::APP_COMMAND;
 use crate::config::{Config, Keymap};
-use crate::brand::{APP_COMMAND};
 use crate::ipc;
 use crate::keys::{self, Action, KeySpec};
 use crate::protocol::*;
@@ -35,7 +35,8 @@ use crate::theme::Theme;
 use anyhow::Result;
 use futures_util::{FutureExt, StreamExt};
 use ratatui::crossterm::event::{
-    self, Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    self, Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
+    MouseEvent, MouseEventKind,
 };
 use ratatui::crossterm::execute;
 use ratatui::layout::{Position, Rect};
@@ -46,14 +47,22 @@ use tokio::sync::mpsc;
 
 /// "3 sessions stop and resume, 1 is working": what a daemon restart costs.
 fn restart_summary(sessions: usize, working: usize, waiting: usize) -> String {
-    let stops = if sessions == 1 { "1 session stops and resumes".to_string() } else { format!("{sessions} sessions stop and resume") };
+    let stops = if sessions == 1 {
+        "1 session stops and resumes".to_string()
+    } else {
+        format!("{sessions} sessions stop and resume")
+    };
     let working = match working {
         0 => None,
         1 => Some("1 is working".to_string()),
         n => Some(format!("{n} are working")),
     };
     let waiting = (waiting > 0).then(|| format!("{waiting} waiting for you"));
-    [Some(stops), working, waiting].into_iter().flatten().collect::<Vec<_>>().join(", ")
+    [Some(stops), working, waiting]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// How often the client looks at its timers (spinners, toasts, pending focus).
@@ -96,18 +105,34 @@ enum Mode {
     Normal,
     /// Shortcut mode (ADR 0016): each key runs its leader action and the mode stays.
     /// `acted`: a shortcut has run, so the key map no longer opens on a pause.
-    Prefix { since: Instant, acted: bool },
-    Prompt { kind: PromptKind, input: String },
+    Prefix {
+        since: Instant,
+        acted: bool,
+    },
+    Prompt {
+        kind: PromptKind,
+        input: String,
+    },
     Copy(Box<copy::Copy>),
     /// Pick an existing worktree of the repo, or type a branch to create one.
-    Worktrees { ws: WsId, cmd: Option<String>, items: Option<Vec<WorktreeEntry>>, query: String, sel: usize },
+    Worktrees {
+        ws: WsId,
+        cmd: Option<String>,
+        items: Option<Vec<WorktreeEntry>>,
+        query: String,
+        sel: usize,
+    },
     /// The app layout: open a folder as a project.
     Finder(Box<screen::Finder>),
     /// The app layout: new pane (project, worktree, what to run).
     ScreenPane(screen::NewPaneHy),
     /// The app layout: the settings overlay.
     ScreenSettings(Box<design::SettingsView>),
-    Themes { query: String, sel: usize, saving: bool },
+    Themes {
+        query: String,
+        sel: usize,
+        saving: bool,
+    },
     Spinners(Box<spinners::Picker>),
     /// The app layout: keyboard cursor in the sidebar; bare keys act like leader keys.
     Side,
@@ -118,7 +143,9 @@ enum Mode {
     /// Switch branch.
     Branch(Box<branch::BranchView>),
     /// Notification history (the selected row, newest first).
-    History { sel: usize },
+    History {
+        sel: usize,
+    },
     /// A repo's worktrees and which to remove.
     Tidy(Box<screen::TidyView>),
     /// "Close …?" with confirm / cancel.
@@ -128,21 +155,31 @@ enum Mode {
     /// A project's checkpoints (`PROJECT · <name>`), being edited.
     ProjectCheck(Box<screen::check_settings::CheckDraft>),
     /// The switcher: projects and sessions, typed to filter.
-    GoTo { query: String, sel: usize },
+    GoTo {
+        query: String,
+        sel: usize,
+    },
     /// Writing a quick follow-up to an agent (beside its row, or in its Inbox row).
     Compose(Box<screen::Compose>),
     /// Why a session has its status (beside its row); `side`: back to the sidebar after.
-    Why { term: TermId, side: bool },
+    Why {
+        term: TermId,
+        side: bool,
+    },
     /// A session asks to start helpers (beside its row); `side`: back to the sidebar after.
-    Helpers { term: TermId, side: bool },
+    Helpers {
+        term: TermId,
+        side: bool,
+    },
     /// The leader's key map (or its second step), typed to search.
     KeyMap(Box<screen::KeyMap>),
     /// Every command with its key (the sidebar's "menu").
-    Actions { sel: usize },
+    Actions {
+        sel: usize,
+    },
     /// A tab being renamed in its pill.
     RenameTab(Box<screen::TabName>),
 }
-
 
 /// A view that replaces the pane area.
 pub(super) enum View {
@@ -172,7 +209,11 @@ pub(super) enum Btn {
 
 pub(super) enum Bg {
     Changes(PathBuf, Result<Box<tasks::Review>, String>),
-    Tree(PathBuf, Vec<views::FileNode>, std::collections::HashMap<String, char>),
+    Tree(
+        PathBuf,
+        Vec<views::FileNode>,
+        std::collections::HashMap<String, char>,
+    ),
     TreeRecent(PathBuf, Vec<files::FileEntry>),
     /// A finished action: its message, and whether the open review should reload.
     Done(Result<String, String>, bool),
@@ -203,7 +244,6 @@ pub(super) enum Bg {
     Then(Box<dyn FnOnce(&mut App) + Send>),
 }
 
-
 /// The cursor to show, as DECSCUSR's number (0 is the terminal's own): what the focused pane's
 /// program asked for, else the user's `ui.cursor` and `ui.cursor_blink`. A program asking for 0
 /// ("your default") gets the user's setting too.
@@ -218,14 +258,19 @@ fn cursor_code(program: Option<u8>, ui: &crate::config::Ui) -> u8 {
         _ => return 0,
     };
     // DECSCUSR's odd numbers blink and the even ones after them hold still.
-    if ui.cursor_blink { blinking } else { blinking + 1 }
+    if ui.cursor_blink {
+        blinking
+    } else {
+        blinking + 1
+    }
 }
-
 
 /// Say once that the config file named a retired look (ADR 0027), and write what stands for it
 /// into the file, so it is not said again.
 fn settle_retired_layout(app: &mut App) {
-    let Some(r) = app.cfg.ui.retired_layout.take() else { return };
+    let Some(r) = app.cfg.ui.retired_layout.take() else {
+        return;
+    };
     let mut writes: Vec<(&str, toml_edit::Value)> = vec![("ui.layout", r.kind.name().into())];
     if r.gap {
         writes.push(("ui.gap", "0".into()));
@@ -247,24 +292,40 @@ mod cursor_tests {
     use crate::config::Ui;
 
     fn ui(shape: &str, blink: bool) -> Ui {
-        Ui { cursor: shape.into(), cursor_blink: blink, ..Default::default() }
+        Ui {
+            cursor: shape.into(),
+            cursor_blink: blink,
+            ..Default::default()
+        }
     }
 
     #[test]
     fn your_cursor_shows_where_the_program_asks_for_none() {
-        assert_eq!(cursor_code(None, &ui("terminal", true)), 0, "the terminal's own by default");
+        assert_eq!(
+            cursor_code(None, &ui("terminal", true)),
+            0,
+            "the terminal's own by default"
+        );
         assert_eq!(cursor_code(None, &ui("block", true)), 1);
         assert_eq!(cursor_code(None, &ui("block", false)), 2);
         assert_eq!(cursor_code(None, &ui("underline", true)), 3);
         assert_eq!(cursor_code(None, &ui("underline", false)), 4);
         assert_eq!(cursor_code(None, &ui("bar", true)), 5);
         assert_eq!(cursor_code(None, &ui("bar", false)), 6);
-        assert_eq!(cursor_code(Some(0), &ui("bar", false)), 6, "a program asking for the default gets yours");
+        assert_eq!(
+            cursor_code(Some(0), &ui("bar", false)),
+            6,
+            "a program asking for the default gets yours"
+        );
     }
 
     #[test]
     fn a_program_that_asks_for_its_own_cursor_gets_it() {
-        assert_eq!(cursor_code(Some(5), &ui("block", false)), 5, "vim's insert-mode bar wins over your block");
+        assert_eq!(
+            cursor_code(Some(5), &ui("block", false)),
+            5,
+            "vim's insert-mode bar wins over your block"
+        );
         assert_eq!(cursor_code(Some(2), &ui("terminal", true)), 2);
     }
 }
@@ -277,12 +338,18 @@ fn clipboard_image_to_file() -> Result<(PathBuf, usize, usize), String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     if let Ok(rd) = std::fs::read_dir(&dir) {
         for e in rd.flatten() {
-            if e.metadata().and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().is_ok_and(|a| a.as_secs() > 7 * 86_400)) {
+            if e.metadata()
+                .and_then(|m| m.modified())
+                .is_ok_and(|t| t.elapsed().is_ok_and(|a| a.as_secs() > 7 * 86_400))
+            {
                 let _ = std::fs::remove_file(e.path());
             }
         }
     }
-    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
     let path = dir.join(format!("paste-{ms}.png"));
     write_png(&path, img.width as u32, img.height as u32, &img.bytes)?;
     Ok((path, img.width, img.height))
@@ -295,7 +362,8 @@ fn clipboard_image() -> Result<arboard::ImageData<'static>, String> {
         return Err("there's no image on the clipboard".into());
     }
     let mut cb = arboard::Clipboard::new().map_err(|e| format!("can't open the clipboard: {e}"))?;
-    cb.get_image().map_err(|_| "there's no image on the clipboard".to_string())
+    cb.get_image()
+        .map_err(|_| "there's no image on the clipboard".to_string())
 }
 
 /// RGBA pixels to a PNG file.
@@ -322,7 +390,11 @@ fn remove_worktree_dir(dir: &std::path::Path) -> Result<String, String> {
         .args(["worktree", "remove", "--force", "."])
         .output()
         .map_err(|e| e.to_string())?;
-    if out.status.success() { Ok(format!("removed {}", dir.display())) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_string()) }
+    if out.status.success() {
+        Ok(format!("removed {}", dir.display()))
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
 }
 
 /// A row in the worktree picker.
@@ -361,7 +433,9 @@ impl PromptKind {
     fn is_confirm(&self) -> bool {
         matches!(
             self,
-            PromptKind::ConfirmCloseWorkspace(_) | PromptKind::ConfirmKillServer | PromptKind::ConfirmRemoveWorktree(_)
+            PromptKind::ConfirmCloseWorkspace(_)
+                | PromptKind::ConfirmKillServer
+                | PromptKind::ConfirmRemoveWorktree(_)
         )
     }
 }
@@ -468,6 +542,8 @@ pub struct App {
     /// Where a left-button press started, for drag-to-select.
     drag: Option<(TermId, Position)>,
     bg: mpsc::UnboundedSender<Bg>,
+    #[cfg(test)]
+    run_background_jobs_inline: bool,
     view: Option<View>,
     /// Where the mouse is, for hover highlights.
     hover: Option<Position>,
@@ -512,7 +588,10 @@ pub struct App {
 
 pub fn run(opts: Options) -> Result<()> {
     crate::proc::ahead_of_the_panes();
-    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build()?;
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()?;
     rt.block_on(run_async(opts))
 }
 
@@ -551,7 +630,11 @@ async fn run_async(opts: Options) -> Result<()> {
     if app.cfg.ui.mouse {
         let _ = execute!(std::io::stdout(), event::EnableMouseCapture);
     }
-    let _ = execute!(std::io::stdout(), event::EnableBracketedPaste, event::EnableFocusChange);
+    let _ = execute!(
+        std::io::stdout(),
+        event::EnableBracketedPaste,
+        event::EnableFocusChange
+    );
     enhance_keyboard();
 
     let result = app.event_loop(&mut terminal, &mut reader, &mut bg_rx).await;
@@ -575,7 +658,13 @@ static KEYBOARD_ENHANCED: std::sync::atomic::AtomicBool = std::sync::atomic::Ato
 fn enhance_keyboard() {
     #[cfg(not(windows))]
     if crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false)
-        && execute!(std::io::stdout(), event::PushKeyboardEnhancementFlags(event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)).is_ok()
+        && execute!(
+            std::io::stdout(),
+            event::PushKeyboardEnhancementFlags(
+                event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+            )
+        )
+        .is_ok()
     {
         KEYBOARD_ENHANCED.store(true, std::sync::atomic::Ordering::Relaxed);
     }
@@ -595,7 +684,10 @@ fn restore_terminal() {
         let _ = execute!(std::io::stdout(), event::PopKeyboardEnhancementFlags);
     }
     // Give the terminal its own background, cursor and mouse pointer back.
-    let _ = execute!(std::io::stdout(), crossterm::cursor::SetCursorStyle::DefaultUserShape);
+    let _ = execute!(
+        std::io::stdout(),
+        crossterm::cursor::SetCursorStyle::DefaultUserShape
+    );
     {
         use std::io::Write;
         let _ = write!(std::io::stdout(), "\x1b]22;default\x1b\\");
@@ -608,7 +700,12 @@ fn restore_terminal() {
 }
 
 impl App {
-    fn new(cfg: Config, out: mpsc::UnboundedSender<ClientMsg>, open: Option<PathBuf>, bg_tx: mpsc::UnboundedSender<Bg>) -> App {
+    fn new(
+        cfg: Config,
+        out: mpsc::UnboundedSender<ClientMsg>,
+        open: Option<PathBuf>,
+        bg_tx: mpsc::UnboundedSender<Bg>,
+    ) -> App {
         let keymap = cfg.keymap();
         let mut app = App {
             update_available: None,
@@ -667,6 +764,8 @@ impl App {
             open,
             drag: None,
             bg: bg_tx,
+            #[cfg(test)]
+            run_background_jobs_inline: false,
             view: None,
             hover: None,
             undo_hint: false,
@@ -718,7 +817,8 @@ impl App {
         let frame = MIN_FRAME;
         loop {
             let hold = self.sync_hold_until();
-            let next_draw = tokio::time::Instant::from_std((last_draw + frame).max(hold.unwrap_or(last_draw)));
+            let next_draw =
+                tokio::time::Instant::from_std((last_draw + frame).max(hold.unwrap_or(last_draw)));
             tokio::select! {
                 _ = tokio::time::sleep_until(next_draw), if self.dirty => {}
                 ev = events.next() => match ev {
@@ -813,13 +913,22 @@ impl App {
             self.report_focus();
             self.sync_cursor_style();
             self.request_diff();
-            if self.dirty && last_draw.elapsed() >= frame && self.sync_hold_until().is_none_or(|h| Instant::now() >= h) {
+            if self.dirty
+                && last_draw.elapsed() >= frame
+                && self.sync_hold_until().is_none_or(|h| Instant::now() >= h)
+            {
                 self.dirty = false;
                 last_draw = Instant::now();
                 // Commit the whole replacement frame together, including pane switches.
-                execute!(terminal.backend_mut(), ratatui::crossterm::terminal::BeginSynchronizedUpdate)?;
+                execute!(
+                    terminal.backend_mut(),
+                    ratatui::crossterm::terminal::BeginSynchronizedUpdate
+                )?;
                 let drawn = terminal.draw(|f| render::draw(self, f)).map(|_| ());
-                let ended = execute!(terminal.backend_mut(), ratatui::crossterm::terminal::EndSynchronizedUpdate);
+                let ended = execute!(
+                    terminal.backend_mut(),
+                    ratatui::crossterm::terminal::EndSynchronizedUpdate
+                );
                 drawn?;
                 ended?;
                 self.sync_sizes();
@@ -835,7 +944,11 @@ impl App {
     /// window that falls too far behind): attach again, for a fresh copy of everything.
     /// False when it can't: the server is gone, or this keeps happening.
     async fn reattach(&mut self, reader: &mut ipc::Reader) -> bool {
-        if !self.daemon_restart_reconnect && self.reattached.is_some_and(|at| at.elapsed() < REATTACH_AT_MOST_EVERY) {
+        if !self.daemon_restart_reconnect
+            && self
+                .reattached
+                .is_some_and(|at| at.elapsed() < REATTACH_AT_MOST_EVERY)
+        {
             return false;
         }
         let restarting = self.daemon_restart_reconnect;
@@ -846,7 +959,9 @@ impl App {
             // Connect only: an unexpectedly stopped server must not be started again by this.
             ipc::open(true).await
         };
-        let Ok((r, mut writer)) = connection else { return false };
+        let Ok((r, mut writer)) = connection else {
+            return false;
+        };
         *reader = r;
         let (out_tx, mut out_rx) = mpsc::unbounded_channel::<ClientMsg>();
         tokio::spawn(async move {
@@ -859,7 +974,10 @@ impl App {
         self.out = out_tx;
         self.reattached = Some(Instant::now());
         if !restarting {
-            self.notify("Lost the server for a moment; connected again".into(), false);
+            self.notify(
+                "Lost the server for a moment; connected again".into(),
+                false,
+            );
         }
         true
     }
@@ -870,7 +988,10 @@ impl App {
             return;
         }
         self.updating = true;
-        self.notify("Installing update… the daemon will restart when no sessions are open.".into(), false);
+        self.notify(
+            "Installing update… the daemon will restart when no sessions are open.".into(),
+            false,
+        );
         self.spawn_bg(|| {
             let r = crate::update::install_latest().map(|(v, exe)| (v, crate::update::integrate_agents(&exe)));
             Bg::Then(Box::new(move |app: &mut App| match r {
@@ -894,9 +1015,13 @@ impl App {
         self.update_available = None;
         self.update_notes.clear();
         let message = if crate::ipc::remote().is_some() {
-            format!("Installed {APP_COMMAND} {version}. Update the remote daemon on its host after its sessions are closed.")
+            format!(
+                "Installed {APP_COMMAND} {version}. Update the remote daemon on its host after its sessions are closed."
+            )
         } else {
-            format!("Installed {APP_COMMAND} {version}. The daemon will restart automatically when no sessions are open.")
+            format!(
+                "Installed {APP_COMMAND} {version}. The daemon will restart automatically when no sessions are open."
+            )
         };
         self.notify(message, false);
         self.notice_restart = self.restart_needed();
@@ -907,20 +1032,28 @@ impl App {
         if crate::ipc::remote().is_some()
             || !self.got_state
             || !self.snap.terms.is_empty()
+            || !self.snap.conversations.is_empty()
             || self.daemon_restart_requested
             || self.daemon_restart_reconnect
         {
             return;
         }
-        let Some(Ok(installed)) = &self.installed_version else { return };
+        let Some(Ok(installed)) = &self.installed_version else {
+            return;
+        };
         if self.snap.daemon_version.is_empty() || installed == &self.snap.daemon_version {
             return;
         }
-        if !self.update_installed_this_run && !last_session_closed && self.snap.workspaces.is_empty() {
+        if !self.update_installed_this_run
+            && !last_session_closed
+            && self.snap.workspaces.is_empty()
+        {
             return;
         }
 
-        self.request_daemon_restart("No sessions are open. Restarting the daemon to finish the update.");
+        self.request_daemon_restart(
+            "No sessions are open. Restarting the daemon to finish the update.",
+        );
     }
 
     fn notify(&mut self, msg: String, error: bool) {
@@ -950,9 +1083,16 @@ impl App {
 
     /// Add to the notification history (Ctrl+Space N).
     pub(super) fn remember(&mut self, term: Option<TermId>, kind: char, text: String) {
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
         // The same thing twice in a row is one entry.
-        if self.history.back().is_some_and(|(_, t, k, x)| *t == term && *k == kind && *x == text) {
+        if self
+            .history
+            .back()
+            .is_some_and(|(_, t, k, x)| *t == term && *k == kind && *x == text)
+        {
             return;
         }
         self.history.push_back((now, term, kind, text));
@@ -982,9 +1122,17 @@ impl App {
             let installed = crate::update::installed_version();
             let latest = crate::update::latest_tag();
             let current = installed.as_deref().unwrap_or(env!("CARGO_PKG_VERSION"));
-            let newer = latest.as_ref().ok().filter(|tag| crate::update::newer_than(tag, current)).map(|tag| tag.trim_start_matches('v').to_string());
+            let newer = latest
+                .as_ref()
+                .ok()
+                .filter(|tag| crate::update::newer_than(tag, current))
+                .map(|tag| tag.trim_start_matches('v').to_string());
             // Only asked for when there is something new: one more request, now and then.
-            let notes = if newer.is_some() { crate::update::changes_since_this() } else { Vec::new() };
+            let notes = if newer.is_some() {
+                crate::update::changes_since_this()
+            } else {
+                Vec::new()
+            };
             Bg::Then(Box::new(move |app: &mut App| {
                 app.installed_version = Some(installed);
                 app.update_checked_now(asked, latest.map(|_| newer), notes);
@@ -1008,7 +1156,11 @@ impl App {
             && !self.daemon_restart_requested
             && !self.daemon_restart_reconnect
             && !self.snap.daemon_version.is_empty()
-            && self.installed_version.as_ref().and_then(|r| r.as_ref().ok()).is_some_and(|v| *v != self.snap.daemon_version)
+            && self
+                .installed_version
+                .as_ref()
+                .and_then(|r| r.as_ref().ok())
+                .is_some_and(|v| *v != self.snap.daemon_version)
     }
 
     /// The toast offers Restart now: it stays long enough to be read and clicked.
@@ -1020,12 +1172,19 @@ impl App {
     /// version is its own business).
     fn window_stale(&self) -> bool {
         crate::ipc::remote().is_none()
-            && self.installed_version.as_ref().and_then(|r| r.as_ref().ok()).is_some_and(|v| crate::update::newer_than(v, env!("CARGO_PKG_VERSION")))
+            && self
+                .installed_version
+                .as_ref()
+                .and_then(|r| r.as_ref().ok())
+                .is_some_and(|v| crate::update::newer_than(v, env!("CARGO_PKG_VERSION")))
     }
 
     /// There is something Restart would replace: the server, or this window.
     fn restart_needed(&self) -> bool {
-        !self.daemon_restart_requested && !self.daemon_restart_reconnect && !self.relaunch && (self.daemon_restartable() || self.window_stale())
+        !self.daemon_restart_requested
+            && !self.daemon_restart_reconnect
+            && !self.relaunch
+            && (self.daemon_restartable() || self.window_stale())
     }
 
     /// Restart onto the installed version: the server (sessions stop and resume) and this
@@ -1040,8 +1199,18 @@ impl App {
             return self.relaunch_window();
         }
         let sessions = self.snap.terms.len();
-        let working = self.snap.terms.values().filter(|t| t.status == Status::Working).count();
-        let waiting = self.snap.terms.values().filter(|t| t.status == Status::Blocked).count();
+        let working = self
+            .snap
+            .terms
+            .values()
+            .filter(|t| t.status == Status::Working)
+            .count();
+        let waiting = self
+            .snap
+            .terms
+            .values()
+            .filter(|t| t.status == Status::Blocked)
+            .count();
         let keeps = self.cfg.restore.enabled;
         if sessions == 0 || (working + waiting == 0 && keeps) {
             return self.restart_daemon_now();
@@ -1069,7 +1238,14 @@ impl App {
         if self.restart_needed() {
             self.ask_restart();
         } else {
-            self.notify(concat!(env!("APP_NAME"), " is already running the installed version").into(), false);
+            self.notify(
+                concat!(
+                    env!("APP_NAME"),
+                    " is already running the installed version"
+                )
+                .into(),
+                false,
+            );
         }
     }
 
@@ -1093,30 +1269,60 @@ impl App {
     }
 
     fn restart_pending(&self) -> bool {
-        self.installed_version.as_ref().and_then(|r| r.as_ref().ok()).is_some_and(|v| {
-            v != env!("CARGO_PKG_VERSION") || (!self.snap.daemon_version.is_empty() && *v != self.snap.daemon_version)
-        })
+        self.installed_version
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .is_some_and(|v| {
+                v != env!("CARGO_PKG_VERSION")
+                    || (!self.snap.daemon_version.is_empty() && *v != self.snap.daemon_version)
+            })
     }
 
     /// What a check for a newer the app found: the newer version, none, or why it couldn't
     /// look. One you asked for always says.
-    fn update_checked_now(&mut self, asked: bool, found: Result<Option<String>, String>, notes: Vec<String>) {
+    fn update_checked_now(
+        &mut self,
+        asked: bool,
+        found: Result<Option<String>, String>,
+        notes: Vec<String>,
+    ) {
         if asked {
             self.update_checking = false;
         }
         match found {
             Ok(Some(v)) if self.update_available.as_ref() != Some(&v) => {
-                self.notify(format!("{APP_COMMAND} {v} is out: Update now is in Settings"), false);
+                self.notify(
+                    format!("{APP_COMMAND} {v} is out: Update now is in Settings"),
+                    false,
+                );
                 self.update_available = Some(v);
                 self.update_notes = notes;
             }
-            Ok(Some(v)) if asked => self.notify(format!("{APP_COMMAND} {v} is out: Update now is in Settings"), false),
+            Ok(Some(v)) if asked => self.notify(
+                format!("{APP_COMMAND} {v} is out: Update now is in Settings"),
+                false,
+            ),
             Ok(None) => {
                 self.update_available = None;
                 self.update_notes.clear();
                 if asked {
-                    let version = self.installed_version.as_ref().and_then(|r| r.as_ref().ok()).map(String::as_str).unwrap_or(env!("CARGO_PKG_VERSION"));
-                    self.notify(format!("Installed {APP_COMMAND} {version} is the latest{}", if self.restart_pending() { "; restart pending" } else { "" }), false);
+                    let version = self
+                        .installed_version
+                        .as_ref()
+                        .and_then(|r| r.as_ref().ok())
+                        .map(String::as_str)
+                        .unwrap_or(env!("CARGO_PKG_VERSION"));
+                    self.notify(
+                        format!(
+                            "Installed {APP_COMMAND} {version} is the latest{}",
+                            if self.restart_pending() {
+                                "; restart pending"
+                            } else {
+                                ""
+                            }
+                        ),
+                        false,
+                    );
                 }
             }
             Err(e) if asked => self.notify(format!("Couldn't check for updates: {e}"), true),
@@ -1129,7 +1335,10 @@ impl App {
         if self.updating {
             return;
         }
-        let new = self.update_available.clone().unwrap_or_else(|| "the latest".into());
+        let new = self
+            .update_available
+            .clone()
+            .unwrap_or_else(|| "the latest".into());
         self.mode = Mode::Confirm(Box::new(menu::Confirm {
             title: concat!("Update ", env!("APP_COMMAND")).into(),
             sub: String::new(),
@@ -1149,7 +1358,13 @@ impl App {
     }
 
     fn cmd(&self, c: Command) {
-        if matches!(c, Command::NewWorkspace { .. } | Command::NewTab { .. } | Command::NewWorktree { .. } | Command::AgentWorktree { .. }) {
+        if matches!(
+            c,
+            Command::NewWorkspace { .. }
+                | Command::NewTab { .. }
+                | Command::NewWorktree { .. }
+                | Command::AgentWorktree { .. }
+        ) {
             *self.screen.new_tab.borrow_mut() = None;
         }
         self.send(ClientMsg::Command(c));
@@ -1163,10 +1378,14 @@ impl App {
 
     /// The toast is sliding in, settling from its flash, or fading out.
     fn toast_moving(&self) -> bool {
-        let Some((_, at, err)) = &self.notice else { return false };
+        let Some((_, at, err)) = &self.notice else {
+            return false;
+        };
         let hold = screen::toast_hold(*err, self.notice_term.is_some(), self.toast_restart());
         let e = at.elapsed();
-        self.motion_on() && (e < motion::TOAST_IN.max(motion::TOAST_FLASH) || (e + motion::TOAST_FADE >= hold && e < hold))
+        self.motion_on()
+            && (e < motion::TOAST_IN.max(motion::TOAST_FLASH)
+                || (e + motion::TOAST_FADE >= hold && e < hold))
     }
 
     fn spinner_frame(&self) -> u64 {
@@ -1175,21 +1394,35 @@ impl App {
 
     /// A check's ring turns while it runs.
     fn any_checking(&self) -> bool {
-        self.snap.terms.values().any(|term| term.check().is_some_and(|c| c.state == crate::protocol::CheckState::Checking))
+        self.snap.terms.values().any(|term| {
+            term.check()
+                .is_some_and(|c| c.state == crate::protocol::CheckState::Checking)
+        })
     }
 
     /// A session that needs you or finished unseen: its name pulses or shimmers.
     fn any_calling(&self) -> bool {
-        self.snap.terms.values().any(|term| matches!(term.status, Status::Blocked | Status::Done))
+        self.snap
+            .terms
+            .values()
+            .any(|term| matches!(term.status, Status::Blocked | Status::Done))
     }
 
     fn any_working(&self) -> bool {
-        self.snap.terms.values().any(|term| term.status == Status::Working)
+        self.snap
+            .terms
+            .values()
+            .any(|term| term.status == Status::Working)
     }
 
     /// The topmost clickable region under `at` on the top layer: nothing under an overlay.
     fn hover_hit(&self, at: Position) -> Option<&(Rect, Hit)> {
-        self.hits.get(self.hits_under_overlay..).unwrap_or_default().iter().rev().find(|(r, _)| r.contains(at))
+        self.hits
+            .get(self.hits_under_overlay..)
+            .unwrap_or_default()
+            .iter()
+            .rev()
+            .find(|(r, _)| r.contains(at))
     }
 
     // ---- model helpers -------------------------------------------------------------
@@ -1208,12 +1441,23 @@ impl App {
 
     /// A floating pane (`<app> popup`) open now: it has the keys until it closes.
     fn popup(&self) -> Option<TermId> {
-        self.snap.terms.values().filter(|t| t.popup).map(|t| t.id).max()
+        self.snap
+            .terms
+            .values()
+            .filter(|t| t.popup)
+            .map(|t| t.id)
+            .max()
     }
 
     /// Where typing goes: an open popup, else the pane you're on.
     fn typing_to(&self) -> Option<TermId> {
-        self.popup().or_else(|| self.focused())
+        self.popup().or_else(|| {
+            // An unbound sidebar selection must not fall through to an unrelated shell.
+            if self.screen.cursor.is_some() && self.selected_term().is_none() {
+                return None;
+            }
+            self.focused()
+        })
     }
 
     fn new_parser(&self, rows: u16, cols: u16) -> vt100::Parser {
@@ -1237,7 +1481,9 @@ impl App {
                 continue;
             }
             let old = self.sizes.insert(term, want);
-            if old.is_some_and(|o| o.0 != want.0) && self.raw.get(&term).is_some_and(|r| !r.is_empty()) {
+            if old.is_some_and(|o| o.0 != want.0)
+                && self.raw.get(&term).is_some_and(|r| !r.is_empty())
+            {
                 // A new width: replay recent output into a fresh screen so text re-wraps
                 // instead of being cut (history included). Mid-drag that would be every
                 // step: once the drag ends instead.
@@ -1252,7 +1498,11 @@ impl App {
             } else if let Some(p) = self.parsers.get_mut(&term) {
                 p.screen_mut().set_size(want.1, want.0);
             }
-            self.send(ClientMsg::Resize { term, cols: want.0, rows: want.1 });
+            self.send(ClientMsg::Resize {
+                term,
+                cols: want.0,
+                rows: want.1,
+            });
         }
     }
 
@@ -1274,13 +1524,27 @@ impl App {
         if let Some((_, _, s)) = screen::find(&model, term) {
             return s.name.clone();
         }
-        self.snap.terms.get(&term).map(|t| if t.label.trim().is_empty() { t.display_name() } else { t.label.trim().to_string() }).unwrap_or_default()
+        self.snap
+            .terms
+            .get(&term)
+            .map(|t| {
+                if t.label.trim().is_empty() {
+                    t.display_name()
+                } else {
+                    t.label.trim().to_string()
+                }
+            })
+            .unwrap_or_default()
     }
 
     fn describe_term(&self, term: TermId) -> String {
         let name = self.session_name(term);
         if let Some(t) = self.snap.terms.get(&term) {
-            let place = crate::alert::place_label(t.root.as_deref(), t.top.as_deref().unwrap_or(&t.cwd), t.branch.as_deref());
+            let place = crate::alert::place_label(
+                t.root.as_deref(),
+                t.top.as_deref().unwrap_or(&t.cwd),
+                t.branch.as_deref(),
+            );
             if !place.is_empty() {
                 return format!("{name} ({place})");
             }
@@ -1304,7 +1568,11 @@ impl App {
         if let Mode::Copy(c) = &self.mode {
             let spans = c.selected_spans();
             if !spans.is_empty() {
-                self.copy_flash = Some(copy::Flash { term: c.term, spans, at: Instant::now() });
+                self.copy_flash = Some(copy::Flash {
+                    term: c.term,
+                    spans,
+                    at: Instant::now(),
+                });
             }
         }
         self.mode = Mode::Normal;
@@ -1319,10 +1587,26 @@ impl App {
                 parts.push((t, text));
             }
             let n = parts.len();
-            let named: Vec<(String, String)> =
-                parts.into_iter().map(|(t, s)| (self.snap.terms.get(&t).map(|i| i.display_name()).unwrap_or_else(|| format!("pane {t}")), s)).collect();
+            let named: Vec<(String, String)> = parts
+                .into_iter()
+                .map(|(t, s)| {
+                    (
+                        self.snap
+                            .terms
+                            .get(&t)
+                            .map(|i| i.display_name())
+                            .unwrap_or_else(|| format!("pane {t}")),
+                        s,
+                    )
+                })
+                .collect();
             let _ = copy::to_clipboard(&copy::join_pieces(&named));
-            self.notify_card("Copied to clipboard".into(), format!("{n} panes, each under its name"), None, false);
+            self.notify_card(
+                "Copied to clipboard".into(),
+                format!("{n} panes, each under its name"),
+                None,
+                false,
+            );
             return;
         };
         if text.is_empty() {
@@ -1332,20 +1616,31 @@ impl App {
         let lines = text.lines().count().max(1);
         let native = copy::to_clipboard(&text);
         let from = src.map(|t| self.session_name(t)).filter(|n| !n.is_empty());
-        let mut detail = format!("{chars} character{} · {lines} line{}", if chars == 1 { "" } else { "s" }, if lines == 1 { "" } else { "s" });
+        let mut detail = format!(
+            "{chars} character{} · {lines} line{}",
+            if chars == 1 { "" } else { "s" },
+            if lines == 1 { "" } else { "s" }
+        );
         if let Some(n) = from {
             detail.push_str(&format!(" from {n}"));
         }
         if !native {
             detail.push_str(" (via terminal)");
         }
-        let first = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
-        let preview = (!first.is_empty()).then(|| format!("\"{}\"", render::truncate(first, COPY_PREVIEW_CHARS)));
+        let first = text
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .unwrap_or("");
+        let preview = (!first.is_empty())
+            .then(|| format!("\"{}\"", render::truncate(first, COPY_PREVIEW_CHARS)));
         self.notify_card("Copied to clipboard".into(), detail, preview, false);
     }
 
     fn enter_copy(&mut self, term: TermId) -> bool {
-        let Some(p) = self.parsers.get_mut(&term) else { return false };
+        let Some(p) = self.parsers.get_mut(&term) else {
+            return false;
+        };
         let mut c = copy::Copy::new(term, p);
         if let Some((_, r)) = self.panes.iter().find(|(t, _)| *t == term) {
             c.height = r.height as usize;
@@ -1365,15 +1660,24 @@ impl App {
         let history = p.screen().scrollback();
         p.screen_mut().set_scrollback(at);
         let s = p.screen();
-        let agent = self.snap.terms.get(&term).is_some_and(|t| t.agent.is_some());
+        let agent = self
+            .snap
+            .terms
+            .get(&term)
+            .is_some_and(|t| t.agent.is_some());
         let wheel = if s.alternate_screen()
-            || (history == 0 && (agent || s.mouse_protocol_mode() != vt100::MouseProtocolMode::None))
+            || (history == 0
+                && (agent || s.mouse_protocol_mode() != vt100::MouseProtocolMode::None))
         {
             "the program"
         } else {
             env!("APP_COMMAND")
         };
-        let full = if s.alternate_screen() { "full-screen (it scrolls itself)" } else { "normal screen" };
+        let full = if s.alternate_screen() {
+            "full-screen (it scrolls itself)"
+        } else {
+            "normal screen"
+        };
         let raw = self.raw.get(&term).map(|r| r.len() / 1024).unwrap_or(0);
         Some(format!("{full} · the wheel goes to {wheel} · {history} lines of history, {at} up · {raw} KB kept · {:?}", self.mode).chars().take(200).collect())
     }
@@ -1397,7 +1701,11 @@ impl App {
     /// Show the focused program's cursor style (bar, block, underline) in the real terminal.
     fn sync_cursor_style(&mut self) {
         use crossterm::cursor::SetCursorStyle as S;
-        let want = cursor_code(self.focused().and_then(|t| self.cursor_style.get(&t).copied()), &self.cfg.ui);
+        let want = cursor_code(
+            self.focused()
+                .and_then(|t| self.cursor_style.get(&t).copied()),
+            &self.cfg.ui,
+        );
         if want == self.cursor_sent {
             return;
         }
@@ -1416,20 +1724,33 @@ impl App {
         }
     }
 
-    /// The clipboard's image, saved as a PNG; its path is pasted into the focused pane
+    /// The clipboard's image, saved as a PNG; its path is pasted into the typing target
     /// (Claude Code, Codex and friends attach an image given by path).
     pub(super) fn paste_image(&mut self) {
-        let Some(term) = self.focused() else { return };
+        let Some(term) = self.typing_to() else { return };
         // Reading the clipboard and encoding the PNG can take a while for a big image.
         self.spawn_bg(move || {
             let made = clipboard_image_to_file();
             Bg::Then(Box::new(move |app: &mut App| match made {
                 Ok((path, w, h)) => {
                     let text = files::quote_path(&path);
-                    let bracketed = app.parsers.get(&term).is_some_and(|p| p.screen().bracketed_paste());
-                    let data = if bracketed { format!("\x1b[200~{text} \x1b[201~") } else { format!("{text} ") };
-                    app.send(ClientMsg::Input { term, data: data.into_bytes() });
-                    app.notify(format!("pasted the clipboard image ({w}×{h}) as a file"), false);
+                    let bracketed = app
+                        .parsers
+                        .get(&term)
+                        .is_some_and(|p| p.screen().bracketed_paste());
+                    let data = if bracketed {
+                        format!("\x1b[200~{text} \x1b[201~")
+                    } else {
+                        format!("{text} ")
+                    };
+                    app.send(ClientMsg::Input {
+                        term,
+                        data: data.into_bytes(),
+                    });
+                    app.notify(
+                        format!("pasted the clipboard image ({w}×{h}) as a file"),
+                        false,
+                    );
                 }
                 Err(e) => app.notify(e, true),
             }))
@@ -1440,8 +1761,12 @@ impl App {
     /// still ahead.
     fn sync_hold_until(&self) -> Option<Instant> {
         // The previous frame's panes must not hold up navigation to a different session.
-        if !matches!(self.mode, Mode::Normal) || self.view.is_some()
-            || self.focused().is_some_and(|focused| !self.panes.iter().any(|(id, _)| *id == focused)) {
+        if !matches!(self.mode, Mode::Normal)
+            || self.view.is_some()
+            || self
+                .focused()
+                .is_some_and(|focused| !self.panes.iter().any(|(id, _)| *id == focused))
+        {
             return None;
         }
         let limit = Duration::from_millis(100);
@@ -1464,19 +1789,27 @@ impl App {
             && self.focus_report.contains(&t)
             && now != Some((t, true))
         {
-            self.send(ClientMsg::Input { term: t, data: b"\x1b[O".to_vec() });
+            self.send(ClientMsg::Input {
+                term: t,
+                data: b"\x1b[O".to_vec(),
+            });
         }
         if let Some((t, true)) = now
             && self.focus_report.contains(&t)
         {
-            self.send(ClientMsg::Input { term: t, data: b"\x1b[I".to_vec() });
+            self.send(ClientMsg::Input {
+                term: t,
+                data: b"\x1b[I".to_vec(),
+            });
         }
         self.focus_sent = now;
     }
 
     /// (offset from the bottom, lines of history) for a pane.
     pub(super) fn history(&mut self, term: TermId) -> (usize, usize) {
-        let Some(p) = self.parsers.get_mut(&term) else { return (0, 0) };
+        let Some(p) = self.parsers.get_mut(&term) else {
+            return (0, 0);
+        };
         let cur = p.screen().scrollback();
         p.screen_mut().set_scrollback(usize::MAX);
         let total = p.screen().scrollback();
@@ -1511,7 +1844,6 @@ impl App {
             .or_else(|| std::env::current_dir().ok())
             .unwrap_or_default()
     }
-
 }
 
 fn same_dir(a: &std::path::Path, b: &std::path::Path) -> bool {
@@ -1521,10 +1853,13 @@ fn same_dir(a: &std::path::Path, b: &std::path::Path) -> bool {
 }
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod reference_fixture;
 #[cfg(test)]
 mod reference_frames_tests;
 #[cfg(test)]
 mod site_frames;
+#[cfg(test)]
+mod tests;
+
+#[cfg(test)]
+mod conversation_tests;

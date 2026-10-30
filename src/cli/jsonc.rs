@@ -49,7 +49,15 @@ impl Doc {
     }
 
     pub(super) fn text(&self) -> String {
-        format!("{}{}", if self.bom { BOM.to_string() } else { String::new() }, self.root)
+        format!(
+            "{}{}",
+            if self.bom {
+                BOM.to_string()
+            } else {
+                String::new()
+            },
+            self.root
+        )
     }
 }
 
@@ -75,6 +83,8 @@ pub(super) fn input(value: &Value) -> CstInputValue {
         Value::Number(n) => CstInputValue::Number(n.to_string()),
         Value::String(s) => CstInputValue::String(s.clone()),
         Value::Array(items) => CstInputValue::Array(items.iter().map(input).collect()),
-        Value::Object(map) => CstInputValue::Object(map.iter().map(|(k, v)| (k.clone(), input(v))).collect()),
+        Value::Object(map) => {
+            CstInputValue::Object(map.iter().map(|(k, v)| (k.clone(), input(v))).collect())
+        }
     }
 }

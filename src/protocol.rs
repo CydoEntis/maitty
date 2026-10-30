@@ -10,11 +10,51 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 49;
+pub const PROTOCOL_VERSION: u32 = 60;
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StructuredIdentity {
+    pub conversation: crate::conversation::ConversationId,
+    pub generation: u64,
+    pub connection: u64,
+    pub token: String,
+}
+
+impl std::fmt::Debug for StructuredIdentity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StructuredIdentity")
+            .field("conversation", &self.conversation)
+            .field("generation", &self.generation)
+            .field("connection", &self.connection)
+            .finish_non_exhaustive()
+    }
+}
 
 pub type TermId = u32;
 pub type WsId = u32;
 pub type TabId = u32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum SessionKey {
+    Pane(TermId),
+    Conversation(crate::conversation::ConversationId),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationSummary {
+    pub id: crate::conversation::ConversationId,
+    pub generation: u64,
+    pub provider: crate::conversation::Provider,
+    #[serde(default)]
+    pub execution: crate::conversation::ExecutionKind,
+    pub cwd: PathBuf,
+    pub worktree: Option<PathBuf>,
+    pub state: crate::conversation::RecoveryState,
+    pub status: Status,
+    pub native_term: Option<TermId>,
+    pub checks: Vec<CheckInfo>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(clippy::large_enum_variant)]
@@ -27,10 +67,20 @@ pub enum ClientMsg {
         attach: bool,
         #[serde(default)]
         from: Option<(TermId, String)>,
+        #[serde(default)]
+        structured: Option<StructuredIdentity>,
     },
     Command(Command),
-    Input { term: TermId, #[serde(with = "serde_bytes")] data: Vec<u8> },
-    Resize { term: TermId, cols: u16, rows: u16 },
+    Input {
+        term: TermId,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    },
+    Resize {
+        term: TermId,
+        cols: u16,
+        rows: u16,
+    },
     /// Lifecycle event reported by an agent's hook (`<app> hook ...`).
     Hook {
         term: TermId,
@@ -63,12 +113,14 @@ pub enum ClientMsg {
         background: Vec<String>,
     },
     /// What an agent in a pane has used (from Claude's status line), with the pane's secret.
-    Usage { term: TermId, token: String, usage: Usage, limits: Vec<Limit> },
+    Usage {
+        term: TermId,
+        token: String,
+        usage: Usage,
+        limits: Vec<Limit>,
+    },
     Query(Query),
 }
-
-
-
 
 /// What an agent's session has used.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -92,37 +144,136 @@ pub struct Limit {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Command {
-    NewWorkspace { cwd: Option<PathBuf>, name: Option<String>, cmd: Option<String> },
-    CloseWorkspace { ws: WsId },
-    RenameWorkspace { ws: WsId, name: String },
-    SelectWorkspace { ws: WsId },
-    NewTab { ws: WsId, name: Option<String>, cmd: Option<String> },
-    CloseTab { ws: WsId, tab: TabId },
-    RenameTab { ws: WsId, tab: TabId, name: String },
-    SelectTab { ws: WsId, tab: TabId },
+    ConversationStart {
+        target: crate::conversation::StartTarget,
+    },
+    ConversationSend {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        operation: u64,
+        text: String,
+    },
+    ConversationApprove {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        request_id: crate::conversation::ProviderRequestId,
+        decision: crate::conversation::ApprovalDecision,
+    },
+    ConversationAnswerInput {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        request_id: crate::conversation::ProviderRequestId,
+        answers: std::collections::BTreeMap<String, Vec<String>>,
+    },
+    ConversationCancel {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
+    ConversationHandoffToNative {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
+    ConversationHandoffToChat {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
+    ConversationTerminalInput {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    },
+    ConversationTerminalResize {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        cols: u16,
+        rows: u16,
+    },
+    NewWorkspace {
+        cwd: Option<PathBuf>,
+        name: Option<String>,
+        cmd: Option<String>,
+    },
+    CloseWorkspace {
+        ws: WsId,
+    },
+    RenameWorkspace {
+        ws: WsId,
+        name: String,
+    },
+    SelectWorkspace {
+        ws: WsId,
+    },
+    NewTab {
+        ws: WsId,
+        name: Option<String>,
+        cmd: Option<String>,
+    },
+    CloseTab {
+        ws: WsId,
+        tab: TabId,
+    },
+    RenameTab {
+        ws: WsId,
+        tab: TabId,
+        name: String,
+    },
+    SelectTab {
+        ws: WsId,
+        tab: TabId,
+    },
     /// `term` is one of `owner`'s tabs (a session's second tab, a split in it); None: its own.
     /// Kept across restarts, so a session's tabs come back as its tabs.
-    SetTabOf { term: TermId, owner: Option<TermId> },
+    SetTabOf {
+        term: TermId,
+        owner: Option<TermId>,
+    },
     /// `cwd`: where the new pane starts (default: where the split pane is).
-    Split { term: TermId, dir: Dir, cmd: Option<String>, cwd: Option<PathBuf> },
-    ClosePane { term: TermId },
+    Split {
+        term: TermId,
+        dir: Dir,
+        cmd: Option<String>,
+        cwd: Option<PathBuf>,
+    },
+    ClosePane {
+        term: TermId,
+    },
     /// Focus a pane anywhere: switches workspace and tab as needed.
-    FocusPane { term: TermId },
+    FocusPane {
+        term: TermId,
+    },
     /// Focus a pane and bring the windows showing the app to the front (a notification for it
     /// was clicked).
-    Reveal { term: TermId },
+    Reveal {
+        term: TermId,
+    },
     /// You've seen a finished agent (the cursor rested on it): done → idle.
-    MarkSeen { term: TermId },
+    MarkSeen {
+        term: TermId,
+    },
     /// Name a pane yourself (empty: back to the automatic name).
-    RenamePane { term: TermId, name: String },
+    RenamePane {
+        term: TermId,
+        name: String,
+    },
     /// The agent in `term` moves into a new worktree of its repo: made now, and when its turn
     /// ends it restarts there, resumed (the agent runs `<app> worktree --move`).
-    MoveToWorktree { term: TermId, branch: Option<String> },
+    MoveToWorktree {
+        term: TermId,
+        branch: Option<String>,
+    },
     /// Grow (positive) or shrink the pane along `dir`'s axis by `delta` (fraction of parent).
-    ResizePane { term: TermId, dir: Dir, delta: f32 },
+    ResizePane {
+        term: TermId,
+        dir: Dir,
+        delta: f32,
+    },
     /// Trade the places of two panes of one tab; each takes the other's size. An error when
     /// they are in different tabs.
-    SwapPanes { a: TermId, b: TermId },
+    SwapPanes {
+        a: TermId,
+        b: TermId,
+    },
     /// `git worktree add` next to the workspace's repo, then open it as a new workspace.
     /// `split`: open the worktree as a pane beside this one instead of as a workspace.
     /// `from`: the repo to branch from (default: the workspace's folder).
@@ -137,77 +288,166 @@ pub enum Command {
     /// From a pane about to start an agent in `dir`: a new worktree for it when `dir` is
     /// in a repo's main checkout (and per-agent worktrees are on). Replies with the folder
     /// to start in, or empty text to start where it is.
-    AgentWorktree { dir: PathBuf },
+    AgentWorktree {
+        dir: PathBuf,
+    },
     /// Put a pane in a sidebar group (None: take it out).
-    SetGroup { ws: WsId, group: Option<String> },
+    SetGroup {
+        ws: WsId,
+        group: Option<String>,
+    },
     /// Move a pane into another group (`to`), or into a new group named `name`.
-    MovePane { term: TermId, to: Option<WsId>, name: Option<String> },
+    MovePane {
+        term: TermId,
+        to: Option<WsId>,
+        name: Option<String>,
+    },
     /// Put back the pane the last automatic workspace took.
     UndoAutoWorkspace,
     /// Close everything running in a linked worktree, remove it and delete its branch (a
     /// branch just merged).
-    CloseWorktree { path: PathBuf },
+    CloseWorktree {
+        path: PathBuf,
+    },
     /// Remove these worktrees, none of which has anything running in it: each a folder and
     /// whether to go ahead with uncommitted changes in it (they are lost). A branch is kept
     /// unless it's already merged.
-    TidyWorktrees { items: Vec<(PathBuf, bool)> },
+    TidyWorktrees {
+        items: Vec<(PathBuf, bool)>,
+    },
     /// Close a worktree workspace and `git worktree remove` its checkout.
     /// `delete_branch`: also delete the worktree's branch (discarding a task).
-    RemoveWorktree { ws: WsId, force: bool, delete_branch: bool },
+    RemoveWorktree {
+        ws: WsId,
+        force: bool,
+        delete_branch: bool,
+    },
     /// Make a pane its own workspace, homed at the pane's current directory. A workspace's
     /// only pane re-homes the workspace instead.
-    PaneToWorkspace { term: TermId },
+    PaneToWorkspace {
+        term: TermId,
+    },
     /// Index into the configured workspace colour palette.
-    SetWorkspaceColor { ws: WsId, color: u8 },
+    SetWorkspaceColor {
+        ws: WsId,
+        color: u8,
+    },
     ReloadConfig,
     /// The program running in `term` is an agent: add it to config (by its program, or by
     /// its script when node/python runs it) so its status shows.
-    TeachAgent { term: TermId },
+    TeachAgent {
+        term: TermId,
+    },
     /// Run a command in a floating pane over everything; it closes when the command exits.
-    Popup { cmd: String, cwd: Option<PathBuf> },
+    Popup {
+        cmd: String,
+        cwd: Option<PathBuf>,
+    },
     /// An agent asks you a question with these answers; the reply (the chosen answer) comes
     /// once you pick one.
-    AskHuman { term: TermId, text: String, options: Vec<String> },
+    AskHuman {
+        term: TermId,
+        text: String,
+        options: Vec<String>,
+    },
     /// Your answer (index into its options) to question `id`.
-    AnswerHuman { id: u64, choice: usize },
+    AnswerHuman {
+        id: u64,
+        choice: usize,
+    },
     /// What a pane may do through the app (read, write, start, respond, admin); None goes back
     /// to the default from config. Only you can (not from inside a pane).
-    Grant { term: TermId, grants: Option<Vec<String>> },
+    Grant {
+        term: TermId,
+        grants: Option<Vec<String>>,
+    },
     /// A follow-up for an agent that's working: typed into it when its turn is over.
-    QueueFollowUp { term: TermId, text: String },
+    QueueFollowUp {
+        term: TermId,
+        text: String,
+    },
     /// Drop the follow-ups queued for a pane.
-    ClearQueue { term: TermId },
+    ClearQueue {
+        term: TermId,
+    },
     /// Run the pane's checkpoint `name` again (None: all of them). While its agent is working
     /// the run waits for the turn to end.
-    RerunCheck { term: TermId, name: Option<String> },
+    RerunCheck {
+        term: TermId,
+        name: Option<String>,
+    },
     /// Accept a failed checkpoint as it is (None: the headline one); `reason` may be empty.
     /// Covers that one result only.
-    OverrideCheck { term: TermId, name: Option<String>, reason: String },
+    OverrideCheck {
+        term: TermId,
+        name: Option<String>,
+        reason: String,
+    },
     /// Take an override back (None: the headline checkpoint): it reads as failed again.
-    UndoOverride { term: TermId, name: Option<String> },
+    UndoOverride {
+        term: TermId,
+        name: Option<String>,
+    },
     /// Your answer to a repo-supplied check command waiting for approval. Only you can (not
     /// from inside a pane). `command_sha256` (`command_hash`) is of the command you were
     /// shown: the answer is refused if a different one waits by then.
-    ApproveCheck { term: TermId, name: String, choice: ApprovalChoice, command_sha256: String },
+    ApproveCheck {
+        term: TermId,
+        name: String,
+        choice: ApprovalChoice,
+        command_sha256: String,
+    },
     /// Drop a remembered Always or Never for a repo's checkpoint. Only you can.
-    ForgetCheckApproval { project: PathBuf, name: String },
+    ForgetCheckApproval {
+        project: PathBuf,
+        name: String,
+    },
     /// Your answer to a session that asked to start helpers (`TermInfo::helper_ask`). Only you
     /// can (not from inside a pane), and only while the request is pending.
-    AnswerHelpers { term: TermId, choice: HelperChoice },
+    AnswerHelpers {
+        term: TermId,
+        choice: HelperChoice,
+    },
     /// `forget`: also discard the saved session, so the next start is a clean slate.
-    KillServer { forget: bool },
+    KillServer {
+        forget: bool,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Query {
+    ConversationRead {
+        id: crate::conversation::ConversationId,
+        cursor: Option<crate::conversation::history::Cursor>,
+        limit: usize,
+    },
+    ConversationDiff {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
+    ConversationTerminalScreen {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
+    ConversationTerminalReplay {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
-    Read { term: TermId },
+    Read {
+        term: TermId,
+    },
     /// Every worktree of the repository a workspace is in.
-    Worktrees { ws: WsId },
+    Worktrees {
+        ws: WsId,
+    },
     /// The tail of a pane's last output for checkpoint `name` (None: the headline one); the
     /// snapshot carries only a summary.
-    CheckOutput { term: TermId, name: Option<String> },
+    CheckOutput {
+        term: TermId,
+        name: Option<String>,
+    },
 }
 
 /// What you chose when a session asked to start helpers.
@@ -290,28 +530,53 @@ pub enum SubagentState {
 
 impl SubagentState {
     pub fn active(self) -> bool {
-        matches!(self, Self::Starting | Self::Working | Self::WaitingForInput | Self::AwaitingApproval)
+        matches!(
+            self,
+            Self::Starting | Self::Working | Self::WaitingForInput | Self::AwaitingApproval
+        )
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMsg {
-    Welcome { version: u32 },
+    Welcome {
+        version: u32,
+    },
     State(Snapshot),
     /// Sent once per terminal on attach: the recent output ring, to rebuild scrollback.
-    Replay { term: TermId, cols: u16, rows: u16, #[serde(with = "serde_bytes")] data: Vec<u8> },
-    Output { term: TermId, #[serde(with = "serde_bytes")] data: Vec<u8> },
+    Replay {
+        term: TermId,
+        cols: u16,
+        rows: u16,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    },
+    Output {
+        term: TermId,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    },
     /// An agent needs attention (blocked, or finished while unfocused).
-    Attention { term: TermId, status: Status },
+    Attention {
+        term: TermId,
+        status: Status,
+    },
     Reply(Reply),
     Error(String),
     /// Informational message for the status bar.
     Notice(String),
     /// You closed the last pane of a worktree that holds commits found nowhere else: ask
     /// whether its folder goes too (its branch stays either way).
-    AskRemoveWorktree { path: PathBuf, name: String, why: String },
+    AskRemoveWorktree {
+        path: PathBuf,
+        name: String,
+        why: String,
+    },
     /// A program in a pane copied text (OSC 52): put it on the user's clipboard.
-    Clipboard { term: TermId, text: String },
+    Clipboard {
+        term: TermId,
+        text: String,
+    },
     /// An agent started in a new repo, which became a workspace (undoable).
     AutoWorkspace(String),
     /// Come to the front: a notification for one of this server's sessions was clicked.
@@ -321,6 +586,14 @@ pub enum ServerMsg {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Reply {
+    ConversationStarted {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
+    ConversationSent(crate::conversation::Receipt),
+    ConversationRead(crate::conversation::ReadResult),
+    ConversationDiff(crate::conversation::ConversationDiff),
+    TerminalReplay(#[serde(with = "serde_bytes")] Vec<u8>),
     Ok,
     List(Snapshot),
     Text(String),
@@ -372,6 +645,8 @@ impl Status {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Snapshot {
+    #[serde(default)]
+    pub conversations: Vec<ConversationSummary>,
     #[serde(default)]
     pub daemon_version: String,
     pub workspaces: Vec<WorkspaceInfo>,
@@ -445,8 +720,6 @@ pub struct GitInfo {
     pub ahead: u32,
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TabInfo {
     pub id: TabId,
@@ -457,6 +730,8 @@ pub struct TabInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TermInfo {
+    #[serde(default)]
+    pub conversation_id: Option<crate::conversation::ConversationId>,
     pub id: TermId,
     pub cols: u16,
     pub rows: u16,
@@ -564,7 +839,9 @@ pub struct TermInfo {
     pub checks: Vec<CheckInfo>,
 }
 
-pub(crate) fn one_or_many_checks<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<CheckInfo>, D::Error> {
+pub(crate) fn one_or_many_checks<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Vec<CheckInfo>, D::Error> {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum Shape {
@@ -583,7 +860,10 @@ pub const OVERRIDE_REASON_MAX_CHARS: usize = 280;
 /// What an approval of a repo's check command is tied to: its SHA-256, in lowercase hex.
 pub fn command_hash(command: &str) -> String {
     use sha2::{Digest, Sha256};
-    Sha256::digest(command.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(command.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// Where a check stands. `CouldNotRun` is not a failure: the work was never checked.
@@ -645,7 +925,12 @@ pub enum CheckSource {
     #[default]
     User,
     /// The repository's own file (`.<app>/checks.toml`), as of `commit` when it is committed.
-    Repo { file: String, commit: Option<String>, committed_at: Option<u64>, uncommitted: bool },
+    Repo {
+        file: String,
+        commit: Option<String>,
+        committed_at: Option<u64>,
+        uncommitted: bool,
+    },
 }
 
 /// A file the agent changed after a check ran.
@@ -730,7 +1015,8 @@ impl TermInfo {
             };
         }
         // Programs often title the window with their own exe path; that says nothing.
-        let path_like = self.title.contains('\\') || self.title.contains('/') || self.title.ends_with(".exe");
+        let path_like =
+            self.title.contains('\\') || self.title.contains('/') || self.title.ends_with(".exe");
         if !self.title.is_empty() && !path_like {
             return self.title.clone();
         }
@@ -741,7 +1027,17 @@ impl TermInfo {
     pub fn is_shell(&self) -> bool {
         matches!(
             self.process.to_ascii_lowercase().as_str(),
-            "pwsh" | "powershell" | "cmd" | "bash" | "zsh" | "fish" | "nu" | "sh" | "dash" | "elvish" | "xonsh"
+            "pwsh"
+                | "powershell"
+                | "cmd"
+                | "bash"
+                | "zsh"
+                | "fish"
+                | "nu"
+                | "sh"
+                | "dash"
+                | "elvish"
+                | "xonsh"
         )
     }
 }
@@ -756,14 +1052,20 @@ impl Snapshot {
     /// (workspace, tab) containing a terminal.
     pub fn locate(&self, term: TermId) -> Option<(&WorkspaceInfo, &TabInfo)> {
         self.workspaces.iter().find_map(|w| {
-            w.tabs.iter().find(|t| t.layout.contains(term)).map(|t| (w, t))
+            w.tabs
+                .iter()
+                .find(|t| t.layout.contains(term))
+                .map(|t| (w, t))
         })
     }
 }
 
 impl WorkspaceInfo {
     pub fn tab(&self) -> Option<&TabInfo> {
-        self.tabs.iter().find(|t| t.id == self.active_tab).or(self.tabs.first())
+        self.tabs
+            .iter()
+            .find(|t| t.id == self.active_tab)
+            .or(self.tabs.first())
     }
 }
 
@@ -789,9 +1091,21 @@ mod tests {
     #[test]
     fn every_message_round_trips() {
         let clients = vec![
-            ClientMsg::Hello { version: PROTOCOL_VERSION, attach: true, from: Some((3, "00ff".into())) },
-            ClientMsg::Input { term: 3, data: b"ls\r".to_vec() },
-            ClientMsg::Resize { term: 3, cols: 120, rows: 40 },
+            ClientMsg::Hello {
+                version: PROTOCOL_VERSION,
+                attach: true,
+                from: Some((3, "00ff".into())),
+                structured: None,
+            },
+            ClientMsg::Input {
+                term: 3,
+                data: b"ls\r".to_vec(),
+            },
+            ClientMsg::Resize {
+                term: 3,
+                cols: 120,
+                rows: 40,
+            },
             ClientMsg::Hook {
                 term: 3,
                 agent: "claude".into(),
@@ -800,7 +1114,16 @@ mod tests {
                 cwd: Some(PathBuf::from("/code/api")),
                 prompt: Some("fix it".into()),
                 said: Some("done".into()),
-                subagent: Some(Subagent { id: "s1".into(), kind: "Explore".into(), start: true, reported_at: 0, task: None, model: None, effort: None, activity: None }),
+                subagent: Some(Subagent {
+                    id: "s1".into(),
+                    kind: "Explore".into(),
+                    start: true,
+                    reported_at: 0,
+                    task: None,
+                    model: None,
+                    effort: None,
+                    activity: None,
+                }),
                 event: "PreToolUse".into(),
                 pid: 42,
                 token: "00ff".into(),
@@ -812,50 +1135,157 @@ mod tests {
             ClientMsg::Query(Query::List),
             ClientMsg::Query(Query::Read { term: 3 }),
             ClientMsg::Query(Query::Worktrees { ws: 1 }),
-            ClientMsg::Query(Query::CheckOutput { term: 3, name: None }),
-            ClientMsg::Query(Query::CheckOutput { term: 3, name: Some("build".into()) }),
-            ClientMsg::Command(Command::NewWorkspace { cwd: Some(PathBuf::from("/code")), name: None, cmd: Some("claude".into()) }),
-            ClientMsg::Command(Command::Split { term: 3, dir: crate::layout::Dir::Down, cmd: None, cwd: None }),
+            ClientMsg::Query(Query::CheckOutput {
+                term: 3,
+                name: None,
+            }),
+            ClientMsg::Query(Query::CheckOutput {
+                term: 3,
+                name: Some("build".into()),
+            }),
+            ClientMsg::Query(Query::ConversationTerminalReplay {
+                id: crate::conversation::ConversationId(47),
+                generation: 2,
+            }),
+            ClientMsg::Command(Command::NewWorkspace {
+                cwd: Some(PathBuf::from("/code")),
+                name: None,
+                cmd: Some("claude".into()),
+            }),
+            ClientMsg::Command(Command::Split {
+                term: 3,
+                dir: crate::layout::Dir::Down,
+                cmd: None,
+                cwd: None,
+            }),
+            ClientMsg::Command(Command::ConversationTerminalResize {
+                id: crate::conversation::ConversationId(47),
+                generation: 2,
+                cols: 96,
+                rows: 32,
+            }),
             ClientMsg::Command(Command::ClosePane { term: 3 }),
             ClientMsg::Command(Command::Reveal { term: 3 }),
             ClientMsg::Command(Command::TeachAgent { term: 3 }),
-            ClientMsg::Command(Command::Popup { cmd: "fzf".into(), cwd: None }),
-            ClientMsg::Command(Command::AskHuman { term: 3, text: "Deploy?".into(), options: vec!["Yes".into(), "No".into()] }),
+            ClientMsg::Command(Command::Popup {
+                cmd: "fzf".into(),
+                cwd: None,
+            }),
+            ClientMsg::Command(Command::AskHuman {
+                term: 3,
+                text: "Deploy?".into(),
+                options: vec!["Yes".into(), "No".into()],
+            }),
             ClientMsg::Command(Command::AnswerHuman { id: 1, choice: 0 }),
-            ClientMsg::Command(Command::Grant { term: 3, grants: Some(vec!["read".into()]) }),
-            ClientMsg::Command(Command::QueueFollowUp { term: 3, text: "then run the tests".into() }),
+            ClientMsg::Command(Command::Grant {
+                term: 3,
+                grants: Some(vec!["read".into()]),
+            }),
+            ClientMsg::Command(Command::QueueFollowUp {
+                term: 3,
+                text: "then run the tests".into(),
+            }),
             ClientMsg::Command(Command::ClearQueue { term: 3 }),
-            ClientMsg::Command(Command::RerunCheck { term: 3, name: None }),
-            ClientMsg::Command(Command::RerunCheck { term: 3, name: Some("test".into()) }),
-            ClientMsg::Command(Command::OverrideCheck { term: 3, name: Some("test".into()), reason: "flaky on CI".into() }),
-            ClientMsg::Command(Command::UndoOverride { term: 3, name: None }),
-            ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Once, command_sha256: command_hash("npm test") }),
-            ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Always, command_sha256: command_hash("npm test") }),
-            ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Never, command_sha256: command_hash("npm test") }),
-            ClientMsg::Command(Command::ForgetCheckApproval { project: PathBuf::from("/code/api"), name: "test".into() }),
-            ClientMsg::Command(Command::AnswerHelpers { term: 3, choice: HelperChoice::Allow }),
-            ClientMsg::Command(Command::AnswerHelpers { term: 3, choice: HelperChoice::Always }),
-            ClientMsg::Command(Command::AnswerHelpers { term: 3, choice: HelperChoice::No }),
-            ClientMsg::Command(Command::TidyWorktrees { items: vec![(PathBuf::from("/code/.wt/rate"), false)] }),
-            ClientMsg::Command(Command::RenamePane { term: 3, name: "x".into() }),
-            ClientMsg::Command(Command::MoveToWorktree { term: 3, branch: Some("feat/x".into()) }),
+            ClientMsg::Command(Command::RerunCheck {
+                term: 3,
+                name: None,
+            }),
+            ClientMsg::Command(Command::RerunCheck {
+                term: 3,
+                name: Some("test".into()),
+            }),
+            ClientMsg::Command(Command::OverrideCheck {
+                term: 3,
+                name: Some("test".into()),
+                reason: "flaky on CI".into(),
+            }),
+            ClientMsg::Command(Command::UndoOverride {
+                term: 3,
+                name: None,
+            }),
+            ClientMsg::Command(Command::ApproveCheck {
+                term: 3,
+                name: "test".into(),
+                choice: ApprovalChoice::Once,
+                command_sha256: command_hash("npm test"),
+            }),
+            ClientMsg::Command(Command::ApproveCheck {
+                term: 3,
+                name: "test".into(),
+                choice: ApprovalChoice::Always,
+                command_sha256: command_hash("npm test"),
+            }),
+            ClientMsg::Command(Command::ApproveCheck {
+                term: 3,
+                name: "test".into(),
+                choice: ApprovalChoice::Never,
+                command_sha256: command_hash("npm test"),
+            }),
+            ClientMsg::Command(Command::ForgetCheckApproval {
+                project: PathBuf::from("/code/api"),
+                name: "test".into(),
+            }),
+            ClientMsg::Command(Command::AnswerHelpers {
+                term: 3,
+                choice: HelperChoice::Allow,
+            }),
+            ClientMsg::Command(Command::AnswerHelpers {
+                term: 3,
+                choice: HelperChoice::Always,
+            }),
+            ClientMsg::Command(Command::AnswerHelpers {
+                term: 3,
+                choice: HelperChoice::No,
+            }),
+            ClientMsg::Command(Command::TidyWorktrees {
+                items: vec![(PathBuf::from("/code/.wt/rate"), false)],
+            }),
+            ClientMsg::Command(Command::RenamePane {
+                term: 3,
+                name: "x".into(),
+            }),
+            ClientMsg::Command(Command::MoveToWorktree {
+                term: 3,
+                branch: Some("feat/x".into()),
+            }),
             ClientMsg::Command(Command::SwapPanes { a: 3, b: 4 }),
         ];
         for m in &clients {
             round_trips(m);
         }
         let servers = vec![
-            ServerMsg::Welcome { version: PROTOCOL_VERSION },
+            ServerMsg::Welcome {
+                version: PROTOCOL_VERSION,
+            },
             ServerMsg::State(Snapshot::default()),
-            ServerMsg::Replay { term: 3, cols: 80, rows: 24, data: vec![27, b'[', b'H'] },
-            ServerMsg::Output { term: 3, data: b"hello".to_vec() },
-            ServerMsg::Attention { term: 3, status: Status::Done },
+            ServerMsg::Replay {
+                term: 3,
+                cols: 80,
+                rows: 24,
+                data: vec![27, b'[', b'H'],
+            },
+            ServerMsg::Output {
+                term: 3,
+                data: b"hello".to_vec(),
+            },
+            ServerMsg::Attention {
+                term: 3,
+                status: Status::Done,
+            },
             ServerMsg::Reply(Reply::Ok),
             ServerMsg::Reply(Reply::Text("screen".into())),
+            ServerMsg::Reply(Reply::TerminalReplay(vec![27, b'[', b'H'])),
             ServerMsg::Error("nope".into()),
             ServerMsg::Notice("saved".into()),
-            ServerMsg::AskRemoveWorktree { path: PathBuf::from("/w/task"), name: "task".into(), why: "not merged anywhere".into() },
-            ServerMsg::Clipboard { term: 3, text: "copied".into() },
+            ServerMsg::AskRemoveWorktree {
+                path: PathBuf::from("/w/task"),
+                name: "task".into(),
+                why: "not merged anywhere".into(),
+            },
+            ServerMsg::Clipboard {
+                term: 3,
+                text: "copied".into(),
+            },
             ServerMsg::AutoWorkspace("api".into()),
             ServerMsg::Raise,
             ServerMsg::Bye,
@@ -863,6 +1293,27 @@ mod tests {
         for m in &servers {
             round_trips(m);
         }
+    }
+
+    #[test]
+    fn conversation_summary_from_an_older_daemon_defaults_to_structured_execution() {
+        let summary: ConversationSummary = serde_json::from_value(serde_json::json!({
+            "id": 7,
+            "generation": 3,
+            "provider": "Codex",
+            "cwd": "/code",
+            "worktree": null,
+            "state": "Running",
+            "status": "Idle",
+            "native_term": null,
+            "checks": []
+        }))
+        .expect("older summary without execution still decodes");
+
+        assert_eq!(
+            summary.execution,
+            crate::conversation::ExecutionKind::Structured
+        );
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -876,7 +1327,9 @@ mod tests {
         }
         let bytes = encode(&Command::SwapPanes { a: 3, b: 4 }).unwrap();
         assert!(decode::<OldCommand>(&bytes).is_err());
-        let Command::SwapPanes { a, b } = decode(&bytes).unwrap() else { panic!("expected a swap") };
+        let Command::SwapPanes { a, b } = decode(&bytes).unwrap() else {
+            panic!("expected a swap")
+        };
         assert_eq!((a, b), (3, 4));
     }
 
@@ -903,22 +1356,34 @@ mod tests {
             override_reason: "flaky".into(),
             ..Default::default()
         }];
-        round_trips(&ServerMsg::State(Snapshot { terms: [(3, term)].into(), ..Default::default() }));
+        round_trips(&ServerMsg::State(Snapshot {
+            terms: [(3, term)].into(),
+            ..Default::default()
+        }));
     }
 
     #[test]
     fn a_pane_asking_for_helpers_round_trips_and_one_not_asking_has_none() {
         let mut term = pane_from(serde_json::json!({}));
-        assert!(term.helper_ask.is_empty(), "a peer that knows no helper requests");
+        assert!(
+            term.helper_ask.is_empty(),
+            "a peer that knows no helper requests"
+        );
         term.helper_ask = vec!["fix the login test".into(), "port the footer".into()];
-        round_trips(&ServerMsg::State(Snapshot { terms: [(3, term)].into(), ..Default::default() }));
+        round_trips(&ServerMsg::State(Snapshot {
+            terms: [(3, term)].into(),
+            ..Default::default()
+        }));
     }
 
     #[test]
     fn a_check_from_an_older_peer_fills_in_what_it_lacks() {
         let bytes = rmp_serde::to_vec_named(&BTreeMap::from([("command", "npm test")])).unwrap();
         let info: CheckInfo = decode(&bytes).expect("only the command");
-        assert_eq!((info.command.as_str(), info.exit_code, info.rerun_queued), ("npm test", None, false));
+        assert_eq!(
+            (info.command.as_str(), info.exit_code, info.rerun_queued),
+            ("npm test", None, false)
+        );
     }
 
     fn every_field_check() -> CheckInfo {
@@ -938,9 +1403,23 @@ mod tests {
             turn: 3,
             line_count: 1_284,
             stale_since: Some(140),
-            changed_files: vec![ChangedFile { kind: 'M', path: "src/a.rs".into() }, ChangedFile { kind: 'A', path: "tests/b.rs".into() }],
+            changed_files: vec![
+                ChangedFile {
+                    kind: 'M',
+                    path: "src/a.rs".into(),
+                },
+                ChangedFile {
+                    kind: 'A',
+                    path: "tests/b.rs".into(),
+                },
+            ],
             overridden_by: "you".into(),
-            source: CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: Some("a1b2c3d".into()), committed_at: Some(80), uncommitted: true },
+            source: CheckSource::Repo {
+                file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(),
+                commit: Some("a1b2c3d".into()),
+                committed_at: Some(80),
+                uncommitted: true,
+            },
             previous_command: Some("npm t".into()),
         }
     }
@@ -953,7 +1432,9 @@ mod tests {
             "branch": null, "linked": false, "subagents": [], "root": null, "top": null,
             "since": 0, "asleep": false, "win32_input": false,
         });
-        v.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        v.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
         decode(&rmp_serde::to_vec_named(&v).unwrap()).expect("a pane")
     }
 
@@ -961,8 +1442,18 @@ mod tests {
     fn a_check_with_every_field_round_trips() {
         round_trips(&every_field_check());
         let mut term = pane_from(serde_json::json!({}));
-        term.checks = vec![every_field_check(), CheckInfo { name: "build".into(), state: CheckState::Pending, ..Default::default() }];
-        round_trips(&ServerMsg::State(Snapshot { terms: [(3, term)].into(), ..Default::default() }));
+        term.checks = vec![
+            every_field_check(),
+            CheckInfo {
+                name: "build".into(),
+                state: CheckState::Pending,
+                ..Default::default()
+            },
+        ];
+        round_trips(&ServerMsg::State(Snapshot {
+            terms: [(3, term)].into(),
+            ..Default::default()
+        }));
     }
 
     #[test]
@@ -972,21 +1463,54 @@ mod tests {
             "said": null, "subagent": null, "event": "Stop", "pid": 42, "token": "00ff",
             "transcript": null, "model": null, "name": null,
         }});
-        let msg: ClientMsg = decode(&rmp_serde::to_vec_named(&old).unwrap()).expect("a hook from before the field");
-        let ClientMsg::Hook { event, background, .. } = msg else { panic!("expected a hook report") };
+        let msg: ClientMsg =
+            decode(&rmp_serde::to_vec_named(&old).unwrap()).expect("a hook from before the field");
+        let ClientMsg::Hook {
+            event, background, ..
+        } = msg
+        else {
+            panic!("expected a hook report")
+        };
         assert_eq!((event.as_str(), background.len()), ("Stop", 0));
 
         #[derive(Deserialize)]
         enum OldClientMsg {
-            Hook { term: TermId, status: HookStatus, event: String, pid: u32, token: String },
+            Hook {
+                term: TermId,
+                status: HookStatus,
+                event: String,
+                pid: u32,
+                token: String,
+            },
         }
         let new = ClientMsg::Hook {
-            term: 3, agent: "claude".into(), status: HookStatus::Done, session: None, cwd: None, prompt: None, said: None,
-            subagent: None, event: "Stop".into(), pid: 42, token: "00ff".into(), transcript: None, model: None, name: None,
+            term: 3,
+            agent: "claude".into(),
+            status: HookStatus::Done,
+            session: None,
+            cwd: None,
+            prompt: None,
+            said: None,
+            subagent: None,
+            event: "Stop".into(),
+            pid: 42,
+            token: "00ff".into(),
+            transcript: None,
+            model: None,
+            name: None,
             background: vec!["b1".into()],
         };
-        let OldClientMsg::Hook { term, status, event, pid, token } = decode(&encode(&new).unwrap()).expect("an older daemon reads it");
-        assert_eq!((term, status, event.as_str(), pid, token.as_str()), (3, HookStatus::Done, "Stop", 42, "00ff"));
+        let OldClientMsg::Hook {
+            term,
+            status,
+            event,
+            pid,
+            token,
+        } = decode(&encode(&new).unwrap()).expect("an older daemon reads it");
+        assert_eq!(
+            (term, status, event.as_str(), pid, token.as_str()),
+            (3, HookStatus::Done, "Stop", 42, "00ff")
+        );
     }
 
     #[test]
@@ -998,30 +1522,75 @@ mod tests {
         });
         let info: CheckInfo = decode(&rmp_serde::to_vec_named(&v43).unwrap()).expect("a v43 check");
         assert_eq!((info.state, info.exit_code), (CheckState::Failed, Some(1)));
-        assert_eq!((info.name.as_str(), info.source, info.changed_files.len(), info.previous_command), ("", CheckSource::User, 0, None));
+        assert_eq!(
+            (
+                info.name.as_str(),
+                info.source,
+                info.changed_files.len(),
+                info.previous_command
+            ),
+            ("", CheckSource::User, 0, None)
+        );
     }
 
     #[test]
     fn a_pane_with_the_old_single_check_reads_as_one_checkpoint() {
-        let old = pane_from(serde_json::json!({ "check": { "command": "npm test", "state": "Failed", "exit_code": 1 } }));
-        assert_eq!(old.checks.iter().map(|c| (c.command.as_str(), c.state)).collect::<Vec<_>>(), [("npm test", CheckState::Failed)]);
-        assert!(pane_from(serde_json::json!({ "check": null })).checks.is_empty());
+        let old = pane_from(
+            serde_json::json!({ "check": { "command": "npm test", "state": "Failed", "exit_code": 1 } }),
+        );
+        assert_eq!(
+            old.checks
+                .iter()
+                .map(|c| (c.command.as_str(), c.state))
+                .collect::<Vec<_>>(),
+            [("npm test", CheckState::Failed)]
+        );
+        assert!(
+            pane_from(serde_json::json!({ "check": null }))
+                .checks
+                .is_empty()
+        );
         assert!(pane_from(serde_json::json!({})).checks.is_empty());
     }
 
     #[test]
     fn the_headline_is_the_worst_checkpoint_and_the_first_on_ties() {
         use CheckState::*;
-        let order = [Failed, CouldNotRun, NeedsApproval, Checking, Pending, Stale, Never, Overridden, Passed];
-        let at = |state: CheckState, name: &str| CheckInfo { state, name: name.into(), ..Default::default() };
+        let order = [
+            Failed,
+            CouldNotRun,
+            NeedsApproval,
+            Checking,
+            Pending,
+            Stale,
+            Never,
+            Overridden,
+            Passed,
+        ];
+        let at = |state: CheckState, name: &str| CheckInfo {
+            state,
+            name: name.into(),
+            ..Default::default()
+        };
         for (i, &worse) in order.iter().enumerate() {
             for &better in &order[i + 1..] {
-                for checks in [vec![at(worse, "a"), at(better, "b")], vec![at(better, "b"), at(worse, "a")]] {
-                    assert_eq!(headline(&checks).map(|c| c.state), Some(worse), "{worse:?} over {better:?}");
+                for checks in [
+                    vec![at(worse, "a"), at(better, "b")],
+                    vec![at(better, "b"), at(worse, "a")],
+                ] {
+                    assert_eq!(
+                        headline(&checks).map(|c| c.state),
+                        Some(worse),
+                        "{worse:?} over {better:?}"
+                    );
                 }
             }
             let tie = [at(worse, "first"), at(worse, "second")];
-            assert_eq!(headline(&tie).map(|c| c.name.as_str()), Some("first"), "{worse:?} tie");
+            assert_eq!(
+                headline(&tie).map(|c| c.name.as_str()),
+                Some("first"),
+                "{worse:?} tie"
+            );
         }
         assert_eq!(headline(&[]), None);
     }
@@ -1029,7 +1598,17 @@ mod tests {
     #[test]
     fn the_headline_is_not_reported_while_the_agent_works_or_asks() {
         let mut term = pane_from(serde_json::json!({}));
-        term.checks = vec![CheckInfo { state: CheckState::Passed, ..Default::default() }, CheckInfo { state: CheckState::Failed, name: "test".into(), ..Default::default() }];
+        term.checks = vec![
+            CheckInfo {
+                state: CheckState::Passed,
+                ..Default::default()
+            },
+            CheckInfo {
+                state: CheckState::Failed,
+                name: "test".into(),
+                ..Default::default()
+            },
+        ];
         assert_eq!(term.reported_check().map(|c| c.name.as_str()), Some("test"));
         for status in [Status::Working, Status::Blocked] {
             term.status = status;
@@ -1039,7 +1618,13 @@ mod tests {
 
     #[test]
     fn new_check_states_have_their_script_labels() {
-        let got = [CheckState::Pending, CheckState::NeedsApproval, CheckState::Stale, CheckState::Never].map(CheckState::label);
+        let got = [
+            CheckState::Pending,
+            CheckState::NeedsApproval,
+            CheckState::Stale,
+            CheckState::Never,
+        ]
+        .map(CheckState::label);
         assert_eq!(got, ["pending", "needs_approval", "stale", "never"]);
     }
 }

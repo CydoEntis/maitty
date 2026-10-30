@@ -26,7 +26,12 @@ pub struct Callbacks {
 impl vt100::Callbacks for Callbacks {
     fn unhandled_osc(&mut self, _: &mut vt100::Screen, params: &[&[u8]]) {
         if params.first() == Some(&b"9".as_slice()) && params.get(1) == Some(&b"4".as_slice()) {
-            self.progress = params.iter().skip(1).map(|part| String::from_utf8_lossy(part)).collect::<Vec<_>>().join(";");
+            self.progress = params
+                .iter()
+                .skip(1)
+                .map(|part| String::from_utf8_lossy(part))
+                .collect::<Vec<_>>()
+                .join(";");
         }
     }
     fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
@@ -60,7 +65,11 @@ fn base64_decode(s: &[u8]) -> Option<Vec<u8>> {
             _ => return None,
         })
     };
-    let clean: Vec<u8> = s.iter().copied().filter(|c| !c.is_ascii_whitespace() && *c != b'=').collect();
+    let clean: Vec<u8> = s
+        .iter()
+        .copied()
+        .filter(|c| !c.is_ascii_whitespace() && *c != b'=')
+        .collect();
     let mut out = Vec::with_capacity(clean.len() * 3 / 4);
     for chunk in clean.chunks(4) {
         let mut n = 0u32;
@@ -75,11 +84,15 @@ fn base64_decode(s: &[u8]) -> Option<Vec<u8>> {
 
 pub struct Term {
     pub id: TermId,
+    pub conversation_id: Option<crate::conversation::ConversationId>,
     master: Box<dyn MasterPty + Send>,
     /// To the pane's input thread (see `input_thread`).
     writer: std::sync::mpsc::SyncSender<Vec<u8>>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     pub pid: Option<u32>,
+    pub process_exited: bool,
+    #[cfg(test)]
+    pub fail_next_handoff_cleanup: bool,
     /// The daemon's own view of the screen, for status patterns and `<app> read`.
     pub parser: vt100::Parser<Callbacks>,
     ring: VecDeque<u8>,
@@ -224,11 +237,18 @@ pub struct Term {
 pub struct SpawnSpec<'a> {
     pub id: TermId,
     pub cmd: Option<&'a str>,
+    pub direct: Option<DirectCommand>,
     pub cwd: &'a Path,
     pub cols: u16,
     pub rows: u16,
     /// Run the command and end with it (a popup), rather than keep a shell after.
     pub once: bool,
+}
+
+pub struct DirectCommand {
+    pub executable: PathBuf,
+    pub args: Vec<std::ffi::OsString>,
+    pub environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -281,7 +301,11 @@ fn find_cwd_report(data: &[u8]) -> Option<PathBuf> {
             rest = &rest[i + intro.len()..];
             let end = rest.find(['\x07', '\x1b']).unwrap_or(rest.len());
             let body = &rest[..end];
-            let path = if url { from_file_url(body) } else { Some(body.trim_matches('"').to_string()) };
+            let path = if url {
+                from_file_url(body)
+            } else {
+                Some(body.trim_matches('"').to_string())
+            };
             if let Some(p) = path.filter(|p| !p.is_empty()) {
                 found = Some(PathBuf::from(p));
             }
@@ -298,7 +322,11 @@ fn from_file_url(url: &str) -> Option<String> {
     let mut i = 0;
     while i < raw.len() {
         let hex = (raw[i] == b'%' && i + 2 < raw.len())
-            .then(|| std::str::from_utf8(&raw[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()))
+            .then(|| {
+                std::str::from_utf8(&raw[i + 1..i + 3])
+                    .ok()
+                    .and_then(|h| u8::from_str_radix(h, 16).ok())
+            })
             .flatten();
         match hex {
             Some(b) => {
@@ -326,10 +354,16 @@ fn from_file_url(url: &str) -> Option<String> {
 /// profile set up so each prompt also reports the directory (OSC 9;9, the Windows Terminal
 /// convention), which keeps the sidebar, splits and restores in the right folder. Runs after
 /// the profile; uses no double quotes so it survives Windows argument quoting.
-const PWSH_CWD_HOOK: &str = concat!("$global:__", env!("APP_COMMAND"), "Prompt = $function:prompt; \
+const PWSH_CWD_HOOK: &str = concat!(
+    "$global:__",
+    env!("APP_COMMAND"),
+    "Prompt = $function:prompt; \
 function global:prompt { [Console]::Write([char]27 + ']133;A' + [char]7); $l = $executionContext.SessionState.Path.CurrentLocation; \
 if ($l.Provider.Name -eq 'FileSystem') { [Console]::Write([char]27 + ']9;9;' + [char]34 + $l.ProviderPath + [char]34 + [char]7) }; \
-& $global:__", env!("APP_COMMAND"), "Prompt }");
+& $global:__",
+    env!("APP_COMMAND"),
+    "Prompt }"
+);
 
 /// The agents the app knows by name, which get a worktree even when no quick agent is set up.
 const BUILT_IN_AGENTS: [&str; 4] = ["claude", "codex", "gemini", "opencode"];
@@ -340,7 +374,9 @@ const BUILT_IN_AGENTS: [&str; 4] = ["claude", "codex", "gemini", "opencode"];
 /// runs `claude` is started by typing `claude`.
 fn quick_agent_program(command: &str) -> Option<&str> {
     let program = command.split_whitespace().next()?;
-    let plain = program.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    let plain = program
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     plain.then_some(program)
 }
 
@@ -362,7 +398,9 @@ fn worktree_agents(cfg: &Config) -> Vec<String> {
 }
 
 fn own_exe() -> String {
-    std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| env!("APP_COMMAND").into())
+    std::env::current_exe()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| env!("APP_COMMAND").into())
 }
 
 /// For each agent, a shell function that asks the app for the folder to start in (`<app>
@@ -400,10 +438,16 @@ fn agent_functions(shell: &str, agents: &[String], exe: &str) -> String {
 /// The rc file a plain bash pane starts with: yours, then the agent functions. Rewritten
 /// when it changes.
 fn bash_rc(agents: &[String]) -> Option<PathBuf> {
-    let path = crate::config::data_dir().join("shell").join(concat!(env!("APP_COMMAND"), ".bashrc"));
+    let path = crate::config::data_dir()
+        .join("shell")
+        .join(concat!(env!("APP_COMMAND"), ".bashrc"));
     let text = format!(
-        concat!("# Written by ", env!("APP_COMMAND"), " for its bash panes: your ~/.bashrc, then agents started in their own worktrees.\n\
-[ -f ~/.bashrc ] && . ~/.bashrc\n{}{}"),
+        concat!(
+            "# Written by ",
+            env!("APP_COMMAND"),
+            " for its bash panes: your ~/.bashrc, then agents started in their own worktrees.\n\
+[ -f ~/.bashrc ] && . ~/.bashrc\n{}{}"
+        ),
         agent_functions("bash", agents, &own_exe()),
         crate::shim::keep_first("bash", &crate::shim::dir())
     );
@@ -463,7 +507,10 @@ fn argv(cfg: &Config, cmd: Option<&str>, once: bool) -> Vec<String> {
     let plain = shell.len() == 1;
     match (exe.as_str(), cmd) {
         ("pwsh" | "powershell", cmd) if cfg.shell_integration => {
-            let hook = format!("{PWSH_CWD_HOOK}{}", agent_functions(&exe, &agents, &own_exe()));
+            let hook = format!(
+                "{PWSH_CWD_HOOK}{}",
+                agent_functions(&exe, &agents, &own_exe())
+            );
             let script = match cmd {
                 Some(c) => format!("{hook}; {c}"),
                 None => hook,
@@ -475,11 +522,18 @@ fn argv(cfg: &Config, cmd: Option<&str>, once: bool) -> Vec<String> {
                 shell.extend(["--rcfile".into(), rc.display().to_string()]);
             }
         }
-        ("fish", None) if plain && !agents.is_empty() => {
-            shell.extend(["-C".into(), format!("{}{}", agent_functions("fish", &agents, &own_exe()), crate::shim::keep_first("fish", &crate::shim::dir()))])
-        }
+        ("fish", None) if plain && !agents.is_empty() => shell.extend([
+            "-C".into(),
+            format!(
+                "{}{}",
+                agent_functions("fish", &agents, &own_exe()),
+                crate::shim::keep_first("fish", &crate::shim::dir())
+            ),
+        ]),
         (_, None) => {}
-        ("pwsh" | "powershell", Some(c)) => shell.extend(["-NoExit".into(), "-Command".into(), c.into()]),
+        ("pwsh" | "powershell", Some(c)) => {
+            shell.extend(["-NoExit".into(), "-Command".into(), c.into()])
+        }
         ("cmd", Some(c)) => shell.extend(["/K".into(), c.into()]),
         ("nu", Some(c)) => shell.extend(["-e".into(), c.into()]),
         (_, Some(c)) => {
@@ -493,8 +547,14 @@ fn argv(cfg: &Config, cmd: Option<&str>, once: bool) -> Vec<String> {
 impl Term {
     /// The folder it works in, by name: its checkout's, else where its shell is.
     pub fn place(&self) -> String {
-        let dir = self.head.as_ref().map(|h| h.top.clone()).unwrap_or_else(|| self.cwd.clone());
-        dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+        let dir = self
+            .head
+            .as_ref()
+            .map(|h| h.top.clone())
+            .unwrap_or_else(|| self.cwd.clone());
+        dir.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
     }
 
     /// Whether a turn that stopped with `running` background tasks is only paused: one of them
@@ -516,21 +576,58 @@ impl Term {
     pub fn spawn(cfg: &Config, spec: SpawnSpec, tx: mpsc::Sender<Ev>) -> Result<Term> {
         let token = new_secret()?;
         let pty = native_pty_system();
-        let size = PtySize { rows: spec.rows.max(2), cols: spec.cols.max(2), pixel_width: 0, pixel_height: 0 };
+        let size = PtySize {
+            rows: spec.rows.max(2),
+            cols: spec.cols.max(2),
+            pixel_width: 0,
+            pixel_height: 0,
+        };
         let pair = pty.openpty(size).context("opening pty")?;
 
-        let args = argv(cfg, spec.cmd, spec.once);
-        let mut cmd = CommandBuilder::new(&args[0]);
-        cmd.args(&args[1..]);
+        let shell_args = spec
+            .direct
+            .is_none()
+            .then(|| argv(cfg, spec.cmd, spec.once));
+        let direct_label = spec
+            .direct
+            .as_ref()
+            .map(|command| command.executable.display().to_string());
+        let mut cmd = if let Some(command) = &spec.direct {
+            let mut cmd = CommandBuilder::new(command.executable.as_os_str());
+            cmd.args(&command.args);
+            cmd
+        } else {
+            let args = shell_args
+                .as_ref()
+                .expect("shell args exist without a direct command");
+            let mut cmd = CommandBuilder::new(&args[0]);
+            cmd.args(&args[1..]);
+            cmd
+        };
         if spec.cwd.is_dir() {
             cmd.cwd(spec.cwd);
         }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         for k in [
-            "WT_SESSION", "WT_PROFILE_ID", "ITERM_SESSION_ID", "WEZTERM_PANE", "WEZTERM_EXECUTABLE", "KITTY_WINDOW_ID", "KITTY_PID",
-            "TMUX", "TMUX_PANE", "ZELLIJ", "ZELLIJ_SESSION_NAME", "ZELLIJ_PANE_ID", "STY", "LC_TERMINAL", "LC_TERMINAL_VERSION",
-            "TERM_SESSION_ID", "VSCODE_INJECTION", "CLAUDE_CODE_CHILD_SESSION",
+            "WT_SESSION",
+            "WT_PROFILE_ID",
+            "ITERM_SESSION_ID",
+            "WEZTERM_PANE",
+            "WEZTERM_EXECUTABLE",
+            "KITTY_WINDOW_ID",
+            "KITTY_PID",
+            "TMUX",
+            "TMUX_PANE",
+            "ZELLIJ",
+            "ZELLIJ_SESSION_NAME",
+            "ZELLIJ_PANE_ID",
+            "STY",
+            "LC_TERMINAL",
+            "LC_TERMINAL_VERSION",
+            "TERM_SESSION_ID",
+            "VSCODE_INJECTION",
+            "CLAUDE_CODE_CHILD_SESSION",
         ] {
             cmd.env_remove(k);
         }
@@ -544,10 +641,16 @@ impl Term {
         }
         // zsh has no flag for another rc file: a plain zsh pane starts from the app's ZDOTDIR,
         // whose .zshenv hands back to yours and adds the agent functions (as bash's --rcfile).
-        let stem = Path::new(&args[0]).file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        let stem = shell_args
+            .as_ref()
+            .map(|args| Path::new(&args[0]))
+            .unwrap_or_else(|| Path::new(""))
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
         let agents = worktree_agents(cfg);
         if stem == "zsh"
-            && args.len() == 1
+            && shell_args.as_ref().is_some_and(|args| args.len() == 1)
             && !agents.is_empty()
             && let Some(dir) = zsh_dir(&agents)
         {
@@ -559,8 +662,16 @@ impl Term {
         for (k, v) in &cfg.env {
             cmd.env(k, v);
         }
+        if let Some(command) = &spec.direct {
+            for key in crate::ipc::STRUCTURED_ENV {
+                cmd.env_remove(key);
+            }
+            for (key, value) in &command.environment {
+                cmd.env(key, value);
+            }
+        }
         // A plain shell finds the agents' launchers first, whatever shell it is.
-        if spec.cmd.is_none_or(|c| c.trim().is_empty()) && !spec.once {
+        if spec.direct.is_none() && spec.cmd.is_none_or(|c| c.trim().is_empty()) && !spec.once {
             match crate::shim::install(&agents, &own_exe()) {
                 Ok(Some(dir)) => {
                     let path = crate::shim::path_with(&dir, cmd.get_env("PATH"));
@@ -571,7 +682,13 @@ impl Term {
             }
         }
 
-        let mut child = pair.slave.spawn_command(cmd).with_context(|| format!("spawning {args:?}"))?;
+        let mut child = pair
+            .slave
+            .spawn_command(cmd)
+            .with_context(|| match &direct_label {
+                Some(executable) => format!("spawning {executable}"),
+                None => format!("spawning {shell_args:?}"),
+            })?;
         drop(pair.slave);
         let pid = child.process_id();
         let killer = child.clone_killer();
@@ -580,27 +697,39 @@ impl Term {
         let id = spec.id;
 
         let out_tx = tx.clone();
-        std::thread::Builder::new().name(format!("pty-read-{id}")).spawn(move || {
-            let mut buf = vec![0u8; 64 * 1024];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => {
-                        if out_tx.blocking_send(Ev::Output(id, buf[..n].to_vec())).is_err() {
-                            break;
+        std::thread::Builder::new()
+            .name(format!("pty-read-{id}"))
+            .spawn(move || {
+                let mut buf = vec![0u8; 64 * 1024];
+                loop {
+                    match reader.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if out_tx
+                                .blocking_send(Ev::Output(id, buf[..n].to_vec()))
+                                .is_err()
+                            {
+                                break;
+                            }
                         }
                     }
                 }
-            }
-            let _ = out_tx.blocking_send(Ev::Exited(id));
-        })?;
+                let _ = out_tx.blocking_send(Ev::Exited(id));
+            })?;
         // ConPTY keeps the output pipe open after the child exits, so wait on the child too.
-        std::thread::Builder::new().name(format!("pty-wait-{id}")).spawn(move || {
-            let _ = child.wait();
-            let _ = tx.blocking_send(Ev::Exited(id));
-        })?;
+        std::thread::Builder::new()
+            .name(format!("pty-wait-{id}"))
+            .spawn(move || {
+                let _ = child.wait();
+                let _ = tx.blocking_send(Ev::ProcessExited(id));
+            })?;
 
-        let process = Path::new(&args[0])
+        let process_executable = spec
+            .direct
+            .as_ref()
+            .map(|command| command.executable.as_path())
+            .unwrap_or_else(|| Path::new(&shell_args.as_ref().expect("shell args")[0]));
+        let process = process_executable
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
@@ -611,7 +740,15 @@ impl Term {
             writer,
             killer,
             pid,
-            parser: vt100::Parser::new_with_callbacks(size.rows, size.cols, 0, Callbacks::default()),
+            process_exited: false,
+            #[cfg(test)]
+            fail_next_handoff_cleanup: false,
+            parser: vt100::Parser::new_with_callbacks(
+                size.rows,
+                size.cols,
+                0,
+                Callbacks::default(),
+            ),
             ring: VecDeque::new(),
             ring_cap: cfg.replay_bytes.max(64 * 1024),
             output_changed: false,
@@ -635,7 +772,11 @@ impl Term {
             hooked: false,
             last_output: now,
             last_input: now,
-            cmd: spec.cmd.filter(|c| !c.trim().is_empty()).map(str::to_string),
+            cmd: spec
+                .cmd
+                .filter(|c| !c.trim().is_empty())
+                .map(str::to_string)
+                .or(direct_label),
             session: None,
             cwd: spec.cwd.to_path_buf(),
             summary: String::new(),
@@ -668,6 +809,7 @@ impl Term {
             restore_unseen: false,
             pending_input: None,
             account: None,
+            conversation_id: None,
             queue: Default::default(),
             queue_sent: None,
             transcript: None,
@@ -763,10 +905,19 @@ impl Term {
                 // "What colour is your text / background?": the theme's, so programs pick
                 // the right light / dark look.
                 Query::Foreground(st) | Query::Background(st) => {
-                    let (r, g, b) = if matches!(query, Query::Foreground(_)) { self.colors.0 } else { self.colors.1 };
-                    let n = if matches!(query, Query::Foreground(_)) { 10 } else { 11 };
+                    let (r, g, b) = if matches!(query, Query::Foreground(_)) {
+                        self.colors.0
+                    } else {
+                        self.colors.1
+                    };
+                    let n = if matches!(query, Query::Foreground(_)) {
+                        10
+                    } else {
+                        11
+                    };
                     let end = if *st { "\x1b\\" } else { "\x07" };
-                    format!("\x1b]{n};rgb:{r:02x}{r:02x}/{g:02x}{g:02x}/{b:02x}{b:02x}{end}").into_bytes()
+                    format!("\x1b]{n};rgb:{r:02x}{r:02x}/{g:02x}{g:02x}/{b:02x}{b:02x}{end}")
+                        .into_bytes()
                 }
             };
             queue_input(&self.writer, reply);
@@ -795,7 +946,14 @@ impl Term {
         seed.extend_from_slice(b"\x1b[0m\x1b[?1049l\x1b[r\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l\x1b[?25h");
         seed.extend_from_slice(format!("\x1b[{};1H", self.rows).as_bytes());
         seed.extend(std::iter::repeat_n(b"\r\n".as_slice(), self.rows as usize).flatten());
-        seed.extend_from_slice(concat!("\x1b[2m-- ", env!("APP_COMMAND"), " restarted here: what's above is from before --\x1b[0m\r\n").as_bytes());
+        seed.extend_from_slice(
+            concat!(
+                "\x1b[2m-- ",
+                env!("APP_COMMAND"),
+                " restarted here: what's above is from before --\x1b[0m\r\n"
+            )
+            .as_bytes(),
+        );
         seed.extend(self.ring.drain(..));
         let excess = seed.len().saturating_sub(self.ring_cap);
         self.ring = seed.into_iter().skip(excess).collect();
@@ -830,13 +988,20 @@ impl Term {
         }
         self.cols = cols;
         self.rows = rows;
-        let _ = self.master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 });
+        let _ = self.master.resize(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        });
         self.parser.screen_mut().set_size(rows, cols);
     }
 
     /// The top of its git worktree, or its folder outside git.
     pub fn worktree(&self) -> PathBuf {
-        self.head.as_ref().map_or_else(|| self.cwd.clone(), |h| h.top.clone())
+        self.head
+            .as_ref()
+            .map_or_else(|| self.cwd.clone(), |h| h.top.clone())
     }
 
     /// Re-read the git branch for the current folder. Returns true if it changed.
@@ -851,34 +1016,72 @@ impl Term {
     /// child of the shell, and on Windows it would otherwise keep the terminal open). Runs
     /// on its own thread so nothing waits on it.
     pub fn kill_tree(&mut self) {
+        self.kill_tree_with_completion(None);
+    }
+
+    pub fn kill_tree_for_handoff(&mut self, id: TermId, tx: mpsc::Sender<Ev>) {
+        self.kill_tree_with_completion(Some((id, tx)));
+    }
+
+    fn kill_tree_with_completion(&mut self, completion: Option<(TermId, mpsc::Sender<Ev>)>) {
         let mut killer = self.killer.clone_killer();
         let pid = self.pid;
+        #[cfg(test)]
+        let fail_cleanup =
+            completion.is_some() && std::mem::take(&mut self.fail_next_handoff_cleanup);
+        #[cfg(not(test))]
+        let fail_cleanup = false;
         std::thread::spawn(move || {
-            if let Some(pid) = pid {
+            let result = if fail_cleanup {
+                Err("injected native process cleanup failure".into())
+            } else if let Some(pid) = pid {
                 #[cfg(windows)]
                 {
                     use std::os::windows::process::CommandExt;
-                    let _ = std::process::Command::new("taskkill")
+                    match std::process::Command::new("taskkill")
                         .args(["/PID", &pid.to_string(), "/T", "/F"])
                         .stdout(std::process::Stdio::null())
                         .stderr(std::process::Stdio::null())
                         .creation_flags(crate::proc::CREATE_NO_WINDOW)
-                        .status();
+                        .status()
+                    {
+                        Ok(status) if status.success() => Ok(()),
+                        Ok(status) => Err(format!("taskkill exited with {status}")),
+                        Err(error) => Err(format!("could not run taskkill: {error}")),
+                    }
                 }
                 #[cfg(not(windows))]
                 {
                     // The pane's shell leads its own process group. Not `kill -KILL -<pid>`:
                     // util-linux's kill reads the bare negative pid as an option and signals
                     // every process the user owns (pid -1).
-                    if let Ok(group) = libc::pid_t::try_from(pid)
-                        && group > 1
-                    {
-                        // SAFETY: signals only the process group the pane's shell leads.
-                        unsafe { libc::kill(-group, libc::SIGKILL) };
+                    match libc::pid_t::try_from(pid) {
+                        Ok(group) if group > 1 => {
+                            // SAFETY: signals only the process group the pane's shell leads.
+                            let result = unsafe { libc::kill(-group, libc::SIGKILL) };
+                            if result == 0 {
+                                Ok(())
+                            } else {
+                                let error = std::io::Error::last_os_error();
+                                if error.raw_os_error() == Some(libc::ESRCH) {
+                                    Ok(())
+                                } else {
+                                    Err(format!("could not stop pane process group: {error}"))
+                                }
+                            }
+                        }
+                        _ => Err("pane process has no valid process group".into()),
                     }
                 }
+            } else {
+                Err("pane process ID is unavailable".into())
+            };
+            if !fail_cleanup {
+                let _ = killer.kill();
             }
-            let _ = killer.kill();
+            if let Some((id, tx)) = completion {
+                let _ = tx.blocking_send(Ev::KillTreeFinished(id, result));
+            }
         });
     }
 
@@ -904,7 +1107,10 @@ impl Term {
 
 /// Seconds since the unix epoch.
 pub fn unix_now() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// Writes waiting for a pane's input. A pane that stops reading loses what doesn't fit,
@@ -916,13 +1122,15 @@ const INPUT_QUEUE: usize = 1024;
 /// write fails because the terminal closed).
 fn input_thread(mut w: Box<dyn Write + Send>) -> std::sync::mpsc::SyncSender<Vec<u8>> {
     let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(INPUT_QUEUE);
-    let spawned = std::thread::Builder::new().name("pane-input".into()).spawn(move || {
-        for chunk in rx {
-            if w.write_all(&chunk).and_then(|_| w.flush()).is_err() {
-                break;
+    let spawned = std::thread::Builder::new()
+        .name("pane-input".into())
+        .spawn(move || {
+            for chunk in rx {
+                if w.write_all(&chunk).and_then(|_| w.flush()).is_err() {
+                    break;
+                }
             }
-        }
-    });
+        });
     if let Err(e) = spawned {
         tracing::error!("couldn't start a pane's input thread: {e}");
     }
@@ -944,14 +1152,17 @@ fn queue_input(tx: &std::sync::mpsc::SyncSender<Vec<u8>>, data: Vec<u8>) -> bool
 /// A pane's secret: 128 bits from the OS's random source, as hex.
 pub fn new_secret() -> Result<String> {
     let mut b = [0u8; 16];
-    getrandom::fill(&mut b).map_err(|e| anyhow::anyhow!("no randomness for the pane secret: {e}"))?;
+    getrandom::fill(&mut b)
+        .map_err(|e| anyhow::anyhow!("no randomness for the pane secret: {e}"))?;
     Ok(b.iter().map(|x| format!("{x:02x}")).collect())
 }
 
 /// Compare secrets without stopping at the first difference, so timing says nothing; an
 /// empty secret never matches.
 pub fn same_secret(a: &str, b: &str) -> bool {
-    !a.is_empty() && a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
+    !a.is_empty()
+        && a.len() == b.len()
+        && a.bytes().zip(b.bytes()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
 }
 
 /// How many leading bytes of output cut at a random byte to drop so what's left starts at a
@@ -972,44 +1183,103 @@ mod tests {
         let cut = "ʼ".as_bytes()[1..].to_vec();
         let mut mid_char = cut.clone();
         mid_char.extend_from_slice(b"abc");
-        assert_eq!(super::clean_start(&mid_char), 1, "a split character's tail is dropped");
+        assert_eq!(
+            super::clean_start(&mid_char),
+            1,
+            "a split character's tail is dropped"
+        );
         let mut mid_escape = b"8;5;1mtext\r\nnext line".to_vec();
-        assert_eq!(super::clean_start(&mid_escape), 12, "a half escape sequence goes with its line");
+        assert_eq!(
+            super::clean_start(&mid_escape),
+            12,
+            "a half escape sequence goes with its line"
+        );
         mid_escape.clear();
         assert_eq!(super::clean_start(&mid_escape), 0);
-        assert_eq!(super::clean_start(b"whole line\r\n"), 12, "a clean start loses only its first line");
+        assert_eq!(
+            super::clean_start(b"whole line\r\n"),
+            12,
+            "a clean start loses only its first line"
+        );
     }
 
     #[test]
     fn a_zsh_pane_hands_back_to_your_files_then_wraps_agents() {
         let env = super::zsh_env(&["claude".into()]);
-        assert!(env.contains(concat!("preexec_functions+=(__", env!("APP_COMMAND"), "_path)")), "the launchers stay first on PATH: {env}");
-        let restore = env.find(concat!("ZDOTDIR=\"$", env!("APP_ENV"), "_ZDOTDIR\"")).expect("your ZDOTDIR put back");
+        assert!(
+            env.contains(concat!(
+                "preexec_functions+=(__",
+                env!("APP_COMMAND"),
+                "_path)"
+            )),
+            "the launchers stay first on PATH: {env}"
+        );
+        let restore = env
+            .find(concat!("ZDOTDIR=\"$", env!("APP_ENV"), "_ZDOTDIR\""))
+            .expect("your ZDOTDIR put back");
         let yours = env.find(".zshenv\" ] && .").expect("your .zshenv read");
         let wrap = env.find("claude() {").expect("claude wrapped");
-        assert!(restore < yours && yours < wrap, "yours first, then the wrapper: {env}");
-        assert!(env.contains("agent-dir claude"), "it asks the app where to start: {env}");
+        assert!(
+            restore < yours && yours < wrap,
+            "yours first, then the wrapper: {env}"
+        );
+        assert!(
+            env.contains("agent-dir claude"),
+            "it asks the app where to start: {env}"
+        );
     }
 
     #[test]
     fn a_pane_shell_starts_agents_through_app() {
         let cfg = crate::config::Config::default();
-        let ps = super::agent_functions("pwsh", &["claude".into()], concat!(r"C:\it's\", env!("APP_COMMAND"), r".exe"));
-        assert!(ps.contains("function global:claude") && ps.contains(concat!("& 'C:\\it''s\\", env!("APP_COMMAND"), ".exe' agent-dir claude @args")), "{ps}");
-        assert!(!ps.contains('"'), "no double quotes: they don't survive Windows argument quoting");
+        let ps = super::agent_functions(
+            "pwsh",
+            &["claude".into()],
+            concat!(r"C:\it's\", env!("APP_COMMAND"), r".exe"),
+        );
+        assert!(
+            ps.contains("function global:claude")
+                && ps.contains(concat!(
+                    "& 'C:\\it''s\\",
+                    env!("APP_COMMAND"),
+                    ".exe' agent-dir claude @args"
+                )),
+            "{ps}"
+        );
+        assert!(
+            !ps.contains('"'),
+            "no double quotes: they don't survive Windows argument quoting"
+        );
         let names = super::worktree_agents(&cfg);
         assert!(names.contains(&"claude".to_string()) && names.contains(&"codex".to_string()));
-        assert!(names.contains(&"gemini".to_string()), "the built-in agents need no quick-agent entry");
-        let no_integration = crate::config::Config { shell_integration: false, ..Default::default() };
-        assert_eq!(super::worktree_agents(&no_integration), names, "PowerShell folder tracking does not decide whether agents get a worktree");
+        assert!(
+            names.contains(&"gemini".to_string()),
+            "the built-in agents need no quick-agent entry"
+        );
+        let no_integration = crate::config::Config {
+            shell_integration: false,
+            ..Default::default()
+        };
+        assert_eq!(
+            super::worktree_agents(&no_integration),
+            names,
+            "PowerShell folder tracking does not decide whether agents get a worktree"
+        );
         let mut off = crate::config::Config::default();
         off.worktree.per_agent = false;
-        assert!(super::worktree_agents(&off).is_empty(), "off: agents start where they're typed");
+        assert!(
+            super::worktree_agents(&off).is_empty(),
+            "off: agents start where they're typed"
+        );
     }
 
     #[test]
     fn a_quick_agent_is_started_by_the_program_it_runs_not_by_its_name() {
-        let quick = |name: &str, command: &str| crate::config::QuickAgent { name: name.into(), command: command.into(), ..Default::default() };
+        let quick = |name: &str, command: &str| crate::config::QuickAgent {
+            name: name.into(),
+            command: command.into(),
+            ..Default::default()
+        };
         let mut cfg = crate::config::Config::default();
         cfg.quick.agents = vec![
             quick("work", "claude --model sonnet {prompt}"),
@@ -1019,21 +1289,48 @@ mod tests {
             quick("empty", ""),
         ];
         let names = super::worktree_agents(&cfg);
-        assert!(names.contains(&"aider".to_string()), "a program that isn't built in is added: {names:?}");
-        assert_eq!(names.iter().filter(|n| *n == "claude").count(), 1, "claude once, however many agents run it: {names:?}");
-        for not in ["work", "pinned", "env", "empty", "~/bin/claude", "CLAUDE_CONFIG_DIR=~/.claude-work"] {
-            assert!(!names.contains(&not.to_string()), "{not} is not something you type: {names:?}");
+        assert!(
+            names.contains(&"aider".to_string()),
+            "a program that isn't built in is added: {names:?}"
+        );
+        assert_eq!(
+            names.iter().filter(|n| *n == "claude").count(),
+            1,
+            "claude once, however many agents run it: {names:?}"
+        );
+        for not in [
+            "work",
+            "pinned",
+            "env",
+            "empty",
+            "~/bin/claude",
+            "CLAUDE_CONFIG_DIR=~/.claude-work",
+        ] {
+            assert!(
+                !names.contains(&not.to_string()),
+                "{not} is not something you type: {names:?}"
+            );
         }
-        assert_eq!(super::quick_agent_program("codex exec {prompt}"), Some("codex"));
+        assert_eq!(
+            super::quick_agent_program("codex exec {prompt}"),
+            Some("codex")
+        );
         assert_eq!(super::quick_agent_program("  claude "), Some("claude"));
-        assert_eq!(super::quick_agent_program("/usr/bin/claude x"), None, "a path can't be shadowed by PATH");
+        assert_eq!(
+            super::quick_agent_program("/usr/bin/claude x"),
+            None,
+            "a path can't be shadowed by PATH"
+        );
     }
 
     /// The bash function really goes to the folder the app names, then runs the real agent.
     #[cfg(unix)]
     #[test]
     fn the_bash_function_starts_the_agent_where_app_says() {
-        let tmp = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-fn-{}"), std::process::id()));
+        let tmp = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-fn-{}"),
+            std::process::id()
+        ));
         let bin = tmp.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         let fake = |name: &str, body: &str| {
@@ -1045,10 +1342,21 @@ mod tests {
         };
         let exe = fake(env!("APP_COMMAND"), &format!("echo {}", tmp.display()));
         fake("claude", "echo \"ran in $PWD with $*\"");
-        let script = format!("{}claude hi there", super::agent_functions("bash", &["claude".into()], &exe.display().to_string()));
-        let out = std::process::Command::new("bash").arg("-c").arg(script).env("PATH", format!("{}:/usr/bin:/bin", bin.display())).output().unwrap();
+        let script = format!(
+            "{}claude hi there",
+            super::agent_functions("bash", &["claude".into()], &exe.display().to_string())
+        );
+        let out = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(script)
+            .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+            .output()
+            .unwrap();
         let out = String::from_utf8_lossy(&out.stdout);
-        assert_eq!(out.trim(), format!("ran in {} with hi there", tmp.display()));
+        assert_eq!(
+            out.trim(),
+            format!("ran in {} with hi there", tmp.display())
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -1057,12 +1365,27 @@ mod tests {
     #[test]
     fn the_startup_text_for_a_pane_is_valid_shell() {
         let agents = ["claude".to_string(), "codex".to_string()];
-        let text = format!("{}{}", super::agent_functions("bash", &agents, concat!("/it's/", env!("APP_COMMAND"))), crate::shim::keep_first("bash", Path::new("/da ta/it's/bin")));
-        let out = std::process::Command::new("bash").arg("-n").arg("-c").arg(&text).output();
+        let text = format!(
+            "{}{}",
+            super::agent_functions("bash", &agents, concat!("/it's/", env!("APP_COMMAND"))),
+            crate::shim::keep_first("bash", Path::new("/da ta/it's/bin"))
+        );
+        let out = std::process::Command::new("bash")
+            .arg("-n")
+            .arg("-c")
+            .arg(&text)
+            .output();
         if let Ok(out) = out {
-            assert!(out.status.success(), "{text}\n{}", String::from_utf8_lossy(&out.stderr));
+            assert!(
+                out.status.success(),
+                "{text}\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
         }
-        assert!(text.contains(concat!(env!("APP_ENV"), "_AGENT_DIR_DONE=1 command claude")), "{text}");
+        assert!(
+            text.contains(concat!(env!("APP_ENV"), "_AGENT_DIR_DONE=1 command claude")),
+            "{text}"
+        );
     }
 
     #[test]
@@ -1086,8 +1409,14 @@ mod tests {
         for _ in 0..super::INPUT_QUEUE + 10 {
             dropped |= !super::queue_input(&tx, big.clone());
         }
-        assert!(start.elapsed() < std::time::Duration::from_secs(5), "never waits on the pane");
-        assert!(dropped, "past the queue, input is dropped instead of waited for");
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(5),
+            "never waits on the pane"
+        );
+        assert!(
+            dropped,
+            "past the queue, input is dropped instead of waited for"
+        );
     }
 
     #[test]
@@ -1117,9 +1446,18 @@ mod tests {
 
     #[test]
     fn cwd_reports() {
-        assert_eq!(find_cwd_report(b"x\x1b]7;file://host/home/me/a%20b\x07y"), Some(PathBuf::from("/home/me/a b")));
-        assert_eq!(find_cwd_report(b"\x1b]7;file://pc/C:/dev/x\x1b\\"), Some(PathBuf::from("C:/dev/x")));
-        assert_eq!(find_cwd_report(b"\x1b]9;9;\"C:\\dev\\y\"\x07"), Some(PathBuf::from(r"C:\dev\y")));
+        assert_eq!(
+            find_cwd_report(b"x\x1b]7;file://host/home/me/a%20b\x07y"),
+            Some(PathBuf::from("/home/me/a b"))
+        );
+        assert_eq!(
+            find_cwd_report(b"\x1b]7;file://pc/C:/dev/x\x1b\\"),
+            Some(PathBuf::from("C:/dev/x"))
+        );
+        assert_eq!(
+            find_cwd_report(b"\x1b]9;9;\"C:\\dev\\y\"\x07"),
+            Some(PathBuf::from(r"C:\dev\y"))
+        );
         assert_eq!(find_cwd_report(b"plain output"), None);
     }
 

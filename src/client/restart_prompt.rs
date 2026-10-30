@@ -2,12 +2,15 @@
 //! choice instead of an error, so one click replaces the old server.
 
 use super::design::{BtnKind, button, fill, put, seg, segs_width};
-use crate::brand::{APP_NAME};
+use crate::brand::APP_NAME;
 use crate::config::Config;
 use crate::theme::Theme;
 use anyhow::Result;
 use ratatui::Frame;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+    MouseEventKind,
+};
 use ratatui::crossterm::execute;
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Modifier, Style};
@@ -34,7 +37,14 @@ pub struct Prompt {
 
 impl Prompt {
     pub fn new(daemon: u32, cfg: &Config) -> Prompt {
-        Prompt { daemon, resume: None, theme: cfg.theme(), round: cfg.ui.rounding().caps(), hover: None, hits: Vec::new() }
+        Prompt {
+            daemon,
+            resume: None,
+            theme: cfg.theme(),
+            round: cfg.ui.rounding().caps(),
+            hover: None,
+            hits: Vec::new(),
+        }
     }
 
     pub fn resuming(mut self, sessions: usize, busy: Option<usize>) -> Prompt {
@@ -44,9 +54,18 @@ impl Prompt {
 
     /// What the restart costs, in the words of the screen's third line.
     fn cost(&self) -> String {
-        let sessions = |n: usize| if n == 1 { "1 session resumes".to_string() } else { format!("{n} sessions resume") };
+        let sessions = |n: usize| {
+            if n == 1 {
+                "1 session resumes".to_string()
+            } else {
+                format!("{n} sessions resume")
+            }
+        };
         match self.resume {
-            Some((n, Some(busy))) if busy > 0 => format!("{} with their conversation; {busy} mid-turn now.", sessions(n)),
+            Some((n, Some(busy))) if busy > 0 => format!(
+                "{} with their conversation; {busy} mid-turn now.",
+                sessions(n)
+            ),
             Some((n, _)) => format!("{} with their conversation.", sessions(n)),
             None => "Running agents stop and resume when it restarts.".to_string(),
         }
@@ -64,7 +83,11 @@ impl Prompt {
 
     pub fn on_mouse(&mut self, m: MouseEvent) -> Option<Choice> {
         let at = Position::new(m.column, m.row);
-        let under = self.hits.iter().find(|(r, _)| r.contains(at)).map(|(_, c)| *c);
+        let under = self
+            .hits
+            .iter()
+            .find(|(r, _)| r.contains(at))
+            .map(|(_, c)| *c);
         match m.kind {
             MouseEventKind::Moved => {
                 self.hover = under;
@@ -88,8 +111,19 @@ impl Prompt {
         let age = if self.daemon < this { "older" } else { "newer" };
         let cost = self.cost();
         let lines = [
-            (0, env!("APP_NAME").to_string(), ground.fg(t.strong).add_modifier(Modifier::BOLD)),
-            (2, format!("The running {APP_NAME} server is {age} (protocol v{}; this one is v{this}).", self.daemon), ground.fg(t.text)),
+            (
+                0,
+                env!("APP_NAME").to_string(),
+                ground.fg(t.strong).add_modifier(Modifier::BOLD),
+            ),
+            (
+                2,
+                format!(
+                    "The running {APP_NAME} server is {age} (protocol v{}; this one is v{this}).",
+                    self.daemon
+                ),
+                ground.fg(t.text),
+            ),
             (3, cost, ground.fg(t.muted)),
         ];
         let top = area.y + area.height.saturating_sub(BLOCK_HEIGHT) / 2;
@@ -99,7 +133,10 @@ impl Prompt {
         }
         let y = top + BLOCK_HEIGHT - 1;
         let buttons = [
-            (Choice::Restart, button(t, "Restart and open", "Enter", BtnKind::Primary)),
+            (
+                Choice::Restart,
+                button(t, "Restart and open", "Enter", BtnKind::Primary),
+            ),
             (Choice::Quit, button(t, "Quit", "Esc", BtnKind::Normal)),
         ];
         let total: u16 = buttons.iter().map(|(_, b)| segs_width(b)).sum::<u16>() + BUTTON_GAP;
@@ -107,7 +144,13 @@ impl Prompt {
         for (choice, segs) in buttons {
             let w = segs_width(&segs);
             put(buf, x, y, &segs, area.right());
-            let r = Rect { x, y, width: w, height: 1 }.intersection(area);
+            let r = Rect {
+                x,
+                y,
+                width: w,
+                height: 1,
+            }
+            .intersection(area);
             if self.hover == Some(choice) {
                 super::render::tint(buf, r, t);
             }
@@ -179,7 +222,16 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| prompt.draw(f)).unwrap();
         let buf = term.backend().buffer().clone();
-        let out: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
+        let out: String = (0..h)
+            .map(|y| {
+                (0..w)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string()
+                    + "\n"
+            })
+            .collect();
         if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
             println!("{out}");
         }
@@ -191,11 +243,20 @@ mod tests {
     }
 
     fn mouse(prompt: &mut Prompt, kind: MouseEventKind, r: Rect) -> Option<Choice> {
-        prompt.on_mouse(MouseEvent { kind, column: r.x + r.width / 2, row: r.y, modifiers: KeyModifiers::NONE })
+        prompt.on_mouse(MouseEvent {
+            kind,
+            column: r.x + r.width / 2,
+            row: r.y,
+            modifiers: KeyModifiers::NONE,
+        })
     }
 
     fn button_at(prompt: &Prompt, which: Choice) -> Rect {
-        prompt.hits.iter().find_map(|(r, c)| (*c == which).then_some(*r)).expect("the button was drawn")
+        prompt
+            .hits
+            .iter()
+            .find_map(|(r, c)| (*c == which).then_some(*r))
+            .expect("the button was drawn")
     }
 
     #[test]
@@ -205,12 +266,24 @@ mod tests {
                 let mut prompt = Prompt::new(OLD_PROTOCOL, &cfg(layout));
                 let out = drawn(&mut prompt, w, h);
                 let this = crate::protocol::PROTOCOL_VERSION;
-                for want in [format!("protocol v{OLD_PROTOCOL}"), format!("v{this}"), "Running agents stop and resume".to_string(), "Restart and open".to_string(), "Quit".to_string()] {
-                    assert!(out.contains(&want), "{layout:?} {w}x{h} lacks {want:?}\n{out}");
+                for want in [
+                    format!("protocol v{OLD_PROTOCOL}"),
+                    format!("v{this}"),
+                    "Running agents stop and resume".to_string(),
+                    "Restart and open".to_string(),
+                    "Quit".to_string(),
+                ] {
+                    assert!(
+                        out.contains(&want),
+                        "{layout:?} {w}x{h} lacks {want:?}\n{out}"
+                    );
                 }
                 for which in [Choice::Restart, Choice::Quit] {
                     let r = button_at(&prompt, which);
-                    assert!(r.width > 0 && r.right() <= w && r.bottom() <= h, "{layout:?} {w}x{h}: {which:?} fits {r:?}");
+                    assert!(
+                        r.width > 0 && r.right() <= w && r.bottom() <= h,
+                        "{layout:?} {w}x{h}: {which:?} fits {r:?}"
+                    );
                 }
             }
         }
@@ -220,7 +293,10 @@ mod tests {
     fn it_counts_the_sessions_that_resume_and_the_ones_mid_turn() {
         let mut prompt = Prompt::new(OLD_PROTOCOL, &cfg(LAYOUTS[0])).resuming(4, Some(2));
         let out = drawn(&mut prompt, 100, 30);
-        assert!(out.contains("4 sessions resume with their conversation; 2 mid-turn now."), "{out}");
+        assert!(
+            out.contains("4 sessions resume with their conversation; 2 mid-turn now."),
+            "{out}"
+        );
         let mut prompt = Prompt::new(OLD_PROTOCOL, &cfg(LAYOUTS[0])).resuming(1, None);
         assert!(drawn(&mut prompt, 100, 30).contains("1 session resumes with"));
     }
@@ -238,8 +314,16 @@ mod tests {
         let mut prompt = Prompt::new(OLD_PROTOCOL, &cfg(LAYOUTS[0]));
         assert_eq!(press(&mut prompt, KeyCode::Enter), Some(Choice::Restart));
         assert_eq!(press(&mut prompt, KeyCode::Esc), Some(Choice::Quit));
-        assert_eq!(prompt.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)), Some(Choice::Quit), "raw mode leaves Ctrl+C to us");
-        assert_eq!(press(&mut prompt, KeyCode::Char('x')), None, "other keys do nothing");
+        assert_eq!(
+            prompt.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+            Some(Choice::Quit),
+            "raw mode leaves Ctrl+C to us"
+        );
+        assert_eq!(
+            press(&mut prompt, KeyCode::Char('x')),
+            None,
+            "other keys do nothing"
+        );
     }
 
     #[test]
@@ -247,11 +331,43 @@ mod tests {
         for layout in LAYOUTS {
             let mut prompt = Prompt::new(OLD_PROTOCOL, &cfg(layout));
             drawn(&mut prompt, 100, 30);
-            let (restart, quit) = (button_at(&prompt, Choice::Restart), button_at(&prompt, Choice::Quit));
-            assert_eq!(mouse(&mut prompt, MouseEventKind::Down(MouseButton::Left), restart), Some(Choice::Restart), "{layout:?}");
-            assert_eq!(mouse(&mut prompt, MouseEventKind::Down(MouseButton::Left), quit), Some(Choice::Quit), "{layout:?}");
-            assert_eq!(mouse(&mut prompt, MouseEventKind::Down(MouseButton::Right), restart), None, "only the left button clicks");
-            assert_eq!(prompt.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: 0, row: 0, modifiers: KeyModifiers::NONE }), None, "empty space does nothing");
+            let (restart, quit) = (
+                button_at(&prompt, Choice::Restart),
+                button_at(&prompt, Choice::Quit),
+            );
+            assert_eq!(
+                mouse(
+                    &mut prompt,
+                    MouseEventKind::Down(MouseButton::Left),
+                    restart
+                ),
+                Some(Choice::Restart),
+                "{layout:?}"
+            );
+            assert_eq!(
+                mouse(&mut prompt, MouseEventKind::Down(MouseButton::Left), quit),
+                Some(Choice::Quit),
+                "{layout:?}"
+            );
+            assert_eq!(
+                mouse(
+                    &mut prompt,
+                    MouseEventKind::Down(MouseButton::Right),
+                    restart
+                ),
+                None,
+                "only the left button clicks"
+            );
+            assert_eq!(
+                prompt.on_mouse(MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    column: 0,
+                    row: 0,
+                    modifiers: KeyModifiers::NONE
+                }),
+                None,
+                "empty space does nothing"
+            );
         }
     }
 
@@ -268,8 +384,17 @@ mod tests {
         let plain = bg(&mut prompt);
         assert_eq!(mouse(&mut prompt, MouseEventKind::Moved, quit), None);
         assert_eq!(prompt.hover, Some(Choice::Quit));
-        assert_ne!(bg(&mut prompt), plain, "the button under the pointer is tinted");
-        prompt.on_mouse(MouseEvent { kind: MouseEventKind::Moved, column: 0, row: 0, modifiers: KeyModifiers::NONE });
+        assert_ne!(
+            bg(&mut prompt),
+            plain,
+            "the button under the pointer is tinted"
+        );
+        prompt.on_mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        });
         assert_eq!(prompt.hover, None);
     }
 
@@ -283,11 +408,31 @@ mod tests {
 
     #[test]
     fn it_shows_only_for_a_version_mismatch_on_a_local_terminal() {
-        let mismatch = || anyhow::Error::new(OtherVersion { daemon: OLD_PROTOCOL });
+        let mismatch = || {
+            anyhow::Error::new(OtherVersion {
+                daemon: OLD_PROTOCOL,
+            })
+        };
         assert_eq!(wanted(&mismatch(), true, false), Some(OLD_PROTOCOL));
-        assert_eq!(wanted(&mismatch().context("connecting"), true, false), Some(OLD_PROTOCOL), "found under added context");
-        assert_eq!(wanted(&mismatch(), false, false), None, "scripts and pipes keep the error");
-        assert_eq!(wanted(&mismatch(), true, true), None, "a remote server is never restarted from here");
-        assert_eq!(wanted(&anyhow::anyhow!("connection refused"), true, false), None, "other failures keep their error");
+        assert_eq!(
+            wanted(&mismatch().context("connecting"), true, false),
+            Some(OLD_PROTOCOL),
+            "found under added context"
+        );
+        assert_eq!(
+            wanted(&mismatch(), false, false),
+            None,
+            "scripts and pipes keep the error"
+        );
+        assert_eq!(
+            wanted(&mismatch(), true, true),
+            None,
+            "a remote server is never restarted from here"
+        );
+        assert_eq!(
+            wanted(&anyhow::anyhow!("connection refused"), true, false),
+            None,
+            "other failures keep their error"
+        );
     }
 }

@@ -16,14 +16,22 @@ fn surfaces() -> Vec<(&'static str, Open)> {
         ("settings appearance", |app| {
             app.act(Action::Settings);
             if let Mode::ScreenSettings(v) = &mut app.mode {
-                v.cat = crate::client::modal::Cat::ALL.iter().position(|c| *c == crate::client::modal::Cat::Appearance).unwrap_or(0);
+                v.cat = crate::client::modal::Cat::ALL
+                    .iter()
+                    .position(|c| *c == crate::client::modal::Cat::Appearance)
+                    .unwrap_or(0);
             }
         }),
         ("key map", |app| app.act(Action::Palette)),
         ("all keys", |app| app.act(Action::Help)),
         ("connect agents", |app| app.act(Action::AgentStatusSetup)),
         ("row menu", |app| app.menu_for_session(4, (10, 10))),
-        ("why", |app| app.mode = Mode::Why { term: 3, side: true }),
+        ("why", |app| {
+            app.mode = Mode::Why {
+                term: 3,
+                side: true,
+            }
+        }),
         ("message", |app| app.act(Action::Message)),
         ("confirm close", |app| app.act(Action::ClosePane)),
         ("rename", |app| app.act(Action::RenameTab)),
@@ -48,7 +56,14 @@ fn fills(t: &Theme) -> Vec<Color> {
 
 #[test]
 fn every_surface_is_square_and_unfilled() {
-    let shapes = ["╭", "╮", "╰", "╯", crate::client::screen::CAP_L, crate::client::screen::CAP_R];
+    let shapes = [
+        "╭",
+        "╮",
+        "╰",
+        "╯",
+        crate::client::screen::CAP_L,
+        crate::client::screen::CAP_R,
+    ];
     let mut wrong = Vec::new();
     for (name, open) in surfaces() {
         for (w, h) in SIZES {
@@ -105,10 +120,26 @@ fn a_one_line_prompt_keeps_its_frame() {
     let buf = draw(&mut app, 160, 45);
     show("rename", &buf);
     let t = app.theme.clone();
-    let corner = buf.area.positions().find(|p| buf[(p.x, p.y)].symbol() == "┌").expect("the prompt's box");
-    let below = Position { x: corner.x, y: corner.y + 1 };
-    assert_eq!((buf[(below.x, below.y)].symbol(), buf[(below.x, below.y)].fg), ("│", t.line), "its side stays");
-    assert!(buf.area.positions().any(|p| buf[(p.x, p.y)].symbol() == "└" && p.x == corner.x), "and its bottom");
+    let corner = buf
+        .area
+        .positions()
+        .find(|p| buf[(p.x, p.y)].symbol() == "┌")
+        .expect("the prompt's box");
+    let below = Position {
+        x: corner.x,
+        y: corner.y + 1,
+    };
+    assert_eq!(
+        (buf[(below.x, below.y)].symbol(), buf[(below.x, below.y)].fg),
+        ("│", t.line),
+        "its side stays"
+    );
+    assert!(
+        buf.area
+            .positions()
+            .any(|p| buf[(p.x, p.y)].symbol() == "└" && p.x == corner.x),
+        "and its bottom"
+    );
 }
 
 #[test]
@@ -119,8 +150,14 @@ fn a_menus_selection_is_a_raised_row_with_an_accent_bar() {
     let t = app.theme.clone();
     let (x, y) = find_in(&buf, buf.area, "Open beside").expect("the selected row");
     assert_eq!(buf[(x, y)].bg, t.card2, "the selected row is raised");
-    let marker = (buf.area.x..x).map(|mx| &buf[(mx, y)]).find(|c| ["▎", "›"].contains(&c.symbol()));
-    assert_eq!(marker.map(|c| c.fg), Some(t.accent), "an accent marker on it");
+    let marker = (buf.area.x..x)
+        .map(|mx| &buf[(mx, y)])
+        .find(|c| ["▎", "›"].contains(&c.symbol()));
+    assert_eq!(
+        marker.map(|c| c.fg),
+        Some(t.accent),
+        "an accent marker on it"
+    );
     let (ox, oy) = find_in(&buf, buf.area, "Rename").unwrap();
     assert_eq!(buf[(ox, oy)].bg, t.bg, "the others are not");
 }
@@ -131,15 +168,32 @@ fn menu_rows_and_sheet_tabs_take_clicks_where_their_words_are() {
     app.act(Action::Menu);
     let buf = draw(&mut app, 160, 45);
     let (x, y) = find_in(&buf, buf.area, "Settings").expect("the menu's Settings row");
-    let over = app.hits.iter().rev().find(|(r, _)| r.contains(Position { x, y })).map(|(_, h)| *h);
-    assert!(matches!(over, Some(Hit::Screen(ScreenHit::ActionRow(_)))), "{over:?}");
+    let over = app
+        .hits
+        .iter()
+        .rev()
+        .find(|(r, _)| r.contains(Position { x, y }))
+        .map(|(_, h)| *h);
+    assert!(
+        matches!(over, Some(Hit::Screen(ScreenHit::ActionRow(_)))),
+        "{over:?}"
+    );
     let mut app = hairline_world(1);
     app.act(Action::Files);
     let buf = draw(&mut app, 160, 45);
-    for (i, name) in ["Files", "Changes", "Branch", "References"].into_iter().enumerate() {
+    for (i, name) in ["Files", "Changes", "Branch", "References"]
+        .into_iter()
+        .enumerate()
+    {
         let sheet = app.screen.sheet_rect;
-        let (x, y) = find_in(&buf, sheet, name).unwrap_or_else(|| panic!("the {name} tab\n{}", text(&buf)));
-        let over = app.hits.iter().rev().find(|(r, _)| r.contains(Position { x, y })).map(|(_, h)| *h);
+        let (x, y) =
+            find_in(&buf, sheet, name).unwrap_or_else(|| panic!("the {name} tab\n{}", text(&buf)));
+        let over = app
+            .hits
+            .iter()
+            .rev()
+            .find(|(r, _)| r.contains(Position { x, y }))
+            .map(|(_, h)| *h);
         assert_eq!(over, Some(Hit::Screen(ScreenHit::DrawerTab(i))), "{name}");
     }
 }
@@ -153,9 +207,17 @@ fn the_open_sheet_tab_is_teal_with_a_rule_under_it() {
     let (x, y) = find_in(&buf, app.screen.sheet_rect, "Files").expect("the Files tab");
     assert_eq!(buf[(x, y)].fg, t.accent);
     assert_eq!(buf[(x, y)].bg, t.bg, "words, not a pill");
-    assert_eq!((buf[(x, y + 1)].symbol(), buf[(x, y + 1)].fg), ("─", t.accent), "the rule under it is teal");
+    assert_eq!(
+        (buf[(x, y + 1)].symbol(), buf[(x, y + 1)].fg),
+        ("─", t.accent),
+        "the rule under it is teal"
+    );
     let (ox, _) = find_in(&buf, app.screen.sheet_rect, "Branch").unwrap();
-    assert_eq!((buf[(ox, y + 1)].symbol(), buf[(ox, y + 1)].fg), ("─", t.line), "under the others it is line");
+    assert_eq!(
+        (buf[(ox, y + 1)].symbol(), buf[(ox, y + 1)].fg),
+        ("─", t.line),
+        "under the others it is line"
+    );
 }
 
 #[test]
@@ -164,7 +226,15 @@ fn a_modal_floats_on_a_square_hairline_frame() {
     app.act(Action::Settings);
     let buf = draw(&mut app, 160, 45);
     let t = app.theme.clone();
-    let corner = buf.area.positions().find(|p| buf[(p.x, p.y)].symbol() == "┌").expect("a square corner");
+    let corner = buf
+        .area
+        .positions()
+        .find(|p| buf[(p.x, p.y)].symbol() == "┌")
+        .expect("a square corner");
     assert_eq!(buf[(corner.x, corner.y)].fg, t.line);
-    assert_eq!(buf[(corner.x + 2, corner.y + 2)].bg, t.bg, "a solid ground inside");
+    assert_eq!(
+        buf[(corner.x + 2, corner.y + 2)].bg,
+        t.bg,
+        "a solid ground inside"
+    );
 }

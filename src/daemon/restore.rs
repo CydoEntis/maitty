@@ -38,7 +38,8 @@ impl Kept {
     fn give(self, t: &mut Term) {
         (t.agent, t.session, t.cmd) = (self.agent, self.session, self.cmd);
         (t.label, t.name, t.first_prompt) = (self.label, self.name, self.first_prompt);
-        (t.model, t.grants, t.started_by, t.tab_of) = (self.model, self.grants, self.started_by, self.tab_of);
+        (t.model, t.grants, t.started_by, t.tab_of) =
+            (self.model, self.grants, self.started_by, self.tab_of);
         t.queue = self.queue;
     }
 }
@@ -64,15 +65,88 @@ impl Daemon {
 
     /// Write the session file if it changed. `force` saves even while `losing`.
     pub(super) fn persist(&mut self, force: bool) {
+        drop(self.schedule_session_save(force, None));
+    }
+
+    pub(super) fn persist_shutdown(&mut self) -> Option<tokio::task::JoinHandle<()>> {
+        self.schedule_session_save(true, None)
+    }
+
+    fn schedule_session_save(
+        &mut self,
+        force: bool,
+        barrier: Option<u64>,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        if (cfg!(test) && self.session_path.as_os_str().is_empty())
+            || !self.cfg.restore.enabled
+            || (!force && self.losing())
+        {
+            return None;
+        }
+        match self.dispatch_session_save(barrier) {
+            Ok(task) => Some(task),
+            Err(e) => {
+                tracing::warn!("saving session: {e:#}");
+                None
+            }
+        }
+    }
+
+    pub(super) fn persist_barrier(&mut self, token: u64) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.cfg.restore.enabled,
+            "structured operations require session restoration"
+        );
+        drop(self.dispatch_session_save(Some(token))?);
+        Ok(())
+    }
+
+    fn dispatch_session_save(
+        &mut self,
+        barrier: Option<u64>,
+    ) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+        anyhow::ensure!(
+            self.session_path.is_absolute(),
+            "session save requires an absolute file path"
+        );
+        let saved = self.saved();
+        let text = serde_json::to_string(&saved)?;
+        let ticket = persist::next_session_ticket()?;
+        if let Some(token) = barrier {
+            self.conversation_barriers.insert(token, ticket);
+        }
+        let path = self.session_path.clone();
+        let tx = self.tx.clone();
+        Ok(tokio::task::spawn_blocking(move || {
+            let result =
+                persist::save_session_ticket(&path, ticket, &saved).map_err(|e| format!("{e:#}"));
+            // The daemon may already be gone during shutdown; the committed file remains authoritative.
+            let _ = tx.blocking_send(Ev::SessionSaved {
+                ticket,
+                text,
+                result,
+                barrier,
+            });
+        }))
+    }
+
+    #[cfg(test)]
+    pub(super) fn persist_with(
+        &mut self,
+        force: bool,
+        save: impl FnOnce(&persist::Saved) -> anyhow::Result<()>,
+    ) {
         if !self.cfg.restore.enabled || (!force && self.losing()) {
             return;
         }
         let saved = self.saved();
-        let Ok(text) = serde_json::to_string(&saved) else { return };
+        let Ok(text) = serde_json::to_string(&saved) else {
+            return;
+        };
         if text == self.last_saved {
             return;
         }
-        match persist::save(&saved) {
+        match save(&saved) {
             Ok(()) => self.last_saved = text,
             Err(e) => tracing::warn!("saving session: {e:#}"),
         }
@@ -96,7 +170,12 @@ impl Daemon {
             return;
         }
         let ticket = persist::save_ticket();
-        let live: Vec<TermId> = self.terms.values().filter(|t| !t.spare).map(|t| t.id).collect();
+        let live: Vec<TermId> = self
+            .terms
+            .values()
+            .filter(|t| !t.spare)
+            .map(|t| t.id)
+            .collect();
         let outputs: Vec<(TermId, Vec<u8>)> = self
             .terms
             .values_mut()
@@ -151,9 +230,17 @@ impl Daemon {
         for t in self.terms.values_mut().filter(|t| t.checks.dirty) {
             t.checks.dirty = false;
             for p in &t.checks.points {
-                let slots = [(persist::CheckSlot::Latest, Some(&p.latest)), (persist::CheckSlot::Overridden, p.overridden.as_ref())];
+                let slots = [
+                    (persist::CheckSlot::Latest, Some(&p.latest)),
+                    (persist::CheckSlot::Overridden, p.overridden.as_ref()),
+                ];
                 out.extend(slots.into_iter().filter_map(|(slot, r)| {
-                    r.map(|r| persist::CheckTail { term: t.id, name: r.info.name.clone(), slot, text: r.output.clone() })
+                    r.map(|r| persist::CheckTail {
+                        term: t.id,
+                        name: r.info.name.clone(),
+                        slot,
+                        text: r.output.clone(),
+                    })
                 }));
             }
         }
@@ -162,12 +249,17 @@ impl Daemon {
 
     pub(super) fn saved(&self) -> persist::Saved {
         let pane = |term: &Term| persist::SavedPane {
+            conversation_id: term.conversation_id,
             cwd: Some(term.cwd.clone()),
             cmd: term.cmd.clone(),
             agent: term.agent.clone(),
             session: term.agent.as_ref().and(term.session.clone()),
             unseen: term.status == Status::Done,
-            name: if term.name.is_empty() { term.first_prompt.clone() } else { term.name.clone() },
+            name: if term.name.is_empty() {
+                term.first_prompt.clone()
+            } else {
+                term.name.clone()
+            },
             model: term.model.clone(),
             label: term.label.clone(),
             started_by: term.started_by,
@@ -176,8 +268,18 @@ impl Daemon {
             account: term.account.clone(),
             subagent_activity: term.subagent_activity.clone(),
             checks: term.checks.infos(),
-            checks_overridden: term.checks.points.iter().filter_map(|p| p.overridden.as_ref().map(|o| o.info.clone())).collect(),
-            check_trees: term.checks.points.iter().filter_map(|p| Some((p.latest.info.name.clone(), p.tree.clone()?))).collect(),
+            checks_overridden: term
+                .checks
+                .points
+                .iter()
+                .filter_map(|p| p.overridden.as_ref().map(|o| o.info.clone()))
+                .collect(),
+            check_trees: term
+                .checks
+                .points
+                .iter()
+                .filter_map(|p| Some((p.latest.info.name.clone(), p.tree.clone()?)))
+                .collect(),
         };
         let workspaces = self
             .workspaces
@@ -188,7 +290,11 @@ impl Daemon {
                 worktree: w.worktree,
                 color: Some(w.color),
                 group: w.group.clone(),
-                active_tab: w.tabs.iter().position(|t| t.id == w.active_tab).unwrap_or(0),
+                active_tab: w
+                    .tabs
+                    .iter()
+                    .position(|t| t.id == w.active_tab)
+                    .unwrap_or(0),
                 tabs: w
                     .tabs
                     .iter()
@@ -207,8 +313,19 @@ impl Daemon {
                     .collect(),
             })
             .collect();
-        let active = self.workspaces.iter().position(|w| Some(w.id) == self.active_ws).unwrap_or(0);
-        persist::Saved { workspaces, active, made_worktrees: self.made_worktrees.clone() }
+        let active = self
+            .workspaces
+            .iter()
+            .position(|w| Some(w.id) == self.active_ws)
+            .unwrap_or(0);
+        persist::Saved {
+            workspaces,
+            active,
+            made_worktrees: self.made_worktrees.clone(),
+            conversations: self.conversations.clone(),
+            pending_starts: self.pending_starts.clone(),
+            conversation_operations: self.conversation_operations.clone(),
+        }
     }
 
     /// The agent a command line starts (`codex "…"`, `"C:\…\claude.exe" …`), by its program,
@@ -222,18 +339,35 @@ impl Daemon {
         }?;
         // Both separators: a saved command may be a Windows path on any machine.
         let file = program.rsplit(['/', '\\']).next()?;
-        let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem).to_lowercase();
-        self.agents.iter().find(|a| a.process.iter().any(|p| p.eq_ignore_ascii_case(&stem))).map(|a| a.name.clone())
+        let stem = file
+            .rsplit_once('.')
+            .map_or(file, |(stem, _)| stem)
+            .to_lowercase();
+        self.agents
+            .iter()
+            .find(|a| a.process.iter().any(|p| p.eq_ignore_ascii_case(&stem)))
+            .map(|a| a.name.clone())
     }
 
     /// The command that brings a saved pane back: an agent's resume command, the pane's
     /// original command, or nothing (a shell). An agent's own start command is never run
     /// again: it carries the task, and the agent would start that task over.
     pub(super) fn restore_cmd(&self, p: &persist::SavedPane) -> Option<String> {
+        if p.conversation_id.is_some() {
+            return None;
+        }
         if self.cfg.restore.agents
-            && let Some(def) = p.agent.as_ref().and_then(|n| self.agents.iter().find(|a| &a.name == n))
+            && let Some(def) = p
+                .agent
+                .as_ref()
+                .and_then(|n| self.agents.iter().find(|a| &a.name == n))
         {
-            let as_account = |cmd: String| p.account.as_deref().map(|a| self.cfg.as_account(a, &cmd)).unwrap_or(cmd);
+            let as_account = |cmd: String| {
+                p.account
+                    .as_deref()
+                    .map(|a| self.cfg.as_account(a, &cmd))
+                    .unwrap_or(cmd)
+            };
             if let (Some(tpl), Some(id)) = (&def.resume, &p.session) {
                 return Some(as_account(tpl.replace("{session}", id)));
             }
@@ -241,11 +375,41 @@ impl Daemon {
                 return Some(as_account(tpl.clone()));
             }
         }
-        let starts_an_agent = p.agent.is_some() || p.cmd.as_deref().is_some_and(|c| self.agent_in_cmd(c).is_some());
-        if self.cfg.restore.commands && !starts_an_agent { p.cmd.clone() } else { None }
+        let starts_an_agent = p.agent.is_some()
+            || p.cmd
+                .as_deref()
+                .is_some_and(|c| self.agent_in_cmd(c).is_some());
+        if self.cfg.restore.commands && !starts_an_agent {
+            p.cmd.clone()
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn restore_startup(&mut self, saved: persist::Saved) {
+        // Recovery changes must differ from the snapshot actually on disk until saved.
+        self.last_saved = serde_json::to_string(&saved).unwrap_or_default();
+        self.restore(saved);
     }
 
     pub(super) fn restore(&mut self, mut saved: persist::Saved) {
+        if let Err(e) = crate::conversation::validate_metadata(
+            &saved.conversations,
+            &saved.pending_starts,
+            &saved.conversation_operations,
+        ) {
+            tracing::warn!("refusing invalid conversation registry: {e:?}");
+            return;
+        }
+        for record in &mut saved.conversations {
+            if let Err(e) = record.recover() {
+                tracing::warn!("refusing conversation recovery: {e:?}");
+                return;
+            }
+        }
+        self.conversations = std::mem::take(&mut saved.conversations);
+        self.pending_starts = std::mem::take(&mut saved.pending_starts);
+        self.conversation_operations = std::mem::take(&mut saved.conversation_operations);
         self.made_worktrees = std::mem::take(&mut saved.made_worktrees);
         let check_dir = self.check_dir.clone();
         let mut restored = 0;
@@ -260,12 +424,20 @@ impl Daemon {
                 let mut map = HashMap::new();
                 for old in st.layout.leaves() {
                     let mut pane = st.panes.get(&old).cloned().unwrap_or_default();
+                    // Linked runtimes require explicit recovery; legacy resume may choose --last.
+                    if pane.conversation_id.is_some() {
+                        continue;
+                    }
                     // Saved after it lost which agent it was (asleep, before 0.26.2): its
                     // command still says, so it comes back as that agent, resumed.
                     if pane.agent.is_none() {
                         pane.agent = pane.cmd.as_deref().and_then(|c| self.agent_in_cmd(c));
                     }
-                    let cwd = pane.cwd.clone().filter(|p| p.is_dir()).unwrap_or_else(|| sw.cwd.clone());
+                    let cwd = pane
+                        .cwd
+                        .clone()
+                        .filter(|p| p.is_dir())
+                        .unwrap_or_else(|| sw.cwd.clone());
                     let cmd = self.restore_cmd(&pane);
                     match self.spawn(cmd.as_deref(), &cwd, 120, 32) {
                         Ok(new) => {
@@ -304,10 +476,20 @@ impl Daemon {
                         Err(e) => tracing::warn!("restoring pane in {}: {e:#}", cwd.display()),
                     }
                 }
-                let Some(layout) = st.layout.map_leaves(&mut |old| map.get(&old).copied()) else { continue };
-                let focus = map.get(&st.focus).copied().unwrap_or_else(|| layout.first_leaf());
+                let Some(layout) = st.layout.map_leaves(&mut |old| map.get(&old).copied()) else {
+                    continue;
+                };
+                let focus = map
+                    .get(&st.focus)
+                    .copied()
+                    .unwrap_or_else(|| layout.first_leaf());
                 let id = self.next();
-                tabs.push(TabInfo { id, name: st.name, layout, focus });
+                tabs.push(TabInfo {
+                    id,
+                    name: st.name,
+                    layout,
+                    focus,
+                });
             }
             if tabs.is_empty() {
                 continue;
@@ -318,7 +500,15 @@ impl Daemon {
             self.workspaces.push(WorkspaceInfo {
                 id,
                 // Older sessions named panes after their folder; treat that as no name.
-                name: if sw.cwd.file_name().is_some_and(|n| n.to_string_lossy() == sw.name) { String::new() } else { sw.name },
+                name: if sw
+                    .cwd
+                    .file_name()
+                    .is_some_and(|n| n.to_string_lossy() == sw.name)
+                {
+                    String::new()
+                } else {
+                    sw.name
+                },
                 cwd: sw.cwd,
                 tabs,
                 active_tab,
@@ -338,20 +528,35 @@ impl Daemon {
                 t.tab_of = ids.get(&owner).copied();
             }
         }
-        self.active_ws = self.workspaces.get(saved.active).or(self.workspaces.first()).map(|w| w.id);
+        self.active_ws = self
+            .workspaces
+            .get(saved.active)
+            .or(self.workspaces.first())
+            .map(|w| w.id);
         self.dirty = true;
-        tracing::info!("restored {} workspaces, {restored} panes", self.workspaces.len());
+        tracing::info!(
+            "restored {} workspaces, {restored} panes",
+            self.workspaces.len()
+        );
     }
 
     /// The command that resumes an agent's conversation, if its kind supports it.
     pub(super) fn resume_cmd(&self, t: &Term) -> Option<String> {
-        let def = t.agent.as_ref().and_then(|n| self.agents.iter().find(|a| &a.name == n))?;
+        let def = t
+            .agent
+            .as_ref()
+            .and_then(|n| self.agents.iter().find(|a| &a.name == n))?;
         let resume = match (&def.resume, &t.session) {
             (Some(tpl), Some(id)) => Some(tpl.replace("{session}", id)),
             _ => def.resume_last.clone(),
         };
         // Under the account it was started as: its conversation is in that account's folder.
-        resume.map(|cmd| t.account.as_deref().map(|a| self.cfg.as_account(a, &cmd)).unwrap_or(cmd))
+        resume.map(|cmd| {
+            t.account
+                .as_deref()
+                .map(|a| self.cfg.as_account(a, &cmd))
+                .unwrap_or(cmd)
+        })
     }
 
     /// Bring a sleeping agent back: start its resume command in the same spot.
@@ -373,7 +578,10 @@ impl Daemon {
         for w in &mut self.workspaces {
             for tab in &mut w.tabs {
                 if tab.layout.contains(old) {
-                    if let Some(l) = tab.layout.map_leaves(&mut |id| Some(if id == old { new } else { id })) {
+                    if let Some(l) = tab
+                        .layout
+                        .map_leaves(&mut |id| Some(if id == old { new } else { id }))
+                    {
                         tab.layout = l;
                     }
                     if tab.focus == old {
@@ -401,7 +609,9 @@ impl Daemon {
     /// where the agent looks for that folder (Claude files them by folder), then it resumes
     /// in place of the old pane and is told where it now is.
     pub(super) fn relocate(&mut self, old: TermId, dest: &std::path::Path) {
-        let Some(t) = self.terms.get(&old) else { return };
+        let Some(t) = self.terms.get(&old) else {
+            return;
+        };
         if let (Some(src), Some(session)) = (&t.transcript, &t.session) {
             copy_claude_transcript(src, session, dest);
         }
@@ -425,12 +635,18 @@ impl Daemon {
                 dest.display()
             );
             // Only once it's up (its hooks say so), never into a startup question.
-            n.pending_input = Some((format!("{note}\r").into_bytes(), Instant::now() + Duration::from_secs(45)));
+            n.pending_input = Some((
+                format!("{note}\r").into_bytes(),
+                Instant::now() + Duration::from_secs(45),
+            ));
         }
         for w in &mut self.workspaces {
             for tab in &mut w.tabs {
                 if tab.layout.contains(old) {
-                    if let Some(l) = tab.layout.map_leaves(&mut |id| Some(if id == old { new } else { id })) {
+                    if let Some(l) = tab
+                        .layout
+                        .map_leaves(&mut |id| Some(if id == old { new } else { id }))
+                    {
                         tab.layout = l;
                     }
                     if tab.focus == old {

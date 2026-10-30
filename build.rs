@@ -9,26 +9,44 @@ fn main() {
     let command = std::env::var("CARGO_PKG_NAME").expect("cargo sets CARGO_PKG_NAME");
     let manifest = fs::read_to_string("Cargo.toml").expect("Cargo.toml is readable");
     let brand = section(&manifest, "[package.metadata.brand]");
-    let name = value(&brand, "name").unwrap_or_else(|| panic!("[package.metadata.brand] needs a name"));
+    let name =
+        value(&brand, "name").unwrap_or_else(|| panic!("[package.metadata.brand] needs a name"));
     let tagline = value(&brand, "tagline").unwrap_or_default();
     let previous = value(&brand, "previous").unwrap_or_default();
-    let previous: Vec<&str> = previous.trim_matches(['[', ']']).split(',').map(|p| p.trim().trim_matches('"')).filter(|p| !p.is_empty()).collect();
+    let previous: Vec<&str> = previous
+        .trim_matches(['[', ']'])
+        .split(',')
+        .map(|p| p.trim().trim_matches('"'))
+        .filter(|p| !p.is_empty())
+        .collect();
     println!("cargo:rustc-env=APP_NAME={name}");
     println!("cargo:rustc-env=APP_TAGLINE={tagline}");
     println!("cargo:rustc-env=APP_COMMAND={command}");
-    println!("cargo:rustc-env=APP_ENV={}", command.to_ascii_uppercase().replace('-', "_"));
+    println!(
+        "cargo:rustc-env=APP_ENV={}",
+        command.to_ascii_uppercase().replace('-', "_")
+    );
     println!("cargo:rustc-env=APP_PREVIOUS={}", previous.join(","));
 }
 
 /// The lines of one table, up to the next `[`.
 fn section(manifest: &str, header: &str) -> String {
-    manifest.lines().skip_while(|l| l.trim() != header).skip(1).take_while(|l| !l.trim_start().starts_with('[')).collect::<Vec<_>>().join("\n")
+    manifest
+        .lines()
+        .skip_while(|l| l.trim() != header)
+        .skip(1)
+        .take_while(|l| !l.trim_start().starts_with('['))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// A `key = value` in a table, its quotes taken off a plain string.
 fn value(table: &str, key: &str) -> Option<String> {
-    table.lines().filter(|l| !l.trim_start().starts_with('#')).find_map(|l| {
-        let (k, v) = l.split_once('=')?;
-        (k.trim() == key).then(|| v.trim().trim_matches('"').to_string())
-    })
+    table
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .find_map(|l| {
+            let (k, v) = l.split_once('=')?;
+            (k.trim() == key).then(|| v.trim().trim_matches('"').to_string())
+        })
 }

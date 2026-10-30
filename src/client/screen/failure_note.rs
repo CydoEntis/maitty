@@ -31,7 +31,11 @@ pub(super) fn failure_note(info: &CheckInfo, output: &str) -> String {
     // as a space, not read as the output's overprint, so no part of the command is hidden.
     let plain = |s: &str| clean(&s.replace(['\r', '\n'], " "));
     let (name, command) = (plain(&info.name), plain(&info.command));
-    let check = if name.is_empty() { "The check".to_string() } else { format!("The {name} check") };
+    let check = if name.is_empty() {
+        "The check".to_string()
+    } else {
+        format!("The {name} check")
+    };
     let ended = match info.exit_code {
         Some(code) => format!("exited with {code}"),
         None => "did not finish".to_string(),
@@ -46,7 +50,11 @@ pub(super) fn failure_note(info: &CheckInfo, output: &str) -> String {
         note.push_str(" It printed nothing.");
         return note;
     }
-    let shown = if lines.len() == TAIL_LINES { format!("The last {TAIL_LINES} lines of its output:") } else { "Its output:".to_string() };
+    let shown = if lines.len() == TAIL_LINES {
+        format!("The last {TAIL_LINES} lines of its output:")
+    } else {
+        "Its output:".to_string()
+    };
     note.push_str(&format!(" {shown}\n\n```\n"));
     for line in lines {
         note.push_str(&truncate(line, LINE_MAX_CHARS));
@@ -60,7 +68,13 @@ impl App {
     /// `m` on a failed check: the message box to its agent with the failure in it. The sheet
     /// already holds the output; from the Inbox it is asked for first, unless a sheet open on
     /// the same checkpoint holds it.
-    pub(in crate::client) fn send_failure(&mut self, term: TermId, name: String, output: Option<&str>, inbox: Option<(String, usize)>) {
+    pub(in crate::client) fn send_failure(
+        &mut self,
+        term: TermId,
+        name: String,
+        output: Option<&str>,
+        inbox: Option<(String, usize)>,
+    ) {
         let held = match &self.view {
             Some(View::Check(v)) if v.term == term && v.name == name => v.output.clone(),
             _ => None,
@@ -72,7 +86,12 @@ impl App {
                     let asked = (!name.is_empty()).then(|| name.clone());
                     self.send(ClientMsg::Query(Query::CheckOutput { term, name: asked }));
                 }
-                self.screen.failure_ask = Some(FailureAsk { term, name, inbox, asked: Instant::now() });
+                self.screen.failure_ask = Some(FailureAsk {
+                    term,
+                    name,
+                    inbox,
+                    asked: Instant::now(),
+                });
             }
         }
     }
@@ -80,10 +99,20 @@ impl App {
     /// A check's output arrived: a failure waiting for it opens its message, and a sheet on
     /// the same checkpoint takes it too. Returns whether the sheet should be left alone.
     pub(in crate::client) fn failure_output_arrived(&mut self, text: &str) -> bool {
-        let Some(ask) = self.screen.failure_ask.take().filter(|a| a.asked.elapsed() < OUTPUT_WAIT) else { return false };
+        let Some(ask) = self
+            .screen
+            .failure_ask
+            .take()
+            .filter(|a| a.asked.elapsed() < OUTPUT_WAIT)
+        else {
+            return false;
+        };
         let still_there = match &ask.inbox {
             Some(_) => matches!(self.mode, Mode::GoTo { .. }),
-            None => self.mode == Mode::Normal && matches!(&self.view, Some(View::Check(v)) if v.term == ask.term),
+            None => {
+                self.mode == Mode::Normal
+                    && matches!(&self.view, Some(View::Check(v)) if v.term == ask.term)
+            }
         };
         if still_there {
             self.open_failure_note(ask.term, &ask.name, text, ask.inbox.clone());
@@ -91,14 +120,31 @@ impl App {
         !matches!(&self.view, Some(View::Check(v)) if v.term == ask.term && v.name == ask.name)
     }
 
-    fn open_failure_note(&mut self, term: TermId, name: &str, output: &str, inbox: Option<(String, usize)>) {
-        let Some(info) = self.snap.terms.get(&term).and_then(|t| t.checks.iter().find(|c| c.name == name)).filter(|c| c.state == CheckState::Failed).cloned() else {
+    fn open_failure_note(
+        &mut self,
+        term: TermId,
+        name: &str,
+        output: &str,
+        inbox: Option<(String, usize)>,
+    ) {
+        let Some(info) = self
+            .snap
+            .terms
+            .get(&term)
+            .and_then(|t| t.checks.iter().find(|c| c.name == name))
+            .filter(|c| c.state == CheckState::Failed)
+            .cloned()
+        else {
             return;
         };
         self.start_compose(term, false, inbox);
         if let Mode::Compose(c) = &mut self.mode {
             let note = failure_note(&info, output);
-            c.text = if c.text.trim().is_empty() { note } else { format!("{}\n\n{note}", c.text.trim_end()) };
+            c.text = if c.text.trim().is_empty() {
+                note
+            } else {
+                format!("{}\n\n{note}", c.text.trim_end())
+            };
         }
     }
 }
@@ -116,7 +162,9 @@ mod tests {
 
     /// A hundred coloured lines, as a test runner prints them.
     fn sample_output() -> String {
-        (1..=100).map(|i| format!("\x1b[31mline {i}\x1b[0m\n")).collect()
+        (1..=100)
+            .map(|i| format!("\x1b[31mline {i}\x1b[0m\n"))
+            .collect()
     }
 
     fn listen(app: &mut App) -> UnboundedReceiver<ClientMsg> {
@@ -140,8 +188,14 @@ mod tests {
 
     fn inbox_on_failure(app: &mut App) {
         app.screen_fresh();
-        let sel = goto_rows(&app.screen_model(), "", 0).iter().position(|r| *r == GoRow::Failed(FAILED)).expect("the failed item");
-        app.mode = Mode::GoTo { query: String::new(), sel };
+        let sel = goto_rows(&app.screen_model(), "", 0)
+            .iter()
+            .position(|r| *r == GoRow::Failed(FAILED))
+            .expect("the failed item");
+        app.mode = Mode::GoTo {
+            query: String::new(),
+            sel,
+        };
     }
 
     fn written(app: &App) -> &Compose {
@@ -153,10 +207,24 @@ mod tests {
 
     fn the_failure_is_written_in(app: &App) {
         let c = written(app);
-        let exit = app.snap.terms[&FAILED].check().and_then(|i| i.exit_code).expect("an exit code");
+        let exit = app.snap.terms[&FAILED]
+            .check()
+            .and_then(|i| i.exit_code)
+            .expect("an exit code");
         assert_eq!(c.term, FAILED);
-        assert!(c.text.contains(&format!("exited with {exit}.")) && c.text.contains("The last 40 lines"), "{}", c.text);
-        assert!(c.text.contains("```\nline 61\n") && c.text.contains("line 100\n```") && !c.text.contains('\x1b'), "{}", c.text);
+        assert!(
+            c.text.contains(&format!("exited with {exit}."))
+                && c.text.contains("The last 40 lines"),
+            "{}",
+            c.text
+        );
+        assert!(
+            c.text.contains("```\nline 61\n")
+                && c.text.contains("line 100\n```")
+                && !c.text.contains('\x1b'),
+            "{}",
+            c.text
+        );
     }
 
     fn mode_bar(app: &mut App) -> String {
@@ -165,7 +233,9 @@ mod tests {
         term.draw(|f| crate::client::render::draw(app, f)).unwrap();
         let buf = term.backend().buffer();
         let row = mode_bar_row(app, buf.area);
-        (row.x..row.right()).map(|x| buf[(x, row.y)].symbol()).collect()
+        (row.x..row.right())
+            .map(|x| buf[(x, row.y)].symbol())
+            .collect()
     }
 
     #[test]
@@ -175,8 +245,15 @@ mod tests {
         inbox_on_failure(&mut app);
         press(&mut app, KeyCode::Char('m'));
         let sent = drain(&mut rx);
-        assert!(sent.iter().any(|m| matches!(m, ClientMsg::Query(Query::CheckOutput { term: FAILED, .. }))), "its output is asked for: {sent:?}");
-        assert!(matches!(app.mode, Mode::GoTo { .. }), "the Inbox waits for it");
+        assert!(
+            sent.iter()
+                .any(|m| matches!(m, ClientMsg::Query(Query::CheckOutput { term: FAILED, .. }))),
+            "its output is asked for: {sent:?}"
+        );
+        assert!(
+            matches!(app.mode, Mode::GoTo { .. }),
+            "the Inbox waits for it"
+        );
         app.check_output_arrived(sample_output());
         the_failure_is_written_in(&app);
         assert!(written(&app).inbox.is_some(), "in the Inbox row");
@@ -193,7 +270,11 @@ mod tests {
         press(&mut app, KeyCode::Char('m'));
         app.on_server(ServerMsg::Error("no check output for pane 1".into()));
         app.on_server(ServerMsg::Reply(Reply::Text(sample_output())));
-        assert!(matches!(app.mode, Mode::GoTo { .. }), "a later reply is not taken for it: {:?}", app.mode);
+        assert!(
+            matches!(app.mode, Mode::GoTo { .. }),
+            "a later reply is not taken for it: {:?}",
+            app.mode
+        );
     }
 
     #[test]
@@ -205,7 +286,12 @@ mod tests {
         inbox_on_failure(&mut app);
         press(&mut app, KeyCode::Char('m'));
         the_failure_is_written_in(&app);
-        assert!(!drain(&mut rx).iter().any(|m| matches!(m, ClientMsg::Query(Query::CheckOutput { .. }))), "not asked for again");
+        assert!(
+            !drain(&mut rx)
+                .iter()
+                .any(|m| matches!(m, ClientMsg::Query(Query::CheckOutput { .. }))),
+            "not asked for again"
+        );
     }
 
     #[test]
@@ -218,7 +304,10 @@ mod tests {
         the_failure_is_written_in(&app);
         assert!(!delivered(&drain(&mut rx)), "nothing goes before Enter");
         press(&mut app, KeyCode::Esc);
-        assert!(app.screen.drafts[&FAILED].contains("line 100"), "Esc keeps it as a draft");
+        assert!(
+            app.screen.drafts[&FAILED].contains("line 100"),
+            "Esc keeps it as a draft"
+        );
         assert!(matches!(&app.view, Some(View::Check(_))), "the sheet stays");
     }
 
@@ -230,7 +319,10 @@ mod tests {
         assert_eq!(app.mode, Mode::Normal);
         app.check_output_arrived(sample_output());
         the_failure_is_written_in(&app);
-        assert!(matches!(&app.view, Some(View::Check(v)) if v.output.is_some()), "the sheet has it too");
+        assert!(
+            matches!(&app.view, Some(View::Check(v)) if v.output.is_some()),
+            "the sheet has it too"
+        );
     }
 
     #[test]
@@ -246,17 +338,32 @@ mod tests {
     fn the_mode_bar_offers_m_on_a_failure() {
         let mut app = world(Stage::Failed);
         inbox_on_failure(&mut app);
-        assert!(mode_bar(&mut app).contains("· m send to agent"), "the Inbox");
+        assert!(
+            mode_bar(&mut app).contains("· m send to agent"),
+            "the Inbox"
+        );
         app.mode = Mode::Normal;
         app.open_check_sheet(FAILED);
-        assert!(mode_bar(&mut app).contains("· m send to agent"), "the sheet");
+        assert!(
+            mode_bar(&mut app).contains("· m send to agent"),
+            "the sheet"
+        );
         let mut app = world(Stage::Passed);
         app.open_check_sheet(FAILED);
-        assert!(!mode_bar(&mut app).contains("send to agent"), "not on a pass");
+        assert!(
+            !mode_bar(&mut app).contains("send to agent"),
+            "not on a pass"
+        );
     }
 
     fn failed(exit: Option<i32>) -> CheckInfo {
-        CheckInfo { name: "test".into(), command: "npm test".into(), state: CheckState::Failed, exit_code: exit, ..Default::default() }
+        CheckInfo {
+            name: "test".into(),
+            command: "npm test".into(),
+            state: CheckState::Failed,
+            exit_code: exit,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -268,19 +375,33 @@ mod tests {
 
     #[test]
     fn a_note_keeps_the_last_forty_lines_without_colour_codes() {
-        let output: String = (1..=100).map(|i| format!("\x1b[31mline {i}\x1b[0m\n")).collect();
+        let output: String = (1..=100)
+            .map(|i| format!("\x1b[31mline {i}\x1b[0m\n"))
+            .collect();
         let note = failure_note(&failed(Some(2)), &output);
         assert!(note.contains("The last 40 lines of its output:"), "{note}");
-        assert!(!note.contains("line 60\n") && note.contains("```\nline 61\n") && note.contains("line 100\n```"), "{note}");
+        assert!(
+            !note.contains("line 60\n")
+                && note.contains("```\nline 61\n")
+                && note.contains("line 100\n```"),
+            "{note}"
+        );
         assert!(!note.contains('\x1b'), "colour codes stripped");
     }
 
     #[test]
     fn escapes_in_the_check_s_name_and_command_are_stripped() {
-        let info = CheckInfo { name: "te\x1b[201~st".into(), command: "npm test\x1b[201~\rrm -rf x".into(), ..failed(Some(1)) };
+        let info = CheckInfo {
+            name: "te\x1b[201~st".into(),
+            command: "npm test\x1b[201~\rrm -rf x".into(),
+            ..failed(Some(1))
+        };
         let note = failure_note(&info, "FAIL\n");
         assert!(!note.contains('\x1b') && !note.contains('\r'), "{note:?}");
-        assert!(note.starts_with("The test check failed: `npm test rm -rf x` exited with 1."), "nothing hidden: {note:?}");
+        assert!(
+            note.starts_with("The test check failed: `npm test rm -rf x` exited with 1."),
+            "nothing hidden: {note:?}"
+        );
     }
 
     #[test]
@@ -291,6 +412,9 @@ mod tests {
 
     #[test]
     fn a_failure_that_printed_nothing_says_so() {
-        assert_eq!(failure_note(&failed(Some(1)), "\n \n"), "The test check failed: `npm test` exited with 1. It printed nothing.");
+        assert_eq!(
+            failure_note(&failed(Some(1)), "\n \n"),
+            "The test check failed: `npm test` exited with 1. It printed nothing."
+        );
     }
 }

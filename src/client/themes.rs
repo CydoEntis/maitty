@@ -266,7 +266,17 @@ pub(super) fn draw_themes(
     }
     // The key hints sit where the one list row would on a tiny screen: the list wins.
     if panel.height >= THEMES_BAR_MIN_H {
-        panel_bar(buf, panel, theme, &[("↑↓", "move"), ("PgUp/PgDn", "page"), ("Enter", "apply"), ("Esc", "back")]);
+        panel_bar(
+            buf,
+            panel,
+            theme,
+            &[
+                ("↑↓", "move"),
+                ("PgUp/PgDn", "page"),
+                ("Enter", "apply"),
+                ("Esc", "back"),
+            ],
+        );
     }
 }
 
@@ -292,8 +302,14 @@ fn draw_preview(buf: &mut ratatui::buffer::Buffer, area: Rect, name: &str) {
         area.x + 2,
         area.y + 1,
         &[
-            super::screen::plain(vec![seg(" Focused pane ", st.bg(theme.accent).fg(theme.acc_ink))]),
-            vec![seg("  Regular text  ", st.fg(theme.text)), seg("dimmed", st.fg(theme.muted))],
+            super::screen::plain(vec![seg(
+                " Focused pane ",
+                st.bg(theme.accent).fg(theme.acc_ink),
+            )]),
+            vec![
+                seg("  Regular text  ", st.fg(theme.text)),
+                seg("dimmed", st.fg(theme.muted)),
+            ],
         ]
         .concat(),
         area.right(),
@@ -408,7 +424,10 @@ mod tests {
         assert!(matches!(app.mode, Mode::Themes { sel, .. } if sel == default + PAGE_ROWS));
         app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
         // At 40 columns the swatches clip the label to its first few letters.
-        let last: String = theme_label(BUILTIN.last().unwrap()).chars().take(6).collect();
+        let last: String = theme_label(BUILTIN.last().unwrap())
+            .chars()
+            .take(6)
+            .collect();
         for (width, height) in [(100, 30), (80, 24), (40, 10)] {
             let buffer = draw(&mut app, width, height);
             let text = buffer
@@ -442,7 +461,10 @@ mod tests {
 
     #[test]
     fn theme_browser_lists_themes_alphabetically_by_display_name() {
-        let labels: Vec<String> = matching("").iter().map(|name| theme_label(name).to_lowercase()).collect();
+        let labels: Vec<String> = matching("")
+            .iter()
+            .map(|name| theme_label(name).to_lowercase())
+            .collect();
         assert_eq!(labels.len(), BUILTIN.len());
         assert!(labels.is_sorted(), "{labels:?}");
     }

@@ -28,9 +28,13 @@ pub enum Kind {
 
 impl Kind {
     pub fn of(name: &str) -> Kind {
-        let ext = Path::new(name).extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        let ext = Path::new(name)
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
         match ext.as_str() {
-            "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "avif" | "ico" | "tif" | "tiff" | "heic" => Kind::Image,
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "avif" | "ico" | "tif"
+            | "tiff" | "heic" => Kind::Image,
             "pdf" => Kind::Pdf,
             "fig" | "sketch" | "xd" | "psd" | "ai" | "penpot" | "afdesign" => Kind::Design,
             "md" | "txt" | "html" | "css" | "json" | "yaml" | "yml" => Kind::Text,
@@ -63,7 +67,9 @@ pub struct Reference {
 /// The project `dir` belongs to: the repo's main checkout (never a linked worktree, so every
 /// agent shares one set), else the folder itself.
 pub fn project_root(dir: &Path) -> PathBuf {
-    let root = crate::gitfs::head(dir).map(|h| h.main_root).unwrap_or_else(|| dir.to_path_buf());
+    let root = crate::gitfs::head(dir)
+        .map(|h| h.main_root)
+        .unwrap_or_else(|| dir.to_path_buf());
     // A worktree's `.git` file names the main checkout with `/` even on Windows; rebuilt from its
     // parts, the path an agent is handed uses one separator.
     root.components().collect()
@@ -71,7 +77,8 @@ pub fn project_root(dir: &Path) -> PathBuf {
 
 /// The references folder of the project at `root`.
 pub fn folder(root: &Path) -> PathBuf {
-    root.join(concat!(".", env!("APP_COMMAND"))).join("references")
+    root.join(concat!(".", env!("APP_COMMAND")))
+        .join("references")
 }
 
 /// A folder's references, and what it left out.
@@ -102,7 +109,9 @@ pub fn of_project(root: &Path) -> Result<Listing, String> {
 fn checked_folder(root: &Path) -> Result<PathBuf, String> {
     let dir = folder(root);
     match (root.canonicalize(), dir.canonicalize()) {
-        (Ok(r), Ok(d)) if !d.starts_with(&r) => Err(format!("{DIR} leads out of {}", root.display())),
+        (Ok(r), Ok(d)) if !d.starts_with(&r) => {
+            Err(format!("{DIR} leads out of {}", root.display()))
+        }
         _ => Ok(dir),
     }
 }
@@ -118,10 +127,16 @@ pub fn list(folder: &Path) -> Result<Listing, String> {
     if !meta.is_dir() {
         return Err(format!("{} is not a folder", folder.display()));
     }
-    let real = folder.canonicalize().map_err(|e| format!("can't read {}: {e}", folder.display()))?;
+    let real = folder
+        .canonicalize()
+        .map_err(|e| format!("can't read {}: {e}", folder.display()))?;
     let mut out = Listing::default();
     walk(folder, &real, "", 0, &mut out);
-    out.items.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.name.cmp(&b.name)));
+    out.items.sort_by(|a, b| {
+        b.modified
+            .cmp(&a.modified)
+            .then_with(|| a.name.cmp(&b.name))
+    });
     Ok(out)
 }
 
@@ -146,7 +161,11 @@ fn walk(dir: &Path, real_root: &Path, prefix: &str, depth: usize, out: &mut List
         if file.starts_with('.') {
             continue;
         }
-        let name = if prefix.is_empty() { file } else { format!("{prefix}/{file}") };
+        let name = if prefix.is_empty() {
+            file
+        } else {
+            format!("{prefix}/{file}")
+        };
         let path = e.path();
         let meta = match std::fs::symlink_metadata(&path) {
             Ok(m) => m,
@@ -175,8 +194,18 @@ fn walk(dir: &Path, real_root: &Path, prefix: &str, depth: usize, out: &mut List
         if !meta.is_file() {
             continue;
         }
-        let modified = meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
-        out.items.push(Reference { kind: Kind::of(&name), path, name, size: meta.len(), modified });
+        let modified = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map_or(0, |d| d.as_secs());
+        out.items.push(Reference {
+            kind: Kind::of(&name),
+            path,
+            name,
+            size: meta.len(),
+            modified,
+        });
     }
 }
 
@@ -191,8 +220,14 @@ fn linked_inside(link: &Path, real_root: &Path) -> Option<std::fs::Metadata> {
 
 /// Whether `path` is a file inside `folder` (no `..`, no link leading out of it).
 pub fn inside(folder: &Path, path: &Path) -> bool {
-    let Ok(rest) = path.strip_prefix(folder) else { return false };
-    if rest.as_os_str().is_empty() || rest.components().any(|c| !matches!(c, Component::Normal(_))) {
+    let Ok(rest) = path.strip_prefix(folder) else {
+        return false;
+    };
+    if rest.as_os_str().is_empty()
+        || rest
+            .components()
+            .any(|c| !matches!(c, Component::Normal(_)))
+    {
         return false;
     }
     match (folder.canonicalize(), path.canonicalize()) {
@@ -208,7 +243,12 @@ pub fn ensure(root: &Path) -> Result<PathBuf, String> {
     let dir = folder(root);
     for part in [dir.parent().unwrap_or(&dir), dir.as_path()] {
         match std::fs::symlink_metadata(part) {
-            Ok(m) if m.file_type().is_symlink() => return Err(format!("{} is a link; references are kept only in a real folder", part.display())),
+            Ok(m) if m.file_type().is_symlink() => {
+                return Err(format!(
+                    "{} is a link; references are kept only in a real folder",
+                    part.display()
+                ));
+            }
             Ok(m) if !m.is_dir() => return Err(format!("{} is not a folder", part.display())),
             _ => {}
         }
@@ -228,29 +268,48 @@ fn exclude_from_git(root: &Path) -> Result<(), String> {
     use std::io::Write;
     let rel = crate::proc::git(root, &["rev-parse", "--git-path", "info/exclude"])?;
     let rel = PathBuf::from(rel.trim());
-    let path = if rel.is_absolute() { rel } else { root.join(rel) };
+    let path = if rel.is_absolute() {
+        rel
+    } else {
+        root.join(rel)
+    };
     let now = match std::fs::read(&path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(e) => return Err(format!("can't read {}: {e}", path.display())),
     };
-    let Some(add) = exclude_addition(&now) else { return Ok(()) };
+    let Some(add) = exclude_addition(&now) else {
+        return Ok(());
+    };
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("can't make {}: {e}", parent.display()))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("can't make {}: {e}", parent.display()))?;
     }
-    let mut f = std::fs::OpenOptions::new().append(true).create(true).open(&path).map_err(|e| format!("can't open {}: {e}", path.display()))?;
-    f.write_all(add.as_bytes()).map_err(|e| format!("can't write {}: {e}", path.display()))
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&path)
+        .map_err(|e| format!("can't open {}: {e}", path.display()))?;
+    f.write_all(add.as_bytes())
+        .map_err(|e| format!("can't write {}: {e}", path.display()))
 }
 
 /// What to append to an exclude file holding `text` so it names the folder, or None when it
 /// already does.
 fn exclude_addition(text: &[u8]) -> Option<String> {
     let anchored = format!("/{EXCLUDE_LINE}");
-    let has = text.split(|b| *b == b'\n').map(<[u8]>::trim_ascii).any(|l| l == EXCLUDE_LINE.as_bytes() || l == anchored.as_bytes());
+    let has = text
+        .split(|b| *b == b'\n')
+        .map(<[u8]>::trim_ascii)
+        .any(|l| l == EXCLUDE_LINE.as_bytes() || l == anchored.as_bytes());
     if has {
         return None;
     }
-    let lead = if text.is_empty() || text.ends_with(b"\n") { "" } else { "\n" };
+    let lead = if text.is_empty() || text.ends_with(b"\n") {
+        ""
+    } else {
+        "\n"
+    };
     Some(format!("{lead}{EXCLUDE_LINE}\n"))
 }
 
@@ -260,11 +319,23 @@ const MAX_NAME_TRIES: u32 = 10_000;
 /// A new file `stem.ext` in `dir`, or `stem-2.ext`, `stem-3.ext`, … when that is taken. Made with
 /// create-new, so it never writes through a link or over a file another add just made.
 fn create_free(dir: &Path, stem: &str, ext: &str) -> Result<(PathBuf, std::fs::File), String> {
-    let dot = if ext.is_empty() { String::new() } else { format!(".{ext}") };
+    let dot = if ext.is_empty() {
+        String::new()
+    } else {
+        format!(".{ext}")
+    };
     for n in 1..=MAX_NAME_TRIES {
-        let name = if n == 1 { format!("{stem}{dot}") } else { format!("{stem}-{n}{dot}") };
+        let name = if n == 1 {
+            format!("{stem}{dot}")
+        } else {
+            format!("{stem}-{n}{dot}")
+        };
         let path = dir.join(name);
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
             Ok(f) => return Ok((path, f)),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(format!("can't write {}: {e}", path.display())),
@@ -281,27 +352,46 @@ pub fn create_screenshot(dir: &Path, secs: u64) -> Result<(PathBuf, std::fs::Fil
 /// Copy the file at `src` into the project's references, under its own name (numbered when
 /// taken). Returns where it went.
 pub fn add_file(root: &Path, src: &Path) -> Result<PathBuf, String> {
-    let file_name = src.file_name().ok_or_else(|| format!("{} has no file name", src.display()))?;
+    let file_name = src
+        .file_name()
+        .ok_or_else(|| format!("{} has no file name", src.display()))?;
     if file_name.to_string_lossy().starts_with('.') {
-        return Err("a name starting with a dot would be hidden from the list; rename it first".into());
+        return Err(
+            "a name starting with a dot would be hidden from the list; rename it first".into(),
+        );
     }
     let meta = std::fs::metadata(src).map_err(|e| format!("can't read {}: {e}", src.display()))?;
     if !meta.is_file() {
         return Err(format!("{} is not a file", src.display()));
     }
     if meta.len() > MAX_ADD_BYTES {
-        return Err(format!("{} is over {} MB", src.display(), MAX_ADD_BYTES >> 20));
+        return Err(format!(
+            "{} is over {} MB",
+            src.display(),
+            MAX_ADD_BYTES >> 20
+        ));
     }
-    let from = std::fs::File::open(src).map_err(|e| format!("can't read {}: {e}", src.display()))?;
+    let from =
+        std::fs::File::open(src).map_err(|e| format!("can't read {}: {e}", src.display()))?;
     let dir = ensure(root)?;
     let p = Path::new(file_name);
-    let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    let ext = p.extension().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let stem = p
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let ext = p
+        .extension()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let (to, mut out) = create_free(&dir, &stem, &ext)?;
     // The size is held while copying too: the file may grow after it was measured.
     let copied = std::io::copy(&mut std::io::Read::take(from, MAX_ADD_BYTES + 1), &mut out);
     let failed = match copied {
-        Ok(n) if n > MAX_ADD_BYTES => Some(format!("{} is over {} MB", src.display(), MAX_ADD_BYTES >> 20)),
+        Ok(n) if n > MAX_ADD_BYTES => Some(format!(
+            "{} is over {} MB",
+            src.display(),
+            MAX_ADD_BYTES >> 20
+        )),
         Ok(_) => None,
         Err(e) => Some(format!("can't copy {}: {e}", src.display())),
     };
@@ -328,14 +418,24 @@ pub fn remove(root: &Path, path: &Path) -> Result<(), String> {
 pub fn utc_stamp(secs: u64) -> String {
     let (y, m, d) = civil_date(secs / 86_400);
     let s = secs % 86_400;
-    format!("{y:04}-{m:02}-{d:02}-{:02}{:02}{:02}", s / 3600, s / 60 % 60, s % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02}-{:02}{:02}{:02}",
+        s / 3600,
+        s / 60 % 60,
+        s % 60
+    )
 }
 
 /// `2026-10-25T14:30:12Z`.
 pub fn utc_iso(secs: u64) -> String {
     let (y, m, d) = civil_date(secs / 86_400);
     let s = secs % 86_400;
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", s / 3600, s / 60 % 60, s % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        s / 3600,
+        s / 60 % 60,
+        s % 60
+    )
 }
 
 /// Days since 1970-01-01 as (year, month, day): Howard Hinnant's `civil_from_days`.
@@ -358,7 +458,8 @@ mod tests {
     use crate::brand::APP_COMMAND;
 
     fn temp(tag: &str) -> PathBuf {
-        let p = std::env::temp_dir().join(format!("{APP_COMMAND}-refs-{tag}-{}", std::process::id()));
+        let p =
+            std::env::temp_dir().join(format!("{APP_COMMAND}-refs-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&p);
         std::fs::create_dir_all(&p).unwrap();
         p
@@ -380,7 +481,10 @@ mod tests {
         git(&main, &["add", "."]);
         git(&main, &["commit", "-qm", "first"]);
         let wt = base.join("repo-feat");
-        git(&main, &["worktree", "add", "-q", "-b", "feat", wt.to_str().unwrap()]);
+        git(
+            &main,
+            &["worktree", "add", "-q", "-b", "feat", wt.to_str().unwrap()],
+        );
         (base, main, wt)
     }
 
@@ -388,22 +492,43 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, "x").unwrap();
         let at = std::time::SystemTime::now() - std::time::Duration::from_secs(secs_ago);
-        std::fs::File::options().write(true).open(path).unwrap().set_modified(at).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(at)
+            .unwrap();
     }
 
     #[test]
     fn a_worktree_shares_the_main_checkouts_references() {
         let (base, main, wt) = repo_with_worktree("wt");
         let main = main.canonicalize().unwrap();
-        assert_eq!(project_root(&wt).canonicalize().unwrap(), main, "a linked worktree maps to the main checkout");
-        assert_eq!(project_root(&wt.join("sub")).canonicalize().unwrap(), main, "a folder inside it too");
+        assert_eq!(
+            project_root(&wt).canonicalize().unwrap(),
+            main,
+            "a linked worktree maps to the main checkout"
+        );
+        assert_eq!(
+            project_root(&wt.join("sub")).canonicalize().unwrap(),
+            main,
+            "a folder inside it too"
+        );
         assert_eq!(project_root(&main).canonicalize().unwrap(), main);
         if cfg!(windows) {
-            assert!(!project_root(&wt).to_string_lossy().contains('/'), "one separator: {}", project_root(&wt).display());
+            assert!(
+                !project_root(&wt).to_string_lossy().contains('/'),
+                "one separator: {}",
+                project_root(&wt).display()
+            );
         }
         let added = add_file(&project_root(&wt), &main.join("a.txt")).unwrap();
         assert!(added.starts_with(folder(&project_root(&wt))));
-        assert_eq!(list(&folder(&main)).unwrap().items.len(), 1, "seen from the main checkout");
+        assert_eq!(
+            list(&folder(&main)).unwrap().items.len(),
+            1,
+            "seen from the main checkout"
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -422,22 +547,52 @@ mod tests {
         let (base, main, wt) = repo_with_worktree("exclude");
         ensure(&project_root(&wt)).unwrap();
         ensure(&main).unwrap();
-        let exclude = std::fs::read_to_string(main.join(".git").join("info").join("exclude")).unwrap();
-        assert_eq!(exclude.lines().filter(|l| *l == EXCLUDE_LINE).count(), 1, "{exclude}");
+        let exclude =
+            std::fs::read_to_string(main.join(".git").join("info").join("exclude")).unwrap();
+        assert_eq!(
+            exclude.lines().filter(|l| *l == EXCLUDE_LINE).count(),
+            1,
+            "{exclude}"
+        );
         std::fs::write(folder(&main).join("shot.png"), "x").unwrap();
-        assert_eq!(git(&main, &["status", "--porcelain"]).trim(), "", "the reference is not an untracked file");
-        assert!(!main.join(".gitignore").exists(), "the user's tracked files are not touched");
+        assert_eq!(
+            git(&main, &["status", "--porcelain"]).trim(),
+            "",
+            "the reference is not an untracked file"
+        );
+        assert!(
+            !main.join(".gitignore").exists(),
+            "the user's tracked files are not touched"
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
     fn the_exclude_line_is_added_after_whats_there() {
         assert_eq!(exclude_addition(b"").unwrap(), format!("{EXCLUDE_LINE}\n"));
-        assert_eq!(exclude_addition(b"# comment").unwrap(), format!("\n{EXCLUDE_LINE}\n"), "on a line of its own");
-        assert_eq!(exclude_addition(b"# comment\n").unwrap(), format!("{EXCLUDE_LINE}\n"));
-        assert_eq!(exclude_addition(format!("*.log\n{EXCLUDE_LINE}\n").as_bytes()), None);
-        assert_eq!(exclude_addition(format!("/{EXCLUDE_LINE}  \r\n").as_bytes()), None, "anchored counts too");
-        assert_eq!(exclude_addition(b"caf\xe9\n").unwrap(), format!("{EXCLUDE_LINE}\n"), "bytes that aren't UTF-8 are no obstacle");
+        assert_eq!(
+            exclude_addition(b"# comment").unwrap(),
+            format!("\n{EXCLUDE_LINE}\n"),
+            "on a line of its own"
+        );
+        assert_eq!(
+            exclude_addition(b"# comment\n").unwrap(),
+            format!("{EXCLUDE_LINE}\n")
+        );
+        assert_eq!(
+            exclude_addition(format!("*.log\n{EXCLUDE_LINE}\n").as_bytes()),
+            None
+        );
+        assert_eq!(
+            exclude_addition(format!("/{EXCLUDE_LINE}  \r\n").as_bytes()),
+            None,
+            "anchored counts too"
+        );
+        assert_eq!(
+            exclude_addition(b"caf\xe9\n").unwrap(),
+            format!("{EXCLUDE_LINE}\n"),
+            "bytes that aren't UTF-8 are no obstacle"
+        );
     }
 
     #[test]
@@ -448,7 +603,10 @@ mod tests {
         ensure(&main).unwrap();
         ensure(&main).unwrap();
         let got = std::fs::read(&exclude).unwrap();
-        assert_eq!(got, [b"caf\xe9\n".as_slice(), EXCLUDE_LINE.as_bytes(), b"\n"].concat());
+        assert_eq!(
+            got,
+            [b"caf\xe9\n".as_slice(), EXCLUDE_LINE.as_bytes(), b"\n"].concat()
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -463,9 +621,16 @@ mod tests {
         let got = list(&dir).unwrap().items;
         let names: Vec<&str> = got.iter().map(|r| r.name.as_str()).collect();
         assert_eq!(names, ["new.pdf", "mockups/home.fig", "old.png"]);
-        assert_eq!(got.iter().map(|r| r.kind).collect::<Vec<_>>(), [Kind::Pdf, Kind::Design, Kind::Image]);
+        assert_eq!(
+            got.iter().map(|r| r.kind).collect::<Vec<_>>(),
+            [Kind::Pdf, Kind::Design, Kind::Image]
+        );
         assert_eq!(got[0].size, 1);
-        assert_eq!(list(&root.join("missing")).unwrap(), Listing::default(), "no folder yet is no references");
+        assert_eq!(
+            list(&root.join("missing")).unwrap(),
+            Listing::default(),
+            "no folder yet is no references"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -480,22 +645,36 @@ mod tests {
         std::os::unix::fs::symlink(dir.join("in.png"), dir.join("again.png")).unwrap();
         let listing = list(&dir).unwrap();
         let names: Vec<String> = listing.items.into_iter().map(|r| r.name).collect();
-        assert!(names.contains(&"again.png".to_string()) && !names.contains(&"out.txt".to_string()), "{names:?}");
+        assert!(
+            names.contains(&"again.png".to_string()) && !names.contains(&"out.txt".to_string()),
+            "{names:?}"
+        );
         assert_eq!(listing.skipped, 1, "the link out is counted, not hidden");
         assert!(!inside(&dir, &dir.join("out.txt")), "nor removable through");
         // The app's folder itself a link to somewhere else: nothing is listed or removed there.
         let elsewhere = temp("links-elsewhere");
         touch(&folder(&elsewhere).join("theirs.png"), 0);
         let project = temp("links-project");
-        std::os::unix::fs::symlink(elsewhere.join(DIR).parent().unwrap(), project.join(DIR).parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(
+            elsewhere.join(DIR).parent().unwrap(),
+            project.join(DIR).parent().unwrap(),
+        )
+        .unwrap();
         assert!(of_project(&project).is_err(), "a link out of the project");
         assert!(remove(&project, &folder(&project).join("theirs.png")).is_err());
         assert!(folder(&elsewhere).join("theirs.png").exists());
-        assert!(ensure(&project).is_err(), "nothing is made through the link");
+        assert!(
+            ensure(&project).is_err(),
+            "nothing is made through the link"
+        );
         let empty = temp("links-empty-target");
         let linked = temp("links-linked");
-        std::os::unix::fs::symlink(empty.join("made-here"), linked.join(DIR).parent().unwrap()).unwrap();
-        assert!(ensure(&linked).is_err() && !empty.join("made-here").exists(), "a dangling link gets no folder at its target");
+        std::os::unix::fs::symlink(empty.join("made-here"), linked.join(DIR).parent().unwrap())
+            .unwrap();
+        assert!(
+            ensure(&linked).is_err() && !empty.join("made-here").exists(),
+            "a dangling link gets no folder at its target"
+        );
         for p in [&root, &elsewhere, &project, &empty, &linked] {
             let _ = std::fs::remove_dir_all(p);
         }
@@ -507,7 +686,10 @@ mod tests {
         let dir = folder(&root);
         touch(&dir.join("a.png"), 0);
         std::fs::write(root.join("keep.txt"), "k").unwrap();
-        assert!(remove(&root, &dir.join("..").join("..").join("keep.txt")).is_err(), "no way out with ..");
+        assert!(
+            remove(&root, &dir.join("..").join("..").join("keep.txt")).is_err(),
+            "no way out with .."
+        );
         assert!(remove(&root, &root.join("keep.txt")).is_err());
         assert!(remove(&root, &dir).is_err(), "not the folder itself");
         assert!(root.join("keep.txt").exists());
@@ -528,7 +710,10 @@ mod tests {
         assert!(add_file(&root, &root).is_err(), "a folder is not added");
         let hidden = root.join(".env");
         std::fs::write(&hidden, "SECRET=1").unwrap();
-        assert!(add_file(&root, &hidden).unwrap_err().contains("dot"), "a dotfile would be invisible and unremovable");
+        assert!(
+            add_file(&root, &hidden).unwrap_err().contains("dot"),
+            "a dotfile would be invisible and unremovable"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -553,8 +738,15 @@ mod tests {
         assert_eq!(utc_stamp(1_793_017_812), "2026-10-26-123012");
         assert_eq!(utc_iso(951_782_400), "2000-02-29T00:00:00Z", "a leap day");
         let dir = temp("shot");
-        assert_eq!(create_screenshot(&dir, 0).unwrap().0.file_name().unwrap(), "screenshot-1970-01-01-000000.png");
-        assert_eq!(create_screenshot(&dir, 0).unwrap().0.file_name().unwrap(), "screenshot-1970-01-01-000000-2.png", "two pastes in a second");
+        assert_eq!(
+            create_screenshot(&dir, 0).unwrap().0.file_name().unwrap(),
+            "screenshot-1970-01-01-000000.png"
+        );
+        assert_eq!(
+            create_screenshot(&dir, 0).unwrap().0.file_name().unwrap(),
+            "screenshot-1970-01-01-000000-2.png",
+            "two pastes in a second"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

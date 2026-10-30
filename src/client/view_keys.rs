@@ -50,7 +50,6 @@ impl App {
         }
     }
 
-
     /// Returns false when the view closes.
     pub(super) fn on_changes_key(&mut self, v: &mut views::ChangesView, k: &KeyEvent) -> bool {
         let c = match k.code {
@@ -61,29 +60,32 @@ impl App {
         };
         if let Some((_, action)) = v.confirm.take() {
             if (c == 'y' || c == '\n')
-                && let Some(r) = &v.review {
-                    let task = r.task.clone();
-                    match action {
-                        'm' => {
-                            let dir = task.dir.clone();
-                            self.spawn_bg(move || Bg::Merged(tasks::merge(&task), dir));
-                        }
-                        'c' => self.spawn_bg(move || Bg::Done(tasks::commit(&task), true)),
-                        'p' => self.spawn_bg(move || Bg::Done(tasks::pull_request(&task), true)),
-                        'd' => {
-                            let d = v.dir.clone();
-                            self.throw_away(&d);
-                            return false;
-                        }
-                        _ => {}
+                && let Some(r) = &v.review
+            {
+                let task = r.task.clone();
+                match action {
+                    'm' => {
+                        let dir = task.dir.clone();
+                        self.spawn_bg(move || Bg::Merged(tasks::merge(&task), dir));
                     }
-                    self.notify("working on it…".into(), false);
+                    'c' => self.spawn_bg(move || Bg::Done(tasks::commit(&task), true)),
+                    'p' => self.spawn_bg(move || Bg::Done(tasks::pull_request(&task), true)),
+                    'd' => {
+                        let d = v.dir.clone();
+                        self.throw_away(&d);
+                        return false;
+                    }
+                    _ => {}
                 }
+                self.notify("working on it…".into(), false);
+            }
             return true;
         }
         let order = v.order();
         let dir_key = design::path_key(&v.dir);
-        let Some(r) = v.review.as_mut() else { return c != '\x1b' };
+        let Some(r) = v.review.as_mut() else {
+            return c != '\x1b';
+        };
         let pos = order.iter().position(|i| *i == r.sel).unwrap_or(0);
         let go = |r: &mut tasks::Review, to: usize| {
             if let Some(i) = order.get(to) {
@@ -94,11 +96,15 @@ impl App {
         };
         match k.code {
             KeyCode::Esc => return false,
-            KeyCode::Down | KeyCode::Char('j') => go(r, (pos + 1).min(order.len().saturating_sub(1))),
+            KeyCode::Down | KeyCode::Char('j') => {
+                go(r, (pos + 1).min(order.len().saturating_sub(1)))
+            }
             KeyCode::Up | KeyCode::Char('k') => go(r, pos.saturating_sub(1)),
             // Mark reviewed (or not): it sinks, and the next one to look at comes up.
             KeyCode::Char('x') => {
-                let Some(file) = r.files.get(r.sel).map(|f| f.path.clone()) else { return true };
+                let Some(file) = r.files.get(r.sel).map(|f| f.path.clone()) else {
+                    return true;
+                };
                 let marks = self.screen.saved.reviewed.entry(dir_key).or_default();
                 let now = !v.reviewed.contains(&file);
                 if now {
@@ -111,8 +117,17 @@ impl App {
                 self.screen.save();
                 let order = v.order();
                 if let Some(r) = v.review.as_mut() {
-                    let next = if now { order.iter().copied().find(|i| !v.reviewed.contains(&r.files[*i].path)) } else { None };
-                    if let Some(i) = next.or_else(|| order.iter().copied().find(|i| r.files[*i].path == file)) {
+                    let next = if now {
+                        order
+                            .iter()
+                            .copied()
+                            .find(|i| !v.reviewed.contains(&r.files[*i].path))
+                    } else {
+                        None
+                    };
+                    if let Some(i) =
+                        next.or_else(|| order.iter().copied().find(|i| r.files[*i].path == file))
+                    {
                         r.sel = i;
                         r.diff_sel = None;
                         r.scroll = 0;
@@ -127,7 +142,14 @@ impl App {
             // Asked first: `c` is also Changes' leader key, shown in the tab strip.
             KeyCode::Char('c') => {
                 let n = r.files.len();
-                v.confirm = Some((format!("Commit {n} file{} on {}?", if n == 1 { "" } else { "s" }, r.task.branch), 'c'));
+                v.confirm = Some((
+                    format!(
+                        "Commit {n} file{} on {}?",
+                        if n == 1 { "" } else { "s" },
+                        r.task.branch
+                    ),
+                    'c',
+                ));
             }
             KeyCode::Char('e') => {
                 if let Some(f) = r.files.get(r.sel) {
@@ -135,9 +157,27 @@ impl App {
                     self.open_in_editor(&p);
                 }
             }
-            KeyCode::Char('m') if v.linked => v.confirm = Some((format!("Merge {} into {}, then close it and remove its worktree and branch?", r.task.branch, r.task.base), 'm')),
-            KeyCode::Char('p') => v.confirm = Some((format!("Push {} and open a pull request?", r.task.branch), 'p')),
-            KeyCode::Char('d') if v.linked => v.confirm = Some((format!("Throw away {} (folder and branch)?", r.task.branch), 'd')),
+            KeyCode::Char('m') if v.linked => {
+                v.confirm = Some((
+                    format!(
+                        "Merge {} into {}, then close it and remove its worktree and branch?",
+                        r.task.branch, r.task.base
+                    ),
+                    'm',
+                ))
+            }
+            KeyCode::Char('p') => {
+                v.confirm = Some((
+                    format!("Push {} and open a pull request?", r.task.branch),
+                    'p',
+                ))
+            }
+            KeyCode::Char('d') if v.linked => {
+                v.confirm = Some((
+                    format!("Throw away {} (folder and branch)?", r.task.branch),
+                    'd',
+                ))
+            }
             KeyCode::Char('r') => {
                 if let Some(term) = v.term {
                     self.cmd(Command::FocusPane { term });
@@ -157,7 +197,17 @@ impl App {
         let page = self.screen.preview_rect.height.saturating_sub(4).max(5) as usize;
         // Editing the file in the preview.
         if let Some(ed) = v.edit.as_mut() {
-            if matches!(k.code, KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right | KeyCode::PageUp | KeyCode::PageDown | KeyCode::Home | KeyCode::End) {
+            if matches!(
+                k.code,
+                KeyCode::Up
+                    | KeyCode::Down
+                    | KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::PageUp
+                    | KeyCode::PageDown
+                    | KeyCode::Home
+                    | KeyCode::End
+            ) {
                 ed.select(k.modifiers.contains(KeyModifiers::SHIFT));
             }
             match k.code {
@@ -254,7 +304,10 @@ impl App {
                     copy::to_clipboard(&text);
                     self.notify(copied_note("copied", &text), false);
                 }
-                None => self.notify("drag over the file to select text; y copies its path".into(), false),
+                None => self.notify(
+                    "drag over the file to select text; y copies its path".into(),
+                    false,
+                ),
             }
             return true;
         }
@@ -264,9 +317,13 @@ impl App {
         if v.in_preview {
             match k.code {
                 KeyCode::Left | KeyCode::Esc | KeyCode::Char('h') => v.in_preview = false,
-                KeyCode::Down | KeyCode::Char('j') => v.scroll = (v.scroll + 1).min(lines.saturating_sub(1)),
+                KeyCode::Down | KeyCode::Char('j') => {
+                    v.scroll = (v.scroll + 1).min(lines.saturating_sub(1))
+                }
                 KeyCode::Up | KeyCode::Char('k') => v.scroll = v.scroll.saturating_sub(1),
-                KeyCode::PageDown | KeyCode::Char(' ') => v.scroll = (v.scroll + page).min(lines.saturating_sub(1)),
+                KeyCode::PageDown | KeyCode::Char(' ') => {
+                    v.scroll = (v.scroll + page).min(lines.saturating_sub(1))
+                }
                 KeyCode::PageUp => v.scroll = v.scroll.saturating_sub(page),
                 KeyCode::Home | KeyCode::Char('g') => v.scroll = 0,
                 KeyCode::End | KeyCode::Char('G') => v.scroll = lines.saturating_sub(page),
@@ -285,13 +342,21 @@ impl App {
             return true;
         }
         match k.code {
-            KeyCode::Right | KeyCode::Char('l') if node.as_ref().is_some_and(|n| !n.is_dir) && lines > 0 => v.in_preview = true,
+            KeyCode::Right | KeyCode::Char('l')
+                if node.as_ref().is_some_and(|n| !n.is_dir) && lines > 0 =>
+            {
+                v.in_preview = true
+            }
             KeyCode::Esc | KeyCode::Char('f') => return false,
             // Read the preview: page, or a line at a time with Shift.
             KeyCode::PageDown => v.scroll = (v.scroll + page).min(lines.saturating_sub(1)),
             KeyCode::PageUp => v.scroll = v.scroll.saturating_sub(page),
-            KeyCode::Down if k.modifiers.contains(KeyModifiers::SHIFT) => v.scroll = (v.scroll + 1).min(lines.saturating_sub(1)),
-            KeyCode::Up if k.modifiers.contains(KeyModifiers::SHIFT) => v.scroll = v.scroll.saturating_sub(1),
+            KeyCode::Down if k.modifiers.contains(KeyModifiers::SHIFT) => {
+                v.scroll = (v.scroll + 1).min(lines.saturating_sub(1))
+            }
+            KeyCode::Up if k.modifiers.contains(KeyModifiers::SHIFT) => {
+                v.scroll = v.scroll.saturating_sub(1)
+            }
             // Edit it right here.
             KeyCode::Char('i') => {
                 if let Some(n) = node.as_ref().filter(|n| !n.is_dir) {
@@ -311,7 +376,8 @@ impl App {
             KeyCode::Char('m') => {
                 v.toggle_raw();
                 // Keep about the same place in the file: the same share of the way down.
-                let after = v.shown_lines(self.screen.preview_rect.width, &self.theme, &self.cfg.theme);
+                let after =
+                    v.shown_lines(self.screen.preview_rect.width, &self.theme, &self.cfg.theme);
                 v.scroll = (v.scroll * after).checked_div(lines).unwrap_or(0);
             }
             KeyCode::Char('/') => {
@@ -350,7 +416,10 @@ impl App {
                 }
                 Some(n) => {
                     if let Some(term) = self.focused() {
-                        self.send(ClientMsg::Input { term, data: format!("{} ", files::quote_path(&n.path)).into_bytes() });
+                        self.send(ClientMsg::Input {
+                            term,
+                            data: format!("{} ", files::quote_path(&n.path)).into_bytes(),
+                        });
                         self.notify(format!("inserted {}", n.path.display()), false);
                     }
                     return false;
@@ -359,7 +428,11 @@ impl App {
             },
             KeyCode::Char('o') => {
                 if let Some(n) = node {
-                    let name = n.path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+                    let name = n
+                        .path
+                        .file_name()
+                        .map(|f| f.to_string_lossy().into_owned())
+                        .unwrap_or_default();
                     self.open_outside(n.path.clone(), name);
                 }
             }
@@ -389,8 +462,6 @@ impl App {
         true
     }
 
-
-
     /// Ctrl+V in Files' editor: the clipboard is read in the background, and its text lands at
     /// the cursor if that file is still being edited.
     fn paste_clipboard_into_editor(&mut self, path: std::path::PathBuf) {
@@ -412,7 +483,9 @@ impl App {
         if !self.view_has_keys() || !matches!(self.mode, Mode::Normal) {
             return false;
         }
-        let Some(View::Files(v)) = &mut self.view else { return false };
+        let Some(View::Files(v)) = &mut self.view else {
+            return false;
+        };
         let editing = v.edit.as_ref().map(|ed| ed.path.clone());
         match editing {
             Some(path) => self.paste_into_editor(&path, text),
@@ -434,15 +507,23 @@ impl App {
             return;
         }
         let page = self.screen.preview_rect.height.max(1) as usize;
-        let Some(View::Files(v)) = &mut self.view else { return };
-        let Some(ed) = v.edit.as_mut().filter(|ed| ed.path == path) else { return };
+        let Some(View::Files(v)) = &mut self.view else {
+            return;
+        };
+        let Some(ed) = v.edit.as_mut().filter(|ed| ed.path == path) else {
+            return;
+        };
         ed.insert_text(text);
         v.follow_cursor(page);
         self.dirty = true;
     }
 
     /// Keys in the settings view. Returns false when it closes.
-    pub(super) fn on_settings_view_key(&mut self, v: &mut design::SettingsView, k: &KeyEvent) -> bool {
+    pub(super) fn on_settings_view_key(
+        &mut self,
+        v: &mut design::SettingsView,
+        k: &KeyEvent,
+    ) -> bool {
         use modal::{Cat, Kind};
         let cat = Cat::ALL[v.cat.min(Cat::ALL.len() - 1)];
         let rows = design::settings_rows(cat);
@@ -455,23 +536,42 @@ impl App {
             }
             let spec = KeySpec::from_event(k);
             match row {
-                Some(design::SRow::Setting(s)) => self.save_setting(s.path, spec.to_config().into()),
+                Some(design::SRow::Setting(s)) => {
+                    self.save_setting(s.path, spec.to_config().into())
+                }
                 Some(design::SRow::Bind { acts, direct, .. }) if acts.len() == 1 => {
                     let act = &acts[0];
-                    let Some(name) = act.to_config() else { return true };
+                    let Some(name) = act.to_config() else {
+                        return true;
+                    };
                     let new = spec.to_config();
-                    let (table, map) = if direct { ("global", &self.keymap.global) } else { ("prefix", &self.keymap.prefixed) };
+                    let (table, map) = if direct {
+                        ("global", &self.keymap.global)
+                    } else {
+                        ("prefix", &self.keymap.prefixed)
+                    };
                     // Unbind the old keys, then bind the new one.
-                    let old: Vec<String> = map.iter().filter(|(_, b)| *b == act).map(|(key, _)| key.to_config()).filter(|key| *key != new).collect();
+                    let old: Vec<String> = map
+                        .iter()
+                        .filter(|(_, b)| *b == act)
+                        .map(|(key, _)| key.to_config())
+                        .filter(|key| *key != new)
+                        .collect();
                     let mut result = Ok(());
                     for o in old {
-                        result = result.and_then(|_| modal::write_at(&["keys", table, &o], "none".into()));
+                        result = result
+                            .and_then(|_| modal::write_at(&["keys", table, &o], "none".into()));
                     }
-                    result = result.and_then(|_| modal::write_at(&["keys", table, &new], name.into()));
+                    result =
+                        result.and_then(|_| modal::write_at(&["keys", table, &new], name.into()));
                     match result {
                         Ok(()) => {
                             self.reload_config();
-                            let keys = if direct { design::long_key(&spec) } else { format!("{} {}", self.keymap.prefix, spec) };
+                            let keys = if direct {
+                                design::long_key(&spec)
+                            } else {
+                                format!("{} {}", self.keymap.prefix, spec)
+                            };
                             self.notify(format!("{} is now {keys}", act.describe()), false);
                         }
                         Err(e) => self.notify(format!("{e:#}"), true),
@@ -502,13 +602,27 @@ impl App {
             return true;
         }
         if matches!(&row, Some(design::SRow::Setting(s)) if s.path == "theme")
-            && matches!(k.code, KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Left | KeyCode::Right | KeyCode::Char('h' | 'l'))
+            && matches!(
+                k.code,
+                KeyCode::Enter
+                    | KeyCode::Char(' ')
+                    | KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::Char('h' | 'l')
+            )
         {
             self.open_themes();
             return true;
         }
         if matches!(&row, Some(design::SRow::Setting(s)) if s.kind == Kind::Spinner)
-            && matches!(k.code, KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Left | KeyCode::Right | KeyCode::Char('h' | 'l'))
+            && matches!(
+                k.code,
+                KeyCode::Enter
+                    | KeyCode::Char(' ')
+                    | KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::Char('h' | 'l')
+            )
         {
             self.open_spinners();
             return true;
@@ -530,7 +644,9 @@ impl App {
                 v.cat = (v.cat + Cat::ALL.len() - 1) % Cat::ALL.len();
                 v.sel = 0;
             }
-            KeyCode::Down | KeyCode::Char('j') => v.sel = (v.sel + 1).min(rows.len().saturating_sub(1)),
+            KeyCode::Down | KeyCode::Char('j') => {
+                v.sel = (v.sel + 1).min(rows.len().saturating_sub(1))
+            }
             KeyCode::Up | KeyCode::Char('k') => v.sel = v.sel.saturating_sub(1),
             KeyCode::Left | KeyCode::Char('h') => step(self, -1),
             KeyCode::Right | KeyCode::Char('l') => step(self, 1),
@@ -543,25 +659,40 @@ impl App {
                 Some(design::SRow::Setting(s)) => match s.kind {
                     // A folder: pick it in the folder browser (Esc comes back here).
                     Kind::Folder => {
-                        let cur = self.cfg.start_dir().or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf())).unwrap_or_default();
+                        let cur = self
+                            .cfg
+                            .start_dir()
+                            .or_else(|| {
+                                directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf())
+                            })
+                            .unwrap_or_default();
                         let mut fd = screen::Finder::new(&cur);
                         fd.for_setting = Some(s.path);
                         self.mode = Mode::Finder(Box::new(fd));
                         return true;
                     }
                     Kind::Text | Kind::Program(_) => {
-                        let cur = modal::current(&self.cfg, s.path).and_then(|x| x.as_str().map(str::to_string)).unwrap_or_default();
+                        let cur = modal::current(&self.cfg, s.path)
+                            .and_then(|x| x.as_str().map(str::to_string))
+                            .unwrap_or_default();
                         v.editing = Some(cur);
                     }
                     Kind::Key => v.capturing = true,
                     _ => step(self, 1),
                 },
                 Some(design::SRow::Bind { acts, .. }) if acts.len() == 1 => v.capturing = true,
-                Some(design::SRow::Bind { .. }) => self.notify("that row has several keys: change them in the config file (o)".into(), false),
+                Some(design::SRow::Bind { .. }) => self.notify(
+                    "that row has several keys: change them in the config file (o)".into(),
+                    false,
+                ),
                 // Claude and Codex rows only report; the last one opens the list of agents.
-                Some(design::SRow::Agent(design::AgentRow::SetUp)) => self.act(Action::AgentStatusSetup),
+                Some(design::SRow::Agent(design::AgentRow::SetUp)) => {
+                    self.act(Action::AgentStatusSetup)
+                }
                 // Version: install what was found, else look again.
-                Some(design::SRow::Version) if self.update_available.is_some() => self.act(Action::Update),
+                Some(design::SRow::Version) if self.update_available.is_some() => {
+                    self.act(Action::Update)
+                }
                 Some(design::SRow::Version) => self.act(Action::CheckUpdate),
                 Some(design::SRow::Agent(_)) | None => {}
             },
@@ -585,9 +716,6 @@ impl App {
         true
     }
 
-
-
-
     pub(super) fn submit_prompt(&mut self, kind: PromptKind, input: String) {
         let input = input.trim().to_string();
         match kind {
@@ -600,13 +728,21 @@ impl App {
                 }
                 self.screen.save();
             }
-            PromptKind::RenameTab(ws, tab) => self.cmd(Command::RenameTab { ws, tab, name: input }),
+            PromptKind::RenameTab(ws, tab) => self.cmd(Command::RenameTab {
+                ws,
+                tab,
+                name: input,
+            }),
             PromptKind::AddReference(root, dir) => self.add_reference(root, dir, &input),
             PromptKind::NewWorkspace => {
                 // A group starts with a shell where you are.
                 let name = (!input.is_empty()).then_some(input);
                 self.leave_shortcut_mode();
-                self.cmd(Command::NewWorkspace { cwd: Some(self.here_dir()), name, cmd: None });
+                self.cmd(Command::NewWorkspace {
+                    cwd: Some(self.here_dir()),
+                    name,
+                    cmd: None,
+                });
             }
             _ => {}
         }
@@ -619,7 +755,11 @@ impl App {
         let items = items.unwrap_or_default();
         let mut rows: Vec<WtRow> = items
             .iter()
-            .filter(|w| q.is_empty() || w.branch.to_lowercase().contains(&q) || w.path.to_string_lossy().to_lowercase().contains(&q))
+            .filter(|w| {
+                q.is_empty()
+                    || w.branch.to_lowercase().contains(&q)
+                    || w.path.to_string_lossy().to_lowercase().contains(&q)
+            })
             .cloned()
             .map(WtRow::Existing)
             .collect();
@@ -633,15 +773,32 @@ impl App {
     /// Switch to the workspace already open on this worktree, or open one.
     pub(super) fn open_worktree(&mut self, w: &WorktreeEntry, cmd: Option<String>) {
         self.leave_shortcut_mode();
-        if let Some(open) = self.snap.workspaces.iter().find(|x| same_dir(&x.cwd, &w.path)) {
+        if let Some(open) = self
+            .snap
+            .workspaces
+            .iter()
+            .find(|x| same_dir(&x.cwd, &w.path))
+        {
             self.cmd(Command::SelectWorkspace { ws: open.id });
             if let Some(cmd) = cmd {
-                self.cmd(Command::NewTab { ws: open.id, name: None, cmd: Some(cmd) });
+                self.cmd(Command::NewTab {
+                    ws: open.id,
+                    name: None,
+                    cmd: Some(cmd),
+                });
             }
             return;
         }
-        let name = if w.main { w.repo.clone() } else { format!("{}:{}", w.repo, w.branch) };
-        self.cmd(Command::NewWorkspace { cwd: Some(w.path.clone()), name: Some(name), cmd });
+        let name = if w.main {
+            w.repo.clone()
+        } else {
+            format!("{}:{}", w.repo, w.branch)
+        };
+        self.cmd(Command::NewWorkspace {
+            cwd: Some(w.path.clone()),
+            name: Some(name),
+            cmd,
+        });
     }
 }
 

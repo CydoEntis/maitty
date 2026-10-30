@@ -1,23 +1,26 @@
 //! One-shot commands: scripting the multiplexer from a shell (or from an agent inside it).
 
+use crate::brand::APP_COMMAND;
 use crate::ipc;
-use crate::brand::{APP_COMMAND};
+pub(crate) mod conversation;
 pub(crate) mod handoff;
 pub(crate) mod integrations;
 mod jsonc;
 mod mcp_config;
-use mcp_config::McpChange;
 use crate::layout::Dir;
 use crate::protocol::*;
 use anyhow::{Context, Result, anyhow, bail};
 use jsonc_parser::cst::{CstInputValue, CstObject, CstObjectProp};
+use mcp_config::McpChange;
 use serde_json::{Value, json};
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
 
 pub(crate) fn block_on<T>(f: impl std::future::Future<Output = Result<T>>) -> Result<T> {
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
     let out = rt.block_on(f);
     // Don't wait on reads still blocked on a pipe (ssh's, over --remote).
     rt.shutdown_background();
@@ -26,7 +29,11 @@ pub(crate) fn block_on<T>(f: impl std::future::Future<Output = Result<T>>) -> Re
 
 /// Send one message and wait for the reply.
 pub(crate) async fn request(msg: ClientMsg) -> Result<Reply> {
-    let (mut r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { concat!("couldn't reach the ", env!("APP_COMMAND"), " server") })?;
+    let (mut r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() {
+        "over ssh"
+    } else {
+        concat!("couldn't reach the ", env!("APP_COMMAND"), " server")
+    })?;
     ipc::send(&mut w, &msg).await?;
     loop {
         match ipc::recv_server(&mut r).await? {
@@ -57,20 +64,58 @@ fn resolve_pane(pane: Option<TermId>) -> Result<TermId> {
     if let Some(p) = pane {
         return Ok(p);
     }
-    if let Some(p) = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok().and_then(|s| s.parse().ok()) {
+    if let Some(p) = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID"))
+        .ok()
+        .and_then(|s| s.parse().ok())
+    {
         return Ok(p);
     }
     let snap = snapshot()?;
-    snap.active().and_then(|w| w.tab()).map(|t| t.focus).ok_or_else(|| anyhow!("no pane to target"))
+    snap.active()
+        .and_then(|w| w.tab())
+        .map(|t| t.focus)
+        .ok_or_else(|| anyhow!("no pane to target"))
 }
 
 /// Arguments that mean the agent isn't starting a new piece of work: help, version, a
 /// one-shot print, picking up an earlier conversation (which lives in the folder it was in),
 /// or one of its subcommands.
-const NOT_NEW_WORK: [&str; 13] = ["-h", "--help", "-v", "-V", "--version", "-p", "--print", "-c", "--continue", "-r", "--resume", "-w", "--worktree"];
+const NOT_NEW_WORK: [&str; 13] = [
+    "-h",
+    "--help",
+    "-v",
+    "-V",
+    "--version",
+    "-p",
+    "--print",
+    "-c",
+    "--continue",
+    "-r",
+    "--resume",
+    "-w",
+    "--worktree",
+];
 const SUBCOMMANDS: [&str; 20] = [
-    "resume", "exec", "e", "login", "logout", "mcp", "mcp-server", "config", "update", "upgrade", "doctor", "install", "plugin", "setup-token",
-    "migrate-installer", "completion", "apply", "sandbox", "debug", "app-server",
+    "resume",
+    "exec",
+    "e",
+    "login",
+    "logout",
+    "mcp",
+    "mcp-server",
+    "config",
+    "update",
+    "upgrade",
+    "doctor",
+    "install",
+    "plugin",
+    "setup-token",
+    "migrate-installer",
+    "completion",
+    "apply",
+    "sandbox",
+    "debug",
+    "app-server",
 ];
 
 /// Whether `agent args…` starts new work (which gets its own worktree).
@@ -78,18 +123,67 @@ pub(crate) fn starts_new_work(agent: &str, args: &[String]) -> bool {
     if agent == "codex" {
         return codex_starts_new_work(args);
     }
-    let sub = args.first().is_some_and(|a| SUBCOMMANDS.contains(&a.as_str()));
-    !sub && !args.iter().any(|a| NOT_NEW_WORK.contains(&a.as_str()) || a.starts_with("--resume=") || a.starts_with("--worktree="))
+    let sub = args
+        .first()
+        .is_some_and(|a| SUBCOMMANDS.contains(&a.as_str()));
+    !sub && !args.iter().any(|a| {
+        NOT_NEW_WORK.contains(&a.as_str())
+            || a.starts_with("--resume=")
+            || a.starts_with("--worktree=")
+    })
 }
 
 const CODEX_SUBCOMMANDS: &[&str] = &[
-    "agents", "exec", "e", "review", "login", "logout", "mcp", "mcp-server", "plugin", "app-server", "remote-control", "app",
-    "completion", "update", "doctor", "sandbox", "debug", "apply", "a", "resume", "queue", "archive", "delete", "migrate-rollouts",
-    "unarchive", "fork", "cloud", "exec-server", "features", "help",
+    "agents",
+    "exec",
+    "e",
+    "review",
+    "login",
+    "logout",
+    "mcp",
+    "mcp-server",
+    "plugin",
+    "app-server",
+    "remote-control",
+    "app",
+    "completion",
+    "update",
+    "doctor",
+    "sandbox",
+    "debug",
+    "apply",
+    "a",
+    "resume",
+    "queue",
+    "archive",
+    "delete",
+    "migrate-rollouts",
+    "unarchive",
+    "fork",
+    "cloud",
+    "exec-server",
+    "features",
+    "help",
 ];
 const CODEX_VALUE_OPTIONS: &[&str] = &[
-    "-c", "--config", "-p", "--profile", "-m", "--model", "-i", "--image", "-s", "--sandbox", "-a", "--ask-for-approval",
-    "--remote", "--remote-auth-token-env", "--local-provider", "--add-dir", "--enable", "--disable",
+    "-c",
+    "--config",
+    "-p",
+    "--profile",
+    "-m",
+    "--model",
+    "-i",
+    "--image",
+    "-s",
+    "--sandbox",
+    "-a",
+    "--ask-for-approval",
+    "--remote",
+    "--remote-auth-token-env",
+    "--local-provider",
+    "--add-dir",
+    "--enable",
+    "--disable",
 ];
 
 fn codex_starts_new_work(args: &[String]) -> bool {
@@ -99,8 +193,12 @@ fn codex_starts_new_work(args: &[String]) -> bool {
         if arg == "--" {
             return true;
         }
-        if matches!(arg.as_str(), "-h" | "--help" | "-v" | "-V" | "--version" | "-w" | "--worktree" | "-C" | "--cd")
-            || arg.starts_with("--worktree=") || arg.starts_with("--cd=") || arg.starts_with("-C")
+        if matches!(
+            arg.as_str(),
+            "-h" | "--help" | "-v" | "-V" | "--version" | "-w" | "--worktree" | "-C" | "--cd"
+        ) || arg.starts_with("--worktree=")
+            || arg.starts_with("--cd=")
+            || arg.starts_with("-C")
         {
             return false;
         }
@@ -132,7 +230,9 @@ pub fn agent_dir(cmd: &[String]) {
 /// asking and what for.
 fn agent_worktree(cmd: &[String]) -> Option<PathBuf> {
     let agent = cmd.first().map(String::as_str).unwrap_or_default();
-    if std::env::var_os(concat!(env!("APP_ENV"), "_TERM_ID")).is_none() || !starts_new_work(agent, cmd.get(1..).unwrap_or_default()) {
+    if std::env::var_os(concat!(env!("APP_ENV"), "_TERM_ID")).is_none()
+        || !starts_new_work(agent, cmd.get(1..).unwrap_or_default())
+    {
         return None;
     }
     let dir = std::env::current_dir().ok()?;
@@ -157,13 +257,22 @@ pub fn agent_launch(cmd: &[String]) -> i32 {
     let Some(agent) = cmd.first() else { return 1 };
     let shim = crate::shim::dir();
     let path = std::env::var_os("PATH").unwrap_or_default();
-    let extensions: Vec<String> = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into()).split(';').filter(|e| !e.is_empty()).map(str::to_string).collect();
+    let extensions: Vec<String> = std::env::var("PATHEXT")
+        .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into())
+        .split(';')
+        .filter(|e| !e.is_empty())
+        .map(str::to_string)
+        .collect();
     let Some(real) = crate::shim::find_on_path(agent, &path, &shim, &extensions) else {
-        eprintln!("'{agent}' is not recognized as an internal or external command, operable program or batch file.");
+        eprintln!(
+            "'{agent}' is not recognized as an internal or external command, operable program or batch file."
+        );
         return NOT_FOUND;
     };
     let mut run = std::process::Command::new(real);
-    run.args(&cmd[1..]).env("PATH", crate::shim::path_without(&shim, &path)).env_remove(crate::shim::DONE_VAR);
+    run.args(&cmd[1..])
+        .env("PATH", crate::shim::path_without(&shim, &path))
+        .env_remove(crate::shim::DONE_VAR);
     if std::env::var_os(crate::shim::DONE_VAR).is_none()
         && let Some(dir) = agent_worktree(cmd)
     {
@@ -199,16 +308,38 @@ pub fn ls(as_json: bool) -> Result<()> {
         return Ok(());
     }
     for w in &snap.workspaces {
-        let mark = if Some(w.id) == snap.active_ws { "*" } else { " " };
-        let git = w.git.as_ref().map(|g| format!("  [{}{}]", g.branch, if g.dirty > 0 { format!(" ±{}", g.dirty) } else { String::new() })).unwrap_or_default();
+        let mark = if Some(w.id) == snap.active_ws {
+            "*"
+        } else {
+            " "
+        };
+        let git = w
+            .git
+            .as_ref()
+            .map(|g| {
+                format!(
+                    "  [{}{}]",
+                    g.branch,
+                    if g.dirty > 0 {
+                        format!(" ±{}", g.dirty)
+                    } else {
+                        String::new()
+                    }
+                )
+            })
+            .unwrap_or_default();
         println!("{mark} {} {}{git}  ({})", w.id, w.name, w.cwd.display());
         for (i, t) in w.tabs.iter().enumerate() {
             let mark = if t.id == w.active_tab { "*" } else { " " };
             println!("  {mark} tab {} {}", i + 1, t.name);
             for id in t.layout.leaves() {
-                let Some(p) = snap.terms.get(&id) else { continue };
+                let Some(p) = snap.terms.get(&id) else {
+                    continue;
+                };
                 let focus = if id == t.focus { ">" } else { " " };
-                let agent = agent_tag(p).map(|tag| format!("  [{tag}]")).unwrap_or_default();
+                let agent = agent_tag(p)
+                    .map(|tag| format!("  [{tag}]"))
+                    .unwrap_or_default();
                 println!("    {focus} pane {id}  {}{agent}", p.process);
             }
         }
@@ -231,7 +362,9 @@ pub fn read(pane: Option<TermId>) -> Result<()> {
 /// end of a Claude transcript (JSON lines).
 pub fn transcript_facts(path: &std::path::Path) -> (Option<String>, Option<String>) {
     use std::io::{Read, Seek, SeekFrom};
-    let Ok(mut f) = std::fs::File::open(path) else { return (None, None) };
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return (None, None);
+    };
     let len = f.metadata().map(|m| m.len()).unwrap_or(0);
     let _ = f.seek(SeekFrom::Start(len.saturating_sub(512 * 1024)));
     let mut buf = Vec::new();
@@ -252,8 +385,15 @@ pub fn transcript_facts_in(text: &str) -> (Option<String>, Option<String>) {
         if !maybe_model && !maybe_name && !maybe_ai {
             continue;
         }
-        let Ok(v) = serde_json::from_str::<Value>(line) else { continue };
-        let title = |k: &str| v.get(k).and_then(Value::as_str).filter(|t| !t.trim().is_empty()).map(|t| one_line(t, 80));
+        let Ok(v) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let title = |k: &str| {
+            v.get(k)
+                .and_then(Value::as_str)
+                .filter(|t| !t.trim().is_empty())
+                .map(|t| one_line(t, 80))
+        };
         if maybe_name {
             name = title("customTitle");
         }
@@ -262,7 +402,10 @@ pub fn transcript_facts_in(text: &str) -> (Option<String>, Option<String>) {
         }
         if maybe_model
             && v.get("type").and_then(Value::as_str) == Some("assistant")
-            && let Some(m) = v.pointer("/message/model").and_then(Value::as_str).filter(|m| !m.starts_with('<'))
+            && let Some(m) = v
+                .pointer("/message/model")
+                .and_then(Value::as_str)
+                .filter(|m| !m.starts_with('<'))
         {
             model = Some(short_model(m));
         }
@@ -272,10 +415,20 @@ pub fn transcript_facts_in(text: &str) -> (Option<String>, Option<String>) {
 
 /// "claude-opus-4-5-20251101" → "opus 4.5"; other names as they are.
 pub fn short_model(m: &str) -> String {
-    let Some(rest) = m.strip_prefix("claude-") else { return m.to_string() };
+    let Some(rest) = m.strip_prefix("claude-") else {
+        return m.to_string();
+    };
     let parts: Vec<&str> = rest.split('-').filter(|p| p.len() < 8).collect();
-    let family: Vec<&str> = parts.iter().copied().filter(|p| !p.chars().all(|c| c.is_ascii_digit())).collect();
-    let version: Vec<&str> = parts.iter().copied().filter(|p| p.chars().all(|c| c.is_ascii_digit())).collect();
+    let family: Vec<&str> = parts
+        .iter()
+        .copied()
+        .filter(|p| !p.chars().all(|c| c.is_ascii_digit()))
+        .collect();
+    let version: Vec<&str> = parts
+        .iter()
+        .copied()
+        .filter(|p| p.chars().all(|c| c.is_ascii_digit()))
+        .collect();
     let mut out = family.join(" ");
     if !version.is_empty() {
         out.push(' ');
@@ -306,17 +459,35 @@ const QUIET_TURN_AFTER: Duration = Duration::from_secs(8);
 /// Whether a turn is over given what the pane shows: it was working (`seen_working`), or
 /// the wait has run past `QUIET_TURN_AFTER` (`quiet`). A turn with checkpoints is not over
 /// until none is running or waiting its turn; it ends on the headline one.
-fn turn_over(status: Status, said: &str, checks: &[CheckInfo], seen_working: bool, quiet: bool) -> Option<Waited> {
+fn turn_over(
+    status: Status,
+    said: &str,
+    checks: &[CheckInfo],
+    seen_working: bool,
+    quiet: bool,
+) -> Option<Waited> {
     let ended = match status {
         Status::Blocked | Status::Done | Status::Idle => seen_working || quiet,
         Status::None => quiet,
         Status::Working => false,
     };
-    if !ended || checks.iter().any(|c| matches!(c.state, CheckState::Checking | CheckState::Pending)) {
+    if !ended
+        || checks
+            .iter()
+            .any(|c| matches!(c.state, CheckState::Checking | CheckState::Pending))
+    {
         return None;
     }
-    let said = if status == Status::None { String::new() } else { said.to_string() };
-    Some(Waited::Turn(status, said, headline(checks).cloned().map(Box::new)))
+    let said = if status == Status::None {
+        String::new()
+    } else {
+        said.to_string()
+    };
+    Some(Waited::Turn(
+        status,
+        said,
+        headline(checks).cloned().map(Box::new),
+    ))
 }
 
 /// How `<app> wait` exits once the turn is over, when not 0: 3 when the agent needs you, 4
@@ -326,13 +497,22 @@ fn turn_exit(status: Status, headline: Option<&CheckInfo>) -> Option<i32> {
     if status == Status::Blocked {
         return Some(3);
     }
-    headline.is_some_and(|c| c.state == CheckState::Failed).then_some(EXIT_CHECK_FAILED)
+    headline
+        .is_some_and(|c| c.state == CheckState::Failed)
+        .then_some(EXIT_CHECK_FAILED)
 }
 
 /// The check's result in one line, for a waiter to read beside the reply.
 pub fn check_line(c: &CheckInfo) -> String {
-    let exit = c.exit_code.map(|code| format!(" (exit {code})")).unwrap_or_default();
-    let line = if c.first_failing_line.is_empty() { String::new() } else { format!(": {}", c.first_failing_line) };
+    let exit = c
+        .exit_code
+        .map(|code| format!(" (exit {code})"))
+        .unwrap_or_default();
+    let line = if c.first_failing_line.is_empty() {
+        String::new()
+    } else {
+        format!(": {}", c.first_failing_line)
+    };
     match c.state {
         CheckState::Checking => format!("checking: {}", c.command),
         CheckState::Passed => format!("check passed: {}", c.command),
@@ -355,7 +535,11 @@ pub fn check_note(c: &CheckInfo) -> String {
         (CheckState::CouldNotRun, _) => "check could not run".into(),
         (CheckState::Pending, _) => "pending".into(),
         (CheckState::NeedsApproval, _) => format!("approve check: {}", c.command),
-        (CheckState::Stale, _) => format!("stale pass: {} · {}", checkpoint_name(c), files_changed(c.changed_files.len())),
+        (CheckState::Stale, _) => format!(
+            "stale pass: {} · {}",
+            checkpoint_name(c),
+            files_changed(c.changed_files.len())
+        ),
         (CheckState::Never, _) => "not checked: never for this repo".into(),
     }
 }
@@ -366,32 +550,47 @@ fn checkpoint_name(c: &CheckInfo) -> &str {
 }
 
 fn files_changed(n: usize) -> String {
-    if n == 1 { "1 file changed".into() } else { format!("{n} files changed") }
+    if n == 1 {
+        "1 file changed".into()
+    } else {
+        format!("{n} files changed")
+    }
 }
 
 /// The headline checkpoint's note, and how many there are when there are several:
 /// `check failed (exit 1) · 2 checkpoints`.
 pub fn checks_note(p: &TermInfo) -> Option<String> {
     let note = check_note(p.reported_check()?);
-    Some(if p.checks.len() > 1 { format!("{note} · {} checkpoints", p.checks.len()) } else { note })
+    Some(if p.checks.len() > 1 {
+        format!("{note} · {} checkpoints", p.checks.len())
+    } else {
+        note
+    })
 }
 
 /// `claude: done · check failed (exit 1)`, for an agent pane.
 fn agent_tag(p: &TermInfo) -> Option<String> {
     let agent = p.agent.as_deref()?;
     let quiet = quiet_note(p).map(|n| format!(" · {n}")).unwrap_or_default();
-    let note = checks_note(p).map(|n| format!(" · {n}")).unwrap_or_default();
+    let note = checks_note(p)
+        .map(|n| format!(" · {n}"))
+        .unwrap_or_default();
     Some(format!("{agent}: {}{quiet}{note}", p.status.label()))
 }
 
 /// `quiet 12m` for a working agent that has gone silent: it may be stuck.
 pub fn quiet_note(p: &TermInfo) -> Option<String> {
-    p.quiet_since.filter(|_| p.status == Status::Working).map(|at| format!("quiet {}", quiet_for(at)))
+    p.quiet_since
+        .filter(|_| p.status == Status::Working)
+        .map(|at| format!("quiet {}", quiet_for(at)))
 }
 
 /// How long since `at` (unix seconds), shortest unit: `45s`, `12m`, `3h`, `2d`.
 pub fn quiet_for(at: u64) -> String {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let s = now.saturating_sub(at);
     match s {
         0..=59 => format!("{s}s"),
@@ -434,8 +633,16 @@ fn checkpoint_json(c: &CheckInfo) -> Value {
 /// never starts a turn counts as ended after a few seconds), or for `regex` on its screen.
 /// `just_sent`: the turn hasn't started yet, so wait for it to start first. A session with a
 /// check is waited on until the check has answered, within `timeout`.
-pub fn wait_on(term: TermId, regex: Option<&str>, timeout: Duration, just_sent: bool) -> Result<Waited> {
-    let re = regex.map(|r| regex::RegexBuilder::new(r).case_insensitive(true).build()).transpose().context("bad --regex")?;
+pub fn wait_on(
+    term: TermId,
+    regex: Option<&str>,
+    timeout: Duration,
+    just_sent: bool,
+) -> Result<Waited> {
+    let re = regex
+        .map(|r| regex::RegexBuilder::new(r).case_insensitive(true).build())
+        .transpose()
+        .context("bad --regex")?;
     let start = std::time::Instant::now();
     let mut seen_working = !just_sent;
     let mut quiet = None;
@@ -448,10 +655,19 @@ pub fn wait_on(term: TermId, regex: Option<&str>, timeout: Duration, just_sent: 
             }
         } else {
             let snap = snapshot()?;
-            let t = snap.terms.get(&term).ok_or_else(|| anyhow!("pane {term} is gone"))?;
+            let t = snap
+                .terms
+                .get(&term)
+                .ok_or_else(|| anyhow!("pane {term} is gone"))?;
             seen_working |= t.status == Status::Working;
             quiet = t.quiet_since.filter(|_| t.status == Status::Working);
-            if let Some(done) = turn_over(t.status, &t.said, &t.checks, seen_working, start.elapsed() > QUIET_TURN_AFTER) {
+            if let Some(done) = turn_over(
+                t.status,
+                &t.said,
+                &t.checks,
+                seen_working,
+                start.elapsed() > QUIET_TURN_AFTER,
+            ) {
                 return Ok(done);
             }
         }
@@ -474,7 +690,12 @@ pub fn wait(pane: Option<TermId>, regex: Option<String>, timeout: u64) -> Result
 
 /// `<app> wait` / `<app> send --wait`: wait, then print the reply (or the screen's end).
 fn wait_print(term: TermId, regex: Option<String>, timeout: u64, just_sent: bool) -> Result<()> {
-    match wait_on(term, regex.as_deref(), Duration::from_secs(timeout), just_sent)? {
+    match wait_on(
+        term,
+        regex.as_deref(),
+        Duration::from_secs(timeout),
+        just_sent,
+    )? {
         Waited::Matched(l) => println!("{l}"),
         Waited::Turn(s, said, check) => {
             if s == Status::Blocked {
@@ -484,7 +705,9 @@ fn wait_print(term: TermId, regex: Option<String>, timeout: u64, just_sent: bool
                 eprintln!("({})", check_line(c));
             }
             if said.trim().is_empty() {
-                if let Reply::Text(screen) = block_on(request(ClientMsg::Query(Query::Read { term })))? {
+                if let Reply::Text(screen) =
+                    block_on(request(ClientMsg::Query(Query::Read { term })))?
+                {
                     let lines: Vec<&str> = screen.trim_end().lines().collect();
                     println!("{}", lines[lines.len().saturating_sub(30)..].join("\n"));
                 }
@@ -497,7 +720,10 @@ fn wait_print(term: TermId, regex: Option<String>, timeout: u64, just_sent: bool
         }
         Waited::TimedOut { quiet } => {
             match quiet {
-                Some(at) => eprintln!("timed out waiting on pane {term}: still working, but quiet for {}", quiet_for(at)),
+                Some(at) => eprintln!(
+                    "timed out waiting on pane {term}: still working, but quiet for {}",
+                    quiet_for(at)
+                ),
                 None => eprintln!("timed out waiting on pane {term}"),
             }
             std::process::exit(2);
@@ -510,13 +736,35 @@ pub fn send(pane: Option<TermId>, text: String, enter: bool) -> Result<()> {
     crate::hidden::check(&text).map_err(|e| anyhow!(e))?;
     let term = resolve_pane(pane)?;
     block_on(async move {
-        let (_r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { concat!("couldn't reach the ", env!("APP_COMMAND"), " server") })?;
-        let data = if text.contains('\n') { format!("\x1b[200~{text}\x1b[201~") } else { text };
-        ipc::send(&mut w, &ClientMsg::Input { term, data: data.into_bytes() }).await?;
+        let (_r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() {
+            "over ssh"
+        } else {
+            concat!("couldn't reach the ", env!("APP_COMMAND"), " server")
+        })?;
+        let data = if text.contains('\n') {
+            format!("\x1b[200~{text}\x1b[201~")
+        } else {
+            text
+        };
+        ipc::send(
+            &mut w,
+            &ClientMsg::Input {
+                term,
+                data: data.into_bytes(),
+            },
+        )
+        .await?;
         if enter {
             // A separate write so the program reads the text before the Enter.
             tokio::time::sleep(Duration::from_millis(30)).await;
-            ipc::send(&mut w, &ClientMsg::Input { term, data: b"\r".to_vec() }).await?;
+            ipc::send(
+                &mut w,
+                &ClientMsg::Input {
+                    term,
+                    data: b"\r".to_vec(),
+                },
+            )
+            .await?;
         }
         tokio::time::sleep(Duration::from_millis(30)).await;
         Ok(())
@@ -533,7 +781,11 @@ pub fn send_keys(pane: Option<TermId>, keys: Vec<String>) -> Result<()> {
         chunks.push(crate::keys::encode(&ev, false));
     }
     block_on(async move {
-        let (_r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { concat!("couldn't reach the ", env!("APP_COMMAND"), " server") })?;
+        let (_r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() {
+            "over ssh"
+        } else {
+            concat!("couldn't reach the ", env!("APP_COMMAND"), " server")
+        })?;
         for data in chunks {
             ipc::send(&mut w, &ClientMsg::Input { term, data }).await?;
             // One key per beat, like a person typing; lets modes change between keys.
@@ -550,7 +802,12 @@ fn join_command(parts: Vec<String>) -> Option<String> {
 pub fn split(pane: Option<TermId>, down: bool, command: Vec<String>) -> Result<()> {
     let term = resolve_pane(pane)?;
     let dir = if down { Dir::Down } else { Dir::Right };
-    self::command(Command::Split { term, dir, cmd: join_command(command), cwd: None })
+    self::command(Command::Split {
+        term,
+        dir,
+        cmd: join_command(command),
+        cwd: None,
+    })
 }
 
 /// `<app> handoff <pane> --to <agent>`: start `to` beside `pane`, in its checkout, with a
@@ -569,16 +826,35 @@ pub fn handoff(pane: TermId, to: String) -> Result<()> {
         Some(_) => Err("git isn't run on the remote machine".into()),
         None => handoff::changed_files(&checkout, t.root.as_deref()),
     };
-    let facts = handoff::Facts { pane, agent: from, task: t.name.clone(), last_prompt: t.summary.clone(), branch: t.branch.clone(), checkout: checkout.clone(), changed, screen };
-    let cmd = cfg.agent_command(Some(&to), None, &handoff::brief(&facts)).map_err(|e| anyhow!(e))?;
+    let facts = handoff::Facts {
+        pane,
+        agent: from,
+        task: t.name.clone(),
+        last_prompt: t.summary.clone(),
+        branch: t.branch.clone(),
+        checkout: checkout.clone(),
+        changed,
+        screen,
+    };
+    let cmd = cfg
+        .agent_command(Some(&to), None, &handoff::brief(&facts))
+        .map_err(|e| anyhow!(e))?;
     let had: Vec<TermId> = before.terms.keys().copied().collect();
-    command(Command::Split { term: pane, dir: Dir::Right, cmd: Some(cmd), cwd: Some(checkout) })?;
+    command(Command::Split {
+        term: pane,
+        dir: Dir::Right,
+        cmd: Some(cmd),
+        cwd: Some(checkout),
+    })?;
     for _ in 0..60 {
         std::thread::sleep(Duration::from_millis(250));
         let Ok(now) = snapshot() else { continue };
         if let Some(new) = handoff::new_pane(&had, now.terms.keys().copied()) {
             let t = &now.terms[&new];
-            println!("handed pane {pane} to {to}: pane {new} in {}", t.top.as_ref().unwrap_or(&t.cwd).display());
+            println!(
+                "handed pane {pane} to {to}: pane {new} in {}",
+                t.top.as_ref().unwrap_or(&t.cwd).display()
+            );
             return Ok(());
         }
     }
@@ -587,8 +863,14 @@ pub fn handoff(pane: TermId, to: String) -> Result<()> {
 }
 
 pub fn new_workspace(path: Option<PathBuf>, name: Option<String>, cmd: Vec<String>) -> Result<()> {
-    let cwd = path.or_else(|| std::env::current_dir().ok()).map(|p| p.canonicalize().unwrap_or(p));
-    command(Command::NewWorkspace { cwd, name, cmd: join_command(cmd) })
+    let cwd = path
+        .or_else(|| std::env::current_dir().ok())
+        .map(|p| p.canonicalize().unwrap_or(p));
+    command(Command::NewWorkspace {
+        cwd,
+        name,
+        cmd: join_command(cmd),
+    })
 }
 
 pub fn focus(pane: TermId) -> Result<()> {
@@ -598,21 +880,45 @@ pub fn focus(pane: TermId) -> Result<()> {
 /// The session you're on, if a server is running.
 pub fn focused_pane() -> Option<TermId> {
     let s = snapshot().ok()?;
-    s.workspaces.iter().find(|w| Some(w.id) == s.active_ws)?.tab().map(|t| t.focus)
+    s.workspaces
+        .iter()
+        .find(|w| Some(w.id) == s.active_ws)?
+        .tab()
+        .map(|t| t.focus)
 }
 
 /// `<app> popup -- <command>`: a floating pane in the folder you're in.
 pub fn popup(cmd: Vec<String>) -> Result<()> {
-    let cmd = join_command(cmd).ok_or_else(|| anyhow!(concat!("what to run: ", env!("APP_COMMAND"), " popup -- fzf")))?;
-    command(Command::Popup { cmd, cwd: std::env::current_dir().ok() })
+    let cmd = join_command(cmd).ok_or_else(|| {
+        anyhow!(concat!(
+            "what to run: ",
+            env!("APP_COMMAND"),
+            " popup -- fzf"
+        ))
+    })?;
+    command(Command::Popup {
+        cmd,
+        cwd: std::env::current_dir().ok(),
+    })
 }
 
 /// `<app> grant <pane> read,write,…|default`.
 pub fn grant(term: TermId, grants: &str) -> Result<()> {
-    let list = (grants.trim() != "default").then(|| grants.split(',').map(|g| g.trim().to_lowercase()).filter(|g| !g.is_empty()).collect::<Vec<_>>());
-    command(Command::Grant { term, grants: list.clone() })?;
+    let list = (grants.trim() != "default").then(|| {
+        grants
+            .split(',')
+            .map(|g| g.trim().to_lowercase())
+            .filter(|g| !g.is_empty())
+            .collect::<Vec<_>>()
+    });
+    command(Command::Grant {
+        term,
+        grants: list.clone(),
+    })?;
     match list {
-        Some(l) if l.is_empty() => println!("pane {term} may do nothing through {APP_COMMAND} but its own work"),
+        Some(l) if l.is_empty() => {
+            println!("pane {term} may do nothing through {APP_COMMAND} but its own work")
+        }
         Some(l) => println!("pane {term} may: {}", l.join(", ")),
         None => println!("pane {term} is back to the default grants ([mcp] grants in config)"),
     }
@@ -621,8 +927,16 @@ pub fn grant(term: TermId, grants: &str) -> Result<()> {
 
 /// `<app> ask-human "…?" -o Yes -o No`: ask the person, wait, print the answer.
 pub fn ask_human(text: String, options: Vec<String>) -> Result<()> {
-    let term = resolve_pane(None).context(concat!("run it in a ", env!("APP_COMMAND"), " pane (the question shows there)"))?;
-    match block_on(request(ClientMsg::Command(Command::AskHuman { term, text, options })))? {
+    let term = resolve_pane(None).context(concat!(
+        "run it in a ",
+        env!("APP_COMMAND"),
+        " pane (the question shows there)"
+    ))?;
+    match block_on(request(ClientMsg::Command(Command::AskHuman {
+        term,
+        text,
+        options,
+    })))? {
         Reply::Text(answer) => {
             println!("{answer}");
             Ok(())
@@ -635,7 +949,13 @@ pub fn ask_human(text: String, options: Vec<String>) -> Result<()> {
 pub fn teach(pane: Option<TermId>) -> Result<()> {
     let term = resolve_pane(pane)?;
     command(Command::TeachAgent { term })?;
-    println!(concat!(env!("APP_COMMAND"), " knows it as an agent now (see [[agents]] in {})"), crate::config::config_path().display());
+    println!(
+        concat!(
+            env!("APP_COMMAND"),
+            " knows it as an agent now (see [[agents]] in {})"
+        ),
+        crate::config::config_path().display()
+    );
     Ok(())
 }
 
@@ -645,7 +965,9 @@ pub fn reveal(pane: TermId) -> Result<()> {
 }
 
 pub fn close(pane: Option<TermId>) -> Result<()> {
-    command(Command::ClosePane { term: resolve_pane(pane)? })
+    command(Command::ClosePane {
+        term: resolve_pane(pane)?,
+    })
 }
 
 /// Whether the app's server is running (for this socket).
@@ -658,7 +980,11 @@ pub fn kill_server(forget: bool) -> Result<()> {
         if forget {
             crate::daemon::forget_session();
         }
-        println!(concat!("no ", env!("APP_COMMAND"), " server is running; nothing to stop"));
+        println!(concat!(
+            "no ",
+            env!("APP_COMMAND"),
+            " server is running; nothing to stop"
+        ));
         return Ok(());
     }
     match command(Command::KillServer { forget }) {
@@ -681,11 +1007,23 @@ pub fn kill_server(forget: bool) -> Result<()> {
 /// Stop this socket's server by its process, for when it's a version that can't be talked
 /// to. Its saved session stays, as with `kill-server`.
 fn stop_server_process() -> Result<u32> {
-    let pid = server_pid().filter(|pid| is_app_daemon(*pid)).ok_or_else(|| {
-        anyhow!(concat!("couldn't find the server's process; stop it yourself (on Linux/macOS: pkill -f \"", env!("APP_COMMAND"), " daemon\"; on Windows: end ", env!("APP_COMMAND"), ".exe in Task Manager)"))
-    })?;
+    let pid = server_pid()
+        .filter(|pid| is_app_daemon(*pid))
+        .ok_or_else(|| {
+            anyhow!(concat!(
+                "couldn't find the server's process; stop it yourself (on Linux/macOS: pkill -f \"",
+                env!("APP_COMMAND"),
+                " daemon\"; on Windows: end ",
+                env!("APP_COMMAND"),
+                ".exe in Task Manager)"
+            ))
+        })?;
     let killed = if cfg!(windows) {
-        crate::proc::run(std::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/F"]))
+        crate::proc::run(std::process::Command::new("taskkill").args([
+            "/PID",
+            &pid.to_string(),
+            "/F",
+        ]))
     } else {
         crate::proc::run(std::process::Command::new("kill").arg(pid.to_string()))
     };
@@ -707,9 +1045,13 @@ fn stop_server_process() -> Result<u32> {
 fn is_app_daemon(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
-        let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else { return false };
+        let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+            return false;
+        };
         let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
-        args.first().is_some_and(|a| a.ends_with(crate::brand::APP_COMMAND.as_bytes())) && args.get(1) == Some(&b"daemon".as_slice())
+        args.first()
+            .is_some_and(|a| a.ends_with(crate::brand::APP_COMMAND.as_bytes()))
+            && args.get(1) == Some(&b"daemon".as_slice())
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -721,21 +1063,36 @@ fn is_app_daemon(pid: u32) -> bool {
 /// This socket's server process: from the id it noted, or (servers too old to note it) the
 /// one running `<app> daemon` for this socket.
 fn server_pid() -> Option<u32> {
-    if let Some(pid) = std::fs::read_to_string(ipc::pid_file()).ok().and_then(|s| s.trim().parse().ok()) {
+    if let Some(pid) = std::fs::read_to_string(ipc::pid_file())
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+    {
         return Some(pid);
     }
     #[cfg(target_os = "linux")]
     {
-        let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
+        let label =
+            std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
         let me = std::process::id();
         for entry in std::fs::read_dir("/proc").ok()?.flatten() {
-            let Some(pid) = entry.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else { continue };
+            let Some(pid) = entry
+                .file_name()
+                .to_str()
+                .and_then(|s| s.parse::<u32>().ok())
+            else {
+                continue;
+            };
             if pid == me {
                 continue;
             }
-            let Ok(cmdline) = std::fs::read(entry.path().join("cmdline")) else { continue };
+            let Ok(cmdline) = std::fs::read(entry.path().join("cmdline")) else {
+                continue;
+            };
             let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
-            let is_daemon = args.first().is_some_and(|a| a.ends_with(crate::brand::APP_COMMAND.as_bytes())) && args.get(1) == Some(&b"daemon".as_slice());
+            let is_daemon = args
+                .first()
+                .is_some_and(|a| a.ends_with(crate::brand::APP_COMMAND.as_bytes()))
+                && args.get(1) == Some(&b"daemon".as_slice());
             if !is_daemon {
                 continue;
             }
@@ -763,9 +1120,17 @@ fn server_pid() -> Option<u32> {
                 concat!("Get-CimInstance Win32_Process -Filter \"Name='", env!("APP_COMMAND"), ".exe'\" | Where-Object { $_.CommandLine -match '\\sdaemon\\s*$' } | ForEach-Object { $_.ProcessId }"),
             ]))
         } else {
-            crate::proc::run(std::process::Command::new("pgrep").args(["-f", concat!(env!("APP_COMMAND"), " daemon$")]))
+            crate::proc::run(
+                std::process::Command::new("pgrep")
+                    .args(["-f", concat!(env!("APP_COMMAND"), " daemon$")]),
+            )
         };
-        let pids: Vec<u32> = list.unwrap_or_default().split_whitespace().filter_map(|p| p.parse().ok()).filter(|p| *p != std::process::id()).collect();
+        let pids: Vec<u32> = list
+            .unwrap_or_default()
+            .split_whitespace()
+            .filter_map(|p| p.parse().ok())
+            .filter(|p| *p != std::process::id())
+            .collect();
         if let [pid] = pids[..] {
             return Some(pid);
         }
@@ -779,22 +1144,42 @@ fn resolve_ws(ws: Option<WsId>) -> Result<WsId> {
         return Ok(ws);
     }
     let snap = snapshot()?;
-    let here = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok().and_then(|s| s.parse().ok());
+    let here = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID"))
+        .ok()
+        .and_then(|s| s.parse().ok());
     here.and_then(|t| snap.locate(t).map(|(w, _)| w.id))
         .or(snap.active_ws)
         .ok_or_else(|| anyhow!("no workspace to target"))
 }
 
-pub fn worktree(branch: String, base: Option<String>, ws: Option<WsId>, cmd: Vec<String>) -> Result<()> {
+pub fn worktree(
+    branch: String,
+    base: Option<String>,
+    ws: Option<WsId>,
+    cmd: Vec<String>,
+) -> Result<()> {
     let ws = resolve_ws(ws)?;
-    command(Command::NewWorktree { ws, branch, base, cmd: join_command(cmd), split: None, from: None })
+    command(Command::NewWorktree {
+        ws,
+        branch,
+        base,
+        cmd: join_command(cmd),
+        split: None,
+        from: None,
+    })
 }
 
 fn codex_status_hooks_installed(text: &str, windows: bool) -> bool {
     let Ok(config) = text.parse::<toml_edit::DocumentMut>() else {
         return false;
     };
-    [("SessionStart", true), ("SubagentStart", false), ("SubagentStop", false)].into_iter().all(|(event, same_status)| {
+    [
+        ("SessionStart", true),
+        ("SubagentStart", false),
+        ("SubagentStop", false),
+    ]
+    .into_iter()
+    .all(|(event, same_status)| {
         config
             .get("hooks")
             .and_then(toml_edit::Item::as_table)
@@ -807,7 +1192,9 @@ fn codex_status_hooks_installed(text: &str, windows: bool) -> bool {
                         .and_then(toml_edit::Item::as_array_of_tables)
                         .is_some_and(|handlers| {
                             handlers.iter().any(|handler| {
-                                if handler.get("type").and_then(toml_edit::Item::as_str) != Some("command") {
+                                if handler.get("type").and_then(toml_edit::Item::as_str)
+                                    != Some("command")
+                                {
                                     return false;
                                 }
                                 let command_ok = handler
@@ -820,13 +1207,18 @@ fn codex_status_hooks_installed(text: &str, windows: bool) -> bool {
                                             command.ends_with(" hook codex")
                                         }
                                     });
-                                let windows_ok = !windows || handler
-                                    .get("commandWindows")
-                                    .and_then(toml_edit::Item::as_str)
-                                    .is_some_and(|command| {
-                                        command.starts_with("& ")
-                                            && if same_status { command.ends_with(" hook codex --status same") } else { command.ends_with(" hook codex") }
-                                    });
+                                let windows_ok = !windows
+                                    || handler
+                                        .get("commandWindows")
+                                        .and_then(toml_edit::Item::as_str)
+                                        .is_some_and(|command| {
+                                            command.starts_with("& ")
+                                                && if same_status {
+                                                    command.ends_with(" hook codex --status same")
+                                                } else {
+                                                    command.ends_with(" hook codex")
+                                                }
+                                        });
                                 command_ok && windows_ok
                             })
                         })
@@ -834,7 +1226,6 @@ fn codex_status_hooks_installed(text: &str, windows: bool) -> bool {
             })
     })
 }
-
 
 /// `<app> doctor`: each thing the app relies on, ✓ or what to do about it.
 pub fn doctor() -> Result<()> {
@@ -854,45 +1245,111 @@ pub fn doctor() -> Result<()> {
         let mut c = std::process::Command::new(cmd);
         c.args(args);
         let out = c.output().ok().filter(|o| o.status.success())?;
-        Some(String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("").trim().to_string())
+        Some(
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string(),
+        )
     };
     let on_path = |name: &str| -> Option<String> {
-        let names = if cfg!(windows) { vec![format!("{name}.exe"), format!("{name}.cmd"), format!("{name}.ps1"), name.to_string()] } else { vec![name.to_string()] };
+        let names = if cfg!(windows) {
+            vec![
+                format!("{name}.exe"),
+                format!("{name}.cmd"),
+                format!("{name}.ps1"),
+                name.to_string(),
+            ]
+        } else {
+            vec![name.to_string()]
+        };
         std::env::var_os("PATH").and_then(|p| {
-            std::env::split_paths(&p).find_map(|d| names.iter().map(|n| d.join(n)).find(|f| f.is_file()).map(|f| f.display().to_string()))
+            std::env::split_paths(&p).find_map(|d| {
+                names
+                    .iter()
+                    .map(|n| d.join(n))
+                    .find(|f| f.is_file())
+                    .map(|f| f.display().to_string())
+            })
         })
     };
 
-    println!(concat!(env!("APP_COMMAND"), " {}  (protocol {})\n"), env!("CARGO_PKG_VERSION"), PROTOCOL_VERSION);
+    println!(
+        concat!(env!("APP_COMMAND"), " {}  (protocol {})\n"),
+        env!("CARGO_PKG_VERSION"),
+        PROTOCOL_VERSION
+    );
 
     // Config
     let path = crate::config::config_path();
     match crate::config::Config::load() {
         Ok(_) if path.exists() => line(Some(true), "config", path.display().to_string()),
-        Ok(_) => line(None, "config", format!(concat!("none yet (defaults); `", env!("APP_COMMAND"), " config init` writes one at {}"), path.display())),
-        Err(e) => line(Some(false), "config", format!("{e:#}  ({})", path.display())),
+        Ok(_) => line(
+            None,
+            "config",
+            format!(
+                concat!(
+                    "none yet (defaults); `",
+                    env!("APP_COMMAND"),
+                    " config init` writes one at {}"
+                ),
+                path.display()
+            ),
+        ),
+        Err(e) => line(
+            Some(false),
+            "config",
+            format!("{e:#}  ({})", path.display()),
+        ),
     }
     let (cfg, _) = crate::config::Config::load_or_default();
 
     // Server
     let server = block_on(async { ipc::open(false).await });
     match server {
-        Ok(_) => line(Some(true), "server", format!("running ({})", ipc::socket_id())),
+        Ok(_) => line(
+            Some(true),
+            "server",
+            format!("running ({})", ipc::socket_id()),
+        ),
         Err(e) if format!("{e:#}").contains("protocol") => {
             line(Some(false), "server", format!("{e:#}"));
-            println!(concat!("{:27}fix: run ", env!("APP_COMMAND"), "; it restarts the server itself (or `", env!("APP_COMMAND"), " kill-server`)"), "");
+            println!(
+                concat!(
+                    "{:27}fix: run ",
+                    env!("APP_COMMAND"),
+                    "; it restarts the server itself (or `",
+                    env!("APP_COMMAND"),
+                    " kill-server`)"
+                ),
+                ""
+            );
         }
-        Err(_) => line(None, "server", concat!("not running (it starts with `", env!("APP_COMMAND"), "`)").into()),
+        Err(_) => line(
+            None,
+            "server",
+            concat!("not running (it starts with `", env!("APP_COMMAND"), "`)").into(),
+        ),
     }
 
     // Tools
     match run("git", &["--version"]) {
         Some(v) => line(Some(true), "git", v),
-        None => line(Some(false), "git", "not found; worktrees, Changes and branches need it".into()),
+        None => line(
+            Some(false),
+            "git",
+            "not found; worktrees, Changes and branches need it".into(),
+        ),
     }
     match run("gh", &["--version"]) {
         Some(v) => line(Some(true), "gh (GitHub CLI)", v),
-        None => line(None, "gh (GitHub CLI)", "not found; PRs and GitHub issues use it (optional)".into()),
+        None => line(
+            None,
+            "gh (GitHub CLI)",
+            "not found; PRs and GitHub issues use it (optional)".into(),
+        ),
     }
     let shell = cfg.shell_command();
     let shell_ok = on_path(&shell[0]).is_some() || std::path::Path::new(&shell[0]).is_file();
@@ -901,14 +1358,36 @@ pub fn doctor() -> Result<()> {
     // Agents
     let mut found = Vec::new();
     for a in [
-        "claude", "codex", "gemini", "opencode", "cursor-agent", "copilot", "amp", "qwen",
-        "aider", "grok", "auggie", "kimi", "pi", "omp", "kilo", "mastracode",
+        "claude",
+        "codex",
+        "gemini",
+        "opencode",
+        "cursor-agent",
+        "copilot",
+        "amp",
+        "qwen",
+        "aider",
+        "grok",
+        "auggie",
+        "kimi",
+        "pi",
+        "omp",
+        "kilo",
+        "mastracode",
     ] {
         if on_path(a).is_some() {
             found.push(a);
         }
     }
-    line(Some(!found.is_empty()), "agents on PATH", if found.is_empty() { "none found (claude, codex, gemini, …)".into() } else { found.join(", ") });
+    line(
+        Some(!found.is_empty()),
+        "agents on PATH",
+        if found.is_empty() {
+            "none found (claude, codex, gemini, …)".into()
+        } else {
+            found.join(", ")
+        },
+    );
 
     // Codex child sessions are only attached to their parent pane after these machine-local hooks run.
     if found.contains(&"codex") {
@@ -918,13 +1397,46 @@ pub fn doctor() -> Result<()> {
                 line(Some(true), "codex subagent hooks", "installed".into());
             }
             Ok(text) if text.parse::<toml_edit::DocumentMut>().is_err() => {
-                line(Some(false), "codex subagent hooks", format!(concat!("{} is invalid TOML; repair it before `", env!("APP_COMMAND"), " integrate codex`"), path.display()));
+                line(
+                    Some(false),
+                    "codex subagent hooks",
+                    format!(
+                        concat!(
+                            "{} is invalid TOML; repair it before `",
+                            env!("APP_COMMAND"),
+                            " integrate codex`"
+                        ),
+                        path.display()
+                    ),
+                );
             }
-            Ok(_) => line(Some(false), "codex subagent hooks", concat!("missing: run `", env!("APP_COMMAND"), " integrate` (restart Codex to load them)").into()),
+            Ok(_) => line(
+                Some(false),
+                "codex subagent hooks",
+                concat!(
+                    "missing: run `",
+                    env!("APP_COMMAND"),
+                    " integrate` (restart Codex to load them)"
+                )
+                .into(),
+            ),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                line(Some(false), "codex subagent hooks", concat!("missing: run `", env!("APP_COMMAND"), " integrate` (restart Codex to load them)").into());
+                line(
+                    Some(false),
+                    "codex subagent hooks",
+                    concat!(
+                        "missing: run `",
+                        env!("APP_COMMAND"),
+                        " integrate` (restart Codex to load them)"
+                    )
+                    .into(),
+                );
             }
-            Err(error) => line(Some(false), "codex subagent hooks", format!("couldn't read {}: {error}", path.display())),
+            Err(error) => line(
+                Some(false),
+                "codex subagent hooks",
+                format!("couldn't read {}: {error}", path.display()),
+            ),
         }
     }
 
@@ -958,7 +1470,9 @@ pub fn doctor() -> Result<()> {
             line(
                 None,
                 &format!("{agent} status adapter"),
-                format!("not installed; fallback detection remains active; run `{APP_COMMAND} integrate`"),
+                format!(
+                    "not installed; fallback detection remains active; run `{APP_COMMAND} integrate`"
+                ),
             );
         }
     }
@@ -969,65 +1483,183 @@ pub fn doctor() -> Result<()> {
         let hooked = settings.contains("hook claude");
         let stale = stale_claude_hooks();
         match (hooked, stale.first()) {
-            (false, _) => line(Some(false), "claude status hooks", concat!("missing: run `", env!("APP_COMMAND"), " integrate` (exact working / needs-you / done)").into()),
+            (false, _) => line(
+                Some(false),
+                "claude status hooks",
+                concat!(
+                    "missing: run `",
+                    env!("APP_COMMAND"),
+                    " integrate` (exact working / needs-you / done)"
+                )
+                .into(),
+            ),
             // Another the app can't talk to this one's server: every agent would look idle.
-            (true, Some(other)) => line(Some(false), "claude status hooks", format!("they run another {APP_COMMAND} ({other}); `{APP_COMMAND} integrate claude` (or restart the server) fixes it")),
+            (true, Some(other)) => line(
+                Some(false),
+                "claude status hooks",
+                format!(
+                    "they run another {APP_COMMAND} ({other}); `{APP_COMMAND} integrate claude` (or restart the server) fixes it"
+                ),
+            ),
             (true, None) => line(Some(true), "claude status hooks", "installed".into()),
         }
         // Any hook whose program is gone (often an old hydra's): Claude shows "hook error" on
         // every turn it runs in, and only removing or repointing it stops that.
         let mut broken = Vec::new();
         for file in claude_settings_files() {
-            let Some(root) = std::fs::read_to_string(&file).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()) else { continue };
+            let Some(root) = std::fs::read_to_string(&file)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+            else {
+                continue;
+            };
             for cmd in broken_hooks_in(&root, |p| p.exists(), |n| on_path(n).is_some()) {
                 broken.push(format!("{} in {}", program_of(&cmd), file.display()));
             }
         }
         match broken.first() {
-            None => line(Some(true), "claude hooks run", "every hook's program is there".into()),
+            None => line(
+                Some(true),
+                "claude hooks run",
+                "every hook's program is there".into(),
+            ),
             Some(first) => line(
                 Some(false),
                 "claude hooks run",
-                format!("{} missing ({first}{}); `{APP_COMMAND} integrate claude` fixes {APP_COMMAND}'s own, remove the rest", broken.len(), if broken.len() > 1 { ", …" } else { "" }),
+                format!(
+                    "{} missing ({first}{}); `{APP_COMMAND} integrate claude` fixes {APP_COMMAND}'s own, remove the rest",
+                    broken.len(),
+                    if broken.len() > 1 { ", …" } else { "" }
+                ),
             ),
         }
         let claude_json = std::fs::read_to_string(claude_json()).unwrap_or_default();
-        let mcp = claude_json.contains(concat!("\"", env!("APP_COMMAND"), "\"")) && claude_json.contains("\"mcp\"");
-        let old = serde_json::from_str::<Value>(&claude_json).map(|root| old_mcp_names(&root)).unwrap_or_default();
+        let mcp = claude_json.contains(concat!("\"", env!("APP_COMMAND"), "\""))
+            && claude_json.contains("\"mcp\"");
+        let old = serde_json::from_str::<Value>(&claude_json)
+            .map(|root| old_mcp_names(&root))
+            .unwrap_or_default();
         match old.first() {
             // Claude names the server in every call it shows ("Called hydra"), and may run an old program.
-            Some(name) => line(Some(false), concat!(env!("APP_COMMAND"), " MCP for claude"), format!("still registered as `{name}`: `{APP_COMMAND} integrate mcp` renames it")),
-            None => line(if mcp { Some(true) } else { None }, concat!(env!("APP_COMMAND"), " MCP for claude"), if mcp { "registered".into() } else { concat!("not set up: `", env!("APP_COMMAND"), " integrate mcp` lets agents see each other (optional)").into() }),
+            Some(name) => line(
+                Some(false),
+                concat!(env!("APP_COMMAND"), " MCP for claude"),
+                format!("still registered as `{name}`: `{APP_COMMAND} integrate mcp` renames it"),
+            ),
+            None => line(
+                if mcp { Some(true) } else { None },
+                concat!(env!("APP_COMMAND"), " MCP for claude"),
+                if mcp {
+                    "registered".into()
+                } else {
+                    concat!(
+                        "not set up: `",
+                        env!("APP_COMMAND"),
+                        " integrate mcp` lets agents see each other (optional)"
+                    )
+                    .into()
+                },
+            ),
         }
     }
     let exe = this_exe().unwrap_or_default();
-    for agent in mcp_config::agents().into_iter().filter(mcp_config::McpAgent::installed) {
+    for agent in mcp_config::agents()
+        .into_iter()
+        .filter(mcp_config::McpAgent::installed)
+    {
         let label = format!("{APP_COMMAND} MCP for {}", agent.id);
         match mcp_config::registered_command(&agent) {
             Some(cmd) if cmd == exe => line(Some(true), &label, "registered".into()),
-            Some(cmd) => line(Some(false), &label, format!("runs {cmd}; `{APP_COMMAND} integrate mcp` points it at this one")),
-            None => line(None, &label, concat!("not set up: `", env!("APP_COMMAND"), " integrate mcp` lets agents see each other (optional)").into()),
+            Some(cmd) => line(
+                Some(false),
+                &label,
+                format!("runs {cmd}; `{APP_COMMAND} integrate mcp` points it at this one"),
+            ),
+            None => line(
+                None,
+                &label,
+                concat!(
+                    "not set up: `",
+                    env!("APP_COMMAND"),
+                    " integrate mcp` lets agents see each other (optional)"
+                )
+                .into(),
+            ),
         }
     }
 
     // Terminal
-    let term = std::env::var("TERM_PROGRAM").or_else(|_| std::env::var("TERM")).unwrap_or_else(|_| if std::env::var("WT_SESSION").is_ok() { "Windows Terminal".into() } else { "unknown".into() });
-    let truecolor = std::env::var("COLORTERM").is_ok_and(|c| c.contains("truecolor") || c.contains("24bit")) || std::env::var("WT_SESSION").is_ok();
-    line(if truecolor { Some(true) } else { None }, "terminal", format!("{term}{}", if truecolor { ", true colour" } else { " (colours may look off without true colour)" }));
+    let term = std::env::var("TERM_PROGRAM")
+        .or_else(|_| std::env::var("TERM"))
+        .unwrap_or_else(|_| {
+            if std::env::var("WT_SESSION").is_ok() {
+                "Windows Terminal".into()
+            } else {
+                "unknown".into()
+            }
+        });
+    let truecolor = std::env::var("COLORTERM")
+        .is_ok_and(|c| c.contains("truecolor") || c.contains("24bit"))
+        || std::env::var("WT_SESSION").is_ok();
+    line(
+        if truecolor { Some(true) } else { None },
+        "terminal",
+        format!(
+            "{term}{}",
+            if truecolor {
+                ", true colour"
+            } else {
+                " (colours may look off without true colour)"
+            }
+        ),
+    );
     if let Ok((w, h)) = crossterm::terminal::size() {
-        line(Some(w >= 100 && h >= 30), "window size", format!("{w}×{h}{}", if w < 100 || h < 30 { concat!(" (", env!("APP_COMMAND"), " wants at least 100×30)") } else { "" }));
+        line(
+            Some(w >= 100 && h >= 30),
+            "window size",
+            format!(
+                "{w}×{h}{}",
+                if w < 100 || h < 30 {
+                    concat!(" (", env!("APP_COMMAND"), " wants at least 100×30)")
+                } else {
+                    ""
+                }
+            ),
+        );
     }
 
     // Data and sync
     let data = crate::config::data_dir();
-    let writable = std::fs::create_dir_all(&data).is_ok() && std::fs::write(data.join(".doctor"), b"ok").is_ok();
+    let writable = std::fs::create_dir_all(&data).is_ok()
+        && std::fs::write(data.join(".doctor"), b"ok").is_ok();
     let _ = std::fs::remove_file(data.join(".doctor"));
     line(Some(writable), "data folder", data.display().to_string());
-    line(None, "sync", if crate::sync::enabled() { format!("on ({})", crate::sync::dir().display()) } else { concat!("off (`", env!("APP_COMMAND"), " sync setup` shares config and ideas)").into() });
-    if let Some(ed) = Some(cfg.editor.clone()).filter(|e| !e.is_empty()).or_else(|| std::env::var("VISUAL").ok()).or_else(|| std::env::var("EDITOR").ok()) {
+    line(
+        None,
+        "sync",
+        if crate::sync::enabled() {
+            format!("on ({})", crate::sync::dir().display())
+        } else {
+            concat!(
+                "off (`",
+                env!("APP_COMMAND"),
+                " sync setup` shares config and ideas)"
+            )
+            .into()
+        },
+    );
+    if let Some(ed) = Some(cfg.editor.clone())
+        .filter(|e| !e.is_empty())
+        .or_else(|| std::env::var("VISUAL").ok())
+        .or_else(|| std::env::var("EDITOR").ok())
+    {
         line(Some(true), "editor", ed);
     } else {
-        line(None, "editor", "none set (editor = \"code\" in config, or $EDITOR)".into());
+        line(
+            None,
+            "editor",
+            "none set (editor = \"code\" in config, or $EDITOR)".into(),
+        );
     }
 
     println!();
@@ -1039,17 +1671,32 @@ pub fn doctor() -> Result<()> {
     Ok(())
 }
 
-
 /// Run by an agent inside a pane: make a worktree and move this agent into it.
 pub fn move_to_worktree(branch: String) -> Result<()> {
     let term: TermId = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID"))
         .ok()
         .and_then(|s| s.parse().ok())
-        .ok_or_else(|| anyhow!(concat!("run this from inside a ", env!("APP_COMMAND"), " pane (an agent running in ", env!("APP_COMMAND"), ")")))?;
+        .ok_or_else(|| {
+            anyhow!(concat!(
+                "run this from inside a ",
+                env!("APP_COMMAND"),
+                " pane (an agent running in ",
+                env!("APP_COMMAND"),
+                ")"
+            ))
+        })?;
     let branch = Some(branch.trim().to_string()).filter(|b| !b.is_empty());
     block_on(async move {
-        let (mut r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { concat!("couldn't reach the ", env!("APP_COMMAND"), " server") })?;
-        ipc::send(&mut w, &ClientMsg::Command(Command::MoveToWorktree { term, branch })).await?;
+        let (mut r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() {
+            "over ssh"
+        } else {
+            concat!("couldn't reach the ", env!("APP_COMMAND"), " server")
+        })?;
+        ipc::send(
+            &mut w,
+            &ClientMsg::Command(Command::MoveToWorktree { term, branch }),
+        )
+        .await?;
         loop {
             match ipc::recv_server(&mut r).await? {
                 Some(ServerMsg::Notice(n)) => println!("{n}"),
@@ -1063,7 +1710,11 @@ pub fn move_to_worktree(branch: String) -> Result<()> {
 }
 
 pub fn worktree_remove(ws: Option<WsId>, force: bool) -> Result<()> {
-    command(Command::RemoveWorktree { ws: resolve_ws(ws)?, force, delete_branch: false })
+    command(Command::RemoveWorktree {
+        ws: resolve_ws(ws)?,
+        force,
+        delete_branch: false,
+    })
 }
 
 pub fn config_init() -> Result<()> {
@@ -1083,8 +1734,14 @@ pub fn config_init() -> Result<()> {
 
 /// Map a Claude Code (or Codex, same dialect) hook payload to a status.
 pub fn status_from_hook(payload: &Value) -> Option<HookStatus> {
-    let event = payload.get("hook_event_name").and_then(Value::as_str).unwrap_or("");
-    let tool = payload.get("tool_name").and_then(Value::as_str).unwrap_or("");
+    let event = payload
+        .get("hook_event_name")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let tool = payload
+        .get("tool_name")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     Some(match event {
         "PreToolUse" if tool == "AskUserQuestion" => HookStatus::Blocked,
         "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "SubagentStart" => HookStatus::Working,
@@ -1094,10 +1751,19 @@ pub fn status_from_hook(payload: &Value) -> Option<HookStatus> {
         "SubagentStop" | "SubagentEnd" => HookStatus::Same,
         "PermissionRequest" => HookStatus::Blocked,
         "Notification" => {
-            let kind = payload.get("notification_type").and_then(Value::as_str).unwrap_or("");
-            let msg = payload.get("message").and_then(Value::as_str).unwrap_or("").to_lowercase();
+            let kind = payload
+                .get("notification_type")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let msg = payload
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_lowercase();
             match kind {
-                "permission_prompt" | "elicitation_dialog" | "ToolPermission" => HookStatus::Blocked,
+                "permission_prompt" | "elicitation_dialog" | "ToolPermission" => {
+                    HookStatus::Blocked
+                }
                 "idle_prompt" => HookStatus::Done,
                 _ if msg.contains("permission") => HookStatus::Blocked,
                 _ => return None,
@@ -1112,22 +1778,33 @@ pub fn status_from_hook(payload: &Value) -> Option<HookStatus> {
         "pi.session_start" => HookStatus::Idle,
         "pi.session_shutdown" => HookStatus::Gone,
         // opencode (its plugin passes the event).
-        "" if payload.get("type").and_then(Value::as_str).is_some_and(|t| t.contains('.')) => {
+        "" if payload
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|t| t.contains('.')) =>
+        {
             let ty = payload.get("type").and_then(Value::as_str).unwrap_or("");
-            let state = payload.pointer("/properties/status/type").and_then(Value::as_str).unwrap_or("");
+            let state = payload
+                .pointer("/properties/status/type")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             match ty {
                 "session.status" if state == "busy" || state == "retry" => HookStatus::Working,
                 "session.status" if state == "idle" => HookStatus::Done,
                 "session.idle" | "session.error" => HookStatus::Done,
                 "permission.asked" | "permission.updated" | "question.asked" => HookStatus::Blocked,
-                "permission.replied" | "question.replied" | "question.rejected" => HookStatus::Working,
+                "permission.replied" | "question.replied" | "question.rejected" => {
+                    HookStatus::Working
+                }
                 "session.created" => HookStatus::Idle,
                 "session.deleted" => HookStatus::Gone,
                 _ => return None,
             }
         }
         // Codex `notify`.
-        _ if payload.get("type").and_then(Value::as_str) == Some("agent-turn-complete") => HookStatus::Done,
+        _ if payload.get("type").and_then(Value::as_str) == Some("agent-turn-complete") => {
+            HookStatus::Done
+        }
         _ => return None,
     })
 }
@@ -1182,10 +1859,15 @@ fn parse_status(s: &str) -> Option<HookStatus> {
 
 pub fn hook(agent: &str, status: Option<&str>, payload: Option<&str>) -> Result<()> {
     // Inert outside the app, so global hooks don't bother other terminals.
-    let Some(term) = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok().and_then(|s| s.parse::<TermId>().ok()) else {
+    let Some(term) = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID"))
+        .ok()
+        .and_then(|s| s.parse::<TermId>().ok())
+    else {
         return Ok(());
     };
-    let mut payload_json = payload.and_then(|raw| serde_json::from_str(raw).ok()).unwrap_or(Value::Null);
+    let mut payload_json = payload
+        .and_then(|raw| serde_json::from_str(raw).ok())
+        .unwrap_or(Value::Null);
     let status = match status {
         Some(s) => parse_status(s).ok_or_else(|| anyhow!("unknown status {s}"))?,
         None => {
@@ -1209,11 +1891,27 @@ pub fn hook(agent: &str, status: Option<&str>, payload: Option<&str>) -> Result<
         use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
         let me = Pid::from_u32(std::process::id());
         let mut sys = System::new();
-        sys.refresh_processes_specifics(ProcessesToUpdate::Some(&[me]), true, ProcessRefreshKind::nothing());
-        sys.process(me).and_then(|p| p.parent()).map(|p| p.as_u32()).unwrap_or(0)
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[me]),
+            true,
+            ProcessRefreshKind::nothing(),
+        );
+        sys.process(me)
+            .and_then(|p| p.parent())
+            .map(|p| p.as_u32())
+            .unwrap_or(0)
     };
     let token = std::env::var(concat!(env!("APP_ENV"), "_PANE_TOKEN")).unwrap_or_default();
-    let message = hook_message(HookOrigin { term, agent: agent.to_string(), pid, token }, &payload_json, status);
+    let message = hook_message(
+        HookOrigin {
+            term,
+            agent: agent.to_string(),
+            pid,
+            token,
+        },
+        &payload_json,
+        status,
+    );
     block_on(async move {
         tokio::time::timeout(Duration::from_secs(2), async {
             let (_r, mut w) = ipc::open(false).await?;
@@ -1234,23 +1932,42 @@ struct HookOrigin {
 /// Claude's hook payloads carry no task for a subagent, but it writes the description the parent
 /// gave it next to the subagent's transcript. It may not exist yet at SubagentStart; a later
 /// hook from inside the subagent finds it.
-fn subagent_description(agent: &str, transcript: Option<&std::path::Path>, agent_id: Option<&str>) -> Option<String> {
+fn subagent_description(
+    agent: &str,
+    transcript: Option<&std::path::Path>,
+    agent_id: Option<&str>,
+) -> Option<String> {
     if agent != "claude" {
         return None;
     }
     let transcript = transcript?;
-    let meta = if transcript.file_stem()?.to_string_lossy().starts_with("agent-") {
+    let meta = if transcript
+        .file_stem()?
+        .to_string_lossy()
+        .starts_with("agent-")
+    {
         transcript.with_extension("meta.json")
     } else {
         let id = agent_id?.trim_start_matches("agent-");
-        transcript.with_extension("").join("subagents").join(format!("agent-{id}.meta.json"))
+        transcript
+            .with_extension("")
+            .join("subagents")
+            .join(format!("agent-{id}.meta.json"))
     };
     let meta: Value = serde_json::from_str(&std::fs::read_to_string(meta).ok()?).ok()?;
-    meta.get("description")?.as_str().map(str::trim).filter(|d| !d.is_empty()).map(str::to_string)
+    meta.get("description")?
+        .as_str()
+        .map(str::trim)
+        .filter(|d| !d.is_empty())
+        .map(str::to_string)
 }
 
 fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) -> ClientMsg {
-    let field = |names: &[&str]| names.iter().find_map(|n| payload_json.get(*n)?.as_str().map(str::to_string));
+    let field = |names: &[&str]| {
+        names
+            .iter()
+            .find_map(|n| payload_json.get(*n)?.as_str().map(str::to_string))
+    };
     let session = field(&["session_id", "thread-id", "thread_id", "conversation_id"]);
     let cwd = field(&["cwd"]).map(PathBuf::from);
     let mut event = field(&["hook_event_name", "type"]).unwrap_or_default();
@@ -1259,56 +1976,145 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     // news about that subagent, not about the session: it keeps the subagent listed as
     // running, and only a question it asks changes the session's state. Its transcript's
     // name, model and last words aren't the session's.
-    let tracks_helpers = matches!(origin.agent.as_str(), "claude" | "codex" | "qwen" | "kimi" | "mastracode" | "opencode");
-    let lifecycle = tracks_helpers && matches!(event.as_str(), "SubagentStart" | "SubagentStop" | "SubagentEnd");
-    let inner_id = tracks_helpers.then(|| field(&["agent_id"]).or_else(|| {
-        transcript.as_deref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()).filter(|s| s.starts_with("agent-"))
-    })).flatten();
+    let tracks_helpers = matches!(
+        origin.agent.as_str(),
+        "claude" | "codex" | "qwen" | "kimi" | "mastracode" | "opencode"
+    );
+    let lifecycle = tracks_helpers
+        && matches!(
+            event.as_str(),
+            "SubagentStart" | "SubagentStop" | "SubagentEnd"
+        );
+    let inner_id = tracks_helpers
+        .then(|| {
+            field(&["agent_id"]).or_else(|| {
+                transcript
+                    .as_deref()
+                    .and_then(|p| p.file_stem())
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .filter(|s| s.starts_with("agent-"))
+            })
+        })
+        .flatten();
     let inner = !lifecycle && inner_id.is_some();
-    let status = if inner && status != HookStatus::Blocked { HookStatus::Same } else { status };
+    let status = if inner && status != HookStatus::Blocked {
+        HookStatus::Same
+    } else {
+        status
+    };
     let subagent = (lifecycle || inner).then(|| Subagent {
-        id: field(&["agent_id", "subagent_id", "tool_use_id"]).or(inner_id).unwrap_or_default(),
-        kind: field(&["agent_type", "subagent_type", "agent_name"]).unwrap_or_else(|| "subagent".into()),
+        id: field(&["agent_id", "subagent_id", "tool_use_id"])
+            .or(inner_id)
+            .unwrap_or_default(),
+        kind: field(&["agent_type", "subagent_type", "agent_name"])
+            .unwrap_or_else(|| "subagent".into()),
         start: !matches!(event.as_str(), "SubagentStop" | "SubagentEnd"),
-        reported_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
-        task: field(&["task", "description", "prompt"]).or_else(|| subagent_description(&origin.agent, transcript.as_deref(), field(&["agent_id"]).as_deref())).map(|task| one_line(&task, 240)),
+        reported_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        task: field(&["task", "description", "prompt"])
+            .or_else(|| {
+                subagent_description(
+                    &origin.agent,
+                    transcript.as_deref(),
+                    field(&["agent_id"]).as_deref(),
+                )
+            })
+            .map(|task| one_line(&task, 240)),
         model: field(&["model", "model_id"]),
         effort: field(&["effort", "reasoning_effort"]),
-        activity: field(&["tool_name"]).map(|tool| format!("{event}: {tool}")).or_else(|| Some(event.clone())),
+        activity: field(&["tool_name"])
+            .map(|tool| format!("{event}: {tool}"))
+            .or_else(|| Some(event.clone())),
     });
     let parent_facts = !inner;
     let turn_facts = parent_facts && !lifecycle;
-    let prompt = field(&["prompt"]).filter(|_| turn_facts).map(|p| one_line(&p, 160));
+    let prompt = field(&["prompt"])
+        .filter(|_| turn_facts)
+        .map(|p| one_line(&p, 160));
     let transcript = transcript.filter(|_| turn_facts);
-    let (model, name) = transcript.as_deref().map(transcript_facts).unwrap_or_default();
+    let (model, name) = transcript
+        .as_deref()
+        .map(transcript_facts)
+        .unwrap_or_default();
     if event == "Notification"
         && let Some(kind) = field(&["notification_type"])
     {
         event = format!("Notification:{kind}");
     }
-    let background = if event == "Stop" { running_background_tasks(payload_json) } else { Vec::new() };
+    let background = if event == "Stop" {
+        running_background_tasks(payload_json)
+    } else {
+        Vec::new()
+    };
     let said = field(&["last_assistant_message", "last-assistant-message"])
         .or_else(|| transcript.as_deref().and_then(last_assistant_text))
         .map(|s| s.trim().chars().take(2000).collect::<String>())
         .filter(|s| !s.is_empty() && turn_facts);
     let session = session.filter(|_| parent_facts);
     let cwd = cwd.filter(|_| parent_facts);
-    let HookOrigin { term, agent, pid, token } = origin;
-    ClientMsg::Hook { term, agent, status, session, cwd, prompt, said, subagent, event, pid, token, transcript, model, name, background }
+    let HookOrigin {
+        term,
+        agent,
+        pid,
+        token,
+    } = origin;
+    ClientMsg::Hook {
+        term,
+        agent,
+        status,
+        session,
+        cwd,
+        prompt,
+        said,
+        subagent,
+        event,
+        pid,
+        token,
+        transcript,
+        model,
+        name,
+        background,
+    }
 }
 
 /// Task states Claude might report for background work that is over. Its docs don't list the
 /// values, so anything else (or none) counts as still running.
-const BACKGROUND_TASK_OVER: &[&str] = &["completed", "complete", "done", "finished", "failed", "error", "killed", "stopped", "cancelled", "canceled"];
+const BACKGROUND_TASK_OVER: &[&str] = &[
+    "completed",
+    "complete",
+    "done",
+    "finished",
+    "failed",
+    "error",
+    "killed",
+    "stopped",
+    "cancelled",
+    "canceled",
+];
 
 /// The ids of the background tasks Claude's Stop says are still in flight; it wakes itself when
 /// one ends.
 fn running_background_tasks(payload: &Value) -> Vec<String> {
-    let tasks = payload.get("background_tasks").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
+    let tasks = payload
+        .get("background_tasks")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
     tasks
         .iter()
-        .filter(|task| task.get("status").and_then(Value::as_str).is_none_or(|s| !BACKGROUND_TASK_OVER.contains(&s.to_ascii_lowercase().as_str())))
-        .filter_map(|task| ["id", "command", "description"].iter().find_map(|k| task.get(*k)?.as_str().filter(|v| !v.is_empty())).map(str::to_string))
+        .filter(|task| {
+            task.get("status")
+                .and_then(Value::as_str)
+                .is_none_or(|s| !BACKGROUND_TASK_OVER.contains(&s.to_ascii_lowercase().as_str()))
+        })
+        .filter_map(|task| {
+            ["id", "command", "description"]
+                .iter()
+                .find_map(|k| task.get(*k)?.as_str().filter(|v| !v.is_empty()))
+                .map(str::to_string)
+        })
         .collect()
 }
 
@@ -1326,14 +2132,19 @@ const GEMINI_EVENTS: &[(&str, Option<&str>)] = &[
 /// Qwen Code's settings.json. `$QWEN_HOME` names Qwen's config folder itself (qwen-code
 /// `Storage.getGlobalQwenDir`), unlike `GEMINI_CLI_HOME`, which stands in for the home folder.
 fn qwen_settings() -> PathBuf {
-    let home = directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf()).unwrap_or_default();
+    let home = directories::BaseDirs::new()
+        .map(|d| d.home_dir().to_path_buf())
+        .unwrap_or_default();
     qwen_settings_in(std::env::var_os("QWEN_HOME").map(PathBuf::from), &home)
 }
 
 fn qwen_settings_in(qwen_home: Option<PathBuf>, home: &std::path::Path) -> PathBuf {
     let dir = match qwen_home.filter(|dir| !dir.as_os_str().is_empty()) {
         // Qwen's resolvePath expands a leading `~`, as a shell would have.
-        Some(dir) => dir.strip_prefix("~").map(|rest| home.join(rest)).unwrap_or(dir),
+        Some(dir) => dir
+            .strip_prefix("~")
+            .map(|rest| home.join(rest))
+            .unwrap_or(dir),
         None => home.join(".qwen"),
     };
     dir.join("settings.json")
@@ -1343,7 +2154,11 @@ fn qwen_settings_in(qwen_home: Option<PathBuf>, home: &std::path::Path) -> PathB
 fn home_settings(env: &str, dir: &str) -> PathBuf {
     std::env::var_os(env)
         .map(|h| PathBuf::from(h).join(dir))
-        .unwrap_or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().join(dir)).unwrap_or_default())
+        .unwrap_or_else(|| {
+            directories::BaseDirs::new()
+                .map(|d| d.home_dir().join(dir))
+                .unwrap_or_default()
+        })
         .join("settings.json")
 }
 
@@ -1368,9 +2183,20 @@ fn is_our_name(program: &str) -> bool {
 
 /// `<app> hook …` under any of the app's names.
 fn is_ours(group: &Value) -> bool {
-    let tagged = |name: &str| group.get(format!("_{name}").as_str()).and_then(Value::as_bool) == Some(true);
+    let tagged = |name: &str| {
+        group
+            .get(format!("_{name}").as_str())
+            .and_then(Value::as_bool)
+            == Some(true)
+    };
     (tagged(crate::brand::APP_COMMAND) || crate::brand::previous().any(tagged))
-        || group.get("hooks").and_then(Value::as_array).into_iter().flatten().filter_map(|h| h.get("command").and_then(Value::as_str)).any(runs_our_hook)
+        || group
+            .get("hooks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|h| h.get("command").and_then(Value::as_str))
+            .any(runs_our_hook)
 }
 
 /// A hook command split into the program it starts (its first word, or the quoted path)
@@ -1391,14 +2217,21 @@ fn program_of(cmd: &str) -> &str {
 /// `"<…/<app>>" hook claude`, or the same from a seshi, hydra or drover install.
 fn runs_our_hook(cmd: &str) -> bool {
     let (prog, args) = split_command(cmd);
-    let stem = std::path::Path::new(prog).file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    let stem = std::path::Path::new(prog)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
     is_our_name(&stem) && args.starts_with("hook ")
 }
 
 /// Hook commands in Claude settings `root` whose program isn't there (a removed install, a
 /// moved file): Claude reports "hook error" on every turn they run in. Paths are checked
 /// with `exists`; a bare name only when it's one of the app's old names (`on_path`).
-fn broken_hooks_in(root: &Value, exists: impl Fn(&std::path::Path) -> bool, on_path: impl Fn(&str) -> bool) -> Vec<String> {
+fn broken_hooks_in(
+    root: &Value,
+    exists: impl Fn(&std::path::Path) -> bool,
+    on_path: impl Fn(&str) -> bool,
+) -> Vec<String> {
     let mut out: Vec<String> = root
         .get("hooks")
         .and_then(Value::as_object)
@@ -1429,19 +2262,32 @@ fn broken_hooks_in(root: &Value, exists: impl Fn(&std::path::Path) -> bool, on_p
 
 /// Where Claude Code keeps its MCP servers (yours, for every project).
 fn claude_json() -> PathBuf {
-    directories::BaseDirs::new().map(|d| d.home_dir().join(".claude.json")).unwrap_or_default()
+    directories::BaseDirs::new()
+        .map(|d| d.home_dir().join(".claude.json"))
+        .unwrap_or_default()
 }
 
 /// The MCP servers in Claude's `root` that are this app under an old name: Claude shows the
 /// name on every call, and the program behind it is an install that no longer updates.
 fn old_mcp_names(root: &Value) -> Vec<String> {
-    let Some(servers) = root.get("mcpServers").and_then(Value::as_object) else { return Vec::new() };
+    let Some(servers) = root.get("mcpServers").and_then(Value::as_object) else {
+        return Vec::new();
+    };
     servers
         .iter()
         .filter(|(_, server)| {
-            let prog = server.get("command").and_then(Value::as_str).unwrap_or_default();
-            let stem = std::path::Path::new(prog).file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-            let serves = server.get("args").and_then(Value::as_array).is_some_and(|a| a.iter().any(|x| x.as_str() == Some("mcp")));
+            let prog = server
+                .get("command")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let stem = std::path::Path::new(prog)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_ascii_lowercase())
+                .unwrap_or_default();
+            let serves = server
+                .get("args")
+                .and_then(Value::as_array)
+                .is_some_and(|a| a.iter().any(|x| x.as_str() == Some("mcp")));
             crate::brand::previous().any(|p| p == stem) && serves
         })
         .map(|(name, _)| name.clone())
@@ -1450,7 +2296,14 @@ fn old_mcp_names(root: &Value) -> Vec<String> {
 
 /// Runs Claude Code's own CLI (a `.cmd` shim on Windows).
 fn run_claude(args: &[&str]) -> std::io::Result<std::process::ExitStatus> {
-    std::process::Command::new(if cfg!(windows) { "claude.cmd" } else { "claude" }).args(args).status().or_else(|_| std::process::Command::new("claude").args(args).status())
+    std::process::Command::new(if cfg!(windows) {
+        "claude.cmd"
+    } else {
+        "claude"
+    })
+    .args(args)
+    .status()
+    .or_else(|_| std::process::Command::new("claude").args(args).status())
 }
 
 /// The Claude settings files whose hooks run here: yours, and this folder's project ones.
@@ -1468,7 +2321,11 @@ fn claude_settings_files() -> Vec<PathBuf> {
 fn claude_settings() -> PathBuf {
     std::env::var_os("CLAUDE_CONFIG_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().join(".claude")).unwrap_or_default())
+        .unwrap_or_else(|| {
+            directories::BaseDirs::new()
+                .map(|d| d.home_dir().join(".claude"))
+                .unwrap_or_default()
+        })
         .join("settings.json")
 }
 
@@ -1484,18 +2341,31 @@ fn back_up_once(path: &std::path::Path, ext: &str) -> std::io::Result<()> {
 
 /// This the app, as hook commands name it.
 fn this_exe() -> Result<String> {
-    Ok(std::env::current_exe()?.to_string_lossy().replace('\\', "/"))
+    Ok(std::env::current_exe()?
+        .to_string_lossy()
+        .replace('\\', "/"))
 }
 
 /// Context, cost and plan limits from the JSON Claude Code hands its status line.
 pub(crate) fn statusline_facts(json: &str) -> (Usage, Vec<Limit>) {
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else { return (Usage::default(), Vec::new()) };
-    let usage = Usage { context: v["context_window"]["used_percentage"].as_f64().map(|p| p as f32), cost: v["cost"]["total_cost_usd"].as_f64() };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
+        return (Usage::default(), Vec::new());
+    };
+    let usage = Usage {
+        context: v["context_window"]["used_percentage"]
+            .as_f64()
+            .map(|p| p as f32),
+        cost: v["cost"]["total_cost_usd"].as_f64(),
+    };
     let limits = [("five_hour", "5h"), ("seven_day", "week")]
         .iter()
         .filter_map(|(k, name)| {
             let l = &v["rate_limits"][k];
-            Some(Limit { name: name.to_string(), used: l["used_percentage"].as_f64()? as f32, resets_at: l["resets_at"].as_u64()? })
+            Some(Limit {
+                name: name.to_string(),
+                used: l["used_percentage"].as_f64()? as f32,
+                resets_at: l["resets_at"].as_u64()?,
+            })
         })
         .collect();
     (usage, limits)
@@ -1508,16 +2378,28 @@ fn statusline_before() -> PathBuf {
 
 /// Whether a status line command is the app's (or the seshi's or hydra's it was renamed from).
 fn is_our_statusline(cmd: &str) -> bool {
-    (cmd.contains(crate::brand::APP_COMMAND) || crate::brand::previous().any(|p| cmd.contains(p))) && cmd.trim_end().ends_with(" statusline")
+    (cmd.contains(crate::brand::APP_COMMAND) || crate::brand::previous().any(|p| cmd.contains(p)))
+        && cmd.trim_end().ends_with(" statusline")
 }
 
 /// Make Claude's status line the app's (or with `uninstall`, put yours back). Yours keeps
 /// showing: the app's runs it with the same input and prints what it prints.
-fn statusline_setting(root: &mut Value, exe: &str, uninstall: bool, kept: &std::path::Path) -> Result<()> {
-    let cur = root.get("statusLine").and_then(|s| s.get("command")).and_then(Value::as_str).map(String::from);
+fn statusline_setting(
+    root: &mut Value,
+    exe: &str,
+    uninstall: bool,
+    kept: &std::path::Path,
+) -> Result<()> {
+    let cur = root
+        .get("statusLine")
+        .and_then(|s| s.get("command"))
+        .and_then(Value::as_str)
+        .map(String::from);
     let ours = cur.as_deref().is_some_and(is_our_statusline);
     let before = std::fs::read_to_string(kept).unwrap_or_default();
-    let obj = root.as_object_mut().ok_or_else(|| anyhow!("settings.json is not an object"))?;
+    let obj = root
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("settings.json is not an object"))?;
     if uninstall {
         if ours {
             match before.trim() {
@@ -1536,7 +2418,9 @@ fn statusline_setting(root: &mut Value, exe: &str, uninstall: bool, kept: &std::
         }
         std::fs::write(kept, cur.unwrap_or_default())?;
     }
-    let line = obj.entry("statusLine").or_insert_with(|| json!({ "type": "command" }));
+    let line = obj
+        .entry("statusLine")
+        .or_insert_with(|| json!({ "type": "command" }));
     if !line.is_object() {
         *line = json!({ "type": "command" });
     }
@@ -1550,10 +2434,18 @@ pub fn statusline() {
     use std::io::Write;
     let mut input = String::new();
     let _ = std::io::stdin().read_to_string(&mut input);
-    let term = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok().and_then(|s| s.parse::<TermId>().ok());
-    if let (Some(term), Ok(token)) = (term, std::env::var(concat!(env!("APP_ENV"), "_PANE_TOKEN"))) {
+    let term = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID"))
+        .ok()
+        .and_then(|s| s.parse::<TermId>().ok());
+    if let (Some(term), Ok(token)) = (term, std::env::var(concat!(env!("APP_ENV"), "_PANE_TOKEN")))
+    {
         let (usage, limits) = statusline_facts(&input);
-        let msg = ClientMsg::Usage { term, token, usage, limits };
+        let msg = ClientMsg::Usage {
+            term,
+            token,
+            usage,
+            limits,
+        };
         // Never hold up Claude's screen for it; a report that doesn't get there is skipped.
         let sent = block_on(async {
             tokio::time::timeout(Duration::from_millis(800), async {
@@ -1573,7 +2465,9 @@ pub fn statusline() {
         return;
     }
     let mut cmd = shell_line(before);
-    cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::inherit()).stderr(std::process::Stdio::null());
+    cmd.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::null());
     if let Ok(mut child) = crate::proc::quiet(&mut cmd).spawn() {
         if let Some(mut stdin) = child.stdin.take() {
             let _ = stdin.write_all(input.as_bytes());
@@ -1588,7 +2482,15 @@ fn shell_line(line: &str) -> std::process::Command {
     if cfg!(windows) {
         let bash = std::env::var_os("CLAUDE_CODE_GIT_BASH_PATH")
             .map(PathBuf::from)
-            .or_else(|| ["C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe"].iter().map(PathBuf::from).find(|p| p.is_file()));
+            .or_else(|| {
+                [
+                    "C:/Program Files/Git/bin/bash.exe",
+                    "C:/Program Files (x86)/Git/bin/bash.exe",
+                ]
+                .iter()
+                .map(PathBuf::from)
+                .find(|p| p.is_file())
+            });
         match bash {
             Some(b) => {
                 let mut c = std::process::Command::new(b);
@@ -1617,24 +2519,44 @@ fn claude_hooks(uninstall: bool) -> Result<PathBuf> {
 /// Qwen Code): one tagged group per event running `<app> hook <agent>`, `timeout` in the
 /// tool's own unit. The rest of the file (comments and key order included) is kept, with a
 /// backup beside it.
-fn json_hooks(path: &std::path::Path, agent: &str, events: &[(&str, Option<&str>)], timeout: u64, uninstall: bool) -> Result<PathBuf> {
+fn json_hooks(
+    path: &std::path::Path,
+    agent: &str,
+    events: &[(&str, Option<&str>)],
+    timeout: u64,
+    uninstall: bool,
+) -> Result<PathBuf> {
     let exe = this_exe()?;
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(e.into()),
     };
-    let doc = jsonc::Doc::parse(&text).with_context(|| format!("{} isn't valid JSON; not touching it", path.display()))?;
-    let settings = doc.object().ok_or_else(|| anyhow!("settings.json is not an object"))?;
+    let doc = jsonc::Doc::parse(&text)
+        .with_context(|| format!("{} isn't valid JSON; not touching it", path.display()))?;
+    let settings = doc
+        .object()
+        .ok_or_else(|| anyhow!("settings.json is not an object"))?;
     back_up_once(path, "json")?;
     let hooks = match settings.get("hooks") {
-        Some(prop) => Some(prop.object_value().ok_or_else(|| anyhow!("`hooks` is not an object"))?),
+        Some(prop) => Some(
+            prop.object_value()
+                .ok_or_else(|| anyhow!("`hooks` is not an object"))?,
+        ),
         None if uninstall => None,
-        None => Some(settings.append("hooks", CstInputValue::Object(Vec::new())).object_value_or_set()),
+        None => Some(
+            settings
+                .append("hooks", CstInputValue::Object(Vec::new()))
+                .object_value_or_set(),
+        ),
     };
     if let Some(hooks) = &hooks {
         for (event, matcher) in events {
-            replace_our_group(hooks, event, (!uninstall).then(|| our_group(&exe, agent, timeout, *matcher)));
+            replace_our_group(
+                hooks,
+                event,
+                (!uninstall).then(|| our_group(&exe, agent, timeout, *matcher)),
+            );
         }
     }
     if agent == "claude" {
@@ -1665,7 +2587,9 @@ fn replace_our_group(hooks: &CstObject, event: &str, ours: Option<Value>) {
             None => return,
         },
         None if ours.is_none() => return,
-        None => hooks.append(event, CstInputValue::Array(Vec::new())).array_value_or_set(),
+        None => hooks
+            .append(event, CstInputValue::Array(Vec::new()))
+            .array_value_or_set(),
     };
     for group in groups.elements() {
         if group.to_serde_value().is_some_and(|g| is_ours(&g)) {
@@ -1682,14 +2606,21 @@ fn replace_our_group(hooks: &CstObject, event: &str, ours: Option<Value>) {
 
 /// Points Claude's status line at the app (or back), changing only the `statusLine` entry.
 fn claude_statusline(doc: &jsonc::Doc, exe: &str, uninstall: bool) -> Result<()> {
-    let settings = doc.object().ok_or_else(|| anyhow!("settings.json is not an object"))?;
+    let settings = doc
+        .object()
+        .ok_or_else(|| anyhow!("settings.json is not an object"))?;
     let mut root = doc.to_value().unwrap_or_default();
     let before = root.get("statusLine").cloned();
     statusline_setting(&mut root, exe, uninstall, &statusline_before())?;
     match root.get("statusLine") {
-        Some(line) if before.as_ref() != Some(line) => jsonc::set_prop(&settings, "statusLine", jsonc::input(line)),
+        Some(line) if before.as_ref() != Some(line) => {
+            jsonc::set_prop(&settings, "statusLine", jsonc::input(line))
+        }
         Some(_) => {}
-        None => settings.get("statusLine").into_iter().for_each(CstObjectProp::remove),
+        None => settings
+            .get("statusLine")
+            .into_iter()
+            .for_each(CstObjectProp::remove),
     }
     Ok(())
 }
@@ -1697,16 +2628,21 @@ fn claude_statusline(doc: &jsonc::Doc, exe: &str, uninstall: bool) -> Result<()>
 /// The commands the app's Claude hooks run that aren't this the app (an older install, a copy
 /// that moved). Empty when they're right, or when there are none.
 pub fn stale_claude_hooks() -> Vec<String> {
-    let (Ok(exe), Ok(text)) = (this_exe(), std::fs::read_to_string(claude_settings())) else { return Vec::new() };
+    let (Ok(exe), Ok(text)) = (this_exe(), std::fs::read_to_string(claude_settings())) else {
+        return Vec::new();
+    };
     // Comments are allowed: the hooks may have been installed into a commented file.
-    let Some(root) = jsonc::parse_value(&text) else { return Vec::new() };
+    let Some(root) = jsonc::parse_value(&text) else {
+        return Vec::new();
+    };
     stale_in(&root, &format!("\"{exe}\" hook claude"))
 }
 
 /// The app's Claude hooks are in and run this the app (the check `<app> doctor` makes). Reads a
 /// file: call it off the UI thread.
 pub fn claude_status_hooks_installed() -> bool {
-    std::fs::read_to_string(claude_settings()).is_ok_and(|s| s.contains("hook claude")) && stale_claude_hooks().is_empty()
+    std::fs::read_to_string(claude_settings()).is_ok_and(|s| s.contains("hook claude"))
+        && stale_claude_hooks().is_empty()
 }
 
 /// The app's hook commands in Claude settings `root` other than `want`.
@@ -1732,10 +2668,26 @@ fn stale_in(root: &Value, want: &str) -> Vec<String> {
 
 /// The app's Claude hooks are in, but not its status line (installed before there was one).
 fn needs_statusline() -> bool {
-    let Ok(text) = std::fs::read_to_string(claude_settings()) else { return false };
-    let Some(root) = jsonc::parse_value(&text) else { return false };
-    let hooked = root.get("hooks").and_then(Value::as_object).is_some_and(|h| h.values().filter_map(Value::as_array).flatten().any(is_ours));
-    let cmd = root.get("statusLine").and_then(|s| s.get("command")).and_then(Value::as_str).unwrap_or_default();
+    let Ok(text) = std::fs::read_to_string(claude_settings()) else {
+        return false;
+    };
+    let Some(root) = jsonc::parse_value(&text) else {
+        return false;
+    };
+    let hooked = root
+        .get("hooks")
+        .and_then(Value::as_object)
+        .is_some_and(|h| {
+            h.values()
+                .filter_map(Value::as_array)
+                .flatten()
+                .any(is_ours)
+        });
+    let cmd = root
+        .get("statusLine")
+        .and_then(|s| s.get("command"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     hooked && !is_our_statusline(cmd)
 }
 
@@ -1746,13 +2698,22 @@ pub fn refresh_claude_hooks() {
     // A side server (<APP>_SOCKET) or a build in a source checkout mustn't take your
     // hooks from the copy of the app you use.
     let side = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).is_ok_and(|s| s != "default");
-    let dev_build = this_exe().is_ok_and(|e| e.contains("/target/debug/") || e.contains("/target/release/"));
+    let dev_build =
+        this_exe().is_ok_and(|e| e.contains("/target/debug/") || e.contains("/target/release/"));
     if side || dev_build {
         return;
     }
     if !stale_claude_hooks().is_empty() || needs_statusline() {
         match claude_hooks(false) {
-            Ok(p) => tracing::info!(concat!("pointed ", env!("APP_COMMAND"), "'s Claude hooks in {} at this ", env!("APP_COMMAND")), p.display()),
+            Ok(p) => tracing::info!(
+                concat!(
+                    "pointed ",
+                    env!("APP_COMMAND"),
+                    "'s Claude hooks in {} at this ",
+                    env!("APP_COMMAND")
+                ),
+                p.display()
+            ),
             Err(e) => tracing::warn!("couldn't update {APP_COMMAND}'s Claude hooks: {e:#}"),
         }
     }
@@ -1760,10 +2721,7 @@ pub fn refresh_claude_hooks() {
 
 /// Codex's config file (`$CODEX_HOME/config.toml`, else `~/.codex/config.toml`).
 fn codex_config() -> PathBuf {
-    std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().join(".codex")).unwrap_or_default())
-        .join("config.toml")
+    crate::config::codex_config_dir().join("config.toml")
 }
 
 enum CodexNotify {
@@ -1781,8 +2739,20 @@ fn codex_notify(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<Co
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(e.into()),
     };
-    let mut doc: toml_edit::DocumentMut = text.parse().with_context(|| format!("{} has a syntax error; not touching it", path.display()))?;
-    let ours = |v: &toml_edit::Item| v.as_array().is_some_and(|a| a.iter().any(|x| x.as_str() == Some("hook")) && a.iter().any(|x| x.as_str().is_some_and(|s| s.contains(crate::brand::APP_COMMAND) || crate::brand::previous().any(|p| s.contains(p)))));
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .with_context(|| format!("{} has a syntax error; not touching it", path.display()))?;
+    let ours = |v: &toml_edit::Item| {
+        v.as_array().is_some_and(|a| {
+            a.iter().any(|x| x.as_str() == Some("hook"))
+                && a.iter().any(|x| {
+                    x.as_str().is_some_and(|s| {
+                        s.contains(crate::brand::APP_COMMAND)
+                            || crate::brand::previous().any(|p| s.contains(p))
+                    })
+                })
+        })
+    };
     if let Some(cur) = doc.get("notify")
         && !ours(cur)
     {
@@ -1803,14 +2773,20 @@ fn codex_notify(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<Co
         std::fs::create_dir_all(dir)?;
     }
     crate::config::write_atomic(path, doc.to_string())?;
-    Ok(if uninstall { CodexNotify::Removed } else { CodexNotify::Set })
+    Ok(if uninstall {
+        CodexNotify::Removed
+    } else {
+        CodexNotify::Set
+    })
 }
 
 pub(super) fn install_codex_status(exe: &str, uninstall: bool) -> Result<PathBuf> {
     let path = codex_config();
     integrations::codex_hooks_at(&path, exe, uninstall)?;
     match codex_notify(&path, exe, uninstall)? {
-        CodexNotify::Theirs(other) => tracing::info!("left Codex's existing notify command untouched: {other}"),
+        CodexNotify::Theirs(other) => {
+            tracing::info!("left Codex's existing notify command untouched: {other}")
+        }
         CodexNotify::Set | CodexNotify::Removed => {}
     }
     Ok(path)
@@ -1839,7 +2815,10 @@ fn integrate_every(exe: &str, uninstall: bool) -> Result<()> {
     for (agent, outcome) in &results {
         println!("{}: {}", agent.name, outcome.describe(uninstall));
     }
-    let failed = results.iter().filter(|(_, o)| matches!(o, integrations::Outcome::Failed(_))).count();
+    let failed = results
+        .iter()
+        .filter(|(_, o)| matches!(o, integrations::Outcome::Failed(_)))
+        .count();
     println!("\nMCP:");
     let mcp = integrate_mcp(exe, uninstall);
     println!("\nRestart your agents to load the change.");
@@ -1876,8 +2855,14 @@ fn integrate_mcp(exe: &str, uninstall: bool) -> Result<()> {
         bail!("{failed} agent(s) not changed");
     }
     if !uninstall {
-        println!("\nAgents can then list, read, message and start sessions; restart running ones to load it.");
-        println!(concat!("Whether they may approve prompts is up to you: ", env!("APP_COMMAND"), " Settings → Agents (never, by default)."));
+        println!(
+            "\nAgents can then list, read, message and start sessions; restart running ones to load it."
+        );
+        println!(concat!(
+            "Whether they may approve prompts is up to you: ",
+            env!("APP_COMMAND"),
+            " Settings → Agents (never, by default)."
+        ));
     }
     Ok(())
 }
@@ -1897,7 +2882,8 @@ fn claude_mcp(exe: &str, uninstall: bool) -> Result<String> {
     const SKIPPED: &str = "skipped (not installed)";
     let path = claude_json();
     let root = match std::fs::read_to_string(&path) {
-        Ok(text) => serde_json::from_str::<Value>(&text).with_context(|| format!("{} isn't valid JSON", path.display()))?,
+        Ok(text) => serde_json::from_str::<Value>(&text)
+            .with_context(|| format!("{} isn't valid JSON", path.display()))?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Value::Null,
         Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
     };
@@ -1923,31 +2909,75 @@ fn claude_mcp(exe: &str, uninstall: bool) -> Result<String> {
     if current {
         return Ok("already registered".into());
     }
-    match claude_cli(&["mcp", "add", "--scope", "user", APP_COMMAND, "--", exe, "mcp"])? {
+    match claude_cli(&[
+        "mcp",
+        "add",
+        "--scope",
+        "user",
+        APP_COMMAND,
+        "--",
+        exe,
+        "mcp",
+    ])? {
         Some(true) => Ok("registered (all projects)".into()),
-        Some(false) => bail!("`claude mcp add` failed; run  claude mcp add --scope user {APP_COMMAND} -- \"{exe}\" mcp"),
+        Some(false) => bail!(
+            "`claude mcp add` failed; run  claude mcp add --scope user {APP_COMMAND} -- \"{exe}\" mcp"
+        ),
         None => Ok(SKIPPED.into()),
     }
 }
 
 fn report_integration(agent: &str, path: &std::path::Path, uninstall: bool) {
     match agent {
-        "claude" if uninstall => println!(concat!("removed ", env!("APP_COMMAND"), " hooks from {}"), path.display()),
+        "claude" if uninstall => println!(
+            concat!("removed ", env!("APP_COMMAND"), " hooks from {}"),
+            path.display()
+        ),
         "claude" => {
-            println!(concat!("installed ", env!("APP_COMMAND"), " hooks into {}"), path.display());
-            println!(concat!("they only act inside ", env!("APP_COMMAND"), " panes (", env!("APP_ENV"), "_TERM_ID), so other terminals are unaffected."));
+            println!(
+                concat!("installed ", env!("APP_COMMAND"), " hooks into {}"),
+                path.display()
+            );
+            println!(concat!(
+                "they only act inside ",
+                env!("APP_COMMAND"),
+                " panes (",
+                env!("APP_ENV"),
+                "_TERM_ID), so other terminals are unaffected."
+            ));
         }
         "gemini" | "qwen" => {
-            println!(concat!("{} ", env!("APP_COMMAND"), " hooks {} {}"), if uninstall { "removed" } else { "installed" }, if uninstall { "from" } else { "into" }, path.display());
+            println!(
+                concat!("{} ", env!("APP_COMMAND"), " hooks {} {}"),
+                if uninstall { "removed" } else { "installed" },
+                if uninstall { "from" } else { "into" },
+                path.display()
+            );
         }
-        "opencode" => println!(concat!("{} ", env!("APP_COMMAND"), "'s opencode plugin: {}"), if uninstall { "removed" } else { "wrote" }, path.display()),
+        "opencode" => println!(
+            concat!("{} ", env!("APP_COMMAND"), "'s opencode plugin: {}"),
+            if uninstall { "removed" } else { "wrote" },
+            path.display()
+        ),
         "codex" => {
-            println!(concat!("{} ", env!("APP_NAME"), "'s Codex status hooks in {}"), if uninstall { "removed" } else { "installed" }, path.display());
-            println!("Live subagent events are tracked; any other Codex notify command is preserved.");
+            println!(
+                concat!("{} ", env!("APP_NAME"), "'s Codex status hooks in {}"),
+                if uninstall { "removed" } else { "installed" },
+                path.display()
+            );
+            println!(
+                "Live subagent events are tracked; any other Codex notify command is preserved."
+            );
         }
         _ => {
-            println!("{} {APP_COMMAND}'s {agent} status integration: {}", if uninstall { "removed" } else { "wrote" }, path.display());
-            println!("Restart {agent} to load it. Status follows the session, including z.ai and DeepSeek models.");
+            println!(
+                "{} {APP_COMMAND}'s {agent} status integration: {}",
+                if uninstall { "removed" } else { "wrote" },
+                path.display()
+            );
+            println!(
+                "Restart {agent} to load it. Status follows the session, including z.ai and DeepSeek models."
+            );
         }
     }
 }
@@ -1955,20 +2985,40 @@ fn report_integration(agent: &str, path: &std::path::Path, uninstall: bool) {
 /// Debugging: the colours a pane's program is drawing (rows with a background colour).
 pub fn debug_colors(pane: TermId) -> Result<()> {
     block_on(async move {
-        let (mut r, _w) = ipc::open(true).await.context(concat!("couldn't reach the ", env!("APP_COMMAND"), " server"))?;
+        let (mut r, _w) = ipc::open(true).await.context(concat!(
+            "couldn't reach the ",
+            env!("APP_COMMAND"),
+            " server"
+        ))?;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
-        while let Ok(Ok(Some(msg))) = tokio::time::timeout_at(deadline, ipc::recv_server(&mut r)).await {
-            if let ServerMsg::Replay { term, cols, rows, data } = msg
+        while let Ok(Ok(Some(msg))) =
+            tokio::time::timeout_at(deadline, ipc::recv_server(&mut r)).await
+        {
+            if let ServerMsg::Replay {
+                term,
+                cols,
+                rows,
+                data,
+            } = msg
                 && term == pane
             {
                 let mut p = vt100::Parser::new(rows, cols, 0);
                 p.process(&data);
                 let s = p.screen();
-                println!("alternate screen: {}  mouse: {:?} / {:?}", s.alternate_screen(), s.mouse_protocol_mode(), s.mouse_protocol_encoding());
+                println!(
+                    "alternate screen: {}  mouse: {:?} / {:?}",
+                    s.alternate_screen(),
+                    s.mouse_protocol_mode(),
+                    s.mouse_protocol_encoding()
+                );
                 let mut h = vt100::Parser::new(rows, cols, 100_000);
                 h.process(&data);
                 h.screen_mut().set_scrollback(usize::MAX);
-                println!("history lines: {} (replay {} bytes)", h.screen().scrollback(), data.len());
+                println!(
+                    "history lines: {} (replay {} bytes)",
+                    h.screen().scrollback(),
+                    data.len()
+                );
                 for row in 0..rows {
                     let mut seen: Vec<String> = Vec::new();
                     for col in 0..cols {
@@ -1976,13 +3026,25 @@ pub fn debug_colors(pane: TermId) -> Result<()> {
                         if c.bgcolor() == vt100::Color::Default && !c.inverse() {
                             continue;
                         }
-                        let d = format!("fg={:?} bg={:?} inv={} dim={}", c.fgcolor(), c.bgcolor(), c.inverse(), c.dim());
+                        let d = format!(
+                            "fg={:?} bg={:?} inv={} dim={}",
+                            c.fgcolor(),
+                            c.bgcolor(),
+                            c.inverse(),
+                            c.dim()
+                        );
                         if !seen.contains(&d) {
                             seen.push(d);
                         }
                     }
                     if !seen.is_empty() {
-                        let text: String = s.rows(0, cols).nth(row as usize).unwrap_or_default().chars().take(40).collect();
+                        let text: String = s
+                            .rows(0, cols)
+                            .nth(row as usize)
+                            .unwrap_or_default()
+                            .chars()
+                            .take(40)
+                            .collect();
                         println!("row {row:>3} {text:<40} {}", seen.join(" | "));
                     }
                 }
@@ -1997,7 +3059,11 @@ pub fn debug_colors(pane: TermId) -> Result<()> {
 /// A `~` at the start of a value is your home folder.
 fn home_in(value: &str) -> String {
     match (value.strip_prefix('~'), directories::BaseDirs::new()) {
-        (Some(rest), Some(d)) => d.home_dir().join(rest.trim_start_matches(['/', '\\'])).to_string_lossy().into_owned(),
+        (Some(rest), Some(d)) => d
+            .home_dir()
+            .join(rest.trim_start_matches(['/', '\\']))
+            .to_string_lossy()
+            .into_owned(),
         _ => value.to_string(),
     }
 }
@@ -2006,7 +3072,12 @@ fn home_in(value: &str) -> String {
 /// quoted again for the shell that will run it.
 pub fn account_line(cfg: &crate::config::Config, command: &[String]) -> Option<String> {
     let (program, args) = command.split_first()?;
-    Some(std::iter::once(program.clone()).chain(args.iter().map(|a| cfg.quote_for_shell(a))).collect::<Vec<_>>().join(" "))
+    Some(
+        std::iter::once(program.clone())
+            .chain(args.iter().map(|a| cfg.quote_for_shell(a)))
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
 }
 
 /// `<app> account <name> -- <command>`: run it with that account's environment, in this
@@ -2014,14 +3085,26 @@ pub fn account_line(cfg: &crate::config::Config, command: &[String]) -> Option<S
 pub fn account(name: &str, command: &[String]) -> Result<()> {
     let (cfg, _) = crate::config::Config::load_or_default();
     let Some(a) = cfg.account(name) else {
-        let known: Vec<&str> = cfg.quick.agents.iter().filter(|a| !a.env.is_empty()).map(|a| a.name.as_str()).collect();
-        let known = if known.is_empty() { "none yet: give a [[quick.agents]] entry an env".to_string() } else { known.join(", ") };
+        let known: Vec<&str> = cfg
+            .quick
+            .agents
+            .iter()
+            .filter(|a| !a.env.is_empty())
+            .map(|a| a.name.as_str())
+            .collect();
+        let known = if known.is_empty() {
+            "none yet: give a [[quick.agents]] entry an env".to_string()
+        } else {
+            known.join(", ")
+        };
         anyhow::bail!("no account named \"{name}\" (accounts: {known})");
     };
     let Some(line) = account_line(&cfg, command) else {
         anyhow::bail!("give the command to run: {APP_COMMAND} account \"{name}\" -- claude");
     };
-    let status = crate::proc::shell(&cfg.shell_command(), &line, true).envs(a.env.iter().map(|(k, v)| (k.clone(), home_in(v)))).status()?;
+    let status = crate::proc::shell(&cfg.shell_command(), &line, true)
+        .envs(a.env.iter().map(|(k, v)| (k.clone(), home_in(v))))
+        .status()?;
     std::process::exit(status.code().unwrap_or(1));
 }
 
@@ -2033,7 +3116,10 @@ pub fn allow(dir: Option<std::path::PathBuf>) -> Result<()> {
     let p = crate::project::load(&dir);
     let cmds = [p.hooks.on_create.as_str(), p.hooks.on_remove.as_str()];
     if cmds.iter().all(|c| c.trim().is_empty()) {
-        println!("no hooks in {} here; nothing to allow", crate::project::FILE);
+        println!(
+            "no hooks in {} here; nothing to allow",
+            crate::project::FILE
+        );
         return Ok(());
     }
     crate::project::allow(&dir, &cmds)?;
@@ -2049,58 +3135,155 @@ pub fn allow(dir: Option<std::path::PathBuf>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     fn check(state: CheckState) -> CheckInfo {
-        CheckInfo { command: "npm test".into(), state, exit_code: Some(1), first_failing_line: "FAIL footer.test.ts".into(), ..Default::default() }
+        CheckInfo {
+            command: "npm test".into(),
+            state,
+            exit_code: Some(1),
+            first_failing_line: "FAIL footer.test.ts".into(),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn a_waiter_stays_blocked_while_the_check_runs() {
         let running = check(CheckState::Checking);
-        assert_eq!(turn_over(Status::Done, "all done", std::slice::from_ref(&running), true, false), None);
-        assert_eq!(turn_over(Status::Idle, "", std::slice::from_ref(&running), false, true), None, "not even after the quiet-turn grace");
-        assert_eq!(turn_over(Status::Done, "", &[], true, false), Some(Waited::Turn(Status::Done, String::new(), None)));
+        assert_eq!(
+            turn_over(
+                Status::Done,
+                "all done",
+                std::slice::from_ref(&running),
+                true,
+                false
+            ),
+            None
+        );
+        assert_eq!(
+            turn_over(
+                Status::Idle,
+                "",
+                std::slice::from_ref(&running),
+                false,
+                true
+            ),
+            None,
+            "not even after the quiet-turn grace"
+        );
+        assert_eq!(
+            turn_over(Status::Done, "", &[], true, false),
+            Some(Waited::Turn(Status::Done, String::new(), None))
+        );
     }
 
     #[test]
     fn a_waiter_gets_the_check_result_with_the_reply() {
-        for state in [CheckState::Passed, CheckState::Failed, CheckState::CouldNotRun, CheckState::Overridden] {
+        for state in [
+            CheckState::Passed,
+            CheckState::Failed,
+            CheckState::CouldNotRun,
+            CheckState::Overridden,
+        ] {
             let info = check(state);
-            assert_eq!(turn_over(Status::Done, "done", std::slice::from_ref(&info), true, false), Some(Waited::Turn(Status::Done, "done".into(), Some(Box::new(info)))));
+            assert_eq!(
+                turn_over(
+                    Status::Done,
+                    "done",
+                    std::slice::from_ref(&info),
+                    true,
+                    false
+                ),
+                Some(Waited::Turn(
+                    Status::Done,
+                    "done".into(),
+                    Some(Box::new(info))
+                ))
+            );
         }
     }
 
     #[test]
     fn a_session_with_no_check_waits_as_before() {
         assert_eq!(turn_over(Status::Working, "", &[], false, true), None);
-        assert_eq!(turn_over(Status::Done, "x", &[], false, false), None, "the turn never started");
-        assert_eq!(turn_over(Status::Blocked, "q", &[], true, false), Some(Waited::Turn(Status::Blocked, "q".into(), None)));
-        assert_eq!(turn_over(Status::None, "", &[], false, true), Some(Waited::Turn(Status::None, String::new(), None)));
+        assert_eq!(
+            turn_over(Status::Done, "x", &[], false, false),
+            None,
+            "the turn never started"
+        );
+        assert_eq!(
+            turn_over(Status::Blocked, "q", &[], true, false),
+            Some(Waited::Turn(Status::Blocked, "q".into(), None))
+        );
+        assert_eq!(
+            turn_over(Status::None, "", &[], false, true),
+            Some(Waited::Turn(Status::None, String::new(), None))
+        );
     }
 
     fn named(name: &str, state: CheckState) -> CheckInfo {
-        CheckInfo { name: name.into(), ..check(state) }
+        CheckInfo {
+            name: name.into(),
+            ..check(state)
+        }
     }
 
     #[test]
     fn a_waiter_waits_until_no_checkpoint_is_running_or_waiting_its_turn() {
-        let failed_first = [named("build", CheckState::Failed), named("test", CheckState::Checking)];
-        assert_eq!(turn_over(Status::Done, "", &failed_first, true, false), None, "a failure does not end the wait while another runs");
-        let pending = [named("build", CheckState::Passed), named("test", CheckState::Pending)];
+        let failed_first = [
+            named("build", CheckState::Failed),
+            named("test", CheckState::Checking),
+        ];
+        assert_eq!(
+            turn_over(Status::Done, "", &failed_first, true, false),
+            None,
+            "a failure does not end the wait while another runs"
+        );
+        let pending = [
+            named("build", CheckState::Passed),
+            named("test", CheckState::Pending),
+        ];
         assert_eq!(turn_over(Status::Done, "", &pending, true, false), None);
-        let settled = [named("build", CheckState::Failed), named("test", CheckState::Passed)];
-        let Some(Waited::Turn(_, _, Some(headline))) = turn_over(Status::Done, "", &settled, true, false) else { panic!("the turn is over") };
+        let settled = [
+            named("build", CheckState::Failed),
+            named("test", CheckState::Passed),
+        ];
+        let Some(Waited::Turn(_, _, Some(headline))) =
+            turn_over(Status::Done, "", &settled, true, false)
+        else {
+            panic!("the turn is over")
+        };
         assert_eq!(headline.name, "build", "it ends on the worst checkpoint");
     }
 
     #[test]
     fn wait_exits_four_on_any_failed_checkpoint_and_zero_on_the_rest() {
         let exit = |states: &[CheckState]| {
-            let checks: Vec<_> = states.iter().enumerate().map(|(i, &s)| named(&format!("c{i}"), s)).collect();
-            let Some(Waited::Turn(s, _, headline)) = turn_over(Status::Done, "", &checks, true, false) else { panic!("over") };
+            let checks: Vec<_> = states
+                .iter()
+                .enumerate()
+                .map(|(i, &s)| named(&format!("c{i}"), s))
+                .collect();
+            let Some(Waited::Turn(s, _, headline)) =
+                turn_over(Status::Done, "", &checks, true, false)
+            else {
+                panic!("over")
+            };
             turn_exit(s, headline.as_deref())
         };
-        assert_eq!(exit(&[CheckState::Passed, CheckState::Failed]), Some(EXIT_CHECK_FAILED));
-        assert_eq!(exit(&[CheckState::Failed, CheckState::NeedsApproval]), Some(EXIT_CHECK_FAILED));
-        for state in [CheckState::NeedsApproval, CheckState::Never, CheckState::CouldNotRun, CheckState::Stale, CheckState::Overridden, CheckState::Passed] {
+        assert_eq!(
+            exit(&[CheckState::Passed, CheckState::Failed]),
+            Some(EXIT_CHECK_FAILED)
+        );
+        assert_eq!(
+            exit(&[CheckState::Failed, CheckState::NeedsApproval]),
+            Some(EXIT_CHECK_FAILED)
+        );
+        for state in [
+            CheckState::NeedsApproval,
+            CheckState::Never,
+            CheckState::CouldNotRun,
+            CheckState::Stale,
+            CheckState::Overridden,
+            CheckState::Passed,
+        ] {
             assert_eq!(exit(&[CheckState::Passed, state]), None, "{state:?}");
         }
         assert_eq!(turn_exit(Status::Blocked, None), Some(3));
@@ -2111,35 +3294,93 @@ mod tests {
         let stale = CheckInfo {
             name: "test".into(),
             state: CheckState::Stale,
-            changed_files: ["a", "b", "c"].map(|p| ChangedFile { kind: 'M', path: p.into() }).to_vec(),
+            changed_files: ["a", "b", "c"]
+                .map(|p| ChangedFile {
+                    kind: 'M',
+                    path: p.into(),
+                })
+                .to_vec(),
             ..check(CheckState::Stale)
         };
         let words = |c: &CheckInfo| (check_note(c), check_line(c));
-        assert_eq!(words(&stale), ("stale pass: test · 3 files changed".into(), "stale pass: test · 3 files changed".into()));
-        let one = CheckInfo { changed_files: vec![ChangedFile { kind: 'A', path: "x".into() }], ..stale.clone() };
+        assert_eq!(
+            words(&stale),
+            (
+                "stale pass: test · 3 files changed".into(),
+                "stale pass: test · 3 files changed".into()
+            )
+        );
+        let one = CheckInfo {
+            changed_files: vec![ChangedFile {
+                kind: 'A',
+                path: "x".into(),
+            }],
+            ..stale.clone()
+        };
         assert_eq!(check_note(&one), "stale pass: test · 1 file changed");
-        assert_eq!(words(&check(CheckState::Never)), ("not checked: never for this repo".into(), "not checked: never for this repo".into()));
-        assert_eq!(words(&check(CheckState::NeedsApproval)), ("approve check: npm test".into(), "approve check: npm test".into()));
-        assert_eq!(words(&check(CheckState::Pending)), ("pending".into(), "pending: npm test".into()));
+        assert_eq!(
+            words(&check(CheckState::Never)),
+            (
+                "not checked: never for this repo".into(),
+                "not checked: never for this repo".into()
+            )
+        );
+        assert_eq!(
+            words(&check(CheckState::NeedsApproval)),
+            (
+                "approve check: npm test".into(),
+                "approve check: npm test".into()
+            )
+        );
+        assert_eq!(
+            words(&check(CheckState::Pending)),
+            ("pending".into(), "pending: npm test".into())
+        );
     }
 
     #[test]
     fn ls_shows_the_headline_and_how_many_checkpoints() {
         let mut p = pane("Done", Some("claude"), None);
-        p.checks = vec![named("build", CheckState::Passed), named("test", CheckState::Failed)];
-        assert_eq!(agent_tag(&p).as_deref(), Some("claude: done · check failed (exit 1) · 2 checkpoints"));
+        p.checks = vec![
+            named("build", CheckState::Passed),
+            named("test", CheckState::Failed),
+        ];
+        assert_eq!(
+            agent_tag(&p).as_deref(),
+            Some("claude: done · check failed (exit 1) · 2 checkpoints")
+        );
         let v = pane_json(&p);
-        assert_eq!(v["check"]["state"], "failed", "check stays the headline for scripts");
-        let listed: Vec<_> = v["checks"].as_array().unwrap().iter().map(|c| (c["name"].as_str().unwrap(), c["state"].as_str().unwrap())).collect();
+        assert_eq!(
+            v["check"]["state"], "failed",
+            "check stays the headline for scripts"
+        );
+        let listed: Vec<_> = v["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| (c["name"].as_str().unwrap(), c["state"].as_str().unwrap()))
+            .collect();
         assert_eq!(listed, [("build", "passed"), ("test", "failed")]);
     }
 
     #[test]
     fn the_result_reads_as_one_line() {
-        assert_eq!(check_line(&check(CheckState::Passed)), "check passed: npm test");
-        assert_eq!(check_line(&check(CheckState::Failed)), "check failed: npm test (exit 1): FAIL footer.test.ts");
-        assert_eq!(check_line(&check(CheckState::CouldNotRun)), "check could not run: npm test");
-        assert_eq!(check_line(&check(CheckState::Overridden)), "check failed, accepted: npm test (exit 1): FAIL footer.test.ts");
+        assert_eq!(
+            check_line(&check(CheckState::Passed)),
+            "check passed: npm test"
+        );
+        assert_eq!(
+            check_line(&check(CheckState::Failed)),
+            "check failed: npm test (exit 1): FAIL footer.test.ts"
+        );
+        assert_eq!(
+            check_line(&check(CheckState::CouldNotRun)),
+            "check could not run: npm test"
+        );
+        assert_eq!(
+            check_line(&check(CheckState::Overridden)),
+            "check failed, accepted: npm test (exit 1): FAIL footer.test.ts"
+        );
     }
 
     fn pane(status: &str, agent: Option<&str>, check: Option<CheckInfo>) -> TermInfo {
@@ -2156,42 +3397,83 @@ mod tests {
 
     #[test]
     fn a_check_reads_beside_the_status() {
-        let note = |state, exit| check_note(&CheckInfo { state, exit_code: exit, ..check(state) });
+        let note = |state, exit| {
+            check_note(&CheckInfo {
+                state,
+                exit_code: exit,
+                ..check(state)
+            })
+        };
         assert_eq!(note(CheckState::Failed, Some(1)), "check failed (exit 1)");
         assert_eq!(note(CheckState::Failed, None), "check failed");
         assert_eq!(note(CheckState::Checking, None), "checking");
         assert_eq!(note(CheckState::Passed, Some(0)), "check passed");
-        assert_eq!(note(CheckState::CouldNotRun, Some(127)), "check could not run");
+        assert_eq!(
+            note(CheckState::CouldNotRun, Some(127)),
+            "check could not run"
+        );
         assert_eq!(note(CheckState::Overridden, Some(1)), "check overridden");
     }
 
     #[test]
     fn ls_shows_the_check_in_the_agent_tag_only_when_there_is_one() {
         let failed = pane("Done", Some("claude"), Some(check(CheckState::Failed)));
-        assert_eq!(agent_tag(&failed).as_deref(), Some("claude: done · check failed (exit 1)"));
-        assert_eq!(agent_tag(&pane("Done", Some("claude"), None)).as_deref(), Some("claude: done"));
-        assert_eq!(agent_tag(&pane("Done", None, Some(check(CheckState::Failed)))), None, "a shell has no tag");
+        assert_eq!(
+            agent_tag(&failed).as_deref(),
+            Some("claude: done · check failed (exit 1)")
+        );
+        assert_eq!(
+            agent_tag(&pane("Done", Some("claude"), None)).as_deref(),
+            Some("claude: done")
+        );
+        assert_eq!(
+            agent_tag(&pane("Done", None, Some(check(CheckState::Failed)))),
+            None,
+            "a shell has no tag"
+        );
         let working = pane("Working", Some("claude"), Some(check(CheckState::Failed)));
-        assert_eq!(agent_tag(&working).as_deref(), Some("claude: working"), "the last result is about an older turn");
+        assert_eq!(
+            agent_tag(&working).as_deref(),
+            Some("claude: working"),
+            "the last result is about an older turn"
+        );
     }
 
     #[test]
     fn send_refuses_hidden_characters_before_reaching_any_pane() {
         // Pane 0 is never real, so reaching the server would fail with a different error.
-        let err = send(Some(0), "looks fine\u{200b}".into(), true).unwrap_err().to_string();
-        assert_eq!(err, "refused: hidden characters \\u{200b} at 10; remove them and send again");
-        assert!(crate::hidden::check("\x03").is_ok() && crate::hidden::check("2").is_ok(), "Ctrl-C and a digit answer still go");
+        let err = send(Some(0), "looks fine\u{200b}".into(), true)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            err,
+            "refused: hidden characters \\u{200b} at 10; remove them and send again"
+        );
+        assert!(
+            crate::hidden::check("\x03").is_ok() && crate::hidden::check("2").is_ok(),
+            "Ctrl-C and a digit answer still go"
+        );
     }
 
     #[test]
     fn ls_says_how_long_a_working_agent_has_been_quiet() {
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let mut p = pane("Working", Some("claude"), None);
         p.quiet_since = Some(now - 12 * 60);
-        assert_eq!(agent_tag(&p).as_deref(), Some("claude: working · quiet 12m"));
+        assert_eq!(
+            agent_tag(&p).as_deref(),
+            Some("claude: working · quiet 12m")
+        );
         assert_eq!(pane_json(&p)["quiet_since"], json!(now - 12 * 60));
         p.status = Status::Done;
-        assert_eq!(agent_tag(&p).as_deref(), Some("claude: done"), "only a working agent is quiet");
+        assert_eq!(
+            agent_tag(&p).as_deref(),
+            Some("claude: done"),
+            "only a working agent is quiet"
+        );
         assert!(pane_json(&p).get("quiet_since").is_none());
     }
 
@@ -2222,47 +3504,75 @@ mod tests {
 
     #[test]
     fn codex_status_setup_requires_root_thread_and_subagent_hooks_for_each_platform() {
-        let linux = concat!(r#"
+        let linux = concat!(
+            r#"
             [[hooks.SessionStart]]
             [[hooks.SessionStart.hooks]]
             type = "command"
-            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex --status same'
+            command = '"/usr/local/bin/"#,
+            env!("APP_COMMAND"),
+            r#"" hook codex --status same'
             [[hooks.SubagentStart]]
             [[hooks.SubagentStart.hooks]]
             type = "command"
-            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex'
+            command = '"/usr/local/bin/"#,
+            env!("APP_COMMAND"),
+            r#"" hook codex'
             [[hooks.SubagentStop]]
             [[hooks.SubagentStop.hooks]]
             type = "command"
-            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex'
-        "#);
-        let windows = concat!(r#"
+            command = '"/usr/local/bin/"#,
+            env!("APP_COMMAND"),
+            r#"" hook codex'
+        "#
+        );
+        let windows = concat!(
+            r#"
             [[hooks.SessionStart]]
             [[hooks.SessionStart.hooks]]
             type = "command"
-            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex --status same'
-            commandWindows = '& "C:\\\\"#, env!("APP_COMMAND"), r#".exe" hook codex --status same'
+            command = '"/usr/local/bin/"#,
+            env!("APP_COMMAND"),
+            r#"" hook codex --status same'
+            commandWindows = '& "C:\\\\"#,
+            env!("APP_COMMAND"),
+            r#".exe" hook codex --status same'
             [[hooks.SubagentStart]]
             [[hooks.SubagentStart.hooks]]
             type = "command"
-            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex'
-            commandWindows = '& "C:\\\\"#, env!("APP_COMMAND"), r#".exe" hook codex'
+            command = '"/usr/local/bin/"#,
+            env!("APP_COMMAND"),
+            r#"" hook codex'
+            commandWindows = '& "C:\\\\"#,
+            env!("APP_COMMAND"),
+            r#".exe" hook codex'
             [[hooks.SubagentStop]]
             [[hooks.SubagentStop.hooks]]
             type = "command"
-            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex'
-            commandWindows = '& "C:\\\\"#, env!("APP_COMMAND"), r#".exe" hook codex'
-        "#);
-        let missing_stop = concat!(r#"
+            command = '"/usr/local/bin/"#,
+            env!("APP_COMMAND"),
+            r#"" hook codex'
+            commandWindows = '& "C:\\\\"#,
+            env!("APP_COMMAND"),
+            r#".exe" hook codex'
+        "#
+        );
+        let missing_stop = concat!(
+            r#"
             [[hooks.SessionStart]]
             [[hooks.SessionStart.hooks]]
             type = "command"
-            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex --status same'
+            command = '"/usr/local/bin/"#,
+            env!("APP_COMMAND"),
+            r#"" hook codex --status same'
             [[hooks.SubagentStart]]
             [[hooks.SubagentStart.hooks]]
             type = "command"
-            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex'
-        "#);
+            command = '"/usr/local/bin/"#,
+            env!("APP_COMMAND"),
+            r#"" hook codex'
+        "#
+        );
 
         assert!(super::codex_status_hooks_installed(linux, false));
         assert!(!super::codex_status_hooks_installed(linux, true));
@@ -2273,19 +3583,69 @@ mod tests {
 
     #[test]
     fn hydras_status_line_keeps_yours() {
-        let kept = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-statusline-{}.txt"), std::process::id()));
+        let kept = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-statusline-{}.txt"),
+            std::process::id()
+        ));
         let mut root = serde_json::json!({ "statusLine": { "type": "command", "command": "chm statusline", "padding": 1 } });
-        super::statusline_setting(&mut root, concat!("C:/x/", env!("APP_COMMAND"), ".exe"), false, &kept).unwrap();
-        assert_eq!(root["statusLine"]["command"], concat!("\"C:/x/", env!("APP_COMMAND"), ".exe\" statusline"));
-        assert_eq!(root["statusLine"]["padding"], 1, "your settings for it stay");
-        assert_eq!(std::fs::read_to_string(&kept).unwrap(), "chm statusline", concat!("and yours still runs after ", env!("APP_COMMAND"), "'s"));
-        super::statusline_setting(&mut root, concat!("C:/y/", env!("APP_COMMAND"), ".exe"), false, &kept).unwrap();
-        assert_eq!(std::fs::read_to_string(&kept).unwrap(), "chm statusline", "installing again doesn't lose yours");
-        super::statusline_setting(&mut root, concat!("C:/y/", env!("APP_COMMAND"), ".exe"), true, &kept).unwrap();
-        assert_eq!(root["statusLine"]["command"], "chm statusline", "uninstalling puts yours back");
+        super::statusline_setting(
+            &mut root,
+            concat!("C:/x/", env!("APP_COMMAND"), ".exe"),
+            false,
+            &kept,
+        )
+        .unwrap();
+        assert_eq!(
+            root["statusLine"]["command"],
+            concat!("\"C:/x/", env!("APP_COMMAND"), ".exe\" statusline")
+        );
+        assert_eq!(
+            root["statusLine"]["padding"], 1,
+            "your settings for it stay"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&kept).unwrap(),
+            "chm statusline",
+            concat!("and yours still runs after ", env!("APP_COMMAND"), "'s")
+        );
+        super::statusline_setting(
+            &mut root,
+            concat!("C:/y/", env!("APP_COMMAND"), ".exe"),
+            false,
+            &kept,
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&kept).unwrap(),
+            "chm statusline",
+            "installing again doesn't lose yours"
+        );
+        super::statusline_setting(
+            &mut root,
+            concat!("C:/y/", env!("APP_COMMAND"), ".exe"),
+            true,
+            &kept,
+        )
+        .unwrap();
+        assert_eq!(
+            root["statusLine"]["command"], "chm statusline",
+            "uninstalling puts yours back"
+        );
         let mut none = serde_json::json!({});
-        super::statusline_setting(&mut none, concat!("C:/x/", env!("APP_COMMAND"), ".exe"), false, &kept).unwrap();
-        super::statusline_setting(&mut none, concat!("C:/x/", env!("APP_COMMAND"), ".exe"), true, &kept).unwrap();
+        super::statusline_setting(
+            &mut none,
+            concat!("C:/x/", env!("APP_COMMAND"), ".exe"),
+            false,
+            &kept,
+        )
+        .unwrap();
+        super::statusline_setting(
+            &mut none,
+            concat!("C:/x/", env!("APP_COMMAND"), ".exe"),
+            true,
+            &kept,
+        )
+        .unwrap();
         assert!(none.get("statusLine").is_none(), "none before: none after");
     }
 
@@ -2294,49 +3654,134 @@ mod tests {
         let json = r#"{"cost":{"total_cost_usd":1.25},"context_window":{"context_window_size":200000,"used_percentage":42},
             "rate_limits":{"five_hour":{"used_percentage":23.5,"resets_at":1738425600},"seven_day":{"used_percentage":41.2,"resets_at":1738857600}}}"#;
         let (u, l) = super::statusline_facts(json);
-        assert_eq!(u, crate::protocol::Usage { context: Some(42.0), cost: Some(1.25) });
-        assert_eq!(l.iter().map(|x| (x.name.as_str(), x.used, x.resets_at)).collect::<Vec<_>>(), [("5h", 23.5, 1738425600), ("week", 41.2, 1738857600)]);
+        assert_eq!(
+            u,
+            crate::protocol::Usage {
+                context: Some(42.0),
+                cost: Some(1.25)
+            }
+        );
+        assert_eq!(
+            l.iter()
+                .map(|x| (x.name.as_str(), x.used, x.resets_at))
+                .collect::<Vec<_>>(),
+            [("5h", 23.5, 1738425600), ("week", 41.2, 1738857600)]
+        );
         let (u, l) = super::statusline_facts(r#"{"context_window":{"used_percentage":null}}"#);
-        assert_eq!((u, l.len()), (crate::protocol::Usage::default(), 0), "early in a session, or not on a plan: nothing yet");
+        assert_eq!(
+            (u, l.len()),
+            (crate::protocol::Usage::default(), 0),
+            "early in a session, or not on a plan: nothing yet"
+        );
     }
 
     #[test]
     fn only_new_work_gets_a_worktree() {
-        let w = |a: &[&str]| super::starts_new_work("claude", &a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
-        assert!(w(&[]) && w(&["fix the login page"]) && w(&["--model", "opus"]) && w(&["update the readme"]), "a new session or a task");
-        assert!(!w(&["--continue"]) && !w(&["-r"]) && !w(&["resume"]), "an earlier conversation stays in its folder");
-        assert!(!w(&["--version"]) && !w(&["-p", "what's 2+2"]) && !w(&["mcp", "list"]) && !w(&["update"]), "not work: help, one-shots, subcommands");
+        let w = |a: &[&str]| {
+            super::starts_new_work(
+                "claude",
+                &a.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            )
+        };
+        assert!(
+            w(&[])
+                && w(&["fix the login page"])
+                && w(&["--model", "opus"])
+                && w(&["update the readme"]),
+            "a new session or a task"
+        );
+        assert!(
+            !w(&["--continue"]) && !w(&["-r"]) && !w(&["resume"]),
+            "an earlier conversation stays in its folder"
+        );
+        assert!(
+            !w(&["--version"])
+                && !w(&["-p", "what's 2+2"])
+                && !w(&["mcp", "list"])
+                && !w(&["update"]),
+            "not work: help, one-shots, subcommands"
+        );
     }
 
     #[test]
     fn codex_config_and_profile_options_still_start_new_work() {
-        let w = |a: &[&str]| super::starts_new_work("codex", &a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
-        for args in [vec![], vec!["-c", "model=\"example\""], vec!["-p", "feature"], vec!["--profile", "resume"],
-            vec!["--config=model=\"example\"", "build login"], vec!["-pfeature"], vec!["--", "--resume"]] {
+        let w = |a: &[&str]| {
+            super::starts_new_work(
+                "codex",
+                &a.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            )
+        };
+        for args in [
+            vec![],
+            vec!["-c", "model=\"example\""],
+            vec!["-p", "feature"],
+            vec!["--profile", "resume"],
+            vec!["--config=model=\"example\"", "build login"],
+            vec!["-pfeature"],
+            vec!["--", "--resume"],
+        ] {
             assert!(w(&args), "new Codex work: {args:?}");
         }
-        for args in [vec!["resume", "--last"], vec!["-m", "example", "resume", "--last"], vec!["fork", "--last"],
-            vec!["--profile", "feature", "review"], vec!["--version"], vec!["mcp", "list"], vec!["--worktree"],
-            vec!["-C", "somewhere"], vec!["--cd=somewhere"], vec!["-Csomewhere"], vec!["fix login", "--cd", "somewhere"]] {
+        for args in [
+            vec!["resume", "--last"],
+            vec!["-m", "example", "resume", "--last"],
+            vec!["fork", "--last"],
+            vec!["--profile", "feature", "review"],
+            vec!["--version"],
+            vec!["mcp", "list"],
+            vec!["--worktree"],
+            vec!["-C", "somewhere"],
+            vec!["--cd=somewhere"],
+            vec!["-Csomewhere"],
+            vec!["fix login", "--cd", "somewhere"],
+        ] {
             assert!(!w(&args), "Codex stays in the requested folder: {args:?}");
         }
     }
 
     #[test]
     fn a_finished_turn_is_done_even_when_its_transcript_has_background_work() {
-        let file = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-background-turn-{}.jsonl"), std::process::id()));
+        let file = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-background-turn-{}.jsonl"),
+            std::process::id()
+        ));
         let transcript = [
             json!({"type":"user","message":{"content":"start the game server"}}),
             json!({"type":"user","message":{"content":[{"type":"tool_result","content":"Command running in background with ID: server1. Output is being written to: x"}]}}),
             json!({"type":"assistant","message":{"content":[{"type":"text","text":"The game server is ready."}]}}),
         ];
-        std::fs::write(&file, transcript.iter().map(Value::to_string).collect::<Vec<_>>().join("\n")).unwrap();
+        std::fs::write(
+            &file,
+            transcript
+                .iter()
+                .map(Value::to_string)
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+        .unwrap();
         for event in ["Stop", "Notification"] {
             let payload = json!({"hook_event_name":event,"notification_type":"idle_prompt","transcript_path":file});
             let status = super::status_from_hook(&payload).unwrap();
-            let source = super::HookOrigin { term: 1, agent: "claude".into(), pid: 0, token: String::new() };
-            let ClientMsg::Hook { status, said, transcript, .. } = super::hook_message(source, &payload, status) else { panic!("expected hook report") };
-            assert_eq!(status, HookStatus::Done, "{event} ends the turn while the server remains alive");
+            let source = super::HookOrigin {
+                term: 1,
+                agent: "claude".into(),
+                pid: 0,
+                token: String::new(),
+            };
+            let ClientMsg::Hook {
+                status,
+                said,
+                transcript,
+                ..
+            } = super::hook_message(source, &payload, status)
+            else {
+                panic!("expected hook report")
+            };
+            assert_eq!(
+                status,
+                HookStatus::Done,
+                "{event} ends the turn while the server remains alive"
+            );
             assert_eq!(said.as_deref(), Some("The game server is ready."));
             assert_eq!(transcript.as_ref(), Some(&file));
         }
@@ -2346,32 +3791,72 @@ mod tests {
     #[test]
     fn a_claude_stop_with_background_work_in_flight_says_so() {
         let stop = |tasks: Value| {
-            let payload = json!({"hook_event_name":"Stop","background_tasks":tasks,"session_crons":[]});
-            let origin = super::HookOrigin { term: 1, agent: "claude".into(), pid: 0, token: String::new() };
-            let ClientMsg::Hook { status, background, .. } = super::hook_message(origin, &payload, super::status_from_hook(&payload).unwrap()) else { panic!("expected hook report") };
+            let payload =
+                json!({"hook_event_name":"Stop","background_tasks":tasks,"session_crons":[]});
+            let origin = super::HookOrigin {
+                term: 1,
+                agent: "claude".into(),
+                pid: 0,
+                token: String::new(),
+            };
+            let ClientMsg::Hook {
+                status, background, ..
+            } = super::hook_message(origin, &payload, super::status_from_hook(&payload).unwrap())
+            else {
+                panic!("expected hook report")
+            };
             assert_eq!(status, HookStatus::Done);
             background
         };
         let shell = json!([{"id":"b1","type":"shell","status":"running","description":"watch CI","command":"gh pr checks 38 --watch"}]);
         assert_eq!(stop(shell), ["b1"], "still in flight");
-        assert_eq!(stop(json!([])), Vec::<String>::new(), "nothing in flight: the turn is over");
+        assert_eq!(
+            stop(json!([])),
+            Vec::<String>::new(),
+            "nothing in flight: the turn is over"
+        );
         let over = json!([{"id":"b2","type":"shell","status":"completed"}, {"id":"a3","type":"subagent","status":"Failed"}, {"id":"b4","type":"shell"}]);
-        assert_eq!(stop(over), ["b4"], "finished entries don't count; one with no status might still run");
+        assert_eq!(
+            stop(over),
+            ["b4"],
+            "finished entries don't count; one with no status might still run"
+        );
     }
 
     #[test]
     fn claude_subagent_task_comes_from_its_meta_file() {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-meta-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-meta-{}"),
+            std::process::id()
+        ));
         let subagents = dir.join("sess").join("subagents");
         std::fs::create_dir_all(&subagents).unwrap();
-        std::fs::write(subagents.join("agent-abc.meta.json"), r#"{"agentType":"general-purpose","description":"Debugging Go back test failure"}"#).unwrap();
+        std::fs::write(
+            subagents.join("agent-abc.meta.json"),
+            r#"{"agentType":"general-purpose","description":"Debugging Go back test failure"}"#,
+        )
+        .unwrap();
         let parent = dir.join("sess.jsonl");
         let inner = subagents.join("agent-abc.jsonl");
         let want = Some("Debugging Go back test failure".to_string());
-        assert_eq!(super::subagent_description("claude", Some(&parent), Some("abc")), want, "from SubagentStart");
-        assert_eq!(super::subagent_description("claude", Some(&inner), None), want, "from a hook inside the subagent");
-        assert_eq!(super::subagent_description("codex", Some(&inner), None), None);
-        assert_eq!(super::subagent_description("claude", Some(&parent), Some("missing")), None);
+        assert_eq!(
+            super::subagent_description("claude", Some(&parent), Some("abc")),
+            want,
+            "from SubagentStart"
+        );
+        assert_eq!(
+            super::subagent_description("claude", Some(&inner), None),
+            want,
+            "from a hook inside the subagent"
+        );
+        assert_eq!(
+            super::subagent_description("codex", Some(&inner), None),
+            None
+        );
+        assert_eq!(
+            super::subagent_description("claude", Some(&parent), Some("missing")),
+            None
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -2379,34 +3864,107 @@ mod tests {
     fn gemini_qwen_and_opencode_events_mean_states() {
         use crate::protocol::HookStatus as H;
         let st = |v: serde_json::Value| super::status_from_hook(&v);
-        assert_eq!(st(serde_json::json!({"hook_event_name": "BeforeAgent"})), Some(H::Working), "gemini: a turn starts");
-        assert_eq!(st(serde_json::json!({"hook_event_name": "AfterAgent"})), Some(H::Done));
-        assert_eq!(st(serde_json::json!({"hook_event_name": "Notification", "notification_type": "ToolPermission"})), Some(H::Blocked));
-        assert_eq!(st(serde_json::json!({"hook_event_name": "Stop"})), Some(H::Done), "qwen speaks claude's events");
-        assert_eq!(st(serde_json::json!({"type": "session.status", "properties": {"status": {"type": "busy"}}})), Some(H::Working), "opencode");
-        assert_eq!(st(serde_json::json!({"type": "permission.asked", "properties": {}})), Some(H::Blocked));
-        assert_eq!(st(serde_json::json!({"type": "session.idle", "properties": {}})), Some(H::Done));
-        assert_eq!(st(serde_json::json!({"type": "question.replied"})), Some(H::Working));
-        assert_eq!(st(serde_json::json!({"type": "question.rejected"})), Some(H::Working));
-        assert_eq!(st(serde_json::json!({"type": "session.error"})), Some(H::Done));
-        assert_eq!(st(serde_json::json!({"type": "agent-turn-complete"})), Some(H::Done), "codex unchanged");
+        assert_eq!(
+            st(serde_json::json!({"hook_event_name": "BeforeAgent"})),
+            Some(H::Working),
+            "gemini: a turn starts"
+        );
+        assert_eq!(
+            st(serde_json::json!({"hook_event_name": "AfterAgent"})),
+            Some(H::Done)
+        );
+        assert_eq!(
+            st(
+                serde_json::json!({"hook_event_name": "Notification", "notification_type": "ToolPermission"})
+            ),
+            Some(H::Blocked)
+        );
+        assert_eq!(
+            st(serde_json::json!({"hook_event_name": "Stop"})),
+            Some(H::Done),
+            "qwen speaks claude's events"
+        );
+        assert_eq!(
+            st(
+                serde_json::json!({"type": "session.status", "properties": {"status": {"type": "busy"}}})
+            ),
+            Some(H::Working),
+            "opencode"
+        );
+        assert_eq!(
+            st(serde_json::json!({"type": "permission.asked", "properties": {}})),
+            Some(H::Blocked)
+        );
+        assert_eq!(
+            st(serde_json::json!({"type": "session.idle", "properties": {}})),
+            Some(H::Done)
+        );
+        assert_eq!(
+            st(serde_json::json!({"type": "question.replied"})),
+            Some(H::Working)
+        );
+        assert_eq!(
+            st(serde_json::json!({"type": "question.rejected"})),
+            Some(H::Working)
+        );
+        assert_eq!(
+            st(serde_json::json!({"type": "session.error"})),
+            Some(H::Done)
+        );
+        assert_eq!(
+            st(serde_json::json!({"type": "agent-turn-complete"})),
+            Some(H::Done),
+            "codex unchanged"
+        );
     }
 
     #[test]
     fn native_helper_events_from_kimi_and_mastracode_reach_the_parent() {
         use crate::protocol::HookStatus as H;
         let start = json!({"hook_event_name":"SubagentStart","session_id":"root","agent_name":"Explore","task":"Audit account flow","model":"opus","reasoning_effort":"high"});
-        let origin = super::HookOrigin { term: 9, agent: "kimi".into(), pid: 10, token: String::new() };
-        let ClientMsg::Hook { subagent, status, .. } = super::hook_message(origin, &start, H::Working) else { panic!("expected hook") };
+        let origin = super::HookOrigin {
+            term: 9,
+            agent: "kimi".into(),
+            pid: 10,
+            token: String::new(),
+        };
+        let ClientMsg::Hook {
+            subagent, status, ..
+        } = super::hook_message(origin, &start, H::Working)
+        else {
+            panic!("expected hook")
+        };
         assert_eq!(status, H::Working);
-        assert!(subagent.as_ref().is_some_and(|event| event.id.is_empty() && event.kind == "Explore" && event.start && event.reported_at > 0));
-        assert!(subagent.as_ref().is_some_and(|event| event.task.as_deref() == Some("Audit account flow") && event.model.as_deref() == Some("opus") && event.effort.as_deref() == Some("high")));
+        assert!(subagent.as_ref().is_some_and(|event| event.id.is_empty()
+            && event.kind == "Explore"
+            && event.start
+            && event.reported_at > 0));
+        assert!(
+            subagent
+                .as_ref()
+                .is_some_and(|event| event.task.as_deref() == Some("Audit account flow")
+                    && event.model.as_deref() == Some("opus")
+                    && event.effort.as_deref() == Some("high"))
+        );
 
         let end = json!({"hook_event_name":"SubagentEnd","session_id":"root","agent_id":"child","agent_type":"review"});
-        let origin = super::HookOrigin { term: 9, agent: "mastracode".into(), pid: 10, token: String::new() };
-        let ClientMsg::Hook { subagent, status, .. } = super::hook_message(origin, &end, H::Same) else { panic!("expected hook") };
+        let origin = super::HookOrigin {
+            term: 9,
+            agent: "mastracode".into(),
+            pid: 10,
+            token: String::new(),
+        };
+        let ClientMsg::Hook {
+            subagent, status, ..
+        } = super::hook_message(origin, &end, H::Same)
+        else {
+            panic!("expected hook")
+        };
         assert_eq!(status, H::Same);
-        assert!(subagent.as_ref().is_some_and(|event| event.id == "child" && event.kind == "review" && !event.start && event.reported_at > 0));
+        assert!(subagent.as_ref().is_some_and(|event| event.id == "child"
+            && event.kind == "review"
+            && !event.start
+            && event.reported_at > 0));
     }
 
     #[test]
@@ -2421,84 +3979,231 @@ mod tests {
             "last_assistant_message": "child result must not become the parent summary",
         });
         assert_eq!(super::status_from_hook(&payload), Some(H::Working));
-        let origin = super::HookOrigin { term: 4, agent: "codex".into(), pid: 12, token: "pane-token".into() };
-        let ClientMsg::Hook { session, cwd, subagent, status, said, .. } = super::hook_message(origin, &payload, H::Working) else { panic!("expected hook") };
+        let origin = super::HookOrigin {
+            term: 4,
+            agent: "codex".into(),
+            pid: 12,
+            token: "pane-token".into(),
+        };
+        let ClientMsg::Hook {
+            session,
+            cwd,
+            subagent,
+            status,
+            said,
+            ..
+        } = super::hook_message(origin, &payload, H::Working)
+        else {
+            panic!("expected hook")
+        };
         assert_eq!(status, H::Working);
         assert_eq!(session.as_deref(), Some("parent-thread"));
         assert_eq!(cwd.as_deref(), Some(std::path::Path::new("/project")));
-        assert!(subagent.as_ref().is_some_and(|event| event.id == "child-thread" && event.kind == "reviewer" && event.start));
-        assert!(said.is_none(), "helper output is not attributed to the parent conversation");
+        assert!(
+            subagent
+                .as_ref()
+                .is_some_and(|event| event.id == "child-thread"
+                    && event.kind == "reviewer"
+                    && event.start)
+        );
+        assert!(
+            said.is_none(),
+            "helper output is not attributed to the parent conversation"
+        );
 
         let stop = json!({"hook_event_name":"SubagentStop","session_id":"parent-thread","agent_id":"child-thread","agent_type":"reviewer"});
         assert_eq!(super::status_from_hook(&stop), Some(H::Same));
-        let origin = super::HookOrigin { term: 4, agent: "codex".into(), pid: 12, token: "pane-token".into() };
-        let ClientMsg::Hook { session, subagent, .. } = super::hook_message(origin, &stop, H::Same) else { panic!("expected hook") };
+        let origin = super::HookOrigin {
+            term: 4,
+            agent: "codex".into(),
+            pid: 12,
+            token: "pane-token".into(),
+        };
+        let ClientMsg::Hook {
+            session, subagent, ..
+        } = super::hook_message(origin, &stop, H::Same)
+        else {
+            panic!("expected hook")
+        };
         assert_eq!(session.as_deref(), Some("parent-thread"));
-        assert!(subagent.as_ref().is_some_and(|event| event.id == "child-thread" && event.kind == "reviewer" && !event.start));
+        assert!(
+            subagent
+                .as_ref()
+                .is_some_and(|event| event.id == "child-thread"
+                    && event.kind == "reviewer"
+                    && !event.start)
+        );
     }
 
     #[test]
     fn codex_session_start_records_thread_without_changing_agent_status() {
         use crate::protocol::HookStatus as H;
-        let payload = json!({"hook_event_name":"SessionStart","session_id":"root-thread","cwd":"/project"});
-        let origin = super::HookOrigin { term: 4, agent: "codex".into(), pid: 12, token: "pane-token".into() };
-        let ClientMsg::Hook { session, cwd, status, event, .. } = super::hook_message(origin, &payload, H::Same) else { panic!("expected hook") };
+        let payload =
+            json!({"hook_event_name":"SessionStart","session_id":"root-thread","cwd":"/project"});
+        let origin = super::HookOrigin {
+            term: 4,
+            agent: "codex".into(),
+            pid: 12,
+            token: "pane-token".into(),
+        };
+        let ClientMsg::Hook {
+            session,
+            cwd,
+            status,
+            event,
+            ..
+        } = super::hook_message(origin, &payload, H::Same)
+        else {
+            panic!("expected hook")
+        };
         assert_eq!(session.as_deref(), Some("root-thread"));
         assert_eq!(cwd.as_deref(), Some(std::path::Path::new("/project")));
-        assert_eq!(status, H::Same, "capturing the root thread must not mark a running Codex turn idle");
+        assert_eq!(
+            status,
+            H::Same,
+            "capturing the root thread must not mark a running Codex turn idle"
+        );
         assert_eq!(event, "SessionStart");
     }
 
     #[test]
     fn pi_native_events_map_to_status_with_evidence_and_no_conversation_payload() {
         use crate::protocol::HookStatus as H;
-        for (event, expected) in [("pi.session_start", H::Idle), ("pi.agent_start", H::Working), ("pi.ui_prompt_start", H::Blocked), ("pi.ui_prompt_end", H::Working), ("pi.agent_settled", H::Done), ("pi.session_shutdown", H::Gone)] {
+        for (event, expected) in [
+            ("pi.session_start", H::Idle),
+            ("pi.agent_start", H::Working),
+            ("pi.ui_prompt_start", H::Blocked),
+            ("pi.ui_prompt_end", H::Working),
+            ("pi.agent_settled", H::Done),
+            ("pi.session_shutdown", H::Gone),
+        ] {
             let payload = json!({"hook_event_name":event,"cwd":"/project"});
             assert_eq!(super::status_from_hook(&payload), Some(expected));
-            let origin = super::HookOrigin { term: 7, agent: "pi".into(), pid: 10, token: String::new() };
-            let ClientMsg::Hook { event: evidence, prompt, said, .. } = super::hook_message(origin, &payload, expected) else { panic!("expected hook") };
+            let origin = super::HookOrigin {
+                term: 7,
+                agent: "pi".into(),
+                pid: 10,
+                token: String::new(),
+            };
+            let ClientMsg::Hook {
+                event: evidence,
+                prompt,
+                said,
+                ..
+            } = super::hook_message(origin, &payload, expected)
+            else {
+                panic!("expected hook")
+            };
             assert_eq!(evidence, event);
             assert!(prompt.is_none() && said.is_none());
         }
         let payload = json!({"type":"question.asked"});
-        let origin = super::HookOrigin { term: 7, agent: "opencode".into(), pid: 10, token: String::new() };
-        let ClientMsg::Hook { event, .. } = super::hook_message(origin, &payload, H::Blocked) else { panic!("expected hook") };
+        let origin = super::HookOrigin {
+            term: 7,
+            agent: "opencode".into(),
+            pid: 10,
+            token: String::new(),
+        };
+        let ClientMsg::Hook { event, .. } = super::hook_message(origin, &payload, H::Blocked)
+        else {
+            panic!("expected hook")
+        };
         assert_eq!(event, "question.asked");
     }
 
     #[test]
     fn codex_notify_is_set_and_others_kept() {
-        let file = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-codex-{}.toml"), std::process::id()));
+        let file = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-codex-{}.toml"),
+            std::process::id()
+        ));
         std::fs::write(&file, "model = \"gpt-5\"\n\n[tui]\nnotifications = true\n").unwrap();
-        assert!(matches!(super::codex_notify(&file, concat!("/bin/", env!("APP_COMMAND")), false).unwrap(), super::CodexNotify::Set));
+        assert!(matches!(
+            super::codex_notify(&file, concat!("/bin/", env!("APP_COMMAND")), false).unwrap(),
+            super::CodexNotify::Set
+        ));
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains(concat!(r#"notify = ["/bin/"#, env!("APP_COMMAND"), r#"", "hook", "codex"]"#)) && text.contains("[tui]") && text.contains("gpt-5"), "{text}");
-        assert!(text.find("notify") < text.find("[tui]"), "a top-level key, before the tables: {text}");
+        assert!(
+            text.contains(concat!(
+                r#"notify = ["/bin/"#,
+                env!("APP_COMMAND"),
+                r#"", "hook", "codex"]"#
+            )) && text.contains("[tui]")
+                && text.contains("gpt-5"),
+            "{text}"
+        );
+        assert!(
+            text.find("notify") < text.find("[tui]"),
+            "a top-level key, before the tables: {text}"
+        );
         // Run again with the app elsewhere: replaced (it's ours).
-        super::codex_notify(&file, concat!("/usr/local/bin/", env!("APP_COMMAND")), false).unwrap();
-        assert!(std::fs::read_to_string(&file).unwrap().contains(concat!("/usr/local/bin/", env!("APP_COMMAND"))));
+        super::codex_notify(
+            &file,
+            concat!("/usr/local/bin/", env!("APP_COMMAND")),
+            false,
+        )
+        .unwrap();
+        assert!(
+            std::fs::read_to_string(&file)
+                .unwrap()
+                .contains(concat!("/usr/local/bin/", env!("APP_COMMAND")))
+        );
         // Someone else's notify stays.
         std::fs::write(&file, "notify = [\"my-notifier\"]\n").unwrap();
-        assert!(matches!(super::codex_notify(&file, concat!("/bin/", env!("APP_COMMAND")), false).unwrap(), super::CodexNotify::Theirs(_)));
-        assert!(std::fs::read_to_string(&file).unwrap().contains("my-notifier"));
+        assert!(matches!(
+            super::codex_notify(&file, concat!("/bin/", env!("APP_COMMAND")), false).unwrap(),
+            super::CodexNotify::Theirs(_)
+        ));
+        assert!(
+            std::fs::read_to_string(&file)
+                .unwrap()
+                .contains("my-notifier")
+        );
         let _ = std::fs::remove_file(&file);
-        let _ = std::fs::remove_file(file.with_extension(concat!("toml.", env!("APP_COMMAND"), "-bak")));
+        let _ = std::fs::remove_file(file.with_extension(concat!(
+            "toml.",
+            env!("APP_COMMAND"),
+            "-bak"
+        )));
     }
 
     #[test]
     fn qwen_home_is_the_qwen_config_folder_itself() {
         let home = std::path::Path::new("/home/me");
-        assert_eq!(super::qwen_settings_in(Some("/opt/qwen-config".into()), home), std::path::Path::new("/opt/qwen-config/settings.json"));
-        assert_eq!(super::qwen_settings_in(None, home), home.join(".qwen").join("settings.json"));
-        assert_eq!(super::qwen_settings_in(Some("".into()), home), home.join(".qwen").join("settings.json"), "an empty QWEN_HOME is unset");
-        assert_eq!(super::qwen_settings_in(Some("~/qwen-config".into()), home), home.join("qwen-config").join("settings.json"));
-        assert_eq!(super::qwen_settings_in(Some("~".into()), home), home.join("settings.json"));
-        assert_eq!(super::qwen_settings_in(Some("/a/~b".into()), home), std::path::Path::new("/a/~b/settings.json"), "only a leading ~");
+        assert_eq!(
+            super::qwen_settings_in(Some("/opt/qwen-config".into()), home),
+            std::path::Path::new("/opt/qwen-config/settings.json")
+        );
+        assert_eq!(
+            super::qwen_settings_in(None, home),
+            home.join(".qwen").join("settings.json")
+        );
+        assert_eq!(
+            super::qwen_settings_in(Some("".into()), home),
+            home.join(".qwen").join("settings.json"),
+            "an empty QWEN_HOME is unset"
+        );
+        assert_eq!(
+            super::qwen_settings_in(Some("~/qwen-config".into()), home),
+            home.join("qwen-config").join("settings.json")
+        );
+        assert_eq!(
+            super::qwen_settings_in(Some("~".into()), home),
+            home.join("settings.json")
+        );
+        assert_eq!(
+            super::qwen_settings_in(Some("/a/~b".into()), home),
+            std::path::Path::new("/a/~b/settings.json"),
+            "only a leading ~"
+        );
     }
 
     #[test]
     fn settings_hooks_keep_comments_order_and_other_hooks_and_replace_only_ours() {
-        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-jsonc-hooks-{}"), std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-jsonc-hooks-{}"),
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("settings.json");
@@ -2508,20 +4213,40 @@ mod tests {
         super::json_hooks(&path, "gemini", super::GEMINI_EVENTS, 5000, false).unwrap();
         let once = std::fs::read_to_string(&path).unwrap();
         super::json_hooks(&path, "gemini", super::GEMINI_EVENTS, 5000, false).unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), once, "a re-run replaces only its own groups");
-        assert!(once.starts_with('\u{feff}') && once.contains("// pick a theme") && once.contains("// mine"), "{once}");
-        assert!(once.find("\"theme\"") < once.find("\"hooks\"") && once.find("\"hooks\"") < once.find("\"auth\""), "key order kept: {once}");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            once,
+            "a re-run replaces only its own groups"
+        );
+        assert!(
+            once.starts_with('\u{feff}')
+                && once.contains("// pick a theme")
+                && once.contains("// mine"),
+            "{once}"
+        );
+        assert!(
+            once.find("\"theme\"") < once.find("\"hooks\"")
+                && once.find("\"hooks\"") < once.find("\"auth\""),
+            "key order kept: {once}"
+        );
         let root = super::jsonc::parse_value(&once).unwrap();
         let after_agent = root["hooks"]["AfterAgent"].as_array().unwrap();
         assert_eq!(after_agent.len(), 2);
         assert_eq!(after_agent[0]["hooks"][0]["command"], "my-hook");
         assert!(super::is_ours(&after_agent[1]));
-        assert_eq!(root["hooks"].as_object().unwrap().len(), super::GEMINI_EVENTS.len());
+        assert_eq!(
+            root["hooks"].as_object().unwrap().len(),
+            super::GEMINI_EVENTS.len()
+        );
 
         super::json_hooks(&path, "gemini", super::GEMINI_EVENTS, 5000, true).unwrap();
         let removed = std::fs::read_to_string(&path).unwrap();
         let root = super::jsonc::parse_value(&removed).unwrap();
-        assert_eq!(root["hooks"].as_object().unwrap().len(), 1, "only the user's event is left: {removed}");
+        assert_eq!(
+            root["hooks"].as_object().unwrap().len(),
+            1,
+            "only the user's event is left: {removed}"
+        );
         assert_eq!(root["hooks"]["AfterAgent"].as_array().unwrap().len(), 1);
         assert!(removed.contains("// pick a theme") && removed.contains("\"auth\""));
         std::fs::remove_dir_all(dir).unwrap();
@@ -2534,8 +4259,15 @@ mod tests {
             env!("APP_COMMAND"): { "command": concat!("C:/Programs/", env!("APP_COMMAND"), "/", env!("APP_COMMAND"), ".exe"), "args": ["mcp"] },
             "plane": { "command": "npx", "args": ["plane-mcp"] },
         }});
-        assert_eq!(super::old_mcp_names(&root), vec!["hydra".to_string()], "only the old install's");
-        assert!(super::old_mcp_names(&serde_json::json!({})).is_empty(), "no servers at all");
+        assert_eq!(
+            super::old_mcp_names(&root),
+            vec!["hydra".to_string()],
+            "only the old install's"
+        );
+        assert!(
+            super::old_mcp_names(&serde_json::json!({})).is_empty(),
+            "no servers at all"
+        );
     }
 
     #[test]
@@ -2544,14 +4276,30 @@ mod tests {
             "seshi": { "command": "C:/Users/me/AppData/Local/Programs/seshi/seshi.exe", "args": ["mcp"] },
             env!("APP_COMMAND"): { "command": concat!("C:/Programs/", env!("APP_COMMAND"), "/", env!("APP_COMMAND"), ".exe"), "args": ["mcp"] },
         }});
-        assert_eq!(super::old_mcp_names(&root), vec!["seshi".to_string()], "the seshi MCP entry is the old one");
-        assert!(super::runs_our_hook("\"C:/Users/me/AppData/Local/Programs/seshi/seshi.exe\" hook claude"), "its hooks are ours to rewrite");
-        assert!(super::is_ours(&serde_json::json!({ "_seshi": true, "hooks": [] })), "so is its tag");
+        assert_eq!(
+            super::old_mcp_names(&root),
+            vec!["seshi".to_string()],
+            "the seshi MCP entry is the old one"
+        );
+        assert!(
+            super::runs_our_hook(
+                "\"C:/Users/me/AppData/Local/Programs/seshi/seshi.exe\" hook claude"
+            ),
+            "its hooks are ours to rewrite"
+        );
+        assert!(
+            super::is_ours(&serde_json::json!({ "_seshi": true, "hooks": [] })),
+            "so is its tag"
+        );
     }
 
     #[test]
     fn hooks_from_another_hydra_are_found() {
-        let want = concat!("\"/home/me/.local/bin/", env!("APP_COMMAND"), "\" hook claude");
+        let want = concat!(
+            "\"/home/me/.local/bin/",
+            env!("APP_COMMAND"),
+            "\" hook claude"
+        );
         let settings = |cmd: &str| {
             serde_json::json!({ "hooks": {
                 "Stop": [
@@ -2560,26 +4308,55 @@ mod tests {
                 ],
             }})
         };
-        assert!(super::stale_in(&settings(want), want).is_empty(), concat!("this ", env!("APP_COMMAND"), "'s hooks are fine; others' aren't ours to judge"));
-        let old = concat!("\"/home/me/.cargo/bin/", env!("APP_COMMAND"), "\" hook claude");
+        assert!(
+            super::stale_in(&settings(want), want).is_empty(),
+            concat!(
+                "this ",
+                env!("APP_COMMAND"),
+                "'s hooks are fine; others' aren't ours to judge"
+            )
+        );
+        let old = concat!(
+            "\"/home/me/.cargo/bin/",
+            env!("APP_COMMAND"),
+            "\" hook claude"
+        );
         assert_eq!(super::stale_in(&settings(old), want), vec![old.to_string()]);
         // An old install's hook without the tag is still ours (so it gets repointed).
         let untagged = serde_json::json!({ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "/home/me/.local/bin/hydra hook claude" }] }] } });
-        assert_eq!(super::stale_in(&untagged, want), vec!["/home/me/.local/bin/hydra hook claude".to_string()]);
-        assert!(!super::runs_our_hook("hydra-lint check"), "only the app's own hook");
+        assert_eq!(
+            super::stale_in(&untagged, want),
+            vec!["/home/me/.local/bin/hydra hook claude".to_string()]
+        );
+        assert!(
+            !super::runs_our_hook("hydra-lint check"),
+            "only the app's own hook"
+        );
     }
 
     #[test]
     fn stale_hooks_are_found_in_a_commented_settings_file() {
-        let want = concat!("\"/home/me/.local/bin/", env!("APP_COMMAND"), "\" hook claude");
-        let old = concat!("\"/home/me/.cargo/bin/", env!("APP_COMMAND"), "\" hook claude");
+        let want = concat!(
+            "\"/home/me/.local/bin/",
+            env!("APP_COMMAND"),
+            "\" hook claude"
+        );
+        let old = concat!(
+            "\"/home/me/.cargo/bin/",
+            env!("APP_COMMAND"),
+            "\" hook claude"
+        );
         let text = format!(
             "{{\n  // my settings\n  \"hooks\": {{ \"Stop\": [ {{ \"_{app}\": true, \"hooks\": [{{ \"type\": \"command\", \"command\": {cmd} }}] }} ] }}\n}}\n",
             app = env!("APP_COMMAND"),
             cmd = serde_json::to_string(old).unwrap()
         );
         let root = super::jsonc::parse_value(&text).expect("a commented settings file still reads");
-        assert_eq!(super::stale_in(&root, want), vec![old.to_string()], "a moved install is found despite the comment");
+        assert_eq!(
+            super::stale_in(&root, want),
+            vec![old.to_string()],
+            "a moved install is found despite the comment"
+        );
     }
 
     #[test]
@@ -2595,7 +4372,13 @@ mod tests {
         }});
         let exists = |p: &std::path::Path| p == std::path::Path::new("/usr/bin/notify-send");
         let broken = super::broken_hooks_in(&root, exists, |_| false);
-        assert_eq!(broken, vec!["\"/home/me/.local/bin/hydra\" hook claude".to_string(), "hydra hook claude".to_string()]);
+        assert_eq!(
+            broken,
+            vec![
+                "\"/home/me/.local/bin/hydra\" hook claude".to_string(),
+                "hydra hook claude".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -2609,25 +4392,49 @@ mod tests {
             r#"{"type":"user","message":{"content":"say \"model\" and \"customTitle\""}}"#,
         ]
         .join("\n");
-        assert_eq!(super::transcript_facts_in(&t), (Some("sonnet 5.5".into()), Some("Fix the login flow".into())));
-        let t = format!("{t}\n{}", r#"{"type":"custom-title","customTitle":"auth rewrite","sessionId":"s"}"#);
-        assert_eq!(super::transcript_facts_in(&t).1.as_deref(), Some("auth rewrite"), "your /rename wins");
+        assert_eq!(
+            super::transcript_facts_in(&t),
+            (Some("sonnet 5.5".into()), Some("Fix the login flow".into()))
+        );
+        let t = format!(
+            "{t}\n{}",
+            r#"{"type":"custom-title","customTitle":"auth rewrite","sessionId":"s"}"#
+        );
+        assert_eq!(
+            super::transcript_facts_in(&t).1.as_deref(),
+            Some("auth rewrite"),
+            "your /rename wins"
+        );
     }
 
     use super::*;
 
-
     #[test]
     fn claude_hook_mapping() {
         let s = |v: Value| status_from_hook(&v);
-        assert_eq!(s(json!({"hook_event_name": "UserPromptSubmit"})), Some(HookStatus::Working));
-        assert_eq!(s(json!({"hook_event_name": "Stop"})), Some(HookStatus::Done));
+        assert_eq!(
+            s(json!({"hook_event_name": "UserPromptSubmit"})),
+            Some(HookStatus::Working)
+        );
+        assert_eq!(
+            s(json!({"hook_event_name": "Stop"})),
+            Some(HookStatus::Done)
+        );
         assert_eq!(
             s(json!({"hook_event_name": "Notification", "notification_type": "permission_prompt"})),
             Some(HookStatus::Blocked)
         );
-        assert_eq!(s(json!({"hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion"})), Some(HookStatus::Blocked));
-        assert_eq!(s(json!({"type": "agent-turn-complete"})), Some(HookStatus::Done));
-        assert_eq!(s(json!({"hook_event_name": "Notification", "notification_type": "auth_success"})), None);
+        assert_eq!(
+            s(json!({"hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion"})),
+            Some(HookStatus::Blocked)
+        );
+        assert_eq!(
+            s(json!({"type": "agent-turn-complete"})),
+            Some(HookStatus::Done)
+        );
+        assert_eq!(
+            s(json!({"hook_event_name": "Notification", "notification_type": "auth_success"})),
+            None
+        );
     }
 }

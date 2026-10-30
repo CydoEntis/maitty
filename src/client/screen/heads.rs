@@ -17,17 +17,29 @@ pub(crate) struct BothView {
 
 /// The checkouts of `repo` by name, with their folders, from the sidebar's model.
 fn checkouts(model: &[Proj], repo: &Path) -> Vec<Wt> {
-    model.iter().filter(|p| p.path == repo).flat_map(|p| p.wts.iter().cloned()).collect()
+    model
+        .iter()
+        .filter(|p| p.path == repo)
+        .flat_map(|p| p.wts.iter().cloned())
+        .collect()
 }
 
 /// The agent working in checkout `name` of `repo` (the first, if several).
 pub(in crate::client) fn agent_in(model: &[Proj], repo: &Path, name: &str) -> Option<TermId> {
-    checkouts(model, repo).into_iter().filter(|w| w.name == name).flat_map(|w| w.sessions).find(|s| s.is_agent).map(|s| s.term)
+    checkouts(model, repo)
+        .into_iter()
+        .filter(|w| w.name == name)
+        .flat_map(|w| w.sessions)
+        .find(|s| s.is_agent)
+        .and_then(|s| s.native_term)
 }
 
 /// What to tell `to` about the file `other` changed too.
 fn note(o: &Overlap, other: &str) -> String {
-    format!("{other} also changes {}; rebase on it before you finish", o.file)
+    format!(
+        "{other} also changes {}; rebase on it before you finish",
+        o.file
+    )
 }
 
 /// The rows the both-diffs sheet shows: a heading, then each checkout's hunks.
@@ -35,18 +47,39 @@ fn lines(v: &BothView, t: &Theme) -> Vec<Vec<Seg>> {
     let mut out = Vec::new();
     let conf = blend(t.sky(), t.text, 0.3);
     let who = v.overlap.checkouts.join(" and ");
-    out.push(vec![seg("⇆ ", Style::default().fg(conf).add_modifier(Modifier::BOLD)), seg(format!("{who} both changed {}", v.overlap.file), Style::default().fg(t.strong))]);
+    out.push(vec![
+        seg("⇆ ", Style::default().fg(conf).add_modifier(Modifier::BOLD)),
+        seg(
+            format!("{who} both changed {}", v.overlap.file),
+            Style::default().fg(t.strong),
+        ),
+    ]);
     out.push(vec![]);
     let Some(parts) = &v.parts else {
-        out.push(vec![seg("reading both diffs…", Style::default().fg(t.muted))]);
+        out.push(vec![seg(
+            "reading both diffs…",
+            Style::default().fg(t.muted),
+        )]);
         return out;
     };
     for (name, diff) in parts {
-        out.push(vec![seg(format!("⎇ {name}"), Style::default().fg(t.done).add_modifier(Modifier::BOLD)), seg(format!("  {}", v.overlap.file), Style::default().fg(t.sky()))]);
+        out.push(vec![
+            seg(
+                format!("⎇ {name}"),
+                Style::default().fg(t.done).add_modifier(Modifier::BOLD),
+            ),
+            seg(
+                format!("  {}", v.overlap.file),
+                Style::default().fg(t.sky()),
+            ),
+        ]);
         let (mut old, mut new) = (0, 0);
         let body: Vec<&str> = diff.lines().skip_while(|l| !l.starts_with("@@")).collect();
         if body.is_empty() {
-            out.push(vec![seg("  (no changes to it any more)", Style::default().fg(t.muted).add_modifier(Modifier::ITALIC))]);
+            out.push(vec![seg(
+                "  (no changes to it any more)",
+                Style::default().fg(t.muted).add_modifier(Modifier::ITALIC),
+            )]);
         }
         for l in body {
             out.push(crate::client::design::diff_line(t, l, &mut old, &mut new));
@@ -71,7 +104,13 @@ pub(in crate::client) fn draw_both(buf: &mut Buffer, inside: Rect, t: &Theme, v:
     let a = names.first().cloned().unwrap_or_default();
     let b = names.get(1).cloned().unwrap_or_default();
     let (ka, kb) = (format!("tell {a}"), format!("tell {b}"));
-    status_bar(buf, inside, t, &[("m", &ka), ("M", &kb), ("k", "dismiss"), ("Esc", "close")], &[]);
+    status_bar(
+        buf,
+        inside,
+        t,
+        &[("m", &ka), ("M", &kb), ("k", "dismiss"), ("Esc", "close")],
+        &[],
+    );
 }
 
 impl App {
@@ -81,22 +120,51 @@ impl App {
         let dirs: Vec<(String, PathBuf)> = o
             .checkouts
             .iter()
-            .filter_map(|name| checkouts(&model, &repo).into_iter().find(|w| &w.name == name).map(|w| (name.clone(), w.path)))
+            .filter_map(|name| {
+                checkouts(&model, &repo)
+                    .into_iter()
+                    .find(|w| &w.name == name)
+                    .map(|w| (name.clone(), w.path))
+            })
             .collect();
         let file = o.file.clone();
         self.mode = Mode::Normal;
-        self.show_view(crate::client::View::Both(Box::new(BothView { repo: repo.clone(), overlap: o, parts: None, scroll: 0 })));
+        self.show_view(crate::client::View::Both(Box::new(BothView {
+            repo: repo.clone(),
+            overlap: o,
+            parts: None,
+            scroll: 0,
+        })));
         self.spawn_bg(move || {
             // Each side's changes since the two last had a commit in common (as the
             // heads-up itself is found): against the first other checkout.
-            let heads: Vec<Option<String>> = dirs.iter().map(|(_, dir)| crate::proc::git(dir, &["rev-parse", "HEAD"]).ok().map(|h| h.trim().to_string())).collect();
+            let heads: Vec<Option<String>> = dirs
+                .iter()
+                .map(|(_, dir)| {
+                    crate::proc::git(dir, &["rev-parse", "HEAD"])
+                        .ok()
+                        .map(|h| h.trim().to_string())
+                })
+                .collect();
             let parts = dirs
                 .iter()
                 .enumerate()
                 .map(|(i, (name, dir))| {
-                    let other = heads.iter().enumerate().find(|(j, _)| *j != i).and_then(|(_, h)| h.clone());
-                    let since = other.and_then(|h| crate::proc::git(dir, &["merge-base", "HEAD", h.as_str()]).ok()).map(|s| s.trim().to_string());
-                    let diff = since.and_then(|s| crate::proc::git(dir, &["diff", s.as_str(), "--", &file]).ok()).unwrap_or_default();
+                    let other = heads
+                        .iter()
+                        .enumerate()
+                        .find(|(j, _)| *j != i)
+                        .and_then(|(_, h)| h.clone());
+                    let since = other
+                        .and_then(|h| {
+                            crate::proc::git(dir, &["merge-base", "HEAD", h.as_str()]).ok()
+                        })
+                        .map(|s| s.trim().to_string());
+                    let diff = since
+                        .and_then(|s| {
+                            crate::proc::git(dir, &["diff", s.as_str(), "--", &file]).ok()
+                        })
+                        .unwrap_or_default();
                     (name.clone(), diff)
                 })
                 .collect();
@@ -106,15 +174,29 @@ impl App {
 
     /// Don't say this one again (until it clears and happens again).
     pub(in crate::client) fn dismiss_heads_up(&mut self, repo: &Path, o: &Overlap) {
-        self.screen.dismissed.insert((repo.to_path_buf(), o.file.clone()));
-        self.notify("Dismissed. It comes back if they touch it again.".into(), false);
+        self.screen
+            .dismissed
+            .insert((repo.to_path_buf(), o.file.clone()));
+        self.notify(
+            "Dismissed. It comes back if they touch it again.".into(),
+            false,
+        );
     }
 
     /// A follow-up to the agent in checkout `to`, about what `other` changed in the same file
     /// (written for you; change it or send it). `inbox`: from that Inbox place.
-    pub(in crate::client) fn tell_about(&mut self, repo: &Path, o: &Overlap, to: usize, inbox: Option<(String, usize)>) {
+    pub(in crate::client) fn tell_about(
+        &mut self,
+        repo: &Path,
+        o: &Overlap,
+        to: usize,
+        inbox: Option<(String, usize)>,
+    ) {
         let model = self.screen_model();
-        let (Some(name), Some(other)) = (o.checkouts.get(to), o.checkouts.get(1 - to.min(1))) else { return };
+        let (Some(name), Some(other)) = (o.checkouts.get(to), o.checkouts.get(1 - to.min(1)))
+        else {
+            return;
+        };
         match agent_in(&model, repo, name) {
             Some(term) => {
                 self.start_compose(term, false, inbox);
@@ -156,7 +238,13 @@ mod tests {
 
     #[test]
     fn the_note_names_the_other_checkout_and_the_file() {
-        let o = Overlap { file: "src/checkout.ts".into(), checkouts: vec!["orders".into(), "rate-limit".into()] };
-        assert_eq!(note(&o, "rate-limit"), "rate-limit also changes src/checkout.ts; rebase on it before you finish");
+        let o = Overlap {
+            file: "src/checkout.ts".into(),
+            checkouts: vec!["orders".into(), "rate-limit".into()],
+        };
+        assert_eq!(
+            note(&o, "rate-limit"),
+            "rate-limit also changes src/checkout.ts; rebase on it before you finish"
+        );
     }
 }

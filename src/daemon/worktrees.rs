@@ -1,7 +1,7 @@
 //! Worktrees: making and trusting them, spares kept warm, hooks, cleanup.
 
 use super::*;
-use crate::brand::{APP_COMMAND};
+use crate::brand::APP_COMMAND;
 
 /// The repository a folder belongs to: its main checkout (worktrees resolve to the repo
 /// they were made from). `None` outside git.
@@ -14,13 +14,16 @@ pub(super) fn repo_of(dir: &std::path::Path) -> Option<PathBuf> {
     // A linked worktree: ".git" is a file "gitdir: <main>/.git/worktrees/<name>".
     let text = std::fs::read_to_string(&dot).ok()?;
     let gitdir = PathBuf::from(text.trim().strip_prefix("gitdir:")?.trim());
-    let main_git = gitdir.ancestors().find(|a| a.file_name().is_some_and(|n| n == ".git"))?;
+    let main_git = gitdir
+        .ancestors()
+        .find(|a| a.file_name().is_some_and(|n| n == ".git"))?;
     main_git.parent().map(|p| p.to_path_buf())
 }
 
 /// Where the spare worktree is noted, so one left behind by a crash is cleaned up.
 pub(super) fn spare_file() -> PathBuf {
-    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
+    let label =
+        std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
     crate::config::data_dir().join(format!("spare-{label}.txt"))
 }
 
@@ -44,7 +47,11 @@ pub(super) fn drop_spare_dir(path: &std::path::Path) {
     let repo = crate::gitfs::head(path).map(|h| h.main_root);
     let _ = git::remove_worktree(path, true, false);
     if let (Some(repo), Some(b)) = (repo, branch.filter(|b| b.starts_with("spare-"))) {
-        let _ = std::process::Command::new("git").arg("-C").arg(repo).args(["branch", "-D", &b]).output();
+        let _ = std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(["branch", "-D", &b])
+            .output();
     }
 }
 
@@ -59,7 +66,12 @@ pub(super) fn trust_like_repo(repo: &std::path::Path, worktree: &std::path::Path
 /// Make a worktree and trust it like its repo, both on the calling (background) thread:
 /// Claude's file can be megabytes, and the trust must be in place before an agent starts
 /// there.
-pub(super) fn create_trusted_worktree(dir: &std::path::Path, branch: &str, base: Option<&str>, template: &str) -> Result<(PathBuf, String), String> {
+pub(super) fn create_trusted_worktree(
+    dir: &std::path::Path,
+    branch: &str,
+    base: Option<&str>,
+    template: &str,
+) -> Result<(PathBuf, String), String> {
     let made = git::create_worktree(dir, branch, base, template).map_err(|e| format!("{e:#}"))?;
     if let Some(h) = crate::gitfs::head(&made.0) {
         trust_like_repo(&h.main_root, &made.0);
@@ -73,14 +85,21 @@ pub(super) fn create_trusted_worktree(dir: &std::path::Path, branch: &str, base:
 pub(super) fn agent_worktree(dir: &std::path::Path, template: &str) -> Result<PathBuf, String> {
     let head = crate::gitfs::head(dir).ok_or("not in a git repository")?;
     let taken = git::branches(&head.main_root);
-    let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as usize).unwrap_or(0);
+    let n = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as usize)
+        .unwrap_or(0);
     let names = crate::gitfs::WT_NAMES;
     let branch = (0..names.len())
         .map(|i| names[(n + i) % names.len()].to_string())
         .find(|b| !taken.contains(b))
         .unwrap_or_else(|| format!("{}-{}", names[n % names.len()], n % 1000));
     let (path, _) = create_trusted_worktree(&head.main_root, &branch, None, template)?;
-    let sub = dir.strip_prefix(&head.top).ok().map(|s| path.join(s)).filter(|p| p.is_dir());
+    let sub = dir
+        .strip_prefix(&head.top)
+        .ok()
+        .map(|s| path.join(s))
+        .filter(|p| p.is_dir());
     Ok(sub.unwrap_or(path))
 }
 
@@ -93,7 +112,11 @@ pub(super) fn trust_in(file: &std::path::Path, repo: &std::path::Path, worktree:
             Trust::Done => return,
         }
     }
-    tracing::warn!("{} kept changing; didn't mark {} trusted", file.display(), worktree.display());
+    tracing::warn!(
+        "{} kept changing; didn't mark {} trusted",
+        file.display(),
+        worktree.display()
+    );
 }
 
 pub(super) enum Trust {
@@ -102,28 +125,60 @@ pub(super) enum Trust {
     Raced,
 }
 
-pub(super) fn trust_once(file: &std::path::Path, repo: &std::path::Path, worktree: &std::path::Path) -> Trust {
+pub(super) fn trust_once(
+    file: &std::path::Path,
+    repo: &std::path::Path,
+    worktree: &std::path::Path,
+) -> Trust {
     let file = file.to_path_buf();
-    let Ok(text) = std::fs::read_to_string(&file) else { return Trust::Done };
-    let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&text) else { return Trust::Done };
-    let key = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/").trim_end_matches('/').to_string();
+    let Ok(text) = std::fs::read_to_string(&file) else {
+        return Trust::Done;
+    };
+    let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Trust::Done;
+    };
+    let key = |p: &std::path::Path| {
+        p.to_string_lossy()
+            .replace('\\', "/")
+            .trim_end_matches('/')
+            .to_string()
+    };
     let projects = v.get("projects");
-    let trusted = |k: &str| projects.and_then(|p| p.get(k)).and_then(|e| e.get("hasTrustDialogAccepted")).and_then(|b| b.as_bool()) == Some(true);
+    let trusted = |k: &str| {
+        projects
+            .and_then(|p| p.get(k))
+            .and_then(|e| e.get("hasTrustDialogAccepted"))
+            .and_then(|b| b.as_bool())
+            == Some(true)
+    };
     let (rk, wk) = (key(repo), key(worktree));
     // Claude's keys may differ in the drive letter's case.
-    let repo_ok = trusted(&rk) || projects.and_then(|p| p.as_object()).is_some_and(|m| m.iter().any(|(k, e)| k.eq_ignore_ascii_case(&rk) && e.get("hasTrustDialogAccepted").and_then(|b| b.as_bool()) == Some(true)));
+    let repo_ok = trusted(&rk)
+        || projects.and_then(|p| p.as_object()).is_some_and(|m| {
+            m.iter().any(|(k, e)| {
+                k.eq_ignore_ascii_case(&rk)
+                    && e.get("hasTrustDialogAccepted").and_then(|b| b.as_bool()) == Some(true)
+            })
+        });
     if !repo_ok || trusted(&wk) {
         return Trust::Done;
     }
-    let Some(map) = v.get_mut("projects").and_then(|p| p.as_object_mut()) else { return Trust::Done };
+    let Some(map) = v.get_mut("projects").and_then(|p| p.as_object_mut()) else {
+        return Trust::Done;
+    };
     let entry = map.entry(wk).or_insert_with(|| serde_json::json!({}));
     if let Some(o) = entry.as_object_mut() {
-        o.insert("hasTrustDialogAccepted".into(), serde_json::Value::Bool(true));
+        o.insert(
+            "hasTrustDialogAccepted".into(),
+            serde_json::Value::Bool(true),
+        );
     }
     // Write beside and swap, so a reader never sees half a file; check it's still the
     // version we read right before swapping.
     let tmp = file.with_extension(concat!("json.", env!("APP_COMMAND"), "-tmp"));
-    let Ok(s) = serde_json::to_string_pretty(&v) else { return Trust::Done };
+    let Ok(s) = serde_json::to_string_pretty(&v) else {
+        return Trust::Done;
+    };
     if std::fs::write(&tmp, s).is_err() {
         return Trust::Done;
     }
@@ -142,8 +197,14 @@ pub(super) fn trust_once(file: &std::path::Path, repo: &std::path::Path, worktre
 /// slug being the folder with every non-alphanumeric character as `-`. Put a copy where a
 /// resume in `dest` will look.
 pub(super) fn copy_claude_transcript(src: &std::path::Path, session: &str, dest: &std::path::Path) {
-    let Some(projects) = src.parent().and_then(|p| p.parent()) else { return };
-    let slug: String = dest.to_string_lossy().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let Some(projects) = src.parent().and_then(|p| p.parent()) else {
+        return;
+    };
+    let slug: String = dest
+        .to_string_lossy()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
     let dir = projects.join(slug);
     let to = dir.join(format!("{session}.jsonl"));
     if !to.exists() && std::fs::create_dir_all(&dir).is_ok() {
@@ -196,7 +257,10 @@ impl Daemon {
         self.spare_making = true;
         let template = self.cfg.worktree.dir.clone();
         let tx = self.tx.clone();
-        let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
         let name = format!("spare-{:04x}", n & 0xffff);
         tokio::task::spawn_blocking(move || {
             let result = create_trusted_worktree(&repo, &name, None, &template);
@@ -204,11 +268,18 @@ impl Daemon {
         });
     }
 
-
     /// A worktree hook (`on_create` / `on_remove` in the repo's .the app.toml) as a job to run.
-    pub(super) fn hook_job(&self, dir: &std::path::Path, create: bool) -> Option<impl FnOnce() -> String + Send + 'static + use<>> {
+    pub(super) fn hook_job(
+        &self,
+        dir: &std::path::Path,
+        create: bool,
+    ) -> Option<impl FnOnce() -> String + Send + 'static + use<>> {
         let proj = crate::project::load(dir);
-        let cmd = if create { proj.hooks.on_create } else { proj.hooks.on_remove };
+        let cmd = if create {
+            proj.hooks.on_create
+        } else {
+            proj.hooks.on_remove
+        };
         if cmd.trim().is_empty() {
             return None;
         }
@@ -216,14 +287,26 @@ impl Daemon {
         let dir = dir.to_path_buf();
         let allowed = crate::project::allowed(&dir, &cmd);
         Some(move || {
-            let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let name = dir
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             if !allowed {
-                return format!("{name}: this repo's {} wants to run `{cmd}`; run `{APP_COMMAND} allow` in the repo to let it", crate::project::FILE);
+                return format!(
+                    "{name}: this repo's {} wants to run `{cmd}`; run `{APP_COMMAND} allow` in the repo to let it",
+                    crate::project::FILE
+                );
             }
-            let mut vars = vec![(concat!(env!("APP_ENV"), "_WORKTREE"), dir.display().to_string())];
+            let mut vars = vec![(
+                concat!(env!("APP_ENV"), "_WORKTREE"),
+                dir.display().to_string(),
+            )];
             if let Some(h) = crate::gitfs::head(&dir) {
                 vars.push((concat!(env!("APP_ENV"), "_BRANCH"), h.branch.clone()));
-                vars.push((concat!(env!("APP_ENV"), "_REPO"), h.main_root.display().to_string()));
+                vars.push((
+                    concat!(env!("APP_ENV"), "_REPO"),
+                    h.main_root.display().to_string(),
+                ));
             }
             let what = if create { "on_create" } else { "on_remove" };
             match crate::project::run_hook(&shell, &dir, &cmd, &vars) {
@@ -268,11 +351,22 @@ impl Daemon {
 
     /// Whether any session is in this checkout.
     pub(super) fn runs_in(&self, top: &std::path::Path) -> bool {
-        let top = top.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+        let top = top
+            .to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_lowercase();
         self.terms.values().any(|t| {
-            t.head.as_ref().is_some_and(|h| same_path(&h.top, std::path::Path::new(&top)))
+            t.head
+                .as_ref()
+                .is_some_and(|h| same_path(&h.top, std::path::Path::new(&top)))
                 || {
-                    let cwd = t.cwd.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+                    let cwd = t
+                        .cwd
+                        .to_string_lossy()
+                        .replace('/', "\\")
+                        .trim_end_matches('\\')
+                        .to_lowercase();
                     cwd == top || cwd.starts_with(&format!("{top}\\"))
                 }
         })
@@ -285,10 +379,15 @@ impl Daemon {
         let mut stay = Vec::new();
         for (path, force) in items {
             let path = clean_path(path);
-            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             match crate::gitfs::head(&path).filter(|h| h.linked) {
                 None => stay.push((name, "it isn't a worktree".to_string())),
-                Some(h) if self.runs_in(&h.top) => stay.push((name, "something is running in it".to_string())),
+                Some(h) if self.runs_in(&h.top) => {
+                    stay.push((name, "something is running in it".to_string()))
+                }
                 Some(h) => go.push((h.top, force)),
             }
         }
@@ -322,15 +421,26 @@ impl Daemon {
                     let branch = git::branch_of(&top);
                     match git::remove_worktree(&top, false, false) {
                         // A branch already merged has nothing left in it: it goes too.
-                        Ok(()) => Removal::Removed { with_branch: repo.zip(branch).is_some_and(|(repo, b)| git::delete_if_merged(&repo, &b)) },
+                        Ok(()) => Removal::Removed {
+                            with_branch: repo
+                                .zip(branch)
+                                .is_some_and(|(repo, b)| git::delete_if_merged(&repo, &b)),
+                        },
                         Err(e) => Removal::Kept(format!("{e:#}")),
                     }
                 } else if standing.dirty > 0 {
-                    Removal::Kept(format!("{}; remove it from the clean-up list when you're done", standing.says()))
+                    Removal::Kept(format!(
+                        "{}; remove it from the clean-up list when you're done",
+                        standing.says()
+                    ))
                 } else {
                     Removal::Unmerged(standing.says())
                 };
-                let _ = tx.blocking_send(Ev::WorktreeAutoRemoved { client, path: top, result });
+                let _ = tx.blocking_send(Ev::WorktreeAutoRemoved {
+                    client,
+                    path: top,
+                    result,
+                });
             });
         }
     }
@@ -339,7 +449,9 @@ impl Daemon {
 /// What became of a worktree after you closed its last pane.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Removal {
-    Removed { with_branch: bool },
+    Removed {
+        with_branch: bool,
+    },
     /// Left alone, with the reason.
     Kept(String),
     /// Clean but holding commits found nowhere else: you are asked.
