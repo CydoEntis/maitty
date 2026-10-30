@@ -1,7 +1,5 @@
 use crate::brand::APP_COMMAND;
-use crate::{
-    alert, cli, client, config, daemon, ipc, protocol, restart, reveal, sync, update,
-};
+use crate::{alert, cli, client, config, daemon, ipc, protocol, restart, reveal, sync};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -289,7 +287,7 @@ pub(crate) fn run() {
         unsafe { std::env::set_var(concat!(env!("APP_ENV"), "_REMOTE"), r) };
     }
     config::migrate_old_names();
-    update::tidy();
+    cli::update::tidy();
     // `<app> <dir>` opens a directory; a typo'd subcommand shouldn't silently attach.
     if let Some(p) = args.path.as_ref().or(match &args.cmd {
         Some(Cmd::Attach { path }) => path.as_ref(),
@@ -418,7 +416,7 @@ pub(crate) fn run() {
         Some(Cmd::Mcp) => cli::mcp::run(),
         Some(Cmd::Doctor) => cli::doctor(),
         Some(Cmd::Account { name, command }) => cli::account(&name, &command),
-        Some(Cmd::Update { check, force }) => update::run(check, force),
+        Some(Cmd::Update { check, force }) => cli::update::run(check, force),
         Some(Cmd::Allow { dir }) => cli::allow(dir),
         Some(Cmd::Proxy) => cli::block_on(ipc::proxy()),
         Some(Cmd::DebugColors { pane }) => cli::debug_colors(pane),

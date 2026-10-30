@@ -110,7 +110,7 @@ pub fn plan_for_mismatch(
 /// Whether a server this the app can talk to should still be replaced on launch: it is an
 /// older release than this one and nothing is mid-turn.
 pub fn replace_older_idle_server(published: Option<&Activity>, ours: &str) -> bool {
-    published.is_some_and(|a| a.busy() == 0 && crate::update::newer_than(ours, &a.version))
+    published.is_some_and(|a| a.busy() == 0 && crate::version::newer_than(ours, &a.version))
 }
 
 /// The agents in the saved session.
@@ -138,7 +138,7 @@ pub fn wait_until_server_gone() -> Result<()> {
 /// and environment (so `<APP>_SOCKET` keeps meaning the same server). Returns only when
 /// that failed.
 pub fn relaunch() -> Result<()> {
-    let exe = crate::update::installed_executable()?;
+    let exe = crate::installed_executable::installed_executable()?;
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let mut cmd = std::process::Command::new(&exe);
     cmd.args(args);

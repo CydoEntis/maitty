@@ -998,7 +998,9 @@ impl App {
             false,
         );
         self.spawn_bg(|| {
-            let r = crate::update::install_latest().map(|(v, exe)| (v, crate::update::integrate_agents(&exe)));
+            let r = crate::cli::update::install_latest().map(|(v, exe)| {
+                (v, crate::cli::update::integrate_agents(&exe))
+            });
             Bg::Then(Box::new(move |app: &mut App| match r {
                 Ok((v, Ok(()))) => app.update_installed(v),
                 Ok((v, Err(e))) => {
@@ -1124,17 +1126,17 @@ impl App {
             self.notify("Checking for updates…".into(), false);
         }
         self.spawn_bg(move || {
-            let installed = crate::update::installed_version();
-            let latest = crate::update::latest_tag();
+            let installed = crate::cli::update::installed_version();
+            let latest = crate::cli::update::latest_tag();
             let current = installed.as_deref().unwrap_or(env!("CARGO_PKG_VERSION"));
             let newer = latest
                 .as_ref()
                 .ok()
-                .filter(|tag| crate::update::newer_than(tag, current))
+                .filter(|tag| crate::version::newer_than(tag, current))
                 .map(|tag| tag.trim_start_matches('v').to_string());
             // Only asked for when there is something new: one more request, now and then.
             let notes = if newer.is_some() {
-                crate::update::changes_since_this()
+                crate::cli::update::changes_since_this()
             } else {
                 Vec::new()
             };
@@ -1147,7 +1149,7 @@ impl App {
 
     fn refresh_installed_version(&self) {
         self.spawn_bg(|| {
-            let installed = crate::update::installed_version();
+            let installed = crate::cli::update::installed_version();
             Bg::Then(Box::new(move |app| {
                 app.installed_version = Some(installed);
                 app.maybe_restart_daemon(false);
@@ -1181,7 +1183,7 @@ impl App {
                 .installed_version
                 .as_ref()
                 .and_then(|r| r.as_ref().ok())
-                .is_some_and(|v| crate::update::newer_than(v, env!("CARGO_PKG_VERSION")))
+                .is_some_and(|v| crate::version::newer_than(v, env!("CARGO_PKG_VERSION")))
     }
 
     /// There is something Restart would replace: the server, or this window.

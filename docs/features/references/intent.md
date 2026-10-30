@@ -18,7 +18,7 @@ lists a project's references with their paths, so agents doing design work can f
 ## Scope
 
 Anyone giving agents design work. The client (the side panel, built in Phase 26), the MCP
-server (`crates/maitty-runtime/src/mcp.rs`), the repo's `.maitty/` folder.
+server (`crates/maitty-runtime/src/cli/mcp.rs`), the repo's `.maitty/` folder.
 
 ## Decisions
 

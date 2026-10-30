@@ -376,7 +376,7 @@ pub async fn open_or_spawn(attach: bool) -> Result<(Reader, Writer)> {
 
 /// Reconnect after replacing the executable, spawning the newly installed image if needed.
 pub async fn open_or_spawn_installed(attach: bool) -> Result<(Reader, Writer)> {
-    let exe = crate::update::installed_executable()?;
+    let exe = crate::installed_executable::installed_executable()?;
     open_or_spawn_with(attach, Some(exe)).await
 }
 

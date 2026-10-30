@@ -982,6 +982,10 @@ group used by Claude, Gemini and Qwen settings; JSONC editing and file writes
 stay in the runtime, while the provider owns replacement of its tagged groups.
 Claude status-line configuration policy also lives in the provider; the runtime
 keeps the saved user command and executes it after reporting usage.
+The MCP server and updater implementations now live under `maitty-runtime`'s
+`cli/` module. Shared release-version comparison and installed-executable
+resolution stay at the runtime root so IPC and restart code do not depend on the
+CLI updater. The daemon, TUI and CLI still share the runtime package.
 
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux
@@ -1230,7 +1234,7 @@ conversation continuity are planned in phases 34–37:
 - Trusted status reports (process tree or `MAITTY_PANE_TOKEN`) — shipped — `crates/maitty-runtime/src/daemon/term.rs`, `crates/maitty-runtime/src/cli.rs`
 - Agent kinds: Claude, Codex, Gemini, OpenCode, Cursor, Copilot, Amp, Qwen, Aider, Goose, Crush, Droid, Pi, Kiro, Grok, custom `[[agents]]` — shipped — `crates/maitty-runtime/src/config.rs`
 - New agent task box (project, worktree, agent, model, effort), presets and recipes as its choices, prewarm — shipped — `crates/maitty-runtime/src/client/screen/dialogs.rs`, `crates/maitty-runtime/src/client/recipes.rs`
-- Agents talk to agents (MCP server `maitty mcp`) — shipped — `crates/maitty-runtime/src/mcp.rs`
+- Agents talk to agents (MCP server `maitty mcp`) — shipped — `crates/maitty-runtime/src/cli/mcp.rs`
 - `maitty send --wait`, `maitty wait`, `maitty read` — shipped — `crates/maitty-runtime/src/cli.rs`
 - At most a set number of helpers working at once (`[sessions] helpers_at_once`; an old `[mcp]` value is read as a fallback) — shipped 0.25.0 — `Daemon::starting` in `crates/maitty-runtime/src/daemon/mod.rs`
 - A commander running a fleet (shipped in v0.20.0, #32–#38): removed in phase 19 (ADR 0014); old `[fleet]` and `[team]` tables are read and ignored
@@ -1268,7 +1272,7 @@ conversation continuity are planned in phases 34–37:
 - Alert when an agent needs you: Maitty's two rising notes and an in-app notice; a desktop notification only with no window open. Completions stay quiet — `crates/maitty-runtime/src/alert.rs`
 - Click a notification to jump to its session — shipped — `crates/maitty-runtime/src/reveal.rs`, `crates/maitty-runtime/src/alert.rs` (#19)
 - Sidebar groups sessions by where they work now (repo, or folder outside git); no projects to open; splits stay with their session — shipped — `crates/maitty-runtime/src/client/screen/mod.rs`
-- Releases and installers (Windows, macOS, Linux; checksums), `maitty update` and a daily update check — shipped — `.github/workflows/release.yml`, `install.sh`, `install.ps1`, `crates/maitty-runtime/src/update.rs`
+- Releases and installers (Windows, macOS, Linux; checksums), `maitty update` and a daily update check — shipped — `.github/workflows/release.yml`, `install.sh`, `install.ps1`, `crates/maitty-runtime/src/cli/update.rs`
 - CI: test and clippy on Linux and Windows, a macOS check — shipped — `.github/workflows/ci.yml`
 - Config sync across machines (local file never synced) — shipped — `crates/maitty-runtime/src/sync.rs`
 - SSH remotes (`--remote host`) — shipped — `crates/maitty-runtime/src/ipc.rs` `connect_remote`
@@ -1335,7 +1339,7 @@ conversation continuity are planned in phases 34–37:
 - Both platform sides compile — `cargo check --target x86_64-unknown-linux-gnu` / `aarch64-apple-darwin` — AGENTS.md non-negotiable 3
 - clippy is clean — `cargo clippy --all-targets -- -D warnings` — CODE-STANDARDS
 - A session's "started by" is only set by the daemon, from a pane whose secret checked out — `crates/maitty-runtime/src/daemon/mod.rs` `starter`, tests in `crates/maitty-runtime/src/daemon/logic_tests.rs` — AGENTS.md non-negotiable 5
-- `maitty_answer` sends a key only for the prompt id the caller passed — `crates/maitty-runtime/src/mcp.rs` `answer` / `prompt_seen`, test `an_answer_goes_only_to_the_prompt_it_saw`
+- `maitty_answer` sends a key only for the prompt id the caller passed — `crates/maitty-runtime/src/cli/mcp.rs` `answer` / `prompt_seen`, test `an_answer_goes_only_to_the_prompt_it_saw`
 - Text with invisible characters never reaches an agent through `maitty send`, `maitty_send` or `maitty_start` — `crates/maitty-shared/src/hidden.rs` `check`, tests there and `send_refuses_hidden_characters_before_reaching_any_pane`
 
 ## Records

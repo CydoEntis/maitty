@@ -3,6 +3,8 @@
 //! private (your sign-in), and straight from GitHub once it's public.
 
 use crate::brand::{APP_COMMAND, APP_NAME};
+use crate::installed_executable::installed_executable;
+use crate::version::{newer_than, parse as version};
 use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -34,39 +36,9 @@ fn asset_for(target: &str) -> String {
     )
 }
 
-/// `1.2.3` (a leading `v` allowed) as numbers, for comparing.
-fn version(s: &str) -> Option<(u64, u64, u64)> {
-    let mut it = s
-        .trim()
-        .trim_start_matches('v')
-        .split(['.', '-', '+'])
-        .map(|p| p.parse::<u64>().ok());
-    Some((it.next()??, it.next()??, it.next()??))
-}
-
 /// Whether the release `tag` is newer than this build.
 pub fn is_newer(tag: &str) -> bool {
     newer_than(tag, env!("CARGO_PKG_VERSION"))
-}
-
-pub fn newer_than(tag: &str, current: &str) -> bool {
-    matches!((version(tag), version(current)), (Some(a), Some(b)) if a > b)
-}
-
-/// Updates may have moved the running image aside while replacing this path.
-fn installed_path(exe: &Path) -> PathBuf {
-    let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    if name.starts_with(concat!(env!("APP_COMMAND"), ".old")) && name.ends_with(".exe") {
-        exe.with_file_name(concat!(env!("APP_COMMAND"), ".exe"))
-    } else if let Some(path) = exe.to_str().and_then(|s| s.strip_suffix(" (deleted)")) {
-        PathBuf::from(path)
-    } else {
-        exe.to_path_buf()
-    }
-}
-
-pub(crate) fn installed_executable() -> Result<PathBuf> {
-    Ok(installed_path(&std::env::current_exe()?))
 }
 
 pub fn installed_version() -> Result<String, String> {
@@ -489,6 +461,7 @@ fn changes_in(json: &str, current: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::installed_executable::installed_path;
 
     #[test]
     fn changes_are_the_note_lines_of_newer_releases() {

@@ -7,6 +7,7 @@ mod config;
 mod daemon;
 pub use maitty_shared::{clock, conversation, hidden, layout, output_line, protocol};
 mod gitfs;
+mod installed_executable;
 mod ipc;
 mod keys;
 pub use maitty_settings::theme;
@@ -20,7 +21,7 @@ mod shim;
 mod snapshot;
 mod sync;
 mod tidy;
-mod update;
+mod version;
 
 #[cfg(test)]
 mod test_support;
