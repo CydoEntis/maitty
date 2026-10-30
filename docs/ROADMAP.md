@@ -908,9 +908,9 @@ branch as the rollback and comparison point while the refactor is verified.
 Refactor progress: `crates/maitty-shared` owns the versioned protocol,
 conversation contracts and split-tree types. `crates/maitty-desktop-client`
 now owns GUI daemon IPC, lifecycle operations and Codex discovery; the Tauri
-host depends on it and `maitty-shared`, not the `maitty` runtime. Codex's
-verified-version/schema preflight is in `maitty-provider-codex`; live provider
-transports, daemon, and TUI/CLI remain to be extracted and verified.
+host depends on it and `maitty-shared`, not the `maitty` runtime. Codex
+compatibility preflight and Claude stream frame parsing are in their provider
+packages; live provider transports, daemon and TUI/CLI remain to be extracted.
 
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux

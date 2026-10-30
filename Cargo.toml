@@ -20,6 +20,7 @@ members = [
     "crates/maitty-shared",
     "crates/maitty-desktop-client",
     "crates/maitty-provider-codex",
+    "crates/maitty-provider-claude",
     "gui/src-tauri",
 ]
 resolver = "3"
@@ -32,6 +33,7 @@ doctest = false
 [dependencies]
 maitty-shared = { path = "crates/maitty-shared" }
 maitty-provider-codex = { path = "crates/maitty-provider-codex" }
+maitty-provider-claude = { path = "crates/maitty-provider-claude" }
 anyhow = "1"
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 png = "0.17"
