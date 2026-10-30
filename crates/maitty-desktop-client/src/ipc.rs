@@ -1,18 +1,14 @@
 use anyhow::{Context, Result, bail};
-use futures_util::{SinkExt, StreamExt};
 use interprocess::local_socket::Name;
 use interprocess::local_socket::tokio::{Stream, prelude::*};
 #[cfg(unix)]
 use interprocess::local_socket::{GenericFilePath, ToFsName};
 #[cfg(windows)]
 use interprocess::local_socket::{GenericNamespaced, ToNsName};
+pub use maitty_ipc_transport::{Reader, Writer};
+use maitty_ipc_transport::{framed_parts, receive, send};
 use maitty_shared::protocol::{self, ClientMsg, ServerMsg};
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
-pub type Reader = FramedRead<Box<dyn tokio::io::AsyncRead + Send + Unpin>, LengthDelimitedCodec>;
-pub type Writer = FramedWrite<Box<dyn tokio::io::AsyncWrite + Send + Unpin>, LengthDelimitedCodec>;
-
-const MAX_FRAME: usize = 64 * 1024 * 1024;
 const APP_COMMAND: &str = env!("MAITTY_APP_COMMAND");
 const APP_ENV: &str = env!("MAITTY_APP_ENV");
 
@@ -114,34 +110,17 @@ fn socket_dir() -> Result<std::path::PathBuf> {
     Ok(directory)
 }
 
-fn codec() -> LengthDelimitedCodec {
-    LengthDelimitedCodec::builder()
-        .max_frame_length(MAX_FRAME)
-        .new_codec()
-}
-
 async fn connect() -> Result<Stream> {
     Ok(Stream::connect(name()?).await?)
 }
 
 fn framed(stream: Stream) -> (Reader, Writer) {
-    let (reader, writer) = stream.split();
-    (
-        FramedRead::new(Box::new(reader), codec()),
-        FramedWrite::new(Box::new(writer), codec()),
-    )
-}
-
-async fn send<T: serde::Serialize>(writer: &mut Writer, message: &T) -> Result<()> {
-    writer.send(protocol::encode(message)?).await?;
-    Ok(())
+    let (read, write) = stream.split();
+    framed_parts(read, write)
 }
 
 pub async fn receive_server(reader: &mut Reader) -> Result<Option<ServerMsg>> {
-    match reader.next().await {
-        Some(frame) => Ok(Some(protocol::decode(&frame?)?)),
-        None => Ok(None),
-    }
+    receive(reader).await
 }
 
 pub async fn open_for_user() -> Result<(Reader, Writer)> {

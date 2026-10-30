@@ -907,7 +907,9 @@ branch as the rollback and comparison point while the refactor is verified.
 
 Refactor progress: `crates/maitty-shared` owns the versioned protocol,
 conversation contracts, split-tree types, clock helpers, hidden-text
-validation and shared check-output rules. `crates/maitty-desktop-client`
+validation and shared check-output rules. `crates/maitty-ipc-transport` owns
+bounded length-delimited framing and message encode/decode for both clients.
+`crates/maitty-desktop-client`
 now owns GUI daemon IPC, lifecycle operations and Codex discovery; the Tauri
 host depends on it and `maitty-shared`, not the `maitty` runtime. Codex
 compatibility preflight and Claude protocol parsing, session IDs and launch

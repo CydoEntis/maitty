@@ -181,7 +181,10 @@ each other.
 
 The shared protocol, conversation contracts, split-tree types, clock helpers,
 hidden-text validation and check-output classification live in the
-`maitty-shared` workspace package. The Tauri host uses `maitty-desktop-client`
+`maitty-shared` workspace package. `maitty-ipc-transport` owns bounded,
+length-delimited protocol framing shared by the TUI and GUI; socket naming,
+handshakes and daemon startup stay in their respective clients. The Tauri host
+uses `maitty-desktop-client`
 for daemon IPC and GUI operations; it does not link the `maitty` runtime. The
 daemon, TUI, CLI and live provider process transports remain in `maitty`
 pending further extraction. Codex compatibility preflight and Claude stream
@@ -256,6 +259,7 @@ src/
                  per feature (files, find, branch, recipes, pr, â€¦)
   mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
 crates/maitty-shared/ shared wire protocol, conversation contracts and split-tree types
+crates/maitty-ipc-transport/ length-delimited message framing shared by clients
 src/test_support.rs  fixtures shared by runtime unit tests
 docs/            these docs, the roadmap, design briefs
 config.example.toml

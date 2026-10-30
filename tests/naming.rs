@@ -65,6 +65,8 @@ fn lines_naming(names: &[String], skip: &[&str]) -> Vec<String> {
                 "maitty-provider-codex",
                 "maitty_provider_claude",
                 "maitty-provider-claude",
+                "maitty_ipc_transport",
+                "maitty-ipc-transport",
             ]
             .into_iter()
             .fold(lower, |line, crate_name| line.replace(crate_name, ""));

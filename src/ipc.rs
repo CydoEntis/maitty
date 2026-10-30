@@ -5,21 +5,18 @@
 use crate::brand::{APP_COMMAND, APP_ENV};
 use crate::protocol::{self, ClientMsg, ServerMsg};
 use anyhow::{Context, Result, bail};
-use futures_util::{SinkExt, StreamExt};
 use interprocess::local_socket::tokio::{RecvHalf, SendHalf, Stream, prelude::*};
 #[cfg(unix)]
 use interprocess::local_socket::{GenericFilePath, ToFsName};
 #[cfg(windows)]
 use interprocess::local_socket::{GenericNamespaced, ToNsName};
 use interprocess::local_socket::{ListenerOptions, Name};
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+pub use maitty_ipc_transport::{Reader, Writer, is_decode_error, send};
+use maitty_ipc_transport::{framed_parts, reader, writer};
 
-pub type Reader = FramedRead<Box<dyn tokio::io::AsyncRead + Send + Unpin>, LengthDelimitedCodec>;
-pub type Writer = FramedWrite<Box<dyn tokio::io::AsyncWrite + Send + Unpin>, LengthDelimitedCodec>;
 #[allow(dead_code)]
 type Halves = (RecvHalf, SendHalf);
 
-const MAX_FRAME: usize = 64 * 1024 * 1024;
 pub(crate) const STRUCTURED_ENV: [&str; 4] = [
     concat!(env!("APP_ENV"), "_CONVERSATION_ID"),
     concat!(env!("APP_ENV"), "_CONVERSATION_GENERATION"),
@@ -39,6 +36,11 @@ pub(crate) fn has_structured_identity() -> bool {
     STRUCTURED_ENV
         .iter()
         .any(|key| std::env::var_os(key).is_some())
+}
+
+pub fn framed(stream: Stream) -> (Reader, Writer) {
+    let (read, write) = stream.split();
+    framed_parts(read, write)
 }
 
 fn structured_identity(
@@ -171,20 +173,6 @@ fn socket_dir() -> Result<std::path::PathBuf> {
     Ok(dir)
 }
 
-fn codec() -> LengthDelimitedCodec {
-    LengthDelimitedCodec::builder()
-        .max_frame_length(MAX_FRAME)
-        .new_codec()
-}
-
-pub fn framed(stream: Stream) -> (Reader, Writer) {
-    let (r, w) = stream.split();
-    (
-        FramedRead::new(Box::new(r), codec()),
-        FramedWrite::new(Box::new(w), codec()),
-    )
-}
-
 /// The machine whose server this talks to (`--remote`), if not this one.
 pub fn remote() -> Option<String> {
     std::env::var(concat!(env!("APP_ENV"), "_REMOTE"))
@@ -231,14 +219,11 @@ async fn connect_remote(host: &str) -> Result<(Reader, Writer)> {
     }
     // ssh lives as long as the connection's writing half.
     Ok((
-        FramedRead::new(Box::new(stdout), codec()),
-        FramedWrite::new(
-            Box::new(SshIn {
-                stdin,
-                _child: child,
-            }),
-            codec(),
-        ),
+        reader(stdout),
+        writer(SshIn {
+            stdin,
+            _child: child,
+        }),
     ))
 }
 
@@ -341,28 +326,12 @@ pub fn listen() -> Result<interprocess::local_socket::tokio::Listener> {
         .context("creating the daemon socket")
 }
 
-pub async fn send<T: serde::Serialize>(w: &mut Writer, msg: &T) -> Result<()> {
-    w.send(protocol::encode(msg)?).await?;
-    Ok(())
-}
-
-/// Whether a receive failed on one message's contents (the connection is still fine).
-pub fn is_decode_error(e: &anyhow::Error) -> bool {
-    e.downcast_ref::<rmp_serde::decode::Error>().is_some()
-}
-
 pub async fn recv_server(r: &mut Reader) -> Result<Option<ServerMsg>> {
-    match r.next().await {
-        Some(frame) => Ok(Some(protocol::decode(&frame?)?)),
-        None => Ok(None),
-    }
+    maitty_ipc_transport::receive(r).await
 }
 
 pub async fn recv_client(r: &mut Reader) -> Result<Option<ClientMsg>> {
-    match r.next().await {
-        Some(frame) => Ok(Some(protocol::decode(&frame?)?)),
-        None => Ok(None),
-    }
+    maitty_ipc_transport::receive(r).await
 }
 
 /// Connect and complete the handshake.

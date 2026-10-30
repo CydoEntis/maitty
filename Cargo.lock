@@ -2363,6 +2363,7 @@ dependencies = [
  "interprocess",
  "jsonc-parser",
  "libc",
+ "maitty-ipc-transport",
  "maitty-provider-claude",
  "maitty-provider-codex",
  "maitty-shared",
@@ -2394,16 +2395,14 @@ name = "maitty-desktop-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bytes",
  "directories",
- "futures-util",
  "interprocess",
  "libc",
+ "maitty-ipc-transport",
  "maitty-shared",
  "serde",
  "serde_json",
  "tokio",
- "tokio-util",
 ]
 
 [[package]]
@@ -2416,6 +2415,19 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
+]
+
+[[package]]
+name = "maitty-ipc-transport"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures-util",
+ "maitty-shared",
+ "rmp-serde",
+ "serde",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
