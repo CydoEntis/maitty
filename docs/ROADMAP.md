@@ -27,6 +27,8 @@ user runs: Claude Code, Codex, Qwen Code and DeepSeek. Also requested 2026-10-25
 [Phase 31](#31--panes-you-can-tell-apart--shipped-in-v0460-live-checks-open), panes you can tell apart, in v0.46.0.
 Built 2026-10-27, not released: [Phase 32](#32--two-looks-and-a-sessions-tabs-in-the-sidebar--built-not-released),
 two looks and a session's tabs in the sidebar.
+Ticketed 2026-10-29, not started: [Phase 33](#33--secrets-and-pr-tracking--proposed-2026-10-29),
+secrets and PR tracking (#218–#225).
 
 Open validation items (need a real session on the named platform):
 - Pi full-screen scrolling on Linux: waiting on the failing pane's "Pane info (scrolling,
@@ -608,6 +610,26 @@ colours become the Pane colours option on Floating; Floating keeps square, corne
     tab row sits in the header over the pane boxes, not inside them
     ([ADR 0035](adr/0035-the-tab-row-sits-outside-the-pane-boxes.md))
 
+### 33 — Secrets and PR tracking · proposed 2026-10-29
+
+Asked by the user on 2026-10-29 after reading `pingdotgg/t3code`:
+[an agent asks for a secret through a masked prompt, and a pane's pull request is watched](features/secrets-and-pr/intent.md).
+Built on the existing MCP server (`src/mcp.rs`); no new server. Decisions: the agent gets a `0600`
+file or a `maitty secret run` wrapper, memory-only with a 24h single-use ref
+([ADR-0036](adr/0036-secrets-never-enter-chat.md)); the PR is found from the branch or linked by
+hand; a wake-up is queued when the agent is idle and never goes into a question.
+
+Secrets: #218 the daemon holds requests, then #219 the masked prompt, #220 `maitty_request_secret`, #221 `maitty secret run` (each after #218).
+PR tracking: #222 the daemon watches the PR, then #223 the status line and sidebar, #224 the queued wake-up, #225 `maitty pr link` (each after #222).
+The two groups are independent. Delegation is not part of this phase (see [Later](#later)).
+
+Status 2026-10-29: all eight built on branch `sly-marten`, not committed or released. The gate passed
+(1224 tests, clippy, Linux and macOS checks; four load-sensitive tests failed in the full run and passed
+alone). A live run on an isolated server checked `secret run`, `pr link`/`unlink`, the pane-only rules and
+`maitty_request_secret`'s timeout. Not checked live: the masked prompt in a real window (frame tests only)
+and a real `gh` poll. #223 shows the PR in the bottom bar and `ls`/MCP, not on the sidebar row (one-line
+rows, ADR-0021). Wire protocol 50.
+
 ## In scope
 
 Everything below is shipped on `main` unless marked.
@@ -690,9 +712,11 @@ Everything below is shipped on `main` unless marked.
 - Personas are dropped, not deferred: saved role profiles were removed 2026-10-18 (see [Out](#out)). Phase 15 replaces the idea with checkpoints that Maitty checks itself.
 - Checkpoint kinds beyond the first (`commits`, `approval`, `review`) and a project-defined checkpoint list — deferred 2026-10-22 until Phase 15's verify check has been used in real work. `approval` and `review` sit close to the workflow runner cut on 2026-10-18; each needs the user's explicit re-approval before any ticket.
 - Threads between agents, take over and hand back — deferred 2026-10-11: waiting on a design for it. Comes back when the prototype is in.
+- Delegating a task to another agent or provider, in its own thread or worktree, with the result returned to the parent — deferred 2026-10-29. How a result comes back from a raw terminal agent is undecided. Comes back when the user picks a channel: agent hooks, a result file, or the structured Codex work in #197–#207.
 
 ## Decisions
 
+- [ADR-0036](adr/0036-secrets-never-enter-chat.md) — Secrets reach agents by a `0600` file or `maitty secret run`, memory-only with single-use refs. Rules out: returning a secret's value in a tool result or the snapshot; secrets at rest.
 - [ADR-0001](adr/0001-daemon-owns-sessions.md) — A daemon owns every session; clients only draw. Rules out: sessions inside the UI process.
 - [ADR-0002](adr/0002-portable-pty-and-vt100.md) — portable-pty (ConPTY) and vt100 for terminals. Rules out: a home-grown PTY layer.
 - [ADR-0003](adr/0003-msgpack-over-local-sockets.md) — msgpack frames over local sockets, versioned (added default fields need no bump, amended 2026-10-24). Rules out: incompatible message changes without a bump; network listeners.
@@ -729,6 +753,7 @@ Everything below is shipped on `main` unless marked.
 - clippy is clean — `cargo clippy --all-targets -- -D warnings` — CODE-STANDARDS
 - A session's "started by" is only set by the daemon, from a pane whose secret checked out — `src/daemon/mod.rs` `starter`, tests in `src/daemon/logic_tests.rs` — AGENTS.md non-negotiable 5
 - `maitty_answer` sends a key only for the prompt id the caller passed — `src/mcp.rs` `answer` / `prompt_seen`, test `an_answer_goes_only_to_the_prompt_it_saw`
+- A secret's value never appears in the state snapshot, logs, tool results or pane output — `src/daemon/secrets.rs` tests — ADR-0036 — not yet: #218
 - Text with invisible characters never reaches an agent through `maitty send`, `maitty_send` or `maitty_start` — `src/hidden.rs` `check`, tests there and `send_refuses_hidden_characters_before_reaching_any_pane`
 
 ## Records
