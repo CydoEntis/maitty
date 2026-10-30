@@ -52,7 +52,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 let Some((.., s)) = find(model, *term) else { continue };
                 let x = r.x + NAME_IN + indent;
                 let room = text_end(r).saturating_sub(x) as usize;
-                put(buf, x, y, &[seg(truncate(&helpers_line_in(s.helpers_wanted, room), room), Style::default().fg(ink.amber).bg(ink.bg))], text_end(r));
+                put(buf, x, y, &[seg(truncate(&ask_line_in(s, room), room), Style::default().fg(ink.amber).bg(ink.bg))], text_end(r));
                 hit(app, Rect { x: r.x, y, width: r.width, height: 1 }, ScreenHit::HelperAsk(*term));
             }
             Line::Sess(.., depth) => {
@@ -108,7 +108,7 @@ fn text_end(r: Rect) -> u16 {
 fn hairline_lines(app: &App, model: &[Proj], t: &Theme) -> Vec<Line> {
     let mut lines = side_lines(app, model, t);
     lines.retain(|l| match l {
-        Line::Detail(term) => find(model, *term).is_some_and(|(.., s)| s.helpers_wanted > 0),
+        Line::Detail(term) => find(model, *term).is_some_and(|(.., s)| s.helpers_wanted > 0 || s.secret_ask.is_some()),
         _ => matches!(l, Line::Proj(_) | Line::Sess(..) | Line::Tab(..) | Line::Empty(_) | Line::Gap),
     });
     if matches!(lines.last(), Some(Line::Gap)) {

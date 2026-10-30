@@ -128,7 +128,7 @@ the pane's process tree or `MAITTY_PANE_TOKEN`.
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Maitty's interface, and neither is a fleet commander (`maitty brief`, `[team]`): old
 config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
-MCP session controls remain supported. The wire protocol is version 49.
+MCP session controls remain supported. The wire protocol is version 50.
 
 `SwapPanes { a, b }` trades the places of two panes of one tab (the split ratios stay with
 their slots). Panes in different tabs, or one that isn't there, are an error.
@@ -152,6 +152,31 @@ refuses with an error the agent can read. `sessions.helpers_at_once` (2, 3 or 4)
 helpers one session has working at once; a start past it is refused with what to do. A
 person's shell (no agent in the pane) is never asked. Sessions saved before a restart keep
 `started_by`; any fleet or commander field in a saved file is ignored on load.
+
+**Pull requests.** The daemon asks `gh pr view --json …` about each pane's pull request: the
+one open on its branch, or the one `Command::LinkPr { term, url }` named (`None` goes back to
+the branch's; a pane may link only itself, and only a `https://github.com/<owner>/<repo>/pull/<n>`
+address is accepted). It asks every couple of minutes in a background task, once per branch, and
+drops an answer that is the same as the last. `TermInfo.pr` (`PrInfo`: number, url, state, checks
+passed, pending and failed by name, review decision, conflict) is the last reading. A first
+reading is a baseline and reports nothing. When a later one shows a failed check, a review remark
+or a merge conflict, a short message joins the pane's follow-ups (`sessions.pr_wake`), so it is
+typed in only when the turn is over and never into a question; at most 10 per pull request until
+a new commit, and what a reviewer wrote is cut, flattened to a line, withheld if it holds hidden
+characters, and said to be other people's words. Inline review comments are not read, only
+reviews and conversation comments. A rate limit holds asking off for 10 minutes, then longer; a
+`gh` that is missing or logged out is said once. A link is kept while the daemon runs.
+
+**Secrets.** An agent that needs a secret sends `Command::RequestSecret { term, label, reason }`
+over a connection that proved it is that pane; no reply comes until you answer, and the
+request shows as `Snapshot.secret_requests` (label and reason, never a value) while the pane's
+row reads Blocked. Only you answer, with `Command::AnswerSecret { id, value }` (`None` declines,
+and the agent gets an error it can read); a pane may not send it. The reply to the request is
+a reference, `secret-ref:` and 128 random bits, never the value. The pane that asked spends it
+with `Command::SpendSecret { reference }`, once, and gets the value in the reply; another
+pane's attempt fails and leaves it alone. A reference runs out after 24 hours, and the daemon
+keeps nothing on disk: a restart forgets every one. A request waits on its connection, so one
+that goes away takes its request with it. `SecretText` has no readable `Debug`.
 
 A pane's check results travel as `CheckInfo` summaries on `TermInfo.checks`, one per
 checkpoint in project order; `TermInfo::check()` is the headline one (the worst state wins:

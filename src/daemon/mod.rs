@@ -13,7 +13,9 @@ mod check_stale;
 mod git;
 mod helpers;
 mod persist;
+mod pr;
 mod scan;
+mod secrets;
 mod term;
 mod commands;
 mod contain;
@@ -80,6 +82,8 @@ pub enum Ev {
     Exited(TermId),
     Scan(Vec<scan::Found>),
     Git(Vec<(WsId, Option<GitInfo>)>),
+    /// What `gh` said of each branch's pull request (`pr::poll`).
+    Prs(Vec<(pr::Place, pr::Read)>),
     WorktreeCreated {
         client: ClientId,
         branch: String,
@@ -176,6 +180,12 @@ struct Daemon {
     /// Questions agents asked you: the question, who's waiting for the answer, and the
     /// pane's status before it asked.
     questions: Vec<(HumanQuestion, ClientId, Status)>,
+    /// Secrets agents asked you for, and the ones you gave (memory only).
+    secrets: secrets::Secrets,
+    /// The pull requests on the panes' branches, as last read through `gh`.
+    prs: pr::Prs,
+    /// When delivered secret files were last cleared of the stale.
+    last_secret_files: Instant,
     git_busy: bool,
     last_git: Instant,
     last_save: Instant,
@@ -456,6 +466,17 @@ impl Daemon {
             {
                 anyhow::bail!("check approvals are yours to give, not a pane's")
             }
+            // A pane links its own pull request; you may link any.
+            Command::LinkPr { term, .. } if self.clients.get(&client).and_then(|c| c.from).is_some_and(|from| from != *term) => {
+                anyhow::bail!("a pane links only its own pull request")
+            }
+            // Only the pane itself asks for its secret, and only you answer.
+            Command::RequestSecret { term, .. } if self.clients.get(&client).and_then(|c| c.from) != Some(*term) => {
+                anyhow::bail!("only a pane asks for its own secret")
+            }
+            Command::AnswerSecret { .. } if self.clients.get(&client).is_some_and(|c| c.from.is_some()) => {
+                anyhow::bail!("a secret is yours to give, not a pane's")
+            }
             // A session may not let itself (or another) start helpers.
             Command::AnswerHelpers { .. } if self.clients.get(&client).is_some_and(|c| c.from.is_some()) => {
                 anyhow::bail!("starting helpers is yours to allow, not a pane's")
@@ -511,6 +532,9 @@ impl Daemon {
             empty_since: Instant::now(),
             pending_ops: 0,
             questions: Vec::new(),
+            secrets: secrets::Secrets::default(),
+            prs: pr::Prs::default(),
+            last_secret_files: Instant::now(),
             git_busy: false,
             last_git: crate::clock::ago(GIT_POLL_EVERY),
             last_save: Instant::now(),
@@ -542,6 +566,8 @@ impl Daemon {
     }
 
     async fn run(&mut self, mut rx: mpsc::Receiver<Ev>) {
+        // A secret lives in memory only: any file a daemon before this one delivered is stale.
+        self.clear_secret_files(std::time::Duration::ZERO);
         let mut tick = tokio::time::interval(TICK);
         loop {
             tokio::select! {
@@ -559,6 +585,8 @@ impl Daemon {
                     self.auto_continue();
                     self.poll_codex();
                     self.poll_git();
+                    self.sweep_secrets();
+                    self.poll_prs();
                     if self.last_vanished_check.elapsed() >= VANISHED_CHECK_EVERY {
                         self.last_vanished_check = Instant::now();
                         self.forget_vanished_worktrees();
@@ -729,6 +757,7 @@ impl Daemon {
             }
             Ev::Disconnected(id) => {
                 self.clients.remove(&id);
+                self.withdraw_secret_requests(id);
                 // The agent that asked went away (cancelled, killed): its question goes too.
                 let gone: Vec<(TermId, Status)> = self.questions.iter().filter(|(_, c, _)| *c == id).map(|(q, _, s)| (q.term, *s)).collect();
                 if !gone.is_empty() {
@@ -739,6 +768,7 @@ impl Daemon {
                     self.dirty = true;
                 }
             }
+            Ev::Prs(reads) => self.prs_read(reads),
             Ev::Msg(id, msg) => self.message(id, msg),
             Ev::Output(tid, data) => {
                 let Some(t) = self.terms.get_mut(&tid) else { return };
@@ -1181,7 +1211,7 @@ impl Daemon {
                     popup: t.popup,
                     agent: t.agent.clone(),
                     // Asking for helpers needs you, whatever the agent's own hooks say meanwhile.
-                    status: if t.helpers.asked.is_empty() { t.status } else { Status::Blocked },
+                    status: if t.helpers.asked.is_empty() && !self.secrets.is_asking(t.id) { t.status } else { Status::Blocked },
                     cwd: t.cwd.clone(),
                     summary: t.summary.clone(),
                     name: if t.name.is_empty() { t.first_prompt.clone() } else { t.name.clone() },
@@ -1213,6 +1243,7 @@ impl Daemon {
                     started_by: t.started_by,
                     tab_of: t.tab_of.filter(|o| self.terms.contains_key(o)),
                     helper_ask: t.helpers.asked.clone(),
+                    pr: self.pr_of(t),
                     queued: t.queue.iter().cloned().collect(),
                     subagent_activity: t.subagent_activity.clone(),
                     session: t.session.clone(),
@@ -1225,6 +1256,7 @@ impl Daemon {
             active_ws: self.active_ws,
             terms,
             questions: self.questions.iter().map(|(q, ..)| q.clone()).collect(),
+            secret_requests: self.secrets.requests(),
             limits: self.limits.iter().map(|(a, l)| (a.clone(), l.clone())).collect(),
             spent_today: self.spent_today(),
             today: usage::today(&self.turns, &self.spent, term::unix_now()),

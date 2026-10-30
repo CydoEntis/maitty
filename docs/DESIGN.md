@@ -185,8 +185,9 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
 - **Mode bar:** under a full-width `─` rule in `line` (`┴` where the sidebar's `│` meets it).
   `TYPING` is a teal bold word, then `tab 1/3 · 2 splits` dim, then the hint;
   whatever has the keys is named in `strong` bold, no chip. At the right `● N needs you` in
-  amber bold (the session's name when it is one), or `all clear` dim, then `⎇ branch` and
-  `▲ CPU · RAM` dim while they fit, just before Update or Restart. Shortcut mode keeps its sky row.
+  amber bold (the session's name when it is one), or `all clear` dim, then `⎇ branch`, the
+  focused pane's pull request (`#7 2 failing`: `err` when there is something to act on, `done`
+  when it passes or merged, dim while it runs) and `▲ CPU · RAM` dim while they fit, just before Update or Restart. Shortcut mode keeps its sky row.
 - **Menus, popups and panels:** the same lines. A modal (Settings, a confirm, override, approval,
   the key map, new session, themes) is a solid `bg` box in a square `line` frame over the
   dimmed screen, its title plain words on the top border, `Esc close` dim at its right. A

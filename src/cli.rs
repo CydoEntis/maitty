@@ -6,6 +6,7 @@ pub(crate) mod handoff;
 pub(crate) mod integrations;
 mod jsonc;
 mod mcp_config;
+pub(crate) mod secret_run;
 use mcp_config::McpChange;
 use crate::layout::Dir;
 use crate::protocol::*;
@@ -410,6 +411,9 @@ fn pane_json(p: &TermInfo) -> Value {
     if let Some(at) = p.quiet_since.filter(|_| p.status == Status::Working) {
         v["quiet_since"] = json!(at);
     }
+    if let Some(pr) = &p.pr {
+        v["pr"] = pr_json(pr);
+    }
     if let Some(c) = p.reported_check() {
         v["check"] = json!({
             "state": c.state.label(), "command": c.command, "exit_code": c.exit_code, "duration_ms": c.duration_ms,
@@ -418,6 +422,15 @@ fn pane_json(p: &TermInfo) -> Value {
         v["checks"] = p.checks.iter().map(checkpoint_json).collect();
     }
     v
+}
+
+/// A pane's pull request in `<app> ls --json` and the MCP session list.
+pub(crate) fn pr_json(pr: &PrInfo) -> Value {
+    json!({
+        "number": pr.number, "url": pr.url, "title": pr.title, "state": format!("{:?}", pr.state).to_lowercase(), "draft": pr.draft,
+        "checks": { "passed": pr.checks.passed, "pending": pr.checks.pending, "failed": pr.checks.failed },
+        "review": format!("{:?}", pr.review).to_lowercase(), "conflicting": pr.conflicting, "summary": pr.headline(),
+    })
 }
 
 /// One checkpoint in `<app> ls --json`'s `checks`.
@@ -629,6 +642,17 @@ pub fn ask_human(text: String, options: Vec<String>) -> Result<()> {
         }
         _ => bail!("no answer"),
     }
+}
+
+/// `<app> pr link <url>` / `pr unlink`: which pull request a pane shows and is told about.
+pub fn pr_link(pane: Option<TermId>, url: Option<String>) -> Result<()> {
+    let term = resolve_pane(pane)?;
+    command(Command::LinkPr { term, url: url.clone() })?;
+    match url {
+        Some(url) => println!("pane {term} follows {url} now"),
+        None => println!("pane {term} follows the pull request on its branch again"),
+    }
+    Ok(())
 }
 
 /// `<app> teach [pane]`: the program running there is an agent.
@@ -2048,6 +2072,13 @@ pub fn allow(dir: Option<std::path::PathBuf>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_pull_request_in_the_session_list_carries_its_summary_and_checks() {
+        let pr = PrInfo { number: 7, url: "https://github.com/o/r/pull/7".into(), checks: crate::protocol::PrChecks { passed: 1, pending: 0, failed: vec!["build".into()] }, ..Default::default() };
+        let v = super::pr_json(&pr);
+        assert_eq!((v["summary"].as_str(), v["checks"]["failed"][0].as_str(), v["state"].as_str(), v["review"].as_str()), (Some("#7 1 failing"), Some("build"), Some("open"), Some("none")));
+    }
+
     fn check(state: CheckState) -> CheckInfo {
         CheckInfo { command: "npm test".into(), state, exit_code: Some(1), first_failing_line: "FAIL footer.test.ts".into(), ..Default::default() }
     }

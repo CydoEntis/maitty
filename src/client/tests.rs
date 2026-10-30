@@ -60,6 +60,7 @@ mod design_tests {
             started_by: None,
             tab_of: None,
             helper_ask: Vec::new(),
+            pr: None,
             queued: Vec::new(),
             root: None,
             top: None,
@@ -3736,6 +3737,155 @@ second line
         app.on_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
         assert_eq!(helper_answers(&mut rx), [(2, crate::protocol::HelperChoice::No)]);
         assert!(matches!(app.mode, Mode::GoTo { .. }), "answered: back in the Inbox");
+    }
+
+    /// What the client sent as answers to secret requests, in order: the request and the text.
+    fn secret_answers(rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>) -> Vec<(u64, Option<String>)> {
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|m| match m {
+                crate::protocol::ClientMsg::Command(crate::protocol::Command::AnswerSecret { id, value }) => Some((id, value.map(|v| v.0))),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Session 2 asks you for a secret.
+    fn asking_for_a_secret() -> (App, tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>) {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        app.snap.terms.get_mut(&2).unwrap().status = Status::Blocked;
+        app.snap.secret_requests = vec![crate::protocol::SecretRequest { id: 7, term: 2, label: "OpenAI key".into(), reason: "to run the eval".into() }];
+        app.screen_fresh();
+        (app, rx)
+    }
+
+    fn type_text(app: &mut App, text: &str) {
+        for c in text.chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+    }
+
+    #[test]
+    fn a_session_asking_for_a_secret_reads_so_and_enter_opens_a_prompt_that_shows_dots_not_the_secret() {
+        let (mut app, mut rx) = asking_for_a_secret();
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("asks for a secret") && o.contains("●2"), "the row's line (the label is in the prompt: the sidebar is narrow), and it needs you");
+        app.screen_side_set(screen::SideItem::Sess(2));
+        app.mode = Mode::Side;
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Secret { term: 2, id: 7, side: true });
+        for (w, h) in [(160, 45), (100, 30), (80, 24)] {
+            let o = draw(&mut app, w, h);
+            for must in ["SECRET?", "OpenAI key", "to run the eval", "Goes to this session", "Give it", "Esc declines"] {
+                assert!(o.contains(must), "{must:?} at {w}x{h}:\n{o}");
+            }
+        }
+        // Nothing is sent while typing, and the frame shows dots and never the text.
+        type_text(&mut app, "hunter2");
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("•••••••") && !o.contains("hunter2"), "masked:\n{o}");
+        assert!(secret_answers(&mut rx).is_empty());
+        app.on_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        assert!(draw(&mut app, 160, 45).contains("••••••▏"), "one fewer dot");
+        app.on_key(KeyEvent::new(KeyCode::Char('!'), KeyModifiers::SHIFT));
+        // Enter gives it, once, and the prompt closes with nothing left in the client.
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(secret_answers(&mut rx), [(7, Some("hunter!".to_string()))]);
+        assert_eq!(app.mode, Mode::Side);
+        assert!(app.screen.secret_typed.0.is_empty(), "dropped from the client");
+        assert!(!format!("{:?}", app.screen).contains("hunter"), "and never printable");
+    }
+
+    #[test]
+    fn esc_declines_and_enter_on_nothing_asks_for_something_to_give() {
+        let (mut app, mut rx) = asking_for_a_secret();
+        app.open_secret(2, true);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(secret_answers(&mut rx).is_empty() && matches!(app.mode, Mode::Secret { .. }), "an empty secret is not sent");
+        type_text(&mut app, "half typed");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(secret_answers(&mut rx), [(7, None)], "Esc declines");
+        assert_eq!(app.mode, Mode::Side);
+        assert!(app.screen.secret_typed.0.is_empty(), "what was half typed is dropped");
+    }
+
+    #[test]
+    fn a_pasted_secret_loses_its_trailing_newline_and_a_gone_request_sends_nothing() {
+        let (mut app, mut rx) = asking_for_a_secret();
+        app.open_secret(2, true);
+        app.on_paste("sk-abc123\r\n".into());
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(secret_answers(&mut rx), [(7, Some("sk-abc123".to_string()))]);
+        app.open_secret(2, true);
+        type_text(&mut app, "late");
+        app.snap.secret_requests.clear();
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(secret_answers(&mut rx).is_empty(), "the agent went away: nothing to answer");
+        assert_eq!(app.mode, Mode::Side);
+        assert!(app.screen.secret_typed.0.is_empty());
+    }
+
+    #[test]
+    fn the_secret_prompt_is_reachable_and_answerable_by_mouse() {
+        let (mut app, mut rx) = asking_for_a_secret();
+        draw(&mut app, 160, 45);
+        let line = app.hits.iter().rev().find_map(|(_, h)| match h {
+            Hit::Screen(screen::ScreenHit::HelperAsk(2)) => Some(*h),
+            _ => None,
+        });
+        let Some(Hit::Screen(open)) = line else { panic!("the row's line is a click target") };
+        app.on_hy_hit(open, false);
+        assert!(matches!(app.mode, Mode::Secret { term: 2, .. }), "a click on the line opens the prompt");
+        draw(&mut app, 160, 45);
+        let find = |app: &App, want: screen::ScreenHit| app.hits.iter().find_map(|(_, h)| match h {
+            Hit::Screen(got) if *got == want => Some(*got),
+            _ => None,
+        });
+        find(&app, screen::ScreenHit::SecretGive(2)).expect("Give it is clickable");
+        let decline = find(&app, screen::ScreenHit::SecretDecline(2)).expect("Decline is clickable");
+        app.on_hy_hit(decline, false);
+        assert_eq!(secret_answers(&mut rx), [(7, None)]);
+        assert!(!matches!(app.mode, Mode::Secret { .. }));
+    }
+
+    #[test]
+    fn the_inbox_opens_the_secret_prompt_and_goes_back_to_it() {
+        let (mut app, mut rx) = asking_for_a_secret();
+        app.act(Action::Jump);
+        let at = |app: &App| screen::goto_rows(&app.screen_model(), "", screen::heads_up(app).len()).iter().position(|r| matches!(r, screen::GoRow::Ask(2))).expect("the asking session is in the Inbox");
+        let sel = at(&app);
+        app.mode = Mode::GoTo { query: String::new(), sel };
+        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Secret { term: 2, id: 7, side: false }, "a digit opens the prompt; it is not typed into the agent");
+        assert!(draw(&mut app, 160, 45).contains("SECRET?"));
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(secret_answers(&mut rx), [(7, None)]);
+        assert_eq!(app.mode, Mode::GoTo { query: String::new(), sel }, "back in the Inbox, on the same row");
+    }
+
+    #[test]
+    fn the_focused_panes_pull_request_reads_on_the_status_line_in_both_looks() {
+        for (w, h, layout) in [(160, 45, "floating"), (160, 45, "hairline"), (100, 30, "floating"), (100, 30, "hairline")] {
+            let (_, mut app) = super::design_tests::render_with(w, h);
+            app.cfg.ui.layout = layout.into();
+            app.mode = Mode::Normal;
+            let focused = app.focused().expect("a focused pane");
+            let bar = |app: &mut App| draw(app, w, h).lines().last().unwrap_or_default().to_string();
+            assert!(!bar(&mut app).contains('#'), "a pane with no pull request shows none ({layout} {w}x{h})");
+            app.snap.terms.get_mut(&focused).unwrap().pr = Some(crate::protocol::PrInfo {
+                number: 7,
+                checks: crate::protocol::PrChecks { passed: 1, pending: 0, failed: vec!["build".into(), "lint".into()] },
+                ..Default::default()
+            });
+            let line = bar(&mut app);
+            show(&line);
+            assert!(line.contains("#7 2 failing"), "{layout} {w}x{h}: {line}");
+            app.snap.terms.get_mut(&focused).unwrap().pr.as_mut().unwrap().checks.failed.clear();
+            assert!(bar(&mut app).contains("#7 passing"), "it follows the checks ({layout} {w}x{h})");
+        }
     }
 
     #[test]

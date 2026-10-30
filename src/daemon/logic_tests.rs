@@ -3426,3 +3426,270 @@ fn the_server_waits_out_the_hold_before_forgetting_sessions() {
     d.last_loss = Some(Instant::now() - LOSS_HOLD - Duration::from_secs(1));
     assert!(d.should_exit(), "it was only that pane ending");
 }
+
+fn secret_request(term: TermId) -> Command {
+    Command::RequestSecret { term, label: "API key".into(), reason: "to call the service".into() }
+}
+
+fn answer_secret(id: u64, value: Option<&str>) -> Command {
+    Command::AnswerSecret { id, value: value.map(|v| SecretText(v.into())) }
+}
+
+/// What the daemon sent a connection since last asked.
+fn sent(c: &mut mpsc::Receiver<ServerMsg>) -> Vec<ServerMsg> {
+    std::iter::from_fn(|| c.try_recv().ok()).collect()
+}
+
+fn reply_text(msgs: &[ServerMsg]) -> Option<String> {
+    msgs.iter().find_map(|m| if let ServerMsg::Reply(Reply::Text(t)) = m { Some(t.clone()) } else { None })
+}
+
+fn error_text(msgs: &[ServerMsg]) -> Option<String> {
+    msgs.iter().find_map(|m| if let ServerMsg::Error(e) = m { Some(e.clone()) } else { None })
+}
+
+#[test]
+fn a_secret_request_needs_you_until_you_answer_and_the_agent_gets_a_reference_not_the_value() {
+    let (mut d, _rx) = daemon();
+    let (a, mut c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    d.handle(Ev::Msg(1, ClientMsg::Command(secret_request(a))));
+    assert!(sent(&mut c).is_empty(), "no reply until you answer");
+    let snap = d.snapshot();
+    assert_eq!((snap.secret_requests.len(), snap.terms[&a].status), (1, Status::Blocked), "the row needs you");
+    assert_ne!(d.terms[&a].status, Status::Blocked, "an overlay: the agent's own status is untouched");
+    let id = snap.secret_requests[0].id;
+    // The pane cannot answer for you, and the request stays.
+    d.handle(Ev::Msg(1, ClientMsg::Command(answer_secret(id, Some("from the pane")))));
+    assert!(error_text(&sent(&mut c)).is_some_and(|e| e.contains("yours to give")));
+    assert_eq!(d.snapshot().secret_requests.len(), 1);
+    // You answer: the agent gets a reference, and the value is nowhere in what the daemon shows.
+    d.command(0, answer_secret(id, Some("hunter2"))).unwrap();
+    let reference = reply_text(&sent(&mut c)).expect("a reference");
+    assert!(reference.starts_with("secret-ref:") && !reference.contains("hunter2"), "{reference}");
+    let snap = d.snapshot();
+    assert!(snap.secret_requests.is_empty() && snap.terms[&a].status == d.terms[&a].status, "the row is back to what the agent says");
+    assert!(!format!("{snap:?}").contains("hunter2"));
+    assert!(d.command(0, answer_secret(id, Some("again"))).is_err(), "an answer to nothing is an error");
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn a_reference_gives_the_value_once_to_the_pane_that_asked() {
+    let (mut d, _rx) = daemon();
+    let (a, mut ca) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let (b, mut cb) = agent_pane_in(&mut d, 2, &std::env::temp_dir());
+    d.handle(Ev::Msg(1, ClientMsg::Command(secret_request(a))));
+    let id = d.snapshot().secret_requests[0].id;
+    d.command(0, answer_secret(id, Some("hunter2"))).unwrap();
+    let reference = reply_text(&sent(&mut ca)).unwrap();
+    // Another pane gets nothing, and does not use it up.
+    d.handle(Ev::Msg(2, ClientMsg::Command(Command::SpendSecret { reference: reference.clone() })));
+    assert!(error_text(&sent(&mut cb)).is_some_and(|e| e.contains("not yours")));
+    d.handle(Ev::Msg(1, ClientMsg::Command(Command::SpendSecret { reference: reference.clone() })));
+    assert_eq!(reply_text(&sent(&mut ca)).as_deref(), Some("hunter2"));
+    d.handle(Ev::Msg(1, ClientMsg::Command(Command::SpendSecret { reference })));
+    assert!(error_text(&sent(&mut ca)).is_some_and(|e| e.contains("already used")), "it works once");
+    close(&mut d, &[a, b]);
+}
+
+#[test]
+fn declining_tells_the_agent_to_carry_on_and_only_the_pane_itself_can_ask() {
+    let (mut d, _rx) = daemon();
+    let (a, mut ca) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let (b, mut cb) = agent_pane_in(&mut d, 2, &std::env::temp_dir());
+    // One pane cannot ask in another's name; you (outside any pane) are not an agent asking.
+    d.handle(Ev::Msg(2, ClientMsg::Command(secret_request(a))));
+    assert!(error_text(&sent(&mut cb)).is_some_and(|e| e.contains("its own secret")));
+    assert!(d.snapshot().secret_requests.is_empty());
+    d.handle(Ev::Msg(1, ClientMsg::Command(secret_request(a))));
+    d.handle(Ev::Msg(1, ClientMsg::Command(secret_request(a))));
+    assert!(error_text(&sent(&mut ca)).is_some_and(|e| e.contains("already asking")), "one at a time");
+    let id = d.snapshot().secret_requests[0].id;
+    d.command(0, answer_secret(id, None)).unwrap();
+    let said = error_text(&sent(&mut ca)).expect("told");
+    assert!(said.contains("declined"), "{said}");
+    assert!(d.command(0, answer_secret(1, Some(""))).is_err(), "an empty secret is not an answer");
+    close(&mut d, &[a, b]);
+}
+
+#[test]
+fn a_request_goes_when_the_agent_that_asked_goes() {
+    let (mut d, _rx) = daemon();
+    let (a, _c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    d.handle(Ev::Msg(1, ClientMsg::Command(secret_request(a))));
+    assert_eq!(d.snapshot().secret_requests.len(), 1);
+    d.handle(Ev::Disconnected(1));
+    assert!(d.snapshot().secret_requests.is_empty() && d.snapshot().terms[&a].status == d.terms[&a].status);
+    close(&mut d, &[a]);
+}
+
+const PR_JSON: &str = r#"{"number":7,"url":"https://github.com/o/r/pull/7","title":"Add it","state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","reviewDecision":"","headRefOid":"a1","statusCheckRollup":[{"name":"build","status":"COMPLETED","conclusion":"FAILURE"}],"reviews":[],"comments":[]}"#;
+
+/// Put `term` on `branch` of a checkout and return the place the watcher asks `gh` about.
+fn on_branch(d: &mut Daemon, term: TermId, branch: &str) -> pr::Place {
+    let top = std::env::temp_dir();
+    d.terms.get_mut(&term).unwrap().head = Some(crate::gitfs::Head { top: top.clone(), branch: branch.into(), linked: false, main_root: top.clone() });
+    pr::Place::Branch(top, branch.into())
+}
+
+#[test]
+fn a_panes_pull_request_shows_in_its_row_and_an_unchanged_answer_is_dropped_unread() {
+    let (mut d, _rx) = daemon();
+    let (a, _c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let place = on_branch(&mut d, a, "feat-x");
+    assert!(d.snapshot().terms[&a].pr.is_none(), "nothing read yet");
+    d.handle(Ev::Prs(vec![(place.clone(), pr::Read::Found(PR_JSON.into()))]));
+    let shown = d.snapshot().terms[&a].pr.clone().expect("its pull request");
+    assert_eq!((shown.number, shown.checks.failed.clone()), (7, vec!["build".to_string()]));
+    assert!(d.dirty, "clients are told");
+    d.dirty = false;
+    d.handle(Ev::Prs(vec![(place.clone(), pr::Read::Found(PR_JSON.into()))]));
+    assert!(!d.dirty, "the same answer again changes nothing");
+    d.handle(Ev::Prs(vec![(place.clone(), pr::Read::Found(PR_JSON.replace("Add it", "Add it better")))]));
+    assert!(d.dirty && d.snapshot().terms[&a].pr.as_ref().is_some_and(|p| p.title == "Add it better"));
+    d.handle(Ev::Prs(vec![(place, pr::Read::NoPr)]));
+    assert!(d.snapshot().terms[&a].pr.is_none(), "the pull request is gone from the branch");
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn two_panes_on_one_branch_share_one_pull_request() {
+    let (mut d, _rx) = daemon();
+    let (a, _ca) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let (b, _cb) = agent_pane_in(&mut d, 2, &std::env::temp_dir());
+    let place = on_branch(&mut d, a, "feat-x");
+    on_branch(&mut d, b, "feat-x");
+    let third = pane(&mut d);
+    let other = on_branch(&mut d, third, "other");
+    d.handle(Ev::Prs(vec![(place, pr::Read::Found(PR_JSON.into()))]));
+    let snap = d.snapshot();
+    assert!(snap.terms[&a].pr.is_some() && snap.terms[&b].pr.is_some());
+    assert!(snap.terms.values().filter(|t| t.pr.is_some()).count() == 2, "the pane on another branch has none: {other:?}");
+    let all: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &all);
+}
+
+#[test]
+fn a_gh_problem_is_told_once_until_it_works_again_and_a_rate_limit_holds_off_asking() {
+    let (mut d, _rx) = daemon();
+    let (a, _c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let place = on_branch(&mut d, a, "feat-x");
+    let (tx, mut window) = mpsc::channel(64);
+    d.handle(Ev::Connected(9, tx, true));
+    let _ = sent(&mut window);
+    let problem = |text: &str| Ev::Prs(vec![(place.clone(), pr::Read::Problem(text.into()))]);
+    let notices = |w: &mut mpsc::Receiver<ServerMsg>| sent(w).iter().filter(|m| matches!(m, ServerMsg::Notice(n) if n.contains("pull request status is off"))).count();
+    d.handle(problem("the GitHub CLI (gh) isn't installed"));
+    d.handle(problem("the GitHub CLI (gh) isn't installed"));
+    assert_eq!(notices(&mut window), 1, "said once");
+    assert!(!d.prs.holding(), "not a rate limit: keep asking on schedule");
+    d.handle(Ev::Prs(vec![(place.clone(), pr::Read::Found(PR_JSON.into()))]));
+    d.handle(problem("the GitHub CLI (gh) isn't installed"));
+    assert_eq!(notices(&mut window), 1, "said again after it worked");
+    d.handle(problem("GraphQL: API rate limit already exceeded"));
+    assert!(d.prs.holding(), "a rate limit holds off asking");
+    d.handle(Ev::Prs(vec![(place, pr::Read::NoPr)]));
+    assert!(!d.prs.holding(), "an answer ends the hold");
+    close(&mut d, &[a]);
+}
+
+/// A pull request's JSON with the named checks failed and these remarks, on commit `head`.
+fn pr_with(head: &str, failed: &[&str], remarks: &[(&str, &str)]) -> pr::Read {
+    let checks: Vec<String> = failed.iter().map(|n| format!(r#"{{"name":"{n}","status":"COMPLETED","conclusion":"FAILURE"}}"#)).collect();
+    let comments: Vec<String> = remarks.iter().map(|(id, text)| format!(r#"{{"id":"{id}","author":{{"login":"sam"}},"body":"{text}"}}"#)).collect();
+    pr::Read::Found(format!(
+        r#"{{"number":7,"url":"https://github.com/o/r/pull/7","title":"T","state":"OPEN","mergeable":"MERGEABLE","headRefOid":"{head}","statusCheckRollup":[{}],"reviews":[],"comments":[{}]}}"#,
+        checks.join(","),
+        comments.join(",")
+    ))
+}
+
+#[test]
+fn a_pull_request_that_gets_worse_queues_one_message_for_its_agent_and_the_first_reading_does_not() {
+    let (mut d, _rx) = daemon();
+    let (a, _c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let place = on_branch(&mut d, a, "feat-x");
+    d.handle(Ev::Prs(vec![(place.clone(), pr_with("a1", &["build"], &[]))]));
+    assert!(d.terms[&a].queue.is_empty(), "what was already failing when first seen is a baseline");
+    d.handle(Ev::Prs(vec![(place.clone(), pr_with("a1", &["build", "lint"], &[("C1", "please rename it")]))]));
+    let queued: Vec<String> = d.terms[&a].queue.iter().cloned().collect();
+    assert_eq!(queued.len(), 1, "one message, not one per change");
+    assert!(queued[0].contains("checks failed: lint") && !queued[0].contains("build") && queued[0].contains("sam wrote: \"please rename it\""), "{}", queued[0]);
+    d.handle(Ev::Prs(vec![(place, pr_with("a1", &["build", "lint"], &[("C1", "please rename it")]))]));
+    assert_eq!(d.terms[&a].queue.len(), 1, "nothing new, nothing more");
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn a_shell_and_a_turned_off_setting_are_not_told_and_a_bot_cannot_loop_an_agent() {
+    let (mut d, _rx) = daemon();
+    let (a, _c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let shell = pane(&mut d);
+    let place = on_branch(&mut d, a, "feat-x");
+    on_branch(&mut d, shell, "feat-x");
+    d.handle(Ev::Prs(vec![(place.clone(), pr_with("a1", &[], &[]))]));
+    d.handle(Ev::Prs(vec![(place.clone(), pr_with("a1", &["build"], &[]))]));
+    assert_eq!((d.terms[&a].queue.len(), d.terms[&shell].queue.len()), (1, 0), "only the agent");
+    // A bot that comments on every push: the eleventh comment on one commit says nothing more.
+    for i in 0..12 {
+        let remarks: Vec<(String, String)> = (0..=i).map(|n| (format!("C{n}"), "coverage".to_string())).collect();
+        let remarks: Vec<(&str, &str)> = remarks.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        d.handle(Ev::Prs(vec![(place.clone(), pr_with("a1", &["build"], &remarks))]));
+    }
+    d.terms.get_mut(&a).unwrap().queue.clear();
+    d.handle(Ev::Prs(vec![(place.clone(), pr_with("a1", &["build"], &[("C0", "x"), ("C99", "one more")]))]));
+    assert!(d.terms[&a].queue.is_empty(), "ten wake-ups on one commit are enough");
+    // A new commit starts the count again.
+    d.handle(Ev::Prs(vec![(place.clone(), pr_with("b2", &["test"], &[]))]));
+    assert_eq!(d.terms[&a].queue.len(), 1, "a push is news again");
+    // Turned off: the status line still follows, the agent is left alone.
+    d.cfg.sessions.pr_wake = false;
+    d.terms.get_mut(&a).unwrap().queue.clear();
+    d.handle(Ev::Prs(vec![(place, pr_with("c3", &["deploy"], &[]))]));
+    assert!(d.terms[&a].queue.is_empty() && d.snapshot().terms[&a].pr.as_ref().is_some_and(|p| p.checks.failed == ["deploy"]));
+    let all: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &all);
+}
+
+fn link_pr(term: TermId, url: Option<&str>) -> Command {
+    Command::LinkPr { term, url: url.map(String::from) }
+}
+
+#[test]
+fn a_linked_pull_request_wins_over_the_branch_until_it_is_unlinked() {
+    let (mut d, _rx) = daemon();
+    let (a, mut ca) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let (b, _cb) = agent_pane_in(&mut d, 2, &std::env::temp_dir());
+    let branch = on_branch(&mut d, a, "feat-x");
+    on_branch(&mut d, b, "feat-x");
+    d.handle(Ev::Prs(vec![(branch, pr_with("a1", &[], &[]))]));
+    assert!(d.snapshot().terms[&a].pr.is_some() && d.snapshot().terms[&b].pr.is_some(), "found from the branch");
+    // The pane links itself to another pull request; its neighbour on the branch is not touched.
+    d.handle(Ev::Msg(1, ClientMsg::Command(link_pr(a, Some("https://github.com/o/r/pull/9/files")))));
+    assert!(sent(&mut ca).iter().all(|m| !matches!(m, ServerMsg::Error(_))), "a pane may link itself");
+    assert!(d.snapshot().terms[&a].pr.is_none(), "nothing read for the link yet");
+    assert!(d.snapshot().terms[&b].pr.is_some());
+    let link = pr::Place::Link("https://github.com/o/r/pull/9".into());
+    d.handle(Ev::Prs(vec![(link, pr_with("z9", &["build"], &[]))]));
+    assert_eq!(d.snapshot().terms[&a].pr.as_ref().map(|p| p.checks.failed.clone()), Some(vec!["build".to_string()]));
+    assert!(d.snapshot().terms[&b].pr.as_ref().is_some_and(|p| p.checks.failed.is_empty()));
+    // Unlinked, it follows its branch again.
+    d.command(0, link_pr(a, None)).unwrap();
+    assert!(d.snapshot().terms[&a].pr.as_ref().is_some_and(|p| p.checks.failed.is_empty()));
+    let all: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &all);
+}
+
+#[test]
+fn only_a_github_pull_request_can_be_linked_and_a_pane_links_only_itself() {
+    let (mut d, _rx) = daemon();
+    let (a, mut ca) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let (b, _cb) = agent_pane_in(&mut d, 2, &std::env::temp_dir());
+    assert!(d.command(0, link_pr(a, Some("https://example.com/o/r/pull/1"))).is_err());
+    assert!(d.command(0, link_pr(a, Some("--web"))).is_err());
+    assert!(d.command(0, link_pr(999, Some("https://github.com/o/r/pull/1"))).is_err(), "no such pane");
+    d.handle(Ev::Msg(1, ClientMsg::Command(link_pr(b, Some("https://github.com/o/r/pull/1")))));
+    assert!(error_text(&sent(&mut ca)).is_some_and(|e| e.contains("only its own")), "a pane may not link another");
+    d.command(0, link_pr(b, Some("https://github.com/o/r/pull/1"))).expect("you may link any pane");
+    close(&mut d, &[a, b]);
+}

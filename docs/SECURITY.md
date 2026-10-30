@@ -143,6 +143,21 @@ An agent can start helpers only if you say so. Who is asking is proven the way s
 refuses from any pane and accepts only for a request it holds. "Always in this project" is kept in
 `helper-projects.json` in Maitty's data folder, never in the repo, so an agent that can write the
 repo cannot grant itself helpers. A helper's own permission prompts still come to you.
+
+What a pull request's reviewers and bots wrote reaches the pane's agent as a queued message
+(`sessions.pr_wake`, on by default), so it is untrusted text: it is cut short, flattened to one
+line, withheld when it holds hidden characters, framed as other people's words and not
+instructions, and capped at ten messages per commit. `gh` is run with prompts off and is given
+only a branch's checkout or a validated GitHub pull request address.
+
+An agent that needs a secret asks you for it (`RequestSecret`, proven the same way) instead of
+asking in chat. Only you answer (`AnswerSecret`, refused from any pane). The daemon keeps what
+you type in memory only (a delivered file is `0600` in a `0700` folder on unix; on Windows it
+sits in your own app data, which only you and administrators can read, and is removed within a
+day or when the daemon starts), and gives the agent a single-use reference that runs out after 24 hours
+and works only for the pane that asked ([ADR-0036](adr/0036-secrets-never-enter-chat.md)). The
+value is never in the snapshot or a log line (`SecretText` prints as `<hidden>`), and the label
+and reason an agent supplies are checked for control and hidden characters before you read them.
 A project may name several check commands. Each one runs under the same rules, one after
 another in one background task, and each keeps its own output tail. A command the
 resolver holds for approval or that you said never to is not started at all. To tell when

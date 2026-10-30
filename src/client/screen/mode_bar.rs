@@ -161,6 +161,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
         Mode::Prompt { .. } | Mode::RenameTab(_) => holder("NAME", &[("", "type"), ("Enter", "save")], ("Esc", "cancel")),
         Mode::Why { .. } => holder("WHY", &[], ("Esc", "close")),
         Mode::Helpers { .. } => holder("HELPERS", &[("1", "allow"), ("2", "always"), ("3", "no")], ("Esc", "back")),
+        Mode::Secret { .. } => holder("SECRET", &[("", "type or paste"), ("Enter", "give")], ("Esc", "decline")),
         Mode::Approve(_) => holder("RUN CHECK?", &[("1", "run once"), ("2", "always"), ("3", "never")], ("Esc", "not now")),
         Mode::ProjectCheck(d) if d.editing => holder("CHECK SETTINGS", &[("", "type a command"), ("Enter", "done"), ("Ctrl+S", "save")], ("Esc", "cancel")),
         Mode::ProjectCheck(d) if !super::check_settings::has_points(app, &d.project) => holder("CHECK SETTINGS", &[("", "type a command"), ("Enter", "edit"), ("Ctrl+S", "save")], ("Esc", "cancel")),
@@ -333,6 +334,17 @@ fn branch_piece(app: &App, t: &Theme) -> Option<Piece> {
     Some(Piece { segs: vec![seg(words, Style::default().fg(t.muted).bg(t.bg))], gap: GAP, hit: None })
 }
 
+/// The focused pane's pull request: `#7 2 failing`, red when there is something to act on.
+fn pr_piece(app: &App, t: &Theme) -> Option<Piece> {
+    let pr = app.focused().and_then(|f| app.snap.terms.get(&f)).and_then(|i| i.pr.as_ref())?;
+    let colour = match pr.tone() {
+        crate::protocol::PrTone::Bad => t.err,
+        crate::protocol::PrTone::Good => t.done,
+        crate::protocol::PrTone::Waiting | crate::protocol::PrTone::Plain => t.muted,
+    };
+    Some(Piece { segs: vec![seg(pr.headline(), Style::default().fg(colour).bg(t.bg))], gap: GAP, hit: None })
+}
+
 /// What the tab's panes take of the machine, dim: `▲ 3% CPU · 1.2 GB`.
 fn load_piece(app: &App, t: &Theme) -> Option<Piece> {
     let leaves = app.screen.tabs.get(app.screen.tab)?.layout.leaves();
@@ -381,7 +393,7 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
             let (left, release) = fit(room.saturating_sub(alert_w), &tag, &middle, &tail, &releases);
             let used = width(&left) + release_room(release) + alert_w;
             right.push(alert);
-            for extra in branch_piece(app, t).into_iter().chain(load_piece(app, t)) {
+            for extra in branch_piece(app, t).into_iter().chain(pr_piece(app, t)).chain(load_piece(app, t)) {
                 let more = extra.gap + segs_width(&extra.segs);
                 if used + right[1..].iter().map(|p| p.gap + segs_width(&p.segs)).sum::<u16>() + more <= room {
                     right.push(extra);

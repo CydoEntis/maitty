@@ -135,6 +135,8 @@ enum Mode {
     Why { term: TermId, side: bool },
     /// A session asks to start helpers (beside its row); `side`: back to the sidebar after.
     Helpers { term: TermId, side: bool },
+    /// A session asks you for a secret (beside its row); `id`: the request; `side`: back to the sidebar after.
+    Secret { term: TermId, id: u64, side: bool },
     /// The leader's key map (or its second step), typed to search.
     KeyMap(Box<screen::KeyMap>),
     /// Every command with its key (the sidebar's "menu").

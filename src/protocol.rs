@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 49;
+pub const PROTOCOL_VERSION: u32 = 50;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -194,6 +194,18 @@ pub enum Command {
     /// Your answer to a session that asked to start helpers (`TermInfo::helper_ask`). Only you
     /// can (not from inside a pane), and only while the request is pending.
     AnswerHelpers { term: TermId, choice: HelperChoice },
+    /// From a pane: its agent needs a secret (an API key, say) and asks you for it. The reply is
+    /// a reference (`secret-ref:…`), never the value, once you answer; an error if you decline.
+    RequestSecret { term: TermId, label: String, reason: String },
+    /// Your answer to secret request `id` (`Snapshot::secret_requests`): the value, or None to
+    /// decline. Only you can (not from inside a pane).
+    AnswerSecret { id: u64, value: Option<SecretText> },
+    /// Link pane `term` to the GitHub pull request at `url` (None: back to the one on its branch).
+    /// A pane may only link itself.
+    LinkPr { term: TermId, url: Option<String> },
+    /// From a pane: use the reference its request got. The reply is the value, once; only the
+    /// pane that asked can, and it runs out after a day.
+    SpendSecret { reference: String },
     /// `forget`: also discard the saved session, so the next start is a clean slate.
     KillServer { forget: bool },
 }
@@ -380,6 +392,9 @@ pub struct Snapshot {
     /// Questions agents asked you (`<app> ask-human`), waiting for an answer.
     #[serde(default)]
     pub questions: Vec<HumanQuestion>,
+    /// Secrets agents asked you for (`RequestSecret`): what and why, never a value.
+    #[serde(default)]
+    pub secret_requests: Vec<SecretRequest>,
     /// Plan limits by agent ("claude", "codex"), as last reported.
     #[serde(default)]
     pub limits: Vec<(String, Vec<Limit>)>,
@@ -399,6 +414,114 @@ pub struct AgentDay {
     pub turns: u32,
     pub working_secs: u64,
     pub cost: f64,
+}
+
+/// A pull request, as GitHub last said (read through `gh`).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct PrInfo {
+    pub number: u32,
+    pub url: String,
+    pub title: String,
+    pub state: PrState,
+    pub draft: bool,
+    /// Passed, pending and failed checks (the failed ones by name).
+    pub checks: PrChecks,
+    pub review: PrReview,
+    /// It can't merge until the branch is brought up to date.
+    pub conflicting: bool,
+}
+
+/// How a pull request reads at a glance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrTone {
+    /// Something to act on: failing checks, a conflict, changes asked for, closed unmerged.
+    Bad,
+    /// Still running.
+    Waiting,
+    /// Passing, approved or merged.
+    Good,
+    Plain,
+}
+
+impl PrInfo {
+    /// The pull request in a few words, the most pressing fact first: `#7 2 failing`.
+    pub fn headline(&self) -> String {
+        let n = self.number;
+        let fails = self.checks.failed.len();
+        let what = match self.state {
+            PrState::Merged => "merged".to_string(),
+            PrState::Closed => "closed".to_string(),
+            PrState::Open if fails > 0 => format!("{fails} failing"),
+            PrState::Open if self.conflicting => "conflict".to_string(),
+            PrState::Open if self.review == PrReview::ChangesRequested => "changes requested".to_string(),
+            PrState::Open if self.checks.pending > 0 => "checking".to_string(),
+            PrState::Open if self.review == PrReview::Approved => "approved".to_string(),
+            PrState::Open if self.checks.passed > 0 => "passing".to_string(),
+            PrState::Open => String::new(),
+        };
+        let draft = if self.draft && self.state == PrState::Open { " draft" } else { "" };
+        format!("#{n}{}{what}{draft}", if what.is_empty() { "" } else { " " })
+    }
+
+    pub fn tone(&self) -> PrTone {
+        match self.state {
+            PrState::Merged => PrTone::Good,
+            PrState::Closed => PrTone::Bad,
+            PrState::Open if !self.checks.failed.is_empty() || self.conflicting || self.review == PrReview::ChangesRequested => PrTone::Bad,
+            PrState::Open if self.checks.pending > 0 => PrTone::Waiting,
+            PrState::Open if self.review == PrReview::Approved || self.checks.passed > 0 => PrTone::Good,
+            PrState::Open => PrTone::Plain,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PrState {
+    #[default]
+    Open,
+    Merged,
+    Closed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct PrChecks {
+    pub passed: u32,
+    pub pending: u32,
+    pub failed: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PrReview {
+    /// Nobody has reviewed it, and none is required.
+    #[default]
+    None,
+    Required,
+    Approved,
+    ChangesRequested,
+}
+
+/// Text that is a secret. Its `Debug` never shows it, so a logged command or snapshot can't
+/// leak it.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SecretText(pub String);
+
+impl std::fmt::Debug for SecretText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SecretText(<hidden>)")
+    }
+}
+
+/// A secret an agent asked you for. It holds what is asked and why, never the value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecretRequest {
+    pub id: u64,
+    /// The pane that asked.
+    pub term: TermId,
+    /// What it is called ("OpenAI API key").
+    pub label: String,
+    /// What the agent needs it for.
+    pub reason: String,
 }
 
 /// A question an agent asked you, with the answers it allows.
@@ -516,6 +639,9 @@ pub struct TermInfo {
     /// empty means the row needs you ("wants to start N helpers"); `AnswerHelpers` answers it.
     #[serde(default)]
     pub helper_ask: Vec<String>,
+    /// The pull request open on the pane's branch, as last read from GitHub.
+    #[serde(default)]
+    pub pr: Option<PrInfo>,
     /// Follow-ups waiting for its turn to end, next first.
     #[serde(default)]
     pub queued: Vec<String>,
@@ -836,6 +962,12 @@ mod tests {
             ClientMsg::Command(Command::AnswerHelpers { term: 3, choice: HelperChoice::Allow }),
             ClientMsg::Command(Command::AnswerHelpers { term: 3, choice: HelperChoice::Always }),
             ClientMsg::Command(Command::AnswerHelpers { term: 3, choice: HelperChoice::No }),
+            ClientMsg::Command(Command::RequestSecret { term: 3, label: "API key".into(), reason: "to call the API".into() }),
+            ClientMsg::Command(Command::AnswerSecret { id: 1, value: Some(SecretText("hunter2".into())) }),
+            ClientMsg::Command(Command::AnswerSecret { id: 1, value: None }),
+            ClientMsg::Command(Command::SpendSecret { reference: "secret-ref:00ff".into() }),
+            ClientMsg::Command(Command::LinkPr { term: 3, url: Some("https://github.com/o/r/pull/7".into()) }),
+            ClientMsg::Command(Command::LinkPr { term: 3, url: None }),
             ClientMsg::Command(Command::TidyWorktrees { items: vec![(PathBuf::from("/code/.wt/rate"), false)] }),
             ClientMsg::Command(Command::RenamePane { term: 3, name: "x".into() }),
             ClientMsg::Command(Command::MoveToWorktree { term: 3, branch: Some("feat/x".into()) }),
@@ -878,6 +1010,39 @@ mod tests {
         assert!(decode::<OldCommand>(&bytes).is_err());
         let Command::SwapPanes { a, b } = decode(&bytes).unwrap() else { panic!("expected a swap") };
         assert_eq!((a, b), (3, 4));
+    }
+
+    #[test]
+    fn a_pull_request_reads_with_the_most_pressing_fact_first() {
+        let pr = |f: &dyn Fn(&mut PrInfo)| {
+            let mut p = PrInfo { number: 7, ..Default::default() };
+            f(&mut p);
+            (p.headline(), p.tone())
+        };
+        assert_eq!(pr(&|_| {}), ("#7".to_string(), PrTone::Plain));
+        assert_eq!(pr(&|p| p.checks.passed = 3), ("#7 passing".to_string(), PrTone::Good));
+        assert_eq!(pr(&|p| { p.checks.passed = 3; p.review = PrReview::Approved }), ("#7 approved".to_string(), PrTone::Good));
+        assert_eq!(pr(&|p| p.checks.pending = 1), ("#7 checking".to_string(), PrTone::Waiting));
+        assert_eq!(pr(&|p| { p.checks.pending = 1; p.review = PrReview::ChangesRequested }), ("#7 changes requested".to_string(), PrTone::Bad));
+        assert_eq!(pr(&|p| { p.checks.failed = vec!["a".into(), "b".into()]; p.conflicting = true }), ("#7 2 failing".to_string(), PrTone::Bad));
+        assert_eq!(pr(&|p| p.conflicting = true), ("#7 conflict".to_string(), PrTone::Bad));
+        assert_eq!(pr(&|p| p.draft = true), ("#7 draft".to_string(), PrTone::Plain));
+        assert_eq!(pr(&|p| { p.state = PrState::Merged; p.checks.failed = vec!["a".into()] }), ("#7 merged".to_string(), PrTone::Good));
+        assert_eq!(pr(&|p| p.state = PrState::Closed), ("#7 closed".to_string(), PrTone::Bad));
+    }
+
+    #[test]
+    fn a_secret_never_shows_in_a_debug_print() {
+        let answer = Command::AnswerSecret { id: 1, value: Some(SecretText("hunter2".into())) };
+        assert!(!format!("{answer:?}").contains("hunter2"));
+        assert!(!format!("{:?}", ClientMsg::Command(answer)).contains("hunter2"));
+    }
+
+    #[test]
+    fn a_snapshot_from_before_secret_requests_decodes_with_none() {
+        let old = serde_json::json!({ "workspaces": [], "active_ws": null, "terms": {} });
+        let snap: Snapshot = serde_json::from_value(old).expect("a snapshot from a peer that knows no secret requests");
+        assert!(snap.secret_requests.is_empty());
     }
 
     #[test]

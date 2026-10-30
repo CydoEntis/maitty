@@ -45,6 +45,9 @@ fn row_of(t: &TermInfo, me: Option<TermId>) -> Value {
     if let Some(note) = cli::checks_note(t) {
         row["check"] = json!(note);
     }
+    if let Some(pr) = &t.pr {
+        row["pr"] = cli::pr_json(pr);
+    }
     row
 }
 
@@ -122,6 +125,16 @@ fn tools() -> Value {
             "inputSchema": { "type": "object", "properties": {
                 "path": { "type": "string", "description": "A folder in the project, if not the one you run in." }
             } }
+        },
+        {
+            "name": concat!(env!("APP_COMMAND"), "_request_secret"),
+            "description": concat!("Ask the user for a secret you need (an API key, a token, a password). Never ask for one in chat. They type it into a hidden prompt in ", env!("APP_COMMAND"), "; this waits for them, then returns the path of a file that only they can read, holding the secret. Read the file when you need the value, use it, then delete it. Or ask for delivery \"run\" and you get a reference instead: run a command with `", env!("APP_COMMAND"), " secret run <reference> --env NAME -- <command>` and the secret is in NAME for that one command only (use it once). Never print it, quote it or write it into the chat or any file in the project. If they decline, carry on without it."),
+            "inputSchema": { "type": "object", "properties": {
+                "label": { "type": "string", "description": "What it is called, e.g. \"OpenAI API key\"." },
+                "reason": { "type": "string", "description": "What you need it for, in a sentence; the user reads this." },
+                "delivery": { "type": "string", "enum": ["file", "run"], "description": "file (default): a path to a file holding it. run: a reference for the secret-run command." },
+                "timeout": { "type": "integer", "description": "Seconds to wait for them at most (default 600)." }
+            }, "required": ["label"] }
         },
         {
             "name": concat!(env!("APP_COMMAND"), "_interrupt"),
@@ -217,6 +230,7 @@ impl Server {
             concat!(env!("APP_COMMAND"), "_answer") => self.answer(args),
             concat!(env!("APP_COMMAND"), "_start") => self.start(args),
             concat!(env!("APP_COMMAND"), "_references") => self.references(args),
+            concat!(env!("APP_COMMAND"), "_request_secret") => self.request_secret(args),
             concat!(env!("APP_COMMAND"), "_interrupt") => self.session(args).and_then(|t| cli::send(Some(t.id), "\x03".into(), false).map(|_| format!("interrupted {}", t.id)).map_err(|e| format!("{e:#}"))),
             other => Err(format!("no tool {other}")),
         };
@@ -326,6 +340,42 @@ impl Server {
         Ok(format!("answered {choice}{} on session {}", if label.is_empty() { String::new() } else { format!(" ({label})") }, t.id))
     }
 
+    /// Ask the user for a secret and hand it over as a file. Waits for their answer; the value
+    /// goes from the daemon to the file and into no reply.
+    fn request_secret(&self, args: &Value) -> Result<String, String> {
+        let term = self.me.ok_or(concat!("only an agent running in a ", env!("APP_COMMAND"), " pane can ask for a secret"))?;
+        let label = args.get("label").and_then(Value::as_str).filter(|l| !l.trim().is_empty()).ok_or("say what the secret is called (label)")?;
+        let reason = args.get("reason").and_then(Value::as_str).unwrap_or("");
+        let secs = args.get("timeout").and_then(Value::as_u64).unwrap_or(600);
+        let by_run = match args.get("delivery").and_then(Value::as_str) {
+            None | Some("file") => false,
+            Some("run") => true,
+            Some(other) => return Err(format!("delivery is \"file\" or \"run\", not {other:?}")),
+        };
+        let ask = Command::RequestSecret { term, label: label.to_string(), reason: reason.to_string() };
+        // A request that outlives the wait is withdrawn when its connection drops.
+        let asked = cli::block_on(async { Ok(tokio::time::timeout(std::time::Duration::from_secs(secs), cli::request(ClientMsg::Command(ask))).await) }).map_err(|e| format!("{e:#}"))?;
+        let reference = match asked {
+            Ok(Ok(Reply::Text(r))) => r,
+            Ok(Ok(_)) => return Err("unexpected reply".into()),
+            Ok(Err(e)) => return Err(format!("{e:#}")),
+            Err(_) => return Err(format!("The user hasn't answered after {secs}s, so the request was withdrawn. Tell them in chat that you need a secret and where to give it, then ask again.")),
+        };
+        if by_run {
+            return Ok(run_instructions(&reference));
+        }
+        let value = match cli::block_on(cli::request(ClientMsg::Command(Command::SpendSecret { reference: reference.clone() }))).map_err(|e| format!("{e:#}"))? {
+            Reply::Text(v) => v,
+            _ => return Err("unexpected reply".into()),
+        };
+        let dir = crate::secret_files::folder();
+        if let Err(e) = crate::secret_files::remove_stale(&dir, crate::secret_files::KEPT_FOR, std::time::SystemTime::now()) {
+            eprintln!("clearing old secret files: {e:#}");
+        }
+        let path = crate::secret_files::write(&dir, &reference, &value).map_err(|e| format!("couldn't save the secret for you: {e:#}"))?;
+        Ok(format!("Saved to {} (only the user can read it). Read it when you need it, use it, then delete the file; it is removed within a day anyway. Never print it or put it in the chat or the project.", path.display()))
+    }
+
     /// The references of the caller's project, or of the project `path` is in (within scope).
     fn references(&self, args: &Value) -> Result<String, String> {
         let root = match args.get("path") {
@@ -413,6 +463,11 @@ impl Server {
     }
 }
 
+/// What an agent is told when it chose to run a command with the secret: the reference is no secret.
+fn run_instructions(reference: &str) -> String {
+    format!(concat!("The user gave it. Run a command with it in an environment variable, once: ", env!("APP_COMMAND"), " secret run {} --env NAME -- <command>. The reference works for one run, in your pane only, and runs out in a day."), reference)
+}
+
 fn references_json(folder: &Path, found: &crate::references::Listing) -> Value {
     let rows: Vec<Value> = found
         .items
@@ -481,7 +536,7 @@ pub fn run() -> Result<()> {
                 "protocolVersion": params.get("protocolVersion").cloned().unwrap_or(json!("2025-06-18")),
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": env!("APP_COMMAND"), "version": env!("CARGO_PKG_VERSION") },
-                "instructions": concat!(env!("APP_COMMAND"), " runs your user's coding agents side by side. Use ", env!("APP_COMMAND"), "_list/read/send/start for helpers. Before UI, front-end or design work, call ", env!("APP_COMMAND"), "_references and open the images it lists: they are the user's reference screenshots and designs for this project. Don't answer prompts unless the user allows it; when you do, pass ", env!("APP_COMMAND"), "_answer the prompt id ", env!("APP_COMMAND"), "_list gave you.")
+                "instructions": concat!(env!("APP_COMMAND"), " runs your user's coding agents side by side. Use ", env!("APP_COMMAND"), "_list/read/send/start for helpers. Before UI, front-end or design work, call ", env!("APP_COMMAND"), "_references and open the images it lists: they are the user's reference screenshots and designs for this project. If you need an API key or other secret, call ", env!("APP_COMMAND"), "_request_secret; never ask for one in chat. Don't answer prompts unless the user allows it; when you do, pass ", env!("APP_COMMAND"), "_answer the prompt id ", env!("APP_COMMAND"), "_list gave you.")
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools() })),
@@ -643,6 +698,34 @@ mod tests {
             assert!(all.contains("theirs.png"), "scope all reaches it: {all}");
         }
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_server_tells_agents_to_ask_for_secrets_through_the_prompt_not_chat() {
+        let tools = tools();
+        let tool = tools.as_array().unwrap().iter().find(|t| t["name"] == concat!(env!("APP_COMMAND"), "_request_secret")).expect("the tool is listed");
+        assert_eq!(tool["inputSchema"]["required"], json!(["label"]), "a label is required, the reason is not");
+        let said = tool["description"].as_str().unwrap();
+        assert!(said.contains("Never ask for one in chat") && said.contains("delete it"), "{said}");
+    }
+
+    #[test]
+    fn the_run_delivery_hands_back_a_reference_and_how_to_use_it_and_an_unknown_one_is_refused() {
+        let said = run_instructions("secret-ref:00ff");
+        assert!(said.contains(concat!(env!("APP_COMMAND"), " secret run secret-ref:00ff --env NAME -- <command>")), "{said}");
+        let server = Server { cfg: Default::default(), root: PathBuf::new(), me: Some(3) };
+        let why = server.request_secret(&json!({ "label": "key", "delivery": "email" })).unwrap_err();
+        assert!(why.contains("\"file\" or \"run\""), "{why}");
+    }
+
+    #[test]
+    fn asking_for_a_secret_outside_a_pane_is_refused_before_anything_is_sent() {
+        let server = Server { cfg: Default::default(), root: PathBuf::new(), me: None };
+        let why = server.request_secret(&json!({ "label": "key" })).unwrap_err();
+        assert!(why.contains("pane can ask for a secret"), "{why}");
+        let server = Server { me: Some(3), ..server };
+        assert!(server.request_secret(&json!({ "label": "  " })).unwrap_err().contains("what the secret is called"));
+        assert!(server.request_secret(&json!({})).unwrap_err().contains("what the secret is called"));
     }
 
     #[test]

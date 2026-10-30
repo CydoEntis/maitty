@@ -165,11 +165,14 @@ pub struct Sessions {
     /// Helpers one session runs at a time: one of `HELPERS_AT_ONCE`. An old `[mcp]
     /// helpers_at_once` fills it in when this is not set (`fold_legacy_helpers`).
     pub helpers_at_once: String,
+    /// Tell an agent, once its turn is over, when its pull request gets a failed check, a review
+    /// remark or a merge conflict. Off: the status line shows it and the agent is not typed into.
+    pub pr_wake: bool,
 }
 
 impl Default for Sessions {
     fn default() -> Self {
-        Sessions { agent: "last used".into(), place: "new worktree".into(), helpers: "ask".into(), helpers_at_once: "3".into() }
+        Sessions { agent: "last used".into(), place: "new worktree".into(), helpers: "ask".into(), helpers_at_once: "3".into(), pr_wake: true }
     }
 }
 

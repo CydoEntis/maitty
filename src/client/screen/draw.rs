@@ -226,6 +226,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         Mode::Compose(c) if c.inbox.is_none() => draw_compose_pop(app, f.buffer_mut(), above, g.side, &c, t),
         Mode::Why { term, .. } => draw_why_pop(app, f.buffer_mut(), above, g.side, term, t),
         Mode::Helpers { term, .. } => draw_helpers_pop(app, f.buffer_mut(), above, g.side, term, t),
+        Mode::Secret { term, .. } => draw_secret_pop(app, f.buffer_mut(), above, g.side, term, t),
         _ => {}
     }
     if let Some(term) = app.popup() {

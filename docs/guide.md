@@ -247,6 +247,30 @@ through `maitty integrate mcp` are told to call `maitty_references` before UI or
 lists each file's absolute path, kind, size and time, and the agent opens the images itself.
 Subagents usually inherit their parent's MCP tools. Over `--remote` the view isn't available yet.
 
+## Secrets and pull requests
+
+**Secrets.** An agent that needs an API key or token calls `maitty_request_secret` instead of
+asking in chat. Its row turns "needs you" with "asks for a secret" (and shows in the Inbox);
+Enter on the row, or a click on the line, opens a prompt beside it. What you type shows as dots.
+Enter gives it and Esc declines (the agent is told to carry on without it); a paste works too. By
+default the agent gets the path of a file only you can read, with the secret in it; if it asks for
+delivery `run`, it gets a reference and runs `maitty secret run <reference> --env NAME -- <command>`
+to put the secret in one command's environment. A reference works once, only for the pane that
+asked, and runs out after a day. Maitty keeps secrets in memory only: a restart forgets them,
+and delivered files are removed within a day or when the daemon starts. They never appear in the
+chat, the state or a log.
+
+**Pull requests.** With the GitHub CLI (`gh`) installed and logged in, Maitty finds the pull
+request open on each pane's branch every couple of minutes and shows the focused pane's in the
+bottom bar: `#7 2 failing`, `#7 changes requested`, `#7 conflict`, `#7 checking`, `#7 approved`,
+`#7 passing`, `#7 merged`. `maitty ls --json` and `maitty_list` carry the details. When the
+checks fail, a review remark arrives or a merge conflict appears, the agent is told once its turn
+is over (never into a question), at most ten times per commit; Settings › Agents › "Tell agents
+about their PR" turns that off. If the branch doesn't find it, `maitty pr link
+<github pull request address>` links the pane by hand (`maitty pr unlink` goes back). Only
+reviews and conversation comments are read, not inline code comments. A link is forgotten when the
+server restarts.
+
 ## Agents that steer agents (MCP)
 
 `maitty integrate mcp` registers `maitty mcp` with every agent you have that takes one, and
@@ -265,7 +289,8 @@ running agent to load the server. `maitty doctor` shows which agents have it. An
 list sessions (`maitty_list`), read a screen (`maitty_read`), send a message
 (`maitty_send`), wait for a turn to end (`maitty_wait`), answer a prompt (`maitty_answer`),
 interrupt (`maitty_interrupt`), start helpers (`maitty_start`, see *Helpers* above) and list the
-project's references (`maitty_references`, see *References* above).
+project's references (`maitty_references`, see *References* above) and ask you for a secret
+(`maitty_request_secret`, see *Secrets and pull requests* below).
 `[mcp] approve` sets whether agents may answer "yes" to prompts and `[mcp] scope` whether
 they reach only their project or every session; `maitty grant <pane> read,write,…` changes
 one pane's rights.

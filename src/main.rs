@@ -24,6 +24,7 @@ mod update;
 mod restart;
 mod references;
 mod reveal;
+mod secret_files;
 mod snapshot;
 
 use clap::{Parser, Subcommand};
@@ -158,6 +159,16 @@ enum Cmd {
         #[arg(long)]
         uninstall: bool,
     },
+    /// Link a pane to its GitHub pull request by hand, when its branch doesn't find it.
+    Pr {
+        #[command(subcommand)]
+        cmd: PrCmd,
+    },
+    /// Run a command with a secret the user gave you (see `<app>_request_secret`).
+    Secret {
+        #[command(subcommand)]
+        cmd: SecretCmd,
+    },
     /// Config helpers.
     Config {
         #[command(subcommand)]
@@ -255,6 +266,35 @@ enum Cmd {
 }
 
 #[derive(Subcommand)]
+enum PrCmd {
+    /// Link this pane (or `--pane N`) to a pull request: `pr link https://github.com/o/r/pull/7`.
+    Link {
+        url: String,
+        #[arg(long)]
+        pane: Option<protocol::TermId>,
+    },
+    /// Go back to the pull request on the pane's branch.
+    Unlink {
+        #[arg(long)]
+        pane: Option<protocol::TermId>,
+    },
+}
+
+#[derive(Subcommand)]
+enum SecretCmd {
+    /// Run a command with the secret in an environment variable: `secret run secret-ref:… --env
+    /// OPENAI_API_KEY -- ./deploy.sh`. The reference works once.
+    Run {
+        reference: String,
+        /// The variable the command reads the secret from.
+        #[arg(long)]
+        env: String,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+        cmd: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum ConfigCmd {
     /// Print the config file location.
     Path,
@@ -316,6 +356,12 @@ fn main() {
             Ok(())
         }
         Some(Cmd::Integrate { agent, uninstall }) => cli::integrate(agent.as_deref(), uninstall),
+        Some(Cmd::Pr { cmd: PrCmd::Link { url, pane } }) => cli::pr_link(pane, Some(url)),
+        Some(Cmd::Pr { cmd: PrCmd::Unlink { pane } }) => cli::pr_link(pane, None),
+        Some(Cmd::Secret { cmd: SecretCmd::Run { reference, env, cmd } }) => match cli::secret_run::run(&reference, &env, &cmd) {
+            Ok(code) => std::process::exit(code),
+            Err(e) => Err(e),
+        },
         Some(Cmd::Config { cmd }) => match cmd {
             ConfigCmd::Path => {
                 println!("{}", config::config_path().display());

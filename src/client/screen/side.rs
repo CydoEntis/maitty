@@ -44,6 +44,7 @@ fn has_detail(app: &App, s: &Session) -> bool {
         || s.question.is_some()
         || s.resume_at.is_some()
         || s.helpers_wanted > 0
+        || s.secret_ask.is_some()
         || (s.status == Status::Working && s.quiet_since.is_some())
         || helpers_at_work
         || app.screen.receipts.contains_key(&s.term)
@@ -332,7 +333,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 Line::Detail(_) => {
                     put(buf, x, y, &quiet(app, s, detail(app, s, rl, t, cols.end().saturating_sub(x) as usize), t), cols.end());
                     // Its question is this line: a click answers it, not just opens the session.
-                    if s.helpers_wanted > 0 {
+                    if s.helpers_wanted > 0 || s.secret_ask.is_some() {
                         hit(app, row, ScreenHit::HelperAsk(term));
                     }
                 }
@@ -629,8 +630,8 @@ fn detail(app: &App, s: &Session, rl: RowLook, t: &Theme, room: usize) -> Vec<Se
     if let Some(receipt) = popover::receipt_segs(app, s.term, t) {
         return rl.on(receipt, t);
     }
-    if s.helpers_wanted > 0 {
-        return rl.on(vec![seg(truncate(&helpers_line_in(s.helpers_wanted, room), room), Style::default().fg(t.blocked))], t);
+    if s.helpers_wanted > 0 || s.secret_ask.is_some() {
+        return rl.on(vec![seg(truncate(&ask_line_in(s, room), room), Style::default().fg(t.blocked))], t);
     }
     let checks = check::reported(s);
     let segs = if checks.len() > 1 {

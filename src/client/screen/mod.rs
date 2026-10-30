@@ -153,6 +153,8 @@ pub(super) struct Screen {
     /// Where the Inbox was (query, row) when the override or approval open over it came from
     /// it: Esc goes back there.
     pub inbox_return: Option<(String, usize)>,
+    /// What you have typed into a secret's prompt so far. Cleared when the prompt closes.
+    pub secret_typed: crate::protocol::SecretText,
     pub overlap_at: HashMap<PathBuf, Instant>,
     /// Each checkout's lines added and removed and not committed (`+N −N` on its rows), and
     /// when they were last counted.
@@ -382,6 +384,8 @@ pub(super) struct Session {
     pub started_by: Option<TermId>,
     /// Helpers it wants to start and is waiting on you for (0: not asking).
     pub helpers_wanted: usize,
+    /// What the secret it asks you for is called (None: not asking).
+    pub secret_ask: Option<String>,
     /// Follow-ups waiting for its turn to end, next first.
     pub queued: Vec<String>,
     /// The latest check the app ran after its turn: the headline of `checks`.
@@ -440,7 +444,7 @@ pub(super) fn rank(s: Status) -> u8 {
 /// The sidebar has the keys, or the why popover opened from one of its rows does (it
 /// gives them back to the sidebar when it closes).
 pub(super) fn side_focused(app: &App) -> bool {
-    matches!(app.mode, Mode::Side | Mode::Why { side: true, .. } | Mode::Helpers { side: true, .. })
+    matches!(app.mode, Mode::Side | Mode::Why { side: true, .. } | Mode::Helpers { side: true, .. } | Mode::Secret { side: true, .. })
 }
 
 /// A split is one session: the pane it was split from keeps its row, the panes opened
@@ -650,7 +654,10 @@ impl App {
                 let wi = add_wt(&mut projs[pi], &top, branch, main);
                 let title = session_title(t, if leaves.len() == 1 { &w.name } else { "" }, &top);
                 // What it asks: its ask-human question, else what its screen asks.
-                let question = if t.helper_ask.is_empty() {
+                let secret = self.snap.secret_requests.iter().find(|r| r.term == *id).map(|r| r.label.clone());
+                let question = if let Some(label) = &secret {
+                    Some(secret_line(label))
+                } else if t.helper_ask.is_empty() {
                     (t.status == Status::Blocked)
                         .then(|| self.snap.questions.iter().find(|q| q.term == *id).map(|q| q.text.clone()).or_else(|| self.parsers.get(id).and_then(question)))
                         .flatten()
@@ -682,6 +689,7 @@ impl App {
                     resume_at: t.resume_at,
                     started_by: t.started_by,
                     helpers_wanted: t.helper_ask.len(),
+                    secret_ask: secret,
                     queued: t.queued.clone(),
                     check: t.check().cloned(),
                     checks: t.checks.clone(),
@@ -1035,6 +1043,9 @@ pub(super) enum ScreenHit {
     HelperAsk(TermId),
     /// A choice in that question.
     HelperAnswer(TermId, crate::protocol::HelperChoice),
+    /// The secret prompt's buttons.
+    SecretGive(TermId),
+    SecretDecline(TermId),
     /// A button or row of Settings › Check.
     CheckDraft(check_settings::DraftHit),
 }
@@ -1090,6 +1101,7 @@ mod popups;
 mod heads;
 mod popover;
 mod helpers_ask;
+mod secret_ask;
 mod draw;
 mod hairline;
 #[cfg(test)]
@@ -1108,4 +1120,4 @@ mod frame_tests;
 mod panes_apart_tests;
 #[cfg(test)]
 mod reference;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, references_sheet::*, check_actions::*, check_approve::*, keyoverlay::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, secret_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, references_sheet::*, check_actions::*, check_approve::*, keyoverlay::*};
