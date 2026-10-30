@@ -117,12 +117,15 @@ pub fn pid_file() -> std::path::PathBuf {
 
 /// Server identity. `<APP>_SOCKET` picks a separate server (like `tmux -L`).
 pub fn socket_id() -> String {
-    let label =
-        std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
-    let user = std::env::var("USERNAME")
-        .or_else(|_| std::env::var("USER"))
-        .unwrap_or_else(|_| "user".into());
-    format!("{APP_COMMAND}-{user}-{label}.sock")
+    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).ok();
+    let username = std::env::var("USERNAME").ok();
+    let user = std::env::var("USER").ok();
+    maitty_ipc_transport::socket_id(
+        APP_COMMAND,
+        label.as_deref(),
+        username.as_deref(),
+        user.as_deref(),
+    )
 }
 
 /// Windows: a named pipe (its default security lets only this user and admins write).

@@ -909,7 +909,8 @@ Refactor progress: `crates/maitty-shared` owns the versioned protocol,
 conversation contracts, split-tree types, clock helpers, hidden-text
 validation and shared check-output rules. `crates/maitty-ipc-transport` owns
 bounded length-delimited framing, message encode/decode and the shared Welcome
-handshake for both clients; each client keeps its own protocol mismatch error.
+handshake and socket identity formatting for both clients; each client keeps its
+own protocol mismatch error, OS connection and daemon lifecycle.
 `crates/maitty-desktop-client`
 now owns GUI daemon IPC, lifecycle operations and Codex discovery; the Tauri
 host depends on it and `maitty-shared`, not the `maitty` runtime. Codex
@@ -958,8 +959,10 @@ package suites, and 5 ignored tests. Strict clippy, workspace build, and
 Linux/macOS package checks all pass.
 The bundled agent screen matcher and its manifest fixtures have now moved into
 `maitty-agent-detection`; daemon status still owns process-tree and lifecycle
-signals. The full workspace suite passes 1,314 runtime tests, 3 detection tests,
-19 settings tests, 31 desktop-client tests, 3 IPC transport tests, all remaining
+signals. Socket identity formatting is shared in `maitty-ipc-transport`; the
+clients retain their OS connection and lifecycle. The full workspace suite
+passes 1,314 runtime tests, 3 detection tests, 19 settings tests, 31 desktop-client
+tests, 4 IPC transport tests, all remaining
 package suites, and 5 ignored tests. Strict clippy, workspace build, and
 Linux/macOS package checks all pass.
 Linux and macOS target checks passed for the installed `maitty` package. The

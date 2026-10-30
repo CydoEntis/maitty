@@ -55,11 +55,15 @@ pub fn data_dir() -> std::path::PathBuf {
 }
 
 fn socket_id() -> String {
-    let label = std::env::var(format!("{APP_ENV}_SOCKET")).unwrap_or_else(|_| "default".into());
-    let user = std::env::var("USERNAME")
-        .or_else(|_| std::env::var("USER"))
-        .unwrap_or_else(|_| "user".into());
-    format!("{APP_COMMAND}-{user}-{label}.sock")
+    let label = std::env::var(format!("{APP_ENV}_SOCKET")).ok();
+    let username = std::env::var("USERNAME").ok();
+    let user = std::env::var("USER").ok();
+    maitty_ipc_transport::socket_id(
+        APP_COMMAND,
+        label.as_deref(),
+        username.as_deref(),
+        user.as_deref(),
+    )
 }
 
 pub async fn is_running() -> bool {

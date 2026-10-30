@@ -6,6 +6,17 @@ use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 pub const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 
+pub fn socket_id(
+    app_command: &str,
+    socket_label: Option<&str>,
+    username: Option<&str>,
+    user: Option<&str>,
+) -> String {
+    let label = socket_label.unwrap_or("default");
+    let user = username.or(user).unwrap_or("user");
+    format!("{app_command}-{user}-{label}.sock")
+}
+
 pub type Reader = FramedRead<Box<dyn AsyncRead + Send + Unpin>, LengthDelimitedCodec>;
 pub type Writer = FramedWrite<Box<dyn AsyncWrite + Send + Unpin>, LengthDelimitedCodec>;
 
@@ -60,7 +71,7 @@ pub fn is_decode_error(error: &anyhow::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{framed_parts, receive, send, welcome_version};
+    use super::{framed_parts, receive, send, socket_id, welcome_version};
     use maitty_shared::protocol::{ClientMsg, PROTOCOL_VERSION, ServerMsg};
 
     #[tokio::test]
@@ -136,5 +147,21 @@ mod tests {
             let error = welcome_version(&mut client_reader).await.unwrap_err();
             assert!(error.to_string().contains(expected_error));
         }
+    }
+
+    #[test]
+    fn socket_identity_uses_the_windows_user_first_and_default_values() {
+        assert_eq!(
+            socket_id("maitty", Some("work"), Some("cst"), Some("fallback")),
+            "maitty-cst-work.sock"
+        );
+        assert_eq!(
+            socket_id("maitty", None, None, Some("linux-user")),
+            "maitty-linux-user-default.sock"
+        );
+        assert_eq!(
+            socket_id("maitty", None, None, None),
+            "maitty-user-default.sock"
+        );
     }
 }
