@@ -2,7 +2,9 @@ use anyhow::{Context, Result, bail};
 use serde_json::Value;
 use std::ffi::OsString;
 
+mod hooks;
 mod projection;
+pub use hooks::{is_our_hook_group, is_our_name, runs_our_hook, stale_hooks};
 pub use projection::{MAX_PENDING_TOOLS, ProjectedEvent, TurnProjector};
 
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;

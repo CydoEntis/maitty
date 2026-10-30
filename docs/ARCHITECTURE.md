@@ -202,9 +202,10 @@ library for compatibility. The daemon, TUI and CLI still live together inside
 `maitty-runtime` and remain to be separated. Codex compatibility preflight,
 session metadata, usage extraction and effective-config policy live in
 `maitty-provider-codex`;
-Claude stream parsing, version checks, session IDs and launch arguments live in
-`maitty-provider-claude`. Their live process transports remain in the daemon.
-Claude event projection also lives in its provider package. Completing the
+Claude stream parsing, version checks, session IDs, launch arguments, frame
+limit, hook ownership and stale-hook projection live in
+`maitty-provider-claude`. JSONC files and live process transports remain in the
+runtime. Claude event projection also lives in its provider package. Completing the
 package split is tracked by
 [ADR 0042](adr/0042-decouple-desktop-clients-and-providers.md).
 

@@ -916,8 +916,8 @@ protocol mismatch error, socket connection and daemon lifecycle.
 now owns GUI daemon IPC, lifecycle operations and Codex discovery; the Tauri
 host depends on it and `maitty-shared`, not the `maitty` runtime. Codex
 compatibility preflight, Codex session metadata, usage parsing and effective
-configuration policy, and Claude protocol parsing, session IDs and launch
-arguments, plus Claude turn-event projection, are in their provider packages;
+configuration policy, and Claude protocol parsing, session IDs, launch
+arguments, hook policy and turn-event projection, are in their provider packages;
 live transports, daemon and TUI/CLI remain to be extracted.
 The original terminal implementation has moved into `crates/maitty-runtime`;
 the root `maitty` package preserves the installed command and re-exports the

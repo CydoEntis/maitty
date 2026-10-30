@@ -2206,25 +2206,18 @@ const CLAUDE_EVENTS: &[(&str, Option<&str>)] = &[
 /// A hook group the app put there: tagged, or (from installs before the tag) one that runs
 /// The app's command, or one it had before.
 fn is_our_name(program: &str) -> bool {
-    program == crate::brand::APP_COMMAND || crate::brand::previous().any(|p| p == program)
+    maitty_provider_claude::is_our_name(program, &app_hook_names())
 }
 
 /// `<app> hook …` under any of the app's names.
 fn is_ours(group: &Value) -> bool {
-    let tagged = |name: &str| {
-        group
-            .get(format!("_{name}").as_str())
-            .and_then(Value::as_bool)
-            == Some(true)
-    };
-    (tagged(crate::brand::APP_COMMAND) || crate::brand::previous().any(tagged))
-        || group
-            .get("hooks")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|h| h.get("command").and_then(Value::as_str))
-            .any(runs_our_hook)
+    maitty_provider_claude::is_our_hook_group(group, &app_hook_names())
+}
+
+fn app_hook_names() -> Vec<&'static str> {
+    std::iter::once(crate::brand::APP_COMMAND)
+        .chain(crate::brand::previous())
+        .collect()
 }
 
 /// A hook command split into the program it starts (its first word, or the quoted path)
@@ -2243,13 +2236,9 @@ fn program_of(cmd: &str) -> &str {
 }
 
 /// `"<…/<app>>" hook claude`, or the same from a seshi, hydra or drover install.
+#[cfg(test)]
 fn runs_our_hook(cmd: &str) -> bool {
-    let (prog, args) = split_command(cmd);
-    let stem = std::path::Path::new(prog)
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_ascii_lowercase())
-        .unwrap_or_default();
-    is_our_name(&stem) && args.starts_with("hook ")
+    maitty_provider_claude::runs_our_hook(cmd, &app_hook_names())
 }
 
 /// Hook commands in Claude settings `root` whose program isn't there (a removed install, a
@@ -2675,23 +2664,7 @@ pub fn claude_status_hooks_installed() -> bool {
 
 /// The app's hook commands in Claude settings `root` other than `want`.
 fn stale_in(root: &Value, want: &str) -> Vec<String> {
-    let mut stale: Vec<String> = root
-        .get("hooks")
-        .and_then(Value::as_object)
-        .into_iter()
-        .flat_map(|h| h.values())
-        .filter_map(Value::as_array)
-        .flatten()
-        .filter(|g| is_ours(g))
-        .filter_map(|g| g.get("hooks").and_then(Value::as_array))
-        .flatten()
-        .filter_map(|h| h.get("command").and_then(Value::as_str))
-        .filter(|c| *c != want)
-        .map(String::from)
-        .collect();
-    stale.sort();
-    stale.dedup();
-    stale
+    maitty_provider_claude::stale_hooks(root, want, &app_hook_names())
 }
 
 /// The app's Claude hooks are in, but not its status line (installed before there was one).
