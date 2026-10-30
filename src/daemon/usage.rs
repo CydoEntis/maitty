@@ -3,6 +3,10 @@
 //! lifts.
 
 use super::*;
+use maitty_provider_codex::{
+    goal_turn as codex_goal_turn, session_facts as codex_facts, session_metadata as codex_meta,
+    task_event as codex_last_task_event, task_running as codex_running,
+};
 use regex::Regex;
 use std::path::Path;
 use std::sync::LazyLock;
@@ -364,70 +368,6 @@ pub(super) fn codex_helpers(
     out
 }
 
-/// Whether the last task in a session file's tail is still going (None: no task line there).
-pub(super) fn codex_running(tail: &str) -> Option<bool> {
-    match codex_last_task_event(tail)? {
-        "task_started" => Some(true),
-        "task_complete" | "turn_aborted" => Some(false),
-        _ => None,
-    }
-}
-
-fn codex_last_task_event(tail: &str) -> Option<&'static str> {
-    tail.lines().rev().find_map(|line| {
-        let event = serde_json::from_str::<serde_json::Value>(line)
-            .ok()
-            .and_then(|value| {
-                value
-                    .get("payload")
-                    .and_then(|payload| payload.get("type"))
-                    .and_then(serde_json::Value::as_str)
-                    .or_else(|| value.get("type").and_then(serde_json::Value::as_str))
-                    .map(str::to_string)
-            })?;
-        match event.as_str() {
-            "task_started" => Some("task_started"),
-            "task_complete" => Some("task_complete"),
-            "turn_aborted" => Some("turn_aborted"),
-            _ => None,
-        }
-    })
-}
-
-/// Whether the last task started in the tail was started by a goal (`/goal`).
-pub(super) fn codex_goal_turn(tail: &str) -> bool {
-    tail.lines()
-        .rev()
-        .find(|l| l.contains("\"type\":\"task_started\""))
-        .is_some_and(|l| l.contains("\"turn_trigger\":\"goal\""))
-}
-
-/// A session's id, parent, folder and name from the start of its first line.
-pub(super) fn codex_meta(head: &str) -> Option<(String, Option<String>, Option<PathBuf>, String)> {
-    static FIELD: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#""(id|parent_thread_id|cwd|agent_path|agent_nickname|thread_source)":("(?:[^"\\]|\\.)*")"#).unwrap()
-    });
-    let mut get = std::collections::HashMap::new();
-    for c in FIELD.captures_iter(head) {
-        // The first of each: the session's own, ahead of anything nested later in the line.
-        get.entry(c[1].to_string())
-            .or_insert_with(|| serde_json::from_str::<String>(&c[2]).unwrap_or_default());
-    }
-    let id = get.get("id").cloned().filter(|s| !s.is_empty())?;
-    let sub = get.get("thread_source").is_some_and(|s| s == "subagent");
-    let parent = get
-        .get("parent_thread_id")
-        .cloned()
-        .filter(|p| sub && !p.is_empty());
-    let name = get
-        .get("agent_path")
-        .and_then(|p| p.rsplit('/').next().map(str::to_string))
-        .filter(|n| !n.is_empty())
-        .or_else(|| get.get("agent_nickname").cloned())
-        .unwrap_or_else(|| "subagent".into());
-    Some((id, parent, get.get("cwd").map(PathBuf::from), name))
-}
-
 /// How many of Codex's days with sessions are looked through: a session lives in the folder
 /// of the day it started, and one can run for days.
 const CODEX_DAYS: usize = 7;
@@ -509,49 +449,6 @@ fn read_tail(file: &Path, n: u64) -> String {
     let mut buf = Vec::new();
     let _ = f.read_to_end(&mut buf);
     String::from_utf8_lossy(&buf).into_owned()
-}
-
-/// A limit window's name from its length in minutes.
-fn window_name(minutes: u64) -> String {
-    match minutes {
-        300 => "5h".into(),
-        10080 => "week".into(),
-        m if m % 1440 == 0 => format!("{}d", m / 1440),
-        m if m % 60 == 0 => format!("{}h", m / 60),
-        m => format!("{m}m"),
-    }
-}
-
-/// Context and plan limits from the end of a Codex session file: its last `token_count`.
-pub(super) fn codex_facts(tail: &str) -> (Option<Usage>, Option<Vec<Limit>>) {
-    let Some(v) = tail
-        .lines()
-        .rev()
-        .filter(|l| l.contains("\"token_count\""))
-        .find_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
-    else {
-        return (None, None);
-    };
-    let p = &v["payload"];
-    let info = &p["info"];
-    let window = info["model_context_window"].as_f64().filter(|w| *w > 0.0);
-    let used = info["last_token_usage"]["total_tokens"].as_f64();
-    let usage = window.zip(used).map(|(w, u)| Usage {
-        context: Some((u / w * 100.0).min(100.0) as f32),
-        cost: None,
-    });
-    let limits: Vec<Limit> = ["primary", "secondary"]
-        .iter()
-        .filter_map(|k| {
-            let l = &p["rate_limits"][k];
-            Some(Limit {
-                name: window_name(l["window_minutes"].as_u64()?),
-                used: l["used_percent"].as_f64()? as f32,
-                resets_at: l["resets_at"].as_u64()?,
-            })
-        })
-        .collect();
-    (usage, (!limits.is_empty()).then_some(limits))
 }
 
 /// The last day by agent and folder: turns, time working and cost, most work first.

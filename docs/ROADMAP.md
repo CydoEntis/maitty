@@ -912,11 +912,16 @@ bounded length-delimited framing and message encode/decode for both clients.
 `crates/maitty-desktop-client`
 now owns GUI daemon IPC, lifecycle operations and Codex discovery; the Tauri
 host depends on it and `maitty-shared`, not the `maitty` runtime. Codex
-compatibility preflight and Claude protocol parsing, session IDs and launch
-arguments, plus Claude turn-event projection, are in their provider packages;
+compatibility preflight, Codex session metadata and usage parsing, and Claude
+protocol parsing, session IDs and launch arguments, plus Claude turn-event
+projection, are in their provider packages;
 live transports, daemon and TUI/CLI remain to be extracted.
 The daemon no longer imports the CLI to refresh Claude hooks. `app.rs` supplies
 that startup action to daemon initialization, after the existing-daemon check.
+On 2026-10-30, the Codex parsing extraction passed the full workspace suite
+(1,328 root tests passed, 5 ignored, and every workspace crate suite passed),
+workspace build and clippy, plus Linux and macOS target checks. An independent
+review found no boundary or behavior issue.
 
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux

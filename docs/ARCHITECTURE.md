@@ -187,11 +187,12 @@ handshakes and daemon startup stay in their respective clients. The Tauri host
 uses `maitty-desktop-client`
 for daemon IPC and GUI operations; it does not link the `maitty` runtime. The
 daemon, TUI, CLI and live provider process transports remain in `maitty`
-pending further extraction. Codex compatibility preflight and Claude stream
-parsing, version checks, session IDs and launch arguments live in
-`maitty-provider-codex` and `maitty-provider-claude`. Their live process
-  transports remain in the daemon. Claude event projection also lives in its
-  provider package. Completing the package split is tracked by
+pending further extraction. Codex compatibility preflight, session metadata
+and usage extraction, and Claude stream parsing, version checks, session IDs
+and launch arguments live in `maitty-provider-codex` and
+`maitty-provider-claude`. Their live process transports remain in the daemon.
+Claude event projection also lives in its provider package. Completing the
+package split is tracked by
 [ADR 0042](adr/0042-decouple-desktop-clients-and-providers.md).
 
 Rust, edition 2024, stable toolchain. Key libraries: `tokio` (async runtime),

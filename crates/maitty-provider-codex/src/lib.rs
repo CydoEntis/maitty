@@ -1,5 +1,184 @@
+use maitty_shared::protocol::{Limit, Usage};
+use regex::Regex;
 use serde_json::Value;
 use std::fmt;
+use std::path::PathBuf;
+use std::sync::LazyLock;
+
+/// A Codex session's id, parent, working folder and display name from its metadata line.
+pub fn session_metadata(head: &str) -> Option<(String, Option<String>, Option<PathBuf>, String)> {
+    static FIELD: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#""(id|parent_thread_id|cwd|agent_path|agent_nickname|thread_source)"\s*:\s*("(?:[^"\\]|\\.)*")"#).unwrap()
+    });
+    let mut fields = std::collections::HashMap::new();
+    for captures in FIELD.captures_iter(head) {
+        let value = serde_json::from_str::<String>(&captures[2]).unwrap_or_default();
+        fields.entry(captures[1].to_owned()).or_insert(value);
+    }
+    let id = fields.get("id").cloned().filter(|id| !id.is_empty())?;
+    let is_subagent = fields
+        .get("thread_source")
+        .is_some_and(|source| source == "subagent");
+    let parent = fields
+        .get("parent_thread_id")
+        .cloned()
+        .filter(|parent| is_subagent && !parent.is_empty());
+    let name = fields
+        .get("agent_path")
+        .and_then(|path| path.rsplit('/').next().map(str::to_owned))
+        .filter(|name| !name.is_empty())
+        .or_else(|| fields.get("agent_nickname").cloned())
+        .unwrap_or_else(|| "subagent".into());
+    Some((id, parent, fields.get("cwd").map(PathBuf::from), name))
+}
+
+/// Whether the last task event in a Codex session tail is still going.
+pub fn task_running(tail: &str) -> Option<bool> {
+    match task_event(tail)? {
+        "task_started" => Some(true),
+        "task_complete" | "turn_aborted" => Some(false),
+        _ => None,
+    }
+}
+
+/// Whether the latest task started from a Codex goal.
+pub fn goal_turn(tail: &str) -> bool {
+    tail.lines()
+        .rev()
+        .find(|line| line.contains("\"type\":\"task_started\""))
+        .is_some_and(|line| line.contains("\"turn_trigger\":\"goal\""))
+}
+
+/// The last recognized Codex task event in a session tail.
+pub fn task_event(tail: &str) -> Option<&'static str> {
+    tail.lines().rev().find_map(|line| {
+        let event = serde_json::from_str::<Value>(line).ok().and_then(|value| {
+            value
+                .get("payload")
+                .and_then(|payload| payload.get("type"))
+                .and_then(Value::as_str)
+                .or_else(|| value.get("type").and_then(Value::as_str))
+                .map(str::to_owned)
+        })?;
+        match event.as_str() {
+            "task_started" => Some("task_started"),
+            "task_complete" => Some("task_complete"),
+            "turn_aborted" => Some("turn_aborted"),
+            _ => None,
+        }
+    })
+}
+
+/// Context usage and plan limits from the last Codex token-count event in a session tail.
+pub fn session_facts(tail: &str) -> (Option<Usage>, Option<Vec<Limit>>) {
+    let Some(value) = tail
+        .lines()
+        .rev()
+        .filter(|line| line.contains("\"token_count\""))
+        .find_map(|line| serde_json::from_str::<Value>(line).ok())
+    else {
+        return (None, None);
+    };
+    let payload = &value["payload"];
+    let info = &payload["info"];
+    let window = info["model_context_window"]
+        .as_f64()
+        .filter(|window| *window > 0.0);
+    let used = info["last_token_usage"]["total_tokens"].as_f64();
+    let usage = window.zip(used).map(|(window, used)| Usage {
+        context: Some((used / window * 100.0).min(100.0) as f32),
+        cost: None,
+    });
+    let limits: Vec<Limit> = ["primary", "secondary"]
+        .iter()
+        .filter_map(|key| {
+            let limit = &payload["rate_limits"][key];
+            Some(Limit {
+                name: window_name(limit["window_minutes"].as_u64()?),
+                used: limit["used_percent"].as_f64()? as f32,
+                resets_at: limit["resets_at"].as_u64()?,
+            })
+        })
+        .collect();
+    (usage, (!limits.is_empty()).then_some(limits))
+}
+
+fn window_name(minutes: u64) -> String {
+    match minutes {
+        300 => "5h".into(),
+        10080 => "week".into(),
+        minutes if minutes % 1440 == 0 => format!("{}d", minutes / 1440),
+        minutes if minutes % 60 == 0 => format!("{}h", minutes / 60),
+        minutes => format!("{minutes}m"),
+    }
+}
+
+#[cfg(test)]
+mod usage_tests {
+    use super::*;
+
+    #[test]
+    fn parses_codex_session_metadata_without_claiming_nested_identity() {
+        let root = r#"{"type":"session_meta","payload":{"id":"aaa","cwd":"C:\\dev\\game","thread_source":"user"}}"#;
+        assert_eq!(
+            session_metadata(root),
+            Some((
+                "aaa".into(),
+                None,
+                Some(PathBuf::from(r"C:\dev\game")),
+                "subagent".into()
+            ))
+        );
+        let subagent = r#"{"type":"session_meta","payload":{"id":"bbb","parent_thread_id":"aaa","thread_source":"subagent","agent_path":"/root/reconcile_audit"}}"#;
+        assert_eq!(
+            session_metadata(subagent),
+            Some((
+                "bbb".into(),
+                Some("aaa".into()),
+                None,
+                "reconcile_audit".into()
+            ))
+        );
+        assert_eq!(session_metadata("not a session"), None);
+    }
+
+    #[test]
+    fn reads_the_last_codex_task_event_and_goal_trigger() {
+        let started = r#"{"type":"event_msg","payload":{"type":"task_started","turn_attribution":{"turn_trigger":"user"}}}"#;
+        let by_goal = r#"{"type":"event_msg","payload":{"type":"task_started","turn_attribution":{"turn_trigger":"goal"}}}"#;
+        let done = r#"{"type":"event_msg","payload":{"type":"task_complete"}}"#;
+        assert_eq!(task_running(&format!("{started}\n{done}")), Some(false));
+        assert_eq!(
+            task_running(&format!(
+                "{done}\n{started}\n{{\"type\":\"response_item\"}}"
+            )),
+            Some(true)
+        );
+        assert_eq!(task_running("{\"type\":\"response_item\"}"), None);
+        assert!(goal_turn(&format!("{started}\n{done}\n{by_goal}")));
+        assert!(!goal_turn(&format!("{by_goal}\n{done}\n{started}")));
+    }
+
+    #[test]
+    fn parses_context_and_rate_limits_from_codex_session_events() {
+        let tail = r#"{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"total_tokens":64600},"model_context_window":258400},"rate_limits":{"primary":{"used_percent":12.0,"window_minutes":300,"resets_at":1791322893},"secondary":{"used_percent":40.0,"window_minutes":10080,"resets_at":1791900000}}}}"#;
+        let (usage, limits) = session_facts(tail);
+        assert_eq!(
+            usage.and_then(|usage| usage.context).map(f32::round),
+            Some(25.0)
+        );
+        let limits = limits.unwrap();
+        assert_eq!(
+            (
+                limits[0].name.as_str(),
+                limits[1].name.as_str(),
+                limits[1].used
+            ),
+            ("5h", "week", 40.0)
+        );
+        assert_eq!(session_facts("nothing here"), (None, None));
+    }
+}
 
 /// Codex app-server versions whose required methods and payloads are verified.
 pub const VERIFIED_VERSIONS: &[&str] = &["0.164.0", "0.165.0"];
