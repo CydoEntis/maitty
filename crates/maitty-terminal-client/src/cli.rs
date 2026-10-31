@@ -1010,7 +1010,7 @@ pub(crate) fn server_running() -> bool {
 pub fn kill_server(forget: bool) -> Result<()> {
     if ipc::remote().is_none() && !server_running() {
         if forget {
-            crate::daemon::forget_session();
+            maitty_core::forget_session();
         }
         println!(concat!(
             "no ",
@@ -1024,7 +1024,7 @@ pub fn kill_server(forget: bool) -> Result<()> {
         Err(e) if ipc::other_version(&e).is_some() => {
             let pid = stop_server_process()?;
             if forget {
-                crate::daemon::forget_session();
+                maitty_core::forget_session();
             }
             println!("stopped the server (another {APP_COMMAND} version, process {pid})");
             Ok(())

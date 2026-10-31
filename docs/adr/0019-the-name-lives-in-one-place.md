@@ -12,7 +12,7 @@ code.
 
 ## Decision
 
-`crates/maitty-runtime/src/brand.rs` holds the name: `NAME` (shown to people, "Vibecasso") and `COMMAND` (typed, the
+`crates/maitty-core/src/brand.rs` holds the name: `NAME` (shown to people, "Vibecasso") and `COMMAND` (typed, the
 crate's name from `Cargo.toml`, `vibecasso`). Everything that carries the name is built from
 them: config and data folders, `.<command>.toml` and `.<command>/checks.toml`, environment
 variables (`brand::env("TERM_ID")` → `VIBECASSO_TERM_ID`), socket and pipe names, the MCP server

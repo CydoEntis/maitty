@@ -70,7 +70,7 @@ display projection and stable conversation binding, not a replacement agent loop
 
 Proposed feature locations: pure identity/state types in crates/maitty-shared/src/conversation.rs;
 daemon runtime, provider adapter, history and transfer modules in
-crates/maitty-runtime/src/daemon/conversation/; IPC in crates/maitty-shared/src/protocol.rs; CLI controls beside crates/maitty-runtime/src/cli.rs.
+crates/maitty-core/src/daemon/conversation/; IPC in crates/maitty-shared/src/protocol.rs; CLI controls beside crates/maitty-terminal-client/src/cli.rs.
 Tests live beside source. Names are planned locations, not existing modules.
 
 Use existing serde/serde_json, tokio, local IPC, private-file helpers and

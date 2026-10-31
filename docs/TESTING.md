@@ -138,13 +138,13 @@ Tests never touch the user's real config (`MAITTY_CONFIG` or in-memory configs).
   collide.
 - Every popup: a render test that it opens, fits at 100×30, and closes on Esc.
 - Themes: the contrast audit test covers every built-in theme.
-- Daemon logic: `crates/maitty-runtime/src/daemon/logic_tests.rs` drives a real `Daemon` (`Daemon::new`) with real
+- Daemon logic: `crates/maitty-core/src/daemon/logic_tests.rs` drives a real `Daemon` (`Daemon::new`) with real
   shell panes; new daemon logic comes with a test there.
 
 ## Project-specific: interaction performance
 
 Native Pi/OMP/OpenCode/Kilo adapters also run without an installed agent, network, or real
-status socket: `node --experimental-vm-modules --test crates/maitty-runtime/src/cli/integrations.test.mjs`.
+status socket: `node --experimental-vm-modules --test crates/maitty-terminal-client/src/cli/integrations.test.mjs`.
 The VM supplies the process-launch boundary and executes the bundled adapters.
 Cover nested dialogs, event ordering, helper versus parent completion, unrelated
 sessions, reporting failures/recovery and inert behavior outside Maitty. CI runs

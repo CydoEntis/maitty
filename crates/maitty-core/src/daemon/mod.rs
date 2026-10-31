@@ -6,7 +6,6 @@
 
 mod approvals;
 mod check;
-#[cfg(test)]
 pub use check::first_failing_line;
 mod check_source;
 mod check_stale;

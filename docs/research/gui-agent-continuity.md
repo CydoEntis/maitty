@@ -134,8 +134,8 @@ pending permission, missing session and provider-version mismatch explicitly.
 
 Local context inspected by the parent investigation: `crates/maitty-shared/src/protocol.rs` currently
 transports snapshots and PTY bytes, not structured chat turns;
-`crates/maitty-runtime/src/daemon/persist.rs` stores agent session/account/cwd; and
-`crates/maitty-runtime/src/daemon/restore.rs` already resumes configured native session IDs. These are
+`crates/maitty-core/src/daemon/persist.rs` stores agent session/account/cwd; and
+`crates/maitty-core/src/daemon/restore.rs` already resumes configured native session IDs. These are
 useful foundations, not proof of a bidirectional chat bridge.
 
 ## Reuse and verification limits

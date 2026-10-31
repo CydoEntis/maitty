@@ -1,3 +1,3 @@
 fn main() {
-    runtime::run();
+    maitty_terminal_client::run();
 }

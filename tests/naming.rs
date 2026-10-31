@@ -67,8 +67,8 @@ fn lines_naming(names: &[String], skip: &[&str]) -> Vec<String> {
                 "maitty-provider-claude",
                 "maitty_ipc_transport",
                 "maitty-ipc-transport",
-                "maitty_runtime",
-                "maitty-runtime",
+                "maitty_terminal_client",
+                "maitty-terminal-client",
                 "maitty_settings",
                 "maitty-settings",
             ]

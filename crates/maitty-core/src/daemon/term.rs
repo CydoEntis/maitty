@@ -827,18 +827,7 @@ impl Term {
             first_prompt: String::new(),
             label: String::new(),
             model: String::new(),
-            colors: {
-                let t = crate::theme::Theme::named(&cfg.theme);
-                let rgb = |c| match c {
-                    ratatui::style::Color::Rgb(r, g, b) => (r, g, b),
-                    _ => (0xc9, 0xd1, 0xd9),
-                };
-                let bg = match t.bg {
-                    ratatui::style::Color::Rgb(r, g, b) => (r, g, b),
-                    _ => (0x07, 0x0b, 0x10),
-                };
-                (rgb(t.fg), bg)
-            },
+            colors: crate::theme::Theme::named(&cfg.theme).terminal_foreground_background_rgb(),
         })
     }
 

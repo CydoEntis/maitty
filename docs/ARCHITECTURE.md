@@ -1,4 +1,4 @@
-﻿# Architecture
+# Architecture
 
 This doc covers how the code is organised, which way dependencies point, and
 which design patterns to use. `AGENTS.md` is the operating contract; this doc
@@ -192,32 +192,29 @@ worktree, MCP, check, recipe, preset, quick-agent and agent config schemas,
 icon, key, detection, snapshot and notification preference schemas and
 defaults, pure validation and appearance compatibility rules, terminal key actions,
 default bindings, key parsing and built-in themes; terminal-specific mouse
-encoding stays in the runtime. Config loading and filesystem migrations remain
-runtime-owned. `maitty-ipc-transport` owns bounded,
+encoding stays in the terminal client. Config loading and filesystem migrations
+are core-owned. `maitty-ipc-transport` owns bounded,
 length-delimited protocol framing, Welcome handshake, socket identity formatting,
 private Unix socket-directory checks and platform socket-name conversion shared
 by the TUI and GUI; socket connection and daemon startup stay in their respective
 clients. The Tauri host
 uses `maitty-desktop-client`
-for daemon IPC and GUI operations; it does not link `maitty-runtime`. The
+for daemon IPC and GUI operations; it does not link `maitty-terminal-client`. The
 `maitty-agent-detection` package owns the bundled agent-screen matcher used by
 daemon status; process-tree and lifecycle status remain daemon-owned. The
 `maitty-agent-integrations` package owns the catalog of agents with native
-status integrations; config discovery and installation remain runtime-owned. The
-original terminal implementation now lives in `maitty-runtime`; the root
-`maitty` package preserves the installed command and re-exports the runtime
-library for compatibility. The daemon, TUI and CLI still live together inside
-`maitty-runtime` and remain to be separated. Codex compatibility preflight,
+status integrations; config discovery and installation remain terminal-client
+owned. The root `maitty` package preserves the installed command and re-exports
+the terminal client library for compatibility. Codex compatibility preflight,
 session metadata, usage extraction, effective-config policy, native hook
 configuration projection and completion-event mapping live in
 `maitty-provider-codex`;
 Claude stream parsing, version checks, session IDs, launch arguments, frame
 limit, hook event definitions, command-group projection and replacement,
 ownership, stale-hook projection, native event mapping and status-line config
-policy live in `maitty-provider-claude`. JSONC files and live process
-transports remain in the
-runtime. Claude event projection also lives in its provider package. Completing the
-package split is tracked by
+policy live in `maitty-provider-claude`. JSONC configuration editing remains in
+the terminal client; live process transports and session ownership are in core.
+Completing the package split is tracked by
 [ADR 0042](adr/0042-decouple-desktop-clients-and-providers.md).
 
 Rust, edition 2024, stable toolchain. Key libraries: `tokio` (async runtime),
@@ -237,70 +234,40 @@ and Tailwind; its rules live in `docs/stack/tauri.md`, `typescript.md`,
 
 ## Project-specific: layers
 
-- **Domain / shared types:** `maitty-shared::protocol` (every message between client and
-  daemon), `maitty-shared::layout` (split-tree contract),
-  `maitty-settings::config` (UI, session, restore, worktree, MCP, check, recipe,
-  preset, quick-agent, agent config, icon, key, detection, snapshot and notification preferences),
-  `maitty-settings::keys` (actions and bindings), `maitty-settings::theme`, and
-  the remaining config schema.
-  Config file loading and migration I/O stay in the runtime.
-- **Infrastructure:** `ipc.rs` (sockets, SSH proxy), `daemon/term.rs` (PTY +
-  emulator per pane), `daemon/scan.rs` (status detection), `daemon/git.rs`,
-  `daemon/persist.rs`, `gitfs.rs`, `alert.rs`, `reveal.rs` (notification links,
-  bringing the window forward), `sync.rs`,
-  `daemon/usage.rs` (agents' usage, limits, continue after a limit).
-- **Application:** `daemon/mod.rs` (the server loop: commands in, state and
-  output out) and `client/mod.rs` (the client loop: events in, commands out).
-- **Composition boundary:** `app.rs` supplies optional startup actions to the
-  daemon; daemon modules must not import CLI modules.
-- **Presentation:** `client/screen/` (the layout and its popups),
-  `client/design.rs` (shared drawing helpers), `client/render.rs`, and the
-  feature views in `client/` (files, changes, branches, â€¦), plus
-  `cli/` (one-shot commands, MCP server, updater, reveal and relaunch commands).
+- **Core:** `maitty-core` owns the headless daemon, PTY/process lifetime,
+  filesystem and config I/O, persistence, provider process transports, and
+  daemon-owned conversation state. It depends on shared contracts and adapters,
+  never on a terminal or desktop client.
+- **Terminal client:** `maitty-terminal-client` owns the existing CLI and TUI,
+  including terminal rendering, input, command parsing, and terminal-only
+  integrations. It calls the daemon through the shared IPC contract.
+- **Desktop client:** `maitty-desktop-client` owns desktop IPC and GUI operations.
+  The Tauri host consumes it and does not link `maitty-core` or the terminal
+  client.
+- **Shared packages:** `maitty-shared`, `maitty-settings`, and
+  `maitty-ipc-transport` hold the wire types, preferences, and transport framing
+  used across those boundaries. Provider packages own provider-specific
+  protocol mapping; core owns their daemon-managed processes and sessions.
 
-`client/spinners.rs` owns the working-spinner picker, previews and background
-saves. Presets and frame validation live in `config.rs`; `ui.spinner` remains the
-existing persisted array consumed by the shared status-icon renderer.
-
-The client never touches a PTY; the daemon never draws. They meet only through
-the `maitty-shared` protocol messages.
+The daemon owns every session and PTY. Both clients communicate with it over
+IPC, so closing either UI cannot end an agent session.
 
 ## Project-specific: directory layout
 
 ```text
 src/
   main.rs        installed `maitty` executable entry point
-  lib.rs         compatibility re-exports from `maitty-runtime`
-crates/maitty-runtime/src/
-  cli.rs         one-shot subcommands (send, read, wait, hook, doctor, â€¦)
-  cli/handoff.rs `maitty handoff`: the text brief, and the files a checkout changed
-  cli/mcp_config.rs `maitty integrate mcp`: Maitty's entry in Codex, Qwen Code and Gemini CLI config files
-  cli/jsonc.rs   agents' settings.json edited in place (comments, key order, BOM kept), for hooks and MCP
-  tidy.rs        what removing a worktree would lose (shared by the close-time removal and the clean-up list)
-  snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
-  references.rs  a project's reference images in `.maitty/references/` at the main checkout (the client's References view and the MCP server list them)
-  output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
-  ipc.rs         local sockets and the SSH proxy
-  config.rs      config.toml (+ config.local.toml) loading and remaining config
-                 types; common preferences are in maitty-settings
-  keys.rs        TUI mouse-event encoding wrapper; key actions live in maitty-settings
-  layout.rs      split trees and neighbour finding
-  daemon/status.rs uses the external screen-evidence package for agent-owned patterns
-  daemon/        the server: mod.rs (loop), term.rs (PTY + vt100), scan.rs
-                 (status), git.rs, persist.rs
-  client/        the UI: mod.rs (loop, input), screen/ (layout), design.rs
-                 (drawing helpers), render.rs, menu.rs, views.rs, and one file
-                 per feature (files, find, branch, recipes, pr, â€¦)
-  installed_executable.rs, version.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, restart.rs, sync.rs
-  cli/mcp.rs, cli/update.rs, cli/reveal.rs, cli/restart.rs
-crates/maitty-shared/ shared wire protocol, conversation contracts and split-tree types
-crates/maitty-settings/ preference schemas and validation, key actions, bindings, parsing and built-in themes
-crates/maitty-ipc-transport/ length-delimited framing and handshake shared by clients
-crates/maitty-agent-detection/ bundled agent screen-evidence rules and matcher
-crates/maitty-agent-integrations/ native status integration catalog
-crates/maitty-runtime/ original terminal app implementation; TUI, CLI and daemon still being split
-docs/            these docs, the roadmap, design briefs
-config.example.toml
+  lib.rs         compatibility re-exports from the terminal client
+crates/maitty-core/              daemon, PTYs, persistence and process lifetime
+crates/maitty-terminal-client/  terminal CLI and TUI
+crates/maitty-desktop-client/   desktop IPC client
+crates/maitty-shared/            wire protocol and shared contracts
+crates/maitty-settings/          preference schemas, key actions and themes
+crates/maitty-ipc-transport/     shared IPC framing and handshake
+crates/maitty-provider-codex/    Codex protocol and policy adapter
+crates/maitty-provider-claude/   Claude protocol and policy adapter
+gui/                              Tauri host and React interface
+docs/                             architecture, roadmap and design specs
 ```
 
 ## Project-specific: patterns and conventions
@@ -308,10 +275,10 @@ config.example.toml
 **The app's name** lives in `Cargo.toml` and nowhere else in the code (ADR 0019): the package
 name is the command, `[package.metadata.brand]` holds the name people see and the names it had
 before. `build.rs` hands them to the code as `APP_COMMAND`, `APP_NAME`, `APP_ENV` and
-`APP_PREVIOUS`; `crates/maitty-runtime/src/brand.rs` wraps them. Write a
+`APP_PREVIOUS`; `crates/maitty-core/src/brand.rs` wraps them. Write a
 name-bearing string as
 `concat!(".", env!("APP_COMMAND"), ".toml")`, or name `APP_NAME` in a format string with
-arguments of its own. Adapters in `crates/maitty-runtime/src/cli/*.js` are
+arguments of its own. Adapters in `crates/maitty-terminal-client/src/cli/*.js` are
 templates (`__APP_NAME__`,
 `__APP_COMMAND__`, `__APP_ENV__`, `__APP_EXE__`) filled in when installed. `tests/naming.rs`
 fails on the name written out. To rename the app:
@@ -412,7 +379,7 @@ See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 adapter's authentication, lifecycle and platform rules.
 
 The Codex transport foundation lives in
-`crates/maitty-runtime/src/daemon/conversation/`: `codex.rs` checks
+`crates/maitty-core/src/daemon/conversation/`: `codex.rs` checks
 compatibility, `transport.rs` validates launch configuration and stdio
 envelopes, `process.rs` owns platform process-tree cleanup, and `runtime.rs`
 owns background connection actors. `daemon.rs` admits bindings from the daemon's

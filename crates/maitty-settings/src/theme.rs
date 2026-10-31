@@ -534,6 +534,19 @@ fn colors_alike(a: Color, b: Color) -> bool {
 }
 
 impl Theme {
+    /// Return the foreground and background as RGB values for daemon snapshots.
+    pub fn terminal_foreground_background_rgb(&self) -> ((u8, u8, u8), (u8, u8, u8)) {
+        let rgb = |color| match color {
+            Color::Rgb(red, green, blue) => (red, green, blue),
+            _ => (0xc9, 0xd1, 0xd9),
+        };
+        let background = match self.bg {
+            Color::Rgb(red, green, blue) => (red, green, blue),
+            _ => (0x07, 0x0b, 0x10),
+        };
+        (rgb(self.fg), background)
+    }
+
     /// Keep terminal colors faithful to upstream, while adapting UI roles for readable chrome.
     fn palette(base: [&str; 4], ansi: [&str; 7]) -> Theme {
         let [bg, fg, muted, accent] = base.map(hex);
@@ -2183,6 +2196,26 @@ mod audit {
                     "invalid background for {name}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn daemon_snapshot_colors_keep_the_rgb_defaults() {
+        for &name in super::BUILTIN {
+            let theme = Theme::named(name);
+            let foreground = match theme.fg {
+                Color::Rgb(red, green, blue) => (red, green, blue),
+                _ => (0xc9, 0xd1, 0xd9),
+            };
+            let background = match theme.bg {
+                Color::Rgb(red, green, blue) => (red, green, blue),
+                _ => (0x07, 0x0b, 0x10),
+            };
+            assert_eq!(
+                theme.terminal_foreground_background_rgb(),
+                (foreground, background),
+                "{name}"
+            );
         }
     }
 

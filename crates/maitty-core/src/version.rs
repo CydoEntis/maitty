@@ -1,5 +1,5 @@
 /// Parse a release version, accepting a leading `v` and prerelease/build suffixes.
-pub(crate) fn parse(version: &str) -> Option<(u64, u64, u64)> {
+pub fn parse(version: &str) -> Option<(u64, u64, u64)> {
     let mut parts = version
         .trim()
         .trim_start_matches('v')
@@ -8,7 +8,7 @@ pub(crate) fn parse(version: &str) -> Option<(u64, u64, u64)> {
     Some((parts.next()??, parts.next()??, parts.next()??))
 }
 
-pub(crate) fn newer_than(tag: &str, current: &str) -> bool {
+pub fn newer_than(tag: &str, current: &str) -> bool {
     matches!((parse(tag), parse(current)), (Some(tag), Some(current)) if tag > current)
 }
 

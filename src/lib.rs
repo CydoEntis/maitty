@@ -1,1 +1,1 @@
-pub use maitty_runtime::*;
+pub use maitty_terminal_client::*;

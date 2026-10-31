@@ -28,7 +28,7 @@ pub(crate) const RUNTIME_ROUTE_ENV: [&str; 6] = [
     concat!(env!("APP_ENV"), "_REMOTE_CMD"),
 ];
 
-pub(crate) fn has_structured_identity() -> bool {
+pub fn has_structured_identity() -> bool {
     STRUCTURED_ENV
         .iter()
         .any(|key| std::env::var_os(key).is_some())

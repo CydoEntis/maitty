@@ -28,5 +28,5 @@ screen or where things live. Supersedes ADR 0004.
 ## Consequences
 
 One layout to build and test; its drawing takes a few settings (`Look` in
-`crates/maitty-runtime/src/client/hydra/card.rs`). Anything that would move or hide parts of the UI is a
+`crates/maitty-terminal-client/src/client/hydra/card.rs`). Anything that would move or hide parts of the UI is a
 new layout and needs a new decision.

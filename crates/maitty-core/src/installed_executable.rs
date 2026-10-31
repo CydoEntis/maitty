@@ -2,12 +2,12 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 /// Resolve the installed app if an update temporarily moved the running executable aside.
-pub(crate) fn installed_executable() -> Result<PathBuf> {
+pub fn installed_executable() -> Result<PathBuf> {
     Ok(installed_path(&std::env::current_exe()?))
 }
 
 /// Updates may have moved the running image aside while replacing this path.
-pub(crate) fn installed_path(exe: &Path) -> PathBuf {
+pub fn installed_path(exe: &Path) -> PathBuf {
     let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     if name.starts_with(concat!(env!("APP_COMMAND"), ".old")) && name.ends_with(".exe") {
         exe.with_file_name(concat!(env!("APP_COMMAND"), ".exe"))

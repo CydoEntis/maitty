@@ -1,5 +1,5 @@
 use crate::brand::APP_COMMAND;
-use crate::{alert, cli, client, config, daemon, ipc, protocol, restart, reveal, sync};
+use crate::{alert, cli, client, config, ipc, protocol, restart, reveal, sync};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -308,7 +308,7 @@ pub(crate) fn run() {
     let result = match args.cmd {
         None => open_client(args.path),
         Some(Cmd::Attach { path }) => open_client(path),
-        Some(Cmd::Daemon) => daemon::run(|| {
+        Some(Cmd::Daemon) => maitty_core::run_daemon(|| {
             if !cfg!(test) {
                 cli::refresh_claude_hooks();
             }

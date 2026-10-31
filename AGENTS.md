@@ -256,7 +256,7 @@ has to be right, and sessions survive the UI closing.
 
 1. **The daemon owns every session.** The client is a view; closing, crashing or
    detaching the client must never kill a pane. Anything that touches PTYs or
-   process lifetime lives in `crates/maitty-runtime/src/daemon/`.
+   process lifetime lives in `crates/maitty-core/src/daemon/`.
 2. **Bump `PROTOCOL_VERSION`** (`crates/maitty-shared/src/protocol.rs`) when a
    message shape changes
    incompatibly: a field removed, renamed or retyped, or a new enum variant. An

@@ -1,30 +1,14 @@
-mod alert;
 mod app;
-mod brand;
 mod cli;
 mod client;
-mod config;
-mod daemon;
+pub use maitty_core::{
+    alert, brand, config, gitfs, installed_executable, ipc, proc, project, restart, reveal,
+    secret_files, shim, snapshot, sync, tidy, version,
+};
 pub use maitty_shared::{clock, conversation, hidden, layout, output_line, protocol};
-mod gitfs;
-mod installed_executable;
-mod ipc;
 mod keys;
 pub use maitty_settings::theme;
-mod proc;
-mod project;
 mod references;
-mod restart;
-mod reveal;
-mod secret_files;
-mod shim;
-mod snapshot;
-mod sync;
-mod tidy;
-mod version;
-
-#[cfg(test)]
-mod test_support;
 
 pub use conversation::{ApprovalDecision, ProviderRequestId};
 

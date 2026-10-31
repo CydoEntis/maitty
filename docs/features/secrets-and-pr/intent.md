@@ -26,7 +26,7 @@ over.
 ## Affected users and systems
 
 Anyone running agents that need credentials or that open pull requests. The existing MCP
-server (`crates/maitty-runtime/src/cli/mcp.rs`), the daemon (a new `crates/maitty-runtime/src/daemon/secrets.rs` and a PR watcher), the
+server (`crates/maitty-terminal-client/src/cli/mcp.rs`), the daemon (a new `crates/maitty-core/src/daemon/secrets.rs` and a PR watcher), the
 protocol, the client prompt, the status line and sidebar, and the `maitty` CLI.
 
 ## Constraints

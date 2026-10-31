@@ -21,7 +21,8 @@ members = [
     "crates/maitty-agent-detection",
     "crates/maitty-agent-integrations",
     "crates/maitty-ipc-transport",
-    "crates/maitty-runtime",
+    "crates/maitty-core",
+    "crates/maitty-terminal-client",
     "crates/maitty-settings",
     "crates/maitty-desktop-client",
     "crates/maitty-provider-codex",
@@ -36,7 +37,7 @@ test = true
 doctest = false
 
 [dependencies]
-maitty-runtime = { path = "crates/maitty-runtime" }
+maitty-terminal-client = { path = "crates/maitty-terminal-client" }
 
 # The terminal emulator and renderer are the hot path; optimise deps even in dev.
 [profile.dev.package."*"]

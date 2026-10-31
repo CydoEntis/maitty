@@ -12568,7 +12568,7 @@ mod check_inbox_tests {
 
     #[test]
     fn a_failed_row_shows_the_line_the_daemon_picked_from_real_output() {
-        let line = crate::daemon::first_failing_line("running\nFAIL tests/foo: boom\n");
+        let line = maitty_core::first_failing_line("running\nFAIL tests/foo: boom\n");
         let result = CheckInfo {
             first_failing_line: line.clone(),
             ..info(CheckState::Failed, Some(1))

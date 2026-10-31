@@ -2351,7 +2351,7 @@ dependencies = [
 name = "maitty"
 version = "0.51.0"
 dependencies = [
- "maitty-runtime",
+ "maitty-terminal-client",
 ]
 
 [[package]]
@@ -2367,6 +2367,46 @@ dependencies = [
 [[package]]
 name = "maitty-agent-integrations"
 version = "0.1.0"
+
+[[package]]
+name = "maitty-core"
+version = "0.51.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "directories",
+ "futures-util",
+ "getrandom 0.3.4",
+ "ignore",
+ "interprocess",
+ "libc",
+ "maitty-agent-detection",
+ "maitty-agent-integrations",
+ "maitty-ipc-transport",
+ "maitty-provider-claude",
+ "maitty-provider-codex",
+ "maitty-settings",
+ "maitty-shared",
+ "portable-pty",
+ "ratatui",
+ "regex",
+ "rmp-serde",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha2",
+ "sysinfo",
+ "tokio",
+ "tokio-util",
+ "toml 0.9.12+spec-1.1.0",
+ "toml_edit 0.23.10+spec-1.0.0",
+ "tracing",
+ "tracing-subscriber",
+ "unicode-segmentation",
+ "unicode-width",
+ "vt100",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "maitty-desktop-client"
@@ -2433,7 +2473,34 @@ dependencies = [
 ]
 
 [[package]]
-name = "maitty-runtime"
+name = "maitty-settings"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "maitty-shared",
+ "ratatui",
+ "serde",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "maitty-shared"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "libc",
+ "ratatui",
+ "rmp-serde",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha2",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "maitty-terminal-client"
 version = "0.51.0"
 dependencies = [
  "anyhow",
@@ -2450,6 +2517,7 @@ dependencies = [
  "libc",
  "maitty-agent-detection",
  "maitty-agent-integrations",
+ "maitty-core",
  "maitty-ipc-transport",
  "maitty-provider-claude",
  "maitty-provider-codex",
@@ -2475,33 +2543,6 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width",
  "vt100",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "maitty-settings"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "maitty-shared",
- "ratatui",
- "serde",
- "toml 0.9.12+spec-1.1.0",
-]
-
-[[package]]
-name = "maitty-shared"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "libc",
- "ratatui",
- "rmp-serde",
- "serde",
- "serde_bytes",
- "serde_json",
- "sha2",
  "windows-sys 0.61.2",
 ]
 
