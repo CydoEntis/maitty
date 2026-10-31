@@ -215,53 +215,34 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
         SheetKind::Branch => (branch_title(app), String::new(), ScreenHit::ViewClose),
         SheetKind::References => (references_title(app), String::new(), ScreenHit::ViewClose),
     };
-    // Hairline puts the tab strip on the title row, over the rule; what the title said goes
-    // to the right, dim.
-    let tabs_on_title = Look::of(&app.cfg.ui).hairline && drawer_tab(kind).is_some();
-    // Floating's strip is chips on the top border, like the session's tabs; the title goes right.
-    let chips_on_border = !Look::of(&app.cfg.ui).hairline && drawer_tab(kind).is_some();
+    // The strip is chips on the top border, like the session's tabs; the title goes right.
+    let chips_on_border = drawer_tab(kind).is_some();
     // Lit while it has the keys; a click into a pane sets it aside, unlit, still open.
-    let mut c = Card::new(t, if tabs_on_title || chips_on_border { "" } else { &title });
+    let mut c = Card::new(t, if chips_on_border { "" } else { &title });
     if sheet_has_keys(app) {
         c = c.lit(t.accent);
     }
     c.sub = &sub;
     // The chips come first: the title shows only where it leaves them their names.
     let room_for_title = !chips_on_border || r.width >= 2 + drawer_names_w() + title.width() as u16 + 12;
-    if (tabs_on_title || chips_on_border) && !title.is_empty() && room_for_title {
+    if chips_on_border && !title.is_empty() && room_for_title {
         c.right = vec![seg(format!("{title}  "), Style::default().fg(t.muted))];
     }
     // The read-while-working sheets and Changes sit on the desk's ground, like the panes.
     c.bg = if kind == SheetKind::Both { t.card } else { t.bg };
     c.close = Some(close);
-    c.docked = true;
-    // With tabs on the title row the rule is `line` and only the open tab's stretch of it lights.
-    let keys = c.bold;
-    if tabs_on_title {
-        (c.bold, c.border) = (false, t.line);
-    }
     let inside = card(app, buf, r, &c, t);
     // Clicks inside it stay in it.
     hit(app, inside, ScreenHit::Noop);
     let inside = match drawer_tab(kind) {
-        Some(cur) if tabs_on_title => {
-            let taken = segs_width(&c.right) + close_width(Look::of(&app.cfg.ui), !c.right.is_empty()) + 4;
-            let row = Rect { y: r.y, height: 1, width: inside.width.saturating_sub(taken), ..inside };
-            if let Some(tab) = draw_drawer_tabs(app, buf, row, cur, t.bg, t) {
-                for x in tab.x + 1..tab.right().saturating_sub(1) {
-                    buf[(x, r.y + 1)].set_fg(if keys { t.accent } else { t.muted });
-                }
-            }
-            inside
-        }
         Some(cur) => {
-            let taken = segs_width(&c.right) + close_width(Look::of(&app.cfg.ui), !c.right.is_empty()) + 4;
+            let taken = segs_width(&c.right) + close_width(!c.right.is_empty()) + 4;
             let row = Rect { x: title_x(r), y: r.y, width: r.width.saturating_sub(2 + taken), height: 1 };
             draw_drawer_chips(app, buf, row, cur, t);
             // A blank row under the chips, so the body's first line doesn't sit against them.
             Rect { y: inside.y + 1, height: inside.height.saturating_sub(1), ..inside }
         }
-        _ => inside,
+        None => inside,
     };
     let body = inside;
     match kind {
@@ -327,42 +308,6 @@ fn drawer_tab_labels(app: &App, room: u16) -> Vec<(String, String)> {
     [full, names].into_iter().find(|tabs| strip_w(tabs) <= room).unwrap_or(short)
 }
 
-/// The tab strip across the top of Files, Changes and Branch: `Files f · Changes c · Branch b`
-/// with each one's leader key from the keymap, the open one a pill like Settings' tabs (lit
-/// while the panel has the keys). A click switches. Where the whole strip does not fit, the
-/// keys go, then the long names, so every tab stays on screen.
-fn draw_drawer_tabs(app: &mut App, buf: &mut Buffer, row: Rect, cur: usize, ground: Color, t: &Theme) -> Option<Rect> {
-    let look = Look::of(&app.cfg.ui);
-    // Hairline names the open tab in teal whether or not the panel has the keys; its rule says that.
-    let (pill_bg, pill_ink) = if sheet_has_keys(app) || look.hairline { (t.accent, t.acc_ink) } else { (t.btn, t.strong) };
-    let tabs = drawer_tab_labels(app, row.width);
-    // Hairline keeps the accent for the open tab: the others' keys are dim.
-    let key_fg = if look.hairline { t.muted } else { t.accent };
-    let mut x = row.x + 1;
-    let mut open = None;
-    for (i, (name, key)) in tabs.into_iter().enumerate() {
-        if i > 0 {
-            put(buf, x, row.y, &[seg("·", Style::default().fg(t.muted).bg(ground))], row.right());
-            x += 2;
-        }
-        let w = tab_w(&name, &key);
-        let tr = Rect { x, y: row.y, width: w.min(row.right().saturating_sub(x)), height: 1 };
-        let segs = if i == cur {
-            open = Some(tr);
-            let st = Style::default().fg(pill_ink).add_modifier(Modifier::BOLD);
-            pill(look, vec![seg(format!(" {name} "), st), seg(key, st)], pill_bg, ground)
-        } else {
-            let bg = if hovered(app, tr) { t.hov } else { ground };
-            let st = Style::default().bg(bg);
-            vec![seg(format!("  {name} "), st.fg(t.text)), seg(key, st.fg(key_fg).add_modifier(Modifier::BOLD)), seg(" ", st)]
-        };
-        put(buf, x, row.y, &segs, row.right());
-        hit(app, tr, ScreenHit::DrawerTab(i));
-        x += w + 1;
-    }
-    open
-}
-
 /// The width of the drawer's chips with their names alone, and a cell of border between.
 fn drawer_names_w() -> u16 {
     DRAWER_TABS.iter().map(|(_, name, ..)| name.width() as u16 + 4).sum::<u16>() + DRAWER_TABS.len() as u16
@@ -375,12 +320,10 @@ fn drawer_names_w() -> u16 {
 fn draw_drawer_chips(app: &mut App, buf: &mut Buffer, row: Rect, cur: usize, t: &Theme) {
     let border = buf[(row.x, row.y)].fg;
     let lit = sheet_has_keys(app);
-    let look = Look::of(&app.cfg.ui);
-    // The shape follows `ui.rounded` (a pill has caps), the gap `ui.tab_gap`.
-    let (ends, gap) = (2 * u16::from(look.caps), u16::from(look.tab_gap));
+    let gap = u16::from(Look::of(&app.cfg.ui).tab_gap);
     let chip = |(name, key): &(String, String)| {
         let k = key.trim();
-        (if k.is_empty() { 0 } else { k.width() as u16 + 2 }) + name.width() as u16 + 2 + ends
+        (if k.is_empty() { 0 } else { k.width() as u16 + 2 }) + name.width() as u16 + 2
     };
     let all = drawer_tab_labels(app, u16::MAX);
     let names: Vec<(String, String)> = all.iter().map(|(n, _)| (n.clone(), String::new())).collect();
@@ -400,17 +343,13 @@ fn draw_drawer_chips(app: &mut App, buf: &mut Buffer, row: Rect, cur: usize, t: 
         let k = tab.1.trim();
         let mut segs = Vec::new();
         if !k.is_empty() {
-            let kb = fill;
-            segs.push(seg(format!(" {k} "), Style::default().fg(if on { ink } else { t.accent }).bg(kb).add_modifier(Modifier::BOLD)));
+            segs.push(seg(format!(" {k} "), Style::default().fg(if on { ink } else { t.accent }).bg(fill).add_modifier(Modifier::BOLD)));
         }
         let mut st = Style::default().fg(ink).bg(bg);
         if on {
             st = st.add_modifier(Modifier::BOLD);
         }
         segs.push(seg(format!(" {} ", tab.0), st));
-        if look.caps {
-            segs = round_ends(segs, t.bg);
-        }
         put(buf, x, row.y, &segs, row.right());
         hit(app, tr, ScreenHit::DrawerTab(i));
         x += w;

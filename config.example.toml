@@ -39,10 +39,9 @@ sidebar_tabs = "all"        # all | busy | off: a session's tabs as lines under 
 alt_keys = true             # Alt+n shell, Alt+a session, Alt+x close, Alt+s / Alt+d split side by side / down, without the leader
 sidebar = true              # <leader> z collapses it
 sidebar_position = "left"   # left | right
-layout = "floating"         # floating | hairline (older tiled, grid, compact, cards, flat still read)
 pane_colors = false         # floating: each pane's border in its own colour
 tab_gap = true              # a cell between one tab and the next; false: they touch
-rounded = "off"             # full (needs a Nerd Font) | corners | off; hairline is always square (older `corners = "rounded"` still read)
+rounded = false            # rounded card corners (older "full" and "corners" still read as true)
 # padding = "small"         # small | medium | large: space round the screen
 # gap = "small"             # small | medium | large: space between floating panes
 # dim = "normal"            # off | light | normal | heavy: how far the panes you're not in fade

@@ -18,10 +18,7 @@ pub(in crate::client) fn dim_all(app: &mut App, buf: &mut Buffer, area: Rect, t:
             let c = &mut buf[(x, y)];
             let bg = if c.bg == Color::Reset { t.bg } else { c.bg };
             let fg = if c.fg == Color::Reset { t.fg } else { c.fg };
-            let cap = c.symbol() == CAP_L || c.symbol() == CAP_R;
-            if !cap {
-                c.fg = blend(fg, bg, BEHIND_TEXT);
-            }
+            c.fg = blend(fg, bg, BEHIND_TEXT);
         }
     }
 }
@@ -60,7 +57,7 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
     panel_box(buf, r, look, Style::default().fg(t.line).bg(t.card));
     // The red close button, as on a sheet's border; Esc still closes it.
     let red = Style::default().fg(t.strong).bg(t.err).add_modifier(Modifier::BOLD);
-    let esc = header_chip(look, vec![seg(format!(" {} ", glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close), red)], t.card);
+    let esc = vec![seg(format!(" {} ", glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close), red)];
     let esc_w = segs_width(&esc);
     // Too narrow for the chip beside the corner: Esc and a click outside still close it.
     let shows_esc = r.width >= esc_w + 4;
@@ -74,9 +71,9 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
     put(buf, rx, r.y, &segs, esc_x.saturating_sub(1));
     let chip_x = r.x + 2;
     let room = rx.saturating_sub(1).saturating_sub(chip_x);
-    let text_room = room.saturating_sub(if look.caps { 4 } else { 2 }) as usize;
+    let text_room = room.saturating_sub(2) as usize;
     let ink = Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD);
-    let chip = header_chip(look, vec![seg(format!(" {} ", truncate(title, text_room)), ink)], t.card);
+    let chip = vec![seg(format!(" {} ", truncate(title, text_room)), ink)];
     put(buf, chip_x, r.y, &chip, rx.saturating_sub(1));
     hit(app, r, ScreenHit::Noop);
     if shows_esc {
@@ -122,12 +119,6 @@ pub(in crate::client) fn panel_box(buf: &mut Buffer, r: Rect, look: Look, edge: 
     buf[(right_x, bottom)].set_symbol(br).set_style(edge);
 }
 
-/// A chip on a modal's top border: `segs` as they are, with caps on `ground` at both ends
-/// when shapes are rounded in full.
-fn header_chip(look: Look, segs: Vec<Seg>, ground: Color) -> Vec<Seg> {
-    if look.caps { round_ends(segs, ground) } else { plain(segs) }
-}
-
 /// A popover keeps at least this many columns from its left edge to the screen's.
 const POPOVER_ROOM: u16 = 40;
 /// Below this many rows a popover sits higher.
@@ -158,22 +149,22 @@ pub(in crate::client) fn popover_at(app: &mut App, buf: &mut Buffer, r: Rect, ti
 
 /// A popover's box, drawn as the look draws a pane's (ADR 0028): a `line` box one cell outside
 /// `r`, so it floats over the panes without covering any of its own text; on `card` with
-/// corners by `ui.rounded` in Floating, square on the ground in Hairline.
+/// corners by `ui.rounded`.
 fn popover_outline(buf: &mut Buffer, r: Rect, look: Look, t: &Theme) {
     let outer = Rect { x: r.x.saturating_sub(1), y: r.y.saturating_sub(1), width: r.width + 2, height: r.height + 2 }.intersection(buf.area);
     if outer.width < 2 || outer.height < 2 {
         return;
     }
-    let ground = if look.hairline { t.bg } else { t.card };
+    let ground = t.card;
     fill(buf, outer, ground);
     panel_box(buf, outer, look, Style::default().fg(t.line).bg(ground));
 }
 
-pub(in crate::client) fn sel_row(app: &App, buf: &mut Buffer, r: Rect, y: u16, sel: bool, t: &Theme) -> Color {
+pub(in crate::client) fn sel_row(buf: &mut Buffer, r: Rect, y: u16, sel: bool, t: &Theme) -> Color {
     let row = Rect { x: r.x + 1, y, width: r.width.saturating_sub(2), height: 1 };
     if sel {
         let bg = t.sel_on(t.card);
-        row_pill(Look::of(&app.cfg.ui), buf, row.x, y, row.width, bg, t.card);
+        row_pill(buf, row.x, y, row.width, bg);
         put(buf, r.x + 2, y, &[seg("▎", Style::default().fg(t.accent).bg(bg).add_modifier(Modifier::BOLD))], r.right());
         bg
     } else {
@@ -190,8 +181,6 @@ pub(in crate::client) fn hints(t: &Theme, pairs: &[(&str, &str)]) -> Vec<Seg> {
 /// last row of its panel so the actions are in the same place everywhere. `ground` is `card`
 /// for a sheet on the app's background and `card2` inside a modal.
 pub(in crate::client) fn action_bar(buf: &mut Buffer, bar: Rect, t: &Theme, ground: Color, keys: &[(&str, &str)]) {
-    // Hairline has no raised band: the keys are words on the panel's own ground.
-    let ground = if plain_on() { t.bg } else { ground };
     let row = Rect { height: 1, ..bar };
     fill(buf, row, ground);
     let room = row.width.saturating_sub(2);
@@ -376,7 +365,7 @@ pub(in crate::client) fn draw_finder(app: &mut App, f: &mut Frame, area: Rect, t
     for (i, (n, path, repo)) in rows.iter().enumerate().skip(start).take(max) {
         let y = r.y + 6 + (i - start) as u16;
         let sel = i == fd.sel;
-        let bg = sel_row(app, buf, r, y, sel, t);
+        let bg = sel_row(buf, r, y, sel, t);
         let st = Style::default().bg(bg);
         let open = model.iter().any(|p| path_key(&p.path) == path_key(path));
         let (icon, label) = match n.as_str() {
@@ -460,12 +449,12 @@ pub(in crate::client) fn query_list(app: &mut App, buf: &mut Buffer, area: Rect,
 
 /// One row of a `query_list`: its background (highlighted when selected) and the selection
 /// marker. Returns the style to draw its text with.
-pub(in crate::client) fn list_row(app: &App, buf: &mut Buffer, rr: Rect, on: bool, t: &Theme) -> Style {
+pub(in crate::client) fn list_row(buf: &mut Buffer, rr: Rect, on: bool, t: &Theme) -> Style {
     let bg = if on { t.sel_on(t.card) } else { t.card };
     if bg == t.card {
         fill(buf, rr, bg);
     } else {
-        row_pill(Look::of(&app.cfg.ui), buf, rr.x, rr.y, rr.width, bg, t.card);
+        row_pill(buf, rr.x, rr.y, rr.width, bg);
     }
     let st = Style::default().bg(bg);
     if on {

@@ -23,11 +23,8 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     app.pane_frames.clear();
     app.screen.modal_rects.clear();
     let area = f.area();
-    let hairline = super::screen::Look::of(&app.cfg.ui).hairline;
-    let t = if hairline { super::screen::flat_theme(&app.theme) } else { app.theme.clone() };
+    let t = app.theme.clone();
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
-    super::screen::set_round(app.cfg.ui.rounding().caps());
-    super::screen::set_plain(hairline.then_some(&t));
     // The terminal's own background (its window padding) matches ours while we run.
     let terminal_bg = app.cfg.ui.background != "solid";
     if let Color::Rgb(r, g, b) = t.bg
@@ -94,18 +91,16 @@ fn tint_hovered(app: &App, buf: &mut Buffer, t: &crate::theme::Theme) {
     tint(buf, *r, t);
 }
 
-/// Lay the pointer's tint over `r`, its ends rounded like every other shape when that is on.
+/// Lay the pointer's tint over `r`.
 pub(super) fn tint(buf: &mut Buffer, r: Rect, t: &crate::theme::Theme) {
     let r = r.intersection(buf.area);
     let lit = |c: Color| crate::theme::mix(if c == Color::Reset { t.bg } else { c }, t.text, HOVER_TINT);
-    let behind = super::screen::ends_behind(buf, r);
     for y in r.top()..r.bottom() {
         for x in r.left()..r.right() {
             let cell = &mut buf[(x, y)];
             cell.bg = lit(cell.bg);
         }
     }
-    super::screen::round_tinted(buf, r, &behind, lit);
 }
 
 /// Hand every cell on the theme's ground back to the terminal's own background (SGR 49), so
@@ -501,7 +496,7 @@ fn draw_worktrees(
         let y = list.y + (i - start) as u16;
         let rr = Rect { y, height: 1, ..list };
         let on = i == sel;
-        let st = super::screen::list_row(app, f.buffer_mut(), rr, on, t);
+        let st = super::screen::list_row(f.buffer_mut(), rr, on, t);
         let line = match row {
             super::WtRow::Existing(w) => {
                 let open = app.snap.workspaces.iter().any(|x| super::same_dir(&x.cwd, &w.path));
@@ -530,17 +525,14 @@ fn draw_prompt(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme
     let mut chars = title.chars();
     let title: String = chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default();
     let r = super::screen::panel(app, buf, area, 64, 7, &title, &[], t);
-    // A one-line prompt needs no frame: the title bar and the field carry it. In Hairline its
-    // card is the ground, so only the line box shows where it is: that stays.
-    if !super::screen::plain_on() {
-        for y in r.y + 1..r.bottom() {
-            for x in [r.x, r.right() - 1] {
-                buf[(x, y)].set_symbol(" ").set_style(Style::default().bg(t.card));
-            }
+    // A one-line prompt needs no frame: the title bar and the field carry it.
+    for y in r.y + 1..r.bottom() {
+        for x in [r.x, r.right() - 1] {
+            buf[(x, y)].set_symbol(" ").set_style(Style::default().bg(t.card));
         }
-        for x in r.x..r.right() {
-            buf[(x, r.bottom() - 1)].set_symbol(" ").set_style(Style::default().bg(t.card));
-        }
+    }
+    for x in r.x..r.right() {
+        buf[(x, r.bottom() - 1)].set_symbol(" ").set_style(Style::default().bg(t.card));
     }
     if confirm {
         super::screen::panel_bar(buf, r, t, &[("y", "yes"), ("n", "no")]);

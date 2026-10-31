@@ -12,7 +12,6 @@
 //! ```
 
 use crate::client::render::blend;
-use crate::client::screen::{CAP_L, CAP_R};
 use crate::theme::Theme;
 use ratatui::buffer::{Buffer, Cell};
 use ratatui::style::{Color, Modifier};
@@ -70,15 +69,6 @@ fn cell_html(cell: &Cell, t: &Theme) -> (String, String) {
         fg = bg;
     }
     let sym = cell.symbol();
-    // The flat side of a cap meets its chip: a left cap is a half disc centred on its right edge.
-    let flat_side = match sym {
-        CAP_L => Some("100%"),
-        CAP_R => Some("0%"),
-        _ => None,
-    };
-    if let Some(side) = flat_side {
-        return (format!("background:radial-gradient(ellipse 100% 50% at {side} 50%,{} 98%,{} 100%)", hex(fg), hex(bg)), " ".into());
-    }
     let mut style = format!("color:{};background-color:{}", hex(fg), hex(bg));
     for (bit, css) in [
         (Modifier::BOLD, ";font-weight:bold"),
@@ -239,16 +229,6 @@ mod tests {
         let mut buf = Buffer::empty(Rect::new(0, 0, 3, 1));
         buf.set_string(0, 0, "abc", Style::default());
         assert!(!frame(&buf, &t).contains("class=\"g"));
-    }
-
-    #[test]
-    fn a_half_circle_end_is_drawn_without_a_nerd_font() {
-        let t = night();
-        let mut buf = Buffer::empty(Rect::new(0, 0, 1, 1));
-        buf.set_string(0, 0, CAP_L, Style::default().fg(Color::Rgb(255, 0, 0)).bg(Color::Rgb(0, 0, 255)));
-        let out = frame(&buf, &t);
-        assert!(out.contains("radial-gradient(ellipse 100% 50% at 100% 50%,#ff0000 98%,#0000ff 100%)\"> </span>"), "{out}");
-        assert!(!out.contains(CAP_L));
     }
 
     #[test]

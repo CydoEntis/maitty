@@ -106,12 +106,6 @@ fn lit(app: &mut App, t: &Theme) -> (Piece, Vec<Piece>, Vec<Piece>) {
 fn typing(app: &App, t: &Theme) -> (Piece, Vec<Piece>) {
     let hit = Some(ScreenHit::ShortcutMode);
     let lead = crate::client::design::long_key(&app.keymap.prefix);
-    if Look::of(&app.cfg.ui).hairline {
-        // Hairline has no chips: the mode is a bold word in the accent.
-        let tag = Piece { segs: vec![seg("TYPING", Style::default().fg(t.accent).bg(t.bg).add_modifier(Modifier::BOLD))], gap: 0, hit };
-        let hint = Piece { segs: vec![seg(format!("{lead} for shortcuts"), Style::default().fg(t.muted).bg(t.bg))], gap: GAP, hit };
-        return (tag, vec![hint]);
-    }
     let tag = Piece { segs: vec![seg(" TYPING ", Style::default().fg(t.muted).bg(t.btn))], gap: 0, hit };
     let hint = Piece { segs: vec![seg(format!("· {lead} for shortcuts"), Style::default().fg(t.muted).bg(t.bg))], gap: 1, hit };
     (tag, vec![hint])
@@ -258,11 +252,7 @@ fn hint_piece((key, words): Hint, t: &Theme) -> Piece {
 /// keys, and the way out last. While shortcut mode is held it says so, first to go when narrow,
 /// so nobody wonders where the mode went. Only words: the keys are that thing's to take.
 fn holding(app: &App, h: &Holder, t: &Theme) -> (Piece, Vec<Piece>, Vec<Piece>) {
-    let tag = if Look::of(&app.cfg.ui).hairline {
-        seg(h.label, Style::default().fg(t.strong).bg(t.bg).add_modifier(Modifier::BOLD))
-    } else {
-        seg(format!(" {} ", h.label), Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD))
-    };
+    let tag = seg(format!(" {} ", h.label), Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD));
     let tag = Piece { segs: vec![tag], gap: 0, hit: None };
     let mut middle: Vec<Piece> = h.hints.iter().map(|&hint| hint_piece(hint, t)).collect();
     if shortcut_waits(app) {
@@ -318,6 +308,11 @@ fn layout_piece(app: &App, t: &Theme) -> Option<Piece> {
     })
 }
 
+/// How many panes need you, a split's included: the right end of the bar says so.
+fn needing(app: &App) -> usize {
+    app.snap.terms.values().filter(|info| check::needs(info.status, info.check())).count()
+}
+
 /// The right end's first piece: how many sessions need you in amber (the session's name when
 /// it is one), shortest last, or `all clear`.
 fn alerts(app: &App, needs: usize, t: &Theme) -> Vec<Piece> {
@@ -361,8 +356,8 @@ fn load_piece(app: &App, t: &Theme) -> Option<Piece> {
 }
 
 /// Draw the mode bar on `row`: lit, who has the keys, or typing, with Update or Restart at its
-/// right end. Hairline adds the look and pane count after TYPING and, unless shortcut mode
-/// lights the row, how many need you just before Update or Restart (or at the end without them).
+/// right end. Unless shortcut mode lights the row, how many need you sits just before Update or
+/// Restart (or at the end without them).
 pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rect, t: &Theme) {
     app.screen.bar_keys.clear();
     if row.height == 0 || row.width < 4 {
@@ -388,8 +383,6 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
     } else {
         [Release::Words, Release::Version, Release::Arrow].into_iter().filter_map(|r| release_pill(app, r, t)).collect()
     };
-    let round = Look::of(&app.cfg.ui).round_tabs;
-    let caps = |p: &Piece| if round && p.segs.first().is_some_and(|(_, s)| s.bg != Some(ground)) { round_ends(p.segs.clone(), ground) } else { p.segs.clone() };
     let room = row.width.saturating_sub(2);
     // The right end: needs you keeps its place before the mode's hints and Update do; the
     // branch and the load are there only while the whole left side still fits beside them.
@@ -398,7 +391,7 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
     let mut left_and_release = None;
     if calm {
         let tag_w = width(&[&tag]);
-        let needing = alerts(app, super::hairline::needing(app), t);
+        let needing = alerts(app, needing(app), t);
         if let Some(alert) = needing.into_iter().find(|a| tag_w + GAP + segs_width(&a.segs) <= room) {
             let alert_w = GAP + segs_width(&alert.segs);
             let (left, release) = fit(room.saturating_sub(alert_w), &tag, &middle, &tail, &releases);
@@ -426,7 +419,7 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
     let mut x = row.x + 1;
     for p in left {
         x += p.gap;
-        let segs = caps(p);
+        let segs = p.segs.clone();
         let end = put(buf, x, row.y, &segs, row.right());
         if let (false, Some(h)) = (words_only, p.hit) {
             hit(app, Rect { x, y: row.y, width: end - x, height: 1 }, h);
@@ -434,7 +427,7 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
         x = end;
     }
     if let Some(p) = release {
-        let segs = caps(p);
+        let segs = p.segs.clone();
         let x = row.right().saturating_sub(1 + segs_width(&segs));
         put(buf, x, row.y, &segs, row.right());
         if let (false, Some(h)) = (words_only, p.hit) {

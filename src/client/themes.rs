@@ -174,7 +174,7 @@ pub(super) fn draw_themes(
             height: 1,
             ..list
         };
-        let st = list_row(app, buf, row, i == sel, theme);
+        let st = list_row(buf, row, i == sel, theme);
         let active = *name == current;
         let label = format!("{} {}", if active { "●" } else { "○" }, theme_label(name));
         let swatch_x = row.right().saturating_sub(24);
@@ -292,7 +292,7 @@ fn draw_preview(buf: &mut ratatui::buffer::Buffer, area: Rect, name: &str) {
         area.x + 2,
         area.y + 1,
         &[
-            super::screen::plain(vec![seg(" Focused pane ", st.bg(theme.accent).fg(theme.acc_ink))]),
+            vec![seg(" Focused pane ", st.bg(theme.accent).fg(theme.acc_ink))],
             vec![seg("  Regular text  ", st.fg(theme.text)), seg("dimmed", st.fg(theme.muted))],
         ]
         .concat(),

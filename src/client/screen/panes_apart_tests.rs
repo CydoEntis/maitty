@@ -10,7 +10,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use tokio::sync::mpsc;
 
-const LOOKS: [&str; 5] = ["floating", "tiled", "compact", "grid", "hairline"];
+const LOOKS: [&str; 3] = ["floating", "tiled", "grid"];
 
 /// The reference world in `look` with `panes` panes on its open tab: 1, 2 side by side, or 3
 /// (two side by side over one).
@@ -33,10 +33,9 @@ fn split_world(look: &str, panes: usize) -> App {
     app
 }
 
-/// A screen wide enough for `look` to draw a split beside a side panel: Compact splits only
-/// from 150 columns of panes.
-fn wide(look: &str) -> (u16, u16) {
-    if look == "compact" { (260, 50) } else { (160, 45) }
+/// A screen wide enough to draw a split beside a side panel.
+fn wide(_look: &str) -> (u16, u16) {
+    (160, 45)
 }
 
 fn draw(app: &mut App, w: u16, h: u16) -> Buffer {
@@ -139,8 +138,7 @@ fn no_pane_has_a_title_in_any_look() {
         // A lone pane's top row is its terminal's first line; a split's is its edge. In Floating the
         // first pane's top border carries the tabs (ADR 0038), which are words.
         let first = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(term, _)| *term);
-        let tabs_there = !label.starts_with("hairline");
-        for (term, r) in app.screen.leaf_rects.iter().filter(|(term, _)| app.screen.leaf_rects.len() > 1 && !(tabs_there && Some(*term) == first)) {
+        for (term, r) in app.screen.leaf_rects.iter().filter(|(term, _)| app.screen.leaf_rects.len() > 1 && Some(*term) != first) {
             let top = title_of(&buf, *r);
             assert!(!top.chars().any(char::is_alphanumeric), "{label}: pane {term}'s top edge carries no words, its tab names it: {top}\n{}", text(&buf));
         }
@@ -183,9 +181,8 @@ fn closing_a_pane_names_it_and_lights_it_in_every_look() {
         let rect = |term: TermId| app.screen.leaf_rects.iter().find(|(id, _)| *id == term).map(|(_, r)| *r).expect("the pane is on screen");
         let (closing, kept) = (rect(second), rect(first));
         let t = app.theme.clone();
-        let line = |r: Rect| if look == "hairline" { (r.x + 1, r.y) } else if look == "compact" { (r.x, r.y + 1) } else { (r.x, r.y) };
+        let line = |r: Rect| (r.x, r.y);
         assert_eq!(buf[line(closing)].fg, t.err, "{look}: the pane being closed is lit, bright over the dimmed screen:\n{screen}");
-        // Compact lights its zone's `│` rule, as it does for focus; the others their border or rule.
         assert!(cells_in(&buf, closing, t.err) > 20, "{look}: its lines, not a cell");
         assert_ne!(buf[line(kept)].fg, t.err, "{look}: only that pane");
         app.on_key(crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Esc, crossterm::event::KeyModifiers::NONE));
@@ -204,14 +201,9 @@ fn a_lone_pane_s_confirm_says_close_pane_and_its_name() {
     assert!(screen.contains("Close pane · fix-footer"), "no number for a lone pane:\n{screen}");
 }
 
-/// The cell that carries a pane's focus in `look`: a box's corner, Compact's `│` rule, or
-/// Hairline's rule.
-fn focus_cell(look: &str, r: Rect) -> (u16, u16) {
-    match look {
-        "hairline" => (r.x + 1, r.y + 1),
-        "compact" => (r.x, r.y + 1),
-        _ => (r.x, r.y),
-    }
+/// The cell that carries a pane's focus: a box's corner.
+fn focus_cell(_look: &str, r: Rect) -> (u16, u16) {
+    (r.x, r.y)
 }
 
 #[test]
@@ -338,7 +330,7 @@ fn pressing_a_shown_key_runs_its_item() {
 
 #[test]
 fn a_sessions_only_tab_split_still_has_a_close_that_asks_for_all_its_panes() {
-    for look in ["floating", "hairline"] {
+    { let look = "floating";
         let mut app = split_world(look, 3);
         draw(&mut app, 160, 45);
         let close = app.hits.iter().find_map(|(r, h)| matches!(h, Hit::Screen(crate::client::screen::ScreenHit::CloseTab(_))).then_some(*r));

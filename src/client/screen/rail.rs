@@ -54,9 +54,7 @@ fn session_segs(app: &App, s: &Session, on: bool, lit: bool, ground: Color, t: &
 
 /// A small chip (`»`, `+`, `≡`) on the raised ground, a cell in from the column's edge.
 fn chip(app: &mut App, buf: &mut Buffer, area: Rect, y: u16, symbol: &str, hit_as: ScreenHit, t: &Theme) {
-    let look = Look::of(&app.cfg.ui);
-    let body = vec![seg(format!(" {symbol} "), Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD))];
-    let segs = if look.round_tabs { round_ends(body, t.bg) } else { body };
+    let segs = vec![seg(format!(" {symbol} "), Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD))];
     let x = area.x + 1;
     put(buf, x, y, &segs, area.right());
     hit(app, Rect { x, y, width: segs_width(&segs), height: 1 }, hit_as);

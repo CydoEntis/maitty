@@ -149,7 +149,7 @@ pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Se
         v.push(seg(key.to_string(), Style::default().bg(bg).fg(kfg).add_modifier(Modifier::BOLD)));
     }
     v.push(r);
-    super::screen::plain(v)
+    v
 }
 
 /// A key drawn as a keycap: ` key ` raised on `btn`, strong and bold. A combo (`Ctrl+Space`) is
@@ -859,7 +859,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_keys" | "ui.alt_arrows" => "INPUT",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
             "theme" | "ui.glyphs" | "ui.spinner" | "ui.cursor" | "ui.cursor_blink" => "THEME",
-            "ui.layout" | "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
+            "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
             "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded" => "PANES",
             "ui.tab_gap" => "TABS",
             "sessions.agent" | "sessions.where" => "NEW SESSIONS",

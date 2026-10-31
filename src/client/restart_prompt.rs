@@ -27,14 +27,13 @@ pub struct Prompt {
     /// Sessions that come back, and how many of them are mid-turn, when known.
     resume: Option<(usize, Option<usize>)>,
     theme: Theme,
-    round: bool,
     hover: Option<Choice>,
     hits: Vec<(Rect, Choice)>,
 }
 
 impl Prompt {
     pub fn new(daemon: u32, cfg: &Config) -> Prompt {
-        Prompt { daemon, resume: None, theme: cfg.theme(), round: cfg.ui.rounding().caps(), hover: None, hits: Vec::new() }
+        Prompt { daemon, resume: None, theme: cfg.theme(), hover: None, hits: Vec::new() }
     }
 
     pub fn resuming(mut self, sessions: usize, busy: Option<usize>) -> Prompt {
@@ -77,8 +76,6 @@ impl Prompt {
 
     pub fn draw(&mut self, f: &mut Frame) {
         let t = &self.theme;
-        super::screen::set_round(self.round);
-        super::screen::set_plain(None);
         let area = f.area();
         let buf = f.buffer_mut();
         fill(buf, area, t.bg);

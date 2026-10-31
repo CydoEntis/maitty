@@ -51,7 +51,6 @@ const SHOTS: &[Shot] = &[
     Shot { name: "files", cols: 160, rows: 45, caption: "Files: the project's tree beside its README, drawn as markdown.", setup: files },
     Shot { name: "inbox", cols: 120, rows: 34, caption: "The Inbox: a question, a failed check and finished work, in the order they need you.", setup: inbox },
     Shot { name: "layout-floating", cols: 120, rows: 34, caption: "Floating: a box per pane, with room between them.", setup: floating },
-    Shot { name: "layout-hairline", cols: 120, rows: 34, caption: "Hairline: no boxes, only lines, the most room for output.", setup: hairline },
     Shot { name: "layout-colours", cols: 120, rows: 34, caption: "Pane colours: each pane in its own colour.", setup: grid_look },
     Shot { name: "shortcut", cols: 120, rows: 34, caption: "Shortcut mode: one key moves, splits or opens; Esc goes back to typing.", setup: shortcut },
     Shot { name: "splash", cols: 120, rows: 34, caption: "The welcome screen: what happened while you were away.", setup: splash },
@@ -136,7 +135,7 @@ fn world(theme: &str) -> App {
     let (tx, _rx) = mpsc::unbounded_channel();
     let (bg_tx, _bg_rx) = mpsc::unbounded_channel();
     let mut cfg = Config { theme: theme.into(), ..Default::default() };
-    (cfg.ui.layout, cfg.ui.padding, cfg.ui.rounded, cfg.ui.motion) = ("floating".into(), "1".into(), crate::config::Rounding::Full, false);
+    (cfg.ui.layout, cfg.ui.padding, cfg.ui.rounded, cfg.ui.motion) = ("floating".into(), "small".into(), true, false);
     cfg.ui.splash_animation = "never".into();
     let mut app = App::new(cfg, tx, None, bg_tx);
     app.splash = false;
@@ -225,10 +224,6 @@ fn hero(_: &mut App) {}
 
 fn floating(app: &mut App) {
     app.cfg.ui.layout = "floating".into();
-}
-
-fn hairline(app: &mut App) {
-    app.cfg.ui.layout = "hairline".into();
 }
 
 fn grid_look(app: &mut App) {

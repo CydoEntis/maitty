@@ -381,9 +381,8 @@ fn frame(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, title: &str, wa
 }
 
 /// The typing row: `› ` and what is typed on a lifted pill.
-fn input_row(app: &App, buf: &mut Buffer, r: Rect, sy: u16, t: &Theme, typed: Vec<Seg>) {
-    let look = Look::of(&app.cfg.ui);
-    row_pill(look, buf, r.x + 3, sy, r.width.saturating_sub(6), t.card2, t.card);
+fn input_row(buf: &mut Buffer, r: Rect, sy: u16, t: &Theme, typed: Vec<Seg>) {
+    row_pill(buf, r.x + 3, sy, r.width.saturating_sub(6), t.card2);
     put(buf, r.x + 5, sy, &typed, r.right().saturating_sub(5));
 }
 
@@ -431,7 +430,7 @@ fn draw_grid(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap
     let cs = Style::default().bg(t.card);
     let hint = if all { " type to search" } else { " press a key, or type to search" };
     let input_y = if roomy { r.y + 2 } else { r.y + 1 };
-    input_row(app, buf, r, input_y, t, prompt(t, vec![seg("█", Style::default().bg(t.card2).fg(t.accent)), seg(hint, Style::default().bg(t.card2).fg(t.muted))]));
+    input_row(buf, r, input_y, t, prompt(t, vec![seg("█", Style::default().bg(t.card2).fg(t.accent)), seg(hint, Style::default().bg(t.card2).fg(t.muted))]));
 
     let mut y0 = input_y + if roomy { 2 } else { 1 };
     if !all {
@@ -492,7 +491,7 @@ fn draw_grid(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap
                     let on = row.act.is_some() && hovered(app, rr);
                     let bg = if on { t.sel_on(t.card) } else { t.card };
                     if on {
-                        row_pill(Look::of(&app.cfg.ui), buf, x.saturating_sub(1), y, rr.width + 1, bg, t.card);
+                        row_pill(buf, x.saturating_sub(1), y, rr.width + 1, bg);
                     }
                     let caps = if row.keys.is_empty() { vec![seg("—", Style::default().bg(bg).fg(t.line))] } else { keycaps(t, &row.keys, bg) };
                     put(buf, x, y, &caps, x + col_w);
@@ -551,7 +550,7 @@ fn draw_search(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyM
     if km.query.is_empty() {
         typed.push(seg(" type what you want to do", ps.fg(t.muted)));
     }
-    input_row(app, buf, r, r.y + 2, t, prompt(t, typed));
+    input_row(buf, r, r.y + 2, t, prompt(t, typed));
     let head_y = r.y + 4;
     let head = if km.query.is_empty() { "RECENT".to_string() } else { format!("{} match{}", list.len(), if list.len() == 1 { "" } else { "es" }) };
     put(buf, r.x + 4, head_y, &[seg(head, cs.fg(t.muted).add_modifier(Modifier::BOLD))], r.right().saturating_sub(3));
@@ -565,7 +564,7 @@ fn draw_search(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyM
         let on = i == km.sel || hovered(app, rr);
         let bg = if on { t.sel_on(t.card) } else { t.card };
         if on {
-            row_pill(Look::of(&app.cfg.ui), buf, rr.x, y, rr.width, bg, t.card);
+            row_pill(buf, rr.x, y, rr.width, bg);
             put(buf, rr.x + 1, y, &[seg("▎", Style::default().bg(bg).fg(t.accent).add_modifier(Modifier::BOLD))], rr.x + 2);
         }
         let plain = Style::default().bg(bg).fg(if e.keys.is_empty() && e.act.is_none() { t.muted } else { t.strong });
@@ -588,13 +587,12 @@ fn draw_search(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyM
 }
 
 fn draw_step(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap, step: Step) {
-    let look = Look::of(&app.cfg.ui);
     let lead = app.keymap.prefix.to_string().replace("C-", "Ctrl+");
     let (r, inside) = frame(app, buf, area, t, &lead, 16);
     let cs = Style::default().bg(t.card);
     let ps = Style::default().bg(t.card2);
     let typed = vec![seg(step_key(app, step), ps.fg(t.strong).add_modifier(Modifier::BOLD)), seg(format!("  {}", step_name(step)), ps.fg(t.muted)), seg("█", ps.fg(t.accent))];
-    input_row(app, buf, r, r.y + 2, t, prompt(t, typed));
+    input_row(buf, r, r.y + 2, t, prompt(t, typed));
     let model = app.screen_model();
     let proj = app.focused().and_then(|f| find(&model, f)).map(|(p, _, _)| p.name.clone()).unwrap_or_default();
     put(buf, r.x + 4, r.y + 5, &[seg(format!("{} IN {}", step_name(step).to_uppercase(), proj.to_uppercase()), cs.fg(t.muted).add_modifier(Modifier::BOLD))], r.right().saturating_sub(2));
@@ -607,7 +605,7 @@ fn draw_step(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap
         let sel = i == km.sel || hovered(app, rr);
         let bg = if sel { t.sel_on(t.card) } else { t.card };
         if sel {
-            row_pill(look, buf, rr.x, y, rr.width, bg, t.card);
+            row_pill(buf, rr.x, y, rr.width, bg);
         }
         put(buf, r.x + 5, y, &keycap(t, &key.to_string()), r.right());
         let st = Style::default().bg(bg);

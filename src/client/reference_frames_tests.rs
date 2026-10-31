@@ -28,11 +28,10 @@
 //! - the C2 Inbox's footnote is an annotation, not a screen line;
 //! - a failure's buttons end in Send to agent, which the reference predates: under 100 columns
 //!   it takes the evidence sheet's Open session, and the Inbox has no room for it;
-//! - pill caps (a Nerd Font option, on by default) are off, so buttons have square ends;
 //! - the mode bar along the bottom (ADR 0024) is not the reference's: `reference_fixture::cells` draws
 //!   a row taller and leaves out that row, the bar's.
 
-use super::screen::{CAP_L, CAP_R, GoRow, goto_rows};
+use super::screen::{GoRow, goto_rows};
 use super::reference_fixture::{Layout, Stage, cells, frame, world};
 use super::*;
 use crate::protocol::{CheckSource, CheckState};
@@ -180,7 +179,7 @@ fn with_check(app: &mut App, command: &str) {
 
 /// The sample's words where the fixture has none of its own.
 fn sample_words(app: &mut App) {
-    app.cfg.ui.rounded = crate::config::Rounding::Off;
+    app.cfg.ui.rounded = false;
     let footer = app.snap.terms.get_mut(&1).unwrap();
     footer.said = "tests pass".into();
     for c in &mut footer.checks {
@@ -837,31 +836,6 @@ fn a_modal_title_is_on_the_accent() {
         let title = if id == "12" { "OVERRIDE A FAILED CHECK" } else { "A REPO WANTS TO RUN A COMMAND" };
         let (x, y) = at(&buf, title);
         assert_eq!(buf[(x, y)].bg, app.theme.accent, "{id}");
-    }
-}
-
-/// Buttons have square ends by default, as the reference draws them.
-/// Turned on, they only put a cap where a square end had a blank of the button's colour.
-#[test]
-fn pill_caps_only_round_the_buttons_ends() {
-    for id in ["12", "A2"] {
-        let mut square = open(id);
-        let flat = cells(&mut square, Layout::Floating, 160, 45, "unicode");
-        let mut round = open(id);
-        round.cfg.ui.rounded = crate::config::Rounding::Full;
-        let capped = cells(&mut round, Layout::Floating, 160, 45, "unicode");
-        let caps = [CAP_L, CAP_R];
-        let mut changed = 0;
-        let width = flat.area.width as usize;
-        for (n, (a, b)) in flat.content().iter().zip(capped.content()).enumerate() {
-            let title_row = n / width == 0;
-            // Round tabs reflow the title row and a round session row gives up its last cell to its
-            // cap; this test is about the buttons, which only gain caps where a blank was.
-            if a.symbol() != b.symbol() && !title_row && caps.contains(&b.symbol()) {
-                changed += 1;
-            }
-        }
-        assert!(changed > 0, "{id}: the buttons have caps");
     }
 }
 

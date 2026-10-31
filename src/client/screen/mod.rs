@@ -972,10 +972,6 @@ pub(super) enum ScreenHit {
     TabPick(usize),
     CloseTab(usize),
     NewTab,
-    /// The tab row's `◫`: split the focused pane.
-    TabSplit,
-    /// The tab row's `⤢`: the focused pane fills the tab, or goes back.
-    TabZoom,
     /// Outside an overlay: closes it.
     Close,
     /// Inside an overlay's panel: nothing.
@@ -1113,10 +1109,8 @@ mod popover;
 mod helpers_ask;
 mod secret_ask;
 mod draw;
-mod hairline;
 #[cfg(test)]
 pub(in crate::client) use self::rail::RAIL_W;
-pub(in crate::client) use self::hairline::{flat_theme, plain, plain_on, set_plain};
 mod mode_bar;
 mod side;
 mod side_tabs;
