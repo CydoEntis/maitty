@@ -42,7 +42,6 @@ fn menu_label(app: &App, a: &Action, label: &'static str) -> &'static str {
 
 /// The Menu: a card at the bottom left, over the sidebar's foot. Groups a blank row apart.
 pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, sel: usize) {
-    let look = Look::of(&app.cfg.ui);
     let buf = f.buffer_mut();
     dim_all(app, buf, area, t);
     hit(app, area, ScreenHit::Close);
@@ -77,7 +76,7 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
             let rr = Rect { x: r.x + 2, y: yy, width: w.saturating_sub(4), height: 1 };
             let on = i == sel || hovered(app, rr);
             if on {
-                row_pill(look, buf, rr.x, yy, rr.width, t.sel_on(t.bg), t.bg);
+                row_pill(buf, rr.x, yy, rr.width, t.sel_on(t.bg));
             }
             let bg = if on { t.sel_on(t.bg) } else { t.bg };
             let st = Style::default().bg(bg);

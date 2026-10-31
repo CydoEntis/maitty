@@ -228,7 +228,7 @@ fn cursor_code(program: Option<u8>, ui: &crate::config::Ui) -> u8 {
 /// into the file, so it is not said again.
 fn settle_retired_layout(app: &mut App) {
     let Some(r) = app.cfg.ui.retired_layout.take() else { return };
-    let mut writes: Vec<(&str, toml_edit::Value)> = vec![("ui.layout", r.kind.name().into())];
+    let mut writes: Vec<(&str, toml_edit::Value)> = vec![("ui.layout", "floating".into())];
     if r.gap {
         writes.push(("ui.gap", "0".into()));
     }

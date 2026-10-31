@@ -1398,11 +1398,6 @@ impl App {
             }
             ScreenHit::CloseTab(i) => self.close_tab(i),
             ScreenHit::NewTab => self.act(Action::NewTab),
-            ScreenHit::TabSplit => self.act(Action::SplitRight),
-            ScreenHit::TabZoom => {
-                let tab = self.screen.tab;
-                self.screen.zoom = if self.screen.zoom == Some(tab) { None } else { Some(tab) };
-            }
             ScreenHit::SideFocus => self.act(Action::BrowseTree),
             ScreenHit::ExpandSidebar => self.act(Action::ToggleSidebar),
             ScreenHit::NewShell => self.act(Action::ShellHere),

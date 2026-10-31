@@ -294,13 +294,12 @@ fn draw_rows(app: &mut App, buf: &mut Buffer, list: Rect, bg: Color, t: &Theme, 
     let h = list.height as usize;
     v.scroll = v.scroll.min(v.sel).max((v.sel + 1).saturating_sub(h));
     let full = list.width >= FULL_ROW_FROM;
-    let look = Look::of(&app.cfg.ui);
     for (i, r) in v.items().iter().enumerate().skip(v.scroll).take(h) {
         let rr = Rect { y: list.y + (i - v.scroll) as u16, height: 1, ..list };
         let sel = i == v.sel;
         let row_bg = if sel {
             let sb = t.sel_on(bg);
-            row_pill(look, buf, rr.x, rr.y, rr.width, sb, bg);
+            row_pill(buf, rr.x, rr.y, rr.width, sb);
             put(buf, rr.x + 1, rr.y, &[seg("▎", Style::default().fg(t.accent).bg(sb).add_modifier(Modifier::BOLD))], rr.right());
             sb
         } else if hovered(app, rr) {

@@ -53,7 +53,7 @@ pub(in crate::client) fn draw_secret_pop(app: &mut App, buf: &mut Buffer, screen
     let (r, _) = frame_beside_row(app, buf, screen, side, term, (x0, w, h), t);
     let card = Style::default().bg(t.card);
     let name = app.session_name(term);
-    put(buf, r.x + 2, r.y, &plain(vec![seg(" SECRET? ", Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD)), seg(format!("· {name} "), card.fg(t.muted))]), r.right() - 2);
+    put(buf, r.x + 2, r.y, &[seg(" SECRET? ", Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD)), seg(format!("· {name} "), card.fg(t.muted))], r.right() - 2);
     let decline = " Esc declines ";
     put(buf, (r.right() - 2).saturating_sub(decline.width() as u16), r.y, &[seg(decline, card.fg(t.muted))], r.right() - 2);
 

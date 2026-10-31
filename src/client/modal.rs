@@ -107,7 +107,6 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "ui.spinner", label: "Working spinner", kind: Kind::Spinner, cat: Cat::Appearance, help: "How a working agent's mark moves: Snake, Pulse, Braille and more. Other status icons keep their meaning." },
     Setting { path: "ui.cursor", label: "Cursor", kind: Kind::Choice(crate::config::CURSOR_SHAPES), cat: Cat::Appearance, help: "The caret where a pane's program picks none: the terminal's own, block, underline or bar. vim keeps its own." },
     Setting { path: "ui.cursor_blink", label: "Cursor blink", kind: Kind::Bool, cat: Cat::Appearance, help: "Blink that caret. No effect with your terminal's own cursor." },
-    Setting { path: "ui.layout", label: "Layout", kind: Kind::Choice(crate::config::LAYOUT_NAMES), cat: Cat::Appearance, help: "floating: a box per pane. hairline: no boxes, only lines." },
     Setting { path: "ui.sidebar_position", label: "Sidebar side", kind: Kind::Choice(&["left", "right"]), cat: Cat::Appearance, help: "Which edge the sidebar sits on." },
     Setting { path: "ui.padding", label: "Padding", kind: Kind::Choice(crate::config::SIZES), cat: Cat::Appearance, help: "Space round the screen: small is a row and a column all round, medium two, large three." },
     Setting { path: "ui.background", label: "Background", kind: Kind::Choice(&["terminal", "solid"]), cat: Cat::Appearance, help: concat!("terminal: your terminal's background shows through. solid: ", env!("APP_COMMAND"), " paints every cell.") },
@@ -115,7 +114,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "ui.gap", label: "Gap", kind: Kind::Choice(crate::config::SIZES), cat: Cat::Appearance, help: "Space between floating panes, in rows stacked and columns side by side." },
     Setting { path: "ui.tab_gap", label: "Tab gap", kind: Kind::Bool, cat: Cat::Appearance, help: "A cell between one tab and the next, and between a sheet's tabs. Off: they touch. The shape of a tab follows Rounded." },
     Setting { path: "ui.pane_colors", label: "Pane colours", kind: Kind::Bool, cat: Cat::Appearance, help: "Floating: each pane's border in its own colour, by its place in the tab." },
-    Setting { path: "ui.rounded", label: "Rounded", kind: Kind::Choice(crate::config::Rounding::NAMES), cat: Cat::Appearance, help: "full: round corners and round ends everywhere (needs a Nerd Font). corners: rounded squares, square ends. off: all square." },
+    Setting { path: "ui.rounded", label: "Rounded", kind: Kind::Bool, cat: Cat::Appearance, help: "Round card corners (╭╮╰╯) instead of square ones." },
     Setting { path: "ui.dim", label: "Dim unfocused", kind: Kind::Choice(crate::config::DIMS), cat: Cat::Appearance, help: "How far the panes you're not in fade. Their colours stay recognisable." },
     Setting { path: "ui.focus_border", label: "Focus border", kind: Kind::Choice(&["accent", "bright", "none"]), cat: Cat::Appearance, help: "How the pane you're in is outlined." },
     // Sessions

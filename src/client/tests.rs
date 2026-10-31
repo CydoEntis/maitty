@@ -348,7 +348,7 @@ mod screen_tests {
 
     #[test]
     fn the_collapsed_column_keeps_every_session_and_mouse_access_beside_the_panes() {
-        for (w, h, layout) in [(80, 24, "floating"), (100, 30, "hairline"), (160, 45, "floating"), (160, 45, "hairline")] {
+        for (w, h, layout) in [(80, 24, "floating"), (100, 30, "floating"), (160, 45, "floating")] {
             for position in ["left", "right"] {
                 let (_, mut app) = super::design_tests::render_with(w, h);
                 app.cfg.ui.layout = layout.into();
@@ -364,11 +364,11 @@ mod screen_tests {
                 show(&screen);
                 let g = screen::grid(&app, Rect::new(0, 0, w, h));
                 assert_eq!(g.side.width, screen::RAIL_W, "{w}x{h} {layout} {position}: a narrow column");
-                assert!(g.tabs.y <= 1, "{w}x{h} {layout} {position}: the panes keep the top row");
+                assert!(g.panes.y <= 1, "{w}x{h} {layout} {position}: the panes keep the top row");
                 let in_column = |hit: screen::ScreenHit| app.hits.iter().find(|(r, h)| *h == Hit::Screen(hit) && r.x >= g.side.x && r.right() <= g.side.right()).map(|(r, _)| *r);
                 assert!(in_column(screen::ScreenHit::Session(1)).is_some() && in_column(screen::ScreenHit::Session(2)).is_some(), "{w}x{h} {position}: a row per session");
                 assert!(in_column(screen::ScreenHit::ExpandSidebar).is_some() && in_column(screen::ScreenHit::Actions).is_some() && in_column(screen::ScreenHit::NewShell).is_some(), "{w}x{h} {position}: expand, Menu and New stay clickable");
-                assert!(screen.lines().nth(g.tabs.y as usize).unwrap().contains("◫ ⤢") || screen.lines().nth(g.tabs.y as usize).unwrap().contains(" + "), "the tabs sit on row {}: {}", g.tabs.y, screen.lines().nth(g.tabs.y as usize).unwrap());
+                assert!(screen.lines().nth(g.panes.y as usize).unwrap().contains("◫ ⤢") || screen.lines().nth(g.panes.y as usize).unwrap().contains(" + "), "the tabs sit on row {}: {}", g.panes.y, screen.lines().nth(g.panes.y as usize).unwrap());
                 let click = |app: &mut App, r: Rect| {
                     for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
                         app.on_mouse(MouseEvent { kind, column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
@@ -698,7 +698,7 @@ mod screen_tests {
 
     #[test]
     fn a_release_waiting_is_a_banner_over_the_splash_s_cards_in_every_look() {
-        for look in ["floating", "hairline"] {
+        { let look = "floating";
             for (w, h) in [(160u16, 45u16), (80, 24)] {
                 let (_, mut app) = super::design_tests::render_with(w, h);
                 app.cfg.ui.layout = look.into();
@@ -1298,7 +1298,7 @@ mod screen_tests {
         for corners in ["square", "rounded"] {
             let (_, mut app) = super::design_tests::render_with(200, 50);
             app.cfg.ui.pane_colors = true;
-            (app.cfg.ui.layout, app.cfg.ui.rounded) = ("floating".into(), if corners == "rounded" { crate::config::Rounding::Corners } else { crate::config::Rounding::Off });
+            (app.cfg.ui.layout, app.cfg.ui.rounded) = ("floating".into(), corners == "rounded");
             let [a, b, c] = three_panes(&mut app);
             app.screen_fresh();
             let mut term = Terminal::new(TestBackend::new(200, 50)).unwrap();
@@ -1332,7 +1332,7 @@ mod screen_tests {
             for (mode, update) in [("off", false), ("lit", false), ("held", false), ("off", true), ("lit", true), ("held", true)] {
                 for w in 56..=110u16 {
                     let (_, mut app) = super::design_tests::render_with(w, 24);
-                    (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
+                    (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), true, false);
                     app.cfg.ui.fold_retired_layout();
                     app.update_available = update.then(|| "0.44.0".into());
                     if split {
@@ -1388,9 +1388,8 @@ mod screen_tests {
 
     #[test]
     fn the_new_tab_chip_is_raised_and_a_cell_clear_of_the_tabs_in_every_look() {
-        use crate::config::Rounding;
         for layout in ["floating", "tiled", "grid"] {
-            for rounded in [Rounding::Off, Rounding::Full] {
+            for rounded in [false, true] {
                 let (_, mut app) = super::design_tests::render_with(160, 45);
                 (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
                 app.cfg.ui.fold_retired_layout();
@@ -1401,11 +1400,7 @@ mod screen_tests {
                 let plus = (r.x..r.right()).find(|&x| buf[(x, r.y)].symbol() == "+").expect("its +");
                 assert_eq!((buf[(plus, r.y)].fg, buf[(plus, r.y)].bg), (t.strong, t.btn), "strong on btn: {at}");
                 let (l, e) = (&buf[(r.x, r.y)], &buf[(r.right() - 1, r.y)]);
-                if rounded == Rounding::Full {
-                    assert_eq!((l.symbol(), l.fg, e.symbol(), e.fg), (screen::CAP_L, t.btn, screen::CAP_R, t.btn), "capped: {at}");
-                } else {
-                    assert_eq!((l.symbol(), l.bg, e.symbol(), e.bg), (" ", t.btn, " ", t.btn), "square: {at}");
-                }
+                assert_eq!((l.symbol(), l.bg, e.symbol(), e.bg), (" ", t.btn, " ", t.btn), "square: {at}");
                 let gap = &buf[(r.x - 1, r.y)];
                 assert!(gap.symbol() == "─" && gap.bg != t.btn, "a cell of the border before it, not of the chip: {at}");
             }
@@ -1464,7 +1459,7 @@ mod screen_tests {
 
     #[test]
     fn the_arrows_reach_every_tab_line_under_a_session() {
-        for layout in ["floating", "hairline"] {
+        { let layout = "floating";
             let (mut app, [a, ..]) = tabbed_session(layout);
             drawn(&mut app, 160, 45);
             app.screen_side_set(screen::SideItem::Sess(a));
@@ -1482,7 +1477,7 @@ mod screen_tests {
 
     #[test]
     fn a_shell_never_takes_its_other_tab_s_agent_status() {
-        for layout in ["floating", "hairline"] {
+        { let layout = "floating";
             let (mut app, [a, ..]) = tabbed_session(layout);
             let info = app.snap.terms.get_mut(&a).unwrap();
             (info.agent, info.status) = (None, Status::None);
@@ -1501,7 +1496,7 @@ mod screen_tests {
 
     #[test]
     fn a_session_s_tabs_each_show_their_own_state_under_its_row() {
-        for layout in ["floating", "hairline"] {
+        { let layout = "floating";
             let (mut app, _) = tabbed_session(layout);
             let buf = drawn(&mut app, 160, 45);
             let rows = side_text(&app, &buf);
@@ -1521,10 +1516,10 @@ mod screen_tests {
 
     #[test]
     fn a_tab_out_of_view_shows_its_state_on_its_tab() {
-        for layout in ["floating", "hairline"] {
+        { let layout = "floating";
             let (mut app, _) = tabbed_session(layout);
             let buf = drawn(&mut app, 160, 45);
-            let row = screen::grid(&app, buf.area).tabs;
+            let row = screen::grid(&app, buf.area).panes;
             let tabs: String = (row.x..row.right()).map(|x| buf[(x, row.y)].symbol()).collect();
             show(&tabs);
             // Each tab's glyph: the first mark left of its number.
@@ -1648,7 +1643,7 @@ mod screen_tests {
 
     #[test]
     fn the_sidebar_shows_all_busy_or_no_tab_lines_as_set() {
-        for layout in ["floating", "hairline"] {
+        { let layout = "floating";
             for (setting, want) in [("all", vec!["codex", "gemini"]), ("busy", vec!["codex", "gemini"]), ("off", vec![])] {
                 let (mut app, _) = tabbed_session(layout);
                 // The working tab on screen; the idle one is busy only while it is.
@@ -1666,7 +1661,7 @@ mod screen_tests {
 
     #[test]
     fn clicking_a_tab_line_shows_that_tab() {
-        for layout in ["floating", "hairline"] {
+        { let layout = "floating";
             let (mut app, [_, _, c]) = tabbed_session(layout);
             let buf = drawn(&mut app, 160, 45);
             let rows = side_text(&app, &buf);
@@ -1680,7 +1675,7 @@ mod screen_tests {
 
     #[test]
     fn a_session_with_one_tab_has_no_tab_lines() {
-        for layout in ["floating", "hairline"] {
+        { let layout = "floating";
             let (_, mut app) = super::design_tests::render_with(160, 45);
             app.cfg.ui.layout = layout.into();
             let buf = drawn(&mut app, 160, 45);
@@ -1693,11 +1688,10 @@ mod screen_tests {
 
     #[test]
     fn a_narrow_title_keeps_the_current_tab_before_any_other() {
-        use crate::config::Rounding;
         let mut failures = Vec::new();
         let mut others_dropped = false;
         let layout = "floating";
-        for rounded in [Rounding::Off, Rounding::Full] {
+        for rounded in [false, true] {
             for place in 0..3 {
                 for w in 44..=110u16 {
                     let (_, mut app) = super::design_tests::render_with(w, 24);
@@ -1710,7 +1704,7 @@ mod screen_tests {
                     let title: String = (card.x..card.right()).map(|x| buf[(x, card.y)].symbol()).collect();
                     // The tabs have their own row over the panes (ADR 0028).
                     // Floating's tabs sit on the top border (ADR 0038): a row of one cell's height.
-                    let row = Rect { height: 1, ..screen::grid(&app, buf.area).tabs };
+                    let row = Rect { height: 1, ..screen::grid(&app, buf.area).panes };
                     let top: String = (row.x..row.right()).map(|x| buf[(x, row.y)].symbol()).collect();
                     let at = format!("{layout} {rounded:?} current {place} {w}: {top} / {title}");
                     show(&at);
@@ -2641,26 +2635,6 @@ mod screen_tests {
         }
     }
 
-    #[test]
-    fn the_hover_is_rounded_with_rounded_shapes_and_square_without() {
-        use crate::client::screen::{CAP_L, CAP_R};
-        for rounded in [true, false] {
-            let (_, mut app) = super::design_tests::render_with(160, 45);
-            app.cfg.ui.rounded = if rounded { crate::config::Rounding::Full } else { crate::config::Rounding::Off };
-            app.mode = Mode::Actions { sel: 0 };
-            draw(&mut app, 160, 45);
-            let (row, _) = *app.hits.iter().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::ActionRow(2))).expect("the third Menu row");
-            app.hover = Some(Position { x: row.x + 4, y: row.y });
-            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
-            term.draw(|f| render::draw(&mut app, f)).unwrap();
-            let buf = term.backend().buffer().clone();
-            let ends = (buf[(row.x, row.y)].symbol().to_string(), buf[(row.right() - 1, row.y)].symbol().to_string());
-            let want = if rounded { (CAP_L.to_string(), CAP_R.to_string()) } else { (" ".to_string(), " ".to_string()) };
-            assert_eq!(ends, want, "rounded {rounded}: the hovered Menu row's ends");
-            assert_ne!(buf[(row.x + 2, row.y)].bg, buf[(row.x, row.y + 1)].bg, "rounded {rounded}: the row is tinted");
-        }
-    }
-
     /// The frame with the pointer at `at`, and without it.
     fn with_and_without_pointer(app: &mut App, at: Position) -> (ratatui::buffer::Buffer, ratatui::buffer::Buffer) {
         let frame = |app: &mut App| {
@@ -2729,7 +2703,7 @@ mod screen_tests {
         // Tiled: no margin, cards edge to edge; square corners when asked.
         app.cfg.ui.panes = "tiled".into();
         app.cfg.ui.fold_retired_layout();
-        app.cfg.ui.rounded = crate::config::Rounding::Off;
+        app.cfg.ui.rounded = false;
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.lines().next().unwrap().starts_with("┌─"), "tiled starts at the very corner, square: {}", o.lines().next().unwrap());
@@ -3359,8 +3333,7 @@ mod screen_tests {
 
     #[test]
     fn a_floating_toast_is_round_whatever_the_rounding_setting() {
-        use crate::config::Rounding;
-        for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+        for rounded in [false, true] {
             let (_, mut app) = super::design_tests::render_with(160, 45);
             app.cfg.ui.rounded = rounded;
             app.notify_card("Copied to clipboard".into(), "9 characters".into(), None, false);
@@ -3917,7 +3890,7 @@ second line
 
     #[test]
     fn the_focused_panes_pull_request_reads_on_the_status_line_in_both_looks() {
-        for (w, h, layout) in [(160, 45, "floating"), (160, 45, "hairline"), (100, 30, "floating"), (100, 30, "hairline")] {
+        for (w, h, layout) in [(160, 45, "floating"), (100, 30, "floating")] {
             let (_, mut app) = super::design_tests::render_with(w, h);
             app.cfg.ui.layout = layout.into();
             app.mode = Mode::Normal;
@@ -4565,7 +4538,7 @@ second line
         }
         let looks = design::settings_rows(modal::Cat::Appearance);
         let looks: Vec<(&str, &str)> = looks.iter().filter_map(|r| match r { design::SRow::Setting(s) => Some((design::settings_group(r), s.label)), _ => None }).collect();
-        for label in ["Layout", "Background", "Sidebar side", "Motion"] {
+        for label in ["Padding", "Background", "Sidebar side", "Motion"] {
             assert!(looks.iter().any(|(g, l)| *l == label && *g == "LAYOUT"), "{label} is on the Appearance page");
         }
         assert!(o.contains("INPUT ─"), "a heading has its rule");
@@ -4654,7 +4627,7 @@ second line
         assert_eq!(buf[(side.x, y)].bg, buf[(side.x + 1, y)].bg, "one ground: the line, not a second grey, marks the card");
         assert_eq!(buf[(side.x, side.y)].symbol(), "┌", "a square corner");
         // Rounded keeps the centred line.
-        app.cfg.ui.rounded = crate::config::Rounding::Full;
+        app.cfg.ui.rounded = true;
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
@@ -5404,7 +5377,7 @@ second line
             for h in [24, 30] {
                 for (mode, update) in [("lit", false), ("held", false), ("typing", true), ("lit", true), ("held", true)] {
                     let (_, mut app) = super::design_tests::render_with(80, h);
-                    (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
+                    (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), true, false);
                     app.cfg.ui.fold_retired_layout();
                     app.update_available = update.then(|| "0.44.0".into());
                     if mode != "typing" {
@@ -5566,12 +5539,11 @@ second line
 
     #[test]
     fn the_mode_bar_holds_in_every_look_sidebar_padding_rounding_and_size() {
-        use crate::config::Rounding;
         let mut failures = Vec::new();
         for layout in LOOKS {
             for side in SIDES {
                 for padding in ["0", "1", "2"] {
-                    for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+                    for rounded in [false, true] {
                         for (w, h) in [(80, 24), (120, 36), (200, 50)] {
                             for mode in ["typing", "lit", "held"] {
                                 let mut app = framed_app(layout, padding, side);
@@ -5585,7 +5557,7 @@ second line
                                 if (row.x, row.y, row.width) != (pad, h - 1 - pad, w - 2 * pad) {
                                     failures.push(format!("{at}: the bar at {row:?}"));
                                 }
-                                let plain = |s: &str| s.replace(screen::CAP_L, " ").replace(screen::CAP_R, " ").split_whitespace().collect::<Vec<_>>().join(" ");
+                                let plain = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
                                 if !plain(&bar).starts_with(&plain(bar_words(mode))) {
                                     failures.push(format!("{at}: {bar}"));
                                 }
@@ -5773,8 +5745,7 @@ second line
     }
 
     #[test]
-    fn every_bar_chip_is_capped_when_rounded_and_its_click_covers_the_caps() {
-        use crate::config::Rounding;
+    fn every_bar_chip_click_covers_the_whole_chip() {
         use screen::ScreenHit as S;
         type SetUp = fn(&mut App);
         let states: [(&str, Option<S>, SetUp); 5] = [
@@ -5793,17 +5764,16 @@ second line
             }),
         ];
         for (words, kind, set_up) in states {
-            for rounded in [Rounding::Off, Rounding::Full] {
+            for rounded in [false, true] {
                 let mut app = shortcut_mode();
                 app.cfg.ui.rounded = rounded;
                 set_up(&mut app);
                 let at = format!("{words} {rounded:?}");
                 let buf = drawn(&mut app, 160, 45);
                 let y = screen::mode_bar_row(&app, buf.area).y;
-                let caps = u16::from(rounded == Rounding::Full);
                 let n = words.chars().count() as u16;
                 let start = on_bar(&app, &buf, words).unwrap_or_else(|| panic!("the chip: {at}"));
-                let r = Rect { x: start - 1 - caps, y, width: n + 2 + 2 * caps, height: 1 };
+                let r = Rect { x: start - 1, y, width: n + 2, height: 1 };
                 match kind {
                     Some(kind) => {
                         let click = app.hits.iter().rev().find(|(h, k)| h.contains(Position::new(start, y)) && *k == Hit::Screen(kind)).map(|(h, _)| *h);
@@ -5812,12 +5782,7 @@ second line
                     None => assert!(app.hits.iter().rev().find(|(h, _)| h.contains(Position::new(start, y))).is_some_and(|(_, k)| *k == Hit::Screen(S::Noop)), "an indicator: {at}"),
                 }
                 let (l, e, inside) = (&buf[(r.x, y)], &buf[(r.right() - 1, y)], buf[(r.x + 1, y)].bg);
-                if rounded == Rounding::Full {
-                    assert_eq!((l.symbol(), l.fg, e.symbol(), e.fg), (screen::CAP_L, inside, screen::CAP_R, inside), "capped, the click on both caps: {at}");
-                    assert_ne!(l.bg, inside, "the caps sit on the bar's ground: {at}");
-                } else {
-                    assert_eq!((l.symbol(), l.bg, e.symbol(), e.bg), (" ", inside, " ", inside), "square: {at}");
-                }
+                assert_eq!((l.symbol(), l.bg, e.symbol(), e.bg), (" ", inside, " ", inside), "square ends: {at}");
             }
         }
     }
@@ -5875,10 +5840,8 @@ second line
                 let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
                 let pane = app.pane_frames.iter().map(|(_, r)| *r).filter(|r| r.y == top).max_by_key(|r| r.right()).expect("the top-right pane");
                 let row: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y)].symbol()).collect();
-                // A lone pane's name, state and ✕ are on its tab, which sits on its top border
-                // except in Hairline, where the tab row is its own: its own top says nothing.
-                let tabs_here = !matches!(layout, "hairline" | "compact");
-                assert!(!row.contains("needs you") && (tabs_here || (!row.contains('×') && !row.contains("claude"))), "{layout} {mode}: {row}");
+                // A lone pane's name, state and × are on its tab, which sits on its top border.
+                assert!(!row.contains("needs you"), "{layout} {mode}: {row}");
                 closes.push(row);
             }
             assert!(closes.windows(2).all(|p| p[0] == p[1]), "{layout}: the pane's top holds still: {closes:?}");
@@ -6111,33 +6074,8 @@ mod settings_v8_tests {
     }
 
     #[test]
-    fn one_layout_setting_names_each_look() {
-        let layout = modal::SETTINGS.iter().find(|s| s.path == "ui.layout").expect("a Layout row");
-        assert!(matches!(layout.kind, modal::Kind::Choice(c) if c == ["floating", "hairline"]), "{:?}", layout.kind);
-        assert!(!modal::SETTINGS.iter().any(|s| s.path == "ui.panes"), "no separate Cards spacing");
-    }
-
-    #[test]
-    fn rounded_says_it_does_not_apply_in_hairline() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let rounded = |o: &str| o.lines().find(|l| l.contains("Rounded")).expect("the Rounded row").to_string();
-        open(&mut app, Cat::Appearance, row_of(Cat::Appearance, "Rounded"));
-        assert!(!rounded(&draw(&mut app, 160, 45)).contains("not in Hairline"), "other looks offer it");
-        app.cfg.ui.layout = "hairline".into();
-        let row = rounded(&draw(&mut app, 160, 45));
-        assert!(row.contains("not in Hairline") && !row.contains("corners"), "{row}");
-    }
-
-    #[test]
-    fn floating_only_settings_say_they_do_not_apply_in_hairline() {
-        for label in ["Pane colours", "Gap"] {
-            let (_, mut app) = super::design_tests::render_with(160, 45);
-            let line = |o: &str| o.lines().find(|l| l.contains(label)).unwrap_or_else(|| panic!("the {label} row")).to_string();
-            open(&mut app, Cat::Appearance, row_of(Cat::Appearance, label));
-            assert!(!line(&draw(&mut app, 160, 45)).contains("not in Hairline"), "{label}: Floating offers it");
-            app.cfg.ui.layout = "hairline".into();
-            assert!(line(&draw(&mut app, 160, 45)).contains("not in Hairline"), "{label}");
-        }
+    fn there_is_one_look_so_no_layout_setting() {
+        assert!(!modal::SETTINGS.iter().any(|s| s.path == "ui.layout" || s.path == "ui.panes"), "no Layout row, no separate Cards spacing");
     }
 
     #[test]
@@ -11073,7 +11011,7 @@ mod pane_swap_tests {
     use ratatui::backend::TestBackend;
     use ratatui::layout::{Position, Rect};
 
-    const LAYOUTS: [&str; 4] = ["floating", "tiled", "grid", "hairline"];
+    const LAYOUTS: [&str; 3] = ["floating", "tiled", "grid"];
     /// Wide enough that Compact splits too.
     const W: u16 = 200;
     const H: u16 = 45;

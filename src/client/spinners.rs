@@ -114,7 +114,7 @@ pub(super) fn draw(app: &mut App, frame: &mut Frame, area: Rect, theme: &Theme, 
     let current = crate::config::spinner_name(&app.cfg.ui.spinner);
     for (i, (name, frames)) in SPINNERS.iter().enumerate().skip(start).take(rows) {
         let row = Rect { x: r.x + 2, y: r.y + 2 + (i - start) as u16, width: r.width.saturating_sub(4), height: 1 };
-        let style = list_row(app, buf, row, view.sel == i, theme);
+        let style = list_row(buf, row, view.sel == i, theme);
         let glyph = frames.get(tick % frames.len().max(1)).copied().unwrap_or(&app.cfg.icons.working);
         put(buf, row.x + 3, row.y, &[seg(format!("{glyph}  {name}"), style.fg(theme.text))], row.right().saturating_sub(11));
         if current == *name {

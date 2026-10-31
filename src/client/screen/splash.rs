@@ -247,7 +247,7 @@ const BANNER_ROWS: u16 = 4;
 /// and `u` with what it does at the right; a click on it does the same.
 fn draw_banner(app: &mut App, buf: &mut Buffer, r: Rect, (news, what, hit_as): (String, &str, ScreenHit), t: &Theme) {
     let look = Look::of(&app.cfg.ui);
-    let ground = if look.hairline { t.bg } else { t.card };
+    let ground = t.card;
     fill(buf, r, ground);
     panel_box(buf, r, look, Style::default().fg(t.accent).bg(ground));
     let y = r.y + 1;

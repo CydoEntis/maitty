@@ -34,7 +34,7 @@ natively on Windows, macOS and Linux.
   each agent turn. A session whose check fails reads *failed*, not *done*.
 - **Agents that work together.** Agents can list, read, message and start other sessions
   through MCP tools, within limits you set, and find the project's reference images there.
-- **Your look.** Two layouts (Floating boxes, or Hairline lines), each pane in its own colour if you like, rounded or square shapes,
+- **Your look.** Floating boxes, each pane in its own colour if you like, rounded or square corners,
   padding round the screen, your cursor's shape, 170 themes with every colour configurable,
   and rebindable shortcuts.
 
@@ -151,9 +151,8 @@ A few examples:
 theme = "tokyo-night"
 
 [ui]
-layout = "floating"        # floating | hairline
 pane_colors = true         # floating: each pane's border in its own colour
-rounded = "full"           # full (needs a Nerd Font) | corners | off
+rounded = true             # rounded card corners
 tab_gap = true             # a cell between one tab and the next; false: they touch
 padding = "small"          # small | medium | large: space round the screen
 

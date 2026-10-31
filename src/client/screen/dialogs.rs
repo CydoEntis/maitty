@@ -184,12 +184,6 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
 
 // Settings ------------------------------------------------------------------------------------
 
-/// A setting the current look ignores: Hairline is always square, has no gaps and no pane
-/// colours (Rounded, Gap and Pane colours are Floating's).
-fn unused_here(app: &App, row: &SRow) -> bool {
-    matches!(row, SRow::Setting(s) if matches!(s.path, "ui.rounded" | "ui.gap" | "ui.pane_colors")) && Look::of(&app.cfg.ui).hairline
-}
-
 /// The values a settings row offers as chips, and which one is current.
 pub(in crate::client) fn chips_for(app: &App, row: &SRow) -> Option<(Vec<String>, Option<usize>)> {
     use crate::client::modal::Kind;
@@ -248,7 +242,6 @@ const TABS_SHORT_BELOW_COLS: u16 = 66;
 pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, v: &SettingsView) {
     use crate::client::design::settings_group;
     use crate::client::modal::Cat;
-    let look = Look::of(&app.cfg.ui);
     hit(app, r, ScreenHit::SettingsBody);
     let c = Style::default().bg(t.card);
     // Tabs: the current one a pill.
@@ -276,7 +269,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         let w = segs_width(&segs) + 2;
         let tr = Rect { x, y: r.y + 2, width: w, height: 1 };
         let segs = if on {
-            pill(look, segs, t.accent, t.card)
+            pill(segs, t.accent)
         } else {
             let bg = if hovered(app, tr) { t.hov } else { t.card };
             let mut out = vec![seg(" ", c.bg(bg))];
@@ -306,7 +299,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         let lead = format!("↑ {} {next} is out — ", env!("APP_COMMAND"));
         let y = vy + lines_used;
         let x = put(buf, r.x + 4, y, &[seg(lead, c.fg(t.accent).add_modifier(Modifier::BOLD))], r.right() - 3);
-        let btn = button_pill(look, t, "Update now", "", true, t.card);
+        let btn = button_pill(t, "Update now", "", true);
         let end = put(buf, x, y, &btn, r.right() - 3);
         hit(app, Rect { x, y, width: end.saturating_sub(x).max(1), height: 1 }, ScreenHit::Update);
     }
@@ -326,7 +319,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         let lead = "Restart pending — ";
         say(buf, lead.into(), c.fg(t.accent).add_modifier(Modifier::BOLD));
         let (x, y) = (r.x + 4 + lead.width() as u16, vy + lines_used);
-        let btn = button_pill(look, t, "Restart now", "R", true, t.card);
+        let btn = button_pill(t, "Restart now", "R", true);
         let end = put(buf, x, y, &btn, r.right() - 3);
         hit(app, Rect { x, y, width: end.saturating_sub(x).max(1), height: 1 }, ScreenHit::Restart);
         put(buf, end, y, &[seg("  or when all sessions close", dot)], r.right() - 3);
@@ -406,14 +399,13 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 let rr = Rect { x: r.x + 3, y, width: r.width.saturating_sub(6), height: 1 };
                 let bg = if sel { t.sel_on(t.card) } else if hovered(app, rr) { t.hover_on(t.card) } else { t.card };
                 if bg != t.card {
-                    row_pill(look, buf, rr.x, y, rr.width, bg, t.card);
+                    row_pill(buf, rr.x, y, rr.width, bg);
                 }
                 let st = Style::default().bg(bg);
                 if sel {
                     put(buf, r.x + 4, y, &[seg("›", st.fg(t.accent).add_modifier(Modifier::BOLD))], r.right());
                 }
-                let unused = unused_here(app, row);
-                let mut ls = st.fg(if unused { t.muted } else if sel { t.strong } else { t.text });
+                let mut ls = st.fg(if sel { t.strong } else { t.text });
                 if sel {
                     ls = ls.add_modifier(Modifier::BOLD);
                 }
@@ -431,14 +423,12 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                     let need: usize = opts.iter().map(|o| o.width() + 3).sum();
                     vx as usize + need < r.right() as usize - 3
                 });
-                if unused {
-                    put(buf, vx, y, &[seg(" not in Hairline", st.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 3);
-                } else if let Some((opts, cur)) = chips.filter(|_| !(sel && v.editing.is_some())) {
+                if let Some((opts, cur)) = chips.filter(|_| !(sel && v.editing.is_some())) {
                     let mut cx = vx;
                     for (vi, o) in opts.iter().enumerate() {
                         let on = Some(vi) == cur;
                         // The chosen one a pill; the others plain, the same width.
-                        let segs = if on { pill(look, vec![seg(o.clone(), Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))], t.accent, bg) } else { vec![seg(format!(" {o} "), st.fg(t.muted))] };
+                        let segs = if on { pill(vec![seg(o.clone(), Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))], t.accent) } else { vec![seg(format!(" {o} "), st.fg(t.muted))] };
                         let w = segs_width(&segs);
                         put(buf, cx, y, &segs, r.right() - 3);
                         hit(app, Rect { x: cx, y, width: w, height: 1 }, ScreenHit::SetVal(*i, vi));
@@ -476,12 +466,6 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
             let mut st = Style::default().bg(card_look.bg).fg(fg);
             if focus {
                 st = st.add_modifier(Modifier::BOLD);
-            }
-            // Hairline previews a pane as it draws one: its name over its rule.
-            if Look::of(&app.cfg.ui).hairline {
-                (card_look.title, card_look.title_fg, card_look.docked) = (label, fg, true);
-                card(app, buf, mr, &card_look, t);
-                return;
             }
             card(app, buf, mr, &card_look, t);
             put(buf, mx + 2, py + 2, &[seg(label, st)], mr.right() - 1);

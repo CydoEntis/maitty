@@ -190,22 +190,16 @@ fn row_term(model: &[Proj], l: &Line) -> Option<TermId> {
 struct Cols {
     x: u16,
     rx: u16,
-    /// Rounded rows end in a cap on the last cell of their tint, so nothing else is drawn there.
-    cap: bool,
-    /// A folder row starts a cell before X, so its fold button keeps X and its left end is a
-    /// blank cell that can take a cap: with caps on.
-    lead: bool,
 }
 
 impl Cols {
-    fn of(r: Rect, cap: bool) -> Cols {
-        Cols { x: r.x + 2, rx: r.right().saturating_sub(3), cap, lead: cap }
+    fn of(r: Rect) -> Cols {
+        Cols { x: r.x + 2, rx: r.right().saturating_sub(3) }
     }
 
-    /// A folder's row: `row`, a cell longer on the left when it can end in a cap there.
+    /// A folder's row.
     fn proj_row(self, y: u16) -> Rect {
-        let lead = u16::from(self.lead);
-        Rect { x: self.x - lead, width: self.row(y).width + lead, ..self.row(y) }
+        self.row(y)
     }
 
     /// The end (exclusive) of a row's tint: a column past RX inside a card.
@@ -213,10 +207,9 @@ impl Cols {
         self.rx + 2
     }
 
-    /// The end (exclusive) of anything drawn on a row, so a cut line's `…` stays in sight. A cap
-    /// takes the last cell of the tint.
+    /// The end (exclusive) of anything drawn on a row, so a cut line's `…` stays in sight.
     fn end(self) -> u16 {
-        self.tint_end() - u16::from(self.cap)
+        self.tint_end()
     }
 
     fn row(self, y: u16) -> Rect {
@@ -247,7 +240,6 @@ impl RowLook {
 /// The sidebar card: its title and counts, projects with their sessions under them, new and
 /// actions at the foot.
 pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
-    let look = Look::of(&app.cfg.ui);
     let pb = pane_bg(t);
     let focused_side = side_focused(app);
     let mut c = Card::new(t, "");
@@ -258,7 +250,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     app.screen.side_rect = r;
     hit(app, r, ScreenHit::SideFocus);
     draw_head(app, buf, r, model, t, focused_side);
-    let cols = Cols::of(r, look.round_rows);
+    let cols = Cols::of(r);
     let screen_w = buf.area.width;
     let lines = fitted_lines(app, model, t, screen_w);
     let focus = open_row(app);
@@ -266,7 +258,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     // The foot is lifted a row off the bottom (Cards: it sits above the border), a divider over it.
     let foot_y = r.bottom().saturating_sub(2);
     // Update (or Restart) takes the row over the divider while there is room for it.
-    let release = if r.height >= 8 { release_chip(app, look, cols, pb, t) } else { None };
+    let release = if r.height >= 8 { release_chip(app, cols, t) } else { None };
     app.screen.release_in_side = release.is_some();
     let list_h = foot_y.saturating_sub(1 + u16::from(release.is_some())).saturating_sub(top) as usize;
     let scroll = side_scroll(app, model, &lines, focus, list_h);
@@ -309,15 +301,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             if rl.bg != pb {
                 fill(buf, row, rl.bg);
             }
-            if look.round_rows && rl.bg != pb && row.width > 2 {
-                // A one-line row is a pill. A block of lines keeps square ends: caps would
-                // scallop it and quarter-cell corners notch it, so its lines meet as one block.
-                let first = (scroll..=i).rev().find(|&j| matches!(lines[j], Line::Sess(..)) || j == scroll).unwrap_or(i);
-                if row_rect(first, top + (first - scroll) as u16).height == 1 {
-                    buf[(row.x, y)].set_symbol(CAP_L).set_fg(rl.bg).set_bg(pb);
-                    buf[(row.right() - 1, y)].set_symbol(CAP_R).set_fg(rl.bg).set_bg(pb);
-                }
-            } else if let Some(c) = rl.bar {
+            if let Some(c) = rl.bar {
                 check::edge(app, buf, cols.x, y, c, rl.bg);
             }
             if matches!(line, Line::Sess(..)) || i == scroll {
@@ -359,7 +343,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     if let Some(gy) = gliding.filter(|gy| (top..top + list_h as u16).contains(gy))
         && app.screen.row_y.get(&focus.unwrap_or_default()) != Some(&gy)
     {
-        tint_row(look, buf, cols.x, gy, cols.tint_end() - cols.x, t.sel_bg(), pb);
+        tint_row(buf, cols.x, gy, cols.tint_end() - cols.x, t.sel_bg());
     }
 }
 
@@ -447,10 +431,7 @@ fn draw_head(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme
     let (chip_bg, ink, count) = if lit { (t.accent, t.acc_ink, t.acc_ink) } else { (t.btn, t.strong, t.text) };
     let chip = Style::default().bg(chip_bg);
     let host = crate::ipc::remote().map(|h| format!(" ⇄ {h}")).unwrap_or_default();
-    let mut title = vec![seg(" SESSIONS", chip.fg(ink).add_modifier(Modifier::BOLD)), seg(format!(" {}{host} ", all.len()), chip.fg(count))];
-    if Look::of(&app.cfg.ui).caps {
-        title = round_ends(title, Color::Reset);
-    }
+    let title = vec![seg(" SESSIONS", chip.fg(ink).add_modifier(Modifier::BOLD)), seg(format!(" {}{host} ", all.len()), chip.fg(count))];
     put(buf, r.x + 2, r.y, &title, rx.saturating_sub(1));
     if rw > 0 {
         let pad = seg(" ", ground);
@@ -771,16 +752,7 @@ fn draw_proj(app: &mut App, buf: &mut Buffer, model: &[Proj], pi: usize, cols: C
     if bg != pb {
         fill(buf, row, bg);
     }
-    // A selected folder row is one line, so it can end in half-circles. Text stops a cell short
-    // of the right cap; the left one has a cell of its own before the fold button.
-    let round = on && Look::of(&app.cfg.ui).round_tabs;
-    let text_end = if round { row.right() - 1 } else { cols.rx + 1 };
-    if round {
-        buf[(text_end, y)].set_symbol(CAP_R).set_fg(bg).set_bg(pb);
-        if cols.lead {
-            buf[(row.x, y)].set_symbol(CAP_L).set_fg(bg).set_bg(pb);
-        }
-    }
+    let text_end = cols.rx + 1;
     let st = Style::default().bg(bg);
     if !app.screen.fold_colors.contains_key(&p.key) {
         app.pick_fold_color(&p.key);
@@ -842,25 +814,22 @@ fn checkpoint_names(app: &App, p: &Proj) -> Vec<String> {
     names
 }
 
-/// A `btn` chip: `word` in `text`, after an `accent` bold `icon` when it has one. Its ends
-/// follow `ui.rounded`.
-pub(super) fn word_chip(app: &App, icon: Option<&str>, word: &str, t: &Theme, outer: Color) -> Vec<Seg> {
-    let look = Look::of(&app.cfg.ui);
+/// A `btn` chip: `word` in `text`, after an `accent` bold `icon` when it has one.
+pub(super) fn word_chip(icon: Option<&str>, word: &str, t: &Theme) -> Vec<Seg> {
     let mut body = Vec::new();
     if let Some(icon) = icon {
         body.push(seg(format!("{icon} "), Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD)));
     }
     body.push(seg(word, Style::default().fg(t.text).bg(t.btn)));
-    pill(look, body, t.btn, outer)
+    pill(body, t.btn)
 }
 
 /// The Update or Restart chip as wide as the sidebar allows (all its words, else the version),
 /// or none when even that does not fit.
-fn release_chip(app: &App, look: Look, cols: Cols, pb: Color, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
+fn release_chip(app: &App, cols: Cols, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
     let room = (cols.rx + 1).saturating_sub(cols.x + 1);
     [mode_bar::Release::Words, mode_bar::Release::Version].into_iter().find_map(|shown| {
         let (segs, h) = mode_bar::release_segs(app, shown, t)?;
-        let segs = if look.caps { round_ends(segs, pb) } else { segs };
         (segs_width(&segs) <= room).then_some((segs, h))
     })
 }
@@ -874,8 +843,8 @@ fn draw_foot(app: &mut App, buf: &mut Buffer, r: Rect, cols: Cols, pb: Color, t:
     }
     let y = r.bottom().saturating_sub(2);
     hline(buf, cols.x, y - 1, (cols.rx + 1).saturating_sub(cols.x), t, pb);
-    let new = word_chip(app, Some("+"), "New", t, pb);
-    let menu = word_chip(app, None, "Menu", t, pb);
+    let new = word_chip(Some("+"), "New", t);
+    let menu = word_chip(None, "Menu", t);
     let (nw, mw) = (segs_width(&new), segs_width(&menu));
     let nx = cols.x + 1;
     if nx + nw > cols.rx + 1 {
@@ -1370,20 +1339,6 @@ mod v8_tests {
     }
 
     #[test]
-    fn with_full_rounding_the_open_row_has_round_ends() {
-        use crate::client::screen::{CAP_L, CAP_R};
-        let mut app = world(Stage::None);
-        app.cfg.ui.rounded = crate::config::Rounding::Full;
-        let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
-        let (x, y) = find(&buf, &app, "fix-footer");
-        let r = app.screen.side_rect;
-        let row: Vec<String> = (r.x..r.right()).map(|xx| buf[(xx, y)].symbol().to_string()).collect();
-        let first = row.iter().position(|c| c == CAP_L).expect("a round left end");
-        let last = row.iter().rposition(|c| c == CAP_R).expect("a round right end");
-        assert!(r.x + (first as u16) < x && r.x + (last as u16) > x, "round ends either side of the name: {row:?}");
-    }
-
-    #[test]
     fn a_finished_seen_row_is_one_line_at_every_width() {
         let mut app = world(Stage::None);
         app.snap.terms.get_mut(&4).unwrap().status = Status::Idle;
@@ -1482,13 +1437,13 @@ mod v8_tests {
         app.side_frac = 0.0;
         assert!(!app.sidebar && !app.side_hidden && super::super::draw::strip_on(&app), "z: the column");
         let g = super::super::draw::grid(&app, area);
-        assert_eq!((g.side.width, g.tabs.y), (crate::client::screen::RAIL_W, 0), "a narrow column stays, and the tab row keeps the top row");
+        assert_eq!(g.side.width, crate::client::screen::RAIL_W, "a narrow column stays");
         assert!(g.panes.x >= g.side.right() && g.panes.right() == area.right(), "the panes take the rest of the width");
         app.act(Action::HideSidebar);
         app.side_frac = 0.0;
         assert!(app.side_hidden && !super::super::draw::strip_on(&app), "Z: hidden");
         let g = super::super::draw::grid(&app, area);
-        assert_eq!((g.tabs.x, g.tabs.y, g.panes.x, g.panes.width), (0, 0, 0, 120), "hidden gives the tabs and panes everything");
+        assert_eq!((g.panes.x, g.panes.width), (0, 120), "hidden gives the panes everything");
         app.act(Action::ToggleSidebar);
         assert!(app.sidebar && !app.side_hidden, "z restores the sidebar");
         app.act(Action::HideSidebar);

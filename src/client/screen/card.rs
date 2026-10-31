@@ -1,57 +1,24 @@
-//! The frame's pieces: cards with their title chip set into the top border (Flat: a header
-//! strip), pills (buttons, selected rows), and fading what isn't in focus.
+//! The frame's pieces: cards with their title chip set into the top border, pills (buttons,
+//! selected rows), and fading what isn't in focus.
 
 use super::*;
 
-/// Nerd Font half-circles that round a pill's ends.
-pub(in crate::client) const CAP_L: &str = "\u{e0b6}";
-pub(in crate::client) const CAP_R: &str = "\u{e0b4}";
-
-thread_local! {
-    /// Round pill ends (the `ui.rounded` setting), for drawing that has no `Look` at hand.
-    /// Per thread because frames are drawn on one thread; a process-wide flag let tests that
-    /// draw in parallel overwrite each other's setting mid-frame.
-    static ROUND: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
-}
-
-/// Set once a frame from the settings.
-pub(in crate::client) fn set_round(on: bool) {
-    ROUND.set(on);
-}
-
-fn round() -> bool {
-    ROUND.get()
-}
-
-/// A pill's two ends in `bg`: half-circles that keep the ground under them, or plain cells
-/// of `bg` (square ends) without a Nerd Font.
+/// A pill's two ends: a plain cell of `bg` each.
 pub(in crate::client) fn ends(bg: Color) -> (Seg, Seg) {
-    if round() {
-        let st = Style::default().fg(bg);
-        (seg(CAP_L, st), seg(CAP_R, st))
-    } else {
-        let st = Style::default().bg(bg);
-        (seg(" ", st), seg(" ", st))
-    }
+    let st = Style::default().bg(bg);
+    (seg(" ", st), seg(" ", st))
 }
 
-/// A one-row strip of `bg` across `r` with round ends (an input, a bar of buttons). The ends
-/// keep the ground under them; draw the strip's text from a column in.
+/// A one-row strip of `bg` across `r` (an input, a bar of buttons). Draw the strip's text from
+/// a column in.
 pub(in crate::client) fn strip(buf: &mut Buffer, r: Rect, bg: Color) {
-    if r.width < 3 || !round() {
-        fill(buf, r, bg);
-        return;
-    }
-    fill(buf, Rect { x: r.x + 1, width: r.width - 2, ..r }, bg);
-    let (l, e) = ends(bg);
-    put(buf, r.x, r.y, &[l], r.x + 1);
-    put(buf, r.right() - 1, r.y, &[e], r.right());
+    fill(buf, r, bg);
 }
 
 /// `text` on a pill in the style's background, as wide as `" text "` would be.
 pub(in crate::client) fn chip(text: &str, st: Style) -> Vec<Seg> {
     let (l, r) = ends(st.bg.unwrap_or(Color::Reset));
-    plain(vec![l, seg(text, st), r])
+    vec![l, seg(text, st), r]
 }
 
 /// How far the inside of an unfocused card fades toward its background: normal is the design's v5.
@@ -70,125 +37,48 @@ pub(in crate::client) fn pane_bg(t: &Theme) -> Color {
 pub(in crate::client) struct Look {
     /// Pane colours: each pane a box in its own colour (Floating only, ADR 0027).
     pub pane_colors: bool,
-    /// Hairline: no boxes, only `│` / `─` hairlines, and always square (ADR 0026). Drawing
-    /// asks this, and takes its colours from `hairline::Ink`.
-    pub hairline: bool,
+    /// Rounded card corners (`ui.rounded`).
     pub rounded: bool,
     /// A cell clear between one tab chip and the next (`ui.tab_gap`).
     pub tab_gap: bool,
     /// Rows between stacked cards, and columns between cards side by side.
     pub gap: u16,
     pub dim: f32,
-    pub caps: bool,
-    /// Round the ends of the tab chips and the sidebar's selected folder row (`ui.rounded`).
-    pub round_tabs: bool,
-    /// Round the ends of the sidebar's session rows (`ui.rounded`).
-    pub round_rows: bool,
 }
 
 impl Look {
     pub fn of(ui: &crate::config::Ui) -> Look {
-        use crate::config::LayoutKind;
-        let kind = ui.layout_kind();
-        let hairline = kind == LayoutKind::Hairline;
-        let rounding = ui.rounding();
         Look {
-            pane_colors: ui.pane_colors && !hairline,
-            hairline,
-            rounded: rounding.corners(),
+            pane_colors: ui.pane_colors,
+            rounded: ui.rounded,
             tab_gap: ui.tab_gap,
-            gap: if hairline { 0 } else { crate::config::size_cells(&ui.gap).min(3) },
+            gap: crate::config::size_cells(&ui.gap).min(3),
             dim: match ui.dim.as_str() {
                 "off" => 0.0,
                 "light" | "subtle" => DIM_LIGHT,
                 "heavy" | "60%" => DIM_HEAVY,
                 _ => DIM_NORMAL,
             },
-            caps: rounding.caps(),
-            round_tabs: rounding.caps(),
-            round_rows: rounding.caps(),
         }
     }
 }
 
-/// `segs` on a pill of `bg`, its ends rounded on `outer` (or squared off without a Nerd Font).
-pub(in crate::client) fn pill(look: Look, segs: Vec<Seg>, bg: Color, outer: Color) -> Vec<Seg> {
-    let (l, r) = if look.caps { (CAP_L, CAP_R) } else { (" ", " ") };
-    let end = |s: &str| if look.caps { seg(s, Style::default().fg(bg).bg(outer)) } else { seg(s, Style::default().bg(bg)) };
-    let mut out = vec![end(l)];
-    out.extend(segs.into_iter().map(|(x, st)| (x, st.bg(bg))));
-    out.push(end(r));
-    plain(out)
-}
-
-/// `segs` with a half-circle cap each end, in the first and last segment's background, over
-/// `outer`. Unlike `pill` it keeps each segment's own colours, so a number chip and a name
-/// chip stay two colours inside one rounded shape.
-pub(in crate::client) fn round_ends(segs: Vec<Seg>, outer: Color) -> Vec<Seg> {
-    let cap = |glyph: &str, st: Option<&Seg>| {
-        let bg = st.and_then(|(_, s)| s.bg).unwrap_or(outer);
-        seg(glyph, Style::default().fg(bg).bg(outer))
-    };
-    let (l, r) = (cap(CAP_L, segs.first()), cap(CAP_R, segs.last()));
+/// `segs` on a pill of `bg`, a space of it each end.
+pub(in crate::client) fn pill(segs: Vec<Seg>, bg: Color) -> Vec<Seg> {
+    let (l, r) = ends(bg);
     let mut out = vec![l];
-    out.extend(segs);
+    out.extend(segs.into_iter().map(|(x, st)| (x, st.bg(bg))));
     out.push(r);
     out
 }
 
 /// A pill as wide as `w`: the selected row of a list, an input, the answer bar.
-pub(in crate::client) fn row_pill(look: Look, buf: &mut Buffer, x: u16, y: u16, w: u16, bg: Color, outer: Color) {
+pub(in crate::client) fn row_pill(buf: &mut Buffer, x: u16, y: u16, w: u16, bg: Color) {
     if w < 2 {
         return;
     }
-    let segs = pill(look, vec![seg(" ".repeat((w - 2) as usize), Style::default())], bg, outer);
+    let segs = pill(vec![seg(" ".repeat((w - 2) as usize), Style::default())], bg);
     put(buf, x, y, &segs, x + w);
-}
-
-/// The left and right end of line `i` of a block `n` lines tall drawn in one colour: half-circle
-/// caps for a single line; for a taller block quarter cells at its corners and half cells down
-/// its sides, so it reads as one shape with softened corners rather than a stack of pills.
-pub(in crate::client) fn block_ends(i: u16, n: u16) -> (&'static str, &'static str) {
-    match (i, n) {
-        (_, 0 | 1) => (CAP_L, CAP_R),
-        (0, _) => ("▗", "▖"),
-        (i, n) if i + 1 == n => ("▝", "▘"),
-        _ => ("▐", "▌"),
-    }
-}
-
-/// The glyphs a rounded shape's end is drawn with: a pill's caps and a block's soft edges.
-const END_GLYPHS: [&str; 8] = [CAP_L, CAP_R, "▗", "▖", "▝", "▘", "▐", "▌"];
-
-/// Round the ends of a region just tinted (the pointer's hover), with rounded shapes on. An end
-/// already rounded keeps its shape in the tinted colour, over `behind`, the ground there before
-/// the tint. A one-line region's end holding only ground becomes a cap; a taller region's stays
-/// square, so a block of rows lights as one even block. An end with text in it stays square,
-/// so nothing is drawn over.
-pub(in crate::client) fn round_tinted(buf: &mut Buffer, r: Rect, behind: &[(Color, Color)], tint: impl Fn(Color) -> Color) {
-    let r = r.intersection(buf.area);
-    if !round() || r.width < 2 {
-        return;
-    }
-    for (i, y) in (r.y..r.bottom()).enumerate() {
-        let (l, e) = block_ends(i as u16, r.height);
-        let (bl, br) = behind.get(i).copied().unwrap_or((Color::Reset, Color::Reset));
-        for (x, glyph, under) in [(r.x, l, bl), (r.right() - 1, e, br)] {
-            let cell = &mut buf[(x, y)];
-            let shape = match cell.symbol() {
-                " " if r.height == 1 => cell.bg,
-                s if END_GLYPHS.contains(&s) => tint(cell.fg),
-                _ => continue,
-            };
-            cell.set_symbol(glyph).set_fg(shape).set_bg(under);
-        }
-    }
-}
-
-/// What lies under the two ends of each line of `r`, read before a block is drawn over it.
-pub(in crate::client) fn ends_behind(buf: &Buffer, r: Rect) -> Vec<(Color, Color)> {
-    let r = r.intersection(buf.area);
-    (r.y..r.bottom()).map(|y| (buf[(r.x, y)].bg, buf[(r.right().saturating_sub(1), y)].bg)).collect()
 }
 
 /// A card's corners by the setting: top left, top right, bottom left, bottom right.
@@ -197,8 +87,8 @@ pub(in crate::client) fn corners(look: Look) -> [&'static str; 4] {
 }
 
 /// A row's highlight laid over what's already drawn there (a glide passing over rows): its
-/// ground becomes `bg`, its text stays, with the pill's ends.
-pub(in crate::client) fn tint_row(look: Look, buf: &mut Buffer, x: u16, y: u16, w: u16, bg: Color, outer: Color) {
+/// ground becomes `bg`, its text stays.
+pub(in crate::client) fn tint_row(buf: &mut Buffer, x: u16, y: u16, w: u16, bg: Color) {
     let area = buf.area;
     if w < 2 || y < area.y || y >= area.bottom() {
         return;
@@ -207,22 +97,18 @@ pub(in crate::client) fn tint_row(look: Look, buf: &mut Buffer, x: u16, y: u16, 
     for xx in x.max(area.x)..right {
         buf[(xx, y)].set_bg(bg);
     }
-    if look.caps {
-        buf[(x, y)].set_symbol(CAP_L).set_fg(bg).set_bg(outer);
-        buf[(right - 1, y)].set_symbol(CAP_R).set_fg(bg).set_bg(outer);
-    }
 }
 
 /// A button as a pill: the primary one in the accent, the others raised with their key lit.
 /// The pointer's tint is laid over every clickable region after drawing (`render`).
-pub(in crate::client) fn button_pill(look: Look, t: &Theme, label: &str, key: &str, primary: bool, outer: Color) -> Vec<Seg> {
+pub(in crate::client) fn button_pill(t: &Theme, label: &str, key: &str, primary: bool) -> Vec<Seg> {
     let (bg, fg, kf) = if primary { (t.accent, t.acc_ink, t.acc_ink) } else { (t.btn, t.strong, t.accent) };
     let b = Style::default().add_modifier(Modifier::BOLD);
     let mut segs = vec![seg(format!("{label} "), b.fg(fg))];
     if !key.is_empty() {
         segs.push(seg(key, b.fg(kf)));
     }
-    pill(look, segs, bg, outer)
+    pill(segs, bg)
 }
 
 /// What a card shows in and around its border.
@@ -244,14 +130,11 @@ pub(in crate::client) struct Card<'a> {
     pub title_fg: Color,
     /// The inside's ground.
     pub bg: Color,
-    /// Docked beside the panes (the side sheet): in Hairline a zone like a pane, a title over a
-    /// rule and a `│` to its left, not a box.
-    pub docked: bool,
 }
 
 impl<'a> Card<'a> {
     pub fn new(t: &Theme, title: &'a str) -> Card<'a> {
-        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t), docked: false }
+        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t) }
     }
 
     /// The focused look: the border and the title chip in `c`.
@@ -263,28 +146,17 @@ impl<'a> Card<'a> {
 }
 
 /// How wide a card's ✕ is drawn on its top border, the spaces round it included.
-pub(in crate::client) fn close_width(look: Look, after_right: bool) -> u16 {
-    if look.hairline { close_lead(look, after_right) + 2 * u16::from(look.caps) + 2 } else { close_lead(look, after_right) + red_close_w(look) }
+pub(in crate::client) fn close_width(after_right: bool) -> u16 {
+    close_lead(after_right) + RED_CLOSE_W
 }
 
-/// The red close button's width: the ✕ and a cell each side, flush against the corner, and
-/// with caps a cap more each side. The padding keeps a font's wide ✕ off the caps.
-fn red_close_w(look: Look) -> u16 {
-    if look.caps { 5 } else { 3 }
-}
+/// The red close button's width: the × and a cell each side, covering the corner. The padding
+/// keeps a font's wide glyph off the border.
+const RED_CLOSE_W: u16 = 3;
 
-/// Spaces before the ✕: two after other right-hand segments. Alone, a square ✕'s chip starts on
-/// the padding before the segments, where the reference frames put it; a capped chip needs that cell
-/// blank to stand clear of the border, so it starts a cell on.
-fn close_lead(look: Look, after_right: bool) -> u16 {
-    if after_right { 2 } else if look.hairline { u16::from(look.caps) } else { 0 }
-}
-
-/// The ✕'s click target, which the pointer's tint lights: the ✕ and a cell each side, and with
-/// caps a space more each side inside them, so the hovered ✕ is a whole chip like the others
-/// rather than two caps pressed against the glyph.
-fn close_chip_w(look: Look) -> u16 {
-    if look.hairline && !look.caps { 3 } else if look.hairline { 5 } else { red_close_w(look) }
+/// Spaces before the ×: two after other right-hand segments.
+fn close_lead(after_right: bool) -> u16 {
+    if after_right { 2 } else { 0 }
 }
 
 /// Where a card's title chip starts: on the top border two in.
@@ -298,15 +170,8 @@ pub(in crate::client) fn right_end(r: Rect) -> u16 {
 }
 
 /// The title chip, at most `room` wide: the title (and its sub, dropped first) padded by a
-/// space each side on `btn`, or on the focus colour when focused; with rounded shapes its ends
-/// are caps on `ground`.
-fn title_chip(look: Look, c: &Card, t: &Theme, room: u16, ground: Color) -> Vec<Seg> {
-    let caps = look.caps && c.chips.is_empty() && !c.title.is_empty();
-    let chip = plain_title_chip(c, t, room.saturating_sub(if caps { 2 } else { 0 }));
-    if caps { round_ends(chip, ground) } else { plain(chip) }
-}
-
-fn plain_title_chip(c: &Card, t: &Theme, room: u16) -> Vec<Seg> {
+/// space each side on `btn`, or on the focus colour when focused.
+fn title_chip(c: &Card, t: &Theme, room: u16) -> Vec<Seg> {
     if !c.chips.is_empty() || c.title.is_empty() {
         return c.chips.clone();
     }
@@ -333,43 +198,24 @@ fn plain_title_chip(c: &Card, t: &Theme, room: u16) -> Vec<Seg> {
 
 /// Draw a card: a box in `line` (`border` when focused) with square or rounded corners, the
 /// title chip on the top border two in and the right-hand segments ending three before the
-/// corner (a docked card in Hairline is a zone instead). Returns the inside.
+/// corner. Returns the inside.
 pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card, t: &Theme) -> Rect {
     let look = Look::of(&app.cfg.ui);
     let r = r.intersection(buf.area);
     if r.width < 4 || r.height < 2 {
         return Rect { width: 0, height: 0, ..r };
     }
-    let inside = if look.hairline && c.docked {
-        // No second `│` beside one already there (the sidebar's, when it takes the pane column).
-        hairline_zone(buf, r, c, t, ruled(app, buf, r) && buf[(r.x - 1, r.y)].symbol() != "│")
-    } else {
-        box_frame(buf, r, c, look)
-    };
+    let inside = box_frame(buf, r, c, look);
     let ground = t.bg;
     let mut right = c.right.clone();
-    // The red button sits flush against the corner; Hairline's quiet ✕ keeps a cell of padding.
-    let flush = c.close.is_some() && !look.hairline;
-    if c.close.is_some() {
-        let lead = " ".repeat(close_lead(look, !right.is_empty()) as usize);
-        let close = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
-        if flush {
-            right.push(seg(lead, Style::default()));
-            let glyph = Style::default().fg(t.strong).bg(t.err).add_modifier(Modifier::BOLD);
-            if look.caps {
-                // A pill: caps in the button's colour over the border's ground.
-                let cap = Style::default().fg(t.err).bg(ground);
-                right.extend([seg(CAP_L, cap), seg(format!(" {close} "), glyph), seg(CAP_R, cap)]);
-            } else {
-                right.push(seg(format!(" {close} "), glyph));
-            }
-        } else {
-            let inner = if look.caps { " " } else { "" };
-            right.push(seg(format!("{lead}{inner}{close}{inner} "), Style::default().fg(t.muted)));
-        }
-    }
     // The red button covers the corner cell: left clear, the corner and the padding before the
-    // button read as a gap in the border.
+    // button would read as a gap in the border.
+    let flush = c.close.is_some();
+    if flush {
+        right.push(seg(" ".repeat(close_lead(!right.is_empty()) as usize), Style::default()));
+        let close = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
+        right.push(seg(format!(" {close} "), Style::default().fg(t.strong).bg(t.err).add_modifier(Modifier::BOLD)));
+    }
     let end = if flush { r.right() } else { right_end(r) };
     let rw = segs_width(&right);
     let rx = end.saturating_sub(rw);
@@ -383,12 +229,11 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
         let segs: Vec<Seg> = before.into_iter().chain(right).chain(after).map(|(s, st)| (s, if st.bg.is_none() { st.bg(ground) } else { st })).collect();
         put(buf, rx - pad, r.y, &segs, end + if flush { 0 } else { pad });
         if let Some(h) = c.close {
-            let w = close_chip_w(look);
-            hit(app, Rect { x: end.saturating_sub(w), y: r.y, width: w, height: 1 }, h);
+            hit(app, Rect { x: end.saturating_sub(RED_CLOSE_W), y: r.y, width: RED_CLOSE_W, height: 1 }, h);
         }
     }
     let chip_end = if shown { rx.saturating_sub(2) } else { end };
-    put(buf, chip_x, r.y, &title_chip(look, c, t, chip_end.saturating_sub(chip_x), Color::Reset), chip_end);
+    put(buf, chip_x, r.y, &title_chip(c, t, chip_end.saturating_sub(chip_x)), chip_end);
     inside
 }
 
@@ -414,31 +259,6 @@ fn box_frame(buf: &mut Buffer, r: Rect, c: &Card, look: Look) -> Rect {
     Rect { x: x + 1, y: y + 1, width: r.width - 2, height: r.height - 2 }
 }
 
-/// Whether a docked zone at `r` has a `│` rule down its left: it does not start at the left of
-/// the room the screen is laid out in (the window less its padding), as the panes beside a
-/// left sidebar, or a sidebar on the right.
-pub(in crate::client) fn ruled(app: &App, buf: &Buffer, r: Rect) -> bool {
-    r.x > framed(app, buf.area).x
-}
-
-/// A docked card in Hairline: the title row, a `─` rule under it (in `border` when focused,
-/// as a pane's), and a `│` down its left when `ruled`. Returns the inside, under the rule.
-fn hairline_zone(buf: &mut Buffer, r: Rect, c: &Card, t: &Theme, ruled: bool) -> Rect {
-    fill(buf, r, c.bg);
-    fill(buf, Rect { height: 2, ..r }, t.bg);
-    let lead = u16::from(ruled);
-    if ruled {
-        for yy in r.y..r.bottom() {
-            buf[(r.x, yy)].set_symbol("│").set_style(Style::default().fg(t.line).bg(t.bg));
-        }
-    }
-    let rule = Style::default().fg(if c.bold { c.border } else { t.line }).bg(t.bg);
-    for xx in r.x + lead..r.right() {
-        buf[(xx, r.y + 1)].set_symbol("─").set_style(rule);
-    }
-    Rect { x: r.x + lead, y: r.y + 2, width: r.width - lead, height: r.height.saturating_sub(2) }
-}
-
 /// Fade everything inside `r` toward its own ground by `amount`, keeping colours recognisable.
 pub(in crate::client) fn dim_inside(buf: &mut Buffer, r: Rect, amount: f32, t: &Theme) {
     if amount <= 0.0 {
@@ -459,41 +279,16 @@ pub(in crate::client) fn dim_inside(buf: &mut Buffer, r: Rect, amount: f32, t: &
 mod tests {
     use super::*;
 
-    /// Frames are drawn on the UI thread, but tests draw on many threads at once; one test's
-    /// layout must not change the pill ends another is drawing.
     #[test]
-    fn the_pill_end_style_is_per_thread() {
-        set_round(true);
-        std::thread::spawn(|| set_round(false)).join().unwrap();
-        assert_eq!(ends(Color::Red).0.0, CAP_L, "another thread's setting leaked into this one");
-    }
-
-    fn look(layout: &str, caps: bool) -> Look {
-        let ui = crate::config::Ui { layout: layout.into(), rounded: if caps { crate::config::Rounding::Full } else { crate::config::Rounding::Off }, ..Default::default() };
-        Look::of(&ui)
-    }
-
-    #[test]
-    fn pill_caps_apply_in_every_layout() {
-        for layout in ["cards", "flat"] {
-            assert!(look(layout, true).caps, "{layout}: caps on");
-            assert!(!look(layout, false).caps, "{layout}: caps off");
-        }
-    }
-
-    #[test]
-    fn a_flat_pill_end_sits_on_the_zones_ground() {
+    fn a_pill_ends_in_a_plain_cell_of_its_colour() {
         let (pill_bg, ground) = (Color::Rgb(40, 40, 40), Color::Rgb(10, 20, 30));
         let mut buf = Buffer::empty(Rect::new(0, 0, 8, 1));
-        row_pill(look("flat", true), &mut buf, 1, 0, 6, pill_bg, ground);
-        for (x, cap) in [(1, CAP_L), (6, CAP_R)] {
+        buf.set_style(Rect::new(0, 0, 8, 1), Style::default().bg(ground));
+        row_pill(&mut buf, 1, 0, 6, pill_bg);
+        for x in [1, 3, 6] {
             let c = &buf[(x, 0)];
-            assert_eq!((c.symbol(), c.fg, c.bg), (cap, pill_bg, ground), "end at {x}");
+            assert_eq!((c.symbol(), c.bg), (" ", pill_bg), "cell {x}");
         }
-        assert_eq!(buf[(3, 0)].bg, pill_bg);
-
-        let mut square = Buffer::empty(Rect::new(0, 0, 8, 1));
-        row_pill(look("flat", false), &mut square, 1, 0, 6, pill_bg, ground);
-        assert_eq!((square[(1, 0)].symbol(), square[(1, 0)].bg), (" ", pill_bg), "off: a plain cell of the pill's colour");
+        assert_eq!(buf[(0, 0)].bg, ground, "nothing beside it");
     }
 }

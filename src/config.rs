@@ -120,8 +120,8 @@ pub struct Ui {
     /// A session's tabs as lines under its sidebar row (`SIDEBAR_TABS`): "all", "busy" (those
     /// working or needing you, and the one on screen) or "off".
     pub sidebar_tabs: String,
-    /// The look (ADR 0027): "floating" or "hairline". Read with `layout_kind`; an older file's
-    /// look is folded in by `fold_retired_layout`. Empty means unset.
+    /// An older file's look, "floating" once `fold_retired_layout` has read it (there is one
+    /// look now). Empty means unset.
     pub layout: String,
     /// "solid" (the default) paints everything the theme's `bg`, so a plain terminal shows the
     /// theme whole; "terminal" leaves chrome on the terminal's own background (so transparency
@@ -141,8 +141,9 @@ pub struct Ui {
     pub dim: String,
     /// The focused card's border: "accent", "bright" or "none".
     pub focus_border: String,
-    /// One setting for every rounded shape (`Rounding`).
-    pub rounded: Rounding,
+    /// Round card corners (`╭╮╰╯`) instead of square ones.
+    #[serde(deserialize_with = "rounded_from")]
+    pub rounded: bool,
     /// Floating: each pane's border in its own colour, by its place in the tab (ADR 0027).
     pub pane_colors: bool,
     /// A cell clear between one tab chip and the next (on a border it is more of the line). Off:
@@ -210,56 +211,26 @@ fn fold_legacy_helpers(value: &mut toml::Table) {
     }
 }
 
-/// How round the shapes are, all of them at once (`ui.rounded`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Rounding {
-    /// Round card corners, and half-circle ends on every chip, button, row and hover (Nerd Font).
-    Full,
-    /// Rounded squares: round card corners, square ends everywhere else. No Nerd Font needed.
-    Corners,
-    /// Everything square.
-    Off,
-}
-
-impl Rounding {
-    /// Settings' choices, in its order.
-    pub const NAMES: &[&str] = &["full", "corners", "off"];
-
-    /// Cards draw `╭╮╰╯`.
-    pub fn corners(self) -> bool {
-        self != Rounding::Off
+/// `ui.rounded` as an older file wrote it: a switch, or a name. "full" and "corners" are on (the
+/// round pill ends of "full" are gone); "off" is off.
+fn rounded_from<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Written {
+        Switch(bool),
+        Name(String),
     }
-
-    /// Chips, buttons, rows and the hover end in half-circles.
-    pub fn caps(self) -> bool {
-        self == Rounding::Full
+    match Written::deserialize(d)? {
+        Written::Switch(on) => Ok(on),
+        Written::Name(name) => match name.as_str() {
+            "full" | "corners" => Ok(true),
+            "off" => Ok(false),
+            _ => Err(serde::de::Error::custom(format!("ui.rounded is \"{name}\"; use on or off"))),
+        },
     }
 }
 
-/// Older files wrote `rounded = true` / `false`: on is `full`, off is `off`.
-impl<'de> Deserialize<'de> for Rounding {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Written {
-            Switch(bool),
-            Name(String),
-        }
-        match Written::deserialize(d)? {
-            Written::Switch(on) => Ok(if on { Rounding::Full } else { Rounding::Off }),
-            Written::Name(name) => match name.as_str() {
-                "full" => Ok(Rounding::Full),
-                "corners" => Ok(Rounding::Corners),
-                "off" => Ok(Rounding::Off),
-                _ => Err(serde::de::Error::custom(format!("ui.rounded is \"{name}\"; use one of: {}", Rounding::NAMES.join(", ")))),
-            },
-        }
-    }
-}
-
-/// An old `ui.corners = "rounded"` is `ui.rounded = "corners"` unless the file sets that itself,
-/// now that one setting rounds everything. The file itself is not rewritten.
+/// An older file's `corners = "rounded"` is `rounded` on, unless `rounded` is set.
 fn fold_legacy_corners(value: &mut toml::Table) {
     let Some(ui) = value.get_mut("ui").and_then(toml::Value::as_table_mut) else { return };
     let corners = ui.remove("corners");
@@ -360,9 +331,8 @@ impl Default for Mcp {
 /// A retired look an older file named, and what stands for it now (`Ui::fold_retired_layout`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetiredLayout {
-    /// How Settings called it: "Tiled", "Grid" or "Compact".
+    /// How Settings called it: "Tiled", "Grid", "Compact" or "Hairline".
     pub name: &'static str,
-    pub kind: LayoutKind,
     /// `gap = 0` stands for it (Tiled).
     pub gap: bool,
     /// `pane_colors = true` stands for it (Grid).
@@ -372,46 +342,19 @@ pub struct RetiredLayout {
 impl RetiredLayout {
     /// What the app says once when it starts with it.
     pub fn note(&self) -> String {
-        let now = match (self.kind, self.gap, self.pane_colors) {
-            (LayoutKind::Hairline, ..) => "Hairline, lines only",
-            (_, true, _) => "Floating with no gap",
-            (_, _, true) => "Floating with Pane colours on",
+        let now = match (self.gap, self.pane_colors) {
+            (true, _) => "Floating with no gap",
+            (_, true) => "Floating with Pane colours on",
             _ => "Floating",
         };
         format!("The {} layout is now {now}. Change it in Settings › Appearance", self.name)
     }
 }
 
-/// The two looks over the one session layout (ADR 0027).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LayoutKind {
-    Floating,
-    /// No boxes: `│` / `─` hairlines, a title and rule per pane, and a status strip.
-    Hairline,
-}
-
-/// Settings' Layout choices, in its order.
-pub const LAYOUT_NAMES: &[&str] = &["floating", "hairline"];
-
-impl LayoutKind {
-    /// Its value in `ui.layout`.
-    pub fn name(self) -> &'static str {
-        match self {
-            LayoutKind::Floating => "floating",
-            LayoutKind::Hairline => "hairline",
-        }
-    }
-}
-
 impl Ui {
-    /// The look chosen; anything but "hairline" is Floating.
-    pub fn layout_kind(&self) -> LayoutKind {
-        if self.layout == "hairline" { LayoutKind::Hairline } else { LayoutKind::Floating }
-    }
-
-    /// An older file's look, kept as near as the two looks allow (ADR 0027): Tiled (and Cards
+    /// An older file's look, kept as near as the one look allows (ADR 0027): Tiled (and Cards
     /// with `panes = "tiled"`) is Floating with no gaps, Grid is Floating with pane colours,
-    /// and Compact (once "flat") is Hairline. The file itself is not rewritten.
+    /// and Compact (once "flat") and Hairline are Floating. The file itself is not rewritten.
     pub fn fold_retired_layout(&mut self) {
         let tiled = self.layout == "tiled" || (matches!(self.layout.as_str(), "" | "cards") && self.panes == "tiled");
         let retired = if tiled {
@@ -422,12 +365,13 @@ impl Ui {
             Some("Grid")
         } else if matches!(self.layout.as_str(), "compact" | "flat") {
             Some("Compact")
+        } else if self.layout == "hairline" {
+            Some("Hairline")
         } else {
             None
         };
-        let kind = if retired == Some("Compact") { LayoutKind::Hairline } else { self.layout_kind() };
-        self.layout = kind.name().into();
-        self.retired_layout = retired.map(|name| RetiredLayout { name, kind, gap: tiled, pane_colors: name == "Grid" });
+        self.layout = "floating".into();
+        self.retired_layout = retired.map(|name| RetiredLayout { name, gap: tiled, pane_colors: name == "Grid" });
     }
 
     /// An older file's padding, gap and dim in today's words: "top" and "1" are small, "2" medium,
@@ -449,10 +393,6 @@ impl Ui {
         }
     }
 
-    /// The rounding drawn: `rounded`, except that Hairline is always square (ADR 0026).
-    pub fn rounding(&self) -> Rounding {
-        if self.layout_kind() == LayoutKind::Hairline { Rounding::Off } else { self.rounded }
-    }
 }
 
 /// How long a check may run unless its `[[check]]` says otherwise.
@@ -916,7 +856,7 @@ impl Default for Ui {
             padding: "small".into(),
             dim: "normal".into(),
             focus_border: "accent".into(),
-            rounded: Rounding::Off,
+            rounded: false,
             pane_colors: false,
             tab_gap: true,
             retired_layout: None,
@@ -1814,10 +1754,9 @@ mod tests {
     }
 
     #[test]
-    fn rounded_default_off_and_read_from_the_file_old_switch_or_name() {
-        use super::Rounding;
-        assert_eq!(super::Ui::default().rounded, Rounding::Off);
-        for (written, read) in [("true", Rounding::Full), ("false", Rounding::Off), ("\"full\"", Rounding::Full), ("\"corners\"", Rounding::Corners), ("\"off\"", Rounding::Off)] {
+    fn rounded_defaults_off_and_reads_a_switch_or_an_older_name() {
+        assert!(!super::Ui::default().rounded);
+        for (written, read) in [("true", true), ("false", false), ("\"full\"", true), ("\"corners\"", true), ("\"off\"", false)] {
             let c: super::Config = toml::from_str(&format!("[ui]\nrounded = {written}\n")).unwrap();
             assert_eq!(c.ui.rounded, read, "{written}");
         }
@@ -1849,19 +1788,18 @@ mod tests {
     }
 
     #[test]
-    fn an_old_rounded_corners_setting_is_rounded_corners_unless_rounded_is_set() {
-        use super::Rounding;
+    fn an_old_rounded_corners_setting_is_rounded_unless_rounded_is_set() {
         let read = |text: &str| {
             let mut t: toml::Table = toml::from_str(text).unwrap();
             super::fold_legacy_corners(&mut t);
             toml::Value::Table(t).try_into::<super::Config>().unwrap().ui.rounded
         };
-        assert_eq!(read("[ui]\ncorners = \"rounded\"\n"), Rounding::Corners);
-        assert_eq!(read("[ui]\ncorners = \"square\"\n"), Rounding::Off);
-        assert_eq!(read("[ui]\ncorners = \"flush\"\n"), Rounding::Off);
-        assert_eq!(read("[ui]\ncorners = \"rounded\"\nrounded = false\n"), Rounding::Off, "the new key wins once it is set");
-        assert_eq!(read("[ui]\ncorners = \"rounded\"\nrounded = true\n"), Rounding::Full);
-        assert_eq!(read(""), Rounding::Off);
+        assert!(read("[ui]\ncorners = \"rounded\"\n"));
+        assert!(!read("[ui]\ncorners = \"square\"\n"));
+        assert!(!read("[ui]\ncorners = \"flush\"\n"));
+        assert!(!read("[ui]\ncorners = \"rounded\"\nrounded = false\n"), "the new key wins once it is set");
+        assert!(read("[ui]\ncorners = \"rounded\"\nrounded = true\n"));
+        assert!(!read(""));
     }
 
     #[test]
@@ -2042,33 +1980,19 @@ shell = \"pwsh\"
         let ui = |toml: &str| {
             let mut ui = toml::from_str::<Config>(toml).unwrap().ui;
             ui.fold_retired_layout();
-            (ui.layout_kind(), ui.gap, ui.pane_colors)
+            (ui.layout, ui.gap, ui.pane_colors)
         };
-        let floating = |gap: &str, colors: bool| (LayoutKind::Floating, gap.to_string(), colors);
-        assert_eq!(ui("[ui]
-panes = 'tiled'"), floating("0", false), "no layout line: Cards, tiled");
-        assert_eq!(ui("[ui]
-layout = 'cards'
-panes = 'tiled'"), floating("0", false));
-        assert_eq!(ui("[ui]
-layout = 'tiled'
-gap = '2'"), floating("0", false), "tiled had no gaps");
-        assert_eq!(ui("[ui]
-layout = 'cards'
-panes = 'floating'"), floating("1", false));
-        assert_eq!(ui(""), floating("1", false), "the default");
-        assert_eq!(ui("[ui]
-layout = 'floating'
-panes = 'tiled'"), floating("1", false), "a new name wins over a leftover panes");
-        assert_eq!(ui("[ui]
-layout = 'grid'"), floating("1", true), "grid is floating in colour");
-        assert_eq!(ui("[ui]
-layout = 'compact'").0, LayoutKind::Hairline);
-        assert_eq!(ui("[ui]
-layout = 'flat'
-panes = 'floating'").0, LayoutKind::Hairline);
-        assert_eq!(ui("[ui]
-layout = 'hairline'").0, LayoutKind::Hairline);
+        let floating = |gap: &str, colors: bool| ("floating".to_string(), gap.to_string(), colors);
+        assert_eq!(ui("[ui]\npanes = 'tiled'"), floating("0", false), "no layout line: Cards, tiled");
+        assert_eq!(ui("[ui]\nlayout = 'cards'\npanes = 'tiled'"), floating("0", false));
+        assert_eq!(ui("[ui]\nlayout = 'tiled'\ngap = '2'"), floating("0", false), "tiled had no gaps");
+        assert_eq!(ui("[ui]\nlayout = 'cards'\npanes = 'floating'"), floating("small", false));
+        assert_eq!(ui(""), floating("small", false), "the default");
+        assert_eq!(ui("[ui]\nlayout = 'floating'\npanes = 'tiled'"), floating("small", false), "a new name wins over a leftover panes");
+        assert_eq!(ui("[ui]\nlayout = 'grid'"), floating("small", true), "grid is floating in colour");
+        for gone in ["compact", "flat", "hairline"] {
+            assert_eq!(ui(&format!("[ui]\nlayout = '{gone}'")), floating("small", false), "{gone} is floating now");
+        }
     }
 
     #[test]
@@ -2078,16 +2002,11 @@ layout = 'hairline'").0, LayoutKind::Hairline);
             ui.fold_retired_layout();
             ui.retired_layout.map(|r| r.note())
         };
-        assert_eq!(note("[ui]
-layout = 'compact'").as_deref(), Some("The Compact layout is now Hairline, lines only. Change it in Settings › Appearance"));
-        assert_eq!(note("[ui]
-layout = 'tiled'").as_deref(), Some("The Tiled layout is now Floating with no gap. Change it in Settings › Appearance"));
-        assert_eq!(note("[ui]
-layout = 'grid'").as_deref(), Some("The Grid layout is now Floating with Pane colours on. Change it in Settings › Appearance"));
-        for kept in ["", "[ui]
-layout = 'floating'", "[ui]
-layout = 'cards'", "[ui]
-layout = 'hairline'"] {
+        assert_eq!(note("[ui]\nlayout = 'compact'").as_deref(), Some("The Compact layout is now Floating. Change it in Settings › Appearance"));
+        assert_eq!(note("[ui]\nlayout = 'hairline'").as_deref(), Some("The Hairline layout is now Floating. Change it in Settings › Appearance"));
+        assert_eq!(note("[ui]\nlayout = 'tiled'").as_deref(), Some("The Tiled layout is now Floating with no gap. Change it in Settings › Appearance"));
+        assert_eq!(note("[ui]\nlayout = 'grid'").as_deref(), Some("The Grid layout is now Floating with Pane colours on. Change it in Settings › Appearance"));
+        for kept in ["", "[ui]\nlayout = 'floating'", "[ui]\nlayout = 'cards'"] {
             assert_eq!(note(kept), None, "{kept:?}: nothing to say");
         }
     }
@@ -2108,13 +2027,6 @@ layout = 'hairline'"] {
         let new = Ui::default();
         assert_eq!((new.padding.as_str(), new.gap.as_str(), new.dim.as_str()), ("small", "small", "normal"));
         assert_eq!([size_cells("small"), size_cells("medium"), size_cells("large"), size_cells("0"), size_cells("top")], [1, 2, 3, 0, 1]);
-    }
-
-    #[test]
-    fn hairline_is_always_square() {
-        let ui = |toml: &str| toml::from_str::<Config>(toml).unwrap().ui;
-        assert_eq!(ui("[ui]\nlayout = 'hairline'\nrounded = 'full'").rounding(), Rounding::Off);
-        assert_eq!(ui("[ui]\nlayout = 'tiled'\nrounded = 'full'").rounding(), Rounding::Full, "other looks keep the setting");
     }
 
     #[test]

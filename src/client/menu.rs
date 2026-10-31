@@ -809,7 +809,6 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
     c.bg = bgm;
     super::screen::card(app, buf, r, &c, t);
     hit(app, r, ScreenHit::Noop);
-    let look = super::screen::Look::of(&app.cfg.ui);
     let mut yy = r.y + 2;
     for (i, (label, act)) in m.items.iter().enumerate() {
         if gap && danger(act) && i + 1 == m.items.len() {
@@ -819,7 +818,7 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
         let on = i == m.sel;
         let bg = if on { t.hov } else { bgm };
         if on {
-            super::screen::row_pill(look, f.buffer_mut(), row.x, yy, row.width, bg, bgm);
+            super::screen::row_pill(f.buffer_mut(), row.x, yy, row.width, bg);
         }
         if i == m.sel {
             put(f.buffer_mut(), row.x + 1, yy, &[seg("›", Style::default().fg(t.accent).bg(bg).add_modifier(Modifier::BOLD))], row.right());
