@@ -838,9 +838,9 @@ impl AgentRow {
 }
 
 /// The settings' headings in the order they come, each tab's in turn.
-const GROUP_ORDER: [&str; 19] = [
+const GROUP_ORDER: [&str; 18] = [
     "UPDATES", "STARTUP", "INPUT", "SHELL",
-    "THEME", "LAYOUT", "PANES", "STATUS",
+    "THEME", "LAYOUT", "PANES",
     "NEW SESSIONS", "SIDEBAR", "WORKTREES", "RESTARTS", "HISTORY",
     "SOUND", "PHONE",
     AGENT_STATUS_GROUP, "HELPERS", "LIMITS", "AGENTS TALKING TO AGENTS",
@@ -858,11 +858,10 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "ui.splash" | "ui.splash_animation" => "STARTUP",
             "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_keys" | "ui.alt_arrows" => "INPUT",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
-            "theme" => "THEME",
+            "theme" | "ui.glyphs" | "ui.spinner" | "ui.cursor" | "ui.cursor_blink" => "THEME",
             "ui.layout" | "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
-            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded" | "ui.cursor" | "ui.cursor_blink" => "PANES",
+            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded" => "PANES",
             "ui.tab_gap" => "TABS",
-            "ui.spinner" | "ui.glyphs" => "STATUS",
             "sessions.agent" | "sessions.where" => "NEW SESSIONS",
             "ui.sidebar_tabs" => "SIDEBAR",
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
@@ -945,7 +944,14 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
         SRow::Setting(s) => {
             if s.path == "theme" {
                 let name = if cfg.theme.is_empty() { crate::theme::DEFAULT } else { &cfg.theme };
-                return vec![seg(format!(" {} ", theme_label(crate::theme::canonical(name))), Style::default().fg(t.strong)), seg("Enter browse", Style::default().fg(t.accent))];
+                // Two squares of the chosen theme, its ground and its accent, before its name.
+                let chosen = cfg.theme();
+                return vec![
+                    seg("  ", Style::default().bg(chosen.bg)),
+                    seg("  ", Style::default().bg(chosen.accent)),
+                    seg(format!(" {} ", theme_label(crate::theme::canonical(name))), Style::default().fg(t.strong)),
+                    seg("Enter browse", Style::default().fg(t.accent)),
+                ];
             }
             let cur = super::modal::current(cfg, s.path);
             match s.kind {

@@ -683,7 +683,7 @@ mod screen_tests {
         app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: tab(modal::Cat::Appearance), sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("Gap") && !o.contains("Corners") && o.contains("PREVIEW") && o.contains("focused") && o.contains("dimmed"), "the pane settings, with a preview");
+        assert!(o.contains("Padding") && !o.contains("Corners") && o.contains("PREVIEW") && o.contains("focused") && o.contains("dimmed"), "the theme and layout settings, with a preview");
         // The splash: the <APP> wordmark, its tagline, what happened, buttons.
         app.mode = Mode::Normal;
         app.splash = true;
@@ -1607,15 +1607,26 @@ mod screen_tests {
     }
 
     #[test]
-    fn padding_top_leaves_a_row_above_and_none_round_the_rest() {
+    fn the_theme_row_shows_the_chosen_themes_ground_and_accent_as_two_squares() {
+        let (_, app) = super::design_tests::render_with(160, 45);
+        let t = app.cfg.theme();
+        let row = design::settings_rows(modal::Cat::Appearance).into_iter().find(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap();
+        let view = design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 };
+        let segs = design::control(&app, &app.theme, &row, &view, false);
+        let grounds: Vec<_> = segs.iter().filter(|(s, _)| s.trim().is_empty()).map(|(_, st)| st.bg).collect();
+        assert_eq!(grounds, vec![Some(t.bg), Some(t.accent)], "two squares, then the name");
+    }
+
+    #[test]
+    fn small_padding_leaves_a_row_and_a_column_all_round() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.cfg.ui.padding = crate::config::PADDING_TOP.into();
+        app.cfg.ui.padding = "small".into();
         let buf = drawn(&mut app, 160, 45);
         let row = |y: u16| (0..160u16).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert!(row(0).trim().is_empty(), "the top row is empty: {}", row(0));
-        assert!(row(1).starts_with("┌─ SESSIONS"), "the sidebar starts under it, at the left edge: {}", row(1));
-        assert_eq!(buf[(159, 4)].symbol(), "│", "the panes reach the right edge: {}", row(4));
-        assert_eq!(Config::default().ui.padding, crate::config::PADDING_TOP, "the default");
+        assert!(row(1).starts_with(" ┌─ SESSIONS"), "the sidebar starts a column in, under it: {}", row(1));
+        assert_eq!(buf[(159, 4)].symbol(), " ", "and the panes stop a column short of the right edge: {}", row(4));
+        assert_eq!(Config::default().ui.padding, "small", "the default");
     }
 
     #[test]
@@ -2176,7 +2187,8 @@ mod screen_tests {
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("PANES") && o.contains("Gap") && !o.contains("Corners") && o.contains("PREVIEW"), "the pane settings first, with their preview");
+        assert!(o.contains("THEME") && o.contains("Padding") && !o.contains("Corners") && o.contains("PREVIEW"), "the theme settings first, with their preview");
+        assert!(o.contains("Status glyphs") && o.contains("Working spinner") && o.contains("Cursor blink"), "the status marks and the cursor sit with the theme");
         let theme_row = design::settings_rows(modal::Cat::Appearance).iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap();
         for _ in 0..theme_row {
             app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));

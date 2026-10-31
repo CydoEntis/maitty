@@ -43,7 +43,9 @@ layout = "floating"         # floating | hairline (older tiled, grid, compact, c
 pane_colors = false         # floating: each pane's border in its own colour
 tab_gap = true              # a cell between one tab and the next; false: they touch
 rounded = "off"             # full (needs a Nerd Font) | corners | off; hairline is always square (older `corners = "rounded"` still read)
-# padding = "top"           # top (a row above only) | 0 | 1 | 2: space round the screen
+# padding = "small"         # small | medium | large: space round the screen
+# gap = "small"             # small | medium | large: space between floating panes
+# dim = "normal"            # off | light | normal | heavy: how far the panes you're not in fade
 # background = "solid"      # solid: paint the theme everywhere | terminal: your terminal's (transparent, image) shows through
 # cursor = "terminal"       # terminal | block | underline | bar, when a pane's program picks none
 # cursor_blink = true

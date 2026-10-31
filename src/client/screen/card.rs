@@ -54,10 +54,10 @@ pub(in crate::client) fn chip(text: &str, st: Style) -> Vec<Seg> {
     plain(vec![l, seg(text, st), r])
 }
 
-/// How far the inside of an unfocused card fades toward its background at "30%" (the design's v5).
-const DIM_DEFAULT: f32 = 0.30;
-const DIM_SUBTLE: f32 = 0.2;
-const DIM_STRONG: f32 = 0.6;
+/// How far the inside of an unfocused card fades toward its background: normal is the design's v5.
+const DIM_NORMAL: f32 = 0.30;
+const DIM_LIGHT: f32 = 0.2;
+const DIM_HEAVY: f32 = 0.6;
 
 /// The inside of a card: the same ground as the gaps between cards, so a card is told apart
 /// by its edge and not by a slightly different grey.
@@ -97,12 +97,12 @@ impl Look {
             hairline,
             rounded: rounding.corners(),
             tab_gap: ui.tab_gap,
-            gap: if hairline { 0 } else { ui.gap.parse().unwrap_or(1).min(2) },
+            gap: if hairline { 0 } else { crate::config::size_cells(&ui.gap).min(3) },
             dim: match ui.dim.as_str() {
                 "off" => 0.0,
-                "subtle" => DIM_SUBTLE,
-                "60%" => DIM_STRONG,
-                _ => DIM_DEFAULT,
+                "light" | "subtle" => DIM_LIGHT,
+                "heavy" | "60%" => DIM_HEAVY,
+                _ => DIM_NORMAL,
             },
             caps: rounding.caps(),
             round_tabs: rounding.caps(),
