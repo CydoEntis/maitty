@@ -65,9 +65,9 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
     // Too narrow for the chip beside the corner: Esc and a click outside still close it.
     let shows_esc = r.width >= esc_w + 4;
     // Flush against the corner: the button is the last cells of the border.
-    let esc_x = if shows_esc { r.right() - esc_w - 1 } else { r.right() - 1 };
+    let esc_x = if shows_esc { r.right() - esc_w } else { r.right() - 1 };
     if shows_esc {
-        put(buf, esc_x, r.y, &esc, r.right() - 1);
+        put(buf, esc_x, r.y, &esc, r.right());
     }
     let segs: Vec<Seg> = right.iter().map(|(s, st)| (s.clone(), st.bg(t.card))).collect();
     let rx = esc_x.saturating_sub(segs_width(&segs) + 1);

@@ -32,11 +32,18 @@ struct Piece {
 
 /// How much of Update or Restart shows: all its words, the version, the arrow, or nothing.
 #[derive(Clone, Copy, PartialEq)]
-enum Release {
+pub(super) enum Release {
     Words,
     Version,
     Arrow,
     Hidden,
+}
+
+/// Update when a newer release is out, else Restart once a newer one is installed but not
+/// running, as much of it as `shown`, with the click that does it: the sidebar's foot draws it
+/// when it has room, else the bottom bar does.
+pub(super) fn release_segs(app: &App, shown: Release, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
+    release_pill(app, shown, t).and_then(|p| Some((p.segs, p.hit?)))
 }
 
 /// Update when a newer release is out, else Restart once a newer one is installed but not
@@ -376,7 +383,11 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
     if calm && holder.is_none() && let Some(p) = layout_piece(app, t) {
         middle.insert(0, p);
     }
-    let releases: Vec<Piece> = [Release::Words, Release::Version, Release::Arrow].into_iter().filter_map(|r| release_pill(app, r, t)).collect();
+    let releases: Vec<Piece> = if app.screen.release_in_side {
+        Vec::new()
+    } else {
+        [Release::Words, Release::Version, Release::Arrow].into_iter().filter_map(|r| release_pill(app, r, t)).collect()
+    };
     let round = Look::of(&app.cfg.ui).round_tabs;
     let caps = |p: &Piece| if round && p.segs.first().is_some_and(|(_, s)| s.bg != Some(ground)) { round_ends(p.segs.clone(), ground) } else { p.segs.clone() };
     let room = row.width.saturating_sub(2);

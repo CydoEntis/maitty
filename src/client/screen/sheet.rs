@@ -258,7 +258,8 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
             let taken = segs_width(&c.right) + close_width(Look::of(&app.cfg.ui), !c.right.is_empty()) + 4;
             let row = Rect { x: title_x(r), y: r.y, width: r.width.saturating_sub(2 + taken), height: 1 };
             draw_drawer_chips(app, buf, row, cur, t);
-            inside
+            // A blank row under the chips, so the body's first line doesn't sit against them.
+            Rect { y: inside.y + 1, height: inside.height.saturating_sub(1), ..inside }
         }
         _ => inside,
     };
@@ -394,12 +395,12 @@ fn draw_drawer_chips(app: &mut App, buf: &mut Buffer, row: Rect, cur: usize, t: 
         }
         let tr = Rect { x, y: row.y, width: w, height: 1 };
         let on = i == cur;
-        let (ink, fill) = if on { if lit { (t.acc_ink, t.accent) } else { (t.strong, t.btn) } } else { (t.text, t.bg) };
+        let (ink, fill) = if on { if lit { (t.acc_ink, t.accent) } else { (t.strong, t.btn) } } else { (t.text, t.btn) };
         let bg = if !on && hovered(app, tr) { t.hov } else { fill };
         let k = tab.1.trim();
         let mut segs = Vec::new();
         if !k.is_empty() {
-            let kb = if on { fill } else { t.btn };
+            let kb = fill;
             segs.push(seg(format!(" {k} "), Style::default().fg(if on { ink } else { t.accent }).bg(kb).add_modifier(Modifier::BOLD)));
         }
         let mut st = Style::default().fg(ink).bg(bg);

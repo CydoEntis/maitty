@@ -264,11 +264,14 @@ impl<'a> Card<'a> {
 
 /// How wide a card's ✕ is drawn on its top border, the spaces round it included.
 pub(in crate::client) fn close_width(look: Look, after_right: bool) -> u16 {
-    if look.hairline { close_lead(look, after_right) + 2 * u16::from(look.caps) + 2 } else { close_lead(look, after_right) + RED_CLOSE_W }
+    if look.hairline { close_lead(look, after_right) + 2 * u16::from(look.caps) + 2 } else { close_lead(look, after_right) + red_close_w(look) }
 }
 
-/// The red close button's width: the ✕ and a cell each side, flush against the corner.
-const RED_CLOSE_W: u16 = 3;
+/// The red close button's width: the ✕ and a cell each side, flush against the corner, and
+/// with caps a cap more each side. The padding keeps a font's wide ✕ off the caps.
+fn red_close_w(look: Look) -> u16 {
+    if look.caps { 5 } else { 3 }
+}
 
 /// Spaces before the ✕: two after other right-hand segments. Alone, a square ✕'s chip starts on
 /// the padding before the segments, where the reference frames put it; a capped chip needs that cell
@@ -281,7 +284,7 @@ fn close_lead(look: Look, after_right: bool) -> u16 {
 /// caps a space more each side inside them, so the hovered ✕ is a whole chip like the others
 /// rather than two caps pressed against the glyph.
 fn close_chip_w(look: Look) -> u16 {
-    if look.hairline && !look.caps { 3 } else if look.hairline { 5 } else { RED_CLOSE_W }
+    if look.hairline && !look.caps { 3 } else if look.hairline { 5 } else { red_close_w(look) }
 }
 
 /// Where a card's title chip starts: on the top border two in.
@@ -356,7 +359,7 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
             if look.caps {
                 // A pill: caps in the button's colour over the border's ground.
                 let cap = Style::default().fg(t.err).bg(ground);
-                right.extend([seg(CAP_L, cap), seg(close, glyph), seg(CAP_R, cap)]);
+                right.extend([seg(CAP_L, cap), seg(format!(" {close} "), glyph), seg(CAP_R, cap)]);
             } else {
                 right.push(seg(format!(" {close} "), glyph));
             }
@@ -365,16 +368,19 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
             right.push(seg(format!("{lead}{inner}{close}{inner} "), Style::default().fg(t.muted)));
         }
     }
-    let end = if flush { r.right().saturating_sub(1) } else { right_end(r) };
+    // The red button covers the corner cell: left clear, the corner and the padding before the
+    // button read as a gap in the border.
+    let end = if flush { r.right() } else { right_end(r) };
     let rw = segs_width(&right);
     let rx = end.saturating_sub(rw);
     let chip_x = title_x(r);
     let shown = rw > 0 && rx > chip_x + 1;
     if shown {
-        let pad = 1;
+        let pad = u16::from(!flush);
         let space = seg(" ", Style::default());
-        let after = if flush { None } else { Some(space.clone()) };
-        let segs: Vec<Seg> = std::iter::once(space).chain(right).chain(after).map(|(s, st)| (s, if st.bg.is_none() { st.bg(ground) } else { st })).collect();
+        let before = if flush { None } else { Some(space.clone()) };
+        let after = if flush { None } else { Some(space) };
+        let segs: Vec<Seg> = before.into_iter().chain(right).chain(after).map(|(s, st)| (s, if st.bg.is_none() { st.bg(ground) } else { st })).collect();
         put(buf, rx - pad, r.y, &segs, end + if flush { 0 } else { pad });
         if let Some(h) = c.close {
             let w = close_chip_w(look);

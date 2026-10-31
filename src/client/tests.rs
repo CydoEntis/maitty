@@ -647,8 +647,8 @@ mod screen_tests {
         assert!(lines[0].starts_with("┌─"), "the sidebar card from the very corner: {}", lines[0]);
         assert!(lines[0].contains("● claude"), "the tab keeps its session and state: {}", lines[0]);
         assert!(text.contains("+ New") && text.contains("Menu"), "New and Actions stay in the sidebar foot");
-        assert!(lines[0].contains(" claude ✕") && lines[0].contains(" + ") && !lines[0].contains('◫') && !lines[0].contains('⤢') && !lines[0].contains('▯'), "the tab's name on the pane's top border (a lone tab has no number), the + chip, and no split or zoom buttons: {}", lines[0]);
-        assert!(!lines[1].contains("needs you") && !lines[1].contains('✕'), "a lone pane has no title of its own: its tab, on its border, names it: {}", lines[1]);
+        assert!(lines[0].contains(" claude ×") && lines[0].contains(" + ") && !lines[0].contains('◫') && !lines[0].contains('⤢') && !lines[0].contains('▯'), "the tab's name on the pane's top border (a lone tab has no number), the + chip, and no split or zoom buttons: {}", lines[0]);
+        assert!(!lines[1].contains("needs you") && !lines[1].contains('×'), "a lone pane has no title of its own: its tab, on its border, names it: {}", lines[1]);
         // Projects and their sessions, nothing in between.
         assert!(text.contains("−  shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
         assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
@@ -5588,6 +5588,7 @@ second line
             for w in 40..=200u16 {
                 let (_, mut app) = super::design_tests::render_with(w, 24);
                 app.update_available = update.then(|| "0.44.0".into());
+                (app.sidebar, app.side_hidden) = (false, true); // the sidebar would take the chip; this checks the bar
                 into_mode(&mut app, "lit");
                 let buf = drawn(&mut app, w, 24);
                 let (_, bar) = bar_text(&app, &buf);
@@ -5736,10 +5737,12 @@ second line
             ("↑ Update 9.9.9", Some(S::Update), |app| {
                 app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
                 app.update_available = Some("9.9.9".into());
+                (app.sidebar, app.side_hidden) = (false, true); // the sidebar would take the chip; this checks the bar
             }),
             ("↻ Restart", Some(S::Restart), |app| {
                 app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
                 app.installed_version = Some(Ok("999.0.0".into()));
+                (app.sidebar, app.side_hidden) = (false, true); // the sidebar would take the chip; this checks the bar
             }),
         ];
         for (words, kind, set_up) in states {
@@ -5776,6 +5779,7 @@ second line
     fn update_sits_at_the_bar_s_right_end_and_clicks_except_while_held() {
         let mut app = shortcut_mode();
         app.update_available = Some("9.9.9".into());
+        (app.sidebar, app.side_hidden) = (false, true); // the sidebar would take the chip; this checks the bar
         for mode in ["lit", "held", "typing"] {
             match mode {
                 "held" => tap(&mut app, 'y'),
@@ -5827,7 +5831,7 @@ second line
                 // A lone pane's name, state and ✕ are on its tab, which sits on its top border
                 // except in Hairline, where the tab row is its own: its own top says nothing.
                 let tabs_here = !matches!(layout, "hairline" | "compact");
-                assert!(!row.contains("needs you") && (tabs_here || (!row.contains('✕') && !row.contains("claude"))), "{layout} {mode}: {row}");
+                assert!(!row.contains("needs you") && (tabs_here || (!row.contains('×') && !row.contains("claude"))), "{layout} {mode}: {row}");
                 closes.push(row);
             }
             assert!(closes.windows(2).all(|p| p[0] == p[1]), "{layout}: the pane's top holds still: {closes:?}");
@@ -5843,7 +5847,7 @@ second line
         assert!(matches!(app.view, Some(View::Files(_))), "f opened Files");
         let buf = drawn(&mut app, 160, 45);
         let sheet = app.screen.sheet_rect;
-        let close = (sheet.x..sheet.right()).rev().find(|&x| buf[(x, sheet.y)].symbol() == "✕").expect("the sheet's ✕");
+        let close = (sheet.x..sheet.right()).rev().find(|&x| buf[(x, sheet.y)].symbol() == "×").expect("the sheet's ✕");
         assert!(close + 5 >= sheet.right(), "at the corner");
         click_at(&mut app, close, sheet.y);
         assert!(app.view.is_none(), "a click on it closes Files");
@@ -5875,7 +5879,8 @@ second line
                     let (_, bar) = bar_text(&app, &buf);
                     assert!(bar.trim().starts_with(bar_words(mode)), "{at}: {bar}");
                     let pill = match release { "update" => Some("↑"), "restart" => Some("↻"), _ => None };
-                    assert!(pill.is_none_or(|p| bar.contains(p)), "{at}: the release pill on the bar: {bar}");
+                    let everywhere: String = (0..h).flat_map(|y| (0..w).map(move |x| (x, y))).map(|(x, y)| buf[(x, y)].symbol()).collect();
+                    assert!(pill.is_none_or(|p| everywhere.contains(p)), "{at}: the release pill on the screen: {bar}");
                 }
             }
         }
@@ -5938,13 +5943,27 @@ second line
     }
 
     #[test]
+    fn an_update_sits_at_the_sidebars_foot_and_leaves_the_bottom_bar() {
+        let (_, mut app) = super::design_tests::render_with(120, 34);
+        app.update_available = Some("9.9.9".into());
+        let o = draw(&mut app, 120, 34);
+        let rows: Vec<&str> = o.lines().collect();
+        let side = app.screen.side_rect;
+        let chip = rows.iter().position(|l| l.contains("Update 9.9.9")).expect("the Update chip");
+        let chip_x = rows[chip].find("Update").map(|b| rows[chip][..b].chars().count()).unwrap();
+        assert!(chip_x < side.right() as usize && chip + 1 < side.bottom() as usize, "the chip is inside the sidebar: {}", rows[chip]);
+        assert!(rows[chip + 1].contains('─'), "the divider is right under it: {}", rows[chip + 1]);
+        assert!(!rows.last().unwrap().contains("Update"), "the bottom bar leaves it out: {}", rows.last().unwrap());
+    }
+
+    #[test]
     fn borrowed_screens_look_like_the_default() {
         for (a, title) in [(Action::RenameWorkspace, "Rename"), (Action::NewWorktree(None), "Worktrees")] {
             let (_, mut app) = super::design_tests::render_with(120, 34);
             app.act(a);
             let o = draw(&mut app, 120, 34);
             show(&o);
-            assert!(o.contains(title) && o.contains('✕'), "{title}: a {APP_COMMAND} modal (title in its accent chip, a red ✕ to close)");
+            assert!(o.contains(title) && o.contains('×'), "{title}: a {APP_COMMAND} modal (title in its accent chip, a red ✕ to close)");
         }
     }
 
@@ -7010,7 +7029,7 @@ mod check_sheet_tests {
                 assert!(head.contains("· claude › echo start;"), "{at}: the checkpoint's start follows the session: {header:?}");
                 assert!(!tail.contains('…'), "{at}: one ellipsis: {header:?}");
                 let edge = |c: char| c == ' ' || "─╮┐".contains(c);
-                assert!(tail.trim_matches(edge) == "✕", "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}");
+                assert!(tail.trim_matches(edge) == "×", "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}");
             }
         }
     }
@@ -8615,14 +8634,19 @@ mod restart_tests {
         screen::mode_bar_row(app, ratatui::layout::Rect::new(0, 0, 1, h)).y
     }
 
-    /// The Restart buttons of the toast and Settings, on a screen `h` rows tall: not the pill on
-    /// the mode bar.
+    /// Whether `r` is the Restart pill: on the mode bar, or at the sidebar's foot.
+    fn is_pill(app: &App, h: u16, r: &ratatui::layout::Rect) -> bool {
+        let side = app.screen.side_rect;
+        r.y == bar_y(app, h) || (r.y + 4 == side.bottom() && side.contains(ratatui::layout::Position::new(r.x, r.y)))
+    }
+
+    /// The Restart buttons of the toast and Settings, on a screen `h` rows tall: not the pill.
     fn restart_hit(app: &App, h: u16) -> Option<ratatui::layout::Rect> {
-        app.hits.iter().find_map(|(r, k)| (*k == Hit::Screen(screen::ScreenHit::Restart) && r.y != bar_y(app, h)).then_some(*r))
+        app.hits.iter().find_map(|(r, k)| (*k == Hit::Screen(screen::ScreenHit::Restart) && !is_pill(app, h, r)).then_some(*r))
     }
 
     fn pill_hit(app: &App, h: u16) -> Option<ratatui::layout::Rect> {
-        app.hits.iter().find_map(|(r, k)| (*k == Hit::Screen(screen::ScreenHit::Restart) && r.y == bar_y(app, h)).then_some(*r))
+        app.hits.iter().find_map(|(r, k)| (*k == Hit::Screen(screen::ScreenHit::Restart) && is_pill(app, h, r)).then_some(*r))
     }
 
     fn click(app: &mut App, r: ratatui::layout::Rect) {
@@ -8802,7 +8826,7 @@ mod restart_tests {
 
     #[test]
     fn the_bar_pill_says_update_then_restart_then_nothing() {
-        let row0 = |app: &mut App| draw(app, 100, 30).lines().nth(bar_y(app, 30) as usize).unwrap().to_string();
+        let row0 = |app: &mut App| draw(app, 100, 30);
         let (mut app, _rx) = scene(100, 30, LAYOUTS[0]);
         app.update_available = Some("9.9.9".into());
         let top = row0(&mut app);
@@ -8825,8 +8849,8 @@ mod restart_tests {
             let (mut app, mut rx) = scene(100, 30, layout);
             app.snap.terms.retain(|id, _| *id == 3);
             let out = draw(&mut app, 100, 30);
-            assert!(out.lines().nth(bar_y(&app, 30) as usize).unwrap().contains("↻ Restart"), "{layout:?}\n{out}");
-            let r = pill_hit(&app, 30).expect("the pill is clickable, on the mode bar");
+            assert!(out.contains("↻ Restart"), "{layout:?}\n{out}");
+            let r = pill_hit(&app, 30).expect("the pill is clickable, at the sidebar's foot or on the mode bar");
             click(&mut app, r);
             assert!(matches!(sent(&mut rx).as_slice(), [ClientMsg::Command(Command::KillServer { forget: false })]), "{layout:?}");
         }
@@ -9545,7 +9569,7 @@ mod files_panel_tests {
         key(&mut app, KeyCode::Right);
         let o = draw(&mut app, 80, 24);
         let header = o.lines().find(|l| l.contains('‹')).expect("the file's header");
-        assert!(header.contains("i edit") && header.contains("1–16 of 60 "), "the tab chips are on the border, so only the mode bar takes a row: {header}");
+        assert!(header.contains("i edit") && header.contains("1–15 of 60 "), "the tab chips are on the border, so the mode bar and the blank row under the chips take a row each: {header}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

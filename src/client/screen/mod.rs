@@ -128,6 +128,8 @@ pub(super) struct Screen {
     pub side_scroll: u16,
     pub follow: bool,
     pub side_rect: Rect,
+    /// The sidebar drew the Update (or Restart) chip this frame, so the bottom bar leaves it out.
+    pub release_in_side: bool,
     /// Where the side sheet was drawn, and the widest it could be there (its edge's drag and
     /// `[` `]` keep within it).
     pub sheet_rect: Rect,

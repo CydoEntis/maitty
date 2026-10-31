@@ -430,7 +430,7 @@ fn mask_key_bar(row: &mut [char], x0: usize, x1: usize) {
 /// A modal's title row in `[x0, x1)` as the app draws it since modals took a pane's frame (the
 /// user's choice, 2026-10-24, docs/UI.md): the reference's accent bar becomes the top border with
 /// the corners of its `bottom` row, its title a chip two in and a red `✕` (in place of the
-/// reference's `Esc close`, ADR 0038) a chip a `─` before the corner. Every other cell of the modal is still the reference's.
+/// reference's `Esc close`, ADR 0038) a chip covering the corner. Every other cell of the modal is still the reference's.
 fn as_bordered_header(row: &mut [char], bottom: &[char], x0: usize, x1: usize) {
     let bar: String = row[x0..x1].iter().collect();
     let title = bar.trim().strip_suffix("Esc close").unwrap_or_else(|| panic!("the reference's title bar: {bar:?}")).trim_end();
@@ -439,7 +439,8 @@ fn as_bordered_header(row: &mut [char], bottom: &[char], x0: usize, x1: usize) {
         '┘' => '┐',
         c => c,
     };
-    let tail: Vec<char> = format!(" ✕ {}", top(bottom[x1 - 1])).chars().collect();
+    // The red button covers the corner cell, so no `┐` follows it.
+    let tail: Vec<char> = " × ".chars().collect();
     let mut header: Vec<char> = format!("{}─ {title} ", top(bottom[x0])).chars().collect();
     header.resize(x1 - x0 - tail.len(), '─');
     header.extend(tail);
@@ -611,7 +612,7 @@ fn pane_mark(stage: Stage, ascii: bool) -> String {
         Stage::Approve => ("●", "!", "needs you"),
         Stage::Stale => ("◷", "~", "done · stale"),
     };
-    let (g, close) = if ascii { (a, "x") } else { (u, "✕") };
+    let (g, close) = if ascii { (a, "x") } else { (u, "×") };
     format!("{g} {word}  {close} ")
 }
 
