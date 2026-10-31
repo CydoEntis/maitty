@@ -275,13 +275,13 @@ fn a_lone_pane_has_no_title_row_and_its_tab_carries_its_close() {
     let (_, inner) = *app.panes.iter().find(|(id, _)| *id == focus).unwrap();
     assert_eq!(inner.y, r.y, "the terminal starts at the pane's top: no title row, no rule");
     let row = tab_row(&app, &buf);
-    let (x, y) = find_in(&buf, row, "✕").expect("the tab's ✕");
+    let (x, y) = find_in(&buf, row, "×").expect("the tab's ✕");
     assert_eq!(hit_at(&app, x, y), Some(Hit::Screen(ScreenHit::CloseSplit(focus))), "it closes the only pane");
     let mut second = app.screen.tabs[app.screen.tab].clone();
     (second.layout, second.focus) = (Node::Leaf(2), 2);
     app.screen.tabs.push(second);
     let buf = draw(&mut app, 160, 45);
-    let (x, y) = find_in(&buf, tab_row(&app, &buf), "✕").unwrap();
+    let (x, y) = find_in(&buf, tab_row(&app, &buf), "×").unwrap();
     assert_eq!(hit_at(&app, x, y), Some(Hit::Screen(ScreenHit::CloseTab(app.screen.tab))), "with several tabs it closes the tab");
 }
 

@@ -307,7 +307,7 @@ fn without_new_tab_chip(row: &str) -> String {
     let (mut cut, mut cut_at) = (0, 0);
     let mut i = 0;
     while i < chars.len() {
-        let tab_close = chars[i] == '✕'
+        let tab_close = chars[i] == '×'
             && i >= 2
             && chars[i - 1] == ' '
             && chars[i - 2].is_alphanumeric()

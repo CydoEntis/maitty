@@ -149,7 +149,7 @@ Typing: a quiet ` TYPING ` chip and the leader key. Shortcut mode: the whole row
 has the keys, the bar stays on `bg`, never sky: a calm chip (`strong` bold on `btn`) names the
 holder, then its keys and the way out (`SIDEBAR · ↑↓ move · Enter open · Esc back`), with
 `· shortcut mode waits` while the mode is held. Under a popup the bar is words only and takes
-no click. **Update** or **Restart** sits at its right end when waiting. See UI › *the frame*
+no click. **Update** or **Restart** sits at its right end when waiting, unless the sidebar shows it at its foot. See UI › *the frame*
 (Mode bar).
 
 ## Hairline

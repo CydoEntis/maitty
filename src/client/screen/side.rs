@@ -265,7 +265,10 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     let top = r.y + 2;
     // The foot is lifted a row off the bottom (Cards: it sits above the border), a divider over it.
     let foot_y = r.bottom().saturating_sub(2);
-    let list_h = foot_y.saturating_sub(1).saturating_sub(top) as usize;
+    // Update (or Restart) takes the row over the divider while there is room for it.
+    let release = if r.height >= 8 { release_chip(app, look, cols, pb, t) } else { None };
+    app.screen.release_in_side = release.is_some();
+    let list_h = foot_y.saturating_sub(1 + u16::from(release.is_some())).saturating_sub(top) as usize;
     let scroll = side_scroll(app, model, &lines, focus, list_h);
     note_rows(app, model, &lines);
 
@@ -347,6 +350,12 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     }
     scroll_marks(buf, cols.rx + 1, top, (scroll, list_h, lines.len()), Style::default().bg(pb).fg(t.muted));
     draw_foot(app, buf, r, cols, pb, t);
+    if let Some((segs, h)) = release {
+        let (x, y) = (cols.x + 1, r.bottom().saturating_sub(4));
+        let w = segs_width(&segs);
+        put(buf, x, y, &segs, cols.rx + 1);
+        hit(app, Rect { x, y, width: w, height: 1 }, h);
+    }
     if let Some(gy) = gliding.filter(|gy| (top..top + list_h as u16).contains(gy))
         && app.screen.row_y.get(&focus.unwrap_or_default()) != Some(&gy)
     {
@@ -843,6 +852,17 @@ pub(super) fn word_chip(app: &App, icon: Option<&str>, word: &str, t: &Theme, ou
     }
     body.push(seg(word, Style::default().fg(t.text).bg(t.btn)));
     pill(look, body, t.btn, outer)
+}
+
+/// The Update or Restart chip as wide as the sidebar allows (all its words, else the version),
+/// or none when even that does not fit.
+fn release_chip(app: &App, look: Look, cols: Cols, pb: Color, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
+    let room = (cols.rx + 1).saturating_sub(cols.x + 1);
+    [mode_bar::Release::Words, mode_bar::Release::Version].into_iter().find_map(|shown| {
+        let (segs, h) = mode_bar::release_segs(app, shown, t)?;
+        let segs = if look.caps { round_ends(segs, pb) } else { segs };
+        (segs_width(&segs) <= room).then_some((segs, h))
+    })
 }
 
 /// The foot, lifted a row off the bottom under a `line` divider, with no band behind it: a

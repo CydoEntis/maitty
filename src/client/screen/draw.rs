@@ -165,6 +165,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     app.sheet_frac = app.motion.sheet(open_sheet(app).is_some(), on);
     let model = app.screen_model();
     app.screen.wt_keys.clear();
+    app.screen.release_in_side = false;
     app.screen.branch_keys.clear();
     fill(f.buffer_mut(), area, t.bg);
     let room = framed(app, area);
@@ -521,7 +522,7 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
         pair.push(label);
         if closes[n].is_some() {
             let (fg, bg) = if on { if lit { (t.acc_ink, t.accent) } else { (t.strong, t.btn) } } else { (t.muted, t.card) };
-            pair.push(seg("✕ ", Style::default().fg(fg).bg(bg)));
+            pair.push(seg("× ", Style::default().fg(fg).bg(bg)));
         }
         if look.round_tabs { round_ends(pair, ground) } else { pair }
     };

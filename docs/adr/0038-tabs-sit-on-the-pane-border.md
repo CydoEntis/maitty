@@ -26,7 +26,7 @@ The pane box now starts on the sidebar's top row, so the sidebar's title and the
 - **The sheets' tabs** (Files, Changes, Branch, References) are chips on the sheet's top border the same way: a key chip then the name, the open one in the accent, a cell of border between them. A sheet's title, if it has room, goes to the right of the border; a context menu is the Menu's card, its title a chip on a lit border.
 - **Hairline is unchanged:** its tab row over a rule stays as ADR 0026 has it.
 
-- **Options:** `ui.tab_gap` (on by default; Settings > Appearance > Tab gap) puts a cell of border between one tab and the next, on the panes and on a sheet's tabs; off, they touch. The chips' shape follows `ui.rounded`: `off` square, `corners` rounded (square ends), `full` pill (caps). The red close button on a sheet's or modal's border follows it too, and is flush against the corner.
+- **Options:** `ui.tab_gap` (on by default; Settings > Appearance > Tab gap) puts a cell of border between one tab and the next, on the panes and on a sheet's tabs; off, they touch. The chips' shape follows `ui.rounded`: `off` square, `corners` rounded (square ends), `full` pill (caps). The red close button on a sheet's or modal's border follows it too, and covers the corner cell, so the border has no gap beside it. Its glyph is a plain `×` (`ui.glyphs` unicode), which a font draws centred in its cell where `✕` often spills out of it. A sheet leaves a blank row under its tab chips, so its first line doesn't sit against them. The `↑ Update` / `↻ Restart` pill sits at the sidebar's foot, above the divider, when the sidebar has the room (eight rows or more), and on the mode bar otherwise.
 
 ## Alternatives considered
 

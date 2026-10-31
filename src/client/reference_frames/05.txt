@@ -1,5 +1,5 @@
 ===== floating | 160x45 | unicode
-┌─ SESSIONS 5 ─────────────── ●1 ┐ ┌─ 1  fix-footer  2  add-payments ───────────────────────────────────────────────────────────────── ⊘ done · overridden   ✕ ┐
+┌─ SESSIONS 5 ─────────────── ●1 ┐ ┌─ 1  fix-footer  2  add-payments ───────────────────────────────────────────────────────────────── ⊘ done · overridden ── × 
 │                                │ │                                                                                                                           │
 │  ▾ affiliate-site ⎇ main · ch… │ │                                                                                                                           │
 │ ▎ ⊘ fix-footer              2m │ │                                                                                                                           │
@@ -45,7 +45,7 @@
 │  + new               a actions │ │                                                                                                                           │
 └────────────────────────────────┘ └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ===== floating | 100x30 | unicode
-┌─ SESSIONS 5 ─────── ●1 ┐ ┌─ 1  fix-footer  2  add-payments ───────────── ⊘ done · overridden   ✕ ┐
+┌─ SESSIONS 5 ─────── ●1 ┐ ┌─ 1  fix-footer  2  add-payments ───────────── ⊘ done · overridden ── × 
 │                        │ │                                                                       │
 │  ▾ affiliate-site      │ │                                                                       │
 │ ▎ ⊘ fix-footer      2m │ │                                                                       │
@@ -76,7 +76,7 @@
 │  + new       a actions │ │                                                                       │
 └────────────────────────┘ └───────────────────────────────────────────────────────────────────────┘
 ===== floating | 80x24 | unicode
-┌─ SESSIONS 5 ─────── ●1 ┐ ┌─ 1  fix-footer  2  add-payments  · overridden   ✕ ┐
+┌─ SESSIONS 5 ─────── ●1 ┐ ┌─ 1  fix-footer  2  add-payments  · overridden ── × 
 │                        │ │                                                   │
 │  ▾ affiliate-site      │ │                                                   │
 │ ▎ ⊘ fix-footer         │ │                                                   │
@@ -101,7 +101,7 @@
 │  + new       a actions │ │                                                   │
 └────────────────────────┘ └───────────────────────────────────────────────────┘
 ===== tiled | 160x45 | unicode
-┌─ SESSIONS 5 ─────────────── ●1 ┐┌─ 1  fix-footer  2  add-payments ────────────────────────────────────────────────────────────────── ⊘ done · overridden   ✕ ┐
+┌─ SESSIONS 5 ─────────────── ●1 ┐┌─ 1  fix-footer  2  add-payments ────────────────────────────────────────────────────────────────── ⊘ done · overridden ── × 
 │                                ││                                                                                                                            │
 │  ▾ affiliate-site ⎇ main · ch… ││                                                                                                                            │
 │ ▎ ⊘ fix-footer              2m ││                                                                                                                            │
@@ -147,7 +147,7 @@
 │  + new               a actions ││                                                                                                                            │
 └────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ===== tiled | 100x30 | unicode
-┌─ SESSIONS 5 ─────── ●1 ┐┌─ 1  fix-footer  2  add-payments ────────────── ⊘ done · overridden   ✕ ┐
+┌─ SESSIONS 5 ─────── ●1 ┐┌─ 1  fix-footer  2  add-payments ────────────── ⊘ done · overridden ── × 
 │                        ││                                                                        │
 │  ▾ affiliate-site      ││                                                                        │
 │ ▎ ⊘ fix-footer      2m ││                                                                        │
@@ -178,7 +178,7 @@
 │  + new       a actions ││                                                                        │
 └────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
 ===== tiled | 80x24 | unicode
-┌─ SESSIONS 5 ─────── ●1 ┐┌─ 1  fix-footer  2  add-payments e · overridden   ✕ ┐
+┌─ SESSIONS 5 ─────── ●1 ┐┌─ 1  fix-footer  2  add-payments e · overridden ── × 
 │                        ││                                                    │
 │  ▾ affiliate-site      ││                                                    │
 │ ▎ ⊘ fix-footer         ││                                                    │

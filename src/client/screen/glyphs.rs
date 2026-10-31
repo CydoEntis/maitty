@@ -47,7 +47,8 @@ pub(in crate::client) const UNICODE: Glyphs = Glyphs {
     pend: "…",
     bar: "▎",
     branch: "⎇",
-    close: "✕",
+    // Not ✕: many fonts draw that one wider than a cell, so it sits off-centre in its button.
+    close: "×",
     fold: "▾",
     warn: "⚠",
     arrow: "›",
