@@ -59,9 +59,9 @@ both have the same sessions, tabs, splits and sheets.
 - **Hairline**: no boxes at all, only `│` / `─` hairlines; always square
   (see *Hairline* below).
 
-`ui.padding` is `top` by default, one empty row above the screen so the tabs don't touch the
-terminal's own tab bar and none round the rest; or 0, 1 or 2 empty cells all round. See UI › *layout and navigation*
-and *the frame*.
+`ui.padding` is `small` by default: one empty cell all round the screen, so nothing touches the
+terminal's own edge; `medium` is two, `large` three. `ui.gap` takes the same three sizes between
+panes. See UI › *layout and navigation* and *the frame*.
 
 ## Chips, rounding and padding
 

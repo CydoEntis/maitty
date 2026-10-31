@@ -13,9 +13,23 @@ use std::path::{Path, PathBuf};
 pub const EXAMPLE: &str = include_str!("../config.example.toml");
 pub const CODEX_QUEUED_QUESTION_PATTERN: &str = r"(?m)^[ \t]*\?[ \t]+[1-9][0-9]*[ \t]+questions?[ \t]*$|^[ \t]*enter[ \t]+submit[ \t]+ctrl\+\][ \t]+skip[ \t]+shift\+[^\r\n]*main prompt[ \t]*$";
 
-/// `ui.padding`'s default: a row above the screen, so the tabs don't touch the terminal's own
-/// tab bar, and none round the rest.
-pub const PADDING_TOP: &str = "top";
+/// The sizes Settings offers for the space round the screen (`ui.padding`) and between panes
+/// (`ui.gap`): a cell, two or three.
+pub const SIZES: &[&str] = &["small", "medium", "large"];
+
+/// Settings' choices for how far the panes you're not in fade (`ui.dim`).
+pub const DIMS: &[&str] = &["off", "light", "normal", "heavy"];
+
+/// Cells a padding or gap size is: its name, else an older file's number ("top", an older
+/// padding, is one: a row above only is gone).
+pub fn size_cells(size: &str) -> u16 {
+    match size {
+        "small" | "top" => 1,
+        "medium" => 2,
+        "large" => 3,
+        n => n.parse().unwrap_or(1),
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -119,12 +133,11 @@ pub struct Ui {
     /// Which glyph set marks sessions and checks: "auto" (ASCII when the blocked, done and idle
     /// icons are all ASCII, else Unicode), "unicode", "ascii" or "nerd".
     pub glyphs: String,
-    /// Space between floating cards: "0", "1" or "2" rows stacked (and columns side by side).
+    /// Space between floating cards, rows stacked and columns side by side: one of `SIZES`.
     pub gap: String,
-    /// Space round the whole screen, in every layout: "0", "1" or "2" rows (and columns), or
-    /// `PADDING_TOP` (the default), a row above only.
+    /// Space round the whole screen, in every layout: one of `SIZES`.
     pub padding: String,
-    /// How far unfocused panes fade toward their background: "off", "subtle", "30%", "60%" ("40%" from older configs counts as 30%).
+    /// How far unfocused panes fade toward their background: one of `DIMS`.
     pub dim: String,
     /// The focused card's border: "accent", "bright" or "none".
     pub focus_border: String,
@@ -415,6 +428,25 @@ impl Ui {
         let kind = if retired == Some("Compact") { LayoutKind::Hairline } else { self.layout_kind() };
         self.layout = kind.name().into();
         self.retired_layout = retired.map(|name| RetiredLayout { name, kind, gap: tiled, pane_colors: name == "Grid" });
+    }
+
+    /// An older file's padding, gap and dim in today's words: "top" and "1" are small, "2" medium,
+    /// and dim's "subtle", "30%" ("40%" before it) and "60%" are light, normal and heavy. A gap
+    /// of "0" (what Tiled folds to) and a padding of "0" stay as they are. The file itself is not rewritten.
+    pub fn fold_legacy_sizes(&mut self) {
+        for size in [&mut self.padding, &mut self.gap] {
+            match size.as_str() {
+                "top" | "1" => *size = "small".into(),
+                "2" => *size = "medium".into(),
+                _ => {}
+            }
+        }
+        match self.dim.as_str() {
+            "subtle" => self.dim = "light".into(),
+            "30%" | "40%" => self.dim = "normal".into(),
+            "60%" => self.dim = "heavy".into(),
+            _ => {}
+        }
     }
 
     /// The rounding drawn: `rounded`, except that Hairline is always square (ADR 0026).
@@ -880,9 +912,9 @@ impl Default for Ui {
             background: "solid".into(),
             panes: "floating".into(),
             glyphs: "auto".into(),
-            gap: "1".into(),
-            padding: PADDING_TOP.into(),
-            dim: "30%".into(),
+            gap: "small".into(),
+            padding: "small".into(),
+            dim: "normal".into(),
             focus_border: "accent".into(),
             rounded: Rounding::Off,
             pane_colors: false,
@@ -1339,6 +1371,7 @@ impl Config {
         }
         // Settings shows the look by its name, whatever an older file called it.
         cfg.ui.fold_retired_layout();
+        cfg.ui.fold_legacy_sizes();
         validate_spinner(&cfg.ui.spinner)?;
         validate_checks(&cfg.check)?;
         validate_sessions(&cfg.sessions)?;
@@ -2057,6 +2090,24 @@ layout = 'cards'", "[ui]
 layout = 'hairline'"] {
             assert_eq!(note(kept), None, "{kept:?}: nothing to say");
         }
+    }
+
+    #[test]
+    fn an_older_files_padding_gap_and_dim_read_in_todays_words() {
+        let ui = |toml: &str| {
+            let mut ui = toml::from_str::<Config>(toml).unwrap().ui;
+            ui.fold_legacy_sizes();
+            ui
+        };
+        let old = ui("[ui]\npadding = 'top'\ngap = '2'\ndim = 'subtle'");
+        assert_eq!((old.padding.as_str(), old.gap.as_str(), old.dim.as_str()), ("small", "medium", "light"));
+        let old = ui("[ui]\npadding = '1'\ngap = '0'\ndim = '60%'");
+        assert_eq!((old.padding.as_str(), old.gap.as_str(), old.dim.as_str()), ("small", "0", "heavy"), "a gap of 0 (Tiled's) is kept");
+        let old = ui("[ui]\ndim = '40%'");
+        assert_eq!(old.dim, "normal");
+        let new = Ui::default();
+        assert_eq!((new.padding.as_str(), new.gap.as_str(), new.dim.as_str()), ("small", "small", "normal"));
+        assert_eq!([size_cells("small"), size_cells("medium"), size_cells("large"), size_cells("0"), size_cells("top")], [1, 2, 3, 0, 1]);
     }
 
     #[test]

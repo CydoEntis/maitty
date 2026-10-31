@@ -43,20 +43,12 @@ pub(in crate::client) struct Grid {
 }
 
 /// Most the padding round the screen may be, in cells.
-const PADDING_MAX: u16 = 2;
+const PADDING_MAX: u16 = 3;
 
-/// The window less the padding setting: that many cells all round, or with `top` (the
-/// default) one row above only, so the tabs don't touch the terminal's own tab bar while the
-/// panes still reach its sides and foot.
+/// The window less the padding setting: that many cells all round.
 fn padded(app: &App, area: Rect) -> Rect {
-    let (top, m) = match app.cfg.ui.padding.as_str() {
-        crate::config::PADDING_TOP => (1, 0),
-        n => {
-            let m = n.parse().unwrap_or(0).min(PADDING_MAX);
-            (m, m)
-        }
-    };
-    Rect { x: area.x + m, y: area.y + top, width: area.width.saturating_sub(2 * m), height: area.height.saturating_sub(top + m) }
+    let m = crate::config::size_cells(&app.cfg.ui.padding).min(PADDING_MAX);
+    Rect { x: area.x + m, y: area.y + m, width: area.width.saturating_sub(2 * m), height: area.height.saturating_sub(2 * m) }
 }
 
 /// The room the screen is laid out in: inside the padding, above the mode bar and, in

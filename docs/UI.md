@@ -157,7 +157,7 @@ Rules for keys and their labels: one key per action (no alias keys; a user's own
 
 ## Project-specific: pane focus
 
-Only the area with the keyboard is lit: the focused pane's whole border (Cards), its title rule (Hairline), or the open sheet. Unfocused panes fade by the Dim setting (30% by default; "40%" in an older config counts as 30%). Do not reserve a full-width bottom row for global hints; the mode bar (ADR 0024) is the one exception. The pane has no status line: its branch is in the sidebar's folder header.
+Only the area with the keyboard is lit: the focused pane's whole border (Cards), its title rule (Hairline), or the open sheet. Unfocused panes fade by the Dim setting (off, light, normal or heavy; normal by default, and an older config's "subtle", "30%" and "60%" read as light, normal and heavy). Do not reserve a full-width bottom row for global hints; the mode bar (ADR 0024) is the one exception. The pane has no status line: its branch is in the sidebar's folder header.
 
 ## Project-specific: UI conventions
 
