@@ -29,6 +29,10 @@ deferred until both providers are usable and packaged; the TUI remains supported
 This ordering was chosen by the user on 2026-10-29 ([ADR 0038](adr/0038-standalone-gui-first.md)).
 The daily-use trial from 2026-10-26 and open live-validation items remain outstanding.
 
+Also active, independent of the GUI work (user's call, 2026-11-01):
+[Phase 39](#39--codex-status-from-its-own-hooks--active-independent-of-37-and-38), Codex status
+from its own lifecycle hooks, so a Codex pane stops ringing for things that did not happen.
+
 Open validation items (need a real session on the named platform):
 - Pi full-screen scrolling on Linux: waiting on the failing pane's "Pane info (scrolling,
   mouse)" diagnostic before any fix.
@@ -1305,6 +1309,7 @@ conversation continuity are planned in phases 34–37:
 - Config sync across machines (local file never synced) — shipped — `crates/maitty-core/src/sync.rs`
 - SSH remotes (`--remote host`) — shipped — `crates/maitty-core/src/ipc.rs` `connect_remote`
 - `maitty doctor` — shipped — `crates/maitty-terminal-client/src/cli.rs`
+- A Codex pane's working, needs-you and finished come from Codex's own hooks, with the screen guess only as a per-pane fallback; needs-you and finished never ring for the pane you are looking at, and needs-you stays quiet for 2 minutes after it rings — phase 39 — `crates/adapters/maitty-provider-codex/src/status_hooks.rs`, `crates/maitty-core/src/daemon/status.rs`
 
 ## Out
 
@@ -1316,6 +1321,7 @@ conversation continuity are planned in phases 34–37:
 - Phase 7 proposals canceled 2026-10-17: named hosts and remote panes/agents (#23); terminal graphics and Kitty keyboard protocol (#27); launcher, templates, recording/replay, screenshots and key display (#29); web terminal and SSH server mode (#30); package-manager distribution (#31). Revisit only through a new proposal. This does not remove shipped SSH remote-client support.
 - Claude Code's own fork list showing forks that are not running (seen 2026-10-28): the `main / fork …` block with token counts is drawn by Claude inside the pane; Maitty only shows it. Not fixed, the user's call. Not checked: whether the sidebar's `N agents` count can stay stuck after a missed subagent stop (`crates/maitty-core/src/daemon/status.rs`); look there first if it is reported.
 - Fleet work declined 2026-10-24 (the fleet was removed in phase 19): the phase 9 live fleet check, the designed team view, pause the fleet, stop all, cost per fleet.
+- Maitty writing Codex hook trust hashes itself — declined 2026-11-01: it would bypass Codex's own review of hook commands. You trust Maitty's hooks once in Codex's `/hooks`; a pane without trusted hooks keeps the screen guess.
 
 ## Later
 
@@ -1371,6 +1377,47 @@ daemon contracts unchanged.
 - Verify the required first-use, running, approval, recovery, disconnected and
   empty states at 1440×900, 1024×700 and 800×600. Run GUI tests, lint, typecheck
   and packaged Windows/Linux builds.
+
+### 39 — Codex status from its own hooks · active, independent of 37 and 38
+
+Started 2026-11-01 by the user's call; it touches the daemon's status logic and the Codex
+adapter, not the GUI. A Codex pane's working, needs-you and finished come from Codex's own
+lifecycle hooks, as Claude's do. The screen guess stays only for a pane whose hooks are not
+installed or not trusted. False needs-you and finished sounds stop.
+
+- Install through `maitty hook codex`: UserPromptSubmit, PreToolUse, PostToolUse → working;
+  PermissionRequest → needs you; Stop → done; Interrupt → idle. Today only SessionStart and
+  SubagentStart/Stop are installed (`crates/adapters/maitty-provider-codex/src/status_hooks.rs`)
+  and Codex is `HOOKS_END_ONLY` (`crates/maitty-core/src/daemon/status.rs`), so working and
+  needs-you are read off the screen.
+- Codex runs a user hook only once its hash is trusted (untrusted or modified hooks are
+  skipped). You trust Maitty's hooks once in Codex's `/hooks`; Maitty never writes trust
+  hashes (see [Out](#out)). Status still needs the pane's token or process chain (Rules).
+- A pane switches to hook status when its first lifecycle hook arrives; a pane with none keeps
+  the screen guess, per pane.
+- **Exit:** on a real Codex 0.166 pane (prompt → working → permission → needs you → answer →
+  working → finish → done → Esc → idle), `daemon.log` shows hook reasons, not `screen:`, and
+  the verification gate passes.
+
+Tickets, in order:
+
+1. Ship the sound fixes already built: commit them as two changes (client: no sound for the
+   pane you are looking at, and needs-you quiet for 2 minutes after it rings; daemon: a
+   screen-guessed finish after under 5 s of work is not announced), and correct
+   `docs/agent-status.md:142`, `docs/guide.md:204` and the comment at
+   `crates/maitty-terminal-client/src/client/background.rs:240`.
+2. Verify on real Codex 0.166 which hook events fire, their stdin payload, whether the pane
+   token reaches the hook, and Windows hook latency (PreToolUse runs on every tool call).
+   Record it in `docs/agent-status.md`. No code.
+3. Install the new Codex hooks in `status_hooks.rs`, with tests for Linux, Windows and
+   uninstall that keep a user's own hooks.
+4. Daemon: once a Codex pane's lifecycle hooks arrive, treat it as fully hooked (out of
+   `HOOKS_END_ONLY`); a pane with none still uses the screen. Tests in
+   `crates/maitty-core/src/daemon/logic_tests.rs`: blocked back to working after an approved
+   tool, interrupt → idle, stop → done, an unhooked pane unchanged.
+5. Settings › Agents says "hooks installed, trust them in Codex /hooks" while they are not
+   trusted (a read-only check of `~/.codex/config.toml`).
+6. Live acceptance on a real Codex pane, docs, and the exit check.
 
 ## Rules
 
