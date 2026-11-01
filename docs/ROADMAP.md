@@ -1441,11 +1441,11 @@ one theme setting.
 
 Tickets, in order:
 
-1. Tell dark from light by background, and add the five light themes (with credits).
-2. Config: `theme_dark`, `theme_light`, `appearance`, the load-time fold of an old `theme`, and
+1. **Done 2026-11-01.** Tell dark from light by background, and add the five light themes (with credits).
+2. **Done 2026-11-01.** Config: `theme_dark`, `theme_light`, `appearance`, the load-time fold of an old `theme`, and
    the rule that `theme` follows the active slot.
-3. Browser tabs and the three Settings rows.
-4. The search-only flip command, docs, and a live look at both tabs.
+3. **Done 2026-11-01.** Browser tabs and the three Settings rows.
+4. **Built 2026-11-01; open: a live look at both tabs and the five new palettes (written from the projects' published colours, not copied from files).** The search-only flip command, docs, and a live look at both tabs.
 
 ## Rules
 
