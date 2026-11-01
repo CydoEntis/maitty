@@ -1480,7 +1480,7 @@ impl AgentRow {
             ),
             AgentRow::Codex => concat!(
                 env!("APP_NAME"),
-                " reads Codex's process and screen. For exact status and its helpers, Connect agents installs its hooks."
+                " reads Codex's process and screen until its hooks are installed and trusted. Connect agents installs them; then review them once in Codex's /hooks."
             ),
             AgentRow::SetUp => {
                 "Connect an agent so it reports working, needs you and done itself. Enter opens the list."
@@ -1528,7 +1528,8 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "ui.splash" | "ui.splash_animation" => "STARTUP",
             "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_keys" | "ui.alt_arrows" => "INPUT",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
-            "theme" | "ui.glyphs" | "ui.spinner" | "ui.cursor" | "ui.cursor_blink" => "THEME",
+            "appearance" | "theme_dark" | "theme_light" | "ui.glyphs" | "ui.spinner"
+            | "ui.cursor" | "ui.cursor_blink" => "THEME",
             "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
             "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded" => "PANES",
             "ui.tab_gap" => "TABS",
@@ -1650,13 +1651,18 @@ pub(super) fn control(
         SRow::Agent(row) => agent_control(app, t, *row),
         SRow::Version => version_control(app, t),
         SRow::Setting(s) => {
-            if s.path == "theme" {
-                let name = if cfg.theme.is_empty() {
+            if super::modal::is_theme_row(s.path) {
+                let name = if s.path == "theme_light" {
+                    &cfg.theme_light
+                } else {
+                    &cfg.theme_dark
+                };
+                let name = if name.is_empty() {
                     crate::theme::DEFAULT
                 } else {
-                    &cfg.theme
+                    name
                 };
-                let chosen = cfg.theme();
+                let chosen = crate::theme::Theme::named(name);
                 return vec![
                     seg("  ", Style::default().bg(chosen.bg)),
                     seg("  ", Style::default().bg(chosen.accent)),
@@ -1796,7 +1802,19 @@ fn agent_control(app: &App, t: &Theme, row: AgentRow) -> Vec<Seg> {
             Some(false) => vec![seg("hooks not installed", Style::default().fg(t.muted))],
             None => vec![seg("checking…", Style::default().fg(t.muted))],
         },
-        AgentRow::Codex => vec![seg("✓ read from the process and screen", ok)],
+        AgentRow::Codex => match app.codex_hooks {
+            None => vec![seg("checking…", Style::default().fg(t.muted))],
+            Some(maitty_provider_codex::HooksState::NotInstalled) => {
+                vec![seg("✓ read from the process and screen", ok)]
+            }
+            Some(maitty_provider_codex::HooksState::NeedsTrust) => vec![seg(
+                "hooks installed · trust them in Codex /hooks",
+                Style::default().fg(t.sky()),
+            )],
+            Some(maitty_provider_codex::HooksState::Trusted) => {
+                vec![seg("✓ hooks installed and trusted", ok)]
+            }
+        },
         AgentRow::SetUp => vec![seg("Enter", Style::default().fg(t.accent))],
     }
 }

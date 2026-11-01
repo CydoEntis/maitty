@@ -226,6 +226,10 @@ pub struct Term {
     pub born: Instant,
     /// It rang the bell while you weren't looking at it.
     pub bell: bool,
+    /// Codex has sent a lifecycle hook (a prompt, a tool, an approval), so its turns start and
+    /// stop by hook and the screen is no longer read for them. A pane whose hooks are not
+    /// installed or not trusted never sets it and keeps the screen guess.
+    pub lifecycle_hooks: bool,
     /// The name given in the agent (/rename), its first prompt, and its model.
     pub name: String,
     pub first_prompt: String,
@@ -823,6 +827,7 @@ impl Term {
             cpu: 0.0,
             born: Instant::now(),
             bell: false,
+            lifecycle_hooks: false,
             name: String::new(),
             first_prompt: String::new(),
             label: String::new(),

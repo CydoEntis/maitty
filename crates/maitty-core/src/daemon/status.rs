@@ -66,17 +66,30 @@ const QUEUED_TURN_STARTS_WITHIN: Duration = Duration::from_secs(60);
 pub(super) const SUBAGENTS_QUIET_AT_MOST: Duration = Duration::from_secs(60 * 60);
 /// A permission ping this soon after a "working" is Claude repeating one already answered.
 const REPEATED_PROMPT_WITHIN: Duration = Duration::from_secs(5);
-/// Agents whose hooks report only the end of a turn.
+/// Agents whose hooks report only the end of a turn, until their lifecycle hooks show up
+/// (`Term::lifecycle_hooks`).
 const HOOKS_END_ONLY: &[&str] = &["codex"];
 /// These adapters report every reply/dismissal, including custom extension dialogs.
 const NATIVE_PROMPT_LIFECYCLE: &[&str] = &["pi", "omp", "mastracode", "opencode", "kilo", "kimi"];
 const FULL_LIFECYCLE_HOOKS: &[&str] = &["pi", "omp", "mastracode", "opencode", "kilo", "kimi"];
+/// Codex hook events that start or continue a turn, or ask for approval. Seeing one means its
+/// lifecycle hooks are installed and trusted, so the screen is not needed for those states.
+const CODEX_LIFECYCLE_EVENTS: &[&str] = &[
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PermissionRequest",
+];
 const VISIBLE_BLOCKER_WHY: &str = "screen: a live agent dialog needs you";
 /// The progress indicator gone this long with no turn-end: the turn was cancelled (Esc).
 const CANCELLED_AFTER: Duration = Duration::from_secs(2);
 /// An agent read from its screen (no hooks) is done only once its screen has been still this
 /// long: working ones redraw a timer every second.
 const SCREEN_DONE_QUIET: Duration = Duration::from_secs(5);
+/// A finish read off the screen after less "work" than this is a title blink, not a turn:
+/// the status shows it but nobody is told. Codex's title flicks to working and its idle
+/// prompt "recovers" the end two seconds later, which rang for nothing.
+const SCREEN_FINISH_MIN_TURN_SECS: u64 = 5;
 
 impl Daemon {
     /// A status report whose sender checked out (`verdict`: did its process chain lead to
@@ -383,6 +396,7 @@ impl Daemon {
             HookStatus::Idle if std::mem::take(&mut t.restore_unseen) && !focused => Status::Done,
             HookStatus::Gone => {
                 t.hooked = false;
+                t.lifecycle_hooks = false;
                 t.hooked_process_seen = false;
                 if t.conversation_id.is_none() {
                     t.agent = None;
@@ -409,6 +423,9 @@ impl Daemon {
             HookStatus::Done => Status::Done,
         };
         t.hooked = true;
+        if agent == "codex" && CODEX_LIFECYCLE_EVENTS.contains(&event) {
+            t.lifecycle_hooks = true;
+        }
         if !agent.is_empty() {
             if t.agent.as_deref() != Some(&agent) {
                 t.hooked_process_seen = false;
@@ -503,6 +520,10 @@ impl Daemon {
             t.status
         );
         t.status_why = why.to_string();
+        let guessed_blink = new == Status::Done
+            && why.starts_with("screen: ")
+            && t.status == Status::Working
+            && term::unix_now().saturating_sub(t.status_since) < SCREEN_FINISH_MIN_TURN_SECS;
         let turn = (t.status == Status::Working && t.agent.is_some()).then(|| {
             (
                 t.agent.clone().unwrap_or_default(),
@@ -540,12 +561,15 @@ impl Daemon {
             // A turn has started: the next queued follow-up waits for this one to end.
             if new == Status::Working {
                 t.queue_sent = None;
-                t.alerted = None;
+                // A new turn's finish is news again; a question asked again soon is not.
+                if t.alerted.is_some_and(|(s, _)| s == Status::Done) {
+                    t.alerted = None;
+                }
             }
         }
         // A finish waits for its check: `check_settled` says it once the result is in.
         let held = new == Status::Done && self.terms.get(&term).is_some_and(Term::check_running);
-        if matches!(new, Status::Blocked | Status::Done) && !held {
+        if matches!(new, Status::Blocked | Status::Done) && !held && !guessed_blink {
             self.announce(term, new);
         }
     }
@@ -758,7 +782,8 @@ impl Daemon {
             if signal.skip {
                 continue;
             }
-            if t.hooked && !FULL_LIFECYCLE_HOOKS.contains(&name.as_str()) {
+            let by_hooks = FULL_LIFECYCLE_HOOKS.contains(&name.as_str()) || t.lifecycle_hooks;
+            if t.hooked && !by_hooks {
                 if signal.visible_blocker
                     && signal.status == Some(Status::Blocked)
                     && t.last_output >= t.last_turn_end
@@ -776,7 +801,10 @@ impl Daemon {
                     continue;
                 }
             }
-            if name == "codex" && CODEX_QUEUED_QUESTION.is_match(&t.tail_text(rows)) {
+            if name == "codex"
+                && !t.lifecycle_hooks
+                && CODEX_QUEUED_QUESTION.is_match(&t.tail_text(rows))
+            {
                 changes.push((t.id, Status::Blocked, CODEX_QUESTION_WHY.into()));
                 continue;
             }
@@ -931,6 +959,7 @@ impl Daemon {
                 // Agents whose hooks only say a turn ended (Codex's notify): the start of the
                 // next turn shows on screen only.
                 if HOOKS_END_ONLY.contains(&name.as_str())
+                    && !t.lifecycle_hooks
                     && matches!(t.status, Status::Idle | Status::Done)
                     // Typed since it finished: not the last turn's line still on screen.
                     && let Some(d) = self.agents.iter().find(|a| &a.name == name)

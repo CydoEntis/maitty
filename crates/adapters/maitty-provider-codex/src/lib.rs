@@ -9,12 +9,25 @@ mod runtime_policy;
 mod status_hooks;
 
 pub use runtime_policy::runtime_policy_overrides;
-pub use status_hooks::{StatusHookOptions, update_status_hooks};
+pub use status_hooks::{HooksState, StatusHookOptions, hooks_state, update_status_hooks};
 
-/// Maps Codex's native completion notification to Maitty's shared hook status.
+/// The tool Codex calls to ask you a question mid-turn.
+const QUESTION_TOOL: &str = "request_user_input";
+
+/// Maps what only Codex says to Maitty's shared hook status: its completion notification, an
+/// interrupted turn, and a question to you. Every other Codex hook event is in Claude's
+/// dialect and maps there.
 pub fn status_from_hook(payload: &Value) -> Option<maitty_shared::protocol::HookStatus> {
-    (payload.get("type").and_then(Value::as_str) == Some("agent-turn-complete"))
-        .then_some(maitty_shared::protocol::HookStatus::Done)
+    use maitty_shared::protocol::HookStatus;
+    let text = |key: &str| payload.get(key).and_then(Value::as_str).unwrap_or("");
+    if text("type") == "agent-turn-complete" {
+        return Some(HookStatus::Done);
+    }
+    match (text("hook_event_name"), text("tool_name")) {
+        ("Interrupt", _) => Some(HookStatus::Idle),
+        ("PreToolUse", QUESTION_TOOL) => Some(HookStatus::Blocked),
+        _ => None,
+    }
 }
 
 /// A Codex session's id, parent, working folder and display name from its metadata line.
@@ -300,6 +313,25 @@ mod tests {
             status_from_hook(&serde_json::json!({"type": "other-event"})),
             None
         );
+    }
+
+    #[test]
+    fn an_interrupt_is_idle_and_a_question_to_you_needs_you() {
+        use maitty_shared::protocol::HookStatus;
+        let event = |name: &str, tool: &str| {
+            status_from_hook(&serde_json::json!({"hook_event_name": name, "tool_name": tool}))
+        };
+        assert_eq!(event("Interrupt", ""), Some(HookStatus::Idle));
+        assert_eq!(
+            event("PreToolUse", "request_user_input"),
+            Some(HookStatus::Blocked)
+        );
+        assert_eq!(
+            event("PreToolUse", "shell"),
+            None,
+            "an ordinary tool is Claude's dialect: working"
+        );
+        assert_eq!(event("Stop", ""), None);
     }
 
     #[test]

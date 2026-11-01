@@ -713,6 +713,11 @@ impl App {
                             if agent == "claude" {
                                 app.claude_hooks = Some(true);
                             }
+                            // Codex's trust is read again the next time Settings > Agents shows.
+                            if agent == "codex" {
+                                app.codex_hooks = None;
+                                app.codex_hooks_asked = false;
+                            }
                             let name = maitty_agent_integrations::STATUS_AGENTS.iter().find(|a| a.id == agent).map_or(agent.as_str(), |a| a.name);
                             app.notify(format!("{name} status installed; restart {name} to load it (Pi also supports /reload)"), false)
                         }

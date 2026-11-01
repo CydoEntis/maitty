@@ -23,7 +23,9 @@ approved detailed visual system here only if it becomes shared across clients.
 
 ## Themes and colour roles
 
-Colours come only from the theme's roles, never a literal. **Night** is the default: the sea
+Colours come only from the theme's roles, never a literal. Dark and light are two remembered
+slots (Settings › Appearance) and a switch; **Night** is the default dark theme and **Day**
+the default light one, and the browser lists each side on its own tab. **Night** is the sea
 at night, a deep navy ground, sea-glass teal for focus and working, foam for names. **Day**
 is the same sea by day: a pale grey-blue ground and a deep teal accent. The other built-in
 themes fill the same roles; [theme sources](theme-credits.md) lists where they come from.
@@ -112,8 +114,8 @@ screen). **Files**, **Changes**, **Branch** and **References** share one sheet w
 tree beside the open file (Markdown drawn), Changes the changed files and their diff, Branch the
 branch, ahead/behind, recent commits, the last check and snapshots, References the project's
 screenshots and design files, one line each (name, then kind, size and age muted at the right).
-The lit tab names the open view, so the sheet's top border does not repeat it: Files and
-Changes carry only the ✕, Branch and References their checkout's folder. The Inbox and the check evidence
+The lit tab names the open view, so the sheet's top border does not repeat it: Every tab
+carries only the ✕. The Inbox and the check evidence
 sheet dock in the same place without the strip. See UI › *the frame* (Sheet), *Inbox check
 groups* and *check evidence sheet*.
 
@@ -122,7 +124,8 @@ groups* and *check evidence sheet*.
 The Menu and a row's context menu have no fill of their own: they are drawn on the ground like the panes. Everything else that floats over the screen is boxed as the look boxes a pane: a `line` box round
 `card` with corners by `ui.rounded`
 ([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)). Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
-`Esc close` at the right), the screen behind dimmed, no shadow. Settings, override, command
+a red ✕ chip at the right), its border in the accent because it holds the keys, the screen behind
+dimmed in text and ground alike so the card stands out, no shadow. Settings, override, command
 approval and the key overlay are modals. Small explanations (why, a row's menu, the message and
 helpers popovers) open beside their row with a `◂` pointer; a menu row ends in its key, the bound leader
 key when there is one. Every panel ends in an action bar
@@ -130,11 +133,14 @@ of keycaps. See UI › *UI conventions*, *check modals and settings* and *why po
 
 ## Toasts
 
-One component for every notice: bottom right, above the agent's input area, its left side a
-heavy `┃` in the notice's colour (`err`, `blocked` for needs you, `done`, else the accent), a
-bold title, a detail line and an optional preview in italics. Floating draws it as a `line`
-outline on the ground, always with round corners (ADR 0030). It slides in and fades
-out with motion on. See UI › *the frame* (Toast).
+One component for every notice: bottom right, above the agent's input area, a small floating
+pane: a `card` boxed in the notice's colour (`err`, `blocked` for needs you, `done`, else the
+accent) with a kind chip carrying the notice's mark on the top border (`▲ Needs you`,
+`✕ Error`, `✓ Done`, `i Hint`, `✓ Notice`) and the modals' red ✕ chip at its right, then a bold
+title, a detail line and an optional preview in italics. A question waiting on you also has its
+two answers as buttons on the bottom border: a green `Answer` that goes to the session and a
+red `Later esc` that dismisses it. Always round corners (ADR 0030). It slides in and fades out
+with motion on. See UI › *the frame* (Toast).
 
 ## Mode bar
 

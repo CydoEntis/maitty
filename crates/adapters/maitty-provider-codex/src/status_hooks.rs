@@ -14,6 +14,12 @@ pub struct StatusHookOptions<'a> {
 pub fn update_status_hooks(text: &str, options: StatusHookOptions<'_>) -> Result<Option<String>> {
     const EVENTS: &[(&str, Option<&str>)] = &[
         ("SessionStart", Some("same")),
+        ("UserPromptSubmit", None),
+        ("PreToolUse", None),
+        ("PermissionRequest", None),
+        ("PostToolUse", None),
+        ("Stop", None),
+        ("Interrupt", None),
         ("SubagentStart", None),
         ("SubagentStop", None),
     ];
@@ -116,9 +122,87 @@ pub fn update_status_hooks(text: &str, options: StatusHookOptions<'_>) -> Result
     Ok(Some(document.to_string()))
 }
 
+/// The turn-lifecycle hooks, with the name Codex files each one under in `[hooks.state]`.
+const LIFECYCLE: &[(&str, &str)] = &[
+    ("UserPromptSubmit", "user_prompt_submit"),
+    ("PreToolUse", "pre_tool_use"),
+    ("PermissionRequest", "permission_request"),
+    ("PostToolUse", "post_tool_use"),
+    ("Stop", "stop"),
+    ("Interrupt", "interrupt"),
+];
+
+/// Where Maitty's Codex lifecycle hooks stand, read from a Codex configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HooksState {
+    /// Some lifecycle hook is missing: Maitty reads Codex's screen.
+    NotInstalled,
+    /// All installed, but Codex has no recorded trust for at least one: Codex skips it until
+    /// you review it in `/hooks`.
+    NeedsTrust,
+    /// All installed, and Codex records trust for each. The hash itself is not checked, so a
+    /// hook edited since is still reported here.
+    Trusted,
+}
+
+/// Read-only: whether Maitty's lifecycle hooks are in `text` and Codex has recorded trusting
+/// them. A document that does not parse reads as not installed.
+pub fn hooks_state(text: &str) -> HooksState {
+    let Ok(document) = text.parse::<toml_edit::DocumentMut>() else {
+        return HooksState::NotInstalled;
+    };
+    let Some(hooks) = document.get("hooks") else {
+        return HooksState::NotInstalled;
+    };
+    let trusted = |event: &str, group: usize, handler: usize| {
+        hooks
+            .get("state")
+            .and_then(|state| state.as_table_like())
+            .is_some_and(|state| {
+                state.iter().any(|(key, value)| {
+                    key.ends_with(&format!("config.toml:{event}:{group}:{handler}"))
+                        && value
+                            .get("trusted_hash")
+                            .and_then(|hash| hash.as_str())
+                            .is_some_and(|hash| !hash.is_empty())
+                })
+            })
+    };
+    let mut all_trusted = true;
+    for (event, filed_as) in LIFECYCLE {
+        let Some(groups) = hooks
+            .get(event)
+            .and_then(|item| item.clone().into_value().ok())
+            .and_then(|value| value.as_array().cloned())
+        else {
+            return HooksState::NotInstalled;
+        };
+        let ours = groups.iter().enumerate().find_map(|(group, entry)| {
+            let handlers = entry.as_inline_table()?.get("hooks")?.as_array()?;
+            handlers.iter().enumerate().find_map(|(handler, h)| {
+                let h = h.as_inline_table()?;
+                ["command", "commandWindows"]
+                    .iter()
+                    .filter_map(|key| h.get(key)?.as_str())
+                    .any(|command| command.contains("hook codex"))
+                    .then_some((group, handler))
+            })
+        });
+        match ours {
+            None => return HooksState::NotInstalled,
+            Some((group, handler)) => all_trusted &= trusted(filed_as, group, handler),
+        }
+    }
+    if all_trusted {
+        HooksState::Trusted
+    } else {
+        HooksState::NeedsTrust
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{StatusHookOptions, update_status_hooks};
+    use super::{HooksState, StatusHookOptions, hooks_state, update_status_hooks};
 
     fn options(executable: &str, uninstall: bool, windows: bool) -> StatusHookOptions<'_> {
         StatusHookOptions {
@@ -148,6 +232,67 @@ mod tests {
             .unwrap();
         assert!(linux.contains("\"/home/user/bin/maitty\" hook codex --status same"));
         assert!(!linux.contains("commandWindows"));
+    }
+
+    #[test]
+    fn installs_the_whole_turn_lifecycle_and_reads_the_payload_for_each() {
+        let linux = update_status_hooks("", options("/bin/maitty", false, false))
+            .unwrap()
+            .unwrap();
+        for event in [
+            "UserPromptSubmit",
+            "PreToolUse",
+            "PermissionRequest",
+            "PostToolUse",
+            "Stop",
+            "Interrupt",
+        ] {
+            assert!(linux.contains(&format!("[[hooks.{event}]]")), "{event}");
+        }
+        assert_eq!(
+            linux.matches("--status").count(),
+            1,
+            "only SessionStart has a fixed status; the rest say what happened in their payload"
+        );
+    }
+
+    #[test]
+    fn hooks_read_as_not_installed_then_untrusted_then_trusted() {
+        assert_eq!(
+            hooks_state(
+                "model = 'gpt'
+"
+            ),
+            HooksState::NotInstalled
+        );
+        assert_eq!(hooks_state("not [toml"), HooksState::NotInstalled);
+        let installed = update_status_hooks("", options("/bin/maitty", false, false))
+            .unwrap()
+            .unwrap();
+        assert_eq!(hooks_state(&installed), HooksState::NeedsTrust);
+        let mut trusted = installed.clone();
+        for (_, filed_as) in super::LIFECYCLE {
+            trusted.push_str(&format!(
+                "
+[hooks.state.'/home/me/.codex/config.toml:{filed_as}:0:0']
+trusted_hash = 'sha256:abc'
+"
+            ));
+        }
+        assert_eq!(hooks_state(&trusted), HooksState::Trusted);
+        let partly = trusted.replace("trusted_hash = 'sha256:abc'", "enabled = true");
+        assert_eq!(hooks_state(&partly), HooksState::NeedsTrust);
+    }
+
+    #[test]
+    fn installing_twice_adds_nothing_the_second_time() {
+        let once = update_status_hooks("", options("/bin/maitty", false, false))
+            .unwrap()
+            .unwrap();
+        let twice = update_status_hooks(&once, options("/bin/maitty", false, false))
+            .unwrap()
+            .unwrap();
+        assert_eq!(once, twice);
     }
 
     #[test]

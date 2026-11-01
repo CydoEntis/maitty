@@ -4,9 +4,12 @@
 
 prefix = "ctrl+space"
 
-# Browse all built-in names in Settings > Appearance > Theme.
-# The app's own pair is night (the default) and day; the rest: docs/theme-credits.md.
-theme = "night"
+# Dark and light each remember a theme; `appearance` says which one shows. Browse the
+# built-in names in Settings > Appearance. The app's own pair is night (the dark default) and
+# day (the light default); the rest: docs/theme-credits.md.
+theme_dark = "night"
+theme_light = "day"
+appearance = "dark"
 
 # Shell for new panes. Default: pwsh / powershell on Windows, $SHELL elsewhere.
 # shell = "pwsh.exe"

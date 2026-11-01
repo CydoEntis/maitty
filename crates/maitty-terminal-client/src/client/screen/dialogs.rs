@@ -406,7 +406,7 @@ pub(in crate::client) fn chips_for(app: &App, row: &SRow) -> Option<(Vec<String>
                 Some(if on { 0 } else { 1 }),
             ))
         }
-        Kind::Choice(_) if s.path == "theme" => None,
+        Kind::Choice(_) if super::super::modal::is_theme_row(s.path) => None,
         Kind::Choice(opts) => {
             let curs = cur
                 .and_then(|v| v.as_str().map(str::to_string))
@@ -657,6 +657,13 @@ pub(in crate::client) fn draw_settings(
             crate::client::Bg::Then(Box::new(move |app: &mut App| {
                 app.claude_hooks = Some(installed)
             }))
+        });
+    }
+    if cat == Cat::Agents && !app.codex_hooks_asked {
+        app.codex_hooks_asked = true;
+        app.spawn_bg(|| {
+            let state = crate::cli::codex_hooks_state();
+            crate::client::Bg::Then(Box::new(move |app: &mut App| app.codex_hooks = Some(state)))
         });
     }
     let rows = crate::client::design::settings_rows(cat);

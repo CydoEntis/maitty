@@ -245,11 +245,25 @@ pub const SETTINGS: &[Setting] = &[
     },
     // Appearance
     Setting {
-        path: "theme",
-        label: "Theme",
+        path: "appearance",
+        label: "Appearance",
+        kind: Kind::Choice(crate::config::APPEARANCES),
+        cat: Cat::Appearance,
+        help: "Which theme shows: your dark one or your light one. Pick each below.",
+    },
+    Setting {
+        path: "theme_dark",
+        label: "Dark theme",
         kind: Kind::Choice(crate::theme::BUILTIN),
         cat: Cat::Appearance,
-        help: "Enter to search and preview themes. Enter in the browser applies your choice.",
+        help: "Enter to search and preview dark themes. Enter in the browser applies your choice.",
+    },
+    Setting {
+        path: "theme_light",
+        label: "Light theme",
+        kind: Kind::Choice(crate::theme::BUILTIN),
+        cat: Cat::Appearance,
+        help: "Enter to search and preview light themes. Enter in the browser applies your choice.",
     },
     Setting {
         path: "ui.sidebar_position",
@@ -560,6 +574,11 @@ pub fn in_cat(cat: Cat) -> Vec<&'static Setting> {
 }
 
 /// The effective value of a setting (defaults included), as TOML.
+/// A setting that is picked in the theme browser rather than stepped through.
+pub fn is_theme_row(path: &str) -> bool {
+    matches!(path, "theme_dark" | "theme_light")
+}
+
 pub fn current(cfg: &Config, path: &str) -> Option<toml::Value> {
     let mut v = toml::Value::try_from(cfg).ok()?;
     for part in path.split('.') {
@@ -726,7 +745,7 @@ mod tests {
         let (bg_tx, mut bg_rx) = super::super::mpsc::unbounded_channel();
         let mut app = super::super::App::new(Config::load().unwrap(), tx, None, bg_tx);
         app.splash = false;
-        app.open_themes();
+        app.open_themes_on(true);
         app.on_paste("zenbones light".into());
         app.on_key(super::super::KeyEvent::new(
             super::super::KeyCode::Enter,
@@ -737,24 +756,25 @@ mod tests {
             super::super::Mode::Themes { saving: true, .. }
         ));
         app.on_bg(bg_rx.blocking_recv().unwrap());
-        assert_eq!(app.cfg.theme, "zenbones-light");
+        assert_eq!(app.cfg.theme_light, "zenbones-light");
         assert_eq!(
-            app.theme.bg,
-            crate::theme::Theme::named("zenbones-light").bg
+            app.cfg.theme, "nord",
+            "a light pick leaves the dark theme they had showing"
         );
+        assert_eq!(app.theme.bg, crate::theme::Theme::named("nord").bg);
         assert!(matches!(app.mode, super::super::Mode::ScreenSettings(_)));
         let out = std::fs::read_to_string(&file).unwrap();
-        assert!(out.contains("theme = \"zenbones-light\""));
+        assert!(out.contains("theme_light = \"zenbones-light\""));
         // A directory cannot be a config file: failed saves retain the browser and applied theme.
         unsafe { std::env::set_var(concat!(env!("APP_ENV"), "_CONFIG"), &dir) };
-        app.open_themes();
+        app.open_themes_on(false);
         app.on_paste("solarized dark".into());
         app.on_key(super::super::KeyEvent::new(
             super::super::KeyCode::Enter,
             super::super::KeyModifiers::NONE,
         ));
         app.on_bg(bg_rx.blocking_recv().unwrap());
-        assert_eq!(app.cfg.theme, "zenbones-light");
+        assert_eq!(app.cfg.theme, "nord");
         assert!(
             matches!(&app.mode, super::super::Mode::Themes { query, saving: false, .. } if query == "solarized dark")
         );

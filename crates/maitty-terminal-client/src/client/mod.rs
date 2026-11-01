@@ -459,6 +459,11 @@ pub struct App {
     /// Whether Claude's hooks are installed, read in the background when Settings > Agents first shows (None until then).
     claude_hooks: Option<bool>,
     claude_hooks_asked: bool,
+    /// The same for Codex's lifecycle hooks: installed, and whether Codex has been told to trust them.
+    codex_hooks: Option<maitty_provider_codex::HooksState>,
+    codex_hooks_asked: bool,
+    /// The theme browser's tab: the Light themes when true, else the Dark ones.
+    theme_tab_light: bool,
     /// What changed in it (and any releases between), for the update dialog.
     update_notes: Vec<String>,
     /// When the app last asked whether a newer release is out.
@@ -717,6 +722,9 @@ impl App {
             installed_version: None,
             claude_hooks: None,
             claude_hooks_asked: false,
+            codex_hooks: None,
+            codex_hooks_asked: false,
+            theme_tab_light: false,
             update_notes: Vec::new(),
             update_checked: None,
             updating: false,

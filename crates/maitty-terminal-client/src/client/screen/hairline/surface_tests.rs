@@ -37,7 +37,7 @@ fn surfaces() -> Vec<(&'static str, Open)> {
         ("rename", |app| app.act(Action::RenameTab)),
         ("new session dialog", |app| app.act(Action::NewSession)),
         ("history", |app| app.act(Action::History)),
-        ("themes", |app| app.open_themes()),
+        ("themes", |app| app.open_themes_on(false)),
         ("inbox", |app| app.act(Action::Jump)),
         ("files", |app| app.act(Action::Files)),
         ("changes", |app| app.act(Action::Changes)),
@@ -131,7 +131,7 @@ fn a_one_line_prompt_keeps_its_frame() {
     };
     assert_eq!(
         (buf[(below.x, below.y)].symbol(), buf[(below.x, below.y)].fg),
-        ("│", t.line),
+        ("│", t.accent),
         "its side stays"
     );
     assert!(
@@ -231,7 +231,7 @@ fn a_modal_floats_on_a_square_hairline_frame() {
         .positions()
         .find(|p| buf[(p.x, p.y)].symbol() == "┌")
         .expect("a square corner");
-    assert_eq!(buf[(corner.x, corner.y)].fg, t.line);
+    assert_eq!(buf[(corner.x, corner.y)].fg, t.accent);
     assert_eq!(
         buf[(corner.x + 2, corner.y + 2)].bg,
         t.bg,

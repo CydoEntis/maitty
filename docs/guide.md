@@ -201,7 +201,8 @@ still has them loads, and they are ignored.
 
 ## Alerts
 
-Needs-you alerts ring even in the focused pane and use two rising notes. A background
+Needs-you alerts use two rising notes and stay quiet for the session you're looking at; the
+same session asking again within 2 minutes stays quiet too. A background
 session's completion uses one soft note; the session you're viewing stays quiet. Other panes get an in-app completion notice. A needs-you alert is delayed briefly
 to ignore transient prompts and is cancelled if the agent resumes work. Sessions started
 by another agent do not alert when they finish. With no maitty window open, the server

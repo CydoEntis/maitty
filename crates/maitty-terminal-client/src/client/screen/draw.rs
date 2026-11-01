@@ -1375,8 +1375,8 @@ const TOAST_TEXT_PAD: usize = 8;
 /// Rows between the card's bottom edge and the screen's: the agent's input area sits there.
 const TOAST_ABOVE_INPUT: u16 = 5;
 
-/// One toast for every notice, bottom right above the agent's input area: a `card` with a
-/// full-height bar in the notice's colour and no frame. Row 1 is the mark and bold
+/// One toast for every notice, bottom right above the agent's input area: a `card` boxed in
+/// the notice's colour with a kind chip on its top border. Row 1 is the mark and bold
 /// title with a ✕; row 2 the detail; an optional row 3 a preview in dim italics. It clears
 /// after `toast_hold` (errors a little longer), or with the ✕ / Esc.
 pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
@@ -1426,13 +1426,13 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     let needs = about
         .and_then(|term| app.snap.terms.get(&term))
         .is_some_and(|x| x.status == Status::Blocked);
-    let (colour, mark) = match (err, needs, about) {
-        (true, ..) => (t.err, "✕"),
-        (_, true, _) => (t.blocked, "●"),
-        (_, _, Some(_)) => (t.done, "✓"),
+    let (colour, mark, kind) = match (err, needs, about) {
+        (true, ..) => (t.err, "✕", "Error"),
+        (_, true, _) => (t.blocked, "▲", "Needs you"),
+        (_, _, Some(_)) => (t.done, "✓", "Done"),
         // A hint about keys (shortcut mode's dead key) is information, not a success.
-        _ if app.notice_hint => (t.sky(), "i"),
-        _ => (t.accent, "✓"),
+        _ if app.notice_hint => (t.sky(), "i", "Hint"),
+        _ => (t.accent, "✓", "Notice"),
     };
     let look = Look::of(&app.cfg.ui);
     let button = restart.then(|| button_pill(look, t, "Restart now", "", false, t.card));
@@ -1461,11 +1461,11 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     };
     app.screen.toast_rect = r;
     let ink = |c: Color, bg: Color| if fade > 0.0 { blend(c, bg, fade) } else { c };
-    // Floating: a `line` outline on the ground with round corners whatever `ui.rounded` says
-    // (the box glyphs need no Nerd Font), its left side a heavy rule in the notice's colour.
-    // Hairline, which has no boxes: a solid block in `card2` (its `card` is the ground), its
-    // left edge that rule (ADR 0028).
-    let bg = if look.hairline { t.card2 } else { t.bg };
+    // Floating: framed like a modal (a box on `card`, round corners whatever `ui.rounded` says),
+    // its border and a kind chip on the top border in the notice's colour, so it reads as a
+    // small floating pane, not text on the ground. Hairline, which has no boxes: a solid block
+    // in `card2` (its `card` is the ground), its left edge a heavy rule (ADR 0028).
+    let bg = if look.hairline { t.card2 } else { t.card };
     fill(buf, r, bg);
     let bar = Style::default().fg(ink(colour, bg)).bg(bg);
     if look.hairline {
@@ -1480,54 +1480,82 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
                 rounded: true,
                 ..look
             },
-            Style::default().fg(ink(t.line, bg)).bg(bg),
+            bar,
         );
-        for yy in r.y + 1..r.bottom().saturating_sub(1) {
-            buf[(r.x, yy)].set_symbol("┃").set_style(bar);
-        }
+        // The kind chip carries the notice's mark, as a modal's title chip carries its title.
+        let chip = pill(
+            look,
+            vec![seg(
+                format!("{mark} {kind}"),
+                Style::default()
+                    .fg(ink(t.ink_on(colour), colour))
+                    .add_modifier(Modifier::BOLD),
+            )],
+            ink(colour, bg),
+            bg,
+        );
+        put(buf, r.x + 2, r.y, &chip, r.right().saturating_sub(1));
     }
-    // Rows 2 and 3 start under the title, one column in from the border; the title also
-    // leaves the mark's column and the ✕'s.
-    let text_w = r.width.saturating_sub(6) as usize;
+    // Floating: every row starts under the chip; Hairline puts the mark in front of the title and
+    // indents what follows it. The title also leaves room for the close.
+    let tx = if look.hairline { r.x + 4 } else { r.x + 2 };
+    let text_w = r.width.saturating_sub(tx - r.x + 2) as usize;
     let title_w = r.width.saturating_sub(TOAST_TEXT_PAD as u16 + 1) as usize;
-    let head = [
-        seg(
-            format!("{mark} "),
-            Style::default()
-                .fg(ink(colour, bg))
-                .bg(bg)
-                .add_modifier(Modifier::BOLD),
-        ),
-        seg(
-            truncate(&title, title_w),
-            Style::default()
-                .fg(ink(t.strong, bg))
-                .bg(bg)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ];
+    let title_seg = seg(
+        truncate(&title, title_w),
+        Style::default()
+            .fg(ink(t.strong, bg))
+            .bg(bg)
+            .add_modifier(Modifier::BOLD),
+    );
+    let head = if look.hairline {
+        vec![
+            seg(
+                format!("{mark} "),
+                Style::default()
+                    .fg(ink(colour, bg))
+                    .bg(bg)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            title_seg,
+        ]
+    } else {
+        vec![title_seg]
+    };
     put(buf, r.x + 2, r.y + 1, &head, r.right() - 1);
+    // Floating: the close is the red chip modals wear on their top border; Hairline keeps a
+    // quiet ✕ on the title row.
+    let close_chip = if look.hairline {
+        vec![seg("✕", Style::default().fg(ink(t.muted, bg)).bg(bg))]
+    } else {
+        pill(
+            look,
+            vec![seg(
+                "✕",
+                Style::default()
+                    .fg(ink(t.ink_on(t.err), t.err))
+                    .add_modifier(Modifier::BOLD),
+            )],
+            ink(t.err, bg),
+            bg,
+        )
+    };
+    let close_w = segs_width(&close_chip);
     let close = Rect {
-        x: r.right().saturating_sub(4),
-        y: r.y + 1,
-        width: 2,
+        x: r.right().saturating_sub(close_w + 1),
+        y: if look.hairline { r.y + 1 } else { r.y },
+        width: close_w,
         height: 1,
     };
-    put(
-        buf,
-        close.x,
-        close.y,
-        &[seg("✕", Style::default().fg(ink(t.muted, bg)).bg(bg))],
-        r.right() - 1,
-    );
+    put(buf, close.x, close.y, &close_chip, r.right() - 1);
     let mut row = r.y + 2;
     if let Some(b) = &button {
-        put(buf, r.x + 4, row, b, r.right() - 1);
+        put(buf, tx, row, b, r.right() - 1);
         row += 1;
     } else if let Some(d) = &detail {
         put(
             buf,
-            r.x + 4,
+            tx,
             row,
             &[seg(
                 truncate(d, text_w),
@@ -1540,7 +1568,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     if let Some(p) = &preview {
         put(
             buf,
-            r.x + 4,
+            tx,
             row,
             &[seg(
                 truncate(p, text_w),
@@ -1559,7 +1587,49 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     } else {
         hit(app, r, ScreenHit::Noop);
     }
+    // A question waiting on you gets its two answers as buttons on the bottom border: go and
+    // answer it, or leave it for later (Esc does the same).
+    if needs
+        && !look.hairline
+        && let Some(term) = about
+    {
+        let on = |c: Color| pill_label(look, ink(c, bg), bg, ink(t.ink_on(c), c));
+        let answer = on(t.done)("Answer");
+        let later = on(t.err)("Later esc");
+        let y = r.bottom().saturating_sub(1);
+        let ax = r.x + 2;
+        let lx = ax + segs_width(&answer) + 1;
+        put(buf, ax, y, &answer, r.right() - 1);
+        put(buf, lx, y, &later, r.right() - 1);
+        let rect = |x: u16, w: u16| Rect {
+            x,
+            y,
+            width: w,
+            height: 1,
+        };
+        hit(
+            app,
+            rect(ax, segs_width(&answer)),
+            ScreenHit::Session(app.session_key(term)),
+        );
+        hit(app, rect(lx, segs_width(&later)), ScreenHit::ToastClose);
+    }
     hit(app, close, ScreenHit::ToastClose);
+}
+
+/// A bold label on a pill of `bg`, ends rounded on `outer` when the look rounds them.
+fn pill_label<'a>(look: Look, bg: Color, outer: Color, fg: Color) -> impl Fn(&'a str) -> Vec<Seg> {
+    move |label| {
+        pill(
+            look,
+            vec![seg(
+                label.to_string(),
+                Style::default().fg(fg).add_modifier(Modifier::BOLD),
+            )],
+            bg,
+            outer,
+        )
+    }
 }
 
 fn toast_rect(area: Rect, width: u16, height: u16, slide: f32) -> Option<Rect> {

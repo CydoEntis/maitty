@@ -475,14 +475,6 @@ fn draw_rows(
     }
 }
 
-/// What follows the sheet's title: the project's folder.
-pub(in crate::client) fn references_title(app: &App) -> String {
-    let Some(View::References(v)) = &app.view else {
-        return String::new();
-    };
-    folder_name(&v.root)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

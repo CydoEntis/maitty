@@ -579,3 +579,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
 </details>
+
+A third pass on 2026-11-01 added five light themes, written from each project's published
+palette (not copied from a file): Vim's default colours on a white ground, PaperColor Light,
+Flexoki Light, Selenized Light and Modus Operandi. Maitty keeps their ground, text and
+accent and lets the contrast audit adjust the rest. Check a palette against its source before
+treating it as exact.
+
+| Theme | Added | Variant | Source | License |
+| --- | --- | --- | --- | --- |
+| Vim | Added | Default, light background | [vim/vim](https://github.com/vim/vim/blob/master/runtime/colors/vim.vim) | [Vim license](https://github.com/vim/vim/blob/master/LICENSE) |
+| PaperColor Light | Added | Light | [NLKNguyen/papercolor-theme](https://github.com/NLKNguyen/papercolor-theme) | [MIT](https://github.com/NLKNguyen/papercolor-theme/blob/master/LICENSE) |
+| Flexoki Light | Added | Light | [kepano/flexoki](https://github.com/kepano/flexoki) | [MIT](https://github.com/kepano/flexoki/blob/main/LICENSE) |
+| Selenized Light | Added | Light | [jan-warchol/selenized](https://github.com/jan-warchol/selenized) | [MIT](https://github.com/jan-warchol/selenized/blob/master/LICENSE) |
+| Modus Operandi | Added | Light | [protesilaos/modus-themes](https://github.com/protesilaos/modus-themes) | [GPL-3.0](https://github.com/protesilaos/modus-themes/blob/main/COPYING) |

@@ -40,8 +40,9 @@ folder exists, skips the rest without creating anything, then registers MCP. It 
 per agent (connected, already connected, skipped: not installed, failed: reason), tries every
 agent before failing, and changes nothing on a second run.
 
-Codex installs `SessionStart`, `SubagentStart` and `SubagentStop` hooks in
-`$CODEX_HOME/config.toml` (or `~/.codex/config.toml`). SessionStart records the
+Codex installs `SessionStart`, `SubagentStart`, `SubagentStop` and the turn lifecycle
+(`UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Stop`, `Interrupt`)
+in `$CODEX_HOME/config.toml` (or `~/.codex/config.toml`). SessionStart records the
 root thread without changing pane status, allowing thread-specific rollout-file
 detection to work when Codex does not report child lifecycle events. Native
 child events provide immediate helper identity and lifecycle when available.
@@ -49,6 +50,28 @@ Windows also gets Codex's `commandWindows` field with PowerShell's call
 operator; Linux and macOS retain the normal shell command.
 Maitty preserves existing Codex hooks and another program's `notify` command;
 turn completion still uses `notify` when that key is available.
+
+The lifecycle hooks read Codex's own payload (the same dialect as Claude's): a prompt, a
+tool or an approved tool is working, `PermissionRequest` is needs you, `Stop` is done and
+`Interrupt` is idle. A `PreToolUse` for the `request_user_input` tool, Codex asking you a
+question, is needs you. A hook that prints nothing leaves Codex's own approval flow
+alone, and `PermissionRequest` does not fire at all where approvals are off (YOLO).
+
+**Codex runs a user hook only once it is trusted.** Review Maitty's hooks once in Codex's
+`/hooks`; an untrusted or edited hook is skipped. Maitty never writes the trust itself.
+Settings › Agents says `hooks installed · trust them in Codex /hooks` until Codex has
+recorded trust for each. A pane switches to hook status the moment its first lifecycle
+hook arrives (`Term::lifecycle_hooks`); until then, and for a pane whose hooks are not
+trusted, Maitty reads Codex's screen as before.
+
+Checked against Codex 0.166 on Windows (2026-11-01): `SessionStart`, `UserPromptSubmit`,
+`PreToolUse`, `PostToolUse` and `Stop` all fire in a plain `codex exec` turn, each hook gets
+its event's JSON on stdin (`hook_event_name`, `session_id`, `turn_id`, and `tool_name` or
+`last_assistant_message` where they apply), and an untrusted `-c` hook was skipped. Not yet
+seen live: `PermissionRequest` (needs an approval) and `Interrupt` (needs an Esc), taken from
+Codex's published hook schemas. A hook run through PowerShell costs about 150 ms, so a tool
+call that fires `PreToolUse` and `PostToolUse` takes about 0.3 s longer, inside Codex's 3 s
+hook limit.
 
 Pi loads `~/.pi/agent/extensions/maitty.js` (or
 `$PI_CODING_AGENT_DIR/extensions/maitty.js`). Use a current Pi with
@@ -139,11 +162,14 @@ A working agent with no output and no hook report for 10 minutes is marked quiet
 stays working. An agent waiting on helpers it reported, or asking to start helpers,
 is never quiet. Any output or hook report clears it.
 
-Questions ring even in the focused pane after remaining blocked for 300 ms;
-the needs-you mark appears immediately. Completions are quiet and remain visible
-as status/notice changes. A queued needs-you sound rechecks the exact current
-status and cancels when work resumes, the pane disappears or attention changes.
-A new working turn clears the previous turn's notification deduplication.
+Questions ring after remaining blocked for 300 ms, except in the pane you are
+looking at (focused pane, focused window); the needs-you mark appears immediately.
+Completions are quiet and remain visible as status/notice changes. A queued
+needs-you sound rechecks the exact current status and cancels when work resumes, the
+pane disappears or attention changes. A pane that rang needs-you stays quiet for the
+same news for 2 minutes, even if it works and asks again; a new working turn clears
+only a finished pane's deduplication. A finish read off the screen after under 5
+seconds of work is a title blink: the status shows, nobody is told.
 A Claude turn that stops with background work it started still running (a shell, a
 helper, a monitor: the running entries of its Stop hook's `background_tasks` that were not
 running at the previous stop) shows done but is not announced: no sound, desktop or phone

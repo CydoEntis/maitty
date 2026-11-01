@@ -1948,6 +1948,7 @@ impl App {
                 }
             }
             ScreenHit::SpinnerPick(i) => self.spinner_pick(i),
+            ScreenHit::ThemeTab(light) => self.theme_tab(light),
             ScreenHit::ThemePick(i) => {
                 if let Mode::Themes { query, sel, saving } = self.mode.clone() {
                     if saving {

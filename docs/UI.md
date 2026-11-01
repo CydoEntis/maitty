@@ -124,7 +124,7 @@ Settings opens on General and reports installed, window and daemon versions sepa
 
 There is no Team tab; `[team]` in `config.toml` still loads and is no longer shown. The label column is 33 columns and no setting label is longer; the value column starts after it, and a Choice whose chips would not fit beside the label shows the current value between `‹ ›` instead. The selected row's help (`Setting::help`) sits under a rule at the bottom of the page, word-wrapped over up to two lines, so a help text stays within two lines at 80 by 24.
 
-**Settings › Sessions** opens on NEW SESSIONS (`[sessions]`: `Agent` last used, claude, codex or gemini, `Where` new worktree or this folder) and HELPERS (`Sessions may start helpers` ask, always or never; `Helpers at once` 2, 3 or 4), then the older alert, restart and history settings. Values outside those lists are refused when the config loads. `Agent` and `Where` are read by leader `s` and the Session with options dialog (an old `plus_starts` key is read and ignored); the helpers settings are read by the daemon when an agent starts a session (see *helpers*). `[mcp] helpers_at_once` is not a setting any more: it is read only as a fallback for `[sessions] helpers_at_once`. **Settings › Agents** opens on AGENT STATUS: Claude Code reads `✓ hooks installed` (read once in the background when the page first shows, `checking…` until then, `hooks not installed` otherwise; the same test as `maitty doctor`), Codex reads `✓ read from the process and screen` (its help says Connect agents installs its hooks for exact status), and `Connect agents…` opens the Connect agents list (`Action::AgentStatusSetup`), which offers exactly the agents `maitty integrate` sets up (`STATUS_AGENTS` in `crates/maitty-terminal-client/src/cli/integrations.rs`). SUBAGENTS has `Count on the session row` (`ui.subagent_count`, on by default): off hides the `· N agents` text on a working session row. The `mcp.*` and worktree settings follow. General's `Leader waits for next key` (`ui.which_key`, off by default) shows every key if you pause after the leader.
+**Settings › Sessions** opens on NEW SESSIONS (`[sessions]`: `Agent` last used, claude, codex or gemini, `Where` new worktree or this folder) and HELPERS (`Sessions may start helpers` ask, always or never; `Helpers at once` 2, 3 or 4), then the older alert, restart and history settings. Values outside those lists are refused when the config loads. `Agent` and `Where` are read by leader `s` and the Session with options dialog (an old `plus_starts` key is read and ignored); the helpers settings are read by the daemon when an agent starts a session (see *helpers*). `[mcp] helpers_at_once` is not a setting any more: it is read only as a fallback for `[sessions] helpers_at_once`. **Settings › Agents** opens on AGENT STATUS: Claude Code reads `✓ hooks installed` (read once in the background when the page first shows, `checking…` until then, `hooks not installed` otherwise; the same test as `maitty doctor`), Codex reads `✓ read from the process and screen` until its lifecycle hooks are installed, then `hooks installed · trust them in Codex /hooks` until Codex has recorded trusting each, then `✓ hooks installed and trusted` (read once in the background; its help says Connect agents installs them and you review them once in Codex's `/hooks`), and `Connect agents…` opens the Connect agents list (`Action::AgentStatusSetup`), which offers exactly the agents `maitty integrate` sets up (`STATUS_AGENTS` in `crates/maitty-terminal-client/src/cli/integrations.rs`). SUBAGENTS has `Count on the session row` (`ui.subagent_count`, on by default): off hides the `· N agents` text on a working session row. The `mcp.*` and worktree settings follow. General's `Leader waits for next key` (`ui.which_key`, off by default) shows every key if you pause after the leader.
 
 **Subagents have no tree.** The sidebar never lists an agent's subagents and has no inspector for them; the agent shows them in its own pane. A working row says `· N agents` only when the agent reports subagents (`ui.subagent_count`), and nothing else about them is drawn. The daemon still tracks them (`TermInfo::subagents`, `subagent_activity`) so the count is right and a parent stays working while its children run.
 
@@ -169,13 +169,13 @@ Only the area with the keyboard is lit: the focused pane's whole border, or the 
 <!-- local: user requested distinct active, keyboard and hover sidebar states, mouse-first sidebar controls and parent-owned child-agent visibility. -->
 
 - Popups are centred `panel()`s (`panel_at()` for a given rectangle) framed like a
-  pane, in every layout: a box in `line` with corners by `ui.rounded`, the title as
-  an accent chip on the top border two in, and `Esc close` as a `btn` chip a `─`
+  pane, in every layout: a box in the `accent` (a modal holds the keys) with corners by
+  `ui.rounded`, the title as an accent chip on the top border two in, and a red ✕ chip
   before the top right corner (the whole chip closes it); with `ui.rounded = full`
   both chips have caps. There is no accent bar across the top: the user chose the
   pane-like frame over an accent title bar (2026-10-24), and the frame
   tests apply that one difference (`as_bordered_header`). No shadow; the screen
-  behind is dimmed. Small explanations (why, a row's menu) are
+  behind is dimmed, its ground darkened as well as its text. Small explanations (why, a row's menu) are
   `popover_at()`s: a raised title row, no border, no shadow, beside the sidebar
   (`popover_rect()`). Settings is a
   centred modal that preserves the workspace layout and keeps its General,
@@ -214,15 +214,29 @@ Only the area with the keyboard is lit: the focused pane's whole border, or the 
 
 ## Project-specific: theme browser
 
-Appearance has one Theme control. Enter or clicking its value opens a searchable
-browser with palette swatches, an applied marker, a result count, and a preview.
+Dark and light are two remembered slots and a switch. Appearance has three rows:
+**Appearance** (`appearance`: `dark` or `light`, which slot shows), **Dark theme**
+(`theme_dark`, `night` by default) and **Light theme** (`theme_light`, `day` by default).
+`theme` stays "the theme showing now": `Config::settle_theme` sets it from the slot
+`appearance` picks, so once a file has slots a `theme` written by hand is overwritten.
+A file with only an older `theme` is not rewritten: its theme fills the slot its ground
+belongs to and decides the appearance, one slot at a time (a light pick written beside an
+old dark `theme` leaves that dark theme showing).
+Enter or clicking a theme row's value opens a searchable browser with two tabs, **Dark** and
+**Light** (`Tab` / `Shift+Tab`, or a click on the chip at the foot), each listing only its
+themes, opened on the tab of the row you came from and on that slot's theme. Which tab a
+theme is on is read from its background (`theme::is_light`), not from a list. The browser
+shows palette swatches, an applied marker for that slot, a result count, and a preview.
 Themes are listed alphabetically by display name, ignoring case (`BUILTIN` in
 `theme.rs` is kept in that order, and every list of themes follows it); there are
 no user-defined themes, only overrides of a built-in's colours.
 Typing filters by name or flavor; arrows, Home/End, page keys, and the mouse wheel
 move the selection. Click a row to preview; click it again or press Enter to
-save. Esc or the close button returns to Appearance without changing the theme.
+save that tab's slot, which changes the screen only if that slot is the one showing. Esc or
+the close button returns to Appearance without changing anything.
 Saving runs in a background task; failure keeps the selection and shows a toast.
+The key overlay's search has **Switch dark or light theme** (`toggle-appearance`, no default
+key, ADR 0017), which flips `appearance` and changes the whole screen at once.
 The preview shows built-in defaults; configured overrides still apply after saving.
 See [theme sources](theme-credits.md) for upstream palettes and local UI adaptations.
 

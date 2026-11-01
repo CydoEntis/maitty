@@ -4,10 +4,13 @@ use super::*;
 
 // ---- overlays ------------------------------------------------------------------------------
 
-/// What a popup does to everything behind it: text toward its ground, all of it toward black.
+/// What a popup does to everything behind it: text toward its ground, and every ground toward
+/// black. The ground must darken too: a modal's `card` is only a step above `bg`, so a backdrop
+/// that kept its ground would leave the modal's edge unreadable.
 const BEHIND_TEXT: f32 = 0.6;
+const BEHIND_GROUND: f32 = 0.45;
 
-/// Dim everything already drawn behind a popup: text toward its ground and all of it darker.
+/// Dim everything already drawn behind a popup: text toward its ground and every ground darker.
 /// Pill ends keep their shape (their colour darkens like the pill's). What is under it takes no
 /// hover from here on (`hits_under_overlay`).
 pub(in crate::client) fn dim_all(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
@@ -19,9 +22,13 @@ pub(in crate::client) fn dim_all(app: &mut App, buf: &mut Buffer, area: Rect, t:
             let bg = if c.bg == Color::Reset { t.bg } else { c.bg };
             let fg = if c.fg == Color::Reset { t.fg } else { c.fg };
             let cap = c.symbol() == CAP_L || c.symbol() == CAP_R;
-            if !cap {
-                c.fg = blend(fg, bg, BEHIND_TEXT);
-            }
+            let ground = blend(bg, Color::Black, BEHIND_GROUND);
+            c.bg = ground;
+            c.fg = if cap {
+                blend(fg, Color::Black, BEHIND_GROUND)
+            } else {
+                blend(fg, ground, BEHIND_TEXT)
+            };
         }
     }
 }
@@ -83,7 +90,9 @@ pub(in crate::client) fn panel_at(
     let look = Look::of(&app.cfg.ui);
     app.screen.modal_rects.push(r);
     fill(buf, r, t.card);
-    panel_box(buf, r, look, Style::default().fg(t.line).bg(t.card));
+    // A modal holds the keys, so its edge is lit like the focused pane's: `line` on `card` is
+    // too faint to tell where it stands.
+    panel_box(buf, r, look, Style::default().fg(t.accent).bg(t.card));
     let red = Style::default()
         .fg(t.strong)
         .bg(t.err)

@@ -1249,7 +1249,8 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("Theme")
+            o.contains("Dark theme")
+                && o.contains("Light theme")
                 && o.contains("Cursor")
                 && !o.contains("Corners")
                 && o.contains("PREVIEW")
@@ -3742,13 +3743,15 @@ mod screen_tests {
             o.contains("› Version"),
             "the first row, the version, is selected"
         );
-        // Appearance, the next tab, has one theme control that opens the searchable browser.
+        // Appearance, the next tab, has the dark/light switch and a theme control for each, which open the searchable browser.
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
             o.contains("THEME")
-                && o.contains("Padding")
+                && o.contains("Appearance")
+                && o.contains("Dark theme")
+                && o.contains("Light theme")
                 && !o.contains("Corners")
                 && o.contains("PREVIEW"),
             "the theme settings first, with their preview"
@@ -3761,7 +3764,7 @@ mod screen_tests {
         );
         let theme_row = design::settings_rows(modal::Cat::Appearance)
             .iter()
-            .position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme"))
+            .position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme_dark"))
             .unwrap();
         for _ in 0..theme_row {
             app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
@@ -3774,7 +3777,17 @@ mod screen_tests {
         );
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("Themes") && o.contains("Day"));
+        assert!(
+            o.contains("Dark themes") && o.contains("Night") && !o.contains("Day"),
+            "the dark tab lists only dark themes"
+        );
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        let o = draw(&mut app, 160, 45);
+        assert!(
+            o.contains("Light themes") && o.contains("Day") && !o.contains("Night"),
+            "Tab shows the light tab, on the light theme chosen"
+        );
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         app.on_paste("Monokai".into());
         assert!(draw(&mut app, 160, 45).contains("Monokai"));
         app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
@@ -5776,30 +5789,33 @@ mod screen_tests {
         let t = app.theme.clone();
         let (h, top) = (4u16, 45 - 4 - 5 - BAR);
         assert!(
-            row_text(&buf, top + 1).contains("✓ Copied to clipboard")
+            row_text(&buf, top + 1).contains("Copied to clipboard")
                 && row_text(&buf, top + 1).trim_end().ends_with('│'),
             "{}",
             row_text(&buf, top + 1)
         );
         assert!(
-            row_text(&buf, top + 1).contains("✕"),
-            "the close sits on the title row"
+            row_text(&buf, top).contains(" ✕ "),
+            "the close chip sits on the top border"
         );
         assert!(row_text(&buf, top + 2).contains("214 characters · 5 lines from swift-lynx"));
-        let x = (0..160u16)
-            .find(|&x| buf[(x, top + 1)].symbol() == "┃")
-            .expect("the side");
+        let x = app.screen.toast_rect.x;
         for y in top + 1..top + h - 1 {
             assert_eq!(
                 (buf[(x, y)].symbol(), buf[(x, y)].fg, buf[(x, y)].bg),
-                ("┃", t.accent, t.bg),
-                "the side runs between the box's top and bottom"
+                ("│", t.accent, t.card),
+                "the side runs between the box's top and bottom in the notice's colour"
             );
         }
         assert_eq!(
             buf[(x + 1, top + 2)].bg,
-            t.bg,
-            "Floating: an outline on the ground, no filled block"
+            t.card,
+            "Floating: a card, like a modal"
+        );
+        assert!(
+            row_text(&buf, top).contains(" ✓ Notice "),
+            "the kind chip sits on the top border: {}",
+            row_text(&buf, top)
         );
         let title = (x..160)
             .find(|&c| buf[(c, top + 1)].symbol() == "C")
@@ -5838,20 +5854,16 @@ mod screen_tests {
             let buf = frame(&mut app, 160, 45);
             let t = app.theme.clone();
             let (top, bottom) = (45 - 4 - 5 - BAR, 45 - 5 - 1 - BAR);
-            let side = (0..160u16)
-                .find(|&x| buf[(x, top + 1)].symbol() == "┃")
-                .expect("the side");
-            let right = (side + 1..160u16)
-                .find(|&x| buf[(x, top + 1)].symbol() == "│")
-                .expect("the right side");
+            let side = app.screen.toast_rect.x;
+            let right = app.screen.toast_rect.right() - 1;
             let want = ["╭", "╮", "╰", "╯"];
             let got = [(side, top), (right, top), (side, bottom), (right, bottom)]
                 .map(|p| buf[p].symbol().to_string());
             assert_eq!(got, want.map(String::from), "{rounded:?}");
             assert_eq!(
                 buf[(side, top)].fg,
-                t.line,
-                "{rounded:?}: the box in `line`"
+                t.accent,
+                "{rounded:?}: the box in the notice's colour"
             );
         }
     }
@@ -5886,9 +5898,7 @@ mod screen_tests {
             ),
             (t.muted, true)
         );
-        let side = (0..160u16)
-            .find(|&x| buf[(x, top + 1)].symbol() == "┃")
-            .expect("the side");
+        let side = app.screen.toast_rect.x;
         assert_eq!(
             buf[(side, top + 4)].symbol(),
             "╰",
@@ -6749,7 +6759,7 @@ second line
     }
 
     #[test]
-    fn focused_blockers_ring_and_a_new_turn_can_ask_again() {
+    fn a_blocker_in_the_pane_you_are_looking_at_makes_no_sound() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let id = app.focused().unwrap();
         app.window_focused = true;
@@ -6760,9 +6770,29 @@ second line
         app.settling.get_mut(&id).unwrap().1 = Instant::now() - Duration::from_millis(1);
         app.settle_alerts();
         assert!(
-            app.alerted.contains_key(&id),
-            "a focused blocking question still needs its request sound"
+            !app.alerted.contains_key(&id),
+            "you are looking at it: no sound"
         );
+    }
+
+    #[test]
+    fn the_same_question_asked_again_soon_stays_quiet() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let id = app.focused().unwrap();
+        app.window_focused = false;
+        let ask = |app: &mut App| {
+            app.on_server(ServerMsg::Attention {
+                term: id,
+                status: Status::Blocked,
+            });
+            let mut blocked = app.snap.clone();
+            blocked.terms.get_mut(&id).unwrap().status = Status::Blocked;
+            app.on_server(ServerMsg::State(blocked));
+            app.settling.get_mut(&id).unwrap().1 = Instant::now() - Duration::from_millis(1);
+            app.settle_alerts();
+        };
+        ask(&mut app);
+        let first = app.alerted[&id].1;
         app.last_alert = Some((
             crate::alert::Kind::Needs,
             Instant::now() - Duration::from_secs(5),
@@ -6770,18 +6800,10 @@ second line
         let mut next = app.snap.clone();
         next.terms.get_mut(&id).unwrap().status = Status::Working;
         app.on_server(ServerMsg::State(next));
-        app.on_server(ServerMsg::Attention {
-            term: id,
-            status: Status::Blocked,
-        });
-        let mut blocked = app.snap.clone();
-        blocked.terms.get_mut(&id).unwrap().status = Status::Blocked;
-        app.on_server(ServerMsg::State(blocked));
-        app.settling.get_mut(&id).unwrap().1 = Instant::now() - Duration::from_millis(1);
-        app.settle_alerts();
-        assert!(
-            app.alerted[&id].1.elapsed() < Duration::from_secs(1),
-            "a new turn's question is new news"
+        ask(&mut app);
+        assert_eq!(
+            app.alerted[&id].1, first,
+            "asking again within two minutes does not ring again"
         );
     }
 
@@ -7134,7 +7156,7 @@ second line
     fn a_toast_s_mark_wears_the_colour_of_its_news() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // The fill and ink under the first letter of `word`, and the mark in front of it with its colour.
-        let toast = |app: &mut App, word: &str| {
+        let toast = |app: &mut App, word: &str, chip: &str| {
             app.screen_fresh();
             let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
             term.draw(|f| render::draw(app, f)).unwrap();
@@ -7154,40 +7176,77 @@ second line
                         })
                 })
                 .unwrap_or_else(|| panic!("{word} is on screen"));
-            (
-                buf[(x, y)].bg,
-                buf[(x, y)].fg,
-                buf[(x - 2, y)].symbol().to_string(),
-                buf[(x - 2, y)].fg,
-            )
+            // The kind chip is on the border above the title: its mark, and its ground.
+            let above: String = (0..160u16).map(|x| buf[(x, y - 1)].symbol()).collect();
+            let at = above
+                .find(chip)
+                .unwrap_or_else(|| panic!("{chip} chip: {above}"));
+            let col = above[..at].chars().count() as u16 + 1;
+            (buf[(x, y)].bg, buf[(x, y)].fg, buf[(col, y - 1)].bg)
         };
         let t = app.theme.clone();
         app.notify("Copied".into(), false);
         assert_eq!(
-            toast(&mut app, "Copied"),
-            (t.bg, t.strong, "✓".to_string(), t.accent),
+            toast(&mut app, "Copied", "✓ Notice"),
+            (t.card, t.strong, t.accent),
             "a plain note: the accent"
         );
         app.notify("Couldn't save".into(), true);
         assert_eq!(
-            toast(&mut app, "Couldn't"),
-            (t.bg, t.strong, "✕".to_string(), t.err),
+            toast(&mut app, "Couldn't", "✕ Error"),
+            (t.card, t.strong, t.err),
             "an error"
         );
         // claude (1) is on a prompt; codex (2) isn't.
         app.notify("pane-one needs you".into(), false);
         app.notice_term = Some(1);
         assert_eq!(
-            toast(&mut app, "pane-one"),
-            (t.bg, t.strong, "●".to_string(), t.blocked),
+            toast(&mut app, "pane-one", "▲ Needs you"),
+            (t.card, t.strong, t.blocked),
             "needs you: its state's colour"
         );
         app.notify("pane-two finished".into(), false);
         app.notice_term = Some(2);
         assert_eq!(
-            toast(&mut app, "pane-two"),
-            (t.bg, t.strong, "✓".to_string(), t.done),
+            toast(&mut app, "pane-two", "✓ Done"),
+            (t.card, t.strong, t.done),
             "finished"
+        );
+    }
+
+    #[test]
+    fn a_needs_you_toast_offers_answer_and_later_on_its_bottom_border() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.notify("pane-one needs you".into(), false);
+        app.notice_term = Some(1);
+        let buf = frame(&mut app, 160, 45);
+        let r = app.screen.toast_rect;
+        let bottom: String = (r.x..r.right())
+            .map(|x| buf[(x, r.bottom() - 1)].symbol())
+            .collect();
+        assert!(
+            bottom.contains(" Answer ") && bottom.contains(" Later esc "),
+            "the two answers sit on the border: {bottom}"
+        );
+        let closes: Vec<Rect> = app
+            .hits
+            .iter()
+            .filter(|(_, h)| *h == Hit::Screen(screen::ScreenHit::ToastClose))
+            .map(|(r, _)| *r)
+            .collect();
+        assert!(
+            closes.iter().any(|c| c.y == r.bottom() - 1),
+            "Later is a click that dismisses: {closes:?}"
+        );
+        app.notify("Copied".into(), false);
+        let buf = frame(&mut app, 160, 45);
+        let r = app.screen.toast_rect;
+        let bottom: String = (r.x..r.right())
+            .map(|x| buf[(x, r.bottom() - 1)].symbol())
+            .collect();
+        assert!(
+            !bottom.contains("Answer"),
+            "only a question waiting on you asks for an answer: {bottom}"
         );
     }
 
@@ -9068,7 +9127,7 @@ second line
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("i Shortcut mode — Esc to type"),
+            o.contains("Shortcut mode — Esc to type") && o.contains(" i Hint "),
             "the toast is on screen, marked as information: {o}"
         );
         let buf = drawn(&mut app, 160, 45);
@@ -9081,16 +9140,16 @@ second line
             })
             .expect("the toast row");
         let x = (0..160)
-            .find(|&x| buf[(x, y)].symbol() == "i" && buf[(x + 2, y)].symbol() == "S")
-            .expect("its mark");
+            .find(|&x| buf[(x, y - 1)].symbol() == "i" && buf[(x + 2, y - 1)].symbol() == "H")
+            .expect("its mark, in the kind chip above the title");
         assert_eq!(
-            buf[(x, y)].fg,
+            buf[(x, y - 1)].bg,
             app.theme.sky(),
-            "the info mark is sky, not the ✓ of a success"
+            "the info chip is sky, not the accent of a success"
         );
         app.notify("worktree created".into(), false);
         assert!(
-            draw(&mut app, 160, 45).contains("✓ worktree created"),
+            draw(&mut app, 160, 45).contains(" ✓ Notice "),
             "news keeps its ✓"
         );
     }
@@ -10105,7 +10164,7 @@ mod settings_splash_tests {
             cat: 1,
             sel: design::settings_rows(modal::Cat::Appearance)
                 .iter()
-                .position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme"))
+                .position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme_dark"))
                 .unwrap(),
             editing: None,
             capturing: false,
@@ -10133,7 +10192,7 @@ mod settings_splash_tests {
         }
         assert!(settings.contains("Leader key") && settings.contains("Splash screen"));
         assert!(
-            keys.contains("Theme") && keys.contains("Enter browse"),
+            keys.contains("Dark theme") && keys.contains("Enter browse"),
             "the theme control opens the browser"
         );
     }
@@ -10341,8 +10400,48 @@ mod settings_v8_tests {
     }
 
     #[test]
+    fn switching_dark_or_light_is_a_search_only_command_with_no_default_key() {
+        assert_eq!(
+            Action::ToggleAppearance.to_config().as_deref(),
+            Some("toggle-appearance")
+        );
+        let (_, app) = super::design_tests::render_with(160, 45);
+        assert!(
+            app.palette_commands().contains(&Action::ToggleAppearance),
+            "it is in the key overlay's search"
+        );
+        assert!(
+            !crate::keys::DEFAULT_PREFIX_KEYS
+                .iter()
+                .chain(crate::keys::DEFAULT_GLOBAL_KEYS)
+                .any(|(_, action)| *action == "toggle-appearance"),
+            "and has no key of its own"
+        );
+    }
+
+    #[test]
+    fn the_codex_row_says_when_its_hooks_still_need_your_trust() {
+        use maitty_provider_codex::HooksState;
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        open(&mut app, Cat::Agents, 0);
+        for (state, want) in [
+            (None, "checking…"),
+            (
+                Some(HooksState::NeedsTrust),
+                "hooks installed · trust them in Codex /hooks",
+            ),
+            (Some(HooksState::Trusted), "✓ hooks installed and trusted"),
+        ] {
+            app.codex_hooks = state;
+            let o = draw(&mut app, 160, 45);
+            assert!(o.contains(want), "{state:?} reads {want}: {o}");
+        }
+    }
+
+    #[test]
     fn agents_page_shows_status_and_the_subagent_toggle_and_set_up_opens_the_list() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.codex_hooks = Some(maitty_provider_codex::HooksState::NotInstalled);
         open(&mut app, Cat::Agents, 0);
         let o = draw(&mut app, 160, 45);
         for want in [
@@ -10373,7 +10472,7 @@ mod settings_v8_tests {
         let o = draw(&mut app, 160, 45);
         super::check_settings_tests::show(&o);
         assert!(
-            o.contains("Connect agents installs its hooks") && !o.contains("No hooks needed"),
+            o.contains("Connect agents installs them") && !o.contains("No hooks needed"),
             "Codex's help is true: {o}"
         );
         open(
