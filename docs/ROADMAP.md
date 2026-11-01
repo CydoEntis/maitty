@@ -900,6 +900,13 @@ gate passed again on 2026-10-29: 1,345 library tests and 3 naming tests passed,
 5 tests were ignored, and build, clippy, Linux target check and macOS target
 check all passed. A real Omarchy desktop check remains a release check.
 
+
+The user later approved the v5 desktop handoff ([design brief](features/chat-gui/design-brief.md),
+[handoff](features/chat-gui/design-handoff/v5/)). It is applied to the running GUI:
+Midnight, Abyss and Paper themes; the two-plane shell; the sidebar, tab strip,
+conversation, composer and attached approval; Review with Changes, Files and
+Context; the Open project palette; split terminal panes; Settings → General; and
+stacked background toasts. The brief lists where the app differs on purpose.
 ### 37 — Claude continuity and initial GUI release · active, after 36
 
 Keep the GUI as an optional client package over the daemon protocol. Before
