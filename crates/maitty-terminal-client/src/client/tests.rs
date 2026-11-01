@@ -5776,7 +5776,7 @@ mod screen_tests {
         let t = app.theme.clone();
         let (h, top) = (4u16, 45 - 4 - 5 - BAR);
         assert!(
-            row_text(&buf, top + 1).contains("✓ Copied to clipboard")
+            row_text(&buf, top + 1).contains("Copied to clipboard")
                 && row_text(&buf, top + 1).trim_end().ends_with('│'),
             "{}",
             row_text(&buf, top + 1)
@@ -5800,7 +5800,7 @@ mod screen_tests {
             "Floating: a card, like a modal"
         );
         assert!(
-            row_text(&buf, top).contains(" Notice "),
+            row_text(&buf, top).contains(" ✓ Notice "),
             "the kind chip sits on the top border: {}",
             row_text(&buf, top)
         );
@@ -7143,7 +7143,7 @@ second line
     fn a_toast_s_mark_wears_the_colour_of_its_news() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // The fill and ink under the first letter of `word`, and the mark in front of it with its colour.
-        let toast = |app: &mut App, word: &str| {
+        let toast = |app: &mut App, word: &str, chip: &str| {
             app.screen_fresh();
             let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
             term.draw(|f| render::draw(app, f)).unwrap();
@@ -7163,40 +7163,77 @@ second line
                         })
                 })
                 .unwrap_or_else(|| panic!("{word} is on screen"));
-            (
-                buf[(x, y)].bg,
-                buf[(x, y)].fg,
-                buf[(x - 2, y)].symbol().to_string(),
-                buf[(x - 2, y)].fg,
-            )
+            // The kind chip is on the border above the title: its mark, and its ground.
+            let above: String = (0..160u16).map(|x| buf[(x, y - 1)].symbol()).collect();
+            let at = above
+                .find(chip)
+                .unwrap_or_else(|| panic!("{chip} chip: {above}"));
+            let col = above[..at].chars().count() as u16 + 1;
+            (buf[(x, y)].bg, buf[(x, y)].fg, buf[(col, y - 1)].bg)
         };
         let t = app.theme.clone();
         app.notify("Copied".into(), false);
         assert_eq!(
-            toast(&mut app, "Copied"),
-            (t.card, t.strong, "✓".to_string(), t.accent),
+            toast(&mut app, "Copied", "✓ Notice"),
+            (t.card, t.strong, t.accent),
             "a plain note: the accent"
         );
         app.notify("Couldn't save".into(), true);
         assert_eq!(
-            toast(&mut app, "Couldn't"),
-            (t.card, t.strong, "✕".to_string(), t.err),
+            toast(&mut app, "Couldn't", "✕ Error"),
+            (t.card, t.strong, t.err),
             "an error"
         );
         // claude (1) is on a prompt; codex (2) isn't.
         app.notify("pane-one needs you".into(), false);
         app.notice_term = Some(1);
         assert_eq!(
-            toast(&mut app, "pane-one"),
-            (t.card, t.strong, "●".to_string(), t.blocked),
+            toast(&mut app, "pane-one", "▲ Needs you"),
+            (t.card, t.strong, t.blocked),
             "needs you: its state's colour"
         );
         app.notify("pane-two finished".into(), false);
         app.notice_term = Some(2);
         assert_eq!(
-            toast(&mut app, "pane-two"),
-            (t.card, t.strong, "✓".to_string(), t.done),
+            toast(&mut app, "pane-two", "✓ Done"),
+            (t.card, t.strong, t.done),
             "finished"
+        );
+    }
+
+    #[test]
+    fn a_needs_you_toast_offers_answer_and_later_on_its_bottom_border() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.notify("pane-one needs you".into(), false);
+        app.notice_term = Some(1);
+        let buf = frame(&mut app, 160, 45);
+        let r = app.screen.toast_rect;
+        let bottom: String = (r.x..r.right())
+            .map(|x| buf[(x, r.bottom() - 1)].symbol())
+            .collect();
+        assert!(
+            bottom.contains(" Answer ") && bottom.contains(" Later esc "),
+            "the two answers sit on the border: {bottom}"
+        );
+        let closes: Vec<Rect> = app
+            .hits
+            .iter()
+            .filter(|(_, h)| *h == Hit::Screen(screen::ScreenHit::ToastClose))
+            .map(|(r, _)| *r)
+            .collect();
+        assert!(
+            closes.iter().any(|c| c.y == r.bottom() - 1),
+            "Later is a click that dismisses: {closes:?}"
+        );
+        app.notify("Copied".into(), false);
+        let buf = frame(&mut app, 160, 45);
+        let r = app.screen.toast_rect;
+        let bottom: String = (r.x..r.right())
+            .map(|x| buf[(x, r.bottom() - 1)].symbol())
+            .collect();
+        assert!(
+            !bottom.contains("Answer"),
+            "only a question waiting on you asks for an answer: {bottom}"
         );
     }
 
@@ -9077,7 +9114,7 @@ second line
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("i Shortcut mode — Esc to type"),
+            o.contains("Shortcut mode — Esc to type") && o.contains(" i Hint "),
             "the toast is on screen, marked as information: {o}"
         );
         let buf = drawn(&mut app, 160, 45);
@@ -9090,16 +9127,16 @@ second line
             })
             .expect("the toast row");
         let x = (0..160)
-            .find(|&x| buf[(x, y)].symbol() == "i" && buf[(x + 2, y)].symbol() == "S")
-            .expect("its mark");
+            .find(|&x| buf[(x, y - 1)].symbol() == "i" && buf[(x + 2, y - 1)].symbol() == "H")
+            .expect("its mark, in the kind chip above the title");
         assert_eq!(
-            buf[(x, y)].fg,
+            buf[(x, y - 1)].bg,
             app.theme.sky(),
-            "the info mark is sky, not the ✓ of a success"
+            "the info chip is sky, not the accent of a success"
         );
         app.notify("worktree created".into(), false);
         assert!(
-            draw(&mut app, 160, 45).contains("✓ worktree created"),
+            draw(&mut app, 160, 45).contains(" ✓ Notice "),
             "news keeps its ✓"
         );
     }
