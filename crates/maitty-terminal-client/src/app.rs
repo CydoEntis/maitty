@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 /// An agent-aware terminal multiplexer.
 #[derive(Parser)]
-#[command(name = env!("APP_COMMAND"), version, about)]
+#[command(name = env!("APP_COMMAND"), version = env!("APP_VERSION"), about)]
 struct Args {
     /// Directory to open as a workspace (switches to it if already open).
     path: Option<PathBuf>,
@@ -496,7 +496,7 @@ fn run_client(open: Option<std::path::PathBuf>) -> anyhow::Result<()> {
     // An older server of a protocol this the app speaks is replaced at once when it is idle.
     if terminal
         && local
-        && restart::replace_older_idle_server(restart::read().as_ref(), env!("CARGO_PKG_VERSION"))
+        && restart::replace_older_idle_server(restart::read().as_ref(), env!("APP_VERSION"))
     {
         replace_server()?;
     }

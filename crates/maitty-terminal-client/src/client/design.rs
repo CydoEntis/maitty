@@ -1749,7 +1749,7 @@ fn version_control(app: &App, t: &Theme) -> Vec<Seg> {
         Style::default().fg(t.muted),
         Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
     );
-    let window = env!("CARGO_PKG_VERSION");
+    let window = env!("APP_VERSION");
     let mut out = vec![
         seg(
             format!("{} {window}", crate::brand::APP_COMMAND),

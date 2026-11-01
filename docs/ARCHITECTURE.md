@@ -289,6 +289,11 @@ fails on the name written out. To rename the app:
    [TESTING](TESTING.md#project-specific-layout-and-fixtures)).
 4. Replace the name in the docs (not the ADRs), then rename the GitHub repository.
 
+The release version also comes from `apps/tui/Cargo.toml`. Build scripts expose it as
+`APP_VERSION` to the TUI and daemon crates. Use `APP_VERSION` for the app's version output,
+update checks, daemon identity and provider metadata; `CARGO_PKG_VERSION` identifies an internal
+crate and may differ from the released app version.
+
 `client/screen/keyoverlay.rs` is the one key overlay: the key map, the search over every
 command and All keys, all built from `key_groups()` and the active keymap (`Action::Palette`
 opens the search, `Action::Help` opens All keys). The Menu and tab renaming are in

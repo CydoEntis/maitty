@@ -767,7 +767,7 @@ pub fn run() -> Result<()> {
             "initialize" => Ok(json!({
                 "protocolVersion": params.get("protocolVersion").cloned().unwrap_or(json!("2025-06-18")),
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": env!("APP_COMMAND"), "version": env!("CARGO_PKG_VERSION") },
+                "serverInfo": { "name": env!("APP_COMMAND"), "version": env!("APP_VERSION") },
                 "instructions": concat!(env!("APP_COMMAND"), " runs your user's coding agents side by side. Use ", env!("APP_COMMAND"), "_list/read/send/start for helpers. Before UI, front-end or design work, call ", env!("APP_COMMAND"), "_references and open the images it lists: they are the user's reference screenshots and designs for this project. Don't answer prompts unless the user allows it; when you do, pass ", env!("APP_COMMAND"), "_answer the prompt id ", env!("APP_COMMAND"), "_list gave you.")
             })),
             "ping" => Ok(json!({})),

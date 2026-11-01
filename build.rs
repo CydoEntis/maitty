@@ -1,6 +1,6 @@
-//! Hands the app's name from Cargo.toml to the code (ADR 0019): `APP_COMMAND` is the package
-//! name, `APP_ENV` its environment-variable prefix, `APP_NAME`, `APP_TAGLINE` and `APP_PREVIOUS`
-//! come from `[package.metadata.brand]`.
+//! Hands the app's release identity from its Cargo.toml to the code: `APP_COMMAND` and
+//! `APP_VERSION` come from `[package]`; `APP_NAME`, `APP_TAGLINE` and `APP_PREVIOUS` come from
+//! `[package.metadata.brand]`.
 
 use std::fs;
 use std::path::Path;
@@ -14,6 +14,7 @@ pub fn configure(manifest_path: &Path) {
     let manifest = fs::read_to_string(manifest_path).expect("Cargo.toml is readable");
     let package = section(&manifest, "[package]");
     let command = value(&package, "name").expect("[package] needs a name");
+    let version = value(&package, "version").expect("[package] needs a version");
     let brand = section(&manifest, "[package.metadata.brand]");
     let name =
         value(&brand, "name").unwrap_or_else(|| panic!("[package.metadata.brand] needs a name"));
@@ -28,6 +29,7 @@ pub fn configure(manifest_path: &Path) {
     println!("cargo:rustc-env=APP_NAME={name}");
     println!("cargo:rustc-env=APP_TAGLINE={tagline}");
     println!("cargo:rustc-env=APP_COMMAND={command}");
+    println!("cargo:rustc-env=APP_VERSION={version}");
     println!("cargo:rustc-env=APP_PACKAGE={command}");
     println!(
         "cargo:rustc-env=APP_ENV={}",
