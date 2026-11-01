@@ -73,6 +73,7 @@ impl App {
                     self.splash = false;
                 }
                 self.screen_sync();
+                self.auto_open_secret();
                 self.check_view_sync();
                 self.maybe_restart_daemon(last_session_closed);
             }

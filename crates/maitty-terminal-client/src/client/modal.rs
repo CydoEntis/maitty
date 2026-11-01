@@ -252,13 +252,6 @@ pub const SETTINGS: &[Setting] = &[
         help: "Enter to search and preview themes. Enter in the browser applies your choice.",
     },
     Setting {
-        path: "ui.layout",
-        label: "Layout",
-        kind: Kind::Choice(crate::config::LAYOUT_NAMES),
-        cat: Cat::Appearance,
-        help: "floating: a box per pane. hairline: no boxes, only lines.",
-    },
-    Setting {
         path: "ui.sidebar_position",
         label: "Sidebar side",
         kind: Kind::Choice(&["left", "right"]),
@@ -268,9 +261,9 @@ pub const SETTINGS: &[Setting] = &[
     Setting {
         path: "ui.padding",
         label: "Padding",
-        kind: Kind::Choice(&["top", "0", "1", "2"]),
+        kind: Kind::Choice(crate::config::SIZES),
         cat: Cat::Appearance,
-        help: "Space round the screen: top is a row above only, else that many rows and columns all round.",
+        help: "Space round the whole screen.",
     },
     Setting {
         path: "ui.background",
@@ -293,9 +286,16 @@ pub const SETTINGS: &[Setting] = &[
     Setting {
         path: "ui.gap",
         label: "Gap",
-        kind: Kind::Choice(&["0", "1", "2"]),
+        kind: Kind::Choice(crate::config::SIZES),
         cat: Cat::Appearance,
         help: "Space between floating panes, in rows stacked and columns side by side.",
+    },
+    Setting {
+        path: "ui.tab_gap",
+        label: "Tab gap",
+        kind: Kind::Bool,
+        cat: Cat::Appearance,
+        help: "Leave a cell of border between tabs.",
     },
     Setting {
         path: "ui.pane_colors",
@@ -307,14 +307,14 @@ pub const SETTINGS: &[Setting] = &[
     Setting {
         path: "ui.rounded",
         label: "Rounded",
-        kind: Kind::Choice(crate::config::Rounding::NAMES),
+        kind: Kind::Bool,
         cat: Cat::Appearance,
-        help: "full: round corners and round ends everywhere (needs a Nerd Font). corners: rounded squares, square ends. off: all square.",
+        help: "Round card corners. Tab ends remain square.",
     },
     Setting {
         path: "ui.dim",
         label: "Dim unfocused",
-        kind: Kind::Choice(&["off", "subtle", "30%", "60%"]),
+        kind: Kind::Choice(crate::config::DIMS),
         cat: Cat::Appearance,
         help: "How far the panes you're not in fade. Their colours stay recognisable.",
     },

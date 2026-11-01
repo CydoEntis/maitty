@@ -220,7 +220,7 @@ impl App {
             Action::PaneInfo => {
                 if let Some(msg) = self.focused().and_then(|t| self.pane_info(t)) {
                     super::copy::to_clipboard(&msg);
-                    self.notify(format!("{msg} (copied)"), true);
+                    self.notify("Pane details copied to clipboard".into(), false);
                 }
             }
             Action::SendPrefix => {

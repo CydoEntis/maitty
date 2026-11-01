@@ -6,14 +6,12 @@ use super::*;
 
 /// What a popup does to everything behind it: text toward its ground, all of it toward black.
 const BEHIND_TEXT: f32 = 0.6;
-const BEHIND_DARK: f32 = 0.45;
 
 /// Dim everything already drawn behind a popup: text toward its ground and all of it darker.
 /// Pill ends keep their shape (their colour darkens like the pill's). What is under it takes no
 /// hover from here on (`hits_under_overlay`).
 pub(in crate::client) fn dim_all(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
     app.hits_under_overlay = app.hits.len();
-    let black = Color::Rgb(0, 0, 0);
     let area = area.intersection(buf.area);
     for y in area.top()..area.bottom() {
         for x in area.left()..area.right() {
@@ -21,12 +19,9 @@ pub(in crate::client) fn dim_all(app: &mut App, buf: &mut Buffer, area: Rect, t:
             let bg = if c.bg == Color::Reset { t.bg } else { c.bg };
             let fg = if c.fg == Color::Reset { t.fg } else { c.fg };
             let cap = c.symbol() == CAP_L || c.symbol() == CAP_R;
-            c.fg = if cap {
-                blend(fg, black, BEHIND_DARK)
-            } else {
-                blend(blend(fg, bg, BEHIND_TEXT), black, BEHIND_DARK)
-            };
-            c.bg = blend(bg, black, BEHIND_DARK);
+            if !cap {
+                c.fg = blend(fg, bg, BEHIND_TEXT);
+            }
         }
     }
 }
@@ -86,27 +81,34 @@ pub(in crate::client) fn panel_at(
         return r;
     }
     let look = Look::of(&app.cfg.ui);
+    app.screen.modal_rects.push(r);
     fill(buf, r, t.card);
     panel_box(buf, r, look, Style::default().fg(t.line).bg(t.card));
-    let lit = Style::default().bg(t.btn).add_modifier(Modifier::BOLD);
+    let red = Style::default()
+        .fg(t.strong)
+        .bg(t.err)
+        .add_modifier(Modifier::BOLD);
     let esc = header_chip(
         look,
-        vec![
-            seg(" Esc", lit.fg(t.accent)),
-            seg(" close ", lit.fg(t.strong)),
-        ],
+        vec![seg(
+            format!(
+                " {} ",
+                glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close
+            ),
+            red,
+        )],
         t.card,
     );
     let esc_w = segs_width(&esc);
     // Too narrow for the chip beside the corner: Esc and a click outside still close it.
     let shows_esc = r.width >= esc_w + 4;
     let esc_x = if shows_esc {
-        r.right() - esc_w - 2
+        r.right() - esc_w
     } else {
         r.right() - 1
     };
     if shows_esc {
-        put(buf, esc_x, r.y, &esc, r.right() - 2);
+        put(buf, esc_x, r.y, &esc, r.right());
     }
     let segs: Vec<Seg> = right
         .iter()
@@ -141,6 +143,23 @@ pub(in crate::client) fn panel_at(
         );
     }
     r
+}
+
+pub(in crate::client) fn flatten_modals(app: &App, buf: &mut Buffer, t: &Theme) {
+    let area = buf.area;
+    for r in app.screen.modal_rects.iter().map(|r| r.intersection(area)) {
+        for y in r.top()..r.bottom() {
+            for x in r.left()..r.right() {
+                let c = &mut buf[(x, y)];
+                c.bg = match c.bg {
+                    b if b == t.card || b == t.card2 => t.bg,
+                    b if b == t.sel_on(t.card) || b == t.sel_on(t.card2) => t.sel_on(t.bg),
+                    b if b == t.hover_on(t.card) || b == t.hover_on(t.card2) => t.hover_on(t.bg),
+                    b => b,
+                };
+            }
+        }
+    }
 }
 
 /// A modal's box: `─` top and bottom, `│` sides, corners by the setting.

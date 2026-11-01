@@ -33,7 +33,7 @@
 //!   a row taller and leaves out that row, the bar's.
 
 use super::reference_fixture::{Layout, Stage, cells, frame, world};
-use super::screen::{CAP_L, CAP_R, GoRow, goto_rows};
+use super::screen::{GoRow, goto_rows};
 use super::*;
 use crate::protocol::{CheckSource, CheckState};
 
@@ -596,9 +596,7 @@ fn as_bordered_header(row: &mut [char], bottom: &[char], x0: usize, x1: usize) {
         '┘' => '┐',
         c => c,
     };
-    let tail: Vec<char> = format!(" Esc close ─{}", top(bottom[x1 - 1]))
-        .chars()
-        .collect();
+    let tail: Vec<char> = " × ".chars().collect();
     let mut header: Vec<char> = format!("{}─ {title} ", top(bottom[x0])).chars().collect();
     header.resize(x1 - x0 - tail.len(), '─');
     header.extend(tail);
@@ -869,7 +867,7 @@ fn pane_mark(stage: Stage, ascii: bool) -> String {
         Stage::Approve => ("●", "!", "needs you"),
         Stage::Stale => ("◷", "~", "done · stale"),
     };
-    let (g, close) = if ascii { (a, "x") } else { (u, "✕") };
+    let (g, close) = if ascii { (a, "x") } else { (u, "×") };
     format!("{g} {word}  {close} ")
 }
 
@@ -1135,31 +1133,6 @@ fn a_modal_title_is_on_the_accent() {
         };
         let (x, y) = at(&buf, title);
         assert_eq!(buf[(x, y)].bg, app.theme.accent, "{id}");
-    }
-}
-
-/// Buttons have square ends by default, as the reference draws them.
-/// Turned on, they only put a cap where a square end had a blank of the button's colour.
-#[test]
-fn pill_caps_only_round_the_buttons_ends() {
-    for id in ["12", "A2"] {
-        let mut square = open(id);
-        let flat = cells(&mut square, Layout::Floating, 160, 45, "unicode");
-        let mut round = open(id);
-        round.cfg.ui.rounded = crate::config::Rounding::Full;
-        let capped = cells(&mut round, Layout::Floating, 160, 45, "unicode");
-        let caps = [CAP_L, CAP_R];
-        let mut changed = 0;
-        let width = flat.area.width as usize;
-        for (n, (a, b)) in flat.content().iter().zip(capped.content()).enumerate() {
-            let title_row = n / width == 0;
-            // Round tabs reflow the title row and a round session row gives up its last cell to its
-            // cap; this test is about the buttons, which only gain caps where a blank was.
-            if a.symbol() != b.symbol() && !title_row && caps.contains(&b.symbol()) {
-                changed += 1;
-            }
-        }
-        assert!(changed > 0, "{id}: the buttons have caps");
     }
 }
 

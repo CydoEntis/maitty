@@ -542,7 +542,7 @@ fn without_new_tab_chip(row: &str) -> String {
     let (mut cut, mut cut_at) = (0, 0);
     let mut i = 0;
     while i < chars.len() {
-        let tab_close = chars[i] == '✕'
+        let tab_close = chars[i] == '×'
             && i >= 2
             && chars[i - 1] == ' '
             && chars[i - 2].is_alphanumeric()
@@ -589,7 +589,7 @@ fn without_new_tab_chip(row: &str) -> String {
 ///
 /// A second line that only names the state is gone from the app; `as_one_line_rows` drops it
 /// from the reference.
-fn as_the_reference_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer, app: &App) {
+fn as_the_reference_sidebar(rows: &mut [Vec<char>], app: &App) {
     let side = app.screen.side_rect;
     if side.width < 4 || side.height < 6 {
         return;
@@ -598,14 +598,23 @@ fn as_the_reference_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffe
     let foot_y = side.bottom() as usize - 2;
     // The foot: the divider over it goes (only its own run of `─`, a modal may cross that row).
     let divider_from = left + 1;
-    for x in divider_from..right {
+    for (x, cell) in rows[foot_y - 1]
+        .iter_mut()
+        .enumerate()
+        .take(right)
+        .skip(divider_from)
+    {
         // A modal's bottom border can lie on this row: it is on the modal's ground, not the sidebar's.
-        let modal =
-            [app.theme.card, app.theme.card2].contains(&buf[(x as u16, (foot_y - 1) as u16)].bg);
-        if rows[foot_y - 1][x] != '─' || modal {
+        let modal = app.screen.modal_rects.iter().any(|r| {
+            r.contains(ratatui::layout::Position::new(
+                x as u16,
+                (foot_y - 1) as u16,
+            ))
+        });
+        if *cell != '─' || modal {
             break;
         }
-        rows[foot_y - 1][x] = ' ';
+        *cell = ' ';
     }
     let mut foot: Vec<char> = rows[foot_y][left..right].to_vec();
     let chars = |s: &str| s.chars().collect::<Vec<char>>();
@@ -724,7 +733,7 @@ pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
         .collect();
     with_the_reference_carets(&mut rows, app, glyphs);
     with_the_reference_failed_bars(&mut rows, app, glyphs);
-    as_the_reference_sidebar(&mut rows, buf, app);
+    as_the_reference_sidebar(&mut rows, app);
     let text: String = rows
         .iter()
         .enumerate()

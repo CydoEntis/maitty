@@ -474,7 +474,7 @@ fn a_lone_pane_has_no_title_row_and_its_tab_carries_its_close() {
         "the terminal starts at the pane's top: no title row, no rule"
     );
     let row = tab_row(&app, &buf);
-    let (x, y) = find_in(&buf, row, "✕").expect("the tab's ✕");
+    let (x, y) = find_in(&buf, row, "×").expect("the tab's close glyph");
     assert_eq!(
         hit_at(&app, x, y),
         Some(Hit::Screen(ScreenHit::CloseSplit(focus))),
@@ -484,7 +484,7 @@ fn a_lone_pane_has_no_title_row_and_its_tab_carries_its_close() {
     (second.layout, second.focus) = (Node::Leaf(2), 2);
     app.screen.tabs.push(second);
     let buf = draw(&mut app, 160, 45);
-    let (x, y) = find_in(&buf, tab_row(&app, &buf), "✕").unwrap();
+    let (x, y) = find_in(&buf, tab_row(&app, &buf), "×").unwrap();
     assert_eq!(
         hit_at(&app, x, y),
         Some(Hit::Screen(ScreenHit::CloseTab(app.screen.tab))),
@@ -711,7 +711,7 @@ fn a_split_pane_has_a_rule_and_no_title_and_the_rule_focuses_it() {
 }
 
 #[test]
-fn the_tab_row_ends_in_split_and_zoom_and_zoom_fills_the_tab_with_the_focused_pane() {
+fn the_tab_row_does_not_show_split_or_zoom_controls() {
     for look in ["hairline", "floating"] {
         let mut app = hairline_world(2);
         app.cfg.ui.layout = look.into();
@@ -720,34 +720,11 @@ fn the_tab_row_ends_in_split_and_zoom_and_zoom_fills_the_tab_with_the_focused_pa
         let tools: String = (row.right().saturating_sub(8)..row.right())
             .map(|x| buf[(x, row.y)].symbol())
             .collect();
-        assert!(
-            tools.contains('◫') && tools.contains('⤢'),
-            "{look}: split and zoom at the row's right end: {tools}"
-        );
-        assert_eq!(
-            app.screen.leaf_rects.len(),
-            2,
-            "{look}: two panes before zoom"
-        );
-        for want in [1, 2] {
-            let at = app
-                .hits
-                .iter()
-                .find(|(_, h)| *h == Hit::Screen(ScreenHit::TabZoom))
-                .map(|(r, _)| *r)
-                .expect("zoom is clickable");
-            app.on_mouse(crossterm::event::MouseEvent {
-                kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
-                column: at.x + 1,
-                row: at.y,
-                modifiers: crossterm::event::KeyModifiers::NONE,
-            });
-            draw(&mut app, 160, 45);
-            assert_eq!(
-                app.screen.leaf_rects.len(),
-                want,
-                "{look}: zoom toggles the focused pane to fill the tab, and back"
-            );
+        if look == "hairline" {
+            assert!(tools.contains('◫') && tools.contains('⤢'), "{look}: its row keeps split and zoom controls: {tools}");
+        } else {
+            assert!(!tools.contains('◫') && !tools.contains('⤢'), "{look}: no split or zoom controls: {tools}");
+            assert!(!app.hits.iter().any(|(_, h)| matches!(h, Hit::Screen(ScreenHit::TabSplit | ScreenHit::TabZoom))), "{look}: the row has no split or zoom targets");
         }
     }
 }
@@ -807,14 +784,14 @@ fn in_floating_the_tab_row_is_level_with_the_sidebar_s_top_and_the_pane_box_is_u
         );
         assert_eq!(
             top,
-            g.tabs.y + 1,
-            "{panes} pane(s): the pane box starts right under the tab row, so the tabs are outside it"
+            g.tabs.y,
+            "{panes} pane(s): the tabs share the pane border"
         );
         let row: String = (g.tabs.x..g.tabs.right())
             .map(|x| buf[(x, g.tabs.y)].symbol())
             .collect();
         assert!(
-            row.contains("fix-footer") && row.contains('⤢'),
+            row.contains("fix-footer") && row.contains('×'),
             "{panes} pane(s): the tab row is there: {row}"
         );
     }

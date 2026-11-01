@@ -356,7 +356,15 @@ pub(in crate::client) fn draw_side(
     let top = r.y + 2;
     // The foot is lifted a row off the bottom (Cards: it sits above the border), a divider over it.
     let foot_y = r.bottom().saturating_sub(2);
-    let list_h = foot_y.saturating_sub(1).saturating_sub(top) as usize;
+    let release = if r.height >= 8 {
+        release_chip(app, look, cols, pb, t)
+    } else {
+        None
+    };
+    app.screen.release_in_side = release.is_some();
+    let list_h = foot_y
+        .saturating_sub(1 + u16::from(release.is_some()))
+        .saturating_sub(top) as usize;
     let scroll = side_scroll(app, model, &lines, focus, list_h);
     note_rows(app, model, &lines);
 
@@ -511,6 +519,21 @@ pub(in crate::client) fn draw_side(
         Style::default().bg(pb).fg(t.muted),
     );
     draw_foot(app, buf, r, cols, pb, t);
+    if let Some((segs, h)) = release {
+        let (x, y) = (cols.x + 1, r.bottom().saturating_sub(4));
+        let w = segs_width(&segs);
+        put(buf, x, y, &segs, cols.rx + 1);
+        hit(
+            app,
+            Rect {
+                x,
+                y,
+                width: w,
+                height: 1,
+            },
+            h,
+        );
+    }
     if let Some(gy) = gliding.filter(|gy| (top..top + list_h as u16).contains(gy))
         && focus
             .and_then(|key| app.session_term(key))
@@ -1334,6 +1357,27 @@ fn checkpoint_names(app: &App, p: &Proj) -> Vec<String> {
     names
 }
 
+fn release_chip(
+    app: &App,
+    look: Look,
+    cols: Cols,
+    ground: Color,
+    t: &Theme,
+) -> Option<(Vec<Seg>, ScreenHit)> {
+    let room = (cols.rx + 1).saturating_sub(cols.x + 1);
+    [mode_bar::Release::Words, mode_bar::Release::Version]
+        .into_iter()
+        .find_map(|shown| {
+            let (segs, hit) = mode_bar::release_segs(app, shown, t)?;
+            let segs = if look.caps {
+                round_ends(segs, ground)
+            } else {
+                segs
+            };
+            (segs_width(&segs) <= room).then_some((segs, hit))
+        })
+}
+
 /// A `btn` chip: `word` in `text`, after an `accent` bold `icon` when it has one. Its ends
 /// follow `ui.rounded`.
 pub(super) fn word_chip(
@@ -1818,6 +1862,27 @@ mod v8_tests {
         rows.iter().any(|r| r.contains(needle))
     }
 
+    #[test]
+    fn update_chip_uses_the_sidebar_foot_when_there_is_room() {
+        let mut app = world(Stage::None);
+        app.update_available = Some("9.9.9".into());
+        let text = raw_text(&mut app, Layout::Floating, 120, 34, "unicode");
+        let rows: Vec<&str> = text.lines().collect();
+        let side = app.screen.side_rect;
+        let chip = rows
+            .iter()
+            .position(|line| line.contains("Update 9.9.9"))
+            .expect("the sidebar's Update chip");
+        assert!(chip + 1 < side.bottom() as usize);
+        assert!(rows[chip + 1].contains('─'), "the divider sits below it");
+        assert!(!rows.last().unwrap_or(&"").contains("Update"));
+        assert!(app.hits.iter().any(|(r, h)| {
+            r.y == chip as u16
+                && *h == Hit::Screen(ScreenHit::Update)
+                && side.contains(Position::new(r.x, r.y))
+        }));
+    }
+
     /// A sidebar row's words, without its border, bar and padding.
     fn said(row: &str) -> &str {
         row.trim_matches(|c| "│▎ ".contains(c))
@@ -2193,7 +2258,7 @@ mod v8_tests {
     }
 
     #[test]
-    fn with_full_rounding_the_open_row_has_round_ends() {
+    fn legacy_full_rounding_keeps_session_rows_square() {
         use crate::client::screen::{CAP_L, CAP_R};
         let mut app = world(Stage::None);
         app.cfg.ui.rounded = crate::config::Rounding::Full;
@@ -2203,17 +2268,9 @@ mod v8_tests {
         let row: Vec<String> = (r.x..r.right())
             .map(|xx| buf[(xx, y)].symbol().to_string())
             .collect();
-        let first = row
-            .iter()
-            .position(|c| c == CAP_L)
-            .expect("a round left end");
-        let last = row
-            .iter()
-            .rposition(|c| c == CAP_R)
-            .expect("a round right end");
         assert!(
-            r.x + (first as u16) < x && r.x + (last as u16) > x,
-            "round ends either side of the name: {row:?}"
+            !row.iter().any(|c| c == CAP_L || c == CAP_R),
+            "rounding applies to boxes, not session row chips at x={x}: {row:?}"
         );
     }
 

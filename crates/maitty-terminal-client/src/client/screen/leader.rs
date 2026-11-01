@@ -78,7 +78,7 @@ pub(in crate::client) fn draw_actions(
         height: h,
     };
     let mut c = Card::new(t, "Menu").lit(t.accent);
-    c.bg = t.card;
+    c.bg = t.bg;
     let inside = card(app, buf, r, &c, t);
     hit(app, r, ScreenHit::Noop);
     let needs = app
@@ -109,9 +109,9 @@ pub(in crate::client) fn draw_actions(
             };
             let on = i == sel || hovered(app, rr);
             if on {
-                row_pill(look, buf, rr.x, yy, rr.width, t.sel_on(t.card), t.card);
+                row_pill(look, buf, rr.x, yy, rr.width, t.sel_on(t.bg), t.bg);
             }
-            let bg = if on { t.sel_on(t.card) } else { t.card };
+            let bg = if on { t.sel_on(t.bg) } else { t.bg };
             let st = Style::default().bg(bg);
             let mut ls = st.fg(if on { t.strong } else { t.text });
             if on {

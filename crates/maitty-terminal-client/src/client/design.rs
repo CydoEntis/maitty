@@ -1528,13 +1528,10 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "ui.splash" | "ui.splash_animation" => "STARTUP",
             "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_keys" | "ui.alt_arrows" => "INPUT",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
-            "theme" => "THEME",
-            "ui.layout" | "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => {
-                "LAYOUT"
-            }
-            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded"
-            | "ui.cursor" | "ui.cursor_blink" => "PANES",
-            "ui.spinner" | "ui.glyphs" => "STATUS",
+            "theme" | "ui.glyphs" | "ui.spinner" | "ui.cursor" | "ui.cursor_blink" => "THEME",
+            "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
+            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded" => "PANES",
+            "ui.tab_gap" => "TABS",
             "sessions.agent" | "sessions.where" => "NEW SESSIONS",
             "ui.sidebar_tabs" => "SIDEBAR",
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
@@ -1659,7 +1656,10 @@ pub(super) fn control(
                 } else {
                     &cfg.theme
                 };
+                let chosen = cfg.theme();
                 return vec![
+                    seg("  ", Style::default().bg(chosen.bg)),
+                    seg("  ", Style::default().bg(chosen.accent)),
                     seg(
                         format!(" {} ", theme_label(crate::theme::canonical(name))),
                         Style::default().fg(t.strong),

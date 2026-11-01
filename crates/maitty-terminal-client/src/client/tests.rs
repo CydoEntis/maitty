@@ -3,6 +3,66 @@
 use super::*;
 use crate::brand::APP_COMMAND;
 
+mod secret_prompt_tests {
+    use super::*;
+    use crate::protocol::SecretRequest;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn request(app: &mut App) {
+        app.snap.secret_requests.push(SecretRequest {
+            id: 41,
+            term: 1,
+            label: "API key".into(),
+            reason: "Needed to continue".into(),
+        });
+    }
+
+    #[test]
+    fn new_secret_request_opens_once_and_protects_existing_typing() {
+        let (_, mut app) = design_tests::render_with(120, 40);
+        request(&mut app);
+        app.mode = Mode::Normal;
+
+        app.auto_open_secret();
+        assert!(matches!(
+            app.mode,
+            Mode::Secret {
+                term: 1,
+                id: 41,
+                side: false
+            }
+        ));
+
+        app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        assert!(app.screen.secret_typed.0.is_empty());
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Normal);
+
+        app.auto_open_secret();
+        assert_eq!(
+            app.mode,
+            Mode::Normal,
+            "the declined request is not offered again"
+        );
+    }
+
+    #[test]
+    fn a_secret_request_waits_while_another_prompt_is_open() {
+        let (_, mut app) = design_tests::render_with(120, 40);
+        request(&mut app);
+        app.mode = Mode::Prompt {
+            kind: PromptKind::ConfirmRemoveWorktree(1),
+            input: String::new(),
+        };
+        let mode = app.mode.clone();
+
+        app.auto_open_secret();
+
+        assert_eq!(app.mode, mode);
+        assert!(app.screen.secret_offered.is_empty());
+    }
+}
+
 mod basics {
     use super::*;
     use ratatui::style::Color;
@@ -531,12 +591,7 @@ mod screen_tests {
 
     #[test]
     fn the_collapsed_column_keeps_every_session_and_mouse_access_beside_the_panes() {
-        for (w, h, layout) in [
-            (80, 24, "floating"),
-            (100, 30, "hairline"),
-            (160, 45, "floating"),
-            (160, 45, "hairline"),
-        ] {
+        for (w, h, layout) in [(80, 24, "floating"), (100, 30, "floating"), (160, 45, "floating")] {
             for position in ["left", "right"] {
                 let (_, mut app) = super::design_tests::render_with(w, h);
                 app.cfg.ui.layout = layout.into();
@@ -547,101 +602,34 @@ mod screen_tests {
                 app.cfg.ui.motion = false;
                 app.screen_focus(1);
                 app.mode = Mode::Normal;
-                let (tx, mut rx) = mpsc::unbounded_channel();
-                app.out = tx;
+                let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
                 let screen = draw(&mut app, w, h);
                 show(&screen);
                 let g = screen::grid(&app, Rect::new(0, 0, w, h));
-                assert_eq!(
-                    g.side.width,
-                    screen::RAIL_W,
-                    "{w}x{h} {layout} {position}: a narrow column"
-                );
-                assert!(
-                    g.tabs.y <= 1,
-                    "{w}x{h} {layout} {position}: the panes keep the top row"
-                );
-                let in_column = |hit: screen::ScreenHit| {
-                    app.hits
-                        .iter()
-                        .find(|(r, h)| {
-                            *h == Hit::Screen(hit) && r.x >= g.side.x && r.right() <= g.side.right()
-                        })
-                        .map(|(r, _)| *r)
-                };
-                assert!(
-                    in_column(screen::ScreenHit::Session(SessionKey::Pane(1))).is_some()
-                        && in_column(screen::ScreenHit::Session(SessionKey::Pane(2))).is_some(),
-                    "{w}x{h} {position}: a row per session"
-                );
-                assert!(
-                    in_column(screen::ScreenHit::ExpandSidebar).is_some()
-                        && in_column(screen::ScreenHit::Actions).is_some()
-                        && in_column(screen::ScreenHit::NewShell).is_some(),
-                    "{w}x{h} {position}: expand, Menu and New stay clickable"
-                );
-                assert!(
-                    screen
-                        .lines()
-                        .nth(g.tabs.y as usize)
-                        .unwrap()
-                        .contains("◫ ⤢"),
-                    "the tabs sit on row {}: {}",
-                    g.tabs.y,
-                    screen.lines().nth(g.tabs.y as usize).unwrap()
-                );
+                assert_eq!(g.side.width, screen::RAIL_W, "{w}x{h} {layout} {position}: a narrow column");
+                assert!(g.panes.y <= 1, "{w}x{h} {layout} {position}: the panes keep the top row");
+                let in_column = |hit: screen::ScreenHit| app.hits.iter().find(|(r, h)| *h == Hit::Screen(hit) && r.x >= g.side.x && r.right() <= g.side.right()).map(|(r, _)| *r);
+                assert!(in_column(screen::ScreenHit::Session(SessionKey::Pane(1))).is_some() && in_column(screen::ScreenHit::Session(SessionKey::Pane(2))).is_some(), "{w}x{h} {position}: a row per session");
+                assert!(in_column(screen::ScreenHit::ExpandSidebar).is_some() && in_column(screen::ScreenHit::Actions).is_some() && in_column(screen::ScreenHit::NewShell).is_some(), "{w}x{h} {position}: expand, Menu and New stay clickable");
+                assert!(screen.lines().nth(g.panes.y as usize).unwrap().contains(" + "), "the tabs sit on row {}: {}", g.panes.y, screen.lines().nth(g.panes.y as usize).unwrap());
                 let click = |app: &mut App, r: Rect| {
-                    for kind in [
-                        MouseEventKind::Down(MouseButton::Left),
-                        MouseEventKind::Up(MouseButton::Left),
-                    ] {
-                        app.on_mouse(MouseEvent {
-                            kind,
-                            column: r.x + 1,
-                            row: r.y,
-                            modifiers: KeyModifiers::NONE,
-                        });
+                    for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+                        app.on_mouse(MouseEvent { kind, column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
                     }
                 };
                 let row = in_column(screen::ScreenHit::Session(SessionKey::Pane(2))).unwrap();
                 click(&mut app, row);
-                assert!(
-                    std::iter::from_fn(|| rx.try_recv().ok())
-                        .any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 })))
-                );
+                assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))));
                 // More sessions than fit: the last row is a `…` that opens the sidebar.
                 for id in 4..60 {
                     let mut t = app.snap.terms[&2].clone();
                     t.id = id;
                     app.snap.terms.insert(id, t);
-                    app.snap.workspaces[0].tabs.push(TabInfo {
-                        id: 100 + id,
-                        name: String::new(),
-                        layout: crate::layout::Node::Leaf(id),
-                        focus: id,
-                    });
+                    app.snap.workspaces[0].tabs.push(TabInfo { id: 100 + id, name: String::new(), layout: crate::layout::Node::Leaf(id), focus: id });
                 }
                 let screen = draw(&mut app, w, h);
-                let y = screen
-                    .lines()
-                    .position(|l| {
-                        l.chars()
-                            .skip(g.side.x as usize)
-                            .take(g.side.width as usize)
-                            .any(|c| c == '…')
-                    })
-                    .unwrap_or_else(|| {
-                        panic!("{w}x{h} {position}: rows that don't fit give way to a …")
-                    });
-                let more = app
-                    .hits
-                    .iter()
-                    .rev()
-                    .find(|(r, h)| {
-                        *h == Hit::Screen(screen::ScreenHit::ExpandSidebar) && r.y as usize == y
-                    })
-                    .map(|(r, _)| *r)
-                    .expect("the … row opens the sidebar");
+                let y = screen.lines().position(|l| l.chars().skip(g.side.x as usize).take(g.side.width as usize).any(|c| c == '…')).unwrap_or_else(|| panic!("{w}x{h} {position}: rows that don't fit give way to a …"));
+                let more = app.hits.iter().rev().find(|(r, h)| *h == Hit::Screen(screen::ScreenHit::ExpandSidebar) && r.y as usize == y).map(|(r, _)| *r).expect("the … row opens the sidebar");
                 click(&mut app, more);
                 assert!(app.sidebar);
                 draw(&mut app, w, h);
@@ -1054,8 +1042,8 @@ mod screen_tests {
             !text.contains(concat!(">_ ", env!("APP_COMMAND"))),
             "no logo"
         );
-        // The grid: no margin, the sidebar card the full height from the corner, the tabs on
-        // row 0 beside it, outside the pane card (ADR 0035), the pane card right under them.
+        // The grid: no margin, the sidebar and first pane start at the top edge, and the tab
+        // chips sit on the pane's top border (ADR 0038).
         assert!(
             lines[0].starts_with("┌─"),
             "the sidebar card from the very corner: {}",
@@ -1071,11 +1059,12 @@ mod screen_tests {
             "New and Actions stay in the sidebar foot"
         );
         assert!(
-            lines[0].contains(" claude ✕")
-                && lines[0].contains("  +")
-                && lines[0].contains("◫ ⤢")
+            lines[0].contains(" claude ×")
+                && lines[0].contains(" + ")
+                && !lines[0].contains('◫')
+                && !lines[0].contains('⤢')
                 && !lines[0].contains('▯'),
-            "the tab's name on the tab row over the pane's box (a lone tab has no number), the + chip, then split and zoom at the right: {}",
+            "the tab's name and new-tab chip sit on the pane border, without split or zoom buttons: {}",
             lines[0]
         );
         assert!(
@@ -1189,12 +1178,13 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("Gap")
+            o.contains("Theme")
+                && o.contains("Cursor")
                 && !o.contains("Corners")
                 && o.contains("PREVIEW")
                 && o.contains("focused")
                 && o.contains("dimmed"),
-            "the pane settings, with a preview"
+            "the appearance settings, with a preview"
         );
         // The splash: the <APP> wordmark, its tagline, what happened, buttons.
         app.mode = Mode::Normal;
@@ -1463,22 +1453,13 @@ mod screen_tests {
         let mut term = Terminal::new(TestBackend::new(230, 50)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
-        let card = app.theme.card;
+        // The menu has no fill of its own: its ground is the screen's.
+        let card = app.theme.bg;
         let x = 62;
-        let last_item = (0..50u16)
-            .rev()
-            .find(|&y| (62..90).any(|x| buf[(x, y)].symbol() == "C") && buf[(x, y)].bg == card)
-            .expect("the Close pane row");
+        let last_item = (0..25u16).rev().find(|&y| (62..90).any(|x| buf[(x, y)].symbol() == "C") && buf[(x, y)].bg == card).expect("the Close pane row");
         let below = |n: u16| buf[(x, last_item + n)].bg;
-        assert_eq!(
-            below(1),
-            card,
-            "{layout}: one padding row under the last item"
-        );
-        assert!(
-            matches!(buf[(x, last_item + 2)].symbol(), "─" | "╰" | "└"),
-            "{layout}: then its box, as it began one row above the first item"
-        );
+        assert_eq!(below(1), card, "{layout}: one padding row under the last item");
+        assert!(matches!(buf[(x, last_item + 2)].symbol(), "─" | "╰" | "└"), "{layout}: then its box, as it began one row above the first item");
     }
 
     #[test]
@@ -2328,48 +2309,21 @@ mod screen_tests {
 
     #[test]
     fn the_new_tab_chip_is_raised_and_a_cell_clear_of_the_tabs_in_every_look() {
-        use crate::config::Rounding;
         for layout in ["floating", "tiled", "grid"] {
-            for rounded in [Rounding::Off, Rounding::Full] {
+            for rounded in [crate::config::Rounding::Off, crate::config::Rounding::Corners] {
                 let (_, mut app) = super::design_tests::render_with(160, 45);
                 (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
                 app.cfg.ui.fold_retired_layout();
                 let buf = drawn(&mut app, 160, 45);
                 let at = format!("{layout} {rounded:?}");
                 let t = app.theme.clone();
-                let r = app
-                    .hits
-                    .iter()
-                    .find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::NewTab))
-                    .expect("a + chip")
-                    .0;
-                let plus = (r.x..r.right())
-                    .find(|&x| buf[(x, r.y)].symbol() == "+")
-                    .expect("its +");
-                assert_eq!(
-                    (buf[(plus, r.y)].fg, buf[(plus, r.y)].bg),
-                    (t.strong, t.btn),
-                    "strong on btn: {at}"
-                );
+                let r = app.hits.iter().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::NewTab)).expect("a + chip").0;
+                let plus = (r.x..r.right()).find(|&x| buf[(x, r.y)].symbol() == "+").expect("its +");
+                assert_eq!((buf[(plus, r.y)].fg, buf[(plus, r.y)].bg), (t.strong, t.btn), "strong on btn: {at}");
                 let (l, e) = (&buf[(r.x, r.y)], &buf[(r.right() - 1, r.y)]);
-                if rounded == Rounding::Full {
-                    assert_eq!(
-                        (l.symbol(), l.fg, e.symbol(), e.fg),
-                        (screen::CAP_L, t.btn, screen::CAP_R, t.btn),
-                        "capped: {at}"
-                    );
-                } else {
-                    assert_eq!(
-                        (l.symbol(), l.bg, e.symbol(), e.bg),
-                        (" ", t.btn, " ", t.btn),
-                        "square: {at}"
-                    );
-                }
+                assert_eq!((l.symbol(), l.bg, e.symbol(), e.bg), (" ", t.btn, " ", t.btn), "square: {at}");
                 let gap = &buf[(r.x - 1, r.y)];
-                assert!(
-                    gap.symbol() == " " && gap.bg != t.btn,
-                    "a clear cell before it: {at}"
-                );
+                assert!(gap.symbol() == "─" && gap.bg != t.btn, "a cell of the border before it, not of the chip: {at}");
             }
         }
     }
@@ -2639,32 +2593,20 @@ mod screen_tests {
     }
 
     #[test]
-    fn padding_top_leaves_a_row_above_and_none_round_the_rest() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.cfg.ui.padding = crate::config::PADDING_TOP.into();
-        let buf = drawn(&mut app, 160, 45);
-        let row = |y: u16| {
-            (0..160u16)
-                .map(|x| buf[(x, y)].symbol())
-                .collect::<String>()
-        };
-        assert!(row(0).trim().is_empty(), "the top row is empty: {}", row(0));
-        assert!(
-            row(1).starts_with("┌─ SESSIONS"),
-            "the sidebar starts under it, at the left edge: {}",
-            row(1)
-        );
-        assert_eq!(
-            buf[(159, 4)].symbol(),
-            "│",
-            "the panes reach the right edge: {}",
-            row(4)
-        );
-        assert_eq!(
-            Config::default().ui.padding,
-            crate::config::PADDING_TOP,
-            "the default"
-        );
+    fn padding_sizes_apply_evenly_around_the_screen() {
+        for (padding, inset) in [("small", 1), ("medium", 2), ("large", 3)] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            app.cfg.ui.padding = padding.into();
+            let area = Rect::new(0, 0, 160, 45);
+            let grid = screen::grid(&app, screen::framed(&app, area));
+            let bar = screen::mode_bar_row(&app, area);
+            assert_eq!((grid.side.x, grid.side.y), (inset, inset), "{padding}: top and left");
+            assert_eq!(grid.panes.right(), 160 - inset, "{padding}: right");
+            assert_eq!(bar.x, inset, "{padding}: mode bar left");
+            assert_eq!(bar.right(), 160 - inset, "{padding}: mode bar right");
+            assert_eq!(bar.y, 45 - inset - 1, "{padding}: bottom");
+        }
+        assert_eq!(Config::default().ui.padding, "small");
     }
 
     #[test]
@@ -2776,11 +2718,10 @@ mod screen_tests {
 
     #[test]
     fn a_narrow_title_keeps_the_current_tab_before_any_other() {
-        use crate::config::Rounding;
         let mut failures = Vec::new();
         let mut others_dropped = false;
         let layout = "floating";
-        for rounded in [Rounding::Off, Rounding::Full] {
+        for rounded in [crate::config::Rounding::Off, crate::config::Rounding::Corners] {
             for place in 0..3 {
                 for w in 44..=110u16 {
                     let (_, mut app) = super::design_tests::render_with(w, 24);
@@ -2790,28 +2731,18 @@ mod screen_tests {
                     app.snap.terms.get_mut(&a).unwrap().status = Status::Working;
                     let buf = drawn(&mut app, w, 24);
                     let card = card_of(&app, a);
-                    let title: String = (card.x..card.right())
-                        .map(|x| buf[(x, card.y)].symbol())
-                        .collect();
+                    let title: String = (card.x..card.right()).map(|x| buf[(x, card.y)].symbol()).collect();
                     // The tabs have their own row over the panes (ADR 0028).
-                    let row = screen::grid(&app, buf.area).tabs;
-                    let top: String = (row.x..row.right())
-                        .map(|x| buf[(x, row.y)].symbol())
-                        .collect();
+                    // Floating's tabs sit on the top border (ADR 0038): a row of one cell's height.
+                    let row = Rect { height: 1, ..screen::grid(&app, buf.area).panes };
+                    let top: String = (row.x..row.right()).map(|x| buf[(x, row.y)].symbol()).collect();
                     let at = format!("{layout} {rounded:?} current {place} {w}: {top} / {title}");
                     show(&at);
-                    let on_row = |want: Hit| {
-                        app.hits
-                            .iter()
-                            .filter(|(r, h)| *h == want && r.y == row.y && row.intersects(*r))
-                            .count()
-                    };
+                    let on_row = |want: Hit| app.hits.iter().filter(|(r, h)| *h == want && r.y == row.y && row.intersects(*r)).count();
                     let shown = |i| on_row(Hit::Screen(screen::ScreenHit::TabPick(i))) == 1;
                     let others = (0..3).filter(|&i| i != place).filter(|&i| shown(i)).count();
                     if others > 0 && !(shown(place) && top.contains("claude")) {
-                        failures.push(format!(
-                            "another tab kept over the current one, or while it shortens: {at}"
-                        ));
+                        failures.push(format!("another tab kept over the current one, or while it shortens: {at}"));
                     }
                     let plus = on_row(Hit::Screen(screen::ScreenHit::NewTab)) > 0;
                     if plus && !(0..3).all(shown) {
@@ -2825,18 +2756,9 @@ mod screen_tests {
                 }
             }
         }
-        assert!(
-            failures.is_empty(),
-            "{}",
-            failures.join(
-                "
-"
-            )
-        );
-        assert!(
-            others_dropped,
-            "somewhere the other tabs give way and the current one stays"
-        );
+        assert!(failures.is_empty(), "{}", failures.join("
+"));
+        assert!(others_dropped, "somewhere the other tabs give way and the current one stays");
     }
 
     #[test]
@@ -3669,49 +3591,23 @@ mod screen_tests {
         for g in ["UPDATES", "STARTUP", "INPUT"] {
             assert!(o.contains(g), "General is grouped: {g}");
         }
-        assert!(
-            design::settings_rows(modal::Cat::General)
-                .iter()
-                .any(|r| design::settings_group(r) == "SHELL"),
-            "and SHELL, further down"
-        );
-        let (updates, startup, input) = (
-            o.find("UPDATES").unwrap(),
-            o.find("STARTUP").unwrap(),
-            o.find("INPUT").unwrap(),
-        );
-        assert!(
-            updates < startup && startup < input,
-            "UPDATES, then STARTUP, then INPUT"
-        );
-        assert!(
-            o.contains("› Version"),
-            "the first row, the version, is selected"
-        );
+        assert!(design::settings_rows(modal::Cat::General).iter().any(|r| design::settings_group(r) == "SHELL"), "and SHELL, further down");
+        let (updates, startup, input) = (o.find("UPDATES").unwrap(), o.find("STARTUP").unwrap(), o.find("INPUT").unwrap());
+        assert!(updates < startup && startup < input, "UPDATES, then STARTUP, then INPUT");
+        assert!(o.contains("› Version"), "the first row, the version, is selected");
         // Appearance, the next tab, has one theme control that opens the searchable browser.
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(
-            o.contains("PANES")
-                && o.contains("Gap")
-                && !o.contains("Corners")
-                && o.contains("PREVIEW"),
-            "the pane settings first, with their preview"
-        );
-        let theme_row = design::settings_rows(modal::Cat::Appearance)
-            .iter()
-            .position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme"))
-            .unwrap();
+        assert!(o.contains("THEME") && o.contains("Padding") && !o.contains("Corners") && o.contains("PREVIEW"), "the theme settings first, with their preview");
+        assert!(o.contains("Status glyphs") && o.contains("Working spinner") && o.contains("Cursor blink"), "the status marks and the cursor sit with the theme");
+        let theme_row = design::settings_rows(modal::Cat::Appearance).iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap();
         for _ in 0..theme_row {
             app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
         }
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(
-            o.contains("THEME") && o.contains("Enter browse"),
-            "then the theme browser control"
-        );
+        assert!(o.contains("THEME") && o.contains("Enter browse"), "then the theme browser control");
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("Themes") && o.contains("Day"));
@@ -4454,15 +4350,10 @@ mod screen_tests {
     }
 
     #[test]
-    fn the_hover_is_rounded_with_rounded_shapes_and_square_without() {
-        use crate::client::screen::{CAP_L, CAP_R};
-        for rounded in [true, false] {
+    fn the_hover_keeps_square_ends_with_rounded_or_square_boxes() {
+        for rounded in [crate::config::Rounding::Corners, crate::config::Rounding::Off] {
             let (_, mut app) = super::design_tests::render_with(160, 45);
-            app.cfg.ui.rounded = if rounded {
-                crate::config::Rounding::Full
-            } else {
-                crate::config::Rounding::Off
-            };
+            app.cfg.ui.rounded = rounded;
             app.mode = Mode::Actions { sel: 0 };
             draw(&mut app, 160, 45);
             let (row, _) = *app
@@ -4481,16 +4372,11 @@ mod screen_tests {
                 buf[(row.x, row.y)].symbol().to_string(),
                 buf[(row.right() - 1, row.y)].symbol().to_string(),
             );
-            let want = if rounded {
-                (CAP_L.to_string(), CAP_R.to_string())
-            } else {
-                (" ".to_string(), " ".to_string())
-            };
-            assert_eq!(ends, want, "rounded {rounded}: the hovered Menu row's ends");
+            assert_eq!(ends, (" ".to_string(), " ".to_string()), "{rounded:?}: the hovered Menu row keeps square ends");
             assert_ne!(
                 buf[(row.x + 2, row.y)].bg,
                 buf[(row.x, row.y + 1)].bg,
-                "rounded {rounded}: the row is tinted"
+                "{rounded:?}: the row is tinted"
             );
         }
     }
@@ -7310,30 +7196,18 @@ second line
         app.act(Action::Jump);
         let o = draw(&mut app, 100, 30);
         show(&o);
-        assert!(
-            o.contains("INBOX") && !o.contains("─ 1  claude "),
-            "narrow: the sheet covers the pane column"
-        );
+        assert!(o.contains("INBOX") && !o.contains("─ 1  claude "), "narrow: the sheet covers the pane column");
         app.mode = Mode::Normal;
         // Changes of a real repo.
-        let repo = std::env::temp_dir().join(format!(
-            concat!(env!("APP_COMMAND"), "-sheet-{}"),
-            std::process::id()
-        ));
+        let repo = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-sheet-{}"), std::process::id()));
         let _ = std::fs::remove_dir_all(&repo);
         std::fs::create_dir_all(&repo).unwrap();
         crate::proc::git(&repo, &["init", "-q"]).unwrap();
         app.open_changes(repo.clone());
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(
-            o.contains(" Changes c ") && o.contains("fix the flaky checkout test"),
-            "Changes docks beside the panes"
-        );
-        assert!(
-            !o.contains("─ Changes "),
-            "its lit tab names it; the title doesn't repeat it"
-        );
+        assert!(o.contains("c Changes") && o.contains("fix the flaky checkout test"), "Changes docks beside the panes");
+        assert!(!o.contains("─ Changes "), "its lit tab names it; the title doesn't repeat it");
         let _ = std::fs::remove_dir_all(&repo);
     }
 
@@ -7649,90 +7523,34 @@ second line
     #[test]
     fn general_settings_are_in_sections_with_the_version_under_updates() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView {
-            cat: 0,
-            sel: 0,
-            editing: None,
-            capturing: false,
-            scroll: 0,
-        }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        let top: String = o.lines().take(6).collect::<Vec<_>>().join(
-            "
-",
-        );
-        assert!(
-            !top.contains("up to date"),
-            "no version line over the tabs' pages: {top}"
-        );
+        let top: String = o.lines().take(6).collect::<Vec<_>>().join("
+");
+        assert!(!top.contains("up to date"), "no version line over the tabs' pages: {top}");
         let rows_here = design::settings_rows(modal::Cat::General);
-        let version = rows_here
-            .iter()
-            .position(|r| matches!(r, design::SRow::Version))
-            .expect("a Version row");
+        let version = rows_here.iter().position(|r| matches!(r, design::SRow::Version)).expect("a Version row");
         assert_eq!(design::settings_group(&rows_here[version]), "UPDATES");
-        let check = rows_here
-            .iter()
-            .position(|r| matches!(r, design::SRow::Setting(s) if s.path == "ui.update_check"))
-            .expect("Check for updates");
-        assert_eq!(
-            (version, check),
-            (0, 1),
-            "Updates head General: the version, then Check for updates"
-        );
-        assert!(
-            !o.contains("Installed here") && !o.contains("This window"),
-            "the detail lines only show when something differs"
-        );
+        let check = rows_here.iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "ui.update_check")).expect("Check for updates");
+        assert_eq!((version, check), (0, 1), "Updates head General: the version, then Check for updates");
+        assert!(!o.contains("Installed here") && !o.contains("This window"), "the detail lines only show when something differs");
         let rows = design::settings_rows(modal::Cat::General);
-        let sections: Vec<(&str, &str)> = rows
-            .iter()
-            .filter_map(|r| match r {
-                design::SRow::Setting(s) => Some((design::settings_group(r), s.label)),
-                _ => None,
-            })
-            .collect();
-        let pos = |label: &str| {
-            sections
-                .iter()
-                .position(|(_, l)| *l == label)
-                .unwrap_or_else(|| panic!("{label} is on the General page"))
-        };
+        let sections: Vec<(&str, &str)> = rows.iter().filter_map(|r| match r { design::SRow::Setting(s) => Some((design::settings_group(r), s.label)), _ => None }).collect();
+        let pos = |label: &str| sections.iter().position(|(_, l)| *l == label).unwrap_or_else(|| panic!("{label} is on the General page"));
         assert_eq!(sections[pos("Leader key")].0, "INPUT");
         assert_eq!(sections[pos("Editor")].0, "SHELL");
-        assert!(
-            pos("Check for updates") < pos("Splash screen")
-                && pos("Splash screen") < pos("Leader key"),
-            "updates, then startup, then input"
-        );
-        assert!(
-            pos("Leader key") < pos("Mouse")
-                && pos("Mouse") < pos("Leader waits for next key")
-                && pos("Leader waits for next key") < pos("Shell"),
-            "input, then the shell"
-        );
+        assert!(pos("Check for updates") < pos("Splash screen") && pos("Splash screen") < pos("Leader key"), "updates, then startup, then input");
+        assert!(pos("Leader key") < pos("Mouse") && pos("Mouse") < pos("Leader waits for next key") && pos("Leader waits for next key") < pos("Shell"), "input, then the shell");
         assert!(pos("Shell") < pos("Editor"), "the shell first in its group");
         // How it looks lives on the Appearance page, not here.
         for label in ["Layout", "Background", "Sidebar side", "Motion"] {
-            assert!(
-                !sections.iter().any(|(_, l)| *l == label),
-                "{label} is not a General setting"
-            );
+            assert!(!sections.iter().any(|(_, l)| *l == label), "{label} is not a General setting");
         }
         let looks = design::settings_rows(modal::Cat::Appearance);
-        let looks: Vec<(&str, &str)> = looks
-            .iter()
-            .filter_map(|r| match r {
-                design::SRow::Setting(s) => Some((design::settings_group(r), s.label)),
-                _ => None,
-            })
-            .collect();
-        for label in ["Layout", "Background", "Sidebar side", "Motion"] {
-            assert!(
-                looks.iter().any(|(g, l)| *l == label && *g == "LAYOUT"),
-                "{label} is on the Appearance page"
-            );
+        let looks: Vec<(&str, &str)> = looks.iter().filter_map(|r| match r { design::SRow::Setting(s) => Some((design::settings_group(r), s.label)), _ => None }).collect();
+        for label in ["Padding", "Background", "Sidebar side", "Motion"] {
+            assert!(looks.iter().any(|(g, l)| *l == label && *g == "LAYOUT"), "{label} is on the Appearance page");
         }
         assert!(o.contains("INPUT ─"), "a heading has its rule");
     }
@@ -9436,6 +9254,7 @@ second line
             for w in 40..=200u16 {
                 let (_, mut app) = super::design_tests::render_with(w, 24);
                 app.update_available = update.then(|| "0.44.0".into());
+                (app.sidebar, app.side_hidden) = (false, true); // the sidebar would take the chip; this checks the bar
                 into_mode(&mut app, "lit");
                 let buf = drawn(&mut app, w, 24);
                 let (_, bar) = bar_text(&app, &buf);
@@ -9443,36 +9262,21 @@ second line
                 let shown: Vec<bool> = SUGGESTED.iter().map(|s| bar.contains(s)).collect();
                 let (suggestions, tail) = shown.split_at(7);
                 assert!(bar.contains("SHORTCUT"), "the tag stays: {at}");
-                assert!(
-                    suggestions.windows(2).all(|p| p[0] || !p[1]),
-                    "dropped from the right: {at}"
-                );
-                assert!(
-                    !suggestions[0] || tail.iter().all(|s| *s),
-                    "all keys and Esc go after every suggestion: {at}"
-                );
+                assert!(suggestions.windows(2).all(|p| p[0] || !p[1]), "dropped from the right: {at}");
+                assert!(!suggestions[0] || tail.iter().all(|s| *s), "all keys and Esc go after every suggestion: {at}");
                 assert!(!tail[0] || tail[1], "Esc goes last: {at}");
                 if w >= 80 {
-                    assert!(
-                        tail.iter().all(|s| *s),
-                        "from 80 columns, all keys and Esc always show: {at}"
-                    );
+                    assert!(tail.iter().all(|s| *s), "from 80 columns, all keys and Esc always show: {at}");
                 }
                 if w >= 120 && update {
-                    assert!(
-                        bar.trim_end().ends_with("↑ Update 0.44.0"),
-                        "Update at the right end: {at}"
-                    );
+                    assert!(bar.trim_end().ends_with("↑ Update 0.44.0"), "Update at the right end: {at}");
                 }
             }
             let (_, mut app) = super::design_tests::render_with(200, 24);
             into_mode(&mut app, "lit");
             let buf = drawn(&mut app, 200, 24);
             let (_, bar) = bar_text(&app, &buf);
-            assert!(
-                SUGGESTED.iter().all(|s| bar.contains(s)),
-                "wide, every suggestion: {bar}"
-            );
+            assert!(SUGGESTED.iter().all(|s| bar.contains(s)), "wide, every suggestion: {bar}");
         }
     }
 
@@ -9664,34 +9468,26 @@ second line
     }
 
     #[test]
-    fn every_bar_chip_is_capped_when_rounded_and_its_click_covers_the_caps() {
+    fn every_bar_chip_is_square_and_its_click_covers_it() {
         use crate::config::Rounding;
         use screen::ScreenHit as S;
         type SetUp = fn(&mut App);
-        let states: [(&str, Option<S>, SetUp); 5] = [
+        let states: [(&str, Option<S>, SetUp); 3] = [
             ("TYPING", Some(S::ShortcutMode), |app| {
                 app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
             }),
             ("SHORTCUT", Some(S::Leader), |_| {}),
             ("INBOX", None, |app| tap(app, 'i')),
-            ("↑ Update 9.9.9", Some(S::Update), |app| {
-                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-                app.update_available = Some("9.9.9".into());
-            }),
-            ("↻ Restart", Some(S::Restart), |app| {
-                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-                app.installed_version = Some(Ok("999.0.0".into()));
-            }),
         ];
         for (words, kind, set_up) in states {
-            for rounded in [Rounding::Off, Rounding::Full] {
+            for rounded in [Rounding::Off, Rounding::Corners] {
                 let mut app = shortcut_mode();
                 app.cfg.ui.rounded = rounded;
                 set_up(&mut app);
                 let at = format!("{words} {rounded:?}");
                 let buf = drawn(&mut app, 160, 45);
                 let y = screen::mode_bar_row(&app, buf.area).y;
-                let caps = u16::from(rounded == Rounding::Full);
+                let caps = 0;
                 let n = words.chars().count() as u16;
                 let start = on_bar(&app, &buf, words).unwrap_or_else(|| panic!("the chip: {at}"));
                 let r = Rect {
@@ -9726,20 +9522,11 @@ second line
                     &buf[(r.right() - 1, y)],
                     buf[(r.x + 1, y)].bg,
                 );
-                if rounded == Rounding::Full {
-                    assert_eq!(
-                        (l.symbol(), l.fg, e.symbol(), e.fg),
-                        (screen::CAP_L, inside, screen::CAP_R, inside),
-                        "capped, the click on both caps: {at}"
-                    );
-                    assert_ne!(l.bg, inside, "the caps sit on the bar's ground: {at}");
-                } else {
-                    assert_eq!(
-                        (l.symbol(), l.bg, e.symbol(), e.bg),
-                        (" ", inside, " ", inside),
-                        "square: {at}"
-                    );
-                }
+                assert_eq!(
+                    (l.symbol(), l.bg, e.symbol(), e.bg),
+                    (" ", inside, " ", inside),
+                    "square: {at}"
+                );
             }
         }
     }
@@ -9748,6 +9535,7 @@ second line
     fn update_sits_at_the_bar_s_right_end_and_clicks_except_while_held() {
         let mut app = shortcut_mode();
         app.update_available = Some("9.9.9".into());
+        (app.sidebar, app.side_hidden) = (false, true); // the sidebar would take the chip; this checks the bar
         for mode in ["lit", "held", "typing"] {
             match mode {
                 "held" => tap(&mut app, 'y'),
@@ -9759,24 +9547,11 @@ second line
             }
             let buf = drawn(&mut app, 160, 45);
             let (row, bar) = bar_text(&app, &buf);
-            assert!(
-                bar.trim_end().ends_with("↑ Update 9.9.9"),
-                "{mode}: at the right end: {bar}"
-            );
+            assert!(bar.trim_end().ends_with("↑ Update 9.9.9"), "{mode}: at the right end: {bar}");
             let row0: String = (0..160).map(|x| buf[(x, 0)].symbol()).collect();
-            assert!(
-                !row0.contains("Update"),
-                "{mode}: not in the corner any more: {row0}"
-            );
-            let clickable = app
-                .hits
-                .iter()
-                .any(|(r, h)| r.y == row.y && *h == Hit::Screen(screen::ScreenHit::Update));
-            assert_eq!(
-                clickable,
-                mode != "held",
-                "{mode}: clickable unless a popup has the keys"
-            );
+            assert!(!row0.contains("Update"), "{mode}: not in the corner any more: {row0}");
+            let clickable = app.hits.iter().any(|(r, h)| r.y == row.y && *h == Hit::Screen(screen::ScreenHit::Update));
+            assert_eq!(clickable, mode != "held", "{mode}: clickable unless a popup has the keys");
         }
     }
 
@@ -9818,27 +9593,13 @@ second line
                 into_mode(&mut app, mode);
                 let buf = drawn(&mut app, 160, 45);
                 let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
-                let pane = app
-                    .pane_frames
-                    .iter()
-                    .map(|(_, r)| *r)
-                    .filter(|r| r.y == top)
-                    .max_by_key(|r| r.right())
-                    .expect("the top-right pane");
-                let row: String = (pane.x..pane.right())
-                    .map(|x| buf[(x, pane.y)].symbol())
-                    .collect();
-                // A lone pane's name, state and ✕ are on its tab: its top says nothing.
-                assert!(
-                    !row.contains('✕') && !row.contains("needs you") && !row.contains("claude"),
-                    "{layout} {mode}: {row}"
-                );
+                let pane = app.pane_frames.iter().map(|(_, r)| *r).filter(|r| r.y == top).max_by_key(|r| r.right()).expect("the top-right pane");
+                let row: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y)].symbol()).collect();
+                // A lone pane's name, state and × are on its tab, which sits on its top border.
+                assert!(!row.contains("needs you"), "{layout} {mode}: {row}");
                 closes.push(row);
             }
-            assert!(
-                closes.windows(2).all(|p| p[0] == p[1]),
-                "{layout}: the pane's top holds still: {closes:?}"
-            );
+            assert!(closes.windows(2).all(|p| p[0] == p[1]), "{layout}: the pane's top holds still: {closes:?}");
         }
     }
 
@@ -9851,10 +9612,7 @@ second line
         assert!(matches!(app.view, Some(View::Files(_))), "f opened Files");
         let buf = drawn(&mut app, 160, 45);
         let sheet = app.screen.sheet_rect;
-        let close = (sheet.x..sheet.right())
-            .rev()
-            .find(|&x| buf[(x, sheet.y)].symbol() == "✕")
-            .expect("the sheet's ✕");
+        let close = (sheet.x..sheet.right()).rev().find(|&x| buf[(x, sheet.y)].symbol() == "×").expect("the sheet's ✕");
         assert!(close + 5 >= sheet.right(), "at the corner");
         click_at(&mut app, close, sheet.y);
         assert!(app.view.is_none(), "a click on it closes Files");
@@ -9877,38 +9635,17 @@ second line
                     let at = format!("{w}x{h} {release} {mode}");
                     let row: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
                     let side = app.screen.side_rect;
-                    let title: String = (side.x..side.right())
-                        .map(|x| buf[(x, 0)].symbol())
-                        .collect();
-                    assert!(
-                        title.contains("SESSIONS") && title.contains("●1"),
-                        "{at}: the sidebar's title and count: {row}"
-                    );
+                    let title: String = (side.x..side.right()).map(|x| buf[(x, 0)].symbol()).collect();
+                    assert!(title.contains("SESSIONS") && title.contains("●1"), "{at}: the sidebar's title and count: {row}");
                     let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
-                    let pane = app
-                        .pane_frames
-                        .iter()
-                        .map(|(_, r)| *r)
-                        .find(|r| r.y == top)
-                        .expect("a pane along the top");
-                    let tabs: String = (pane.x..pane.right())
-                        .map(|x| buf[(x, pane.y - 1)].symbol())
-                        .collect();
-                    assert!(
-                        tabs.contains('●'),
-                        "{at}: the session's status on its tab: {row}"
-                    );
+                    let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == top).expect("a pane along the top");
+                    let tabs: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y)].symbol()).collect();
+                    assert!(tabs.contains('●'), "{at}: the session's status on its tab: {row}");
                     let (_, bar) = bar_text(&app, &buf);
                     assert!(bar.trim().starts_with(bar_words(mode)), "{at}: {bar}");
-                    let pill = match release {
-                        "update" => Some("↑"),
-                        "restart" => Some("↻"),
-                        _ => None,
-                    };
-                    assert!(
-                        pill.is_none_or(|p| bar.contains(p)),
-                        "{at}: the release pill on the bar: {bar}"
-                    );
+                    let pill = match release { "update" => Some("↑"), "restart" => Some("↻"), _ => None };
+                    let everywhere: String = (0..h).flat_map(|y| (0..w).map(move |x| (x, y))).map(|(x, y)| buf[(x, y)].symbol()).collect();
+                    assert!(pill.is_none_or(|p| everywhere.contains(p)), "{at}: the release pill on the screen: {bar}");
                 }
             }
         }
@@ -9996,18 +9733,12 @@ second line
 
     #[test]
     fn borrowed_screens_look_like_the_default() {
-        for (a, title) in [
-            (Action::RenameWorkspace, "Rename"),
-            (Action::NewWorktree(None), "Worktrees"),
-        ] {
+        for (a, title) in [(Action::RenameWorkspace, "Rename"), (Action::NewWorktree(None), "Worktrees")] {
             let (_, mut app) = super::design_tests::render_with(120, 34);
             app.act(a);
             let o = draw(&mut app, 120, 34);
             show(&o);
-            assert!(
-                o.contains(title) && o.contains("Esc close"),
-                "{title}: a {APP_COMMAND} modal (title in its accent chip, Esc to close)"
-            );
+            assert!(o.contains(title) && o.contains('×'), "{title}: a {APP_COMMAND} modal (title in its accent chip, a red ✕ to close)");
         }
     }
 
@@ -10174,15 +9905,10 @@ mod settings_v8_tests {
     }
 
     #[test]
-    fn one_layout_setting_names_each_look() {
-        let layout = modal::SETTINGS
-            .iter()
-            .find(|s| s.path == "ui.layout")
-            .expect("a Layout row");
+    fn floating_is_the_only_layout_and_pane_style_is_not_separately_configurable() {
         assert!(
-            matches!(layout.kind, modal::Kind::Choice(c) if c == ["floating", "hairline"]),
-            "{:?}",
-            layout.kind
+            !modal::SETTINGS.iter().any(|s| s.path == "ui.layout"),
+            "Floating is the only layout"
         );
         assert!(
             !modal::SETTINGS.iter().any(|s| s.path == "ui.panes"),
@@ -11778,27 +11504,14 @@ mod check_sheet_tests {
                 let g = screen::grid(&app, Rect::new(0, 0, w, h));
                 let header = o
                     .lines()
-                    .map(|l| {
-                        l.chars()
-                            .skip(g.sheet.x as usize)
-                            .take(g.sheet.width as usize)
-                            .collect::<String>()
-                    })
+                    .map(|l| l.chars().skip(g.sheet.x as usize).take(g.sheet.width as usize).collect::<String>())
                     .find(|l| l.contains("CHECK"))
                     .unwrap_or_else(|| panic!("{at}: no title row in\n{o}"));
-                let (head, tail) = header.split_once('…').unwrap_or_else(|| {
-                    panic!("{at}: the title is cut, so it ends in …: {header:?}")
-                });
-                assert!(
-                    head.contains("· claude › echo start;"),
-                    "{at}: the checkpoint's start follows the session: {header:?}"
-                );
+                let (head, tail) = header.split_once('…').unwrap_or_else(|| panic!("{at}: the title is cut, so it ends in …: {header:?}"));
+                assert!(head.contains("· claude › echo start;"), "{at}: the checkpoint's start follows the session: {header:?}");
                 assert!(!tail.contains('…'), "{at}: one ellipsis: {header:?}");
                 let edge = |c: char| c == ' ' || "─╮┐".contains(c);
-                assert!(
-                    tail.trim_matches(edge) == "✕",
-                    "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}"
-                );
+                assert!(tail.trim_matches(edge) == "×", "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}");
             }
         }
     }
@@ -14486,17 +14199,24 @@ mod restart_tests {
         screen::mode_bar_row(app, ratatui::layout::Rect::new(0, 0, 1, h)).y
     }
 
-    /// The Restart buttons of the toast and Settings, on a screen `h` rows tall: not the pill on
-    /// the mode bar.
+    /// Whether `r` is the Restart pill: on the mode bar, or at the sidebar's foot.
+    fn is_pill(app: &App, h: u16, r: &ratatui::layout::Rect) -> bool {
+        let side = app.screen.side_rect;
+        r.y == bar_y(app, h)
+            || (r.y + 4 == side.bottom()
+                && side.contains(ratatui::layout::Position::new(r.x, r.y)))
+    }
+
+    /// The Restart buttons of the toast and Settings, not the persistent pill.
     fn restart_hit(app: &App, h: u16) -> Option<ratatui::layout::Rect> {
         app.hits.iter().find_map(|(r, k)| {
-            (*k == Hit::Screen(screen::ScreenHit::Restart) && r.y != bar_y(app, h)).then_some(*r)
+            (*k == Hit::Screen(screen::ScreenHit::Restart) && !is_pill(app, h, r)).then_some(*r)
         })
     }
 
     fn pill_hit(app: &App, h: u16) -> Option<ratatui::layout::Rect> {
         app.hits.iter().find_map(|(r, k)| {
-            (*k == Hit::Screen(screen::ScreenHit::Restart) && r.y == bar_y(app, h)).then_some(*r)
+            (*k == Hit::Screen(screen::ScreenHit::Restart) && is_pill(app, h, r)).then_some(*r)
         })
     }
 
@@ -14529,17 +14249,10 @@ mod restart_tests {
                 app.act(Action::Settings);
                 let out = draw(&mut app, w, h);
                 assert!(out.contains("Restart now"), "{layout:?} {w}x{h}\n{out}");
-                let r = restart_hit(&app, h)
-                    .unwrap_or_else(|| panic!("{layout:?} {w}x{h}: the button is clickable"));
-                assert!(
-                    r.right() <= w && r.bottom() <= h,
-                    "{layout:?} {w}x{h}: the button fits {r:?}"
-                );
+                let r = restart_hit(&app, h).unwrap_or_else(|| panic!("{layout:?} {w}x{h}: the button is clickable"));
+                assert!(r.right() <= w && r.bottom() <= h, "{layout:?} {w}x{h}: the button fits {r:?}");
                 click(&mut app, r);
-                assert!(
-                    matches!(&app.mode, Mode::Confirm(c) if is_restart(&c.act)),
-                    "{layout:?} {w}x{h}"
-                );
+                assert!(matches!(&app.mode, Mode::Confirm(c) if is_restart(&c.act)), "{layout:?} {w}x{h}");
                 assert!(sent(&mut rx).is_empty(), "choosing it only asks");
             }
         }
@@ -14555,10 +14268,7 @@ mod restart_tests {
         app.snap.daemon_version = OLD_DAEMON.into();
         app.daemon_restart_requested = true;
         let out = draw(&mut app, 100, 30);
-        assert!(
-            !out.contains("Restart now"),
-            "not while a restart is already under way"
-        );
+        assert!(!out.contains("Restart now"), "not while a restart is already under way");
     }
 
     #[test]
@@ -14585,37 +14295,17 @@ mod restart_tests {
         for layout in LAYOUTS {
             let (mut app, _rx) = scene(160, 45, layout);
             let focused = app.focused().expect("a focused pane");
-            app.parsers
-                .get_mut(&focused)
-                .expect("its screen")
-                .process(b"\x1b[?1000h\x1b[?1006h");
+            app.parsers.get_mut(&focused).expect("its screen").process(b"\x1b[?1000h\x1b[?1006h");
             app.update_installed(INSTALLED.into());
             app.notify("installed".into(), false);
             app.notice_restart = true;
             draw(&mut app, 160, 45);
             let r = restart_hit(&app, 45).unwrap_or_else(|| panic!("{layout:?}: the toast button"));
-            assert!(
-                app.panes.iter().any(
-                    |(_, p)| p.contains(ratatui::layout::Position::new(r.x + r.width / 2, r.y))
-                ),
-                "{layout:?}: the button sits over the pane's text"
-            );
-            for kind in [
-                MouseEventKind::Down(MouseButton::Left),
-                MouseEventKind::Up(MouseButton::Left),
-            ] {
-                app.on_mouse(MouseEvent {
-                    kind,
-                    column: r.x + r.width / 2,
-                    row: r.y,
-                    modifiers: KeyModifiers::NONE,
-                });
+            assert!(app.panes.iter().any(|(_, p)| p.contains(ratatui::layout::Position::new(r.x + r.width / 2, r.y))), "{layout:?}: the button sits over the pane's text");
+            for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+                app.on_mouse(MouseEvent { kind, column: r.x + r.width / 2, row: r.y, modifiers: KeyModifiers::NONE });
             }
-            assert!(
-                matches!(&app.mode, Mode::Confirm(c) if is_restart(&c.act)),
-                "{layout:?}: the click asked to restart: {:?}",
-                app.mode
-            );
+            assert!(matches!(&app.mode, Mode::Confirm(c) if is_restart(&c.act)), "{layout:?}: the click asked to restart: {:?}", app.mode);
         }
     }
 
@@ -14625,11 +14315,7 @@ mod restart_tests {
         app.update_installed(INSTALLED.into());
         app.notify("Copied".into(), false);
         let out = draw(&mut app, 160, 45);
-        assert!(
-            out.contains("Copied")
-                && !out.contains("Restart now")
-                && restart_hit(&app, 45).is_none()
-        );
+        assert!(out.contains("Copied") && !out.contains("Restart now") && restart_hit(&app, 45).is_none());
     }
 
     #[test]
@@ -14775,39 +14461,21 @@ mod restart_tests {
 
     #[test]
     fn the_bar_pill_says_update_then_restart_then_nothing() {
-        let row0 = |app: &mut App| {
-            draw(app, 100, 30)
-                .lines()
-                .nth(bar_y(app, 30) as usize)
-                .unwrap()
-                .to_string()
-        };
+        let row0 = |app: &mut App| draw(app, 100, 30);
         let (mut app, _rx) = scene(100, 30, LAYOUTS[0]);
         app.update_available = Some("9.9.9".into());
         let top = row0(&mut app);
-        assert!(
-            top.contains("↑ Update 9.9.9") && !top.contains("↻ Restart"),
-            "a release is out: {top}"
-        );
+        assert!(top.contains("↑ Update 9.9.9") && !top.contains("↻ Restart"), "a release is out: {top}");
         app.update_available = None;
         let top = row0(&mut app);
-        assert!(
-            top.contains("↻ Restart") && !top.contains("Update"),
-            "installed but not running: {top}"
-        );
+        assert!(top.contains("↻ Restart") && !top.contains("Update"), "installed but not running: {top}");
         app.daemon_restart_requested = true;
-        assert!(
-            !row0(&mut app).contains("↻ Restart"),
-            "not while a restart is under way"
-        );
+        assert!(!row0(&mut app).contains("↻ Restart"), "not while a restart is under way");
         app.daemon_restart_requested = false;
         app.snap.daemon_version = env!("CARGO_PKG_VERSION").into();
         app.installed_version = Some(Ok(env!("CARGO_PKG_VERSION").into()));
         let top = row0(&mut app);
-        assert!(
-            !top.contains("Restart") && !top.contains("Update"),
-            "everything runs the installed version: {top}"
-        );
+        assert!(!top.contains("Restart") && !top.contains("Update"), "everything runs the installed version: {top}");
     }
 
     #[test]
@@ -14816,22 +14484,10 @@ mod restart_tests {
             let (mut app, mut rx) = scene(100, 30, layout);
             app.snap.terms.retain(|id, _| *id == 3);
             let out = draw(&mut app, 100, 30);
-            assert!(
-                out.lines()
-                    .nth(bar_y(&app, 30) as usize)
-                    .unwrap()
-                    .contains("↻ Restart"),
-                "{layout:?}\n{out}"
-            );
-            let r = pill_hit(&app, 30).expect("the pill is clickable, on the mode bar");
+            assert!(out.contains("↻ Restart"), "{layout:?}\n{out}");
+            let r = pill_hit(&app, 30).expect("the pill is clickable, at the sidebar's foot or on the mode bar");
             click(&mut app, r);
-            assert!(
-                matches!(
-                    sent(&mut rx).as_slice(),
-                    [ClientMsg::Command(Command::KillServer { forget: false })]
-                ),
-                "{layout:?}"
-            );
+            assert!(matches!(sent(&mut rx).as_slice(), [ClientMsg::Command(Command::KillServer { forget: false })]), "{layout:?}");
         }
     }
 
@@ -17375,26 +17031,26 @@ mod drawer_tab_tests {
         super::check_settings_tests::show(&o);
         let row = o
             .lines()
-            .find(|l| l.contains("Files f"))
+            .find(|l| l.contains("f Files"))
             .unwrap_or_else(|| panic!("a tab strip:\n{o}"));
         let (files, changes, branch) = (
-            row.find("Files f").unwrap(),
-            row.find("Changes c").unwrap(),
-            row.find("Branch b").unwrap(),
+            row.find("f Files").unwrap(),
+            row.find("c Changes").unwrap(),
+            row.find("b Branch").unwrap(),
         );
         assert!(
-            files < changes && changes < branch && row.contains('·'),
-            "in order, a dot apart: {row}"
+            files < changes && changes < branch && row.contains('─'),
+            "in order, with border between chips: {row}"
         );
-        let (fx, fy) = find(&buf, "Files f").unwrap();
-        let (cx, cy) = find(&buf, "Changes c").unwrap();
+        let (fx, fy) = find(&buf, "f Files").unwrap();
+        let (cx, cy) = find(&buf, "c Changes").unwrap();
         assert_eq!(buf[(fx, fy)].bg, app.theme.accent, "the open tab is lit");
         assert_ne!(buf[(cx, cy)].bg, app.theme.accent, "the others are not");
         app.cfg.keys.prefix.insert("c".into(), "none".into());
         app.cfg.keys.prefix.insert("d".into(), "changes".into());
         app.keymap = app.cfg.keymap();
         assert!(
-            find(&draw(&mut app), "Changes d").is_some(),
+            find(&draw(&mut app), "d Changes").is_some(),
             "the keys come from the keymap"
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -17790,23 +17446,11 @@ mod references_view_tests {
             let (mut app, _rx) = opened(&dir, w, h);
             let o = draw(&mut app, w, h);
             show(&o);
-            assert!(
-                o.contains("REFERENCES"),
-                "in the side panel at {w}×{h}:\n{o}"
-            );
-            assert!(
-                o.contains("No references yet · paste an image or add a file"),
-                "the empty state at {w}×{h}:\n{o}"
-            );
-            assert!(
-                o.contains("Refs") || o.contains("References"),
-                "its tab in the strip at {w}×{h}"
-            );
+            assert!(o.contains("REFERENCES"), "in the side panel at {w}×{h}:\n{o}");
+            assert!(o.contains("No references yet · paste an image or add a file"), "the empty state at {w}×{h}:\n{o}");
+            assert!(o.contains("Refs") || o.contains("References"), "its tab in the strip at {w}×{h}");
             if w >= 160 {
-                assert!(
-                    o.contains("Files f") && o.contains("References a"),
-                    "the strip names its key:\n{o}"
-                );
+                assert!(o.contains("f Files") && o.contains("a References"), "the strip names its key:\n{o}");
             }
             key(&mut app, KeyCode::Char('a'));
             assert!(sheet(&app).is_none(), "a closes it again");

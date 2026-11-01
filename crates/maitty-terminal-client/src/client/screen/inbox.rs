@@ -261,10 +261,10 @@ fn draw_asking(
     (x, y, right): (u16, u16, u16),
     name: &str,
     (merge, busy): (bool, bool),
-    ground: Color,
+    bg: Color,
     t: &Theme,
 ) {
-    let c = Style::default().bg(ground);
+    let c = Style::default().bg(bg);
     if busy {
         let what = if merge {
             format!("Merging {name} into main…")
@@ -312,7 +312,6 @@ fn draw_heads(
     (x, y, right): (u16, u16, u16),
     o: &crate::client::overlap::Overlap,
     bg: Color,
-    ground: Color,
     t: &Theme,
 ) {
     let st = Style::default().bg(bg);
@@ -335,7 +334,7 @@ fn draw_heads(
         st.fg(t.sky()),
     ));
     put(buf, x, y, &left, right);
-    let c = Style::default().bg(ground);
+    let c = Style::default().bg(bg);
     put(
         buf,
         x + 2,
@@ -353,7 +352,7 @@ fn draw_heads(
         y + 2,
         &cap_hints(
             t,
-            ground,
+            bg,
             &[("d", "both diffs"), ("m", &tell), ("k", "dismiss")],
         ),
         right,
@@ -572,7 +571,7 @@ pub(super) fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, ground: 
         match (row, &items[i]) {
             (GoRow::Heads(k), _) => {
                 if let Some((_, o)) = heads.get(*k) {
-                    draw_heads(buf, (x, y, right), o, bg, ground, t);
+                    draw_heads(buf, (x, y, right), o, bg, t);
                 }
             }
             (GoRow::Sess(pi, term), _) => {
@@ -597,7 +596,7 @@ pub(super) fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, ground: 
                                 },
                                 cm,
                                 INBOX_ROWS,
-                                ground,
+                                bg,
                                 t,
                             );
                         }
@@ -717,6 +716,31 @@ mod tests {
                 let got = draw(&mut app, want.area, w, h);
                 assert_same(&got, &want, &format!("{preset} {layout:?} {w}x{h}"));
             }
+        }
+    }
+
+    #[test]
+    fn selected_item_tint_continues_across_its_follow_up_lines() {
+        let t = Theme::named(crate::theme::DEFAULT);
+        let area = Rect::new(0, 0, 100, 30);
+        let mut app = inbox_world(Stage::Failed, 1);
+        let mut buf = Buffer::empty(area);
+        draw_inbox(&mut app, &mut buf, area, t.bg, &t);
+        let tint = t.sel_on(t.bg);
+        let rows: Vec<u16> = (0..area.height)
+            .filter(|&y| buf[(area.x, y)].bg == tint)
+            .collect();
+        assert!(
+            rows.len() >= 2,
+            "the selected item spans multiple lines: {rows:?}"
+        );
+        for y in rows {
+            assert_eq!(buf[(area.x + 1, y)].bg, tint, "row {y}, before the words");
+            assert_eq!(
+                buf[(area.right() - 3, y)].bg,
+                tint,
+                "row {y}, after the words"
+            );
         }
     }
 

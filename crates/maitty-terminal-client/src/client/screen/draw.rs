@@ -1,4 +1,4 @@
-//! The main screen: the sidebar, the tab row over the panes, the panes,
+//! The main screen: the sidebar, pane tabs, the panes,
 //! the sheet, the mode bar along the bottom and the toast.
 
 use super::*;
@@ -43,24 +43,18 @@ pub(in crate::client) struct Grid {
 }
 
 /// Most the padding round the screen may be, in cells.
-const PADDING_MAX: u16 = 2;
+const PADDING_MAX: u16 = 3;
 
 /// The window less the padding setting: that many cells all round, or with `top` (the
 /// default) one row above only, so the tabs don't touch the terminal's own tab bar while the
 /// panes still reach its sides and foot.
 fn padded(app: &App, area: Rect) -> Rect {
-    let (top, m) = match app.cfg.ui.padding.as_str() {
-        crate::config::PADDING_TOP => (1, 0),
-        n => {
-            let m = n.parse().unwrap_or(0).min(PADDING_MAX);
-            (m, m)
-        }
-    };
+    let m = crate::config::size_cells(&app.cfg.ui.padding).min(PADDING_MAX);
     Rect {
         x: area.x + m,
-        y: area.y + top,
+        y: area.y + m,
         width: area.width.saturating_sub(2 * m),
-        height: area.height.saturating_sub(top + m),
+        height: area.height.saturating_sub(2 * m),
     }
 }
 
@@ -273,6 +267,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     app.sheet_frac = app.motion.sheet(open_sheet(app).is_some(), on);
     let model = app.screen_model();
     app.screen.wt_keys.clear();
+    app.screen.release_in_side = false;
     app.screen.branch_keys.clear();
     fill(f.buffer_mut(), area, t.bg);
     let room = framed(app, area);
@@ -317,7 +312,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         draw_main(app, f, g.panes, &model, t);
     }
     if !Look::of(&app.cfg.ui).hairline {
-        draw_tab_chips(app, f.buffer_mut(), g.tabs, &model, t);
+        draw_tab_chips(app, f.buffer_mut(), g.panes, &model, t);
     } else {
         hairline::draw_tab_row(app, f.buffer_mut(), g.tabs, &model, t);
         let edge = (g.side.width > 0).then_some(g.edge.x);
@@ -404,18 +399,46 @@ pub(in crate::client) fn lone_pane(app: &App, term: TermId) -> bool {
     matches!(app.screen.leaf_rects.as_slice(), [(id, _)] if *id == term)
 }
 
-/// Floating's tab row: the chips' own row over the boxes, outside them (no gap: rows are scarce).
-const FLOAT_TAB_ROW: u16 = 1;
+/// Floating tabs share the first pane's top border; Hairline keeps its own row.
+const FLOAT_TAB_ROW: u16 = 0;
 
-/// Floating's tabs along the first row of `r`, lined up with the pane titles' chips.
-fn draw_tab_chips(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
-    if r.height == 0 || r.width < 4 {
+/// Draw tabs on the first pane's top border, leaving the border line between chips.
+fn draw_tab_chips(app: &mut App, buf: &mut Buffer, panes: Rect, model: &[Proj], t: &Theme) {
+    if app.focused().is_none() {
         return;
     }
-    let mut row = Rect { height: 1, ..r };
-    row.width = tab_tools(app, buf, row, t.muted, t.strong, Color::Reset, t.accent) - row.x;
-    let chips = tab_strip(app, model, row, true, t);
-    put(buf, row.x, row.y, &chips, row.right());
+    let Some(first) = app
+        .screen
+        .leaf_rects
+        .iter()
+        .map(|(_, rect)| *rect)
+        .min_by_key(|rect| (rect.y, rect.x))
+    else {
+        return;
+    };
+    let first = first.intersection(buf.area);
+    if first.width < 8 || first.height == 0 {
+        return;
+    }
+    let x = card::title_x(first);
+    let row = Rect {
+        x,
+        y: first.y,
+        width: panes.right().saturating_sub(x),
+        height: 1,
+    };
+    let border = buf[(x, first.y)].fg;
+    let chips = tab_strip(app, model, row, true, t)
+        .into_iter()
+        .map(|(text, style)| {
+            if style.bg.is_none() && text.trim().is_empty() {
+                ("─".repeat(text.width()), Style::default().fg(border))
+            } else {
+                (text, style)
+            }
+        })
+        .collect::<Vec<_>>();
+    put(buf, x, first.y, &chips, row.right());
 }
 
 /// The tab row's fixed right end: `◫` splits the focused pane and `⤢` zooms it (lit while it
@@ -839,7 +862,7 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
             } else {
                 (t.muted, t.card)
             };
-            pair.push(seg("✕ ", Style::default().fg(fg).bg(bg)));
+            pair.push(seg("× ", Style::default().fg(fg).bg(bg)));
         }
         if look.round_tabs {
             round_ends(pair, ground)
@@ -877,7 +900,9 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
         }
         let w = segs_width(&pair);
         let reserve = if on || placed { 0 } else { keep };
-        if crowded && !on || at + w + reserve > max_x {
+        let gap = u16::from(look.tab_gap);
+        let need = if on { w } else { w + gap };
+        if crowded && !on || at + need + reserve > max_x {
             all_fit = false;
             if on || placed {
                 break;
@@ -925,7 +950,10 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
         }
         placed |= on;
         out.extend(pair);
-        at += w;
+        if look.tab_gap {
+            out.push(seg(" ", Style::default()));
+        }
+        at += w + gap;
     }
     // The chip that opens a tab, a cell clear of the tabs: it drops first, so never shows
     // without every tab before it.
@@ -943,18 +971,17 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
         plus = round_ends(plus, ground);
     }
     let w = segs_width(&plus);
-    if at + 1 + w <= max_x {
+    if at + w <= max_x {
         hit(
             app,
             Rect {
-                x: at + 1,
+                x: at,
                 y,
                 width: w,
                 height: 1,
             },
             ScreenHit::NewTab,
         );
-        out.push(seg(" ", Style::default()));
         out.extend(plus);
     }
     out

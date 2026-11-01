@@ -3,6 +3,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// Space sizes offered in settings for `ui.padding` and `ui.gap`.
+pub const SIZES: &[&str] = &["small", "medium", "large"];
+
+/// Fade strengths offered in settings for `ui.dim`.
+pub const DIMS: &[&str] = &["off", "light", "normal", "heavy"];
+
+/// Convert current and legacy size names to their cell counts.
+pub fn size_cells(size: &str) -> u16 {
+    match size {
+        "small" | "top" | "1" => 1,
+        "medium" | "2" => 2,
+        "large" => 3,
+        "0" => 0,
+        _ => 1,
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AgentDef {
@@ -172,8 +189,7 @@ pub struct Ui {
     /// A session's tabs as lines under its sidebar row (`SIDEBAR_TABS`): "all", "busy" (those
     /// working or needing you, and the one on screen) or "off".
     pub sidebar_tabs: String,
-    /// The look (ADR 0027): "floating" or "hairline". Read with `layout_kind`; an older file's
-    /// look is folded in by `fold_retired_layout`. Empty means unset.
+    /// Legacy layout name, folded to Floating when loaded.
     pub layout: String,
     /// "solid" (the default) paints everything the theme's `bg`, so a plain terminal shows the
     /// theme whole; "terminal" leaves chrome on the terminal's own background (so transparency
@@ -185,19 +201,20 @@ pub struct Ui {
     /// Which glyph set marks sessions and checks: "auto" (ASCII when the blocked, done and idle
     /// icons are all ASCII, else Unicode), "unicode", "ascii" or "nerd".
     pub glyphs: String,
-    /// Space between floating cards: "0", "1" or "2" rows stacked (and columns side by side).
+    /// Space between floating cards: one of `SIZES` (or a legacy value before loading).
     pub gap: String,
-    /// Space round the whole screen, in every layout: "0", "1" or "2" rows (and columns), or
-    /// `PADDING_TOP` (the default), a row above only.
+    /// Space round the whole screen: one of `SIZES` (or a legacy value before loading).
     pub padding: String,
-    /// How far unfocused panes fade toward their background: "off", "subtle", "30%", "60%" ("40%" from older configs counts as 30%).
+    /// How far unfocused panes fade toward their background: one of `DIMS`.
     pub dim: String,
     /// The focused card's border: "accent", "bright" or "none".
     pub focus_border: String,
-    /// One setting for every rounded shape (`Rounding`).
+    /// Whether card corners are rounded. Kept as a drawing enum internally; config writes a bool.
     pub rounded: Rounding,
     /// Floating: each pane's border in its own colour, by its place in the tab (ADR 0027).
     pub pane_colors: bool,
+    /// Leave a cell of border between tab chips.
+    pub tab_gap: bool,
     /// What `fold_retired_layout` changed, to say once and write back: the retired look's name
     /// and the settings that stand for it now. Never read from or written to the file.
     #[serde(skip)]
@@ -577,8 +594,7 @@ impl Default for Quick {
 }
 
 /// How round the shapes are, all of them at once (`ui.rounded`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rounding {
     /// Round card corners, and half-circle ends on every chip, button, row and hover (Nerd Font).
     Full,
@@ -586,6 +602,12 @@ pub enum Rounding {
     Corners,
     /// Everything square.
     Off,
+}
+
+impl Serialize for Rounding {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bool(*self != Rounding::Off)
+    }
 }
 
 impl Rounding {
@@ -613,9 +635,9 @@ impl<'de> Deserialize<'de> for Rounding {
             Name(String),
         }
         match Written::deserialize(d)? {
-            Written::Switch(on) => Ok(if on { Rounding::Full } else { Rounding::Off }),
+            Written::Switch(on) => Ok(if on { Rounding::Corners } else { Rounding::Off }),
             Written::Name(name) => match name.as_str() {
-                "full" => Ok(Rounding::Full),
+                "full" => Ok(Rounding::Corners),
                 "corners" => Ok(Rounding::Corners),
                 "off" => Ok(Rounding::Off),
                 _ => Err(serde::de::Error::custom(format!(
@@ -647,7 +669,7 @@ pub fn validate_cursor(ui: &Ui) -> Result<()> {
 /// A retired look an older file named, and what stands for it now (`Ui::fold_retired_layout`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetiredLayout {
-    /// How Settings called it: "Tiled", "Grid" or "Compact".
+    /// The retired setting's name.
     pub name: &'static str,
     pub kind: LayoutKind,
     /// `gap = 0` stands for it (Tiled).
@@ -660,7 +682,6 @@ impl RetiredLayout {
     /// What the app says once when it starts with it.
     pub fn note(&self) -> String {
         let now = match (self.kind, self.gap, self.pane_colors) {
-            (LayoutKind::Hairline, ..) => "Hairline, lines only",
             (_, true, _) => "Floating with no gap",
             (_, _, true) => "Floating with Pane colours on",
             _ => "Floating",
@@ -672,7 +693,7 @@ impl RetiredLayout {
     }
 }
 
-/// The two looks over the one session layout (ADR 0027).
+/// The current layout and the legacy variant retained for migrations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutKind {
     Floating,
@@ -694,7 +715,7 @@ impl LayoutKind {
 }
 
 impl Ui {
-    /// The look chosen; anything but "hairline" is Floating.
+    /// Floating is the only supported look.
     pub fn layout_kind(&self) -> LayoutKind {
         if self.layout == "hairline" {
             LayoutKind::Hairline
@@ -703,9 +724,7 @@ impl Ui {
         }
     }
 
-    /// An older file's look, kept as near as the two looks allow (ADR 0027): Tiled (and Cards
-    /// with `panes = "tiled"`) is Floating with no gaps, Grid is Floating with pane colours,
-    /// and Compact (once "flat") is Hairline. The file itself is not rewritten.
+    /// Fold an older look into Floating while preserving its closest supported settings.
     pub fn fold_retired_layout(&mut self) {
         let tiled = self.layout == "tiled"
             || (matches!(self.layout.as_str(), "" | "cards") && self.panes == "tiled");
@@ -717,14 +736,12 @@ impl Ui {
             Some("Grid")
         } else if matches!(self.layout.as_str(), "compact" | "flat") {
             Some("Compact")
+        } else if self.layout == "hairline" {
+            Some("Hairline")
         } else {
             None
         };
-        let kind = if retired == Some("Compact") {
-            LayoutKind::Hairline
-        } else {
-            self.layout_kind()
-        };
+        let kind = LayoutKind::Floating;
         self.layout = kind.name().into();
         self.retired_layout = retired.map(|name| RetiredLayout {
             name,
@@ -734,7 +751,24 @@ impl Ui {
         });
     }
 
-    /// The rounding drawn: `rounded`, except that Hairline is always square (ADR 0026).
+    /// Convert older padding, gap and dim names to the values Settings now offers.
+    pub fn fold_legacy_sizes(&mut self) {
+        for size in [&mut self.padding, &mut self.gap] {
+            match size.as_str() {
+                "top" | "1" => *size = "small".into(),
+                "2" => *size = "medium".into(),
+                _ => {}
+            }
+        }
+        match self.dim.as_str() {
+            "subtle" => self.dim = "light".into(),
+            "30%" | "40%" => self.dim = "normal".into(),
+            "60%" => self.dim = "heavy".into(),
+            _ => {}
+        }
+    }
+
+    /// The drawing equivalent retained for the TUI's shared shape helpers.
     pub fn rounding(&self) -> Rounding {
         if self.layout_kind() == LayoutKind::Hairline {
             Rounding::Off
@@ -800,12 +834,13 @@ impl Default for Ui {
             background: "solid".into(),
             panes: "floating".into(),
             glyphs: "auto".into(),
-            gap: "1".into(),
-            padding: PADDING_TOP.into(),
-            dim: "30%".into(),
+            gap: "small".into(),
+            padding: "small".into(),
+            dim: "normal".into(),
             focus_border: "accent".into(),
             rounded: Rounding::Off,
             pane_colors: false,
+            tab_gap: true,
             retired_layout: None,
             subagent_count: true,
             cursor: "terminal".into(),
@@ -820,7 +855,7 @@ mod tests {
         AgentDef, CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG, Detection,
         HELPERS_AT_ONCE, HELPERS_MAY, Icons, Keys, LayoutKind, Mcp, NEW_AGENTS, NEW_WHERE, Notify,
         Preset, Quick, Recipe, Restore, Rounding, Sessions, Snapshots, Ui, Worktree, same_path,
-        validate_checks, validate_cursor, validate_sessions,
+        size_cells, validate_checks, validate_cursor, validate_sessions,
     };
 
     #[test]
@@ -881,16 +916,19 @@ mod tests {
         assert_eq!(ui.rounded, Rounding::Off);
         assert_eq!(ui.background, "solid");
         assert_eq!(ui.cursor, "terminal");
-        assert_eq!(ui.padding, "top");
+        assert_eq!(ui.padding, "small");
+        assert_eq!(ui.gap, "small");
+        assert_eq!(ui.dim, "normal");
+        assert!(ui.tab_gap);
         assert_eq!(ui.spinner.first().map(String::as_str), Some("⣾"));
     }
 
     #[test]
     fn rounding_reads_legacy_booleans_and_named_values() {
         for (written, expected) in [
-            ("true", Rounding::Full),
+            ("true", Rounding::Corners),
             ("false", Rounding::Off),
-            ("\"full\"", Rounding::Full),
+            ("\"full\"", Rounding::Corners),
             ("\"corners\"", Rounding::Corners),
             ("\"off\"", Rounding::Off),
         ] {
@@ -899,6 +937,21 @@ mod tests {
         }
 
         assert!(toml::from_str::<Ui>("rounded = 'unknown'").is_err());
+    }
+
+    #[test]
+    fn legacy_sizes_and_rounding_write_the_new_config_shape() {
+        let mut ui: Ui =
+            toml::from_str("padding = 'top'\ngap = '2'\ndim = 'subtle'\nrounded = 'full'").unwrap();
+        ui.fold_legacy_sizes();
+        assert_eq!(
+            (ui.padding.as_str(), ui.gap.as_str(), ui.dim.as_str()),
+            ("small", "medium", "light")
+        );
+        assert_eq!(ui.rounded, Rounding::Corners);
+        assert_eq!(size_cells("large"), 3);
+        assert_eq!(size_cells("0"), 0);
+        assert!(toml::to_string(&ui).unwrap().contains("rounded = true"));
     }
 
     #[test]
@@ -911,8 +964,16 @@ mod tests {
 
         let mut ui: Ui = toml::from_str("layout = 'compact'").unwrap();
         ui.fold_retired_layout();
-        assert_eq!(ui.layout_kind(), LayoutKind::Hairline);
+        assert_eq!(ui.layout_kind(), LayoutKind::Floating);
         assert_eq!(ui.retired_layout.map(|layout| layout.name), Some("Compact"));
+
+        let mut ui: Ui = toml::from_str("layout = 'hairline'").unwrap();
+        ui.fold_retired_layout();
+        assert_eq!(ui.layout_kind(), LayoutKind::Floating);
+        assert_eq!(
+            ui.retired_layout.map(|layout| layout.name),
+            Some("Hairline")
+        );
     }
 
     #[test]

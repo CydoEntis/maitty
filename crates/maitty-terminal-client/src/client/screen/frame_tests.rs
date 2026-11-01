@@ -82,7 +82,7 @@ fn world(stage: Stage) -> App {
 
 /// The row a lone pane's top border is on: under the tab row, which is level with the sidebar's top edge (ADR 0035).
 fn pane_y(_: Layout) -> u16 {
-    1
+    0
 }
 
 /// Where the reference puts the pane column: right of the sidebar and the gap.
@@ -130,18 +130,12 @@ fn preset_01_s_frame_is_the_reference_s_in_every_layout_and_size() {
         let tabs = from(&r[0], px);
         assert!(
             tabs.contains(" 1  fix-footer ") && tabs.contains(" 2  add-payments"),
-            "row 0, over the pane's box, is the tabs, each with its state: {at}"
+            "row 0, the pane border, carries the tabs, each with its state: {at}"
         );
         let title = from(&r[py as usize], px);
         assert!(
-            title.starts_with("┌─")
-                && title.ends_with('┐')
-                && title
-                    .chars()
-                    .skip(1)
-                    .take(title.chars().count() - 2)
-                    .all(|c| c == '─'),
-            "a lone pane's top is a plain border: its tab names it: {at}"
+            title.starts_with("┌─ ") && title.ends_with('┐'),
+            "a lone pane's top border carries the tabs: {at}"
         );
         assert_eq!(from(&r[h as usize - 1], 0), last, "last row: {at}");
         let sw = side_w(w);
@@ -288,10 +282,7 @@ fn a_modal_is_centred_with_a_border_all_round_and_no_shadow() {
                 let fill = |n: usize| "─".repeat(n);
                 assert_eq!(
                     line(r.y, r.x, r.right()),
-                    format!(
-                        "┌─ OVERRIDE A FAILED CHECK {} Esc close ─┐",
-                        fill(mw as usize - 40)
-                    ),
+                    format!("┌─ OVERRIDE A FAILED CHECK {} × ", fill(mw as usize - 30)),
                     "{at}"
                 );
                 assert_eq!(
@@ -313,8 +304,8 @@ fn a_modal_is_centred_with_a_border_all_round_and_no_shadow() {
     }
 }
 
-/// The modal's frame works like a pane's (the user's choice, 2026-10-24): corners by
-/// `ui.rounded`, the title an accent chip on the top border, `Esc close` a chip at its right
+/// The modal's frame works like a pane's: corners by `ui.rounded`, the title an accent chip,
+/// and a red close chip at its right
 /// that a click closes, chip ends capped with `full`, and no accent bar across the top.
 #[test]
 fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and_rounding() {
@@ -329,23 +320,19 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
             let r = panel(&mut app, &mut buf, area, 70, 15, "OVERRIDE", &[], &t);
             let at = format!("{layout} {rounded:?}");
             let sym = |x: u16| buf[(x, r.y)].symbol().to_string();
-            let (tl, tr) = if rounded == Rounding::Off {
-                ("┌", "┐")
+            let tl = if rounded == Rounding::Off {
+                "┌"
             } else {
-                ("╭", "╮")
+                "╭"
             };
+            let caps = false;
+            let corner = " ";
             assert_eq!(
-                (
-                    sym(r.x),
-                    sym(r.x + 1),
-                    sym(r.right() - 2),
-                    sym(r.right() - 1)
-                ),
-                (tl.into(), "─".into(), "─".into(), tr.into()),
+                (sym(r.x), sym(r.x + 1), sym(r.right() - 1)),
+                (tl.into(), "─".into(), corner.into()),
                 "{at}"
             );
-            let caps = rounded == Rounding::Full;
-            let (title, esc) = (r.x + 2, r.right() - 2 - if caps { 13 } else { 11 });
+            let (title, esc) = (r.x + 2, if caps { r.right() - 5 } else { r.right() - 3 });
             let row = |x0: u16, x1: u16| (x0..x1).map(sym).collect::<String>();
             let (l, e) = if caps { (CAP_L, CAP_R) } else { ("", "") };
             assert_eq!(
@@ -353,11 +340,7 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
                 format!("{l} OVERRIDE {e}"),
                 "{at}"
             );
-            assert_eq!(
-                row(esc, r.right() - 2),
-                format!("{l} Esc close {e}"),
-                "{at}"
-            );
+            assert_eq!(row(esc, r.right()), format!("{l} × {e}"), "{at}");
             assert_eq!(
                 buf[(title + 2, r.y)].bg,
                 t.accent,
@@ -388,8 +371,8 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
                 .expect("a close target");
             assert_eq!(
                 close,
-                Rect::new(esc, r.y, r.right() - 2 - esc, 1),
-                "the whole Esc chip closes: {at}"
+                Rect::new(esc, r.y, r.right() - esc, 1),
+                "the whole close chip closes: {at}"
             );
         }
     }
@@ -487,30 +470,19 @@ fn a_confirm_s_long_sub_is_cut_inside_its_title_chip() {
         let row: Vec<String> = (x0..x1)
             .map(|x| buf[(x, close.y)].symbol().to_string())
             .collect();
-        let [l, e] = if rounded == Rounding::Full {
-            [CAP_L, CAP_R]
+        let (l, e) = ("", "");
+        let last = " ";
+        let tl = if rounded == Rounding::Off {
+            "┌"
         } else {
-            ["", ""]
-        };
-        let last = if rounded == Rounding::Full {
-            CAP_R
-        } else {
-            " "
-        };
-        let (tl, tr) = if rounded == Rounding::Off {
-            ("┌", "┐")
-        } else {
-            ("╭", "╮")
+            "╭"
         };
         let text = row.concat();
         assert!(
             text.starts_with(&format!("{tl}─{l} changes · a-folder")),
             "{at}: {text}"
         );
-        assert!(
-            text.ends_with(&format!("─{l} Esc close {e}─{tr}")),
-            "{at}: {text}"
-        );
+        assert!(text.ends_with(&format!("─{l} × {e}")), "{at}: {text}");
         let esc = close.x - x0;
         assert_eq!(
             (
@@ -518,7 +490,7 @@ fn a_confirm_s_long_sub_is_cut_inside_its_title_chip() {
                 row[esc as usize - 2].as_str()
             ),
             (last, "─"),
-            "{at}: the title chip ends whole before the Esc chip: {text}"
+            "{at}: the title chip ends whole before the close chip: {text}"
         );
         assert!(text.contains('…'), "{at}: the sub is cut: {text}");
         for kind in [
@@ -534,7 +506,7 @@ fn a_confirm_s_long_sub_is_cut_inside_its_title_chip() {
         }
         assert!(
             !matches!(app.mode, Mode::Confirm(_)),
-            "{at}: the Esc chip closes it"
+            "{at}: the close chip closes it"
         );
     }
 }
@@ -547,14 +519,12 @@ fn a_modal_too_narrow_for_its_esc_chip_keeps_its_corner_and_title() {
     app.cfg.ui.rounded = crate::config::Rounding::Full;
     let t = app.theme.clone();
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 6));
-    let r = panel_at(&mut app, &mut buf, Rect::new(2, 1, 12, 4), "NEW", &[], &t);
+    let r = panel_at(&mut app, &mut buf, Rect::new(2, 1, 6, 4), "NEW", &[], &t);
     let row: String = (r.x..r.right())
         .map(|x| buf[(x, r.y)].symbol().to_string())
         .collect();
     assert!(
-        row.starts_with(&format!("╭─{CAP_L} NEW {CAP_R}"))
-            && row.ends_with("─╮")
-            && !row.contains("Esc"),
+        row.starts_with("╭─") && row.ends_with("─╮") && !row.contains('×'),
         "{row}"
     );
     assert!(
@@ -688,7 +658,7 @@ fn square_tabs_draw_no_caps_and_keep_their_widths_by_default() {
 }
 
 #[test]
-fn round_tabs_cap_every_chip_on_the_ground_behind_the_title() {
+fn rounded_tabs_keep_square_ends_and_their_widths() {
     for layout in LAYOUTS {
         let mut off = world(Stage::None);
         buffer(&mut off, layout, 160, 45);
@@ -700,39 +670,17 @@ fn round_tabs_cap_every_chip_on_the_ground_behind_the_title() {
         let t = app.theme.clone();
         let rects = tab_rects(&app);
         assert_eq!(rects.len(), 3, "{layout:?}");
-        let ground = Color::Reset;
         for (r, was) in rects.iter().zip(&square) {
             assert_eq!(
-                r.width,
-                was.width + 2,
-                "the hit rect holds both caps: {layout:?}"
+                r.width, was.width,
+                "rounded does not add pill caps: {layout:?}"
             );
-            let (l, rt) = (&buf[(r.x, r.y)], &buf[(r.right() - 1, r.y)]);
-            assert_eq!((l.symbol(), l.bg), (CAP_L, ground), "left cap: {layout:?}");
-            assert_eq!(
-                (rt.symbol(), rt.bg),
-                (CAP_R, ground),
-                "right cap: {layout:?}"
-            );
-            assert_eq!(
-                l.fg,
-                buf[(r.x + 1, r.y)].bg,
-                "the left cap is the chip's colour: {layout:?}"
-            );
-            assert_eq!(
-                rt.fg,
-                buf[(r.right() - 2, r.y)].bg,
-                "the right cap is the chip's colour: {layout:?}"
-            );
+            assert!((r.x..r.right()).all(|x| ![CAP_L, CAP_R].contains(&buf[(x, r.y)].symbol())));
         }
-        assert_eq!(
-            buf[(rects[0].x + 1, rects[0].y)].symbol(),
-            " ",
-            "{layout:?}"
-        );
-        let current = &buf[(rects[0].x, rects[0].y)];
-        assert_eq!(
-            current.fg, t.accent,
+        assert!(
+            rects
+                .iter()
+                .any(|r| (r.x..r.right()).any(|x| buf[(x, r.y)].fg == t.accent)),
             "the current tab's number chip is the accent: {layout:?}"
         );
     }
@@ -866,7 +814,7 @@ fn a_selected_or_hovered_two_line_session_is_one_even_block() {
 
 /// A session on one line keeps its half-circle caps when selected, with rounded shapes on.
 #[test]
-fn a_selected_one_line_session_ends_in_caps() {
+fn a_selected_one_line_session_keeps_square_ends() {
     for layout in ["cards", "tiled", "compact", "grid"] {
         let mut app = world(Stage::None);
         app.cfg.ui.rounded = crate::config::Rounding::Full;
@@ -890,12 +838,9 @@ fn a_selected_one_line_session_ends_in_caps() {
         let row = app.hits.iter().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::Session(SessionKey::Pane(t))) if *t == term).then_some(*r)).expect("the row");
         let t = app.theme.clone();
         let (left, right) = (&buf[(row.x, row.y)], &buf[(row.right() - 1, row.y)]);
-        assert_eq!((left.symbol(), right.symbol()), (CAP_L, CAP_R), "{layout}");
-        assert_eq!(
-            (left.fg, right.fg),
-            (t.sel_bg(), t.sel_bg()),
-            "on the selection's colour: {layout}"
-        );
+        assert_ne!(left.symbol(), CAP_L, "no left pill cap: {layout}");
+        assert_ne!(right.symbol(), CAP_R, "no right pill cap: {layout}");
+        assert_eq!(left.bg, t.sel_bg(), "the row remains selected: {layout}");
     }
 }
 
@@ -919,11 +864,9 @@ fn folder_row(app: &App) -> Rect {
         .expect("a folder row")
 }
 
-/// A folder row's left cell is its fold button, so with `ui.rounded = full` its highlight and
-/// hover start a cell before it: both ends are caps, the button keeps its column and a click on
-/// it still folds. With `corners` or `off` both ends are square.
+/// Rounded corners do not change a folder row's fold-button column or click target.
 #[test]
-fn a_selected_or_hovered_folder_row_ends_in_caps_only_when_rounded_in_full() {
+fn a_selected_or_hovered_folder_keeps_its_fold_button_column() {
     use crate::config::Rounding;
     for layout in ["cards", "tiled", "compact", "grid"] {
         let mut button_x = None;
@@ -948,28 +891,10 @@ fn a_selected_or_hovered_folder_row_ends_in_caps_only_when_rounded_in_full() {
                 let buf = drawn_in(&mut app, layout);
                 let row = folder_row(&app);
                 let (left, right) = (&buf[(row.x, row.y)], &buf[(row.right() - 1, row.y)]);
-                if rounded == Rounding::Full {
-                    assert_eq!((left.symbol(), right.symbol()), (CAP_L, CAP_R), "{at}");
-                    assert_eq!(
-                        left.fg,
-                        buf[(row.x + 2, row.y)].bg,
-                        "the left cap is the row's colour: {at}"
-                    );
-                    assert_eq!(
-                        right.fg,
-                        buf[(row.right() - 2, row.y)].bg,
-                        "the right cap is the row's colour: {at}"
-                    );
-                    assert_ne!(
-                        left.bg, left.fg,
-                        "the cap stands on what is behind the row: {at}"
-                    );
-                } else {
-                    assert!(
-                        left.symbol() != CAP_L && right.symbol() != CAP_R,
-                        "square: {at}"
-                    );
-                }
+                assert!(
+                    left.symbol() != CAP_L && right.symbol() != CAP_R,
+                    "square ends: {at}"
+                );
                 let fold = (row.x..row.right())
                     .find(|&x| buf[(x, row.y)].symbol() == "−")
                     .expect("the fold button");
@@ -1002,17 +927,21 @@ fn a_selected_or_hovered_folder_row_ends_in_caps_only_when_rounded_in_full() {
 /// Rounded shapes reach every chip and floating card: the SESSIONS chip, + New and Menu on the
 /// plain ground, and the Menu.
 #[test]
-fn rounded_shapes_round_the_sidebar_chips_and_the_menu() {
+fn rounded_shapes_round_cards_but_keep_chip_ends_square() {
     for layout in LAYOUTS {
         let mut app = world(Stage::None);
         app.cfg.ui.rounded = crate::config::Rounding::Full;
         let text = reference_fixture::raw_text(&mut app, layout, 100, 30, "unicode");
         for chip in [" SESSIONS 4 ", "+ New", "Menu"] {
             assert!(
-                text.contains(&format!("{CAP_L}{chip}")),
-                "{chip} has a left cap: {layout:?}\n{text}"
+                text.contains(chip),
+                "{chip} stays visible: {layout:?}\n{text}"
             );
         }
+        assert!(
+            !text.contains(CAP_L),
+            "rounded does not add pill caps: {layout:?}"
+        );
         app.act(Action::Menu);
         let text = reference_fixture::raw_text(&mut app, layout, 100, 30, "unicode");
         let title = text
@@ -1020,8 +949,8 @@ fn rounded_shapes_round_the_sidebar_chips_and_the_menu() {
             .find(|l| l.contains(" Menu "))
             .expect("the menu's title row");
         assert!(
-            title.contains(&format!("{CAP_L} Menu {CAP_R}")),
-            "the title chip is round: {layout:?}\n{title}"
+            title.contains("Menu") && !title.contains(CAP_L),
+            "the menu title stays square ended: {layout:?}\n{title}"
         );
         assert!(
             title.contains("╭"),
@@ -1124,9 +1053,10 @@ fn a_hovered_border_chip_is_whole() {
                 // own chips on its row: its tag a cell in (TYPING's hint after it takes the same
                 // click but is words, not a chip).
                 let bar = crate::client::screen::mode_bar_row(&app, Rect::new(0, 0, w, h));
+                let side_bottom = app.screen.side_rect.bottom();
                 let on_row = |r: &Rect, what: &str| match what {
                     "the bar's mode tag" => r.y == bar.y && r.x == bar.x + 1,
-                    "the bar's update pill" => r.y == bar.y,
+                    "the bar's update pill" => r.y == bar.y || r.y + 4 == side_bottom,
                     "a pane's ✕" => true,
                     _ => r.y <= 1,
                 };
@@ -1159,46 +1089,17 @@ fn a_hovered_border_chip_is_whole() {
                     if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
                         println!("{at}\n");
                     }
-                    if rounded == Rounding::Full {
-                        let (l, e) = (&buf[(r.x, r.y)], &buf[(r.right() - 1, r.y)]);
-                        assert_eq!((l.symbol(), e.symbol()), (CAP_L, CAP_R), "both caps: {at}");
-                        assert!(
-                            l.fg != l.bg && e.fg != e.bg,
-                            "the caps are drawn, not blank: {at}"
-                        );
-                    }
-                    if what.ends_with('✕') {
+                    if what.contains("✕") {
                         let x = r.x + r.width / 2;
                         assert_eq!(
                             buf[(x, r.y)].symbol(),
-                            "✕",
+                            "×",
                             "the ✕ is centred and whole: {at}"
                         );
                         assert!(
                             (r.x + 1..r.right() - 1).all(|x| buf[(x, r.y)].bg == mid),
                             "the chip's inside is lit: {at}"
                         );
-                        if rounded == Rounding::Full {
-                            assert!(
-                                r.width == 5
-                                    && [r.x + 1, r.right() - 2]
-                                        .iter()
-                                        .all(|&x| buf[(x, r.y)].symbol() == " "),
-                                "a space each side of the ✕ inside its caps: {at}"
-                            );
-                        }
-                        // A square ✕ keeps the reference's place, flush with the border like every square chip.
-                        if rounded != Rounding::Full {
-                            continue;
-                        }
-                        for x in [r.x - 1, r.right()] {
-                            assert_eq!(
-                                buf[(x, r.y)].symbol(),
-                                " ",
-                                "a blank cell clear of the chip at {x}: {at}"
-                            );
-                            assert_ne!(buf[(x, r.y)].bg, mid, "the gap is not lit at {x}: {at}");
-                        }
                     }
                 }
             }

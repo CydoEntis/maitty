@@ -1136,7 +1136,7 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
         .max(m.title.width() as u16)
         .clamp(16, 44)
         + 10;
-    let h = m.items.len() as u16 + 3 + gap as u16;
+    let h = m.items.len() as u16 + 4 + gap as u16;
     let x = m.at.0.min(area.right().saturating_sub(w + 1)).max(area.x);
     let y = if m.at.1 + h < area.bottom() {
         m.at.1 + 1
@@ -1152,10 +1152,13 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
     };
     // Clicking anywhere else closes it.
     hit(app, area, ScreenHit::Close);
-    // A popover, as the why one: a raised title row over a card.
-    let bgm = t.card;
+    // The right-click menu uses the same card and ground as the app menu.
+    let bgm = t.bg;
     let title = truncate(&m.title, (w - 10) as usize);
-    super::screen::popover_at(app, buf, r, &title, t);
+    let mut card = super::screen::Card::new(t, &title).lit(t.accent);
+    card.bg = bgm;
+    super::screen::card(app, buf, r, &card, t);
+    hit(app, r, ScreenHit::Noop);
     let look = super::screen::Look::of(&app.cfg.ui);
     let mut yy = r.y + 2;
     for (i, (label, act)) in m.items.iter().enumerate() {

@@ -78,6 +78,8 @@ pub(in crate::client) fn pane_bg(t: &Theme) -> Color {
 pub(in crate::client) struct Look {
     /// Pane colours: each pane a box in its own colour (Floating only, ADR 0027).
     pub pane_colors: bool,
+    /// Leave a border cell between tab chips (`ui.tab_gap`).
+    pub tab_gap: bool,
     /// Hairline: no boxes, only `│` / `─` hairlines, and always square (ADR 0026). Drawing
     /// asks this, and takes its colours from `hairline::Ink`.
     pub hairline: bool,
@@ -100,22 +102,23 @@ impl Look {
         let rounding = ui.rounding();
         Look {
             pane_colors: ui.pane_colors && !hairline,
+            tab_gap: ui.tab_gap,
             hairline,
             rounded: rounding.corners(),
             gap: if hairline {
                 0
             } else {
-                ui.gap.parse().unwrap_or(1).min(2)
+                crate::config::size_cells(&ui.gap).min(3)
             },
             dim: match ui.dim.as_str() {
                 "off" => 0.0,
-                "subtle" => DIM_SUBTLE,
-                "60%" => DIM_STRONG,
+                "light" | "subtle" => DIM_SUBTLE,
+                "heavy" | "60%" => DIM_STRONG,
                 _ => DIM_DEFAULT,
             },
-            caps: rounding.caps(),
-            round_tabs: rounding.caps(),
-            round_rows: rounding.caps(),
+            caps: false,
+            round_tabs: false,
+            round_rows: false,
         }
     }
 }
@@ -343,21 +346,39 @@ impl<'a> Card<'a> {
 
 /// How wide a card's ✕ is drawn on its top border, the spaces round it included.
 pub(in crate::client) fn close_width(look: Look, after_right: bool) -> u16 {
-    close_lead(look, after_right) + 2 * u16::from(look.caps) + 2
+    if look.hairline {
+        close_lead(look, after_right) + 2 * u16::from(look.caps) + 2
+    } else {
+        close_lead(look, after_right) + RED_CLOSE_W
+    }
 }
+
+const RED_CLOSE_W: u16 = 3;
 
 /// Spaces before the ✕: two after other right-hand segments. Alone, a square ✕'s chip starts on
 /// the padding before the segments, where the reference frames put it; a capped chip needs that cell
 /// blank to stand clear of the border, so it starts a cell on.
 fn close_lead(look: Look, after_right: bool) -> u16 {
-    if after_right { 2 } else { u16::from(look.caps) }
+    if after_right {
+        2
+    } else if look.hairline {
+        u16::from(look.caps)
+    } else {
+        0
+    }
 }
 
 /// The ✕'s click target, which the pointer's tint lights: the ✕ and a cell each side, and with
 /// caps a space more each side inside them, so the hovered ✕ is a whole chip like the others
 /// rather than two caps pressed against the glyph.
 fn close_chip_w(look: Look) -> u16 {
-    if look.caps { 5 } else { 3 }
+    if look.hairline && look.caps {
+        5
+    } else if look.hairline {
+        3
+    } else {
+        RED_CLOSE_W
+    }
 }
 
 /// Where a card's title chip starts: on the top border two in.
@@ -468,26 +489,44 @@ pub(in crate::client) fn card(
     };
     let ground = t.bg;
     let mut right = c.right.clone();
+    let flush = c.close.is_some() && !look.hairline;
     if c.close.is_some() {
         let lead = " ".repeat(close_lead(look, !right.is_empty()) as usize);
-        let inner = if look.caps { " " } else { "" };
         let close = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
-        right.push(seg(
-            format!("{lead}{inner}{close}{inner} "),
-            Style::default().fg(t.muted),
-        ));
+        if flush {
+            right.push(seg(lead, Style::default()));
+            let glyph = Style::default()
+                .fg(t.strong)
+                .bg(t.err)
+                .add_modifier(Modifier::BOLD);
+            if look.caps {
+                let cap = Style::default().fg(t.err).bg(ground);
+                right.extend([seg(CAP_L, cap), seg(close, glyph), seg(CAP_R, cap)]);
+            } else {
+                right.push(seg(format!(" {close} "), glyph));
+            }
+        } else {
+            let inner = if look.caps { " " } else { "" };
+            right.push(seg(
+                format!("{lead}{inner}{close}{inner} "),
+                Style::default().fg(t.muted),
+            ));
+        }
     }
-    let end = right_end(r);
+    let end = if flush { r.right() } else { right_end(r) };
     let rw = segs_width(&right);
     let rx = end.saturating_sub(rw);
     let chip_x = title_x(r);
     let shown = rw > 0 && rx > chip_x + 1;
     if shown {
-        let pad = 1;
+        let pad = u16::from(!flush);
         let space = seg(" ", Style::default());
-        let segs: Vec<Seg> = std::iter::once(space.clone())
+        let before = if flush { None } else { Some(space.clone()) };
+        let after = if flush { None } else { Some(space) };
+        let segs: Vec<Seg> = before
+            .into_iter()
             .chain(right)
-            .chain(std::iter::once(space))
+            .chain(after)
             .map(|(s, st)| (s, if st.bg.is_none() { st.bg(ground) } else { st }))
             .collect();
         put(buf, rx - pad, r.y, &segs, end + pad);
@@ -623,10 +662,10 @@ mod tests {
         );
     }
 
-    fn look(layout: &str, caps: bool) -> Look {
+    fn look(layout: &str, rounded: bool) -> Look {
         let ui = crate::config::Ui {
             layout: layout.into(),
-            rounded: if caps {
+            rounded: if rounded {
                 crate::config::Rounding::Full
             } else {
                 crate::config::Rounding::Off
@@ -637,34 +676,31 @@ mod tests {
     }
 
     #[test]
-    fn pill_caps_apply_in_every_layout() {
-        for layout in ["cards", "flat"] {
-            assert!(look(layout, true).caps, "{layout}: caps on");
-            assert!(!look(layout, false).caps, "{layout}: caps off");
-        }
+    fn rounded_setting_rounds_boxes_but_keeps_chips_square() {
+        let rounded_look = look("floating", true);
+        assert!(rounded_look.rounded, "the setting rounds box corners");
+        assert!(!rounded_look.caps, "chips keep square ends");
+        assert!(!rounded_look.round_tabs, "tab chips keep square ends");
+        assert!(!rounded_look.round_rows, "sidebar rows keep square ends");
+
+        let square = look("floating", false);
+        assert!(!square.rounded, "rounding can be turned off");
+        assert!(!square.caps, "square boxes still have square chips");
     }
 
     #[test]
-    fn a_flat_pill_end_sits_on_the_zones_ground() {
+    fn a_rounded_setting_keeps_pill_ends_square() {
         let (pill_bg, ground) = (Color::Rgb(40, 40, 40), Color::Rgb(10, 20, 30));
         let mut buf = Buffer::empty(Rect::new(0, 0, 8, 1));
-        row_pill(look("flat", true), &mut buf, 1, 0, 6, pill_bg, ground);
-        for (x, cap) in [(1, CAP_L), (6, CAP_R)] {
-            let c = &buf[(x, 0)];
+        row_pill(look("floating", true), &mut buf, 1, 0, 6, pill_bg, ground);
+        for x in [1, 6] {
+            let cell = &buf[(x, 0)];
             assert_eq!(
-                (c.symbol(), c.fg, c.bg),
-                (cap, pill_bg, ground),
-                "end at {x}"
+                (cell.symbol(), cell.bg),
+                (" ", pill_bg),
+                "end at {x} is square"
             );
         }
         assert_eq!(buf[(3, 0)].bg, pill_bg);
-
-        let mut square = Buffer::empty(Rect::new(0, 0, 8, 1));
-        row_pill(look("flat", false), &mut square, 1, 0, 6, pill_bg, ground);
-        assert_eq!(
-            (square[(1, 0)].symbol(), square[(1, 0)].bg),
-            (" ", pill_bg),
-            "off: a plain cell of the pill's colour"
-        );
     }
 }

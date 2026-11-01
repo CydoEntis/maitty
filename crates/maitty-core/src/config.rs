@@ -7,10 +7,10 @@ use crate::theme::{Theme, ThemeOverrides};
 use anyhow::{Context, Result};
 pub use maitty_settings::config::{
     AgentDef, BARS_FRAMES, CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG,
-    Detection, HELPERS_AT_ONCE, HELPERS_MAY, Icons, Keys, LAYOUT_NAMES, LayoutKind, Mcp,
+    DIMS, Detection, HELPERS_AT_ONCE, HELPERS_MAY, Icons, Keys, LAYOUT_NAMES, LayoutKind, Mcp,
     NEW_AGENTS, NEW_WHERE, Notify, PADDING_TOP, Preset, Quick, QuickAgent, Recipe, Restore,
-    Rounding, SIDEBAR_TABS, SPINNERS, Sessions, Snapshots, Ui, Worktree, same_path, validate_check,
-    validate_checks, validate_cursor, validate_sessions,
+    Rounding, SIDEBAR_TABS, SIZES, SPINNERS, Sessions, Snapshots, Ui, Worktree, same_path,
+    size_cells, validate_check, validate_checks, validate_cursor, validate_sessions,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -988,6 +988,7 @@ impl Config {
         }
         // Settings shows the look by its name, whatever an older file called it.
         cfg.ui.fold_retired_layout();
+        cfg.ui.fold_legacy_sizes();
         validate_spinner(&cfg.ui.spinner)?;
         validate_checks(&cfg.check)?;
         validate_sessions(&cfg.sessions)?;
@@ -1773,9 +1774,9 @@ mod tests {
         use super::Rounding;
         assert_eq!(super::Ui::default().rounded, Rounding::Off);
         for (written, read) in [
-            ("true", Rounding::Full),
+            ("true", Rounding::Corners),
             ("false", Rounding::Off),
-            ("\"full\"", Rounding::Full),
+            ("\"full\"", Rounding::Corners),
             ("\"corners\"", Rounding::Corners),
             ("\"off\"", Rounding::Off),
         ] {
@@ -1840,7 +1841,7 @@ mod tests {
         );
         assert_eq!(
             read("[ui]\ncorners = \"rounded\"\nrounded = true\n"),
-            Rounding::Full
+            Rounding::Corners
         );
         assert_eq!(read(""), Rounding::Off);
     }
@@ -2189,6 +2190,7 @@ shell = \"pwsh\"
         let ui = |toml: &str| {
             let mut ui = toml::from_str::<Config>(toml).unwrap().ui;
             ui.fold_retired_layout();
+            ui.fold_legacy_sizes();
             (ui.layout_kind(), ui.gap, ui.pane_colors)
         };
         let floating = |gap: &str, colors: bool| (LayoutKind::Floating, gap.to_string(), colors);
@@ -2215,40 +2217,40 @@ gap = '2'"),
             ui("[ui]
 layout = 'cards'
 panes = 'floating'"),
-            floating("1", false)
+            floating("small", false)
         );
-        assert_eq!(ui(""), floating("1", false), "the default");
+        assert_eq!(ui(""), floating("small", false), "the default");
         assert_eq!(
             ui("[ui]
 layout = 'floating'
 panes = 'tiled'"),
-            floating("1", false),
+            floating("small", false),
             "a new name wins over a leftover panes"
         );
         assert_eq!(
             ui("[ui]
 layout = 'grid'"),
-            floating("1", true),
+            floating("small", true),
             "grid is floating in colour"
         );
         assert_eq!(
             ui("[ui]
 layout = 'compact'")
             .0,
-            LayoutKind::Hairline
+            LayoutKind::Floating
         );
         assert_eq!(
             ui("[ui]
 layout = 'flat'
 panes = 'floating'")
             .0,
-            LayoutKind::Hairline
+            LayoutKind::Floating
         );
         assert_eq!(
             ui("[ui]
 layout = 'hairline'")
             .0,
-            LayoutKind::Hairline
+            LayoutKind::Floating
         );
     }
 
@@ -2265,9 +2267,7 @@ layout = 'hairline'")
 layout = 'compact'"
             )
             .as_deref(),
-            Some(
-                "The Compact layout is now Hairline, lines only. Change it in Settings › Appearance"
-            )
+            Some("The Compact layout is now Floating. Change it in Settings › Appearance")
         );
         assert_eq!(
             note(
@@ -2289,30 +2289,40 @@ layout = 'grid'"
                 "The Grid layout is now Floating with Pane colours on. Change it in Settings › Appearance"
             )
         );
+        assert_eq!(
+            note(
+                "[ui]
+layout = 'hairline'"
+            )
+            .as_deref(),
+            Some("The Hairline layout is now Floating. Change it in Settings › Appearance")
+        );
         for kept in [
             "",
             "[ui]
 layout = 'floating'",
             "[ui]
 layout = 'cards'",
-            "[ui]
-layout = 'hairline'",
         ] {
             assert_eq!(note(kept), None, "{kept:?}: nothing to say");
         }
     }
 
     #[test]
-    fn hairline_is_always_square() {
-        let ui = |toml: &str| toml::from_str::<Config>(toml).unwrap().ui;
+    fn retired_layouts_share_the_single_rounded_setting() {
+        let ui = |toml: &str| {
+            let mut ui = toml::from_str::<Config>(toml).unwrap().ui;
+            ui.fold_retired_layout();
+            ui
+        };
         assert_eq!(
             ui("[ui]\nlayout = 'hairline'\nrounded = 'full'").rounding(),
-            Rounding::Off
+            Rounding::Corners
         );
         assert_eq!(
             ui("[ui]\nlayout = 'tiled'\nrounded = 'full'").rounding(),
-            Rounding::Full,
-            "other looks keep the setting"
+            Rounding::Corners,
+            "the same setting applies everywhere"
         );
     }
 

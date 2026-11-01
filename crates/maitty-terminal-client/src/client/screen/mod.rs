@@ -152,10 +152,14 @@ pub(super) struct Screen {
     pub pending_split: Option<(TermId, Instant)>,
     /// The focus last time the state came in.
     pub last_focus: Option<TermId>,
+    /// Modal frames drawn this frame, flattened onto the workspace ground afterward.
+    pub modal_rects: Vec<Rect>,
     /// Sidebar scroll, and whether to bring the focused row into view on the next draw.
     pub side_scroll: u16,
     pub follow: bool,
     pub side_rect: Rect,
+    /// The sidebar drew the Update or Restart chip this frame.
+    pub release_in_side: bool,
     /// Where the side sheet was drawn, and the widest it could be there (its edge's drag and
     /// `[` `]` keep within it).
     pub sheet_rect: Rect,
@@ -212,6 +216,10 @@ pub(super) struct Screen {
     /// A failed check waiting for its output before its message opens (`m`).
     pub failure_ask: Option<failure_note::FailureAsk>,
     pub secret_typed: SecretText,
+    /// Requests already shown automatically, so a declined request does not reopen.
+    pub secret_offered: HashSet<u64>,
+    /// Ignore keys briefly after an automatic prompt opens, to protect in-flight typing.
+    pub secret_guard: Option<Instant>,
 }
 
 /// A row the sidebar cursor can rest on.
