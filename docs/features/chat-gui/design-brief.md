@@ -2,12 +2,14 @@
 
 ## Approved design handoff
 
-The user approved the complete v2 design handoff. Its README and interactive
-prototype are preserved in [`design-handoff/`](design-handoff/). Follow the
-README for measurements and behavior; the HTML prototype is the visual source
-of truth. Its conversations, agent output, files, diffs, settings and terminal
-are sample data only. The application must display daemon-backed data or an
-honest unavailable/empty state instead of copying those samples as real work.
+The user approved the v4 desktop handoff. Its README, prototype and supporting
+references are preserved in [`design-handoff/v4/`](design-handoff/v4/). Follow
+the README for measurements and behavior; the HTML prototype is the visual
+source of truth. The v2 handoff remains in [`design-handoff/`](design-handoff/)
+for history. Prototype conversations, agent output, files, diffs, settings and
+terminal are sample data only. The application must display daemon-backed data
+or an honest unavailable/empty state instead of copying those samples as real
+work.
 
 The handoff sets a 264px sidebar, an inset dark workspace card, and a responsive
 right panel: docked at 1280px and wider, overlay below 1280px, with a 52px status
@@ -33,7 +35,8 @@ and continue in the agent's native terminal when needed.
   recovery-needed states. Never imply work continued when state is uncertain.
 - Preserve provider permission and sandbox choices. Approval requests show the
   exact action and only valid choices.
-- Codex is first. Leave room for Claude later, but do not imply it is ready.
+- Codex and Claude are supported when their local CLIs are available. Show each
+  provider's actual readiness and never imply that a missing provider is ready.
 
 ## Main workspace
 

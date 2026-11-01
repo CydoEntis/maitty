@@ -22,6 +22,22 @@ describe('conversation workspace', () => {
     expect(screen.getByRole('status', { name: 'Local preview · daemon not connected' })).toBeInTheDocument()
   })
 
+  it('keeps opened conversations in tabs without closing daemon sessions', async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await user.click(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
+    expect(screen.getByRole('tab', { name: /Add a conversation reconnect test/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /Tighten the branch view navigation/ })).toBeInTheDocument()
+
+    await user.keyboard('{Control>}{Tab}{/Control}')
+    expect(screen.getByRole('tab', { name: /Tighten the branch view navigation/ })).toHaveAttribute('aria-selected', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Close Add a conversation reconnect test tab' }))
+    expect(screen.queryByRole('tab', { name: /Add a conversation reconnect test/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i })).toBeInTheDocument()
+  })
+
   it('labels Claude replies as Claude in the conversation timeline', async () => {
     const user = userEvent.setup()
     renderApp()
@@ -295,7 +311,7 @@ describe('conversation workspace', () => {
     await user.click(screen.getByRole('button', { name: 'Menu for Add a conversation reconnect test' }))
     expect(screen.getByRole('menuitem', { name: 'Archive conversation' })).toHaveAttribute('aria-disabled', 'true')
     await user.click(screen.getByRole('menuitem', { name: 'Pin conversation' }))
-    expect(screen.getByRole('region', { name: 'Pinned' })).toContainElement(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
+    expect(screen.getByRole('region', { name: 'maitty project' })).toContainElement(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
 
     await user.click(screen.getByRole('button', { name: /Settled 2/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
@@ -313,7 +329,7 @@ describe('conversation workspace', () => {
 
     app.unmount()
     renderApp()
-    expect(screen.getByRole('region', { name: 'Pinned' })).toContainElement(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
+    expect(screen.getByRole('region', { name: 'maitty project' })).toContainElement(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
     await user.click(screen.getByRole('button', { name: /Archived 1/ }))
     expect(screen.getByRole('button', { name: /^Review daemon recovery, Done, maitty$/i })).toBeInTheDocument()
   })

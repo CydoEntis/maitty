@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#050C14;color:#E8EFF4;font-family:'Geist',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#74D4C0;text-decoration:none}a:hover{color:#A6E6D8;text-decoration:underline}
+@keyframes mtblink{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes mtpulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</helmet>
+<div style="width:2000px;padding:96px 80px 160px;display:flex;flex-direction:column;gap:120px;box-sizing:content-box">
+
+<section id="intro" style="display:flex;flex-direction:column;gap:28px;max-width:1440px">
+  <div style="font-family:'Geist Mono',monospace;font-size:14px;color:#74D4C0;letter-spacing:.08em">MAITTY · DESKTOP CHAT GUI · DESIGN SPEC v0.1</div>
+  <h1 style="margin:0;font-size:64px;line-height:1.05;font-weight:600;letter-spacing:-.02em;max-width:1200px;text-wrap:pretty">A calm window onto the sessions <span style="color:#74D4C0">maittyd</span> already runs.</h1>
+  <p style="margin:0;font-size:22px;line-height:1.5;color:#AEBFCC;max-width:1000px;text-wrap:pretty">The GUI is a client, not an owner. It reads and writes the same sessions as the TUI, shows status without guessing, and gets out of the way when you want the agent's native terminal.</p>
+  <div style="display:flex;gap:28px;flex-wrap:wrap;font-size:16px;color:#AEBFCC;padding-top:8px">
+    <span style="display:flex;gap:8px;align-items:center"><span style="color:#74D4C0;font-size:18px">◐</span>Working</span>
+    <span style="display:flex;gap:8px;align-items:center"><span style="color:#F4B860;font-size:18px">◆</span>Needs you</span>
+    <span style="display:flex;gap:8px;align-items:center"><span style="color:#A3C9A8;font-size:18px">✓</span>Done</span>
+    <span style="display:flex;gap:8px;align-items:center"><span style="color:#7F95A6;font-size:18px">○</span>Idle</span>
+    <span style="display:flex;gap:8px;align-items:center"><span style="color:#AEBFCC;font-size:18px">⊘</span>Disconnected / unknown</span>
+    <span style="display:flex;gap:8px;align-items:center"><span style="color:#F28B82;font-size:18px">↻</span>Recovery needed</span>
+    <span style="display:flex;gap:8px;align-items:center"><span style="color:#F28B82;font-size:18px">✕</span>Failed</span>
+  </div>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:15px;font-family:'Geist Mono',monospace">
+    <a href="#map">01 Screen map</a><a href="#screens">02 Key screens</a><a href="#states">03 States</a><a href="#adaptive">04 Adaptive + keyboard</a><a href="#interactions">05 Interaction notes</a><a href="#tokens">06 Tokens + components</a><a href="#a11y">07 Keyboard + a11y</a><a href="#tradeoffs">08 Tradeoffs + release scope</a>
+  </div>
+</section>
+
+<section id="map" style="display:flex;flex-direction:column;gap:32px">
+  <div style="display:flex;align-items:baseline;gap:20px"><span style="font-family:'Geist Mono',monospace;font-size:18px;color:#74D4C0">01</span><h2 style="margin:0;font-size:40px;font-weight:600">Screen map</h2></div>
+  <div style="display:grid;grid-template-columns:260px 40px 1fr;gap:0;align-items:stretch">
+    <div style="border:1px solid #2B4660;border-radius:12px;padding:20px;background:#0F1D2C;display:flex;flex-direction:column;gap:10px">
+      <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#74D4C0">v1</span>
+      <span style="font-size:20px;font-weight:600">First launch</span>
+      <span style="font-size:14px;line-height:1.5;color:#AEBFCC">Daemon + Codex checks, add project folder. Skipped once any session exists.</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:center;color:#7F95A6;font-size:24px">→</div>
+    <div style="border:1px solid #2B4660;border-radius:12px;padding:20px;background:#0B1724;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;justify-content:space-between"><span style="font-size:20px;font-weight:600">Workspace</span><span style="font-family:'Geist Mono',monospace;font-size:13px;color:#7F95A6">one window · three regions · F6 cycles focus</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1.6fr 1.2fr;gap:12px">
+        <div style="border:1px solid #1F3448;border-radius:10px;padding:16px;background:#0F1D2C;display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:16px;font-weight:600">Sidebar</span>
+          <span style="font-size:14px;line-height:1.55;color:#AEBFCC">Projects → conversations · filters (All / Needs you / Working) · search · New conversation · daemon status</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#74D4C0">v1 · collapses to rail &lt; 900px</span>
+        </div>
+        <div style="border:1px solid #1F3448;border-radius:10px;padding:16px;background:#0F1D2C;display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:16px;font-weight:600">Conversation <span style="color:#7F95A6;font-weight:400">· Chat ⇄ Terminal</span></span>
+          <span style="font-size:14px;line-height:1.55;color:#AEBFCC">Messages, streaming, tool rows, inline approval card, composer. Terminal mode swaps the same region to the native Codex PTY.</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#74D4C0">v1</span>
+        </div>
+        <div style="border:1px solid #1F3448;border-radius:10px;padding:16px;background:#0F1D2C;display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:16px;font-weight:600">Panel <span style="color:#7F95A6;font-weight:400">· Review · Terminal · Context</span></span>
+          <span style="font-size:14px;line-height:1.55;color:#AEBFCC">Changed files + diff, docked terminal, read-only provider/permission context.</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#AEBFCC">v1: Context + file list · v1.1: inline diff, docked terminal</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+        <div style="border:1px dashed #2B4660;border-radius:10px;padding:12px 14px;font-size:14px;color:#AEBFCC"><span style="color:#E8EFF4;font-weight:600">Quick switcher ⌘K</span><br>jump + commands · v1</div>
+        <div style="border:1px dashed #2B4660;border-radius:10px;padding:12px 14px;font-size:14px;color:#AEBFCC"><span style="color:#E8EFF4;font-weight:600">New conversation ⌘N</span><br>pick project → empty state · v1</div>
+        <div style="border:1px dashed #6B4E1F;border-radius:10px;padding:12px 14px;font-size:14px;color:#AEBFCC"><span style="color:#F4B860;font-weight:600">◆ Approval / question</span><br>inline in conversation · v1</div>
+        <div style="border:1px dashed #2B4660;border-radius:10px;padding:12px 14px;font-size:14px;color:#AEBFCC"><span style="color:#E8EFF4;font-weight:600">System states</span><br>loading · empty · provider down · reconnecting · send failed · unknown delivery · recovery · v1</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="screens" style="display:flex;flex-direction:column;gap:72px">
+  <div style="display:flex;align-items:baseline;gap:20px"><span style="font-family:'Geist Mono',monospace;font-size:18px;color:#74D4C0">02</span><h2 style="margin:0;font-size:40px;font-weight:600">Key screens · 1440 × 900</h2></div>
+
+  <!-- A: First launch -->
+  <div id="A" data-screen-label="A First launch" style="display:flex;gap:40px;align-items:flex-start">
+    <div style="width:1440px;height:900px;flex:none;display:flex;flex-direction:column;background:#0B1724;border-radius:10px;overflow:hidden;border:1px solid #2B4660;box-shadow:0 30px 80px rgba(0,0,0,.5)">
+      <div style="height:38px;flex:none;display:flex;align-items:center;padding:0 14px;background:#08121C;border-bottom:1px solid #1F3448"><div style="display:flex;gap:8px;width:160px"><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span></div><div style="flex:1;text-align:center;font-size:12px;color:#AEBFCC">Maitty</div><div style="width:160px"></div></div>
+      <div style="flex:1;display:flex;min-height:0">
+        <dc-import name="MaittySidebar" variant="empty" hint-size="280px,100%" style="width:280px;height:100%;flex:none"></dc-import>
+        <main style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px">
+          <div style="width:560px;display:flex;flex-direction:column;gap:28px">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#74D4C0;letter-spacing:.06em">WELCOME</span>
+              <h1 style="margin:0;font-size:28px;font-weight:600;letter-spacing:-.01em">Run coding agents side by side.</h1>
+              <p style="margin:0;font-size:14.5px;line-height:1.6;color:#AEBFCC;text-wrap:pretty">This window talks to the Maitty daemon. Closing it never stops an agent — sessions keep running and stay available in the TUI.</p>
+            </div>
+            <div style="border:1px solid #1F3448;border-radius:10px;background:#0F1D2C;display:flex;flex-direction:column">
+              <div style="display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid #1F3448;align-items:flex-start"><span style="color:#A3C9A8;width:16px">✓</span><div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:13.5px;font-weight:500">Daemon running</span><span style="font-family:'Geist Mono',monospace;font-size:12px;color:#7F95A6">maittyd 0.9.2 · ~/.local/state/maitty/maittyd.sock</span></div></div>
+              <div style="display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid #1F3448;align-items:flex-start"><span style="color:#A3C9A8;width:16px">✓</span><div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:13.5px;font-weight:500">Codex CLI found and signed in</span><span style="font-family:'Geist Mono',monospace;font-size:12px;color:#7F95A6">codex 0.46.0 · /usr/local/bin/codex</span></div></div>
+              <div style="display:flex;gap:12px;padding:14px 16px;align-items:flex-start"><span style="color:#7F95A6;width:16px">○</span><div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:13.5px;font-weight:500;color:#AEBFCC">Claude</span><span style="font-size:12.5px;color:#7F95A6">Not supported yet. Codex is the only provider in this release.</span></div></div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center">
+              <span style="height:38px;display:flex;align-items:center;gap:10px;padding:0 16px;border-radius:8px;background:#74D4C0;color:#08121C;font-size:14px;font-weight:600;box-shadow:0 0 0 2px #0B1724,0 0 0 4px #74D4C0">Add project folder <span style="font-family:'Geist Mono',monospace;font-size:11.5px;opacity:.7">⌘O</span></span>
+              <span style="height:38px;display:flex;align-items:center;padding:0 14px;border-radius:8px;border:1px solid #2B4660;color:#AEBFCC;font-size:14px">Open recent…</span>
+            </div>
+            <p style="margin:0;font-size:13px;color:#7F95A6;line-height:1.5">Already using <span style="font-family:'Geist Mono',monospace;color:#AEBFCC">maitty</span> in a terminal? Those sessions show up here automatically.</p>
+          </div>
+        </main>
+      </div>
+    </div>
+    <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <aside style="width:440px;display:flex;flex-direction:column;gap:16px;padding-top:8px">
+      <span style="align-self:flex-start;font-family:'Geist Mono',monospace;font-size:13px;padding:4px 10px;border-radius:6px;background:#12363A;color:#74D4C0">A · Essential for v1</span>
+      <h3 style="margin:0;font-size:28px;font-weight:600">First launch</h3>
+      <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:12px;font-size:17px;line-height:1.55;color:#AEBFCC">
+        <li>Checks are facts, not a wizard: daemon, Codex CLI, sign-in. A failing check turns into the provider-unavailable state (see <a href="#states">03</a>).</li>
+        <li>One primary action. New conversation is hidden until a project exists, so there's no dead button.</li>
+        <li>Claude shows as not supported. The provider slot is there, but nothing suggests it works yet.</li>
+        <li>The "closing never stops an agent" promise appears first, before anything else.</li>
+      </ul>
+    </aside>
+    </sc-if>
+  </div>
+
+  <!-- B: Populated + streaming -->
+  <div id="B" data-screen-label="B Workspace streaming" style="display:flex;gap:40px;align-items:flex-start">
+    <div style="width:1440px;height:900px;flex:none;display:flex;flex-direction:column;background:#0B1724;border-radius:10px;overflow:hidden;border:1px solid #2B4660;box-shadow:0 30px 80px rgba(0,0,0,.5)">
+      <div style="height:38px;flex:none;display:flex;align-items:center;padding:0 14px;background:#08121C;border-bottom:1px solid #1F3448"><div style="display:flex;gap:8px;width:160px"><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span></div><div style="flex:1;text-align:center;font-size:12px;color:#AEBFCC">maitty — Fix PTY resize race on Linux</div><div style="width:160px;text-align:right;font-family:'Geist Mono',monospace;font-size:11.5px;color:#F4B860">◆ 2 need you</div></div>
+      <div style="flex:1;display:flex;min-height:0">
+        <dc-import name="MaittySidebar" selected="pty" hint-size="280px,100%" style="width:280px;height:100%;flex:none"></dc-import>
+        <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+          <header style="flex:none;display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid #1F3448">
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;align-items:center;gap:10px"><h1 style="margin:0;font-size:15px;font-weight:600">Fix PTY resize race on Linux</h1><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:2px 9px;border-radius:999px;background:#12363A;color:#74D4C0;border:1px solid #1F5552">{{ spinTeal }} Working · 1:42</span></div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">maitty</span><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">⎇ fix/pty-resize</span><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">Codex · gpt-5-codex</span><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">workspace-write · on-request</span></div>
+            </div>
+            <div style="display:flex;padding:2px;border-radius:7px;background:#08121C;border:1px solid #1F3448;font-size:12px"><span style="padding:4px 10px;border-radius:5px;background:#1A2E42;color:#E8EFF4">Chat</span><span style="padding:4px 10px;color:#AEBFCC">Terminal</span></div>
+            <span style="padding:5px 10px;border-radius:6px;border:1px solid #1F3448;font-size:12px;color:#AEBFCC">Review <span style="font-family:'Geist Mono',monospace;color:#74D4C0">+18</span> <span style="font-family:'Geist Mono',monospace;color:#F28B82">−4</span></span>
+          </header>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:24px 32px 12px">
+            <div style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+              <div style="align-self:flex-end;max-width:560px;display:flex;flex-direction:column;gap:6px">
+                <span style="align-self:flex-end;font-size:11.5px;color:#7F95A6">You · 14:31</span>
+                <div style="background:#142536;border:1px solid #1F3448;border-radius:10px;padding:11px 14px;font-size:14px;line-height:1.55;text-wrap:pretty">SIGWINCH sometimes arrives before the child PTY is registered, so the first resize is dropped on Linux. Find the race and fix it — keep the macOS path untouched.</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <span style="font-size:11.5px;color:#7F95A6">Codex</span>
+                <p style="margin:0;font-size:14px;line-height:1.6">I'll trace where resize events are delivered relative to PTY registration.</p>
+                <div style="border:1px solid #1F3448;border-radius:7px;background:#0F1D2C">
+                  <div onClick="{{ toggleExplore }}" role="button" aria-expanded="{{ exploreOpen }}" style="display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12.5px;color:#AEBFCC;cursor:pointer" style-hover="color:#E8EFF4"><span style="width:10px;color:#7F95A6;font-size:10px">{{ exploreChev }}</span><span style="color:#A3C9A8">✓</span><span>Explored 6 files · 3 searches</span><span style="flex:1"></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">4.1s</span></div>
+                  <sc-if value="{{ exploreOpen }}" hint-placeholder-val="{{ false }}">
+                    <div style="border-top:1px solid #1F3448;padding:6px 10px 8px 38px;display:flex;flex-direction:column;gap:3px">
+                      <sc-for list="{{ exploreItems }}" as="e" hint-placeholder-count="4"><div style="display:flex;gap:10px;font-family:'Geist Mono',monospace;font-size:11.5px;line-height:1.6"><span style="width:52px;color:#7F95A6">{{ e.k }}</span><span style="color:#AEBFCC">{{ e.v }}</span></div></sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+                <p style="margin:0;font-size:14px;line-height:1.6;text-wrap:pretty">The resize handler in <code style="font-family:'Geist Mono',monospace;font-size:12.5px;background:#142536;padding:1px 5px;border-radius:4px">pty/linux.rs</code> looks up the session before <code style="font-family:'Geist Mono',monospace;font-size:12.5px;background:#142536;padding:1px 5px;border-radius:4px">spawn()</code> inserts it. If SIGWINCH lands in that window the lookup returns <code style="font-family:'Geist Mono',monospace;font-size:12.5px;background:#142536;padding:1px 5px;border-radius:4px">None</code> and the event is dropped. I'll queue it instead.</p>
+                <div style="border:1px solid #1F3448;border-radius:7px;background:#0F1D2C">
+                  <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12.5px;color:#AEBFCC"><span style="width:10px;color:#7F95A6;font-size:10px">▾</span><span style="color:#A3C9A8">✓</span><span>Edited <span style="font-family:'Geist Mono',monospace;color:#E8EFF4">src/pty/linux.rs</span></span><span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#74D4C0">+18</span><span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#F28B82">−4</span><span style="flex:1"></span><span style="font-size:11.5px;color:#74D4C0">Review ⌘⇧D</span></div>
+                  <div style="border-top:1px solid #1F3448;font-family:'Geist Mono',monospace;font-size:11.5px;line-height:1.7;padding:4px 0">
+                    <div style="padding:0 12px;background:#2E1A22;white-space:pre;color:#E8EFF4"><span style="color:#F28B82">− </span>    if let Some(pty) = self.registry.get(&amp;id) {</div>
+                    <div style="padding:0 12px;background:#0F2F2A;white-space:pre;color:#E8EFF4"><span style="color:#74D4C0">+ </span>    match self.registry.get(&amp;id) {</div>
+                    <div style="padding:0 12px;background:#0F2F2A;white-space:pre;color:#E8EFF4"><span style="color:#74D4C0">+ </span>        None =&gt; self.pending.lock().insert(id, size),</div>
+                  </div>
+                </div>
+                <div style="border:1px solid #1F5552;border-radius:7px;background:#0F1D2C">
+                  <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12.5px;color:#E8EFF4"><span style="width:10px;color:#7F95A6;font-size:10px">▾</span>{{ spinTeal }}<span>Running <span style="font-family:'Geist Mono',monospace">cargo test -p maitty-pty resize</span></span><span style="flex:1"></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">0:12</span></div>
+                  <div style="border-top:1px solid #1F3448;padding:6px 12px 8px 38px;font-family:'Geist Mono',monospace;font-size:11.5px;line-height:1.65;color:#AEBFCC;white-space:pre">   Compiling maitty-pty v0.9.2
+test resize::queued_before_register ... ok
+test resize::flush_after_spawn ... <span style="color:#7F95A6">running</span></div>
+                </div>
+                <p style="margin:0;font-size:14px;line-height:1.6">Queued resizes are now flushed right after registration. Waiting on the PTY suite to confirm{{ caret }}</p>
+              </div>
+            </div>
+          </div>
+          <div style="flex:none;padding:8px 32px 18px">
+            <div style="max-width:720px;margin:0 auto;border:1px solid #2B4660;border-radius:10px;background:#142536;box-shadow:0 0 0 3px rgba(116,212,192,.18)">
+              <div style="display:flex;gap:8px;align-items:center;padding:7px 12px;border-bottom:1px solid #1F3448;font-size:12px;color:#AEBFCC">{{ spinTeal }}<span>Turn running · 1:42 · step 4</span><span style="flex:1"></span><span style="color:#7F95A6">Draft saved · sends after the turn ends or you stop it</span></div>
+              <div style="padding:12px 14px;min-height:46px;font-size:14px;line-height:1.55;color:#E8EFF4">When the suite passes, add a regression test for a resize that lands mid-spawn<span style="display:inline-block;width:1.5px;height:17px;background:#E8EFF4;vertical-align:-3px;margin-left:1px"></span></div>
+              <div style="display:flex;align-items:center;gap:8px;padding:8px 10px">
+                <span style="font-size:12px;color:#7F95A6">@ file · / command</span><span style="flex:1"></span>
+                <span style="height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:7px;border:1px solid #2B4660;font-size:12.5px;color:#E8EFF4">■ Stop <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">⌘.</span></span>
+                <span aria-disabled="true" style="height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:7px;background:#1A2E42;color:#7F95A6;font-size:12.5px;font-weight:600">Send <span style="font-family:'Geist Mono',monospace;font-size:11px">↵</span></span>
+              </div>
+            </div>
+          </div>
+        </main>
+        <aside style="width:340px;flex:none;border-left:1px solid #1F3448;background:#0F1D2C;display:flex;flex-direction:column">
+          <div role="tablist" style="display:flex;gap:2px;padding:10px 12px;border-bottom:1px solid #1F3448;font-size:12.5px"><span style="padding:5px 10px;color:#AEBFCC">Review</span><span style="padding:5px 10px;color:#AEBFCC">Terminal</span><span style="padding:5px 10px;border-radius:6px;background:#1A2E42;color:#E8EFF4">Context</span><span style="flex:1"></span><span style="padding:5px 6px;color:#7F95A6">×</span></div>
+          <div style="padding:16px;display:flex;flex-direction:column;gap:14px;font-size:12.5px">
+            <sc-for list="{{ ctx }}" as="c" hint-placeholder-count="7">
+              <div style="display:grid;grid-template-columns:88px 1fr;gap:10px"><span style="color:#7F95A6">{{ c.k }}</span><div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="color:#E8EFF4">{{ c.v }}</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.s }}</span></div></div>
+            </sc-for>
+            <div style="padding:10px 12px;border-radius:7px;background:#0B1724;border:1px solid #1F3448;font-size:12px;line-height:1.5;color:#AEBFCC">Sandbox and approval policy come from your Codex config. Maitty shows them; it never widens them.</div>
+            <div style="display:flex;flex-direction:column;gap:8px;padding-top:4px">
+              <span style="font-size:11.5px;color:#7F95A6;letter-spacing:.04em">NATIVE TERMINAL</span>
+              <div style="display:flex;align-items:center;gap:8px;color:#AEBFCC"><span style="color:#74D4C0">●</span>Also attached in TUI · pane 3</div>
+              <div style="display:flex;gap:8px"><span style="height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:7px;border:1px solid #2B4660;color:#E8EFF4">Open here <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">⌘`</span></span><span style="height:30px;display:flex;align-items:center;padding:0 12px;border-radius:7px;border:1px solid #2B4660;color:#AEBFCC">Reveal in TUI</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <aside style="width:440px;display:flex;flex-direction:column;gap:16px;padding-top:8px">
+      <span style="align-self:flex-start;font-family:'Geist Mono',monospace;font-size:13px;padding:4px 10px;border-radius:6px;background:#12363A;color:#74D4C0">B · Essential for v1</span>
+      <h3 style="margin:0;font-size:28px;font-weight:600">Populated sidebar, streaming turn</h3>
+      <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:12px;font-size:17px;line-height:1.55;color:#AEBFCC">
+        <li><b style="color:#E8EFF4">Loudness ladder.</b> Needs you shows an amber glyph, bold title and the reason. Unread done items get a bold title and a teal dot. Everything else stays at regular weight.</li>
+        <li>Project headers roll up attention (◆1) so collapsed groups still surface it.</li>
+        <li>Finished tool calls collapse to one line with a verb and a count. Click the <i>Explored</i> row to expand it. The running tool stays open with its last 3 output lines.</li>
+        <li>Streaming text ends with a caret. Its status shows in the header badge and above the composer.</li>
+        <li>You can type during a turn. The draft is saved to disk, and Send stays disabled so nothing gets queued or auto-sent.</li>
+        <li>Context is read-only. It shows exactly where and how Codex is running.</li>
+      </ul>
+    </aside>
+    </sc-if>
+  </div>
+
+  <!-- C: Approval -->
+  <div id="C" data-screen-label="C Approval" style="display:flex;gap:40px;align-items:flex-start">
+    <div style="width:1440px;height:900px;flex:none;display:flex;flex-direction:column;background:#0B1724;border-radius:10px;overflow:hidden;border:1px solid #2B4660;box-shadow:0 30px 80px rgba(0,0,0,.5)">
+      <div style="height:38px;flex:none;display:flex;align-items:center;padding:0 14px;background:#08121C;border-bottom:1px solid #1F3448"><div style="display:flex;gap:8px;width:160px"><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span></div><div style="flex:1;text-align:center;font-size:12px;color:#AEBFCC">maitty — Migrate session store to v4</div><div style="width:160px;text-align:right;font-family:'Geist Mono',monospace;font-size:11.5px;color:#F4B860">◆ 2 need you</div></div>
+      <div style="flex:1;display:flex;min-height:0">
+        <dc-import name="MaittySidebar" selected="mig" hint-size="280px,100%" style="width:280px;height:100%;flex:none"></dc-import>
+        <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+          <header style="flex:none;display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid #1F3448">
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;align-items:center;gap:10px"><h1 style="margin:0;font-size:15px;font-weight:600">Migrate session store to v4</h1><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:2px 9px;border-radius:999px;background:#3A2B14;color:#F4B860;border:1px solid #6B4E1F">◆ Needs you · approval</span></div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">maitty</span><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">⎇ migrate-store</span><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">Codex · gpt-5-codex</span><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">workspace-write · on-request</span></div>
+            </div>
+            <div style="display:flex;padding:2px;border-radius:7px;background:#08121C;border:1px solid #1F3448;font-size:12px"><span style="padding:4px 10px;border-radius:5px;background:#1A2E42;color:#E8EFF4">Chat</span><span style="padding:4px 10px;color:#AEBFCC">Terminal</span></div>
+            <span style="padding:5px 10px;border-radius:6px;border:1px solid #1F3448;font-size:12px;color:#AEBFCC">Review <span style="font-family:'Geist Mono',monospace;color:#74D4C0">+64</span> <span style="font-family:'Geist Mono',monospace;color:#F28B82">−2</span></span>
+          </header>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:24px 32px 12px">
+            <div style="max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="border:1px solid #1F3448;border-radius:7px;background:#0F1D2C;display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12.5px;color:#AEBFCC"><span style="width:10px;color:#7F95A6;font-size:10px">▸</span><span style="color:#A3C9A8">✓</span>Edited 3 files <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#74D4C0">+64</span><span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#F28B82">−2</span><span style="flex:1"></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">22s</span></div>
+                <div style="border:1px solid #1F3448;border-radius:7px;background:#0F1D2C;display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12.5px;color:#AEBFCC"><span style="width:10px;color:#7F95A6;font-size:10px">▸</span><span style="color:#A3C9A8">✓</span>Ran <span style="font-family:'Geist Mono',monospace">cargo test -p maitty-migrate</span> · 9 passed<span style="flex:1"></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">31s</span></div>
+                <p style="margin:0;font-size:14px;line-height:1.6;text-wrap:pretty">The v4 migration is written and tested against a copy. To apply it to your real store I need to write to <code style="font-family:'Geist Mono',monospace;font-size:12.5px;background:#142536;padding:1px 5px;border-radius:4px">~/.local/share/maitty</code>, which is outside the workspace sandbox.</p>
+              </div>
+              <div role="alertdialog" aria-label="Approval needed: run command outside sandbox" style="border:1px solid #6B4E1F;border-radius:10px;background:#16191A;overflow:hidden">
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#3A2B14;border-bottom:1px solid #6B4E1F"><span style="color:#F4B860">◆</span><span style="font-size:13.5px;font-weight:600;color:#F4B860">Approval needed · run a command outside the sandbox</span><span style="flex:1"></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#E0C99A">waiting 0:38</span></div>
+                <div style="padding:14px;display:flex;flex-direction:column;gap:12px">
+                  <div style="font-family:'Geist Mono',monospace;font-size:13px;line-height:1.6;background:#08121C;border:1px solid #1F3448;border-radius:7px;padding:10px 12px;color:#E8EFF4;white-space:pre-wrap"><span style="color:#7F95A6">$ </span>cargo run -p maitty-migrate -- --apply ~/.local/share/maitty/sessions.db</div>
+                  <div style="display:grid;grid-template-columns:130px 1fr;gap:7px 12px;font-size:12.5px;line-height:1.5">
+                    <span style="color:#7F95A6">Working directory</span><span style="font-family:'Geist Mono',monospace;font-size:12px;color:#AEBFCC">~/.maitty/wt/maitty-migrate-store</span>
+                    <span style="color:#7F95A6">Why it's blocked</span><span style="color:#E8EFF4">Writes outside the workspace (sandbox: workspace-write)</span>
+                    <span style="color:#7F95A6">Codex's reason</span><span style="color:#AEBFCC">"Apply schema v4 to the local session store so the daemon can load it."</span>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:2px">
+                    <span style="height:32px;display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:7px;background:#F4B860;color:#08121C;font-size:13px;font-weight:600;box-shadow:0 0 0 2px #16191A,0 0 0 4px #74D4C0">Approve once <span style="font-family:'Geist Mono',monospace;font-size:11px;opacity:.7">Y</span></span>
+                    <span style="height:32px;display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:7px;border:1px solid #6B4E1F;color:#E8EFF4;font-size:13px">Approve for this session <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">A</span></span>
+                    <span style="height:32px;display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:7px;border:1px solid #2B4660;color:#E8EFF4;font-size:13px">Deny <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">N</span></span>
+                    <span style="height:32px;display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:7px;border:1px solid #2B4660;color:#AEBFCC;font-size:13px">Deny and stop turn <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">⇧N</span></span>
+                  </div>
+                  <span style="font-size:11.5px;color:#7F95A6">Only the choices Codex offers for this request are shown. Answering here also answers it in the TUI.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="flex:none;padding:8px 32px 18px">
+            <div style="max-width:760px;margin:0 auto;border:1px solid #6B4E1F;border-radius:10px;background:#142536">
+              <div style="display:flex;gap:8px;align-items:center;padding:7px 12px;border-bottom:1px solid #1F3448;font-size:12px;color:#F4B860"><span>◆</span><span>Waiting for your approval · turn paused</span><span style="flex:1"></span><span style="color:#AEBFCC">Y / A / N to answer</span></div>
+              <div style="padding:12px 14px;min-height:46px;font-size:14px;line-height:1.55;color:#7F95A6">Type to deny with instructions instead…</div>
+              <div style="display:flex;align-items:center;gap:8px;padding:8px 10px"><span style="font-size:12px;color:#7F95A6">@ file · / command</span><span style="flex:1"></span><span style="height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:7px;border:1px solid #2B4660;font-size:12.5px;color:#E8EFF4">■ Stop <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">⌘.</span></span><span style="height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:7px;background:#1A2E42;color:#7F95A6;font-size:12.5px;font-weight:600">Deny + send <span style="font-family:'Geist Mono',monospace;font-size:11px">↵</span></span></div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+    <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <aside style="width:440px;display:flex;flex-direction:column;gap:16px;padding-top:8px">
+      <span style="align-self:flex-start;font-family:'Geist Mono',monospace;font-size:13px;padding:4px 10px;border-radius:6px;background:#12363A;color:#74D4C0">C · Essential for v1</span>
+      <h3 style="margin:0;font-size:28px;font-weight:600">Waiting on approval</h3>
+      <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:12px;font-size:17px;line-height:1.55;color:#AEBFCC">
+        <li>The card sits in the conversation, not in a modal, so the reasoning stays above it. Focus lands on it when you open the conversation.</li>
+        <li>It shows the exact command, working directory, what the sandbox blocks, and Codex's stated reason. Nothing is paraphrased.</li>
+        <li>Buttons map 1:1 to the choices in the provider's request. No "always allow" unless Codex offers it.</li>
+        <li>Typing in the composer turns Send into <i>Deny + send</i>, so your instructions go out with the denial.</li>
+        <li>Questions (◆ <i>question</i>) use the same card with a plain reply field instead of approval buttons.</li>
+        <li>Once answered in the TUI, the card flips to "Answered in terminal: Approved once".</li>
+      </ul>
+    </aside>
+    </sc-if>
+  </div>
+
+  <!-- D: Diff review -->
+  <div id="D" data-screen-label="D Diff review" style="display:flex;gap:40px;align-items:flex-start">
+    <div style="width:1440px;height:900px;flex:none;display:flex;flex-direction:column;background:#0B1724;border-radius:10px;overflow:hidden;border:1px solid #2B4660;box-shadow:0 30px 80px rgba(0,0,0,.5)">
+      <div style="height:38px;flex:none;display:flex;align-items:center;padding:0 14px;background:#08121C;border-bottom:1px solid #1F3448"><div style="display:flex;gap:8px;width:160px"><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span></div><div style="flex:1;text-align:center;font-size:12px;color:#AEBFCC">maitty — Fix PTY resize race on Linux</div><div style="width:160px;text-align:right;font-family:'Geist Mono',monospace;font-size:11.5px;color:#F4B860">◆ 2 need you</div></div>
+      <div style="flex:1;display:flex;min-height:0">
+        <dc-import name="MaittySidebar" selected="pty" hint-size="280px,100%" style="width:280px;height:100%;flex:none"></dc-import>
+        <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+          <header style="flex:none;display:flex;flex-direction:column;gap:7px;padding:12px 20px;border-bottom:1px solid #1F3448">
+            <div style="display:flex;align-items:center;gap:10px"><h1 style="margin:0;font-size:15px;font-weight:600">Fix PTY resize race on Linux</h1><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:2px 9px;border-radius:999px;background:#142536;color:#A3C9A8;border:1px solid #2B4660">✓ Done · 3:10</span></div>
+            <div style="display:flex;gap:6px"><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">⎇ fix/pty-resize</span><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">Codex</span></div>
+          </header>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:20px 24px;display:flex;flex-direction:column;gap:12px">
+            <div style="border:1px solid #1F3448;border-radius:7px;background:#0F1D2C;display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12.5px;color:#AEBFCC"><span style="color:#7F95A6;font-size:10px">▸</span><span style="color:#A3C9A8">✓</span>Explored, edited 3 files, ran tests<span style="flex:1"></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">5 steps</span></div>
+            <p style="margin:0;font-size:14px;line-height:1.6;text-wrap:pretty">Fixed. Resizes that arrive before registration go into a small pending map keyed by session id and are applied right after <code style="font-family:'Geist Mono',monospace;font-size:12.5px;background:#142536;padding:1px 5px;border-radius:4px">registry.insert</code>. The macOS path is untouched.</p>
+            <div style="display:flex;flex-direction:column;gap:4px;font-size:13.5px;color:#AEBFCC;line-height:1.6"><span>• 14 PTY tests pass, 2 new</span><span>• No changes outside <span style="font-family:'Geist Mono',monospace;font-size:12.5px">src/pty</span> and <span style="font-family:'Geist Mono',monospace;font-size:12.5px">tests</span></span></div>
+            <div style="flex:1"></div>
+            <div style="border:1px solid #2B4660;border-radius:10px;background:#142536;padding:12px 14px;font-size:13.5px;line-height:1.5;color:#E8EFF4;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;gap:6px;align-items:center;font-family:'Geist Mono',monospace;font-size:11px;color:#74D4C0;background:#12363A;border-radius:4px;padding:3px 7px;align-self:flex-start">linux.rs · L91 quoted</div>
+              <span>Why a Mutex here rather than the existing DashMap?</span>
+              <div style="display:flex;justify-content:flex-end"><span style="height:28px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:7px;background:#74D4C0;color:#08121C;font-size:12.5px;font-weight:600">Send ↵</span></div>
+            </div>
+          </div>
+        </main>
+        <aside style="width:640px;flex:none;border-left:1px solid #1F3448;background:#0F1D2C;display:flex;flex-direction:column;min-height:0">
+          <div role="tablist" style="display:flex;gap:2px;padding:10px 12px;border-bottom:1px solid #1F3448;font-size:12.5px"><span style="padding:5px 10px;border-radius:6px;background:#1A2E42;color:#E8EFF4">Review</span><span style="padding:5px 10px;color:#AEBFCC">Terminal</span><span style="padding:5px 10px;color:#AEBFCC">Context</span><span style="flex:1"></span><span style="padding:5px 6px;color:#7F95A6">×</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:12.5px;color:#AEBFCC;border-bottom:1px solid #1F3448"><span style="color:#E8EFF4;font-weight:500">3 files</span><span style="font-family:'Geist Mono',monospace;color:#74D4C0">+42</span><span style="font-family:'Geist Mono',monospace;color:#F28B82">−9</span><span style="color:#7F95A6">uncommitted in ⎇ fix/pty-resize</span><span style="flex:1"></span><span style="color:#7F95A6">Unified ▾</span></div>
+          <div style="display:flex;flex-direction:column;padding:6px;border-bottom:1px solid #1F3448">
+            <sc-for list="{{ files }}" as="f" hint-placeholder-count="3">
+              <div style="height:28px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:6px;background:{{ f.bg }};font-size:12.5px"><span style="font-family:'Geist Mono',monospace;font-size:11px;width:12px;color:{{ f.tagColor }}">{{ f.tag }}</span><span style="flex:1;font-family:'Geist Mono',monospace;font-size:12px;color:#E8EFF4">{{ f.path }}</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#74D4C0">{{ f.add }}</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#F28B82">{{ f.del }}</span></div>
+            </sc-for>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;background:#0B1724;font-family:'Geist Mono',monospace;font-size:12px;line-height:20px">
+            <sc-for list="{{ diff }}" as="d" hint-placeholder-count="14">
+              <div style="display:flex;background:{{ d.bg }};white-space:pre"><span style="width:40px;text-align:right;padding-right:6px;color:#5E7385;flex:none">{{ d.o }}</span><span style="width:40px;text-align:right;padding-right:8px;color:#5E7385;flex:none">{{ d.n }}</span><span style="width:16px;color:{{ d.sc }};flex:none">{{ d.s }}</span><span style="color:{{ d.tc }}">{{ d.t }}</span></div>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:8px;padding:10px 14px;border-top:1px solid #1F3448;font-size:12.5px;align-items:center">
+            <span style="height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:7px;border:1px solid #2B4660;color:#E8EFF4">Open in editor <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">⌘E</span></span>
+            <span style="height:30px;display:flex;align-items:center;padding:0 12px;border-radius:7px;border:1px solid #2B4660;color:#AEBFCC">Reveal in Files</span>
+            <span style="height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:7px;border:1px solid #2B4660;color:#AEBFCC">Quote in chat <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">⌘L</span></span>
+            <span style="flex:1"></span><span style="font-size:11.5px;color:#7F95A6">Read-only · commit with your own tools</span>
+          </div>
+        </aside>
+      </div>
+    </div>
+    <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <aside style="width:440px;display:flex;flex-direction:column;gap:16px;padding-top:8px">
+      <span style="align-self:flex-start;font-family:'Geist Mono',monospace;font-size:13px;padding:4px 10px;border-radius:6px;background:#142536;color:#AEBFCC">D · File list v1 · inline diff v1.1</span>
+      <h3 style="margin:0;font-size:28px;font-weight:600">Diff review</h3>
+      <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:12px;font-size:17px;line-height:1.55;color:#AEBFCC">
+        <li>Review widens the panel to 640px and narrows the chat. Chat stays visible so you can ask about a line straight away.</li>
+        <li>Diffs are read from the worktree's git state, not reconstructed from tool calls, so you see what's actually on disk.</li>
+        <li>Additions and deletions use teal and rose tints plus explicit + / − signs. Full red stays reserved for failures.</li>
+        <li>No stage, revert or commit actions here. Git belongs to the user and to Codex. <i>Quote in chat</i> (⌘L) drops the selected lines into the composer.</li>
+      </ul>
+    </aside>
+    </sc-if>
+  </div>
+
+  <!-- E: Native terminal -->
+  <div id="E" data-screen-label="E Native terminal" style="display:flex;gap:40px;align-items:flex-start">
+    <div style="width:1440px;height:900px;flex:none;display:flex;flex-direction:column;background:#0B1724;border-radius:10px;overflow:hidden;border:1px solid #2B4660;box-shadow:0 30px 80px rgba(0,0,0,.5)">
+      <div style="height:38px;flex:none;display:flex;align-items:center;padding:0 14px;background:#08121C;border-bottom:1px solid #1F3448"><div style="display:flex;gap:8px;width:160px"><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span><span style="width:12px;height:12px;border-radius:50%;background:#2B4660"></span></div><div style="flex:1;text-align:center;font-size:12px;color:#AEBFCC">maitty — Fix PTY resize race on Linux · Terminal</div><div style="width:160px;text-align:right;font-family:'Geist Mono',monospace;font-size:11.5px;color:#F4B860">◆ 2 need you</div></div>
+      <div style="flex:1;display:flex;min-height:0">
+        <dc-import name="MaittySidebar" selected="pty" hint-size="280px,100%" style="width:280px;height:100%;flex:none"></dc-import>
+        <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+          <header style="flex:none;display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid #1F3448">
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;align-items:center;gap:10px"><h1 style="margin:0;font-size:15px;font-weight:600">Fix PTY resize race on Linux</h1><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:2px 9px;border-radius:999px;background:#142536;color:#7F95A6;border:1px solid #2B4660">○ Idle</span></div>
+              <div style="display:flex;gap:6px"><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">⎇ fix/pty-resize</span><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">codex · pid 48213 · 132×38</span></div>
+            </div>
+            <div style="display:flex;padding:2px;border-radius:7px;background:#08121C;border:1px solid #1F3448;font-size:12px"><span style="padding:4px 10px;color:#AEBFCC">Chat</span><span style="padding:4px 10px;border-radius:5px;background:#1A2E42;color:#E8EFF4">Terminal</span></div>
+            <span style="padding:5px 10px;border-radius:6px;border:1px solid #1F3448;font-size:12px;color:#AEBFCC">Pop out</span>
+          </header>
+          <div style="flex:none;display:flex;align-items:center;gap:10px;padding:8px 20px;background:#0F1D2C;border-bottom:1px solid #1F3448;font-size:12.5px;color:#AEBFCC"><span style="color:#74D4C0">●</span>Live Codex terminal for this session. Keys go straight to Codex.<span style="flex:1"></span><span style="color:#7F95A6">Also open in TUI pane 3 · same history as Chat</span><span style="font-family:'Geist Mono',monospace;font-size:11px;padding:1px 5px;border:1px solid #2B4660;border-bottom-width:2px;border-radius:4px;color:#AEBFCC">⌘`</span><span>back to chat</span></div>
+          <div style="flex:1;min-height:0;background:#060E17;padding:16px 20px;font-family:'Geist Mono',monospace;font-size:13px;line-height:20px;overflow:hidden;box-shadow:inset 0 0 0 2px #1F5552">
+            <sc-for list="{{ term }}" as="l" hint-placeholder-count="16"><div style="white-space:pre;color:{{ l.c }}">{{ l.t }}</div></sc-for>
+            <div style="white-space:pre;color:#E8EFF4">&gt; <span style="background:#E8EFF4;color:#060E17"> </span></div>
+          </div>
+        </main>
+      </div>
+    </div>
+    <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <aside style="width:440px;display:flex;flex-direction:column;gap:16px;padding-top:8px">
+      <span style="align-self:flex-start;font-family:'Geist Mono',monospace;font-size:13px;padding:4px 10px;border-radius:6px;background:#12363A;color:#74D4C0">E · Essential for v1</span>
+      <h3 style="margin:0;font-size:28px;font-weight:600">Native terminal</h3>
+      <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:12px;font-size:17px;line-height:1.55;color:#AEBFCC">
+        <li>The Chat / Terminal toggle swaps the same region to the agent's real PTY. This is not a second session, and there's no copy of the history.</li>
+        <li>A teal inset frame and the banner show that keys go to Codex. ⌘` is the only shortcut Maitty intercepts here.</li>
+        <li>Pop out opens the PTY in a separate window. Reveal in TUI focuses the existing Maitty TUI pane.</li>
+        <li>v1.1 adds the terminal as a dock in the right panel, so chat and PTY can be visible together.</li>
+      </ul>
+    </aside>
+    </sc-if>
+  </div>
+</section>
+
+<section id="states" data-screen-label="States" style="display:flex;flex-direction:column;gap:40px">
+  <div style="display:flex;align-items:baseline;gap:20px"><span style="font-family:'Geist Mono',monospace;font-size:18px;color:#74D4C0">03</span><h2 style="margin:0;font-size:40px;font-weight:600">Conversation states</h2><span style="font-size:18px;color:#7F95A6">main region only · same 1440 shell</span></div>
+  <div style="display:grid;grid-template-columns:repeat(3,620px);gap:40px 30px">
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="height:420px;display:flex;flex-direction:column;background:#0B1724;border:1px solid #2B4660;border-radius:10px;overflow:hidden">
+        <div style="height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid #1F3448"><span style="font-size:14px;font-weight:600">New conversation</span><span style="font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid #2B4660;color:#7F95A6">○ Not started</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;padding:20px 24px;gap:16px">
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:18px;font-weight:600">Codex in maitty</span><span style="font-family:'Geist Mono',monospace;font-size:12px;color:#7F95A6">~/code/maitty · ⎇ main · workspace-write · on-request</span></div>
+          <div style="display:flex;gap:8px;font-size:12.5px"><span style="padding:4px 10px;border-radius:6px;border:1px solid #2B4660;color:#AEBFCC">Worktree: new from main ▾</span><span style="padding:4px 10px;border-radius:6px;border:1px solid #2B4660;color:#AEBFCC">Provider: Codex ▾</span></div>
+          <div style="border:1px solid #2B4660;border-radius:10px;background:#142536;box-shadow:0 0 0 3px rgba(116,212,192,.18)"><div style="padding:12px 14px;min-height:40px;font-size:14px;color:#7F95A6"><span style="display:inline-block;width:1.5px;height:17px;background:#E8EFF4;vertical-align:-3px"></span> Describe the task…</div><div style="display:flex;justify-content:flex-end;padding:8px 10px"><span style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;background:#1A2E42;color:#7F95A6;font-size:12.5px;font-weight:600">Start ↵</span></div></div>
+        </div>
+      </div>
+      <span style="font-size:20px;font-weight:600">Empty conversation</span>
+      <span style="font-size:16px;line-height:1.5;color:#AEBFCC;text-wrap:pretty">No sample prompts. Before you start, it confirms where Codex will run and the worktree choice.</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="height:420px;display:flex;flex-direction:column;background:#0B1724;border:1px solid #2B4660;border-radius:10px;overflow:hidden">
+        <div style="height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid #1F3448"><span style="font-size:14px;font-weight:600">Rate limiter middleware</span><span style="font-size:12px;color:#7F95A6">Loading status…</span></div>
+        <div style="flex:1;padding:24px;display:flex;flex-direction:column;gap:14px">
+          <div style="align-self:flex-end;width:300px;height:44px;border-radius:10px;background:#142536"></div>
+          <div style="width:80%;height:10px;border-radius:4px;background:#142536"></div>
+          <div style="width:64%;height:10px;border-radius:4px;background:#142536"></div>
+          <div style="width:100%;height:30px;border-radius:7px;background:#0F1D2C;border:1px solid #1F3448"></div>
+          <div style="width:72%;height:10px;border-radius:4px;background:#142536"></div>
+          <span style="font-size:12.5px;color:#7F95A6;padding-top:8px">Loading 212 events from maittyd…</span>
+        </div>
+        <div style="padding:0 24px 16px"><div style="border:1px solid #1F3448;border-radius:10px;padding:12px 14px;font-size:14px;color:#E8EFF4">draft restored: also cover the burst case</div></div>
+      </div>
+      <span style="font-size:20px;font-weight:600">Loading</span>
+      <span style="font-size:16px;line-height:1.5;color:#AEBFCC;text-wrap:pretty">Skeleton keeps the layout stable. The status badge stays blank until the daemon confirms it, so nothing is guessed. The draft is usable straight away.</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="height:420px;display:flex;flex-direction:column;background:#0B1724;border:1px solid #2B4660;border-radius:10px;overflow:hidden">
+        <div style="height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid #1F3448"><span style="font-size:14px;font-weight:600">Sketch provider trait</span><span style="font-size:12px;padding:2px 8px;border-radius:999px;background:#3B1C20;border:1px solid #6E2E33;color:#F28B82">✕ Provider unavailable</span></div>
+        <div style="margin:16px 20px 0;padding:12px 14px;border:1px solid #6E2E33;background:#3B1C20;border-radius:8px;display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:13.5px;font-weight:600;color:#F28B82">✕ Codex CLI can't be started</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#E8EFF4">codex: not found on PATH (checked /usr/local/bin, ~/.cargo/bin)</span>
+          <div style="display:flex;gap:8px;padding-top:2px"><span style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;background:#E8EFF4;color:#08121C;font-size:12.5px;font-weight:600">Check again</span><span style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;border:1px solid #6E2E33;color:#E8EFF4;font-size:12.5px">Set Codex path…</span></div>
+        </div>
+        <div style="flex:1;padding:16px 24px;display:flex;flex-direction:column;gap:8px;opacity:.6"><div style="align-self:flex-end;width:260px;height:36px;border-radius:10px;background:#142536"></div><div style="width:70%;height:10px;border-radius:4px;background:#142536"></div></div>
+        <div style="padding:0 24px 16px"><div style="border:1px solid #1F3448;border-radius:10px;padding:12px 14px;font-size:14px;color:#E8EFF4;display:flex;justify-content:space-between"><span>Rename it to Provider and…</span><span style="font-size:12px;color:#7F95A6">Draft kept · send disabled</span></div></div>
+      </div>
+      <span style="font-size:20px;font-weight:600">Provider unavailable</span>
+      <span style="font-size:16px;line-height:1.5;color:#AEBFCC;text-wrap:pretty">Shows the exact error and what was checked. History stays readable. Other conversations aren't affected.</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="height:420px;display:flex;flex-direction:column;background:#0B1724;border:1px solid #2B4660;border-radius:10px;overflow:hidden">
+        <div style="height:36px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;background:#142536;border-bottom:1px dashed #2B4660;font-size:12.5px;color:#E8EFF4"><span>⊘</span><span>Disconnected from maittyd · reconnecting (attempt 3, next in 4s)</span><span style="flex:1"></span><span style="color:#74D4C0">Retry now</span></div>
+        <div style="height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid #1F3448"><span style="font-size:14px;font-weight:600">Fix PTY resize race</span><span style="font-size:12px;padding:2px 8px;border-radius:999px;border:1px dashed #2B4660;color:#AEBFCC">⊘ Status unknown · last seen Working 0:42 ago</span></div>
+        <div style="flex:1;padding:16px 24px;display:flex;flex-direction:column;gap:10px">
+          <p style="margin:0;font-size:13.5px;line-height:1.6;color:#AEBFCC">Queued resizes are now flushed right after registration. Running the PTY test suite</p>
+          <span style="align-self:flex-start;font-size:12px;color:#7F95A6;padding:3px 8px;border:1px dashed #2B4660;border-radius:5px">Stream interrupted, not ended. Missed output appears on reconnect.</span>
+        </div>
+        <div style="padding:0 24px 16px"><div style="border:1px solid #1F3448;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px"><span style="font-size:14px;color:#E8EFF4">add a regression test for a resize mid-spawn</span><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#7F95A6">Draft saved locally · won't send until you press Send after reconnect</span><span style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;background:#1A2E42;color:#7F95A6;font-size:12.5px;font-weight:600">Send ↵</span></div></div></div>
+      </div>
+      <span style="font-size:20px;font-weight:600">Daemon disconnected / reconnecting</span>
+      <span style="font-size:16px;line-height:1.5;color:#AEBFCC;text-wrap:pretty">Every status becomes ⊘ "last known", and the sidebar dims too. Selection and draft survive a reconnect, and the agent keeps running in the daemon.</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="height:420px;display:flex;flex-direction:column;background:#0B1724;border:1px solid #2B4660;border-radius:10px;overflow:hidden">
+        <div style="height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid #1F3448"><span style="font-size:14px;font-weight:600">Bump tokio to 1.42</span><span style="font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid #2B4660;color:#A3C9A8">✓ Done</span></div>
+        <div style="flex:1;padding:16px 24px;display:flex;flex-direction:column;gap:16px">
+          <div style="align-self:flex-end;max-width:420px;display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+            <div style="background:#142536;border:1px solid #6E2E33;border-radius:10px;padding:10px 14px;font-size:13.5px;line-height:1.5">Also bump tokio-util to match.</div>
+            <span style="font-size:12px;color:#F28B82">✕ Not delivered · maittyd refused: session locked by TUI input</span>
+            <div style="display:flex;gap:10px;font-size:12px"><span style="color:#74D4C0">Send again</span><span style="color:#AEBFCC">Edit</span><span style="color:#AEBFCC">Copy</span></div>
+          </div>
+          <div style="align-self:flex-end;max-width:420px;display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+            <div style="background:#142536;border:1px dashed #F4B860;border-radius:10px;padding:10px 14px;font-size:13.5px;line-height:1.5">Then run the full workspace tests.</div>
+            <span style="font-size:12px;color:#F4B860;text-align:right">? Delivery unknown · connection dropped while sending</span>
+            <span style="font-size:11.5px;color:#7F95A6;text-align:right">Maitty won't resend on its own. Check the terminal first.</span>
+            <div style="display:flex;gap:10px;font-size:12px"><span style="color:#74D4C0">Open terminal</span><span style="color:#AEBFCC">Send anyway…</span></div>
+          </div>
+        </div>
+      </div>
+      <span style="font-size:20px;font-weight:600">Send failed · delivery unknown</span>
+      <span style="font-size:16px;line-height:1.5;color:#AEBFCC;text-wrap:pretty">Definitely not delivered: red, retry with one click. Might have been delivered: amber dashed, and "Send anyway" asks for confirmation. Neither retries on its own.</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="height:420px;display:flex;flex-direction:column;background:#0B1724;border:1px solid #2B4660;border-radius:10px;overflow:hidden">
+        <div style="height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid #1F3448"><span style="font-size:14px;font-weight:600">Profile zsh startup</span><span style="font-size:12px;padding:2px 8px;border-radius:999px;background:#3B1C20;border:1px solid #6E2E33;color:#F28B82">↻ Recovery needed</span></div>
+        <div style="flex:1;padding:16px 24px;display:flex;flex-direction:column;gap:12px">
+          <div style="width:70%;height:10px;border-radius:4px;background:#142536"></div>
+          <div style="padding:14px;border:1px solid #6E2E33;border-radius:8px;background:#1A1519;display:flex;flex-direction:column;gap:8px">
+            <span style="font-size:13.5px;font-weight:600;color:#F28B82">↻ Codex exited during a turn (signal 9)</span>
+            <span style="font-size:13px;line-height:1.5;color:#E8EFF4;text-wrap:pretty">History up to 09:14:02 is saved. The last command, <span style="font-family:'Geist Mono',monospace;font-size:12px">zprof &gt; /tmp/zsh.prof</span>, may not have finished.</span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:2px"><span style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;background:#E8EFF4;color:#08121C;font-size:12.5px;font-weight:600">Resume session</span><span style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;border:1px solid #2B4660;color:#E8EFF4;font-size:12.5px">Open terminal</span><span style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;border:1px solid #2B4660;color:#AEBFCC;font-size:12.5px">View daemon log</span></div>
+          </div>
+        </div>
+        <div style="padding:0 24px 16px"><div style="border:1px solid #1F3448;border-radius:10px;padding:12px 14px;font-size:13px;color:#7F95A6">Composer disabled until the session is resumed</div></div>
+      </div>
+      <span style="font-size:20px;font-weight:600">Recovery required</span>
+      <span style="font-size:16px;line-height:1.5;color:#AEBFCC;text-wrap:pretty">Says what's known and what isn't. Resume reattaches through the daemon. Nothing replays the interrupted turn.</span>
+    </div>
+  </div>
+</section>
+
+<section id="adaptive" data-screen-label="Adaptive" style="display:flex;flex-direction:column;gap:40px">
+  <div style="display:flex;align-items:baseline;gap:20px"><span style="font-family:'Geist Mono',monospace;font-size:18px;color:#74D4C0">04</span><h2 style="margin:0;font-size:40px;font-weight:600">Adaptive layout + keyboard-only</h2></div>
+  <div style="display:flex;gap:40px;align-items:flex-start">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="width:1024px;height:700px;position:relative;display:flex;flex-direction:column;background:#0B1724;border-radius:10px;overflow:hidden;border:1px solid #2B4660">
+        <div style="height:34px;flex:none;display:flex;align-items:center;padding:0 12px;background:#08121C;border-bottom:1px solid #1F3448"><div style="display:flex;gap:7px;width:120px"><span style="width:11px;height:11px;border-radius:50%;background:#2B4660"></span><span style="width:11px;height:11px;border-radius:50%;background:#2B4660"></span><span style="width:11px;height:11px;border-radius:50%;background:#2B4660"></span></div><div style="flex:1;text-align:center;font-size:12px;color:#AEBFCC">Maitty</div><div style="width:120px"></div></div>
+        <div style="flex:1;display:flex;min-height:0">
+          <dc-import name="MaittySidebar" selected="pty" hint-size="244px,100%" style="width:244px;height:100%;flex:none"></dc-import>
+          <main style="flex:1;display:flex;flex-direction:column;padding:16px 24px;gap:12px;opacity:.5">
+            <span style="font-size:15px;font-weight:600">Fix PTY resize race on Linux</span>
+            <div style="width:70%;height:10px;border-radius:4px;background:#142536"></div><div style="width:55%;height:10px;border-radius:4px;background:#142536"></div><div style="width:100%;height:30px;border-radius:7px;background:#0F1D2C"></div>
+          </main>
+        </div>
+        <div style="position:absolute;inset:34px 0 0 0;background:rgba(5,12,20,.6);display:flex;justify-content:center;padding-top:90px">
+          <div role="dialog" aria-label="Quick switcher" style="width:560px;align-self:flex-start;background:#0F1D2C;border:1px solid #2B4660;border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.55);overflow:hidden">
+            <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid #1F3448;font-size:15px"><span style="color:#7F95A6">⌕</span><span>ref</span><span style="display:inline-block;width:1.5px;height:18px;background:#E8EFF4;margin-left:-8px"></span><span style="flex:1"></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">esc</span></div>
+            <div style="padding:6px;display:flex;flex-direction:column">
+              <span style="padding:6px 10px;font-size:11px;color:#7F95A6;letter-spacing:.05em">CONVERSATIONS</span>
+              <div style="height:36px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:7px;background:#1A2E42;box-shadow:inset 0 0 0 2px #74D4C0;font-size:13.5px"><span style="color:#F4B860">◆</span><span>Flaky <b>ref</b>und_spec on CI</span><span style="color:#7F95A6;font-size:12px">ledger-api</span><span style="flex:1"></span><span style="font-size:12px;color:#F4B860">Needs you · question</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#AEBFCC">↵</span></div>
+              <div style="height:36px;display:flex;align-items:center;gap:10px;padding:0 10px;font-size:13.5px;color:#AEBFCC"><span style="color:#74D4C0">◐</span><span>Rate limiter middleware</span><span style="color:#7F95A6;font-size:12px">ledger-api · mentions <b>ref</b>ill</span><span style="flex:1"></span><span style="font-size:12px">Working</span></div>
+              <span style="padding:10px 10px 6px;font-size:11px;color:#7F95A6;letter-spacing:.05em">COMMANDS</span>
+              <div style="height:34px;display:flex;align-items:center;gap:10px;padding:0 10px;font-size:13.5px;color:#AEBFCC"><span style="color:#7F95A6">›</span><span><b style="color:#E8EFF4">Ref</b>resh status from daemon</span><span style="flex:1"></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">⌘R</span></div>
+              <div style="height:34px;display:flex;align-items:center;gap:10px;padding:0 10px;font-size:13.5px;color:#AEBFCC"><span style="color:#7F95A6">›</span><span>Next needing you</span><span style="flex:1"></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">⌘⇧A</span></div>
+            </div>
+            <div style="display:flex;gap:16px;padding:9px 16px;border-top:1px solid #1F3448;font-size:11.5px;color:#7F95A6"><span>↑↓ move</span><span>↵ open</span><span>⌘↵ open terminal</span><span>tab filter: needs you</span></div>
+          </div>
+        </div>
+      </div>
+      <span style="font-size:20px;font-weight:600">1024 × 700 · ⌘K quick switcher</span>
+      <span style="font-size:16px;line-height:1.5;color:#AEBFCC;max-width:1000px">Sidebar shrinks to 244px. The right panel becomes an overlay sheet (480px) over the conversation instead of squeezing it. Results show status words, not just glyphs. The focus ring is a 2px teal inset.</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="width:800px;height:600px;display:flex;flex-direction:column;background:#0B1724;border-radius:10px;overflow:hidden;border:1px solid #2B4660">
+        <div style="height:32px;flex:none;display:flex;align-items:center;padding:0 12px;background:#08121C;border-bottom:1px solid #1F3448"><div style="display:flex;gap:7px;width:100px"><span style="width:11px;height:11px;border-radius:50%;background:#2B4660"></span><span style="width:11px;height:11px;border-radius:50%;background:#2B4660"></span><span style="width:11px;height:11px;border-radius:50%;background:#2B4660"></span></div><div style="flex:1;text-align:center;font-size:12px;color:#AEBFCC">maitty — Migrate session store</div><div style="width:100px;text-align:right;font-family:'Geist Mono',monospace;font-size:11px;color:#F4B860">◆ 2</div></div>
+        <div style="flex:1;display:flex;min-height:0">
+          <dc-import name="MaittySidebar" variant="rail" selected="mig" focus-ring="{{ false }}" hint-size="52px,100%" style="width:52px;height:100%;flex:none"></dc-import>
+          <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+            <header style="height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid #1F3448"><span style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Migrate session store to v4</span><span style="font-size:11.5px;padding:2px 8px;border-radius:999px;background:#3A2B14;color:#F4B860;border:1px solid #6B4E1F;white-space:nowrap">◆ Needs you</span><span style="flex:1"></span><span style="font-size:12px;color:#AEBFCC">⋯</span></header>
+            <div style="flex:1;padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-height:0">
+              <div style="border:1px solid #6B4E1F;border-radius:10px;background:#16191A;overflow:hidden">
+                <div style="padding:8px 12px;background:#3A2B14;font-size:13px;font-weight:600;color:#F4B860">◆ Approval needed · command outside sandbox</div>
+                <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+                  <div style="font-family:'Geist Mono',monospace;font-size:12px;line-height:1.55;background:#08121C;border:1px solid #1F3448;border-radius:6px;padding:8px 10px;white-space:pre-wrap">$ cargo run -p maitty-migrate -- --apply ~/.local/share/maitty/sessions.db</div>
+                  <span style="font-size:12px;color:#AEBFCC">Writes outside workspace · cwd ~/.maitty/wt/maitty-migrate-store</span>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <span style="height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:7px;background:#F4B860;color:#08121C;font-size:12.5px;font-weight:600">Approve once Y</span>
+                    <span style="height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:7px;border:1px solid #6B4E1F;color:#E8EFF4;font-size:12.5px;box-shadow:0 0 0 2px #16191A,0 0 0 4px #74D4C0">For this session A</span>
+                    <span style="height:30px;display:flex;align-items:center;padding:0 12px;border-radius:7px;border:1px solid #2B4660;color:#E8EFF4;font-size:12.5px">Deny N</span>
+                    <span style="height:30px;display:flex;align-items:center;padding:0 12px;border-radius:7px;border:1px solid #2B4660;color:#AEBFCC;font-size:12.5px">Deny + stop ⇧N</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="padding:0 16px 14px"><div style="border:1px solid #6B4E1F;border-radius:10px;background:#142536;padding:10px 12px;display:flex;align-items:center;gap:8px;font-size:12.5px"><span style="color:#F4B860">◆</span><span style="color:#7F95A6;flex:1">Type to deny with instructions…</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#AEBFCC">⌘.</span></div></div>
+          </main>
+        </div>
+      </div>
+      <span style="font-size:20px;font-weight:600">800 × 600 · rail + keyboard focus</span>
+      <span style="font-size:16px;line-height:1.5;color:#AEBFCC;max-width:800px">Below 900px the sidebar becomes a 52px status rail (⌘\ opens it as an overlay). Chips move into the ⋯ menu. Tab moves focus through the approval choices in reading order, and the ring stays visible on amber.</span>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;max-width:1880px">
+    <div style="border-top:2px solid #2B4660;padding-top:14px;display:flex;flex-direction:column;gap:6px"><span style="font-family:'Geist Mono',monospace;font-size:15px;color:#74D4C0">≥ 1280</span><span style="font-size:16px;line-height:1.55;color:#AEBFCC">Sidebar 280 · conversation fluid (max 760 text) · panel 340 docked, 640 for Review.</span></div>
+    <div style="border-top:2px solid #2B4660;padding-top:14px;display:flex;flex-direction:column;gap:6px"><span style="font-family:'Geist Mono',monospace;font-size:15px;color:#74D4C0">900 – 1279</span><span style="font-size:16px;line-height:1.55;color:#AEBFCC">Sidebar 244 · panel overlays as a sheet · header chips wrap to a second line.</span></div>
+    <div style="border-top:2px solid #2B4660;padding-top:14px;display:flex;flex-direction:column;gap:6px"><span style="font-family:'Geist Mono',monospace;font-size:15px;color:#74D4C0">&lt; 900 (min 720)</span><span style="font-size:16px;line-height:1.55;color:#AEBFCC">52px status rail · panel full-height sheet · chips in ⋯ · composer stays pinned.</span></div>
+  </div>
+</section>
+
+<section id="interactions" data-screen-label="Interactions" style="display:flex;flex-direction:column;gap:32px">
+  <div style="display:flex;align-items:baseline;gap:20px"><span style="font-family:'Geist Mono',monospace;font-size:18px;color:#74D4C0">05</span><h2 style="margin:0;font-size:40px;font-weight:600">Interaction notes</h2></div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;max-width:1880px">
+    <sc-for list="{{ interactions }}" as="x" hint-placeholder-count="6">
+      <div style="border:1px solid #1F3448;border-radius:12px;background:#0B1724;padding:24px;display:flex;flex-direction:column;gap:14px">
+        <span style="font-size:22px;font-weight:600">{{ x.h }}</span>
+        <sc-for list="{{ x.items }}" as="i" hint-placeholder-count="4"><span style="font-size:16px;line-height:1.55;color:#AEBFCC;text-wrap:pretty">— {{ i }}</span></sc-for>
+      </div>
+    </sc-for>
+  </div>
+</section>
+
+<section id="tokens" data-screen-label="Tokens" style="display:flex;flex-direction:column;gap:32px">
+  <div style="display:flex;align-items:baseline;gap:20px"><span style="font-family:'Geist Mono',monospace;font-size:18px;color:#74D4C0">06</span><h2 style="margin:0;font-size:40px;font-weight:600">Tokens + components</h2></div>
+  <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:16px;max-width:1880px">
+    <sc-for list="{{ swatches }}" as="s" hint-placeholder-count="16">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="height:72px;border-radius:8px;background:{{ s.hex }};border:1px solid #2B4660"></div>
+        <span style="font-family:'Geist Mono',monospace;font-size:13px;color:#E8EFF4">{{ s.name }}</span>
+        <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#7F95A6">{{ s.hex }} · {{ s.use }}</span>
+      </div>
+    </sc-for>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;max-width:1880px">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <span style="font-size:13px;color:#7F95A6;letter-spacing:.06em">TYPE · Geist / Geist Mono</span>
+      <div style="display:flex;align-items:baseline;gap:20px"><span style="width:150px;font-family:'Geist Mono',monospace;font-size:13px;color:#7F95A6">title 15/600</span><span style="font-size:15px;font-weight:600">Fix PTY resize race on Linux</span></div>
+      <div style="display:flex;align-items:baseline;gap:20px"><span style="width:150px;font-family:'Geist Mono',monospace;font-size:13px;color:#7F95A6">body 14/1.6</span><span style="font-size:14px">Queued resizes are flushed after registration.</span></div>
+      <div style="display:flex;align-items:baseline;gap:20px"><span style="width:150px;font-family:'Geist Mono',monospace;font-size:13px;color:#7F95A6">row 13/400·600</span><span style="font-size:13px">Rate limiter middleware</span></div>
+      <div style="display:flex;align-items:baseline;gap:20px"><span style="width:150px;font-family:'Geist Mono',monospace;font-size:13px;color:#7F95A6">meta 12/12.5</span><span style="font-size:12.5px;color:#AEBFCC">Explored 6 files · 3 searches</span></div>
+      <div style="display:flex;align-items:baseline;gap:20px"><span style="width:150px;font-family:'Geist Mono',monospace;font-size:13px;color:#7F95A6">mono 11.5–13</span><span style="font-family:'Geist Mono',monospace;font-size:12.5px">cargo test -p maitty-pty</span></div>
+      <span style="font-size:15px;line-height:1.55;color:#AEBFCC;padding-top:6px">Spacing on a 4px base: 4 · 6 · 8 · 12 · 16 · 20 · 24 · 32. Radius 4 (chips) · 6–7 (rows, buttons) · 10 (cards, composer) · 12 (dialogs). Motion: 120ms ease-out on panels, 1.4s glyph pulse for Working only, and both are removed under reduced motion.</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <span style="font-size:13px;color:#7F95A6;letter-spacing:.06em">COMPONENTS · shadcn/ui base → Maitty treatment</span>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <span style="height:32px;display:flex;align-items:center;padding:0 14px;border-radius:7px;background:#74D4C0;color:#08121C;font-size:13px;font-weight:600">Primary</span>
+        <span style="height:32px;display:flex;align-items:center;padding:0 14px;border-radius:7px;border:1px solid #2B4660;color:#E8EFF4;font-size:13px">Secondary</span>
+        <span style="height:32px;display:flex;align-items:center;padding:0 14px;border-radius:7px;background:#F4B860;color:#08121C;font-size:13px;font-weight:600">Approve (needs-you only)</span>
+        <span style="font-family:'Geist Mono',monospace;font-size:11px;padding:1px 5px;border:1px solid #2B4660;border-bottom-width:2px;border-radius:4px;color:#AEBFCC">⌘K</span>
+        <span style="font-family:'Geist Mono',monospace;font-size:11px;padding:2px 7px;border:1px solid #1F3448;border-radius:4px;color:#AEBFCC">⎇ chip</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;padding:2px 9px;border-radius:999px;background:#12363A;color:#74D4C0;border:1px solid #1F5552">◐ Working</span>
+        <span style="font-size:12px;padding:2px 9px;border-radius:999px;background:#3A2B14;color:#F4B860;border:1px solid #6B4E1F">◆ Needs you</span>
+        <span style="font-size:12px;padding:2px 9px;border-radius:999px;border:1px solid #2B4660;color:#A3C9A8">✓ Done</span>
+        <span style="font-size:12px;padding:2px 9px;border-radius:999px;border:1px solid #2B4660;color:#7F95A6">○ Idle</span>
+        <span style="font-size:12px;padding:2px 9px;border-radius:999px;border:1px dashed #2B4660;color:#AEBFCC">⊘ Unknown</span>
+        <span style="font-size:12px;padding:2px 9px;border-radius:999px;background:#3B1C20;color:#F28B82;border:1px solid #6E2E33">↻ Recovery needed</span>
+      </div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:15px;line-height:1.5;color:#AEBFCC">
+        <span style="font-family:'Geist Mono',monospace;color:#E8EFF4">Command</span><span>⌘K switcher; sidebar search uses the same index</span>
+        <span style="font-family:'Geist Mono',monospace;color:#E8EFF4">Collapsible</span><span>tool rows, project groups</span>
+        <span style="font-family:'Geist Mono',monospace;color:#E8EFF4">Resizable</span><span>sidebar / conversation / panel splits, widths persisted</span>
+        <span style="font-family:'Geist Mono',monospace;color:#E8EFF4">Tabs</span><span>panel (Review · Terminal · Context), Chat/Terminal toggle</span>
+        <span style="font-family:'Geist Mono',monospace;color:#E8EFF4">Textarea</span><span>composer, auto-grow 1–12 lines then scroll</span>
+        <span style="font-family:'Geist Mono',monospace;color:#E8EFF4">ScrollArea</span><span>list + transcript, sticky-to-bottom only while you're at the bottom</span>
+        <span style="font-family:'Geist Mono',monospace;color:#E8EFF4">Not used</span><span>Toast for critical states (they stay inline), Card shadows, the stock dashboard grid</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="a11y" data-screen-label="Keyboard a11y" style="display:grid;grid-template-columns:1fr 1fr;gap:40px;max-width:1880px">
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:20px"><span style="font-family:'Geist Mono',monospace;font-size:18px;color:#74D4C0">07</span><h2 style="margin:0;font-size:40px;font-weight:600">Keyboard</h2></div>
+    <div style="display:grid;grid-template-columns:200px 1fr;gap:10px 20px;font-size:16px">
+      <sc-for list="{{ keys }}" as="k" hint-placeholder-count="14">
+        <span style="font-family:'Geist Mono',monospace;font-size:14px;color:#E8EFF4">{{ k.k }}</span><span style="color:#AEBFCC">{{ k.v }}</span>
+      </sc-for>
+    </div>
+    <span style="font-size:14px;color:#7F95A6">⌘ on macOS = Ctrl on Windows/Linux. In Terminal mode, only ⌘` and ⌘K are intercepted.</span>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <h2 style="margin:0;font-size:40px;font-weight:600;padding-left:0">Accessibility</h2>
+    <sc-for list="{{ a11y }}" as="a" hint-placeholder-count="7"><span style="font-size:16px;line-height:1.55;color:#AEBFCC;text-wrap:pretty">— {{ a }}</span></sc-for>
+  </div>
+</section>
+
+<section id="tradeoffs" data-screen-label="Tradeoffs" style="display:grid;grid-template-columns:1fr 1fr;gap:40px;max-width:1880px">
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:20px"><span style="font-family:'Geist Mono',monospace;font-size:18px;color:#74D4C0">08</span><h2 style="margin:0;font-size:40px;font-weight:600">Key tradeoffs</h2></div>
+    <sc-for list="{{ tradeoffs }}" as="t" hint-placeholder-count="6">
+      <div style="display:flex;flex-direction:column;gap:4px;border-top:1px solid #1F3448;padding-top:14px"><span style="font-size:18px;font-weight:600">{{ t.h }}</span><span style="font-size:16px;line-height:1.55;color:#AEBFCC;text-wrap:pretty">{{ t.b }}</span></div>
+    </sc-for>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <h2 style="margin:0;font-size:40px;font-weight:600">Release scope</h2>
+    <div style="border:1px solid #1F5552;border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:10px">
+      <span style="font-family:'Geist Mono',monospace;font-size:14px;color:#74D4C0">FIRST USABLE CODEX RELEASE</span>
+      <sc-for list="{{ v1 }}" as="r" hint-placeholder-count="8"><span style="font-size:16px;line-height:1.5;color:#E8EFF4">✓ {{ r }}</span></sc-for>
+    </div>
+    <div style="border:1px solid #1F3448;border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:10px">
+      <span style="font-family:'Geist Mono',monospace;font-size:14px;color:#AEBFCC">CAN WAIT</span>
+      <sc-for list="{{ later }}" as="r" hint-placeholder-count="6"><span style="font-size:16px;line-height:1.5;color:#AEBFCC">○ {{ r }}</span></sc-for>
+    </div>
+  </div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;notes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Display&quot;},&quot;motion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Display&quot;}}">
+const DIFF=[
+ ['@','','','@@ -86,10 +86,13 @@ impl LinuxPty'],
+ [' ',86,86,'    pub fn on_resize(&self, id: SessionId, size: WinSize) {'],
+ ['-',87,'','        if let Some(pty) = self.registry.get(&id) {'],
+ ['-',88,'','            pty.resize(size);'],
+ ['-',89,'','        }'],
+ ['+','',87,'        match self.registry.get(&id) {'],
+ ['+','',88,'            Some(pty) => pty.resize(size),'],
+ ['+','',89,'            // SIGWINCH can beat spawn(); keep the latest size'],
+ ['+','',90,'            None => { self.pending.lock().insert(id, size); }'],
+ ['+','',91,'        }'],
+ [' ',90,92,'    }'],
+ ['@','','','@@ -138,6 +141,11 @@ fn spawn'],
+ [' ',138,141,'        let pty = LinuxPtyHandle::open(&cmd, size)?;'],
+ [' ',139,142,'        self.registry.insert(id, pty.clone());'],
+ ['+','',143,'        if let Some(queued) = self.pending.lock().remove(&id) {'],
+ ['+','',144,'            pty.resize(queued);'],
+ ['+','',145,'        }'],
+ [' ',140,146,'        Ok(id)'],
+ ['-',141,'','        // TODO: resize before register is lost'],
+ [' ',142,147,'    }']];
+const TERM=[
+ ['codex  ·  maitty/fix-pty-resize  ·  workspace-write  ·  on-request','#7F95A6'],
+ ['',''],
+ ['› SIGWINCH sometimes arrives before the child PTY is registered, so the','#E8EFF4'],
+ ['  first resize is dropped on Linux. Find the race and fix it.','#E8EFF4'],
+ ['',''],
+ ['• Explored  src/pty/linux.rs, src/session/registry.rs (+4)','#AEBFCC'],
+ ['• Edited    src/pty/linux.rs  +18 −4','#AEBFCC'],
+ ['• Added     src/pty/pending.rs  +16','#AEBFCC'],
+ ['• Ran       cargo test -p maitty-pty resize','#AEBFCC'],
+ ['    test resize::queued_before_register ... ok','#74D4C0'],
+ ['    test resize::flush_after_spawn ... ok','#74D4C0'],
+ ['    test result: ok. 14 passed; 0 failed','#74D4C0'],
+ ['',''],
+ ['Fixed. Resizes that arrive before registration are kept in a pending map','#E8EFF4'],
+ ['and applied right after registry.insert. The macOS path is untouched.','#E8EFF4'],
+ ['',''],
+ ['  ⏎ send   ⌃C interrupt   ⌃T transcript   /status','#5E7385'],
+ ['','']];
+class Component extends DCLogic{
+ state={explore:false};
+ renderVals(){
+  const motion=this.props.motion??true;
+  const caret=React.createElement('span',{style:{display:'inline-block',width:7,height:16,marginLeft:3,background:'#74D4C0',verticalAlign:'-3px',animation:motion?'mtblink 1s steps(1) infinite':'none'}});
+  const spinTeal=React.createElement('span',{style:{color:'#74D4C0',display:'inline-block',animation:motion?'mtpulse 1.4s ease-in-out infinite':'none'}},'◐');
+  const ex=this.state.explore;
+  return {
+   showNotes:this.props.notes??true, caret, spinTeal,
+   exploreOpen:ex, exploreChev:ex?'▾':'▸', toggleExplore:()=>this.setState(s=>({explore:!s.explore})),
+   exploreItems:[{k:'search',v:'"SIGWINCH" in src/ — 4 hits'},{k:'read',v:'src/pty/linux.rs'},{k:'read',v:'src/session/registry.rs'},{k:'search',v:'"registry.insert" — 2 hits'},{k:'read',v:'src/pty/mod.rs'},{k:'search',v:'"on_resize" in tests/ — 1 hit'}],
+   ctx:[{k:'Project',v:'maitty',s:'~/code/maitty'},{k:'Worktree',v:'fix/pty-resize',s:'~/.maitty/wt/maitty-fix-pty-resize'},{k:'Branch',v:'2 ahead of main',s:'uncommitted: 1 file'},{k:'Provider',v:'Codex CLI 0.46.0',s:'/usr/local/bin/codex'},{k:'Model',v:'gpt-5-codex',s:'reasoning: medium'},{k:'Sandbox',v:'workspace-write',s:'network: off'},{k:'Approvals',v:'on-request',s:'from ~/.codex/config.toml'},{k:'Session',v:'owned by maittyd',s:'ms_7f3a91c2 · started 14:29'}],
+   files:[{tag:'M',tagColor:'#F4B860',path:'src/pty/linux.rs',add:'+18',del:'−4',bg:'#1A2E42'},{tag:'A',tagColor:'#74D4C0',path:'src/pty/pending.rs',add:'+16',del:'',bg:'transparent'},{tag:'M',tagColor:'#F4B860',path:'tests/resize.rs',add:'+8',del:'−5',bg:'transparent'}],
+   diff:DIFF.map(([s,o,n,t])=>({s:s==='@'||s===' '?'':s==='-'?'−':'+',o,n,t,bg:s==='+'?'#0F2F2A':s==='-'?'#2E1A22':s==='@'?'#142536':'transparent',sc:s==='+'?'#74D4C0':'#F28B82',tc:s==='@'?'#7F95A6':'#E8EFF4'})),
+   term:TERM.map(([t,c])=>({t:t||' ',c:c||'#E8EFF4'})),
+   interactions:[
+    {h:'Sidebar',items:['Rows sort by most recent activity within each project. Needs you never reorders a list under your cursor; it adds a badge.','↑↓ moves, → / ← expands or collapses a project, ↵ opens, ⌘↵ opens in Terminal mode.','The Needs you filter is a flat triage list across projects, oldest request first.','Unread clears after 1s of focus, not on hover.']},
+    {h:'Composer',items:['↵ sends, ⇧↵ adds a newline, ↑ in an empty composer edits your last unsent draft.','The draft is saved per conversation on every keystroke and survives reloads, reconnects and app restarts.','While a turn runs, Send is disabled and Stop (⌘.) is shown. Nothing is queued without you.','The status strip above the input is the single source of truth: Running, Waiting for approval, Disconnected or Failed.']},
+    {h:'Approval',items:['The card mirrors the provider request exactly: command or patch, cwd, sandbox reason, and the offered choices.','Y / A / N work only when the card or composer has focus, so you can\'t approve by accident while typing elsewhere.','Patch approvals show the diff inline, capped at 40 lines, with a link to open the full Review.','A request answered elsewhere (TUI) updates in place with who answered and what.']},
+    {h:'Diff review',items:['Opens on the file the latest tool row touched. [ and ] jump between hunks, ⌘[ and ⌘] between files.','Selecting lines and pressing ⌘L quotes them into the composer with a file:line chip.','Refreshes from git when the turn ends and shows "updated" in place. It never jumps scroll position.']},
+    {h:'Native terminal',items:['⌘` toggles Chat ⇄ Terminal for the selected session, and the scroll position of each is kept.','The terminal attaches to the daemon PTY. It never spawns a new Codex.','If a TUI client is attached too, both see the same screen and the banner says so.']},
+    {h:'Reconnect',items:['Backoff 1s → 2s → 4s … 30s max, with Retry now always available. The window stays fully readable.','On reconnect: re-fetch status, replay missed events, then restore selection and scroll position.','A prompt with no daemon ack becomes "Delivery unknown". Maitty checks the history for it and only then offers to send it again.','If the daemon restarts with a different session set, missing sessions show "Gone from daemon" rather than vanishing.']}],
+   swatches:[{name:'bg/window',hex:'#08121C',use:'chrome'},{name:'bg/base',hex:'#0B1724',use:'conversation'},{name:'bg/side',hex:'#0F1D2C',use:'sidebar, panel'},{name:'bg/raised',hex:'#142536',use:'composer, bubble'},{name:'bg/select',hex:'#1A2E42',use:'selected row'},{name:'line',hex:'#1F3448',use:'dividers'},{name:'line/strong',hex:'#2B4660',use:'controls'},{name:'text',hex:'#E8EFF4',use:'primary'},
+    {name:'text/2',hex:'#AEBFCC',use:'secondary'},{name:'text/3',hex:'#7F95A6',use:'meta (5.7:1)'},{name:'teal',hex:'#74D4C0',use:'working, primary'},{name:'teal/soft',hex:'#12363A',use:'working bg'},{name:'amber',hex:'#F4B860',use:'needs you only'},{name:'amber/soft',hex:'#3A2B14',use:'needs bg'},{name:'red',hex:'#F28B82',use:'failure only'},{name:'sage',hex:'#A3C9A8',use:'done'}],
+   keys:[{k:'⌘K',v:'Quick switcher + commands'},{k:'⌘N',v:'New conversation in current project'},{k:'⌘⇧A',v:'Jump to next conversation that needs you'},{k:'⌥↑ / ⌥↓',v:'Previous / next conversation'},{k:'F6 / ⇧F6',v:'Cycle focus: sidebar → conversation → composer → panel'},{k:'↵ / ⇧↵',v:'Send / newline'},{k:'⌘.',v:'Stop the running turn (asks to confirm after 10s+ of work)'},{k:'Y · A · N · ⇧N',v:'Answer a focused approval with the offered choices'},{k:'⌘`',v:'Toggle Chat ⇄ native Terminal'},{k:'⌘⇧D',v:'Open Review panel'},{k:'⌘I',v:'Open Context panel'},{k:'⌘\\',v:'Toggle sidebar / rail'},{k:'⌘L',v:'Quote selection into composer'},{k:'Esc',v:'Close overlay or panel, then return focus to composer'}],
+   a11y:['Status is always glyph + word in accessible names ("Fix PTY resize race, Working, maitty"). Color is never the only signal.','The six status glyphs differ in shape (◐ ◆ ✓ ○ ⊘ ↻), so they stay distinct in grayscale and for common color-vision deficiencies.','All text is at least 4.5:1 on its surface. text/3 #7F95A6 measures 5.7:1 on bg/base, and amber and red text 9:1+.','aria-live="polite" announces status changes and turn completion, not individual streamed tokens. Approval requests use an assertive announcement once.','The focus ring is a 2px teal inset on rows and a 2px offset ring on buttons. It\'s never removed and stays visible on amber and red surfaces.','prefers-reduced-motion stops the caret blink and Working pulse. The status word still updates.','The native terminal region is labelled as a terminal, and screen-reader users get the Chat transcript as the accessible equivalent.'],
+   tradeoffs:[{h:'Toggle Chat ⇄ Terminal instead of split by default',b:'It keeps one obvious place to type for each session and avoids two cursors competing. The cost is that you can\'t watch both at once until the v1.1 terminal dock ships.'},{h:'Inline approval, not a modal',b:'The agent\'s reasoning stays above the request. The cost is that a request can scroll off-screen, so the composer strip, header badge, sidebar and title bar all repeat it.'},{h:'Never auto-retry',b:'Flaky connections take one extra click, but a prompt that might have been delivered can never run twice.'},{h:'Group by project, triage by filter',b:'It matches how worktrees are organized. The Needs you filter covers cross-project triage, and the cost is one extra keystroke (⌘⇧A).'},{h:'Collapsed tool rows by default',b:'The conversation stays readable. Raw detail is one click away, and the running tool is always open.'},{h:'Read-only review',b:'No stage or revert keeps the GUI from competing with git and Codex. Users who want them use their editor.'}],
+   v1:['First launch with daemon + Codex checks','Sidebar: projects, status, filters, search, new conversation','Conversation with streaming + collapsible tool rows','Composer with persistent drafts, Stop, status strip','Inline approval + question cards','Chat ⇄ native terminal toggle','Reconnecting, send failed, delivery unknown, recovery needed, provider unavailable','Changed-files list + Open in editor','1024 layout + ⌘K switcher + full keyboard path'],
+   later:['Inline diff viewer with hunk navigation + ⌘L quote','Terminal dock in the right panel, pop-out window','800px rail layout','Context panel extras (branch ahead/behind, session ids)','OS notifications for Needs you (opt-in)','Claude provider — only once the daemon supports it']
+  };
+ }
+}
+</script>
+</body>
+</html>

@@ -19,7 +19,6 @@ import {
   CircleAlert,
   CircleCheck,
   CircleHelp,
-  Code2,
   Command,
   Circle,
   CircleDashed,
@@ -130,6 +129,13 @@ import {
   readSelectedConversation,
   writeSelectedConversation,
 } from '@/data/selectedConversation'
+import {
+  closeConversationTab,
+  openConversationTab,
+  readOpenConversationTabs,
+  reconcileConversationTabs,
+  writeOpenConversationTabs,
+} from '@/data/openConversationTabs'
 import { shortcutModifier } from '@/lib/shortcut-modifier'
 import { errorMessage } from '@/lib/error-message'
 import './App.css'
@@ -169,9 +175,7 @@ function daemonProtocolMismatch(
         ? error
         : ''
   const versionMismatch =
-    /protocol v(\d+), (?:this one v|while this GUI needs v)(\d+)/.exec(
-      message,
-    )
+    /protocol v(\d+), (?:this one v|while this GUI needs v)(\d+)/.exec(message)
   if (!versionMismatch) return null
   const daemonProtocol = Number(versionMismatch[1])
   const guiProtocol = Number(versionMismatch[2])
@@ -246,6 +250,9 @@ function App() {
   const [selectedId, setSelectedId] = useState(
     () => readSelectedConversation() ?? (desktop ? '' : 'codex-43'),
   )
+  const [savedOpenTabIds, setSavedOpenTabIds] = useState(
+    readOpenConversationTabs,
+  )
   const [messagesById, setMessagesById] = useState<Record<string, Message[]>>(
     () => structuredClone(previewMessages),
   )
@@ -313,6 +320,51 @@ function App() {
     activeConversations[0] ??
     conversations[0]
   const selectedConversationId = selected?.id
+  const availableConversationIds = useMemo(
+    () => activeConversations.map((conversation) => conversation.id),
+    [activeConversations],
+  )
+  const openTabIds = useMemo(
+    () =>
+      reconcileConversationTabs(
+        savedOpenTabIds,
+        availableConversationIds,
+        selectedConversationId,
+      ),
+    [savedOpenTabIds, availableConversationIds, selectedConversationId],
+  )
+  const openTabs = useMemo(
+    () =>
+      openTabIds.flatMap((id) => {
+        const conversation = conversations.find((item) => item.id === id)
+        return conversation ? [conversation] : []
+      }),
+    [conversations, openTabIds],
+  )
+  const selectConversation = useCallback(
+    (conversationId: string) => {
+      setSelectedId(conversationId)
+      setSavedOpenTabIds(
+        openConversationTab(openTabIds, conversationId, selectedConversationId),
+      )
+    },
+    [openTabIds, selectedConversationId],
+  )
+  const closeConversation = useCallback(
+    (conversationId: string) => {
+      if (!selectedConversationId) return
+      const result = closeConversationTab(
+        openTabIds,
+        selectedConversationId,
+        conversationId,
+      )
+      setSavedOpenTabIds(result.tabIds)
+      if (result.selectedId && result.selectedId !== selectedConversationId) {
+        setSelectedId(result.selectedId)
+      }
+    },
+    [openTabIds, selectedConversationId],
+  )
   const showTerminal = Boolean(
     selected && terminalConversationId === selected.id,
   )
@@ -372,10 +424,6 @@ function App() {
       : sendFailure?.kind === 'not-delivered'
         ? 'not-delivered'
         : null
-  const attentionCount = activeConversations.filter(
-    (conversation) =>
-      conversation.status === 'needs-you' || conversation.status === 'recovery',
-  ).length
   const setStatus = useCallback(
     (conversationId: string, status: SessionStatus) => {
       setConversations((current) =>
@@ -399,7 +447,7 @@ function App() {
               queryKey: ['conversation-history', selected.id],
             }),
           ])
-          toast.message('Cancellation requested. Waiting for Codex to stop.')
+          toast.message(`Cancellation requested. Waiting for ${selected.provider} to stop.`)
         })
         .catch((error: unknown) => {
           toast.error(
@@ -503,7 +551,7 @@ function App() {
       )
       if (!conversation) return
       setCommandDialogOpen(false)
-      setSelectedId(conversation.id)
+      selectConversation(conversation.id)
       if (
         !desktop ||
         !conversation.execution ||
@@ -555,6 +603,7 @@ function App() {
       desktop,
       handoffPending,
       queryClient,
+      selectConversation,
     ],
   )
   const retryNativeHandoff = useCallback(() => {
@@ -645,6 +694,18 @@ function App() {
   }, [selectedConversationId])
 
   useEffect(() => {
+    try {
+      writeOpenConversationTabs(openTabIds)
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? `Could not save open conversation tabs: ${error.message}`
+          : 'Could not save open conversation tabs',
+      )
+    }
+  }, [openTabIds])
+
+  useEffect(() => {
     if (!desktop) return
     if (daemonDisconnected) {
       previousConversationStatuses.current.clear()
@@ -675,7 +736,7 @@ function App() {
       const openConversation = {
         label: 'Open',
         onClick: () => {
-          setSelectedId(notification.conversationId)
+          selectConversation(notification.conversationId)
         },
       }
       if (notification.kind === 'attention') {
@@ -704,6 +765,7 @@ function App() {
     settingsPreferences.notificationSound,
     settingsPreferences.notifyFinished,
     settingsPreferences.notifyNeedsYou,
+    selectConversation,
   ])
 
   useEffect(() => {
@@ -788,6 +850,30 @@ function App() {
       }
       if (inDialog) return
       if (inTerminal && !(hasModifier && key === '`')) return
+      if (hasModifier && event.key === 'Tab' && openTabIds.length > 1) {
+        event.preventDefault()
+        const currentIndex = openTabIds.indexOf(selected?.id ?? '')
+        const direction = event.shiftKey ? -1 : 1
+        const nextId =
+          openTabIds[
+            (currentIndex + direction + openTabIds.length) % openTabIds.length
+          ]
+        if (nextId) selectConversation(nextId)
+        return
+      }
+      if (hasModifier && /^\d$/.test(event.key)) {
+        const tabId = openTabIds[Number(event.key) - 1]
+        if (tabId) {
+          event.preventDefault()
+          selectConversation(tabId)
+        }
+        return
+      }
+      if (hasModifier && key === 'w' && selected) {
+        event.preventDefault()
+        closeConversation(selected.id)
+        return
+      }
       if (hasModifier && event.key === ',') {
         event.preventDefault()
         setSettingsDialogOpen(true)
@@ -912,7 +998,7 @@ function App() {
         const selectedIndex = blocked.findIndex(
           (conversation) => conversation.id === selected?.id,
         )
-        setSelectedId(
+        selectConversation(
           blocked[(selectedIndex + 1) % blocked.length]?.id ?? firstBlocked.id,
         )
       }
@@ -928,8 +1014,11 @@ function App() {
     daemonDisconnected,
     desktop,
     isCompactSidebar,
+    openTabIds,
     pendingApproval,
     selected,
+    selectConversation,
+    closeConversation,
     toggleTerminal,
   ])
 
@@ -1195,103 +1284,139 @@ function App() {
             </span>
           </div>
         </header>
-        <main className="empty-workspace" id="conversation-main" tabIndex={-1}>
-          <div className="empty-mark">
-            <MessageSquarePlus size={20} />
-          </div>
-          <h1>
-            {sessionsQuery.isLoading
-              ? 'Connecting to Maitty'
-              : sessionsQuery.isError
-                ? 'Daemon disconnected'
-                : 'Run your coding agents side by side.'}
-          </h1>
-          <p
-            className={
-              sessionsQuery.isError ? 'daemon-connection-error' : undefined
-            }
+        <div className="workspace-shell empty-shell">
+          <ConversationSidebar
+            conversations={[]}
+            archivedConversations={[]}
+            selectedId=""
+            filter={filter}
+            pinnedIds={sidebarPreferences.pinnedIds}
+            compact={isCompactSidebar}
+            desktopCollapsed={sidebarCollapsed}
+            disconnected={daemonDisconnected}
+            drawerOpen={sidebarDrawerOpen}
+            onFilter={setFilter}
+            onNew={() => {
+              setNewDialogOpen(true)
+            }}
+            onTogglePin={togglePin}
+            onArchive={setArchived}
+            onRename={renameConversation}
+            onSelect={selectConversation}
+            onToggleDrawer={() => {
+              setSidebarDrawerOpen((open) => !open)
+            }}
+            onToggleCollapse={() => {
+              setSidebarCollapsed((collapsed) => !collapsed)
+            }}
+            primaryModifier={primaryModifier}
+          />
+          <main
+            className="empty-workspace"
+            id="conversation-main"
+            tabIndex={-1}
           >
-            {sessionsQuery.isLoading
-              ? 'Connecting to your local Maitty service.'
-              : sessionsQuery.isError
-                ? daemonConnectionError(sessionsQuery.error)
-                : 'Your conversations stay running in Maitty, even when you close this window.'}
-          </p>
-          {!sessionsQuery.isLoading && !sessionsQuery.isError && (
-            <div
-              className="first-run-checklist"
-              aria-label="First launch status"
-            >
-              <span>
-                <i className="connection-dot is-connected" />
-                Maitty daemon connected
-              </span>
-              <span>
-                <i
-                  className={`connection-dot ${codexExecutableQuery.isSuccess ? 'is-connected' : ''}`}
-                />
-                {!desktop
-                  ? 'Codex check available in desktop app'
-                  : codexExecutableQuery.isPending
-                    ? 'Checking for Codex CLI…'
-                    : codexExecutableQuery.isError
-                      ? 'Codex CLI not found'
-                      : 'Codex CLI ready'}
-              </span>
-              <span>
-                <i className={`connection-dot ${claudeExecutableQuery.isSuccess ? 'is-connected' : ''}`} />
-                {!desktop
-                  ? 'Claude Code check available in desktop app'
-                  : claudeExecutableQuery.isPending
-                    ? 'Checking for Claude Code CLI…'
-                    : claudeExecutableQuery.isError
-                      ? 'Claude Code CLI not found'
-                      : 'Claude Code CLI ready'}
-              </span>
+            <div className="empty-mark">
+              <MessageSquarePlus size={20} />
             </div>
-          )}
-          {sessionsQuery.isLoading ? (
-            <Button disabled>
-              <LoaderCircle size={14} />
-              Connecting
-            </Button>
-          ) : sessionsQuery.isError ? (
-            <>
-              <div className="connection-actions">
-                <Button
-                  onClick={() => {
-                    void sessionsQuery.refetch()
-                  }}
-                >
-                  Reconnect
-                </Button>
-                {daemonRestartAction}
-              </div>
-              {mismatch && daemonRestartStatus && !daemonRestartStatus.canRestart && (
-                <p className="daemon-connection-error" role="status">
-                  {mismatch.daemonProtocol > mismatch.guiProtocol
-                    ? 'This service is newer than the GUI. Update the GUI before reconnecting.'
-                    : daemonRestartStatus.sessionCount > 0
-                      ? `The older service owns ${String(daemonRestartStatus.sessionCount)} sessions. Maitty will leave it running so your TUI work is not interrupted.`
-                      : daemonRestartStatus.activeTurnCount === null
-                        ? 'Maitty could not verify that the older service is idle, so it will leave the service running.'
-                        : 'The older service still reports active work, so Maitty will leave it running.'}
-                </p>
-              )}
-            </>
-          ) : (
-            <Button
-              onClick={() => {
-                setNewDialogOpen(true)
-                if (desktop) void chooseFolder()
-              }}
+            <h1>
+              {sessionsQuery.isLoading
+                ? 'Connecting to Maitty'
+                : sessionsQuery.isError
+                  ? 'Daemon disconnected'
+                  : 'Run your coding agents side by side.'}
+            </h1>
+            <p
+              className={
+                sessionsQuery.isError ? 'daemon-connection-error' : undefined
+              }
             >
-              <FolderOpen size={14} />
-              Open a project folder
-              <span className="shortcut-hint">{primaryModifier} O</span>
-            </Button>
-          )}
-        </main>
+              {sessionsQuery.isLoading
+                ? 'Connecting to your local Maitty service.'
+                : sessionsQuery.isError
+                  ? daemonConnectionError(sessionsQuery.error)
+                  : 'Your conversations stay running in Maitty, even when you close this window.'}
+            </p>
+            {!sessionsQuery.isLoading && !sessionsQuery.isError && (
+              <div
+                className="first-run-checklist"
+                aria-label="First launch status"
+              >
+                <span>
+                  <i className="connection-dot is-connected" />
+                  Maitty daemon connected
+                </span>
+                <span>
+                  <i
+                    className={`connection-dot ${codexExecutableQuery.isSuccess ? 'is-connected' : ''}`}
+                  />
+                  {!desktop
+                    ? 'Codex check available in desktop app'
+                    : codexExecutableQuery.isPending
+                      ? 'Checking for Codex CLI…'
+                      : codexExecutableQuery.isError
+                        ? 'Codex CLI not found'
+                        : 'Codex CLI ready'}
+                </span>
+                <span>
+                  <i
+                    className={`connection-dot ${claudeExecutableQuery.isSuccess ? 'is-connected' : ''}`}
+                  />
+                  {!desktop
+                    ? 'Claude Code check available in desktop app'
+                    : claudeExecutableQuery.isPending
+                      ? 'Checking for Claude Code CLI…'
+                      : claudeExecutableQuery.isError
+                        ? 'Claude Code CLI not found'
+                        : 'Claude Code CLI ready'}
+                </span>
+              </div>
+            )}
+            {sessionsQuery.isLoading ? (
+              <Button disabled>
+                <LoaderCircle size={14} />
+                Connecting
+              </Button>
+            ) : sessionsQuery.isError ? (
+              <>
+                <div className="connection-actions">
+                  <Button
+                    onClick={() => {
+                      void sessionsQuery.refetch()
+                    }}
+                  >
+                    Reconnect
+                  </Button>
+                  {daemonRestartAction}
+                </div>
+                {mismatch &&
+                  daemonRestartStatus &&
+                  !daemonRestartStatus.canRestart && (
+                    <p className="daemon-connection-error" role="status">
+                      {mismatch.daemonProtocol > mismatch.guiProtocol
+                        ? 'This service is newer than the GUI. Update the GUI before reconnecting.'
+                        : daemonRestartStatus.sessionCount > 0
+                          ? `The older service owns ${String(daemonRestartStatus.sessionCount)} sessions. Maitty will leave it running so your TUI work is not interrupted.`
+                          : daemonRestartStatus.activeTurnCount === null
+                            ? 'Maitty could not verify that the older service is idle, so it will leave the service running.'
+                            : 'The older service still reports active work, so Maitty will leave it running.'}
+                    </p>
+                  )}
+              </>
+            ) : (
+              <Button
+                onClick={() => {
+                  setNewDialogOpen(true)
+                  if (desktop) void chooseFolder()
+                }}
+              >
+                <FolderOpen size={14} />
+                Open a project folder
+                <span className="shortcut-hint">{primaryModifier} O</span>
+              </Button>
+            )}
+          </main>
+        </div>
         <footer className="status-bar">
           <div
             role="status"
@@ -1501,7 +1626,7 @@ function App() {
     setRecoveryPendingId(conversation.id)
     void resumeDaemonConversation(conversation)
       .then(async (resumed) => {
-        setSelectedId(String(resumed.id))
+        selectConversation(String(resumed.id))
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['conversations'] }),
           queryClient.invalidateQueries({
@@ -1605,7 +1730,7 @@ function App() {
             queryKey: ['conversation-history', activeConversation.id],
           }),
         ])
-        toast.success('Answers sent to Codex')
+        toast.success(`Answers sent to ${activeConversation.provider}`)
       })
       .catch((error: unknown) => {
         toast.error(
@@ -1627,12 +1752,14 @@ function App() {
       void createDaemonConversation(project, newProvider)
         .then(async ({ id }) => {
           setNewDialogOpen(false)
-          setSelectedId(String(id))
+          selectConversation(String(id))
           await queryClient.invalidateQueries({ queryKey: ['conversations'] })
           toast.success(`${newProvider} conversation started`)
         })
         .catch((error: unknown) => {
-          toast.error(errorMessage(error, `Could not start ${newProvider} conversation`))
+          toast.error(
+            errorMessage(error, `Could not start ${newProvider} conversation`),
+          )
         })
         .finally(() => {
           conversationCreationPendingRef.current = false
@@ -1657,7 +1784,7 @@ function App() {
     }
     setConversations((current) => [conversation, ...current])
     setMessagesById((current) => ({ ...current, [conversation.id]: [] }))
-    setSelectedId(conversation.id)
+    selectConversation(conversation.id)
     setActivePanel('details')
     setNewDialogOpen(false)
     toast.message('Created in local preview')
@@ -1725,7 +1852,6 @@ function App() {
             )}
             selectedId={selected.id}
             filter={filter}
-            attentionCount={attentionCount}
             pinnedIds={sidebarPreferences.pinnedIds}
             compact={isCompactSidebar}
             desktopCollapsed={sidebarCollapsed}
@@ -1739,7 +1865,7 @@ function App() {
             onArchive={setArchived}
             onRename={renameConversation}
             onSelect={(id) => {
-              setSelectedId(id)
+              selectConversation(id)
               setSidebarDrawerOpen(false)
             }}
             onToggleDrawer={() => {
@@ -1756,7 +1882,14 @@ function App() {
             id="conversation-main"
             tabIndex={-1}
           >
-            <ConversationHeader
+            <ConversationTabStrip
+              tabs={openTabs}
+              selectedId={selected.id}
+              onSelect={selectConversation}
+              onClose={closeConversation}
+              onNew={() => {
+                setNewDialogOpen(true)
+              }}
               conversation={selected}
               panel={activePanel}
               showTerminal={showTerminal}
@@ -1799,7 +1932,7 @@ function App() {
                 <CircleAlert size={15} />
                 <span>
                   Could not load the full conversation history. Maitty will
-                  retry the exact Codex session when you return to chat.
+                  retry the exact {selected.provider} session when you return to chat.
                 </span>
                 <Button
                   variant="outline"
@@ -1821,7 +1954,7 @@ function App() {
                     {!historyQuery.data ||
                     historyQuery.data.completeness === 'Loading'
                       ? 'Loading the full conversation history. Maitty will verify it before chat resumes.'
-                      : 'Conversation history is incomplete. Maitty will reconcile the exact Codex session before chat resumes.'}
+                      : `Conversation history is incomplete. Maitty will reconcile the exact ${selected.provider} session before chat resumes.`}
                   </span>
                 </div>
               )}
@@ -2014,7 +2147,7 @@ function App() {
           setCommandDialogOpen(false)
         }}
         onSelect={(id) => {
-          setSelectedId(id)
+          selectConversation(id)
           setCommandDialogOpen(false)
         }}
         onNew={() => {
@@ -2059,7 +2192,6 @@ type SidebarProps = {
   archivedConversations: Conversation[]
   selectedId: string
   filter: string
-  attentionCount: number
   pinnedIds: string[]
   compact: boolean
   desktopCollapsed: boolean
@@ -2081,7 +2213,6 @@ function ConversationSidebar({
   archivedConversations,
   selectedId,
   filter,
-  attentionCount,
   pinnedIds,
   compact,
   desktopCollapsed,
@@ -2098,19 +2229,8 @@ function ConversationSidebar({
   primaryModifier,
 }: SidebarProps) {
   const [archivedOpen, setArchivedOpen] = useState(false)
-  const needsYou = conversations.filter(
-    (conversation) =>
-      conversation.status === 'needs-you' || conversation.status === 'recovery',
-  )
-  const pinned = conversations.filter((conversation) =>
-    pinnedIds.includes(conversation.id),
-  )
-  const projectConversations = conversations.filter(
-    (conversation) =>
-      !pinnedIds.includes(conversation.id) && !needsYou.includes(conversation),
-  )
   const projects = Array.from(
-    new Set(projectConversations.map((conversation) => conversation.project)),
+    new Set(conversations.map((conversation) => conversation.project)),
   )
   const rowActions = {
     pinnedIds,
@@ -2182,22 +2302,11 @@ function ConversationSidebar({
         <kbd>{primaryModifier} K</kbd>
       </label>
       <ScrollArea className="session-list-scroll">
-        {pinned.length > 0 && (
-          <SessionGroup title="Pinned" conversations={pinned} {...rowActions} />
-        )}
-        {needsYou.length > 0 && (
-          <SessionGroup
-            title="Blocked on you"
-            count={attentionCount}
-            conversations={needsYou}
-            {...rowActions}
-          />
-        )}
         {projects.map((project) => (
           <ProjectSection
             key={project}
             project={project}
-            conversations={projectConversations.filter(
+            conversations={conversations.filter(
               (conversation) => conversation.project === project,
             )}
             disconnected={disconnected}
@@ -2243,6 +2352,12 @@ function ConversationSidebar({
       </ScrollArea>
       <div className="sidebar-bottom">
         <Separator />
+        <div className="sidebar-connection" role="status">
+          <span
+            className={`connection-dot ${disconnected ? '' : 'is-connected'}`}
+          />
+          {disconnected ? 'Daemon disconnected' : 'Connected to Maitty'}
+        </div>
         <div className="workspace-picker">
           <span className="workspace-avatar">M</span>
           <span className="workspace-copy">
@@ -2265,39 +2380,6 @@ type SessionRowActions = {
   onRename: (id: string, title: string) => void
 }
 
-type SessionGroupProps = SessionRowActions & {
-  title: string
-  count?: number
-  conversations: Conversation[]
-}
-
-function SessionGroup({
-  title,
-  count,
-  conversations,
-  ...actions
-}: SessionGroupProps) {
-  return (
-    <section className="session-group" aria-label={title}>
-      <div className="group-heading">
-        <span>{title}</span>
-        {count !== undefined && <span className="group-count">{count}</span>}
-      </div>
-      <div className="session-rows">
-        {conversations.map((conversation) => (
-          <SessionRow
-            key={conversation.id}
-            conversation={conversation}
-            selected={conversation.id === actions.selectedId}
-            isPinned={actions.pinnedIds.includes(conversation.id)}
-            {...actions}
-          />
-        ))}
-      </div>
-    </section>
-  )
-}
-
 function ProjectSection({
   project,
   conversations,
@@ -2309,10 +2391,25 @@ function ProjectSection({
   disconnected: boolean
 } & SessionRowActions) {
   const [settledOpen, setSettledOpen] = useState(false)
-  const active = conversations.filter(
-    (conversation) =>
-      conversation.status !== 'done' && conversation.status !== 'idle',
-  )
+  const active = [...conversations]
+    .filter(
+      (conversation) =>
+        conversation.status !== 'done' && conversation.status !== 'idle',
+    )
+    .sort((left, right) => {
+      const attention = (conversation: Conversation) =>
+        conversation.status === 'needs-you' ||
+        conversation.status === 'recovery'
+          ? 0
+          : 1
+      const attentionOrder = attention(left) - attention(right)
+      if (attentionOrder !== 0) return attentionOrder
+      const pinOrder =
+        Number(actions.pinnedIds.includes(right.id)) -
+        Number(actions.pinnedIds.includes(left.id))
+      if (pinOrder !== 0) return pinOrder
+      return 0
+    })
   const settled = conversations.filter(
     (conversation) =>
       conversation.status === 'done' || conversation.status === 'idle',
@@ -2522,7 +2619,12 @@ function SessionRow({
   )
 }
 
-function ConversationHeader({
+function ConversationTabStrip({
+  tabs,
+  selectedId,
+  onSelect,
+  onClose,
+  onNew,
   conversation,
   panel,
   showTerminal,
@@ -2531,6 +2633,11 @@ function ConversationHeader({
   handoffPending,
   terminalDisabled,
 }: {
+  tabs: Conversation[]
+  selectedId: string
+  onSelect: (id: string) => void
+  onClose: (id: string) => void
+  onNew: () => void
   conversation: Conversation
   panel: PanelTab | null
   showTerminal: boolean
@@ -2541,31 +2648,59 @@ function ConversationHeader({
 }) {
   return (
     <div className="conversation-header">
-      <div className="conversation-title-area">
-        <div className="conversation-title-row">
-          <h1>{conversation.title}</h1>
-          <span
-            className={`conversation-status status-${conversation.status}`}
-            role="status"
-            aria-label={`Current status: ${statusText[conversation.status]}`}
+      <h1 className="sr-only">{conversation.title}</h1>
+      <div
+        className="conversation-tabs"
+        role="tablist"
+        aria-label="Open conversations"
+      >
+        {tabs.map((tab) => (
+          <div
+            className={`conversation-tab ${tab.id === selectedId ? 'is-active' : ''}`}
+            key={tab.id}
           >
-            <StatusMark status={conversation.status} />
-            {statusText[conversation.status]}
-          </span>
-        </div>
-        <div className="conversation-meta">
-          <span>
-            <Code2 size={13} />
-            {conversation.project}
-          </span>
-          <span className="meta-dot" />
-          <span>
-            <GitBranch size={13} />
-            {conversation.branch}
-          </span>
-          <span className="meta-dot" />
-          <span>{conversation.provider}</span>
-        </div>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab.id === selectedId}
+              aria-controls="conversation-main"
+              title={`${tab.title} · ${statusText[tab.status]}`}
+              onClick={() => {
+                onSelect(tab.id)
+              }}
+            >
+              <StatusMark status={tab.status} />
+              <span>{tab.title}</span>
+              {tab.id === selectedId && (
+                <span
+                  className="sr-only"
+                  role="status"
+                  aria-label={`Current status: ${statusText[tab.status]}`}
+                />
+              )}
+            </button>
+            <button
+              className="conversation-tab-close"
+              type="button"
+              aria-label={`Close ${tab.title} tab`}
+              disabled={tabs.length <= 1}
+              onClick={() => {
+                onClose(tab.id)
+              }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ))}
+        <Button
+          className="conversation-tab-new"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Add conversation tab"
+          onClick={onNew}
+        >
+          <Plus size={15} />
+        </Button>
       </div>
       <div className="header-toolbar">
         <Button
@@ -2578,28 +2713,38 @@ function ConversationHeader({
           <FileCode2 size={14} />
           Diff{conversation.hasDiff && <span className="diff-indicator" />}
         </Button>
-        <Button
-          variant={showTerminal ? 'secondary' : 'outline'}
-          size="sm"
-          onClick={onToggleTerminal}
-          disabled={handoffPending || terminalDisabled}
-          aria-label={
-            conversation.execution === 'Structured'
-              ? 'Open in native terminal'
-              : showTerminal
-                ? 'Return to chat'
-                : 'Show terminal'
-          }
+        <div
+          className="view-switch"
+          role="group"
+          aria-label="Conversation view"
         >
-          <TerminalSquare size={14} />
-          {handoffPending
-            ? 'Switching…'
-            : conversation.execution === 'Structured'
-              ? 'Open in terminal'
-              : showTerminal
-                ? 'Return to chat'
-                : 'Terminal'}
-        </Button>
+          <Button
+            variant={!showTerminal ? 'secondary' : 'ghost'}
+            size="sm"
+            disabled={!showTerminal}
+            onClick={onToggleTerminal}
+            aria-pressed={!showTerminal}
+            aria-label={showTerminal ? 'Return to chat' : 'Chat view'}
+          >
+            <MessageSquarePlus size={14} />
+            Chat
+          </Button>
+          <Button
+            variant={showTerminal ? 'secondary' : 'ghost'}
+            size="sm"
+            disabled={showTerminal || handoffPending || terminalDisabled}
+            onClick={onToggleTerminal}
+            aria-pressed={showTerminal}
+            aria-label={
+              conversation.execution === 'Structured'
+                ? 'Open in native terminal'
+                : 'Show terminal'
+            }
+          >
+            <TerminalSquare size={14} />
+            {handoffPending ? 'Switching…' : 'Terminal'}
+          </Button>
+        </div>
         <Button
           variant={panel === 'details' ? 'secondary' : 'outline'}
           size="icon-sm"
@@ -3162,7 +3307,7 @@ function RecoveryNotice({
       <CircleHelp size={15} />
       <span>
         {canResumeInChat
-          ? 'Codex stopped before the turn finished. Resume this exact session; Maitty will not replay the interrupted turn.'
+          ? `${conversation.provider} stopped before the turn finished. Resume this exact session; Maitty will not replay the interrupted turn.`
           : conversation.execution === 'Native'
             ? canOpenNativeTerminal
               ? 'Native process cleanup was not confirmed. Inspect the terminal; Maitty will confirm cleanup again before chat resumes.'
@@ -3314,7 +3459,8 @@ function Composer({
         <div className="composer-actions">
           <div className="composer-context">
             <span className="provider-mini">
-              <span className="codex-glyph">◆</span>{conversation.provider}
+              <span className="codex-glyph">◆</span>
+              {conversation.provider}
             </span>
             <span className="composer-separator" />
             <span>{conversation.permission.split(' · ')[0]}</span>
@@ -3349,7 +3495,7 @@ function Composer({
       </div>
       <p className="composer-footnote">
         {nativeOwner
-          ? 'Native Codex owns this conversation until you continue in chat.'
+          ? `Native ${conversation.provider} owns this conversation until you continue in chat.`
           : !connected
             ? 'Daemon disconnected. Reconnect to send this draft.'
             : 'Agent actions follow the permissions shown above.'}
@@ -3588,8 +3734,12 @@ function DiffView({
     queryKey: ['conversation-diff', conversation.id, conversation.generation],
     queryFn: () => loadConversationDiff(conversation),
     enabled: desktop && conversation.isGitRepository !== false,
+    retry: false,
+    staleTime: 1500,
     refetchInterval: (query) =>
-      conversationDiffRefreshInterval(desktop, query.state.status),
+      conversation.status === 'working'
+        ? conversationDiffRefreshInterval(desktop, query.state.status)
+        : false,
   })
   const files = useMemo(
     () =>
@@ -3651,7 +3801,10 @@ function DiffView({
       <div className="panel-empty">
         <GitBranch size={18} />
         <h2>Changes need Git</h2>
-        <p>This folder isn’t a Git repository. Initialize Git here to view file changes.</p>
+        <p>
+          This folder isn’t a Git repository. Initialize Git here to view file
+          changes.
+        </p>
       </div>
     )
   if (desktop && diffQuery.isLoading)
@@ -3666,7 +3819,10 @@ function DiffView({
       <div className="panel-empty">
         <CircleAlert size={18} />
         <h2>Couldn?t load changes</h2>
-        <p>Check that the project folder exists and is a Git repository, then retry.</p>
+        <p>
+          Check that the project folder exists and is a Git repository, then
+          retry.
+        </p>
         <Button
           variant="outline"
           size="sm"
@@ -3973,7 +4129,11 @@ function NewConversationDialog({
             </Button>
           </div>
         </div>
-        <div className="dialog-provider-options" role="group" aria-label="Agent">
+        <div
+          className="dialog-provider-options"
+          role="group"
+          aria-label="Agent"
+        >
           {(['Codex', 'Claude'] as const).map((choice) => (
             <button
               key={choice}
@@ -3988,7 +4148,13 @@ function NewConversationDialog({
               <AgentAvatar provider={choice} status="idle" />
               <div>
                 <strong>{choice}</strong>
-                <span>{choice === 'Claude' ? claudeAvailable ? 'Claude Code CLI and saved sign-in.' : 'Claude Code CLI was not found.' : 'Codex CLI and saved sign-in.'}</span>
+                <span>
+                  {choice === 'Claude'
+                    ? claudeAvailable
+                      ? 'Claude Code CLI and saved sign-in.'
+                      : 'Claude Code CLI was not found.'
+                    : 'Codex CLI and saved sign-in.'}
+                </span>
               </div>
               {provider === choice && <Check size={15} />}
             </button>

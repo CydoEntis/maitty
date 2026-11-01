@@ -1354,6 +1354,24 @@ conversation continuity are planned in phases 34–37:
 - [ADR-0022](adr/0022-question-mark-all-keys-c-changes.md) — `?` after the leader lists all keys, `c` opens Changes, copy mode has no default key (amends ADR-0017). Rules out: `F1` and `d` as defaults.
 - [ADR-0023](adr/0023-the-mode-is-always-shown.md) — The mode is always shown in the corner (`TYPING` or `SHORTCUT`), the window is framed in sky in shortcut mode, and a key with no action says how to type (amends ADR-0016 and ADR-0021). Rules out: an unlabelled input mode; keys dropped without a word.
 
+### 38 — v4 desktop workspace and terminal polish · active, after 37
+
+Implement the user-approved v4 desktop handoff in
+[the design brief](features/chat-gui/design-brief.md) and
+[`design-handoff/v4/`](features/chat-gui/design-handoff/v4/). Keep the TUI and
+daemon contracts unchanged.
+
+- Replace the single selected-thread layout with persistent open conversation
+  tabs. Closing a GUI tab only closes that view; the daemon keeps its session.
+- Match the handoff's project sidebar, attention-first ordering, inset workspace
+  card, chat/terminal switch and responsive context panel.
+- Keep Codex and Claude labels accurate in chat and native terminal. Fix the
+  reported loading/error states in Changes and keep terminal input on the
+  daemon-owned PTY.
+- Verify the required first-use, running, approval, recovery, disconnected and
+  empty states at 1440×900, 1024×700 and 800×600. Run GUI tests, lint, typecheck
+  and packaged Windows/Linux builds.
+
 ## Rules
 
 - Structured conversation trust, ownership and history invariants are target contracts in the [chat GUI spec](features/chat-gui/spec.md); not yet implemented, tracked by phase 34.

@@ -38,7 +38,7 @@ vi.mock('./TerminalView', () => ({
     <div
       className="terminal-screen"
       role="region"
-      aria-label="Native Codex terminal"
+      aria-label={`Native ${conversation.provider} terminal`}
     >
       Pane {conversation.nativePane}
     </div>
@@ -117,6 +117,22 @@ describe('desktop chat and terminal handoff', () => {
       }
       return Promise.resolve()
     })
+  })
+
+  it('keeps Claude identified when its native terminal is open', async () => {
+    const user = userEvent.setup()
+    const claudeConversation: Conversation = {
+      ...structuredConversation,
+      provider: 'Claude',
+      execution: 'Native',
+      nativePane: 43,
+    }
+    daemon.loadConversations.mockResolvedValue([claudeConversation])
+    renderDesktopApp()
+
+    await user.click(await screen.findByRole('button', { name: 'Show terminal' }))
+
+    expect(await screen.findByRole('region', { name: 'Native Claude terminal' })).toHaveTextContent('Pane 43')
   })
 
   it('shows first-launch readiness, opens a Linux project folder, and keeps Settings available', async () => {

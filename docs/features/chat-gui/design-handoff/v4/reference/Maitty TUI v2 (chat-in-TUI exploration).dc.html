@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>html,body{margin:0;height:100%;background:#080B0F}a{color:#5FD4BF}a:hover{color:#8FE5D5}::selection{background:#5FD4BF;color:#080B0F}*{scrollbar-width:none}*::-webkit-scrollbar{width:0;height:0}input::placeholder{color:#4F5965}@keyframes tuiin{from{opacity:0;transform:translateX(3ch)}to{opacity:1;transform:none}}@keyframes tuiup{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}@keyframes tuifade{from{opacity:0}to{opacity:1}}</style>
+</helmet>
+<div style="position:fixed;inset:0;display:flex;flex-direction:column;background:#080B0F;color:#D9DEE3;font-family:'Geist Mono',ui-monospace,Menlo,'Segoe UI Symbol','Noto Sans Symbols 2',monospace;font-size:13px;line-height:20px;box-sizing:border-box;font-variant-ligatures:none">
+
+  <div style="flex:1;min-height:0;display:flex">
+
+    <aside onClick="{{ focusSide }}" style="width:42ch;flex:none;display:flex;flex-direction:column;background:#0C1015;padding:20px 2ch 10px;box-sizing:border-box">
+      <div style="flex:none;display:flex;align-items:center;gap:1ch;padding-bottom:20px;white-space:nowrap">
+        <span style="font-weight:700;letter-spacing:.02em"><span style="color:#5FD4BF">m</span><span style="color:#62C8CC">a</span><span style="color:#66BCD8">i</span><span style="color:#6AB0E3">t</span><span style="color:#6FA5EE">t</span><span style="color:#7A9AF5">y</span></span>
+        <span style="color:#4F5965">0.9.2</span>
+        <span style="flex:1"></span>
+        <span onClick="{{ newThread }}" style="cursor:pointer;display:flex;white-space:nowrap;transition:filter .12s ease,transform .1s ease" style-hover="filter:brightness(1.18)" style-active="transform:scale(.97)"><span style="background:#5FD4BF;color:#071011;padding:0 1ch;font-weight:600">+ new</span><span style="background:#163A35;color:#5FD4BF;padding:0 1ch">n</span></span>
+      </div>
+      <div onClick="{{ openSearch }}" style="flex:none;display:flex;gap:1ch;padding:10px 2ch;margin:0 0 20px;background:#11161D;box-shadow:{{ searchEdge }};cursor:text">
+        <span style="color:#77828E">⌕</span>
+        <sc-if value="{{ searchOn }}" hint-placeholder-val="{{ false }}"><input ref="{{ searchRef }}" value="{{ query }}" onChange="{{ onQuery }}" onKeyDown="{{ onSearchKey }}" placeholder="filter sessions" style="all:unset;flex:1;min-width:0;color:#E6EAEE;caret-color:#5FD4BF"></input></sc-if>
+        <sc-if value="{{ searchOff }}" hint-placeholder-val="{{ true }}"><span style="flex:1;color:#4F5965">filter sessions</span></sc-if>
+        <span style="color:#4F5965">/</span>
+      </div>
+      <div style="flex:1;min-height:0;overflow-y:auto;margin:0 -2ch;padding:0 2ch">
+        <sc-for list="{{ side }}" as="r" hint-placeholder-count="12">
+          <div style="display:flex;flex-direction:column">
+            <sc-if value="{{ r.isHead }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:1ch;padding:{{ r.pt }} 0 6px;white-space:nowrap">
+                <span style="color:{{ r.c }};font-weight:600;font-size:11.5px;letter-spacing:.08em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">{{ r.text }}</span>
+                <span style="color:{{ r.rc }};background:{{ r.rbg }};padding:0 1ch;font-size:11.5px">{{ r.right }}</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ r.isRow }}" hint-placeholder-val="{{ true }}">
+              <div onClick="{{ r.click }}" style="cursor:pointer;display:flex;flex-direction:column;margin:0 -1ch;padding:5px 1ch;background:{{ r.bg }};box-shadow:{{ r.bar }};transition:background-color .14s ease,box-shadow .14s ease" style-hover="background:#121820" style-active="background:#151C25">
+                <div style="display:flex;white-space:nowrap">
+                  <span style="width:3ch;flex:none;color:{{ r.gc }};text-align:center">{{ r.g }}</span>
+                  <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:{{ r.tc }};font-weight:{{ r.fw }}">{{ r.title }}</span>
+                  <span style="color:#5FD4BF;width:2ch;text-align:center;flex:none">{{ r.dot }}</span>
+                  <span style="color:{{ r.mc }};flex:none">{{ r.meta }}</span>
+                </div>
+                <sc-if value="{{ r.hasSub }}" hint-placeholder-val="{{ false }}"><div style="padding-left:3ch;color:{{ r.subc }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.sub }}</div></sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <div style="flex:none;display:flex;align-items:center;gap:1ch;padding-top:12px;white-space:nowrap">
+        <span style="color:#7FA98D">●</span><span style="color:#9AA4AF">maittyd</span><span style="color:#4F5965">· {{ count }} sessions</span>
+        <span style="flex:1"></span>
+        <span onClick="{{ openHelp }}" style="cursor:pointer;display:flex;white-space:nowrap;transition:filter .12s ease,transform .1s ease" style-hover="filter:brightness(1.18)" style-active="transform:scale(.97)"><span style="background:#1A2029;color:#C4CBD2;padding:0 1ch">?</span><span style="background:#11161D;color:#8A949F;padding:0 1ch">keys</span></span>
+      </div>
+    </aside>
+
+    <main onClick="{{ focusChat }}" style="position:relative;flex:1;min-width:0;display:flex;flex-direction:column">
+      <header style="flex:none;display:flex;align-items:center;gap:2ch;padding:20px 4ch 0;white-space:nowrap">
+        <span style="flex:1 0 auto;max-width:calc(100% - 22ch);min-width:0;overflow:hidden;text-overflow:ellipsis"><span style="color:#77828E">{{ projName }}  /  </span><span style="color:#E6EAEE;font-weight:600">{{ title }}</span></span>
+        <span style="color:{{ stC }};background:{{ stBg }};padding:0 1ch;flex:none;white-space:pre">{{ stGlyph }} {{ stLabel }}</span>
+        <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;height:20px;flex:0 100 auto;min-width:0;overflow:hidden;padding:0;margin-left:auto">
+          <sc-for list="{{ topTabs }}" as="t" hint-placeholder-count="2"><span onClick="{{ t.pick }}" style="cursor:pointer;flex:none;padding:0 2ch;background-color:#0C1015;background:{{ t.bg }};color:{{ t.fg }};transition:background-color .16s ease,color .16s ease">{{ t.label }}</span></sc-for>
+          <span onClick="{{ toggleDiff }}" style="cursor:pointer;flex:none;padding:0 2ch;white-space:pre;background:{{ diffTabBg }};color:{{ diffTabFg }};transition:background-color .16s ease,color .16s ease">changes <span style="color:#5FD4BF">{{ dsum.add }}</span> <span style="color:#F07F78">{{ dsum.del }}</span></span>
+        </div>
+      </header>
+
+      <div ref="{{ chatRef }}" onScroll="{{ onChatScroll }}" style="flex:1;min-height:0;overflow-y:auto;padding:20px 4ch 20px">
+        <div style="max-width:104ch;margin:0 auto">
+          <sc-if value="{{ raw }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:1ch;padding:10px 2ch;margin-bottom:20px;background:#15120C;box-shadow:inset 3px 0 0 #F2B65A;color:#F2B65A">native codex session<span style="color:#8A949F">· same history as chat · keys go straight to codex · t returns</span></div></sc-if>
+          <sc-for list="{{ lines }}" as="l" hint-placeholder-count="14">
+            <div onClick="{{ l.click }}" style="display:flex;cursor:{{ l.cur }};padding:{{ l.pt }} 2ch {{ l.pb }} {{ l.ind }};background:{{ l.bg }};box-shadow:{{ l.edge }};animation:{{ l.anim }};transition:background-color .14s ease" style-hover="{{ l.hov }}">
+              <span style="width:{{ l.gw }};flex:none;color:{{ l.gc }}">{{ l.g }}</span>
+              <span style="flex:1;min-width:0;white-space:pre-wrap;text-wrap:pretty;overflow-wrap:anywhere"><sc-for list="{{ l.segs }}" as="s" hint-placeholder-count="1"><span style="color:{{ s.c }};font-weight:{{ s.fw }}">{{ s.t }}</span></sc-for></span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="flex:none;padding:0 4ch 14px">
+        <div style="max-width:104ch;margin:0 auto;display:flex;flex-direction:column">
+          <sc-if value="{{ dock.show }}" hint-placeholder-val="{{ false }}">
+            <div style="background:{{ dock.bg }};box-shadow:inset 3px 0 0 {{ dock.c }};padding:12px 3ch 12px;margin-bottom:10px;animation:tuiup .32s cubic-bezier(.16,1,.3,1)">
+              <div style="display:flex;gap:1ch;padding-bottom:10px;white-space:nowrap"><span style="color:{{ dock.c }};font-weight:600">{{ dock.title }}</span><span style="flex:1"></span><span style="color:#8A949F">{{ dock.wait }}</span></div>
+              <sc-for list="{{ dock.lines }}" as="l" hint-placeholder-count="2">
+                <div style="display:flex;padding:{{ l.pad }};background:{{ l.bg }};margin-bottom:{{ l.mb }}"><span style="width:2ch;flex:none;color:{{ l.gc }}">{{ l.g }}</span><span style="flex:1;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere"><sc-for list="{{ l.segs }}" as="s" hint-placeholder-count="1"><span style="color:{{ s.c }};font-weight:{{ s.fw }}">{{ s.t }}</span></sc-for></span></div>
+              </sc-for>
+              <div style="display:flex;flex-wrap:wrap;gap:8px 2ch;padding-top:12px;align-items:center">
+                <sc-for list="{{ dock.keys }}" as="k" hint-placeholder-count="3">
+                  <span onClick="{{ k.run }}" style="cursor:pointer;display:flex;white-space:nowrap;transition:filter .12s ease,transform .1s ease" style-hover="filter:brightness(1.18)" style-active="transform:scale(.97)"><span style="background:{{ k.kbg }};color:{{ k.kfg }};padding:0 1ch;font-weight:600">{{ k.key }}</span><span style="background:{{ k.lbg }};color:{{ k.lc }};padding:0 1ch">{{ k.label }}</span></span>
+                </sc-for>
+                <span style="flex:1"></span>
+                <span style="color:#77828E;white-space:nowrap">{{ dock.foot }}</span>
+              </div>
+            </div>
+          </sc-if>
+          <div style="display:block;white-space:pre;overflow:hidden;text-overflow:ellipsis;padding:0 2ch 8px"><sc-for list="{{ status.segs }}" as="s" hint-placeholder-count="3"><span style="color:{{ s.c }};font-weight:{{ s.fw }}">{{ s.t }}</span></sc-for></div>
+          <div style="background:{{ pBg }};box-shadow:{{ pEdge }};padding:12px 3ch 10px;display:flex;flex-direction:column;gap:10px;transition:background-color .16s ease,box-shadow .16s ease">
+            <div style="display:flex;gap:1ch">
+              <span style="color:{{ pGc }};font-weight:600;transition:color .16s ease">❯</span>
+              <input ref="{{ promptRef }}" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onPromptKey }}" onFocus="{{ onPFocus }}" onBlur="{{ onPBlur }}" disabled="{{ pDisabled }}" placeholder="{{ pPh }}" aria-label="Message Codex" style="all:unset;flex:1;min-width:0;color:#E6EAEE;caret-color:#5FD4BF"></input>
+            </div>
+            <div style="display:flex;gap:1ch;align-items:center;white-space:nowrap;overflow:hidden">
+              <span style="background:#1A2029;color:#C4CBD2;padding:0 1ch;min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis">codex · gpt-5-codex</span>
+              <span style="background:#151B22;color:#9AA4AF;padding:0 1ch;min-width:0;flex:0 2 auto;overflow:hidden;text-overflow:ellipsis">workspace-write · on-request</span>
+              <span style="color:#4F5965;overflow:hidden;text-overflow:ellipsis;padding-left:1ch;flex:1 9 0;min-width:0">{{ wtPath }}</span>
+              <span style="color:#77828E;flex:none">{{ pHint }}</span>
+              <span style="flex:none;background:{{ sendBg }};color:{{ sendFg }};padding:0 1ch;font-weight:600;transition:background-color .16s ease,color .16s ease">↵</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <sc-if value="{{ diffOpen }}" hint-placeholder-val="{{ false }}">
+      <aside style="width:min(74ch,44%);flex:none;display:flex;flex-direction:column;background:#0C1015;padding:20px 2ch 10px;box-sizing:border-box;animation:tuiin .28s cubic-bezier(.2,.8,.2,1)">
+        <div style="flex:none;display:flex;align-items:center;gap:1ch;padding-bottom:16px;white-space:nowrap">
+          <span style="color:#E6EAEE;font-weight:600">Changes</span><span style="color:#77828E">{{ dsum.files }}</span><span style="color:#5FD4BF">{{ dsum.add }}</span><span style="color:#F07F78">{{ dsum.del }}</span>
+          <span style="flex:1"></span>
+          <span onClick="{{ closeDiff }}" style="cursor:pointer;display:flex;white-space:nowrap;transition:filter .12s ease,transform .1s ease" style-hover="filter:brightness(1.18)" style-active="transform:scale(.97)"><span style="background:#1A2029;color:#C4CBD2;padding:0 1ch">d</span><span style="background:#11161D;color:#8A949F;padding:0 1ch">close</span></span>
+        </div>
+        <sc-if value="{{ hasDiff }}" hint-placeholder-val="{{ true }}">
+          <div style="flex:none;display:flex;flex-direction:column;margin-bottom:16px">
+            <sc-for list="{{ dfiles }}" as="f" hint-placeholder-count="2"><div style="display:flex;white-space:nowrap;padding:5px 1ch;background:{{ f.bg }};box-shadow:{{ f.edge }}"><span style="width:3ch;color:#F2B65A">{{ f.tag }}</span><span style="color:#77828E">{{ f.dir }}</span><span style="color:#E6EAEE;flex:1">{{ f.name }}</span><span style="color:#5FD4BF">{{ f.add }}</span><span style="color:#F07F78;padding-left:1ch">{{ f.del }}</span></div></sc-for>
+          </div>
+          <div style="flex:1;min-height:0;overflow:auto;font-size:12.5px;background:#080B0F;padding:10px 0">
+            <sc-for list="{{ diff }}" as="d" hint-placeholder-count="14">
+              <div style="display:flex;min-width:max-content;background:{{ d.bg }};box-shadow:{{ d.edge }}">
+                <span style="width:5ch;flex:none;text-align:right;color:#4F5965;padding-right:1ch">{{ d.n }}</span>
+                <span style="width:2ch;flex:none;color:{{ d.sc }}">{{ d.s }}</span>
+                <span style="white-space:pre;padding-right:2ch"><sc-for list="{{ d.segs }}" as="s" hint-placeholder-count="1"><span style="color:{{ s.c }};font-style:{{ s.fi }}">{{ s.t }}</span></sc-for></span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noDiff }}" hint-placeholder-val="{{ false }}"><div style="color:#77828E;padding:10px 2ch;background:#11161D">No changes in this thread yet.</div></sc-if>
+      </aside>
+    </sc-if>
+  </div>
+
+  <div style="flex:none;height:24px;display:flex;align-items:center;white-space:nowrap;overflow:hidden;background:#0C1015;border-top:1px solid #11161D">
+    <span style="height:24px;display:flex;align-items:center;background:{{ modeBg }};color:{{ modeFg }};padding:0 2ch;font-weight:700;letter-spacing:.06em;transition:background-color .18s ease,color .18s ease">{{ mode }}</span>
+    <span style="color:#8A949F;overflow:hidden;text-overflow:ellipsis;padding:0 2ch">{{ hints }}</span>
+    <span style="flex:1"></span>
+    <sc-if value="{{ hasFlash }}" hint-placeholder-val="{{ false }}"><span style="color:#E6EAEE;padding:0 2ch;animation:tuifade .2s ease-out">{{ flash }}</span></sc-if>
+    <sc-if value="{{ hasNeeds }}" hint-placeholder-val="{{ false }}"><span style="height:24px;display:flex;align-items:center;background:#1B160D;color:#F2B65A;padding:0 2ch;flex:none"><span style="white-space:pre">◆ {{ needsN }} need you</span></span></sc-if>
+    <span style="height:24px;display:flex;align-items:center;background:#0F1A19;color:#5FD4BF;padding:0 2ch;flex:none"><span style="white-space:pre">{{ spinG }} {{ workN }} working</span></span>
+    <span style="color:#77828E;padding:0 2ch">{{ spinName }}</span>
+    <span style="color:#77828E;padding:0 2ch 0 0">{{ clock }}</span>
+  </div>
+
+  <div style="position:absolute;top:56px;right:4ch;width:50ch;max-width:calc(100% - 8ch);display:flex;flex-direction:column;gap:10px;pointer-events:none;z-index:5">
+    <sc-for list="{{ toasts }}" as="n" hint-placeholder-count="0">
+      <div onClick="{{ n.open }}" style="pointer-events:auto;cursor:pointer;background:#141A22;box-shadow:inset 3px 0 0 {{ n.c }};padding:12px 3ch 10px;animation:tuiin .32s cubic-bezier(.16,1,.3,1);transition:background-color .14s ease" style-hover="background:#18202A">
+        <div style="display:flex;gap:1ch;white-space:nowrap"><span style="color:{{ n.c }};font-weight:600;font-size:11.5px;letter-spacing:.08em">{{ n.kind }}</span><span style="color:#4F5965">·</span><span style="color:#77828E;overflow:hidden;text-overflow:ellipsis">{{ n.proj }}</span><span style="flex:1"></span><span style="color:#77828E">{{ n.ago }}</span></div>
+        <div style="display:flex;white-space:nowrap;padding-top:4px"><span style="width:2ch;color:{{ n.c }}">{{ n.g }}</span><span style="color:#E6EAEE;font-weight:500;overflow:hidden;text-overflow:ellipsis">{{ n.title }}</span></div>
+        <div style="padding-left:2ch;color:#8A949F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ n.text }}</div>
+        <div style="display:flex;gap:2ch;padding:8px 0 0 2ch">
+          <span style="display:flex"><span style="background:{{ n.c }};color:#0A0D12;padding:0 1ch;font-weight:600">g</span><span style="background:#1A2029;color:#E6EAEE;padding:0 1ch">open</span></span>
+          <span onClick="{{ n.dismiss }}" style="display:flex"><span style="background:#1A2029;color:#C4CBD2;padding:0 1ch">x</span><span style="background:#11161D;color:#8A949F;padding:0 1ch">dismiss</span></span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ help }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeHelp }}" style="position:absolute;inset:0;background:rgba(4,6,9,.72);display:flex;align-items:center;justify-content:center;z-index:9;animation:tuifade .16s ease-out">
+      <div onClick="{{ stop }}" style="width:82ch;max-width:calc(100% - 4ch);background:#0F141A;box-shadow:inset 3px 0 0 #5FD4BF;padding:20px 4ch 16px;animation:tuiup .24s cubic-bezier(.2,.8,.2,1)">
+        <div style="display:flex;padding-bottom:16px"><span style="color:#E6EAEE;font-weight:600">Keyboard</span><span style="flex:1"></span><span style="color:#77828E">esc</span></div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 4ch">
+          <sc-for list="{{ keys }}" as="k" hint-placeholder-count="16"><div style="display:flex;gap:2ch;white-space:nowrap;align-items:center"><span style="background:#1A2029;color:{{ k.c }};padding:0 1ch;min-width:7ch;text-align:center;font-weight:600;flex:none">{{ k.k }}</span><span style="color:#C4CBD2;overflow:hidden;text-overflow:ellipsis">{{ k.d }}</span></div></sc-for>
+        </div>
+        <div style="color:#77828E;padding-top:16px;margin-top:16px;box-shadow:inset 0 1px 0 #1A2029">Closing maitty never stops an agent. maittyd owns every session; the desktop app sees the same threads.</div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;spinner&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;braille&quot;,&quot;snake&quot;,&quot;bars&quot;],&quot;default&quot;:&quot;braille&quot;,&quot;tsType&quot;:&quot;'braille'|'snake'|'bars'&quot;},&quot;borders&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;rounded&quot;,&quot;square&quot;],&quot;default&quot;:&quot;rounded&quot;,&quot;tsType&quot;:&quot;'rounded'|'square'&quot;}}">
+const K={fg:'#E6EAEE',body:'#D9DEE3',fg2:'#C4CBD2',fg3:'#9AA4AF',muted:'#8A949F',dim:'#77828E',faint:'#4A535E',line:'#1E252E',sel:'#151B22',acc:'#5FD4BF',warn:'#F2B65A',danger:'#F07F78',ok:'#7FA98D',kw:'#C3A6FF',str:'#9ED6A8',fn:'#82C8F0',num:'#F2A7C3',ty:'#E6C99A'};
+const SPIN={braille:{f:'⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏',ms:80},snake:{f:'⠏⠛⠹⢸⣰⣤⣆⡇',ms:90},bars:{f:'⡀⣀⣄⣤⣦⣶⣷⣿⣷⣶⣦⣤⣄⣀',ms:85}};
+const sg=(t,c,fw)=>({t,c:c||K.body,fw:fw||400});
+const md=(t,c)=>{const o=[];t.split(/(\*\*[^*]+\*\*|`[^`]+`)/).forEach(p=>{if(!p)return;if(p.startsWith('**'))o.push(sg(p.slice(2,-2),K.fg,600));else if(p.startsWith('`'))o.push(sg(p.slice(1,-1),K.acc));else o.push(sg(p,c||K.body));});return o;};
+const fmt=s=>{s=Math.max(0,Math.floor(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
+const PROJ={maitty:['maitty','main'],ledger:['ledger-api','main'],docs:['site-docs','docs'],dot:['dotfiles','no git']};
+const PORDER=['maitty','ledger','docs','dot'];
+const CYCLE=44,DONE_AT=34;
+const DIFF=[['@','','@@ src/pty/linux.rs:42 @@'],[' ','42','    pub fn on_resize(&self, id: SessionId, size: WinSize) {'],['-','43','        if let Some(pty) = self.registry.get(&id) {'],['-','44','            pty.resize(size);'],['-','45','        }'],['+','43','        match self.registry.get(&id) {'],['+','44','            Some(pty) => pty.resize(size),'],['+','45','            // SIGWINCH can beat spawn(); keep the latest size'],['+','46','            None => { self.pending.lock().insert(id, size); }'],['+','47','        }'],[' ','48','    }'],['@','','@@ src/pty/linux.rs:61 @@'],[' ','61','        self.registry.insert(id, pty.clone());'],['+','62','        if let Some(queued) = self.pending.lock().remove(&id) {'],['+','63','            pty.resize(queued);'],['+','64','        }'],[' ','65','        Ok(id)'],['@','','@@ src/session/registry.rs:18 @@'],['-','18','    pub fn get(&self, id: &SessionId) -> Option<&PtyHandle> {'],['+','18','    pub fn get(&self, id: &SessionId) -> Option<PtyHandle> {'],['-','19','        self.0.get(id)'],['+','19','        self.0.get(id).map(|e| e.clone())'],[' ','20','    }']];
+function hl(code){const out=[];const re=/(\/\/.*$)|("[^"]*")|\b(pub|fn|let|match|if|Some|None|self|Ok|mut|impl|struct|use)\b|\b([A-Z][A-Za-z]+)\b|([a-z_]+)(?=\()|(\b\d+\b)/g;let last=0,m;
+ while((m=re.exec(code))){if(m.index>last)out.push({t:code.slice(last,m.index),c:K.fg2,fi:'normal'});out.push({t:m[0],c:m[1]?K.dim:m[2]?K.str:m[3]?K.kw:m[4]?K.ty:m[5]?K.fn:K.num,fi:m[1]?'italic':'normal'});last=m.index+m[0].length;}
+ if(last<code.length)out.push({t:code.slice(last),c:K.fg2,fi:'normal'});if(!out.length)out.push({t:' ',c:K.fg2,fi:'normal'});return out;}
+function seed(now){const S={};const mk=(id,p,title,status,o)=>{S[id]={id,p,title,status,items:[],ago:'',unread:false,branch:'main',...o};};
+ mk('pty','maitty','Fix PTY resize race on Linux','working',{branch:'fix/pty-resize',dyn:true});
+ mk('store','maitty','Migrate session store to sqlite','needs',{branch:'feat/sqlite-store',unread:true,reason:'approval · cargo add parking_lot',
+  items:[{k:'user',t:'Move the session store from JSON files to sqlite. Keep the old format readable by the TUI for one release.'},
+   {k:'group',sum:'Explored 4 files',meta:'2.1s',steps:[['Read','src/store/json.rs','210 lines'],['Read','src/store/mod.rs','48 lines'],['Searched','SessionStore in crates/','9 hits'],['Read','Cargo.toml','31 lines']]},
+   {k:'agent',t:'Plan: add a **SqliteStore** behind the existing `SessionStore` trait, migrate on first start, and keep reading JSON for one release. The connection pool needs `parking_lot`, and adding it needs network access.'},
+   {k:'wait',t:'Waiting for approval · cargo add parking_lot@0.12'}],
+  pending:{type:'appr',cmd:'cargo add parking_lot@0.12',cwd:'~/.maitty/wt/maitty-feat-sqlite-store',why:'network access (network off)',reason:'Needs the crate for the pool lock.',since:now-41000}});
+ mk('wsl','maitty','WSL2 clipboard bridge','recovery',{branch:'spike/wsl-clip',reason:'codex exited · r to resume',
+  items:[{k:'user',t:'Wire the WSL2 clipboard bridge into the copy path.'},{k:'group',sum:'Explored 2 files',meta:'1.4s',steps:[['Read','src/clipboard/mod.rs','96 lines'],['Read','src/clipboard/wsl.rs','40 lines']]},{k:'agent',t:'I\'ll route copies through `clip.exe` when **WSL_DISTRO_NAME** is set, and fall back to OSC 52 otherwise.'},{k:'note',g:'!',gc:K.danger,segs:[sg('Codex exited mid-turn (signal 9) while editing src/clipboard/wsl.rs',K.danger)]}],
+  pending:{type:'rec'}});
+ mk('tokio','maitty','Bump tokio to 1.42','done',{ago:'2h',branch:'chore/tokio',items:[{k:'user',t:'Bump tokio to 1.42 and fix anything that breaks.'},{k:'group',sum:'Ran 2 commands · edited 1 file',meta:'38s',steps:[['Edited','Cargo.toml','+1 −1'],['Ran','cargo update -p tokio','ok'],['Ran','cargo test --workspace','142 passed']]},{k:'agent',t:'Bumped to **1.42.0**. Nothing else needed to change; all 142 tests pass.'},{k:'done',t:'Worked for 0:52',files:1,add:1,del:1}]});
+ mk('ci','maitty','Speed up CI cache','done',{ago:'6d',settled:true,items:[{k:'user',t:'CI takes 14 minutes. Make the cargo cache actually hit.'},{k:'agent',t:'Keyed the cache on **Cargo.lock** plus the toolchain version. Warm runs now take about 4 minutes.'}]});
+ mk('bench','maitty','Benchmark scrollback renderer','done',{ago:'9d',settled:true,items:[{k:'user',t:'Benchmark the scrollback renderer with 100k lines.'},{k:'agent',t:'100k lines render in **41 ms** at p50. Line wrapping is the hot path; a cache would roughly halve it.'}]});
+ mk('refund','ledger','Flaky refund window spec','needs',{reason:'question · which clock?',unread:true,branch:'fix/refund-spec',
+  items:[{k:'user',t:'spec/models/refund_spec.rb fails about once a day. Find out why.'},{k:'group',sum:'Explored 3 files · ran 1 command',meta:'12s',steps:[['Read','app/models/refund_window.rb','24 lines'],['Read','spec/models/refund_spec.rb','40 lines'],['Ran','bin/rspec spec/models/refund_spec.rb --seed 4411','1 failure']]},{k:'agent',t:'It fails near midnight UTC: `RefundWindow` reads **Time.now** directly while the spec builds orders with a frozen date.'},{k:'wait',t:'Codex is asking a question · answer below'}],
+  pending:{type:'q',text:'Should RefundWindow take an injected clock, or should the spec freeze time?',opts:['Inject a Clock (recommended)','Freeze time in the spec'],since:now-182000}});
+ mk('hook','ledger','Retry failed webhooks','done',{ago:'3d',items:[{k:'user',t:'Retry failed payout webhooks with backoff.'},{k:'agent',t:'Added exponential backoff capped at **24h**, plus a dead-letter queue you can replay from the console.'}]});
+ mk('proto','docs','Write protocol docs','working',{branch:'docs/protocol',act:'Editing docs/protocol.md',since:now-74000,
+  items:[{k:'user',t:'Document the client ↔ maittyd socket protocol for contributors.'},{k:'group',sum:'Explored 5 files',meta:'3.0s',steps:[['Read','crates/daemon/src/proto.rs','320 lines'],['Read','crates/daemon/src/server.rs','211 lines'],['Searched','enum Request','1 hit'],['Searched','enum Event','1 hit'],['Read','SUMMARY.md','12 lines']]},{k:'agent',t:'Writing one page with the handshake, request/event shapes, and the **delivery guarantees** section.'}]});
+ mk('zsh','dot','Tidy zsh startup','idle',{ago:'1d',branch:'—',items:[{k:'user',t:'zsh takes 900ms to start. Why?'},{k:'agent',t:'**nvm** accounts for 610ms. Lazy-loading it would bring startup to about 280ms. Want me to do that?'}]});
+ return S;}
+
+class Component extends DCLogic {
+ state={sel:'pty',cursor:'pty',focus:'side',ins:false,draft:'',help:false,search:false,query:'',diff:false,raw:false,spin:null,flash:'',flashAt:0,open:{},exp:{}};
+ constructor(p){super(p);this.t0=Date.now()-8000;this.S=seed(Date.now());this.toasts=[];this.drafts={};this.cyc=-1;this.stick=true;
+  this.chatRef=React.createRef();this.promptRef=React.createRef();this.searchRef=React.createRef();}
+ componentDidMount(){this.iv=setInterval(()=>this.forceUpdate(),80);this.onKey=e=>this.key(e);window.addEventListener('keydown',this.onKey);
+  setTimeout(()=>{this.notify(this.S.store,'needs','wants to run cargo add parking_lot@0.12');},2500);}
+ componentWillUnmount(){clearInterval(this.iv);window.removeEventListener('keydown',this.onKey);}
+ componentDidUpdate(){const el=this.chatRef.current;if(el&&this.stick)el.scrollTop=el.scrollHeight;}
+ get cur(){return this.S[this.state.sel];}
+ say(t){this.setState({flash:t,flashAt:Date.now()});}
+ notify(s,kind,text){if(!s)return;if(s.id===this.state.sel)return;s.unread=true;this.toasts=[{id:Math.random(),sid:s.id,kind,text,at:Date.now()},...this.toasts.filter(x=>x.sid!==s.id)].slice(0,3);}
+ select(id){const s=this.S[id];if(!s)return;const d=this.state.draft;if(this.state.sel)this.drafts[this.state.sel]=d;s.unread=false;this.toasts=this.toasts.filter(t=>t.sid!==id);this.stick=true;this.setState({sel:id,cursor:id,draft:this.drafts[id]||'',raw:false});}
+ openToast(t){this.toasts=this.toasts.filter(x=>x!==t);this.select(t.sid);}
+ later(s,ms,fn){setTimeout(()=>{fn();this.forceUpdate();},ms);}
+ finish(s,text){s.items=s.items.filter(i=>i.k!=='live');s.items.push({k:'agent',t:text});s.items.push({k:'done',t:'Worked for '+fmt((Date.now()-s.since)/1000),files:0});s.status='done';s.ago='now';this.notify(s,'done',text.replace(/\*\*|`/g,''));}
+ work(s,act){s.status='working';s.act=act;s.since=Date.now();s.reason='';}
+ answer(kind,opt){const s=this.cur;if(!s||!s.pending)return;const p=s.pending;s.items=s.items.filter(i=>i.k!=='wait');
+  if(p.type==='appr'){s.pending=null;
+   if(kind==='y'||kind==='a'){s.items.push({k:'note',g:'✓',gc:K.ok,segs:[sg(kind==='a'?'Allowed for this session':'Allowed once',K.ok),sg(' · '+p.cmd,K.dim)]});s.items.push({k:'group',sum:'Ran '+p.cmd,meta:'1.2s',steps:[['Ran',p.cmd,'added 1 crate']]});s.items.push({k:'agent',t:'Added `parking_lot`. Wiring the pool into **src/store/sqlite.rs** now.'});this.work(s,'Editing src/store/sqlite.rs');
+    this.later(s,7000,()=>this.finish(s,'Migration is in. New writes go to **sessions.db**; the old JSON files are still read on startup for one release.'));}
+   else if(kind==='n'){s.items.push({k:'note',g:'✕',gc:K.danger,segs:[sg('Denied',K.danger),sg(' · Codex will skip that step',K.dim)]});s.items.push({k:'agent',t:'Okay. I\'ll use `std::sync::Mutex` instead of adding a crate.'});this.work(s,'Editing src/store/sqlite.rs');this.later(s,5000,()=>this.finish(s,'Done with std::sync::Mutex. No new dependencies.'));}
+   else{s.items.push({k:'note',g:'✕',gc:K.danger,segs:[sg('Denied and stopped',K.danger),sg(' · turn ended',K.dim)]});s.status='idle';s.ago='now';}
+   this.say(kind==='n'||kind==='N'?'denied':'allowed');}
+  else if(p.type==='q'){s.pending=null;const txt=opt!=null?p.opts[opt]:kind;s.items.push({k:'user',t:txt});this.work(s,'Editing app/models/refund_window.rb');this.later(s,6000,()=>this.finish(s,'RefundWindow now takes a `clock:` argument; the spec passes a fixed clock. 200 seeded runs, 0 failures.'));}
+  else if(p.type==='rec'){s.pending=null;s.items.push({k:'note',g:'!',gc:K.acc,segs:[sg('Session resumed',K.acc),sg(' · the interrupted step was not replayed',K.dim)]});s.status='idle';s.ago='now';s.reason='';this.say('session resumed');}
+  this.stick=true;this.forceUpdate();}
+ send(){const s=this.cur,text=this.state.draft.trim();if(!s||!text)return;
+  if(s.pending&&s.pending.type==='rec')return;
+  if(s.pending&&s.pending.type==='q'){this.setState({draft:''});this.answer(text);return;}
+  if(s.pending&&s.pending.type==='appr'){s.items=s.items.filter(i=>i.k!=='wait');s.pending=null;s.items.push({k:'note',g:'✕',gc:K.danger,segs:[sg('Denied with instructions',K.danger)]});s.items.push({k:'user',t:text});this.work(s,'Thinking');this.later(s,5000,()=>this.finish(s,'Understood. I followed your instructions instead.'));this.setState({draft:''});return;}
+  if(s.status==='working'){this.say('codex is mid-turn · send when it finishes');return;}
+  s.items.push({k:'user',t:text});this.work(s,'Thinking');this.stick=true;this.setState({draft:''});
+  this.later(s,4500,()=>this.finish(s,'Done. That was a prototype reply; the real one streams from Codex.'));}
+ stopTurn(){const s=this.cur;if(!s||s.status!=='working')return;if(s.dyn){this.ptyStop=(Date.now()-this.t0)/1000%CYCLE;}else{s.status='idle';s.ago='now';s.items.push({k:'note',g:'■',gc:K.dim,segs:[sg('Stopped by you after '+fmt((Date.now()-s.since)/1000),K.dim)]});}this.say('turn stopped');}
+ newThread(){const p=this.cur?this.cur.p:'maitty';const id='n'+Date.now();this.S[id]={id,p,title:'New thread',status:'idle',items:[],ago:'now',branch:'main'};this.select(id);setTimeout(()=>this.promptRef.current&&this.promptRef.current.focus(),30);}
+ move(d){const N=this.nav||[];if(!N.length)return;let i=N.indexOf(this.state.cursor);i=Math.max(0,Math.min(N.length-1,(i<0?0:i)+d));const id=N[i];if(id.startsWith('fold:'))this.setState({cursor:id});else this.select(id);}
+ key(e){const k=e.key,tag=(e.target&&e.target.tagName)||'',st=this.state;
+  if(tag==='INPUT'||tag==='TEXTAREA'){if(k==='Escape'){e.preventDefault();e.target.blur();}return;}
+  if(e.metaKey||e.ctrlKey||e.altKey)return;
+  if(st.help){if(k==='Escape'||k==='?'||k==='q')this.setState({help:false});return;}
+  const s=this.cur,p=s&&s.pending;
+  const act={
+   'j':()=>st.focus==='chat'?this.chatRef.current&&(this.chatRef.current.scrollTop+=60):this.move(1),'ArrowDown':()=>this.move(1),
+   'k':()=>st.focus==='chat'?this.chatRef.current&&(this.chatRef.current.scrollTop-=60):this.move(-1),'ArrowUp':()=>this.move(-1),
+   'Tab':()=>this.setState({focus:st.focus==='side'?'chat':'side'}),
+   'Enter':()=>{if(st.cursor.startsWith('fold:')){const pk=st.cursor.slice(5);this.setState({open:{...st.open,[pk]:!st.open[pk]}});}else this.promptRef.current&&this.promptRef.current.focus();},
+   'i':()=>this.promptRef.current&&this.promptRef.current.focus(),
+   'e':()=>this.setState({exp:{...st.exp,[st.sel]:!st.exp[st.sel]}}),
+   'd':()=>this.setState({diff:!st.diff}),'t':()=>this.setState({raw:!st.raw}),
+   '/':()=>{this.setState({search:true});setTimeout(()=>this.searchRef.current&&this.searchRef.current.focus(),20);},
+   '?':()=>this.setState({help:true}),'n':()=>{if(p&&p.type==='appr')this.answer('n');else this.newThread();},
+   'g':()=>{const t=this.toasts[0];if(t)this.openToast(t);},'x':()=>{this.toasts.shift();this.forceUpdate();},
+   's':()=>{const L=Object.keys(SPIN),c=st.spin||this.props.spinner||'braille';const nx=L[(L.indexOf(c)+1)%L.length];this.setState({spin:nx});this.say('spinner · '+nx);},
+   '.':()=>this.stopTurn(),
+   'Escape':()=>this.setState({diff:false,raw:false,search:false,query:''}),
+  };
+  if(p&&p.type==='appr'){if(k==='y'||k==='a'||k==='N'){e.preventDefault();this.answer(k);return;}}
+  if(p&&p.type==='q'&&(k==='1'||k==='2')){e.preventDefault();this.answer(null,+k-1);return;}
+  if(p&&p.type==='rec'&&k==='r'){e.preventDefault();this.answer('r');return;}
+  if(act[k]){e.preventDefault();act[k]();}}
+ ptyItems(t,spin){const it=[{k:'user',t:'Resizing a pane sometimes leaves the PTY at the old size on Linux. Find the race and fix it.'}];
+  const ex=[[0.8,'Searched','on_resize in src/','12 hits'],[2.2,'Read','src/pty/linux.rs','182 lines'],[3.6,'Read','src/session/registry.rs','64 lines']];
+  if(t>=0.8){const d=t>=5,v=ex.filter(x=>t>=x[0]);it.push({k:'group',running:!d,sum:d?'Explored 3 files':v[v.length-1][1]+' '+v[v.length-1][2],meta:d?'4.2s':fmt(t),steps:v.map(x=>x.slice(1))});}
+  const A1='The resize handler can run before `spawn()` registers the PTY, so an early **SIGWINCH** is dropped. I\'ll keep the latest size per session and apply it once the PTY exists.';
+  if(t>=5)it.push({k:'agent',t:A1.slice(0,Math.floor(A1.length*Math.min(1,(t-5)/5))),stream:t<10});
+  const ed=[[10.5,'Edited','src/pty/linux.rs','+18 −4'],[14,'Edited','src/session/registry.rs','+6 −2']];
+  if(t>=10.5){const d=t>=17,v=ed.filter(x=>t>=x[0]);it.push({k:'group',running:!d,sum:d?'Edited 2 files':'Editing '+v[v.length-1][2],meta:d?'+24 −6':fmt(t-10.5),steps:v.map(x=>x.slice(1))});}
+  const out=['running 7 tests','test resize_after_spawn ... ok','test resize_before_spawn ... ok','test resize_burst ... ok','test resize_detached ... ok','test resize_zero ... ok','test resize_many_sessions ... ok','test result: ok. 7 passed; 0 failed'];
+  if(t>=17){const d=t>=27,n=Math.min(out.length,Math.floor((t-17)/1.2)+1);it.push({k:'group',running:!d,sum:d?'Ran cargo test -p maitty-pty resize':'Running cargo test -p maitty-pty resize',meta:d?'7 passed':fmt(t-17),steps:[['Ran','cargo test -p maitty-pty resize',d?'7 passed · 9.8s':'running']],out:d?null:out.slice(Math.max(0,n-3),n)});}
+  const A2='Fixed. Resizes that arrive before spawn are queued and applied once the PTY registers. All 7 resize tests pass, including a new **resize_before_spawn** test for this race.';
+  if(t>=27)it.push({k:'agent',t:A2.slice(0,Math.floor(A2.length*Math.min(1,(t-27)/6))),stream:t<33});
+  if(t>=DONE_AT)it.push({k:'done',t:'Worked for '+fmt(DONE_AT),files:2,add:24,del:6});
+  return it;}
+ ptyAct(t){return t<5?'Exploring src/pty':t<10?'Writing a reply':t<17?'Editing src/pty/linux.rs':t<27?'Running cargo test -p maitty-pty resize':'Writing a reply';}
+ lines(items,exp,spin,raw){const D={g:'',gc:K.dim,gw:'2ch',ind:'2ch',bg:'transparent',edge:'none',pt:'0',pb:'0',hov:'',cur:'default',anim:'none',click:()=>{}};
+  const L=[],blank={...D,segs:[sg(' ')]};
+  const ln=o=>({...D,...o});const GB='#0D1218';
+  const tog=()=>this.setState(s=>({exp:{...s.exp,[s.sel]:!s.exp[s.sel]}}));
+  items.forEach((it,i)=>{if(i)L.push(blank);
+   if(it.k==='user')L.push(ln(raw?{g:'❯',gc:K.fg3,segs:[sg(it.t,K.fg)]}:{g:'',gw:'0',ind:'3ch',pt:'10px',pb:'10px',bg:'#121820',edge:'inset 3px 0 0 '+K.acc,segs:[sg(it.t,K.fg)]}));
+   else if(it.k==='agent'){const segs=raw?[sg(it.t.replace(/\*\*|`/g,''),K.fg2)]:md(it.t);if(it.stream)segs.push(sg('▍',K.acc));L.push(ln({g:'●',gc:raw?K.fg3:K.fg,segs}));}
+   else if(it.k==='group'){const open=exp||it.running;const kids=[];
+    if(open){(it.steps||[]).forEach((s,j,a)=>kids.push(ln({ind:'3ch',bg:GB,segs:[sg((j===a.length-1&&!it.out?'└ ':'├ '),K.faint),sg(s[0]+' ',K.muted),sg(s[1],K.fg3),sg('  '+s[2],K.dim)]})));
+     if(it.out)it.out.forEach(o=>kids.push(ln({ind:'3ch',bg:GB,anim:'tuifade .2s ease-out',segs:[sg('│ ',K.faint),sg(o,/ok\b|passed/.test(o)?K.fg3:K.dim)]})));}
+    L.push(ln({ind:'3ch',bg:GB,pt:'8px',pb:kids.length?'4px':'8px',edge:it.running?'inset 3px 0 0 '+K.acc:'inset 3px 0 0 #1E252E',hov:'background:#10161D',g:it.running?spin:open?'▾':'▸',gc:it.running?K.acc:K.dim,cur:'pointer',click:tog,segs:[sg(it.sum,it.running?K.fg:K.fg2,it.running?500:400),sg('  '+it.meta,K.dim)]}));
+    kids.forEach((x,j)=>{x.edge=it.running?'inset 3px 0 0 '+K.acc:'inset 3px 0 0 #1E252E';if(j===kids.length-1)x.pb='8px';L.push(x);});}
+   else if(it.k==='wait')L.push(ln({g:'◆',gc:K.warn,segs:[sg(it.t,K.warn),sg('   answer below ↓',K.dim)]}));
+   else if(it.k==='note')L.push(ln({g:it.g,gc:it.gc,segs:it.segs}));
+   else if(it.k==='done')L.push(ln({g:'✓',gc:K.ok,segs:it.files?[sg(it.t+' · ',K.muted),sg(it.files+' file'+(it.files>1?'s':'')+' changed ',K.fg3),sg('+'+it.add,K.acc),sg(' −'+it.del,K.danger),sg('   d review',K.dim)]:[sg(it.t,K.muted)]}));
+  });return L;}
+ renderVals(){const st=this.state,now=Date.now(),S=this.S;
+  const spinName=st.spin||this.props.spinner||'braille',SP=SPIN[spinName]||SPIN.braille,fr=[...SP.f],spin=fr[Math.floor(now/SP.ms)%fr.length];
+  const el=(now-this.t0)/1000,cyc=Math.floor(el/CYCLE);let t=el%CYCLE;const P=S.pty;
+  if(this.ptyStop!=null){t=this.ptyStop;P.status='idle';P.ago='now';}
+  else{if(cyc!==this.cyc){this.cyc=cyc;}P.status=t<DONE_AT?'working':'done';P.ago=t<DONE_AT?'':'now';
+   if(t>=DONE_AT&&this.notified!==cyc){this.notified=cyc;this.notify(P,'done','Fixed. 7 resize tests pass · 2 files +24 −6');}}
+  P.items=this.ptyItems(t,spin);if(this.ptyStop!=null)P.items.push({k:'note',g:'■',gc:K.dim,segs:[sg('Stopped by you after '+fmt(t),K.dim)]});
+  P.act=this.ptyAct(t);P.elapsed=t;
+  const all=Object.values(S),q=(st.query||'').toLowerCase();
+  const vis=x=>!q||x.title.toLowerCase().includes(q)||PROJ[x.p][0].includes(q);
+  const blocked=all.filter(x=>(x.status==='needs'||x.status==='recovery')&&vis(x));
+  const elOf=x=>x.dyn?x.elapsed:(now-(x.since||now))/1000;
+  const row=x=>{const sel=x.id===st.sel,cur=x.id===st.cursor;const g={working:spin,needs:'◆',done:'✓',idle:'○',recovery:'!'}[x.status],gc={working:K.acc,needs:K.warn,done:K.ok,idle:K.dim,recovery:K.danger}[x.status];
+   const loud=x.unread||x.status==='needs'||x.status==='recovery';
+   const sub=x.status==='working'?x.act:(x.status==='needs'||x.status==='recovery')?x.reason:'';
+   return {isRow:true,isHead:false,g,gc,title:x.title,tc:sel?K.fg:loud?K.fg:K.fg3,fw:loud||sel?500:400,dot:x.unread?'•':'',meta:x.status==='working'?fmt(elOf(x)):x.status==='needs'?'':x.status==='recovery'?'exited':x.ago,mc:x.status==='recovery'?K.danger:x.status==='working'?K.acc:K.dim,
+    hasSub:!!sub,sub,subc:x.status==='working'?K.muted:x.status==='recovery'?K.danger:K.warn,bg:sel?'#151B22':'transparent',bar:sel?'inset 3px 0 0 '+(st.focus==='side'?K.acc:'#3A4450'):cur?'inset 3px 0 0 #3A4450':'none',click:()=>this.select(x.id)};};
+  const side=[],nav=[];const head=(g,text,c,right,pt,hot)=>({isHead:true,isRow:false,g,text,c,right,pt,rc:hot?K.warn:K.dim,rbg:hot?'#1B160D':'transparent'});
+  if(blocked.length){side.push(head('◆','BLOCKED ON YOU',K.warn,String(blocked.length),'0',true));blocked.forEach(x=>{side.push(row(x));nav.push(x.id);});}
+  PORDER.forEach((pk,pi)=>{const inP=all.filter(x=>x.p===pk&&vis(x)&&!(x.status==='needs'||x.status==='recovery'));const nb=all.filter(x=>x.p===pk&&(x.status==='needs'||x.status==='recovery')).length;
+   if(!inP.length&&!nb)return;side.push(head('',PROJ[pk][0].toUpperCase(),K.muted,nb?'◆ '+nb+' above':PROJ[pk][1],side.length?'20px':'0',!!nb));
+   const act=inP.filter(x=>!x.settled),setl=inP.filter(x=>x.settled);act.forEach(x=>{side.push(row(x));nav.push(x.id);});
+   if(setl.length){const open=!!st.open[pk],id='fold:'+pk,cur=st.cursor===id;side.push({isRow:true,isHead:false,g:open?'▾':'▸',gc:K.dim,title:'Settled · '+setl.length,tc:K.dim,fw:400,dot:'',meta:'',mc:K.dim,hasSub:false,sub:'',subc:K.dim,bg:cur?'#151B22':'transparent',bar:cur?'inset 3px 0 0 '+K.acc:'none',click:()=>this.setState({cursor:id,open:{...st.open,[pk]:!open}})});nav.push(id);
+    if(open)setl.forEach(x=>{side.push(row(x));nav.push(x.id);});}});
+  this.nav=nav;
+  const c=this.cur||P,p=c.pending,raw=st.raw;
+  const items=c.items.slice();if(c.status==='working'&&!c.dyn)items.push({k:'live'});
+  let lines=this.lines(items.filter(i=>i.k!=='live'),!!st.exp[c.id],spin,raw);
+  if(c.status==='working'&&!c.dyn){const LD={gw:'2ch',ind:'2ch',bg:'transparent',edge:'none',pt:'0',pb:'0',hov:'',cur:'default',anim:'none',click:()=>{}};if(lines.length)lines.push({...LD,g:'',gc:K.dim,segs:[sg(' ')]});lines.push({...LD,g:spin,gc:K.acc,segs:[sg(c.act,K.fg),sg('  '+fmt(elOf(c)),K.dim),sg('   . stop',K.faint)]});}
+  const ST={working:[spin,'working '+fmt(elOf(c)),K.acc,'#0F1A19'],needs:['◆','needs you',K.warn,'#1B160D'],done:['✓','done',K.ok,'#111915'],idle:['○','idle',K.muted,'#11161D'],recovery:['!','recovery needed',K.danger,'#1D1214']}[c.status];
+  const wait=p&&p.since?fmt((now-p.since)/1000):'';
+  const KB=(key,label,pri,col,run)=>({key,label,run,kbg:pri?col:'#262E39',kfg:pri?'#14100A':K.fg,lbg:pri?'#2A2112':'#1A2029',lc:pri?col:K.fg2});
+  let dock={show:false};
+  if(p&&p.type==='appr')dock={show:true,bd:'#4A3A1E',bg:'#15120C',c:K.warn,title:'◆ Codex wants to run a command outside the sandbox',wait:'waiting '+wait,foot:'only the choices codex offers',
+   lines:[{g:'$',gc:K.warn,pad:'8px 2ch',bg:'#0A0D11',mb:'10px',segs:[sg(p.cmd,K.fg,600)]},{g:'',gc:K.dim,pad:'0',bg:'transparent',mb:'0',segs:[sg('in ',K.dim),sg(p.cwd,K.fg3),sg(' · blocked: ',K.dim),sg(p.why,K.fg3)]},{g:'',gc:K.dim,pad:'0',bg:'transparent',mb:'0',segs:[sg('codex says ',K.dim),sg('"'+p.reason+'"',K.fg2)]}],
+   keys:[KB('y','allow once',true,K.warn,()=>this.answer('y')),KB('a','allow for session',false,0,()=>this.answer('a')),KB('n','deny',false,0,()=>this.answer('n')),KB('N','deny & stop',false,0,()=>this.answer('N'))]};
+  else if(p&&p.type==='q')dock={show:true,bd:'#4A3A1E',bg:'#15120C',c:K.warn,title:'◆ Codex is asking',wait:'waiting '+wait,foot:'or type a reply below',
+   lines:[{g:'?',gc:K.warn,pad:'0',bg:'transparent',mb:'0',segs:md(p.text,K.fg)}],keys:p.opts.map((o,i)=>KB(String(i+1),o,i===0,K.warn,()=>this.answer(null,i)))};
+  else if(p&&p.type==='rec')dock={show:true,bd:'#4A2629',bg:'#160F11',c:K.danger,title:'! Recovery needed',wait:'',foot:'nothing is replayed automatically',
+   lines:[{g:'',gc:K.dim,pad:'0',bg:'transparent',mb:'0',segs:[sg('Codex exited mid-turn (signal 9). History up to the last event is saved.',K.fg2)]},{g:'',gc:K.dim,pad:'0',bg:'transparent',mb:'0',segs:[sg('The interrupted edit to src/clipboard/wsl.rs may not have finished.',K.dim)]}],
+   keys:[{key:'r',label:'resume session',run:()=>this.answer('r'),kbg:K.danger,kfg:'#140A0A',lbg:'rgba(240,127,120,.12)',lc:K.danger},KB('t','open raw terminal',false,0,()=>this.setState({raw:true}))]};
+  const wt='~/.maitty/wt/'+PROJ[c.p][0]+'-'+(c.branch||'main').replace(/\//g,'-');
+  const L2=c.status==='working'?[sg(spin+' ',K.acc),sg(c.act,K.fg2),sg('  '+fmt(elOf(c)),K.dim),sg('     . stop   e details   t terminal',K.faint)]
+   :c.status==='needs'?[sg('◆ ',K.warn),sg(p&&p.type==='q'?'codex is asking · 1 / 2 or type a reply':'waiting on you · y allow · a session · n deny',K.warn)]
+   :c.status==='recovery'?[sg('! recovery needed · r resume · t raw terminal',K.danger)]
+   :c.status==='done'?[sg('✓ ',K.ok),sg('done · d review changes · i to follow up',K.muted)]:[sg('○ idle · i to write',K.dim)];
+  const info=[{segs:[sg(wt,K.acc),sg('  │  ',K.faint),sg(c.branch||'main',K.kw),sg('  │  ',K.faint),sg('codex ',K.dim),sg('gpt-5-codex',K.fg2),sg('  │  ',K.faint),sg('workspace-write',K.fg3),sg(' · ',K.dim),sg('on-request',K.fg3),sg('  │  ctx ',K.dim),sg('11%',K.ok)]},{segs:L2}];
+  const hasDiff=c.id==='pty'&&(c.status!=='working'||t>=17);
+  const diff=DIFF.map(([s,n,code])=>({n,s:s==='@'?'':s==='+'?'+':s==='-'?'−':'',sc:s==='+'?K.acc:K.danger,bg:s==='+'?'rgba(95,212,191,.07)':s==='-'?'rgba(240,127,120,.08)':s==='@'?'#0F141A':'transparent',edge:s==='+'?'inset 2px 0 0 rgba(95,212,191,.55)':s==='-'?'inset 2px 0 0 rgba(240,127,120,.55)':'none',segs:s==='@'?[{t:code,c:K.dim,fi:'normal'}]:hl(code)}));
+  const ins=st.ins,mode=st.help?'KEYS':st.search?'FIND':ins?'INSERT':p&&p.type==='appr'?'APPROVE':st.raw?'RAW':'NORMAL';
+  const modeC={INSERT:[K.acc,'#071011'],APPROVE:[K.warn,'#14100A'],RAW:[K.warn,'#14100A'],FIND:[K.kw,'#120E1C'],KEYS:[K.kw,'#120E1C'],NORMAL:['#1E2630',K.fg]}[mode];
+  const hints={INSERT:'↵ send · esc normal mode',APPROVE:'y allow once · a allow for session · n deny · N deny & stop · j/k move',RAW:'keys go to codex · t back to chat',FIND:'type to filter · esc close',KEYS:'esc close',NORMAL:'j/k move · ↵ write · tab pane · e details · d diff · t raw · g open notification · ? keys'}[mode];
+  const workN=all.filter(x=>x.status==='working').length,needsN=all.filter(x=>x.status==='needs'||x.status==='recovery').length;
+  this.toasts=this.toasts.filter(x=>x.kind!=='done'||now-x.at<9000);
+  const TK={done:['FINISHED','✓',K.ok,'#2E3F34'],needs:['NEEDS YOU','◆',K.warn,'#4A3A1E'],rec:['RECOVERY','!',K.danger,'#4A2629']};
+  const d=new Date();
+  return {count:all.length,clock:String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'),radius:(this.props.borders??'rounded')==='rounded'?'6px':'0',
+   topTabs:[['chat',!st.raw],['terminal',st.raw]].map(([l,on])=>({label:l,bg:on?'#1A2029':'transparent',fg:on?K.fg:K.dim,pick:()=>this.setState({raw:l==='terminal'})})),
+   sideBd:st.focus==='side'&&!ins?'#2F5C55':K.line,sideTc:st.focus==='side'&&!ins?K.acc:K.fg2,mainBd:st.focus==='chat'||ins?'#2F5C55':K.line,
+   focusSide:()=>st.focus!=='side'&&this.setState({focus:'side'}),focusChat:()=>st.focus!=='chat'&&this.setState({focus:'chat'}),
+   searchOn:st.search,query:st.query,searchRef:this.searchRef,onQuery:e=>this.setState({query:e.target.value}),onSearchKey:e=>{if(e.key==='Escape'){e.preventDefault();this.setState({search:false,query:''});e.target.blur();}if(e.key==='Enter'){e.preventDefault();e.target.blur();}},
+   side,newThread:()=>this.newThread(),openSearch:()=>{this.setState({search:true});setTimeout(()=>this.searchRef.current&&this.searchRef.current.focus(),20);},openHelp:()=>this.setState({help:true}),
+   projName:PROJ[c.p][0],title:c.title,stGlyph:ST[0],stLabel:ST[1],stC:ST[2],stBg:ST[3],raw,
+   lines,chatRef:this.chatRef,onChatScroll:e=>{const el=e.currentTarget;this.stick=el.scrollHeight-el.scrollTop-el.clientHeight<40;},
+   dock,pBd:ins?'#2F5C55':K.line,pGc:ins?K.acc:K.dim,promptRef:this.promptRef,draft:st.draft,onDraft:e=>this.setState({draft:e.target.value}),
+   onPromptKey:e=>{if(e.key==='Enter'){e.preventDefault();this.send();}},onPFocus:()=>this.setState({ins:true}),onPBlur:()=>this.setState({ins:false}),
+   pDisabled:!!(p&&p.type==='rec'),pPh:p&&p.type==='rec'?'resume the session to continue':p&&p.type==='appr'?'type to deny with instructions…':p&&p.type==='q'?'type a reply…':c.status==='working'?'codex is working · your draft is kept':'message codex…',
+   pHint:ins?'send':'i to write',info,status:info[1],wtPath:wt,pBg:ins?'#141A22':'#11161D',pEdge:ins?'inset 3px 0 0 '+K.acc:'inset 3px 0 0 #262E39',sendBg:ins&&st.draft.trim()?K.acc:'#1A2029',sendFg:ins&&st.draft.trim()?'#071011':K.dim,
+   searchOff:!st.search,searchEdge:st.search?'inset 3px 0 0 '+K.acc:'none',toggleDiff:()=>this.setState({diff:!st.diff}),diffTabBg:st.diff?'#1A2029':'transparent',diffTabFg:st.diff?K.fg:K.dim,
+   diffOpen:st.diff,closeDiff:()=>this.setState({diff:false}),hasDiff,noDiff:!hasDiff,dsum:hasDiff?{files:'2 files',add:'+24',del:'−6'}:{files:'',add:'',del:''},
+   dfiles:[{tag:'M',dir:'src/pty/',name:'linux.rs',add:'+18',del:'−4',bg:'#151B22',edge:'inset 3px 0 0 '+K.acc},{tag:'M',dir:'src/session/',name:'registry.rs',add:'+6',del:'−2',bg:'transparent',edge:'none'}],diff,
+   mode,modeBg:modeC[0],modeFg:modeC[1],hints,hasFlash:!!st.flash&&now-st.flashAt<2600,flash:st.flash,hasNeeds:needsN>0,needsN,workN,spinG:spin,spinName:spinName,
+   toasts:this.toasts.slice(0,2).map(n=>{const x=S[n.sid],k=TK[n.kind]||TK.needs,s=Math.floor((now-n.at)/1000);return {kind:k[0],g:k[1],c:k[2],bd:k[3],title:x?x.title:'',proj:x?PROJ[x.p][0]:'',text:n.text,ago:s<5?'now':s+'s',open:()=>this.openToast(n),dismiss:e=>{e.stopPropagation();this.toasts=this.toasts.filter(y=>y!==n);this.forceUpdate();}};}),
+   help:st.help,closeHelp:()=>this.setState({help:false}),stop:e=>e.stopPropagation(),
+   keys:[['j / k','next / previous session',1],['tab','switch pane',0],['↵ or i','write to codex',0],['esc','normal mode · close',0],['e','expand tool details',0],['d','changes & diff pane',0],['t','raw native codex terminal',0],['/','filter sessions',0],['n','new thread',0],['.','stop the turn',0],['y','allow once',2],['a','allow for session',2],['n','deny',2],['N','deny and stop',2],['1 / 2','answer a question',2],['r','resume after a crash',3],['g','open newest notification',0],['x','dismiss notification',0],['s','cycle spinner',0],['?','this sheet',0]].map(([k,d,t])=>({k,d,c:t===2?K.warn:t===3?K.danger:K.acc,fw:600}))};
+ }
+}
+</script>
+</body>
+</html>

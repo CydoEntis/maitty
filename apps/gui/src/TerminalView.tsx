@@ -37,7 +37,7 @@ function NativeHandoffView({ conversation }: { conversation: Conversation }) {
     return <div className="panel-empty" role="status">
       <CircleAlert size={18} />
       <h2>Native terminal needs recovery</h2>
-      <p>The daemon no longer has the native Codex terminal attached. Resume requires checking that its process has stopped before chat can take ownership.</p>
+      <p>The daemon no longer has the native {conversation.provider} terminal attached. Resume requires checking that its process has stopped before chat can take ownership.</p>
     </div>
   }
 
@@ -60,7 +60,7 @@ function NativeHandoffView({ conversation }: { conversation: Conversation }) {
   return <div className="panel-empty">
     <TerminalSquare size={18} />
     <h2>Continue in the native terminal</h2>
-    <p>Maitty will save the handoff, stop the chat runtime, then resume this exact Codex session in a daemon-owned terminal.</p>
+    <p>Maitty will save the handoff, stop the chat runtime, then resume this exact {conversation.provider} session in a daemon-owned terminal.</p>
     <Button variant="outline" size="sm" disabled={!canHandOff || isHandingOff} onClick={() => { void handOff() }}>
       {isHandingOff ? <LoaderCircle size={14} /> : <TerminalSquare size={14} />}
       {isHandingOff ? 'Handing off' : 'Resume in native terminal'}
@@ -214,10 +214,10 @@ function ConnectedTerminalView({ conversation }: { conversation: NativeConversat
   }
 
   return <div className="terminal-view">
-    <div className="terminal-heading"><span className="terminal-live-dot" />Native Codex terminal · pane {term}<span className="terminal-mode-hint">Keys go straight to Codex · Ctrl+` to return</span></div>
+    <div className="terminal-heading"><span className="terminal-live-dot" />Native {conversation.provider} terminal · pane {term}<span className="terminal-mode-hint">Keys go straight to {conversation.provider} · Ctrl+` to return</span></div>
     {(replayQuery.isLoading || screenQuery.isLoading) && <div className="terminal-load-status" role="status"><LoaderCircle size={14} />Connecting to terminal</div>}
     {(replayQuery.isError || screenQuery.isError) && <div className="terminal-input-error" role="status"><p>Could not load the terminal. Check the daemon connection and retry.</p><Button variant="outline" size="sm" onClick={() => { void (replayQuery.isError ? replayQuery.refetch() : screenQuery.refetch()) }}>Retry</Button></div>}
-    <div className="terminal-screen" ref={terminalHost} role="region" aria-label="Native Codex terminal" aria-describedby="terminal-instructions" />
+    <div className="terminal-screen" ref={terminalHost} role="region" aria-label={`Native ${conversation.provider} terminal`} aria-describedby="terminal-instructions" />
     <p className="terminal-footnote" id="terminal-instructions">Click the terminal and type. Maitty sends keys to the selected daemon-owned pane.</p>
     {inputFailed && <div className="terminal-input-error" role="status"><p>Input stopped because the daemon could not be reached. Retry the terminal connection before typing.</p><Button variant="outline" size="sm" onClick={() => { void reconnectTerminal() }}>Reconnect</Button></div>}
   </div>

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</helmet>
+<sc-if value="{{ isFull }}" hint-placeholder-val="{{ true }}">
+<nav aria-label="Conversations" style="width:100%;height:100%;display:flex;flex-direction:column;background:#0F1D2C;border-right:1px solid #1F3448;font-family:'Geist',system-ui,sans-serif;color:#E8EFF4;min-height:0;box-sizing:border-box">
+  <div style="padding:12px 12px 10px;display:flex;flex-direction:column;gap:8px">
+    <div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:7px;background:#74D4C0;color:#08121C;font-size:13px;font-weight:600">
+      <span style="font-size:16px;line-height:1">+</span><span style="flex:1">New conversation</span><span style="font-family:'Geist Mono',monospace;font-size:11px;opacity:.75">⌘N</span>
+    </div>
+    <div style="height:32px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:7px;background:#0B1724;border:1px solid #1F3448;color:#7F95A6;font-size:12.5px">
+      <span style="font-size:13px">⌕</span><span style="flex:1">Search or jump to…</span><span style="font-family:'Geist Mono',monospace;font-size:11px">⌘K</span>
+    </div>
+  </div>
+  <sc-if value="{{ hasGroups }}" hint-placeholder-val="{{ true }}">
+    <div role="tablist" style="display:flex;gap:2px;padding:0 12px 8px;font-size:12px">
+      <span style="padding:4px 8px;border-radius:5px;background:#1A2E42;color:#E8EFF4;font-weight:500">All <span style="color:#7F95A6;font-family:'Geist Mono',monospace">14</span></span>
+      <span style="padding:4px 8px;border-radius:5px;color:#F4B860;font-weight:500">◆ Needs you <span style="font-family:'Geist Mono',monospace">2</span></span>
+      <span style="padding:4px 8px;border-radius:5px;color:#AEBFCC">◐ Working <span style="font-family:'Geist Mono',monospace;color:#7F95A6">2</span></span>
+    </div>
+  </sc-if>
+  <div style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:6px;padding:4px 6px">
+    <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+      <div style="display:flex;flex-direction:column">
+        <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 8px;font-size:12px;color:#AEBFCC">
+          <span style="width:10px;color:#7F95A6;font-size:10px">{{ g.chev }}</span>
+          <span style="font-weight:600;color:#E8EFF4">{{ g.name }}</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">{{ g.path }}</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:11px;color:{{ g.badgeColor }}">{{ g.badge }}</span>
+        </div>
+        <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+          <div aria-label="{{ it.aria }}" style="height:30px;display:flex;align-items:center;gap:8px;padding:0 8px 0 22px;border-radius:6px;background:{{ it.bg }};box-shadow:{{ it.ring }}">
+            <span aria-hidden="true" style="width:14px;text-align:center;font-size:12px;color:{{ it.color }}">{{ it.glyph }}</span>
+            <span style="flex:1;min-width:0;font-size:13px;color:{{ it.tcolor }};font-weight:{{ it.weight }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.title }}</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;color:{{ it.mcolor }}">{{ it.meta }}</span>
+            <span style="width:6px;height:6px;border-radius:50%;background:{{ it.dot }}"></span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+    <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="margin:24px 10px;padding:16px;border:1px dashed #2B4660;border-radius:8px;display:flex;flex-direction:column;gap:6px">
+        <span style="font-size:13px;font-weight:600">No conversations yet</span>
+        <span style="font-size:12.5px;line-height:1.5;color:#AEBFCC;text-wrap:pretty">Add a project folder to start. Sessions you open in the Maitty TUI appear here too.</span>
+      </div>
+    </sc-if>
+  </div>
+  <div style="height:40px;flex:none;display:flex;align-items:center;gap:8px;padding:0 14px;border-top:1px solid #1F3448;font-size:12px;color:#AEBFCC">
+    <span style="color:{{ footColor }}">{{ footGlyph }}</span><span style="flex:1">{{ footText }}</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#7F95A6">{{ footMeta }}</span>
+  </div>
+</nav>
+</sc-if>
+<sc-if value="{{ isRail }}" hint-placeholder-val="{{ false }}">
+<nav aria-label="Conversations (collapsed)" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0;background:#0F1D2C;border-right:1px solid #1F3448;font-family:'Geist',system-ui,sans-serif;box-sizing:border-box">
+  <div style="width:34px;height:34px;border-radius:7px;background:#74D4C0;color:#08121C;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600">+</div>
+  <div style="width:34px;height:34px;border-radius:7px;color:#AEBFCC;display:flex;align-items:center;justify-content:center;font-size:15px">⌕</div>
+  <div style="width:24px;height:1px;background:#1F3448;margin:6px 0"></div>
+  <sc-for list="{{ railItems }}" as="r" hint-placeholder-count="6">
+    <div style="width:34px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;color:{{ r.color }};background:{{ r.bg }};box-shadow:{{ r.ring }}">{{ r.glyph }}</div>
+  </sc-for>
+  <div style="flex:1"></div>
+  <div style="font-size:11px;color:#74D4C0">●</div>
+</nav>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:280,&quot;height&quot;:760},&quot;selected&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;pty&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;variant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;populated&quot;,&quot;empty&quot;,&quot;offline&quot;,&quot;rail&quot;],&quot;default&quot;:&quot;populated&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;focusRing&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const ST={working:['◐','#74D4C0','Working'],needs:['◆','#F4B860','Needs you'],done:['✓','#A3C9A8','Done'],idle:['○','#7F95A6','Idle'],recovery:['↻','#F28B82','Recovery needed']};
+const GROUPS=[
+ {name:'maitty',path:'~/code/maitty',open:true,items:[
+  {id:'pty',title:'Fix PTY resize race on Linux',status:'working',meta:'1m'},
+  {id:'mig',title:'Migrate session store to v4',status:'needs',meta:'approval'},
+  {id:'scroll',title:'Scrollback search in TUI',status:'done',meta:'3h',unread:true},
+  {id:'claude',title:'Sketch provider trait for Claude',status:'idle',meta:'2d'}]},
+ {name:'ledger-api',path:'~/work/ledger-api',open:true,items:[
+  {id:'flaky',title:'Flaky refund_spec on CI',status:'needs',meta:'question'},
+  {id:'rate',title:'Rate limiter middleware',status:'working',meta:'6m'},
+  {id:'tokio',title:'Bump tokio to 1.42',status:'done',meta:'12m',unread:true}]},
+ {name:'dotfiles',path:'~/dotfiles',open:true,items:[
+  {id:'zsh',title:'Profile zsh startup',status:'recovery',meta:'exited'},
+  {id:'nix',title:'Flake cleanup',status:'done',meta:'1d'}]},
+ {name:'site-docs',path:'~/code/site-docs',open:false,count:5,items:[]}];
+class Component extends DCLogic{
+ renderVals(){
+  const sel=this.props.selected??'pty', v=this.props.variant??'populated', off=v==='offline', ring=this.props.focusRing?'inset 0 0 0 2px #74D4C0':'none';
+  const groups=(v==='empty'||v==='rail')?[]:GROUPS.map(g=>{
+   const needs=g.items.filter(i=>i.status==='needs').length, rec=g.items.filter(i=>i.status==='recovery').length;
+   return {name:g.name,path:g.path,chev:g.open?'▾':'▸',
+    badge:off?'':(needs?'◆'+needs:rec?'↻'+rec:g.open?'':String(g.count)),
+    badgeColor:needs?'#F4B860':rec?'#F28B82':'#7F95A6',
+    items:g.items.map(it=>{const s=ST[it.status], isSel=it.id===sel, loud=it.unread||it.status==='needs';
+     return {...it,glyph:s[0],color:off?'#5E7385':s[1],aria:it.title+', '+(off?'status unknown':s[2]),
+      bg:isSel?'#1A2E42':'transparent',ring:isSel?ring:'none',
+      tcolor:(isSel||loud)&&!off?'#E8EFF4':'#AEBFCC',weight:loud&&!off?600:400,
+      meta:off?'?':it.meta,
+      mcolor:off?'#7F95A6':it.status==='needs'?'#F4B860':it.status==='recovery'?'#F28B82':'#7F95A6',
+      dot:it.unread&&!off?'#74D4C0':'transparent'};})};});
+  const railItems=GROUPS.flatMap(g=>g.items).map(it=>({glyph:ST[it.status][0],color:ST[it.status][1],bg:it.id===sel?'#1A2E42':'transparent',ring:it.id===sel?ring:'none'}));
+  const foot=off?['⊘','#AEBFCC','maittyd disconnected','retry 4s']:['●','#74D4C0','maittyd connected','v0.9.2'];
+  return {isFull:v!=='rail',isRail:v==='rail',groups,hasGroups:groups.length>0,isEmpty:v==='empty',railItems,
+   footGlyph:foot[0],footColor:foot[1],footText:foot[2],footMeta:foot[3]};
+ }
+}
+</script>
+</body>
+</html>
