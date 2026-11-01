@@ -603,6 +603,7 @@ mod tests {
         let project = crate::daemon::persist::scratch_dir();
         let outside = crate::daemon::persist::scratch_dir();
         std::fs::create_dir_all(project.path()).expect("project directory");
+        std::fs::create_dir_all(outside.path()).expect("outside directory");
         std::fs::write(outside.path().join("secret.txt"), "private\n").expect("outside file");
         std::os::unix::fs::symlink(outside.path(), project.path().join("linked"))
             .expect("symbolic link");
