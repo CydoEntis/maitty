@@ -45,7 +45,7 @@ pub fn resolve(
 ) -> Vec<Resolved> {
     let yours: Vec<Resolved> = user
         .iter()
-        .filter(|c| same_path(&c.project, project))
+        .filter(|c| project_paths_match(&c.project, project))
         .map(|def| Resolved {
             def: def.clone(),
             source: CheckSource::User,
@@ -57,6 +57,18 @@ pub fn resolve(
     } else {
         yours
     }
+}
+
+fn project_paths_match(configured: &Path, project: &Path) -> bool {
+    if same_path(configured, project) {
+        return true;
+    }
+
+    configured
+        .canonicalize()
+        .ok()
+        .zip(project.canonicalize().ok())
+        .is_some_and(|(configured, project)| same_path(&configured, &project))
 }
 
 /// The checks `worktree`'s `.<app>/checks.toml` names, each gated by what you decided. A file
@@ -194,6 +206,25 @@ mod tests {
             )
             .is_empty()
         );
+    }
+
+    #[test]
+    fn user_checks_match_the_same_project_through_a_different_path_spelling() {
+        let repo = super::super::persist::scratch_dir();
+        std::fs::create_dir_all(repo.path()).unwrap();
+        let user = [CheckDef {
+            project: repo.path().join("."),
+            name: Some("test".into()),
+            command: "cargo test".into(),
+            ..Default::default()
+        }];
+
+        let got = resolve(&user, repo.path(), repo.path(), &Approvals::default());
+
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].def.command, "cargo test");
+        assert_eq!(got[0].source, CheckSource::User);
+        assert_eq!(got[0].gate, Gate::Run);
     }
 
     /// A real git repo whose `.<app>/checks.toml` names `test`, committed.
