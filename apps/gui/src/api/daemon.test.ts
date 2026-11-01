@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke, isTauri } from '@tauri-apps/api/core'
-import { classifySubmissionFailure, createConversation, handoffToChat, handoffToNative, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversations, loadDaemonRestartStatus, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
+import { classifySubmissionFailure, createConversation, handoffToChat, handoffToNative, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, loadDaemonRestartStatus, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -72,6 +72,49 @@ describe('workspace Git state', () => {
     await expect(loadConversations()).resolves.toMatchObject([
       { folder: 'C:\\dev\\autobattler', isGitRepository: false },
     ])
+  })
+})
+
+describe('read-only conversation file browser', () => {
+  beforeEach(() => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(invoke).mockReset()
+  })
+
+  it('lists and reads files using the selected checkout identity', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce([{ name: 'src', is_directory: true }])
+      .mockResolvedValueOnce('export const ready = true')
+
+    await expect(loadConversationFiles(conversation, 'src')).resolves.toEqual([
+      { name: 'src', is_directory: true },
+    ])
+    await expect(loadConversationFile(conversation, 'src/index.ts')).resolves.toContain('ready')
+    expect(invoke).toHaveBeenNthCalledWith(1, 'conversation_files', {
+      id: 42,
+      generation: 7,
+      path: 'src',
+    })
+    expect(invoke).toHaveBeenNthCalledWith(2, 'conversation_file', {
+      id: 42,
+      generation: 7,
+      path: 'src/index.ts',
+    })
+  })
+})
+
+describe('conversation changes query', () => {
+  it('sends only the selected conversation id and generation to the daemon', async () => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(invoke).mockReset().mockResolvedValue({
+      files: [],
+      additions: 0,
+      deletions: 0,
+      total_files: 0,
+      truncated: false,
+    })
+
+    await expect(loadConversationDiff(conversation)).resolves.toMatchObject({ total_files: 0 })
+    expect(invoke).toHaveBeenCalledWith('conversation_diff', { id: 42, generation: 7 })
   })
 })
 
@@ -202,13 +245,57 @@ describe('conversation activity history', () => {
   })
 
   it('preserves daemon tool states so running and failed work are not shown as completed', async () => {
-    const history = await loadMessages('42')
+    const history = await loadMessages('42', 'Codex')
 
     expect(history.messages.map(({ content, activityState }) => [content, activityState])).toEqual([
       ['Running cargo test', 'Running'],
       ['Failed cargo test', 'Failed'],
       ['Interrupted command', 'Interrupted'],
     ])
+  })
+
+  it('shows retained command labels and gives older history a readable fallback', async () => {
+    vi.mocked(invoke).mockReset().mockResolvedValue(readResult({
+      entries: [
+        {
+          ...toolEntry('item-1', 'commandExecution', 'GUI_CODEX_TOOL_OK', 'Completed'),
+          content: {
+            Tool: {
+              kind: 'commandExecution',
+              label: 'pwsh -NoProfile -Command Write-Output GUI_CODEX_TOOL_OK',
+              output: 'GUI_CODEX_TOOL_OK',
+            },
+          },
+        },
+        toolEntry('item-2', 'commandExecution', 'older output', 'Completed'),
+      ],
+    }))
+
+    const history = await loadMessages('42', 'Codex')
+
+    expect(history.messages.map(({ content, detail }) => [content, detail])).toEqual([
+      ['pwsh -NoProfile -Command Write-Output GUI_CODEX_TOOL_OK', 'GUI_CODEX_TOOL_OK'],
+      ['Run command', 'older output'],
+    ])
+  })
+
+  it('uses the conversation provider in approval labels', async () => {
+    vi.mocked(invoke).mockReset().mockResolvedValue(readResult({
+      approvals: [{
+        request_id: 'request-1',
+        kind: 'Command',
+        command: 'npm test',
+        reason: null,
+        cwd: null,
+        changes: [],
+        questions: [],
+        choices: ['Accept', 'Decline'],
+      }],
+    }))
+
+    const history = await loadMessages('42', 'Claude')
+
+    expect(history.messages[0]?.content).toBe('Claude wants to run a command')
   })
 
   it('loads every history page before returning the conversation', async () => {
@@ -218,7 +305,7 @@ describe('conversation activity history', () => {
       .mockResolvedValueOnce(readResult({ entries: firstPage, next: cursor }))
       .mockResolvedValueOnce(readResult({ entries: [toolEntry('item-128', 'Task 128', '', 'Completed')] }))
 
-    const history = await loadMessages('42')
+    const history = await loadMessages('42', 'Codex')
 
     expect(history.messages).toHaveLength(129)
     expect(history.completeness).toBe('Complete')
@@ -228,7 +315,7 @@ describe('conversation activity history', () => {
   it('keeps history incomplete when a page reports a missing section', async () => {
     vi.mocked(invoke).mockReset().mockResolvedValue(readResult({ completeness: { Incomplete: 'MissingPages' } }))
 
-    const history = await loadMessages('42')
+    const history = await loadMessages('42', 'Codex')
 
     expect(history.completeness).toEqual({ Incomplete: 'MissingPages' })
   })
@@ -239,7 +326,7 @@ describe('conversation activity history', () => {
       .mockResolvedValueOnce(readResult({ next: cursor }))
       .mockResolvedValueOnce(readResult({ next: cursor }))
 
-    await expect(loadMessages('42')).rejects.toThrow('Conversation history cursor repeated')
+    await expect(loadMessages('42', 'Codex')).rejects.toThrow('Conversation history cursor repeated')
     expect(invoke).toHaveBeenCalledTimes(2)
   })
 
@@ -250,7 +337,7 @@ describe('conversation activity history', () => {
       history: { ...validResult.history, completeness: null },
     })
 
-    await expect(loadMessages('42')).rejects.toThrow()
+    await expect(loadMessages('42', 'Codex')).rejects.toThrow()
   })
 })
 
@@ -261,7 +348,8 @@ function readResult({
   entries = [],
   next = null,
   completeness = 'Complete',
-}: { entries?: object[]; next?: HistoryCursor | null; completeness?: HistoryCompleteness } = {}) {
+  approvals = [],
+}: { entries?: object[]; next?: HistoryCursor | null; completeness?: HistoryCompleteness; approvals?: object[] } = {}) {
   return {
     conversation: 42,
     generation: 7,
@@ -271,7 +359,7 @@ function readResult({
     cancelling: false,
     history: { entries, next, completeness },
     checks: [],
-    approvals: [],
+    approvals,
   }
 }
 

@@ -106,6 +106,12 @@ pub struct ConversationDiffFile {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConversationFileEntry {
+    pub name: String,
+    pub is_directory: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApprovalRequest {
     pub request_id: ProviderRequestId,
     pub kind: ApprovalRequestKind,

@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 61;
+pub const PROTOCOL_VERSION: u32 = 62;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -441,6 +441,16 @@ pub enum Query {
         id: crate::conversation::ConversationId,
         generation: u64,
     },
+    ConversationFiles {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        path: Option<String>,
+    },
+    ConversationFileRead {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        path: String,
+    },
     ConversationTerminalScreen {
         id: crate::conversation::ConversationId,
         generation: u64,
@@ -609,6 +619,8 @@ pub enum Reply {
     ConversationSent(crate::conversation::Receipt),
     ConversationRead(crate::conversation::ReadResult),
     ConversationDiff(crate::conversation::ConversationDiff),
+    ConversationFiles(Vec<crate::conversation::ConversationFileEntry>),
+    ConversationFile(String),
     TerminalReplay(#[serde(with = "serde_bytes")] Vec<u8>),
     Ok,
     List(Snapshot),
