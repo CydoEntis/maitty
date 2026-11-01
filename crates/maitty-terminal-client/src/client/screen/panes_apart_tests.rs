@@ -203,10 +203,24 @@ fn no_pane_has_a_title_in_any_look() {
     for (label, app, buf) in every_split() {
         // A lone pane's top row is its terminal's first line; a split's is its edge. In Floating the
         // first pane's top border carries the tabs (ADR 0038), which are words.
-        let first = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(term, _)| *term);
-        for (term, r) in app.screen.leaf_rects.iter().filter(|(term, _)| app.screen.leaf_rects.len() > 1 && Some(*term) != first) {
+        let first = app
+            .screen
+            .leaf_rects
+            .iter()
+            .min_by_key(|(_, r)| (r.y, r.x))
+            .map(|(term, _)| *term);
+        for (term, r) in app
+            .screen
+            .leaf_rects
+            .iter()
+            .filter(|(term, _)| app.screen.leaf_rects.len() > 1 && Some(*term) != first)
+        {
             let top = title_of(&buf, *r);
-            assert!(!top.chars().any(char::is_alphanumeric), "{label}: pane {term}'s top edge carries no words, its tab names it: {top}\n{}", text(&buf));
+            assert!(
+                !top.chars().any(char::is_alphanumeric),
+                "{label}: pane {term}'s top edge carries no words, its tab names it: {top}\n{}",
+                text(&buf)
+            );
         }
     }
 }
@@ -216,15 +230,30 @@ fn a_named_tab_keeps_its_name_on_its_tab() {
     let mut app = split_world("floating", 2);
     app.screen.tabs[0].name = "build".into();
     let buf = draw(&mut app, 160, 45);
-    let first = |app: &App| app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(_, r)| *r).expect("a pane");
+    let first = |app: &App| {
+        app.screen
+            .leaf_rects
+            .iter()
+            .min_by_key(|(_, r)| (r.y, r.x))
+            .map(|(_, r)| *r)
+            .expect("a pane")
+    };
     // The tabs are on the first pane's top border.
     let tabs = |app: &App, buf: &Buffer| title_of(buf, first(app));
-    assert!(tabs(&app, &buf).contains(" build "), "the tab's name is on its tab: {}", tabs(&app, &buf));
+    assert!(
+        tabs(&app, &buf).contains(" build "),
+        "the tab's name is on its tab: {}",
+        tabs(&app, &buf)
+    );
     let mut second = app.screen.tabs[0].clone();
     (second.layout, second.focus, second.name) = (Node::Leaf(5), 5, String::new());
     app.screen.tabs.push(second);
     let buf = draw(&mut app, 160, 45);
-    assert!(tabs(&app, &buf).contains(" 1 ") && tabs(&app, &buf).contains(" build "), "with several tabs the tab adds its number: {}", tabs(&app, &buf));
+    assert!(
+        tabs(&app, &buf).contains(" 1 ") && tabs(&app, &buf).contains(" build "),
+        "with several tabs the tab adds its number: {}",
+        tabs(&app, &buf)
+    );
 }
 
 /// The cells of `r` drawn in exactly `colour`.

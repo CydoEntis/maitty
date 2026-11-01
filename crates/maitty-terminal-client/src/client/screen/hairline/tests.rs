@@ -721,10 +721,22 @@ fn the_tab_row_does_not_show_split_or_zoom_controls() {
             .map(|x| buf[(x, row.y)].symbol())
             .collect();
         if look == "hairline" {
-            assert!(tools.contains('◫') && tools.contains('⤢'), "{look}: its row keeps split and zoom controls: {tools}");
+            assert!(
+                tools.contains('◫') && tools.contains('⤢'),
+                "{look}: its row keeps split and zoom controls: {tools}"
+            );
         } else {
-            assert!(!tools.contains('◫') && !tools.contains('⤢'), "{look}: no split or zoom controls: {tools}");
-            assert!(!app.hits.iter().any(|(_, h)| matches!(h, Hit::Screen(ScreenHit::TabSplit | ScreenHit::TabZoom))), "{look}: the row has no split or zoom targets");
+            assert!(
+                !tools.contains('◫') && !tools.contains('⤢'),
+                "{look}: no split or zoom controls: {tools}"
+            );
+            assert!(
+                !app.hits.iter().any(|(_, h)| matches!(
+                    h,
+                    Hit::Screen(ScreenHit::TabSplit | ScreenHit::TabZoom)
+                )),
+                "{look}: the row has no split or zoom targets"
+            );
         }
     }
 }
@@ -783,8 +795,7 @@ fn in_floating_the_tab_row_is_level_with_the_sidebar_s_top_and_the_pane_box_is_u
             "{panes} pane(s): the tab row is on the sidebar's top row"
         );
         assert_eq!(
-            top,
-            g.tabs.y,
+            top, g.tabs.y,
             "{panes} pane(s): the tabs share the pane border"
         );
         let row: String = (g.tabs.x..g.tabs.right())
