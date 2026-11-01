@@ -57,7 +57,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: gui/pnpm-lock.yaml
+          cache-dependency-path: apps/gui/pnpm-lock.yaml
       - name: Install Tauri Linux dependencies
         run: |
           sudo apt-get update
@@ -65,16 +65,16 @@ jobs:
             build-essential curl file libayatana-appindicator3-dev libssl-dev \
             libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf rpm wget
       - name: Install GUI dependencies
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm install --frozen-lockfile
       - name: Test GUI
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm test
       - name: Lint GUI
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm lint
       - name: Build Linux desktop packages
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm desktop:build
 
   gui-macos:
@@ -92,18 +92,18 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: gui/pnpm-lock.yaml
+          cache-dependency-path: apps/gui/pnpm-lock.yaml
       - name: Install GUI dependencies
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm install --frozen-lockfile
       - name: Test GUI
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm test
       - name: Lint GUI
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm lint
       - name: Build macOS desktop packages
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm desktop:build
 
   gui-windows:
@@ -121,18 +121,18 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: gui/pnpm-lock.yaml
+          cache-dependency-path: apps/gui/pnpm-lock.yaml
       - name: Install GUI dependencies
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm install --frozen-lockfile
       - name: Test GUI
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm test
       - name: Lint GUI
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm lint
       - name: Build Windows desktop packages
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm desktop:build
 
   gui-archlinux:
@@ -157,16 +157,16 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: gui/pnpm-lock.yaml
+          cache-dependency-path: apps/gui/pnpm-lock.yaml
       - name: Install GUI dependencies
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm install --frozen-lockfile
       - name: Test GUI
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm test
       - name: Lint GUI
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm lint
       - name: Build Linux desktop packages
-        working-directory: gui
+        working-directory: apps/gui
         run: pnpm desktop:build

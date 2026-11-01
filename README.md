@@ -59,6 +59,14 @@ updating connects them again. You can also download an archive from
 [Releases](https://github.com/CydoEntis/maitty/releases), or build from source with
 `cargo install --git https://github.com/CydoEntis/maitty maitty`.
 
+### Desktop GUI
+
+The same release also publishes desktop installers for Windows, macOS and Linux.
+The GUI package includes its matching daemon. The `install.sh` and `install.ps1`
+commands above install the terminal app only. To use both interfaces with the
+same sessions, install the GUI and TUI from the same release; both connect to
+the same local daemon protocol.
+
 Maitty tells you when an update is out; one click installs it and restarts without
 losing your sessions. **Settings › General › UPDATES** shows the version you have.
 

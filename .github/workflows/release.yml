@@ -1,6 +1,6 @@
 # Builds the app for every platform when a version tag (v1.2.3) is pushed, and attaches the
 # archives and their checksums to a GitHub Release. The install scripts download from it.
-# The app's name is read from Cargo.toml (ADR 0019): the package name is the command.
+# The command name lives in apps/tui/Cargo.toml (ADR 0019).
 name: release
 
 on:
@@ -30,8 +30,18 @@ jobs:
           - { os: macos-15, target: aarch64-apple-darwin, archive: tar.gz }
           - { os: macos-15, target: x86_64-apple-darwin, archive: tar.gz }
           # Static (musl) builds run on any Linux: Ubuntu, Fedora, Arch / Omarchy, Alpine.
-          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl, archive: tar.gz, cross: true }
-          - { os: ubuntu-latest, target: aarch64-unknown-linux-musl, archive: tar.gz, cross: true }
+          - {
+              os: ubuntu-latest,
+              target: x86_64-unknown-linux-musl,
+              archive: tar.gz,
+              cross: true,
+            }
+          - {
+              os: ubuntu-latest,
+              target: aarch64-unknown-linux-musl,
+              archive: tar.gz,
+              cross: true,
+            }
     steps:
       - uses: actions/checkout@v7
         with:
@@ -40,7 +50,7 @@ jobs:
       - name: App name
         shell: bash
         run: |
-          app=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          app=$(sed -n 's/^name = "\(.*\)"/\1/p' apps/tui/Cargo.toml | head -1)
           echo "APP=$app" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
@@ -57,9 +67,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.cross }}" = "true" ]; then
-            cross build --release --locked --target ${{ matrix.target }}
+            cross build --release --locked --target ${{ matrix.target }} -p maitty --bin maitty
           else
-            cargo build --release --locked --target ${{ matrix.target }}
+            cargo build --release --locked --target ${{ matrix.target }} -p maitty --bin maitty
           fi
 
       - name: Package
@@ -84,8 +94,79 @@ jobs:
           name: ${{ env.APP }}-${{ matrix.target }}
           path: dist/${{ env.APP }}-${{ matrix.target }}.${{ matrix.archive }}
 
+  build-gui:
+    name: build GUI ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, platform: windows-x64 }
+          - { os: macos-latest, platform: macos }
+          - { os: ubuntu-latest, platform: linux-x64 }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/gui/pnpm-lock.yaml
+
+      - name: Install Tauri Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential curl file libayatana-appindicator3-dev libssl-dev \
+            libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf rpm wget
+
+      - name: Check release versions
+        shell: bash
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          expected=${TAG#v}
+          tui=$(sed -n 's/^version = "\(.*\)"/\1/p' apps/tui/Cargo.toml | head -1)
+          gui=$(node -p "JSON.parse(require('fs').readFileSync('apps/gui/src-tauri/tauri.conf.json', 'utf8')).version")
+          test "$expected" = "$tui" || { echo "Tag $TAG does not match TUI version $tui" >&2; exit 1; }
+          test "$expected" = "$gui" || { echo "Tag $TAG does not match GUI version $gui" >&2; exit 1; }
+
+      - name: Install GUI dependencies
+        working-directory: apps/gui
+        run: pnpm install --frozen-lockfile
+
+      - name: Build GUI installers
+        working-directory: apps/gui
+        run: pnpm desktop:build
+
+      - name: Collect GUI installers
+        shell: bash
+        run: |
+          mkdir -p dist
+          case "${{ runner.os }}" in
+            Windows) find target/release/bundle -type f \( -iname '*.msi' -o -iname '*.exe' \) -exec cp {} dist/ \; ;;
+            macOS) find target/release/bundle -type f -iname '*.dmg' -exec cp {} dist/ \; ;;
+            Linux) find target/release/bundle -type f \( -iname '*.deb' -o -iname '*.rpm' -o -iname '*.appimage' \) -exec cp {} dist/ \; ;;
+          esac
+          test -n "$(find dist -maxdepth 1 -type f -print -quit)" \
+            || { echo "No GUI installers were collected" >&2; exit 1; }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: maitty-gui-${{ matrix.platform }}
+          path: dist/*
+
   release:
-    needs: build
+    needs: [build, build-gui]
     runs-on: ubuntu-latest
     steps:
       # Full history and tags, for the notes below.
@@ -95,7 +176,7 @@ jobs:
           fetch-depth: 0
 
       - name: App name
-        run: echo "APP=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -1)" >> "$GITHUB_ENV"
+        run: echo "APP=$(sed -n 's/^name = "\(.*\)"/\1/p' apps/tui/Cargo.toml | head -1)" >> "$GITHUB_ENV"
 
       # What's new since the previous tag: its feat and fix commits, one "- " line each. The
       # app's update dialog shows these lines.
@@ -115,7 +196,7 @@ jobs:
           merge-multiple: true
 
       - name: Checksums
-        run: cd dist && sha256sum "$APP"-* > sha256sums.txt && cat sha256sums.txt
+        run: cd dist && find . -maxdepth 1 -type f ! -name sha256sums.txt -printf '%f\0' | sort -z | xargs -0 sha256sum > sha256sums.txt && cat sha256sums.txt
 
       - name: Publish the release
         env:
@@ -147,13 +228,13 @@ jobs:
       - name: App name
         shell: bash
         run: |
-          app=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          app=$(sed -n 's/^name = "\(.*\)"/\1/p' apps/tui/Cargo.toml | head -1)
           echo "APP=$app" >> "$GITHUB_ENV"
           echo "$(echo "$app" | tr 'a-z-' 'A-Z_')_VERSION=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_ENV"
       - name: install.sh
         if: runner.os != 'Windows'
         run: |
-          curl -fsSL "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/install.sh" | sh
+          sh ./install.sh
           ~/.local/bin/$APP --version
           ~/.local/bin/$APP update --check
           ~/.local/bin/$APP doctor || true
@@ -161,6 +242,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          irm "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/main/install.ps1" | iex
+          ./install.ps1
           & "$env:LOCALAPPDATA\Programs\$env:APP\$env:APP.exe" --version
           & "$env:LOCALAPPDATA\Programs\$env:APP\$env:APP.exe" update --check

@@ -986,6 +986,12 @@ separate packages; the TUI and CLI stay together in the terminal-client package.
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux
 while retaining the standalone TUI install.
+The version-tag release workflow now builds the GUI installers and publishes them
+with the TUI archives and shared checksum list. It refuses a release when the GUI
+and TUI versions do not match the tag. Users can install either package, or both
+from the same release; the GUI installer includes that release's daemon. The TUI
+install scripts remain terminal-only. The hosted release workflow has not yet
+run on this worktree.
 Desktop GUI CI is configured to build packages on Windows, macOS, Ubuntu and
 Arch Linux; Arch and Omarchy build prerequisites are documented in the Tauri
 stack guide. Each desktop job now runs the GUI test suite and lint before
