@@ -555,27 +555,33 @@ fn claude_config_dir() -> Result<PathBuf> {
 }
 
 pub fn codex_app_server_executable() -> Result<PathBuf> {
+    #[cfg(windows)]
+    {
+        windows_codex_app_server_executable()
+    }
+    #[cfg(not(windows))]
+    {
+        executable_on_path("codex")
+    }
+}
+
+#[cfg(windows)]
+fn windows_codex_app_server_executable() -> Result<PathBuf> {
     match executable_on_path("codex") {
         Ok(executable) => Ok(executable),
         Err(error) => {
-            #[cfg(windows)]
-            {
-                if let Some(executable) = windows_npm_codex_binary(windows_npm_search_roots(
-                    std::env::var_os("PATH")
-                        .map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
-                        .unwrap_or_default(),
-                    std::env::var_os("NVM_SYMLINK").map(PathBuf::from),
-                    std::env::var_os("APPDATA").map(PathBuf::from),
-                    std::env::var_os("ProgramFiles").map(PathBuf::from),
-                )) {
-                    return Ok(executable);
-                }
-                Err(error.context(
-                    "Codex executable not found on PATH or in common Windows npm locations",
-                ))
+            if let Some(executable) = windows_npm_codex_binary(windows_npm_search_roots(
+                std::env::var_os("PATH")
+                    .map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+                    .unwrap_or_default(),
+                std::env::var_os("NVM_SYMLINK").map(PathBuf::from),
+                std::env::var_os("APPDATA").map(PathBuf::from),
+                std::env::var_os("ProgramFiles").map(PathBuf::from),
+            )) {
+                return Ok(executable);
             }
-            #[cfg(not(windows))]
-            Err(error)
+            Err(error
+                .context("Codex executable not found on PATH or in common Windows npm locations"))
         }
     }
 }
