@@ -1401,23 +1401,23 @@ installed or not trusted. False needs-you and finished sounds stop.
 
 Tickets, in order:
 
-1. Ship the sound fixes already built: commit them as two changes (client: no sound for the
+1. **Done 2026-11-01.** Ship the sound fixes already built: commit them as two changes (client: no sound for the
    pane you are looking at, and needs-you quiet for 2 minutes after it rings; daemon: a
    screen-guessed finish after under 5 s of work is not announced), and correct
    `docs/agent-status.md:142`, `docs/guide.md:204` and the comment at
    `crates/maitty-terminal-client/src/client/background.rs:240`.
-2. Verify on real Codex 0.166 which hook events fire, their stdin payload, whether the pane
+2. **Done 2026-11-01** (findings in `docs/agent-status.md`; `PermissionRequest` and `Interrupt` not seen live). Verify on real Codex 0.166 which hook events fire, their stdin payload, whether the pane
    token reaches the hook, and Windows hook latency (PreToolUse runs on every tool call).
    Record it in `docs/agent-status.md`. No code.
-3. Install the new Codex hooks in `status_hooks.rs`, with tests for Linux, Windows and
+3. **Done 2026-11-01.** Install the new Codex hooks in `status_hooks.rs`, with tests for Linux, Windows and
    uninstall that keep a user's own hooks.
-4. Daemon: once a Codex pane's lifecycle hooks arrive, treat it as fully hooked (out of
+4. **Done 2026-11-01** (`Term::lifecycle_hooks`). Daemon: once a Codex pane's lifecycle hooks arrive, treat it as fully hooked (out of
    `HOOKS_END_ONLY`); a pane with none still uses the screen. Tests in
    `crates/maitty-core/src/daemon/logic_tests.rs`: blocked back to working after an approved
    tool, interrupt → idle, stop → done, an unhooked pane unchanged.
-5. Settings › Agents says "hooks installed, trust them in Codex /hooks" while they are not
+5. **Done 2026-11-01.** Settings › Agents says "hooks installed, trust them in Codex /hooks" while they are not
    trusted (a read-only check of `~/.codex/config.toml`).
-6. Live acceptance on a real Codex pane, docs, and the exit check.
+6. **Open: needs you.** Live acceptance on a real Codex pane (install, trust the hooks once in Codex `/hooks`, run the exit-check turn), then the exit check.
 
 ## Rules
 
