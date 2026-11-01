@@ -18,6 +18,8 @@ describe('SettingsDialog', () => {
     expect(onPreferencesChange).toHaveBeenCalledWith(expect.objectContaining({ accent: 'violet' }))
 
     await user.click(screen.getByRole('tab', { name: 'Notifications' }))
+    await user.click(screen.getByRole('button', { name: 'top left' }))
+    expect(onPreferencesChange).toHaveBeenCalledWith(expect.objectContaining({ toastPosition: 'top-left' }))
     await user.click(screen.getByRole('checkbox', { name: /needs your attention/i }))
     expect(onPreferencesChange).toHaveBeenCalledWith({ accent: 'teal', reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: false, notifyFinished: true, notificationSound: false })
     await user.click(screen.getByRole('button', { name: 'Send a test' }))

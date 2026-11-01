@@ -7,6 +7,50 @@
   background: var(--background);
 }
 
+.maitty-toaster[data-sonner-toaster] {
+  --width: min(360px, calc(100vw - 32px));
+  --normal-bg: var(--popover);
+  --normal-border: var(--border);
+  --normal-text: var(--popover-foreground);
+  --border-radius: 12px;
+  font-family: "Geist Variable", "Segoe UI", sans-serif;
+}
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
+  gap: 9px;
+  padding: 11px 13px;
+}
+.maitty-toaster [data-sonner-toast][data-type="success"] { border-left-color: var(--done); }
+.maitty-toaster [data-sonner-toast][data-type="warning"] { border-left-color: var(--needs-you); }
+.maitty-toaster [data-sonner-toast][data-type="error"] { border-left-color: var(--destructive); }
+.maitty-toaster [data-sonner-toast][data-type="info"] { border-left-color: var(--primary); }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-title] {
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-description] {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.maitty-toaster [data-sonner-toast][data-type="success"] [data-icon] { color: var(--done); }
+.maitty-toaster [data-sonner-toast][data-type="warning"] [data-icon] { color: var(--needs-you); }
+.maitty-toaster [data-sonner-toast][data-type="error"] [data-icon] { color: var(--destructive); }
+.maitty-toaster [data-sonner-toast][data-type="info"] [data-icon] { color: var(--primary); }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-close-button] {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--muted-foreground);
+}
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-close-button]:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
 .skip-link { background: var(--primary); border-radius: 7px; color: var(--primary-foreground); font-size: 12px; font-weight: 650; left: 10px; padding: 9px 12px; position: fixed; top: 8px; transform: translateY(calc(-100% - 16px)); transition: transform .14s ease; z-index: 1000; }
 .skip-link:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; transform: translateY(0); }
 

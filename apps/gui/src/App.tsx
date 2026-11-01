@@ -47,8 +47,9 @@ import {
   TerminalSquare,
   X,
 } from 'lucide-react'
-import { toast, Toaster } from 'sonner'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Toaster } from '@/components/ui/sonner'
 import {
   Dialog,
   DialogContent,

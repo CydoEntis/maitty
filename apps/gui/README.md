@@ -36,5 +36,10 @@ pnpm desktop:build
 
 `pnpm dev` and `pnpm preview` run a browser preview with sample data. They do
 not connect to the daemon or start a real Codex conversation. Desktop packages
-are written to `src-tauri/target/release/bundle/`; build on the target OS,
+are written to the workspace `target/release/bundle/`; build on the target OS,
 especially on Linux, where Tauri links to the installed WebKitGTK.
+
+Version-tagged releases publish the GUI installers beside the TUI archives. The
+GUI installer carries a daemon built from that same release. Install the TUI
+and GUI from one release when you want both clients to share sessions through
+local IPC. The TUI install scripts remain terminal-only.
