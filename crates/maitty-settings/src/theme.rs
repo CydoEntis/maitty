@@ -90,6 +90,11 @@ pub fn canonical(name: &str) -> &str {
         .map_or(name, |(_, new)| new)
 }
 
+/// Whether the built-in theme `name` is a light one. A name that is no theme reads as dark.
+pub fn is_light(name: &str) -> bool {
+    BUILTIN.contains(&canonical(name)) && Theme::named(name).is_light()
+}
+
 /// Every built-in theme, kept in alphabetical order of its display name: the theme browser,
 /// the Theme setting's cycling and the unknown-theme warning all list it as written.
 pub const BUILTIN: &[&str] = &[
@@ -160,6 +165,7 @@ pub const BUILTIN: &[&str] = &[
     "everforest-light",
     "falcon",
     "flexoki-dark",
+    "flexoki-light",
     "fluoromachine",
     "github-dark",
     "github-dark-dimmed",
@@ -200,6 +206,7 @@ pub const BUILTIN: &[&str] = &[
     "mellow-light",
     "miasma",
     "miramare",
+    "modus-operandi",
     "mono",
     "monokai",
     "monokai-pro",
@@ -227,10 +234,12 @@ pub const BUILTIN: &[&str] = &[
     "panda",
     "paper",
     "papercolor-dark",
+    "papercolor-light",
     "rigel",
     "rose-pine",
     "rose-pine-dawn",
     "rose-pine-moon",
+    "selenized-light",
     "shades-of-purple",
     "simple-dark",
     "solarized-dark",
@@ -257,6 +266,7 @@ pub const BUILTIN: &[&str] = &[
     "tomorrow-night-eighties",
     "turtles",
     "vague",
+    "vim",
     "vscode",
     "yui-dark",
     "yui-light",
@@ -334,6 +344,7 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("everforest-light", "Everforest Light"),
     ("falcon", "Falcon"),
     ("flexoki-dark", "Flexoki Dark"),
+    ("flexoki-light", "Flexoki Light"),
     ("fluoromachine", "Fluoromachine"),
     ("github-dark", "GitHub Dark"),
     ("github-dark-dimmed", "GitHub Dark Dimmed"),
@@ -374,6 +385,7 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("mellow-light", "Mellow Light"),
     ("miasma", "Miasma"),
     ("miramare", "Miramare"),
+    ("modus-operandi", "Modus Operandi"),
     ("monokai", "Monokai"),
     ("monokai-pro", "Monokai Pro"),
     ("moonfly", "Moonfly"),
@@ -400,10 +412,12 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("panda", "Panda"),
     ("paper", "Paper"),
     ("papercolor-dark", "PaperColor Dark"),
+    ("papercolor-light", "PaperColor Light"),
     ("rigel", "Rigel"),
     ("rose-pine", "Rosé Pine"),
     ("rose-pine-dawn", "Rosé Pine Dawn"),
     ("rose-pine-moon", "Rosé Pine Moon"),
+    ("selenized-light", "Selenized Light"),
     ("shades-of-purple", "Shades of Purple"),
     ("simple-dark", "Simple Dark"),
     ("solarized-dark", "Solarized Dark"),
@@ -430,6 +444,7 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("tomorrow-night-eighties", "Tomorrow Night Eighties"),
     ("turtles", "Turtles"),
     ("vague", "Vague"),
+    ("vim", "Vim"),
     ("vscode", "VSCode Dark"),
     ("yui-dark", "Yui Dark"),
     ("yui-light", "Yui Light"),
@@ -756,6 +771,11 @@ impl Theme {
             ansi: Some(a.map(hex)),
             splash: None,
         }
+    }
+
+    /// Whether this theme is drawn on a light ground: its background is nearer white than black.
+    pub fn is_light(&self) -> bool {
+        contrast(self.bg, Color::Rgb(255, 255, 255)) < contrast(self.bg, Color::Rgb(0, 0, 0))
     }
 
     pub fn named(name: &str) -> Theme {
@@ -1398,6 +1418,38 @@ impl Theme {
                 ["#ffffff", "#1f2328", "#57606a", "#0969da"],
                 [
                     "#cf222e", "#116329", "#4d2d00", "#0969da", "#8250df", "#1b7c83", "#57606a",
+                ],
+            ),
+            // Vim's own colours on a light ground: black on white, PreProc purple for focus,
+            // SeaGreen for done, brown and dark cyan for the rest.
+            "vim" => Theme::palette(
+                ["#ffffff", "#000000", "#6c6c6c", "#a020f0"],
+                [
+                    "#cd0000", "#2e8b57", "#8b5a00", "#0000cd", "#a020f0", "#008b8b", "#6c6c6c",
+                ],
+            ),
+            "papercolor-light" => Theme::palette(
+                ["#eeeeee", "#444444", "#878787", "#005f87"],
+                [
+                    "#af0000", "#008700", "#d75f00", "#005faf", "#8700af", "#005f87", "#878787",
+                ],
+            ),
+            "flexoki-light" => Theme::palette(
+                ["#fffcf0", "#100f0f", "#6f6e69", "#205ea6"],
+                [
+                    "#af3029", "#66800b", "#ad8301", "#205ea6", "#a02f6f", "#24837b", "#6f6e69",
+                ],
+            ),
+            "selenized-light" => Theme::palette(
+                ["#fbf3db", "#53676d", "#909995", "#0072d4"],
+                [
+                    "#d2212d", "#489100", "#ad8900", "#0072d4", "#ca4898", "#009c8f", "#909995",
+                ],
+            ),
+            "modus-operandi" => Theme::palette(
+                ["#ffffff", "#000000", "#595959", "#0031a9"],
+                [
+                    "#a60000", "#006800", "#6f5500", "#0031a9", "#721045", "#005e8b", "#595959",
                 ],
             ),
             "goodwolf" => Theme::palette(
@@ -2260,6 +2312,46 @@ mod audit {
 
     fn mix(a: Color, b: Color, t: f32) -> Color {
         super::mix(a, b, t)
+    }
+
+    /// Dark or light is read from the ground, so the browser needs no list kept by hand: a
+    /// theme named for its light variant is light, one named dark is dark, and the defaults
+    /// sit on the sides the config expects.
+    #[test]
+    fn a_theme_is_light_when_its_ground_is() {
+        let mut bad = Vec::new();
+        for &n in super::BUILTIN {
+            let light = super::is_light(n);
+            if n.ends_with("-light") && !light {
+                bad.push(format!("{n} is named light but drawn dark"));
+            }
+            if n.ends_with("-dark") && light {
+                bad.push(format!("{n} is named dark but drawn light"));
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "{}",
+            bad.join(
+                "
+"
+            )
+        );
+        assert!(super::is_light("day") && !super::is_light(super::DEFAULT));
+        assert!(!super::is_light("not-a-theme"));
+        for new in [
+            "vim",
+            "papercolor-light",
+            "flexoki-light",
+            "selenized-light",
+            "modus-operandi",
+        ] {
+            assert!(super::is_light(new), "{new} is a light theme");
+        }
+        assert!(
+            super::BUILTIN.iter().filter(|n| super::is_light(n)).count() >= 40,
+            "there are light themes to choose from"
+        );
     }
 
     /// Every theme gives each status its own colour, as the design's roles do: working,

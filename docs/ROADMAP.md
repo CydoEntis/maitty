@@ -1309,6 +1309,7 @@ conversation continuity are planned in phases 34–37:
 - Config sync across machines (local file never synced) — shipped — `crates/maitty-core/src/sync.rs`
 - SSH remotes (`--remote host`) — shipped — `crates/maitty-core/src/ipc.rs` `connect_remote`
 - `maitty doctor` — shipped — `crates/maitty-terminal-client/src/cli.rs`
+- Dark and light themes are two remembered slots and an appearance switch; the browser has a Dark and a Light tab; Vim, PaperColor Light, Flexoki Light, Selenized Light and Modus Operandi are added — phase 40 — `crates/maitty-settings/src/theme.rs`, `crates/maitty-terminal-client/src/client/themes.rs`
 - A Codex pane's working, needs-you and finished come from Codex's own hooks, with the screen guess only as a per-pane fallback; needs-you and finished never ring for the pane you are looking at, and needs-you stays quiet for 2 minutes after it rings — phase 39 — `crates/adapters/maitty-provider-codex/src/status_hooks.rs`, `crates/maitty-core/src/daemon/status.rs`
 
 ## Out
@@ -1418,6 +1419,33 @@ Tickets, in order:
 5. **Done 2026-11-01.** Settings › Agents says "hooks installed, trust them in Codex /hooks" while they are not
    trusted (a read-only check of `~/.codex/config.toml`).
 6. **Open: needs you.** Live acceptance on a real Codex pane (install, trust the hooks once in Codex `/hooks`, run the exit-check turn), then the exit check.
+
+### 40 — Separate light and dark themes · active, independent of 37 and 38
+
+Started 2026-11-01 by the user's call. Dark and light are two remembered slots and a switch, not
+one theme setting.
+
+- **Slots and switch.** `theme_dark` and `theme_light` remember a pick each; `appearance`
+  (`dark` or `light`) says which one shows, and `theme` stays "the theme showing now" so
+  nothing that reads it changes. A config with only `theme` loads into the slot its
+  background belongs to (not rewritten). Night stays the dark default and Day the light
+  default.
+- **Dark or light** is read from a theme's background, not from a list kept by hand.
+- **Browser.** Two tabs, Dark and Light, each alphabetical; picking sets that tab's slot.
+  Settings › Appearance has Dark theme, Light theme and Appearance rows; a search-only
+  command flips the appearance (no default key, ADR 0017).
+- **New light themes:** Vim (the default colours of Vim on a light background), PaperColor
+  Light, Flexoki Light, Selenized Light and Modus Operandi. Each passes the contrast audit.
+- **Exit:** both tabs list the right themes, a pick in each tab survives a restart, the switch
+  changes the whole screen at once, and the verification gate passes.
+
+Tickets, in order:
+
+1. Tell dark from light by background, and add the five light themes (with credits).
+2. Config: `theme_dark`, `theme_light`, `appearance`, the load-time fold of an old `theme`, and
+   the rule that `theme` follows the active slot.
+3. Browser tabs and the three Settings rows.
+4. The search-only flip command, docs, and a live look at both tabs.
 
 ## Rules
 
