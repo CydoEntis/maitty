@@ -49,7 +49,6 @@ function NativeHandoffView({ conversation }: { conversation: Conversation }) {
         queryClient.invalidateQueries({ queryKey: ['conversations'] }),
         queryClient.invalidateQueries({ queryKey: ['conversation-history', conversation.id] }),
       ])
-      toast.success('Conversation resumed in the native terminal')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not hand off this conversation')
     } finally {
@@ -76,7 +75,9 @@ function ConnectedTerminalView({ conversation }: { conversation: NativeConversat
   const terminalHost = useRef<HTMLDivElement>(null)
   const terminal = useRef<XtermTerminal | null>(null)
   const inputFailedRef = useRef(false)
+  const resizeRetry = useRef<(() => void) | null>(null)
   const [inputFailed, setInputFailed] = useState(false)
+  const [resizeError, setResizeError] = useState('')
   const replayQuery = useQuery({
     queryKey: ['terminal-replay', binding.id, binding.generation],
     queryFn: () => loadTerminalReplay(binding),
@@ -86,7 +87,8 @@ function ConnectedTerminalView({ conversation }: { conversation: NativeConversat
     queryKey: ['terminal-screen', binding.id, binding.generation],
     queryFn: () => loadTerminalScreen(binding),
     enabled: replayQuery.isSuccess,
-    refetchInterval: TERMINAL_REFRESH_INTERVAL_MS,
+    refetchInterval: (query) =>
+      query.state.status === 'error' ? false : TERMINAL_REFRESH_INTERVAL_MS,
   })
 
   const send = useCallback((data: string | Uint8Array) => {
@@ -96,11 +98,11 @@ function ConnectedTerminalView({ conversation }: { conversation: NativeConversat
       terminal.current?.write(screen)
       inputFailedRef.current = false
       setInputFailed(false)
+      setResizeError('')
       queryClient.setQueryData(['terminal-screen', binding.id, binding.generation], screen)
     }).catch(() => {
       inputFailedRef.current = true
       setInputFailed(true)
-      toast.error('Terminal input could not reach Maitty. Reconnect before typing again.')
     })
   }, [binding, queryClient])
 
@@ -141,25 +143,32 @@ function ConnectedTerminalView({ conversation }: { conversation: NativeConversat
         let resizeInFlight = false
         let resizePending = false
         let lastSize = ''
+        let lastFailedSize = ''
         const fitAndResize = () => {
+          if (!isMounted) return
           fit.fit()
           const cols = terminalInstance.cols
           const rows = terminalInstance.rows
+          if (cols < 1 || rows < 1) return
           const size = `${String(cols)}x${String(rows)}`
           if (resizeInFlight) {
             resizePending = true
             return
           }
-          if (size === lastSize) return
+          if (size === lastSize || size === lastFailedSize) return
           resizeInFlight = true
           resizePending = false
           void resizeTerminal(binding, cols, rows)
-            .then(() => { lastSize = size })
-            .catch((error: unknown) => {
+            .then(() => {
+              lastSize = size
+              lastFailedSize = ''
+              setResizeError('')
+            })
+            .catch(() => {
               resizePending = false
-              inputFailedRef.current = true
-              setInputFailed(true)
-              toast.error(error instanceof Error ? error.message : 'Could not resize the native terminal')
+              if (!isMounted) return
+              lastFailedSize = size
+              setResizeError('Terminal size could not be updated. Check the daemon connection and retry.')
             })
             .finally(() => {
               resizeInFlight = false
@@ -168,6 +177,10 @@ function ConnectedTerminalView({ conversation }: { conversation: NativeConversat
                 fitAndResize()
               }
             })
+        }
+        resizeRetry.current = () => {
+          lastFailedSize = ''
+          fitAndResize()
         }
         terminalInstance.write(replayBytes, () => {
           if (!isMounted) return
@@ -193,6 +206,7 @@ function ConnectedTerminalView({ conversation }: { conversation: NativeConversat
     void mountTerminal()
     return () => {
       isMounted = false
+      resizeRetry.current = null
       resizeObserver?.disconnect()
       disposeInput?.()
       disposeBinary?.()
@@ -206,20 +220,24 @@ function ConnectedTerminalView({ conversation }: { conversation: NativeConversat
   }, [screenQuery.data])
 
   async function reconnectTerminal() {
-    const result = await screenQuery.refetch()
+    const result = replayQuery.isError
+      ? await replayQuery.refetch()
+      : await screenQuery.refetch()
     if (result.isSuccess) {
       inputFailedRef.current = false
       setInputFailed(false)
+      resizeRetry.current?.()
     }
   }
 
   return <div className="terminal-view">
     <div className="terminal-heading"><span className="terminal-live-dot" />Native {conversation.provider} terminal · pane {term}<span className="terminal-mode-hint">Keys go straight to {conversation.provider} · Ctrl+` to return</span></div>
     {(replayQuery.isLoading || screenQuery.isLoading) && <div className="terminal-load-status" role="status"><LoaderCircle size={14} />Connecting to terminal</div>}
-    {(replayQuery.isError || screenQuery.isError) && <div className="terminal-input-error" role="status"><p>Could not load the terminal. Check the daemon connection and retry.</p><Button variant="outline" size="sm" onClick={() => { void (replayQuery.isError ? replayQuery.refetch() : screenQuery.refetch()) }}>Retry</Button></div>}
+    {(replayQuery.isError || screenQuery.isError) && <div className="terminal-input-error" role="status"><p>Could not load the terminal. Check the daemon connection and retry.</p><Button variant="outline" size="sm" onClick={() => { void reconnectTerminal() }}>Retry</Button></div>}
     <div className="terminal-screen" ref={terminalHost} role="region" aria-label={`Native ${conversation.provider} terminal`} aria-describedby="terminal-instructions" />
     <p className="terminal-footnote" id="terminal-instructions">Click the terminal and type. Maitty sends keys to the selected daemon-owned pane.</p>
     {inputFailed && <div className="terminal-input-error" role="status"><p>Input stopped because the daemon could not be reached. Retry the terminal connection before typing.</p><Button variant="outline" size="sm" onClick={() => { void reconnectTerminal() }}>Reconnect</Button></div>}
+    {resizeError && <div className="terminal-input-error" role="status"><p>{resizeError}</p><Button variant="outline" size="sm" onClick={() => { void reconnectTerminal() }}>Retry resize</Button></div>}
   </div>
 }
 

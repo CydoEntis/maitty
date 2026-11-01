@@ -75,6 +75,30 @@ async fn conversation_diff(
 }
 
 #[tauri::command]
+async fn conversation_files(
+    app: tauri::AppHandle,
+    id: u64,
+    generation: u64,
+    path: Option<String>,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::conversation_files(id, generation, path, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn conversation_file(
+    app: tauri::AppHandle,
+    id: u64,
+    generation: u64,
+    path: String,
+) -> Result<String, String> {
+    maitty_desktop_client::conversation_file(id, generation, path, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn terminal_screen(
     app: tauri::AppHandle,
     id: u64,
@@ -268,6 +292,8 @@ pub fn run() {
             list_sessions,
             read_conversation,
             conversation_diff,
+            conversation_files,
+            conversation_file,
             terminal_screen,
             terminal_replay,
             send_terminal_input,

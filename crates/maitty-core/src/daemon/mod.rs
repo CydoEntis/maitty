@@ -71,6 +71,11 @@ const EXIT_WHEN_UNUSED_FOR: Duration = Duration::from_secs(30);
 /// after this saw a real exit, one killed within it keeps every session for the next start.
 const LOSS_HOLD: Duration = Duration::from_secs(15);
 
+pub(crate) enum ConversationFileResponse {
+    Entries(Vec<crate::conversation::ConversationFileEntry>),
+    Content(String),
+}
+
 #[allow(clippy::large_enum_variant)]
 pub enum Ev {
     Connected(ClientId, mpsc::Sender<ServerMsg>, bool),
@@ -175,6 +180,12 @@ pub enum Ev {
         id: crate::conversation::ConversationId,
         generation: u64,
         result: Result<crate::conversation::ConversationDiff, String>,
+    },
+    ConversationFilesReady {
+        client: ClientId,
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        result: Result<ConversationFileResponse, String>,
     },
     /// A worktree hook ran: what to tell people.
     HookRan(String),
@@ -1692,6 +1703,34 @@ impl Daemon {
                     Err(error) => self.send(client, ServerMsg::Error(error)),
                 }
             }
+            Ev::ConversationFilesReady {
+                client,
+                id,
+                generation,
+                result,
+            } => {
+                if !self.clients.contains_key(&client) {
+                    return;
+                }
+                if !self.conversations.iter().any(|conversation| {
+                    conversation.id == id && conversation.generation == generation
+                }) {
+                    self.send(
+                        client,
+                        ServerMsg::Error("Conversation changed while reading project files".into()),
+                    );
+                    return;
+                }
+                match result {
+                    Ok(ConversationFileResponse::Entries(entries)) => {
+                        self.send(client, ServerMsg::Reply(Reply::ConversationFiles(entries)))
+                    }
+                    Ok(ConversationFileResponse::Content(content)) => {
+                        self.send(client, ServerMsg::Reply(Reply::ConversationFile(content)))
+                    }
+                    Err(error) => self.send(client, ServerMsg::Error(error)),
+                }
+            }
             Ev::MoveReady {
                 client,
                 term,
@@ -1967,6 +2006,64 @@ impl Daemon {
                             let result =
                                 git::conversation_diff(&dir).map_err(|error| format!("{error:#}"));
                             let _ = tx.blocking_send(Ev::ConversationDiffReady {
+                                client,
+                                id,
+                                generation,
+                                result,
+                            });
+                        });
+                        return;
+                    }
+                    query @ Query::ConversationFiles { .. }
+                    | query @ Query::ConversationFileRead { .. } => {
+                        let (id, generation, path, list) = match query {
+                            Query::ConversationFiles {
+                                id,
+                                generation,
+                                path,
+                            } => (id, generation, path, true),
+                            Query::ConversationFileRead {
+                                id,
+                                generation,
+                                path,
+                            } => (id, generation, Some(path), false),
+                            _ => unreachable!(),
+                        };
+                        if let Err(error) = self.may(client, Grant::Read, None) {
+                            self.send(client, ServerMsg::Error(format!("{error:#}")));
+                            return;
+                        }
+                        let Some(conversation) =
+                            self.conversations.iter().find(|item| item.id == id)
+                        else {
+                            self.send(client, ServerMsg::Error("No such conversation".into()));
+                            return;
+                        };
+                        if conversation.generation != generation {
+                            self.send(
+                                client,
+                                ServerMsg::Error("Conversation file request is stale".into()),
+                            );
+                            return;
+                        }
+                        let dir = conversation
+                            .binding
+                            .worktree
+                            .as_ref()
+                            .unwrap_or(&conversation.binding.cwd)
+                            .clone();
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let result = if list {
+                                git::conversation_files(&dir, path.as_deref())
+                                    .map(ConversationFileResponse::Entries)
+                                    .map_err(|error| format!("{error:#}"))
+                            } else {
+                                git::conversation_file(&dir, path.as_deref().unwrap_or_default())
+                                    .map(ConversationFileResponse::Content)
+                                    .map_err(|error| format!("{error:#}"))
+                            };
+                            let _ = tx.blocking_send(Ev::ConversationFilesReady {
                                 client,
                                 id,
                                 generation,

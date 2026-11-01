@@ -134,7 +134,10 @@ the pane's process tree or `MAITTY_PANE_TOKEN`.
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Maitty's interface, and neither is a fleet commander (`maitty brief`, `[team]`): old
 config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
-MCP session controls remain supported. The wire protocol is version 61.
+MCP session controls remain supported. The wire protocol is version 62.
+Conversation tool-history entries carry a bounded provider-supplied `label` for
+display; `#[serde(default)]` keeps older cached entries readable without a
+protocol bump.
 
 `SwapPanes { a, b }` trades the places of two panes of one tab (the split ratios stay with
 their slots). Panes in different tabs, or one that isn't there, are an error.
@@ -468,7 +471,11 @@ resolves its checkout from the stored conversation binding, requires the read
 grant, and runs Git on a blocking worker. It includes tracked and non-ignored
 untracked changes, returns at most 100 files and 2 MiB of patch text, and marks
 the result truncated when large or symlinked untracked files or excess diff data
-are omitted. A result from an obsolete generation is discarded.
+are omitted. `ConversationFiles` and `ConversationFileRead` use the same exact
+conversation binding and read grant. Paths are relative to its checkout; parent
+traversal and symbolic links are refused. Listings are bounded to 500 entries,
+and previews are UTF-8 files no larger than 256 KiB. Filesystem work runs on a
+blocking worker, and results from obsolete generations are discarded.
 
 Snapshot conversation summaries expose stable ID/generation, provider, cwd,
 worktree, recovery/status/checkpoint context and the optional real native pane.

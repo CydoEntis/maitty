@@ -22,6 +22,17 @@ describe('conversation workspace', () => {
     expect(screen.getByRole('status', { name: 'Local preview · daemon not connected' })).toBeInTheDocument()
   })
 
+  it('keeps Changes and Files closed until the user opens a panel', async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    expect(screen.queryByRole('complementary', { name: 'Conversation details' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Open project files' }))
+
+    expect(screen.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('Files need the desktop app')).toBeInTheDocument()
+  })
+
   it('keeps opened conversations in tabs without closing daemon sessions', async () => {
     const user = userEvent.setup()
     renderApp()
@@ -42,7 +53,7 @@ describe('conversation workspace', () => {
     const user = userEvent.setup()
     renderApp()
 
-    await user.click(screen.getByRole('button', { name: 'Settled 2' }))
+    await user.click(screen.getByRole('button', { name: 'Idle & done 2' }))
     await user.click(
       screen.getByRole('button', {
         name: /^Review the daemon restore flow, Done, maitty$/i,
@@ -198,13 +209,14 @@ describe('conversation workspace', () => {
     const user = userEvent.setup()
     renderApp()
 
+    await user.click(screen.getByRole('button', { name: /Changes/ }))
     const changesTab = screen.getByRole('tab', { name: 'Changes' })
-    const contextTab = screen.getByRole('tab', { name: 'Context' })
+    const filesTab = screen.getByRole('tab', { name: 'Files' })
     changesTab.focus()
     await user.keyboard('{ArrowRight}')
 
-    expect(contextTab).toHaveAttribute('aria-selected', 'true')
-    expect(contextTab).toHaveFocus()
+    expect(filesTab).toHaveAttribute('aria-selected', 'true')
+    expect(filesTab).toHaveFocus()
     expect(changesTab).toHaveAttribute('tabindex', '-1')
   })
 
@@ -212,7 +224,7 @@ describe('conversation workspace', () => {
     const user = userEvent.setup()
     renderApp()
 
-    await user.click(screen.getByRole('tab', { name: 'Changes' }))
+    await user.click(screen.getByRole('button', { name: /Changes/ }))
     expect(screen.getByText(/File 1 of 2/)).toHaveTextContent('src/client/screen/branch_sheet.rs')
 
     await user.click(screen.getByRole('button', { name: 'Next changed file' }))
@@ -228,7 +240,7 @@ describe('conversation workspace', () => {
     const user = userEvent.setup()
     renderApp()
 
-    await user.click(screen.getByRole('tab', { name: 'Changes' }))
+    await user.click(screen.getByRole('button', { name: /Changes/ }))
     const composer = screen.getByRole('textbox', { name: 'Message Codex' })
     composer.focus()
     fireEvent.keyDown(composer, { key: ']' })
@@ -241,12 +253,12 @@ describe('conversation workspace', () => {
     localStorage.clear()
     const app = renderApp()
 
-    await user.click(screen.getByRole('button', { name: /Settled 2/ }))
+    await user.click(screen.getByRole('button', { name: /Idle & done 2/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
     await user.type(screen.getByRole('textbox', { name: 'Message Claude' }), 'Keep this draft')
     app.unmount()
     renderApp()
-    await user.click(screen.getByRole('button', { name: /Settled 2/ }))
+    await user.click(screen.getByRole('button', { name: /Idle & done 2/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
 
     expect(screen.getByRole('textbox', { name: 'Message Claude' })).toHaveValue('Keep this draft')
@@ -256,7 +268,7 @@ describe('conversation workspace', () => {
     const user = userEvent.setup()
     const app = renderApp()
 
-    await user.click(screen.getByRole('button', { name: /Settled 2/ }))
+    await user.click(screen.getByRole('button', { name: /Idle & done 2/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
     expect(screen.getByRole('heading', { name: 'Review the daemon restore flow' })).toBeInTheDocument()
 
@@ -313,7 +325,7 @@ describe('conversation workspace', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Pin conversation' }))
     expect(screen.getByRole('region', { name: 'maitty project' })).toContainElement(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
 
-    await user.click(screen.getByRole('button', { name: /Settled 2/ }))
+    await user.click(screen.getByRole('button', { name: /Idle & done 2/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
     await user.click(screen.getByRole('button', { name: 'Menu for Review the daemon restore flow' }))
     await user.click(screen.getByRole('menuitem', { name: 'Rename' }))

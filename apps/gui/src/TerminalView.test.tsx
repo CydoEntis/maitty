@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
 import { TerminalView } from './TerminalView'
 
-const { handoffToNative, loadTerminalReplay, loadTerminalScreen, resizeTerminal, sendTerminalInput, terminalState } = vi.hoisted(() => ({
+const { handoffToNative, loadTerminalReplay, loadTerminalScreen, resizeTerminal, sendTerminalInput, terminalState, toastError } = vi.hoisted(() => ({
   handoffToNative: vi.fn<(conversation: Conversation) => Promise<void>>(),
   loadTerminalScreen: vi.fn<(conversation: Pick<Conversation, 'id'> & { generation: number }) => Promise<string>>(),
   loadTerminalReplay: vi.fn<(conversation: Pick<Conversation, 'id'> & { generation: number }) => Promise<Uint8Array>>(),
@@ -18,7 +18,10 @@ const { handoffToNative, loadTerminalReplay, loadTerminalScreen, resizeTerminal,
     cols: 80,
     rows: 24,
   },
+  toastError: vi.fn(),
 }))
+
+vi.mock('sonner', () => ({ toast: { error: toastError } }))
 
 vi.mock('@/api/daemon', () => ({
   isDesktop: () => true,
@@ -126,6 +129,19 @@ describe('native terminal view', () => {
 
     terminalState.resolveResize?.()
     await waitFor(() => { expect(resizeTerminal).toHaveBeenLastCalledWith(binding, 80, 24) })
+  })
+
+  it('shows one inline resize error and does not toast repeatedly for the same size', async () => {
+    resizeTerminal.mockRejectedValue(new Error('Native pane is no longer attached'))
+    renderTerminal()
+
+    expect(await screen.findByText('Terminal size could not be updated. Check the daemon connection and retry.')).toBeInTheDocument()
+    terminalState.onResize?.()
+    terminalState.onResize?.()
+    await Promise.resolve()
+
+    expect(resizeTerminal).toHaveBeenCalledTimes(1)
+    expect(toastError).not.toHaveBeenCalled()
   })
 
   it('leaves the chat handoff action in the conversation header', async () => {

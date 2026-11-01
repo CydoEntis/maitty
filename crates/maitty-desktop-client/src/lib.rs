@@ -238,6 +238,48 @@ pub async fn conversation_diff(
     }
 }
 
+pub async fn conversation_files(
+    id: u64,
+    generation: u64,
+    path: Option<String>,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Query(Query::ConversationFiles {
+            id: maitty_shared::conversation::ConversationId(id),
+            generation,
+            path,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::ConversationFiles(entries) => Ok(serde_json::to_value(entries)?),
+        _ => bail!("daemon returned an unexpected project file listing"),
+    }
+}
+
+pub async fn conversation_file(
+    id: u64,
+    generation: u64,
+    path: String,
+    daemon_executable: PathBuf,
+) -> Result<String> {
+    let reply = request(
+        ClientMsg::Query(Query::ConversationFileRead {
+            id: maitty_shared::conversation::ConversationId(id),
+            generation,
+            path,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::ConversationFile(content) => Ok(content),
+        _ => bail!("daemon returned an unexpected project file"),
+    }
+}
+
 pub async fn terminal_screen(
     id: u64,
     generation: u64,

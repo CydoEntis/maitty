@@ -9,6 +9,8 @@ use std::process::{Command, Output};
 const MAX_DIFF_FILES: usize = 100;
 const MAX_DIFF_BYTES: usize = 2 * 1024 * 1024;
 const MAX_UNTRACKED_FILE_BYTES: u64 = 256 * 1024;
+const MAX_FILE_BROWSER_ENTRIES: usize = 500;
+const MAX_FILE_BROWSER_BYTES: u64 = 256 * 1024;
 
 fn git(dir: &Path, args: &[&str]) -> Result<String> {
     let mut cmd = Command::new("git");
@@ -299,6 +301,90 @@ pub fn conversation_diff(dir: &Path) -> Result<crate::conversation::Conversation
     })
 }
 
+pub fn conversation_files(
+    root: &Path,
+    relative: Option<&str>,
+) -> Result<Vec<crate::conversation::ConversationFileEntry>> {
+    let directory = resolve_conversation_path(root, relative.unwrap_or(""))?;
+    if !directory.is_dir() {
+        bail!("The selected project path is not a directory");
+    }
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(directory).context("reading project directory")? {
+        let entry = entry.context("reading project directory entry")?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if name == ".git" {
+            continue;
+        }
+        let metadata = std::fs::symlink_metadata(entry.path()).context("reading project entry")?;
+        if metadata.file_type().is_symlink() || (!metadata.is_dir() && !metadata.is_file()) {
+            continue;
+        }
+        entries.push(crate::conversation::ConversationFileEntry {
+            name: name.to_string(),
+            is_directory: metadata.is_dir(),
+        });
+        if entries.len() > MAX_FILE_BROWSER_ENTRIES {
+            bail!("This folder has too many entries to show safely");
+        }
+    }
+    entries.sort_by(|left, right| {
+        right
+            .is_directory
+            .cmp(&left.is_directory)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    Ok(entries)
+}
+
+pub fn conversation_file(root: &Path, relative: &str) -> Result<String> {
+    let path = resolve_conversation_path(root, relative)?
+        .canonicalize()
+        .context("resolving project file")?;
+    let metadata = std::fs::metadata(&path).context("reading project file metadata")?;
+    if !metadata.is_file() {
+        bail!("The selected project path is not a file");
+    }
+    if metadata.len() > MAX_FILE_BROWSER_BYTES {
+        bail!("This file is too large to preview");
+    }
+    let content = std::fs::read(path).context("reading project file")?;
+    String::from_utf8(content).context("The selected file is not UTF-8 text")
+}
+
+fn resolve_conversation_path(root: &Path, relative: &str) -> Result<PathBuf> {
+    use std::path::Component;
+
+    let root = root
+        .canonicalize()
+        .context("opening the conversation project")?;
+    let relative = Path::new(relative);
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_)))
+    {
+        bail!("The project path is invalid");
+    }
+
+    let mut path = root.clone();
+    for component in relative.components() {
+        let Component::Normal(name) = component else {
+            unreachable!()
+        };
+        path.push(name);
+        let metadata = std::fs::symlink_metadata(&path).context("reading project path")?;
+        if metadata.file_type().is_symlink() {
+            bail!("Symbolic links cannot be opened in the file browser");
+        }
+    }
+    if !path.starts_with(&root) {
+        bail!("The project path is outside the conversation checkout");
+    }
+    Ok(path)
+}
+
 fn run_untracked_diff(dir: &Path, path: &str) -> Result<Vec<u8>> {
     let mut command = Command::new("git");
     command
@@ -484,5 +570,49 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["new.txt", "tracked.txt"]
         );
+    }
+
+    #[test]
+    fn conversation_file_browser_lists_and_reads_only_relative_project_files() {
+        let project = crate::daemon::persist::scratch_dir();
+        std::fs::create_dir_all(project.path().join("src")).expect("project directories");
+        std::fs::write(project.path().join("README.md"), "project notes\n").expect("project file");
+        std::fs::write(project.path().join("src/lib.rs"), "pub fn ready() {}\n")
+            .expect("source file");
+        std::fs::create_dir(project.path().join(".git")).expect("git metadata directory");
+
+        let entries = conversation_files(project.path(), None).expect("project entries");
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.name.as_str())
+                .collect::<Vec<_>>(),
+            ["src", "README.md"]
+        );
+        assert_eq!(
+            conversation_file(project.path(), "src/lib.rs").expect("file contents"),
+            "pub fn ready() {}\n"
+        );
+        assert!(conversation_file(project.path(), "../outside.txt").is_err());
+        assert!(conversation_file(project.path(), "").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn conversation_file_browser_refuses_symbolic_links() {
+        let project = crate::daemon::persist::scratch_dir();
+        let outside = crate::daemon::persist::scratch_dir();
+        std::fs::create_dir_all(project.path()).expect("project directory");
+        std::fs::create_dir_all(outside.path()).expect("outside directory");
+        std::fs::write(outside.path().join("secret.txt"), "private\n").expect("outside file");
+        std::os::unix::fs::symlink(outside.path(), project.path().join("linked"))
+            .expect("symbolic link");
+
+        assert!(
+            conversation_files(project.path(), None)
+                .expect("entries")
+                .is_empty()
+        );
+        assert!(conversation_file(project.path(), "linked/secret.txt").is_err());
     }
 }

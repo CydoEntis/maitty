@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-30 on `feat/chat-gui` (v0.51.0; origin/main merged).
+Last reconciled: 2026-11-01 on `fix/gui-visual-issues-dev` (v0.53.1; based on origin/dev).
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Maitty is a terminal multiplexer built for running many coding agents at once: see
@@ -11,7 +11,7 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-Latest release: **v0.51.0** (2026-10-30), wire protocol 50. Phases 1–33 are shipped (phase 11
+Latest release: **v0.53.1** (2026-11-01); this work uses wire protocol 62. Phases 1–33 are shipped (phase 11
 declined); the release history is in the GitHub Releases and git tags, not here. v0.44.0 added
 [Phase 27](#27--radar-and-sending-failures--shipped-in-v0440) (context on the row, a failed
 check into the message box), [Phase 28](#28--references--shipped-in-v0440) (references),
@@ -22,12 +22,12 @@ title, the guide, two flaky tests).
 Built 2026-10-27, not released: [Phase 32](#32--two-looks-and-a-sessions-tabs-in-the-sidebar--built-not-released),
 two looks and a session's tabs in the sidebar.
 
-Active next development: [Phase 37](#37--claude-continuity-and-initial-gui-release--active),
-Claude support and cross-platform GUI release readiness. The standalone Codex GUI
-and its design pass are complete. Live GUI-to-native-TUI handoff acceptance stays
-deferred until both providers are usable and packaged; the TUI remains supported.
+Active work spans [Phase 37](#37--claude-continuity-and-initial-gui-release--active)
+and [Phase 38](#38--v4-desktop-workspace-and-terminal-polish--active): Phase 38
+implementation is in progress, while Phase 37's release-readiness validation is
+still open. The TUI remains supported, and GUI tabs remain views over daemon-owned
+sessions.
 This ordering was chosen by the user on 2026-10-29 ([ADR 0038](adr/0038-standalone-gui-first.md)).
-The daily-use trial from 2026-10-26 and open live-validation items remain outstanding.
 
 Also active, independent of the GUI work (user's call, 2026-11-01):
 [Phase 39](#39--codex-status-from-its-own-hooks--active-independent-of-37-and-38), Codex status
@@ -1175,11 +1175,11 @@ The terminal-only Windows install also passed with an isolated Cargo target:
 `maitty 0.50.6` for `--version` and opened `--help`. This confirms the Rust CLI
 install path without building the React/Tauri frontend. It does not replace the
 Linux/Omarchy desktop acceptance check.
-Exit: Codex passes real roundtrip/recovery/permission checks on each supported
-OS; Claude passes the same checks with a supported authentication path; the
-full gate and GUI-specific checks pass; and release/update/install behavior is
-verified. Native-TUI transfer is not a release requirement. No provider is
-advertised on compile checks alone.
+Exit: Codex and Claude each pass live GUI checks for creation, streamed replies,
+tool activity, approvals, stop/cancel, reconnect, draft recovery and daemon
+disconnection on every supported OS. Release/update/install behavior and the
+full platform gate pass. Native-TUI transfer is not a release requirement. No
+provider is advertised on compile checks alone.
 Claude's structured transport is the installed Claude Code CLI's headless
 `stream-json` protocol, following PandaCode's provider-native pattern; see
 [ADR 0039](adr/0039-claude-code-cli-streaming.md), [the Claude stack rules](stack/claude-code-cli.md), and [transport research](research/claude-code-gui-transport.md).
@@ -1375,9 +1375,40 @@ daemon contracts unchanged.
 - Keep Codex and Claude labels accurate in chat and native terminal. Fix the
   reported loading/error states in Changes and keep terminal input on the
   daemon-owned PTY.
+- Keep Changes and the read-only Files browser closed until opened. Resolve all
+  file reads through the daemon-owned conversation checkout; file editing is out
+  of scope.
+- Group consecutive tool calls into provider-labeled activity cards with a clear
+  running preview and expandable per-step output.
+- Render assistant code fences as separate, readable code blocks while keeping
+  tool output in expandable activity cards.
+- Measure send-to-first-response and refresh durations in the live GUI, identify
+  whether time is spent in the UI, daemon or provider, and fix only demonstrated
+  UI stalls or unnecessary refresh work.
 - Verify the required first-use, running, approval, recovery, disconnected and
   empty states at 1440×900, 1024×700 and 800×600. Run GUI tests, lint, typecheck
   and packaged Windows/Linux builds.
+
+Status 2026-11-01: this implementation includes provider-aware tool activity,
+a daemon-backed read-only Files browser, Changes retry/refresh handling, tab-local
+close behavior, a final history refresh when a turn ends, a recoverable Chat view
+after native terminal loss, inline handoff progress/errors, deduplicated terminal
+resize failures with retry, clearer idle/done grouping, and formatted assistant
+code fences. Returning to Chat shows the view as soon as the daemon confirms
+ownership; history refresh continues in the background. The shared wire protocol
+is 62 because the bounded file-browser operations add messages; old tool-history
+entries still decode without labels.
+
+Windows GUI tests (139), lint, typecheck, frontend build, Windows release build,
+workspace build, serial workspace tests (1,336 passed, 5 ignored) and strict
+clippy passed. The Linux workspace target check passed in Ubuntu 24.04 on WSL.
+The macOS target check used by CI passed in WSL (`--workspace --exclude
+maitty-gui`); macOS GUI packaging still needs its native runner. Linux GUI
+packaging and Omarchy live use are also unverified. The updated desktop app was
+launched, but post-fix interactive acceptance and the three viewport sizes still
+need a manual run. Stop/cancel, reconnect, draft recovery, daemon disconnect,
+native PTY handoff and tab-close survival need explicit acceptance evidence
+before Phase 38 is complete.
 
 ### 39 — Codex status from its own hooks · active, independent of 37 and 38
 

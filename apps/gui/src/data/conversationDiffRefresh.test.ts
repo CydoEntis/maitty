@@ -6,9 +6,9 @@ describe('conversation changes refresh', () => {
     expect(conversationDiffRefreshInterval(true, 'error')).toBe(false)
   })
 
-  it('refreshes a desktop diff while it is loading or current', () => {
-    expect(conversationDiffRefreshInterval(true, 'pending')).toBe(3000)
-    expect(conversationDiffRefreshInterval(true, 'success')).toBe(3000)
+  it('refreshes only after a desktop diff has loaded', () => {
+    expect(conversationDiffRefreshInterval(true, 'pending')).toBe(false)
+    expect(conversationDiffRefreshInterval(true, 'success')).toBe(5000)
   })
 
   it('does not poll browser preview data', () => {

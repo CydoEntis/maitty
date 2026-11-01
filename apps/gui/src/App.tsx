@@ -80,6 +80,8 @@ import {
   loadClaudeExecutablePath,
   loadCodexExecutablePath,
   loadConversationDiff,
+  loadConversationFile,
+  loadConversationFiles,
   loadConversations,
   loadDaemonRestartStatus,
   loadMessages,
@@ -149,11 +151,14 @@ const PREVIEW_RESPONSE_DELAY_MS = 1500
 const PREVIEW_APPROVAL_DELAY_MS = 1700
 const PERMISSION_JSON_INDENT_SPACES = 2
 const SESSION_REFRESH_INTERVAL_MS = 1500
-const HISTORY_REFRESH_INTERVAL_MS = 750
+const HISTORY_REFRESH_INTERVAL_MS = 2500
 const APPROVAL_COMPACT_HEIGHT_PX = 760
 const COMPACT_SIDEBAR_MAX_WIDTH_PX = 899
+const ACTIVITY_PREVIEW_LINE_COUNT = 3
+const CODE_FENCE_MARKER = '```'
 
-type PanelTab = 'details' | 'diff'
+type PanelTab = 'details' | 'diff' | 'files'
+const PANEL_TAB_ORDER = ['diff', 'files', 'details'] as const
 type SendFailure = { kind: 'not-delivered' | 'unknown'; operation: number }
 
 const statusText: Record<SessionStatus, string> = {
@@ -260,7 +265,7 @@ function App() {
   const [drafts, setDrafts] = useState<Record<string, string>>(
     readConversationDrafts,
   )
-  const [activePanel, setActivePanel] = useState<PanelTab | null>('diff')
+  const [activePanel, setActivePanel] = useState<PanelTab | null>(null)
   const [terminalConversationId, setTerminalConversationId] = useState<
     string | null
   >(null)
@@ -284,6 +289,7 @@ function App() {
   const [theme, setTheme] = useState(readThemePreference)
   const [approvalCollapsed, setApprovalCollapsed] = useState(false)
   const [handoffPending, setHandoffPending] = useState(false)
+  const [terminalSwitchNotice, setTerminalSwitchNotice] = useState('')
   const [recoveryPendingId, setRecoveryPendingId] = useState<string | null>(
     null,
   )
@@ -343,6 +349,7 @@ function App() {
   )
   const selectConversation = useCallback(
     (conversationId: string) => {
+      setTerminalSwitchNotice('')
       setSelectedId(conversationId)
       setSavedOpenTabIds(
         openConversationTab(openTabIds, conversationId, selectedConversationId),
@@ -360,6 +367,7 @@ function App() {
       )
       setSavedOpenTabIds(result.tabIds)
       if (result.selectedId && result.selectedId !== selectedConversationId) {
+        setTerminalSwitchNotice('')
         setSelectedId(result.selectedId)
       }
     },
@@ -370,7 +378,7 @@ function App() {
   )
   const historyQuery = useQuery({
     queryKey: ['conversation-history', selected?.id],
-    queryFn: () => loadMessages(selected?.id ?? ''),
+    queryFn: () => loadMessages(selected?.id ?? '', selected?.provider ?? 'Codex'),
     enabled: desktop && Boolean(selected),
     refetchInterval: (query) => {
       const waitingForApproval =
@@ -390,6 +398,28 @@ function App() {
         : false
     },
   })
+  const previousSelectedStatus = useRef<{
+    conversationId: string
+    status: SessionStatus
+  } | null>(null)
+  const selectedIdForHistory = selected?.id
+  const selectedStatusForHistory = selected?.status
+  const refetchHistory = historyQuery.refetch
+  useEffect(() => {
+    const previous = previousSelectedStatus.current
+    if (
+      selectedIdForHistory &&
+      selectedStatusForHistory &&
+      previous?.conversationId === selectedIdForHistory &&
+      previous.status === 'working' &&
+      selectedStatusForHistory !== 'working'
+    ) {
+      void refetchHistory()
+    }
+    previousSelectedStatus.current = selectedIdForHistory && selectedStatusForHistory
+      ? { conversationId: selectedIdForHistory, status: selectedStatusForHistory }
+      : null
+  }, [refetchHistory, selectedIdForHistory, selectedStatusForHistory])
   const codexExecutableQuery = useQuery({
     queryKey: ['codex-executable'],
     queryFn: loadCodexExecutablePath,
@@ -463,16 +493,27 @@ function App() {
   }, [daemonDisconnected, desktop, queryClient, selected, setStatus])
   const toggleTerminal = useCallback(() => {
     if (!selected) return
+    setTerminalSwitchNotice('')
     if (!desktop || !selected.execution) {
       setTerminalConversationId(showTerminal ? null : selected.id)
       return
     }
     if (daemonDisconnected) {
-      toast.message('Reconnect to Maitty before opening the native terminal')
+      if (selected.execution === 'Native' && showTerminal) {
+        setTerminalConversationId(null)
+        return
+      }
+      setTerminalSwitchNotice('Reconnect to Maitty before switching this conversation.')
       return
     }
-    if (handoffPending) {
-      toast.message('Wait for the current conversation handoff to finish')
+    if (handoffPending) return
+
+    if (
+      selected.execution === 'Native' &&
+      showTerminal &&
+      selected.status === 'recovery'
+    ) {
+      setTerminalConversationId(null)
       return
     }
 
@@ -481,8 +522,8 @@ function App() {
       selected.status !== 'idle' &&
       selected.status !== 'done'
     ) {
-      toast.message(
-        'Finish the current turn before opening the native terminal',
+      setTerminalSwitchNotice(
+        `${selected.provider} is still working in Chat. Let the current turn finish before opening Terminal.`,
       )
       return
     }
@@ -492,7 +533,9 @@ function App() {
       selected.status !== 'idle' &&
       selected.status !== 'done'
     ) {
-      toast.message('Finish the native turn before returning to chat')
+      setTerminalSwitchNotice(
+        `${selected.provider} is still working in the native terminal. Finish or stop that turn there, then choose Chat.`,
+      )
       return
     }
 
@@ -509,29 +552,31 @@ function App() {
         : returningToChat
           ? handoffToChat(selected)
           : Promise.resolve()
+    const refreshConversation = () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['conversation-history', selected.id],
+        }),
+      ])
     void handoff
       .then(async () => {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-          queryClient.invalidateQueries({
-            queryKey: ['conversation-history', selected.id],
-          }),
-        ])
-        setTerminalConversationId(returningToChat ? null : selected.id)
-        toast.success(
-          returningToChat
-            ? 'Conversation returned to chat'
-            : selected.execution === 'Structured'
-              ? 'Native terminal opened'
-              : 'Terminal opened',
-        )
+        if (returningToChat) {
+          setTerminalConversationId(null)
+          void refreshConversation().catch(() => {
+            setTerminalSwitchNotice('Chat is open, but Maitty could not refresh the conversation state.')
+          })
+          return
+        }
+        await refreshConversation()
+        setTerminalConversationId(selected.id)
       })
       .catch((error: unknown) => {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Could not switch conversation view',
-        )
+        const detail = error instanceof Error ? error.message : 'Could not switch the conversation view.'
+        setTerminalSwitchNotice(detail)
+        void refreshConversation().catch(() => {
+          setTerminalSwitchNotice(`${detail} Maitty could not refresh this conversation’s state.`)
+        })
       })
       .finally(() => {
         setHandoffPending(false)
@@ -561,16 +606,13 @@ function App() {
         return
       }
       if (daemonDisconnected) {
-        toast.message('Reconnect to Maitty before opening the native terminal')
+        setTerminalSwitchNotice('Reconnect to Maitty before opening the native terminal.')
         return
       }
-      if (handoffPending) {
-        toast.message('Wait for the current conversation handoff to finish')
-        return
-      }
+      if (handoffPending) return
       if (conversation.status !== 'idle' && conversation.status !== 'done') {
-        toast.message(
-          'Finish the current turn before opening the native terminal',
+        setTerminalSwitchNotice(
+          `${conversation.provider} is still working in Chat. Let the current turn finish before opening Terminal.`,
         )
         return
       }
@@ -584,14 +626,15 @@ function App() {
             }),
           ])
           setTerminalConversationId(conversation.id)
-          toast.success('Native terminal opened')
         })
         .catch((error: unknown) => {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : 'Could not open native terminal',
-          )
+          setTerminalSwitchNotice(error instanceof Error ? error.message : 'Could not open the native terminal.')
+          void Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+            queryClient.invalidateQueries({ queryKey: ['conversation-history', conversation.id] }),
+          ]).catch(() => {
+            setTerminalSwitchNotice('The handoff failed, and Maitty could not refresh the conversation state.')
+          })
         })
         .finally(() => {
           setHandoffPending(false)
@@ -614,32 +657,32 @@ function App() {
     )
       return
     if (daemonDisconnected) {
-      toast.message('Reconnect to Maitty before returning to chat')
+      setTerminalSwitchNotice('Reconnect to Maitty before returning to chat.')
       return
     }
-    if (handoffPending) {
-      toast.message('Wait for the current conversation handoff to finish')
-      return
-    }
+    if (handoffPending) return
 
     setHandoffPending(true)
     void handoffToChat(selected)
-      .then(async () => {
-        await Promise.all([
+      .then(() => {
+        setTerminalConversationId(null)
+        void Promise.all([
           queryClient.invalidateQueries({ queryKey: ['conversations'] }),
           queryClient.invalidateQueries({
             queryKey: ['conversation-history', selected.id],
           }),
-        ])
-        setTerminalConversationId(null)
-        toast.success('Conversation returned to chat')
+        ]).catch(() => {
+          setTerminalSwitchNotice('Chat is open, but Maitty could not refresh the conversation state.')
+        })
       })
       .catch((error: unknown) => {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Could not return conversation to chat',
-        )
+        setTerminalSwitchNotice(error instanceof Error ? error.message : 'Could not return to chat.')
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+          queryClient.invalidateQueries({ queryKey: ['conversation-history', selected.id] }),
+        ]).catch(() => {
+          setTerminalSwitchNotice('The return failed, and Maitty could not refresh the conversation state.')
+        })
       })
       .finally(() => {
         setHandoffPending(false)
@@ -1508,14 +1551,13 @@ function App() {
           setDrafts((current) => ({ ...current, [conversationId]: '' }))
           clearSendFailure(conversationId)
           await refreshAfterSubmission(conversationId)
-          toast.success('Message sent')
         })
         .catch(async () => {
           let outcome: ReturnType<typeof classifySubmissionFailure> = 'unknown'
           try {
             const latest = await queryClient.query({
               queryKey: ['conversation-history', conversationId],
-              queryFn: () => loadMessages(conversationId),
+              queryFn: () => loadMessages(conversationId, conversation.provider),
               staleTime: 0,
             })
             outcome = classifySubmissionFailure(
@@ -1563,7 +1605,6 @@ function App() {
         time: 'now',
       })
       setStatus(conversationId, 'done')
-      toast.success('Preview response complete')
     }, PREVIEW_RESPONSE_DELAY_MS)
   }
 
@@ -1576,7 +1617,7 @@ function App() {
     const operation = sendFailure?.operation ?? uncertainReceipt?.operation
     if (operation === undefined || selected.generation === undefined) return
     try {
-      const latest = await loadMessages(selected.id)
+      const latest = await loadMessages(selected.id, selected.provider)
       queryClient.setQueryData(['conversation-history', selected.id], latest)
       const outcome = classifySubmissionFailure(
         latest,
@@ -1633,7 +1674,6 @@ function App() {
             queryKey: ['conversation-history', conversation.id],
           }),
         ])
-        toast.success('Session resumed. The interrupted turn was not replayed.')
       })
       .catch((error: unknown) => {
         toast.error(
@@ -1675,11 +1715,6 @@ function App() {
               queryKey: ['conversation-history', activeConversation.id],
             }),
           ])
-          toast.success(
-            decision === 'Decline' || decision === 'Cancel'
-              ? 'Request declined'
-              : 'Command approved',
-          )
         })
         .catch((error: unknown) => {
           toast.error(
@@ -1706,8 +1741,6 @@ function App() {
       time: 'now',
     })
     setStatus(activeConversation.id, allow ? 'working' : 'idle')
-    if (allow) toast.success('Approval recorded in preview')
-    else toast.message('Request declined in preview')
     if (allow) {
       window.setTimeout(() => {
         setStatus(activeConversation.id, 'done')
@@ -1754,7 +1787,6 @@ function App() {
           setNewDialogOpen(false)
           selectConversation(String(id))
           await queryClient.invalidateQueries({ queryKey: ['conversations'] })
-          toast.success(`${newProvider} conversation started`)
         })
         .catch((error: unknown) => {
           toast.error(
@@ -1896,17 +1928,14 @@ function App() {
               onPanel={setActivePanel}
               onToggleTerminal={toggleTerminal}
               handoffPending={handoffPending}
-              terminalDisabled={
-                daemonDisconnected ||
-                (selected.execution === 'Structured' &&
-                  selected.status !== 'idle' &&
-                  selected.status !== 'done') ||
-                (selected.execution === 'Native' &&
-                  showTerminal &&
-                  selected.status !== 'idle' &&
-                  selected.status !== 'done')
-              }
             />
+
+            {terminalSwitchNotice && (
+              <div className="handoff-notice" role="status">
+                <CircleAlert size={14} />
+                <span>{terminalSwitchNotice}</span>
+              </div>
+            )}
 
             {daemonDisconnected && (
               <div className="connection-warning" role="alert">
@@ -2016,13 +2045,31 @@ function App() {
                     {messages.length === 0 ? (
                       <EmptyConversation project={selected.project} />
                     ) : (
-                      messages.map((message) => (
-                        <MessageRow
-                          key={message.id}
-                          message={message}
-                          provider={selected.provider}
-                        />
-                      ))
+                      messages.map((message, index) => {
+                        if (message.role !== 'activity') {
+                          return (
+                            <MessageRow
+                              key={message.id}
+                              message={message}
+                              provider={selected.provider}
+                            />
+                          )
+                        }
+                        if (messages[index - 1]?.role === 'activity') return null
+                        const group: Message[] = []
+                        for (let cursor = index; messages[cursor]?.role === 'activity'; cursor += 1) {
+                          const item = messages[cursor]
+                          if (!item || item.role !== 'activity') break
+                          group.push(item)
+                        }
+                        return (
+                          <ActivityGroup
+                            key={message.id}
+                            messages={group}
+                            provider={selected.provider}
+                          />
+                        )
+                      })
                     )}
                     {selected.status === 'working' && (
                       <StreamingRow provider={selected.provider} />
@@ -2034,6 +2081,7 @@ function App() {
                   <ApprovalDock
                     key={`${pendingApproval.id}:${selected.id}`}
                     message={pendingApproval}
+                    provider={selected.provider}
                     desktop={desktop}
                     disabled={daemonDisconnected}
                     collapsed={approvalCollapsed}
@@ -2394,7 +2442,7 @@ function ProjectSection({
   conversations: Conversation[]
   disconnected: boolean
 } & SessionRowActions) {
-  const [settledOpen, setSettledOpen] = useState(false)
+  const [idleAndDoneOpen, setIdleAndDoneOpen] = useState(false)
   const active = [...conversations]
     .filter(
       (conversation) =>
@@ -2414,7 +2462,7 @@ function ProjectSection({
       if (pinOrder !== 0) return pinOrder
       return 0
     })
-  const settled = conversations.filter(
+  const idleAndDone = conversations.filter(
     (conversation) =>
       conversation.status === 'done' || conversation.status === 'idle',
   )
@@ -2437,22 +2485,22 @@ function ProjectSection({
           />
         ))}
       </div>
-      {settled.length > 0 && (
+      {idleAndDone.length > 0 && (
         <>
           <button
-            className="settled-toggle"
+            className="inactive-toggle"
             type="button"
-            aria-expanded={settledOpen}
+            aria-expanded={idleAndDoneOpen}
             onClick={() => {
-              setSettledOpen((open) => !open)
+              setIdleAndDoneOpen((open) => !open)
             }}
           >
-            <span>Settled {settled.length}</span>
-            <ChevronDown className={settledOpen ? 'is-open' : ''} size={13} />
+            <span>Idle &amp; done {idleAndDone.length}</span>
+            <ChevronDown className={idleAndDoneOpen ? 'is-open' : ''} size={13} />
           </button>
-          {settledOpen && (
+          {idleAndDoneOpen && (
             <div className="session-rows">
-              {settled.map((conversation) => (
+              {idleAndDone.map((conversation) => (
                 <SessionRow
                   key={conversation.id}
                   conversation={conversation}
@@ -2635,7 +2683,6 @@ function ConversationTabStrip({
   onPanel,
   onToggleTerminal,
   handoffPending,
-  terminalDisabled,
 }: {
   tabs: Conversation[]
   selectedId: string
@@ -2648,7 +2695,6 @@ function ConversationTabStrip({
   onPanel: (tab: PanelTab | null) => void
   onToggleTerminal: () => void
   handoffPending: boolean
-  terminalDisabled: boolean
 }) {
   return (
     <div className="conversation-header">
@@ -2715,7 +2761,18 @@ function ConversationTabStrip({
           }}
         >
           <FileCode2 size={14} />
-          Diff{conversation.hasDiff && <span className="diff-indicator" />}
+          Changes{conversation.hasDiff && <span className="diff-indicator" />}
+        </Button>
+        <Button
+          variant={panel === 'files' ? 'secondary' : 'outline'}
+          size="sm"
+          onClick={() => {
+            onPanel(panel === 'files' ? null : 'files')
+          }}
+          aria-label="Open project files"
+        >
+          <FolderOpen size={14} />
+          Files
         </Button>
         <div
           className="view-switch"
@@ -2725,18 +2782,28 @@ function ConversationTabStrip({
           <Button
             variant={!showTerminal ? 'secondary' : 'ghost'}
             size="sm"
-            disabled={!showTerminal}
+            disabled={!showTerminal || handoffPending}
             onClick={onToggleTerminal}
             aria-pressed={!showTerminal}
-            aria-label={showTerminal ? 'Return to chat' : 'Chat view'}
+            aria-label={
+              handoffPending && showTerminal
+                ? 'Returning to chat'
+                : showTerminal
+                  ? 'Return to chat'
+                  : 'Chat view'
+            }
           >
-            <MessageSquarePlus size={14} />
-            Chat
+            {handoffPending && showTerminal ? (
+              <LoaderCircle className="animate-spin" size={14} />
+            ) : (
+              <MessageSquarePlus size={14} />
+            )}
+            {handoffPending && showTerminal ? 'Returning…' : 'Chat'}
           </Button>
           <Button
             variant={showTerminal ? 'secondary' : 'ghost'}
             size="sm"
-            disabled={showTerminal || handoffPending || terminalDisabled}
+            disabled={showTerminal || handoffPending}
             onClick={onToggleTerminal}
             aria-pressed={showTerminal}
             aria-label={
@@ -2746,7 +2813,7 @@ function ConversationTabStrip({
             }
           >
             <TerminalSquare size={14} />
-            {handoffPending ? 'Switching…' : 'Terminal'}
+            {handoffPending && !showTerminal ? 'Opening…' : 'Terminal'}
           </Button>
         </div>
         <Button
@@ -2771,7 +2838,9 @@ function MessageRow({
   message: Message
   provider: Conversation['provider']
 }) {
-  if (message.role === 'activity') return <ActivityRow message={message} />
+  if (message.role === 'activity') {
+    return <ActivityGroup messages={[message]} provider={provider} />
+  }
   if (message.role === 'approval') return <ApprovalMarker message={message} />
   if (message.role === 'user')
     return (
@@ -2797,10 +2866,81 @@ function MessageRow({
           </span>
           <time>{message.time}</time>
         </div>
-        <div className="assistant-copy">{message.content}</div>
+        <AssistantContent content={message.content} />
       </div>
     </div>
   )
+}
+
+type AssistantBlock =
+  | { kind: 'text'; content: string }
+  | { kind: 'code'; language: string; content: string }
+
+function AssistantContent({ content }: { content: string }) {
+  const blocks = splitAssistantCode(content)
+  return (
+    <div className="assistant-copy">
+      {blocks.map((block, index) =>
+        block.kind === 'code' ? (
+          <section className="assistant-code-block" key={`code-${String(index)}`}>
+            <div className="assistant-code-language">
+              {block.language || 'Code'}
+            </div>
+            <pre><code>{block.content}</code></pre>
+          </section>
+        ) : (
+          <p key={`text-${String(index)}`}>{renderInlineCode(block.content)}</p>
+        ),
+      )}
+    </div>
+  )
+}
+
+function splitAssistantCode(content: string): AssistantBlock[] {
+  const blocks: AssistantBlock[] = []
+  const textLines: string[] = []
+  let codeLines: string[] = []
+  let language = ''
+  let inCode = false
+
+  for (const line of content.split('\n')) {
+    if (line.startsWith(CODE_FENCE_MARKER)) {
+      if (inCode) {
+        blocks.push({ kind: 'code', language, content: codeLines.join('\n') })
+        codeLines = []
+        language = ''
+        inCode = false
+      } else {
+        if (textLines.length > 0) {
+          blocks.push({ kind: 'text', content: textLines.join('\n') })
+          textLines.length = 0
+        }
+        language = line.slice(CODE_FENCE_MARKER.length).trim()
+        inCode = true
+      }
+      continue
+    }
+
+    if (inCode) codeLines.push(line)
+    else textLines.push(line)
+  }
+
+  if (inCode) {
+    textLines.push(`\`\`\`${language}`, ...codeLines)
+  }
+  if (textLines.length > 0) {
+    blocks.push({ kind: 'text', content: textLines.join('\n') })
+  }
+  return blocks
+}
+
+function renderInlineCode(content: string): ReactNode[] {
+  return content.split(/(`[^`\n]+`)/g).map((part, index) => {
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return <code key={String(index)}>{part.slice(1, -1)}</code>
+    }
+    return part
+  })
 }
 
 function ApprovalMarker({ message }: { message: Message }) {
@@ -2835,6 +2975,7 @@ function ApprovalMarker({ message }: { message: Message }) {
 
 function ApprovalDock({
   message,
+  provider,
   desktop,
   disabled,
   collapsed,
@@ -2843,6 +2984,7 @@ function ApprovalDock({
   onUserInput,
 }: {
   message: Message
+  provider: Conversation['provider']
   desktop: boolean
   disabled: boolean
   collapsed: boolean
@@ -2928,6 +3070,7 @@ function ApprovalDock({
         {message.approvalKind === 'UserInput' ? (
           <UserInputRequest
             message={message}
+            provider={provider}
             questions={message.userQuestions ?? []}
             onSubmit={onUserInput}
             disabled={disabled}
@@ -2935,6 +3078,7 @@ function ApprovalDock({
         ) : (
           <ApprovalRequest
             message={message}
+            provider={provider}
             desktop={desktop}
             onResolve={onResolve}
             disabled={disabled}
@@ -2947,11 +3091,13 @@ function ApprovalDock({
 
 function UserInputRequest({
   message,
+  provider,
   questions,
   onSubmit,
   disabled,
 }: {
   message: Message
+  provider: Conversation['provider']
   questions: UserInputQuestion[]
   onSubmit: (answers: Record<string, string[]>) => void
   disabled: boolean
@@ -2991,7 +3137,7 @@ function UserInputRequest({
   return (
     <section
       className="approval-request user-input-request"
-      aria-label="Codex asks for input"
+      aria-label={`${provider} asks for input`}
     >
       <div className="approval-topline">
         <div className="approval-icon">
@@ -3056,7 +3202,7 @@ function UserInputRequest({
       ) : (
         <div className="approval-actions user-input-actions">
           <span className="approval-scope">
-            Answers are sent only to this Codex request.
+            Answers are sent only to this {provider} request.
           </span>
           <Button
             size="sm"
@@ -3073,9 +3219,34 @@ function UserInputRequest({
   )
 }
 
-function ActivityRow({ message }: { message: Message }) {
+function ActivityGroup({
+  messages,
+  provider,
+}: {
+  messages: Message[]
+  provider: Conversation['provider']
+}) {
   const [expanded, setExpanded] = useState(false)
-  const activityState = message.activityState ?? 'Completed'
+  const statePriority = ['Completed', 'Interrupted', 'Failed', 'Running'] as const
+  const activityState = statePriority.reduce<(typeof statePriority)[number]>(
+    (current, state) =>
+      messages.some((message) => (message.activityState ?? 'Completed') === state)
+        ? state
+        : current,
+    'Completed',
+  )
+  const latestActivity = messages.at(-1)
+  const runningActivity = messages.findLast((message) => message.activityState === 'Running')
+  const summary =
+    activityState === 'Running'
+      ? runningActivity?.content ?? latestActivity?.content ?? 'Tool running'
+      : messages.length === 1
+        ? latestActivity?.content ?? 'Tool activity'
+        : `${String(messages.length)} actions ${activityState.toLowerCase()}`
+  const preview = (runningActivity?.detail ?? '')
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .slice(-ACTIVITY_PREVIEW_LINE_COUNT)
   const stateIcon =
     activityState === 'Running' ? (
       <LoaderCircle size={12} />
@@ -3087,8 +3258,9 @@ function ActivityRow({ message }: { message: Message }) {
       <Check size={13} />
     )
   return (
-    <div
+    <section
       className={`activity-row activity-${activityState.toLowerCase()} ${expanded ? 'is-expanded' : ''}`}
+      aria-label={`${provider} tool activity`}
     >
       <div className="activity-marker" aria-label={activityState}>
         {stateIcon}
@@ -3100,30 +3272,49 @@ function ActivityRow({ message }: { message: Message }) {
           setExpanded(!expanded)
         }}
         aria-expanded={expanded}
+        aria-label={`${provider} · ${summary} · ${activityState}`}
       >
-        <span className="activity-label">{message.content}</span>
-        {activityState !== 'Completed' && (
-          <span className="activity-state">{activityState}</span>
-        )}
-        <span className="activity-detail">{message.detail}</span>
+        <span className="activity-label">{provider}</span>
+        <span className="activity-detail">{summary}</span>
+        <span className="activity-count">{messages.length} {messages.length === 1 ? 'step' : 'steps'}</span>
+        {activityState !== 'Completed' && <span className="activity-state">{activityState}</span>}
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
       </button>
-      {expanded && (
-        <pre className="activity-expanded">
-          {message.detail ?? 'No additional details.'}
-        </pre>
+      {!expanded && activityState === 'Running' && preview.length > 0 && (
+        <pre className="activity-preview">{preview.join('\n')}</pre>
       )}
-    </div>
+      {expanded && (
+        <div className="activity-expanded">
+          {messages.map((message) => (
+            <article className="activity-step" key={message.id}>
+              <div className="activity-step-heading">
+                <strong>{message.content}</strong>
+                <span className={`activity-state activity-state-${(message.activityState ?? 'Completed').toLowerCase()}`}>
+                  {message.activityState ?? 'Completed'}
+                </span>
+              </div>
+              {message.detail ? (
+                <pre>{message.detail}</pre>
+              ) : (
+                <span className="activity-empty">No output captured.</span>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 
 function ApprovalRequest({
   message,
+  provider,
   desktop,
   onResolve,
   disabled,
 }: {
   message: Message
+  provider: Conversation['provider']
   desktop: boolean
   onResolve: (
     decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel',
@@ -3147,10 +3338,10 @@ function ApprovalRequest({
           <p>
             {message.approvalReason ??
               (message.approvalKind === 'FileChange'
-                ? 'Review the requested file change before allowing Codex to continue.'
+                ? `Review the requested file change before allowing ${provider} to continue.`
                 : message.approvalKind === 'Permission'
                   ? 'Allowing grants this exact permission profile for this turn only.'
-                  : 'Codex wants to run this command in the project folder.')}
+                  : `${provider} wants to run this command in the project folder.`)}
           </p>
         </div>
         <span className="approval-badge">
@@ -3247,7 +3438,7 @@ function ApprovalRequest({
           <div className="approval-resolved">
             {message.approvalKind === 'FileChange' &&
             (message.approvalChanges?.length ?? 0) === 0
-              ? 'Waiting for Codex to send the file diff. Approval is disabled until the requested change is visible.'
+              ? `Waiting for ${provider} to send the file diff. Approval is disabled until the requested change is visible.`
               : 'No supported decision is available for this request. Maitty has left it unanswered.'}
           </div>
         )
@@ -3255,7 +3446,7 @@ function ApprovalRequest({
         <div className="approval-resolved">
           <CheckCheck size={14} />
           {desktop
-            ? 'Decision sent to Codex'
+            ? `Decision sent to ${provider}`
             : 'Decision recorded in local preview'}
         </div>
       )}
@@ -3315,7 +3506,7 @@ function RecoveryNotice({
           : conversation.execution === 'Native'
             ? canOpenNativeTerminal
               ? 'Native process cleanup was not confirmed. Inspect the terminal; Maitty will confirm cleanup again before chat resumes.'
-              : 'This native conversation needs recovery in the TUI before it can return to chat.'
+              : 'This native session needs recovery. Resume it in Maitty’s terminal interface; chat stays locked until its history can be checked.'
             : 'This conversation needs recovery. Reconnect to the daemon before continuing.'}
       </span>
       {canResumeInChat && (
@@ -3447,7 +3638,9 @@ function Composer({
           onKeyDown={onKeyDown}
           placeholder={
             nativeOwner
-              ? 'Return to chat from the Terminal panel to continue…'
+              ? status === 'recovery'
+                ? 'Recover this native session before chatting…'
+                : 'Return to chat from the Terminal panel to continue…'
               : !connected
                 ? 'Reconnect before sending. Your draft stays here.'
                 : busy
@@ -3529,7 +3722,7 @@ function ContextPanel({
     const currentIndex = tabs.findIndex(
       (item) => item === document.activeElement,
     )
-    const selectedIndex = tab === 'diff' ? 0 : 1
+    const selectedIndex = PANEL_TAB_ORDER.indexOf(tab)
     const targetIndex =
       event.key === 'Home'
         ? 0
@@ -3542,7 +3735,7 @@ function ContextPanel({
     const target = tabs[targetIndex]
     if (!target) return
     event.preventDefault()
-    onTab(targetIndex === 0 ? 'diff' : 'details')
+    onTab(PANEL_TAB_ORDER[targetIndex] ?? 'diff')
     target.focus()
   }
 
@@ -3571,6 +3764,18 @@ function ContextPanel({
             Changes
           </button>
           <button
+            className={tab === 'files' ? 'active' : ''}
+            type="button"
+            role="tab"
+            aria-selected={tab === 'files'}
+            tabIndex={tab === 'files' ? 0 : -1}
+            onClick={() => {
+              onTab('files')
+            }}
+          >
+            Files
+          </button>
+          <button
             className={tab === 'details' ? 'active' : ''}
             type="button"
             role="tab"
@@ -3597,8 +3802,87 @@ function ContextPanel({
         {tab === 'diff' && (
           <DiffView conversation={conversation} desktop={desktop} />
         )}
+        {tab === 'files' && <FilesView conversation={conversation} desktop={desktop} />}
       </ScrollArea>
     </aside>
+  )
+}
+
+function FilesView({
+  conversation,
+  desktop,
+}: {
+  conversation: Conversation
+  desktop: boolean
+}) {
+  const [directory, setDirectory] = useState('')
+  const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const filesQuery = useQuery({
+    queryKey: ['conversation-files', conversation.id, conversation.generation, directory],
+    queryFn: () => loadConversationFiles(conversation, directory || null),
+    enabled: desktop,
+    retry: false,
+  })
+  const fileQuery = useQuery({
+    queryKey: ['conversation-file', conversation.id, conversation.generation, selectedPath],
+    queryFn: () => loadConversationFile(conversation, selectedPath ?? ''),
+    enabled: desktop && selectedPath !== null,
+    retry: false,
+  })
+
+  if (!desktop) {
+    return <div className="panel-empty"><FolderOpen size={18} /><h2>Files need the desktop app</h2></div>
+  }
+  if (filesQuery.isLoading) {
+    return <div className="panel-empty" role="status"><LoaderCircle size={18} /><h2>Loading project files</h2></div>
+  }
+  if (filesQuery.isError) {
+    return <div className="panel-empty"><CircleAlert size={18} /><h2>Couldn’t load project files</h2><p>Check that the conversation checkout is available, then retry.</p><Button variant="outline" size="sm" onClick={() => void filesQuery.refetch()}>Retry</Button></div>
+  }
+
+  function openEntry(name: string, isDirectory: boolean) {
+    const path = directory ? `${directory}/${name}` : name
+    if (isDirectory) {
+      setDirectory(path)
+      setSelectedPath(null)
+    } else {
+      setSelectedPath(path)
+    }
+  }
+
+  return (
+    <div className="files-browser">
+      <div className="files-breadcrumb">
+        <Button variant="ghost" size="sm" disabled={!directory} onClick={() => {
+          setDirectory(directory.split('/').slice(0, -1).join('/'))
+          setSelectedPath(null)
+        }}>Project{directory ? ` / ${directory}` : ''}</Button>
+        {directory && <Button variant="outline" size="sm" onClick={() => {
+          setDirectory(directory.split('/').slice(0, -1).join('/'))
+          setSelectedPath(null)
+        }}>Up</Button>}
+      </div>
+      <div className="files-browser-list" aria-label="Project files">
+        {(filesQuery.data ?? []).length === 0 ? (
+          <div className="panel-empty"><FolderOpen size={18} /><h2>This folder is empty</h2></div>
+        ) : (filesQuery.data ?? []).map((entry) => (
+          <button className="files-browser-entry" type="button" key={entry.name} onClick={() => {
+            openEntry(entry.name, entry.is_directory)
+          }} aria-label={entry.is_directory ? `Open folder ${entry.name}` : `Preview file ${entry.name}`}>
+            {entry.is_directory ? <FolderOpen size={14} /> : <FileCode2 size={14} />}
+            <span>{entry.name}</span>
+            <small>{entry.is_directory ? 'Folder' : 'Preview'}</small>
+          </button>
+        ))}
+      </div>
+      {selectedPath && (
+        <section className="files-preview" aria-label={`Preview ${selectedPath}`}>
+          <strong>{selectedPath}</strong>
+          {fileQuery.isLoading ? <p role="status">Loading preview…</p> : fileQuery.isError ? <div><p>Couldn’t load this file preview.</p><Button variant="outline" size="sm" onClick={() => void fileQuery.refetch()}>Retry</Button></div> : <pre>{fileQuery.data}</pre>}
+        </section>
+      )}
+      <p className="files-readonly-note">Read-only preview. Files can’t be changed here.</p>
+    </div>
   )
 }
 
