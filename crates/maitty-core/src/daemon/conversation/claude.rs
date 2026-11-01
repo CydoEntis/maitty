@@ -17,6 +17,7 @@ use maitty_provider_claude::{
 
 const STDERR_CHUNK_BYTES: usize = 8192;
 const PROCESS_EXIT_TIMEOUT: Duration = Duration::from_secs(2);
+const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(30);
 const INITIALIZE_REQUEST_ID: &str = "claude-initialize";
 
 struct Client {
@@ -112,7 +113,7 @@ impl Client {
             "request":{"subtype":"initialize","hooks":null}
         }))
         .await?;
-        tokio::time::timeout(PROCESS_EXIT_TIMEOUT * 5, async {
+        tokio::time::timeout(INITIALIZE_TIMEOUT, async {
             loop {
                 match self.next().await? {
                     OutputFrame::Initialized { session_id } => {
