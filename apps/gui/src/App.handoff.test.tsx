@@ -244,6 +244,17 @@ describe('desktop chat and terminal handoff', () => {
     expect(daemon.loadConversations).toHaveBeenCalledTimes(2)
   })
 
+  it('explains how to start when the workspace has no conversations', async () => {
+    daemon.loadConversations.mockResolvedValue([])
+    renderDesktopApp()
+
+    expect(
+      await screen.findByText(
+        'No conversations yet. Open a project folder to get started.',
+      ),
+    ).toHaveAttribute('role', 'status')
+  })
+
   it('does not offer to restart an old daemon while it owns TUI sessions', async () => {
     daemon.loadConversations
       .mockRejectedValueOnce(

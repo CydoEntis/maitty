@@ -2314,7 +2314,11 @@ function ConversationSidebar({
           />
         ))}
         {conversations.length === 0 && (
-          <div className="no-sessions">No sessions match “{filter}”</div>
+          <div className="no-sessions" role="status">
+            {filter.trim()
+              ? `No sessions match “${filter}”`
+              : 'No conversations yet. Open a project folder to get started.'}
+          </div>
         )}
         {archivedConversations.length > 0 && (
           <section className="session-group archived-group">
