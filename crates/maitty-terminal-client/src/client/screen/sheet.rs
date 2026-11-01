@@ -267,12 +267,10 @@ pub(in crate::client) fn draw_sheet(
             ScreenHit::Close,
         ),
         SheetKind::Both => ("Changes".to_string(), String::new(), ScreenHit::ViewClose),
-        SheetKind::Changes | SheetKind::Files => {
+        SheetKind::Changes | SheetKind::Files | SheetKind::Branch | SheetKind::References => {
             (String::new(), String::new(), ScreenHit::ViewClose)
         }
         SheetKind::Check => ("CHECK".to_string(), check_title(app), ScreenHit::ViewClose),
-        SheetKind::Branch => (branch_title(app), String::new(), ScreenHit::ViewClose),
-        SheetKind::References => (references_title(app), String::new(), ScreenHit::ViewClose),
     };
     // Hairline puts the tab strip on the title row, over the rule; what the title said goes
     // to the right, dim.

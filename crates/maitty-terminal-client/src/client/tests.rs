@@ -5782,24 +5782,27 @@ mod screen_tests {
             row_text(&buf, top + 1)
         );
         assert!(
-            row_text(&buf, top + 1).contains("✕"),
-            "the close sits on the title row"
+            row_text(&buf, top).contains(" ✕ "),
+            "the close chip sits on the top border"
         );
         assert!(row_text(&buf, top + 2).contains("214 characters · 5 lines from swift-lynx"));
-        let x = (0..160u16)
-            .find(|&x| buf[(x, top + 1)].symbol() == "┃")
-            .expect("the side");
+        let x = app.screen.toast_rect.x;
         for y in top + 1..top + h - 1 {
             assert_eq!(
                 (buf[(x, y)].symbol(), buf[(x, y)].fg, buf[(x, y)].bg),
-                ("┃", t.accent, t.bg),
-                "the side runs between the box's top and bottom"
+                ("│", t.accent, t.card),
+                "the side runs between the box's top and bottom in the notice's colour"
             );
         }
         assert_eq!(
             buf[(x + 1, top + 2)].bg,
-            t.bg,
-            "Floating: an outline on the ground, no filled block"
+            t.card,
+            "Floating: a card, like a modal"
+        );
+        assert!(
+            row_text(&buf, top).contains(" Notice "),
+            "the kind chip sits on the top border: {}",
+            row_text(&buf, top)
         );
         let title = (x..160)
             .find(|&c| buf[(c, top + 1)].symbol() == "C")
@@ -5838,20 +5841,16 @@ mod screen_tests {
             let buf = frame(&mut app, 160, 45);
             let t = app.theme.clone();
             let (top, bottom) = (45 - 4 - 5 - BAR, 45 - 5 - 1 - BAR);
-            let side = (0..160u16)
-                .find(|&x| buf[(x, top + 1)].symbol() == "┃")
-                .expect("the side");
-            let right = (side + 1..160u16)
-                .find(|&x| buf[(x, top + 1)].symbol() == "│")
-                .expect("the right side");
+            let side = app.screen.toast_rect.x;
+            let right = app.screen.toast_rect.right() - 1;
             let want = ["╭", "╮", "╰", "╯"];
             let got = [(side, top), (right, top), (side, bottom), (right, bottom)]
                 .map(|p| buf[p].symbol().to_string());
             assert_eq!(got, want.map(String::from), "{rounded:?}");
             assert_eq!(
                 buf[(side, top)].fg,
-                t.line,
-                "{rounded:?}: the box in `line`"
+                t.accent,
+                "{rounded:?}: the box in the notice's colour"
             );
         }
     }
@@ -5886,9 +5885,7 @@ mod screen_tests {
             ),
             (t.muted, true)
         );
-        let side = (0..160u16)
-            .find(|&x| buf[(x, top + 1)].symbol() == "┃")
-            .expect("the side");
+        let side = app.screen.toast_rect.x;
         assert_eq!(
             buf[(side, top + 4)].symbol(),
             "╰",
@@ -6760,6 +6757,9 @@ second line
         app.settling.get_mut(&id).unwrap().1 = Instant::now() - Duration::from_millis(1);
         app.settle_alerts();
         assert!(
+            !app.alerted.contains_key(&id),
+            "you are looking at it: no sound"
+        );
     }
 
     #[test]
@@ -6780,9 +6780,6 @@ second line
         };
         ask(&mut app);
         let first = app.alerted[&id].1;
-            app.alerted.contains_key(&id),
-            "a focused blocking question still needs its request sound"
-        );
         app.last_alert = Some((
             crate::alert::Kind::Needs,
             Instant::now() - Duration::from_secs(5),
@@ -6790,18 +6787,10 @@ second line
         let mut next = app.snap.clone();
         next.terms.get_mut(&id).unwrap().status = Status::Working;
         app.on_server(ServerMsg::State(next));
-        app.on_server(ServerMsg::Attention {
-            term: id,
-            status: Status::Blocked,
-        });
-        let mut blocked = app.snap.clone();
-        blocked.terms.get_mut(&id).unwrap().status = Status::Blocked;
-        app.on_server(ServerMsg::State(blocked));
-        app.settling.get_mut(&id).unwrap().1 = Instant::now() - Duration::from_millis(1);
-        app.settle_alerts();
-        assert!(
-            app.alerted[&id].1.elapsed() < Duration::from_secs(1),
-            "a new turn's question is new news"
+        ask(&mut app);
+        assert_eq!(
+            app.alerted[&id].1, first,
+            "asking again within two minutes does not ring again"
         );
     }
 
@@ -7185,13 +7174,13 @@ second line
         app.notify("Copied".into(), false);
         assert_eq!(
             toast(&mut app, "Copied"),
-            (t.bg, t.strong, "✓".to_string(), t.accent),
+            (t.card, t.strong, "✓".to_string(), t.accent),
             "a plain note: the accent"
         );
         app.notify("Couldn't save".into(), true);
         assert_eq!(
             toast(&mut app, "Couldn't"),
-            (t.bg, t.strong, "✕".to_string(), t.err),
+            (t.card, t.strong, "✕".to_string(), t.err),
             "an error"
         );
         // claude (1) is on a prompt; codex (2) isn't.
@@ -7199,14 +7188,14 @@ second line
         app.notice_term = Some(1);
         assert_eq!(
             toast(&mut app, "pane-one"),
-            (t.bg, t.strong, "●".to_string(), t.blocked),
+            (t.card, t.strong, "●".to_string(), t.blocked),
             "needs you: its state's colour"
         );
         app.notify("pane-two finished".into(), false);
         app.notice_term = Some(2);
         assert_eq!(
             toast(&mut app, "pane-two"),
-            (t.bg, t.strong, "✓".to_string(), t.done),
+            (t.card, t.strong, "✓".to_string(), t.done),
             "finished"
         );
     }

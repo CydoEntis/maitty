@@ -656,19 +656,20 @@ fn a_tab_out_of_view_shows_its_agents_state() {
 
 #[test]
 fn a_toast_is_a_round_outline_in_floating_and_a_solid_block_in_hairline() {
-    for (look, above, ground) in [("hairline", "┃", "card2"), ("floating", "╭", "bg")] {
+    for (look, above, ground) in [("hairline", "┃", "card2"), ("floating", "╭", "card")] {
         let mut app = hairline_world(1);
         app.cfg.ui.layout = look.into();
         app.notify("Saved the theme".into(), false);
         let buf = draw(&mut app, 160, 45);
         show(look, &buf);
         let t = app.theme.clone();
-        let want = if ground == "bg" { t.bg } else { t.card2 };
+        let want = if ground == "card" { t.card } else { t.card2 };
         let (x, y) = find_text(&buf, "Saved the theme").expect("the toast");
         assert_eq!(buf[(x, y)].bg, want, "{look}: its words on its ground");
+        let side = if look == "floating" { "│" } else { "┃" };
         let left = (0..x)
             .rev()
-            .find(|&xx| buf[(xx, y)].symbol() == "┃")
+            .find(|&xx| buf[(xx, y)].symbol() == side)
             .expect("its coloured left side");
         assert_eq!(
             buf[(left, y)].fg,
@@ -681,7 +682,11 @@ fn a_toast_is_a_round_outline_in_floating_and_a_solid_block_in_hairline() {
             "{look}: a round corner over the side, or the side runs on"
         );
         if look == "floating" {
-            assert_eq!(buf[(left, y - 1)].fg, t.line, "the outline in `line`");
+            assert_eq!(
+                buf[(left, y - 1)].fg,
+                t.accent,
+                "the outline in the notice's colour"
+            );
         } else {
             assert!(
                 !(0..160u16).any(|xx| ["┌", "┐", "└", "┘"].contains(&buf[(xx, y - 1)].symbol())),

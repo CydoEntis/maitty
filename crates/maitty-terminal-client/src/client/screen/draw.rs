@@ -1375,8 +1375,8 @@ const TOAST_TEXT_PAD: usize = 8;
 /// Rows between the card's bottom edge and the screen's: the agent's input area sits there.
 const TOAST_ABOVE_INPUT: u16 = 5;
 
-/// One toast for every notice, bottom right above the agent's input area: a `card` with a
-/// full-height bar in the notice's colour and no frame. Row 1 is the mark and bold
+/// One toast for every notice, bottom right above the agent's input area: a `card` boxed in
+/// the notice's colour with a kind chip on its top border. Row 1 is the mark and bold
 /// title with a ✕; row 2 the detail; an optional row 3 a preview in dim italics. It clears
 /// after `toast_hold` (errors a little longer), or with the ✕ / Esc.
 pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
@@ -1426,13 +1426,13 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     let needs = about
         .and_then(|term| app.snap.terms.get(&term))
         .is_some_and(|x| x.status == Status::Blocked);
-    let (colour, mark) = match (err, needs, about) {
-        (true, ..) => (t.err, "✕"),
-        (_, true, _) => (t.blocked, "●"),
-        (_, _, Some(_)) => (t.done, "✓"),
+    let (colour, mark, kind) = match (err, needs, about) {
+        (true, ..) => (t.err, "✕", "Error"),
+        (_, true, _) => (t.blocked, "●", "Needs you"),
+        (_, _, Some(_)) => (t.done, "✓", "Done"),
         // A hint about keys (shortcut mode's dead key) is information, not a success.
-        _ if app.notice_hint => (t.sky(), "i"),
-        _ => (t.accent, "✓"),
+        _ if app.notice_hint => (t.sky(), "i", "Hint"),
+        _ => (t.accent, "✓", "Notice"),
     };
     let look = Look::of(&app.cfg.ui);
     let button = restart.then(|| button_pill(look, t, "Restart now", "", false, t.card));
@@ -1461,11 +1461,11 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     };
     app.screen.toast_rect = r;
     let ink = |c: Color, bg: Color| if fade > 0.0 { blend(c, bg, fade) } else { c };
-    // Floating: a `line` outline on the ground with round corners whatever `ui.rounded` says
-    // (the box glyphs need no Nerd Font), its left side a heavy rule in the notice's colour.
-    // Hairline, which has no boxes: a solid block in `card2` (its `card` is the ground), its
-    // left edge that rule (ADR 0028).
-    let bg = if look.hairline { t.card2 } else { t.bg };
+    // Floating: framed like a modal (a box on `card`, round corners whatever `ui.rounded` says),
+    // its border and a kind chip on the top border in the notice's colour, so it reads as a
+    // small floating pane, not text on the ground. Hairline, which has no boxes: a solid block
+    // in `card2` (its `card` is the ground), its left edge a heavy rule (ADR 0028).
+    let bg = if look.hairline { t.card2 } else { t.card };
     fill(buf, r, bg);
     let bar = Style::default().fg(ink(colour, bg)).bg(bg);
     if look.hairline {
@@ -1480,11 +1480,16 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
                 rounded: true,
                 ..look
             },
-            Style::default().fg(ink(t.line, bg)).bg(bg),
+            bar,
         );
-        for yy in r.y + 1..r.bottom().saturating_sub(1) {
-            buf[(r.x, yy)].set_symbol("┃").set_style(bar);
-        }
+        let chip = [seg(
+            format!(" {kind} "),
+            Style::default()
+                .fg(ink(t.acc_ink, colour))
+                .bg(ink(colour, bg))
+                .add_modifier(Modifier::BOLD),
+        )];
+        put(buf, r.x + 2, r.y, &chip, r.right().saturating_sub(1));
     }
     // Rows 2 and 3 start under the title, one column in from the border; the title also
     // leaves the mark's column and the ✕'s.
@@ -1507,17 +1512,39 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         ),
     ];
     put(buf, r.x + 2, r.y + 1, &head, r.right() - 1);
-    let close = Rect {
-        x: r.right().saturating_sub(4),
-        y: r.y + 1,
-        width: 2,
-        height: 1,
+    // Floating: the close is the red chip modals wear on their top border; Hairline keeps a
+    // quiet ✕ on the title row.
+    let close = if look.hairline {
+        Rect {
+            x: r.right().saturating_sub(4),
+            y: r.y + 1,
+            width: 2,
+            height: 1,
+        }
+    } else {
+        Rect {
+            x: r.right().saturating_sub(4),
+            y: r.y,
+            width: 3,
+            height: 1,
+        }
+    };
+    let (close_text, close_style) = if look.hairline {
+        ("✕", Style::default().fg(ink(t.muted, bg)).bg(bg))
+    } else {
+        (
+            " ✕ ",
+            Style::default()
+                .fg(ink(t.strong, t.err))
+                .bg(ink(t.err, bg))
+                .add_modifier(Modifier::BOLD),
+        )
     };
     put(
         buf,
         close.x,
         close.y,
-        &[seg("✕", Style::default().fg(ink(t.muted, bg)).bg(bg))],
+        &[seg(close_text, close_style)],
         r.right() - 1,
     );
     let mut row = r.y + 2;

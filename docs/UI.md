@@ -169,13 +169,13 @@ Only the area with the keyboard is lit: the focused pane's whole border, or the 
 <!-- local: user requested distinct active, keyboard and hover sidebar states, mouse-first sidebar controls and parent-owned child-agent visibility. -->
 
 - Popups are centred `panel()`s (`panel_at()` for a given rectangle) framed like a
-  pane, in every layout: a box in `line` with corners by `ui.rounded`, the title as
-  an accent chip on the top border two in, and `Esc close` as a `btn` chip a `─`
+  pane, in every layout: a box in the `accent` (a modal holds the keys) with corners by
+  `ui.rounded`, the title as an accent chip on the top border two in, and a red ✕ chip
   before the top right corner (the whole chip closes it); with `ui.rounded = full`
   both chips have caps. There is no accent bar across the top: the user chose the
   pane-like frame over an accent title bar (2026-10-24), and the frame
   tests apply that one difference (`as_bordered_header`). No shadow; the screen
-  behind is dimmed. Small explanations (why, a row's menu) are
+  behind is dimmed, its ground darkened as well as its text. Small explanations (why, a row's menu) are
   `popover_at()`s: a raised title row, no border, no shadow, beside the sidebar
   (`popover_rect()`). Settings is a
   centred modal that preserves the workspace layout and keeps its General,

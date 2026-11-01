@@ -121,7 +121,34 @@ fn tint_hovered(app: &App, buf: &mut Buffer, t: &crate::theme::Theme) {
     if !tints(h) || backdrop {
         return;
     }
+    if *r == app.screen.toast_rect {
+        tint_inside(buf, *r, t);
+        return;
+    }
     tint(buf, *r, t);
+}
+
+/// A boxed region's tint stays inside its outline: a box-drawing line sits mid-cell, so tinting
+/// the border cells too would light a band outside the line.
+fn tint_inside(buf: &mut Buffer, r: Rect, t: &crate::theme::Theme) {
+    let inner = Rect {
+        x: r.x + 1,
+        y: r.y + 1,
+        width: r.width.saturating_sub(2),
+        height: r.height.saturating_sub(2),
+    }
+    .intersection(buf.area);
+    for y in inner.top()..inner.bottom() {
+        for x in inner.left()..inner.right() {
+            let cell = &mut buf[(x, y)];
+            let ground = if cell.bg == Color::Reset {
+                t.bg
+            } else {
+                cell.bg
+            };
+            cell.bg = crate::theme::mix(ground, t.text, HOVER_TINT);
+        }
+    }
 }
 
 /// Lay the pointer's tint over `r`, its ends rounded like every other shape when that is on.
@@ -682,22 +709,6 @@ fn draw_prompt(
         .map(|c| c.to_uppercase().collect::<String>() + chars.as_str())
         .unwrap_or_default();
     let r = super::screen::panel(app, buf, area, 64, 7, &title, &[], t);
-    // A one-line prompt needs no frame: the title bar and the field carry it. In Hairline its
-    // card is the ground, so only the line box shows where it is: that stays.
-    if !super::screen::plain_on() {
-        for y in r.y + 1..r.bottom() {
-            for x in [r.x, r.right() - 1] {
-                buf[(x, y)]
-                    .set_symbol(" ")
-                    .set_style(Style::default().bg(t.card));
-            }
-        }
-        for x in r.x..r.right() {
-            buf[(x, r.bottom() - 1)]
-                .set_symbol(" ")
-                .set_style(Style::default().bg(t.card));
-        }
-    }
     if confirm {
         super::screen::panel_bar(buf, r, t, &[("y", "yes"), ("n", "no")]);
         return;
