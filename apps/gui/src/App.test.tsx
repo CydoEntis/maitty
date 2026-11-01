@@ -332,6 +332,8 @@ describe('conversation workspace', () => {
     expect(screen.getByRole('region', { name: 'maitty project' })).toContainElement(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
     await user.click(screen.getByRole('button', { name: /Archived 1/ }))
     expect(screen.getByRole('button', { name: /^Review daemon recovery, Done, maitty$/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Review daemon recovery, Done, maitty$/i }))
+    expect(screen.getByRole('tab', { name: /Review daemon recovery/ })).toBeInTheDocument()
   })
 
   it('opens the next conversation that needs attention with Ctrl+Shift+A', async () => {

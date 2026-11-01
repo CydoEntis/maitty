@@ -321,8 +321,8 @@ function App() {
     conversations[0]
   const selectedConversationId = selected?.id
   const availableConversationIds = useMemo(
-    () => activeConversations.map((conversation) => conversation.id),
-    [activeConversations],
+    () => conversations.map((conversation) => conversation.id),
+    [conversations],
   )
   const openTabIds = useMemo(
     () =>
