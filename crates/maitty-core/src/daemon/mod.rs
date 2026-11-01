@@ -970,7 +970,7 @@ impl Daemon {
             .collect();
         crate::restart::Activity {
             pid: std::process::id(),
-            version: env!("CARGO_PKG_VERSION").into(),
+            version: env!("APP_VERSION").into(),
             sessions: live().count() + structured.len(),
             working: live().filter(|t| t.status == Status::Working).count()
                 + structured
@@ -2156,7 +2156,7 @@ impl Daemon {
             .collect();
         Snapshot {
             conversations: self.conversation_summaries(),
-            daemon_version: env!("CARGO_PKG_VERSION").into(),
+            daemon_version: env!("APP_VERSION").into(),
             workspaces: self.workspaces.clone(),
             active_ws: self.active_ws,
             terms,

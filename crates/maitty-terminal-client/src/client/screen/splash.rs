@@ -290,7 +290,7 @@ fn foot(t: &Theme) -> Seg {
     seg(
         format!(
             concat!(env!("APP_COMMAND"), " {}"),
-            env!("CARGO_PKG_VERSION")
+            env!("APP_VERSION")
         ),
         Style::default().fg(t.line).bg(t.bg),
     )
@@ -571,7 +571,7 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
 /// folder), and leaves the number there. A cold start is the one that plays the intro.
 pub(in crate::client) fn first_start_of_this_version() -> bool {
     let file = crate::config::data_dir().join("splash-version");
-    let now = env!("CARGO_PKG_VERSION");
+    let now = env!("APP_VERSION");
     if std::fs::read_to_string(&file).is_ok_and(|v| v.trim() == now) {
         return false;
     }

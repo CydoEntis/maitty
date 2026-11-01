@@ -664,7 +664,7 @@ impl Connection {
     }
     pub(super) async fn handshake(&mut self, config_root: &Path) -> Result<()> {
         let request = json!({"id": INITIALIZE_ID, "method": "initialize", "params": {
-            "clientInfo": {"name": crate::brand::APP_COMMAND, "version": env!("CARGO_PKG_VERSION")},
+            "clientInfo": {"name": crate::brand::APP_COMMAND, "version": env!("APP_VERSION")},
             "capabilities": {"experimentalApi": true}
         }});
         self.input

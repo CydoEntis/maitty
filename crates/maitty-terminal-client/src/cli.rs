@@ -1310,7 +1310,7 @@ pub fn doctor() -> Result<()> {
 
     println!(
         concat!(env!("APP_COMMAND"), " {}  (protocol {})\n"),
-        env!("CARGO_PKG_VERSION"),
+        env!("APP_VERSION"),
         PROTOCOL_VERSION
     );
 
