@@ -77,6 +77,10 @@ const CANCELLED_AFTER: Duration = Duration::from_secs(2);
 /// An agent read from its screen (no hooks) is done only once its screen has been still this
 /// long: working ones redraw a timer every second.
 const SCREEN_DONE_QUIET: Duration = Duration::from_secs(5);
+/// A finish read off the screen after less "work" than this is a title blink, not a turn:
+/// the status shows it but nobody is told. Codex's title flicks to working and its idle
+/// prompt "recovers" the end two seconds later, which rang for nothing.
+const SCREEN_FINISH_MIN_TURN_SECS: u64 = 5;
 
 impl Daemon {
     /// A status report whose sender checked out (`verdict`: did its process chain lead to
@@ -503,6 +507,10 @@ impl Daemon {
             t.status
         );
         t.status_why = why.to_string();
+        let guessed_blink = new == Status::Done
+            && why.starts_with("screen: ")
+            && t.status == Status::Working
+            && term::unix_now().saturating_sub(t.status_since) < SCREEN_FINISH_MIN_TURN_SECS;
         let turn = (t.status == Status::Working && t.agent.is_some()).then(|| {
             (
                 t.agent.clone().unwrap_or_default(),
@@ -540,12 +548,15 @@ impl Daemon {
             // A turn has started: the next queued follow-up waits for this one to end.
             if new == Status::Working {
                 t.queue_sent = None;
-                t.alerted = None;
+                // A new turn's finish is news again; a question asked again soon is not.
+                if t.alerted.is_some_and(|(s, _)| s == Status::Done) {
+                    t.alerted = None;
+                }
             }
         }
         // A finish waits for its check: `check_settled` says it once the result is in.
         let held = new == Status::Done && self.terms.get(&term).is_some_and(Term::check_running);
-        if matches!(new, Status::Blocked | Status::Done) && !held {
+        if matches!(new, Status::Blocked | Status::Done) && !held && !guessed_blink {
             self.announce(term, new);
         }
     }

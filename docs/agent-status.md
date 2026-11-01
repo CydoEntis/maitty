@@ -139,11 +139,14 @@ A working agent with no output and no hook report for 10 minutes is marked quiet
 stays working. An agent waiting on helpers it reported, or asking to start helpers,
 is never quiet. Any output or hook report clears it.
 
-Questions ring even in the focused pane after remaining blocked for 300 ms;
-the needs-you mark appears immediately. Completions are quiet and remain visible
-as status/notice changes. A queued needs-you sound rechecks the exact current
-status and cancels when work resumes, the pane disappears or attention changes.
-A new working turn clears the previous turn's notification deduplication.
+Questions ring after remaining blocked for 300 ms, except in the pane you are
+looking at (focused pane, focused window); the needs-you mark appears immediately.
+Completions are quiet and remain visible as status/notice changes. A queued
+needs-you sound rechecks the exact current status and cancels when work resumes, the
+pane disappears or attention changes. A pane that rang needs-you stays quiet for the
+same news for 2 minutes, even if it works and asks again; a new working turn clears
+only a finished pane's deduplication. A finish read off the screen after under 5
+seconds of work is a title blink: the status shows, nobody is told.
 A Claude turn that stops with background work it started still running (a shell, a
 helper, a monitor: the running entries of its Stop hook's `background_tasks` that were not
 running at the previous stop) shows done but is not announced: no sound, desktop or phone

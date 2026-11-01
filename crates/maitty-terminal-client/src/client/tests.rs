@@ -6749,7 +6749,7 @@ second line
     }
 
     #[test]
-    fn focused_blockers_ring_and_a_new_turn_can_ask_again() {
+    fn a_blocker_in_the_pane_you_are_looking_at_makes_no_sound() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let id = app.focused().unwrap();
         app.window_focused = true;
@@ -6760,6 +6760,26 @@ second line
         app.settling.get_mut(&id).unwrap().1 = Instant::now() - Duration::from_millis(1);
         app.settle_alerts();
         assert!(
+    }
+
+    #[test]
+    fn the_same_question_asked_again_soon_stays_quiet() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let id = app.focused().unwrap();
+        app.window_focused = false;
+        let ask = |app: &mut App| {
+            app.on_server(ServerMsg::Attention {
+                term: id,
+                status: Status::Blocked,
+            });
+            let mut blocked = app.snap.clone();
+            blocked.terms.get_mut(&id).unwrap().status = Status::Blocked;
+            app.on_server(ServerMsg::State(blocked));
+            app.settling.get_mut(&id).unwrap().1 = Instant::now() - Duration::from_millis(1);
+            app.settle_alerts();
+        };
+        ask(&mut app);
+        let first = app.alerted[&id].1;
             app.alerted.contains_key(&id),
             "a focused blocking question still needs its request sound"
         );

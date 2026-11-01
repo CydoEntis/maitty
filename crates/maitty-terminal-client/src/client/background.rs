@@ -237,7 +237,8 @@ impl App {
         }
     }
 
-    /// Needs-you alerts ring even in the focused pane; background completions use a soft note.
+    /// Needs-you alerts use two rising notes and background completions one soft note; the
+    /// pane you are looking at rings neither.
     /// With no window open the server shows a desktop notification instead.
     fn alert_now(&mut self, term: TermId, status: Status) {
         if !self
@@ -248,7 +249,8 @@ impl App {
         {
             return;
         }
-        if status == Status::Done && self.focused() == Some(term) && self.window_focused {
+        // You are looking at it: a sound adds nothing.
+        if self.focused() == Some(term) && self.window_focused {
             return;
         }
         // The same news again soon, or another agent just rang: the note says it, quietly.
@@ -304,8 +306,15 @@ impl App {
             };
             if old.is_some_and(|o| o.status != t.status) {
                 match t.status {
+                    // A new turn's finish is news again; a question asked again soon is not.
                     Status::Working => {
-                        self.alerted.remove(id);
+                        if self
+                            .alerted
+                            .get(id)
+                            .is_some_and(|(s, _)| *s == Status::Done)
+                        {
+                            self.alerted.remove(id);
+                        }
                     }
                     Status::Blocked => events.push((*id, '!', format!("{who} needs you"))),
                     Status::Done => {

@@ -4577,6 +4577,67 @@ fn a_finished_alert_waits_for_the_check_and_rings_once_it_passes() {
     close(&mut d, &[t]);
 }
 
+const SCREEN_RECOVERY: &str = "screen: explicit idle prompt recovered a missed turn end";
+
+fn told_done(rx: &mut mpsc::Receiver<ServerMsg>) -> bool {
+    heard(rx).iter().any(|m| {
+        matches!(
+            m,
+            ServerMsg::Attention {
+                status: Status::Done,
+                ..
+            }
+        )
+    })
+}
+
+#[test]
+fn a_screen_finish_seconds_after_working_began_is_not_announced() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    d.set_status(t, Status::Done, SCREEN_RECOVERY);
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Done,
+        "the status still shows it"
+    );
+    assert!(
+        !told_done(&mut seen),
+        "but no window is told, so nothing rings"
+    );
+    assert!(d.terms[&t].alert_due.is_none());
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_new_turn_forgets_a_finish_but_not_a_question() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    for (said, kept) in [(Status::Blocked, true), (Status::Done, false)] {
+        d.set_status(t, Status::Idle, "test");
+        d.terms.get_mut(&t).unwrap().alerted = Some((said, Instant::now()));
+        d.set_status(t, Status::Working, "test");
+        assert_eq!(
+            d.terms[&t].alerted.is_some(),
+            kept,
+            "{said:?}: asking again soon stays quiet; a new turn's finish is news"
+        );
+    }
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_screen_finish_after_a_real_turn_is_announced() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    d.terms.get_mut(&t).unwrap().status_since = term::unix_now() - 60;
+    d.set_status(t, Status::Done, SCREEN_RECOVERY);
+    assert!(told_done(&mut seen));
+    close(&mut d, &[t]);
+}
+
 #[test]
 fn a_failed_check_raises_its_own_alert_and_never_a_finished_one() {
     let (mut d, _rx) = daemon();
