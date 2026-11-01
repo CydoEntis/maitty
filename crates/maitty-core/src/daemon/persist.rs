@@ -140,13 +140,23 @@ static SESSION_WRITERS: std::sync::Mutex<Option<SessionWriters>> = std::sync::Mu
 
 /// Allocate before dispatching a captured snapshot; completion order must not order writes.
 pub(super) fn next_session_ticket() -> Result<u64> {
-    SESSION_TICKETS
-        .fetch_update(
-            std::sync::atomic::Ordering::Relaxed,
-            std::sync::atomic::Ordering::Relaxed,
-            |ticket| ticket.checked_add(1),
-        )
-        .map_err(|_| anyhow::anyhow!("session save revision exhausted"))
+    use std::sync::atomic::Ordering;
+
+    let mut ticket = SESSION_TICKETS.load(Ordering::Relaxed);
+    loop {
+        let next = ticket
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("session save revision exhausted"))?;
+        match SESSION_TICKETS.compare_exchange_weak(
+            ticket,
+            next,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => return Ok(ticket),
+            Err(actual) => ticket = actual,
+        }
+    }
 }
 
 pub(super) fn save_session_ticket(

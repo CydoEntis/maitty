@@ -86,13 +86,17 @@ impl Cache {
     }
     pub(super) fn fence_policy(&self, restore_enabled: bool, output: bool) -> Result<PolicyChange> {
         // Fence old writes synchronously before background cleanup can be queued.
-        let previous = self
-            .policy
-            .epoch
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |epoch| {
-                (epoch & !1).checked_add(2)
-            })
-            .map_err(|_| anyhow::anyhow!("History policy generation exhausted"))?;
+        let epoch = &self.policy.epoch;
+        let mut previous = epoch.load(Ordering::SeqCst);
+        loop {
+            let next = (previous & !1)
+                .checked_add(2)
+                .ok_or_else(|| anyhow::anyhow!("History policy generation exhausted"))?;
+            match epoch.compare_exchange_weak(previous, next, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => break,
+                Err(actual) => previous = actual,
+            }
+        }
         let epoch = (previous & !1) + 2;
         Ok(PolicyChange {
             epoch,
