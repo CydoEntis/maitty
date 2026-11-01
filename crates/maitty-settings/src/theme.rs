@@ -776,8 +776,10 @@ impl Theme {
     }
 
     /// Whether this theme is drawn on a light ground: its background is nearer white than black.
+    /// A ground that is not a fixed colour (Mono takes the terminal's own) reads as dark.
     pub fn is_light(&self) -> bool {
-        contrast(self.bg, Color::Rgb(255, 255, 255)) < contrast(self.bg, Color::Rgb(0, 0, 0))
+        matches!(self.bg, Color::Rgb(..))
+            && contrast(self.bg, Color::Rgb(255, 255, 255)) < contrast(self.bg, Color::Rgb(0, 0, 0))
     }
 
     pub fn named(name: &str) -> Theme {
@@ -2340,6 +2342,23 @@ mod audit {
             )
         );
         assert!(super::is_light("day") && !super::is_light(super::DEFAULT));
+        assert!(
+            !super::is_light("mono"),
+            "Mono has the terminal's own ground, so it sits with the dark themes"
+        );
+        // Nothing sits near the line: a ground is clearly light or clearly dark, so the tab a
+        // theme lands on is never a judgement call.
+        let mut near = Vec::new();
+        for &n in super::BUILTIN {
+            if let Color::Rgb(r, g, b) = Theme::named(n).bg {
+                let lum =
+                    (0.2126 * f64::from(r) + 0.7152 * f64::from(g) + 0.0722 * f64::from(b)) / 255.0;
+                if (0.25..0.6).contains(&lum) {
+                    near.push(format!("{n}: {lum:.2}"));
+                }
+            }
+        }
+        assert!(near.is_empty(), "grounds near the line: {near:?}");
         assert!(!super::is_light("not-a-theme"));
         for new in [
             "vim",
