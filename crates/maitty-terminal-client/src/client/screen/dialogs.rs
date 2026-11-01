@@ -533,7 +533,7 @@ pub(in crate::client) fn draw_settings(
     }
     // Which version this is and the way to update are General's Version row. Up here only what
     // is off: the installed or daemon version differs, or a restart is waiting.
-    let window = env!("CARGO_PKG_VERSION");
+    let window = env!("APP_VERSION");
     let daemon = if app.snap.daemon_version.is_empty() {
         "unknown".to_string()
     } else {

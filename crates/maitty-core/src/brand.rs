@@ -8,6 +8,8 @@
 pub const APP_NAME: &str = env!("APP_NAME");
 /// What people type, and the root of the app's files, folders and tags.
 pub const APP_COMMAND: &str = env!("APP_COMMAND");
+/// The release version shared by the TUI and daemon.
+pub const APP_VERSION: &str = env!("APP_VERSION");
 /// The prefix of the app's environment variables.
 pub const APP_ENV: &str = env!("APP_ENV");
 

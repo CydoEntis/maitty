@@ -38,7 +38,7 @@ fn asset_for(target: &str) -> String {
 
 /// Whether the release `tag` is newer than this build.
 pub fn is_newer(tag: &str) -> bool {
-    newer_than(tag, env!("CARGO_PKG_VERSION"))
+    newer_than(tag, env!("APP_VERSION"))
 }
 
 pub fn installed_version() -> Result<String, String> {
@@ -153,7 +153,7 @@ fn sha256_hex(path: &Path) -> Result<String> {
 /// `<app> update`: install the newest release over this one. `check` only says whether
 /// there is one; `force` reinstalls it even when it's this version.
 pub fn run(check: bool, force: bool) -> Result<()> {
-    let current = env!("CARGO_PKG_VERSION");
+    let current = env!("APP_VERSION");
     let tag = latest_tag().map_err(|e| anyhow::anyhow!(e))?;
     if !is_newer(&tag) && !force {
         println!("{APP_COMMAND} {current} is the latest version.");
@@ -420,7 +420,7 @@ pub fn changes_since_this() -> Vec<String> {
             &url,
         ]))
     };
-    json.map(|j| changes_in(&j, env!("CARGO_PKG_VERSION")))
+    json.map(|j| changes_in(&j, env!("APP_VERSION")))
         .unwrap_or_default()
 }
 
@@ -489,10 +489,33 @@ mod tests {
         assert_eq!(version("nonsense"), None);
         assert!(is_newer("v999.0.0"));
         assert!(
-            !is_newer(&format!("v{}", env!("CARGO_PKG_VERSION"))),
+            !is_newer(&format!("v{}", env!("APP_VERSION"))),
             "the same version isn't newer"
         );
         assert!(!is_newer("v0.0.1"));
+    }
+
+    #[test]
+    fn the_current_app_release_is_not_reported_as_an_update() {
+        let manifest = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../apps/tui/Cargo.toml"
+        ));
+        let version = manifest
+            .lines()
+            .skip_while(|line| line.trim() != "[package]")
+            .skip(1)
+            .take_while(|line| !line.trim_start().starts_with('['))
+            .find_map(|line| {
+                let (key, value) = line.split_once('=')?;
+                (key.trim() == "version").then(|| value.trim().trim_matches('"'))
+            })
+            .expect("the TUI package declares its release version");
+
+        assert!(
+            !is_newer(&format!("v{version}")),
+            "the running app must recognize its own release as current"
+        );
     }
 
     #[test]

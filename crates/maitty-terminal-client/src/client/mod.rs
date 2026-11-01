@@ -1128,7 +1128,7 @@ impl App {
         self.spawn_bg(move || {
             let installed = crate::cli::update::installed_version();
             let latest = crate::cli::update::latest_tag();
-            let current = installed.as_deref().unwrap_or(env!("CARGO_PKG_VERSION"));
+            let current = installed.as_deref().unwrap_or(env!("APP_VERSION"));
             let newer = latest
                 .as_ref()
                 .ok()
@@ -1183,7 +1183,7 @@ impl App {
                 .installed_version
                 .as_ref()
                 .and_then(|r| r.as_ref().ok())
-                .is_some_and(|v| crate::version::newer_than(v, env!("CARGO_PKG_VERSION")))
+                .is_some_and(|v| crate::version::newer_than(v, env!("APP_VERSION")))
     }
 
     /// There is something Restart would replace: the server, or this window.
@@ -1280,7 +1280,7 @@ impl App {
             .as_ref()
             .and_then(|r| r.as_ref().ok())
             .is_some_and(|v| {
-                v != env!("CARGO_PKG_VERSION")
+                v != env!("APP_VERSION")
                     || (!self.snap.daemon_version.is_empty() && *v != self.snap.daemon_version)
             })
     }
@@ -1318,7 +1318,7 @@ impl App {
                         .as_ref()
                         .and_then(|r| r.as_ref().ok())
                         .map(String::as_str)
-                        .unwrap_or(env!("CARGO_PKG_VERSION"));
+                        .unwrap_or(env!("APP_VERSION"));
                     self.notify(
                         format!(
                             "Installed {APP_COMMAND} {version} is the latest{}",
@@ -1349,7 +1349,7 @@ impl App {
         self.mode = Mode::Confirm(Box::new(menu::Confirm {
             title: concat!("Update ", env!("APP_COMMAND")).into(),
             sub: String::new(),
-            what: format!("{} → {new}", env!("CARGO_PKG_VERSION")),
+            what: format!("{} → {new}", env!("APP_VERSION")),
             detail: String::new(),
             note: if crate::ipc::remote().is_some() {
                 "Open sessions keep running. Update the remote daemon on its host after they are closed.".into()

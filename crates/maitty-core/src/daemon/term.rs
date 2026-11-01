@@ -632,7 +632,7 @@ impl Term {
             cmd.env_remove(k);
         }
         cmd.env("TERM_PROGRAM", env!("APP_COMMAND"));
-        cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
+        cmd.env("TERM_PROGRAM_VERSION", env!("APP_VERSION"));
         cmd.env(env!("APP_ENV"), "1");
         cmd.env(concat!(env!("APP_ENV"), "_TERM_ID"), spec.id.to_string());
         cmd.env(concat!(env!("APP_ENV"), "_PANE_TOKEN"), &token);

@@ -6084,7 +6084,7 @@ fn the_activity_a_newer_app_reads_counts_working_and_waiting_sessions() {
     );
     assert_eq!(
         (seen.pid, seen.version.as_str()),
-        (std::process::id(), env!("CARGO_PKG_VERSION"))
+        (std::process::id(), env!("APP_VERSION"))
     );
     close(&mut d, &[a, b, c]);
 }

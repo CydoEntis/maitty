@@ -867,11 +867,11 @@ mod screen_tests {
         let (_, mut app) = super::design_tests::render_with(100, 30);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
-        app.installed_version = Some(Ok(env!("CARGO_PKG_VERSION").into()));
+        app.installed_version = Some(Ok(env!("APP_VERSION").into()));
         app.daemon_restart_requested = true;
         app.daemon_restart_reconnect = true;
         let mut snapshot = app.snap.clone();
-        snapshot.daemon_version = env!("CARGO_PKG_VERSION").into();
+        snapshot.daemon_version = env!("APP_VERSION").into();
 
         app.on_server(ServerMsg::State(snapshot));
 
@@ -914,8 +914,8 @@ mod screen_tests {
             "a release already installed is not offered again"
         );
         assert!(app.restart_pending());
-        app.installed_version = Some(Ok(env!("CARGO_PKG_VERSION").into()));
-        app.snap.daemon_version = env!("CARGO_PKG_VERSION").into();
+        app.installed_version = Some(Ok(env!("APP_VERSION").into()));
+        app.snap.daemon_version = env!("APP_VERSION").into();
         assert!(!app.restart_pending());
         app.installed_version = Some(Err("unreadable executable".into()));
         assert!(draw(&mut app, 80, 24).contains("unavailable"));
@@ -1362,7 +1362,7 @@ mod screen_tests {
                 lines[resume + 1].contains(" › ") != short,
                 "{w}x{h}: where you were, under Resume"
             );
-            let version = concat!(env!("APP_COMMAND"), " ", env!("CARGO_PKG_VERSION"));
+            let version = concat!(env!("APP_COMMAND"), " ", env!("APP_VERSION"));
             assert!(
                 lines.last().unwrap().trim_end().ends_with(version),
                 "{w}x{h}: the version, bottom right"
@@ -7025,7 +7025,7 @@ second line
         assert!(
             line.contains(&format!(
                 concat!(env!("APP_COMMAND"), " {}"),
-                env!("CARGO_PKG_VERSION")
+                env!("APP_VERSION")
             )) && line.contains("up to date")
                 && line.contains("u check now"),
             "{line}"
@@ -7075,7 +7075,7 @@ second line
                     == (
                         format!(
                             concat!("Installed ", env!("APP_COMMAND"), " {} is the latest"),
-                            env!("CARGO_PKG_VERSION")
+                            env!("APP_VERSION")
                         ),
                         false
                     )
@@ -14797,7 +14797,7 @@ mod restart_tests {
     #[test]
     fn a_current_window_reconnects_to_the_restarted_server() {
         let (mut app, _rx) = scene(100, 30, LAYOUTS[0]);
-        app.installed_version = Some(Ok(env!("CARGO_PKG_VERSION").into()));
+        app.installed_version = Some(Ok(env!("APP_VERSION").into()));
         assert!(!app.window_stale() && app.daemon_restartable());
         app.daemon_restart_requested = true;
         app.on_server(ServerMsg::Bye);
@@ -14839,8 +14839,8 @@ mod restart_tests {
             "not while a restart is under way"
         );
         app.daemon_restart_requested = false;
-        app.snap.daemon_version = env!("CARGO_PKG_VERSION").into();
-        app.installed_version = Some(Ok(env!("CARGO_PKG_VERSION").into()));
+        app.snap.daemon_version = env!("APP_VERSION").into();
+        app.installed_version = Some(Ok(env!("APP_VERSION").into()));
         let top = row0(&mut app);
         assert!(
             !top.contains("Restart") && !top.contains("Update"),
@@ -14878,8 +14878,8 @@ mod restart_tests {
             [ClientMsg::Command(Command::KillServer { .. })]
         ));
         let (mut app, mut rx) = scene(100, 30, LAYOUTS[0]);
-        app.snap.daemon_version = env!("CARGO_PKG_VERSION").into();
-        app.installed_version = Some(Ok(env!("CARGO_PKG_VERSION").into()));
+        app.snap.daemon_version = env!("APP_VERSION").into();
+        app.installed_version = Some(Ok(env!("APP_VERSION").into()));
         app.act(Action::Restart);
         assert!(sent(&mut rx).is_empty());
         assert!(
@@ -14920,7 +14920,7 @@ mod restart_tests {
     fn restarting_stops_the_daemon_and_the_window_reconnects_to_the_new_one() {
         let (mut app, mut rx) = scene(100, 30, LAYOUTS[0]);
         // A window already on the installed version has nothing to swap but the server.
-        app.installed_version = Some(Ok(env!("CARGO_PKG_VERSION").into()));
+        app.installed_version = Some(Ok(env!("APP_VERSION").into()));
         app.snap.daemon_version = "0.1.0".into();
         app.ask_restart();
         key(&mut app, KeyCode::Enter);
@@ -14937,7 +14937,7 @@ mod restart_tests {
         );
 
         let mut snapshot = app.snap.clone();
-        snapshot.daemon_version = env!("CARGO_PKG_VERSION").into();
+        snapshot.daemon_version = env!("APP_VERSION").into();
         app.on_server(ServerMsg::State(snapshot));
         assert!(!app.daemon_restart_requested && !app.daemon_restart_reconnect);
         assert_eq!(app.snap.terms.len(), 3, "the restored sessions are back");
