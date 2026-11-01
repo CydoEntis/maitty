@@ -2429,6 +2429,7 @@ version = "0.1.0"
 dependencies = [
  "maitty-desktop-client",
  "maitty-shared",
+ "serde",
  "serde_json",
  "tauri",
  "tauri-build",
