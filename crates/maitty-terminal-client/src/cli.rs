@@ -2652,6 +2652,14 @@ fn codex_config() -> PathBuf {
     crate::config::codex_config_dir().join("config.toml")
 }
 
+/// Where Maitty's Codex lifecycle hooks stand in Codex's config. Reads a file: call it off the
+/// UI thread.
+pub fn codex_hooks_state() -> maitty_provider_codex::HooksState {
+    std::fs::read_to_string(codex_config())
+        .map(|text| maitty_provider_codex::hooks_state(&text))
+        .unwrap_or(maitty_provider_codex::HooksState::NotInstalled)
+}
+
 enum CodexNotify {
     Set,
     Removed,

@@ -10350,8 +10350,28 @@ mod settings_v8_tests {
     }
 
     #[test]
+    fn the_codex_row_says_when_its_hooks_still_need_your_trust() {
+        use maitty_provider_codex::HooksState;
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        open(&mut app, Cat::Agents, 0);
+        for (state, want) in [
+            (None, "checking…"),
+            (
+                Some(HooksState::NeedsTrust),
+                "hooks installed · trust them in Codex /hooks",
+            ),
+            (Some(HooksState::Trusted), "✓ hooks installed and trusted"),
+        ] {
+            app.codex_hooks = state;
+            let o = draw(&mut app, 160, 45);
+            assert!(o.contains(want), "{state:?} reads {want}: {o}");
+        }
+    }
+
+    #[test]
     fn agents_page_shows_status_and_the_subagent_toggle_and_set_up_opens_the_list() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.codex_hooks = Some(maitty_provider_codex::HooksState::NotInstalled);
         open(&mut app, Cat::Agents, 0);
         let o = draw(&mut app, 160, 45);
         for want in [
@@ -10382,7 +10402,7 @@ mod settings_v8_tests {
         let o = draw(&mut app, 160, 45);
         super::check_settings_tests::show(&o);
         assert!(
-            o.contains("Connect agents installs its hooks") && !o.contains("No hooks needed"),
+            o.contains("Connect agents installs them") && !o.contains("No hooks needed"),
             "Codex's help is true: {o}"
         );
         open(

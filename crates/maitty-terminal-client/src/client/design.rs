@@ -1480,7 +1480,7 @@ impl AgentRow {
             ),
             AgentRow::Codex => concat!(
                 env!("APP_NAME"),
-                " reads Codex's process and screen. For exact status and its helpers, Connect agents installs its hooks."
+                " reads Codex's process and screen until its hooks are installed and trusted. Connect agents installs them; then review them once in Codex's /hooks."
             ),
             AgentRow::SetUp => {
                 "Connect an agent so it reports working, needs you and done itself. Enter opens the list."
@@ -1796,7 +1796,19 @@ fn agent_control(app: &App, t: &Theme, row: AgentRow) -> Vec<Seg> {
             Some(false) => vec![seg("hooks not installed", Style::default().fg(t.muted))],
             None => vec![seg("checking…", Style::default().fg(t.muted))],
         },
-        AgentRow::Codex => vec![seg("✓ read from the process and screen", ok)],
+        AgentRow::Codex => match app.codex_hooks {
+            None => vec![seg("checking…", Style::default().fg(t.muted))],
+            Some(maitty_provider_codex::HooksState::NotInstalled) => {
+                vec![seg("✓ read from the process and screen", ok)]
+            }
+            Some(maitty_provider_codex::HooksState::NeedsTrust) => vec![seg(
+                "hooks installed · trust them in Codex /hooks",
+                Style::default().fg(t.sky()),
+            )],
+            Some(maitty_provider_codex::HooksState::Trusted) => {
+                vec![seg("✓ hooks installed and trusted", ok)]
+            }
+        },
         AgentRow::SetUp => vec![seg("Enter", Style::default().fg(t.accent))],
     }
 }

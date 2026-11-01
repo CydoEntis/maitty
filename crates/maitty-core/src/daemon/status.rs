@@ -66,11 +66,20 @@ const QUEUED_TURN_STARTS_WITHIN: Duration = Duration::from_secs(60);
 pub(super) const SUBAGENTS_QUIET_AT_MOST: Duration = Duration::from_secs(60 * 60);
 /// A permission ping this soon after a "working" is Claude repeating one already answered.
 const REPEATED_PROMPT_WITHIN: Duration = Duration::from_secs(5);
-/// Agents whose hooks report only the end of a turn.
+/// Agents whose hooks report only the end of a turn, until their lifecycle hooks show up
+/// (`Term::lifecycle_hooks`).
 const HOOKS_END_ONLY: &[&str] = &["codex"];
 /// These adapters report every reply/dismissal, including custom extension dialogs.
 const NATIVE_PROMPT_LIFECYCLE: &[&str] = &["pi", "omp", "mastracode", "opencode", "kilo", "kimi"];
 const FULL_LIFECYCLE_HOOKS: &[&str] = &["pi", "omp", "mastracode", "opencode", "kilo", "kimi"];
+/// Codex hook events that start or continue a turn, or ask for approval. Seeing one means its
+/// lifecycle hooks are installed and trusted, so the screen is not needed for those states.
+const CODEX_LIFECYCLE_EVENTS: &[&str] = &[
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PermissionRequest",
+];
 const VISIBLE_BLOCKER_WHY: &str = "screen: a live agent dialog needs you";
 /// The progress indicator gone this long with no turn-end: the turn was cancelled (Esc).
 const CANCELLED_AFTER: Duration = Duration::from_secs(2);
@@ -387,6 +396,7 @@ impl Daemon {
             HookStatus::Idle if std::mem::take(&mut t.restore_unseen) && !focused => Status::Done,
             HookStatus::Gone => {
                 t.hooked = false;
+                t.lifecycle_hooks = false;
                 t.hooked_process_seen = false;
                 if t.conversation_id.is_none() {
                     t.agent = None;
@@ -413,6 +423,9 @@ impl Daemon {
             HookStatus::Done => Status::Done,
         };
         t.hooked = true;
+        if agent == "codex" && CODEX_LIFECYCLE_EVENTS.contains(&event) {
+            t.lifecycle_hooks = true;
+        }
         if !agent.is_empty() {
             if t.agent.as_deref() != Some(&agent) {
                 t.hooked_process_seen = false;
@@ -769,7 +782,8 @@ impl Daemon {
             if signal.skip {
                 continue;
             }
-            if t.hooked && !FULL_LIFECYCLE_HOOKS.contains(&name.as_str()) {
+            let by_hooks = FULL_LIFECYCLE_HOOKS.contains(&name.as_str()) || t.lifecycle_hooks;
+            if t.hooked && !by_hooks {
                 if signal.visible_blocker
                     && signal.status == Some(Status::Blocked)
                     && t.last_output >= t.last_turn_end
@@ -787,7 +801,10 @@ impl Daemon {
                     continue;
                 }
             }
-            if name == "codex" && CODEX_QUEUED_QUESTION.is_match(&t.tail_text(rows)) {
+            if name == "codex"
+                && !t.lifecycle_hooks
+                && CODEX_QUEUED_QUESTION.is_match(&t.tail_text(rows))
+            {
                 changes.push((t.id, Status::Blocked, CODEX_QUESTION_WHY.into()));
                 continue;
             }
@@ -942,6 +959,7 @@ impl Daemon {
                 // Agents whose hooks only say a turn ended (Codex's notify): the start of the
                 // next turn shows on screen only.
                 if HOOKS_END_ONLY.contains(&name.as_str())
+                    && !t.lifecycle_hooks
                     && matches!(t.status, Status::Idle | Status::Done)
                     // Typed since it finished: not the last turn's line still on screen.
                     && let Some(d) = self.agents.iter().find(|a| &a.name == name)

@@ -3072,6 +3072,67 @@ fn codex_status_ignores_activity_in_a_finished_answer() {
 }
 
 #[test]
+fn a_codex_pane_goes_by_hooks_once_a_lifecycle_hook_arrives() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    d.terms.get_mut(&id).unwrap().agent = Some("codex".into());
+    for event in ["SessionStart", "Stop", "SubagentStart"] {
+        d.hook(id, "codex".into(), HookStatus::Same, event, &[]);
+        assert!(
+            !d.terms[&id].lifecycle_hooks,
+            "{event} alone does not say its lifecycle hooks are on"
+        );
+    }
+    for event in [
+        "UserPromptSubmit",
+        "PreToolUse",
+        "PostToolUse",
+        "PermissionRequest",
+    ] {
+        d.terms.get_mut(&id).unwrap().lifecycle_hooks = false;
+        d.hook(id, "codex".into(), HookStatus::Working, event, &[]);
+        assert!(d.terms[&id].lifecycle_hooks, "{event} turns it on");
+    }
+    d.hook(id, "claude".into(), HookStatus::Gone, "SessionEnd", &[]);
+    assert!(
+        !d.terms[&id].lifecycle_hooks,
+        "a session that ended starts over"
+    );
+    close(&mut d, &[id]);
+}
+
+#[test]
+fn a_codex_pane_with_lifecycle_hooks_ignores_a_question_shown_on_screen() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    let t = d.terms.get_mut(&id).unwrap();
+    t.agent = Some("codex".into());
+    t.hooked = true;
+    t.lifecycle_hooks = true;
+    t.status = Status::Working;
+    t.parser.process(b"[2J[H");
+    t.parser.process(
+        &b"
+"
+        .repeat(30),
+    );
+    t.parser.process(
+        b"Working (8m 01s - esc to interrupt)
+Queued follow-up inputs
+  ? 1 question
+  shift+tab to answer
+Ask Codex to do anything",
+    );
+    d.update_statuses();
+    assert_eq!(
+        d.terms[&id].status,
+        Status::Working,
+        "its hooks say when it needs you, not the screen"
+    );
+    close(&mut d, &[id]);
+}
+
+#[test]
 fn codex_queued_questions_need_attention_even_while_work_continues() {
     let (mut d, _rx) = daemon();
     let id = pane(&mut d);

@@ -659,6 +659,13 @@ pub(in crate::client) fn draw_settings(
             }))
         });
     }
+    if cat == Cat::Agents && !app.codex_hooks_asked {
+        app.codex_hooks_asked = true;
+        app.spawn_bg(|| {
+            let state = crate::cli::codex_hooks_state();
+            crate::client::Bg::Then(Box::new(move |app: &mut App| app.codex_hooks = Some(state)))
+        });
+    }
     let rows = crate::client::design::settings_rows(cat);
     let lx = r.x + 6;
     let vx = if r.width >= 68 {
