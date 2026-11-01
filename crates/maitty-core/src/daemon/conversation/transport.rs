@@ -127,9 +127,6 @@ impl Launch {
     pub(super) async fn validate(mut self) -> Result<Self> {
         tokio::task::spawn_blocking(move || {
             let provider = self.provider();
-            if provider == Provider::Claude {
-                bail!("Claude Code conversations are disabled until the structured runtime is verified");
-            }
             if let LaunchIdentity::Existing(c) = &self.identity {
                 validate_registry(std::slice::from_ref(c)).map_err(|_| anyhow::anyhow!("Invalid structured conversation binding"))?;
                 if c.binding.provider != provider || c.binding.profile.is_some() {
@@ -764,16 +761,51 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn claude_launch_stays_disabled_until_its_runtime_is_verified() {
+    async fn claude_launch_validates_existing_paths() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static NEXT_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
+
+        struct TestDirectory(PathBuf);
+
+        impl Drop for TestDirectory {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+
+        let directory = loop {
+            let candidate = std::env::temp_dir().join(format!(
+                "{}-claude-launch-{}-{}",
+                crate::brand::APP_COMMAND,
+                std::process::id(),
+                NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)
+            ));
+            match std::fs::create_dir(&candidate) {
+                Ok(()) => break TestDirectory(candidate),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("create test directory: {error}"),
+            }
+        };
+        let config_root = directory.0.join("claude-config");
+        let cwd = directory.0.join("project");
+        std::fs::create_dir(&config_root).unwrap();
+        std::fs::create_dir(&cwd).unwrap();
+        let executable = directory.0.join(if cfg!(windows) {
+            "claude.exe"
+        } else {
+            "claude"
+        });
+        std::fs::write(&executable, b"fake claude executable").unwrap();
         let launch = Launch {
             identity: LaunchIdentity::Pending(PendingStart {
                 id: crate::conversation::ConversationId(1),
                 generation: 1,
                 settings: LaunchSettings {
                     provider: crate::conversation::Provider::Claude,
-                    executable: std::env::temp_dir().join("claude"),
-                    config_root: std::env::temp_dir().join("claude-config"),
-                    cwd: std::env::temp_dir().join("project"),
+                    executable,
+                    config_root,
+                    cwd,
                     model: None,
                     model_provider: None,
                     approval_policy: crate::conversation::ApprovalPolicy::OnRequest,
@@ -785,11 +817,8 @@ mod tests {
             failure_point: None,
         };
 
-        let error = launch.validate().await.err().unwrap();
-        assert_eq!(
-            error.to_string(),
-            "Claude Code conversations are disabled until the structured runtime is verified"
-        );
+        let validated = launch.validate().await.unwrap();
+        assert_eq!(validated.provider(), crate::conversation::Provider::Claude);
     }
 
     #[cfg(unix)]

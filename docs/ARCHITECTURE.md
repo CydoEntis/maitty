@@ -87,8 +87,7 @@ src/
     view_keys.rs keys inside full-pane views and the remaining popups
     screen/      the layout: mod.rs (state, model, click targets), draw.rs (grid, pane cards
                  with the tabs in their title), side.rs (the sidebar card and its rows), side_tabs.rs (a session's tab lines, both looks), card.rs (cards, pills, fading; the Look from
-                 settings), hairline/ (the Hairline look's sidebar, pane titles and status
-                 strip, and its `Ink` colours), leader.rs (key map, actions list, new tab), popups.rs,
+                 settings), leader.rs (key map, actions list, new tab), popups.rs,
                  dialogs.rs, glyphs.rs (session and check marks), splash.rs, popover.rs (follow-up and why, beside a row), heads.rs (same-file heads-ups,
                  both diffs), sheet.rs (the card docked right of the panes:
                  Inbox, Changes), inbox.rs (the Inbox in it), behaviour.rs (its keys and clicks)
@@ -204,7 +203,7 @@ for daemon IPC and GUI operations; it does not link `maitty-terminal-client`. Th
 daemon status; process-tree and lifecycle status remain daemon-owned. The
 `maitty-agent-integrations` package owns the catalog of agents with native
 status integrations; config discovery and installation remain terminal-client
-owned. The root `maitty` package preserves the installed command and re-exports
+owned. The `apps/tui` `maitty` package preserves the installed command and re-exports
 the terminal client library for compatibility. Codex compatibility preflight,
 session metadata, usage extraction, effective-config policy, native hook
 configuration projection and completion-event mapping live in
@@ -255,24 +254,23 @@ IPC, so closing either UI cannot end an agent session.
 ## Project-specific: directory layout
 
 ```text
-src/
-  main.rs        installed `maitty` executable entry point
-  lib.rs         compatibility re-exports from the terminal client
-crates/maitty-core/              daemon, PTYs, persistence and process lifetime
-crates/maitty-terminal-client/  terminal CLI and TUI
-crates/maitty-desktop-client/   desktop IPC client
-crates/maitty-shared/            wire protocol and shared contracts
-crates/maitty-settings/          preference schemas, key actions and themes
-crates/maitty-ipc-transport/     shared IPC framing and handshake
-crates/maitty-provider-codex/    Codex protocol and policy adapter
-crates/maitty-provider-claude/   Claude protocol and policy adapter
-gui/                              Tauri host and React interface
+apps/
+  tui/                            installed `maitty` command and TUI entry point
+  gui/                            Tauri host and React interface
+crates/
+  maitty-core/                    daemon, PTYs, persistence and process lifetime
+  maitty-terminal-client/         terminal CLI and TUI implementation
+  maitty-desktop-client/          desktop IPC client
+  maitty-shared/                  wire protocol and shared contracts
+  maitty-settings/                preference schemas, key actions and themes
+  maitty-ipc-transport/           shared IPC framing and handshake
+  adapters/                       Codex, Claude and future provider adapters
 docs/                             architecture, roadmap and design specs
 ```
 
 ## Project-specific: patterns and conventions
 
-**The app's name** lives in `Cargo.toml` and nowhere else in the code (ADR 0019): the package
+**The app's name** lives in `apps/tui/Cargo.toml` and nowhere else in the code (ADR 0019): the package
 name is the command, `[package.metadata.brand]` holds the name people see and the names it had
 before. `build.rs` hands them to the code as `APP_COMMAND`, `APP_NAME`, `APP_ENV` and
 `APP_PREVIOUS`; `crates/maitty-core/src/brand.rs` wraps them. Write a
@@ -283,7 +281,7 @@ templates (`__APP_NAME__`,
 `__APP_COMMAND__`, `__APP_ENV__`, `__APP_EXE__`) filled in when installed. `tests/naming.rs`
 fails on the name written out. To rename the app:
 
-1. In `Cargo.toml`, set the package `name` (the command) and `[package.metadata.brand] name`,
+1. In `apps/tui/Cargo.toml`, set the package `name` (the command) and `[package.metadata.brand] name`,
    and put the old command first in `previous`. Build once and commit `Cargo.lock` too (it
    records the package name; releases build `--locked`).
 2. In `install.sh` and `install.ps1`, set `APP` / `$app` and the repository (a test checks them).
@@ -418,7 +416,7 @@ keys and binds a real native terminal without manufacturing a PTY.
 
 ## Project-specific: optional desktop GUI
 
-`gui/` is an optional Tauri frontend and host. It communicates with the daemon
+`apps/gui/` is an optional Tauri frontend and host. It communicates with the daemon
 through the host's narrow typed command boundary and the daemon's authenticated
 local IPC. The Rust daemon remains the sole owner of sessions, providers,
 conversation identity and persistence. The GUI build must not become a

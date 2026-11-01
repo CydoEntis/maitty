@@ -907,11 +907,12 @@ branch as the rollback and comparison point while the refactor is verified.
 
 Refactor progress: `maitty-core` now owns the headless daemon, PTYs, persistence,
 provider runtimes and process lifetime. `maitty-terminal-client` owns the existing
-CLI and TUI and depends on core through Rust package boundaries. The root
+CLI and TUI and depends on core through Rust package boundaries. The `apps/tui`
 `maitty` package keeps the installed command stable. `maitty-desktop-client`
 owns GUI daemon IPC and lifecycle operations; the Tauri host depends on it and
 shared contracts, not the terminal client or core. Shared protocol, settings,
 IPC framing, and provider policy remain in their focused packages.
+The workspace groups runnable clients under `apps/`, reusable Rust crates under `crates/`, and provider adapters under `crates/adapters/`. The root `Cargo.toml` is a virtual workspace manifest.
 The desktop and terminal clients continue to share sessions through the daemon
 protocol, so closing either UI does not terminate agent sessions. No CLI/TUI
 behavior or install command was intentionally changed by the crate moves.
@@ -1171,43 +1172,69 @@ verified. Native-TUI transfer is not a release requirement. No provider is
 advertised on compile checks alone.
 Claude's structured transport is the installed Claude Code CLI's headless
 `stream-json` protocol, following PandaCode's provider-native pattern; see
-[ADR 0039](adr/0039-claude-code-cli-streaming.md) and [the Claude stack rules](stack/claude-code-cli.md). Current research is in
-[Claude Code chat transport](research/claude-code-gui-transport.md). The approved
-authentication path is the user's existing local Claude Code sign-in; Maitty
-does not collect credentials or offer a separate login. Anthropic's current Help
-Center says third-party app use can draw on Claude plan limits. Claude remains
-disabled until the installed CLI protocol and live provider behavior pass the
-same recovery, approval and cancellation checks as Codex. The initial
-GUI provider scope is Codex and Claude, and the OS floors are recorded in the
-Tauri stack guide. Verified Claude CLI versions and the packaging/update
-approach remain open.
-The daemon now contains an initial provider adapter for streamed turns, approvals,
-interrupts and exact-session identity. Its launch guard remains closed. Parser
-and projector tests plus a local fake CLI exercise JSONL initialization, a
-synthetic streamed text turn, acknowledgement, history notifications, host
-approval request/reply, an active-turn interrupt request/reply, and clean
-shutdown through the adapter. These tests do not cover daemon dispatch, a real
-Claude CLI turn, authentication, or actual CLI cancellation/recovery behavior.
-No live end-to-end CLI protocol or supported authentication path has been
-verified, so Claude is not selectable in the GUI yet.
-The locally installed Claude Code CLI now reports `2.1.314`, while the adapter
-only accepts `2.1.312`. Following the CLI reference, the adapter now routes
-approval prompts through `--permission-prompts host`; a focused test verifies
-the generated arguments. PandaCode's `--permission-prompt-tool stdio` is outside
-the public parameter contract, which defines that flag for a named MCP tool.
-The host message flow still needs live verification. Keep the provider disabled
-until the CLI version, permissions, authentication and turn lifecycle are
-verified end to end.
+[ADR 0039](adr/0039-claude-code-cli-streaming.md), [the Claude stack rules](stack/claude-code-cli.md), and [transport research](research/claude-code-gui-transport.md).
+Authentication stays in the user's existing local Claude Code sign-in; Maitty
+does not collect credentials or offer a separate login. GUI provider scope is
+Codex and Claude; the TUI continues to support the other installed agents.
+Windows Claude Code 2.1.314 passed a real daemon smoke for new conversation,
+streamed response/history, exact session resume, SDK stdio permission request,
+user approval, and a completed file write. A direct CLI check also verified
+active-turn interruption. Claude is available in the GUI when that CLI is
+detected; daemon interruption recovery and real Linux/Omarchy and macOS checks
+remain release acceptance items.
 Existing TUI support for all other agents remains; more structured providers and
 GUI remotes need later scope.
-Phase 37 remains active. Real Omarchy desktop acceptance, macOS package/build/run,
-hosted CI, live Claude protocol/authentication, and installer upgrade/uninstall
-checks remain open. The Debian and Fedora container runs are package smoke tests,
-not substitutes for the user's Omarchy desktop.
-On 2026-10-30, Windows GUI tests passed (103 tests across 16 files), lint passed,
-and `pnpm desktop:build` produced MSI and NSIS packages using an isolated Cargo
-target because an existing Maitty process held the default release binary open.
-The packages are in `gui/target/gui-refactor-release-20261030/release/bundle/`.
+Phase 37 remains active. On 2026-10-30, Windows Codex 0.165.0 passed a live
+daemon smoke that created a conversation, sent a prompt and received the reply
+in history. Claude Code 2.1.314 passed a live daemon smoke covering new
+conversation creation, streamed response/history, exact-session resume, a real
+permission request, user approval and a file write. The GUI now supports
+selecting Codex or Claude when Claude Code is detected; Claude sign-in remains
+owned by the installed CLI. The GUI suite passes 107 tests across 16 files, with
+typecheck and lint passing. The Rust workspace passes
+`cargo build --workspace --locked`, `cargo test --workspace --locked
+-- --test-threads=2` (all tests passed; 4 ignored), `cargo clippy --workspace
+--all-targets --locked -- -D warnings`, and `cargo fmt --all --check`.
+
+The fresh Windows `pnpm desktop:build` passed and produced MSI and NSIS
+installers under `target/gui-full-release-20261030/release/bundle/`. The MSI
+administrative image extracted successfully; launching its packaged GUI with
+isolated data started the packaged daemon on the isolated socket. Both processes
+were stopped after the smoke. SHA-256: MSI
+`9D5B802668B5C160662AA791D2506B025574CA45C340DA1D4C8001A536DE118A`, NSIS
+`5DEE01667B393AB9990B49457F7F551C9C56F4C093E05A82B3C2E01CAD0A5231`. The
+full-workspace Linux cross-check cannot run from this Windows host because
+GTK's pkg-config needs a Linux sysroot; the macOS desktop check needs the Apple
+SDK. Linux and macOS checks passed for the daemon, provider adapters, desktop
+client, shared types and IPC crates. A user launch exposed a mismatch parser
+regression: the daemon reports `protocol v49, while this GUI needs v61`, while
+the GUI recognized only the earlier `this one vN` wording. The GUI now accepts
+both forms. Restart is disabled unless the older daemon proves it owns zero
+sessions and no active turns; the command checks again before stopping anything.
+Unknown activity or an existing session leaves the TUI daemon running. The fixed
+MSI/NSIS were rebuilt; the MSI admin image
+launches its GUI and bundled daemon with isolated data. SHA-256: MSI
+`B7BC0FAD84AE3D4628F8EC49357E165FFE8D4827AC4C6ACF6D008B646F4DCD7F`, NSIS
+`8E97EE24C3C2ED53743953EE168DA7326D063513F59485548C98D0D7436D99F7`.
+Previous Arch-container package and
+startup checks passed, but real Omarchy desktop acceptance, native macOS
+build/run, hosted CI, installer upgrade/uninstall on the latest build, and
+visual interaction of the fresh packaged app remain open. Container checks do
+not replace acceptance on the user's machines.
+
+On 2026-10-31, Codex CLI 0.166.0 passed the generated-schema compatibility
+preflight and a Windows GUI create/send/reply smoke. Claude Code 2.1.316 passed
+a Windows GUI create/send/reply smoke. The assistant timeline now labels replies
+with the selected provider; a regression test covers Claude. These tests used a
+separate socket and data directory so they did not touch the installed TUI
+daemon. The installed Maitty 0.52.0 service uses protocol v50, while this GUI
+worktree requires v61. A same-version GUI/TUI build and shared-session smoke are
+still required before the GUI can connect to that installed service. The GUI now
+explains when a project folder is not a Git repository and stops retrying a
+failed Changes query. Provider activity labels follow the selected provider, and
+conversation history refreshes every 750 ms while an agent is working. The GUI
+source and frontend build pass, but the updated Tauri installer has not been
+rebuilt.
 
 ## In scope
 

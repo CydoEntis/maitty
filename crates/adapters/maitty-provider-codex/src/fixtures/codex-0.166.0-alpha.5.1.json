@@ -1,0 +1,328 @@
+{
+    "description":  "Synthetic required-method inventory from isolated codex-cli 0.166.0-alpha.5.1 generated schemas.",
+    "clientRequests":  {
+                           "oneOf":  [
+                                         {
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "initialize"
+                                                                                        ],
+                                                                               "title":  "InitializeRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/InitializeParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "InitializeRequest",
+                                             "type":  "object"
+                                         },
+                                         {
+                                             "description":  "NEW APIs",
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "thread/start"
+                                                                                        ],
+                                                                               "title":  "Thread/startRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/ThreadStartParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "Thread/startRequest",
+                                             "type":  "object"
+                                         },
+                                         {
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "thread/resume"
+                                                                                        ],
+                                                                               "title":  "Thread/resumeRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/ThreadResumeParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "Thread/resumeRequest",
+                                             "type":  "object"
+                                         },
+                                         {
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "thread/read"
+                                                                                        ],
+                                                                               "title":  "Thread/readRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/ThreadReadParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "Thread/readRequest",
+                                             "type":  "object"
+                                         },
+                                         {
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "thread/turns/list"
+                                                                                        ],
+                                                                               "title":  "Thread/turns/listRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/ThreadTurnsListParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "Thread/turns/listRequest",
+                                             "type":  "object"
+                                         },
+                                         {
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "thread/items/list"
+                                                                                        ],
+                                                                               "title":  "Thread/items/listRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/ThreadItemsListParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "Thread/items/listRequest",
+                                             "type":  "object"
+                                         },
+                                         {
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "turn/start"
+                                                                                        ],
+                                                                               "title":  "Turn/startRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/TurnStartParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "Turn/startRequest",
+                                             "type":  "object"
+                                         },
+                                         {
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "turn/interrupt"
+                                                                                        ],
+                                                                               "title":  "Turn/interruptRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/TurnInterruptParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "Turn/interruptRequest",
+                                             "type":  "object"
+                                         },
+                                         {
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "config/read"
+                                                                                        ],
+                                                                               "title":  "Config/readRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/ConfigReadParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "Config/readRequest",
+                                             "type":  "object"
+                                         }
+                                     ]
+                       },
+    "serverRequests":  {
+                           "oneOf":  [
+                                         {
+                                             "description":  "NEW APIs Sent when approval is requested for a specific command execution. This request is used for Turns started via turn/start.",
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "item/commandExecution/requestApproval"
+                                                                                        ],
+                                                                               "title":  "Item/commandExecution/requestApprovalRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/CommandExecutionRequestApprovalParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "Item/commandExecution/requestApprovalRequest",
+                                             "type":  "object"
+                                         },
+                                         {
+                                             "description":  "Sent when approval is requested for a specific file change. This request is used for Turns started via turn/start.",
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "item/fileChange/requestApproval"
+                                                                                        ],
+                                                                               "title":  "Item/fileChange/requestApprovalRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/FileChangeRequestApprovalParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "Item/fileChange/requestApprovalRequest",
+                                             "type":  "object"
+                                         },
+                                         {
+                                             "description":  "EXPERIMENTAL - Request input from the user for a tool call.",
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "item/tool/requestUserInput"
+                                                                                        ],
+                                                                               "title":  "Item/tool/requestUserInputRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/ToolRequestUserInputParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "Item/tool/requestUserInputRequest",
+                                             "type":  "object"
+                                         },
+                                         {
+                                             "description":  "Request approval for additional permissions from the user.",
+                                             "properties":  {
+                                                                "id":  {
+                                                                           "$ref":  "#/definitions/RequestId"
+                                                                       },
+                                                                "method":  {
+                                                                               "enum":  [
+                                                                                            "item/permissions/requestApproval"
+                                                                                        ],
+                                                                               "title":  "Item/permissions/requestApprovalRequestMethod",
+                                                                               "type":  "string"
+                                                                           },
+                                                                "params":  {
+                                                                               "$ref":  "#/definitions/PermissionsRequestApprovalParams"
+                                                                           }
+                                                            },
+                                             "required":  [
+                                                              "id",
+                                                              "method",
+                                                              "params"
+                                                          ],
+                                             "title":  "Item/permissions/requestApprovalRequest",
+                                             "type":  "object"
+                                         }
+                                     ]
+                       }
+}

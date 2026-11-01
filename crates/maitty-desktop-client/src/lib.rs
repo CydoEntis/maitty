@@ -1,4 +1,4 @@
-use maitty_shared::conversation::{ApprovalPolicy, LaunchSettings, Sandbox, StartTarget};
+use maitty_shared::conversation::{ApprovalPolicy, LaunchSettings, Provider, Sandbox, StartTarget};
 mod ipc;
 use anyhow::{Context, Result, bail};
 use maitty_shared::protocol::{ClientMsg, Command, Query, Reply, ServerMsg};
@@ -36,10 +36,27 @@ pub async fn daemon_restart_status() -> Result<Value> {
     Ok(json!({
         "daemonProtocol": daemon_protocol,
         "guiProtocol": maitty_shared::protocol::PROTOCOL_VERSION,
-        "canRestart": daemon_protocol < maitty_shared::protocol::PROTOCOL_VERSION,
+        "canRestart": can_restart_mismatched_daemon(daemon_protocol, activity.as_ref()),
         "sessionCount": session_count,
         "activeTurnCount": activity.as_ref().map(Activity::busy),
     }))
+}
+
+fn can_restart_mismatched_daemon(daemon_protocol: u32, activity: Option<&Activity>) -> bool {
+    daemon_protocol < maitty_shared::protocol::PROTOCOL_VERSION
+        && activity.is_some_and(|activity| activity.sessions == 0 && activity.busy() == 0)
+}
+
+fn validate_restart_activity(activity: Option<&Activity>) -> Result<()> {
+    let Some(activity) = activity else {
+        bail!("couldn't verify that the older Maitty service has no sessions; it was left running")
+    };
+    anyhow::ensure!(
+        activity.sessions == 0 && activity.busy() == 0,
+        "the older Maitty service still owns {} sessions and was left running",
+        activity.sessions
+    );
+    Ok(())
 }
 
 #[derive(serde::Deserialize)]
@@ -151,6 +168,7 @@ pub async fn restart_mismatched_daemon(expected_protocol: u32) -> Result<()> {
         }
     };
     validate_restart_confirmation(daemon_protocol, expected_protocol)?;
+    validate_restart_activity(read_activity().as_ref())?;
     tokio::task::spawn_blocking(stop_mismatched_daemon)
         .await
         .context(format!("waiting for the local {APP_NAME} service to stop"))??;
@@ -474,22 +492,38 @@ pub async fn resume_codex_conversation(
     }
 }
 
-pub async fn create_codex_conversation(cwd: PathBuf, daemon_executable: PathBuf) -> Result<Value> {
+pub async fn create_conversation(
+    cwd: PathBuf,
+    provider: Provider,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
     let cwd = cwd
         .canonicalize()
         .context("resolving the selected project folder")?;
     if !cwd.is_dir() {
         bail!("the selected project folder is not a directory");
     }
+    let (executable, config_root, sandbox) = match provider {
+        Provider::Codex => (
+            codex_app_server_executable()?,
+            codex_config_dir(),
+            Sandbox::ReadOnly,
+        ),
+        Provider::Claude => (
+            claude_executable()?,
+            claude_config_dir()?,
+            Sandbox::WorkspaceWrite,
+        ),
+    };
     let settings = LaunchSettings {
-        provider: maitty_shared::conversation::Provider::Codex,
-        executable: codex_app_server_executable()?,
-        config_root: codex_config_dir(),
+        provider,
+        executable,
+        config_root,
         cwd,
         model: None,
         model_provider: None,
         approval_policy: ApprovalPolicy::OnRequest,
-        sandbox: Sandbox::ReadOnly,
+        sandbox,
     };
     let reply = request(
         ClientMsg::Command(Command::ConversationStart {
@@ -504,6 +538,20 @@ pub async fn create_codex_conversation(cwd: PathBuf, daemon_executable: PathBuf)
         }
         _ => bail!("daemon returned an unexpected conversation start reply"),
     }
+}
+
+pub fn claude_executable() -> Result<PathBuf> {
+    executable_on_path("claude")
+}
+
+fn claude_config_dir() -> Result<PathBuf> {
+    if let Some(config_root) = std::env::var_os("CLAUDE_CONFIG_DIR") {
+        return Ok(PathBuf::from(config_root));
+    }
+    let home = directories::BaseDirs::new()
+        .map(|dirs| dirs.home_dir().to_path_buf())
+        .context("resolving the user home directory")?;
+    Ok(home.join(".claude"))
 }
 
 pub fn codex_app_server_executable() -> Result<PathBuf> {
@@ -747,7 +795,10 @@ async fn receive_reply(reader: &mut ipc::Reader) -> Result<Reply> {
 
 #[cfg(test)]
 mod restart_confirmation_tests {
-    use super::validate_restart_confirmation;
+    use super::{
+        Activity, can_restart_mismatched_daemon, validate_restart_activity,
+        validate_restart_confirmation,
+    };
 
     #[test]
     fn accepts_only_the_confirmed_older_protocol() {
@@ -755,6 +806,45 @@ mod restart_confirmation_tests {
         assert!(validate_restart_confirmation(current - 1, current - 1).is_ok());
         assert!(validate_restart_confirmation(current - 2, current - 1).is_err());
         assert!(validate_restart_confirmation(current + 1, current + 1).is_err());
+    }
+
+    fn activity(sessions: usize, working: usize, waiting: usize) -> Activity {
+        Activity {
+            pid: 1,
+            sessions,
+            working,
+            waiting,
+        }
+    }
+
+    #[test]
+    fn only_restarts_an_older_service_that_proves_it_owns_no_sessions() {
+        let older = maitty_shared::protocol::PROTOCOL_VERSION - 1;
+        assert!(can_restart_mismatched_daemon(
+            older,
+            Some(&activity(0, 0, 0))
+        ));
+        assert!(!can_restart_mismatched_daemon(
+            older,
+            Some(&activity(1, 0, 0))
+        ));
+        assert!(!can_restart_mismatched_daemon(
+            older,
+            Some(&activity(0, 1, 0))
+        ));
+        assert!(!can_restart_mismatched_daemon(older, None));
+        assert!(!can_restart_mismatched_daemon(
+            maitty_shared::protocol::PROTOCOL_VERSION + 1,
+            Some(&activity(0, 0, 0))
+        ));
+    }
+
+    #[test]
+    fn refuses_to_restart_when_session_ownership_is_active_or_unknown() {
+        assert!(validate_restart_activity(Some(&activity(0, 0, 0))).is_ok());
+        assert!(validate_restart_activity(Some(&activity(1, 0, 0))).is_err());
+        assert!(validate_restart_activity(Some(&activity(0, 1, 0))).is_err());
+        assert!(validate_restart_activity(None).is_err());
     }
 }
 

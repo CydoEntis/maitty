@@ -1,0 +1,24 @@
+{
+  "description": "Hand-authored required-method inventory confirmed against codex-cli 0.166.0 generated schemas.",
+  "clientRequests": {
+    "oneOf": [
+      { "properties": { "method": { "enum": ["initialize"] }, "params": { "$ref": "#/definitions/InitializeParams" } } },
+      { "properties": { "method": { "enum": ["config/read"] }, "params": { "$ref": "#/definitions/ConfigReadParams" } } },
+      { "properties": { "method": { "enum": ["thread/start"] }, "params": { "$ref": "#/definitions/ThreadStartParams" } } },
+      { "properties": { "method": { "enum": ["thread/resume"] }, "params": { "$ref": "#/definitions/ThreadResumeParams" } } },
+      { "properties": { "method": { "enum": ["thread/read"] }, "params": { "$ref": "#/definitions/ThreadReadParams" } } },
+      { "properties": { "method": { "enum": ["thread/turns/list"] }, "params": { "$ref": "#/definitions/ThreadTurnsListParams" } } },
+      { "properties": { "method": { "enum": ["thread/items/list"] }, "params": { "$ref": "#/definitions/ThreadItemsListParams" } } },
+      { "properties": { "method": { "enum": ["turn/start"] }, "params": { "$ref": "#/definitions/TurnStartParams" } } },
+      { "properties": { "method": { "enum": ["turn/interrupt"] }, "params": { "$ref": "#/definitions/TurnInterruptParams" } } }
+    ]
+  },
+  "serverRequests": {
+    "oneOf": [
+      { "properties": { "method": { "enum": ["item/commandExecution/requestApproval"] }, "params": { "$ref": "#/definitions/CommandExecutionRequestApprovalParams" } } },
+      { "properties": { "method": { "enum": ["item/fileChange/requestApproval"] }, "params": { "$ref": "#/definitions/FileChangeRequestApprovalParams" } } },
+      { "properties": { "method": { "enum": ["item/permissions/requestApproval"] }, "params": { "$ref": "#/definitions/PermissionsRequestApprovalParams" } } },
+      { "properties": { "method": { "enum": ["item/tool/requestUserInput"] }, "params": { "$ref": "#/definitions/ToolRequestUserInputParams" } } }
+    ]
+  }
+}

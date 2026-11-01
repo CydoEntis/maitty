@@ -1,6 +1,6 @@
 # 0026. Hairline, a fifth look with no boxes
 
-- **Status:** Accepted (amended by [ADR 0027](0027-two-looks-and-tabs-in-the-sidebar.md): one of two looks now)
+- **Status:** Superseded by [ADR 0039](0039-floating-is-the-only-look.md): the look was removed
 - **Date:** 2026-10-25
 
 ## Context

@@ -48,7 +48,7 @@ script it.
 
 The optional Tauri desktop build requires the platform tools and webview
 runtime listed in `docs/stack/tauri.md`. These are not prerequisites for the
-Rust CLI/TUI build or `cargo install --path .`.
+Rust CLI/TUI build or `cargo install --path apps/tui`.
 
 Rust stable (edition 2024, so 1.85+) with `cargo`; for the cross-checks, the
 `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin` targets
@@ -61,10 +61,10 @@ agent CLIs you want to run, a Nerd Font for icons.
 git clone https://github.com/CydoEntis/maitty && cd maitty
 cargo build
 cargo test
-cargo install --path .   # then run: maitty
+cargo install --path apps/tui   # then run: maitty
 ```
 
-To work on the optional desktop preview, from `gui/` run:
+To work on the optional desktop preview, from `apps/gui/` run:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -125,7 +125,7 @@ fail startup. A missing absolute directory is created by the private state write
 
 ## Project-specific: environments
 
-Local only: Maitty is a desktop tool. Development builds use `cargo install --path .`;
+Local only: Maitty is a desktop tool. Development builds use `cargo install --path apps/tui`;
 release archives and installers are published through the GitHub release workflow.
 `dev` is the working branch.
 

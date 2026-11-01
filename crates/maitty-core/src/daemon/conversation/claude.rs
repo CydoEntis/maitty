@@ -12,6 +12,7 @@ use tokio_util::codec::{FramedRead, FramedWrite, LinesCodec};
 use maitty_provider_claude::{
     MAX_FRAME_BYTES, MAX_PENDING_TOOLS, OutputFrame, ProjectedEvent, TurnProjector,
     bounded_content_text, command_arguments, parse_output_frame, session_id, verified_version,
+    version_number,
 };
 
 const STDERR_CHUNK_BYTES: usize = 8192;
@@ -104,25 +105,40 @@ impl Client {
         parse_output_frame(&line)
     }
 
-    async fn initialize(&mut self) -> Result<()> {
+    async fn initialize(&mut self, expected_session: &str) -> Result<()> {
         self.write(&serde_json::json!({
             "type":"control_request",
             "request_id":INITIALIZE_REQUEST_ID,
             "request":{"subtype":"initialize","hooks":null}
         }))
         .await?;
-        let frame = tokio::time::timeout(PROCESS_EXIT_TIMEOUT * 5, self.next())
-            .await
-            .context("Claude Code initialization timed out")??;
-        let OutputFrame::ControlResponse { response } = frame else {
-            bail!("Claude Code did not respond to adapter initialization");
-        };
-        anyhow::ensure!(
-            response.get("request_id").and_then(Value::as_str) == Some(INITIALIZE_REQUEST_ID)
-                && response.get("subtype").and_then(Value::as_str) != Some("error"),
-            "Claude Code rejected adapter initialization"
-        );
-        Ok(())
+        tokio::time::timeout(PROCESS_EXIT_TIMEOUT * 5, async {
+            loop {
+                match self.next().await? {
+                    OutputFrame::Initialized { session_id } => {
+                        anyhow::ensure!(
+                            session_id == expected_session,
+                            "Claude initialized a different session than the requested identity"
+                        );
+                    }
+                    OutputFrame::ControlResponse { response } => {
+                        anyhow::ensure!(
+                            response.get("request_id").and_then(Value::as_str)
+                                == Some(INITIALIZE_REQUEST_ID)
+                                && response.get("subtype").and_then(Value::as_str) != Some("error"),
+                            "Claude Code rejected adapter initialization"
+                        );
+                        return Ok(());
+                    }
+                    OutputFrame::Other => {}
+                    _ => {
+                        bail!("Claude Code sent an unexpected frame during adapter initialization")
+                    }
+                }
+            }
+        })
+        .await
+        .context("Claude Code initialization timed out")?
     }
 
     async fn stop(&mut self) -> Result<()> {
@@ -348,8 +364,8 @@ async fn verify_cli_version(
         .context("Claude Code version check timed out")?
         .context("Read Claude Code version")?;
     anyhow::ensure!(output.status.success(), "Claude Code version check failed");
-    let version = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    let version = version.strip_prefix("Claude Code ").unwrap_or(&version);
+    let output = String::from_utf8_lossy(&output.stdout);
+    let version = version_number(&output).context("Unrecognized Claude Code version output")?;
     anyhow::ensure!(
         verified_version(version),
         "Claude Code version {version} has not been verified for structured chat"
@@ -425,7 +441,7 @@ async fn run_turn(
     )
     .await
     .map_err(|failure| TurnFailure::Startup { token, failure })?;
-    if let Err(error) = client.initialize().await {
+    if let Err(error) = client.initialize(session).await {
         return Err(TurnFailure::Active {
             token: Some(token),
             error,
@@ -604,6 +620,8 @@ mod tests {
     #[test]
     fn recognizes_only_the_locally_verified_cli_version() {
         assert!(verified_version("2.1.312"));
+        assert!(verified_version("2.1.314"));
+        assert!(verified_version("2.1.316"));
         assert!(!verified_version("2.1.313"));
         assert!(!verified_version("2.1.31"));
     }
@@ -638,7 +656,7 @@ mod tests {
     }
 
     #[test]
-    fn routes_claude_approvals_to_the_documented_host_channel() {
+    fn routes_claude_approvals_to_the_agent_sdk_stdio_channel() {
         let args = command_arguments(
             "session-1",
             false,
@@ -646,10 +664,9 @@ mod tests {
         );
         let args: Vec<_> = args.iter().map(|arg| arg.to_string_lossy()).collect();
         assert!(
-            args.windows(2)
-                .any(|pair| pair == ["--permission-prompts", "host"])
+            args.iter()
+                .any(|argument| argument == "--permission-prompt-tool=stdio")
         );
-        assert!(!args.iter().any(|arg| arg == "--permission-prompt-tool"));
     }
 
     #[test]

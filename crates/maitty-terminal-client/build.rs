@@ -7,6 +7,6 @@ fn main() {
         &std::path::PathBuf::from(
             std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo sets CARGO_MANIFEST_DIR"),
         )
-        .join("../../Cargo.toml"),
+        .join("../../apps/tui/Cargo.toml"),
     );
 }

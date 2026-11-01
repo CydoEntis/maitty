@@ -17,6 +17,19 @@ fn main() {
         line.trim_end(),
         r#"{"request":{"hooks":null,"subtype":"initialize"},"request_id":"claude-initialize","type":"control_request"}"#
     );
+    let session_id = std::env::args()
+        .skip_while(|argument| argument != "--session-id")
+        .nth(1)
+        .or_else(|| {
+            std::env::args()
+                .find_map(|argument| argument.strip_prefix("--resume=").map(str::to_owned))
+        })
+        .expect("Claude session identity argument");
+    writeln!(
+        output,
+        "{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"{session_id}\"}}"
+    )
+    .unwrap();
     writeln!(
         output,
         "{}",

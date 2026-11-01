@@ -3,10 +3,10 @@ use std::path::PathBuf;
 
 fn main() {
     let manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let workspace_manifest = manifest_dir.join("../../Cargo.toml");
+    let workspace_manifest = manifest_dir.join("../../apps/tui/Cargo.toml");
     println!("cargo:rerun-if-changed={}", workspace_manifest.display());
     let manifest =
-        fs::read_to_string(workspace_manifest).expect("workspace Cargo.toml is readable");
+        fs::read_to_string(workspace_manifest).expect("TUI package manifest is readable");
     let package = manifest
         .split("[package]")
         .nth(1)

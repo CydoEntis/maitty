@@ -101,12 +101,7 @@ and your configured custom ones; rows click and the wheel scrolls.
 - Nothing moves in the sidebar by itself: a session that needs you or finishes keeps its row (its mark and name say so, and the Inbox lists what needs you), and a session on another machine stays with the folder it was started from. Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
-- **Hairline** (Settings › Appearance › Layout) draws all this with no boxes: one row per
-  session (no second lines), `needs you` in amber where the age was, a coloured rule under
-  each pane's title for its state, and a strip along the bottom with one segment per session.
-  It is always square, so the Rounded setting does not apply there.
-- The sidebar footer keeps **+ new** and **Menu** available in every layout (in Hairline as dim
-  hints with their keys, such as `Ctrl+Space n new` and `m menu`). **+ new**, `Ctrl+Space n` and a project's **+** open a plain shell where you are; type your agent there. `Ctrl+Space s` starts a session straight away (Settings › Sessions sets the agent and whether it gets a worktree).
+- The sidebar footer keeps **+ new** and **Menu** available. **+ new**, `Ctrl+Space n` and a project's **+** open a plain shell where you are; type your agent there. `Ctrl+Space s` starts a session straight away (Settings › Sessions sets the agent and whether it gets a worktree).
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a group's name, or a session, up or down to reorder (what needs you still comes first);
@@ -304,7 +299,10 @@ Subagents usually inherit their parent's MCP tools. Over `--remote` the view isn
 
 **Secrets.** An agent that needs an API key or token calls `maitty_request_secret` instead of
 asking in chat. Its row turns "needs you" with "asks for a secret" (and shows in the Inbox);
-Enter on the row, or a click on the line, opens a prompt beside it. What you type shows as dots.
+The prompt opens by itself beside the row when nothing else has the screen (it waits its turn
+behind a dialog or sheet, and a request you declined is not offered again); keys are ignored for
+the first second and a half, so what you were typing is not taken as the secret. Enter on the row,
+or a click on the line, opens it any time. What you type shows as dots.
 Enter gives it and Esc declines (the agent is told to carry on without it); a paste works too. By
 default the agent gets the path of a file only you can read, with the secret in it; if it asks for
 delivery `run`, it gets a reference and runs `maitty secret run <reference> --env NAME -- <command>`

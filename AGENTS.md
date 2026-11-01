@@ -297,9 +297,9 @@ runs a nested server with `MAITTY_SOCKET=<name> maitty`.
 - **Plan:** `docs/ROADMAP.md` (the plan doc: phases, scope, decisions, rules). The current design is [`docs/DESIGN.md`](docs/DESIGN.md).
 - **Branches:** work lands on `dev` at https://github.com/CydoEntis/maitty; one
   commit per logical change, pushed after the gate passes.
-- **Install locally:** `cargo install --path .` (stop a running `maitty` first on
+- **Install locally:** `cargo install --path apps/tui` (stop a running `maitty` first on
   Windows, or the binary is locked).
-- **Releases:** set `version` in `Cargo.toml`, commit, bring `main` up to `dev`, then tag
+- **Releases:** set `version` in `apps/tui/Cargo.toml`, commit, bring `main` up to `dev`, then tag
   `vX.Y.Z` on `main` and push the tag. `.github/workflows/release.yml` builds Windows, macOS
   (Apple Silicon and Intel) and Linux (x64, ARM; static musl) archives with checksums and
   publishes the GitHub Release that `install.sh` / `install.ps1` download from.

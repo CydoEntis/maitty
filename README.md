@@ -34,7 +34,7 @@ natively on Windows, macOS and Linux.
   each agent turn. A session whose check fails reads *failed*, not *done*.
 - **Agents that work together.** Agents can list, read, message and start other sessions
   through MCP tools, within limits you set, and find the project's reference images there.
-- **Your look.** Two layouts (Floating boxes, or Hairline lines), each pane in its own colour if you like, rounded or square shapes,
+- **Your look.** Floating boxes, each pane in its own colour if you like, rounded or square corners,
   padding round the screen, your cursor's shape, 170 themes with every colour configurable,
   and rebindable shortcuts.
 
@@ -57,7 +57,7 @@ administrator rights. It then runs `maitty integrate`, which connects every agen
 the machine (see below); set `MAITTY_NO_INTEGRATE=1` to skip that. Re-running the installer or
 updating connects them again. You can also download an archive from
 [Releases](https://github.com/CydoEntis/maitty/releases), or build from source with
-`cargo install --git https://github.com/CydoEntis/maitty`.
+`cargo install --git https://github.com/CydoEntis/maitty maitty`.
 
 Maitty tells you when an update is out; one click installs it and restarts without
 losing your sessions. **Settings › General › UPDATES** shows the version you have.
@@ -151,10 +151,10 @@ A few examples:
 theme = "tokyo-night"
 
 [ui]
-layout = "floating"        # floating | hairline
 pane_colors = true         # floating: each pane's border in its own colour
-rounded = "full"           # full (needs a Nerd Font) | corners | off
-padding = "1"              # 0 | 1 | 2: space round the screen
+rounded = true             # rounded card corners
+tab_gap = true             # a cell between one tab and the next; false: they touch
+padding = "small"          # small | medium | large: space round the screen
 
 [keys.prefix]
 "ctrl+l" = "spawn-tab:lazygit"   # any command, in a split or a new tab

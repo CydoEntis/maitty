@@ -36,13 +36,16 @@
 
 ## Project-specific: verified baseline
 
-Verified `codex-cli` versions: `0.164.0` and `0.165.0`. Both generated schemas
-contain every required app-server method and parameter type. Their 13 required
-parameter definitions are identical. Schema generation uses an isolated
-temporary `CODEX_HOME`; no account, private config, transcript or model request
-is required. Do not commit or hand-edit the generated schemas. Baseline source is OpenAI's
+Verified `codex-cli` versions: `0.164.0`, `0.165.0`, `0.166.0-alpha.5.1`, and
+`0.166.0`. Their generated schemas contain every required app-server method
+and parameter type. The 13 required parameter definitions in
+`0.165.0` and `0.166.0-alpha.5.1` are identical. Schema generation uses an
+isolated temporary `CODEX_HOME`; no account, private config, transcript or model
+request is required. Do not commit or hand-edit the generated schemas. Baseline source is OpenAI's
 [`rust-v0.164.0`](https://github.com/openai/codex/tree/fe3b29455488c2e189e43ad5526a107900c5e1b7)
 (`fe3b29455488c2e189e43ad5526a107900c5e1b7`).
+Codex CLI 0.166.0's local generated schema was checked on 2026-10-31, and that
+version passed a Windows GUI conversation create/send/reply smoke.
 
 Required client request methods from generated `ClientRequest.oneOf`:
 

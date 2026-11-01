@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "maitty-core"
 version = "0.51.0"
 edition = "2024"
@@ -15,8 +15,8 @@ maitty-agent-detection = { path = "../maitty-agent-detection" }
 maitty-agent-integrations = { path = "../maitty-agent-integrations" }
 maitty-ipc-transport = { path = "../maitty-ipc-transport" }
 maitty-settings = { path = "../maitty-settings" }
-maitty-provider-codex = { path = "../maitty-provider-codex" }
-maitty-provider-claude = { path = "../maitty-provider-claude" }
+maitty-provider-codex = { path = "../adapters/maitty-provider-codex" }
+maitty-provider-claude = { path = "../adapters/maitty-provider-claude" }
 anyhow = "1"
 bytes = "1"
 directories = "6"

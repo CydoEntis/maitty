@@ -55,25 +55,19 @@ pick; checking is a sweeping ring. An agent's own mark is `✻` Claude, `◆` Co
 
 ## Layouts
 
-One Layout setting picks the look ([ADR 0027](adr/0027-two-looks-and-tabs-in-the-sidebar.md));
-both have the same sessions, tabs, splits and sheets.
+There is one look, **Floating** ([ADR 0039](adr/0039-floating-is-the-only-look.md)): each pane a
+box, `ui.gap` between them. **Pane colours** (`ui.pane_colors`) gives each pane's border its own
+colour by its place in the tab.
 
-- **Floating** (the default): each pane a box, `ui.gap` (0, 1 or 2) between them. **Pane
-  colours** (`ui.pane_colors`) gives each pane's border its own colour by its place in the tab.
-- **Hairline**: no boxes at all, only `│` / `─` hairlines; always square
-  (see *Hairline* below).
-
-`ui.padding` is `top` by default, one empty row above the screen so the tabs don't touch the
-terminal's own tab bar and none round the rest; or 0, 1 or 2 empty cells all round. See UI › *layout and navigation*
-and *the frame*.
+`ui.padding` is `small` by default: one empty cell all round the screen, so nothing touches the
+terminal's own edge; `medium` is two, `large` three. `ui.gap` takes the same three sizes between
+panes. See UI › *layout and navigation* and *the frame*.
 
 ## Chips, rounding and padding
 
 Anything you click or read as a control (a button, tab, tag or key) is a chip on `btn`, or on
 the accent when it is current. `ui.rounded` is the one shape setting
-([ADR 0021](adr/0021-one-line-rows-one-rounding-sticky-mode.md); Hairline ignores it and stays square): `off` is square, `corners`
-rounds every box's corners (`╭╮╰╯`), and `full` also gives chips, buttons, selected rows and
-the hover half-circle ends. Keys are keycaps: ` key ` on `btn`, `strong` and bold. The
+([ADR 0039](adr/0039-floating-is-the-only-look.md)): off is square, on rounds every box's corners (`╭╮╰╯`). Chips, buttons and rows have square ends either way. Keys are keycaps: ` key ` on `btn`, `strong` and bold. The
 pointer's hover is one quiet tint; selection is a neutral tint with an accent `▎` bar, never an
 accent fill. See UI › *UI conventions*.
 
@@ -93,15 +87,16 @@ sidebar*.
 
 ## Pane titles and tabs
 
-The session's tabs have a row of their own over the panes in both looks
-([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)): in Floating the tab chips right over the boxes, each led by its state's glyph (on screen or
+The session's tabs sit on the first
+pane's top border, as the sidebar's `SESSIONS` chip sits on its own ([ADR 0038](adr/0038-tabs-sit-on-the-pane-border.md)),
+the border running on between the chips (`ui.tab_gap`, on by default, leaves a cell of it between one tab and the next; off, they touch). A chip's ends follow `ui.rounded`: square, rounded corners, or a pill. Each chip is led by its state's glyph (on screen or
 not) and ended by its ✕, the current one in the accent, then a **+** chip for a new tab. A tab
 is named the same everywhere: its own name, else its focused session's. Panes are titled as an
 editor's are ([ADR 0030](adr/0030-panes-titled-like-an-editor.md)): a tab's only pane has no
-title (a plain top border), its tab naming it, showing its state (the glyph opens why) and
+title of its own (its border carries the tabs), its tab naming it, showing its state (the glyph opens why) and
 closing it. A split's panes have no title at all ([ADR 0031](adr/0031-tabs-name-a-project-and-splits-have-no-title.md)):
 the tab names where you are, and a pane's top edge says its state, teal when focused and amber
-when it needs you. The tab row lists the tabs of the session you are in, numbered 1–n, each with
+when it needs you. The tabs list the session's tabs, numbered 1–n, each with
 a ✕ on the open one only, and ends in `◫` (split) and `⤢` (zoom the
 focused pane). A pane closes with Alt+x, leader `x` or its menu. Closing always
 asks first (ADR 0029), naming the pane (`Close pane 2 · claude`) and lighting its lines in the
@@ -124,8 +119,8 @@ groups* and *check evidence sheet*.
 
 ## Modals and popovers
 
-Everything that floats over the screen is boxed as the look boxes a pane: a `line` box round
-`card` with corners by `ui.rounded` in Floating, a square line box on the ground in Hairline
+The Menu and a row's context menu have no fill of their own: they are drawn on the ground like the panes. Everything else that floats over the screen is boxed as the look boxes a pane: a `line` box round
+`card` with corners by `ui.rounded`
 ([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)). Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
 `Esc close` at the right), the screen behind dimmed, no shadow. Settings, override, command
 approval and the key overlay are modals. Small explanations (why, a row's menu, the message and
@@ -138,8 +133,7 @@ of keycaps. See UI › *UI conventions*, *check modals and settings* and *why po
 One component for every notice: bottom right, above the agent's input area, its left side a
 heavy `┃` in the notice's colour (`err`, `blocked` for needs you, `done`, else the accent), a
 bold title, a detail line and an optional preview in italics. Floating draws it as a `line`
-outline on the ground, always with round corners; Hairline as a solid `card2` block with no
-outline, the `┃` its left edge (ADR 0030). It slides in and fades
+outline on the ground, always with round corners (ADR 0030). It slides in and fades
 out with motion on. See UI › *the frame* (Toast).
 
 ## Mode bar
@@ -151,60 +145,8 @@ Typing: a quiet ` TYPING ` chip and the leader key. Shortcut mode: the whole row
 has the keys, the bar stays on `bg`, never sky: a calm chip (`strong` bold on `btn`) names the
 holder, then its keys and the way out (`SIDEBAR · ↑↓ move · Enter open · Esc back`), with
 `· shortcut mode waits` while the mode is held. Under a popup the bar is words only and takes
-no click. **Update** or **Restart** sits at its right end when waiting. See UI › *the frame*
+no click. **Update** or **Restart** sits at its right end when waiting, unless the sidebar shows it at its foot. See UI › *the frame*
 (Mode bar).
-
-## Hairline
-
-Less frame, more work ([ADR 0026](adr/0026-hairline-a-fifth-look.md); Compact's settings load
-as Hairline, [ADR 0027](adr/0027-two-looks-and-tabs-in-the-sidebar.md)). Every line is one
-weight in `line`; colour is kept for state, and amber still means only needs you. It draws
-from the theme's roles (`hairline::Ink`: `raised` is `card2`, `dim` is `muted`, `teal` the
-accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` does not apply.
-
-- **Sidebar:** 28 columns, then a `│`. `sessions` and the count, dim. A project is a dim header
-  with `⎇ branch` dim at the right, a blank row above each but the first. A session is one row:
-  the glyph, the name and its age at the right, or `needs you` in amber (a split whose own
-  pane is fine but whose pane beside it asks names that pane instead: `▸ warm-finch`). A
-  helper steps in under the session that started it, and a request to start helpers keeps its
-  amber line under the row, and a session's other tabs, when it has several, each a line under it
-  (not the tab its own pane is in: the row is that one)
-  (as in Floating; the one on screen teal). The focused row is
-  `raised` with a teal `▎` and a teal name; a row on screen without the keys is `raised`; one
-  that needs you has an amber `▎` and an amber name. The foot, pinned to the bottom row, is
-  two dim words, no keys: `new` at the left, `menu` at the right.
-- **Tabs:** a row of their own across the top of the pane column, then a `─` rule in `line`
-  (`├` where the sidebar's `│` meets it). Each tab is plain words: its most urgent agent's mark
-  (so a tab out of view still shows it works or asks), its number (the session's tabs are
-  numbered 1–n), its name and, on the current one only, a dim ✕ (it closes the
-  tab, or a lone tab's only pane, asking first);
-  the current one teal bold, the others dim. `◫` and `⤢` sit at the row's right end. A dim `+` after them opens
-  a tab, there even with one tab. A `│` in `line` closes each tab and the `+`, meeting the rule
-  in a `┴`.
-- **Panes:** a split pane has no title: its first row is a `─` rule the pane's width, teal
-  focused (`sky()` in shortcut mode), amber when it needs you and is not focused, else `line`
-  (ADR 0031). A tab's only pane has no rule: the terminal starts under the tab row (ADR 0030).
-  Panes side by side are parted by one `│`; a pane below another is parted by its own top rule.
-  Never boxed; the terminal sits two columns in.
-- **Mode bar:** under a full-width `─` rule in `line` (`┴` where the sidebar's `│` meets it).
-  `TYPING` is a teal bold word, then `tab 1/3 · 2 splits` dim, then the hint;
-  whatever has the keys is named in `strong` bold, no chip. At the right `● N needs you` in
-  amber bold (the session's name when it is one), or `all clear` dim, then `⎇ branch`, the
-  focused pane's pull request (`#7 2 failing`: `err` when there is something to act on, `done`
-  when it passes or merged, dim while it runs) and `▲ CPU · RAM` dim while they fit, just before Update or Restart. Shortcut mode keeps its sky row.
-- **Menus, popups and panels:** the same lines. A modal (Settings, a confirm, override, approval,
-  the key map, new session, themes) is a solid `bg` box in a square `line` frame over the
-  dimmed screen, its title plain words on the top border, `Esc close` dim at its right. A
-  popover (why, a row's `⋯`, the message and helpers asks) is framed the same, with the `◂`
-  in the accent. The side sheet is a zone like a pane: its tabs (or title) on the first row,
-  a `─` rule under it lit teal under the open tab while it has the keys, and a `│` to its left.
-  The toast is a solid `card2` block, no frame, its left edge a heavy `┃` in the notice's colour. No chip is filled: a key and what it
-  does are words (the key `strong` bold), the chosen option or primary button is the accent's
-  words, a danger button the red's. A selected row is `raised` with an accent marker. The
-  collapsed sidebar's chips and the splash's keys are words too; the splash's wordmark stays.
-- **Motion off:** working is a still `⠿`, not a frozen spinner frame.
-
-See UI › *Hairline* for sizes, what gives way and what takes a click.
 
 ## Splash
 

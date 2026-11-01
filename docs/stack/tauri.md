@@ -37,7 +37,7 @@
   setup guide.
 
 For Arch Linux, including Omarchy, install Tauri's native build dependencies
-before running `pnpm desktop:build` from `gui/`:
+before running `pnpm desktop:build` from `apps/gui/`:
 
 ```sh
 sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl dpkg patchelf \
@@ -64,9 +64,9 @@ can install `fuse2` through **Super+Space → Install → Package** or
 
 ## Project-specific: tauri
 
-Tauri 2 is the optional desktop host. The GUI lives in `gui/`, uses React,
+Tauri 2 is the optional desktop host. The GUI lives in `apps/gui/`, uses React,
 TypeScript, Vite, shadcn/ui and Tailwind, and connects to the existing daemon.
-Keep native packaging and GUI build steps separate from `cargo install --path .`.
+Keep native packaging and GUI build steps separate from `cargo install --path apps/tui`.
 Desktop build scripts compile and package a GUI-specific CLI sidecar for the
 current host. Keep its `maitty-gui-daemon` name separate from the terminal CLI
 executable so a running daemon cannot lock the file a new GUI build must

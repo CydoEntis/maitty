@@ -34,7 +34,7 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0008](0008-rename-to-seshi.md) | The app is called Seshi | Accepted |
 | [0009](0009-leader-keys-after-the-cut.md) | Leader keys: a shell is one key, and only kept features have keys | Accepted |
 | [0010](0010-optional-desktop-client.md) | Offer an optional desktop client over the shared session engine | Superseded by 0011 |
-| [0011](0011-keep-seshi-terminal-first.md) | Keep Seshi terminal-first | Superseded by [0041](0041-chat-gui-shared-conversations.md) |
+| [0011](0011-keep-seshi-terminal-first.md) | Keep Seshi terminal-first | Accepted |
 | [0012](0012-flat-rendering-style.md) | Add a flat rendering style | Accepted |
 | [0013](0013-v7-frame.md) | Draw the v7 frame: tabs in the pane title, no margin | Proposed, tabs in the title superseded by 0028 |
 | [0014](0014-v8-cleanup.md) | Bring over the v8 cleanup, keeping what the user already decided | Accepted, its no-footer rule amended by 0024 |
@@ -49,8 +49,8 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0023](0023-the-mode-is-always-shown.md) | The mode is always shown, the window is framed in shortcut mode, dead keys say so | Accepted, amended by 0024 |
 | [0024](0024-the-mode-lives-in-a-bottom-bar.md) | The mode lives in a bar along the bottom, with key suggestions | Accepted |
 | [0025](0025-a-new-pane-ends-shortcut-mode.md) | Starting a pane ends shortcut mode | Accepted |
-| [0026](0026-hairline-a-fifth-look.md) | Hairline, a fifth look with no boxes | Accepted, amended by 0027 |
-| [0027](0027-two-looks-and-tabs-in-the-sidebar.md) | Two looks, pane colours, and a session's tabs in the sidebar | Accepted, amended by 0028 and 0030 |
+| [0026](0026-hairline-a-fifth-look.md) | Hairline, a fifth look with no boxes | Superseded by 0039 |
+| [0027](0027-two-looks-and-tabs-in-the-sidebar.md) | Two looks, pane colours, and a session's tabs in the sidebar | Accepted, amended by 0028, 0030 and 0039 |
 | [0028](0028-tab-rows-and-popups-drawn-like-panes.md) | A tab row in both looks, and every popup drawn like a pane | Accepted, amended by 0030 and 0035 |
 | [0029](0029-alt-letters-and-closing-without-asking.md) | Alt+letter shortcuts, and every close asks first | Accepted |
 | [0030](0030-panes-titled-like-an-editor.md) | Panes titled like an editor's, and toasts drawn to suit each look | Accepted, amended by 0031 |
@@ -58,10 +58,6 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0032](0032-a-session-owns-its-tabs.md) | A session owns its tabs, and picking it shows it | Accepted |
 | [0033](0033-the-collapsed-sidebar-is-a-column.md) | The collapsed sidebar is a narrow column, not a strip of chips | Accepted |
 | [0034](0034-the-sidebar-never-reorders-itself.md) | The sidebar never reorders itself, and has no SSH group | Accepted |
-| [0035](0035-the-tab-row-sits-outside-the-pane-boxes.md) | The tab row sits over the pane boxes, not inside them | Accepted |
-| [0036](0036-secrets-never-enter-chat.md) | Secrets never enter chat | Accepted |
-| [0041](0041-chat-gui-shared-conversations.md) | Optional chat GUI over daemon-owned native conversations | Accepted
-| [0037](0037-tauri-react-desktop-shell.md) | Tauri 2 desktop shell with React and shadcn/ui | Accepted |
-| [0038](0038-standalone-gui-first.md) | Make the standalone GUI usable before native terminal transfer | Accepted |
-| [0039](0039-claude-code-cli-streaming.md) | Drive Claude Code through its streaming CLI protocol | Accepted |
-| [0042](0042-decouple-desktop-clients-and-providers.md) | Decouple desktop clients and provider adapters | Accepted |
+| [0035](0035-the-tab-row-sits-outside-the-pane-boxes.md) | The tab row sits over the pane boxes, not inside them | Accepted, amended by 0038 |
+| [0038](0038-tabs-sit-on-the-pane-border.md) | Floating's tabs sit on the first pane's top border | Proposed |
+| [0039](0039-floating-is-the-only-look.md) | Floating is the only look, with simpler settings | Accepted |

@@ -30,7 +30,7 @@ esac
 case "$(uname -m)" in
   x86_64 | amd64) arch=x86_64 ;;
   aarch64 | arm64) arch=aarch64 ;;
-  *) fail "no build for $(uname -m) yet; build from source with: cargo install --git https://github.com/$REPO" ;;
+  *) fail "no build for $(uname -m) yet; build from source with: cargo install --git https://github.com/$REPO maitty" ;;
 esac
 target="$arch-$os"
 asset="$APP-$target.tar.gz"
