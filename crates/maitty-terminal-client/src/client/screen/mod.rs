@@ -1382,6 +1382,8 @@ pub(super) enum ScreenHit {
     /// Settings row, value index.
     SetVal(usize, usize),
     ThemePick(usize),
+    /// The theme browser's Dark (false) or Light (true) tab.
+    ThemeTab(bool),
     SpinnerPick(usize),
     /// A button on the splash screen.
     SplashKey(char),

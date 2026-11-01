@@ -601,7 +601,13 @@ impl App {
             }
             return true;
         }
-        if matches!(&row, Some(design::SRow::Setting(s)) if s.path == "theme")
+        let theme_row = match &row {
+            Some(design::SRow::Setting(s)) if super::modal::is_theme_row(s.path) => {
+                Some(s.path == "theme_light")
+            }
+            _ => None,
+        };
+        if let Some(light) = theme_row
             && matches!(
                 k.code,
                 KeyCode::Enter
@@ -611,7 +617,7 @@ impl App {
                     | KeyCode::Char('h' | 'l')
             )
         {
-            self.open_themes();
+            self.open_themes_on(light);
             return true;
         }
         if matches!(&row, Some(design::SRow::Setting(s)) if s.kind == Kind::Spinner)

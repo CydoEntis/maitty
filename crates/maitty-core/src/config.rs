@@ -37,7 +37,14 @@ pub struct Config {
     /// Editor for "open in editor" (Files, Changes). Empty: $VISUAL, $EDITOR, then `code`.
     /// Terminal editors (nvim, vim, hx, nano, micro, …) open inside the app beside the agent.
     pub editor: String,
+    /// The theme showing now. It follows the slot `appearance` picks (`settle_theme`), so a
+    /// theme set by hand is overwritten by that slot once the file has slots.
     pub theme: String,
+    /// The theme to show when `appearance` is dark, and when it is light.
+    pub theme_dark: String,
+    pub theme_light: String,
+    /// Which slot shows: "dark" or "light".
+    pub appearance: String,
     pub theme_overrides: ThemeOverrides,
     /// Shell for new panes. Default: pwsh (or powershell) on Windows, $SHELL elsewhere.
     pub shell: Option<String>,
@@ -340,6 +347,9 @@ impl Default for Config {
             recipes: Vec::new(),
             presets: Vec::new(),
             theme: crate::theme::DEFAULT.into(),
+            theme_dark: crate::theme::DEFAULT.into(),
+            theme_light: crate::theme::DEFAULT_LIGHT.into(),
+            appearance: "dark".into(),
             theme_overrides: ThemeOverrides::default(),
             shell: None,
             shell_args: Vec::new(),
@@ -929,6 +939,17 @@ fn copy_renamed(from: &Path, to: &Path, old: &str) {
     }
 }
 
+/// The two values `appearance` takes.
+pub const APPEARANCES: &[&str] = &["dark", "light"];
+
+fn validate_appearance(appearance: &str) -> Result<()> {
+    if APPEARANCES.contains(&appearance) {
+        Ok(())
+    } else {
+        anyhow::bail!("appearance must be dark or light, not {appearance:?}")
+    }
+}
+
 /// The app's own themes were once named after it ("seshi-night", ADR 0019), and the first set
 /// gave way to Night and Day: an old choice moves to the one of the same lightness.
 fn retired_theme(theme: &str) -> Option<&'static str> {
@@ -972,6 +993,8 @@ impl Config {
         }
         fold_legacy_helpers(&mut value);
         fold_legacy_corners(&mut value);
+        let written =
+            ["theme_dark", "theme_light", "appearance"].map(|key| value.contains_key(key));
         let mut cfg: Config = toml::Value::Table(value)
             .try_into()
             .with_context(|| format!("parsing {}", path.display()))?;
@@ -983,9 +1006,13 @@ impl Config {
         if cfg.icons.shell == OLD_SHELL_ICON {
             cfg.icons.shell = Icons::default().shell;
         }
-        if let Some(t) = retired_theme(&cfg.theme) {
-            cfg.theme = t.to_string();
+        for name in [&mut cfg.theme, &mut cfg.theme_dark, &mut cfg.theme_light] {
+            if let Some(t) = retired_theme(name) {
+                *name = t.to_string();
+            }
         }
+        validate_appearance(&cfg.appearance)?;
+        cfg.settle_theme(written);
         // Settings shows the look by its name, whatever an older file called it.
         cfg.ui.fold_retired_layout();
         cfg.ui.fold_legacy_sizes();
@@ -1016,6 +1043,30 @@ impl Config {
             None => PathBuf::from(raw),
         };
         dir.is_dir().then_some(dir)
+    }
+
+    /// Make `theme` the slot `appearance` picks. `written` says which of `theme_dark`,
+    /// `theme_light` and `appearance` the file spells out. What it does not spell out comes
+    /// from its older single `theme`: that theme fills the slot its ground belongs to, and
+    /// decides the appearance (the file is not rewritten).
+    pub fn settle_theme(&mut self, written: [bool; 3]) {
+        let [dark_written, light_written, appearance_written] = written;
+        let older = self.theme.clone();
+        let light = crate::theme::is_light(&older);
+        if light && !light_written {
+            self.theme_light = older.clone();
+        }
+        if !light && !dark_written {
+            self.theme_dark = older;
+        }
+        if !appearance_written {
+            self.appearance = if light { "light" } else { "dark" }.into();
+        }
+        self.theme = if self.appearance == "light" {
+            self.theme_light.clone()
+        } else {
+            self.theme_dark.clone()
+        };
     }
 
     pub fn theme(&self) -> Theme {
@@ -2155,6 +2206,60 @@ shell = \"pwsh\"
             "marked done; the old folders stay"
         );
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn an_older_theme_fills_the_slot_its_ground_belongs_to() {
+        let mut dark: Config = toml::from_str("theme = 'dracula'").unwrap();
+        dark.settle_theme([false; 3]);
+        assert_eq!(
+            (
+                dark.theme.as_str(),
+                dark.theme_dark.as_str(),
+                dark.appearance.as_str()
+            ),
+            ("dracula", "dracula", "dark")
+        );
+        assert_eq!(dark.theme_light, crate::theme::DEFAULT_LIGHT);
+        let mut light: Config = toml::from_str("theme = 'github-light'").unwrap();
+        light.settle_theme([false; 3]);
+        assert_eq!(
+            (
+                light.theme.as_str(),
+                light.theme_light.as_str(),
+                light.appearance.as_str()
+            ),
+            ("github-light", "github-light", "light")
+        );
+        assert_eq!(light.theme_dark, crate::theme::DEFAULT);
+    }
+
+    #[test]
+    fn with_slots_the_appearance_picks_the_theme_showing() {
+        let text = "theme = 'night'
+theme_dark = 'dracula'
+theme_light = 'vim'
+";
+        for (appearance, shown) in [("dark", "dracula"), ("light", "vim")] {
+            let mut cfg: Config =
+                toml::from_str(&format!("{text}appearance = '{appearance}'")).unwrap();
+            cfg.settle_theme([true; 3]);
+            assert_eq!(cfg.theme, shown, "{appearance}");
+        }
+        // One pick written beside an older `theme` leaves that theme in its own slot.
+        let mut cfg: Config = toml::from_str("theme = 'nord'\ntheme_light = 'vim'\n").unwrap();
+        cfg.settle_theme([false, true, false]);
+        assert_eq!(
+            (
+                cfg.theme.as_str(),
+                cfg.theme_dark.as_str(),
+                cfg.theme_light.as_str()
+            ),
+            ("nord", "nord", "vim"),
+            "still showing the dark theme they had"
+        );
+        assert!(validate_appearance("dark").is_ok() && validate_appearance("light").is_ok());
+        assert!(validate_appearance("dim").is_err());
     }
 
     #[test]

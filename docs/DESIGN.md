@@ -23,7 +23,9 @@ approved detailed visual system here only if it becomes shared across clients.
 
 ## Themes and colour roles
 
-Colours come only from the theme's roles, never a literal. **Night** is the default: the sea
+Colours come only from the theme's roles, never a literal. Dark and light are two remembered
+slots (Settings › Appearance) and a switch; **Night** is the default dark theme and **Day**
+the default light one, and the browser lists each side on its own tab. **Night** is the sea
 at night, a deep navy ground, sea-glass teal for focus and working, foam for names. **Day**
 is the same sea by day: a pale grey-blue ground and a deep teal accent. The other built-in
 themes fill the same roles; [theme sources](theme-credits.md) lists where they come from.

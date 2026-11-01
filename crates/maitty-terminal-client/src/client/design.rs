@@ -1528,7 +1528,8 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "ui.splash" | "ui.splash_animation" => "STARTUP",
             "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_keys" | "ui.alt_arrows" => "INPUT",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
-            "theme" | "ui.glyphs" | "ui.spinner" | "ui.cursor" | "ui.cursor_blink" => "THEME",
+            "appearance" | "theme_dark" | "theme_light" | "ui.glyphs" | "ui.spinner"
+            | "ui.cursor" | "ui.cursor_blink" => "THEME",
             "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
             "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded" => "PANES",
             "ui.tab_gap" => "TABS",
@@ -1650,13 +1651,18 @@ pub(super) fn control(
         SRow::Agent(row) => agent_control(app, t, *row),
         SRow::Version => version_control(app, t),
         SRow::Setting(s) => {
-            if s.path == "theme" {
-                let name = if cfg.theme.is_empty() {
+            if super::modal::is_theme_row(s.path) {
+                let name = if s.path == "theme_light" {
+                    &cfg.theme_light
+                } else {
+                    &cfg.theme_dark
+                };
+                let name = if name.is_empty() {
                     crate::theme::DEFAULT
                 } else {
-                    &cfg.theme
+                    name
                 };
-                let chosen = cfg.theme();
+                let chosen = crate::theme::Theme::named(name);
                 return vec![
                     seg("  ", Style::default().bg(chosen.bg)),
                     seg("  ", Style::default().bg(chosen.accent)),

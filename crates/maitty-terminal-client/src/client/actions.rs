@@ -237,6 +237,7 @@ impl App {
             Action::Update => self.ask_update(),
             Action::CheckUpdate => self.check_for_update(true),
             Action::Restart => self.restart_from_menu(),
+            Action::ToggleAppearance => self.toggle_appearance(),
             Action::TidyWorktrees => self.tidy_open_here(),
             Action::None => {}
             // The rest are handled by screen_act above.
@@ -344,6 +345,7 @@ impl App {
             Action::Update,
             Action::CheckUpdate,
             Action::Restart,
+            Action::ToggleAppearance,
             Action::TidyWorktrees,
             Action::Detach,
             Action::SendPrefix,

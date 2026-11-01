@@ -462,6 +462,8 @@ pub struct App {
     /// The same for Codex's lifecycle hooks: installed, and whether Codex has been told to trust them.
     codex_hooks: Option<maitty_provider_codex::HooksState>,
     codex_hooks_asked: bool,
+    /// The theme browser's tab: the Light themes when true, else the Dark ones.
+    theme_tab_light: bool,
     /// What changed in it (and any releases between), for the update dialog.
     update_notes: Vec<String>,
     /// When the app last asked whether a newer release is out.
@@ -722,6 +724,7 @@ impl App {
             claude_hooks_asked: false,
             codex_hooks: None,
             codex_hooks_asked: false,
+            theme_tab_light: false,
             update_notes: Vec::new(),
             update_checked: None,
             updating: false,

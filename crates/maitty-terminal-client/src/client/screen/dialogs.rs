@@ -406,7 +406,7 @@ pub(in crate::client) fn chips_for(app: &App, row: &SRow) -> Option<(Vec<String>
                 Some(if on { 0 } else { 1 }),
             ))
         }
-        Kind::Choice(_) if s.path == "theme" => None,
+        Kind::Choice(_) if super::super::modal::is_theme_row(s.path) => None,
         Kind::Choice(opts) => {
             let curs = cur
                 .and_then(|v| v.as_str().map(str::to_string))

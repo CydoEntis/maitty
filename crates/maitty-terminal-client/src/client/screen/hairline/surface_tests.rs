@@ -37,7 +37,7 @@ fn surfaces() -> Vec<(&'static str, Open)> {
         ("rename", |app| app.act(Action::RenameTab)),
         ("new session dialog", |app| app.act(Action::NewSession)),
         ("history", |app| app.act(Action::History)),
-        ("themes", |app| app.open_themes()),
+        ("themes", |app| app.open_themes_on(false)),
         ("inbox", |app| app.act(Action::Jump)),
         ("files", |app| app.act(Action::Files)),
         ("changes", |app| app.act(Action::Changes)),

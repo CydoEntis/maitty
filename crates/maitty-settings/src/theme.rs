@@ -73,6 +73,8 @@ pub struct ThemeOverrides(pub BTreeMap<String, String>);
 
 /// The theme when none is chosen.
 pub const DEFAULT: &str = "night";
+/// The light theme when none is chosen.
+pub const DEFAULT_LIGHT: &str = "day";
 
 /// Names earlier dev builds gave a theme that now carries its variant, so configs that
 /// still say them keep loading.

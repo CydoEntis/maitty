@@ -214,15 +214,29 @@ Only the area with the keyboard is lit: the focused pane's whole border, or the 
 
 ## Project-specific: theme browser
 
-Appearance has one Theme control. Enter or clicking its value opens a searchable
-browser with palette swatches, an applied marker, a result count, and a preview.
+Dark and light are two remembered slots and a switch. Appearance has three rows:
+**Appearance** (`appearance`: `dark` or `light`, which slot shows), **Dark theme**
+(`theme_dark`, `night` by default) and **Light theme** (`theme_light`, `day` by default).
+`theme` stays "the theme showing now": `Config::settle_theme` sets it from the slot
+`appearance` picks, so once a file has slots a `theme` written by hand is overwritten.
+A file with only an older `theme` is not rewritten: its theme fills the slot its ground
+belongs to and decides the appearance, one slot at a time (a light pick written beside an
+old dark `theme` leaves that dark theme showing).
+Enter or clicking a theme row's value opens a searchable browser with two tabs, **Dark** and
+**Light** (`Tab` / `Shift+Tab`, or a click on the chip at the foot), each listing only its
+themes, opened on the tab of the row you came from and on that slot's theme. Which tab a
+theme is on is read from its background (`theme::is_light`), not from a list. The browser
+shows palette swatches, an applied marker for that slot, a result count, and a preview.
 Themes are listed alphabetically by display name, ignoring case (`BUILTIN` in
 `theme.rs` is kept in that order, and every list of themes follows it); there are
 no user-defined themes, only overrides of a built-in's colours.
 Typing filters by name or flavor; arrows, Home/End, page keys, and the mouse wheel
 move the selection. Click a row to preview; click it again or press Enter to
-save. Esc or the close button returns to Appearance without changing the theme.
+save that tab's slot, which changes the screen only if that slot is the one showing. Esc or
+the close button returns to Appearance without changing anything.
 Saving runs in a background task; failure keeps the selection and shows a toast.
+The key overlay's search has **Switch dark or light theme** (`toggle-appearance`, no default
+key, ADR 0017), which flips `appearance` and changes the whole screen at once.
 The preview shows built-in defaults; configured overrides still apply after saving.
 See [theme sources](theme-credits.md) for upstream palettes and local UI adaptations.
 

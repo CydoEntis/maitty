@@ -265,6 +265,8 @@ pub enum Action {
     CheckUpdate,
     /// Replace the running server and this window with the installed the app.
     Restart,
+    /// Switch between the dark theme and the light one.
+    ToggleAppearance,
     /// The clean-up list for the worktrees of the project you're in.
     TidyWorktrees,
     /// The menu: the common commands as a list (the sidebar's "menu").
@@ -348,6 +350,7 @@ impl Action {
             Action::Update => concat!("Update ", env!("APP_COMMAND")).into(),
             Action::CheckUpdate => "Check for updates".into(),
             Action::Restart => concat!("Restart ", env!("APP_COMMAND")).into(),
+            Action::ToggleAppearance => "Switch dark or light theme".into(),
             Action::TidyWorktrees => "Clean up worktrees".into(),
             Action::Menu => "Menu".into(),
             Action::Worktrees => "Worktrees…".into(),
@@ -430,6 +433,7 @@ impl Action {
             Action::Update => "update".into(),
             Action::CheckUpdate => "check-update".into(),
             Action::Restart => "restart".into(),
+            Action::ToggleAppearance => "toggle-appearance".into(),
             Action::TidyWorktrees => "tidy-worktrees".into(),
             Action::Menu => "menu".into(),
             Action::Worktrees => "worktrees".into(),
@@ -533,6 +537,7 @@ impl FromStr for Action {
             "update" => Action::Update,
             "check-update" => Action::CheckUpdate,
             "restart" => Action::Restart,
+            "toggle-appearance" => Action::ToggleAppearance,
             "tidy-worktrees" => Action::TidyWorktrees,
             "menu" | "actions" => Action::Menu,
             "worktrees" => Action::Worktrees,

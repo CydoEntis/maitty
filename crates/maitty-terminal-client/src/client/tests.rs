@@ -1249,7 +1249,8 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("Theme")
+            o.contains("Dark theme")
+                && o.contains("Light theme")
                 && o.contains("Cursor")
                 && !o.contains("Corners")
                 && o.contains("PREVIEW")
@@ -3742,13 +3743,15 @@ mod screen_tests {
             o.contains("› Version"),
             "the first row, the version, is selected"
         );
-        // Appearance, the next tab, has one theme control that opens the searchable browser.
+        // Appearance, the next tab, has the dark/light switch and a theme control for each, which open the searchable browser.
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
             o.contains("THEME")
-                && o.contains("Padding")
+                && o.contains("Appearance")
+                && o.contains("Dark theme")
+                && o.contains("Light theme")
                 && !o.contains("Corners")
                 && o.contains("PREVIEW"),
             "the theme settings first, with their preview"
@@ -3761,7 +3764,7 @@ mod screen_tests {
         );
         let theme_row = design::settings_rows(modal::Cat::Appearance)
             .iter()
-            .position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme"))
+            .position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme_dark"))
             .unwrap();
         for _ in 0..theme_row {
             app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
@@ -3774,7 +3777,17 @@ mod screen_tests {
         );
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("Themes") && o.contains("Day"));
+        assert!(
+            o.contains("Dark themes") && o.contains("Night") && !o.contains("Day"),
+            "the dark tab lists only dark themes"
+        );
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        let o = draw(&mut app, 160, 45);
+        assert!(
+            o.contains("Light themes") && o.contains("Day") && !o.contains("Night"),
+            "Tab shows the light tab, on the light theme chosen"
+        );
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         app.on_paste("Monokai".into());
         assert!(draw(&mut app, 160, 45).contains("Monokai"));
         app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
@@ -10151,7 +10164,7 @@ mod settings_splash_tests {
             cat: 1,
             sel: design::settings_rows(modal::Cat::Appearance)
                 .iter()
-                .position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme"))
+                .position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme_dark"))
                 .unwrap(),
             editing: None,
             capturing: false,
@@ -10179,7 +10192,7 @@ mod settings_splash_tests {
         }
         assert!(settings.contains("Leader key") && settings.contains("Splash screen"));
         assert!(
-            keys.contains("Theme") && keys.contains("Enter browse"),
+            keys.contains("Dark theme") && keys.contains("Enter browse"),
             "the theme control opens the browser"
         );
     }
@@ -10383,6 +10396,26 @@ mod settings_v8_tests {
         assert!(
             !o.contains("+ starts"),
             "the + chips start shells, so there is nothing to choose: {o}"
+        );
+    }
+
+    #[test]
+    fn switching_dark_or_light_is_a_search_only_command_with_no_default_key() {
+        assert_eq!(
+            Action::ToggleAppearance.to_config().as_deref(),
+            Some("toggle-appearance")
+        );
+        let (_, app) = super::design_tests::render_with(160, 45);
+        assert!(
+            app.palette_commands().contains(&Action::ToggleAppearance),
+            "it is in the key overlay's search"
+        );
+        assert!(
+            !crate::keys::DEFAULT_PREFIX_KEYS
+                .iter()
+                .chain(crate::keys::DEFAULT_GLOBAL_KEYS)
+                .any(|(_, action)| *action == "toggle-appearance"),
+            "and has no key of its own"
         );
     }
 
