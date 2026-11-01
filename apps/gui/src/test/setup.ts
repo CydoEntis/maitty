@@ -12,4 +12,7 @@ Object.defineProperty(globalThis, 'ResizeObserver', {
   },
 })
 
+// jsdom defaults to 1024px, which is the compact (drawer) layout; tests assume the docked sidebar.
+Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1280 })
+
 afterEach(() => { cleanup(); })

@@ -160,6 +160,7 @@ describe('desktop chat and terminal handoff', () => {
     await user.click(
       screen.getByRole('button', { name: /Open a project folder/ }),
     )
+    await user.click(await screen.findByRole('button', { name: 'Browse…' }))
     expect(
       await screen.findByRole('textbox', { name: 'Project folder' }),
     ).toHaveValue(folder)
@@ -184,7 +185,9 @@ describe('desktop chat and terminal handoff', () => {
     const user = userEvent.setup()
     daemon.loadConversationDiff.mockRejectedValue(new Error('Git failed'))
     renderDesktopApp()
-    await user.click(await screen.findByRole('button', { name: /Changes/ }))
+    await userEvent.setup().click(
+      await screen.findByRole('button', { name: /^Review/ }),
+    )
 
     expect(
       await screen.findByRole('heading', { name: "Couldn?t load changes" }),
@@ -199,12 +202,14 @@ describe('desktop chat and terminal handoff', () => {
   })
 
   it('explains when Changes is unavailable because the project has no Git repository', async () => {
-    const user = userEvent.setup()
+    
     daemon.loadConversations.mockResolvedValue([
       { ...structuredConversation, isGitRepository: false },
     ])
     renderDesktopApp()
-    await user.click(await screen.findByRole('button', { name: /Changes/ }))
+    await userEvent.setup().click(
+      await screen.findByRole('button', { name: /^Review/ }),
+    )
 
     expect(
       await screen.findByRole('heading', { name: 'Changes need Git' }),
@@ -220,7 +225,8 @@ describe('desktop chat and terminal handoff', () => {
     renderDesktopApp()
 
     expect(screen.queryByRole('tab', { name: 'Files' })).not.toBeInTheDocument()
-    await user.click(await screen.findByRole('button', { name: 'Open project files' }))
+    await user.click(await screen.findByRole('button', { name: /^Review/ }))
+    await user.click(await screen.findByRole('tab', { name: 'Files' }))
     await user.click(await screen.findByRole('button', { name: 'Preview file README.md' }))
 
     expect(await screen.findByText('# Read only preview')).toBeInTheDocument()

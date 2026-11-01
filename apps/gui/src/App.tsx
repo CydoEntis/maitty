@@ -12,18 +12,17 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
   ArrowUpRight,
+  ArrowUp,
   Check,
   CheckCheck,
   ChevronDown,
   ChevronRight,
   CircleAlert,
-  CircleCheck,
   CircleHelp,
   Command,
-  Circle,
-  CircleDashed,
   FileCode2,
   FolderOpen,
+  FolderPlus,
   Archive,
   ArchiveRestore,
   GitBranch,
@@ -35,11 +34,9 @@ import {
   PanelLeft,
   Pin,
   Pencil,
+  PenLine,
   Plus,
-  Diamond,
-  RefreshCw,
   Search,
-  Send,
   Settings2,
   ShieldCheck,
   Square,
@@ -48,6 +45,20 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { StatusMark } from '@/components/StatusMark'
+import { Elapsed } from '@/components/Elapsed'
+import { DiffStat } from '@/components/DiffStat'
+import { useReviewStat } from '@/features/review/useReviewStat'
+import {
+  showAttentionToast,
+  showFinishedToast,
+} from '@/features/notifications/backgroundToasts'
+import { HighlightedLine } from '@/components/HighlightedLine'
+import { TerminalPanes } from '@/features/terminal/TerminalPanes'
+import { WorkingSinceContext, useWorkingSince } from '@/lib/working-since'
+import { OpenProjectDialog } from '@/features/projects/components/OpenProjectDialog'
+import { recentProjectsFrom } from '@/features/projects/recent-projects'
+import { setSpinnerStyle } from '@/lib/spinner-clock'
 import { Toaster } from '@/components/ui/sonner'
 import {
   Dialog,
@@ -64,10 +75,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { TerminalView as DaemonTerminalView } from './TerminalView'
-import { TooltipProvider } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import {
   answerUserInput as answerDaemonInput,
   approveRequest,
@@ -153,12 +168,12 @@ const PERMISSION_JSON_INDENT_SPACES = 2
 const SESSION_REFRESH_INTERVAL_MS = 1500
 const HISTORY_REFRESH_INTERVAL_MS = 2500
 const APPROVAL_COMPACT_HEIGHT_PX = 760
-const COMPACT_SIDEBAR_MAX_WIDTH_PX = 899
+const COMPACT_SIDEBAR_MAX_WIDTH_PX = 1099
+const RECENT_PROJECT_LIMIT = 5
 const ACTIVITY_PREVIEW_LINE_COUNT = 3
 const CODE_FENCE_MARKER = '```'
 
 type PanelTab = 'details' | 'diff' | 'files'
-const PANEL_TAB_ORDER = ['diff', 'files', 'details'] as const
 type SendFailure = { kind: 'not-delivered' | 'unknown'; operation: number }
 
 const statusText: Record<SessionStatus, string> = {
@@ -253,10 +268,13 @@ function App() {
     sidebarPreferences.renamedTitles,
   ])
   const [selectedId, setSelectedId] = useState(
-    () => readSelectedConversation() ?? (desktop ? '' : 'codex-43'),
+    () =>
+      (readSettingsPreferences().restoreTabs
+        ? readSelectedConversation()
+        : null) ?? (desktop ? '' : 'codex-43'),
   )
-  const [savedOpenTabIds, setSavedOpenTabIds] = useState(
-    readOpenConversationTabs,
+  const [savedOpenTabIds, setSavedOpenTabIds] = useState(() =>
+    readSettingsPreferences().restoreTabs ? readOpenConversationTabs() : [],
   )
   const [messagesById, setMessagesById] = useState<Record<string, Message[]>>(
     () => structuredClone(previewMessages),
@@ -278,6 +296,11 @@ function App() {
   )
   const [isCompactSidebar, setIsCompactSidebar] = useState(false)
   const [newDialogOpen, setNewDialogOpen] = useState(false)
+  const [openProjectOpen, setOpenProjectOpen] = useState(false)
+  const [denyQueuedFor, setDenyQueuedFor] = useState<string | null>(null)
+  const [workingSince, setWorkingSince] = useState<ReadonlyMap<string, number>>(
+    new Map(),
+  )
   const [commandDialogOpen, setCommandDialogOpen] = useState(false)
   const [keyboardDialogOpen, setKeyboardDialogOpen] = useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
@@ -300,18 +323,35 @@ function App() {
   const queryClient = useQueryClient()
   const conversationCreationPendingRef = useRef(false)
   const previousConversationStatuses = useRef(new Map<string, SessionStatus>())
-  const chooseFolder = useCallback(async () => {
-    if (!desktop || isChoosingFolder) return
+  const chooseFolder = useCallback(async (): Promise<string | null> => {
+    if (!desktop || isChoosingFolder) return null
     setIsChoosingFolder(true)
     try {
       const folder = await chooseProjectFolder()
       if (folder) setNewProject(folder)
+      return folder
     } catch {
       toast.error('Could not open the folder picker')
+      return null
     } finally {
       setIsChoosingFolder(false)
     }
   }, [desktop, isChoosingFolder])
+
+  useEffect(() => {
+    setWorkingSince((current) => {
+      const next = new Map(current)
+      for (const conversation of conversations) {
+        const previous = previousConversationStatuses.current.get(
+          conversation.id,
+        )
+        if (conversation.status !== 'working') next.delete(conversation.id)
+        else if (previous !== undefined && previous !== 'working')
+          next.set(conversation.id, Date.now())
+      }
+      return next
+    })
+  }, [conversations])
 
   const activeConversations = useMemo(
     () =>
@@ -373,12 +413,20 @@ function App() {
     },
     [openTabIds, selectedConversationId],
   )
+  // While the terminal view is open, choosing a session keeps it open and
+  // shows that session's terminal.
+  const selectInCurrentView = (conversationId: string) => {
+    selectConversation(conversationId)
+    if (terminalConversationId !== null)
+      setTerminalConversationId(conversationId)
+  }
   const showTerminal = Boolean(
     selected && terminalConversationId === selected.id,
   )
   const historyQuery = useQuery({
     queryKey: ['conversation-history', selected?.id],
-    queryFn: () => loadMessages(selected?.id ?? '', selected?.provider ?? 'Codex'),
+    queryFn: () =>
+      loadMessages(selected?.id ?? '', selected?.provider ?? 'Codex'),
     enabled: desktop && Boolean(selected),
     refetchInterval: (query) => {
       const waitingForApproval =
@@ -416,9 +464,13 @@ function App() {
     ) {
       void refetchHistory()
     }
-    previousSelectedStatus.current = selectedIdForHistory && selectedStatusForHistory
-      ? { conversationId: selectedIdForHistory, status: selectedStatusForHistory }
-      : null
+    previousSelectedStatus.current =
+      selectedIdForHistory && selectedStatusForHistory
+        ? {
+            conversationId: selectedIdForHistory,
+            status: selectedStatusForHistory,
+          }
+        : null
   }, [refetchHistory, selectedIdForHistory, selectedStatusForHistory])
   const codexExecutableQuery = useQuery({
     queryKey: ['codex-executable'],
@@ -477,7 +529,9 @@ function App() {
               queryKey: ['conversation-history', selected.id],
             }),
           ])
-          toast.message(`Cancellation requested. Waiting for ${selected.provider} to stop.`)
+          toast.message(
+            `Cancellation requested. Waiting for ${selected.provider} to stop.`,
+          )
         })
         .catch((error: unknown) => {
           toast.error(
@@ -503,7 +557,9 @@ function App() {
         setTerminalConversationId(null)
         return
       }
-      setTerminalSwitchNotice('Reconnect to Maitty before switching this conversation.')
+      setTerminalSwitchNotice(
+        'Reconnect to Maitty before switching this conversation.',
+      )
       return
     }
     if (handoffPending) return
@@ -564,7 +620,9 @@ function App() {
         if (returningToChat) {
           setTerminalConversationId(null)
           void refreshConversation().catch(() => {
-            setTerminalSwitchNotice('Chat is open, but Maitty could not refresh the conversation state.')
+            setTerminalSwitchNotice(
+              'Chat is open, but Maitty could not refresh the conversation state.',
+            )
           })
           return
         }
@@ -572,10 +630,15 @@ function App() {
         setTerminalConversationId(selected.id)
       })
       .catch((error: unknown) => {
-        const detail = error instanceof Error ? error.message : 'Could not switch the conversation view.'
+        const detail =
+          error instanceof Error
+            ? error.message
+            : 'Could not switch the conversation view.'
         setTerminalSwitchNotice(detail)
         void refreshConversation().catch(() => {
-          setTerminalSwitchNotice(`${detail} Maitty could not refresh this conversation’s state.`)
+          setTerminalSwitchNotice(
+            `${detail} Maitty could not refresh this conversation’s state.`,
+          )
         })
       })
       .finally(() => {
@@ -606,7 +669,9 @@ function App() {
         return
       }
       if (daemonDisconnected) {
-        setTerminalSwitchNotice('Reconnect to Maitty before opening the native terminal.')
+        setTerminalSwitchNotice(
+          'Reconnect to Maitty before opening the native terminal.',
+        )
         return
       }
       if (handoffPending) return
@@ -628,12 +693,20 @@ function App() {
           setTerminalConversationId(conversation.id)
         })
         .catch((error: unknown) => {
-          setTerminalSwitchNotice(error instanceof Error ? error.message : 'Could not open the native terminal.')
+          setTerminalSwitchNotice(
+            error instanceof Error
+              ? error.message
+              : 'Could not open the native terminal.',
+          )
           void Promise.all([
             queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-            queryClient.invalidateQueries({ queryKey: ['conversation-history', conversation.id] }),
+            queryClient.invalidateQueries({
+              queryKey: ['conversation-history', conversation.id],
+            }),
           ]).catch(() => {
-            setTerminalSwitchNotice('The handoff failed, and Maitty could not refresh the conversation state.')
+            setTerminalSwitchNotice(
+              'The handoff failed, and Maitty could not refresh the conversation state.',
+            )
           })
         })
         .finally(() => {
@@ -672,16 +745,24 @@ function App() {
             queryKey: ['conversation-history', selected.id],
           }),
         ]).catch(() => {
-          setTerminalSwitchNotice('Chat is open, but Maitty could not refresh the conversation state.')
+          setTerminalSwitchNotice(
+            'Chat is open, but Maitty could not refresh the conversation state.',
+          )
         })
       })
       .catch((error: unknown) => {
-        setTerminalSwitchNotice(error instanceof Error ? error.message : 'Could not return to chat.')
+        setTerminalSwitchNotice(
+          error instanceof Error ? error.message : 'Could not return to chat.',
+        )
         void Promise.all([
           queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-          queryClient.invalidateQueries({ queryKey: ['conversation-history', selected.id] }),
+          queryClient.invalidateQueries({
+            queryKey: ['conversation-history', selected.id],
+          }),
         ]).catch(() => {
-          setTerminalSwitchNotice('The return failed, and Maitty could not refresh the conversation state.')
+          setTerminalSwitchNotice(
+            'The return failed, and Maitty could not refresh the conversation state.',
+          )
         })
       })
       .finally(() => {
@@ -776,22 +857,37 @@ function App() {
           )
 
     for (const notification of notifications) {
-      const openConversation = {
-        label: 'Open',
-        onClick: () => {
-          selectConversation(notification.conversationId)
-        },
+      const conversation = activeConversations.find(
+        (item) => item.id === notification.conversationId,
+      )
+      const open = () => {
+        selectConversation(notification.conversationId)
       }
       if (notification.kind === 'attention') {
         if (!settingsPreferences.notifyNeedsYou) continue
-        toast.warning(`${notification.title} needs your attention`, {
-          action: openConversation,
-        })
+        if (conversation) {
+          void showAttentionToast(conversation, {
+            open,
+            answered: () => {
+              void queryClient.invalidateQueries({
+                queryKey: ['conversations'],
+              })
+            },
+          })
+        } else {
+          toast.warning(`${notification.title} needs your attention`, {
+            action: { label: 'Open', onClick: open },
+          })
+        }
       } else {
         if (!settingsPreferences.notifyFinished) continue
-        toast.success(`${notification.title} is done`, {
-          action: openConversation,
-        })
+        if (conversation) {
+          void showFinishedToast(conversation, { open })
+        } else {
+          toast.success(`${notification.title} is done`, {
+            action: { label: 'Open', onClick: open },
+          })
+        }
       }
       if (settingsPreferences.notificationSound) playNotificationSound()
     }
@@ -809,6 +905,7 @@ function App() {
     settingsPreferences.notifyFinished,
     settingsPreferences.notifyNeedsYou,
     selectConversation,
+    queryClient,
   ])
 
   useEffect(() => {
@@ -825,7 +922,7 @@ function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
-    document.documentElement.classList.toggle('dark', theme === 'night')
+    document.documentElement.classList.toggle('dark', theme !== 'day')
     try {
       writeThemePreference(theme)
     } catch (error) {
@@ -844,7 +941,9 @@ function App() {
     )
     document.documentElement.dataset.sidebarActivity =
       settingsPreferences.animateSidebarActivity ? 'on' : 'off'
+    setSpinnerStyle(settingsPreferences.spinner)
   }, [
+    settingsPreferences.spinner,
     settingsPreferences.accent,
     settingsPreferences.animateSidebarActivity,
     settingsPreferences.reduceMotion,
@@ -924,8 +1023,17 @@ function App() {
       }
       if (hasModifier && key === 'o') {
         event.preventDefault()
-        setNewDialogOpen(true)
-        if (desktop) void chooseFolder()
+        setOpenProjectOpen(true)
+        return
+      }
+      if (event.key === 'Escape' && !inTerminal) {
+        if (activePanel) {
+          event.preventDefault()
+          setActivePanel(null)
+        } else if (sidebarDrawerOpen) {
+          event.preventDefault()
+          setSidebarDrawerOpen(false)
+        }
         return
       }
       if (hasModifier && key === '\\') {
@@ -1052,6 +1160,8 @@ function App() {
     }
   }, [
     activeConversations,
+    activePanel,
+    sidebarDrawerOpen,
     cancelTurn,
     chooseFolder,
     daemonDisconnected,
@@ -1086,7 +1196,7 @@ function App() {
       (item) => item.id === conversationId,
     )
     if (archived && conversation?.status === 'working') {
-      toast.message('Wait for this conversation to finish before archiving it')
+      toast.message('Wait for this conversation to finish before closing it')
       return
     }
     setSidebarPreferences((current) => ({
@@ -1095,6 +1205,41 @@ function App() {
         ? [...new Set([...current.archivedIds, conversationId])]
         : current.archivedIds.filter((id) => id !== conversationId),
     }))
+    if (archived) {
+      if (openTabIds.includes(conversationId) && openTabIds.length > 1)
+        closeConversation(conversationId)
+      toast.message('Session closed', {
+        description:
+          'It keeps running in maittyd. Find it under Archived to reopen it.',
+      })
+    }
+  }
+
+  function closeProject(project: string) {
+    const sessions = conversations.filter(
+      (conversation) =>
+        conversation.project === project &&
+        !sidebarPreferences.archivedIds.includes(conversation.id),
+    )
+    const closable = sessions.filter(
+      (conversation) => conversation.status !== 'working',
+    )
+    setSidebarPreferences((current) => ({
+      ...current,
+      archivedIds: [
+        ...new Set([
+          ...current.archivedIds,
+          ...closable.map((conversation) => conversation.id),
+        ]),
+      ],
+    }))
+    const stillWorking = sessions.length - closable.length
+    toast.message(`${project} closed`, {
+      description:
+        stillWorking > 0
+          ? `${String(stillWorking)} working ${stillWorking === 1 ? 'session was' : 'sessions were'} left open. Closed sessions keep running in maittyd and are under Archived.`
+          : 'Its sessions keep running in maittyd and are under Archived.',
+    })
   }
 
   function renameConversation(conversationId: string, title: string) {
@@ -1108,6 +1253,30 @@ function App() {
       renamedTitles: { ...current.renamedTitles, [conversationId]: cleanTitle },
     }))
   }
+
+  const openProjectDialog = (
+    <OpenProjectDialog
+      open={openProjectOpen}
+      recents={recentProjectsFrom(conversations)}
+      canBrowse={desktop}
+      browsing={isChoosingFolder}
+      onClose={() => {
+        setOpenProjectOpen(false)
+      }}
+      onOpen={(folder) => {
+        setNewProject(folder)
+        setOpenProjectOpen(false)
+        setNewDialogOpen(true)
+      }}
+      onBrowse={() => {
+        void chooseFolder().then((folder) => {
+          if (!folder) return
+          setOpenProjectOpen(false)
+          setNewDialogOpen(true)
+        })
+      }}
+    />
+  )
 
   const settingsDialog = (
     <SettingsDialog
@@ -1281,232 +1450,236 @@ function App() {
     </Dialog>
   )
 
+  const approvalChoicesOffered = pendingApproval
+    ? (pendingApproval.approvalChoices ??
+      (desktop ? [] : ['Decline', 'Accept', 'AcceptForSession', 'Cancel']))
+    : []
+  // Only a choice the provider offered may be used; Cancel also ends the turn so
+  // the instructions can follow right away.
+  const denyDecision: 'Cancel' | 'Decline' | null =
+    pendingApproval &&
+    pendingApproval.approvalKind !== 'UserInput' &&
+    !daemonDisconnected
+      ? approvalChoicesOffered.includes('Cancel')
+        ? 'Cancel'
+        : approvalChoicesOffered.includes('Decline')
+          ? 'Decline'
+          : null
+      : null
+
+  useEffect(() => {
+    if (
+      !selected ||
+      denyQueuedFor === null ||
+      denyQueuedFor !== selected.id ||
+      daemonDisconnected
+    )
+      return
+    if (selected.status === 'idle' || selected.status === 'done') {
+      sendMessage()
+    }
+  })
+
   if (!selected)
     return (
-      <div className="app-shell">
-        <div
-          className="sr-only"
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {statusAnnouncement}
-        </div>
-        <a
-          className="skip-link"
-          href="#conversation-main"
-          onClick={focusMainContent}
-        >
-          Skip to main content
-        </a>
-        <header className="window-bar">
-          <div className="brand-lockup">
-            <div className="brand-mark" aria-hidden="true">
-              <span />
-            </div>
-            <span className="brand-name">maitty</span>
-          </div>
-          <div className="window-location">Local workspace</div>
-          <div className="window-actions">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Open settings"
-              onClick={() => {
-                setSettingsDialogOpen(true)
-              }}
-            >
-              <Settings2 />
-            </Button>
-            <span className="preview-label">
-              {sessionsQuery.isLoading
-                ? 'CONNECTING'
-                : sessionsQuery.isError
-                  ? 'DAEMON DISCONNECTED'
-                  : 'DAEMON CONNECTED'}
-            </span>
-          </div>
-        </header>
-        <div className="workspace-shell empty-shell">
-          <ConversationSidebar
-            conversations={[]}
-            archivedConversations={[]}
-            selectedId=""
-            filter={filter}
-            pinnedIds={sidebarPreferences.pinnedIds}
-            compact={isCompactSidebar}
-            desktopCollapsed={sidebarCollapsed}
-            disconnected={daemonDisconnected}
-            drawerOpen={sidebarDrawerOpen}
-            onFilter={setFilter}
-            onNew={() => {
-              setNewDialogOpen(true)
-            }}
-            onTogglePin={togglePin}
-            onArchive={setArchived}
-            onRename={renameConversation}
-            onSelect={selectConversation}
-            onToggleDrawer={() => {
-              setSidebarDrawerOpen((open) => !open)
-            }}
-            onToggleCollapse={() => {
-              setSidebarCollapsed((collapsed) => !collapsed)
-            }}
-            primaryModifier={primaryModifier}
-          />
-          <main
-            className="empty-workspace"
-            id="conversation-main"
-            tabIndex={-1}
-          >
-            <div className="empty-mark">
-              <MessageSquarePlus size={20} />
-            </div>
-            <h1>
-              {sessionsQuery.isLoading
-                ? 'Connecting to Maitty'
-                : sessionsQuery.isError
-                  ? 'Daemon disconnected'
-                  : 'Run your coding agents side by side.'}
-            </h1>
-            <p
-              className={
-                sessionsQuery.isError ? 'daemon-connection-error' : undefined
-              }
-            >
-              {sessionsQuery.isLoading
-                ? 'Connecting to your local Maitty service.'
-                : sessionsQuery.isError
-                  ? daemonConnectionError(sessionsQuery.error)
-                  : 'Your conversations stay running in Maitty, even when you close this window.'}
-            </p>
-            {!sessionsQuery.isLoading && !sessionsQuery.isError && (
-              <div
-                className="first-run-checklist"
-                aria-label="First launch status"
-              >
-                <span>
-                  <i className="connection-dot is-connected" />
-                  Maitty daemon connected
-                </span>
-                <span>
-                  <i
-                    className={`connection-dot ${codexExecutableQuery.isSuccess ? 'is-connected' : ''}`}
-                  />
-                  {!desktop
-                    ? 'Codex check available in desktop app'
-                    : codexExecutableQuery.isPending
-                      ? 'Checking for Codex CLI…'
-                      : codexExecutableQuery.isError
-                        ? 'Codex CLI not found'
-                        : 'Codex CLI ready'}
-                </span>
-                <span>
-                  <i
-                    className={`connection-dot ${claudeExecutableQuery.isSuccess ? 'is-connected' : ''}`}
-                  />
-                  {!desktop
-                    ? 'Claude Code check available in desktop app'
-                    : claudeExecutableQuery.isPending
-                      ? 'Checking for Claude Code CLI…'
-                      : claudeExecutableQuery.isError
-                        ? 'Claude Code CLI not found'
-                        : 'Claude Code CLI ready'}
-                </span>
-              </div>
-            )}
-            {sessionsQuery.isLoading ? (
-              <Button disabled>
-                <LoaderCircle size={14} />
-                Connecting
-              </Button>
-            ) : sessionsQuery.isError ? (
-              <>
-                <div className="connection-actions">
-                  <Button
-                    onClick={() => {
-                      void sessionsQuery.refetch()
-                    }}
-                  >
-                    Reconnect
-                  </Button>
-                  {daemonRestartAction}
-                </div>
-                {mismatch &&
-                  daemonRestartStatus &&
-                  !daemonRestartStatus.canRestart && (
-                    <p className="daemon-connection-error" role="status">
-                      {mismatch.daemonProtocol > mismatch.guiProtocol
-                        ? 'This service is newer than the GUI. Update the GUI before reconnecting.'
-                        : daemonRestartStatus.sessionCount > 0
-                          ? `The older service owns ${String(daemonRestartStatus.sessionCount)} sessions. Maitty will leave it running so your TUI work is not interrupted.`
-                          : daemonRestartStatus.activeTurnCount === null
-                            ? 'Maitty could not verify that the older service is idle, so it will leave the service running.'
-                            : 'The older service still reports active work, so Maitty will leave it running.'}
-                    </p>
-                  )}
-              </>
-            ) : (
-              <Button
-                onClick={() => {
-                  setNewDialogOpen(true)
-                  if (desktop) void chooseFolder()
-                }}
-              >
-                <FolderOpen size={14} />
-                Open a project folder
-                <span className="shortcut-hint">{primaryModifier} O</span>
-              </Button>
-            )}
-          </main>
-        </div>
-        <footer className="status-bar">
+      <TooltipProvider>
+        <div className="app-shell">
           <div
+            className="sr-only"
             role="status"
             aria-live="polite"
-            aria-label={
-              sessionsQuery.isLoading
-                ? 'Connecting to Maitty daemon'
-                : sessionsQuery.isError
-                  ? 'Daemon disconnected'
-                  : 'Daemon connected'
-            }
+            aria-atomic="true"
           >
-            <span className="connection-dot" />
-            {sessionsQuery.isLoading
-              ? 'Connecting to Maitty daemon'
-              : sessionsQuery.isError
-                ? 'Daemon disconnected'
-                : 'Daemon connected'}
+            {statusAnnouncement}
           </div>
-          <div>Sessions remain owned by the daemon</div>
-        </footer>
-        <NewConversationDialog
-          open={newDialogOpen}
-          project={newProject}
-          onProjectChange={setNewProject}
-          provider={newProvider}
-          onProviderChange={setNewProvider}
-          claudeAvailable={!desktop || Boolean(claudeExecutableQuery.data)}
-          desktop={desktop}
-          onChooseFolder={() => {
-            void chooseFolder()
-          }}
-          isChoosingFolder={isChoosingFolder}
-          onClose={() => {
-            setNewDialogOpen(false)
-          }}
-          onCreate={createConversation}
-          disabled={daemonDisconnected || conversationCreationPending}
-          isCreating={conversationCreationPending}
-        />
-        {settingsDialog}
-        {daemonRestartDialog}
-        <Toaster
-          position={settingsPreferences.toastPosition}
-          theme={theme === 'night' ? 'dark' : 'light'}
-        />
-      </div>
+          <a
+            className="skip-link"
+            href="#conversation-main"
+            onClick={focusMainContent}
+          >
+            Skip to main content
+          </a>
+          <div className="workspace-shell empty-shell">
+            <ConversationSidebar
+              conversations={[]}
+              archivedConversations={[]}
+              selectedId=""
+              filter={filter}
+              pinnedIds={sidebarPreferences.pinnedIds}
+              compact={isCompactSidebar}
+              desktopCollapsed={sidebarCollapsed}
+              disconnected={daemonDisconnected}
+              drawerOpen={sidebarDrawerOpen}
+              onFilter={setFilter}
+              onNew={() => {
+                setNewDialogOpen(true)
+              }}
+              onTogglePin={togglePin}
+              onArchive={setArchived}
+              onRename={renameConversation}
+              onSelect={selectConversation}
+              onToggleDrawer={() => {
+                setSidebarDrawerOpen((open) => !open)
+              }}
+              onToggleCollapse={() => {
+                setSidebarCollapsed((collapsed) => !collapsed)
+              }}
+              onNewInProject={() => {
+                setNewDialogOpen(true)
+              }}
+              openIds={[]}
+              onOpenProject={() => {
+                setOpenProjectOpen(true)
+              }}
+              onCloseProject={closeProject}
+              daemonLabel={
+                sessionsQuery.isLoading
+                  ? 'Connecting to Maitty daemon'
+                  : sessionsQuery.isError
+                    ? 'Daemon disconnected'
+                    : 'Daemon connected'
+              }
+              sessionCount={0}
+              previewMode={false}
+              onOpenSettings={() => {
+                setSettingsDialogOpen(true)
+              }}
+              primaryModifier={primaryModifier}
+            />
+            <main
+              className="empty-workspace"
+              id="conversation-main"
+              tabIndex={-1}
+            >
+              <div className="empty-mark">
+                <MessageSquarePlus size={20} />
+              </div>
+              <h1>
+                {sessionsQuery.isLoading
+                  ? 'Connecting to Maitty'
+                  : sessionsQuery.isError
+                    ? 'Daemon disconnected'
+                    : 'Run your coding agents side by side.'}
+              </h1>
+              <p
+                className={
+                  sessionsQuery.isError ? 'daemon-connection-error' : undefined
+                }
+              >
+                {sessionsQuery.isLoading
+                  ? 'Connecting to your local Maitty service.'
+                  : sessionsQuery.isError
+                    ? daemonConnectionError(sessionsQuery.error)
+                    : 'Open a project folder, start an agent session, and switch between chat and its native terminal at any time. Sessions live in maittyd, so closing this window never stops an agent.'}
+              </p>
+              {!sessionsQuery.isLoading && !sessionsQuery.isError && (
+                <div
+                  className="first-run-checklist"
+                  aria-label="First launch status"
+                >
+                  <span>
+                    <i className="connection-dot is-connected" />
+                    Maitty daemon connected
+                  </span>
+                  <span>
+                    <i
+                      className={`connection-dot ${codexExecutableQuery.isSuccess ? 'is-connected' : ''}`}
+                    />
+                    {!desktop
+                      ? 'Codex check available in desktop app'
+                      : codexExecutableQuery.isPending
+                        ? 'Checking for Codex CLI…'
+                        : codexExecutableQuery.isError
+                          ? 'Codex CLI not found'
+                          : 'Codex CLI ready'}
+                  </span>
+                  <span>
+                    <i
+                      className={`connection-dot ${claudeExecutableQuery.isSuccess ? 'is-connected' : ''}`}
+                    />
+                    {!desktop
+                      ? 'Claude Code check available in desktop app'
+                      : claudeExecutableQuery.isPending
+                        ? 'Checking for Claude Code CLI…'
+                        : claudeExecutableQuery.isError
+                          ? 'Claude Code CLI not found'
+                          : 'Claude Code CLI ready'}
+                  </span>
+                </div>
+              )}
+              {sessionsQuery.isLoading ? (
+                <Button disabled>
+                  <LoaderCircle size={14} />
+                  Connecting
+                </Button>
+              ) : sessionsQuery.isError ? (
+                <>
+                  <div className="connection-actions">
+                    <Button
+                      onClick={() => {
+                        void sessionsQuery.refetch()
+                      }}
+                    >
+                      Reconnect
+                    </Button>
+                    {daemonRestartAction}
+                  </div>
+                  {mismatch &&
+                    daemonRestartStatus &&
+                    !daemonRestartStatus.canRestart && (
+                      <p className="daemon-connection-error" role="status">
+                        {mismatch.daemonProtocol > mismatch.guiProtocol
+                          ? 'This service is newer than the GUI. Update the GUI before reconnecting.'
+                          : daemonRestartStatus.sessionCount > 0
+                            ? `The older service owns ${String(daemonRestartStatus.sessionCount)} sessions. Maitty will leave it running so your TUI work is not interrupted.`
+                            : daemonRestartStatus.activeTurnCount === null
+                              ? 'Maitty could not verify that the older service is idle, so it will leave the service running.'
+                              : 'The older service still reports active work, so Maitty will leave it running.'}
+                      </p>
+                    )}
+                </>
+              ) : (
+                <Button
+                  onClick={() => {
+                    setOpenProjectOpen(true)
+                  }}
+                >
+                  <FolderOpen size={14} />
+                  Open a project folder
+                  <span className="shortcut-hint">{primaryModifier} O</span>
+                </Button>
+              )}
+            </main>
+          </div>
+          <NewConversationDialog
+            open={newDialogOpen}
+            project={newProject}
+            onProjectChange={setNewProject}
+            provider={newProvider}
+            onProviderChange={setNewProvider}
+            claudeAvailable={!desktop || Boolean(claudeExecutableQuery.data)}
+            desktop={desktop}
+            onChooseFolder={() => {
+              void chooseFolder()
+            }}
+            isChoosingFolder={isChoosingFolder}
+            onClose={() => {
+              setNewDialogOpen(false)
+            }}
+            onCreate={createConversation}
+            disabled={daemonDisconnected || conversationCreationPending}
+            isCreating={conversationCreationPending}
+            recentProjects={[]}
+          />
+          {settingsDialog}
+          {openProjectDialog}
+          {daemonRestartDialog}
+          <Toaster
+            position={settingsPreferences.toastPosition}
+            theme={theme === 'day' ? 'light' : 'dark'}
+          />
+        </div>
+      </TooltipProvider>
     )
 
   const activeConversation = selected
@@ -1531,6 +1704,8 @@ function App() {
   }
 
   function sendMessage() {
+    // A queued deny-and-send is spent the moment a send is attempted.
+    setDenyQueuedFor(null)
     if (daemonDisconnected) return
     if (deliveryNotice === 'unknown') return
     const text = draft.trim()
@@ -1557,7 +1732,8 @@ function App() {
           try {
             const latest = await queryClient.query({
               queryKey: ['conversation-history', conversationId],
-              queryFn: () => loadMessages(conversationId, conversation.provider),
+              queryFn: () =>
+                loadMessages(conversationId, conversation.provider),
               staleTime: 0,
             })
             outcome = classifySubmissionFailure(
@@ -1822,416 +1998,455 @@ function App() {
     toast.message('Created in local preview')
   }
 
+  function denyAndSend() {
+    if (!pendingApproval || !denyDecision || !draft.trim()) return
+    setDenyQueuedFor(activeConversation.id)
+    resolveApproval(pendingApproval, denyDecision)
+  }
+
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      sendMessage()
+      if (denyDecision) denyAndSend()
+      else sendMessage()
     }
   }
 
   return (
-    <TooltipProvider>
-      <div className="app-shell">
-        <div
-          className="sr-only"
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {statusAnnouncement}
-        </div>
-        <a
-          className="skip-link"
-          href="#conversation-main"
-          onClick={focusMainContent}
-        >
-          Skip to conversation
-        </a>
-        <header className="window-bar">
-          <div className="brand-lockup">
-            <div className="brand-mark" aria-hidden="true">
-              <span />
-            </div>
-            <span className="brand-name">maitty</span>
-          </div>
-          <div className="window-location">
-            <span>Workspace</span>
-            <ChevronRight size={13} />
-            <span>{selected.project}</span>
-          </div>
-          <div className="window-actions">
-            {!desktop && import.meta.env.DEV && (
-              <span className="preview-label">LOCAL PREVIEW · SAMPLE DATA</span>
-            )}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Open settings"
-              onClick={() => {
-                setSettingsDialogOpen(true)
-              }}
-            >
-              <Settings2 />
-            </Button>
-          </div>
-        </header>
-
-        <div className={`workspace-shell ${activePanel ? 'has-panel' : ''}`}>
-          <ConversationSidebar
-            conversations={filteredConversations}
-            archivedConversations={conversations.filter((conversation) =>
-              sidebarPreferences.archivedIds.includes(conversation.id),
-            )}
-            selectedId={selected.id}
-            filter={filter}
-            pinnedIds={sidebarPreferences.pinnedIds}
-            compact={isCompactSidebar}
-            desktopCollapsed={sidebarCollapsed}
-            disconnected={daemonDisconnected}
-            drawerOpen={sidebarDrawerOpen}
-            onFilter={setFilter}
-            onNew={() => {
-              setNewDialogOpen(true)
-            }}
-            onTogglePin={togglePin}
-            onArchive={setArchived}
-            onRename={renameConversation}
-            onSelect={(id) => {
-              selectConversation(id)
-              setSidebarDrawerOpen(false)
-            }}
-            onToggleDrawer={() => {
-              setSidebarDrawerOpen((open) => !open)
-            }}
-            onToggleCollapse={() => {
-              setSidebarCollapsed((collapsed) => !collapsed)
-            }}
-            primaryModifier={primaryModifier}
-          />
-
-          <main
-            className="conversation-workspace"
-            id="conversation-main"
-            tabIndex={-1}
+    <WorkingSinceContext.Provider value={workingSince}>
+      <TooltipProvider>
+        <div className="app-shell">
+          <div
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
           >
-            <ConversationTabStrip
-              tabs={openTabs}
+            {statusAnnouncement}
+          </div>
+          <a
+            className="skip-link"
+            href="#conversation-main"
+            onClick={focusMainContent}
+          >
+            Skip to conversation
+          </a>
+          <div className={`workspace-shell ${activePanel ? 'has-panel' : ''}`}>
+            {isCompactSidebar && sidebarDrawerOpen && (
+              <div
+                className="drawer-scrim"
+                aria-hidden="true"
+                onClick={() => {
+                  setSidebarDrawerOpen(false)
+                }}
+              />
+            )}
+            <ConversationSidebar
+              conversations={filteredConversations}
+              archivedConversations={conversations.filter((conversation) =>
+                sidebarPreferences.archivedIds.includes(conversation.id),
+              )}
               selectedId={selected.id}
-              onSelect={selectConversation}
-              onClose={closeConversation}
+              filter={filter}
+              pinnedIds={sidebarPreferences.pinnedIds}
+              compact={isCompactSidebar}
+              desktopCollapsed={sidebarCollapsed}
+              disconnected={daemonDisconnected}
+              drawerOpen={sidebarDrawerOpen}
+              onFilter={setFilter}
               onNew={() => {
                 setNewDialogOpen(true)
               }}
-              conversation={selected}
-              panel={activePanel}
-              showTerminal={showTerminal}
-              onPanel={setActivePanel}
-              onToggleTerminal={toggleTerminal}
-              handoffPending={handoffPending}
+              onTogglePin={togglePin}
+              onArchive={setArchived}
+              onRename={renameConversation}
+              onSelect={(id) => {
+                selectInCurrentView(id)
+                setSidebarDrawerOpen(false)
+              }}
+              onToggleDrawer={() => {
+                setSidebarDrawerOpen((open) => !open)
+              }}
+              onToggleCollapse={() => {
+                setSidebarCollapsed((collapsed) => !collapsed)
+              }}
+              onNewInProject={(folder) => {
+                setNewProject(folder)
+                setNewDialogOpen(true)
+              }}
+              openIds={openTabIds}
+              onOpenProject={() => {
+                setOpenProjectOpen(true)
+              }}
+              onCloseProject={closeProject}
+              daemonLabel={
+                desktop
+                  ? daemonDisconnected
+                    ? 'Daemon disconnected'
+                    : 'Connected to Maitty daemon'
+                  : 'Local preview · daemon not connected'
+              }
+              sessionCount={conversations.length}
+              previewMode={!desktop}
+              onOpenSettings={() => {
+                setSettingsDialogOpen(true)
+              }}
+              primaryModifier={primaryModifier}
             />
 
-            {terminalSwitchNotice && (
-              <div className="handoff-notice" role="status">
-                <CircleAlert size={14} />
-                <span>{terminalSwitchNotice}</span>
-              </div>
-            )}
+            <div className="main-card">
+              <main
+                className="conversation-workspace"
+                id="conversation-main"
+                tabIndex={-1}
+              >
+                <ConversationTabStrip
+                  tabs={openTabs}
+                  selectedId={selected.id}
+                  onSelect={selectInCurrentView}
+                  onClose={closeConversation}
+                  conversation={selected}
+                  panel={activePanel}
+                  showTerminal={showTerminal}
+                  onPanel={setActivePanel}
+                  onToggleTerminal={toggleTerminal}
+                  handoffPending={handoffPending}
+                  threadsButton={isCompactSidebar}
+                  onOpenThreads={() => {
+                    setSidebarDrawerOpen((open) => !open)
+                  }}
+                  attentionCount={
+                    activeConversations.filter(
+                      (item) =>
+                        item.status === 'needs-you' ||
+                        item.status === 'recovery',
+                    ).length
+                  }
+                />
+                <ConversationHeader conversation={selected} />
 
-            {daemonDisconnected && (
-              <div className="connection-warning" role="alert">
-                <CircleAlert size={15} />
-                <span>
-                  Daemon disconnected. Showing the last known status; reconnect
-                  before sending or approving.
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    void sessionsQuery.refetch()
-                  }}
-                >
-                  Reconnect
-                </Button>
-                {daemonRestartAction}
-              </div>
-            )}
-            {selected.execution === 'Native' && historyQuery.isError && (
-              <div className="history-warning" role="alert">
-                <CircleAlert size={15} />
-                <span>
-                  Could not load the full conversation history. Maitty will
-                  retry the exact {selected.provider} session when you return to chat.
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    void historyQuery.refetch()
-                  }}
-                >
-                  Retry history
-                </Button>
-              </div>
-            )}
-            {selected.execution === 'Native' &&
-              !historyQuery.isError &&
-              !nativeHistoryComplete && (
-                <div className="history-warning" role="status">
-                  <CircleAlert size={15} />
-                  <span>
-                    {!historyQuery.data ||
-                    historyQuery.data.completeness === 'Loading'
-                      ? 'Loading the full conversation history. Maitty will verify it before chat resumes.'
-                      : `Conversation history is incomplete. Maitty will reconcile the exact ${selected.provider} session before chat resumes.`}
-                  </span>
-                </div>
-              )}
-            {showTerminal ? (
-              <div className="terminal-workspace">
-                <TerminalView conversation={selected} desktop={desktop} />
-              </div>
-            ) : (
-              <>
-                {selected.status === 'needs-you' && !pendingApproval && (
-                  <div className="attention-strip" role="status">
+                {terminalSwitchNotice && (
+                  <div className="handoff-notice" role="status">
+                    <CircleAlert size={14} />
+                    <span>{terminalSwitchNotice}</span>
+                  </div>
+                )}
+
+                {daemonDisconnected && (
+                  <div className="connection-warning" role="alert">
                     <CircleAlert size={15} />
                     <span>
-                      {desktop
-                        ? 'This conversation needs your attention.'
-                        : 'This agent needs your approval before it can continue.'}
+                      Disconnected from maittyd. Agents keep running in the
+                      daemon. Statuses are the last known values; reconnect
+                      before sending or approving.
                     </span>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      onClick={() =>
-                        document
-                          .querySelector<HTMLElement>('.approval-request')
-                          ?.scrollIntoView({
-                            behavior: 'smooth',
-                            block: 'center',
-                          })
-                      }
+                      onClick={() => {
+                        void sessionsQuery.refetch()
+                      }}
                     >
-                      Review request
+                      Reconnect
+                    </Button>
+                    {daemonRestartAction}
+                  </div>
+                )}
+                {selected.execution === 'Native' && historyQuery.isError && (
+                  <div className="history-warning" role="alert">
+                    <CircleAlert size={15} />
+                    <span>
+                      Could not load the full conversation history. Maitty will
+                      retry the exact {selected.provider} session when you
+                      return to chat.
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        void historyQuery.refetch()
+                      }}
+                    >
+                      Retry history
                     </Button>
                   </div>
                 )}
-                {selected.status === 'recovery' && (
-                  <RecoveryNotice
-                    conversation={selected}
-                    desktop={desktop}
-                    disabled={
-                      daemonDisconnected ||
-                      handoffPending ||
-                      recoveryPendingId === selected.id
-                    }
-                    pending={
-                      handoffPending || recoveryPendingId === selected.id
-                    }
-                    onResume={resumeSelectedConversation}
-                    onOpenTerminal={toggleTerminal}
-                    onRetryNativeHandoff={retryNativeHandoff}
-                  />
-                )}
-
-                <ScrollArea className="timeline-scroll">
-                  <div className="timeline-content">
-                    <div className="conversation-date">
-                      <span />
-                      Today, 10:42 AM
-                      <span />
+                {selected.execution === 'Native' &&
+                  !historyQuery.isError &&
+                  !nativeHistoryComplete && (
+                    <div className="history-warning" role="status">
+                      <CircleAlert size={15} />
+                      <span>
+                        {!historyQuery.data ||
+                        historyQuery.data.completeness === 'Loading'
+                          ? 'Loading the full conversation history. Maitty will verify it before chat resumes.'
+                          : `Conversation history is incomplete. Maitty will reconcile the exact ${selected.provider} session before chat resumes.`}
+                      </span>
                     </div>
-                    {messages.length === 0 ? (
-                      <EmptyConversation project={selected.project} />
-                    ) : (
-                      messages.map((message, index) => {
-                        if (message.role !== 'activity') {
-                          return (
-                            <MessageRow
-                              key={message.id}
-                              message={message}
-                              provider={selected.provider}
-                            />
-                          )
-                        }
-                        if (messages[index - 1]?.role === 'activity') return null
-                        const group: Message[] = []
-                        for (let cursor = index; messages[cursor]?.role === 'activity'; cursor += 1) {
-                          const item = messages[cursor]
-                          if (!item || item.role !== 'activity') break
-                          group.push(item)
-                        }
-                        return (
-                          <ActivityGroup
-                            key={message.id}
-                            messages={group}
-                            provider={selected.provider}
-                          />
-                        )
-                      })
-                    )}
-                    {selected.status === 'working' && (
-                      <StreamingRow provider={selected.provider} />
-                    )}
+                  )}
+                {showTerminal ? (
+                  <div className="terminal-workspace">
+                    <TerminalPanes
+                      conversations={activeConversations}
+                      selectedId={selected.id}
+                      onSelect={selectInCurrentView}
+                      primaryModifier={primaryModifier}
+                      renderTerminal={(item) => (
+                        <TerminalView conversation={item} desktop={desktop} />
+                      )}
+                    />
                   </div>
-                </ScrollArea>
+                ) : (
+                  <>
+                    {selected.status === 'needs-you' && !pendingApproval && (
+                      <div className="attention-strip" role="status">
+                        <CircleAlert size={15} />
+                        <span>
+                          {desktop
+                            ? 'This conversation needs your attention.'
+                            : 'This agent needs your approval before it can continue.'}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            document
+                              .querySelector<HTMLElement>('.approval-request')
+                              ?.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'center',
+                              })
+                          }
+                        >
+                          Review request
+                        </Button>
+                      </div>
+                    )}
+                    {selected.status === 'recovery' && (
+                      <RecoveryNotice
+                        conversation={selected}
+                        desktop={desktop}
+                        disabled={
+                          daemonDisconnected ||
+                          handoffPending ||
+                          recoveryPendingId === selected.id
+                        }
+                        pending={
+                          handoffPending || recoveryPendingId === selected.id
+                        }
+                        onResume={resumeSelectedConversation}
+                        onOpenTerminal={toggleTerminal}
+                        onRetryNativeHandoff={retryNativeHandoff}
+                      />
+                    )}
 
-                {pendingApproval && (
-                  <ApprovalDock
-                    key={`${pendingApproval.id}:${selected.id}`}
-                    message={pendingApproval}
-                    provider={selected.provider}
-                    desktop={desktop}
-                    disabled={daemonDisconnected}
-                    collapsed={approvalCollapsed}
-                    onToggle={() => {
-                      setApprovalCollapsed((collapsed) => !collapsed)
-                    }}
-                    onResolve={(decision) => {
-                      resolveApproval(pendingApproval, decision)
-                    }}
-                    onUserInput={(answers) => {
-                      answerInput(pendingApproval, answers)
-                    }}
-                  />
+                    <ScrollArea className="timeline-scroll">
+                      <div className="timeline-content">
+                        <div className="conversation-date">
+                          <span />
+                          Today, 10:42 AM
+                          <span />
+                        </div>
+                        {messages.length === 0 ? (
+                          <EmptyConversation conversation={selected} />
+                        ) : (
+                          (() => {
+                            let labelled = false
+                            return messages.map((message, index) => {
+                              if (message.role === 'user') labelled = false
+                              if (message.role === 'activity') {
+                                if (messages[index - 1]?.role === 'activity')
+                                  return null
+                                const group: Message[] = []
+                                for (
+                                  let cursor = index;
+                                  messages[cursor]?.role === 'activity';
+                                  cursor += 1
+                                ) {
+                                  const item = messages[cursor]
+                                  if (!item || item.role !== 'activity') break
+                                  group.push(item)
+                                }
+                                return (
+                                  <ActivityGroup
+                                    key={message.id}
+                                    messages={group}
+                                    provider={selected.provider}
+                                  />
+                                )
+                              }
+                              const showLabel =
+                                message.role === 'assistant' && !labelled
+                              if (message.role === 'assistant') labelled = true
+                              return (
+                                <MessageRow
+                                  key={message.id}
+                                  message={message}
+                                  provider={selected.provider}
+                                  showLabel={showLabel}
+                                />
+                              )
+                            })
+                          })()
+                        )}
+                        {selected.status === 'working' && (
+                          <StreamingRow provider={selected.provider} />
+                        )}
+                        <FilesChangedButton
+                          conversation={selected}
+                          onReview={() => {
+                            setActivePanel('diff')
+                          }}
+                        />
+                      </div>
+                    </ScrollArea>
+
+                    {pendingApproval && (
+                      <ApprovalDock
+                        key={`${pendingApproval.id}:${selected.id}`}
+                        message={pendingApproval}
+                        provider={selected.provider}
+                        desktop={desktop}
+                        disabled={daemonDisconnected}
+                        collapsed={approvalCollapsed}
+                        onToggle={() => {
+                          setApprovalCollapsed((collapsed) => !collapsed)
+                        }}
+                        onResolve={(decision) => {
+                          resolveApproval(pendingApproval, decision)
+                        }}
+                        onUserInput={(answers) => {
+                          answerInput(pendingApproval, answers)
+                        }}
+                      />
+                    )}
+                    <Composer
+                      value={draft}
+                      status={selected.status}
+                      conversation={selected}
+                      desktop={desktop}
+                      connected={!daemonDisconnected}
+                      cancelling={historyQuery.data?.cancelling ?? false}
+                      deliveryNotice={deliveryNotice}
+                      deliveryBlocked={deliveryNotice === 'unknown'}
+                      onCheckDelivery={() => {
+                        void checkSubmissionDelivery()
+                      }}
+                      onRetry={() => {
+                        sendMessage()
+                      }}
+                      onDiscard={() => {
+                        setDrafts((current) => ({
+                          ...current,
+                          [selected.id]: '',
+                        }))
+                        clearSendFailure(selected.id)
+                      }}
+                      onChange={updateDraft}
+                      onKeyDown={handleComposerKeyDown}
+                      onSend={sendMessage}
+                      denyDecision={denyDecision}
+                      denyQueued={denyQueuedFor === selected.id}
+                      onDenyAndSend={denyAndSend}
+                      onCancel={cancelTurn}
+                    />
+                  </>
                 )}
-                <Composer
-                  value={draft}
-                  status={selected.status}
+              </main>
+
+              {activePanel && (
+                <div
+                  className="panel-scrim"
+                  aria-hidden="true"
+                  onClick={() => {
+                    setActivePanel(null)
+                  }}
+                />
+              )}
+              {activePanel && (
+                <ContextPanel
+                  tab={activePanel}
                   conversation={selected}
                   desktop={desktop}
-                  connected={!daemonDisconnected}
-                  cancelling={historyQuery.data?.cancelling ?? false}
-                  deliveryNotice={deliveryNotice}
-                  deliveryBlocked={deliveryNotice === 'unknown'}
-                  onCheckDelivery={() => {
-                    void checkSubmissionDelivery()
+                  onTab={setActivePanel}
+                  onClose={() => {
+                    setActivePanel(null)
                   }}
-                  onRetry={() => {
-                    sendMessage()
-                  }}
-                  onDiscard={() => {
-                    setDrafts((current) => ({ ...current, [selected.id]: '' }))
-                    clearSendFailure(selected.id)
-                  }}
-                  onChange={updateDraft}
-                  onKeyDown={handleComposerKeyDown}
-                  onSend={sendMessage}
-                  onCancel={cancelTurn}
                 />
-              </>
-            )}
-          </main>
-
-          {activePanel && (
-            <ContextPanel
-              tab={activePanel}
-              conversation={selected}
-              desktop={desktop}
-              onTab={setActivePanel}
-              onClose={() => {
-                setActivePanel(null)
-              }}
-            />
-          )}
+              )}
+            </div>
+          </div>
         </div>
 
-        <footer className="status-bar">
-          <div
-            role="status"
-            aria-live="polite"
-            aria-label={
-              desktop
-                ? daemonDisconnected
-                  ? 'Daemon disconnected'
-                  : 'Connected to Maitty daemon'
-                : 'Local preview · daemon not connected'
-            }
-          >
-            <span className="connection-dot" />
-            {desktop
-              ? daemonDisconnected
-                ? 'Daemon disconnected'
-                : 'Connected to Maitty daemon'
-              : 'Local preview · daemon not connected'}
-          </div>
-          <div>
-            <Keyboard size={13} />
-            <span>
-              <kbd>{primaryModifier}</kbd>
-              <kbd>K</kbd> commands
-            </span>
-            <span className="status-divider" />
-            <span>All sessions stay alive when you close Maitty</span>
-          </div>
-        </footer>
-      </div>
-
-      <NewConversationDialog
-        open={newDialogOpen}
-        project={newProject}
-        onProjectChange={setNewProject}
-        provider={newProvider}
-        onProviderChange={setNewProvider}
-        claudeAvailable={!desktop || Boolean(claudeExecutableQuery.data)}
-        desktop={desktop}
-        onChooseFolder={() => {
-          void chooseFolder()
-        }}
-        isChoosingFolder={isChoosingFolder}
-        onClose={() => {
-          setNewDialogOpen(false)
-        }}
-        onCreate={createConversation}
-        disabled={daemonDisconnected || conversationCreationPending}
-        isCreating={conversationCreationPending}
-      />
-      <CommandDialog
-        key={commandDialogOpen ? 'open' : 'closed'}
-        open={commandDialogOpen}
-        conversations={activeConversations}
-        onClose={() => {
-          setCommandDialogOpen(false)
-        }}
-        onSelect={(id) => {
-          selectConversation(id)
-          setCommandDialogOpen(false)
-        }}
-        onNew={() => {
-          setCommandDialogOpen(false)
-          setNewDialogOpen(true)
-        }}
-        onSettings={() => {
-          setSettingsDialogOpen(true)
-          setCommandDialogOpen(false)
-        }}
-        onKeyboard={() => {
-          setCommandDialogOpen(false)
-          setKeyboardDialogOpen(true)
-        }}
-        onPanel={(tab) => {
-          if (tab === 'terminal') toggleTerminal()
-          else setActivePanel(tab)
-          setCommandDialogOpen(false)
-        }}
-        primaryModifier={primaryModifier}
-        onSelectInTerminal={openConversationInTerminal}
-      />
-      <KeyboardDialog
-        open={keyboardDialogOpen}
-        onClose={() => {
-          setKeyboardDialogOpen(false)
-        }}
-        primaryModifier={primaryModifier}
-      />
-      {settingsDialog}
-      {daemonRestartDialog}
-      <Toaster
-        position={settingsPreferences.toastPosition}
-        theme={theme === 'night' ? 'dark' : 'light'}
-      />
-    </TooltipProvider>
+        <NewConversationDialog
+          open={newDialogOpen}
+          project={newProject}
+          onProjectChange={setNewProject}
+          provider={newProvider}
+          onProviderChange={setNewProvider}
+          claudeAvailable={!desktop || Boolean(claudeExecutableQuery.data)}
+          desktop={desktop}
+          onChooseFolder={() => {
+            void chooseFolder()
+          }}
+          isChoosingFolder={isChoosingFolder}
+          onClose={() => {
+            setNewDialogOpen(false)
+          }}
+          onCreate={createConversation}
+          disabled={daemonDisconnected || conversationCreationPending}
+          isCreating={conversationCreationPending}
+          recentProjects={Array.from(
+            new Map(conversations.map((item) => [item.folder, item])).values(),
+          ).slice(0, RECENT_PROJECT_LIMIT)}
+        />
+        <CommandDialog
+          key={commandDialogOpen ? 'open' : 'closed'}
+          open={commandDialogOpen}
+          conversations={activeConversations}
+          onClose={() => {
+            setCommandDialogOpen(false)
+          }}
+          onSelect={(id) => {
+            selectConversation(id)
+            setCommandDialogOpen(false)
+          }}
+          onNew={() => {
+            setCommandDialogOpen(false)
+            setNewDialogOpen(true)
+          }}
+          onSettings={() => {
+            setSettingsDialogOpen(true)
+            setCommandDialogOpen(false)
+          }}
+          onKeyboard={() => {
+            setCommandDialogOpen(false)
+            setKeyboardDialogOpen(true)
+          }}
+          onPanel={(tab) => {
+            if (tab === 'terminal') toggleTerminal()
+            else setActivePanel(tab)
+            setCommandDialogOpen(false)
+          }}
+          primaryModifier={primaryModifier}
+          onSelectInTerminal={openConversationInTerminal}
+        />
+        <KeyboardDialog
+          open={keyboardDialogOpen}
+          onClose={() => {
+            setKeyboardDialogOpen(false)
+          }}
+          primaryModifier={primaryModifier}
+        />
+        {settingsDialog}
+        {openProjectDialog}
+        {daemonRestartDialog}
+        <Toaster
+          position={settingsPreferences.toastPosition}
+          theme={theme === 'day' ? 'light' : 'dark'}
+        />
+      </TooltipProvider>
+    </WorkingSinceContext.Provider>
   )
 }
 
@@ -2252,6 +2467,14 @@ type SidebarProps = {
   onArchive: (id: string, archived: boolean) => void
   onRename: (id: string, title: string) => void
   primaryModifier: '⌘' | 'Ctrl'
+  onOpenProject: () => void
+  onNewInProject: (folder: string) => void
+  onCloseProject: (project: string) => void
+  openIds: string[]
+  daemonLabel: string
+  sessionCount: number
+  previewMode: boolean
+  onOpenSettings: () => void
   onToggleDrawer: () => void
   onToggleCollapse: () => void
 }
@@ -2275,6 +2498,14 @@ function ConversationSidebar({
   onToggleDrawer,
   onToggleCollapse,
   primaryModifier,
+  onOpenProject,
+  onNewInProject,
+  onCloseProject,
+  openIds,
+  daemonLabel,
+  sessionCount,
+  previewMode,
+  onOpenSettings,
 }: SidebarProps) {
   const [archivedOpen, setArchivedOpen] = useState(false)
   const projects = Array.from(
@@ -2321,22 +2552,45 @@ function ConversationSidebar({
         >
           <PanelLeft />
         </Button>
-        <div>
-          <span className="sidebar-title">Threads</span>
-          <span className="session-total">{conversations.length}</span>
+        <div className="sidebar-brand">
+          <span className="brand-mark" aria-hidden="true">
+            <span />
+          </span>
+          <span className="sidebar-title">Maitty</span>
         </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              className="sidebar-open-project"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Open project"
+              onClick={onOpenProject}
+              disabled={disconnected}
+            >
+              <FolderPlus />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Open project · {primaryModifier} O</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              className="sidebar-new"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="New conversation"
+              onClick={onNew}
+              disabled={disconnected}
+            >
+              <PenLine />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            New conversation · {primaryModifier} N
+          </TooltipContent>
+        </Tooltip>
       </div>
-      <Button
-        className="new-session-button"
-        variant="secondary"
-        aria-label="New conversation"
-        onClick={onNew}
-        disabled={disconnected}
-      >
-        <Plus size={15} />
-        <span className="new-session-label">New conversation</span>
-        <span className="shortcut-hint">{primaryModifier} N</span>
-      </Button>
       <label className="session-search">
         <Search size={14} aria-hidden="true" />
         <input
@@ -2347,7 +2601,6 @@ function ConversationSidebar({
             onFilter(event.target.value)
           }}
         />
-        <kbd>{primaryModifier} K</kbd>
       </label>
       <ScrollArea className="session-list-scroll">
         {projects.map((project) => (
@@ -2358,6 +2611,9 @@ function ConversationSidebar({
               (conversation) => conversation.project === project,
             )}
             disconnected={disconnected}
+            onNewInProject={onNewInProject}
+            onCloseProject={onCloseProject}
+            openIds={openIds}
             {...rowActions}
           />
         ))}
@@ -2403,21 +2659,33 @@ function ConversationSidebar({
         )}
       </ScrollArea>
       <div className="sidebar-bottom">
-        <Separator />
-        <div className="sidebar-connection" role="status">
+        <div
+          className="sidebar-connection"
+          role="status"
+          aria-live="polite"
+          aria-label={daemonLabel}
+        >
           <span
-            className={`connection-dot ${disconnected ? '' : 'is-connected'}`}
+            className={`connection-dot ${disconnected ? 'is-offline' : 'is-connected'}`}
           />
-          {disconnected ? 'Daemon disconnected' : 'Connected to Maitty'}
-        </div>
-        <div className="workspace-picker">
-          <span className="workspace-avatar">M</span>
-          <span className="workspace-copy">
-            <strong>My workspace</strong>
-            <small>Local machine</small>
+          <span>
+            {previewMode
+              ? 'Local preview · sample data'
+              : disconnected
+                ? 'Reconnecting to maittyd…'
+                : `maittyd · ${String(sessionCount)} ${sessionCount === 1 ? 'session' : 'sessions'}`}
           </span>
-          <ChevronDown size={14} />
         </div>
+        <Button
+          className="sidebar-settings"
+          variant="ghost"
+          size="sm"
+          aria-label="Open settings"
+          onClick={onOpenSettings}
+        >
+          <Settings2 />
+          <span>Settings</span>
+        </Button>
       </div>
     </aside>
   )
@@ -2436,18 +2704,28 @@ function ProjectSection({
   project,
   conversations,
   disconnected,
+  onNewInProject,
+  onCloseProject,
+  openIds,
   ...actions
 }: {
   project: string
   conversations: Conversation[]
   disconnected: boolean
+  onNewInProject: (folder: string) => void
+  onCloseProject: (project: string) => void
+  openIds: string[]
 } & SessionRowActions) {
-  const [idleAndDoneOpen, setIdleAndDoneOpen] = useState(false)
+  const needsYou = conversations.filter(
+    (conversation) => conversation.status === 'needs-you',
+  ).length
+  const [settledOpen, setSettledOpen] = useState(false)
+  const isOlder = (conversation: Conversation) =>
+    (conversation.status === 'done' || conversation.status === 'idle') &&
+    conversation.id !== actions.selectedId &&
+    !openIds.includes(conversation.id)
   const active = [...conversations]
-    .filter(
-      (conversation) =>
-        conversation.status !== 'done' && conversation.status !== 'idle',
-    )
+    .filter((conversation) => !isOlder(conversation))
     .sort((left, right) => {
       const attention = (conversation: Conversation) =>
         conversation.status === 'needs-you' ||
@@ -2462,17 +2740,54 @@ function ProjectSection({
       if (pinOrder !== 0) return pinOrder
       return 0
     })
-  const idleAndDone = conversations.filter(
-    (conversation) =>
-      conversation.status === 'done' || conversation.status === 'idle',
-  )
+  const settled = conversations.filter(isOlder)
 
   return (
     <section className="project-section" aria-label={`${project} project`}>
       <div className="project-heading">
-        <FolderOpen size={14} />
         <span>{project}</span>
-        <span className="project-count">{conversations.length}</span>
+        {needsYou > 0 && (
+          <span className="project-needs">{needsYou} needs you</span>
+        )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              className="project-new"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`New session in ${project}`}
+              disabled={disconnected}
+              onClick={() => {
+                onNewInProject(conversations[0]?.folder ?? '')
+              }}
+            >
+              <Plus />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>New session in {project}</TooltipContent>
+        </Tooltip>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              className="project-menu"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`Menu for project ${project}`}
+            >
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" side="right">
+            <DropdownMenuItem
+              onSelect={() => {
+                onCloseProject(project)
+              }}
+            >
+              <X size={14} />
+              Close project
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <div className="session-rows">
         {active.map((conversation) => (
@@ -2485,22 +2800,26 @@ function ProjectSection({
           />
         ))}
       </div>
-      {idleAndDone.length > 0 && (
+      {settled.length > 0 && (
         <>
           <button
             className="inactive-toggle"
             type="button"
-            aria-expanded={idleAndDoneOpen}
+            aria-expanded={settledOpen}
             onClick={() => {
-              setIdleAndDoneOpen((open) => !open)
+              setSettledOpen((open) => !open)
             }}
           >
-            <span>Idle &amp; done {idleAndDone.length}</span>
-            <ChevronDown className={idleAndDoneOpen ? 'is-open' : ''} size={13} />
+            <span>
+              {settledOpen
+                ? 'Hide older'
+                : `Show ${String(settled.length)} older`}
+            </span>
+            <ChevronDown className={settledOpen ? 'is-open' : ''} size={13} />
           </button>
-          {idleAndDoneOpen && (
+          {settledOpen && (
             <div className="session-rows">
-              {idleAndDone.map((conversation) => (
+              {settled.map((conversation) => (
                 <SessionRow
                   key={conversation.id}
                   conversation={conversation}
@@ -2518,6 +2837,36 @@ function ProjectSection({
       )}
     </section>
   )
+}
+
+function RowMeta({ conversation }: { conversation: Conversation }) {
+  const since = useWorkingSince(conversation.id)
+  if (conversation.status === 'working' && since !== undefined)
+    return <Elapsed since={since} />
+  if (conversation.status === 'needs-you')
+    return <span className="meta-needs">Needs you</span>
+  if (conversation.status === 'recovery')
+    return <span className="meta-recovery">Recovery</span>
+  if (conversation.status === 'unknown') return <>—</>
+  return <>{conversation.updated}</>
+}
+
+function rowSubline(conversation: Conversation): string {
+  switch (conversation.status) {
+    case 'needs-you':
+      return 'Waiting for your reply'
+    case 'recovery':
+      return `${conversation.provider} exited mid-turn`
+    case 'working':
+      return 'Working…'
+    case 'unknown':
+      return conversation.lastKnownStatus
+        ? `Last seen ${statusText[conversation.lastKnownStatus].toLowerCase()}`
+        : 'Last seen —'
+    case 'done':
+    case 'idle':
+      return `${conversation.project} · ${conversation.branch}`
+  }
 }
 
 function SessionRow({
@@ -2609,19 +2958,16 @@ function SessionRow({
           aria-label={`${conversation.title}, ${statusText[conversation.status]}${lastKnownText}, ${conversation.project}`}
           aria-current={selected ? 'page' : undefined}
         >
-          <AgentAvatar
-            provider={conversation.provider}
-            status={conversation.status}
-            small
-          />
+          <StatusMark status={conversation.status} className="row-mark" />
           <span className="session-row-copy">
             <span className="session-row-top">
               <span className="session-row-title">{conversation.title}</span>
-              <span className="session-updated">{conversation.updated}</span>
+              <span className="session-updated">
+                <RowMeta conversation={conversation} />
+              </span>
             </span>
             <span className="session-row-bottom">
-              <span>{conversation.project}</span>
-              <StatusMark status={conversation.status} />
+              <span>{rowSubline(conversation)}</span>
             </span>
           </span>
         </button>
@@ -2662,7 +3008,7 @@ function SessionRow({
               ) : (
                 <Archive size={14} />
               )}
-              {isArchived ? 'Unarchive conversation' : 'Archive conversation'}
+              {isArchived ? 'Reopen session' : 'Close session'}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -2676,44 +3022,79 @@ function ConversationTabStrip({
   selectedId,
   onSelect,
   onClose,
-  onNew,
   conversation,
   panel,
   showTerminal,
   onPanel,
   onToggleTerminal,
   handoffPending,
+  threadsButton,
+  onOpenThreads,
+  attentionCount,
 }: {
   tabs: Conversation[]
   selectedId: string
   onSelect: (id: string) => void
   onClose: (id: string) => void
-  onNew: () => void
   conversation: Conversation
   panel: PanelTab | null
   showTerminal: boolean
   onPanel: (tab: PanelTab | null) => void
   onToggleTerminal: () => void
   handoffPending: boolean
+  threadsButton: boolean
+  onOpenThreads: () => void
+  attentionCount: number
 }) {
+  const reviewStat = useReviewStat(conversation)
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    const index = tabs.findIndex((tab) => tab.id === selectedId)
+    const next = tabs[index + (event.key === 'ArrowRight' ? 1 : -1)]
+    if (!next) return
+    event.preventDefault()
+    onSelect(next.id)
+    requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>('.conversation-tab.is-active [role="tab"]')
+        ?.focus()
+    })
+  }
+
   return (
-    <div className="conversation-header">
-      <h1 className="sr-only">{conversation.title}</h1>
+    <div className="tab-strip">
+      {threadsButton && (
+        <Button variant="ghost" size="sm" onClick={onOpenThreads}>
+          Threads
+          {attentionCount > 0 && (
+            <span className="threads-attention">
+              <StatusMark status="needs-you" />
+              {attentionCount}
+            </span>
+          )}
+        </Button>
+      )}
       <div
         className="conversation-tabs"
         role="tablist"
         aria-label="Open conversations"
+        onKeyDown={handleTabKeyDown}
       >
         {tabs.map((tab) => (
           <div
-            className={`conversation-tab ${tab.id === selectedId ? 'is-active' : ''}`}
+            className={`conversation-tab ${tab.id === selectedId ? 'is-active' : ''} ${tab.status === 'working' && tab.id === selectedId ? 'is-shimmering' : ''}`}
             key={tab.id}
+            onAuxClick={(event) => {
+              if (event.button === 1 && tabs.length > 1) onClose(tab.id)
+            }}
           >
             <button
               type="button"
               role="tab"
               aria-selected={tab.id === selectedId}
               aria-controls="conversation-main"
+              tabIndex={tab.id === selectedId ? 0 : -1}
               title={`${tab.title} · ${statusText[tab.status]}`}
               onClick={() => {
                 onSelect(tab.id)
@@ -2729,51 +3110,28 @@ function ConversationTabStrip({
                 />
               )}
             </button>
-            <button
-              className="conversation-tab-close"
-              type="button"
-              aria-label={`Close ${tab.title} tab`}
-              disabled={tabs.length <= 1}
-              onClick={() => {
-                onClose(tab.id)
-              }}
-            >
-              <X size={12} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="conversation-tab-close"
+                  type="button"
+                  aria-label={`Close ${tab.title} tab`}
+                  disabled={tabs.length <= 1}
+                  onClick={() => {
+                    onClose(tab.id)
+                  }}
+                >
+                  <X size={12} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Close tab · the session keeps running in maittyd
+              </TooltipContent>
+            </Tooltip>
           </div>
         ))}
-        <Button
-          className="conversation-tab-new"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Add conversation tab"
-          onClick={onNew}
-        >
-          <Plus size={15} />
-        </Button>
       </div>
       <div className="header-toolbar">
-        <Button
-          variant={panel === 'diff' ? 'secondary' : 'outline'}
-          size="sm"
-          onClick={() => {
-            onPanel(panel === 'diff' ? null : 'diff')
-          }}
-        >
-          <FileCode2 size={14} />
-          Changes{conversation.hasDiff && <span className="diff-indicator" />}
-        </Button>
-        <Button
-          variant={panel === 'files' ? 'secondary' : 'outline'}
-          size="sm"
-          onClick={() => {
-            onPanel(panel === 'files' ? null : 'files')
-          }}
-          aria-label="Open project files"
-        >
-          <FolderOpen size={14} />
-          Files
-        </Button>
         <div
           className="view-switch"
           role="group"
@@ -2793,11 +3151,6 @@ function ConversationTabStrip({
                   : 'Chat view'
             }
           >
-            {handoffPending && showTerminal ? (
-              <LoaderCircle className="animate-spin" size={14} />
-            ) : (
-              <MessageSquarePlus size={14} />
-            )}
             {handoffPending && showTerminal ? 'Returning…' : 'Chat'}
           </Button>
           <Button
@@ -2812,21 +3165,65 @@ function ConversationTabStrip({
                 : 'Show terminal'
             }
           >
-            <TerminalSquare size={14} />
             {handoffPending && !showTerminal ? 'Opening…' : 'Terminal'}
           </Button>
         </div>
         <Button
-          variant={panel === 'details' ? 'secondary' : 'outline'}
-          size="icon-sm"
-          aria-label="Toggle details"
+          className="review-button"
+          variant="ghost"
+          size="sm"
+          title="Changes, files and context (Ctrl+Shift+D)"
+          aria-pressed={panel !== null}
           onClick={() => {
-            onPanel(panel === 'details' ? null : 'details')
+            onPanel(panel ? null : 'diff')
           }}
         >
-          <PanelRight />
+          Review
+          {reviewStat && (
+            <DiffStat
+              additions={reviewStat.additions}
+              deletions={reviewStat.deletions}
+            />
+          )}
         </Button>
       </div>
+    </div>
+  )
+}
+
+function ConversationHeader({ conversation }: { conversation: Conversation }) {
+  const since = useWorkingSince(conversation.id)
+  const sandbox = conversation.permission.split(' · ')[0]
+  const lastSeen =
+    conversation.status === 'unknown' && conversation.lastKnownStatus
+      ? ` · last seen ${statusText[conversation.lastKnownStatus].toLowerCase()}`
+      : ''
+  return (
+    <div className="conversation-heading">
+      <h1>{conversation.title}</h1>
+      <span className="provider-pill">
+        <span aria-hidden="true">›_</span>
+        {conversation.provider} · {conversation.model}
+      </span>
+      <span className="conversation-branch">{conversation.branch}</span>
+      <span className="conversation-sandbox">{sandbox}</span>
+      <span
+        className={`conversation-status status-${conversation.status}`}
+        role="status"
+        aria-label={`Status: ${statusText[conversation.status]}`}
+      >
+        <StatusMark status={conversation.status} />
+        {conversation.status === 'unknown'
+          ? 'Unknown'
+          : statusText[conversation.status]}
+        {conversation.status === 'working' && since !== undefined && (
+          <>
+            {' · '}
+            <Elapsed since={since} />
+          </>
+        )}
+        {lastSeen}
+      </span>
     </div>
   )
 }
@@ -2834,9 +3231,11 @@ function ConversationTabStrip({
 function MessageRow({
   message,
   provider,
+  showLabel,
 }: {
   message: Message
   provider: Conversation['provider']
+  showLabel: boolean
 }) {
   if (message.role === 'activity') {
     return <ActivityGroup messages={[message]} provider={provider} />
@@ -2845,29 +3244,13 @@ function MessageRow({
   if (message.role === 'user')
     return (
       <div className="message-row user-message">
-        <div className="message-avatar user-avatar">Y</div>
-        <div className="message-body">
-          <div className="message-byline">
-            <strong>You</strong>
-            <time>{message.time}</time>
-          </div>
-          <div className="user-bubble">{message.content}</div>
-        </div>
+        <div className="user-bubble">{message.content}</div>
       </div>
     )
   return (
     <div className="message-row assistant-message">
-      <AgentAvatar provider={provider} status="working" />
-      <div className="message-body">
-        <div className="message-byline">
-          <strong>{provider}</strong>
-          <span className="message-model">
-            {provider === 'Codex' ? 'GPT-5 Codex' : 'Claude Code'}
-          </span>
-          <time>{message.time}</time>
-        </div>
-        <AssistantContent content={message.content} />
-      </div>
+      {showLabel && <span className="agent-label">{provider}</span>}
+      <AssistantContent content={message.content} />
     </div>
   )
 }
@@ -2882,11 +3265,16 @@ function AssistantContent({ content }: { content: string }) {
     <div className="assistant-copy">
       {blocks.map((block, index) =>
         block.kind === 'code' ? (
-          <section className="assistant-code-block" key={`code-${String(index)}`}>
+          <section
+            className="assistant-code-block"
+            key={`code-${String(index)}`}
+          >
             <div className="assistant-code-language">
               {block.language || 'Code'}
             </div>
-            <pre><code>{block.content}</code></pre>
+            <pre>
+              <code>{block.content}</code>
+            </pre>
           </section>
         ) : (
           <p key={`text-${String(index)}`}>{renderInlineCode(block.content)}</p>
@@ -2943,32 +3331,40 @@ function renderInlineCode(content: string): ReactNode[] {
   })
 }
 
+function FilesChangedButton({
+  conversation,
+  onReview,
+}: {
+  conversation: Conversation
+  onReview: () => void
+}) {
+  const stat = useReviewStat(conversation)
+  if (!stat || conversation.status === 'working') return null
+  return (
+    <button type="button" className="files-changed-button" onClick={onReview}>
+      {stat.files} {stat.files === 1 ? 'file' : 'files'} changed
+      <DiffStat additions={stat.additions} deletions={stat.deletions} />
+      <span className="files-changed-review">Review →</span>
+    </button>
+  )
+}
+
 function ApprovalMarker({ message }: { message: Message }) {
   const resolved = message.resolved
   const text = resolved
     ? 'Request answered'
     : message.approvalKind === 'UserInput'
-      ? 'Waiting for your answer'
-      : `Waiting for approval · ${message.detail || message.content}`
+      ? 'Waiting for your answer below'
+      : 'Waiting for your approval below'
   return (
     <div
       className={`approval-marker ${resolved ? 'is-resolved' : ''}`}
       role="status"
     >
-      {resolved ? <Check size={13} /> : <ShieldCheck size={13} />}
+      <span className="approval-marker-box" aria-hidden="true">
+        <i />
+      </span>
       <span>{text}</span>
-      {!resolved && (
-        <button
-          type="button"
-          onClick={() => {
-            document
-              .querySelector<HTMLElement>('.approval-dock')
-              ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-          }}
-        >
-          Answer below ↓
-        </button>
-      )}
     </div>
   )
 }
@@ -3219,6 +3615,22 @@ function UserInputRequest({
   )
 }
 
+const TOOL_LABELS: Record<string, { done: string; running: string }> = {
+  commandExecution: { done: 'Ran a command', running: 'Running a command' },
+  fileChange: { done: 'Edited files', running: 'Editing files' },
+  mcpToolCall: { done: 'Used a tool', running: 'Using a tool' },
+  webSearch: { done: 'Searched the web', running: 'Searching the web' },
+}
+
+/** The daemon reports a tool by its internal name; show it in plain words. */
+function toolLabel(kind: string, running: boolean): string {
+  const known = TOOL_LABELS[kind]
+  if (known) return running ? known.running : known.done
+  if (!/^[a-z]+(?:[A-Z][a-z0-9]*)+$/.test(kind)) return kind
+  const words = kind.replace(/([A-Z])/g, ' $1').toLowerCase()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 function ActivityGroup({
   messages,
   provider,
@@ -3227,21 +3639,33 @@ function ActivityGroup({
   provider: Conversation['provider']
 }) {
   const [expanded, setExpanded] = useState(false)
-  const statePriority = ['Completed', 'Interrupted', 'Failed', 'Running'] as const
+  const statePriority = [
+    'Completed',
+    'Interrupted',
+    'Failed',
+    'Running',
+  ] as const
   const activityState = statePriority.reduce<(typeof statePriority)[number]>(
     (current, state) =>
-      messages.some((message) => (message.activityState ?? 'Completed') === state)
+      messages.some(
+        (message) => (message.activityState ?? 'Completed') === state,
+      )
         ? state
         : current,
     'Completed',
   )
   const latestActivity = messages.at(-1)
-  const runningActivity = messages.findLast((message) => message.activityState === 'Running')
+  const runningActivity = messages.findLast(
+    (message) => message.activityState === 'Running',
+  )
   const summary =
     activityState === 'Running'
-      ? runningActivity?.content ?? latestActivity?.content ?? 'Tool running'
+      ? toolLabel(
+          runningActivity?.content ?? latestActivity?.content ?? 'Tool',
+          true,
+        )
       : messages.length === 1
-        ? latestActivity?.content ?? 'Tool activity'
+        ? toolLabel(latestActivity?.content ?? 'Tool activity', false)
         : `${String(messages.length)} actions ${activityState.toLowerCase()}`
   const preview = (runningActivity?.detail ?? '')
     .split(/\r?\n/)
@@ -3249,11 +3673,9 @@ function ActivityGroup({
     .slice(-ACTIVITY_PREVIEW_LINE_COUNT)
   const stateIcon =
     activityState === 'Running' ? (
-      <LoaderCircle size={12} />
-    ) : activityState === 'Failed' ? (
-      <CircleAlert size={12} />
-    ) : activityState === 'Interrupted' ? (
-      <Circle size={10} />
+      <StatusMark status="working" />
+    ) : activityState === 'Failed' || activityState === 'Interrupted' ? (
+      <X size={13} />
     ) : (
       <Check size={13} />
     )
@@ -3262,9 +3684,6 @@ function ActivityGroup({
       className={`activity-row activity-${activityState.toLowerCase()} ${expanded ? 'is-expanded' : ''}`}
       aria-label={`${provider} tool activity`}
     >
-      <div className="activity-marker" aria-label={activityState}>
-        {stateIcon}
-      </div>
       <button
         className="activity-trigger"
         type="button"
@@ -3274,11 +3693,17 @@ function ActivityGroup({
         aria-expanded={expanded}
         aria-label={`${provider} · ${summary} · ${activityState}`}
       >
-        <span className="activity-label">{provider}</span>
-        <span className="activity-detail">{summary}</span>
-        <span className="activity-count">{messages.length} {messages.length === 1 ? 'step' : 'steps'}</span>
-        {activityState !== 'Completed' && <span className="activity-state">{activityState}</span>}
-        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <span className="activity-marker" aria-label={activityState}>
+          {stateIcon}
+        </span>
+        <span className="activity-label">{summary}</span>
+        <span className="activity-count">
+          {messages.length} {messages.length === 1 ? 'step' : 'steps'}
+        </span>
+        {activityState !== 'Completed' && (
+          <span className="activity-state">{activityState}</span>
+        )}
+        <ChevronRight size={12} />
       </button>
       {!expanded && activityState === 'Running' && preview.length > 0 && (
         <pre className="activity-preview">{preview.join('\n')}</pre>
@@ -3288,8 +3713,15 @@ function ActivityGroup({
           {messages.map((message) => (
             <article className="activity-step" key={message.id}>
               <div className="activity-step-heading">
-                <strong>{message.content}</strong>
-                <span className={`activity-state activity-state-${(message.activityState ?? 'Completed').toLowerCase()}`}>
+                <strong>
+                  {toolLabel(
+                    message.content,
+                    message.activityState === 'Running',
+                  )}
+                </strong>
+                <span
+                  className={`activity-state activity-state-${(message.activityState ?? 'Completed').toLowerCase()}`}
+                >
                   {message.activityState ?? 'Completed'}
                 </span>
               </div>
@@ -3457,15 +3889,9 @@ function ApprovalRequest({
 function StreamingRow({ provider }: { provider: Conversation['provider'] }) {
   return (
     <div className="streaming-row" role="status">
-      <span className="streaming-orb">
-        <LoaderCircle size={14} />
-      </span>
+      <StatusMark status="working" />
       <span>{provider} is working</span>
-      <span className="streaming-dots">
-        <i />
-        <i />
-        <i />
-      </span>
+      <span className="stream-caret" aria-hidden="true" />
     </div>
   )
 }
@@ -3543,16 +3969,16 @@ function RecoveryNotice({
   )
 }
 
-function EmptyConversation({ project }: { project: string }) {
+function EmptyConversation({ conversation }: { conversation: Conversation }) {
   return (
     <div className="empty-conversation">
-      <div className="empty-mark">
-        <MessageSquarePlus size={20} />
-      </div>
-      <h2>Start with a clear task</h2>
+      <h2>
+        New {conversation.provider} session in {conversation.project}
+      </h2>
       <p>
-        This conversation will run in <strong>{project}</strong>. Its work stays
-        with that project.
+        <span className="conversation-branch">{conversation.branch}</span> ·{' '}
+        {conversation.permission.split(' · ')[0]}. Send a message to start. It
+        keeps running in maittyd if you close this window.
       </p>
     </div>
   )
@@ -3570,6 +3996,9 @@ function Composer({
   onChange,
   onKeyDown,
   onSend,
+  denyDecision,
+  denyQueued,
+  onDenyAndSend,
   onCancel,
   onRetry,
   onDiscard,
@@ -3586,13 +4015,52 @@ function Composer({
   onChange: (value: string) => void
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void
   onSend: () => void
+  denyDecision: 'Cancel' | 'Decline' | null
+  denyQueued: boolean
+  onDenyAndSend: () => void
   onCancel: () => void
   onRetry: () => void
   onDiscard: () => void
   onCheckDelivery: () => void
 }) {
   const nativeOwner = conversation.execution === 'Native'
-  const busy = status === 'working' || status === 'needs-you' || nativeOwner
+  const denying = denyDecision !== null
+  const busy =
+    status === 'working' ||
+    (status === 'needs-you' && !denying) ||
+    nativeOwner ||
+    denyQueued
+  const composerNote = denyQueued
+    ? {
+        tone: 'muted' as const,
+        text: 'Request denied. Your message sends when this turn ends.',
+      }
+    : denying
+      ? {
+          tone: 'muted' as const,
+          text: `Typing a message denies the request${denyDecision === 'Cancel' ? ' and stops this turn' : ''}, then sends your instructions instead.`,
+        }
+      : !connected
+        ? {
+            tone: 'muted' as const,
+            text: 'Your draft is saved. Nothing is sent until you press Send after reconnecting.',
+          }
+        : status === 'recovery'
+          ? {
+              tone: 'danger' as const,
+              text: 'Resume the session to send messages. Your draft is kept.',
+            }
+          : nativeOwner
+            ? {
+                tone: 'muted' as const,
+                text: `Native ${conversation.provider} owns this conversation until you continue in chat.`,
+              }
+            : status === 'working'
+              ? {
+                  tone: 'muted' as const,
+                  text: 'Working · your next message waits until this turn ends',
+                }
+              : null
   return (
     <div className="composer-wrap">
       {deliveryNotice && (
@@ -3629,6 +4097,14 @@ function Composer({
           )}
         </div>
       )}
+      {composerNote && (
+        <p
+          className={`composer-note ${composerNote.tone === 'danger' ? 'is-danger' : ''}`}
+          role="status"
+        >
+          {composerNote.text}
+        </p>
+      )}
       <div className="composer-box">
         <Textarea
           value={value}
@@ -3643,11 +4119,13 @@ function Composer({
                 : 'Return to chat from the Terminal panel to continue…'
               : !connected
                 ? 'Reconnect before sending. Your draft stays here.'
-                : busy
-                  ? 'Wait for this turn to finish…'
-                  : deliveryBlocked
-                    ? 'Check the native terminal before continuing.'
-                    : `Ask ${conversation.provider} to work on this project…`
+                : denying
+                  ? 'Type instructions to deny this request and send them instead…'
+                  : busy
+                    ? 'Wait for this turn to finish…'
+                    : deliveryBlocked
+                      ? 'Check the native terminal before continuing.'
+                      : `Ask ${conversation.provider} to work on this project…`
           }
           aria-label={`Message ${conversation.provider}`}
           disabled={busy || deliveryBlocked}
@@ -3656,50 +4134,64 @@ function Composer({
         <div className="composer-actions">
           <div className="composer-context">
             <span className="provider-mini">
-              <span className="codex-glyph">◆</span>
-              {conversation.provider}
+              <span className="codex-glyph" aria-hidden="true">
+                ●
+              </span>
+              {conversation.provider} · {conversation.model}
             </span>
-            <span className="composer-separator" />
             <span>{conversation.permission.split(' · ')[0]}</span>
-            <ChevronDown size={12} />
           </div>
           <div className="composer-send">
             {((desktop && (status === 'working' || status === 'needs-you')) ||
               (!desktop && status === 'working')) && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onCancel}
-                disabled={cancelling}
-              >
-                <Square size={12} fill="currentColor" />
-                {cancelling ? 'Stopping' : 'Stop'}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label="Stop"
+                    onClick={onCancel}
+                    disabled={cancelling}
+                  >
+                    <Square size={12} fill="currentColor" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {cancelling ? 'Stopping…' : 'Stop this turn'} ·{' '}
+                  {shortcutModifier(navigator.userAgent)} .
+                </TooltipContent>
+              </Tooltip>
             )}
-            <span className="send-hint">
-              <kbd>↵</kbd> to send
-            </span>
-            <Button
-              size="icon-sm"
-              aria-label="Send message"
-              onClick={onSend}
-              disabled={!value.trim() || busy || !connected || deliveryBlocked}
-            >
-              <Send />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon-sm"
+                  aria-label={denying ? 'Deny and send' : 'Send message'}
+                  className={denying ? 'send-deny' : undefined}
+                  onClick={denying ? onDenyAndSend : onSend}
+                  disabled={
+                    !value.trim() || busy || !connected || deliveryBlocked
+                  }
+                >
+                  <ArrowUp />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {denying ? 'Deny the request and send' : 'Send'} · Enter
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </div>
-      <p className="composer-footnote">
-        {nativeOwner
-          ? `Native ${conversation.provider} owns this conversation until you continue in chat.`
-          : !connected
-            ? 'Daemon disconnected. Reconnect to send this draft.'
-            : 'Agent actions follow the permissions shown above.'}
-      </p>
     </div>
   )
 }
+
+const PANEL_TABS: { id: PanelTab; label: string }[] = [
+  { id: 'diff', label: 'Changes' },
+  { id: 'files', label: 'Files' },
+  { id: 'details', label: 'Context' },
+]
 
 function ContextPanel({
   tab,
@@ -3714,6 +4206,8 @@ function ContextPanel({
   onTab: (tab: PanelTab) => void
   onClose: () => void
 }) {
+  const reviewStat = useReviewStat(conversation)
+
   function handleTabKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     const tabs = Array.from(
@@ -3722,7 +4216,7 @@ function ContextPanel({
     const currentIndex = tabs.findIndex(
       (item) => item === document.activeElement,
     )
-    const selectedIndex = PANEL_TAB_ORDER.indexOf(tab)
+    const selectedIndex = PANEL_TABS.findIndex((item) => item.id === tab)
     const targetIndex =
       event.key === 'Home'
         ? 0
@@ -3735,7 +4229,8 @@ function ContextPanel({
     const target = tabs[targetIndex]
     if (!target) return
     event.preventDefault()
-    onTab(PANEL_TAB_ORDER[targetIndex] ?? 'diff')
+    const targetTab = PANEL_TABS[targetIndex]
+    if (targetTab) onTab(targetTab.id)
     target.focus()
   }
 
@@ -3751,59 +4246,49 @@ function ContextPanel({
           aria-label="Conversation panels"
           onKeyDown={handleTabKeyDown}
         >
-          <button
-            className={tab === 'diff' ? 'active' : ''}
-            type="button"
-            role="tab"
-            aria-selected={tab === 'diff'}
-            tabIndex={tab === 'diff' ? 0 : -1}
-            onClick={() => {
-              onTab('diff')
-            }}
-          >
-            Changes
-          </button>
-          <button
-            className={tab === 'files' ? 'active' : ''}
-            type="button"
-            role="tab"
-            aria-selected={tab === 'files'}
-            tabIndex={tab === 'files' ? 0 : -1}
-            onClick={() => {
-              onTab('files')
-            }}
-          >
-            Files
-          </button>
-          <button
-            className={tab === 'details' ? 'active' : ''}
-            type="button"
-            role="tab"
-            aria-selected={tab === 'details'}
-            tabIndex={tab === 'details' ? 0 : -1}
-            onClick={() => {
-              onTab('details')
-            }}
-          >
-            Context
-          </button>
+          {PANEL_TABS.map((item) => (
+            <button
+              key={item.id}
+              className={tab === item.id ? 'active' : ''}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.id}
+              tabIndex={tab === item.id ? 0 : -1}
+              onClick={() => {
+                onTab(item.id)
+              }}
+            >
+              {item.label}
+              {item.id === 'diff' && reviewStat && (
+                <span className="panel-tab-count">{reviewStat.files}</span>
+              )}
+            </button>
+          ))}
         </div>
         <Button
+          className="panel-close"
           variant="ghost"
-          size="icon-sm"
+          size="sm"
           aria-label="Close details panel"
           onClick={onClose}
         >
-          <X />
+          Close <kbd>esc</kbd>
         </Button>
       </div>
       <ScrollArea className="context-panel-scroll">
         {tab === 'details' && <DetailsView conversation={conversation} />}
+        {tab === 'files' && (
+          <FilesView conversation={conversation} desktop={desktop} />
+        )}
         {tab === 'diff' && (
           <DiffView conversation={conversation} desktop={desktop} />
         )}
-        {tab === 'files' && <FilesView conversation={conversation} desktop={desktop} />}
       </ScrollArea>
+      {tab === 'diff' && (
+        <p className="review-footer">
+          Read-only. Ask the agent for edits, or open the file in your editor.
+        </p>
+      )}
     </aside>
   )
 }
@@ -3818,26 +4303,59 @@ function FilesView({
   const [directory, setDirectory] = useState('')
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const filesQuery = useQuery({
-    queryKey: ['conversation-files', conversation.id, conversation.generation, directory],
+    queryKey: [
+      'conversation-files',
+      conversation.id,
+      conversation.generation,
+      directory,
+    ],
     queryFn: () => loadConversationFiles(conversation, directory || null),
     enabled: desktop,
     retry: false,
   })
   const fileQuery = useQuery({
-    queryKey: ['conversation-file', conversation.id, conversation.generation, selectedPath],
+    queryKey: [
+      'conversation-file',
+      conversation.id,
+      conversation.generation,
+      selectedPath,
+    ],
     queryFn: () => loadConversationFile(conversation, selectedPath ?? ''),
     enabled: desktop && selectedPath !== null,
     retry: false,
   })
 
   if (!desktop) {
-    return <div className="panel-empty"><FolderOpen size={18} /><h2>Files need the desktop app</h2></div>
+    return (
+      <div className="panel-empty">
+        <FolderOpen size={18} />
+        <h2>Files need the desktop app</h2>
+      </div>
+    )
   }
   if (filesQuery.isLoading) {
-    return <div className="panel-empty" role="status"><LoaderCircle size={18} /><h2>Loading project files</h2></div>
+    return (
+      <div className="panel-empty" role="status">
+        <LoaderCircle size={18} />
+        <h2>Loading project files</h2>
+      </div>
+    )
   }
   if (filesQuery.isError) {
-    return <div className="panel-empty"><CircleAlert size={18} /><h2>Couldn’t load project files</h2><p>Check that the conversation checkout is available, then retry.</p><Button variant="outline" size="sm" onClick={() => void filesQuery.refetch()}>Retry</Button></div>
+    return (
+      <div className="panel-empty">
+        <CircleAlert size={18} />
+        <h2>Couldn’t load project files</h2>
+        <p>Check that the conversation checkout is available, then retry.</p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void filesQuery.refetch()}
+        >
+          Retry
+        </Button>
+      </div>
+    )
   }
 
   function openEntry(name: string, isDirectory: boolean) {
@@ -3853,35 +4371,89 @@ function FilesView({
   return (
     <div className="files-browser">
       <div className="files-breadcrumb">
-        <Button variant="ghost" size="sm" disabled={!directory} onClick={() => {
-          setDirectory(directory.split('/').slice(0, -1).join('/'))
-          setSelectedPath(null)
-        }}>Project{directory ? ` / ${directory}` : ''}</Button>
-        {directory && <Button variant="outline" size="sm" onClick={() => {
-          setDirectory(directory.split('/').slice(0, -1).join('/'))
-          setSelectedPath(null)
-        }}>Up</Button>}
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!directory}
+          onClick={() => {
+            setDirectory(directory.split('/').slice(0, -1).join('/'))
+            setSelectedPath(null)
+          }}
+        >
+          Project{directory ? ` / ${directory}` : ''}
+        </Button>
+        {directory && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setDirectory(directory.split('/').slice(0, -1).join('/'))
+              setSelectedPath(null)
+            }}
+          >
+            Up
+          </Button>
+        )}
       </div>
       <div className="files-browser-list" aria-label="Project files">
         {(filesQuery.data ?? []).length === 0 ? (
-          <div className="panel-empty"><FolderOpen size={18} /><h2>This folder is empty</h2></div>
-        ) : (filesQuery.data ?? []).map((entry) => (
-          <button className="files-browser-entry" type="button" key={entry.name} onClick={() => {
-            openEntry(entry.name, entry.is_directory)
-          }} aria-label={entry.is_directory ? `Open folder ${entry.name}` : `Preview file ${entry.name}`}>
-            {entry.is_directory ? <FolderOpen size={14} /> : <FileCode2 size={14} />}
-            <span>{entry.name}</span>
-            <small>{entry.is_directory ? 'Folder' : 'Preview'}</small>
-          </button>
-        ))}
+          <div className="panel-empty">
+            <FolderOpen size={18} />
+            <h2>This folder is empty</h2>
+          </div>
+        ) : (
+          (filesQuery.data ?? []).map((entry) => (
+            <button
+              className="files-browser-entry"
+              type="button"
+              key={entry.name}
+              onClick={() => {
+                openEntry(entry.name, entry.is_directory)
+              }}
+              aria-label={
+                entry.is_directory
+                  ? `Open folder ${entry.name}`
+                  : `Preview file ${entry.name}`
+              }
+            >
+              {entry.is_directory ? (
+                <FolderOpen size={14} />
+              ) : (
+                <FileCode2 size={14} />
+              )}
+              <span>{entry.name}</span>
+              <small>{entry.is_directory ? 'Folder' : 'Preview'}</small>
+            </button>
+          ))
+        )}
       </div>
       {selectedPath && (
-        <section className="files-preview" aria-label={`Preview ${selectedPath}`}>
+        <section
+          className="files-preview"
+          aria-label={`Preview ${selectedPath}`}
+        >
           <strong>{selectedPath}</strong>
-          {fileQuery.isLoading ? <p role="status">Loading preview…</p> : fileQuery.isError ? <div><p>Couldn’t load this file preview.</p><Button variant="outline" size="sm" onClick={() => void fileQuery.refetch()}>Retry</Button></div> : <pre>{fileQuery.data}</pre>}
+          {fileQuery.isLoading ? (
+            <p role="status">Loading preview…</p>
+          ) : fileQuery.isError ? (
+            <div>
+              <p>Couldn’t load this file preview.</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void fileQuery.refetch()}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <pre>{fileQuery.data}</pre>
+          )}
         </section>
       )}
-      <p className="files-readonly-note">Read-only preview. Files can’t be changed here.</p>
+      <p className="files-readonly-note">
+        Read-only preview. Files can’t be changed here.
+      </p>
     </div>
   )
 }
@@ -4010,6 +4582,12 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   )
 }
 
+function isPatchHeader(line: string): boolean {
+  return (
+    line.startsWith('@@') || line.startsWith('+++') || line.startsWith('---')
+  )
+}
+
 function DiffView({
   conversation,
   desktop,
@@ -4023,6 +4601,8 @@ function DiffView({
     queryFn: () => loadConversationDiff(conversation),
     enabled: desktop && conversation.isGitRepository !== false,
     retry: false,
+    // A failed diff waits for the user's Retry instead of refetching on every mount.
+    retryOnMount: false,
     staleTime: 1500,
     refetchInterval: (query) =>
       conversation.status === 'working'
@@ -4250,7 +4830,17 @@ function DiffView({
                 }
                 key={`${selectedFile.path}:${String(index)}`}
               >
-                {line}
+                {line.length > 0 && !isPatchHeader(line) ? (
+                  <>
+                    {line.slice(0, 1)}
+                    <HighlightedLine
+                      line={line.slice(1)}
+                      path={selectedFile.path}
+                    />
+                  </>
+                ) : (
+                  line
+                )}
               </span>
             ))}
           </pre>
@@ -4327,28 +4917,6 @@ function AgentAvatar({
   )
 }
 
-function StatusMark({ status }: { status: SessionStatus }) {
-  const Icon =
-    status === 'working'
-      ? LoaderCircle
-      : status === 'needs-you'
-        ? Diamond
-        : status === 'recovery'
-          ? RefreshCw
-          : status === 'done'
-            ? CircleCheck
-            : status === 'unknown'
-              ? CircleDashed
-              : Circle
-  return (
-    <Icon
-      className={`status-mark status-${status}`}
-      size={13}
-      aria-hidden="true"
-    />
-  )
-}
-
 function NewConversationDialog({
   open,
   project,
@@ -4363,6 +4931,7 @@ function NewConversationDialog({
   onCreate,
   disabled,
   isCreating,
+  recentProjects,
 }: {
   open: boolean
   project: string
@@ -4377,6 +4946,7 @@ function NewConversationDialog({
   onCreate: () => void
   disabled: boolean
   isCreating: boolean
+  recentProjects: Conversation[]
 }) {
   return (
     <Dialog
@@ -4417,6 +4987,29 @@ function NewConversationDialog({
             </Button>
           </div>
         </div>
+        {recentProjects.length > 0 && (
+          <div
+            className="dialog-recent"
+            role="group"
+            aria-label="Recent projects"
+          >
+            <span className="dialog-caps">Recent</span>
+            {recentProjects.map((item) => (
+              <button
+                key={item.folder}
+                type="button"
+                className={`dialog-recent-row ${project === item.folder ? 'is-selected' : ''}`}
+                onClick={() => {
+                  onProjectChange(item.folder)
+                }}
+              >
+                <FolderOpen size={14} aria-hidden="true" />
+                <strong>{item.project}</strong>
+                <code>{item.folder}</code>
+              </button>
+            ))}
+          </div>
+        )}
         <div
           className="dialog-provider-options"
           role="group"

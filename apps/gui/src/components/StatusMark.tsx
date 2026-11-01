@@ -1,0 +1,66 @@
+import { useSyncExternalStore } from 'react'
+import { cn } from '@/lib/utils'
+import { currentFrame, spinnerFrames, subscribe } from '@/lib/spinner-clock'
+
+export type StatusMarkState =
+  'working' | 'needs-you' | 'done' | 'idle' | 'recovery' | 'unknown'
+
+function prefersReducedMotion() {
+  return (
+    document.documentElement.dataset.reducedMotion === 'true' ||
+    (typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  )
+}
+
+function Spinner() {
+  const index = useSyncExternalStore(subscribe, currentFrame, () => 0)
+  const frames = spinnerFrames()
+  // Reduced motion shows one static frame instead of animating.
+  return <>{frames[prefersReducedMotion() ? 0 : index % frames.length]}</>
+}
+
+/** Each state has a different shape, so color is never the only signal. */
+export function StatusMark({
+  status,
+  className,
+}: {
+  status: StatusMarkState
+  className?: string
+}) {
+  return (
+    <span
+      className={cn('status-mark', `status-${status}`, className)}
+      aria-hidden="true"
+    >
+      {status === 'working' && <Spinner />}
+      {status === 'needs-you' && (
+        <>
+          <i />
+          <i />
+        </>
+      )}
+      {status === 'done' && (
+        <svg viewBox="0 0 12 12" width="9" height="9" fill="none">
+          <path
+            d="M2 6.5 4.8 9 10 3.2"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+      {status === 'recovery' && (
+        <svg viewBox="0 0 12 12" width="10" height="10" fill="none">
+          <path
+            d="M6 2v4.6M6 9.6v.1"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+          />
+        </svg>
+      )}
+    </span>
+  )
+}

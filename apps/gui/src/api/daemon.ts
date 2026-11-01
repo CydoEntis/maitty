@@ -335,6 +335,11 @@ export async function loadConversationFile(
   })
 }
 
+export async function suggestProjectFolders(typed: string): Promise<string[]> {
+  if (!isDesktop()) return []
+  return invokeParsed('suggest_project_folders', z.array(z.string()), { typed })
+}
+
 export async function loadTerminalScreen(conversation: Pick<Conversation, 'id'> & { generation: number }): Promise<string> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
   return invokeParsed('terminal_screen', z.string(), {

@@ -4,84 +4,119 @@
 
 @custom-variant dark (&:is(.dark *));
 
-:root {
+:root, :root[data-theme="night"] {
   color-scheme: dark;
   font-family: "Geist Variable", "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --background: #080b0f;
-  --foreground: #e6eaee;
-  --card: #0d1117;
-  --card-foreground: #e6eaee;
-  --popover: #11161d;
-  --popover-foreground: #e6eaee;
+
+  /* Maitty Desktop v5 surfaces: the window (--bg) and one main card (--main). */
+  --bg: #090c10;
+  --main: #0d1116;
+  --raise: #141a21;
+  --hover: #12171e;
+  --sel: #1a212a;
+  --line: #1b222b;
+  --line2: #26303b;
+  --well: #080a0d;
+  --term: #06080b;
+  --fg: #e8ecef;
+  --body: #d3d9df;
+  --fg2: #b3bcc5;
+  --muted-text: #8c96a1;
+  --dim: #75808b;
+  --accent-soft: rgb(95 212 191 / 11%);
+  --warn: #f2b65a;
+  --warn-soft: rgb(242 182 90 / 7%);
+  --warn-line: rgb(242 182 90 / 28%);
+  --on-warn: #151007;
+  --danger: #f07f78;
+  --danger-soft: rgb(240 127 120 / 7%);
+  --danger-line: rgb(240 127 120 / 30%);
+  --ok: #8db89b;
+
+  /* shadcn names, mapped onto the surfaces above */
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --card: var(--main);
+  --card-foreground: var(--fg);
+  --popover: var(--raise);
+  --popover-foreground: var(--fg);
   --primary: #5fd4bf;
-  --primary-foreground: #071011;
-  --secondary: #1a2029;
-  --secondary-foreground: #c4cbd2;
-  --muted: #131820;
-  --muted-foreground: #9aa4af;
-  --accent: #151b22;
-  --accent-foreground: #e6eaee;
-  --destructive: #f07f78;
-  --border: #1e252e;
-  --input: #252d37;
-  --ring: #5fd4bf;
-  --radius: 0.625rem;
-  --sidebar: #0a0e13;
-  --sidebar-foreground: #e6eaee;
-  --sidebar-primary: #5fd4bf;
-  --sidebar-primary-foreground: #071011;
-  --sidebar-accent: #151b22;
-  --sidebar-accent-foreground: #e6eaee;
-  --sidebar-border: #1e252e;
-  --sidebar-ring: #5fd4bf;
-  --needs-you: #f2b65a;
-  --done: #7fa98d;
-  --working: #5fd4bf;
-  --idle: #8a949f;
+  --primary-foreground: #06110f;
+  --secondary: var(--raise);
+  --secondary-foreground: var(--fg2);
+  --muted: var(--hover);
+  --muted-foreground: var(--muted-text);
+  --accent: var(--hover);
+  --accent-foreground: var(--fg);
+  --destructive: var(--danger);
+  --border: var(--line);
+  --input: var(--line2);
+  --ring: var(--primary);
+  --radius: 0.5rem;
+  --sidebar: var(--bg);
+  --sidebar-foreground: var(--fg);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--sel);
+  --sidebar-accent-foreground: var(--fg);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--primary);
+  --needs-you: var(--warn);
+  --done: var(--ok);
+  --working: var(--primary);
+  --idle: #56616c;
+}
+
+:root[data-theme="abyss"] {
+  --bg: #07111b;
+  --main: #0b1724;
+  --raise: #112131;
+  --hover: #0f1c29;
+  --sel: #162839;
+  --line: #14243a;
+  --line2: #1e3248;
+  --well: #06101a;
+  --term: #050d15;
 }
 
 :root[data-theme="day"] {
   color-scheme: light;
-  --background: #f5f4ef;
-  --foreground: #20252a;
-  --card: #ffffff;
-  --card-foreground: #20252a;
-  --popover: #ffffff;
-  --popover-foreground: #20252a;
+  --bg: #eef0ee;
+  --main: #ffffff;
+  --raise: #f5f6f4;
+  --hover: #f0f2f0;
+  --sel: #e7eae8;
+  --line: #e3e6e4;
+  --line2: #d2d7d4;
+  --well: #f2f4f2;
+  --term: #fafbfa;
+  --fg: #12171c;
+  --body: #262d33;
+  --fg2: #3b444c;
+  --muted-text: #58626c;
+  --dim: #646e78;
   --primary: #0e8f7a;
-  --primary-foreground: #071011;
-  --secondary: #e7e8e4;
-  --secondary-foreground: #343a40;
-  --muted: #ecece8;
-  --muted-foreground: #626b73;
-  --accent: #e4e7e2;
-  --accent-foreground: #20252a;
-  --destructive: #c0392f;
-  --border: #d9dcd7;
-  --input: #c4cbc6;
-  --ring: #0e8f7a;
-  --sidebar: #edeee9;
-  --sidebar-foreground: #20252a;
-  --sidebar-primary: #0e8f7a;
-  --sidebar-primary-foreground: #071011;
-  --sidebar-accent: #e4e7e2;
-  --sidebar-accent-foreground: #20252a;
-  --sidebar-border: #d9dcd7;
-  --sidebar-ring: #0e8f7a;
-  --needs-you: #8a5100;
-  --done: #41714e;
-  --working: #0e8f7a;
-  --idle: #626b73;
+  --primary-foreground: #ffffff;
+  --accent-soft: rgb(14 143 122 / 11%);
+  --warn: #9a5b00;
+  --warn-soft: rgb(154 91 0 / 7%);
+  --warn-line: rgb(154 91 0 / 28%);
+  --on-warn: #ffffff;
+  --danger: #c0392f;
+  --danger-soft: rgb(192 57 47 / 7%);
+  --danger-line: rgb(192 57 47 / 30%);
+  --ok: #2f7a4b;
+  --idle: #8a949f;
 }
 
-:root[data-theme="night"][data-accent="blue"] { --primary: #73b4ff; --ring: #73b4ff; --sidebar-primary: #73b4ff; --sidebar-ring: #73b4ff; --working: #73b4ff; }
-:root[data-theme="day"][data-accent="blue"] { --primary: #2563b8; --ring: #2563b8; --sidebar-primary: #2563b8; --sidebar-ring: #2563b8; --working: #2563b8; }
-:root[data-theme="night"][data-accent="violet"] { --primary: #b8a2ff; --ring: #b8a2ff; --sidebar-primary: #b8a2ff; --sidebar-ring: #b8a2ff; --working: #b8a2ff; }
-:root[data-theme="day"][data-accent="violet"] { --primary: #6846b8; --ring: #6846b8; --sidebar-primary: #6846b8; --sidebar-ring: #6846b8; --working: #6846b8; }
+:root[data-theme="night"][data-accent="blue"], :root[data-theme="abyss"][data-accent="blue"] { --primary: #73b4ff; --accent-soft: rgb(115 180 255 / 11%); }
+:root[data-theme="day"][data-accent="blue"] { --primary: #2563b8; --accent-soft: rgb(37 99 184 / 11%); }
+:root[data-theme="night"][data-accent="violet"], :root[data-theme="abyss"][data-accent="violet"] { --primary: #b8a2ff; --accent-soft: rgb(184 162 255 / 11%); }
+:root[data-theme="day"][data-accent="violet"] { --primary: #6846b8; --accent-soft: rgb(104 70 184 / 11%); }
 
 @theme inline {
   --font-sans: "Geist Variable", "Segoe UI", sans-serif;

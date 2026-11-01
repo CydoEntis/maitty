@@ -16,6 +16,12 @@ describe('theme preference', () => {
     expect(readThemePreference()).toBe('day')
   })
 
+  it('restores the saved Abyss theme', () => {
+    writeThemePreference('abyss')
+
+    expect(readThemePreference()).toBe('abyss')
+  })
+
   it('ignores unsupported saved themes', () => {
     localStorage.setItem('maitty.gui.theme.v1', 'neon')
 
