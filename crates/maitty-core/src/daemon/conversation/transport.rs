@@ -266,6 +266,14 @@ impl Launch {
             )
             .into());
         }
+        // A passed check holds for this path and version, so the slow schema
+        // generation is not repeated for every conversation. A changed version
+        // is a different key and is checked in full.
+        let key = (self.paths().1.to_path_buf(), version.to_owned());
+        if preflight_already_passed(&key) {
+            directory.remove().await?;
+            return Ok(());
+        }
         let mut generate = self.command(&home);
         generate
             .args(["app-server", "generate-json-schema", "--out"])
@@ -285,7 +293,43 @@ impl Launch {
         maitty_provider_codex::check_compatibility(version, &inventory)
             .map_err(anyhow::Error::new)?;
         directory.remove().await?;
+        remember_preflight_passed(key);
         Ok(())
+    }
+}
+
+type PreflightKey = (PathBuf, String);
+
+fn passed_preflights() -> &'static std::sync::Mutex<std::collections::HashSet<PreflightKey>> {
+    static PASSED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<PreflightKey>>> =
+        std::sync::OnceLock::new();
+    PASSED.get_or_init(Default::default)
+}
+
+fn preflight_already_passed(key: &PreflightKey) -> bool {
+    passed_preflights()
+        .lock()
+        .is_ok_and(|passed| passed.contains(key))
+}
+
+fn remember_preflight_passed(key: PreflightKey) {
+    // A poisoned lock only means the next start repeats the full check.
+    if let Ok(mut passed) = passed_preflights().lock() {
+        passed.insert(key);
+    }
+}
+
+#[cfg(test)]
+mod preflight_cache_tests {
+    use super::*;
+
+    #[test]
+    fn a_passed_binary_and_version_is_remembered_but_a_new_version_is_not() {
+        let path = PathBuf::from("codex-for-cache-test");
+        assert!(!preflight_already_passed(&(path.clone(), "9.9.9".into())));
+        remember_preflight_passed((path.clone(), "9.9.9".into()));
+        assert!(preflight_already_passed(&(path.clone(), "9.9.9".into())));
+        assert!(!preflight_already_passed(&(path, "9.9.10".into())));
     }
 }
 
