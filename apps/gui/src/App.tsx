@@ -325,7 +325,7 @@ function App() {
   const [newProject, setNewProject] = useState('')
   const [newProvider, setNewProvider] = useState<'Codex' | 'Claude'>('Codex')
   const [startingSessions, setStartingSessions] = useState<
-    { key: string; label: string }[]
+    { key: string; label: string; startedAt: number }[]
   >([])
   const [newPermissions, setNewPermissions] =
     useState<SessionPermissions>('workspace-write')
@@ -2008,6 +2008,7 @@ function App() {
         ...current,
         {
           key: startingKey,
+          startedAt: Date.now(),
           label: `Starting ${newProvider} session in ${folderName}\u2026`,
         },
       ])
@@ -2531,7 +2532,7 @@ type SidebarProps = {
   onArchive: (id: string, archived: boolean) => void
   onRename: (id: string, title: string) => void
   primaryModifier: '⌘' | 'Ctrl'
-  starting: { key: string; label: string }[]
+  starting: { key: string; label: string; startedAt: number }[]
   onOpenProject: () => void
   onNewInProject: (folder: string) => void
   onCloseProject: (project: string) => void
@@ -2666,6 +2667,7 @@ function ConversationSidebar({
         <div className="starting-row" role="status" key={item.key}>
           <StatusMark status="working" />
           <span>{item.label}</span>
+          <Elapsed since={item.startedAt} />
         </div>
       ))}
       <ScrollArea className="session-list-scroll">
