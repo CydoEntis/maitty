@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke, isTauri } from '@tauri-apps/api/core'
-import { classifySubmissionFailure, createConversation, handoffToChat, handoffToNative, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, loadDaemonRestartStatus, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
+import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, loadDaemonRestartStatus, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -23,32 +23,6 @@ const conversation = {
   nativePane: 12,
   hasDiff: false,
 }
-
-describe('conversation handoff', () => {
-  beforeEach(() => {
-    vi.mocked(isTauri).mockReturnValue(true)
-    vi.mocked(invoke).mockReset().mockResolvedValue(null)
-  })
-
-  it('hands the exact generation to the native terminal command', async () => {
-    await handoffToNative(conversation)
-
-    expect(invoke).toHaveBeenCalledWith('handoff_conversation_to_native', { id: 42, generation: 7 })
-  })
-
-  it('hands the exact generation back to structured chat', async () => {
-    await handoffToChat(conversation)
-
-    expect(invoke).toHaveBeenCalledWith('handoff_conversation_to_chat', { id: 42, generation: 7 })
-  })
-
-  it('refuses handoff outside the desktop host', async () => {
-    vi.mocked(isTauri).mockReturnValue(false)
-
-    await expect(handoffToNative(conversation)).rejects.toThrow('Native handoff is only available in the desktop app')
-    expect(invoke).not.toHaveBeenCalled()
-  })
-})
 
 describe('workspace Git state', () => {
   it('marks a conversation folder without Git so Changes can explain why it is unavailable', async () => {
@@ -371,3 +345,129 @@ function toolEntry(item: string, kind: string, output: string, state: 'Running' 
     state,
   }
 }
+
+describe('names and closed sessions shared through the daemon', () => {
+  beforeEach(() => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(invoke).mockReset()
+  })
+
+  const summary = {
+    id: 42,
+    generation: 7,
+    execution: 'Structured',
+    provider: 'Codex',
+    cwd: '/home/casey/sample',
+    worktree: null,
+    state: 'Running',
+    status: 'Idle',
+    native_term: null,
+    checks: [],
+  }
+
+  it('shows the name any client gave a session, and its closed state', async () => {
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [{ ...summary, title: 'Fix the login bug', archived: true }],
+      workspaces: [],
+    })
+
+    await expect(loadConversations()).resolves.toMatchObject([
+      { id: '42', title: 'Fix the login bug', archived: true },
+    ])
+  })
+
+  it('words an unnamed session itself and treats an older daemon as not closed', async () => {
+    vi.mocked(invoke).mockResolvedValue({ conversations: [summary], workspaces: [] })
+
+    await expect(loadConversations()).resolves.toMatchObject([
+      { title: 'Codex conversation 42', archived: false },
+    ])
+  })
+
+  it('sends a rename and a close to the daemon rather than keeping them in the browser', async () => {
+    vi.mocked(invoke).mockResolvedValue(null)
+
+    await renameConversationOnDaemon({ id: '42' }, 'Fix the login bug')
+    await archiveConversationOnDaemon({ id: '42' }, true)
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'rename_conversation', { id: 42, title: 'Fix the login bug' })
+    expect(invoke).toHaveBeenNthCalledWith(2, 'archive_conversation', { id: 42, archived: true })
+  })
+})
+
+describe('terminal sessions shown beside chats', () => {
+  beforeEach(() => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(invoke).mockReset()
+  })
+
+  const term = (overrides: Record<string, unknown>) => ({
+    id: 5,
+    agent: 'claude',
+    status: 'Working',
+    cwd: '/home/casey/sample',
+    root: null,
+    branch: 'main',
+    label: '',
+    conversation_id: null,
+    popup: false,
+    remote: null,
+    ...overrides,
+  })
+
+  it('lists an agent in a terminal of its own, and leaves out shells, popups, other machines and a chat terminal', async () => {
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [],
+      workspaces: [],
+      terms: {
+        '5': term({ label: 'Fix login' }),
+        '6': term({ id: 6, agent: null }),
+        '7': term({ id: 7, popup: true }),
+        '8': term({ id: 8, remote: 'build-box' }),
+        '9': term({ id: 9, conversation_id: 3 }),
+        '10': term({ id: 10, agent: 'gemini' }),
+        '11': { nonsense: true },
+      },
+    })
+
+    const sessions = await loadConversations()
+
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]).toMatchObject({
+      id: 't5',
+      kind: 'terminal',
+      title: 'Fix login',
+      provider: 'Claude',
+      status: 'working',
+      nativePane: 5,
+      named: true,
+    })
+  })
+
+  it('reads, types into, resizes, names and closes a terminal session by its pane number', async () => {
+    vi.mocked(invoke).mockResolvedValue(null)
+    const target = { id: 't5', generation: 0 }
+
+    vi.mocked(invoke).mockResolvedValueOnce('screen')
+    await expect(loadTerminalScreen(target)).resolves.toBe('screen')
+    vi.mocked(invoke).mockResolvedValueOnce([1, 2])
+    await expect(loadTerminalReplay(target)).resolves.toEqual(Uint8Array.from([1, 2]))
+    vi.mocked(invoke).mockResolvedValueOnce('after')
+    await sendTerminalInput(target, 'ls\r')
+    await resizeTerminal(target, 100, 30)
+    await renameConversationOnDaemon({ id: 't5' }, 'Fix login')
+    await archiveConversationOnDaemon({ id: 't5' }, true)
+    await archiveConversationOnDaemon({ id: 't5' }, false)
+    await startTerminalSession('/home/casey/sample', 'Claude')
+
+    expect(vi.mocked(invoke).mock.calls.map(([name, args]) => [name, args])).toEqual([
+      ['pane_terminal_screen', { term: 5 }],
+      ['pane_terminal_replay', { term: 5 }],
+      ['pane_terminal_input', { term: 5, data: [108, 115, 13] }],
+      ['pane_terminal_resize', { term: 5, cols: 100, rows: 30 }],
+      ['rename_terminal_session', { term: 5, name: 'Fix login' }],
+      ['close_terminal_session', { term: 5 }],
+      ['start_terminal_session', { cwd: '/home/casey/sample', provider: 'Claude' }],
+    ])
+  })
+})

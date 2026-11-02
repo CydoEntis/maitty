@@ -18,6 +18,13 @@ export type Conversation = {
   nativePane: number | null
   hasDiff: boolean
   isGitRepository?: boolean
+  // Put away in any client; the daemon keeps it running.
+  archived?: boolean
+  // Someone gave it a name (the daemon has one), as opposed to the automatic wording.
+  named?: boolean
+  // A terminal session: an agent running in a terminal the daemon owns, shared with the terminal
+  // app. Anything else is a chat. `nativePane` is its terminal's number.
+  kind?: 'terminal'
 }
 
 export type Message = {

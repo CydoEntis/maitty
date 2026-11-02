@@ -412,6 +412,8 @@ enum WtRow {
 #[derive(Debug, Clone, PartialEq)]
 enum PromptKind {
     RenamePane(TermId),
+    /// A chat's name, shared with every client (empty: automatic).
+    RenameConversation(crate::conversation::ConversationId),
     RenameProject(String),
     RenameTab(WsId, TabId),
     NewWorkspace,
@@ -426,6 +428,7 @@ impl PromptKind {
     fn label(&self) -> &'static str {
         match self {
             PromptKind::RenamePane(_) => "Rename pane (empty: automatic)",
+            PromptKind::RenameConversation(_) => "Rename chat (empty: automatic)",
             PromptKind::RenameProject(_) => "Rename project (empty: its folder name)",
             PromptKind::RenameTab(..) => "Rename session",
             PromptKind::NewWorkspace => "New pane: name it (empty = its folder)",

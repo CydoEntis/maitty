@@ -89,46 +89,6 @@ pub(in crate::daemon) enum Pending {
         generation: u64,
         turn_id: String,
     },
-    HandoffSaving {
-        client: ClientId,
-        id: ConversationId,
-        generation: u64,
-    },
-    HandoffStopping {
-        client: ClientId,
-        id: ConversationId,
-        generation: u64,
-    },
-    HandoffNativeSaving {
-        client: ClientId,
-        id: ConversationId,
-        generation: u64,
-    },
-    HandoffStarting {
-        client: ClientId,
-        id: ConversationId,
-        generation: u64,
-    },
-    HandoffToChatSaving {
-        client: ClientId,
-        id: ConversationId,
-        generation: u64,
-        term: crate::protocol::TermId,
-    },
-    HandoffToChatStopping {
-        client: ClientId,
-        id: ConversationId,
-        generation: u64,
-        term: crate::protocol::TermId,
-        process_reaped: bool,
-        kill_tree_finished: bool,
-        kill_tree_error: Option<String>,
-    },
-    HandoffToChatIdentitySaving {
-        client: ClientId,
-        id: ConversationId,
-        generation: u64,
-    },
     Receipt {
         client: ClientId,
         receipt: Receipt,
@@ -151,13 +111,6 @@ impl Pending {
             | Self::Submit { client, .. }
             | Self::Sending { client, .. }
             | Self::Cancelling { client, .. }
-            | Self::HandoffSaving { client, .. }
-            | Self::HandoffStopping { client, .. }
-            | Self::HandoffNativeSaving { client, .. }
-            | Self::HandoffStarting { client, .. }
-            | Self::HandoffToChatSaving { client, .. }
-            | Self::HandoffToChatStopping { client, .. }
-            | Self::HandoffToChatIdentitySaving { client, .. }
             | Self::Receipt { client, .. } => Some(*client),
             Self::Hydration { read, started, .. } => {
                 read.as_ref().map(|read| read.client).or(*started)
@@ -172,13 +125,7 @@ impl Pending {
             | Self::Identity { id, .. }
             | Self::Hydration { id, .. } => *id,
             Self::Cancelling { id, .. }
-            | Self::HandoffSaving { id, .. }
-            | Self::HandoffStopping { id, .. }
-            | Self::HandoffNativeSaving { id, .. }
-            | Self::HandoffStarting { id, .. }
-            | Self::HandoffToChatSaving { id, .. }
-            | Self::HandoffToChatStopping { id, .. }
-            | Self::HandoffToChatIdentitySaving { id, .. } => *id,
+            => *id,
             Self::Submit { receipt, .. }
             | Self::Sending { receipt, .. }
             | Self::Receipt { receipt, .. } => receipt.conversation,
@@ -199,67 +146,6 @@ fn sandbox(settings: &LaunchSettings) -> &'static str {
         Sandbox::WorkspaceWrite => "workspace-write",
         Sandbox::FullAccess => "danger-full-access",
     }
-}
-
-fn native_resume_command(
-    conversation: &Conversation,
-) -> Result<crate::daemon::term::DirectCommand> {
-    let settings = conversation
-        .settings
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Native conversation has no verified launch settings"))?;
-    anyhow::ensure!(
-        conversation.execution == ExecutionKind::Native
-            && conversation.binding.provider == Provider::Codex,
-        "Only a native Codex conversation can resume through the Codex terminal"
-    );
-    anyhow::ensure!(
-        conversation.binding.profile.is_none(),
-        "Native profile-v2 handoff is unsupported"
-    );
-    anyhow::ensure!(
-        conversation.binding.account.is_none(),
-        "Native account handoff is unsupported"
-    );
-    anyhow::ensure!(
-        settings.executable == conversation.binding.executable
-            && settings.config_root == conversation.binding.config_root
-            && settings.cwd == conversation.binding.cwd,
-        "Native conversation launch settings do not match its exact binding"
-    );
-    validate_settings(settings)
-        .map_err(|_| anyhow::anyhow!("Invalid native Codex launch settings"))?;
-    anyhow::ensure!(
-        !conversation.binding.session_id.trim().is_empty()
-            && !conversation
-                .binding
-                .session_id
-                .chars()
-                .any(char::is_control),
-        "Native conversation has no exact session identity"
-    );
-
-    let mut args = vec!["resume".into(), "--no-daemon".into()];
-    args.extend([
-        "--cd".into(),
-        settings.cwd.as_os_str().to_owned(),
-        "--sandbox".into(),
-        sandbox(settings).into(),
-        "--ask-for-approval".into(),
-        approval(settings).into(),
-    ]);
-    if let Some(model) = &settings.model {
-        args.extend(["--model".into(), model.into()]);
-    }
-    args.push(conversation.binding.session_id.clone().into());
-    Ok(crate::daemon::term::DirectCommand {
-        executable: settings.executable.clone(),
-        args,
-        environment: vec![(
-            "CODEX_HOME".into(),
-            settings.config_root.as_os_str().to_owned(),
-        )],
-    })
 }
 
 fn params(settings: &LaunchSettings) -> Value {
@@ -570,7 +456,7 @@ impl Daemon {
                     .checked_add(1)
                     .ok_or_else(|| anyhow::anyhow!("Conversation generation exhausted"))?;
                 c.state = RecoveryState::Stopped;
-                LaunchIdentity::Existing(c.clone())
+                LaunchIdentity::Existing(Box::new(c.clone()))
             }
         };
         let launch = Launch {
@@ -674,7 +560,7 @@ impl Daemon {
                     .iter_mut()
                     .find(|record| record.id == id && record.generation == c.generation)
                 {
-                    *record = c.clone();
+                    *record = (**c).clone();
                     true
                 } else {
                     false
@@ -1040,349 +926,6 @@ impl Daemon {
         Ok(())
     }
 
-    pub(in crate::daemon) fn conversation_handoff_to_native(
-        &mut self,
-        client: ClientId,
-        id: ConversationId,
-        generation: u64,
-    ) -> Result<()> {
-        if self
-            .clients
-            .get(&client)
-            .is_some_and(|client| client.from.is_some() || client.structured.is_some())
-        {
-            bail!("Only a human client can hand a conversation to native Codex");
-        }
-        self.may(client, Grant::Write, None)?;
-        self.durable_conversation()?;
-
-        let conversation = self
-            .conversations
-            .iter()
-            .find(|conversation| conversation.id == id)
-            .ok_or_else(|| anyhow::anyhow!("No such conversation"))?;
-        if conversation.generation != generation
-            || conversation.state != RecoveryState::Running
-            || conversation.execution != ExecutionKind::Structured
-        {
-            bail!("Conversation is stale or is not owned by structured Codex");
-        }
-        if conversation.binding.provider != Provider::Codex
-            || conversation.binding.profile.is_some()
-            || conversation.binding.account.is_some()
-            || conversation.settings.is_none()
-        {
-            bail!("Conversation settings cannot be represented by native Codex");
-        }
-        if !self.conversation_runtimes.owns(id)
-            || self
-                .conversation_requests
-                .values()
-                .any(|pending| pending.conversation() == id)
-        {
-            bail!("Conversation has a pending operation or no live structured runtime");
-        }
-        if self.conversation_operations.iter().any(|operation| {
-            operation.receipt.conversation == id
-                && operation.receipt.delivery == Delivery::SubmissionUncertain
-        }) {
-            bail!("Conversation has an uncertain turn submission");
-        }
-        let state = self
-            .conversation_states
-            .get(&id)
-            .ok_or_else(|| anyhow::anyhow!("Conversation runtime is not ready"))?;
-        if !matches!(state.status, Status::Done | Status::Idle)
-            || state.blocked
-            || !state.history_ready
-            || !state.approvals.is_empty()
-            || !state.unsupported_requests.is_empty()
-            || state.cancelling.is_some()
-        {
-            bail!("Conversation must be idle, unblocked and fully hydrated before handoff");
-        }
-
-        let token = self.conversation_token(Pending::HandoffSaving {
-            client,
-            id,
-            generation,
-        })?;
-        self.conversations
-            .iter_mut()
-            .find(|conversation| conversation.id == id)
-            .expect("validated conversation")
-            .state = RecoveryState::Transferring;
-        self.conversation_persist(token)?;
-        self.dirty = true;
-        Ok(())
-    }
-
-    pub(in crate::daemon) fn conversation_handoff_to_chat(
-        &mut self,
-        client: ClientId,
-        id: ConversationId,
-        generation: u64,
-    ) -> Result<()> {
-        if self
-            .clients
-            .get(&client)
-            .is_some_and(|client| client.from.is_some() || client.structured.is_some())
-        {
-            bail!("Only a human client can resume a conversation in chat");
-        }
-        self.may(client, Grant::Start, None)?;
-        self.durable_conversation()?;
-
-        let conversation = self
-            .conversations
-            .iter()
-            .find(|conversation| conversation.id == id)
-            .ok_or_else(|| anyhow::anyhow!("No such conversation"))?;
-        if conversation.generation != generation
-            || !matches!(
-                conversation.state,
-                RecoveryState::Running | RecoveryState::RecoveryRequired
-            )
-            || conversation.execution != ExecutionKind::Native
-            || conversation.binding.provider != Provider::Codex
-            || conversation.binding.profile.is_some()
-            || conversation.binding.account.is_some()
-            || conversation.settings.is_none()
-        {
-            bail!("Conversation is stale or cannot safely return to structured Codex");
-        }
-        if self.conversation_runtimes.owns(id)
-            || self
-                .conversation_requests
-                .values()
-                .any(|pending| pending.conversation() == id)
-        {
-            bail!("Conversation has a pending operation or structured runtime");
-        }
-        let term = self
-            .terms
-            .values()
-            .find(|term| {
-                term.conversation_id == Some(id)
-                    && term.agent.as_deref() == Some("codex")
-                    && term.session.as_deref() == Some(conversation.binding.session_id.as_str())
-            })
-            .ok_or_else(|| anyhow::anyhow!("No native Codex terminal owns this conversation"))?;
-        if term.process_exited {
-            bail!(
-                "The native Codex process has exited; recover it from the TUI before returning to chat"
-            );
-        }
-        if !matches!(term.status, Status::Done | Status::Idle) {
-            bail!("Finish the native Codex turn before returning to chat");
-        }
-        let term_id = term.id;
-        let state = self
-            .conversation_states
-            .get(&id)
-            .ok_or_else(|| anyhow::anyhow!("Conversation runtime is not ready"))?;
-        if state.blocked
-            || !state.approvals.is_empty()
-            || !state.unsupported_requests.is_empty()
-            || state.cancelling.is_some()
-        {
-            bail!("Resolve pending conversation requests before returning to chat");
-        }
-
-        let token = self.conversation_token(Pending::HandoffToChatSaving {
-            client,
-            id,
-            generation,
-            term: term_id,
-        })?;
-        self.conversations
-            .iter_mut()
-            .find(|conversation| conversation.id == id)
-            .expect("validated conversation")
-            .state = RecoveryState::Transferring;
-        self.conversation_persist(token)?;
-        self.dirty = true;
-        Ok(())
-    }
-
-    pub(in crate::daemon) fn conversation_handoff_to_chat_term_event(
-        &mut self,
-        term: crate::protocol::TermId,
-        process_reaped: bool,
-        kill_tree_result: Option<std::result::Result<(), String>>,
-    ) -> bool {
-        let token = self.conversation_requests.iter().find_map(|(token, pending)| {
-            matches!(pending, Pending::HandoffToChatStopping { term: owner, .. } if *owner == term)
-                .then_some(*token)
-        });
-        let Some(token) = token else { return false };
-        if process_reaped && let Some(pane) = self.terms.get_mut(&term) {
-            pane.process_exited = true;
-        }
-        let (ready, kill_tree_error) = if let Some(Pending::HandoffToChatStopping {
-            process_reaped: reaped,
-            kill_tree_finished: killed,
-            kill_tree_error,
-            ..
-        }) = self.conversation_requests.get_mut(&token)
-        {
-            *reaped |= process_reaped;
-            if let Some(result) = kill_tree_result {
-                match result {
-                    Ok(()) => *killed = true,
-                    Err(error) => *kill_tree_error = Some(error),
-                }
-            }
-            let failed = kill_tree_error.clone();
-            ((*reaped && *killed) || failed.is_some(), failed)
-        } else {
-            (false, None)
-        };
-        if ready {
-            let Some(Pending::HandoffToChatStopping {
-                client,
-                id,
-                generation,
-                term,
-                process_reaped,
-                ..
-            }) = self.conversation_requests.remove(&token)
-            else {
-                return true;
-            };
-            if let Some(error) = kill_tree_error {
-                if let Some(conversation) = self.conversations.iter_mut().find(|conversation| {
-                    conversation.id == id
-                        && conversation.generation == generation
-                        && conversation.execution == ExecutionKind::Native
-                        && conversation.state == RecoveryState::Transferring
-                }) {
-                    conversation.state = RecoveryState::RecoveryRequired;
-                }
-                self.conversation_fail(
-                    Pending::HandoffToChatStopping {
-                        client,
-                        id,
-                        generation,
-                        term,
-                        process_reaped,
-                        kill_tree_finished: false,
-                        kill_tree_error: Some(error.clone()),
-                    },
-                    format!("Could not confirm native Codex process cleanup: {error}"),
-                );
-                return true;
-            }
-            self.remove_term(term);
-            let conversation = self.conversations.iter_mut().find(|conversation| {
-                conversation.id == id
-                    && conversation.generation == generation
-                    && conversation.execution == ExecutionKind::Native
-                    && conversation.state == RecoveryState::Transferring
-            });
-            if let Some(conversation) = conversation {
-                let Some(next_generation) = conversation.generation.checked_add(1) else {
-                    self.conversation_fail(
-                        Pending::HandoffToChatIdentitySaving {
-                            client,
-                            id,
-                            generation,
-                        },
-                        "Conversation generation exhausted".into(),
-                    );
-                    return true;
-                };
-                conversation.generation = next_generation;
-                conversation.execution = ExecutionKind::Structured;
-                conversation.state = RecoveryState::Stopped;
-            } else {
-                self.conversation_fail(
-                    Pending::HandoffToChatIdentitySaving {
-                        client,
-                        id,
-                        generation,
-                    },
-                    "Conversation ownership changed during handoff".into(),
-                );
-                return true;
-            }
-            let next_generation = generation + 1;
-            self.conversation_states
-                .entry(id)
-                .or_default()
-                .history_ready = false;
-            self.conversation_requests.insert(
-                token,
-                Pending::HandoffToChatIdentitySaving {
-                    client,
-                    id,
-                    generation: next_generation,
-                },
-            );
-            if let Err(error) = self.persist_barrier(token)
-                && let Some(pending) = self.conversation_requests.remove(&token)
-            {
-                self.conversation_fail(pending, error.to_string());
-            }
-            self.dirty = true;
-        }
-        true
-    }
-
-    fn spawn_native_conversation(&mut self, conversation: &Conversation) -> Result<()> {
-        let settings = conversation.settings.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Native conversation has no verified launch settings")
-        })?;
-        anyhow::ensure!(
-            conversation.state == RecoveryState::RecoveryRequired,
-            "Conversation settings cannot be represented by native Codex"
-        );
-        let direct = native_resume_command(conversation)?;
-
-        let id = self.next();
-        let mut term = crate::daemon::term::Term::spawn(
-            &self.cfg,
-            crate::daemon::term::SpawnSpec {
-                id,
-                cmd: None,
-                direct: Some(direct),
-                cwd: &settings.cwd,
-                cols: self.guess_size().0,
-                rows: self.guess_size().1,
-                once: true,
-            },
-            self.tx.clone(),
-        )?;
-        term.agent = Some("codex".into());
-        term.session = Some(conversation.binding.session_id.clone());
-        term.conversation_id = Some(conversation.id);
-        self.terms.insert(id, term);
-
-        let workspace = self.next();
-        let tab = self.next();
-        self.workspaces.push(crate::daemon::WorkspaceInfo {
-            id: workspace,
-            name: String::new(),
-            cwd: settings.cwd.clone(),
-            tabs: vec![crate::daemon::TabInfo {
-                id: tab,
-                name: String::new(),
-                layout: crate::layout::Node::Leaf(id),
-                focus: id,
-            }],
-            active_tab: tab,
-            git: None,
-            worktree: false,
-            color: self.free_color(),
-            is_new: false,
-            group: None,
-        });
-        self.active_ws = Some(workspace);
-        self.had_terms = true;
-        self.poll_git_soon();
-        Ok(())
-    }
-
     pub(in crate::daemon) fn conversation_send(
         &mut self,
         client: ClientId,
@@ -1473,6 +1016,38 @@ impl Daemon {
         self.conversation_persist(token)?;
         Ok(())
     }
+    /// Name a conversation (empty: back to automatic), for every client at once.
+    pub(in crate::daemon) fn conversation_rename(
+        &mut self,
+        id: ConversationId,
+        title: &str,
+    ) -> Result<()> {
+        let conversation = self
+            .conversations
+            .iter_mut()
+            .find(|c| c.id == id)
+            .ok_or_else(|| anyhow::anyhow!("No such conversation"))?;
+        conversation.title = clean_title(title);
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// Put a conversation away, or bring it back. It keeps running either way.
+    pub(in crate::daemon) fn conversation_archive(
+        &mut self,
+        id: ConversationId,
+        archived: bool,
+    ) -> Result<()> {
+        let conversation = self
+            .conversations
+            .iter_mut()
+            .find(|c| c.id == id)
+            .ok_or_else(|| anyhow::anyhow!("No such conversation"))?;
+        conversation.archived = archived;
+        self.dirty = true;
+        Ok(())
+    }
+
     pub(in crate::daemon) fn conversation_summaries(&self) -> Vec<ConversationSummary> {
         let mut summaries: Vec<_> = self
             .conversations
@@ -1516,6 +1091,8 @@ impl Daemon {
                         .filter(|term| !term.process_exited)
                         .map(|term| term.id),
                     checks: state.map_or_else(Vec::new, |s| s.checks.infos()),
+                    title: c.title.clone(),
+                    archived: c.archived,
                 }
             })
             .collect();
@@ -1534,6 +1111,8 @@ impl Daemon {
                     .map_or(Status::Blocked, |s| s.status),
                 native_term: None,
                 checks: Vec::new(),
+                title: None,
+                archived: false,
             }
         }));
         summaries
@@ -1593,7 +1172,7 @@ impl Daemon {
                         self.pending_starts.iter().any(|record| record == p)
                     }
                     LaunchIdentity::Existing(c) => {
-                        self.conversations.iter().any(|record| record == c)
+                        self.conversations.iter().any(|record| record == &**c)
                     }
                 };
                 if !matches
@@ -1660,246 +1239,6 @@ impl Daemon {
                 } else {
                     self.begin_hydration(id, generation, None, Some(client))
                         .map_err(|error| (token, error.to_string()))
-                }
-            }
-            Pending::HandoffSaving {
-                client,
-                id,
-                generation,
-            } => {
-                let valid = self.conversations.iter().any(|conversation| {
-                    conversation.id == id
-                        && conversation.generation == generation
-                        && conversation.execution == ExecutionKind::Structured
-                        && conversation.state == RecoveryState::Transferring
-                }) && self.conversation_runtimes.owns(id)
-                    && !self
-                        .terms
-                        .values()
-                        .any(|term| term.conversation_id == Some(id));
-                if !valid {
-                    Err((
-                        token,
-                        "Conversation ownership changed before native handoff".into(),
-                    ))
-                } else {
-                    self.conversation_requests.insert(
-                        token,
-                        Pending::HandoffStopping {
-                            client,
-                            id,
-                            generation,
-                        },
-                    );
-                    self.conversation_runtimes
-                        .dispose(id)
-                        .map_err(|error| (token, error.to_string()))
-                }
-            }
-            Pending::HandoffStopping { .. } => Err((
-                token,
-                "Conversation handoff is waiting for runtime cleanup".into(),
-            )),
-            Pending::HandoffNativeSaving {
-                client,
-                id,
-                generation,
-            } => {
-                let conversation = self
-                    .conversations
-                    .iter()
-                    .find(|conversation| {
-                        conversation.id == id
-                            && conversation.generation == generation
-                            && conversation.execution == ExecutionKind::Native
-                            && conversation.state == RecoveryState::RecoveryRequired
-                    })
-                    .cloned();
-                match conversation {
-                    Some(conversation) => match self.spawn_native_conversation(&conversation) {
-                        Ok(()) => {
-                            self.conversations
-                                .iter_mut()
-                                .find(|conversation| conversation.id == id)
-                                .expect("validated native conversation")
-                                .state = RecoveryState::Running;
-                            self.conversation_requests.insert(
-                                token,
-                                Pending::HandoffStarting {
-                                    client,
-                                    id,
-                                    generation,
-                                },
-                            );
-                            self.conversation_persist(token)
-                                .map_err(|error| (token, error.to_string()))
-                        }
-                        Err(error) => {
-                            self.conversation_requests.insert(
-                                token,
-                                Pending::HandoffNativeSaving {
-                                    client,
-                                    id,
-                                    generation,
-                                },
-                            );
-                            Err((token, error.to_string()))
-                        }
-                    },
-                    None => {
-                        self.conversation_requests.insert(
-                            token,
-                            Pending::HandoffNativeSaving {
-                                client,
-                                id,
-                                generation,
-                            },
-                        );
-                        Err((
-                            token,
-                            "Native conversation intent changed before launch".into(),
-                        ))
-                    }
-                }
-            }
-            Pending::HandoffStarting {
-                client,
-                id,
-                generation,
-            } => {
-                let valid = self.conversations.iter().any(|conversation| {
-                    conversation.id == id
-                        && conversation.generation == generation
-                        && conversation.execution == ExecutionKind::Native
-                        && conversation.state == RecoveryState::Running
-                }) && self
-                    .terms
-                    .values()
-                    .any(|term| term.conversation_id == Some(id));
-                if valid {
-                    self.send(client, ServerMsg::Reply(Reply::Ok));
-                    Ok(())
-                } else {
-                    self.conversation_requests.insert(
-                        token,
-                        Pending::HandoffStarting {
-                            client,
-                            id,
-                            generation,
-                        },
-                    );
-                    Err((token, "Native conversation pane was not saved".into()))
-                }
-            }
-            Pending::HandoffToChatSaving {
-                client,
-                id,
-                generation,
-                term,
-            } => {
-                let valid = self.conversations.iter().any(|conversation| {
-                    conversation.id == id
-                        && conversation.generation == generation
-                        && conversation.execution == ExecutionKind::Native
-                        && conversation.state == RecoveryState::Transferring
-                }) && self.terms.get(&term).is_some_and(|pane| {
-                    pane.conversation_id == Some(id)
-                        && pane.agent.as_deref() == Some("codex")
-                        && matches!(pane.status, Status::Done | Status::Idle)
-                }) && !self.conversation_runtimes.owns(id);
-                if !valid {
-                    Err((
-                        token,
-                        "Native conversation changed before chat handoff".into(),
-                    ))
-                } else {
-                    self.conversation_requests.insert(
-                        token,
-                        Pending::HandoffToChatStopping {
-                            client,
-                            id,
-                            generation,
-                            term,
-                            process_reaped: false,
-                            kill_tree_finished: false,
-                            kill_tree_error: None,
-                        },
-                    );
-                    if let Some(pane) = self.terms.get_mut(&term) {
-                        pane.kill_tree_for_handoff(term, self.tx.clone());
-                        Ok(())
-                    } else {
-                        self.conversation_requests.remove(&token);
-                        Err((
-                            token,
-                            "Native conversation terminal exited before handoff".into(),
-                        ))
-                    }
-                }
-            }
-            Pending::HandoffToChatStopping { .. } => Err((
-                token,
-                "Conversation handoff is waiting for native process cleanup".into(),
-            )),
-            Pending::HandoffToChatIdentitySaving {
-                client,
-                id,
-                generation,
-            } => {
-                let launch = self
-                    .conversations
-                    .iter()
-                    .find(|conversation| {
-                        conversation.id == id
-                            && conversation.generation == generation
-                            && conversation.execution == ExecutionKind::Structured
-                            && conversation.state == RecoveryState::Stopped
-                    })
-                    .cloned();
-                match launch {
-                    Some(conversation)
-                        if !self.conversation_runtimes.owns(id)
-                            && !self
-                                .terms
-                                .values()
-                                .any(|pane| pane.conversation_id == Some(id)) =>
-                    {
-                        let launch = Launch {
-                            identity: LaunchIdentity::Existing(conversation),
-                            environment: std::env::vars_os()
-                                .filter(|(key, value)| {
-                                    valid_provider_environment_entry(key, value)
-                                        && !key.to_string_lossy().eq_ignore_ascii_case("CODEX_HOME")
-                                })
-                                .collect(),
-                            #[cfg(test)]
-                            failure_point: None,
-                        };
-                        self.conversation_requests
-                            .insert(token, Pending::Validating { client, id });
-                        let tx = self.tx.clone();
-                        tokio::spawn(async move {
-                            let result = launch.validate().await.map_err(|error| error.to_string());
-                            let _ = tx
-                                .send(crate::daemon::Ev::ConversationValidated { token, result })
-                                .await;
-                        });
-                        Ok(())
-                    }
-                    _ => {
-                        self.conversation_requests.insert(
-                            token,
-                            Pending::HandoffToChatIdentitySaving {
-                                client,
-                                id,
-                                generation,
-                            },
-                        );
-                        Err((
-                            token,
-                            "Structured conversation identity was not saved".into(),
-                        ))
-                    }
                 }
             }
             Pending::Submit {
@@ -2005,74 +1344,13 @@ impl Daemon {
                                 snapshot.pending_starts.iter().any(|saved| saved == p)
                             }
                             LaunchIdentity::Existing(c) => {
-                                snapshot.conversations.iter().any(|saved| saved == c)
+                                snapshot.conversations.iter().any(|saved| saved == &**c)
                             }
                         },
                         Pending::Identity { id, generation, .. } => {
                             snapshot.conversations.iter().any(|saved| {
                                 saved.id == *id
                                     && saved.generation == *generation
-                                    && self.conversations.iter().any(|current| current == saved)
-                            })
-                        }
-                        Pending::HandoffSaving { id, generation, .. } => {
-                            snapshot.conversations.iter().any(|saved| {
-                                saved.id == *id
-                                    && saved.generation == *generation
-                                    && saved.state == RecoveryState::Transferring
-                                    && self.conversations.iter().any(|current| current == saved)
-                            })
-                        }
-                        Pending::HandoffNativeSaving { id, generation, .. } => {
-                            snapshot.conversations.iter().any(|saved| {
-                                saved.id == *id
-                                    && saved.generation == *generation
-                                    && saved.execution == ExecutionKind::Native
-                                    && saved.state == RecoveryState::RecoveryRequired
-                                    && self.conversations.iter().any(|current| current == saved)
-                            })
-                        }
-                        Pending::HandoffStarting { id, generation, .. } => {
-                            snapshot.conversations.iter().any(|saved| {
-                                saved.id == *id
-                                    && saved.generation == *generation
-                                    && saved.execution == ExecutionKind::Native
-                                    && saved.state == RecoveryState::Running
-                                    && self.conversations.iter().any(|current| current == saved)
-                            }) && snapshot.workspaces.iter().any(|workspace| {
-                                workspace.tabs.iter().any(|tab| {
-                                    tab.panes
-                                        .values()
-                                        .any(|pane| pane.conversation_id == Some(*id))
-                                })
-                            })
-                        }
-                        Pending::HandoffToChatSaving {
-                            id,
-                            generation,
-                            term,
-                            ..
-                        } => {
-                            snapshot.conversations.iter().any(|saved| {
-                                saved.id == *id
-                                    && saved.generation == *generation
-                                    && saved.execution == ExecutionKind::Native
-                                    && saved.state == RecoveryState::Transferring
-                                    && self.conversations.iter().any(|current| current == saved)
-                            }) && snapshot.workspaces.iter().any(|workspace| {
-                                workspace.tabs.iter().any(|tab| {
-                                    tab.panes
-                                        .get(term)
-                                        .is_some_and(|pane| pane.conversation_id == Some(*id))
-                                })
-                            })
-                        }
-                        Pending::HandoffToChatIdentitySaving { id, generation, .. } => {
-                            snapshot.conversations.iter().any(|saved| {
-                                saved.id == *id
-                                    && saved.generation == *generation
-                                    && saved.execution == ExecutionKind::Structured
-                                    && saved.state == RecoveryState::Stopped
                                     && self.conversations.iter().any(|current| current == saved)
                             })
                         }
@@ -2220,6 +1498,16 @@ impl Daemon {
                             .is_some_and(|conversation| {
                                 conversation.awaiting_first_user_message
                             }),
+                    title: self
+                        .conversations
+                        .iter()
+                        .find(|conversation| conversation.id == id)
+                        .and_then(|conversation| conversation.title.clone()),
+                    archived: self
+                        .conversations
+                        .iter()
+                        .find(|conversation| conversation.id == id)
+                        .is_some_and(|conversation| conversation.archived),
                 };
                 let mut proposed = self.conversations.clone();
                 proposed.retain(|c| c.id != id);
@@ -2732,30 +2020,6 @@ impl Daemon {
 
     pub(in crate::daemon) fn conversation_fail(&mut self, pending: Pending, error: String) {
         let id = pending.conversation();
-        if let Pending::HandoffSaving { id, generation, .. } = &pending
-            && let Some(conversation) = self.conversations.iter_mut().find(|conversation| {
-                conversation.id == *id && conversation.generation == *generation
-            })
-            && conversation.state == RecoveryState::Transferring
-        {
-            conversation.state = RecoveryState::Running;
-        }
-        if let Pending::HandoffToChatSaving { id, generation, .. } = &pending
-            && let Some(conversation) = self.conversations.iter_mut().find(|conversation| {
-                conversation.id == *id && conversation.generation == *generation
-            })
-            && conversation.state == RecoveryState::Transferring
-        {
-            conversation.state = RecoveryState::Running;
-        }
-        if let Pending::HandoffStarting { id, generation, .. } = &pending
-            && let Some(conversation) = self.conversations.iter_mut().find(|conversation| {
-                conversation.id == *id && conversation.generation == *generation
-            })
-            && conversation.state == RecoveryState::Running
-        {
-            conversation.state = RecoveryState::RecoveryRequired;
-        }
         if let Pending::Cancelling { turn_id, .. } = &pending
             && let Some(state) = self.conversation_states.get_mut(&id)
             && state.cancelling.as_deref() == Some(turn_id)
@@ -2778,13 +2042,6 @@ impl Daemon {
             | Pending::Submit { client, .. }
             | Pending::Sending { client, .. }
             | Pending::Cancelling { client, .. }
-            | Pending::HandoffSaving { client, .. }
-            | Pending::HandoffStopping { client, .. }
-            | Pending::HandoffNativeSaving { client, .. }
-            | Pending::HandoffStarting { client, .. }
-            | Pending::HandoffToChatSaving { client, .. }
-            | Pending::HandoffToChatStopping { client, .. }
-            | Pending::HandoffToChatIdentitySaving { client, .. }
             | Pending::Receipt { client, .. } => Some(client),
             Pending::Hydration { read, started, .. } => read.map(|r| r.client).or(started),
         };
@@ -2802,7 +2059,6 @@ impl Daemon {
 #[cfg(test)]
 mod native_resume_tests {
     use super::*;
-    use std::ffi::OsString;
     use std::path::PathBuf;
 
     #[test]
@@ -2899,61 +2155,4 @@ mod native_resume_tests {
         assert_eq!(history.entries, cached.entries);
     }
 
-    fn native_conversation() -> Conversation {
-        let mut conversation = crate::test_support::conversation();
-        conversation.execution = ExecutionKind::Native;
-        conversation.state = RecoveryState::RecoveryRequired;
-        conversation.binding.session_id = "exact session; & whoami".into();
-        conversation.settings = Some(LaunchSettings {
-            provider: Provider::Codex,
-            executable: conversation.binding.executable.clone(),
-            config_root: conversation.binding.config_root.clone(),
-            cwd: conversation.binding.cwd.clone(),
-            model: Some("codex-model".into()),
-            model_provider: None,
-            approval_policy: ApprovalPolicy::OnRequest,
-            sandbox: Sandbox::WorkspaceWrite,
-        });
-        conversation.binding.profile = None;
-        conversation.binding.account = None;
-        conversation
-    }
-
-    #[test]
-    fn native_resume_uses_exact_identity_as_one_argument() {
-        let conversation = native_conversation();
-        let command = native_resume_command(&conversation).unwrap();
-        assert_eq!(
-            command.args,
-            [
-                OsString::from("resume"),
-                OsString::from("--no-daemon"),
-                OsString::from("--cd"),
-                conversation.binding.cwd.as_os_str().to_owned(),
-                OsString::from("--sandbox"),
-                OsString::from("workspace-write"),
-                OsString::from("--ask-for-approval"),
-                OsString::from("on-request"),
-                OsString::from("--model"),
-                OsString::from("codex-model"),
-                OsString::from("exact session; & whoami"),
-            ]
-        );
-        assert_eq!(command.environment[0].0, "CODEX_HOME");
-        assert_eq!(
-            command.environment[0].1,
-            conversation.binding.config_root.as_os_str()
-        );
-    }
-
-    #[test]
-    fn native_resume_refuses_unrepresented_profiles_and_stale_bindings() {
-        let mut conversation = native_conversation();
-        conversation.binding.profile = Some("unsupported-profile".into());
-        assert!(native_resume_command(&conversation).is_err());
-
-        conversation.binding.profile = None;
-        conversation.binding.cwd.push("different");
-        assert!(native_resume_command(&conversation).is_err());
-    }
 }

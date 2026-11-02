@@ -93,10 +93,11 @@ import {
   cancelTurn as cancelDaemonTurn,
   classifySubmissionFailure,
   createConversation as createDaemonConversation,
+  archiveConversationOnDaemon,
+  startTerminalSession,
+  renameConversationOnDaemon,
   endConversation as endDaemonConversation,
   type SessionPermissions,
-  handoffToChat,
-  handoffToNative,
   isDesktop,
   loadClaudeExecutablePath,
   loadCodexExecutablePath,
@@ -120,6 +121,7 @@ import {
 } from '@/data/preview'
 import { markConversationsDisconnected } from '@/data/connection'
 import {
+  planPreferenceMigration,
   readSidebarPreferences,
   writeSidebarPreferences,
 } from '@/data/sidebarPreferences'
@@ -266,9 +268,11 @@ function App() {
       const started = startedWith[conversation.id]
       return {
         ...conversation,
-        title:
-          sidebarPreferences.renamedTitles[conversation.id] ??
-          conversation.title,
+        // The daemon holds the name for every client; only the browser preview keeps its own.
+        title: desktop
+          ? conversation.title
+          : (sidebarPreferences.renamedTitles[conversation.id] ??
+            conversation.title),
         // The daemon does not report how a session was started; show what was chosen.
         ...(desktop && started
           ? { permission: PERMISSION_LABELS[started] }
@@ -286,6 +290,15 @@ function App() {
     sidebarPreferences.renamedTitles,
     startedWith,
   ])
+  const archivedIds = useMemo(
+    () =>
+      desktop
+        ? (sessionsQuery.data ?? [])
+            .filter((conversation) => conversation.archived)
+            .map((conversation) => conversation.id)
+        : sidebarPreferences.archivedIds,
+    [desktop, sessionsQuery.data, sidebarPreferences.archivedIds],
+  )
   const [selectedId, setSelectedId] = useState(
     () =>
       (readSettingsPreferences().restoreTabs
@@ -325,6 +338,8 @@ function App() {
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
   const [newProject, setNewProject] = useState('')
   const [newProvider, setNewProvider] = useState<'Codex' | 'Claude'>('Codex')
+  // Chosen when a session starts and kept for its whole life.
+  const [newKind, setNewKind] = useState<'chat' | 'terminal'>('chat')
   const [endTarget, setEndTarget] = useState<Conversation | null>(null)
   const [startingSessions, setStartingSessions] = useState<
     { key: string; label: string; startedAt: number }[]
@@ -336,7 +351,6 @@ function App() {
   const [isChoosingFolder, setIsChoosingFolder] = useState(false)
   const [theme, setTheme] = useState(readThemePreference)
   const [approvalCollapsed, setApprovalCollapsed] = useState(false)
-  const [handoffPending, setHandoffPending] = useState(false)
   const [terminalSwitchNotice, setTerminalSwitchNotice] = useState('')
   const [recoveryPendingId, setRecoveryPendingId] = useState<string | null>(
     null,
@@ -381,10 +395,9 @@ function App() {
   const activeConversations = useMemo(
     () =>
       conversations.filter(
-        (conversation) =>
-          !sidebarPreferences.archivedIds.includes(conversation.id),
+        (conversation) => !archivedIds.includes(conversation.id),
       ),
-    [conversations, sidebarPreferences.archivedIds],
+    [conversations, archivedIds],
   )
   const selected =
     conversations.find((conversation) => conversation.id === selectedId) ??
@@ -445,14 +458,21 @@ function App() {
     if (terminalConversationId !== null)
       setTerminalConversationId(conversationId)
   }
+  // A chat has no terminal and a terminal session has no chat, decided when it starts. Only the
+  // browser preview, which has no daemon, still flips between the two views.
   const showTerminal = Boolean(
-    selected && terminalConversationId === selected.id,
+    selected &&
+    (desktop && selected.execution === 'Native'
+      ? true
+      : terminalConversationId === selected.id),
   )
+  // Changes, files and context belong to a chat; a terminal session has none.
+  const shownPanel = selected?.kind === 'terminal' ? null : activePanel
   const historyQuery = useQuery({
     queryKey: ['conversation-history', selected?.id],
     queryFn: () =>
       loadMessages(selected?.id ?? '', selected?.provider ?? 'Codex'),
-    enabled: desktop && Boolean(selected),
+    enabled: desktop && Boolean(selected) && selected?.kind !== 'terminal',
     refetchInterval: (query) => {
       const waitingForApproval =
         selected?.status === 'needs-you' &&
@@ -516,8 +536,6 @@ function App() {
       ? (historyQuery.data?.messages ?? [])
       : (messagesById[selected.id] ?? [])
     : []
-  const nativeHistoryComplete =
-    !historyQuery.isError && historyQuery.data?.completeness === 'Complete'
   const pendingApproval = [...messages]
     .reverse()
     .find((message) => message.role === 'approval' && !message.resolved)
@@ -575,114 +593,8 @@ function App() {
     setTerminalSwitchNotice('')
     if (!desktop || !selected.execution) {
       setTerminalConversationId(showTerminal ? null : selected.id)
-      return
     }
-    // A conversation still in chat has nothing to hand back; Chat just closes the
-    // terminal view (for example after picking it in a split pane).
-    if (showTerminal && selected.execution === 'Structured') {
-      setTerminalConversationId(null)
-      return
-    }
-    if (daemonDisconnected) {
-      if (selected.execution === 'Native' && showTerminal) {
-        setTerminalConversationId(null)
-        return
-      }
-      setTerminalSwitchNotice(
-        'Reconnect to Maitty before switching this conversation.',
-      )
-      return
-    }
-    if (handoffPending) return
-
-    if (
-      selected.execution === 'Native' &&
-      showTerminal &&
-      selected.status === 'recovery'
-    ) {
-      setTerminalConversationId(null)
-      return
-    }
-
-    if (
-      selected.execution === 'Structured' &&
-      selected.status !== 'idle' &&
-      selected.status !== 'done'
-    ) {
-      setTerminalSwitchNotice(
-        `${selected.provider} is still working in Chat. Let the current turn finish before opening Terminal.`,
-      )
-      return
-    }
-    if (
-      selected.execution === 'Native' &&
-      showTerminal &&
-      selected.status !== 'idle' &&
-      selected.status !== 'done'
-    ) {
-      setTerminalSwitchNotice(
-        `${selected.provider} is still working in the native terminal. Finish or stop that turn there, then choose Chat.`,
-      )
-      return
-    }
-
-    if (selected.execution === 'Native' && !showTerminal) {
-      setTerminalConversationId(selected.id)
-      return
-    }
-
-    const returningToChat = selected.execution === 'Native' && showTerminal
-    setHandoffPending(true)
-    const handoff =
-      selected.execution === 'Structured'
-        ? handoffToNative(selected)
-        : returningToChat
-          ? handoffToChat(selected)
-          : Promise.resolve()
-    const refreshConversation = () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-        queryClient.invalidateQueries({
-          queryKey: ['conversation-history', selected.id],
-        }),
-      ])
-    void handoff
-      .then(async () => {
-        if (returningToChat) {
-          setTerminalConversationId(null)
-          void refreshConversation().catch(() => {
-            setTerminalSwitchNotice(
-              'Chat is open, but Maitty could not refresh the conversation state.',
-            )
-          })
-          return
-        }
-        await refreshConversation()
-        setTerminalConversationId(selected.id)
-      })
-      .catch((error: unknown) => {
-        const detail =
-          error instanceof Error
-            ? error.message
-            : 'Could not switch the conversation view.'
-        setTerminalSwitchNotice(detail)
-        void refreshConversation().catch(() => {
-          setTerminalSwitchNotice(
-            `${detail} Maitty could not refresh this conversation’s state.`,
-          )
-        })
-      })
-      .finally(() => {
-        setHandoffPending(false)
-      })
-  }, [
-    daemonDisconnected,
-    desktop,
-    handoffPending,
-    queryClient,
-    selected,
-    showTerminal,
-  ])
+  }, [desktop, selected, showTerminal])
   const openConversationInTerminal = useCallback(
     (conversationId: string) => {
       const conversation = activeConversations.find(
@@ -699,107 +611,12 @@ function App() {
         setTerminalConversationId(conversation.id)
         return
       }
-      if (daemonDisconnected) {
-        setTerminalSwitchNotice(
-          'Reconnect to Maitty before opening the native terminal.',
-        )
-        return
-      }
-      if (handoffPending) return
-      if (conversation.status !== 'idle' && conversation.status !== 'done') {
-        setTerminalSwitchNotice(
-          `${conversation.provider} is still working in Chat. Let the current turn finish before opening Terminal.`,
-        )
-        return
-      }
-      setHandoffPending(true)
-      void handoffToNative(conversation)
-        .then(async () => {
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-            queryClient.invalidateQueries({
-              queryKey: ['conversation-history', conversation.id],
-            }),
-          ])
-          setTerminalConversationId(conversation.id)
-        })
-        .catch((error: unknown) => {
-          setTerminalSwitchNotice(
-            error instanceof Error
-              ? error.message
-              : 'Could not open the native terminal.',
-          )
-          void Promise.all([
-            queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-            queryClient.invalidateQueries({
-              queryKey: ['conversation-history', conversation.id],
-            }),
-          ]).catch(() => {
-            setTerminalSwitchNotice(
-              'The handoff failed, and Maitty could not refresh the conversation state.',
-            )
-          })
-        })
-        .finally(() => {
-          setHandoffPending(false)
-        })
+      setTerminalSwitchNotice(
+        'This is a chat session, so it has no terminal. Start a terminal session to use one.',
+      )
     },
-    [
-      activeConversations,
-      daemonDisconnected,
-      desktop,
-      handoffPending,
-      queryClient,
-      selectConversation,
-    ],
+    [activeConversations, desktop, selectConversation],
   )
-  const retryNativeHandoff = useCallback(() => {
-    if (
-      !selected ||
-      selected.execution !== 'Native' ||
-      selected.status !== 'recovery'
-    )
-      return
-    if (daemonDisconnected) {
-      setTerminalSwitchNotice('Reconnect to Maitty before returning to chat.')
-      return
-    }
-    if (handoffPending) return
-
-    setHandoffPending(true)
-    void handoffToChat(selected)
-      .then(() => {
-        setTerminalConversationId(null)
-        void Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-          queryClient.invalidateQueries({
-            queryKey: ['conversation-history', selected.id],
-          }),
-        ]).catch(() => {
-          setTerminalSwitchNotice(
-            'Chat is open, but Maitty could not refresh the conversation state.',
-          )
-        })
-      })
-      .catch((error: unknown) => {
-        setTerminalSwitchNotice(
-          error instanceof Error ? error.message : 'Could not return to chat.',
-        )
-        void Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-          queryClient.invalidateQueries({
-            queryKey: ['conversation-history', selected.id],
-          }),
-        ]).catch(() => {
-          setTerminalSwitchNotice(
-            'The return failed, and Maitty could not refresh the conversation state.',
-          )
-        })
-      })
-      .finally(() => {
-        setHandoffPending(false)
-      })
-  }, [daemonDisconnected, handoffPending, queryClient, selected])
   const filteredConversations = useMemo(() => {
     const query = filter.trim().toLowerCase()
     return query
@@ -810,6 +627,39 @@ function App() {
         )
       : activeConversations
   }, [activeConversations, filter])
+
+  // Once per start: hand the names and closed sessions this browser used to keep to the daemon,
+  // so every client shows them. A failure keeps them here and tries again next start.
+  const preferencesMigrated = useRef(false)
+  useEffect(() => {
+    if (!desktop || preferencesMigrated.current || !sessionsQuery.isSuccess)
+      return
+    preferencesMigrated.current = true
+    const plan = planPreferenceMigration(sidebarPreferences, sessionsQuery.data)
+    const hasLocal =
+      sidebarPreferences.archivedIds.length > 0 ||
+      Object.keys(sidebarPreferences.renamedTitles).length > 0
+    if (!hasLocal) return
+    void Promise.all([
+      ...plan.archive.map((id) => archiveConversationOnDaemon({ id }, true)),
+      ...plan.rename.map(([id, title]) =>
+        renameConversationOnDaemon({ id }, title),
+      ),
+    ])
+      .then(() => {
+        setSidebarPreferences(plan.remaining)
+        return queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      })
+      .catch((error: unknown) => {
+        console.warn('Could not move saved names to the daemon', error)
+      })
+  }, [
+    desktop,
+    queryClient,
+    sessionsQuery.data,
+    sessionsQuery.isSuccess,
+    sidebarPreferences,
+  ])
 
   useEffect(() => {
     try {
@@ -1228,6 +1078,33 @@ function App() {
     setSettingsPreferences(preferences)
   }
 
+  // Close or reopen sessions for every client: the daemon keeps the flag. Only the browser
+  // preview, which has no daemon, remembers it itself.
+  function putAway(ids: string[], archived: boolean) {
+    if (!desktop) {
+      setSidebarPreferences((current) => ({
+        ...current,
+        archivedIds: archived
+          ? [...new Set([...current.archivedIds, ...ids])]
+          : current.archivedIds.filter((id) => !ids.includes(id)),
+      }))
+      return
+    }
+    void Promise.all(
+      ids.map((id) => archiveConversationOnDaemon({ id }, archived)),
+    )
+      .catch((error: unknown) => {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Could not change this session',
+        )
+      })
+      .finally(() => {
+        void queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      })
+  }
+
   function setArchived(conversationId: string, archived: boolean) {
     const conversation = conversations.find(
       (item) => item.id === conversationId,
@@ -1236,19 +1113,24 @@ function App() {
       toast.message('Wait for this conversation to finish before archiving it')
       return
     }
-    setSidebarPreferences((current) => ({
-      ...current,
-      archivedIds: archived
-        ? [...new Set([...current.archivedIds, conversationId])]
-        : current.archivedIds.filter((id) => id !== conversationId),
-    }))
+    putAway([conversationId], archived)
     if (archived) {
       if (openTabIds.includes(conversationId) && openTabIds.length > 1)
         closeConversation(conversationId)
-      toast.message('Session archived', {
-        description:
-          'It keeps running in maittyd. Find it under Archived to bring it back.',
-      })
+      toast.message(
+        conversation?.kind === 'terminal'
+          ? 'Terminal session ended'
+          : 'Session closed',
+        conversation?.kind === 'terminal'
+          ? {
+              description:
+                'Its program was stopped, as when it is closed in the terminal app.',
+            }
+          : {
+              description:
+                'It keeps running in maittyd. Find it under Archived to reopen it.',
+            },
+      )
     }
   }
 
@@ -1266,10 +1148,7 @@ function App() {
     void endDaemonConversation(target)
       .then(() => {
         // The agent is stopped; move the session out of the way, like an archived one.
-        setSidebarPreferences((current) => ({
-          ...current,
-          archivedIds: [...new Set([...current.archivedIds, target.id])],
-        }))
+        putAway([target.id], true)
         if (openTabIds.includes(target.id) && openTabIds.length > 1)
           closeConversation(target.id)
         void queryClient.invalidateQueries({ queryKey: ['conversations'] })
@@ -1287,25 +1166,23 @@ function App() {
     const sessions = conversations.filter(
       (conversation) =>
         conversation.project === project &&
-        !sidebarPreferences.archivedIds.includes(conversation.id),
+        !archivedIds.includes(conversation.id),
     )
+    // Closing a project puts its chats away; a terminal session would end its program, so those
+    // are closed one by one.
     const closable = sessions.filter(
-      (conversation) => conversation.status !== 'working',
+      (conversation) =>
+        conversation.status !== 'working' && conversation.kind !== 'terminal',
     )
-    setSidebarPreferences((current) => ({
-      ...current,
-      archivedIds: [
-        ...new Set([
-          ...current.archivedIds,
-          ...closable.map((conversation) => conversation.id),
-        ]),
-      ],
-    }))
-    const stillWorking = sessions.length - closable.length
-    toast.message(`${project} archived`, {
+    putAway(
+      closable.map((conversation) => conversation.id),
+      true,
+    )
+    const stillOpen = sessions.length - closable.length
+    toast.message(`${project} closed`, {
       description:
-        stillWorking > 0
-          ? `${String(stillWorking)} working ${stillWorking === 1 ? 'session was' : 'sessions were'} left open. Archived sessions keep running in maittyd and are under Archived.`
+        stillOpen > 0
+          ? `${String(stillOpen)} working or terminal ${stillOpen === 1 ? 'session was' : 'sessions were'} left open. Closed chats keep running in maittyd and are under Archived.`
           : 'Its sessions keep running in maittyd and are under Archived.',
     })
   }
@@ -1314,6 +1191,18 @@ function App() {
     const cleanTitle = title.trim()
     if (!cleanTitle) {
       toast.error('Conversation name cannot be empty')
+      return
+    }
+    if (desktop) {
+      void renameConversationOnDaemon({ id: conversationId }, cleanTitle)
+        .catch((error: unknown) => {
+          toast.error(
+            error instanceof Error ? error.message : 'Could not rename it',
+          )
+        })
+        .finally(() => {
+          void queryClient.invalidateQueries({ queryKey: ['conversations'] })
+        })
       return
     }
     setSidebarPreferences((current) => ({
@@ -1730,6 +1619,8 @@ function App() {
             onProjectChange={setNewProject}
             provider={newProvider}
             onProviderChange={setNewProvider}
+            kind={newKind}
+            onKindChange={setNewKind}
             permissions={newPermissions}
             onPermissionsChange={setNewPermissions}
             claudeAvailable={!desktop || Boolean(claudeExecutableQuery.data)}
@@ -2030,6 +1921,36 @@ function App() {
       toast.error('Choose a project folder first')
       return
     }
+    if (desktop && newKind === 'terminal') {
+      conversationCreationPendingRef.current = true
+      setConversationCreationPending(true)
+      const known = new Set(conversations.map((item) => item.id))
+      void startTerminalSession(project, newProvider)
+        .then(async () => {
+          setNewDialogOpen(false)
+          await queryClient.invalidateQueries({ queryKey: ['conversations'] })
+          // Open the terminal session that just appeared.
+          const fresh = await queryClient.query({
+            queryKey: ['conversations'],
+            queryFn: loadConversations,
+            staleTime: 0,
+          })
+          const created = fresh.find(
+            (item) => item.kind === 'terminal' && !known.has(item.id),
+          )
+          if (created) selectConversation(created.id)
+        })
+        .catch((error: unknown) => {
+          toast.error(
+            errorMessage(error, `Could not start ${newProvider} terminal`),
+          )
+        })
+        .finally(() => {
+          conversationCreationPendingRef.current = false
+          setConversationCreationPending(false)
+        })
+      return
+    }
     if (desktop) {
       conversationCreationPendingRef.current = true
       setConversationCreationPending(true)
@@ -2127,7 +2048,7 @@ function App() {
             Skip to conversation
           </a>
           <TitleBar />
-          <div className={`workspace-shell ${activePanel ? 'has-panel' : ''}`}>
+          <div className={`workspace-shell ${shownPanel ? 'has-panel' : ''}`}>
             {isCompactSidebar && sidebarDrawerOpen && (
               <div
                 className="drawer-scrim"
@@ -2140,7 +2061,7 @@ function App() {
             <ConversationSidebar
               conversations={filteredConversations}
               archivedConversations={conversations.filter((conversation) =>
-                sidebarPreferences.archivedIds.includes(conversation.id),
+                archivedIds.includes(conversation.id),
               )}
               selectedId={selected.id}
               filter={filter}
@@ -2204,11 +2125,11 @@ function App() {
                   onSelect={selectInCurrentView}
                   onClose={closeConversation}
                   conversation={selected}
-                  panel={activePanel}
+                  panel={shownPanel}
                   showTerminal={showTerminal}
                   onPanel={setActivePanel}
                   onToggleTerminal={toggleTerminal}
-                  handoffPending={handoffPending}
+                  showViewSwitch={!desktop}
                   threadsButton={isCompactSidebar}
                   onOpenThreads={() => {
                     setSidebarDrawerOpen((open) => !open)
@@ -2250,38 +2171,6 @@ function App() {
                     {daemonRestartAction}
                   </div>
                 )}
-                {selected.execution === 'Native' && historyQuery.isError && (
-                  <div className="history-warning" role="alert">
-                    <CircleAlert size={15} />
-                    <span>
-                      Could not load the full conversation history. Maitty will
-                      retry the exact {selected.provider} session when you
-                      return to chat.
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        void historyQuery.refetch()
-                      }}
-                    >
-                      Retry history
-                    </Button>
-                  </div>
-                )}
-                {selected.execution === 'Native' &&
-                  !historyQuery.isError &&
-                  !nativeHistoryComplete && (
-                    <div className="history-warning" role="status">
-                      <CircleAlert size={15} />
-                      <span>
-                        {!historyQuery.data ||
-                        historyQuery.data.completeness === 'Loading'
-                          ? 'Loading the full conversation history. Maitty will verify it before chat resumes.'
-                          : `Conversation history is incomplete. Maitty will reconcile the exact ${selected.provider} session before chat resumes.`}
-                      </span>
-                    </div>
-                  )}
                 {showTerminal ? (
                   <div className="terminal-workspace">
                     <TerminalPanes
@@ -2326,15 +2215,10 @@ function App() {
                         desktop={desktop}
                         disabled={
                           daemonDisconnected ||
-                          handoffPending ||
                           recoveryPendingId === selected.id
                         }
-                        pending={
-                          handoffPending || recoveryPendingId === selected.id
-                        }
+                        pending={recoveryPendingId === selected.id}
                         onResume={resumeSelectedConversation}
-                        onOpenTerminal={toggleTerminal}
-                        onRetryNativeHandoff={retryNativeHandoff}
                       />
                     )}
 
@@ -2452,7 +2336,7 @@ function App() {
                 )}
               </main>
 
-              {activePanel && (
+              {shownPanel && (
                 <div
                   className="panel-scrim"
                   aria-hidden="true"
@@ -2461,9 +2345,9 @@ function App() {
                   }}
                 />
               )}
-              {activePanel && (
+              {shownPanel && (
                 <ContextPanel
-                  tab={activePanel}
+                  tab={shownPanel}
                   conversation={selected}
                   desktop={desktop}
                   onTab={setActivePanel}
@@ -2482,6 +2366,8 @@ function App() {
           onProjectChange={setNewProject}
           provider={newProvider}
           onProviderChange={setNewProvider}
+          kind={newKind}
+          onKindChange={setNewKind}
           permissions={newPermissions}
           onPermissionsChange={setNewPermissions}
           claudeAvailable={!desktop || Boolean(claudeExecutableQuery.data)}
@@ -3167,7 +3053,7 @@ function ConversationTabStrip({
   showTerminal,
   onPanel,
   onToggleTerminal,
-  handoffPending,
+  showViewSwitch,
   threadsButton,
   onOpenThreads,
   attentionCount,
@@ -3181,7 +3067,7 @@ function ConversationTabStrip({
   showTerminal: boolean
   onPanel: (tab: PanelTab | null) => void
   onToggleTerminal: () => void
-  handoffPending: boolean
+  showViewSwitch: boolean
   threadsButton: boolean
   onOpenThreads: () => void
   attentionCount: number
@@ -3286,60 +3172,54 @@ function ConversationTabStrip({
         ))}
       </div>
       <div className="header-toolbar">
-        <div
-          className="view-switch"
-          role="group"
-          aria-label="Conversation view"
-        >
-          <Button
-            variant={!showTerminal ? 'secondary' : 'ghost'}
-            size="sm"
-            disabled={!showTerminal || handoffPending}
-            onClick={onToggleTerminal}
-            aria-pressed={!showTerminal}
-            aria-label={
-              handoffPending && showTerminal
-                ? 'Returning to chat'
-                : showTerminal
-                  ? 'Return to chat'
-                  : 'Chat view'
-            }
+        {showViewSwitch && (
+          <div
+            className="view-switch"
+            role="group"
+            aria-label="Conversation view"
           >
-            {handoffPending && showTerminal ? 'Returning…' : 'Chat'}
-          </Button>
+            <Button
+              variant={!showTerminal ? 'secondary' : 'ghost'}
+              size="sm"
+              disabled={!showTerminal}
+              onClick={onToggleTerminal}
+              aria-pressed={!showTerminal}
+              aria-label={showTerminal ? 'Return to chat' : 'Chat view'}
+            >
+              Chat
+            </Button>
+            <Button
+              variant={showTerminal ? 'secondary' : 'ghost'}
+              size="sm"
+              disabled={showTerminal}
+              onClick={onToggleTerminal}
+              aria-pressed={showTerminal}
+              aria-label="Show terminal"
+            >
+              Terminal
+            </Button>
+          </div>
+        )}
+        {conversation.kind !== 'terminal' && (
           <Button
-            variant={showTerminal ? 'secondary' : 'ghost'}
+            className="review-button"
+            variant="ghost"
             size="sm"
-            disabled={showTerminal || handoffPending}
-            onClick={onToggleTerminal}
-            aria-pressed={showTerminal}
-            aria-label={
-              conversation.execution === 'Structured'
-                ? 'Open in native terminal'
-                : 'Show terminal'
-            }
+            title="Changes, files and context (Ctrl+Shift+D)"
+            aria-pressed={panel !== null}
+            onClick={() => {
+              onPanel(panel ? null : 'diff')
+            }}
           >
-            {handoffPending && !showTerminal ? 'Opening…' : 'Terminal'}
+            Review
+            {reviewStat && (
+              <DiffStat
+                additions={reviewStat.additions}
+                deletions={reviewStat.deletions}
+              />
+            )}
           </Button>
-        </div>
-        <Button
-          className="review-button"
-          variant="ghost"
-          size="sm"
-          title="Changes, files and context (Ctrl+Shift+D)"
-          aria-pressed={panel !== null}
-          onClick={() => {
-            onPanel(panel ? null : 'diff')
-          }}
-        >
-          Review
-          {reviewStat && (
-            <DiffStat
-              additions={reviewStat.additions}
-              deletions={reviewStat.deletions}
-            />
-          )}
-        </Button>
+        )}
       </div>
     </div>
   )
@@ -4077,27 +3957,14 @@ function RecoveryNotice({
   disabled,
   pending,
   onResume,
-  onOpenTerminal,
-  onRetryNativeHandoff,
 }: {
   conversation: Conversation
   desktop: boolean
   disabled: boolean
   pending: boolean
   onResume: () => void
-  onOpenTerminal: () => void
-  onRetryNativeHandoff: () => void
 }) {
   const canResumeInChat = desktop && conversation.execution === 'Structured'
-  const canOpenNativeTerminal =
-    desktop &&
-    conversation.execution === 'Native' &&
-    conversation.nativePane !== null
-  const canRetryNativeHandoff =
-    desktop &&
-    conversation.execution === 'Native' &&
-    conversation.status === 'recovery' &&
-    conversation.nativePane !== null
   return (
     <div className="recovery-notice" role="alert">
       <CircleHelp size={15} />
@@ -4105,9 +3972,7 @@ function RecoveryNotice({
         {canResumeInChat
           ? `${conversation.provider} stopped before the turn finished. Resume this exact session; Maitty will not replay the interrupted turn.`
           : conversation.execution === 'Native'
-            ? canOpenNativeTerminal
-              ? 'Native process cleanup was not confirmed. Inspect the terminal; Maitty will confirm cleanup again before chat resumes.'
-              : 'This native session needs recovery. Resume it in Maitty’s terminal interface; chat stays locked until its history can be checked.'
+            ? 'This terminal session needs recovery. Reopen it from the terminal app.'
             : 'This conversation needs recovery. Reconnect to the daemon before continuing.'}
       </span>
       {canResumeInChat && (
@@ -4118,26 +3983,6 @@ function RecoveryNotice({
           disabled={disabled}
         >
           {pending ? 'Resuming…' : 'Resume session'}
-        </Button>
-      )}
-      {canRetryNativeHandoff && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onRetryNativeHandoff}
-          disabled={disabled}
-        >
-          {pending ? 'Checking cleanup…' : 'Retry return to chat'}
-        </Button>
-      )}
-      {canOpenNativeTerminal && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onOpenTerminal}
-          disabled={disabled}
-        >
-          Open terminal
         </Button>
       )}
     </div>
@@ -4936,6 +4781,8 @@ function NewConversationDialog({
   onProjectChange,
   provider,
   onProviderChange,
+  kind,
+  onKindChange,
   permissions,
   onPermissionsChange,
   claudeAvailable,
@@ -4953,6 +4800,8 @@ function NewConversationDialog({
   onProjectChange: (value: string) => void
   provider: 'Codex' | 'Claude'
   onProviderChange: (provider: 'Codex' | 'Claude') => void
+  kind: 'chat' | 'terminal'
+  onKindChange: (kind: 'chat' | 'terminal') => void
   permissions: SessionPermissions
   onPermissionsChange: (permissions: SessionPermissions) => void
   claudeAvailable: boolean
@@ -5058,39 +4907,75 @@ function NewConversationDialog({
             </button>
           ))}
         </div>
-        <div
-          className="dialog-permissions"
-          role="group"
-          aria-label="Permissions"
-        >
-          <span className="dialog-caps">Permissions</span>
-          {(
-            [
-              ['read-only', 'Reads files and asks before anything else.'],
+        {desktop && (
+          <div
+            className="dialog-provider-options"
+            role="group"
+            aria-label="Session type"
+          >
+            {(
               [
-                'workspace-write',
-                'Edits files in the project and asks before the rest.',
-              ],
+                ['chat', 'Chat', 'Messages and tool output in this window.'],
+                [
+                  'terminal',
+                  'Terminal',
+                  'The agent in a terminal, also open in the terminal app.',
+                ],
+              ] as const
+            ).map(([choice, name, note]) => (
+              <button
+                key={choice}
+                type="button"
+                className={`dialog-provider ${kind === choice ? 'is-selected' : ''}`}
+                aria-pressed={kind === choice}
+                onClick={() => {
+                  onKindChange(choice)
+                }}
+              >
+                <div>
+                  <strong>{name}</strong>
+                  <span>{note}</span>
+                </div>
+                {kind === choice && <Check size={15} />}
+              </button>
+            ))}
+          </div>
+        )}
+        {kind === 'chat' && (
+          <div
+            className="dialog-permissions"
+            role="group"
+            aria-label="Permissions"
+          >
+            <span className="dialog-caps">Permissions</span>
+            {(
               [
-                'full-access',
-                'Never asks and is not sandboxed. Use with care.',
-              ],
-            ] as const
-          ).map(([value, help]) => (
-            <button
-              key={value}
-              type="button"
-              className={`dialog-permission ${permissions === value ? 'is-selected' : ''} ${value === 'full-access' ? 'is-danger' : ''}`}
-              aria-pressed={permissions === value}
-              onClick={() => {
-                onPermissionsChange(value)
-              }}
-            >
-              <strong>{PERMISSION_LABELS[value]}</strong>
-              <span>{help}</span>
-            </button>
-          ))}
-        </div>
+                ['read-only', 'Reads files and asks before anything else.'],
+                [
+                  'workspace-write',
+                  'Edits files in the project and asks before the rest.',
+                ],
+                [
+                  'full-access',
+                  'Never asks and is not sandboxed. Use with care.',
+                ],
+              ] as const
+            ).map(([value, help]) => (
+              <button
+                key={value}
+                type="button"
+                className={`dialog-permission ${permissions === value ? 'is-selected' : ''} ${value === 'full-access' ? 'is-danger' : ''}`}
+                aria-pressed={permissions === value}
+                onClick={() => {
+                  onPermissionsChange(value)
+                }}
+              >
+                <strong>{PERMISSION_LABELS[value]}</strong>
+                <span>{help}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
             Cancel
@@ -5101,7 +4986,11 @@ function NewConversationDialog({
             ) : (
               <Plus size={14} />
             )}
-            {isCreating ? 'Starting conversation…' : 'Start conversation'}
+            {isCreating
+              ? 'Starting session…'
+              : kind === 'terminal'
+                ? 'Start terminal session'
+                : 'Start conversation'}
           </Button>
         </DialogFooter>
       </DialogContent>

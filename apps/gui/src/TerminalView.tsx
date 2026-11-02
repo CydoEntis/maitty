@@ -4,7 +4,7 @@ import { CircleAlert, LoaderCircle, TerminalSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Terminal as XtermTerminal } from '@xterm/xterm'
 import { Button } from '@/components/ui/button'
-import { handoffToNative, isDesktop, loadTerminalReplay, loadTerminalScreen, resizeTerminal, sendTerminalInput } from '@/api/daemon'
+import { isDesktop, loadTerminalReplay, loadTerminalScreen, resizeTerminal, sendTerminalInput } from '@/api/daemon'
 import type { Conversation } from '@/data/preview'
 import '@xterm/xterm/css/xterm.css'
 
@@ -29,41 +29,18 @@ export function TerminalView({ conversation, desktop }: TerminalViewProps) {
 }
 
 function NativeHandoffView({ conversation }: { conversation: Conversation }) {
-  const queryClient = useQueryClient()
-  const [isHandingOff, setIsHandingOff] = useState(false)
-  const canHandOff = conversation.status === 'idle' || conversation.status === 'done'
-
   if (conversation.execution === 'Native') {
     return <div className="panel-empty" role="status">
       <CircleAlert size={18} />
       <h2>Native terminal needs recovery</h2>
-      <p>The daemon no longer has the native {conversation.provider} terminal attached. Resume requires checking that its process has stopped before chat can take ownership.</p>
+      <p>The daemon no longer has the native {conversation.provider} terminal attached. Reopen it from the terminal app.</p>
     </div>
   }
 
-  async function handOff() {
-    setIsHandingOff(true)
-    try {
-      await handoffToNative(conversation)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['conversations'] }),
-        queryClient.invalidateQueries({ queryKey: ['conversation-history', conversation.id] }),
-      ])
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not hand off this conversation')
-    } finally {
-      setIsHandingOff(false)
-    }
-  }
-
-  return <div className="panel-empty">
+  return <div className="panel-empty" role="status">
     <TerminalSquare size={18} />
-    <h2>Continue in the native terminal</h2>
-    <p>Maitty will save the handoff, stop the chat runtime, then resume this exact {conversation.provider} session in a daemon-owned terminal.</p>
-    <Button variant="outline" size="sm" disabled={!canHandOff || isHandingOff} onClick={() => { void handOff() }}>
-      {isHandingOff ? <LoaderCircle size={14} /> : <TerminalSquare size={14} />}
-      {isHandingOff ? 'Handing off' : 'Resume in native terminal'}
-    </Button>
+    <h2>This is a chat session</h2>
+    <p>A chat has no terminal. Start a terminal session to work in one.</p>
   </div>
 }
 

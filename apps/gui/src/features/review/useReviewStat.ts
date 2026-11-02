@@ -21,6 +21,7 @@ export function useReviewStat(conversation: Conversation): ReviewStat | null {
     queryFn: () => loadConversationDiff(conversation),
     enabled:
       desktop &&
+      conversation.kind !== 'terminal' &&
       conversation.isGitRepository !== false &&
       conversation.generation !== undefined,
     retry: false,

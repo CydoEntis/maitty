@@ -1,3 +1,5 @@
+import type { Conversation } from '@/data/preview'
+
 const STORAGE_KEY = 'maitty.gui.sidebar.v1'
 
 export type SidebarPreferences = {
@@ -10,6 +12,38 @@ const EMPTY_PREFERENCES: SidebarPreferences = {
   pinnedIds: [],
   archivedIds: [],
   renamedTitles: {},
+}
+
+export type PreferenceMigration = {
+  archive: string[]
+  rename: [id: string, title: string][]
+  // What the browser should keep once the daemon has taken the rest.
+  remaining: SidebarPreferences
+}
+
+// Names and closed sessions used to live only in this browser. Work out what to hand to the
+// daemon (which shares them with every client) and what to forget. An entry for a session the
+// daemon no longer lists is stale and dropped; a name the daemon already has wins.
+export function planPreferenceMigration(
+  preferences: SidebarPreferences,
+  conversations: Pick<Conversation, 'id' | 'archived' | 'named'>[],
+): PreferenceMigration {
+  const known = new Map(conversations.map((conversation) => [conversation.id, conversation]))
+  const archive = preferences.archivedIds.filter(
+    (id) => known.has(id) && !known.get(id)?.archived,
+  )
+  const rename = Object.entries(preferences.renamedTitles).filter(
+    ([id]) => known.has(id) && !known.get(id)?.named,
+  )
+  return {
+    archive,
+    rename,
+    remaining: {
+      pinnedIds: preferences.pinnedIds,
+      archivedIds: [],
+      renamedTitles: {},
+    },
+  }
 }
 
 export function readSidebarPreferences(): SidebarPreferences {

@@ -6575,3 +6575,110 @@ fn registry_only_sessions_survive_the_unused_daemon_exit_deadline() {
         "ordinary empty daemon exit remains unchanged"
     );
 }
+
+#[test]
+fn naming_a_conversation_names_it_for_every_client_and_empty_clears_it() {
+    let (mut d, _rx) = daemon();
+    d.conversations.push(crate::test_support::conversation());
+    let id = d.conversations[0].id;
+    let title = |d: &Daemon| d.conversation_summaries()[0].title.clone();
+    assert_eq!(title(&d), None);
+
+    d.command(
+        0,
+        Command::ConversationRename {
+            id,
+            title: "  Fix the\tlogin bug \n".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(title(&d).as_deref(), Some("Fix thelogin bug"));
+
+    d.command(
+        0,
+        Command::ConversationRename {
+            id,
+            title: "   ".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(title(&d), None);
+}
+
+#[test]
+fn a_conversation_put_away_is_marked_for_every_client_and_can_come_back() {
+    let (mut d, _rx) = daemon();
+    d.conversations.push(crate::test_support::conversation());
+    let id = d.conversations[0].id;
+    let archived = |d: &Daemon| d.conversation_summaries()[0].archived;
+    assert!(!archived(&d));
+    d.command(0, Command::ConversationArchive { id, archived: true })
+        .unwrap();
+    assert!(archived(&d));
+    d.command(0, Command::ConversationArchive { id, archived: false })
+        .unwrap();
+    assert!(!archived(&d));
+}
+
+#[test]
+fn naming_or_putting_away_a_conversation_that_does_not_exist_is_refused() {
+    let (mut d, _rx) = daemon();
+    let id = crate::conversation::ConversationId(99);
+    assert!(
+        d.command(
+            0,
+            Command::ConversationRename {
+                id,
+                title: "x".into()
+            }
+        )
+        .is_err()
+    );
+    assert!(
+        d.command(0, Command::ConversationArchive { id, archived: true })
+            .is_err()
+    );
+}
+
+#[test]
+fn a_terminal_pane_can_be_read_resized_and_typed_into_by_its_own_number() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+
+    let screen = d.pane_screen(t).unwrap();
+    assert!(screen.starts_with("\u{1b}[0m\u{1b}[2J\u{1b}[H"), "{screen:?}");
+    assert!(d.pane_replay(t).is_ok());
+
+    d.command(0, Command::TerminalResize { term: t, cols: 100, rows: 30 })
+        .unwrap();
+    assert_eq!(d.terms[&t].parser.screen().size(), (30, 100));
+
+    d.command(
+        0,
+        Command::TerminalInput {
+            term: t,
+            data: b"echo hi\r".to_vec(),
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn terminal_requests_with_nothing_to_do_or_nowhere_to_go_are_refused() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let nowhere = 9999;
+
+    for command in [
+        Command::TerminalInput { term: t, data: Vec::new() },
+        Command::TerminalInput { term: t, data: vec![b'x'; 16 * 1024 + 1] },
+        Command::TerminalInput { term: nowhere, data: b"x".to_vec() },
+        Command::TerminalResize { term: t, cols: 1, rows: 24 },
+        Command::TerminalResize { term: t, cols: 80, rows: 301 },
+        Command::TerminalResize { term: nowhere, cols: 80, rows: 24 },
+    ] {
+        assert!(d.command(0, command.clone()).is_err(), "{command:?}");
+    }
+    assert!(d.pane_screen(nowhere).is_err());
+    assert!(d.pane_replay(nowhere).is_err());
+}

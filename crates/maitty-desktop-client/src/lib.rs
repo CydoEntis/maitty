@@ -383,6 +383,137 @@ pub async fn resize_terminal(
     }
 }
 
+/// The visible screen of a terminal session, by its pane number.
+pub async fn pane_terminal_screen(term: u32, daemon_executable: PathBuf) -> Result<String> {
+    let reply = request(
+        ClientMsg::Query(Query::TerminalScreen { term }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Text(screen) => Ok(screen),
+        _ => bail!("daemon returned an unexpected terminal screen reply"),
+    }
+}
+
+pub async fn pane_terminal_replay(term: u32, daemon_executable: PathBuf) -> Result<Vec<u8>> {
+    let reply = request(
+        ClientMsg::Query(Query::TerminalReplay { term }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::TerminalReplay(replay) => Ok(replay),
+        _ => bail!("daemon returned an unexpected terminal replay reply"),
+    }
+}
+
+/// Type into a terminal session and return its screen afterwards.
+pub async fn pane_terminal_input(
+    term: u32,
+    data: Vec<u8>,
+    daemon_executable: PathBuf,
+) -> Result<String> {
+    anyhow::ensure!(
+        !data.is_empty() && data.len() <= MAX_TERMINAL_INPUT_BYTES,
+        "Terminal input must contain between 1 and {MAX_TERMINAL_INPUT_BYTES} bytes"
+    );
+    let (mut reader, mut writer) = ipc::open_or_spawn_for_user(&daemon_executable)
+        .await
+        .context("connecting to the local daemon")?;
+    ipc::send_message(
+        &mut writer,
+        &ClientMsg::Command(Command::TerminalInput { term, data }),
+    )
+    .await?;
+    match receive_reply(&mut reader).await? {
+        Reply::Ok => {}
+        _ => bail!("daemon returned an unexpected terminal input reply"),
+    }
+    ipc::send_message(&mut writer, &ClientMsg::Query(Query::TerminalScreen { term })).await?;
+    match receive_reply(&mut reader).await? {
+        Reply::Text(screen) => Ok(screen),
+        _ => bail!("daemon returned an unexpected terminal screen reply"),
+    }
+}
+
+pub async fn pane_terminal_resize(
+    term: u32,
+    cols: u16,
+    rows: u16,
+    daemon_executable: PathBuf,
+) -> Result<()> {
+    let reply = request(
+        ClientMsg::Command(Command::TerminalResize { term, cols, rows }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(()),
+        _ => bail!("daemon returned an unexpected terminal resize reply"),
+    }
+}
+
+/// Start an agent in a terminal session (a pane the daemon owns) in a project folder.
+pub async fn start_terminal_session(
+    cwd: PathBuf,
+    provider: Provider,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let cwd = cwd
+        .canonicalize()
+        .context("resolving the selected project folder")?;
+    if !cwd.is_dir() {
+        bail!("the selected project folder is not a directory");
+    }
+    let program = match provider {
+        Provider::Codex => "codex",
+        Provider::Claude => "claude",
+    };
+    let reply = request(
+        ClientMsg::Command(Command::NewWorkspace {
+            cwd: Some(cwd),
+            name: None,
+            cmd: Some(program.into()),
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected terminal session reply"),
+    }
+}
+
+pub async fn rename_terminal_session(
+    term: u32,
+    name: String,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::RenamePane { term, name }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected rename reply"),
+    }
+}
+
+/// End a terminal session: its process stops, as when it is closed in the terminal app.
+pub async fn close_terminal_session(term: u32, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ClosePane { term }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected close reply"),
+    }
+}
+
 pub async fn send_conversation(
     id: u64,
     generation: u64,
@@ -471,43 +602,41 @@ pub async fn cancel_conversation(
     }
 }
 
-pub async fn handoff_conversation_to_native(
+pub async fn rename_conversation(
     id: u64,
-    generation: u64,
+    title: String,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
     let reply = request(
-        ClientMsg::Command(Command::ConversationHandoffToNative {
+        ClientMsg::Command(Command::ConversationRename {
             id: maitty_shared::conversation::ConversationId(id),
-            generation,
+            title,
         }),
         daemon_executable,
     )
     .await?;
     match reply {
         Reply::Ok => Ok(Value::Null),
-        _ => bail!("daemon returned an unexpected native conversation handoff reply"),
+        _ => bail!("daemon returned an unexpected rename reply"),
     }
 }
 
-pub async fn handoff_conversation_to_chat(
+pub async fn archive_conversation(
     id: u64,
-    generation: u64,
+    archived: bool,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
     let reply = request(
-        ClientMsg::Command(Command::ConversationHandoffToChat {
+        ClientMsg::Command(Command::ConversationArchive {
             id: maitty_shared::conversation::ConversationId(id),
-            generation,
+            archived,
         }),
         daemon_executable,
     )
     .await?;
     match reply {
-        Reply::ConversationStarted { id, generation } => {
-            Ok(json!({"id": id.0, "generation": generation}))
-        }
-        _ => bail!("daemon returned an unexpected chat handoff reply"),
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected close reply"),
     }
 }
 

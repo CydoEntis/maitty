@@ -4,6 +4,17 @@ use super::*;
 
 impl App {
     pub(super) fn act(&mut self, a: Action) {
+        // A chat with no terminal can't be ended or renamed as a pane, but it can be put away
+        // and named: the daemon keeps both for every client.
+        if let Some(id) = self.screen.cursor.and_then(|key| self.bare_conversation(key)) {
+            match a {
+                Action::ClosePane => return self.archive_conversation(id),
+                Action::RenameWorkspace => {
+                    return self.menu_do(menu::Act::RenameConversation(id));
+                }
+                _ => {}
+            }
+        }
         if let Some(key) = self.screen.cursor
             && self.session_term(key).is_none()
             && matches!(

@@ -754,7 +754,9 @@ impl App {
                 }
             }
             Action::RenameWorkspace => {
-                if let Some(t) = self.selected_term() {
+                if let Some(SessionKey::Conversation(id)) = self.screen.cursor {
+                    self.menu_do(crate::client::menu::Act::RenameConversation(id));
+                } else if let Some(t) = self.selected_term() {
                     self.menu_do(crate::client::menu::Act::RenamePane(t));
                 }
             }
@@ -910,7 +912,7 @@ impl App {
                 None => {
                     // Into the pane.
                     if let Some(c) = self.screen.cursor {
-                        if let Some(term) = self.require_session_term(c) {
+                        if let Some(term) = self.open_session_term(c) {
                             self.screen_focus(term);
                             self.screen_side_leave();
                         }
@@ -942,7 +944,7 @@ impl App {
                 }
                 (None, c) => {
                     if let Some(c) = c {
-                        if let Some(term) = self.require_session_term(c) {
+                        if let Some(term) = self.open_session_term(c) {
                             self.screen_focus(term);
                             self.screen_side_leave();
                         }
@@ -1779,7 +1781,9 @@ impl App {
             }
             ScreenHit::RowMenuSess(t) => {
                 let at = self.hover.map(|p| (p.x, p.y)).unwrap_or((0, 0));
-                if let Some(term) = self.require_session_term(t) {
+                if let Some(id) = self.bare_conversation(t) {
+                    self.menu_for_conversation(id, at);
+                } else if let Some(term) = self.require_session_term(t) {
                     self.menu_for_session(term, at);
                 }
             }

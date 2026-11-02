@@ -20,5 +20,7 @@ pub(crate) fn conversation() -> Conversation {
         state: RecoveryState::Stopped,
         settings: None,
         awaiting_first_user_message: false,
+        title: None,
+        archived: false,
     }
 }

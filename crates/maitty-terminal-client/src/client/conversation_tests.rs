@@ -16,6 +16,8 @@ fn conversation() -> ConversationSummary {
         status: Status::Working,
         native_term: None,
         checks: Vec::new(),
+        title: None,
+        archived: false,
     }
 }
 
@@ -88,7 +90,6 @@ fn selecting_and_typing_on_an_unbound_conversation_sends_no_terminal_commands() 
         assert_eq!(app.screen.cursor, Some(key));
     }
     for action in [
-        Action::ClosePane,
         Action::StopAgent,
         Action::NewTab,
         Action::SplitRight,
@@ -190,8 +191,16 @@ fn an_unbound_selected_row_never_sends_typing_to_the_focused_native_pane() {
     app.screen_side_set(screen::SideItem::Sess(key));
     app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
     app.act(Action::StopAgent);
+    // Closing the row puts that chat away; nothing reaches the pane that happens to be focused.
     app.act(Action::ClosePane);
-    assert!(out.try_recv().is_err());
+    let sent = std::iter::from_fn(|| out.try_recv().ok()).collect::<Vec<_>>();
+    assert!(
+        matches!(
+            sent.as_slice(),
+            [ClientMsg::Command(Command::ConversationArchive { id: ConversationId(41), archived: true })]
+        ),
+        "{sent:?}"
+    );
     assert!(matches!(app.mode, Mode::Side));
     assert_eq!(app.screen.cursor, Some(key));
 }
@@ -291,4 +300,74 @@ fn an_app_text_box_still_accepts_paste_over_an_unbound_conversation() {
     app.on_paste("draft\r\nmessage".into());
     assert!(matches!(&app.mode, Mode::Compose(c) if c.text == "draft\nmessage"));
     assert!(out.try_recv().is_err());
+}
+
+fn sent(out: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<ClientMsg> {
+    std::iter::from_fn(|| out.try_recv().ok()).collect()
+}
+
+#[test]
+fn a_chat_shows_the_name_given_to_it_and_not_the_automatic_one() {
+    let (mut app, _) = app();
+    app.snap.conversations[0].title = Some("Fix the login bug".into());
+    app.screen_fresh();
+    let text = draw(&mut app, 160, 45);
+    assert!(text.contains("Fix the login bug"), "{text}");
+    assert!(!text.contains("Codex 41"), "{text}");
+}
+
+#[test]
+fn a_chat_put_away_in_another_client_leaves_this_sidebar() {
+    let (mut app, _) = app();
+    app.snap.conversations[0].archived = true;
+    app.screen_fresh();
+    assert_eq!(app.screen_model().iter().flat_map(|p| p.sessions()).count(), 0);
+}
+
+#[test]
+fn closing_a_chat_that_has_no_terminal_puts_it_away_instead_of_refusing() {
+    let (mut app, mut out) = app();
+    let key = SessionKey::Conversation(ConversationId(41));
+    app.on_hy_hit(screen::ScreenHit::Session(key), false);
+    app.act(Action::ClosePane);
+    assert!(matches!(
+        sent(&mut out).as_slice(),
+        [ClientMsg::Command(Command::ConversationArchive {
+            id: ConversationId(41),
+            archived: true
+        })]
+    ));
+}
+
+#[test]
+fn renaming_a_chat_sends_the_name_to_the_daemon_so_every_client_shows_it() {
+    let (mut app, mut out) = app();
+    let key = SessionKey::Conversation(ConversationId(41));
+    app.on_hy_hit(screen::ScreenHit::Session(key), false);
+    app.act(Action::RenameWorkspace);
+    let Mode::Prompt { kind, input } = &mut app.mode else {
+        panic!("a rename prompt opens");
+    };
+    assert_eq!(*kind, PromptKind::RenameConversation(ConversationId(41)));
+    *input = "Fix the login bug".into();
+    app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(matches!(
+        sent(&mut out).as_slice(),
+        [ClientMsg::Command(Command::ConversationRename { id: ConversationId(41), title })]
+            if title == "Fix the login bug"
+    ));
+}
+
+
+#[test]
+fn opening_a_chat_in_the_terminal_says_it_lives_in_the_desktop_app_and_sends_nothing() {
+    for status in [Status::Idle, Status::Working] {
+        let (mut app, mut out) = app();
+        app.snap.conversations[0].status = status;
+        let key = SessionKey::Conversation(ConversationId(41));
+        app.on_hy_hit(screen::ScreenHit::Session(key), false);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(sent(&mut out).is_empty());
+        assert!(matches!(app.mode, Mode::Side));
+    }
 }

@@ -14,14 +14,30 @@ const ConversationSummarySchema = z.object({
   status: StatusSchema,
   native_term: z.number().int().nonnegative().nullable(),
   checks: z.array(z.unknown()),
+  title: z.string().nullable().default(null),
+  archived: z.boolean().default(false),
 })
 const WorkspaceSummarySchema = z.object({
   cwd: z.string(),
   git: z.object({ branch: z.string(), dirty: z.number().int().nonnegative() }).nullable(),
 })
+const TerminalSessionSchema = z.object({
+  id: z.number().int().nonnegative(),
+  agent: z.string().nullable(),
+  status: StatusSchema,
+  cwd: z.string(),
+  root: z.string().nullable().default(null),
+  branch: z.string().nullable().default(null),
+  label: z.string().default(''),
+  conversation_id: z.number().nullable().default(null),
+  popup: z.boolean().default(false),
+  remote: z.string().nullable().default(null),
+})
 const DaemonSnapshotSchema = z.object({
   conversations: z.array(ConversationSummarySchema),
   workspaces: z.array(WorkspaceSummarySchema),
+  // Read one by one: a terminal this app can't read is left out rather than hiding every session.
+  terms: z.record(z.string(), z.unknown()).default({}),
 })
 
 const HistoryCursorSchema = z.object({
@@ -186,7 +202,38 @@ export async function loadConversations(): Promise<Conversation[]> {
   if (!isDesktop()) return previewConversations
 
   const snapshot = await invokeParsed('list_sessions', DaemonSnapshotSchema)
-  return snapshot.conversations.map((conversation) => toConversation(conversation, snapshot.workspaces))
+  const terminals = Object.values(snapshot.terms)
+    .map((term) => TerminalSessionSchema.safeParse(term))
+    .flatMap((parsed) => (parsed.success ? [parsed.data] : []))
+    .filter(isAgentTerminalSession)
+    .map((term) => toTerminalConversation(term, snapshot.workspaces))
+  return [
+    ...snapshot.conversations.map((conversation) => toConversation(conversation, snapshot.workspaces)),
+    ...terminals,
+  ]
+}
+
+type TerminalSession = z.infer<typeof TerminalSessionSchema>
+
+// Terminal sessions are ids like "t12": the pane's number, kept apart from a chat's number.
+export function terminalSessionId(term: number): string {
+  return `t${String(term)}`
+}
+
+export function terminalOf(conversationId: string): number | null {
+  const match = /^t(\d+)$/.exec(conversationId)
+  return match?.[1] === undefined ? null : Number(match[1])
+}
+
+// A terminal this app can show as a session: a Codex or Claude agent in a pane of its own (not a
+// chat's terminal, a popup, or another machine's).
+function isAgentTerminalSession(term: TerminalSession): boolean {
+  return (
+    term.conversation_id === null &&
+    !term.popup &&
+    term.remote === null &&
+    (term.agent === 'claude' || term.agent === 'codex')
+  )
 }
 
 function toolActivityLabel(tool: { kind: string; label?: string | undefined }): string {
@@ -199,7 +246,7 @@ export async function loadMessages(
   conversationId: string,
   provider: Conversation['provider'],
 ): Promise<ConversationHistory> {
-  if (!isDesktop()) return { generation: 0, receipt: null, messages: [], nextOperation: 1, error: null, cancelling: false, completeness: 'Complete' }
+  if (!isDesktop() || terminalOf(conversationId) !== null) return { generation: 0, receipt: null, messages: [], nextOperation: 1, error: null, cancelling: false, completeness: 'Complete' }
 
   const id = Number(conversationId)
   if (!Number.isSafeInteger(id) || id < 0) throw new Error('Conversation id is invalid')
@@ -298,6 +345,7 @@ export async function loadMessages(
 }
 
 export async function loadConversationDiff(conversation: Conversation): Promise<ConversationDiff> {
+  if (terminalOf(conversation.id) !== null) throw new Error('Changes are shown for chat sessions')
   if (!isDesktop() || conversation.generation === undefined) {
     throw new Error('Conversation diff is unavailable')
   }
@@ -311,6 +359,7 @@ export async function loadConversationFiles(
   conversation: Conversation,
   path: string | null,
 ): Promise<ConversationFileEntry[]> {
+  if (terminalOf(conversation.id) !== null) throw new Error('Files are shown for chat sessions')
   if (!isDesktop() || conversation.generation === undefined) {
     throw new Error('Project files are available in the desktop app')
   }
@@ -325,6 +374,7 @@ export async function loadConversationFile(
   conversation: Conversation,
   path: string,
 ): Promise<string> {
+  if (terminalOf(conversation.id) !== null) throw new Error('Files are shown for chat sessions')
   if (!isDesktop() || conversation.generation === undefined) {
     throw new Error('Project files are available in the desktop app')
   }
@@ -342,6 +392,8 @@ export async function suggestProjectFolders(typed: string): Promise<string[]> {
 
 export async function loadTerminalScreen(conversation: Pick<Conversation, 'id'> & { generation: number }): Promise<string> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
+  const term = terminalOf(conversation.id)
+  if (term !== null) return invokeParsed('pane_terminal_screen', z.string(), { term })
   return invokeParsed('terminal_screen', z.string(), {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -350,24 +402,35 @@ export async function loadTerminalScreen(conversation: Pick<Conversation, 'id'> 
 
 export async function loadTerminalReplay(conversation: Pick<Conversation, 'id'> & { generation: number }): Promise<Uint8Array> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
-  const bytes = await invokeParsed('terminal_replay', ByteArraySchema, {
-    id: Number(conversation.id),
-    generation: conversation.generation,
-  })
+  const term = terminalOf(conversation.id)
+  const bytes = term !== null
+    ? await invokeParsed('pane_terminal_replay', ByteArraySchema, { term })
+    : await invokeParsed('terminal_replay', ByteArraySchema, {
+      id: Number(conversation.id),
+      generation: conversation.generation,
+    })
   return Uint8Array.from(bytes)
 }
 
 export async function sendTerminalInput(conversation: Pick<Conversation, 'id'> & { generation: number }, input: string | Uint8Array): Promise<string> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
+  const data = Array.from(typeof input === 'string' ? new TextEncoder().encode(input) : input)
+  const term = terminalOf(conversation.id)
+  if (term !== null) return invokeParsed('pane_terminal_input', z.string(), { term, data })
   return invokeParsed('send_terminal_input', z.string(), {
     id: Number(conversation.id),
     generation: conversation.generation,
-    data: Array.from(typeof input === 'string' ? new TextEncoder().encode(input) : input),
+    data,
   })
 }
 
 export async function resizeTerminal(conversation: Pick<Conversation, 'id'> & { generation: number }, cols: number, rows: number): Promise<void> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
+  const term = terminalOf(conversation.id)
+  if (term !== null) {
+    await invokeParsed('pane_terminal_resize', NullSchema, { term, cols, rows })
+    return
+  }
   await invokeParsed('resize_terminal', NullSchema, {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -424,6 +487,15 @@ export async function cancelTurn(conversation: Conversation): Promise<void> {
   })
 }
 
+export async function renameConversationOnDaemon(conversation: Pick<Conversation, 'id'>, title: string): Promise<void> {
+  const term = terminalOf(conversation.id)
+  if (term !== null) {
+    await invokeParsed('rename_terminal_session', NullSchema, { term, name: title })
+    return
+  }
+  await invokeParsed('rename_conversation', NullSchema, { id: Number(conversation.id), title })
+}
+
 export async function endConversation(conversation: Conversation): Promise<void> {
   if (!isDesktop()) throw new Error('Ending a conversation is only available in the desktop app')
   if (conversation.generation === undefined) throw new Error('Conversation generation is unavailable')
@@ -433,22 +505,15 @@ export async function endConversation(conversation: Conversation): Promise<void>
   })
 }
 
-export async function handoffToNative(conversation: Conversation): Promise<void> {
-  if (!isDesktop()) throw new Error('Native handoff is only available in the desktop app')
-  if (conversation.generation === undefined) throw new Error('Conversation generation is unavailable')
-  await invokeParsed('handoff_conversation_to_native', NullSchema, {
-    id: Number(conversation.id),
-    generation: conversation.generation,
-  })
-}
-
-export async function handoffToChat(conversation: Conversation): Promise<void> {
-  if (!isDesktop()) throw new Error('Chat handoff is only available in the desktop app')
-  if (conversation.generation === undefined) throw new Error('Conversation generation is unavailable')
-  await invokeParsed('handoff_conversation_to_chat', NullSchema, {
-    id: Number(conversation.id),
-    generation: conversation.generation,
-  })
+// Closing a chat only puts it away, but closing a terminal session ends its program, as in the
+// terminal app. A terminal session that has ended is gone, so there is nothing to bring back.
+export async function archiveConversationOnDaemon(conversation: Pick<Conversation, 'id'>, archived: boolean): Promise<void> {
+  const term = terminalOf(conversation.id)
+  if (term !== null) {
+    if (archived) await invokeParsed('close_terminal_session', NullSchema, { term })
+    return
+  }
+  await invokeParsed('archive_conversation', NullSchema, { id: Number(conversation.id), archived })
 }
 
 export type SessionPermissions = 'read-only' | 'workspace-write' | 'full-access'
@@ -465,6 +530,10 @@ export async function createConversation(
   })
 }
 
+export async function startTerminalSession(folder: string, provider: 'Codex' | 'Claude'): Promise<void> {
+  await invokeParsed('start_terminal_session', NullSchema, { cwd: folder, provider })
+}
+
 export async function resumeConversation(conversation: Conversation): Promise<{ id: number; generation: number }> {
   if (!isDesktop()) throw new Error('Conversation recovery is only available in the desktop app')
   if (conversation.generation === undefined) throw new Error('Conversation generation is unavailable')
@@ -472,6 +541,40 @@ export async function resumeConversation(conversation: Conversation): Promise<{ 
     id: Number(conversation.id),
     generation: conversation.generation,
   })
+}
+
+function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[]): Conversation {
+  const folder = term.root ?? term.cwd
+  const workspace = workspaces.find((candidate) => candidate.cwd === folder || candidate.cwd === term.cwd)
+  const provider: Conversation['provider'] = term.agent === 'claude' ? 'Claude' : 'Codex'
+  const label = term.label.trim()
+  const status: SessionStatus = term.status === 'Blocked'
+    ? 'needs-you'
+    : term.status === 'Working'
+      ? 'working'
+      : term.status === 'Done'
+        ? 'done'
+        : 'idle'
+  return {
+    id: terminalSessionId(term.id),
+    generation: 0,
+    execution: 'Native',
+    kind: 'terminal',
+    title: label || `${provider} terminal ${String(term.id)}`,
+    project: folder.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Project',
+    folder,
+    branch: term.branch ?? workspace?.git?.branch ?? 'working tree',
+    provider,
+    status,
+    updated: null,
+    model: 'Provider default',
+    permission: 'Terminal session',
+    context: null,
+    nativePane: term.id,
+    hasDiff: false,
+    archived: false,
+    named: label !== '',
+  }
 }
 
 function toConversation(summary: ConversationSummary, workspaces: WorkspaceSummary[]): Conversation {
@@ -492,7 +595,9 @@ function toConversation(summary: ConversationSummary, workspaces: WorkspaceSumma
     id: String(summary.id),
     generation: summary.generation,
     execution: summary.execution,
-    title: `${summary.provider} conversation ${String(summary.id)}`,
+    title: summary.title ?? `${summary.provider} conversation ${String(summary.id)}`,
+    archived: summary.archived,
+    named: summary.title !== null,
     project,
     folder: cwd,
     branch: workspace?.git?.branch ?? 'working tree',

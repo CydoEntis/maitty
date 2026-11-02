@@ -31,7 +31,7 @@ pub(crate) struct Launch {
 }
 
 pub(super) enum LaunchIdentity {
-    Existing(Conversation),
+    Existing(Box<Conversation>),
     Pending(PendingStart),
 }
 

@@ -193,7 +193,7 @@ impl Daemon {
         let LaunchIdentity::Existing(record) = &launch.identity else {
             bail!("Foundation launch requires complete identity");
         };
-        if !self.conversations.iter().any(|c| c == record) {
+        if !self.conversations.iter().any(|c| c == &**record) {
             bail!("Structured launch does not match the daemon conversation registry");
         }
         if self
@@ -251,72 +251,6 @@ impl Daemon {
         generation: u64,
         payload: Payload,
     ) -> Result<()> {
-        if matches!(
-            &payload,
-            Payload::Terminated {
-                failure: None,
-                reaped: true
-            }
-        ) && let Some((token, client, handoff_generation)) = self
-            .conversation_requests
-            .iter()
-            .find_map(|(token, pending)| match pending {
-                Pending::HandoffStopping {
-                    client,
-                    id: pending_id,
-                    generation,
-                } if *pending_id == id => Some((*token, *client, *generation)),
-                _ => None,
-            })
-        {
-            let current = self.conversations.iter().find(|conversation| {
-                conversation.id == id
-                    && conversation.generation == handoff_generation
-                    && conversation.generation == generation
-                    && conversation.execution == crate::conversation::ExecutionKind::Structured
-                    && conversation.state == RecoveryState::Transferring
-            });
-            let Some(native_generation) =
-                current.and_then(|record| record.generation.checked_add(1))
-            else {
-                if let Some(pending) = self.conversation_requests.remove(&token) {
-                    self.conversation_fail(
-                        pending,
-                        "Conversation ownership changed or its generation is exhausted".into(),
-                    );
-                }
-                return Ok(());
-            };
-            let conversation = self
-                .conversations
-                .iter_mut()
-                .find(|conversation| conversation.id == id)
-                .expect("validated conversation record");
-            conversation.generation = native_generation;
-            conversation.execution = crate::conversation::ExecutionKind::Native;
-            conversation.state = RecoveryState::RecoveryRequired;
-            self.conversation_requests.insert(
-                token,
-                Pending::HandoffNativeSaving {
-                    client,
-                    id,
-                    generation: native_generation,
-                },
-            );
-            let state = self.conversation_states.entry(id).or_default();
-            state.status = Status::Idle;
-            state.blocked = false;
-            state.error = None;
-            state.history_ready = false;
-            if let Err(error) = self.persist_barrier(token) {
-                if let Some(pending) = self.conversation_requests.remove(&token) {
-                    self.conversation_fail(pending, error.to_string());
-                }
-                return Ok(());
-            }
-            self.dirty = true;
-            return Ok(());
-        }
         match payload {
             Payload::Ready => {
                 if let Some(record) = self.conversations.iter_mut().find(|c| c.id == id) {

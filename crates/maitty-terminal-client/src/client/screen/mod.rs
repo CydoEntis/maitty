@@ -697,6 +697,36 @@ impl App {
         term
     }
 
+    /// The chat a row stands for when it has no terminal of its own to act on.
+    pub(super) fn bare_conversation(
+        &self,
+        key: SessionKey,
+    ) -> Option<crate::conversation::ConversationId> {
+        match key {
+            SessionKey::Conversation(id) if self.session_term(key).is_none() => Some(id),
+            _ => None,
+        }
+    }
+
+    /// The terminal to open a row in. A chat has none: it lives in the desktop app, so say so
+    /// instead of showing an error.
+    pub(super) fn open_session_term(&mut self, key: SessionKey) -> Option<TermId> {
+        if self.bare_conversation(key).is_some() {
+            self.notify(
+                "This is a chat: open it in the desktop app (terminal sessions open here)".into(),
+                false,
+            );
+            return None;
+        }
+        self.require_session_term(key)
+    }
+
+    /// Put a chat away (it keeps running) and say so.
+    pub(super) fn archive_conversation(&mut self, id: crate::conversation::ConversationId) {
+        self.cmd(Command::ConversationArchive { id, archived: true });
+        self.notify("Closed · it keeps running in the background".into(), false);
+    }
+
     /// Every terminal, by project (repo) and worktree.
     /// Forget the cached model (things may have changed).
     pub(super) fn screen_fresh(&self) {
@@ -910,7 +940,7 @@ impl App {
                 }
             }
         }
-        for c in &self.snap.conversations {
+        for c in self.snap.conversations.iter().filter(|c| !c.archived) {
             let key = SessionKey::Conversation(c.id);
             let placed = self.screen.saved.placed.iter().find(|(id, ..)| *id == key);
             let path = placed.map(|(_, path, _)| path.as_path()).unwrap_or(&c.cwd);
@@ -931,8 +961,14 @@ impl App {
             projs[pi].wts[wi].sessions.push(Session {
                 key,
                 native_term: c.native_term.filter(|id| self.snap.terms.contains_key(id)),
-                name: format!("{provider} {}", c.id.0),
-                title: format!("{provider} conversation"),
+                name: c
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| format!("{provider} {}", c.id.0)),
+                title: c
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| format!("{provider} conversation")),
                 agent: provider.to_lowercase(),
                 status: c.status,
                 since: now_secs(),

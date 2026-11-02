@@ -14,6 +14,7 @@ mod contain;
 mod conversation;
 mod git;
 mod helpers;
+mod pane_terminal;
 mod persist;
 mod pr;
 mod restore;
@@ -123,7 +124,6 @@ pub enum Ev {
     Output(TermId, Vec<u8>),
     Exited(TermId),
     ProcessExited(TermId),
-    KillTreeFinished(TermId, Result<(), String>),
     Scan(Vec<scan::Found>),
     Git(Vec<(WsId, Option<GitInfo>)>),
     Prs(Vec<(pr::Place, pr::Read)>),
@@ -698,24 +698,18 @@ impl Daemon {
                 anyhow::bail!("Only a human client can end a conversation")
             }
             Command::ConversationEnd { .. } => self.may(client, Grant::Write, None),
-            Command::ConversationHandoffToNative { .. }
-                if self
-                    .clients
-                    .get(&client)
-                    .is_some_and(|client| client.from.is_some() || client.structured.is_some()) =>
+            Command::ConversationRename { .. } | Command::ConversationArchive { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
             {
-                anyhow::bail!("Only a human client can hand a conversation to native Codex")
+                anyhow::bail!("Only a human client can rename or put away a conversation")
             }
-            Command::ConversationHandoffToNative { .. } => self.may(client, Grant::Write, None),
-            Command::ConversationHandoffToChat { .. }
-                if self
-                    .clients
-                    .get(&client)
-                    .is_some_and(|client| client.from.is_some() || client.structured.is_some()) =>
-            {
-                anyhow::bail!("Only a human client can resume a conversation in chat")
+            Command::ConversationRename { .. } | Command::ConversationArchive { .. } => {
+                self.may(client, Grant::Write, None)
             }
-            Command::ConversationHandoffToChat { .. } => self.may(client, Grant::Start, None),
             Command::ConversationTerminalInput { .. }
             | Command::ConversationTerminalResize { .. }
                 if structured
@@ -728,6 +722,18 @@ impl Daemon {
             }
             Command::ConversationTerminalInput { .. }
             | Command::ConversationTerminalResize { .. } => self.may(client, Grant::Write, None),
+            Command::TerminalInput { .. } | Command::TerminalResize { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can type into a terminal this way")
+            }
+            Command::TerminalInput { term, .. } | Command::TerminalResize { term, .. } => {
+                self.may(client, Grant::Write, Some(*term))
+            }
             Command::NewWorkspace { .. }
             | Command::NewTab { .. }
             | Command::Split { .. }
@@ -1366,25 +1372,16 @@ impl Daemon {
                 if self.terms.get(&tid).is_some_and(|t| t.asleep) {
                     return;
                 }
-                if self.conversation_handoff_to_chat_term_event(tid, false, None) {
-                    return;
-                }
                 if self.terms.contains_key(&tid) {
                     self.last_loss = Some(Instant::now());
                     self.remove_term(tid);
                 }
             }
             Ev::ProcessExited(tid) => {
-                if self.conversation_handoff_to_chat_term_event(tid, true, None) {
-                    return;
-                }
                 if self.terms.contains_key(&tid) {
                     self.last_loss = Some(Instant::now());
                     self.remove_term(tid);
                 }
-            }
-            Ev::KillTreeFinished(tid, result) => {
-                self.conversation_handoff_to_chat_term_event(tid, false, Some(result));
             }
             Ev::Scan(found) => {
                 let mut started = Vec::new();
@@ -2130,6 +2127,27 @@ impl Daemon {
                             Err(error) => ServerMsg::Error(error.to_string()),
                         }
                     }
+                    Query::TerminalScreen { .. } | Query::TerminalReplay { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can view a terminal this way".into())
+                    }
+                    Query::TerminalScreen { term } => match self
+                        .may(client, Grant::Read, Some(term))
+                        .and_then(|()| self.pane_screen(term))
+                    {
+                        Ok(screen) => ServerMsg::Reply(Reply::Text(screen)),
+                        Err(error) => ServerMsg::Error(format!("{error:#}")),
+                    },
+                    Query::TerminalReplay { term } => match self
+                        .may(client, Grant::Read, Some(term))
+                        .and_then(|()| self.pane_replay(term))
+                    {
+                        Ok(replay) => ServerMsg::Reply(Reply::TerminalReplay(replay)),
+                        Err(error) => ServerMsg::Error(format!("{error:#}")),
+                    },
                     Query::List => ServerMsg::Reply(Reply::List(self.snapshot())),
                     Query::Read { term } if self.may(client, Grant::Read, Some(term)).is_err() => {
                         ServerMsg::Error(format!(
