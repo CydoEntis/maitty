@@ -424,6 +424,15 @@ export async function cancelTurn(conversation: Conversation): Promise<void> {
   })
 }
 
+export async function endConversation(conversation: Conversation): Promise<void> {
+  if (!isDesktop()) throw new Error('Ending a conversation is only available in the desktop app')
+  if (conversation.generation === undefined) throw new Error('Conversation generation is unavailable')
+  await invokeParsed('end_conversation', NullSchema, {
+    id: Number(conversation.id),
+    generation: conversation.generation,
+  })
+}
+
 export async function handoffToNative(conversation: Conversation): Promise<void> {
   if (!isDesktop()) throw new Error('Native handoff is only available in the desktop app')
   if (conversation.generation === undefined) throw new Error('Conversation generation is unavailable')
