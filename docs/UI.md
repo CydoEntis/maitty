@@ -97,6 +97,17 @@ components, state and styling follow the TypeScript, React and shadcn/Tailwind
 stack docs. It shares session and conversation contracts with the TUI, while
 its visual design is owned by the GUI roadmap phases.
 
+A chat (a conversation the desktop app runs) is a row in the TUI sidebar like any
+session. Its name and whether it is closed are the daemon's, shared with the desktop
+app: **Rename** (the rename key, or Rename in its menu) names it for both, and
+**Close** puts it away in both while it keeps running (closing a chat's terminal does
+the same). A chat has no terminal, so Enter or → on its row says it opens in the desktop
+app instead of showing an error; a terminal session opens in both apps. A session is a
+chat or a terminal session from the moment it starts ([ADR 0043](adr/0043-chat-and-terminal-are-separate-sessions.md)):
+the desktop app's new-session dialog asks which, and nothing switches a live session
+between them. In the desktop app a terminal session has no Changes panel, and closing one
+ends its program.
+
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,
 and status colours (`working`, `blocked` = needs you, `done`, `idle`, `err`).

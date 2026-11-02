@@ -373,20 +373,32 @@ background storage lock. Attachments never submit independent cache revisions.
 See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 process boundary and event/approval handling rules.
 
+Protocol 64 removes the handoff between chat and terminal
+(`ConversationHandoffToNative`, `ConversationHandoffToChat`; see
+[ADR 0043](adr/0043-chat-and-terminal-are-separate-sessions.md)): a session is a chat
+or a terminal session from the moment it starts. It adds the human-only
+`ConversationRename` and `ConversationArchive` commands, and `title` and `archived` on
+`ConversationSummary` and the saved conversation record (both defaulted, so older files
+still load). A name and a closed flag belong to the conversation, so every client reads the
+same ones: a rename in the terminal app shows in the desktop app and back, and closing a
+chat in either puts it away in both. Closing a chat is not stopping it: an archived
+conversation keeps running in the daemon, and a client lists it only under its own
+"archived" view. A title is trimmed, stripped of control characters and capped at 80
+characters (`clean_title`); an empty one clears it, and each client then words the session
+itself. Clients keep no copy of either in browser or file storage, except the browser
+preview, which has no daemon.
+It also adds terminal access keyed by the pane, for terminal sessions that have no
+conversation: the human-only `TerminalInput` and `TerminalResize` commands and the
+`TerminalScreen` and `TerminalReplay` queries. They follow the same limits as the
+conversation-bound ones (16 KiB of input per message, sizes from 2x2 to 500x300, write
+and respond grants, and read for the queries) and resolve nothing but the pane number
+they are given.
 Protocol 59 adds the human-only `ConversationTerminalResize` command. It
 requires the exact conversation generation, validates bounded terminal
 dimensions, and resizes only the daemon-resolved native pane. Terminal replay
 queries return the pane's bounded raw output history for initial scrollback;
-screen queries return a formatted ANSI snapshot for terminal emulation. Protocol 58
-adds the human-only `ConversationHandoffToChat` command. It accepts
-only the exact idle native Codex pane, persists a transfer fence, confirms the
-native process tree stopped and the direct process was reaped, then resumes the
-same Codex session through the structured runtime. It hydrates the native turn
-history before acknowledging chat ownership; incomplete history blocks takeover.
-Protocol 57 adds the human-only `ConversationHandoffToNative` command. The daemon
-persists the transfer fence before stopping the structured runtime, waits for
-confirmed process cleanup, then resumes the exact Codex session in a daemon-owned
-terminal. Protocol 56 added conversation-bound native terminal screen and input messages.
+screen queries return a formatted ANSI snapshot for terminal emulation.
+Protocol 56 added conversation-bound native terminal screen and input messages.
 They require the exact conversation generation and resolve the attached pane
 inside the daemon; input is human-only, requires write (and respond while the
 pane is blocked), and is limited to 16 KiB per message. Protocol 55 added a

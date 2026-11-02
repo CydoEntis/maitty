@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-27
 - **Supersedes:** [0011](0011-keep-seshi-terminal-first.md)
+- **Amended by:** [0043](0043-chat-and-terminal-are-separate-sessions.md): the handoff between chat and terminal is removed
 
 ## Context
 

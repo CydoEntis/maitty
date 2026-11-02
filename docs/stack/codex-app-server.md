@@ -193,12 +193,9 @@ and sent only to the live provider request. Permission requests show the exact
 requested profile and can grant only that profile for the current turn; no
 session-wide grant is offered.
 Cancellation uses the exact acknowledged active turn ID on the owning runtime;
-the interrupt acknowledgement is not turn completion. The daemon supports
-explicit, generation-bound transfer between structured chat and the native
-Codex terminal. Returning to chat requires native Codex to stop and its full
-history to reconcile; the GUI reads every history page and keeps the return
-action disabled when history is incomplete. Live Codex roundtrip and recovery
-remain platform acceptance work tracked in the roadmap.
+the interrupt acknowledgement is not turn completion. A structured chat stays a
+chat: there is no transfer to the native Codex terminal and back
+([ADR 0043](../adr/0043-chat-and-terminal-are-separate-sessions.md)).
 
 Exact identity note: the binding's generic `session_id` field means Codex
 `Thread.id`, the exact native UUID accepted as RPC `threadId` and native resume
