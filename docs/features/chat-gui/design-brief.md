@@ -30,7 +30,8 @@ Where the app differs from the prototype on purpose:
 - Permissions are chosen per session in the New conversation dialog (Read only,
   Workspace write as the default, or Full access with no sandbox and no prompts;
   see [ADR 0043](../../adr/0043-full-access-conversations.md)). There is no global
-  default in Settings, and a running session's permissions cannot be changed yet.
+  default in Settings. To change a running session's permissions, End session (which
+stops the agent and keeps its history) and start a new one.
 - The "Working · 1:42" timer shows only for a turn the GUI watched start. The
   daemon reports no start time, so a turn already running when the GUI opens
   shows "Working" without a clock rather than a wrong one.

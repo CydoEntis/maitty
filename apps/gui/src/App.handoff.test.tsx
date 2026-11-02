@@ -10,6 +10,7 @@ const daemon = vi.hoisted(() => ({
   approveRequest: vi.fn(),
   cancelTurn: vi.fn(),
   createConversation: vi.fn(),
+  endConversation: vi.fn(),
   classifySubmissionFailure: vi.fn(),
   handoffToChat: vi.fn(),
   handoffToNative: vi.fn(),
@@ -281,6 +282,23 @@ describe('desktop chat and terminal handoff', () => {
     // The tree is still there: the root files and the expanded folder's children.
     expect(screen.getByRole('treeitem', { name: 'Preview file README.md' })).toBeInTheDocument()
     expect(screen.getByRole('treeitem', { name: 'Collapse folder src' })).toBeInTheDocument()
+  })
+
+  it('ends a session after a confirmation and moves it out of the sidebar', async () => {
+    const user = userEvent.setup()
+    daemon.endConversation.mockResolvedValue(undefined)
+    renderDesktopApp()
+
+    fireEvent.contextMenu(await screen.findByRole('button', { name: /^Example conversation,/ }))
+    await user.click(await screen.findByRole('menuitem', { name: 'End session' }))
+    expect(await screen.findByText('End this session?')).toBeInTheDocument()
+    expect(daemon.endConversation).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'End session' }))
+
+    await waitFor(() => {
+      expect(daemon.endConversation).toHaveBeenCalledWith(expect.objectContaining({ id: '42', generation: 7 }))
+    })
   })
 
   it('recovers an empty workspace after the daemon reconnects', async () => {

@@ -42,6 +42,10 @@ impl Daemon {
                 self.conversation_cancel(client, id, generation)?;
                 return Ok(false);
             }
+            Command::ConversationEnd { id, generation } => {
+                self.conversation_end(client, id, generation)?;
+                return Ok(false);
+            }
             Command::ConversationHandoffToNative { id, generation } => {
                 self.conversation_handoff_to_native(client, id, generation)?;
                 return Ok(false);

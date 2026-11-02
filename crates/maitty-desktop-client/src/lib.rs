@@ -534,6 +534,26 @@ pub async fn resume_codex_conversation(
     }
 }
 
+/// Stop a chat conversation's agent. Its record and history stay.
+pub async fn end_conversation(
+    id: u64,
+    generation: u64,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ConversationEnd {
+            id: maitty_shared::conversation::ConversationId(id),
+            generation,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected end conversation reply"),
+    }
+}
+
 /// What a new conversation may do. The provider enforces it; Maitty only picks it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Permissions {

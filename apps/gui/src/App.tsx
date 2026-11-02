@@ -93,6 +93,7 @@ import {
   cancelTurn as cancelDaemonTurn,
   classifySubmissionFailure,
   createConversation as createDaemonConversation,
+  endConversation as endDaemonConversation,
   type SessionPermissions,
   handoffToChat,
   handoffToNative,
@@ -324,8 +325,9 @@ function App() {
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
   const [newProject, setNewProject] = useState('')
   const [newProvider, setNewProvider] = useState<'Codex' | 'Claude'>('Codex')
+  const [endTarget, setEndTarget] = useState<Conversation | null>(null)
   const [startingSessions, setStartingSessions] = useState<
-    { key: string; label: string }[]
+    { key: string; label: string; startedAt: number }[]
   >([])
   const [newPermissions, setNewPermissions] =
     useState<SessionPermissions>('workspace-write')
@@ -1250,6 +1252,37 @@ function App() {
     }
   }
 
+  function requestEndSession(conversationId: string) {
+    const conversation = conversations.find(
+      (item) => item.id === conversationId,
+    )
+    if (conversation) setEndTarget(conversation)
+  }
+
+  function confirmEndSession() {
+    const target = endTarget
+    if (!target) return
+    setEndTarget(null)
+    void endDaemonConversation(target)
+      .then(() => {
+        // The agent is stopped; move the session out of the way, like an archived one.
+        setSidebarPreferences((current) => ({
+          ...current,
+          archivedIds: [...new Set([...current.archivedIds, target.id])],
+        }))
+        if (openTabIds.includes(target.id) && openTabIds.length > 1)
+          closeConversation(target.id)
+        void queryClient.invalidateQueries({ queryKey: ['conversations'] })
+        toast.message('Session ended', {
+          description:
+            'The agent is stopped. Its history stays under Archived. Start a new session to continue with different permissions.',
+        })
+      })
+      .catch((error: unknown) => {
+        toast.error(errorMessage(error, 'Could not end this session'))
+      })
+  }
+
   function closeProject(project: string) {
     const sessions = conversations.filter(
       (conversation) =>
@@ -1555,6 +1588,7 @@ function App() {
               onTogglePin={togglePin}
               onArchive={setArchived}
               onRename={renameConversation}
+              onEnd={requestEndSession}
               onSelect={selectConversation}
               onToggleDrawer={() => {
                 setSidebarDrawerOpen((open) => !open)
@@ -2008,6 +2042,7 @@ function App() {
         ...current,
         {
           key: startingKey,
+          startedAt: Date.now(),
           label: `Starting ${newProvider} session in ${folderName}\u2026`,
         },
       ])
@@ -2121,6 +2156,7 @@ function App() {
               onTogglePin={togglePin}
               onArchive={setArchived}
               onRename={renameConversation}
+              onEnd={requestEndSession}
               onSelect={(id) => {
                 selectInCurrentView(id)
                 setSidebarDrawerOpen(false)
@@ -2504,6 +2540,36 @@ function App() {
         />
         {settingsDialog}
         {openProjectDialog}
+        <Dialog
+          open={endTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setEndTarget(null)
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>End this session?</DialogTitle>
+              <DialogDescription>
+                {endTarget?.title}: the agent stops now. Its history is kept,
+                but you can’t continue this chat. To change permissions, end the
+                session and start a new one.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setEndTarget(null)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={confirmEndSession}>
+                End session
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         {daemonRestartDialog}
         <Toaster
           position={settingsPreferences.toastPosition}
@@ -2530,8 +2596,9 @@ type SidebarProps = {
   onTogglePin: (id: string) => void
   onArchive: (id: string, archived: boolean) => void
   onRename: (id: string, title: string) => void
+  onEnd: (id: string) => void
   primaryModifier: '⌘' | 'Ctrl'
-  starting: { key: string; label: string }[]
+  starting: { key: string; label: string; startedAt: number }[]
   onOpenProject: () => void
   onNewInProject: (folder: string) => void
   onCloseProject: (project: string) => void
@@ -2560,6 +2627,7 @@ function ConversationSidebar({
   onTogglePin,
   onArchive,
   onRename,
+  onEnd,
   onToggleDrawer,
   onToggleCollapse,
   primaryModifier,
@@ -2584,6 +2652,7 @@ function ConversationSidebar({
     onTogglePin,
     onArchive,
     onRename,
+    onEnd,
   }
 
   return (
@@ -2666,6 +2735,7 @@ function ConversationSidebar({
         <div className="starting-row" role="status" key={item.key}>
           <StatusMark status="working" />
           <span>{item.label}</span>
+          <Elapsed since={item.startedAt} />
         </div>
       ))}
       <ScrollArea className="session-list-scroll">
@@ -2764,6 +2834,7 @@ type SessionRowActions = {
   onTogglePin: (id: string) => void
   onArchive: (id: string, archived: boolean) => void
   onRename: (id: string, title: string) => void
+  onEnd: (id: string) => void
 }
 
 function ProjectSection({
@@ -2946,6 +3017,7 @@ function SessionRow({
   onTogglePin,
   onArchive,
   onRename,
+  onEnd,
 }: {
   conversation: Conversation
   selected: boolean
@@ -2953,7 +3025,7 @@ function SessionRow({
   isArchived?: boolean
 } & Pick<
   SessionRowActions,
-  'onSelect' | 'onTogglePin' | 'onArchive' | 'onRename'
+  'onSelect' | 'onTogglePin' | 'onArchive' | 'onRename' | 'onEnd'
 >) {
   const lastKnownStatus = conversation.lastKnownStatus
   const lastKnownText =
@@ -3068,6 +3140,16 @@ function SessionRow({
           >
             {isArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
             {isArchived ? 'Unarchive session' : 'Archive session'}
+          </ContextMenuItem>
+          <ContextMenuItem
+            variant="destructive"
+            disabled={conversation.execution !== 'Structured'}
+            onSelect={() => {
+              onEnd(conversation.id)
+            }}
+          >
+            <Square size={14} />
+            End session
           </ContextMenuItem>
         </ContextMenuContent>
       )}

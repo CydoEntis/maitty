@@ -31,6 +31,6 @@ refuse to talk instead of misreading each other.
 The New conversation dialog offers Read only, Workspace write (the default) and
 Full access, with Full access marked as unsandboxed. The GUI remembers what each
 session was started with, because the daemon summary does not report it.
-Changing a running conversation's permissions is not supported. It needs a way to
-stop a conversation's chat runtime first, which a later change can add together
-with an explicit end-session command.
+A running conversation's permissions are not changed in place, as in the
+terminal: End session stops the agent (`ConversationEnd`, protocol 64), keeps its
+history, and the user starts a new session with the permissions they want.
