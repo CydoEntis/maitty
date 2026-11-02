@@ -1,3 +1,5 @@
+mod project_files;
+
 use std::path::PathBuf;
 use tauri::Manager;
 
@@ -70,6 +72,37 @@ async fn conversation_diff(
     generation: u64,
 ) -> Result<serde_json::Value, String> {
     maitty_desktop_client::conversation_diff(id, generation, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn suggest_project_folders(typed: String) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || project_files::suggest_folders(&typed))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn conversation_files(
+    app: tauri::AppHandle,
+    id: u64,
+    generation: u64,
+    path: Option<String>,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::conversation_files(id, generation, path, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn conversation_file(
+    app: tauri::AppHandle,
+    id: u64,
+    generation: u64,
+    path: String,
+) -> Result<String, String> {
+    maitty_desktop_client::conversation_file(id, generation, path, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -268,6 +301,9 @@ pub fn run() {
             list_sessions,
             read_conversation,
             conversation_diff,
+            conversation_files,
+            conversation_file,
+            suggest_project_folders,
             terminal_screen,
             terminal_replay,
             send_terminal_input,

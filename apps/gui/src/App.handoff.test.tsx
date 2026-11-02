@@ -14,6 +14,8 @@ const daemon = vi.hoisted(() => ({
   handoffToChat: vi.fn(),
   handoffToNative: vi.fn(),
   loadConversationDiff: vi.fn(),
+  loadConversationFile: vi.fn(),
+  loadConversationFiles: vi.fn(),
   loadClaudeExecutablePath: vi.fn(),
   loadCodexExecutablePath: vi.fn(),
   loadConversations: vi.fn(),
@@ -101,6 +103,11 @@ describe('desktop chat and terminal handoff', () => {
       total_files: 0,
       truncated: false,
     })
+    daemon.loadConversationFiles.mockResolvedValue([
+      { name: 'src', is_directory: true },
+      { name: 'README.md', is_directory: false },
+    ])
+    daemon.loadConversationFile.mockResolvedValue('# Read only preview')
     daemon.handoffToNative.mockImplementation(() => {
       currentConversation = {
         ...currentConversation,
@@ -153,6 +160,7 @@ describe('desktop chat and terminal handoff', () => {
     await user.click(
       screen.getByRole('button', { name: /Open a project folder/ }),
     )
+    await user.click(await screen.findByRole('button', { name: 'Browse…' }))
     expect(
       await screen.findByRole('textbox', { name: 'Project folder' }),
     ).toHaveValue(folder)
@@ -177,6 +185,9 @@ describe('desktop chat and terminal handoff', () => {
     const user = userEvent.setup()
     daemon.loadConversationDiff.mockRejectedValue(new Error('Git failed'))
     renderDesktopApp()
+    await userEvent.setup().click(
+      await screen.findByRole('button', { name: /^Review/ }),
+    )
 
     expect(
       await screen.findByRole('heading', { name: "Couldn?t load changes" }),
@@ -191,10 +202,14 @@ describe('desktop chat and terminal handoff', () => {
   })
 
   it('explains when Changes is unavailable because the project has no Git repository', async () => {
+    
     daemon.loadConversations.mockResolvedValue([
       { ...structuredConversation, isGitRepository: false },
     ])
     renderDesktopApp()
+    await userEvent.setup().click(
+      await screen.findByRole('button', { name: /^Review/ }),
+    )
 
     expect(
       await screen.findByRole('heading', { name: 'Changes need Git' }),
@@ -203,6 +218,21 @@ describe('desktop chat and terminal handoff', () => {
     expect(
       screen.getByText(/Initialize Git here to view file changes/),
     ).toBeInTheDocument()
+  })
+
+  it('opens the read-only file browser on demand and previews a daemon file', async () => {
+    const user = userEvent.setup()
+    renderDesktopApp()
+
+    expect(screen.queryByRole('tab', { name: 'Files' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: /^Review/ }))
+    await user.click(await screen.findByRole('tab', { name: 'Files' }))
+    await user.click(await screen.findByRole('button', { name: 'Preview file README.md' }))
+
+    expect(await screen.findByText('# Read only preview')).toBeInTheDocument()
+    expect(screen.getByText(/Read-only preview/)).toBeInTheDocument()
+    expect(daemon.loadConversationFile).toHaveBeenCalledWith(expect.objectContaining({ id: '42', generation: 7 }), 'README.md')
+    expect(screen.queryByRole('textbox', { name: /file/i })).not.toBeInTheDocument()
   })
 
   it('recovers an empty workspace after the daemon reconnects', async () => {
@@ -264,7 +294,7 @@ describe('desktop chat and terminal handoff', () => {
     daemon.restartMismatchedDaemon.mockResolvedValue(undefined)
     daemon.loadDaemonRestartStatus.mockResolvedValue({
       daemonProtocol: 49,
-      guiProtocol: 61,
+      guiProtocol: 62,
       canRestart: false,
       sessionCount: 2,
       activeTurnCount: 1,
@@ -286,11 +316,11 @@ describe('desktop chat and terminal handoff', () => {
 
   it('offers restart for the current local protocol mismatch message', async () => {
     daemon.loadConversations.mockRejectedValueOnce(
-      'connecting to the local daemon: the running maitty service uses protocol v49, while this GUI needs v61',
+      'connecting to the local daemon: the running maitty service uses protocol v49, while this GUI needs v62',
     )
     daemon.loadDaemonRestartStatus.mockResolvedValue({
       daemonProtocol: 49,
-      guiProtocol: 61,
+      guiProtocol: 62,
       canRestart: true,
       sessionCount: 0,
       activeTurnCount: 0,
@@ -531,15 +561,23 @@ describe('desktop chat and terminal handoff', () => {
     ).toBeInTheDocument()
   })
 
-  it('blocks native handoff while the structured conversation is working', async () => {
+  it('explains why native handoff must wait while the conversation is working', async () => {
+    const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([
       { ...structuredConversation, status: 'working' },
     ])
     renderDesktopApp()
 
+    const openTerminal = await screen.findByRole('button', {
+      name: 'Open in native terminal',
+    })
+    expect(openTerminal).toBeEnabled()
+    await user.click(openTerminal)
     expect(
-      await screen.findByRole('button', { name: 'Open in native terminal' }),
-    ).toBeDisabled()
+      await screen.findByText(
+        'Codex is still working in Chat. Let the current turn finish before opening Terminal.',
+      ),
+    ).toBeInTheDocument()
     expect(daemon.handoffToNative).not.toHaveBeenCalled()
   })
 
@@ -559,7 +597,7 @@ describe('desktop chat and terminal handoff', () => {
 
     expect(
       await screen.findByText(
-        'Reconnect to Maitty before opening the native terminal',
+        'Reconnect to Maitty before opening the native terminal.',
       ),
     ).toBeInTheDocument()
     expect(daemon.handoffToNative).not.toHaveBeenCalled()
@@ -602,6 +640,74 @@ describe('desktop chat and terminal handoff', () => {
     })
   })
 
+  it('shows Chat as soon as the handoff finishes without waiting for history refresh', async () => {
+    const user = userEvent.setup()
+    const nativeConversation = {
+      ...structuredConversation,
+      execution: 'Native' as const,
+      nativePane: 43,
+    }
+    const completeHistory = {
+      generation: 7,
+      receipt: null,
+      messages: [],
+      nextOperation: 1,
+      error: null,
+      cancelling: false,
+      completeness: 'Complete' as const,
+    }
+    let finishHistoryRefresh: ((history: typeof completeHistory) => void) | undefined
+    daemon.loadConversations.mockResolvedValue([nativeConversation])
+    daemon.loadMessages
+      .mockResolvedValueOnce(completeHistory)
+      .mockImplementation(() => new Promise((resolve) => { finishHistoryRefresh = resolve }))
+    renderDesktopApp()
+
+    await user.click(await screen.findByRole('button', { name: 'Show terminal' }))
+    await user.click(await screen.findByRole('button', { name: 'Return to chat' }))
+
+    expect(await screen.findByRole('textbox', { name: 'Message Codex' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Native Codex terminal' })).not.toBeInTheDocument()
+    finishHistoryRefresh?.(completeHistory)
+  })
+
+  it('renders assistant code blocks and tool output as distinct code surfaces', async () => {
+    const user = userEvent.setup()
+    daemon.loadMessages.mockResolvedValue({
+      generation: 7,
+      receipt: null,
+      messages: [
+        {
+          id: 'assistant-code',
+          role: 'assistant',
+          content: 'Call `fmt.Println` like this:\n```go\nfmt.Println("GUI_OK")\n```',
+          time: 'Now',
+        },
+        {
+          id: 'tool-output',
+          role: 'activity',
+          content: 'Run command',
+          detail: 'GUI_TOOL_OK',
+          activityState: 'Completed',
+          time: 'Now',
+        },
+      ],
+      nextOperation: 2,
+      error: null,
+      cancelling: false,
+      completeness: 'Complete',
+    })
+    renderDesktopApp()
+
+    const code = await screen.findByText('fmt.Println("GUI_OK")')
+    expect(code.closest('pre')).toBeInTheDocument()
+    expect(screen.getByText('go')).toBeInTheDocument()
+    expect(screen.getByText('fmt.Println').tagName).toBe('CODE')
+
+    await user.click(screen.getByRole('button', { name: /Codex · Run command · Completed/ }))
+    expect(screen.getByText('GUI_TOOL_OK').closest('pre')).toBeInTheDocument()
+  })
+
   it('offers a safe retry after native process cleanup requires recovery', async () => {
     const user = userEvent.setup()
     const nativeConversation = {
@@ -640,12 +746,68 @@ describe('desktop chat and terminal handoff', () => {
 
     expect(
       await screen.findByText(
-        /recovery in the TUI before it can return to chat/,
+        /Resume it in Maitty’s terminal interface/,
       ),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Retry return to chat' }),
     ).not.toBeInTheDocument()
+  })
+
+  it('returns to the chat recovery guidance when the native pane is gone', async () => {
+    const user = userEvent.setup()
+    const nativeConversation = {
+      ...structuredConversation,
+      execution: 'Native' as const,
+      status: 'recovery' as const,
+      nativePane: null,
+    }
+    daemon.loadConversations.mockResolvedValue([nativeConversation])
+    renderDesktopApp()
+
+    await user.click(await screen.findByRole('button', { name: 'Show terminal' }))
+    expect(await screen.findByRole('region', { name: 'Native Codex terminal' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Return to chat' }))
+
+    expect(await screen.findByText('This native session needs recovery. Resume it in Maitty’s terminal interface; chat stays locked until its history can be checked.')).toBeInTheDocument()
+    expect(daemon.handoffToChat).not.toHaveBeenCalled()
+  })
+
+  it('explains a busy native turn in the terminal instead of a toast', async () => {
+    const user = userEvent.setup()
+    const nativeConversation = {
+      ...structuredConversation,
+      execution: 'Native' as const,
+      status: 'working' as const,
+      nativePane: 43,
+    }
+    daemon.loadConversations.mockResolvedValue([nativeConversation])
+    renderDesktopApp()
+
+    await user.click(await screen.findByRole('button', { name: 'Show terminal' }))
+    await user.click(await screen.findByRole('button', { name: 'Return to chat' }))
+
+    expect(await screen.findByText('Codex is still working in the native terminal. Finish or stop that turn there, then choose Chat.')).toBeInTheDocument()
+    expect(daemon.handoffToChat).not.toHaveBeenCalled()
+  })
+
+  it('disables repeated switching while native cleanup is in progress', async () => {
+    const user = userEvent.setup()
+    const nativeConversation = {
+      ...structuredConversation,
+      execution: 'Native' as const,
+      nativePane: 43,
+    }
+    daemon.loadConversations.mockResolvedValue([nativeConversation])
+    daemon.handoffToChat.mockReturnValue(new Promise(() => {}))
+    renderDesktopApp()
+
+    await user.click(await screen.findByRole('button', { name: 'Show terminal' }))
+    await user.click(await screen.findByRole('button', { name: 'Return to chat' }))
+
+    expect(await screen.findByRole('button', { name: 'Returning to chat' })).toBeDisabled()
+    expect(screen.getByText('Returning…')).toBeInTheDocument()
   })
 
   it('re-enables the composer after the daemon marks a stopped turn interrupted', async () => {
@@ -689,7 +851,7 @@ describe('desktop chat and terminal handoff', () => {
           {
             id: 'turn-1:command',
             role: 'activity',
-            content: 'commandExecution',
+            content: 'Run command',
             detail: '',
             activityState: 'Interrupted',
             time: 'Recent',
@@ -715,7 +877,7 @@ describe('desktop chat and terminal handoff', () => {
     const runningActivity: Message = {
       id: 'turn-1:command',
       role: 'activity',
-      content: 'commandExecution',
+      content: 'Run command',
       detail: '',
       activityState: 'Running',
       time: 'Recent',
@@ -760,6 +922,98 @@ describe('desktop chat and terminal handoff', () => {
       await screen.findByText('Interrupted', {}, { timeout: 4000 }),
     ).toBeInTheDocument()
     expect(daemon.loadMessages).toHaveBeenCalledTimes(2)
+  })
+
+  it('reloads final conversation history when a streamed turn finishes', async () => {
+    const workingConversation = {
+      ...structuredConversation,
+      provider: 'Claude' as const,
+      status: 'working' as const,
+    }
+    const completedConversation = {
+      ...workingConversation,
+      status: 'done' as const,
+    }
+    const history = (content: string) => ({
+      generation: 7,
+      receipt: null,
+      messages: [
+        {
+          id: 'turn-1:assistant',
+          role: 'assistant' as const,
+          content,
+          time: 'Recent',
+        },
+      ],
+      nextOperation: 1,
+      error: null,
+      cancelling: false,
+      completeness: 'Complete' as const,
+    })
+    daemon.loadConversations
+      .mockResolvedValueOnce([workingConversation])
+      .mockResolvedValue([completedConversation])
+    daemon.loadMessages
+      .mockResolvedValueOnce(history('GUI_CLAU'))
+      .mockResolvedValue(history('GUI_CLAUDE_LIVE_OK'))
+    renderDesktopApp()
+
+    expect(await screen.findByText('GUI_CLAU')).toBeInTheDocument()
+    expect(
+      await screen.findByText('GUI_CLAUDE_LIVE_OK', {}, { timeout: 5000 }),
+    ).toBeInTheDocument()
+    expect(daemon.loadMessages).toHaveBeenCalledTimes(2)
+  })
+
+  it('groups consecutive tool steps under the active provider and expands their output', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([
+      { ...structuredConversation, provider: 'Claude' },
+    ])
+    daemon.loadMessages.mockResolvedValue({
+      generation: 7,
+      receipt: null,
+      messages: [
+        {
+          id: 'turn-1:search',
+          role: 'activity',
+          content: 'Search files',
+          detail: 'Found src/App.tsx',
+          activityState: 'Completed',
+          time: 'Recent',
+        },
+        {
+          id: 'turn-1:command',
+          role: 'activity',
+          content: 'Run tests',
+          detail: 'Tests passed',
+          activityState: 'Completed',
+          time: 'Recent',
+        },
+        {
+          id: 'turn-1:reply',
+          role: 'assistant',
+          content: 'The tests pass.',
+          time: 'Recent',
+        },
+      ],
+      nextOperation: 1,
+      error: null,
+      cancelling: false,
+      completeness: 'Complete',
+    })
+    renderDesktopApp()
+
+    const group = await screen.findByRole('button', {
+      name: 'Claude · 2 actions completed · Completed',
+    })
+    expect(screen.getByRole('region', { name: 'Claude tool activity' })).toBeInTheDocument()
+    await user.click(group)
+
+    expect(screen.getByText('Search files')).toBeInTheDocument()
+    expect(screen.getByText('Found src/App.tsx')).toBeInTheDocument()
+    expect(screen.getByText('Run tests')).toBeInTheDocument()
+    expect(screen.getByText('Tests passed')).toBeInTheDocument()
   })
 
   it('only runs an approval shortcut when Codex offered that exact choice', async () => {

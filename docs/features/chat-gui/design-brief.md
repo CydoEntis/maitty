@@ -2,21 +2,44 @@
 
 ## Approved design handoff
 
-The user approved the v4 desktop handoff. Its README, prototype and supporting
-references are preserved in [`design-handoff/v4/`](design-handoff/v4/). Follow
-the README for measurements and behavior; the HTML prototype is the visual
-source of truth. The v2 handoff remains in [`design-handoff/`](design-handoff/)
-for history. Prototype conversations, agent output, files, diffs, settings and
-terminal are sample data only. The application must display daemon-backed data
-or an honest unavailable/empty state instead of copying those samples as real
-work.
+The user approved the v5 desktop handoff. Its README, prototype and runtime are
+preserved in [`design-handoff/v5/`](design-handoff/v5/). Follow the README for
+measurements and behavior; the HTML prototype is the visual source of truth. The
+v4 handoff in [`design-handoff/v4/`](design-handoff/v4/) stays as the reference for
+the New session dialog, toast stacking, Files editing and References, which v5
+points back to. Prototype conversations, agent output, files, diffs, settings and
+terminal are sample data only. The application must display daemon-backed data or
+an honest unavailable/empty state instead of copying those samples as real work.
 
-The handoff sets a 264px sidebar, an inset dark workspace card, and a responsive
-right panel: docked at 1280px and wider, overlay below 1280px, with a 52px status
-rail and sidebar drawer below 900px. It defines Midnight as default, Paper as
-the light theme, Geist/Geist Mono typography, sea-glass teal for working and
-primary actions, amber only for attention, and red for failure/recovery. Keep
-status shapes and words so meaning does not depend on color.
+v5 has two planes: the window (the sidebar sits directly on it) and one inset main
+card. The sidebar is 256px with a brand row, an icon-only New conversation button,
+search and a footer holding the daemon status and Settings. A 46px tab strip holds
+the open sessions, a Chat | Terminal switch and one Review button; Changes and
+Context open from Review, docked at 1280px and wider and as a 480px overlay with a
+scrim below that. Themes are Midnight (default), Abyss and Paper. Teal means active
+work and primary actions, amber means needs you, red means failure, and done is a
+muted green. Each status mark has its own shape, so meaning never depends on color.
+
+Where the app differs from the prototype on purpose:
+
+- Claude stays a working provider when its CLI is installed; the prototype's
+  "Not supported yet" row applies only when the CLI is missing.
+- Unsent-prompt delivery keeps the daemon-backed Check delivery flow instead of
+  the prototype's "It arrived / Send anyway" buttons, so nothing is ever resent
+  on a guess.
+- There is no Settings control for default permissions. A conversation's sandbox
+  and approvals come from the provider's own config; Maitty shows them and never
+  widens them.
+- The "Working · 1:42" timer shows only for a turn the GUI watched start. The
+  daemon reports no start time, so a turn already running when the GUI opens
+  shows "Working" without a clock rather than a wrong one.
+- Open project (Ctrl/Cmd+O) is a palette for a typed path or a recent project;
+  choosing one continues into the New conversation dialog, because a project
+  exists in the sidebar only once it has a conversation.
+- Review → Files reads the project folder through Tauri commands that serve only
+  folders owned by a daemon session, and refuse paths that leave them.
+- Syntax colors are a small built-in tokenizer (keywords, strings, numbers,
+  comments), not a full grammar; unknown file types stay plain.
 
 Design a polished Windows, macOS and Linux desktop app for Maitty, a terminal
 multiplexer for people running several coding agents at once. This is a real

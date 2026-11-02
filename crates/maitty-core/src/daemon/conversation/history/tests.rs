@@ -93,6 +93,7 @@ fn interrupting_a_turn_marks_its_running_tools_interrupted() {
         content: Content::Tool {
             kind: "commandExecution".into(),
             output: String::new(),
+            label: "Run command".into(),
         },
         state: ItemState::Running,
     };
@@ -218,10 +219,14 @@ fn provider_tool_lifecycle_replaces_one_row_and_preserves_failed_status() {
         ("item/completed", "failed"),
         ("item/completed", "failed"),
     ] {
-        a.notification(ConversationId(1), "native", method, &json!({"threadId":"native","turnId":"turn","item":{"id":"1","type":"commandExecution","aggregatedOutput":"synthetic output","status":status}})).unwrap();
+        a.notification(ConversationId(1), "native", method, &json!({"threadId":"native","turnId":"turn","item":{"id":"1","type":"commandExecution","command":"pwsh -NoProfile -Command Write-Output smoke","aggregatedOutput":"synthetic output","status":status}})).unwrap();
     }
     assert_eq!(a.get(1).unwrap().entries.len(), 1);
     assert_eq!(a.get(1).unwrap().entries[0].state, ItemState::Failed);
+    assert!(matches!(
+        &a.get(1).unwrap().entries[0].content,
+        Content::Tool { label, .. } if label == "pwsh -NoProfile -Command Write-Output smoke"
+    ));
     a.notification(ConversationId(1), "native", "item/completed", &json!({"threadId":"native","turnId":"turn","item":{"id":"2","type":"unknownTool","secret":"not retained"}})).unwrap();
     assert_eq!(
         a.get(1).unwrap().completeness,

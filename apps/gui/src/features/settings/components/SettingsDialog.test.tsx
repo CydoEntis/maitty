@@ -10,18 +10,22 @@ describe('SettingsDialog', () => {
     const onPreferencesChange = vi.fn()
     const onNotificationSoundChange = vi.fn(() => true)
     const onTestNotification = vi.fn()
-    render(<SettingsDialog open onClose={vi.fn()} theme="night" onThemeChange={onThemeChange} preferences={{ accent: 'teal', reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notificationSound: false }} onPreferencesChange={onPreferencesChange} onNotificationSoundChange={onNotificationSoundChange} onTestNotification={onTestNotification} daemonConnectionState="connected" onReconnect={vi.fn()} codexExecutableState="preview" codexExecutablePath={undefined} onCodexRecheck={vi.fn()} claudeExecutableState="preview" claudeExecutablePath={undefined} onClaudeRecheck={vi.fn()} primaryModifier="Ctrl" />)
+    render(<SettingsDialog open onClose={vi.fn()} theme="night" onThemeChange={onThemeChange} preferences={{ accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notificationSound: false }} onPreferencesChange={onPreferencesChange} onNotificationSoundChange={onNotificationSoundChange} onTestNotification={onTestNotification} daemonConnectionState="connected" onReconnect={vi.fn()} codexExecutableState="preview" codexExecutablePath={undefined} onCodexRecheck={vi.fn()} claudeExecutableState="preview" claudeExecutablePath={undefined} onClaudeRecheck={vi.fn()} primaryModifier="Ctrl" />)
 
     await user.click(screen.getByRole('button', { name: /paper/i }))
     expect(onThemeChange).toHaveBeenCalledWith('day')
     await user.click(screen.getByRole('button', { name: 'Violet' }))
     expect(onPreferencesChange).toHaveBeenCalledWith(expect.objectContaining({ accent: 'violet' }))
+    await user.click(screen.getByRole('button', { name: /abyss/i }))
+    expect(onThemeChange).toHaveBeenCalledWith('abyss')
+    await user.click(screen.getByRole('button', { name: /snake/i }))
+    expect(onPreferencesChange).toHaveBeenCalledWith(expect.objectContaining({ spinner: 'snake' }))
 
     await user.click(screen.getByRole('tab', { name: 'Notifications' }))
     await user.click(screen.getByRole('button', { name: 'top left' }))
     expect(onPreferencesChange).toHaveBeenCalledWith(expect.objectContaining({ toastPosition: 'top-left' }))
     await user.click(screen.getByRole('checkbox', { name: /needs your attention/i }))
-    expect(onPreferencesChange).toHaveBeenCalledWith({ accent: 'teal', reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: false, notifyFinished: true, notificationSound: false })
+    expect(onPreferencesChange).toHaveBeenCalledWith({ accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: false, notifyFinished: true, notificationSound: false })
     await user.click(screen.getByRole('button', { name: 'Send a test' }))
     expect(onTestNotification).toHaveBeenCalledOnce()
     await user.click(screen.getByRole('checkbox', { name: /Sound/ }))
@@ -31,7 +35,7 @@ describe('SettingsDialog', () => {
   it('offers daemon reconnect when disconnected', async () => {
     const user = userEvent.setup()
     const onReconnect = vi.fn()
-    render(<SettingsDialog open onClose={vi.fn()} theme="night" onThemeChange={vi.fn()} preferences={{ accent: 'teal', reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notificationSound: false }} onPreferencesChange={vi.fn()} onNotificationSoundChange={vi.fn(() => true)} onTestNotification={vi.fn()} daemonConnectionState="disconnected" onReconnect={onReconnect} codexExecutableState="unavailable" codexExecutablePath={undefined} onCodexRecheck={vi.fn()} claudeExecutableState="available" claudeExecutablePath="C:\\Users\\casey\\.local\\bin\\claude.exe" onClaudeRecheck={vi.fn()} primaryModifier="Ctrl" />)
+    render(<SettingsDialog open onClose={vi.fn()} theme="night" onThemeChange={vi.fn()} preferences={{ accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notificationSound: false }} onPreferencesChange={vi.fn()} onNotificationSoundChange={vi.fn(() => true)} onTestNotification={vi.fn()} daemonConnectionState="disconnected" onReconnect={onReconnect} codexExecutableState="unavailable" codexExecutablePath={undefined} onCodexRecheck={vi.fn()} claudeExecutableState="available" claudeExecutablePath="C:\\Users\\casey\\.local\\bin\\claude.exe" onClaudeRecheck={vi.fn()} primaryModifier="Ctrl" />)
 
     await user.click(screen.getByRole('tab', { name: 'Daemon & providers' }))
     expect(screen.getByText('Codex was not found on this machine.')).toBeInTheDocument()
@@ -42,7 +46,7 @@ describe('SettingsDialog', () => {
 
   it('lists the project folder shortcut with the current platform modifier', async () => {
     const user = userEvent.setup()
-    render(<SettingsDialog open onClose={vi.fn()} theme="night" onThemeChange={vi.fn()} preferences={{ accent: 'teal', reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notificationSound: false }} onPreferencesChange={vi.fn()} onNotificationSoundChange={vi.fn(() => true)} onTestNotification={vi.fn()} daemonConnectionState="connected" onReconnect={vi.fn()} codexExecutableState="preview" codexExecutablePath={undefined} onCodexRecheck={vi.fn()} claudeExecutableState="preview" claudeExecutablePath={undefined} onClaudeRecheck={vi.fn()} primaryModifier="Ctrl" />)
+    render(<SettingsDialog open onClose={vi.fn()} theme="night" onThemeChange={vi.fn()} preferences={{ accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notificationSound: false }} onPreferencesChange={vi.fn()} onNotificationSoundChange={vi.fn(() => true)} onTestNotification={vi.fn()} daemonConnectionState="connected" onReconnect={vi.fn()} codexExecutableState="preview" codexExecutablePath={undefined} onCodexRecheck={vi.fn()} claudeExecutableState="preview" claudeExecutablePath={undefined} onClaudeRecheck={vi.fn()} primaryModifier="Ctrl" />)
 
     await user.click(screen.getByRole('tab', { name: 'Keyboard' }))
 
@@ -52,7 +56,7 @@ describe('SettingsDialog', () => {
   it('moves between Settings tabs with arrows in the visible direction', async () => {
     const user = userEvent.setup()
     const originalWidth = window.innerWidth
-    render(<SettingsDialog open onClose={vi.fn()} theme="night" onThemeChange={vi.fn()} preferences={{ accent: 'teal', reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notificationSound: false }} onPreferencesChange={vi.fn()} onNotificationSoundChange={vi.fn(() => true)} onTestNotification={vi.fn()} daemonConnectionState="connected" onReconnect={vi.fn()} codexExecutableState="preview" codexExecutablePath={undefined} onCodexRecheck={vi.fn()} claudeExecutableState="preview" claudeExecutablePath={undefined} onClaudeRecheck={vi.fn()} primaryModifier="Ctrl" />)
+    render(<SettingsDialog open onClose={vi.fn()} theme="night" onThemeChange={vi.fn()} preferences={{ accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notificationSound: false }} onPreferencesChange={vi.fn()} onNotificationSoundChange={vi.fn(() => true)} onTestNotification={vi.fn()} daemonConnectionState="connected" onReconnect={vi.fn()} codexExecutableState="preview" codexExecutablePath={undefined} onCodexRecheck={vi.fn()} claudeExecutableState="preview" claudeExecutablePath={undefined} onClaudeRecheck={vi.fn()} primaryModifier="Ctrl" />)
 
     try {
       const appearanceTab = screen.getByRole('tab', { name: 'Appearance' })

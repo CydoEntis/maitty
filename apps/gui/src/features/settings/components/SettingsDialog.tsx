@@ -1,11 +1,11 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
-import { Bell, Keyboard, Monitor, Radio, Settings2 } from 'lucide-react'
+import { Bell, Keyboard, Monitor, Radio, Settings2, SlidersHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { ThemePreference } from '@/data/themePreference'
 import type { SettingsPreferences } from '../preferences'
 
-type SettingsSection = 'appearance' | 'notifications' | 'daemon' | 'keyboard'
+type SettingsSection = 'general' | 'appearance' | 'notifications' | 'daemon' | 'keyboard'
 type SettingsNavOrientation = 'horizontal' | 'vertical'
 type CodexExecutableState = 'checking' | 'available' | 'unavailable' | 'preview'
 type ClaudeExecutableState = 'checking' | 'available' | 'unavailable' | 'preview'
@@ -34,6 +34,7 @@ type SettingsDialogProps = {
 }
 
 const sections: { id: SettingsSection; label: string; icon: typeof Monitor }[] = [
+  { id: 'general', label: 'General', icon: SlidersHorizontal },
   { id: 'appearance', label: 'Appearance', icon: Monitor },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'daemon', label: 'Daemon & providers', icon: Radio },
@@ -86,15 +87,28 @@ function SettingsDialog({ open, onClose, theme, onThemeChange, preferences, onPr
           {sections.map(({ id, label, icon: Icon }) => <button key={id} type="button" id={`settings-tab-${id}`} role="tab" aria-selected={section === id} aria-controls="settings-panel" tabIndex={section === id ? 0 : -1} className={`settings-nav-item ${section === id ? 'is-active' : ''}`} onClick={() => { setSection(id) }}><Icon size={15} />{label}</button>)}
         </div>
         <section className="settings-content" role="tabpanel" id="settings-panel" aria-labelledby={`settings-tab-${section}`} tabIndex={0}>
+          {section === 'general' && <>
+            <div className="settings-section-title"><h3>General</h3><p>How Maitty opens and what happens when you close it.</p></div>
+            <div className="settings-row"><span><strong>On launch</strong><small>Reopen the tabs you had open, or start with only the selected conversation.</small></span><div className="segmented" role="group" aria-label="On launch">
+              <button type="button" className={preferences.restoreTabs ? 'is-selected' : ''} aria-pressed={preferences.restoreTabs} onClick={() => { updatePreference('restoreTabs', true) }}>Restore tabs</button>
+              <button type="button" className={!preferences.restoreTabs ? 'is-selected' : ''} aria-pressed={!preferences.restoreTabs} onClick={() => { updatePreference('restoreTabs', false) }}>Start empty</button>
+            </div></div>
+            <div className="settings-row"><span><strong>Closing this window</strong><small>Conversations belong to maittyd, so closing the window or a tab never stops an agent.</small></span><span className="settings-value">Always keeps running</span></div>
+          </>}
           {section === 'appearance' && <>
             <div className="settings-section-title"><h3>Appearance</h3><p>Choose the color theme for this device.</p></div>
             <div className="theme-options" role="group" aria-label="Color theme">
               <button type="button" className={`theme-option theme-option-night ${theme === 'night' ? 'is-selected' : ''}`} aria-pressed={theme === 'night'} onClick={() => { onThemeChange('night') }}><span className="theme-swatch theme-swatch-night" /><span><strong>Midnight</strong><small>Navy and sea glass</small></span></button>
+              <button type="button" className={`theme-option theme-option-abyss ${theme === 'abyss' ? 'is-selected' : ''}`} aria-pressed={theme === 'abyss'} onClick={() => { onThemeChange('abyss') }}><span className="theme-swatch theme-swatch-abyss" /><span><strong>Abyss</strong><small>Deeper blue-black</small></span></button>
               <button type="button" className={`theme-option theme-option-day ${theme === 'day' ? 'is-selected' : ''}`} aria-pressed={theme === 'day'} onClick={() => { onThemeChange('day') }}><span className="theme-swatch theme-swatch-day" /><span><strong>Paper</strong><small>Light and easy to read</small></span></button>
             </div>
             <div className="settings-section-title settings-subsection-title"><h3>Accent</h3><p>Choose the color used for focus and active controls.</p></div>
             <div className="accent-options" role="group" aria-label="Accent color">
               {(['teal', 'blue', 'violet'] as const).map((accent) => <button key={accent} type="button" className={`accent-option accent-${accent} ${preferences.accent === accent ? 'is-selected' : ''}`} aria-pressed={preferences.accent === accent} onClick={() => { updatePreference('accent', accent) }}><span aria-hidden="true" />{accent === 'teal' ? 'Sea glass' : accent === 'blue' ? 'Blue' : 'Violet'}</button>)}
+            </div>
+            <div className="settings-subsection-title"><h3>Working spinner</h3></div>
+            <div className="accent-options" role="group" aria-label="Working spinner">
+              {([['braille', 'Braille', '⠋⠙⠹'], ['snake', 'Snake', '⠇⠋⠙'], ['bars', 'Bars', '⣰⡄⣼⡀']] as const).map(([id, label, glyphs]) => <button key={id} type="button" className={`accent-option ${preferences.spinner === id ? 'is-selected' : ''}`} aria-pressed={preferences.spinner === id} onClick={() => { updatePreference('spinner', id) }}><span aria-hidden="true" className="spinner-sample">{glyphs}</span>{label}</button>)}
             </div>
             <label className="settings-row"><span><strong>Reduce motion</strong><small>Stop animated transitions and activity indicators.</small></span><input type="checkbox" checked={preferences.reduceMotion} onChange={(event) => { updatePreference('reduceMotion', event.target.checked) }} /></label>
             <label className="settings-row"><span><strong>Animate sidebar activity</strong><small>Show motion while a conversation is working.</small></span><input type="checkbox" checked={preferences.animateSidebarActivity} disabled={preferences.reduceMotion} onChange={(event) => { updatePreference('animateSidebarActivity', event.target.checked) }} /></label>

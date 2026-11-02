@@ -22,9 +22,19 @@ pub enum ItemState {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Content {
     TurnStatus,
-    Message { role: Role, text: String },
-    Tool { kind: String, output: String },
-    Unsupported { kind: String },
+    Message {
+        role: Role,
+        text: String,
+    },
+    Tool {
+        kind: String,
+        output: String,
+        #[serde(default)]
+        label: String,
+    },
+    Unsupported {
+        kind: String,
+    },
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
@@ -72,4 +82,27 @@ pub enum ReadError {
     StaleCursor,
     InvalidLimit,
     EntryTooLarge,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Content;
+    use serde_json::json;
+
+    #[test]
+    fn old_tool_history_without_a_label_still_decodes() {
+        let content: Content = serde_json::from_value(json!({
+            "Tool": { "kind": "commandExecution", "output": "completed" }
+        }))
+        .unwrap();
+
+        assert_eq!(
+            content,
+            Content::Tool {
+                kind: "commandExecution".into(),
+                output: "completed".into(),
+                label: String::new(),
+            }
+        );
+    }
 }

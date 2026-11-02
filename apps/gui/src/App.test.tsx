@@ -22,6 +22,18 @@ describe('conversation workspace', () => {
     expect(screen.getByRole('status', { name: 'Local preview · daemon not connected' })).toBeInTheDocument()
   })
 
+  it('keeps Changes and Files closed until the user opens a panel', async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    expect(screen.queryByRole('complementary', { name: 'Conversation details' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Review/ }))
+    await user.click(screen.getByRole('tab', { name: 'Files' }))
+
+    expect(screen.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('Files need the desktop app')).toBeInTheDocument()
+  })
+
   it('keeps opened conversations in tabs without closing daemon sessions', async () => {
     const user = userEvent.setup()
     renderApp()
@@ -42,14 +54,14 @@ describe('conversation workspace', () => {
     const user = userEvent.setup()
     renderApp()
 
-    await user.click(screen.getByRole('button', { name: 'Settled 2' }))
+    await user.click(screen.getByRole('button', { name: /Show 2 older/ }))
     await user.click(
       screen.getByRole('button', {
         name: /^Review the daemon restore flow, Done, maitty$/i,
       }),
     )
 
-    expect(screen.getByText('Claude Code')).toBeInTheDocument()
+    expect(screen.getAllByText(/Claude · /).length).toBeGreaterThan(0)
     expect(screen.queryByText('GPT-5 Codex')).not.toBeInTheDocument()
   })
 
@@ -133,7 +145,7 @@ describe('conversation workspace', () => {
 
     await user.keyboard('{Control>}o{/Control}')
 
-    expect(screen.getByRole('dialog')).toHaveTextContent('New conversation')
+    expect(screen.getByRole('dialog')).toHaveTextContent('Open a project')
   })
 
   it('opens the shortcut map with question mark', async () => {
@@ -197,12 +209,19 @@ describe('conversation workspace', () => {
   it('moves between context panel tabs with arrow keys', async () => {
     const user = userEvent.setup()
     renderApp()
+    await userEvent.setup().click(
+      await screen.findByRole('button', { name: /^Review/ }),
+    )
 
-    const changesTab = screen.getByRole('tab', { name: 'Changes' })
+    const changesTab = screen.getByRole('tab', { name: /^Changes/ })
+    const filesTab = screen.getByRole('tab', { name: 'Files' })
     const contextTab = screen.getByRole('tab', { name: 'Context' })
     changesTab.focus()
     await user.keyboard('{ArrowRight}')
+    expect(filesTab).toHaveAttribute('aria-selected', 'true')
+    expect(filesTab).toHaveFocus()
 
+    await user.keyboard('{ArrowRight}')
     expect(contextTab).toHaveAttribute('aria-selected', 'true')
     expect(contextTab).toHaveFocus()
     expect(changesTab).toHaveAttribute('tabindex', '-1')
@@ -211,8 +230,11 @@ describe('conversation workspace', () => {
   it('selects changed files and navigates them with buttons and brackets', async () => {
     const user = userEvent.setup()
     renderApp()
+    await userEvent.setup().click(
+      await screen.findByRole('button', { name: /^Review/ }),
+    )
 
-    await user.click(screen.getByRole('tab', { name: 'Changes' }))
+    await user.click(screen.getByRole('tab', { name: /^Changes/ }))
     expect(screen.getByText(/File 1 of 2/)).toHaveTextContent('src/client/screen/branch_sheet.rs')
 
     await user.click(screen.getByRole('button', { name: 'Next changed file' }))
@@ -227,8 +249,11 @@ describe('conversation workspace', () => {
   it('does not navigate changed files while typing in a text field', async () => {
     const user = userEvent.setup()
     renderApp()
+    await userEvent.setup().click(
+      await screen.findByRole('button', { name: /^Review/ }),
+    )
 
-    await user.click(screen.getByRole('tab', { name: 'Changes' }))
+    await user.click(screen.getByRole('tab', { name: /^Changes/ }))
     const composer = screen.getByRole('textbox', { name: 'Message Codex' })
     composer.focus()
     fireEvent.keyDown(composer, { key: ']' })
@@ -241,12 +266,11 @@ describe('conversation workspace', () => {
     localStorage.clear()
     const app = renderApp()
 
-    await user.click(screen.getByRole('button', { name: /Settled 2/ }))
+    await user.click(screen.getByRole('button', { name: /Show 2 older/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
     await user.type(screen.getByRole('textbox', { name: 'Message Claude' }), 'Keep this draft')
     app.unmount()
     renderApp()
-    await user.click(screen.getByRole('button', { name: /Settled 2/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
 
     expect(screen.getByRole('textbox', { name: 'Message Claude' })).toHaveValue('Keep this draft')
@@ -256,7 +280,7 @@ describe('conversation workspace', () => {
     const user = userEvent.setup()
     const app = renderApp()
 
-    await user.click(screen.getByRole('button', { name: /Settled 2/ }))
+    await user.click(screen.getByRole('button', { name: /Show 2 older/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
     expect(screen.getByRole('heading', { name: 'Review the daemon restore flow' })).toBeInTheDocument()
 
@@ -309,11 +333,11 @@ describe('conversation workspace', () => {
 
     await user.click(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
     await user.click(screen.getByRole('button', { name: 'Menu for Add a conversation reconnect test' }))
-    expect(screen.getByRole('menuitem', { name: 'Archive conversation' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('menuitem', { name: 'Close session' })).toHaveAttribute('aria-disabled', 'true')
     await user.click(screen.getByRole('menuitem', { name: 'Pin conversation' }))
     expect(screen.getByRole('region', { name: 'maitty project' })).toContainElement(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
 
-    await user.click(screen.getByRole('button', { name: /Settled 2/ }))
+    await user.click(screen.getByRole('button', { name: /Show 2 older/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
     await user.click(screen.getByRole('button', { name: 'Menu for Review the daemon restore flow' }))
     await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
@@ -323,7 +347,7 @@ describe('conversation workspace', () => {
     await user.keyboard('{Enter}')
 
     await user.click(screen.getByRole('button', { name: 'Menu for Review daemon recovery' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Archive conversation' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Close session' }))
     await user.click(screen.getByRole('button', { name: /Archived 1/ }))
     expect(screen.getByRole('button', { name: /^Review daemon recovery, Done, maitty$/i })).toBeInTheDocument()
 
@@ -375,6 +399,29 @@ describe('conversation workspace', () => {
     await user.keyboard('y')
 
     expect(await screen.findByText('Approved once. The test command is running in this preview.')).toBeInTheDocument()
+  })
+
+  it('denies the pending request and sends the typed instructions instead', async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    const box = screen.getByRole('textbox', { name: 'Message Codex' })
+    expect(box).toBeEnabled()
+    await user.type(box, 'Use the existing helper instead')
+    await user.click(screen.getByRole('button', { name: 'Deny and send' }))
+
+    expect(await screen.findByText('You declined the command. The agent did not run it.')).toBeInTheDocument()
+    expect(await screen.findByText('Use the existing helper instead')).toBeInTheDocument()
+  })
+
+  it('opens a project from the palette by typing a folder path', async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await user.keyboard('{Control>}o{/Control}')
+    await user.type(screen.getByRole('textbox', { name: 'Folder path, or search recent projects' }), '/home/casey/notes{Enter}')
+
+    expect(await screen.findByRole('textbox', { name: 'Project folder' })).toHaveValue('/home/casey/notes')
   })
 
   it('does not answer an approval when Y is typed into the search field', async () => {

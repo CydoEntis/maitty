@@ -4,6 +4,15 @@ use serde_json::Value;
 
 type Result<T> = std::result::Result<T, IncompleteReason>;
 const ERROR_MESSAGE_CHARS: usize = 1024;
+const TOOL_LABEL_CHARS: usize = 256;
+
+fn tool_label(item: &Value) -> String {
+    item.get("command")
+        .and_then(Value::as_str)
+        .filter(|command| !command.trim().is_empty())
+        .map(|command| command.chars().take(TOOL_LABEL_CHARS).collect())
+        .unwrap_or_else(|| "Run command".into())
+}
 
 pub(super) fn error_message(value: &Value) -> Result<String> {
     let message = text(value, "message")?;
@@ -120,6 +129,7 @@ pub(super) fn notification(
         }
         "commandExecution" => Content::Tool {
             kind: kind.into(),
+            label: tool_label(item),
             output: item
                 .get("aggregatedOutput")
                 .and_then(Value::as_str)

@@ -1,7 +1,11 @@
+import type { SpinnerStyle } from '@/lib/spinner-clock'
+
 export type ToastPosition = 'top-right' | 'bottom-right' | 'bottom-left' | 'top-left'
 
 export type SettingsPreferences = {
   accent: 'teal' | 'blue' | 'violet'
+  spinner: SpinnerStyle
+  restoreTabs: boolean
   reduceMotion: boolean
   animateSidebarActivity: boolean
   compactSidebar: boolean
@@ -14,6 +18,8 @@ export type SettingsPreferences = {
 const STORAGE_KEY = 'maitty.gui.settings.v1'
 const DEFAULTS: SettingsPreferences = {
   accent: 'teal',
+  spinner: 'braille',
+  restoreTabs: true,
   reduceMotion: false,
   animateSidebarActivity: true,
   compactSidebar: false,
@@ -32,6 +38,8 @@ export function readSettingsPreferences(): SettingsPreferences {
     const preferences = value as Partial<SettingsPreferences>
     return {
       accent: isAccent(preferences.accent) ? preferences.accent : DEFAULTS.accent,
+      spinner: isSpinner(preferences.spinner) ? preferences.spinner : DEFAULTS.spinner,
+      restoreTabs: typeof preferences.restoreTabs === 'boolean' ? preferences.restoreTabs : DEFAULTS.restoreTabs,
       reduceMotion: typeof preferences.reduceMotion === 'boolean' ? preferences.reduceMotion : DEFAULTS.reduceMotion,
       animateSidebarActivity: typeof preferences.animateSidebarActivity === 'boolean' ? preferences.animateSidebarActivity : DEFAULTS.animateSidebarActivity,
       compactSidebar: typeof preferences.compactSidebar === 'boolean' ? preferences.compactSidebar : DEFAULTS.compactSidebar,
@@ -56,4 +64,8 @@ function isToastPosition(value: unknown): value is ToastPosition {
 
 function isAccent(value: unknown): value is SettingsPreferences['accent'] {
   return value === 'teal' || value === 'blue' || value === 'violet'
+}
+
+function isSpinner(value: unknown): value is SpinnerStyle {
+  return value === 'braille' || value === 'snake' || value === 'bars'
 }

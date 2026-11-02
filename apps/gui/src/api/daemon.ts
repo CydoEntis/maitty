@@ -39,7 +39,7 @@ const HistoryEntrySchema = z.object({
   content: z.union([
     z.literal('TurnStatus'),
     z.object({ Message: z.object({ role: z.enum(['User', 'Assistant']), text: z.string() }) }),
-    z.object({ Tool: z.object({ kind: z.string(), output: z.string() }) }),
+    z.object({ Tool: z.object({ kind: z.string(), output: z.string(), label: z.string().optional() }) }),
     z.object({ Unsupported: z.object({ kind: z.string() }) }),
   ]),
   state: z.enum(['Running', 'Completed', 'Failed', 'Interrupted']),
@@ -96,6 +96,7 @@ const ConversationDiffSchema = z.object({
   total_files: z.number().int().nonnegative(),
   truncated: z.boolean(),
 })
+const ConversationFileEntrySchema = z.object({ name: z.string(), is_directory: z.boolean() })
 const CreatedConversationSchema = z.object({
   id: z.number().int().nonnegative(),
   generation: z.number().int().nonnegative(),
@@ -146,6 +147,8 @@ export type ConversationDiff = {
   truncated: boolean
 }
 
+export type ConversationFileEntry = z.infer<typeof ConversationFileEntrySchema>
+
 export function isDesktop(): boolean {
   return isTauri()
 }
@@ -186,7 +189,16 @@ export async function loadConversations(): Promise<Conversation[]> {
   return snapshot.conversations.map((conversation) => toConversation(conversation, snapshot.workspaces))
 }
 
-export async function loadMessages(conversationId: string): Promise<ConversationHistory> {
+function toolActivityLabel(tool: { kind: string; label?: string | undefined }): string {
+  const label = tool.label?.trim()
+  if (label) return label
+  return tool.kind === 'commandExecution' ? 'Run command' : tool.kind
+}
+
+export async function loadMessages(
+  conversationId: string,
+  provider: Conversation['provider'],
+): Promise<ConversationHistory> {
   if (!isDesktop()) return { generation: 0, receipt: null, messages: [], nextOperation: 1, error: null, cancelling: false, completeness: 'Complete' }
 
   const id = Number(conversationId)
@@ -235,7 +247,7 @@ export async function loadMessages(conversationId: string): Promise<Conversation
       return [{
         id: `${entry.source.turn}:${entry.source.item}`,
         role: 'activity',
-        content: entry.content.Tool.kind,
+        content: toolActivityLabel(entry.content.Tool),
         detail: entry.content.Tool.output,
         activityState: entry.state,
         time: 'Recent',
@@ -253,7 +265,7 @@ export async function loadMessages(conversationId: string): Promise<Conversation
   messages.push(...history.approvals.map((approval): Message => ({
     id: `approval:${typeof approval.request_id}:${String(approval.request_id)}`,
     role: 'approval',
-    content: approval.kind === 'FileChange' ? 'Codex wants to change project files' : approval.kind === 'Permission' ? 'Codex is requesting additional permissions' : approval.kind === 'UserInput' ? 'Codex needs your input' : 'Codex wants to run a command',
+    content: approval.kind === 'FileChange' ? `${provider} wants to change project files` : approval.kind === 'Permission' ? `${provider} is requesting additional permissions` : approval.kind === 'UserInput' ? `${provider} needs your input` : `${provider} wants to run a command`,
     detail: approval.command ?? '',
     time: 'Needs your decision',
     providerRequestId: approval.request_id,
@@ -293,6 +305,39 @@ export async function loadConversationDiff(conversation: Conversation): Promise<
     id: Number(conversation.id),
     generation: conversation.generation,
   })
+}
+
+export async function loadConversationFiles(
+  conversation: Conversation,
+  path: string | null,
+): Promise<ConversationFileEntry[]> {
+  if (!isDesktop() || conversation.generation === undefined) {
+    throw new Error('Project files are available in the desktop app')
+  }
+  return invokeParsed('conversation_files', z.array(ConversationFileEntrySchema), {
+    id: Number(conversation.id),
+    generation: conversation.generation,
+    path,
+  })
+}
+
+export async function loadConversationFile(
+  conversation: Conversation,
+  path: string,
+): Promise<string> {
+  if (!isDesktop() || conversation.generation === undefined) {
+    throw new Error('Project files are available in the desktop app')
+  }
+  return invokeParsed('conversation_file', z.string(), {
+    id: Number(conversation.id),
+    generation: conversation.generation,
+    path,
+  })
+}
+
+export async function suggestProjectFolders(typed: string): Promise<string[]> {
+  if (!isDesktop()) return []
+  return invokeParsed('suggest_project_folders', z.array(z.string()), { typed })
 }
 
 export async function loadTerminalScreen(conversation: Pick<Conversation, 'id'> & { generation: number }): Promise<string> {
