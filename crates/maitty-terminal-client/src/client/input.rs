@@ -982,7 +982,9 @@ impl App {
             let at = (m.column, m.row);
             match hit {
                 Some(Hit::Screen(screen::ScreenHit::Session(key))) => {
-                    if let Some(term) = self.require_session_term(key) {
+                    if let Some(id) = self.bare_conversation(key) {
+                        self.menu_for_conversation(id, at);
+                    } else if let Some(term) = self.require_session_term(key) {
                         self.menu_for_session(term, at);
                     }
                 }

@@ -42,13 +42,13 @@ impl Daemon {
                 self.conversation_cancel(client, id, generation)?;
                 return Ok(false);
             }
-            Command::ConversationHandoffToNative { id, generation } => {
-                self.conversation_handoff_to_native(client, id, generation)?;
-                return Ok(false);
+            Command::TerminalInput { term, data } => self.pane_input(client, term, data)?,
+            Command::TerminalResize { term, cols, rows } => {
+                self.pane_resize(client, term, cols, rows)?
             }
-            Command::ConversationHandoffToChat { id, generation } => {
-                self.conversation_handoff_to_chat(client, id, generation)?;
-                return Ok(false);
+            Command::ConversationRename { id, title } => self.conversation_rename(id, &title)?,
+            Command::ConversationArchive { id, archived } => {
+                self.conversation_archive(id, archived)?
             }
             Command::ConversationTerminalInput {
                 id,

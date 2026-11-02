@@ -91,8 +91,6 @@ pub struct Term {
     killer: Box<dyn ChildKiller + Send + Sync>,
     pub pid: Option<u32>,
     pub process_exited: bool,
-    #[cfg(test)]
-    pub fail_next_handoff_cleanup: bool,
     /// The daemon's own view of the screen, for status patterns and `<app> read`.
     pub parser: vt100::Parser<Callbacks>,
     ring: VecDeque<u8>,
@@ -745,8 +743,6 @@ impl Term {
             killer,
             pid,
             process_exited: false,
-            #[cfg(test)]
-            fail_next_handoff_cleanup: false,
             parser: vt100::Parser::new_with_callbacks(
                 size.rows,
                 size.cols,
@@ -1010,25 +1006,10 @@ impl Term {
     /// child of the shell, and on Windows it would otherwise keep the terminal open). Runs
     /// on its own thread so nothing waits on it.
     pub fn kill_tree(&mut self) {
-        self.kill_tree_with_completion(None);
-    }
-
-    pub fn kill_tree_for_handoff(&mut self, id: TermId, tx: mpsc::Sender<Ev>) {
-        self.kill_tree_with_completion(Some((id, tx)));
-    }
-
-    fn kill_tree_with_completion(&mut self, completion: Option<(TermId, mpsc::Sender<Ev>)>) {
         let mut killer = self.killer.clone_killer();
         let pid = self.pid;
-        #[cfg(test)]
-        let fail_cleanup =
-            completion.is_some() && std::mem::take(&mut self.fail_next_handoff_cleanup);
-        #[cfg(not(test))]
-        let fail_cleanup = false;
         std::thread::spawn(move || {
-            let result = if fail_cleanup {
-                Err("injected native process cleanup failure".into())
-            } else if let Some(pid) = pid {
+            let result: Result<(), String> = if let Some(pid) = pid {
                 #[cfg(windows)]
                 {
                     use std::os::windows::process::CommandExt;
@@ -1070,12 +1051,10 @@ impl Term {
             } else {
                 Err("pane process ID is unavailable".into())
             };
-            if !fail_cleanup {
-                let _ = killer.kill();
-            }
-            if let Some((id, tx)) = completion {
-                let _ = tx.blocking_send(Ev::KillTreeFinished(id, result));
-            }
+            // The tree kill's own result has no reader: the pane is going either way, so the
+            // shell's handle is killed too.
+            drop(result);
+            let _ = killer.kill();
         });
     }
 

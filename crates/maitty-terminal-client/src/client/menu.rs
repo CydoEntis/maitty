@@ -29,6 +29,10 @@ pub enum Act {
     End(Vec<TermId>),
     Changes(PathBuf),
     RenamePane(TermId),
+    /// A chat's name, for every client.
+    RenameConversation(crate::conversation::ConversationId),
+    /// Put a chat away: it keeps running, and every client stops listing it.
+    ArchiveConversation(crate::conversation::ConversationId),
     /// Drop the follow-ups waiting for this agent's turn to end.
     ClearQueue(TermId),
     /// List a checkout's snapshots (its folder, and whose row asked).
@@ -274,7 +278,12 @@ impl App {
 
     pub(super) fn menu(&mut self, title: String, mut items: Vec<(String, Act)>, at: (u16, u16)) {
         // The destructive item last.
-        items.sort_by_key(|(_, a)| matches!(a, Act::End(_) | Act::CloseProject(_)));
+        items.sort_by_key(|(_, a)| {
+            matches!(
+                a,
+                Act::End(_) | Act::CloseProject(_) | Act::ArchiveConversation(_)
+            )
+        });
         self.mode = Mode::ScreenMenu(Box::new(ScreenMenu {
             title,
             items,
@@ -339,6 +348,26 @@ impl App {
             items,
             at,
         );
+    }
+
+    /// Right-click on a chat row that has no terminal.
+    pub(super) fn menu_for_conversation(
+        &mut self,
+        id: crate::conversation::ConversationId,
+        at: (u16, u16),
+    ) {
+        let Some(c) = self.snap.conversations.iter().find(|c| c.id == id) else {
+            return;
+        };
+        let title = c.title.clone().unwrap_or_else(|| match c.provider {
+            crate::conversation::Provider::Codex => format!("Codex {}", id.0),
+            crate::conversation::Provider::Claude => format!("Claude {}", id.0),
+        });
+        let items = vec![
+            ("Rename".to_string(), Act::RenameConversation(id)),
+            ("Close".to_string(), Act::ArchiveConversation(id)),
+        ];
+        self.menu(title, items, at);
     }
 
     /// Right-click on an agent (or shell) row.
@@ -667,6 +696,13 @@ impl App {
 
     pub(super) fn menu_do(&mut self, a: Act) {
         match a {
+            // A terminal that belongs to a chat is named through the chat, so every client
+            // shows the same name.
+            Act::RenamePane(t)
+                if let Some(id) = self.snap.terms.get(&t).and_then(|x| x.conversation_id) =>
+            {
+                self.menu_do(Act::RenameConversation(id));
+            }
             Act::RenamePane(t) => {
                 let cur = self
                     .snap
@@ -679,6 +715,20 @@ impl App {
                     input: cur,
                 };
             }
+            Act::RenameConversation(id) => {
+                let cur = self
+                    .snap
+                    .conversations
+                    .iter()
+                    .find(|c| c.id == id)
+                    .and_then(|c| c.title.clone())
+                    .unwrap_or_default();
+                self.mode = Mode::Prompt {
+                    kind: super::PromptKind::RenameConversation(id),
+                    input: cur,
+                };
+            }
+            Act::ArchiveConversation(id) => self.archive_conversation(id),
             Act::Split(t, dir) => {
                 let cwd = self
                     .snap
@@ -819,15 +869,18 @@ impl App {
             Act::CloseProject(pi) => {
                 let model = self.screen_model();
                 if let Some(p) = model.get(pi) {
-                    if p.sessions().any(|s| s.native_term.is_none()) {
-                        return self.notify(
-                            "This project contains a conversation with no native terminal.".into(),
-                            true,
-                        );
-                    }
                     for s in p.sessions() {
-                        if let Some(term) = s.native_term {
-                            self.cmd(Command::ClosePane { term });
+                        match (s.native_term, s.key) {
+                            (Some(term), _) => {
+                                self.cmd(Command::ClosePane { term });
+                                if let crate::protocol::SessionKey::Conversation(id) = s.key {
+                                    self.cmd(Command::ConversationArchive { id, archived: true });
+                                }
+                            }
+                            (None, crate::protocol::SessionKey::Conversation(id)) => {
+                                self.cmd(Command::ConversationArchive { id, archived: true });
+                            }
+                            (None, crate::protocol::SessionKey::Pane(_)) => {}
                         }
                     }
                 }
@@ -879,6 +932,11 @@ impl App {
                     // Out of its split first: the pane beside it takes the room (and the
                     // focus), so nothing else slides into its place.
                     self.screen_unshow(t);
+                    // A chat's terminal closing puts the chat away too, so the desktop app
+                    // doesn't keep listing a session you closed.
+                    if let Some(id) = self.snap.terms.get(&t).and_then(|x| x.conversation_id) {
+                        self.cmd(Command::ConversationArchive { id, archived: true });
+                    }
                     self.cmd(Command::ClosePane { term: t });
                 }
             }

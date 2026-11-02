@@ -726,6 +726,9 @@ impl App {
         let input = input.trim().to_string();
         match kind {
             PromptKind::RenamePane(term) => self.cmd(Command::RenamePane { term, name: input }),
+            PromptKind::RenameConversation(id) => {
+                self.cmd(Command::ConversationRename { id, title: input })
+            }
             PromptKind::RenameProject(key) => {
                 if input.is_empty() {
                     self.screen.saved.names.remove(&key);

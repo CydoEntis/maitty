@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 62;
+pub const PROTOCOL_VERSION: u32 = 64;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -54,6 +54,12 @@ pub struct ConversationSummary {
     pub status: Status,
     pub native_term: Option<TermId>,
     pub checks: Vec<CheckInfo>,
+    /// Your name for it, shared by every client.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Put away: hidden from the lists, still running.
+    #[serde(default)]
+    pub archived: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,13 +175,27 @@ pub enum Command {
         id: crate::conversation::ConversationId,
         generation: u64,
     },
-    ConversationHandoffToNative {
+    /// Name a conversation for every client (empty: automatic).
+    ConversationRename {
         id: crate::conversation::ConversationId,
-        generation: u64,
+        title: String,
     },
-    ConversationHandoffToChat {
+    /// Type into a terminal pane (human clients only).
+    TerminalInput {
+        term: TermId,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    },
+    /// Resize a terminal pane (human clients only).
+    TerminalResize {
+        term: TermId,
+        cols: u16,
+        rows: u16,
+    },
+    /// Put a conversation away or bring it back; it keeps running.
+    ConversationArchive {
         id: crate::conversation::ConversationId,
-        generation: u64,
+        archived: bool,
     },
     ConversationTerminalInput {
         id: crate::conversation::ConversationId,
@@ -458,6 +478,14 @@ pub enum Query {
     ConversationTerminalReplay {
         id: crate::conversation::ConversationId,
         generation: u64,
+    },
+    /// A terminal pane's visible screen as ANSI text (human clients only).
+    TerminalScreen {
+        term: TermId,
+    },
+    /// A terminal pane's recent raw output, for scrollback (human clients only).
+    TerminalReplay {
+        term: TermId,
     },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).

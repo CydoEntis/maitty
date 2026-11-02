@@ -224,6 +224,24 @@ pub struct Conversation {
     pub settings: Option<LaunchSettings>,
     #[serde(default)]
     pub awaiting_first_user_message: bool,
+    /// The name you gave it, shared by every client (None: each client words it itself).
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Put away: hidden from the lists, still running and still in the daemon.
+    #[serde(default)]
+    pub archived: bool,
+}
+
+/// Longest name a conversation may carry.
+pub const MAX_TITLE_CHARS: usize = 80;
+
+/// A name as it is stored: no control characters, trimmed, at most [`MAX_TITLE_CHARS`] long.
+/// Nothing left means "no name".
+pub fn clean_title(raw: &str) -> Option<String> {
+    let text: String = raw.chars().filter(|c| !c.is_control()).collect();
+    let text: String = text.trim().chars().take(MAX_TITLE_CHARS).collect();
+    let text = text.trim_end().to_string();
+    (!text.is_empty()).then_some(text)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -389,6 +407,8 @@ pub mod tests {
             state: RecoveryState::Stopped,
             settings: None,
             awaiting_first_user_message: false,
+            title: None,
+            archived: false,
         }
     }
 
@@ -489,5 +509,31 @@ pub mod tests {
         c.state = RecoveryState::Transferring;
         assert_eq!(c.recover(), Err(IdentityError::GenerationExhausted));
         assert_eq!(c.generation, u64::MAX);
+    }
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::*;
+
+    #[test]
+    fn a_title_is_trimmed_stripped_of_control_characters_and_capped() {
+        assert_eq!(clean_title("  Fix login \n").as_deref(), Some("Fix login"));
+        assert_eq!(clean_title("a\u{7}b").as_deref(), Some("ab"));
+        assert_eq!(clean_title(" \t "), None);
+        assert_eq!(clean_title(""), None);
+        let long = "x".repeat(MAX_TITLE_CHARS + 20);
+        assert_eq!(clean_title(&long).unwrap().chars().count(), MAX_TITLE_CHARS);
+    }
+
+    #[test]
+    fn an_older_saved_conversation_without_a_title_still_loads() {
+        let mut value = serde_json::to_value(super::tests::conversation()).unwrap();
+        let map = value.as_object_mut().unwrap();
+        map.remove("title");
+        map.remove("archived");
+        let loaded: Conversation = serde_json::from_value(value).unwrap();
+        assert_eq!(loaded.title, None);
+        assert!(!loaded.archived);
     }
 }
