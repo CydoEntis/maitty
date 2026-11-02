@@ -1501,7 +1501,7 @@ suggestions; match maittyd's API. Any new message needs a `PROTOCOL_VERSION` dec
 
 Not started; the order is a proposal for the user to settle.
 
-1. **Repo queries** (one change that the Inspect panel, compare and quick-look all use):
+1. **Repo queries** (built 2026-11-02 as `Query::Repo`, protocol 66; see API_PATTERNS; the one change that the Inspect panel, compare and quick-look all use):
    `repo_status`, `repo_tree`, `repo_file`, `repo_diff(path)` and `repo_diff(a, b)`,
    `repo_branches`, `repo_log` (merged with checkpoints). Read-only, run in the background
    (`spawn_bg`), scoped to the focused pane's repo. Mutations stay in the pane's PTY.

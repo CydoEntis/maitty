@@ -134,7 +134,7 @@ the pane's process tree or `MAITTY_PANE_TOKEN`.
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Maitty's interface, and neither is a fleet commander (`maitty brief`, `[team]`): old
 config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
-MCP session controls remain supported. The wire protocol is version 65.
+MCP session controls remain supported. The wire protocol is version 66.
 Conversation tool-history entries carry a bounded provider-supplied `label` for
 display; `#[serde(default)]` keeps older cached entries readable without a
 protocol bump.
@@ -372,6 +372,15 @@ background storage lock. Attachments never submit independent cache revisions.
 
 See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 process boundary and event/approval handling rules.
+
+Protocol 66 adds `Query::Repo { term, tag, request }` and `Reply::Repo { tag, reply }`: read-only
+looks at the repository a pane is in (`RepoRequest`: status, tree, file, working-tree diff,
+range diff, branches, log; `crates/maitty-shared/src/repo.rs`, answered by `daemon/repo.rs`). Human
+clients only, with the pane's read grant. The daemon roots every path at the top of the
+repository the pane's folder is in, refuses symbolic links and paths that climb out, refuses
+a revision that starts with `-`, and runs git on a blocking thread. The answer echoes `tag`, so
+a client can have several in flight. Nothing here changes the repository; changes stay in the
+pane's PTY.
 
 Protocol 65 removes the handoff between chat and terminal
 (`ConversationHandoffToNative`, `ConversationHandoffToChat`; see

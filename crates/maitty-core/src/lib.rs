@@ -19,7 +19,7 @@ pub mod version;
 pub use daemon::run as run_daemon;
 pub use daemon::{first_failing_line, forget_session};
 pub use maitty_settings::{keys, theme};
-pub use maitty_shared::{clock, conversation, hidden, layout, output_line, protocol};
+pub use maitty_shared::{clock, conversation, hidden, layout, output_line, protocol, repo};
 
 #[cfg(test)]
 mod test_support;

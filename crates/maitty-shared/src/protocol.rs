@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 65;
+pub const PROTOCOL_VERSION: u32 = 66;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -505,6 +505,13 @@ pub enum Query {
     TerminalReplay {
         term: TermId,
     },
+    /// A read-only question about the repository `term` is in (human clients only). The
+    /// answer echoes `tag`, so several can be in flight at once.
+    Repo {
+        term: TermId,
+        tag: u64,
+        request: crate::repo::RepoRequest,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
@@ -672,6 +679,10 @@ pub enum Reply {
     List(Snapshot),
     Text(String),
     Worktrees(Vec<WorktreeEntry>),
+    Repo {
+        tag: u64,
+        reply: crate::repo::RepoReply,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1318,6 +1329,15 @@ mod tests {
             ClientMsg::Query(Query::List),
             ClientMsg::Query(Query::Read { term: 3 }),
             ClientMsg::Query(Query::Worktrees { ws: 1 }),
+            ClientMsg::Query(Query::Repo {
+                term: 3,
+                tag: 9,
+                request: crate::repo::RepoRequest::DiffRange {
+                    from: "main".into(),
+                    to: "HEAD".into(),
+                    path: Some("src/lib.rs".into()),
+                },
+            }),
             ClientMsg::Query(Query::CheckOutput {
                 term: 3,
                 name: None,

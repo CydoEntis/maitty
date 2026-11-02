@@ -12,7 +12,7 @@ const MAX_UNTRACKED_FILE_BYTES: u64 = 256 * 1024;
 const MAX_FILE_BROWSER_ENTRIES: usize = 500;
 const MAX_FILE_BROWSER_BYTES: u64 = 256 * 1024;
 
-fn git(dir: &Path, args: &[&str]) -> Result<String> {
+pub(super) fn git(dir: &Path, args: &[&str]) -> Result<String> {
     let mut cmd = Command::new("git");
     // Its messages are matched below: keep them in English whatever the user's locale.
     cmd.arg("-C").arg(dir).args(args).env("LC_ALL", "C");
@@ -284,7 +284,16 @@ pub fn conversation_diff(dir: &Path) -> Result<crate::conversation::Conversation
         patch.push_str(&String::from_utf8_lossy(&output));
     }
 
-    let mut files = parse_diff_files(&patch);
+    Ok(bounded_diff(&patch, omitted_files))
+}
+
+/// A patch as the files it touches, cut to the sizes a client is sent. `omitted_files` counts
+/// files left out before it got here.
+pub(super) fn bounded_diff(
+    patch: &str,
+    omitted_files: usize,
+) -> crate::conversation::ConversationDiff {
+    let mut files = parse_diff_files(patch);
     files.sort_by(|left, right| left.path.cmp(&right.path));
     let total_files = files.len() + omitted_files;
     let mut bytes = 0;
@@ -304,13 +313,13 @@ pub fn conversation_diff(dir: &Path) -> Result<crate::conversation::Conversation
         shown.push(file);
     }
 
-    Ok(crate::conversation::ConversationDiff {
+    crate::conversation::ConversationDiff {
         files: shown,
         additions,
         deletions,
         total_files,
         truncated,
-    })
+    }
 }
 
 pub fn conversation_files(
@@ -365,7 +374,7 @@ pub fn conversation_file(root: &Path, relative: &str) -> Result<String> {
     String::from_utf8(content).context("The selected file is not UTF-8 text")
 }
 
-fn resolve_conversation_path(root: &Path, relative: &str) -> Result<PathBuf> {
+pub(super) fn resolve_conversation_path(root: &Path, relative: &str) -> Result<PathBuf> {
     use std::path::Component;
 
     let root = root

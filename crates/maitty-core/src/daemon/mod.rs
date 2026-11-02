@@ -17,6 +17,7 @@ mod helpers;
 mod pane_terminal;
 mod persist;
 mod pr;
+mod repo;
 mod restore;
 mod scan;
 mod secrets;
@@ -174,6 +175,11 @@ pub enum Ev {
     WorktreeList {
         client: ClientId,
         result: Result<Vec<WorktreeEntry>, String>,
+    },
+    RepoReady {
+        client: ClientId,
+        tag: u64,
+        result: Result<crate::repo::RepoReply, String>,
     },
     ConversationDiffReady {
         client: ClientId,
@@ -1726,6 +1732,14 @@ impl Daemon {
                 Ok(list) => self.send(client, ServerMsg::Reply(Reply::Worktrees(list))),
                 Err(e) => self.send(client, ServerMsg::Error(e)),
             },
+            Ev::RepoReady {
+                client,
+                tag,
+                result,
+            } => match result {
+                Ok(reply) => self.send(client, ServerMsg::Reply(Reply::Repo { tag, reply })),
+                Err(e) => self.send(client, ServerMsg::Error(e)),
+            },
             Ev::ConversationDiffReady {
                 client,
                 id,
@@ -2194,6 +2208,37 @@ impl Daemon {
                         Ok(replay) => ServerMsg::Reply(Reply::TerminalReplay(replay)),
                         Err(error) => ServerMsg::Error(format!("{error:#}")),
                     },
+                    Query::Repo { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can read a repository this way".into())
+                    }
+                    Query::Repo { term, tag, request } => {
+                        let root = self
+                            .may_use_terminal(client, term)
+                            .and_then(|()| self.may(client, Grant::Read, Some(term)))
+                            .and_then(|()| {
+                                self.terms
+                                    .get(&term)
+                                    .map(|t| t.cwd.clone())
+                                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))
+                            });
+                        let root = match root {
+                            Ok(root) => root,
+                            Err(error) => {
+                                self.send(client, ServerMsg::Error(format!("{error:#}")));
+                                return;
+                            }
+                        };
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let result = repo::answer(&root, &request).map_err(|e| format!("{e:#}"));
+                            let _ = tx.blocking_send(Ev::RepoReady { client, tag, result });
+                        });
+                        return;
+                    }
                     Query::List => {
                         let surface = self.surface_of(client);
                         ServerMsg::Reply(Reply::List(self.snapshot_for(surface)))
