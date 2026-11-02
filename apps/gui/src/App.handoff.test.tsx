@@ -248,12 +248,39 @@ describe('desktop chat and terminal handoff', () => {
     expect(screen.queryByRole('tab', { name: 'Files' })).not.toBeInTheDocument()
     await user.click(await screen.findByRole('button', { name: /^Review/ }))
     await user.click(await screen.findByRole('tab', { name: 'Files' }))
-    await user.click(await screen.findByRole('button', { name: 'Preview file README.md' }))
+    await user.click(await screen.findByRole('treeitem', { name: 'Preview file README.md' }))
 
     expect(await screen.findByText('# Read only preview')).toBeInTheDocument()
     expect(screen.getByText(/Read-only preview/)).toBeInTheDocument()
     expect(daemon.loadConversationFile).toHaveBeenCalledWith(expect.objectContaining({ id: '42', generation: 7 }), 'README.md')
     expect(screen.queryByRole('textbox', { name: /file/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps the file tree on screen while previewing, and expands folders in place', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversationFiles.mockImplementation((_conversation: Conversation, path: string | null) =>
+      Promise.resolve(
+        path === 'src'
+          ? [{ name: 'main.go', is_directory: false }]
+          : [
+              { name: 'README.md', is_directory: false },
+              { name: 'src', is_directory: true },
+            ],
+      ),
+    )
+    daemon.loadConversationFile.mockResolvedValue('package main')
+    renderDesktopApp()
+
+    await user.click(await screen.findByRole('button', { name: /^Review/ }))
+    await user.click(await screen.findByRole('tab', { name: 'Files' }))
+    await user.click(await screen.findByRole('treeitem', { name: 'Expand folder src' }))
+    await user.click(await screen.findByRole('treeitem', { name: 'Preview file main.go' }))
+
+    // The preview is colored, so check its combined text.
+    expect(await screen.findByRole('region', { name: 'Preview src/main.go' })).toHaveTextContent('package main')
+    // The tree is still there: the root files and the expanded folder's children.
+    expect(screen.getByRole('treeitem', { name: 'Preview file README.md' })).toBeInTheDocument()
+    expect(screen.getByRole('treeitem', { name: 'Collapse folder src' })).toBeInTheDocument()
   })
 
   it('recovers an empty workspace after the daemon reconnects', async () => {

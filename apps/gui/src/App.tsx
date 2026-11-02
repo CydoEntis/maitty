@@ -63,6 +63,7 @@ import {
 import { HighlightedLine } from '@/components/HighlightedLine'
 import { HighlightedCode } from '@/components/HighlightedCode'
 import { DiffText } from '@/components/DiffText'
+import { FilesView } from '@/features/review/FilesView'
 import { TerminalPanes } from '@/features/terminal/TerminalPanes'
 import { WorkingSinceContext, useWorkingSince } from '@/lib/working-since'
 import { OpenProjectDialog } from '@/features/projects/components/OpenProjectDialog'
@@ -99,8 +100,6 @@ import {
   loadClaudeExecutablePath,
   loadCodexExecutablePath,
   loadConversationDiff,
-  loadConversationFile,
-  loadConversationFiles,
   loadConversations,
   loadDaemonRestartStatus,
   loadMessages,
@@ -4369,191 +4368,24 @@ function ContextPanel({
           Close <kbd>esc</kbd>
         </Button>
       </div>
-      <ScrollArea className="context-panel-scroll">
-        {tab === 'details' && <DetailsView conversation={conversation} />}
-        {tab === 'files' && (
+      {tab === 'files' ? (
+        <div className="context-panel-fill">
           <FilesView conversation={conversation} desktop={desktop} />
-        )}
-        {tab === 'diff' && (
-          <DiffView conversation={conversation} desktop={desktop} />
-        )}
-      </ScrollArea>
+        </div>
+      ) : (
+        <ScrollArea className="context-panel-scroll">
+          {tab === 'details' && <DetailsView conversation={conversation} />}
+          {tab === 'diff' && (
+            <DiffView conversation={conversation} desktop={desktop} />
+          )}
+        </ScrollArea>
+      )}
       {tab === 'diff' && (
         <p className="review-footer">
           Read-only. Ask the agent for edits, or open the file in your editor.
         </p>
       )}
     </aside>
-  )
-}
-
-function FilesView({
-  conversation,
-  desktop,
-}: {
-  conversation: Conversation
-  desktop: boolean
-}) {
-  const [directory, setDirectory] = useState('')
-  const [selectedPath, setSelectedPath] = useState<string | null>(null)
-  const filesQuery = useQuery({
-    queryKey: [
-      'conversation-files',
-      conversation.id,
-      conversation.generation,
-      directory,
-    ],
-    queryFn: () => loadConversationFiles(conversation, directory || null),
-    enabled: desktop,
-    retry: false,
-  })
-  const fileQuery = useQuery({
-    queryKey: [
-      'conversation-file',
-      conversation.id,
-      conversation.generation,
-      selectedPath,
-    ],
-    queryFn: () => loadConversationFile(conversation, selectedPath ?? ''),
-    enabled: desktop && selectedPath !== null,
-    retry: false,
-  })
-
-  if (!desktop) {
-    return (
-      <div className="panel-empty">
-        <FolderOpen size={18} />
-        <h2>Files need the desktop app</h2>
-      </div>
-    )
-  }
-  if (filesQuery.isLoading) {
-    return (
-      <div className="panel-empty" role="status">
-        <LoaderCircle size={18} />
-        <h2>Loading project files</h2>
-      </div>
-    )
-  }
-  if (filesQuery.isError) {
-    return (
-      <div className="panel-empty">
-        <CircleAlert size={18} />
-        <h2>Couldn’t load project files</h2>
-        <p>Check that the conversation checkout is available, then retry.</p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void filesQuery.refetch()}
-        >
-          Retry
-        </Button>
-      </div>
-    )
-  }
-
-  function openEntry(name: string, isDirectory: boolean) {
-    const path = directory ? `${directory}/${name}` : name
-    if (isDirectory) {
-      setDirectory(path)
-      setSelectedPath(null)
-    } else {
-      setSelectedPath(path)
-    }
-  }
-
-  return (
-    <div className="files-browser">
-      <div className="files-breadcrumb">
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!directory}
-          onClick={() => {
-            setDirectory(directory.split('/').slice(0, -1).join('/'))
-            setSelectedPath(null)
-          }}
-        >
-          Project{directory ? ` / ${directory}` : ''}
-        </Button>
-        {directory && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setDirectory(directory.split('/').slice(0, -1).join('/'))
-              setSelectedPath(null)
-            }}
-          >
-            Up
-          </Button>
-        )}
-      </div>
-      <div className="files-browser-list" aria-label="Project files">
-        {(filesQuery.data ?? []).length === 0 ? (
-          <div className="panel-empty">
-            <FolderOpen size={18} />
-            <h2>This folder is empty</h2>
-          </div>
-        ) : (
-          (filesQuery.data ?? []).map((entry) => (
-            <button
-              className="files-browser-entry"
-              type="button"
-              key={entry.name}
-              onClick={() => {
-                openEntry(entry.name, entry.is_directory)
-              }}
-              aria-label={
-                entry.is_directory
-                  ? `Open folder ${entry.name}`
-                  : `Preview file ${entry.name}`
-              }
-            >
-              {entry.is_directory ? (
-                <FolderOpen size={14} />
-              ) : (
-                <FileCode2 size={14} />
-              )}
-              <span>{entry.name}</span>
-              <small>{entry.is_directory ? 'Folder' : 'Preview'}</small>
-            </button>
-          ))
-        )}
-      </div>
-      {selectedPath && (
-        <section
-          className="files-preview"
-          aria-label={`Preview ${selectedPath}`}
-        >
-          <strong>{selectedPath}</strong>
-          {fileQuery.isLoading ? (
-            <p role="status">Loading preview…</p>
-          ) : fileQuery.isError ? (
-            <div>
-              <p>Couldn’t load this file preview.</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void fileQuery.refetch()}
-              >
-                Retry
-              </Button>
-            </div>
-          ) : (
-            <pre>
-              <HighlightedCode
-                code={fileQuery.data ?? ''}
-                path={selectedPath}
-              />
-            </pre>
-          )}
-        </section>
-      )}
-      <p className="files-readonly-note">
-        Read-only preview. Files can’t be changed here.
-      </p>
-    </div>
   )
 }
 
