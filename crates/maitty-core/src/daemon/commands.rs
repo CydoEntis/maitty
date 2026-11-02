@@ -42,6 +42,10 @@ impl Daemon {
                 self.conversation_cancel(client, id, generation)?;
                 return Ok(false);
             }
+            Command::ConversationEnd { id, generation } => {
+                self.conversation_end(client, id, generation)?;
+                return Ok(false);
+            }
             Command::TerminalInput { term, data } => self.pane_input(client, term, data)?,
             Command::TerminalResize { term, cols, rows } => {
                 self.pane_resize(client, term, cols, rows)?

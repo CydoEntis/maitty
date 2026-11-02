@@ -325,14 +325,33 @@ async fn resume_codex_conversation(
 }
 
 #[tauri::command]
+async fn end_conversation(
+    app: tauri::AppHandle,
+    id: u64,
+    generation: u64,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::end_conversation(id, generation, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn create_conversation(
     app: tauri::AppHandle,
     cwd: PathBuf,
     provider: maitty_shared::conversation::Provider,
+    permissions: String,
 ) -> Result<serde_json::Value, String> {
-    maitty_desktop_client::create_conversation(cwd, provider, daemon_executable(&app)?)
-        .await
-        .map_err(|error| format!("{error:#}"))
+    let permissions = maitty_desktop_client::Permissions::parse(&permissions)
+        .map_err(|error| format!("{error:#}"))?;
+    maitty_desktop_client::create_conversation(
+        cwd,
+        provider,
+        permissions,
+        daemon_executable(&app)?,
+    )
+    .await
+    .map_err(|error| format!("{error:#}"))
 }
 
 #[tauri::command]
@@ -392,6 +411,7 @@ pub fn run() {
             archive_conversation,
             resume_codex_conversation,
             create_conversation,
+            end_conversation,
             codex_executable_path,
             claude_executable_path,
             daemon_restart_status,

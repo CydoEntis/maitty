@@ -663,9 +663,58 @@ pub async fn resume_codex_conversation(
     }
 }
 
+/// Stop a chat conversation's agent. Its record and history stay.
+pub async fn end_conversation(
+    id: u64,
+    generation: u64,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ConversationEnd {
+            id: maitty_shared::conversation::ConversationId(id),
+            generation,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected end conversation reply"),
+    }
+}
+
+/// What a new conversation may do. The provider enforces it; Maitty only picks it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Permissions {
+    ReadOnly,
+    WorkspaceWrite,
+    /// No sandbox and no approval prompts. Chosen only on request.
+    FullAccess,
+}
+
+impl Permissions {
+    pub fn parse(text: &str) -> Result<Self> {
+        match text {
+            "read-only" => Ok(Self::ReadOnly),
+            "workspace-write" => Ok(Self::WorkspaceWrite),
+            "full-access" => Ok(Self::FullAccess),
+            other => bail!("unknown permissions {other:?}"),
+        }
+    }
+
+    fn launch_policy(self) -> (Sandbox, ApprovalPolicy) {
+        match self {
+            Self::ReadOnly => (Sandbox::ReadOnly, ApprovalPolicy::OnRequest),
+            Self::WorkspaceWrite => (Sandbox::WorkspaceWrite, ApprovalPolicy::OnRequest),
+            Self::FullAccess => (Sandbox::FullAccess, ApprovalPolicy::Never),
+        }
+    }
+}
+
 pub async fn create_conversation(
     cwd: PathBuf,
     provider: Provider,
+    permissions: Permissions,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
     let cwd = cwd
@@ -674,18 +723,11 @@ pub async fn create_conversation(
     if !cwd.is_dir() {
         bail!("the selected project folder is not a directory");
     }
-    let (executable, config_root, sandbox) = match provider {
-        Provider::Codex => (
-            codex_app_server_executable()?,
-            codex_config_dir(),
-            Sandbox::ReadOnly,
-        ),
-        Provider::Claude => (
-            claude_executable()?,
-            claude_config_dir()?,
-            Sandbox::WorkspaceWrite,
-        ),
+    let (executable, config_root) = match provider {
+        Provider::Codex => (codex_app_server_executable()?, codex_config_dir()),
+        Provider::Claude => (claude_executable()?, claude_config_dir()?),
     };
+    let (sandbox, approval_policy) = permissions.launch_policy();
     let settings = LaunchSettings {
         provider,
         executable,
@@ -693,7 +735,7 @@ pub async fn create_conversation(
         cwd,
         model: None,
         model_provider: None,
-        approval_policy: ApprovalPolicy::OnRequest,
+        approval_policy,
         sandbox,
     };
     let reply = request(

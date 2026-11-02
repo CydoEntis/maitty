@@ -136,10 +136,18 @@ pub(super) fn notification(
                 .unwrap_or_default()
                 .into(),
         },
+        "fileChange" => Content::Tool {
+            kind: kind.into(),
+            label: file_change_label(item),
+            output: file_change_output(item),
+        },
         // Never retain unknown raw provider objects: they can contain unrelated private state.
         _ => Content::Unsupported { kind: kind.into() },
     };
-    let state = if kind == "commandExecution" {
+    // A file edit may not carry a status on its first event; fall back to the event name.
+    let state = if kind == "commandExecution"
+        || (kind == "fileChange" && item.get("status").is_some())
+    {
         status(text(item, "status")?)?
     } else if method == "item/started" {
         ItemState::Running
@@ -151,4 +159,58 @@ pub(super) fn notification(
         content,
         state,
     })))
+}
+
+/// Largest diff kept for one edit, so one huge file cannot bloat a conversation's history.
+const MAX_FILE_CHANGE_OUTPUT_BYTES: usize = 100_000;
+
+fn file_changes(item: &Value) -> &[Value] {
+    item.get("changes")
+        .and_then(Value::as_array)
+        .map_or(&[], Vec::as_slice)
+}
+
+fn change_path(change: &Value) -> &str {
+    change.get("path").and_then(Value::as_str).unwrap_or("file")
+}
+
+/// "Edited main.go" for one file, "Edited 3 files" for several.
+fn file_change_label(item: &Value) -> String {
+    match file_changes(item) {
+        [] => "Edited files".into(),
+        [only] => format!("Edited {}", change_path(only)),
+        many => format!("Edited {} files", many.len()),
+    }
+}
+
+/// How the provider describes a change: a plain word, or an object with a type.
+fn change_kind(change: &Value) -> &str {
+    let kind = change.get("kind");
+    kind.and_then(Value::as_str)
+        .or_else(|| {
+            kind.and_then(|value| value.get("type"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or("update")
+}
+
+/// The diffs of every changed file, each under a header naming the file.
+fn file_change_output(item: &Value) -> String {
+    let mut output = String::new();
+    for change in file_changes(item) {
+        if !output.is_empty() {
+            output.push('\n');
+        }
+        output.push_str(&format!("{} ({})\n", change_path(change), change_kind(change)));
+        output.push_str(change.get("diff").and_then(Value::as_str).unwrap_or_default());
+    }
+    if output.len() > MAX_FILE_CHANGE_OUTPUT_BYTES {
+        let mut end = MAX_FILE_CHANGE_OUTPUT_BYTES;
+        while !output.is_char_boundary(end) {
+            end -= 1;
+        }
+        output.truncate(end);
+        output.push_str("\n... diff cut off");
+    }
+    output
 }

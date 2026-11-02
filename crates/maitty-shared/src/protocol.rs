@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 64;
+pub const PROTOCOL_VERSION: u32 = 65;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -172,6 +172,11 @@ pub enum Command {
         answers: std::collections::BTreeMap<String, Vec<String>>,
     },
     ConversationCancel {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+    },
+    /// Stop a chat conversation's agent. Its record stays, stopped, so history is kept.
+    ConversationEnd {
         id: crate::conversation::ConversationId,
         generation: u64,
     },

@@ -61,4 +61,4 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0035](0035-the-tab-row-sits-outside-the-pane-boxes.md) | The tab row sits over the pane boxes, not inside them | Accepted, amended by 0038 |
 | [0038](0038-tabs-sit-on-the-pane-border.md) | Floating's tabs sit on the first pane's top border | Proposed |
 | [0039](0039-floating-is-the-only-look.md) | Floating is the only look, with simpler settings | Accepted |
-| [0043](0043-chat-and-terminal-are-separate-sessions.md) | Chat and terminal are separate sessions, chosen when one starts | Accepted |
+| [0044](0044-chat-and-terminal-are-separate-sessions.md) | Chat and terminal are separate sessions, chosen when one starts | Accepted |

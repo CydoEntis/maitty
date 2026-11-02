@@ -1136,6 +1136,52 @@ async fn native_terminal_access_is_bound_to_the_current_conversation() {
     }
 }
 
+#[tokio::test]
+async fn ending_a_chat_stops_its_agent_and_leaves_it_stopped_not_failed() {
+    let mut session = conversation_fixture("conversation").await;
+    let outcome = AssertUnwindSafe(async {
+        let (id, generation) = create(&mut session).await;
+        assert!(session.daemon.conversation_runtimes.owns(id));
+
+        let (client, _replies) = mpsc::channel(8);
+        session.daemon.handle(Ev::Connected(340, client, false));
+        session.daemon.conversation_end(340, id, generation).unwrap();
+        tokio::time::timeout(Duration::from_secs(20), async {
+            while session.daemon.conversation_runtimes.owns(id) {
+                let event = session.events.recv().await.unwrap();
+                session.daemon.handle(event);
+            }
+        })
+        .await
+        .expect("the agent stops");
+
+        let record = session
+            .daemon
+            .conversations
+            .iter()
+            .find(|conversation| conversation.id == id)
+            .unwrap();
+        assert_eq!(record.state, crate::conversation::RecoveryState::Stopped);
+        let state = &session.daemon.conversation_states[&id];
+        assert_eq!(state.status, crate::protocol::Status::Idle);
+        assert!(state.error.is_none(), "stopping on purpose is not an error");
+        assert!(!session.daemon.conversation_ending.contains(&id));
+
+        // A stale generation is refused.
+        let stale = session
+            .daemon
+            .conversation_end(340, id, generation + 1)
+            .unwrap_err();
+        assert!(stale.to_string().contains("stale"));
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
 fn authenticated_pane(session: &mut TestSession) -> (u32, String) {
     let mut cfg = session.daemon.cfg.clone();
     cfg.shell = Some(

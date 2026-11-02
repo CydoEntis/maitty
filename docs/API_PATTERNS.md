@@ -134,7 +134,7 @@ the pane's process tree or `MAITTY_PANE_TOKEN`.
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Maitty's interface, and neither is a fleet commander (`maitty brief`, `[team]`): old
 config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
-MCP session controls remain supported. The wire protocol is version 62.
+MCP session controls remain supported. The wire protocol is version 65.
 Conversation tool-history entries carry a bounded provider-supplied `label` for
 display; `#[serde(default)]` keeps older cached entries readable without a
 protocol bump.
@@ -373,9 +373,9 @@ background storage lock. Attachments never submit independent cache revisions.
 See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 process boundary and event/approval handling rules.
 
-Protocol 64 removes the handoff between chat and terminal
+Protocol 65 removes the handoff between chat and terminal
 (`ConversationHandoffToNative`, `ConversationHandoffToChat`; see
-[ADR 0043](adr/0043-chat-and-terminal-are-separate-sessions.md)): a session is a chat
+[ADR 0044](adr/0044-chat-and-terminal-are-separate-sessions.md)): a session is a chat
 or a terminal session from the moment it starts. It adds the human-only
 `ConversationRename` and `ConversationArchive` commands, and `title` and `archived` on
 `ConversationSummary` and the saved conversation record (both defaulted, so older files

@@ -1,4 +1,4 @@
-# 0043. Chat and terminal are separate sessions, chosen when one starts
+# 0044. Chat and terminal are separate sessions, chosen when one starts
 
 - **Status:** Accepted
 - **Date:** 2026-11-01

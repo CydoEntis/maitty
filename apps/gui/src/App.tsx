@@ -29,7 +29,6 @@ import {
   Keyboard,
   LoaderCircle,
   MessageSquarePlus,
-  MoreHorizontal,
   PanelRight,
   PanelLeft,
   Pin,
@@ -47,13 +46,24 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { StatusMark } from '@/components/StatusMark'
 import { Elapsed } from '@/components/Elapsed'
+import { TitleBar } from '@/components/TitleBar'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { DiffStat } from '@/components/DiffStat'
 import { useReviewStat } from '@/features/review/useReviewStat'
+import { showNotice } from '@/features/notifications/notify'
 import {
   showAttentionToast,
   showFinishedToast,
 } from '@/features/notifications/backgroundToasts'
 import { HighlightedLine } from '@/components/HighlightedLine'
+import { HighlightedCode } from '@/components/HighlightedCode'
+import { DiffText } from '@/components/DiffText'
+import { FilesView } from '@/features/review/FilesView'
 import { TerminalPanes } from '@/features/terminal/TerminalPanes'
 import { WorkingSinceContext, useWorkingSince } from '@/lib/working-since'
 import { OpenProjectDialog } from '@/features/projects/components/OpenProjectDialog'
@@ -68,12 +78,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { TerminalView as DaemonTerminalView } from './TerminalView'
@@ -92,12 +96,12 @@ import {
   archiveConversationOnDaemon,
   startTerminalSession,
   renameConversationOnDaemon,
+  endConversation as endDaemonConversation,
+  type SessionPermissions,
   isDesktop,
   loadClaudeExecutablePath,
   loadCodexExecutablePath,
   loadConversationDiff,
-  loadConversationFile,
-  loadConversationFiles,
   loadConversations,
   loadDaemonRestartStatus,
   loadMessages,
@@ -155,6 +159,11 @@ import {
   reconcileConversationTabs,
   writeOpenConversationTabs,
 } from '@/data/openConversationTabs'
+import {
+  readConversationPermissions,
+  rememberConversationPermissions,
+  PERMISSION_LABELS,
+} from '@/data/conversationPermissions'
 import { shortcutModifier } from '@/lib/shortcut-modifier'
 import { errorMessage } from '@/lib/error-message'
 import './App.css'
@@ -252,16 +261,24 @@ function App() {
   const [sidebarPreferences, setSidebarPreferences] = useState(
     readSidebarPreferences,
   )
+  const [startedWith, setStartedWith] = useState(readConversationPermissions)
   const conversations = useMemo(() => {
     const current = desktop ? (sessionsQuery.data ?? []) : previewSessions
-    const withNames = current.map((conversation) => ({
-      ...conversation,
-      // The daemon holds the name for every client; only the browser preview keeps its own.
-      title: desktop
-        ? conversation.title
-        : (sidebarPreferences.renamedTitles[conversation.id] ??
-          conversation.title),
-    }))
+    const withNames = current.map((conversation) => {
+      const started = startedWith[conversation.id]
+      return {
+        ...conversation,
+        // The daemon holds the name for every client; only the browser preview keeps its own.
+        title: desktop
+          ? conversation.title
+          : (sidebarPreferences.renamedTitles[conversation.id] ??
+            conversation.title),
+        // The daemon does not report how a session was started; show what was chosen.
+        ...(desktop && started
+          ? { permission: PERMISSION_LABELS[started] }
+          : {}),
+      }
+    })
     return daemonDisconnected
       ? markConversationsDisconnected(withNames)
       : withNames
@@ -271,6 +288,7 @@ function App() {
     sessionsQuery.data,
     previewSessions,
     sidebarPreferences.renamedTitles,
+    startedWith,
   ])
   const archivedIds = useMemo(
     () =>
@@ -322,6 +340,12 @@ function App() {
   const [newProvider, setNewProvider] = useState<'Codex' | 'Claude'>('Codex')
   // Chosen when a session starts and kept for its whole life.
   const [newKind, setNewKind] = useState<'chat' | 'terminal'>('chat')
+  const [endTarget, setEndTarget] = useState<Conversation | null>(null)
+  const [startingSessions, setStartingSessions] = useState<
+    { key: string; label: string; startedAt: number }[]
+  >([])
+  const [newPermissions, setNewPermissions] =
+    useState<SessionPermissions>('workspace-write')
   const [conversationCreationPending, setConversationCreationPending] =
     useState(false)
   const [isChoosingFolder, setIsChoosingFolder] = useState(false)
@@ -739,7 +763,13 @@ function App() {
       } else {
         if (!settingsPreferences.notifyFinished) continue
         if (conversation) {
-          void showFinishedToast(conversation, { open })
+          void showFinishedToast(conversation, {
+            open,
+            review: () => {
+              open()
+              setActivePanel('diff')
+            },
+          })
         } else {
           toast.success(`${notification.title} is done`, {
             action: { label: 'Open', onClick: open },
@@ -1080,7 +1110,7 @@ function App() {
       (item) => item.id === conversationId,
     )
     if (archived && conversation?.status === 'working') {
-      toast.message('Wait for this conversation to finish before closing it')
+      toast.message('Wait for this conversation to finish before archiving it')
       return
     }
     putAway([conversationId], archived)
@@ -1102,6 +1132,34 @@ function App() {
             },
       )
     }
+  }
+
+  function requestEndSession(conversationId: string) {
+    const conversation = conversations.find(
+      (item) => item.id === conversationId,
+    )
+    if (conversation) setEndTarget(conversation)
+  }
+
+  function confirmEndSession() {
+    const target = endTarget
+    if (!target) return
+    setEndTarget(null)
+    void endDaemonConversation(target)
+      .then(() => {
+        // The agent is stopped; move the session out of the way, like an archived one.
+        putAway([target.id], true)
+        if (openTabIds.includes(target.id) && openTabIds.length > 1)
+          closeConversation(target.id)
+        void queryClient.invalidateQueries({ queryKey: ['conversations'] })
+        toast.message('Session ended', {
+          description:
+            'The agent is stopped. Its history stays under Archived. Start a new session to continue with different permissions.',
+        })
+      })
+      .catch((error: unknown) => {
+        toast.error(errorMessage(error, 'Could not end this session'))
+      })
   }
 
   function closeProject(project: string) {
@@ -1193,8 +1251,10 @@ function App() {
         return false
       }}
       onTestNotification={() => {
-        toast.message('Test notification', {
-          description: 'Maitty notifications are working.',
+        showNotice({
+          kind: 'info',
+          title: 'Test notification',
+          body: 'Maitty notifications are working.',
         })
         if (settingsPreferences.notificationSound) playNotificationSound()
       }}
@@ -1398,6 +1458,7 @@ function App() {
           >
             Skip to main content
           </a>
+          <TitleBar />
           <div className="workspace-shell empty-shell">
             <ConversationSidebar
               conversations={[]}
@@ -1416,6 +1477,7 @@ function App() {
               onTogglePin={togglePin}
               onArchive={setArchived}
               onRename={renameConversation}
+              onEnd={requestEndSession}
               onSelect={selectConversation}
               onToggleDrawer={() => {
                 setSidebarDrawerOpen((open) => !open)
@@ -1427,6 +1489,7 @@ function App() {
                 setNewDialogOpen(true)
               }}
               openIds={[]}
+              starting={startingSessions}
               onOpenProject={() => {
                 setOpenProjectOpen(true)
               }}
@@ -1558,6 +1621,8 @@ function App() {
             onProviderChange={setNewProvider}
             kind={newKind}
             onKindChange={setNewKind}
+            permissions={newPermissions}
+            onPermissionsChange={setNewPermissions}
             claudeAvailable={!desktop || Boolean(claudeExecutableQuery.data)}
             desktop={desktop}
             onChooseFolder={() => {
@@ -1889,18 +1954,38 @@ function App() {
     if (desktop) {
       conversationCreationPendingRef.current = true
       setConversationCreationPending(true)
-      void createDaemonConversation(project, newProvider)
+      // The daemon starts the provider before it answers, which can take a few
+      // seconds: close the dialog now and show progress in the sidebar instead.
+      const startingKey = crypto.randomUUID()
+      const folderName =
+        project.split(/[\\/]/).filter(Boolean).at(-1) ?? project
+      setStartingSessions((current) => [
+        ...current,
+        {
+          key: startingKey,
+          startedAt: Date.now(),
+          label: `Starting ${newProvider} session in ${folderName}\u2026`,
+        },
+      ])
+      setNewDialogOpen(false)
+      void createDaemonConversation(project, newProvider, newPermissions)
         .then(async ({ id }) => {
-          setNewDialogOpen(false)
+          rememberConversationPermissions(String(id), newPermissions)
+          setStartedWith(readConversationPermissions())
           selectConversation(String(id))
           await queryClient.invalidateQueries({ queryKey: ['conversations'] })
         })
         .catch((error: unknown) => {
+          // Reopen the dialog with the same choices so nothing has to be retyped.
+          setNewDialogOpen(true)
           toast.error(
             errorMessage(error, `Could not start ${newProvider} conversation`),
           )
         })
         .finally(() => {
+          setStartingSessions((current) =>
+            current.filter((item) => item.key !== startingKey),
+          )
           conversationCreationPendingRef.current = false
           setConversationCreationPending(false)
         })
@@ -1962,6 +2047,7 @@ function App() {
           >
             Skip to conversation
           </a>
+          <TitleBar />
           <div className={`workspace-shell ${shownPanel ? 'has-panel' : ''}`}>
             {isCompactSidebar && sidebarDrawerOpen && (
               <div
@@ -1991,6 +2077,7 @@ function App() {
               onTogglePin={togglePin}
               onArchive={setArchived}
               onRename={renameConversation}
+              onEnd={requestEndSession}
               onSelect={(id) => {
                 selectInCurrentView(id)
                 setSidebarDrawerOpen(false)
@@ -2006,6 +2093,7 @@ function App() {
                 setNewDialogOpen(true)
               }}
               openIds={openTabIds}
+              starting={startingSessions}
               onOpenProject={() => {
                 setOpenProjectOpen(true)
               }}
@@ -2280,6 +2368,8 @@ function App() {
           onProviderChange={setNewProvider}
           kind={newKind}
           onKindChange={setNewKind}
+          permissions={newPermissions}
+          onPermissionsChange={setNewPermissions}
           claudeAvailable={!desktop || Boolean(claudeExecutableQuery.data)}
           desktop={desktop}
           onChooseFolder={() => {
@@ -2336,6 +2426,36 @@ function App() {
         />
         {settingsDialog}
         {openProjectDialog}
+        <Dialog
+          open={endTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setEndTarget(null)
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>End this session?</DialogTitle>
+              <DialogDescription>
+                {endTarget?.title}: the agent stops now. Its history is kept,
+                but you can’t continue this chat. To change permissions, end the
+                session and start a new one.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setEndTarget(null)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={confirmEndSession}>
+                End session
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         {daemonRestartDialog}
         <Toaster
           position={settingsPreferences.toastPosition}
@@ -2362,7 +2482,9 @@ type SidebarProps = {
   onTogglePin: (id: string) => void
   onArchive: (id: string, archived: boolean) => void
   onRename: (id: string, title: string) => void
+  onEnd: (id: string) => void
   primaryModifier: '⌘' | 'Ctrl'
+  starting: { key: string; label: string; startedAt: number }[]
   onOpenProject: () => void
   onNewInProject: (folder: string) => void
   onCloseProject: (project: string) => void
@@ -2391,9 +2513,11 @@ function ConversationSidebar({
   onTogglePin,
   onArchive,
   onRename,
+  onEnd,
   onToggleDrawer,
   onToggleCollapse,
   primaryModifier,
+  starting,
   onOpenProject,
   onNewInProject,
   onCloseProject,
@@ -2414,6 +2538,7 @@ function ConversationSidebar({
     onTogglePin,
     onArchive,
     onRename,
+    onEnd,
   }
 
   return (
@@ -2448,12 +2573,6 @@ function ConversationSidebar({
         >
           <PanelLeft />
         </Button>
-        <div className="sidebar-brand">
-          <span className="brand-mark" aria-hidden="true">
-            <span />
-          </span>
-          <span className="sidebar-title">Maitty</span>
-        </div>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -2498,6 +2617,13 @@ function ConversationSidebar({
           }}
         />
       </label>
+      {starting.map((item) => (
+        <div className="starting-row" role="status" key={item.key}>
+          <StatusMark status="working" />
+          <span>{item.label}</span>
+          <Elapsed since={item.startedAt} />
+        </div>
+      ))}
       <ScrollArea className="session-list-scroll">
         {projects.map((project) => (
           <ProjectSection
@@ -2594,6 +2720,7 @@ type SessionRowActions = {
   onTogglePin: (id: string) => void
   onArchive: (id: string, archived: boolean) => void
   onRename: (id: string, title: string) => void
+  onEnd: (id: string) => void
 }
 
 function ProjectSection({
@@ -2640,51 +2767,53 @@ function ProjectSection({
 
   return (
     <section className="project-section" aria-label={`${project} project`}>
-      <div className="project-heading">
-        <span>{project}</span>
-        {needsYou > 0 && (
-          <span className="project-needs">{needsYou} needs you</span>
-        )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              className="project-new"
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`New session in ${project}`}
-              disabled={disconnected}
-              onClick={() => {
-                onNewInProject(conversations[0]?.folder ?? '')
-              }}
-            >
-              <Plus />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>New session in {project}</TooltipContent>
-        </Tooltip>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              className="project-menu"
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Menu for project ${project}`}
-            >
-              <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="right">
-            <DropdownMenuItem
-              onSelect={() => {
-                onCloseProject(project)
-              }}
-            >
-              <X size={14} />
-              Close project
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div className="project-heading">
+            <span>{project}</span>
+            {needsYou > 0 && (
+              <span className="project-needs">{needsYou} needs you</span>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  className="project-new"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`New session in ${project}`}
+                  disabled={disconnected}
+                  onClick={() => {
+                    onNewInProject(conversations[0]?.folder ?? '')
+                  }}
+                >
+                  <Plus />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>New session in {project}</TooltipContent>
+            </Tooltip>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem
+            disabled={disconnected}
+            onSelect={() => {
+              onNewInProject(conversations[0]?.folder ?? '')
+            }}
+          >
+            <Plus size={14} />
+            New session in {project}
+          </ContextMenuItem>
+          <ContextMenuItem
+            onSelect={() => {
+              onCloseProject(project)
+            }}
+          >
+            <X size={14} />
+            Archive project
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+
       <div className="session-rows">
         {active.map((conversation) => (
           <SessionRow
@@ -2774,6 +2903,7 @@ function SessionRow({
   onTogglePin,
   onArchive,
   onRename,
+  onEnd,
 }: {
   conversation: Conversation
   selected: boolean
@@ -2781,7 +2911,7 @@ function SessionRow({
   isArchived?: boolean
 } & Pick<
   SessionRowActions,
-  'onSelect' | 'onTogglePin' | 'onArchive' | 'onRename'
+  'onSelect' | 'onTogglePin' | 'onArchive' | 'onRename' | 'onEnd'
 >) {
   const lastKnownStatus = conversation.lastKnownStatus
   const lastKnownText =
@@ -2802,114 +2932,114 @@ function SessionRow({
   }
 
   return (
-    <div className={`session-row-shell ${selected ? 'is-selected' : ''}`}>
-      {isRenaming ? (
-        <div className="session-row-rename">
-          <input
-            autoFocus
-            aria-label={`Rename ${conversation.title}`}
-            value={renameDraft}
-            onChange={(event) => {
-              setRenameDraft(event.target.value)
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                saveRename()
-              } else if (event.key === 'Escape') setIsRenaming(false)
-            }}
-          />
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Save conversation name"
-            onClick={saveRename}
-          >
-            <Check />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Cancel rename"
-            onClick={() => {
-              setIsRenaming(false)
-            }}
-          >
-            <X />
-          </Button>
-        </div>
-      ) : (
-        <button
-          className={`session-row status-${conversation.status} ${selected ? 'is-selected' : ''} ${conversation.status === 'needs-you' ? 'is-attention' : ''} ${isArchived ? 'is-archived' : ''}`}
-          type="button"
-          onClick={() => {
-            onSelect(conversation.id)
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'F2') {
-              event.preventDefault()
-              beginRename()
-            }
-          }}
-          aria-label={`${conversation.title}, ${statusText[conversation.status]}${lastKnownText}, ${conversation.project}`}
-          aria-current={selected ? 'page' : undefined}
-        >
-          <StatusMark status={conversation.status} className="row-mark" />
-          <span className="session-row-copy">
-            <span className="session-row-top">
-              <span className="session-row-title">{conversation.title}</span>
-              <span className="session-updated">
-                <RowMeta conversation={conversation} />
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div className={`session-row-shell ${selected ? 'is-selected' : ''}`}>
+          {isRenaming ? (
+            <div className="session-row-rename">
+              <input
+                autoFocus
+                aria-label={`Rename ${conversation.title}`}
+                value={renameDraft}
+                onChange={(event) => {
+                  setRenameDraft(event.target.value)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    saveRename()
+                  } else if (event.key === 'Escape') setIsRenaming(false)
+                }}
+              />
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Save conversation name"
+                onClick={saveRename}
+              >
+                <Check />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Cancel rename"
+                onClick={() => {
+                  setIsRenaming(false)
+                }}
+              >
+                <X />
+              </Button>
+            </div>
+          ) : (
+            <button
+              className={`session-row status-${conversation.status} ${selected ? 'is-selected' : ''} ${conversation.status === 'needs-you' ? 'is-attention' : ''} ${isArchived ? 'is-archived' : ''}`}
+              type="button"
+              onClick={() => {
+                onSelect(conversation.id)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'F2') {
+                  event.preventDefault()
+                  beginRename()
+                }
+              }}
+              aria-label={`${conversation.title}, ${statusText[conversation.status]}${lastKnownText}, ${conversation.project}`}
+              aria-current={selected ? 'page' : undefined}
+            >
+              <StatusMark status={conversation.status} className="row-mark" />
+              <span className="session-row-copy">
+                <span className="session-row-top">
+                  <span className="session-row-title">
+                    {conversation.title}
+                  </span>
+                  <span className="session-updated">
+                    <RowMeta conversation={conversation} />
+                  </span>
+                </span>
+                <span className="session-row-bottom">
+                  <span>{rowSubline(conversation)}</span>
+                </span>
               </span>
-            </span>
-            <span className="session-row-bottom">
-              <span>{rowSubline(conversation)}</span>
-            </span>
-          </span>
-        </button>
-      )}
+            </button>
+          )}
+        </div>
+      </ContextMenuTrigger>
       {!isRenaming && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              className="session-row-menu"
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Menu for ${conversation.title}`}
-            >
-              <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="right">
-            <DropdownMenuItem
-              onSelect={() => {
-                onTogglePin(conversation.id)
-              }}
-            >
-              <Pin size={14} />
-              {isPinned ? 'Unpin conversation' : 'Pin conversation'}
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={beginRename}>
-              <Pencil size={14} />
-              Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={!isArchived && conversation.status === 'working'}
-              onSelect={() => {
-                onArchive(conversation.id, !isArchived)
-              }}
-            >
-              {isArchived ? (
-                <ArchiveRestore size={14} />
-              ) : (
-                <Archive size={14} />
-              )}
-              {isArchived ? 'Reopen session' : 'Close session'}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <ContextMenuContent>
+          <ContextMenuItem
+            onSelect={() => {
+              onTogglePin(conversation.id)
+            }}
+          >
+            <Pin size={14} />
+            {isPinned ? 'Unpin conversation' : 'Pin conversation'}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={beginRename}>
+            <Pencil size={14} />
+            Rename
+          </ContextMenuItem>
+          <ContextMenuItem
+            disabled={!isArchived && conversation.status === 'working'}
+            onSelect={() => {
+              onArchive(conversation.id, !isArchived)
+            }}
+          >
+            {isArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+            {isArchived ? 'Unarchive session' : 'Archive session'}
+          </ContextMenuItem>
+          <ContextMenuItem
+            variant="destructive"
+            disabled={conversation.execution !== 'Structured'}
+            onSelect={() => {
+              onEnd(conversation.id)
+            }}
+          >
+            <Square size={14} />
+            End session
+          </ContextMenuItem>
+        </ContextMenuContent>
       )}
-    </div>
+    </ContextMenu>
   )
 }
 
@@ -2978,53 +3108,67 @@ function ConversationTabStrip({
         onKeyDown={handleTabKeyDown}
       >
         {tabs.map((tab) => (
-          <div
-            className={`conversation-tab ${tab.id === selectedId ? 'is-active' : ''} ${tab.status === 'working' && tab.id === selectedId ? 'is-shimmering' : ''}`}
-            key={tab.id}
-            onAuxClick={(event) => {
-              if (event.button === 1 && tabs.length > 1) onClose(tab.id)
-            }}
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab.id === selectedId}
-              aria-controls="conversation-main"
-              tabIndex={tab.id === selectedId ? 0 : -1}
-              title={`${tab.title} · ${statusText[tab.status]}`}
-              onClick={() => {
-                onSelect(tab.id)
-              }}
-            >
-              <StatusMark status={tab.status} />
-              <span>{tab.title}</span>
-              {tab.id === selectedId && (
-                <span
-                  className="sr-only"
-                  role="status"
-                  aria-label={`Current status: ${statusText[tab.status]}`}
-                />
-              )}
-            </button>
-            <Tooltip>
-              <TooltipTrigger asChild>
+          <ContextMenu key={tab.id}>
+            <ContextMenuTrigger asChild>
+              <div
+                className={`conversation-tab ${tab.id === selectedId ? 'is-active' : ''} ${tab.status === 'working' && tab.id === selectedId ? 'is-shimmering' : ''}`}
+                onAuxClick={(event) => {
+                  if (event.button === 1 && tabs.length > 1) onClose(tab.id)
+                }}
+              >
                 <button
-                  className="conversation-tab-close"
                   type="button"
-                  aria-label={`Close ${tab.title} tab`}
-                  disabled={tabs.length <= 1}
+                  role="tab"
+                  aria-selected={tab.id === selectedId}
+                  aria-controls="conversation-main"
+                  tabIndex={tab.id === selectedId ? 0 : -1}
+                  title={`${tab.title} · ${statusText[tab.status]}`}
                   onClick={() => {
-                    onClose(tab.id)
+                    onSelect(tab.id)
                   }}
                 >
-                  <X size={12} />
+                  <StatusMark status={tab.status} />
+                  <span>{tab.title}</span>
+                  {tab.id === selectedId && (
+                    <span
+                      className="sr-only"
+                      role="status"
+                      aria-label={`Current status: ${statusText[tab.status]}`}
+                    />
+                  )}
                 </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                Close tab · the session keeps running in maittyd
-              </TooltipContent>
-            </Tooltip>
-          </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className="conversation-tab-close"
+                      type="button"
+                      aria-label={`Close ${tab.title} tab`}
+                      disabled={tabs.length <= 1}
+                      onClick={() => {
+                        onClose(tab.id)
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Close tab · the session keeps running in maittyd
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem
+                disabled={tabs.length <= 1}
+                onSelect={() => {
+                  onClose(tab.id)
+                }}
+              >
+                <X size={14} />
+                Close tab
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         ))}
       </div>
       <div className="header-toolbar">
@@ -3149,6 +3293,13 @@ type AssistantBlock =
   | { kind: 'text'; content: string }
   | { kind: 'code'; language: string; content: string }
 
+const POWERSHELL_COMMAND = /powershell|pwsh/i
+
+/** Which highlighting suits a command line, judged by the shell it runs. */
+function commandLanguage(command: string | undefined): string {
+  return POWERSHELL_COMMAND.test(command ?? '') ? 'powershell' : 'sh'
+}
+
 function AssistantContent({ content }: { content: string }) {
   const blocks = splitAssistantCode(content)
   return (
@@ -3163,7 +3314,12 @@ function AssistantContent({ content }: { content: string }) {
               {block.language || 'Code'}
             </div>
             <pre>
-              <code>{block.content}</code>
+              <code>
+                <HighlightedCode
+                  code={block.content}
+                  language={block.language}
+                />
+              </code>
             </pre>
           </section>
         ) : (
@@ -3616,7 +3772,11 @@ function ActivityGroup({
                 </span>
               </div>
               {message.detail ? (
-                <pre>{message.detail}</pre>
+                message.content === 'fileChange' ? (
+                  <DiffText text={message.detail} />
+                ) : (
+                  <pre>{message.detail}</pre>
+                )
               ) : (
                 <span className="activity-empty">No output captured.</span>
               )}
@@ -3671,7 +3831,12 @@ function ApprovalRequest({
         </span>
       </div>
       {message.approvalKind === 'Command' && (
-        <code className="approval-command">{message.detail}</code>
+        <code className="approval-command">
+          <HighlightedCode
+            code={message.detail ?? ''}
+            language={commandLanguage(message.detail)}
+          />
+        </code>
       )}
       {message.approvalKind === 'FileChange' && message.approvalScope && (
         <p className="approval-scope">
@@ -4130,186 +4295,24 @@ function ContextPanel({
           Close <kbd>esc</kbd>
         </Button>
       </div>
-      <ScrollArea className="context-panel-scroll">
-        {tab === 'details' && <DetailsView conversation={conversation} />}
-        {tab === 'files' && (
+      {tab === 'files' ? (
+        <div className="context-panel-fill">
           <FilesView conversation={conversation} desktop={desktop} />
-        )}
-        {tab === 'diff' && (
-          <DiffView conversation={conversation} desktop={desktop} />
-        )}
-      </ScrollArea>
+        </div>
+      ) : (
+        <ScrollArea className="context-panel-scroll">
+          {tab === 'details' && <DetailsView conversation={conversation} />}
+          {tab === 'diff' && (
+            <DiffView conversation={conversation} desktop={desktop} />
+          )}
+        </ScrollArea>
+      )}
       {tab === 'diff' && (
         <p className="review-footer">
           Read-only. Ask the agent for edits, or open the file in your editor.
         </p>
       )}
     </aside>
-  )
-}
-
-function FilesView({
-  conversation,
-  desktop,
-}: {
-  conversation: Conversation
-  desktop: boolean
-}) {
-  const [directory, setDirectory] = useState('')
-  const [selectedPath, setSelectedPath] = useState<string | null>(null)
-  const filesQuery = useQuery({
-    queryKey: [
-      'conversation-files',
-      conversation.id,
-      conversation.generation,
-      directory,
-    ],
-    queryFn: () => loadConversationFiles(conversation, directory || null),
-    enabled: desktop,
-    retry: false,
-  })
-  const fileQuery = useQuery({
-    queryKey: [
-      'conversation-file',
-      conversation.id,
-      conversation.generation,
-      selectedPath,
-    ],
-    queryFn: () => loadConversationFile(conversation, selectedPath ?? ''),
-    enabled: desktop && selectedPath !== null,
-    retry: false,
-  })
-
-  if (!desktop) {
-    return (
-      <div className="panel-empty">
-        <FolderOpen size={18} />
-        <h2>Files need the desktop app</h2>
-      </div>
-    )
-  }
-  if (filesQuery.isLoading) {
-    return (
-      <div className="panel-empty" role="status">
-        <LoaderCircle size={18} />
-        <h2>Loading project files</h2>
-      </div>
-    )
-  }
-  if (filesQuery.isError) {
-    return (
-      <div className="panel-empty">
-        <CircleAlert size={18} />
-        <h2>Couldn’t load project files</h2>
-        <p>Check that the conversation checkout is available, then retry.</p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void filesQuery.refetch()}
-        >
-          Retry
-        </Button>
-      </div>
-    )
-  }
-
-  function openEntry(name: string, isDirectory: boolean) {
-    const path = directory ? `${directory}/${name}` : name
-    if (isDirectory) {
-      setDirectory(path)
-      setSelectedPath(null)
-    } else {
-      setSelectedPath(path)
-    }
-  }
-
-  return (
-    <div className="files-browser">
-      <div className="files-breadcrumb">
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!directory}
-          onClick={() => {
-            setDirectory(directory.split('/').slice(0, -1).join('/'))
-            setSelectedPath(null)
-          }}
-        >
-          Project{directory ? ` / ${directory}` : ''}
-        </Button>
-        {directory && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setDirectory(directory.split('/').slice(0, -1).join('/'))
-              setSelectedPath(null)
-            }}
-          >
-            Up
-          </Button>
-        )}
-      </div>
-      <div className="files-browser-list" aria-label="Project files">
-        {(filesQuery.data ?? []).length === 0 ? (
-          <div className="panel-empty">
-            <FolderOpen size={18} />
-            <h2>This folder is empty</h2>
-          </div>
-        ) : (
-          (filesQuery.data ?? []).map((entry) => (
-            <button
-              className="files-browser-entry"
-              type="button"
-              key={entry.name}
-              onClick={() => {
-                openEntry(entry.name, entry.is_directory)
-              }}
-              aria-label={
-                entry.is_directory
-                  ? `Open folder ${entry.name}`
-                  : `Preview file ${entry.name}`
-              }
-            >
-              {entry.is_directory ? (
-                <FolderOpen size={14} />
-              ) : (
-                <FileCode2 size={14} />
-              )}
-              <span>{entry.name}</span>
-              <small>{entry.is_directory ? 'Folder' : 'Preview'}</small>
-            </button>
-          ))
-        )}
-      </div>
-      {selectedPath && (
-        <section
-          className="files-preview"
-          aria-label={`Preview ${selectedPath}`}
-        >
-          <strong>{selectedPath}</strong>
-          {fileQuery.isLoading ? (
-            <p role="status">Loading preview…</p>
-          ) : fileQuery.isError ? (
-            <div>
-              <p>Couldn’t load this file preview.</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void fileQuery.refetch()}
-              >
-                Retry
-              </Button>
-            </div>
-          ) : (
-            <pre>{fileQuery.data}</pre>
-          )}
-        </section>
-      )}
-      <p className="files-readonly-note">
-        Read-only preview. Files can’t be changed here.
-      </p>
-    </div>
   )
 }
 
@@ -4780,6 +4783,8 @@ function NewConversationDialog({
   onProviderChange,
   kind,
   onKindChange,
+  permissions,
+  onPermissionsChange,
   claudeAvailable,
   desktop,
   onChooseFolder,
@@ -4797,6 +4802,8 @@ function NewConversationDialog({
   onProviderChange: (provider: 'Codex' | 'Claude') => void
   kind: 'chat' | 'terminal'
   onKindChange: (kind: 'chat' | 'terminal') => void
+  permissions: SessionPermissions
+  onPermissionsChange: (permissions: SessionPermissions) => void
   claudeAvailable: boolean
   desktop: boolean
   onChooseFolder: () => void
@@ -4930,6 +4937,41 @@ function NewConversationDialog({
                   <span>{note}</span>
                 </div>
                 {kind === choice && <Check size={15} />}
+              </button>
+            ))}
+          </div>
+        )}
+        {kind === 'chat' && (
+          <div
+            className="dialog-permissions"
+            role="group"
+            aria-label="Permissions"
+          >
+            <span className="dialog-caps">Permissions</span>
+            {(
+              [
+                ['read-only', 'Reads files and asks before anything else.'],
+                [
+                  'workspace-write',
+                  'Edits files in the project and asks before the rest.',
+                ],
+                [
+                  'full-access',
+                  'Never asks and is not sandboxed. Use with care.',
+                ],
+              ] as const
+            ).map(([value, help]) => (
+              <button
+                key={value}
+                type="button"
+                className={`dialog-permission ${permissions === value ? 'is-selected' : ''} ${value === 'full-access' ? 'is-danger' : ''}`}
+                aria-pressed={permissions === value}
+                onClick={() => {
+                  onPermissionsChange(value)
+                }}
+              >
+                <strong>{PERMISSION_LABELS[value]}</strong>
+                <span>{help}</span>
               </button>
             ))}
           </div>

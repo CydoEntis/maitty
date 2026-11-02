@@ -496,6 +496,15 @@ export async function renameConversationOnDaemon(conversation: Pick<Conversation
   await invokeParsed('rename_conversation', NullSchema, { id: Number(conversation.id), title })
 }
 
+export async function endConversation(conversation: Conversation): Promise<void> {
+  if (!isDesktop()) throw new Error('Ending a conversation is only available in the desktop app')
+  if (conversation.generation === undefined) throw new Error('Conversation generation is unavailable')
+  await invokeParsed('end_conversation', NullSchema, {
+    id: Number(conversation.id),
+    generation: conversation.generation,
+  })
+}
+
 // Closing a chat only puts it away, but closing a terminal session ends its program, as in the
 // terminal app. A terminal session that has ended is gone, so there is nothing to bring back.
 export async function archiveConversationOnDaemon(conversation: Pick<Conversation, 'id'>, archived: boolean): Promise<void> {
@@ -507,13 +516,17 @@ export async function archiveConversationOnDaemon(conversation: Pick<Conversatio
   await invokeParsed('archive_conversation', NullSchema, { id: Number(conversation.id), archived })
 }
 
+export type SessionPermissions = 'read-only' | 'workspace-write' | 'full-access'
+
 export async function createConversation(
   folder: string,
   provider: 'Codex' | 'Claude',
+  permissions: SessionPermissions,
 ): Promise<{ id: number; generation: number }> {
   return invokeParsed('create_conversation', CreatedConversationSchema, {
     cwd: folder,
     provider,
+    permissions,
   })
 }
 

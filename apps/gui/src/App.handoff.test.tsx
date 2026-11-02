@@ -10,6 +10,7 @@ const daemon = vi.hoisted(() => ({
   approveRequest: vi.fn(),
   cancelTurn: vi.fn(),
   createConversation: vi.fn(),
+  endConversation: vi.fn(),
   classifySubmissionFailure: vi.fn(),
   loadConversationDiff: vi.fn(),
   loadConversationFile: vi.fn(),
@@ -260,12 +261,56 @@ describe('desktop chat and terminal sessions', () => {
     expect(screen.queryByRole('tab', { name: 'Files' })).not.toBeInTheDocument()
     await user.click(await screen.findByRole('button', { name: /^Review/ }))
     await user.click(await screen.findByRole('tab', { name: 'Files' }))
-    await user.click(await screen.findByRole('button', { name: 'Preview file README.md' }))
+    await user.click(await screen.findByRole('treeitem', { name: 'Preview file README.md' }))
 
     expect(await screen.findByText('# Read only preview')).toBeInTheDocument()
     expect(screen.getByText(/Read-only preview/)).toBeInTheDocument()
     expect(daemon.loadConversationFile).toHaveBeenCalledWith(expect.objectContaining({ id: '42', generation: 7 }), 'README.md')
     expect(screen.queryByRole('textbox', { name: /file/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps the file tree on screen while previewing, and expands folders in place', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversationFiles.mockImplementation((_conversation: Conversation, path: string | null) =>
+      Promise.resolve(
+        path === 'src'
+          ? [{ name: 'main.go', is_directory: false }]
+          : [
+              { name: 'README.md', is_directory: false },
+              { name: 'src', is_directory: true },
+            ],
+      ),
+    )
+    daemon.loadConversationFile.mockResolvedValue('package main')
+    renderDesktopApp()
+
+    await user.click(await screen.findByRole('button', { name: /^Review/ }))
+    await user.click(await screen.findByRole('tab', { name: 'Files' }))
+    await user.click(await screen.findByRole('treeitem', { name: 'Expand folder src' }))
+    await user.click(await screen.findByRole('treeitem', { name: 'Preview file main.go' }))
+
+    // The preview is colored, so check its combined text.
+    expect(await screen.findByRole('region', { name: 'Preview src/main.go' })).toHaveTextContent('package main')
+    // The tree is still there: the root files and the expanded folder's children.
+    expect(screen.getByRole('treeitem', { name: 'Preview file README.md' })).toBeInTheDocument()
+    expect(screen.getByRole('treeitem', { name: 'Collapse folder src' })).toBeInTheDocument()
+  })
+
+  it('ends a session after a confirmation and moves it out of the sidebar', async () => {
+    const user = userEvent.setup()
+    daemon.endConversation.mockResolvedValue(undefined)
+    renderDesktopApp()
+
+    fireEvent.contextMenu(await screen.findByRole('button', { name: /^Example conversation,/ }))
+    await user.click(await screen.findByRole('menuitem', { name: 'End session' }))
+    expect(await screen.findByText('End this session?')).toBeInTheDocument()
+    expect(daemon.endConversation).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'End session' }))
+
+    await waitFor(() => {
+      expect(daemon.endConversation).toHaveBeenCalledWith(expect.objectContaining({ id: '42', generation: 7 }))
+    })
   })
 
   it('recovers an empty workspace after the daemon reconnects', async () => {
@@ -407,7 +452,7 @@ describe('desktop chat and terminal sessions', () => {
     await user.click(screen.getByRole('button', { name: 'Start conversation' }))
 
     await waitFor(() => {
-      expect(daemon.createConversation).toHaveBeenCalledWith(folder, 'Codex')
+      expect(daemon.createConversation).toHaveBeenCalledWith(folder, 'Codex', 'workspace-write')
     })
     expect(
       await screen.findByRole('heading', { name: 'Codex conversation 43' }),
@@ -466,7 +511,7 @@ describe('desktop chat and terminal sessions', () => {
     await user.click(screen.getByRole('button', { name: 'Start conversation' }))
 
     await waitFor(() => {
-      expect(daemon.createConversation).toHaveBeenCalledWith(folder, 'Claude')
+      expect(daemon.createConversation).toHaveBeenCalledWith(folder, 'Claude', 'workspace-write')
     })
     expect(await screen.findByRole('heading', { name: 'Claude conversation 44' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Message Claude' })).toBeInTheDocument()
@@ -530,6 +575,32 @@ describe('desktop chat and terminal sessions', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows progress in the sidebar while a new session starts, then clears it', async () => {
+    const user = userEvent.setup()
+    const folder = '/home/casey/projects/new-project'
+    let resolveCreation: (value: { id: number; generation: number }) => void =
+      () => {}
+    folderPicker.chooseProjectFolder.mockResolvedValue(folder)
+    daemon.createConversation.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreation = resolve
+        }),
+    )
+    renderDesktopApp()
+
+    await user.keyboard('{Control>}n{/Control}')
+    await user.click(screen.getByRole('button', { name: 'Browse for project folder' }))
+    await screen.findByRole('textbox', { name: 'Project folder' })
+    await user.click(screen.getByRole('button', { name: 'Start conversation' }))
+
+    expect(await screen.findByText('Starting Codex session in new-project…')).toBeInTheDocument()
+    resolveCreation({ id: 43, generation: 1 })
+    await waitFor(() => {
+      expect(screen.queryByText(/Starting Codex session/)).not.toBeInTheDocument()
+    })
+  })
+
   it('keeps the current conversation open when starting a new one fails', async () => {
     const user = userEvent.setup()
     folderPicker.chooseProjectFolder.mockResolvedValue(
@@ -587,7 +658,12 @@ describe('desktop chat and terminal sessions', () => {
     })
     renderDesktopApp()
 
-    const code = await screen.findByText('fmt.Println("GUI_OK")')
+    // The block is colored, so its line is split into pieces; match the whole code element.
+    const code = await screen.findByText(
+      (_, element) =>
+        element?.tagName === 'CODE' &&
+        element.textContent === 'fmt.Println("GUI_OK")',
+    )
     expect(code.closest('pre')).toBeInTheDocument()
     expect(screen.getByText('go')).toBeInTheDocument()
     expect(screen.getByText('fmt.Println').tagName).toBe('CODE')

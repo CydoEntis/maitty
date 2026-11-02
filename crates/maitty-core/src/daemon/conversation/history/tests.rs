@@ -211,6 +211,31 @@ fn authoritative_hydration_replaces_drafts_in_native_order() {
     );
 }
 #[test]
+fn a_codex_file_edit_keeps_its_files_and_diff_for_review() {
+    let mut a = Attachments::default();
+    a.attach(1, ConversationId(1));
+    a.notification(ConversationId(1), "native", "item/completed", &json!({"threadId":"native","turnId":"turn","item":{"id":"edit","type":"fileChange","status":"completed","changes":[{"path":"main.go","kind":{"type":"update"},"diff":"@@ -1 +1 @@
+-old
++new
+"},{"path":"notes.txt","kind":"add","diff":"hello"}]}})).unwrap();
+    let history = a.get(1).unwrap();
+    // A file edit is understood now; it must not mark the history as unsupported.
+    assert_ne!(
+        history.completeness,
+        Completeness::Incomplete(IncompleteReason::UnsupportedItem)
+    );
+    assert_eq!(history.entries[0].state, ItemState::Completed);
+    let Content::Tool { kind, output, label } = &history.entries[0].content else {
+        panic!("a file edit is shown as a tool row");
+    };
+    assert_eq!(kind, "fileChange");
+    assert_eq!(label, "Edited 2 files");
+    assert!(output.contains("main.go (update)") && output.contains("+new"));
+    assert!(output.contains("notes.txt (add)
+hello"));
+}
+
+#[test]
 fn provider_tool_lifecycle_replaces_one_row_and_preserves_failed_status() {
     let mut a = Attachments::default();
     a.attach(1, ConversationId(1));

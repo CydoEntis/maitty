@@ -319,6 +319,7 @@ pub fn command_arguments(
         "--replay-user-messages".into(),
     ];
     let permission_mode = match (settings.sandbox, settings.approval_policy) {
+        (maitty_shared::conversation::Sandbox::FullAccess, _) => "bypassPermissions",
         (maitty_shared::conversation::Sandbox::ReadOnly, _) => "plan",
         (_, maitty_shared::conversation::ApprovalPolicy::Never) => "dontAsk",
         (
@@ -328,6 +329,9 @@ pub fn command_arguments(
         ) => "default",
     };
     arguments.extend(["--permission-mode".into(), permission_mode.into()]);
+    if settings.sandbox == maitty_shared::conversation::Sandbox::FullAccess {
+        arguments.push("--allow-dangerously-skip-permissions".into());
+    }
     if !resume {
         arguments.extend(["--session-id".into(), session_id.into()]);
     } else {
