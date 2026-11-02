@@ -657,6 +657,21 @@ mod tests {
     }
 
     #[test]
+    fn full_access_skips_claude_permission_checks_and_says_so() {
+        let args = command_arguments(
+            "session-1",
+            false,
+            &settings(ApprovalPolicy::Never, Sandbox::FullAccess),
+        );
+        let args: Vec<_> = args.iter().map(|arg| arg.to_string_lossy()).collect();
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--permission-mode", "bypassPermissions"])
+        );
+        assert!(args.iter().any(|arg| arg == "--allow-dangerously-skip-permissions"));
+    }
+
+    #[test]
     fn routes_claude_approvals_to_the_agent_sdk_stdio_channel() {
         let args = command_arguments(
             "session-1",

@@ -30,6 +30,8 @@ pub enum ApprovalPolicy {
 pub enum Sandbox {
     ReadOnly,
     WorkspaceWrite,
+    /// No sandbox. Only chosen explicitly, together with an approval policy of Never.
+    FullAccess,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -442,13 +442,17 @@ export async function handoffToChat(conversation: Conversation): Promise<void> {
   })
 }
 
+export type SessionPermissions = 'read-only' | 'workspace-write' | 'full-access'
+
 export async function createConversation(
   folder: string,
   provider: 'Codex' | 'Claude',
+  permissions: SessionPermissions,
 ): Promise<{ id: number; generation: number }> {
   return invokeParsed('create_conversation', CreatedConversationSchema, {
     cwd: folder,
     provider,
+    permissions,
   })
 }
 

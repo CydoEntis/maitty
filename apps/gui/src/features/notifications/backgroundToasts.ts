@@ -1,11 +1,16 @@
+import { createElement } from 'react'
 import { toast } from 'sonner'
 import {
   approveRequest,
   loadConversationDiff,
   loadMessages,
 } from '@/api/daemon'
+import { DiffStat } from '@/components/DiffStat'
 import type { Conversation, Message } from '@/data/preview'
 import { errorMessage } from '@/lib/error-message'
+import { showNotice } from './notify'
+
+const FINISHED_COUNTDOWN_MS = 9000
 
 type ToastActions = {
   open: () => void
@@ -38,12 +43,16 @@ export async function showAttentionToast(
 ): Promise<void> {
   const open = { label: 'Open', onClick: actions.open }
   if (conversation.status === 'recovery') {
-    toast.error(`${conversation.title} needs recovery`, {
-      description: 'Resume it to continue. Nothing is replayed automatically.',
-      duration: Infinity,
-      closeButton: true,
-      action: open,
-    })
+    showNotice(
+      {
+        kind: 'recovery',
+        project: conversation.project,
+        title: conversation.title,
+        body: 'Resume it to continue. Nothing is replayed automatically.',
+        actions: [{ ...open, primary: true }],
+      },
+      { sticky: true },
+    )
     return
   }
 
@@ -56,50 +65,78 @@ export async function showAttentionToast(
     requestId !== undefined &&
     approval.approvalChoices?.includes('Accept')
   ) {
-    toast.warning(`${conversation.title} needs your approval`, {
-      description: `$ ${approval.detail ?? approval.content}`,
-      duration: Infinity,
-      closeButton: true,
-      action: {
-        label: 'Allow once',
-        onClick: () => {
-          void approveRequest(conversation, requestId, 'Accept')
-            .then(() => {
-              actions.answered()
-              toast.success('Command approved')
-            })
-            .catch((error: unknown) => {
-              toast.error(errorMessage(error, 'Could not approve the command'))
-            })
-        },
+    showNotice(
+      {
+        kind: 'needs',
+        project: conversation.project,
+        title: conversation.title,
+        body: createElement(
+          'code',
+          { className: 'notice-command' },
+          `$ ${approval.detail ?? approval.content}`,
+        ),
+        actions: [
+          {
+            label: 'Allow once',
+            primary: true,
+            onClick: () => {
+              void approveRequest(conversation, requestId, 'Accept')
+                .then(() => {
+                  actions.answered()
+                })
+                .catch((error: unknown) => {
+                  toast.error(
+                    errorMessage(error, 'Could not approve the command'),
+                  )
+                })
+            },
+          },
+          open,
+        ],
       },
-      cancel: open,
-    })
+      { sticky: true },
+    )
     return
   }
 
-  toast.warning(`${conversation.title} needs your attention`, {
-    duration: Infinity,
-    closeButton: true,
-    action: open,
-  })
+  showNotice(
+    {
+      kind: 'needs',
+      project: conversation.project,
+      title: conversation.title,
+      body: 'This conversation needs your attention.',
+      actions: [{ ...open, primary: true }],
+    },
+    { sticky: true },
+  )
 }
 
-/** A session finished; the toast says how much changed once the daemon reports it. */
+/** A session finished; the card says how much changed once the daemon reports it. */
 export async function showFinishedToast(
   conversation: Conversation,
-  actions: Pick<ToastActions, 'open'>,
+  actions: Pick<ToastActions, 'open'> & { review: () => void },
 ): Promise<void> {
-  const summary = await loadConversationDiff(conversation)
-    .then((diff) =>
-      diff.total_files === 0
-        ? undefined
-        : `${String(diff.total_files)} ${diff.total_files === 1 ? 'file' : 'files'} changed +${String(diff.additions)} −${String(diff.deletions)}`,
-    )
-    .catch(() => undefined)
-  toast.success(`${conversation.title} is done`, {
-    description: summary,
-    closeButton: true,
-    action: { label: 'Open', onClick: actions.open },
+  const diff = await loadConversationDiff(conversation).catch(() => null)
+  const changed = diff && diff.total_files > 0 ? diff : null
+  showNotice({
+    kind: 'finished',
+    project: conversation.project,
+    title: conversation.title,
+    body: changed
+      ? createElement(
+          'span',
+          { className: 'notice-summary' },
+          `${String(changed.total_files)} ${changed.total_files === 1 ? 'file' : 'files'} changed `,
+          createElement(DiffStat, {
+            additions: changed.additions,
+            deletions: changed.deletions,
+          }),
+        )
+      : undefined,
+    actions: [
+      { label: 'Open', onClick: actions.open },
+      ...(changed ? [{ label: 'View changes', onClick: actions.review }] : []),
+    ],
+    countdownMs: FINISHED_COUNTDOWN_MS,
   })
 }
