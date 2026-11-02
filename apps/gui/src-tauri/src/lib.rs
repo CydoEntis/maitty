@@ -260,10 +260,18 @@ async fn create_conversation(
     app: tauri::AppHandle,
     cwd: PathBuf,
     provider: maitty_shared::conversation::Provider,
+    permissions: String,
 ) -> Result<serde_json::Value, String> {
-    maitty_desktop_client::create_conversation(cwd, provider, daemon_executable(&app)?)
-        .await
-        .map_err(|error| format!("{error:#}"))
+    let permissions = maitty_desktop_client::Permissions::parse(&permissions)
+        .map_err(|error| format!("{error:#}"))?;
+    maitty_desktop_client::create_conversation(
+        cwd,
+        provider,
+        permissions,
+        daemon_executable(&app)?,
+    )
+    .await
+    .map_err(|error| format!("{error:#}"))
 }
 
 #[tauri::command]

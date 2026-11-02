@@ -151,10 +151,11 @@ describe('Claude executable lookup and creation', () => {
   it('passes the selected provider to the daemon-backed create command', async () => {
     vi.mocked(invoke).mockResolvedValue({ id: 44, generation: 1 })
 
-    await expect(createConversation('/work/project', 'Claude')).resolves.toEqual({ id: 44, generation: 1 })
+    await expect(createConversation('/work/project', 'Claude', 'full-access')).resolves.toEqual({ id: 44, generation: 1 })
     expect(invoke).toHaveBeenCalledWith('create_conversation', {
       cwd: '/work/project',
       provider: 'Claude',
+      permissions: 'full-access',
     })
   })
 })

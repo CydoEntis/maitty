@@ -1183,3 +1183,32 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 .toast-position-grid { grid-template-columns: repeat(3, 38px); }
 .toast-top-center i { left: 50%; top: 8px; transform: translateX(-50%); }
 .toast-bottom-center i { bottom: 3px; left: 50%; transform: translateX(-50%); }
+
+/* Permissions choice in the New conversation dialog */
+.dialog-permissions { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 0; }
+.dialog-permission { align-items: flex-start; background: var(--secondary); border: 1px solid transparent; border-radius: 8px; color: inherit; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; text-align: left; }
+.dialog-permission strong { color: var(--fg); font-size: 12.5px; font-weight: 500; }
+.dialog-permission span { color: var(--muted-text); font-size: 12px; }
+.dialog-permission:hover, .dialog-permission.is-selected { border-color: var(--primary); }
+.dialog-permission.is-danger.is-selected { background: var(--danger-soft); border-color: var(--danger); }
+.dialog-permission.is-danger strong { color: var(--danger); }
+
+/* Readable commands, code and file edits */
+.tok-variable { color: var(--fg); font-weight: 500; }
+.tok-flag { color: var(--muted-text); }
+.approval-command { font-size: 12.5px; font-weight: 400; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; word-break: break-word; }
+.approval-command .code-line { color: var(--fg2); }
+.assistant-code-block pre code, .files-view pre, .activity-expanded pre { font-size: 12.5px; line-height: 1.65; }
+.diff-text { font: 12.5px/1.65 var(--font-mono); margin: 0; overflow: auto; white-space: pre; }
+.diff-text-line { display: block; padding: 0 8px; }
+.diff-text-line i { display: inline-block; font-style: normal; width: 14px; }
+.diff-text-line.is-header { color: var(--fg); font-weight: 500; padding-top: 6px; }
+.diff-text-line.is-hunk { color: var(--dim); }
+.diff-text-line.is-add { background: rgb(95 212 191 / 8%); box-shadow: inset 2px 0 0 var(--primary); }
+.diff-text-line.is-add i { color: var(--primary); }
+.diff-text-line.is-remove { background: rgb(240 127 120 / 8%); box-shadow: inset 2px 0 0 var(--danger); }
+.diff-text-line.is-remove i { color: var(--danger); }
+.diff-text-line.is-context { color: var(--fg2); }
+
+/* Progress while the daemon starts a session */
+.starting-row { align-items: center; color: var(--muted-text); display: flex; font-size: 12.5px; gap: 10px; margin: 0 8px 4px; padding: 6px 8px; }

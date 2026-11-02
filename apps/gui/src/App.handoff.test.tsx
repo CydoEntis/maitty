@@ -395,7 +395,7 @@ describe('desktop chat and terminal handoff', () => {
     await user.click(screen.getByRole('button', { name: 'Start conversation' }))
 
     await waitFor(() => {
-      expect(daemon.createConversation).toHaveBeenCalledWith(folder, 'Codex')
+      expect(daemon.createConversation).toHaveBeenCalledWith(folder, 'Codex', 'workspace-write')
     })
     expect(
       await screen.findByRole('heading', { name: 'Codex conversation 43' }),
@@ -454,7 +454,7 @@ describe('desktop chat and terminal handoff', () => {
     await user.click(screen.getByRole('button', { name: 'Start conversation' }))
 
     await waitFor(() => {
-      expect(daemon.createConversation).toHaveBeenCalledWith(folder, 'Claude')
+      expect(daemon.createConversation).toHaveBeenCalledWith(folder, 'Claude', 'workspace-write')
     })
     expect(await screen.findByRole('heading', { name: 'Claude conversation 44' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Message Claude' })).toBeInTheDocument()
@@ -516,6 +516,32 @@ describe('desktop chat and terminal handoff', () => {
     expect(
       await screen.findByRole('heading', { name: 'Codex conversation 43' }),
     ).toBeInTheDocument()
+  })
+
+  it('shows progress in the sidebar while a new session starts, then clears it', async () => {
+    const user = userEvent.setup()
+    const folder = '/home/casey/projects/new-project'
+    let resolveCreation: (value: { id: number; generation: number }) => void =
+      () => {}
+    folderPicker.chooseProjectFolder.mockResolvedValue(folder)
+    daemon.createConversation.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreation = resolve
+        }),
+    )
+    renderDesktopApp()
+
+    await user.keyboard('{Control>}n{/Control}')
+    await user.click(screen.getByRole('button', { name: 'Browse for project folder' }))
+    await screen.findByRole('textbox', { name: 'Project folder' })
+    await user.click(screen.getByRole('button', { name: 'Start conversation' }))
+
+    expect(await screen.findByText('Starting Codex session in new-project…')).toBeInTheDocument()
+    resolveCreation({ id: 43, generation: 1 })
+    await waitFor(() => {
+      expect(screen.queryByText(/Starting Codex session/)).not.toBeInTheDocument()
+    })
   })
 
   it('keeps the current conversation open when starting a new one fails', async () => {
@@ -720,7 +746,12 @@ describe('desktop chat and terminal handoff', () => {
     })
     renderDesktopApp()
 
-    const code = await screen.findByText('fmt.Println("GUI_OK")')
+    // The block is colored, so its line is split into pieces; match the whole code element.
+    const code = await screen.findByText(
+      (_, element) =>
+        element?.tagName === 'CODE' &&
+        element.textContent === 'fmt.Println("GUI_OK")',
+    )
     expect(code.closest('pre')).toBeInTheDocument()
     expect(screen.getByText('go')).toBeInTheDocument()
     expect(screen.getByText('fmt.Println').tagName).toBe('CODE')

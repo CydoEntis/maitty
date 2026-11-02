@@ -61,6 +61,8 @@ import {
   showFinishedToast,
 } from '@/features/notifications/backgroundToasts'
 import { HighlightedLine } from '@/components/HighlightedLine'
+import { HighlightedCode } from '@/components/HighlightedCode'
+import { DiffText } from '@/components/DiffText'
 import { TerminalPanes } from '@/features/terminal/TerminalPanes'
 import { WorkingSinceContext, useWorkingSince } from '@/lib/working-since'
 import { OpenProjectDialog } from '@/features/projects/components/OpenProjectDialog'
@@ -90,6 +92,7 @@ import {
   cancelTurn as cancelDaemonTurn,
   classifySubmissionFailure,
   createConversation as createDaemonConversation,
+  type SessionPermissions,
   handoffToChat,
   handoffToNative,
   isDesktop,
@@ -154,6 +157,11 @@ import {
   reconcileConversationTabs,
   writeOpenConversationTabs,
 } from '@/data/openConversationTabs'
+import {
+  readConversationPermissions,
+  rememberConversationPermissions,
+  PERMISSION_LABELS,
+} from '@/data/conversationPermissions'
 import { shortcutModifier } from '@/lib/shortcut-modifier'
 import { errorMessage } from '@/lib/error-message'
 import './App.css'
@@ -251,13 +259,22 @@ function App() {
   const [sidebarPreferences, setSidebarPreferences] = useState(
     readSidebarPreferences,
   )
+  const [startedWith, setStartedWith] = useState(readConversationPermissions)
   const conversations = useMemo(() => {
     const current = desktop ? (sessionsQuery.data ?? []) : previewSessions
-    const withNames = current.map((conversation) => ({
-      ...conversation,
-      title:
-        sidebarPreferences.renamedTitles[conversation.id] ?? conversation.title,
-    }))
+    const withNames = current.map((conversation) => {
+      const started = startedWith[conversation.id]
+      return {
+        ...conversation,
+        title:
+          sidebarPreferences.renamedTitles[conversation.id] ??
+          conversation.title,
+        // The daemon does not report how a session was started; show what was chosen.
+        ...(desktop && started
+          ? { permission: PERMISSION_LABELS[started] }
+          : {}),
+      }
+    })
     return daemonDisconnected
       ? markConversationsDisconnected(withNames)
       : withNames
@@ -267,6 +284,7 @@ function App() {
     sessionsQuery.data,
     previewSessions,
     sidebarPreferences.renamedTitles,
+    startedWith,
   ])
   const [selectedId, setSelectedId] = useState(
     () =>
@@ -307,6 +325,11 @@ function App() {
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
   const [newProject, setNewProject] = useState('')
   const [newProvider, setNewProvider] = useState<'Codex' | 'Claude'>('Codex')
+  const [startingSessions, setStartingSessions] = useState<
+    { key: string; label: string }[]
+  >([])
+  const [newPermissions, setNewPermissions] =
+    useState<SessionPermissions>('workspace-write')
   const [conversationCreationPending, setConversationCreationPending] =
     useState(false)
   const [isChoosingFolder, setIsChoosingFolder] = useState(false)
@@ -1544,6 +1567,7 @@ function App() {
                 setNewDialogOpen(true)
               }}
               openIds={[]}
+              starting={startingSessions}
               onOpenProject={() => {
                 setOpenProjectOpen(true)
               }}
@@ -1673,6 +1697,8 @@ function App() {
             onProjectChange={setNewProject}
             provider={newProvider}
             onProviderChange={setNewProvider}
+            permissions={newPermissions}
+            onPermissionsChange={setNewPermissions}
             claudeAvailable={!desktop || Boolean(claudeExecutableQuery.data)}
             desktop={desktop}
             onChooseFolder={() => {
@@ -1974,18 +2000,37 @@ function App() {
     if (desktop) {
       conversationCreationPendingRef.current = true
       setConversationCreationPending(true)
-      void createDaemonConversation(project, newProvider)
+      // The daemon starts the provider before it answers, which can take a few
+      // seconds: close the dialog now and show progress in the sidebar instead.
+      const startingKey = crypto.randomUUID()
+      const folderName =
+        project.split(/[\\/]/).filter(Boolean).at(-1) ?? project
+      setStartingSessions((current) => [
+        ...current,
+        {
+          key: startingKey,
+          label: `Starting ${newProvider} session in ${folderName}\u2026`,
+        },
+      ])
+      setNewDialogOpen(false)
+      void createDaemonConversation(project, newProvider, newPermissions)
         .then(async ({ id }) => {
-          setNewDialogOpen(false)
+          rememberConversationPermissions(String(id), newPermissions)
+          setStartedWith(readConversationPermissions())
           selectConversation(String(id))
           await queryClient.invalidateQueries({ queryKey: ['conversations'] })
         })
         .catch((error: unknown) => {
+          // Reopen the dialog with the same choices so nothing has to be retyped.
+          setNewDialogOpen(true)
           toast.error(
             errorMessage(error, `Could not start ${newProvider} conversation`),
           )
         })
         .finally(() => {
+          setStartingSessions((current) =>
+            current.filter((item) => item.key !== startingKey),
+          )
           conversationCreationPendingRef.current = false
           setConversationCreationPending(false)
         })
@@ -2092,6 +2137,7 @@ function App() {
                 setNewDialogOpen(true)
               }}
               openIds={openTabIds}
+              starting={startingSessions}
               onOpenProject={() => {
                 setOpenProjectOpen(true)
               }}
@@ -2401,6 +2447,8 @@ function App() {
           onProjectChange={setNewProject}
           provider={newProvider}
           onProviderChange={setNewProvider}
+          permissions={newPermissions}
+          onPermissionsChange={setNewPermissions}
           claudeAvailable={!desktop || Boolean(claudeExecutableQuery.data)}
           desktop={desktop}
           onChooseFolder={() => {
@@ -2484,6 +2532,7 @@ type SidebarProps = {
   onArchive: (id: string, archived: boolean) => void
   onRename: (id: string, title: string) => void
   primaryModifier: '⌘' | 'Ctrl'
+  starting: { key: string; label: string }[]
   onOpenProject: () => void
   onNewInProject: (folder: string) => void
   onCloseProject: (project: string) => void
@@ -2515,6 +2564,7 @@ function ConversationSidebar({
   onToggleDrawer,
   onToggleCollapse,
   primaryModifier,
+  starting,
   onOpenProject,
   onNewInProject,
   onCloseProject,
@@ -2613,6 +2663,12 @@ function ConversationSidebar({
           }}
         />
       </label>
+      {starting.map((item) => (
+        <div className="starting-row" role="status" key={item.key}>
+          <StatusMark status="working" />
+          <span>{item.label}</span>
+        </div>
+      ))}
       <ScrollArea className="session-list-scroll">
         {projects.map((project) => (
           <ProjectSection
@@ -3276,6 +3332,13 @@ type AssistantBlock =
   | { kind: 'text'; content: string }
   | { kind: 'code'; language: string; content: string }
 
+const POWERSHELL_COMMAND = /powershell|pwsh/i
+
+/** Which highlighting suits a command line, judged by the shell it runs. */
+function commandLanguage(command: string | undefined): string {
+  return POWERSHELL_COMMAND.test(command ?? '') ? 'powershell' : 'sh'
+}
+
 function AssistantContent({ content }: { content: string }) {
   const blocks = splitAssistantCode(content)
   return (
@@ -3290,7 +3353,12 @@ function AssistantContent({ content }: { content: string }) {
               {block.language || 'Code'}
             </div>
             <pre>
-              <code>{block.content}</code>
+              <code>
+                <HighlightedCode
+                  code={block.content}
+                  language={block.language}
+                />
+              </code>
             </pre>
           </section>
         ) : (
@@ -3743,7 +3811,11 @@ function ActivityGroup({
                 </span>
               </div>
               {message.detail ? (
-                <pre>{message.detail}</pre>
+                message.content === 'fileChange' ? (
+                  <DiffText text={message.detail} />
+                ) : (
+                  <pre>{message.detail}</pre>
+                )
               ) : (
                 <span className="activity-empty">No output captured.</span>
               )}
@@ -3798,7 +3870,12 @@ function ApprovalRequest({
         </span>
       </div>
       {message.approvalKind === 'Command' && (
-        <code className="approval-command">{message.detail}</code>
+        <code className="approval-command">
+          <HighlightedCode
+            code={message.detail ?? ''}
+            language={commandLanguage(message.detail)}
+          />
+        </code>
       )}
       {message.approvalKind === 'FileChange' && message.approvalScope && (
         <p className="approval-scope">
@@ -4464,7 +4541,12 @@ function FilesView({
               </Button>
             </div>
           ) : (
-            <pre>{fileQuery.data}</pre>
+            <pre>
+              <HighlightedCode
+                code={fileQuery.data ?? ''}
+                path={selectedPath}
+              />
+            </pre>
           )}
         </section>
       )}
@@ -4940,6 +5022,8 @@ function NewConversationDialog({
   onProjectChange,
   provider,
   onProviderChange,
+  permissions,
+  onPermissionsChange,
   claudeAvailable,
   desktop,
   onChooseFolder,
@@ -4955,6 +5039,8 @@ function NewConversationDialog({
   onProjectChange: (value: string) => void
   provider: 'Codex' | 'Claude'
   onProviderChange: (provider: 'Codex' | 'Claude') => void
+  permissions: SessionPermissions
+  onPermissionsChange: (permissions: SessionPermissions) => void
   claudeAvailable: boolean
   desktop: boolean
   onChooseFolder: () => void
@@ -5055,6 +5141,39 @@ function NewConversationDialog({
                 </span>
               </div>
               {provider === choice && <Check size={15} />}
+            </button>
+          ))}
+        </div>
+        <div
+          className="dialog-permissions"
+          role="group"
+          aria-label="Permissions"
+        >
+          <span className="dialog-caps">Permissions</span>
+          {(
+            [
+              ['read-only', 'Reads files and asks before anything else.'],
+              [
+                'workspace-write',
+                'Edits files in the project and asks before the rest.',
+              ],
+              [
+                'full-access',
+                'Never asks and is not sandboxed. Use with care.',
+              ],
+            ] as const
+          ).map(([value, help]) => (
+            <button
+              key={value}
+              type="button"
+              className={`dialog-permission ${permissions === value ? 'is-selected' : ''} ${value === 'full-access' ? 'is-danger' : ''}`}
+              aria-pressed={permissions === value}
+              onClick={() => {
+                onPermissionsChange(value)
+              }}
+            >
+              <strong>{PERMISSION_LABELS[value]}</strong>
+              <span>{help}</span>
             </button>
           ))}
         </div>
