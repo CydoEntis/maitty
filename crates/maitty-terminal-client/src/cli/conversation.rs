@@ -14,6 +14,7 @@ pub(crate) enum Approval {
 pub(crate) enum Isolation {
     ReadOnly,
     WorkspaceWrite,
+    FullAccess,
 }
 
 #[derive(Subcommand)]
@@ -116,6 +117,7 @@ pub(crate) fn run(cmd: Cmd) -> Result<()> {
                     sandbox: match sandbox.unwrap_or(Isolation::ReadOnly) {
                         Isolation::ReadOnly => Sandbox::ReadOnly,
                         Isolation::WorkspaceWrite => Sandbox::WorkspaceWrite,
+                        Isolation::FullAccess => Sandbox::FullAccess,
                     },
                 };
                 match session {

@@ -197,6 +197,7 @@ fn sandbox(settings: &LaunchSettings) -> &'static str {
     match settings.sandbox {
         Sandbox::ReadOnly => "read-only",
         Sandbox::WorkspaceWrite => "workspace-write",
+        Sandbox::FullAccess => "danger-full-access",
     }
 }
 
@@ -302,11 +303,14 @@ fn validate_response(
     let kind = match settings.sandbox {
         Sandbox::ReadOnly => "readOnly",
         Sandbox::WorkspaceWrite => "workspaceWrite",
+        Sandbox::FullAccess => "dangerFullAccess",
     };
+    // Full access has no sandbox, so there is no network restriction to verify.
     if effective.get("type") != Some(&json!(kind))
-        || effective
-            .get("networkAccess")
-            .is_some_and(|v| v != &json!(false))
+        || (settings.sandbox != Sandbox::FullAccess
+            && effective
+                .get("networkAccess")
+                .is_some_and(|v| v != &json!(false)))
     {
         bail!("Codex effective sandbox differs");
     }
