@@ -155,6 +155,75 @@ async fn resize_terminal(
 }
 
 #[tauri::command]
+async fn pane_terminal_screen(app: tauri::AppHandle, term: u32) -> Result<String, String> {
+    maitty_desktop_client::pane_terminal_screen(term, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn pane_terminal_replay(app: tauri::AppHandle, term: u32) -> Result<Vec<u8>, String> {
+    maitty_desktop_client::pane_terminal_replay(term, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn pane_terminal_input(
+    app: tauri::AppHandle,
+    term: u32,
+    data: Vec<u8>,
+) -> Result<String, String> {
+    maitty_desktop_client::pane_terminal_input(term, data, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn pane_terminal_resize(
+    app: tauri::AppHandle,
+    term: u32,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    maitty_desktop_client::pane_terminal_resize(term, cols, rows, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn start_terminal_session(
+    app: tauri::AppHandle,
+    cwd: PathBuf,
+    provider: maitty_shared::conversation::Provider,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::start_terminal_session(cwd, provider, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn rename_terminal_session(
+    app: tauri::AppHandle,
+    term: u32,
+    name: String,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::rename_terminal_session(term, name, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn close_terminal_session(
+    app: tauri::AppHandle,
+    term: u32,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::close_terminal_session(term, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn send_conversation(
     app: tauri::AppHandle,
     id: u64,
@@ -223,23 +292,23 @@ async fn cancel_conversation(
 }
 
 #[tauri::command]
-async fn handoff_conversation_to_native(
+async fn rename_conversation(
     app: tauri::AppHandle,
     id: u64,
-    generation: u64,
+    title: String,
 ) -> Result<serde_json::Value, String> {
-    maitty_desktop_client::handoff_conversation_to_native(id, generation, daemon_executable(&app)?)
+    maitty_desktop_client::rename_conversation(id, title, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
 
 #[tauri::command]
-async fn handoff_conversation_to_chat(
+async fn archive_conversation(
     app: tauri::AppHandle,
     id: u64,
-    generation: u64,
+    archived: bool,
 ) -> Result<serde_json::Value, String> {
-    maitty_desktop_client::handoff_conversation_to_chat(id, generation, daemon_executable(&app)?)
+    maitty_desktop_client::archive_conversation(id, archived, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -308,12 +377,19 @@ pub fn run() {
             terminal_replay,
             send_terminal_input,
             resize_terminal,
+            pane_terminal_screen,
+            pane_terminal_replay,
+            pane_terminal_input,
+            pane_terminal_resize,
+            start_terminal_session,
+            rename_terminal_session,
+            close_terminal_session,
             send_conversation,
             approve_conversation,
             answer_conversation_input,
             cancel_conversation,
-            handoff_conversation_to_native,
-            handoff_conversation_to_chat,
+            rename_conversation,
+            archive_conversation,
             resume_codex_conversation,
             create_conversation,
             codex_executable_path,

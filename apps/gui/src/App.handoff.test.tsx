@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,8 +11,6 @@ const daemon = vi.hoisted(() => ({
   cancelTurn: vi.fn(),
   createConversation: vi.fn(),
   classifySubmissionFailure: vi.fn(),
-  handoffToChat: vi.fn(),
-  handoffToNative: vi.fn(),
   loadConversationDiff: vi.fn(),
   loadConversationFile: vi.fn(),
   loadConversationFiles: vi.fn(),
@@ -23,6 +21,7 @@ const daemon = vi.hoisted(() => ({
   loadMessages: vi.fn(),
   restartMismatchedDaemon: vi.fn(),
   resumeConversation: vi.fn(),
+  startTerminalSession: vi.fn(),
   submitMessage: vi.fn(),
 }))
 
@@ -65,15 +64,12 @@ const structuredConversation: Conversation = {
   hasDiff: false,
 }
 
-describe('desktop chat and terminal handoff', () => {
+describe('desktop chat and terminal sessions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.localStorage.clear()
     daemon.classifySubmissionFailure.mockReturnValue('unknown')
-    let currentConversation = structuredConversation
-    daemon.loadConversations.mockImplementation(() =>
-      Promise.resolve([currentConversation]),
-    )
+    daemon.loadConversations.mockResolvedValue([structuredConversation])
     daemon.loadCodexExecutablePath.mockResolvedValue(
       'C:\\Program Files\\Codex\\codex.exe',
     )
@@ -108,26 +104,65 @@ describe('desktop chat and terminal handoff', () => {
       { name: 'README.md', is_directory: false },
     ])
     daemon.loadConversationFile.mockResolvedValue('# Read only preview')
-    daemon.handoffToNative.mockImplementation(() => {
-      currentConversation = {
-        ...currentConversation,
+  })
+
+  it('has no switch between chat and terminal on a chat session', async () => {
+    renderDesktopApp()
+
+    await screen.findAllByText(structuredConversation.title)
+    expect(screen.queryByRole('group', { name: 'Conversation view' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open in native terminal' })).not.toBeInTheDocument()
+  })
+
+  it('starts a terminal session, not a chat, when Terminal is chosen', async () => {
+    const user = userEvent.setup()
+    const folder = '/home/casey/projects/terminal-project'
+    folderPicker.chooseProjectFolder.mockResolvedValue(folder)
+    daemon.startTerminalSession.mockResolvedValue(undefined)
+    renderDesktopApp()
+
+    await user.keyboard('{Control>}n{/Control}')
+    await user.click(
+      screen.getByRole('button', { name: 'Browse for project folder' }),
+    )
+    await screen.findByDisplayValue(folder)
+    await user.click(
+      within(screen.getByRole('group', { name: 'Session type' })).getByRole(
+        'button',
+        { name: /^Terminal/ },
+      ),
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Start terminal session' }),
+    )
+
+    await waitFor(() => {
+      expect(daemon.startTerminalSession).toHaveBeenCalledWith(folder, 'Codex')
+    })
+    expect(daemon.createConversation).not.toHaveBeenCalled()
+  })
+
+  it('shows a terminal session as a terminal with no Changes button', async () => {
+    daemon.loadConversations.mockResolvedValue([
+      {
+        ...structuredConversation,
+        id: 't9',
+        generation: 0,
+        kind: 'terminal',
         execution: 'Native',
-        nativePane: 43,
-      }
-      return Promise.resolve()
-    })
-    daemon.handoffToChat.mockImplementation(() => {
-      currentConversation = {
-        ...currentConversation,
-        execution: 'Structured',
-        nativePane: null,
-      }
-      return Promise.resolve()
-    })
+        nativePane: 9,
+      },
+    ])
+    renderDesktopApp()
+
+    expect(
+      await screen.findByRole('region', { name: 'Native Codex terminal' }),
+    ).toHaveTextContent('Pane 9')
+    expect(screen.queryByRole('button', { name: /Review/ })).not.toBeInTheDocument()
+    expect(daemon.loadMessages).not.toHaveBeenCalled()
   })
 
   it('keeps Claude identified when its native terminal is open', async () => {
-    const user = userEvent.setup()
     const claudeConversation: Conversation = {
       ...structuredConversation,
       provider: 'Claude',
@@ -136,8 +171,6 @@ describe('desktop chat and terminal handoff', () => {
     }
     daemon.loadConversations.mockResolvedValue([claudeConversation])
     renderDesktopApp()
-
-    await user.click(await screen.findByRole('button', { name: 'Show terminal' }))
 
     expect(await screen.findByRole('region', { name: 'Native Claude terminal' })).toHaveTextContent('Pane 43')
   })
@@ -526,151 +559,6 @@ describe('desktop chat and terminal handoff', () => {
     ).toBeInTheDocument()
   })
 
-  it('hands the same conversation to the native terminal and back to chat', async () => {
-    const user = userEvent.setup()
-    renderDesktopApp()
-
-    await user.click(
-      await screen.findByRole('button', { name: 'Open in native terminal' }),
-    )
-    await waitFor(() => {
-      expect(daemon.handoffToNative).toHaveBeenCalledWith(
-        structuredConversation,
-      )
-    })
-    expect(
-      await screen.findByRole('region', { name: 'Native Codex terminal' }),
-    ).toHaveTextContent('Pane 43')
-    expect(
-      screen.queryByRole('textbox', { name: 'Message Codex' }),
-    ).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Return to chat' }))
-
-    await waitFor(() => {
-      expect(daemon.handoffToChat).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: '42',
-          generation: 7,
-          execution: 'Native',
-        }),
-      )
-    })
-    expect(
-      await screen.findByRole('textbox', { name: 'Message Codex' }),
-    ).toBeInTheDocument()
-  })
-
-  it('explains why native handoff must wait while the conversation is working', async () => {
-    const user = userEvent.setup()
-    daemon.loadConversations.mockResolvedValue([
-      { ...structuredConversation, status: 'working' },
-    ])
-    renderDesktopApp()
-
-    const openTerminal = await screen.findByRole('button', {
-      name: 'Open in native terminal',
-    })
-    expect(openTerminal).toBeEnabled()
-    await user.click(openTerminal)
-    expect(
-      await screen.findByText(
-        'Codex is still working in Chat. Let the current turn finish before opening Terminal.',
-      ),
-    ).toBeInTheDocument()
-    expect(daemon.handoffToNative).not.toHaveBeenCalled()
-  })
-
-  it('explains why quick-switcher terminal handoff cannot run while disconnected', async () => {
-    const user = userEvent.setup()
-    daemon.loadConversations.mockRejectedValue(new Error('daemon unavailable'))
-    renderDesktopApp([structuredConversation])
-
-    await screen.findByRole('status', { name: 'Daemon disconnected' })
-    await user.keyboard('{Control>}k{/Control}')
-    await user.type(
-      screen.getByRole('textbox', { name: 'Search actions and sessions' }),
-      'Example conversation',
-    )
-    await user.keyboard('{ArrowDown}')
-    await user.keyboard('{Control>}{Enter}{/Control}')
-
-    expect(
-      await screen.findByText(
-        'Reconnect to Maitty before opening the native terminal.',
-      ),
-    ).toBeInTheDocument()
-    expect(daemon.handoffToNative).not.toHaveBeenCalled()
-  })
-
-  it('asks the daemon to reconcile native history before returning to chat', async () => {
-    const user = userEvent.setup()
-    const nativeConversation = {
-      ...structuredConversation,
-      execution: 'Native' as const,
-      nativePane: 43,
-    }
-    daemon.loadConversations.mockResolvedValue([nativeConversation])
-    daemon.loadMessages.mockResolvedValueOnce({
-      generation: 7,
-      receipt: null,
-      messages: [],
-      nextOperation: 1,
-      error: null,
-      cancelling: false,
-      completeness: { Incomplete: 'MissingPages' },
-    })
-    daemon.handoffToChat.mockResolvedValue(undefined)
-    renderDesktopApp()
-
-    await user.click(
-      await screen.findByRole('button', { name: 'Show terminal' }),
-    )
-    expect(
-      await screen.findByText(
-        /Maitty will reconcile the exact Codex session before chat resumes/,
-      ),
-    ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Return to chat' })).toBeEnabled()
-    expect(daemon.handoffToChat).not.toHaveBeenCalled()
-
-    await user.click(screen.getByRole('button', { name: 'Return to chat' }))
-    await waitFor(() => {
-      expect(daemon.handoffToChat).toHaveBeenCalledWith(nativeConversation)
-    })
-  })
-
-  it('shows Chat as soon as the handoff finishes without waiting for history refresh', async () => {
-    const user = userEvent.setup()
-    const nativeConversation = {
-      ...structuredConversation,
-      execution: 'Native' as const,
-      nativePane: 43,
-    }
-    const completeHistory = {
-      generation: 7,
-      receipt: null,
-      messages: [],
-      nextOperation: 1,
-      error: null,
-      cancelling: false,
-      completeness: 'Complete' as const,
-    }
-    let finishHistoryRefresh: ((history: typeof completeHistory) => void) | undefined
-    daemon.loadConversations.mockResolvedValue([nativeConversation])
-    daemon.loadMessages
-      .mockResolvedValueOnce(completeHistory)
-      .mockImplementation(() => new Promise((resolve) => { finishHistoryRefresh = resolve }))
-    renderDesktopApp()
-
-    await user.click(await screen.findByRole('button', { name: 'Show terminal' }))
-    await user.click(await screen.findByRole('button', { name: 'Return to chat' }))
-
-    expect(await screen.findByRole('textbox', { name: 'Message Codex' })).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'Native Codex terminal' })).not.toBeInTheDocument()
-    finishHistoryRefresh?.(completeHistory)
-  })
-
   it('renders assistant code blocks and tool output as distinct code surfaces', async () => {
     const user = userEvent.setup()
     daemon.loadMessages.mockResolvedValue({
@@ -706,108 +594,6 @@ describe('desktop chat and terminal handoff', () => {
 
     await user.click(screen.getByRole('button', { name: /Codex · Run command · Completed/ }))
     expect(screen.getByText('GUI_TOOL_OK').closest('pre')).toBeInTheDocument()
-  })
-
-  it('offers a safe retry after native process cleanup requires recovery', async () => {
-    const user = userEvent.setup()
-    const nativeConversation = {
-      ...structuredConversation,
-      execution: 'Native' as const,
-      status: 'recovery' as const,
-      nativePane: 43,
-    }
-    daemon.loadConversations.mockResolvedValue([nativeConversation])
-    renderDesktopApp()
-
-    expect(
-      await screen.findByText(/Native process cleanup was not confirmed/),
-    ).toBeInTheDocument()
-    await user.click(
-      screen.getByRole('button', { name: 'Retry return to chat' }),
-    )
-
-    await waitFor(() => {
-      expect(daemon.handoffToChat).toHaveBeenCalledWith(nativeConversation)
-    })
-    expect(
-      await screen.findByRole('textbox', { name: 'Message Codex' }),
-    ).toBeInTheDocument()
-  })
-
-  it('does not offer a terminal retry when recovery has no live native pane', async () => {
-    const nativeConversation = {
-      ...structuredConversation,
-      execution: 'Native' as const,
-      status: 'recovery' as const,
-      nativePane: null,
-    }
-    daemon.loadConversations.mockResolvedValue([nativeConversation])
-    renderDesktopApp()
-
-    expect(
-      await screen.findByText(
-        /Resume it in Maitty’s terminal interface/,
-      ),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: 'Retry return to chat' }),
-    ).not.toBeInTheDocument()
-  })
-
-  it('returns to the chat recovery guidance when the native pane is gone', async () => {
-    const user = userEvent.setup()
-    const nativeConversation = {
-      ...structuredConversation,
-      execution: 'Native' as const,
-      status: 'recovery' as const,
-      nativePane: null,
-    }
-    daemon.loadConversations.mockResolvedValue([nativeConversation])
-    renderDesktopApp()
-
-    await user.click(await screen.findByRole('button', { name: 'Show terminal' }))
-    expect(await screen.findByRole('region', { name: 'Native Codex terminal' })).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Return to chat' }))
-
-    expect(await screen.findByText('This native session needs recovery. Resume it in Maitty’s terminal interface; chat stays locked until its history can be checked.')).toBeInTheDocument()
-    expect(daemon.handoffToChat).not.toHaveBeenCalled()
-  })
-
-  it('explains a busy native turn in the terminal instead of a toast', async () => {
-    const user = userEvent.setup()
-    const nativeConversation = {
-      ...structuredConversation,
-      execution: 'Native' as const,
-      status: 'working' as const,
-      nativePane: 43,
-    }
-    daemon.loadConversations.mockResolvedValue([nativeConversation])
-    renderDesktopApp()
-
-    await user.click(await screen.findByRole('button', { name: 'Show terminal' }))
-    await user.click(await screen.findByRole('button', { name: 'Return to chat' }))
-
-    expect(await screen.findByText('Codex is still working in the native terminal. Finish or stop that turn there, then choose Chat.')).toBeInTheDocument()
-    expect(daemon.handoffToChat).not.toHaveBeenCalled()
-  })
-
-  it('disables repeated switching while native cleanup is in progress', async () => {
-    const user = userEvent.setup()
-    const nativeConversation = {
-      ...structuredConversation,
-      execution: 'Native' as const,
-      nativePane: 43,
-    }
-    daemon.loadConversations.mockResolvedValue([nativeConversation])
-    daemon.handoffToChat.mockReturnValue(new Promise(() => {}))
-    renderDesktopApp()
-
-    await user.click(await screen.findByRole('button', { name: 'Show terminal' }))
-    await user.click(await screen.findByRole('button', { name: 'Return to chat' }))
-
-    expect(await screen.findByRole('button', { name: 'Returning to chat' })).toBeDisabled()
-    expect(screen.getByText('Returning…')).toBeInTheDocument()
   })
 
   it('re-enables the composer after the daemon marks a stopped turn interrupted', async () => {
@@ -1059,11 +845,10 @@ describe('desktop chat and terminal handoff', () => {
   })
 
   it('passes Ctrl+backslash through while the native terminal has focus', async () => {
-    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([
+      { ...structuredConversation, execution: 'Native', nativePane: 43 },
+    ])
     renderDesktopApp()
-    await user.click(
-      await screen.findByRole('button', { name: 'Open in native terminal' }),
-    )
     const terminal = await screen.findByRole('region', {
       name: 'Native Codex terminal',
     })

@@ -4,8 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
 import { TerminalView } from './TerminalView'
 
-const { handoffToNative, loadTerminalReplay, loadTerminalScreen, resizeTerminal, sendTerminalInput, terminalState, toastError } = vi.hoisted(() => ({
-  handoffToNative: vi.fn<(conversation: Conversation) => Promise<void>>(),
+const { loadTerminalReplay, loadTerminalScreen, resizeTerminal, sendTerminalInput, terminalState, toastError } = vi.hoisted(() => ({
   loadTerminalScreen: vi.fn<(conversation: Pick<Conversation, 'id'> & { generation: number }) => Promise<string>>(),
   loadTerminalReplay: vi.fn<(conversation: Pick<Conversation, 'id'> & { generation: number }) => Promise<Uint8Array>>(),
   resizeTerminal: vi.fn<(conversation: Pick<Conversation, 'id'> & { generation: number }, cols: number, rows: number) => Promise<void>>(),
@@ -25,7 +24,6 @@ vi.mock('sonner', () => ({ toast: { error: toastError } }))
 
 vi.mock('@/api/daemon', () => ({
   isDesktop: () => true,
-  handoffToNative,
   loadTerminalReplay,
   loadTerminalScreen,
   resizeTerminal,
@@ -144,11 +142,11 @@ describe('native terminal view', () => {
     expect(toastError).not.toHaveBeenCalled()
   })
 
-  it('leaves the chat handoff action in the conversation header', async () => {
-    renderTerminal()
+  it('says a chat session has no terminal instead of offering to switch it', () => {
+    renderTerminal({ ...conversation, execution: 'Structured', nativePane: null })
 
-    expect(await screen.findByRole('region', { name: 'Native Codex terminal' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Continue in chat' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'This is a chat session' })).toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
   it('explains that a native terminal needs recovery when no pane is attached', () => {
