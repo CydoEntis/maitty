@@ -72,6 +72,9 @@ pub struct SavedPane {
     /// The pane that started it, by its id when this was saved (a key of some tab's `panes`).
     #[serde(default)]
     pub started_by: Option<TermId>,
+    /// The app that started it: only that app may use it after a restart (ADR 0045).
+    #[serde(default)]
+    pub owner: crate::protocol::Surface,
     /// The session whose tab it is in, by its id when this was saved; none: its own.
     #[serde(default)]
     pub tab_of: Option<TermId>,
@@ -863,6 +866,20 @@ mod tests {
             serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#)
                 .expect("a pane saved before checks");
         assert_eq!((old.checks, old.checks_overridden), (vec![], vec![]));
+    }
+
+    #[test]
+    fn a_pane_keeps_the_app_that_started_it_and_older_panes_are_terminal() {
+        let pane = SavedPane {
+            owner: crate::protocol::Surface::Desktop,
+            ..Default::default()
+        };
+        let back: SavedPane = serde_json::from_str(&serde_json::to_string(&pane).unwrap()).unwrap();
+        assert_eq!(back.owner, crate::protocol::Surface::Desktop);
+        let old: SavedPane =
+            serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#)
+                .expect("a pane saved before owners");
+        assert_eq!(old.owner, crate::protocol::Surface::Terminal);
     }
 
     #[test]

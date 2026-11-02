@@ -74,6 +74,11 @@ impl Daemon {
                 let by = self.starting(client, &helpers::task_label(cmd.as_deref(), None))?;
                 let term = self.spawn(cmd.as_deref(), &cwd, cols, rows)?;
                 self.started(term, by);
+                // The app that asked for it owns it: only that app may use this session.
+                let owner = self.surface_of(client);
+                if let Some(t) = self.terms.get_mut(&term) {
+                    t.owner = owner;
+                }
                 let id = self.next();
                 let tab = self.next();
                 let color = self.free_color();
@@ -100,12 +105,7 @@ impl Daemon {
                 self.poll_git_soon();
             }
             Command::CloseWorkspace { ws } => {
-                let terms: Vec<TermId> = self
-                    .workspaces
-                    .iter()
-                    .filter(|w| w.id == ws)
-                    .flat_map(|w| w.tabs.iter().flat_map(|t| t.layout.leaves()))
-                    .collect();
+                let terms = self.workspace_panes(ws);
                 let tops = self.worktrees_of(&terms);
                 for t in terms {
                     self.close_term(t);

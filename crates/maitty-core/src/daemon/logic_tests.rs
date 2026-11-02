@@ -1374,7 +1374,12 @@ fn from_pane(
     token: &str,
 ) -> mpsc::Receiver<ServerMsg> {
     let (tx, rx) = mpsc::channel(64);
-    d.handle(Ev::Connected(client, tx, false));
+    d.handle(Ev::Connected(
+        client,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     d.handle(Ev::From(client, term, token.into()));
     rx
 }
@@ -2089,7 +2094,12 @@ fn only_a_pane_shell_asks_for_an_agent_worktree() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let (tx, mut crx) = mpsc::channel(64);
-    d.handle(Ev::Connected(1, tx, false));
+    d.handle(Ev::Connected(
+        1,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     d.handle(Ev::Msg(
         1,
         ClientMsg::Command(Command::AgentWorktree {
@@ -2102,7 +2112,12 @@ fn only_a_pane_shell_asks_for_an_agent_worktree() {
     );
     d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
     let (tx, mut crx) = mpsc::channel(64);
-    d.handle(Ev::Connected(2, tx, false));
+    d.handle(Ev::Connected(
+        2,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&t].token.clone();
     d.handle(Ev::From(2, t, token));
     d.handle(Ev::Msg(
@@ -2118,7 +2133,12 @@ fn only_a_pane_shell_asks_for_an_agent_worktree() {
     // Another pane's id with the wrong secret is not that pane: nothing is made for it.
     d.terms.get_mut(&t).unwrap().agent = None;
     let (tx, mut crx) = mpsc::channel(64);
-    d.handle(Ev::Connected(3, tx, false));
+    d.handle(Ev::Connected(
+        3,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     d.handle(Ev::From(3, t, "not-the-secret".into()));
     d.handle(Ev::Msg(
         3,
@@ -2320,7 +2340,12 @@ fn closing_the_last_pane_keeps_an_open_window() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let (tx, _crx) = mpsc::channel(64);
-    d.handle(Ev::Connected(1, tx, true));
+    d.handle(Ev::Connected(
+        1,
+        tx,
+        true,
+        crate::protocol::Surface::Terminal,
+    ));
     d.close_term(t);
     assert!(
         !d.should_exit(),
@@ -2597,7 +2622,12 @@ fn an_agent_asks_you_and_gets_your_answer() {
     let t = pane(&mut d);
     // The agent's `<app> ask-human` is a client waiting for the reply.
     let (tx, mut asker) = mpsc::channel(8);
-    d.handle(Ev::Connected(5, tx, false));
+    d.handle(Ev::Connected(
+        5,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let ask = Command::AskHuman {
         term: t,
         text: "Deploy to staging?".into(),
@@ -2629,7 +2659,12 @@ fn a_pane_does_what_its_grants_allow() {
     let (a, b) = (pane(&mut d), pane(&mut d));
     // An agent in pane a, with a's secret.
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     let err =
@@ -3267,7 +3302,12 @@ fn the_snapshot_carries_a_check_summary_and_a_query_returns_its_output() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     d.message(
         7,
         ClientMsg::Query(Query::CheckOutput {
@@ -3308,7 +3348,12 @@ fn a_pane_may_not_read_another_panes_check_output_without_the_read_grant() {
     let (a, b) = (pane(&mut d), pane(&mut d));
     d.terms.get_mut(&b).unwrap().checks.points = vec![failed_check("secret-ish output").into()];
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.terms.get_mut(&a).unwrap().grants = Some(Vec::new());
@@ -4421,7 +4466,12 @@ fn a_read_only_pane_may_not_rerun_or_override_another_panes_check() {
     let (a, b) = (pane(&mut d), pane(&mut d));
     with_check(&mut d, b, CheckState::Failed, "FAIL");
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.terms.get_mut(&a).unwrap().grants = Some(vec!["read".into()]);
@@ -4470,7 +4520,12 @@ fn a_pane_may_not_override_its_own_check() {
     let a = pane(&mut d);
     with_check(&mut d, a, CheckState::Failed, "FAIL");
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.message(
@@ -4502,7 +4557,12 @@ fn only_you_answer_a_repo_check_approval() {
     );
     let kept = d.approvals.clone();
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.terms.get_mut(&a).unwrap().grants = Some(
@@ -4586,7 +4646,12 @@ fn overdue(d: &mut Daemon, t: TermId) {
 
 fn viewer(d: &mut Daemon) -> mpsc::Receiver<ServerMsg> {
     let (tx, mut rx) = mpsc::channel(64);
-    d.handle(Ev::Connected(40, tx, true));
+    d.handle(Ev::Connected(
+        40,
+        tx,
+        true,
+        crate::protocol::Surface::Terminal,
+    ));
     while rx.try_recv().is_ok() {}
     rx
 }
@@ -5352,7 +5417,12 @@ fn an_override_by_name_acts_on_that_checkpoint_and_says_who() {
     d.terms.get_mut(&reviewer).unwrap().label = "reviewer".into();
     d.terms.get_mut(&reviewer).unwrap().grants = Some(vec!["write".into()]);
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&reviewer].token.clone();
     d.handle(Ev::From(7, reviewer, token));
     d.message(
@@ -6681,4 +6751,94 @@ fn terminal_requests_with_nothing_to_do_or_nowhere_to_go_are_refused() {
     }
     assert!(d.pane_screen(nowhere).is_err());
     assert!(d.pane_replay(nowhere).is_err());
+}
+
+#[test]
+fn a_terminal_session_belongs_to_the_app_that_started_it() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).expect("the pane").owner = Surface::Desktop;
+    let (tx, _) = mpsc::channel::<ServerMsg>(8);
+    d.clients.insert(
+        1,
+        Client {
+            tx,
+            attach: false,
+            surface: Surface::Terminal,
+            from: None,
+            structured: None,
+            rejected: false,
+            behind: std::cell::Cell::new(false),
+        },
+    );
+    assert!(
+        d.may_use_terminal(1, t).is_err(),
+        "the terminal app cannot use a desktop session"
+    );
+    d.clients.get_mut(&1).expect("the client").surface = Surface::Desktop;
+    assert!(
+        d.may_use_terminal(1, t).is_ok(),
+        "the app that started it can use it"
+    );
+    d.clients.get_mut(&1).expect("the client").from = Some(t);
+    d.clients.get_mut(&1).expect("the client").surface = Surface::Terminal;
+    assert!(
+        d.may_use_terminal(1, t).is_ok(),
+        "an agent acting from a pane goes by the pane's own grants"
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn each_app_is_shown_only_its_own_terminal_sessions() {
+    let (mut d, _rx) = daemon();
+    let terminal = pane(&mut d);
+    let desktop = pane(&mut d);
+    d.terms.get_mut(&desktop).expect("the pane").owner = Surface::Desktop;
+    let terminal_view = d.snapshot_for(Surface::Terminal);
+    let desktop_view = d.snapshot_for(Surface::Desktop);
+    assert!(terminal_view.terms.contains_key(&terminal));
+    assert!(!terminal_view.terms.contains_key(&desktop));
+    assert!(desktop_view.terms.contains_key(&desktop));
+    assert!(!desktop_view.terms.contains_key(&terminal));
+    close(&mut d, &[terminal, desktop]);
+}
+
+#[test]
+fn the_terminal_app_cannot_close_a_desktop_tab_or_workspace() {
+    let (mut d, _rx) = daemon();
+    d.clients.insert(1, test_client(Surface::Desktop));
+    d.clients.insert(2, test_client(Surface::Terminal));
+    d.command(
+        1,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let ws = d.workspaces[0].id;
+    let tab = d.workspaces[0].tabs[0].id;
+    let term = d.workspaces[0].tabs[0].focus;
+    assert_eq!(d.terms[&term].owner, Surface::Desktop);
+
+    assert!(d.may_command(2, &Command::CloseTab { ws, tab }).is_err());
+    assert!(d.may_command(2, &Command::CloseWorkspace { ws }).is_err());
+    assert!(d.may_command(1, &Command::CloseTab { ws, tab }).is_ok());
+    assert!(d.may_command(1, &Command::CloseWorkspace { ws }).is_ok());
+    close(&mut d, &[term]);
+}
+
+fn test_client(surface: Surface) -> Client {
+    let (tx, _) = mpsc::channel::<ServerMsg>(8);
+    Client {
+        tx,
+        attach: false,
+        surface,
+        from: None,
+        structured: None,
+        rejected: false,
+        behind: std::cell::Cell::new(false),
+    }
 }

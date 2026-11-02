@@ -408,35 +408,6 @@ pub async fn pane_terminal_replay(term: u32, daemon_executable: PathBuf) -> Resu
     }
 }
 
-/// Type into a terminal session and return its screen afterwards.
-pub async fn pane_terminal_input(
-    term: u32,
-    data: Vec<u8>,
-    daemon_executable: PathBuf,
-) -> Result<String> {
-    anyhow::ensure!(
-        !data.is_empty() && data.len() <= MAX_TERMINAL_INPUT_BYTES,
-        "Terminal input must contain between 1 and {MAX_TERMINAL_INPUT_BYTES} bytes"
-    );
-    let (mut reader, mut writer) = ipc::open_or_spawn_for_user(&daemon_executable)
-        .await
-        .context("connecting to the local daemon")?;
-    ipc::send_message(
-        &mut writer,
-        &ClientMsg::Command(Command::TerminalInput { term, data }),
-    )
-    .await?;
-    match receive_reply(&mut reader).await? {
-        Reply::Ok => {}
-        _ => bail!("daemon returned an unexpected terminal input reply"),
-    }
-    ipc::send_message(&mut writer, &ClientMsg::Query(Query::TerminalScreen { term })).await?;
-    match receive_reply(&mut reader).await? {
-        Reply::Text(screen) => Ok(screen),
-        _ => bail!("daemon returned an unexpected terminal screen reply"),
-    }
-}
-
 pub async fn pane_terminal_resize(
     term: u32,
     cols: u16,
@@ -451,6 +422,64 @@ pub async fn pane_terminal_resize(
     match reply {
         Reply::Ok => Ok(()),
         _ => bail!("daemon returned an unexpected terminal resize reply"),
+    }
+}
+
+/// A live stream of the terminal panes this app owns: each pane's replay, then its output as
+/// it happens. Pushed by the daemon, so the window never polls (ADR 0045).
+pub struct TerminalStream {
+    reader: ipc::Reader,
+}
+
+impl TerminalStream {
+    /// The next message, or `None` when the daemon closed the connection.
+    pub async fn next(&mut self) -> Result<Option<maitty_shared::protocol::ServerMsg>> {
+        ipc::receive_server(&mut self.reader).await
+    }
+}
+
+/// The other half of the stream's connection: what the user types goes back over it.
+pub struct TerminalInput {
+    writer: ipc::Writer,
+}
+
+impl TerminalInput {
+    pub async fn send(&mut self, term: u32, data: Vec<u8>) -> Result<()> {
+        anyhow::ensure!(
+            !data.is_empty() && data.len() <= MAX_TERMINAL_INPUT_BYTES,
+            "Terminal input must contain between 1 and {MAX_TERMINAL_INPUT_BYTES} bytes"
+        );
+        ipc::send_message(&mut self.writer, &ClientMsg::Input { term, data }).await
+    }
+}
+
+pub async fn open_terminal_stream(
+    daemon_executable: PathBuf,
+) -> Result<(TerminalStream, TerminalInput)> {
+    let (reader, writer) = ipc::open_stream_for_user(&daemon_executable)
+        .await
+        .context("connecting to the local daemon")?;
+    Ok((TerminalStream { reader }, TerminalInput { writer }))
+}
+
+/// Start a plain shell in a folder. The user types what they want to run in it (ADR 0046).
+pub async fn start_shell_session(cwd: PathBuf, daemon_executable: PathBuf) -> Result<Value> {
+    let cwd = cwd.canonicalize().context("resolving the start folder")?;
+    if !cwd.is_dir() {
+        bail!("the start folder is not a directory");
+    }
+    let reply = request(
+        ClientMsg::Command(Command::NewWorkspace {
+            cwd: Some(cwd),
+            name: None,
+            cmd: None,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected shell session reply"),
     }
 }
 

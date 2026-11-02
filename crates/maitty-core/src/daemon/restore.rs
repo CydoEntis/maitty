@@ -263,6 +263,7 @@ impl Daemon {
             model: term.model.clone(),
             label: term.label.clone(),
             started_by: term.started_by,
+            owner: term.owner,
             tab_of: term.tab_of,
             queue: term.queue.iter().cloned().collect(),
             account: term.account.clone(),
@@ -455,6 +456,7 @@ impl Daemon {
                                 t.first_prompt = pane.name.clone();
                                 t.model = pane.model.clone();
                                 t.label = pane.label.clone();
+                                t.owner = pane.owner;
                                 t.queue = pane.queue.iter().cloned().collect();
                                 t.restore_checks(&check_dir, old, &pane);
                                 let now = term::unix_now();

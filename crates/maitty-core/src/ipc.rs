@@ -338,6 +338,7 @@ pub async fn open(attach: bool) -> Result<(Reader, Writer)> {
             attach,
             from,
             structured,
+            surface: protocol::Surface::Terminal,
         },
     )
     .await?;

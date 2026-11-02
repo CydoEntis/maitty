@@ -1,6 +1,8 @@
 mod project_files;
 
 use std::path::PathBuf;
+mod terminal_stream;
+
 use tauri::Manager;
 
 fn daemon_executable(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -74,6 +76,15 @@ async fn conversation_diff(
     maitty_desktop_client::conversation_diff(id, generation, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
+}
+
+/// Where a new session starts when no folder is chosen: your home folder, as the terminal app does.
+#[tauri::command]
+fn default_session_folder(app: tauri::AppHandle) -> Result<String, String> {
+    app.path()
+        .home_dir()
+        .map(|home| home.display().to_string())
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -169,17 +180,6 @@ async fn pane_terminal_replay(app: tauri::AppHandle, term: u32) -> Result<Vec<u8
 }
 
 #[tauri::command]
-async fn pane_terminal_input(
-    app: tauri::AppHandle,
-    term: u32,
-    data: Vec<u8>,
-) -> Result<String, String> {
-    maitty_desktop_client::pane_terminal_input(term, data, daemon_executable(&app)?)
-        .await
-        .map_err(|error| format!("{error:#}"))
-}
-
-#[tauri::command]
 async fn pane_terminal_resize(
     app: tauri::AppHandle,
     term: u32,
@@ -187,6 +187,16 @@ async fn pane_terminal_resize(
     rows: u16,
 ) -> Result<(), String> {
     maitty_desktop_client::pane_terminal_resize(term, cols, rows, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn start_shell_session(
+    app: tauri::AppHandle,
+    cwd: PathBuf,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::start_shell_session(cwd, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -385,6 +395,12 @@ async fn restart_mismatched_daemon(expected_protocol: u32) -> Result<(), String>
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(terminal_stream::TerminalHistory::default())
+        .manage(terminal_stream::TerminalKeys::default())
+        .setup(|app| {
+            terminal_stream::start(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             list_sessions,
             read_conversation,
@@ -392,15 +408,18 @@ pub fn run() {
             conversation_files,
             conversation_file,
             suggest_project_folders,
+            default_session_folder,
+            terminal_stream::terminal_history,
             terminal_screen,
             terminal_replay,
             send_terminal_input,
             resize_terminal,
             pane_terminal_screen,
             pane_terminal_replay,
-            pane_terminal_input,
+            terminal_stream::terminal_input,
             pane_terminal_resize,
             start_terminal_session,
+            start_shell_session,
             rename_terminal_session,
             close_terminal_session,
             send_conversation,

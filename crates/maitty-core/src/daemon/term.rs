@@ -3,7 +3,7 @@
 
 use super::Ev;
 use crate::config::Config;
-use crate::protocol::{Status, SubagentActivity, TermId};
+use crate::protocol::{Status, SubagentActivity, Surface, TermId};
 use anyhow::{Context, Result};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::collections::VecDeque;
@@ -104,6 +104,8 @@ pub struct Term {
     pub remote: Option<String>,
     /// A floating pane (`<app> popup`), in no workspace.
     pub popup: bool,
+    /// The app that started it. Only that app may list, type into or resize it (ADR 0045).
+    pub owner: Surface,
     pub agent: Option<String>,
     pub status: Status,
     /// When the status last changed (unix seconds), for "working 3m".
@@ -757,6 +759,7 @@ impl Term {
             process,
             remote: None,
             popup: false,
+            owner: Surface::Terminal,
             agent: None,
             status: Status::None,
             status_since: unix_now(),

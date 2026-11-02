@@ -226,6 +226,8 @@ pub fn conversation_diff(dir: &Path) -> Result<crate::conversation::Conversation
                 "diff",
                 "--no-ext-diff",
                 "--no-color",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
                 "--unified=3",
                 "HEAD",
                 "--",
@@ -238,6 +240,8 @@ pub fn conversation_diff(dir: &Path) -> Result<crate::conversation::Conversation
                 "diff",
                 "--no-ext-diff",
                 "--no-color",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
                 "--unified=3",
                 "--cached",
                 "--",
@@ -245,7 +249,15 @@ pub fn conversation_diff(dir: &Path) -> Result<crate::conversation::Conversation
         )?;
         let unstaged = git(
             dir,
-            &["diff", "--no-ext-diff", "--no-color", "--unified=3", "--"],
+            &[
+                "diff",
+                "--no-ext-diff",
+                "--no-color",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
+                "--unified=3",
+                "--",
+            ],
         )?;
         format!("{staged}{unstaged}")
     };
@@ -395,6 +407,8 @@ fn run_untracked_diff(dir: &Path, path: &str) -> Result<Vec<u8>> {
             "--no-index",
             "--no-ext-diff",
             "--no-color",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
             "--unified=3",
             "--",
             "/dev/null",
@@ -543,6 +557,11 @@ mod tests {
         let repository = crate::daemon::persist::scratch_dir();
         std::fs::create_dir_all(repository.path()).expect("repository directory");
         git_at(repository.path(), &["init", "--quiet"]);
+        // Many users set diff.mnemonicPrefix (c/ and w/ instead of a/ and b/); the diff must not depend on it.
+        git_at(
+            repository.path(),
+            &["config", "diff.mnemonicPrefix", "true"],
+        );
         git_at(repository.path(), &["config", "user.name", "Test User"]);
         git_at(
             repository.path(),

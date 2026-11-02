@@ -780,6 +780,7 @@ async fn exchange_claim(
             attach: false,
             from,
             structured,
+            surface: crate::protocol::Surface::Terminal,
         },
     )
     .await
@@ -1144,7 +1145,7 @@ async fn ending_a_chat_stops_its_agent_and_leaves_it_stopped_not_failed() {
         assert!(session.daemon.conversation_runtimes.owns(id));
 
         let (client, _replies) = mpsc::channel(8);
-        session.daemon.handle(Ev::Connected(340, client, false));
+        session.daemon.handle(Ev::Connected(340, client, false, crate::protocol::Surface::Terminal));
         session.daemon.conversation_end(340, id, generation).unwrap();
         tokio::time::timeout(Duration::from_secs(20), async {
             while session.daemon.conversation_runtimes.owns(id) {
@@ -2231,7 +2232,7 @@ async fn structured_read_acknowledgement_waits_for_durable_receipt_barrier() {
         let mut s = conversation_fixture("conversation").await;
         let outcome=AssertUnwindSafe(async {
             let (id,generation)=create(&mut s).await;
-            let (client,mut replies)=mpsc::channel(8);s.daemon.handle(Ev::Connected(250,client,false));
+            let (client,mut replies)=mpsc::channel(8);s.daemon.handle(Ev::Connected(250,client,false, crate::protocol::Surface::Terminal));
             s.daemon.conversation_send(250,id,generation,1,"Synthetic delayed ack".into()).unwrap();
             loop {
                 let event=tokio::time::timeout(Duration::from_secs(20),s.events.recv()).await.unwrap().unwrap();
@@ -2460,7 +2461,7 @@ async fn structured_chat_refuses_native_conversations_until_history_is_reconcile
         conversation.state = crate::conversation::RecoveryState::RecoveryRequired;
         session.daemon.conversations.push(conversation);
         let (client, _) = mpsc::channel(8);
-        session.daemon.handle(Ev::Connected(326, client, false));
+        session.daemon.handle(Ev::Connected(326, client, false, crate::protocol::Surface::Terminal));
 
         let result = session.daemon.conversation_start(
             326,
@@ -2482,7 +2483,7 @@ async fn structured_creation_never_launches_when_restore_is_disabled_during_barr
     let mut s = conversation_fixture("conversation").await;
     let outcome = AssertUnwindSafe(async {
         let (client, _) = mpsc::channel(8);
-        s.daemon.handle(Ev::Connected(140, client, false));
+        s.daemon.handle(Ev::Connected(140, client, false, crate::protocol::Surface::Terminal));
         let target = crate::conversation::StartTarget::Create(settings(&s));
         s.daemon.conversation_start(140, target).unwrap();
         let event = loop {
@@ -2537,7 +2538,7 @@ async fn structured_failed_ack_persistence_never_returns_an_acknowledged_retry()
     let mut s = conversation_fixture("conversation").await;
     let outcome=AssertUnwindSafe(async {
         let (id,generation)=create(&mut s).await;
-        let (client,mut replies)=mpsc::channel(8);s.daemon.handle(Ev::Connected(170,client,false));
+        let (client,mut replies)=mpsc::channel(8);s.daemon.handle(Ev::Connected(170,client,false, crate::protocol::Surface::Terminal));
         s.daemon.conversation_send(170,id,generation,1,"Synthetic ack fault".into()).unwrap();
         loop {
             let event=tokio::time::timeout(Duration::from_secs(20),s.events.recv()).await.unwrap().unwrap();
@@ -2618,9 +2619,9 @@ async fn structured_newer_full_commit_releases_two_matching_conversation_barrier
             other => panic!("{other:?}"),
         };
         let (first_client, mut first_replies) = mpsc::channel(8);
-        s.daemon.handle(Ev::Connected(191, first_client, false));
+        s.daemon.handle(Ev::Connected(191, first_client, false, crate::protocol::Surface::Terminal));
         let (second_client, mut second_replies) = mpsc::channel(8);
-        s.daemon.handle(Ev::Connected(192, second_client, false));
+        s.daemon.handle(Ev::Connected(192, second_client, false, crate::protocol::Surface::Terminal));
         s.daemon
             .conversation_send(191, first, generation, 1, "Synthetic first".into())
             .unwrap();
@@ -2777,7 +2778,7 @@ async fn disconnect_preserves_daemon_owned_child_and_disposal_kills_startup_desc
                 events: rx,
             } = session;
             let (client, mut messages) = mpsc::channel::<ServerMsg>(8);
-            d.handle(Ev::Connected(11, client, false));
+            d.handle(Ev::Connected(11, client, false, crate::protocol::Surface::Terminal));
             d.start_conversation(f.launch("normal")).unwrap();
             let ready = next(rx).await;
             assert!(matches!(ready.payload, Payload::Ready));
@@ -2844,8 +2845,8 @@ async fn failed_handshakes_are_visible_and_dispose_the_process_tree() {
                 } = session;
                 let (client, mut messages) = mpsc::channel(8);
                 let (unrelated, mut unrelated_messages) = mpsc::channel(8);
-                d.handle(Ev::Connected(2, unrelated, false));
-                d.handle(Ev::Connected(1, client, true));
+                d.handle(Ev::Connected(2, unrelated, false, crate::protocol::Surface::Terminal));
+                d.handle(Ev::Connected(1, client, true, crate::protocol::Surface::Terminal));
                 d.start_conversation(f.launch(mode)).unwrap();
                 let event = next(rx).await;
                 match &event.payload {

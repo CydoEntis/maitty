@@ -62,6 +62,17 @@ pub struct ConversationSummary {
     pub archived: bool,
 }
 
+/// Which app a client is. A terminal session belongs to the app that started it, and only
+/// that app may list, type into or resize it (ADR 0045). Clients that don't say are terminal
+/// clients, which is what the terminal app has always been.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Surface {
+    #[default]
+    Terminal,
+    Desktop,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum ClientMsg {
@@ -75,6 +86,8 @@ pub enum ClientMsg {
         from: Option<(TermId, String)>,
         #[serde(default)]
         structured: Option<StructuredIdentity>,
+        #[serde(default)]
+        surface: Surface,
     },
     Command(Command),
     Input {
@@ -1265,6 +1278,7 @@ mod tests {
                 attach: true,
                 from: Some((3, "00ff".into())),
                 structured: None,
+                surface: Surface::Terminal,
             },
             ClientMsg::Input {
                 term: 3,
