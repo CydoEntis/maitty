@@ -315,6 +315,8 @@ struct Daemon {
     pending_starts: Vec<crate::conversation::PendingStart>,
     conversation_operations: Vec<crate::conversation::Operation>,
     conversation_states: BTreeMap<crate::conversation::ConversationId, conversation::State>,
+    /// Conversations whose agent was stopped on purpose, so its exit is not a failure.
+    conversation_ending: std::collections::BTreeSet<crate::conversation::ConversationId>,
     conversation_requests: BTreeMap<u64, conversation::commands::Pending>,
     conversation_request_id: u64,
     conversation_barriers: BTreeMap<u64, u64>,
@@ -686,6 +688,16 @@ impl Daemon {
                 anyhow::bail!("Only a human client can cancel a structured turn")
             }
             Command::ConversationCancel { .. } => self.may(client, Grant::Write, None),
+            Command::ConversationEnd { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can end a conversation")
+            }
+            Command::ConversationEnd { .. } => self.may(client, Grant::Write, None),
             Command::ConversationHandoffToNative { .. }
                 if self
                     .clients
@@ -885,6 +897,7 @@ impl Daemon {
             pending_starts: Vec::new(),
             conversation_operations: Vec::new(),
             conversation_states: BTreeMap::new(),
+            conversation_ending: std::collections::BTreeSet::new(),
             conversation_requests: BTreeMap::new(),
             conversation_request_id: 0,
             conversation_barriers: BTreeMap::new(),

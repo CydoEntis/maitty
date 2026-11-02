@@ -362,6 +362,17 @@ impl Daemon {
                         RecoveryState::RecoveryRequired
                     };
                 }
+                // An agent stopped on purpose is not a failure: leave it stopped and idle.
+                if failure.is_none() && reaped && self.conversation_ending.remove(&id) {
+                    let state = self.conversation_states.entry(id).or_default();
+                    state.cancelling = None;
+                    state.blocked = false;
+                    state.status = Status::Idle;
+                    state.error = None;
+                    state.history_ready = false;
+                    self.conversation_history.reconnect(id)?;
+                    return Ok(());
+                }
                 let failed = failure.is_some();
                 let reason = failure.unwrap_or_else(|| "Provider runtime disconnected".into());
                 if failed {

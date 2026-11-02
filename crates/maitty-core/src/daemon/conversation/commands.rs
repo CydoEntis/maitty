@@ -994,6 +994,52 @@ impl Daemon {
         Ok(())
     }
 
+    /// Stop a chat conversation's agent on purpose. The record stays, stopped and
+    /// idle, so its history is kept; the client then hides it.
+    pub(in crate::daemon) fn conversation_end(
+        &mut self,
+        client: ClientId,
+        id: ConversationId,
+        generation: u64,
+    ) -> Result<()> {
+        if self
+            .clients
+            .get(&client)
+            .is_some_and(|owner| owner.from.is_some() || owner.structured.is_some())
+        {
+            bail!("Only a human client can end a conversation");
+        }
+        self.may(client, Grant::Write, None)?;
+        let conversation = self
+            .conversations
+            .iter()
+            .find(|conversation| conversation.id == id)
+            .ok_or_else(|| anyhow::anyhow!("No such conversation"))?;
+        if conversation.generation != generation {
+            bail!("Conversation generation is stale");
+        }
+        if conversation.execution != ExecutionKind::Structured {
+            bail!("A native terminal conversation ends with its terminal");
+        }
+        if self
+            .conversation_requests
+            .values()
+            .any(|pending| pending.conversation() == id)
+        {
+            bail!("Conversation has a pending operation; try again in a moment");
+        }
+        if self.conversation_runtimes.owns(id) {
+            self.conversation_ending.insert(id);
+            if let Err(error) = self.conversation_runtimes.dispose(id) {
+                self.conversation_ending.remove(&id);
+                return Err(error);
+            }
+        }
+        self.send(client, ServerMsg::Reply(Reply::Ok));
+        self.dirty = true;
+        Ok(())
+    }
+
     pub(in crate::daemon) fn conversation_handoff_to_native(
         &mut self,
         client: ClientId,
