@@ -103,10 +103,11 @@ app: **Rename** (the rename key, or Rename in its menu) names it for both, and
 **Close** puts it away in both while it keeps running (closing a chat's terminal does
 the same). A chat has no terminal, so Enter or → on its row says it opens in the desktop
 app instead of showing an error; a terminal session opens in both apps. A session is a
-chat or a terminal session from the moment it starts ([ADR 0044](adr/0044-chat-and-terminal-are-separate-sessions.md)):
-the desktop app's new-session dialog asks which, and nothing switches a live session
-between them. In the desktop app a terminal session has no Changes panel, and closing one
-ends its program.
+chat or a terminal session from the moment it starts ([ADR 0044](adr/0044-chat-and-terminal-are-separate-sessions.md)),
+and nothing switches a live session between them. The desktop app shows terminal sessions
+only: a new session there is a plain shell, closing a pane or tab detaches, and ending a
+session is its own action ([ADR 0046](adr/0046-desktop-app-is-a-terminal-multiplexer.md);
+its look is in [DESIGN](DESIGN.md#desktop-app)).
 
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,

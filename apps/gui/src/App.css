@@ -390,7 +390,7 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 .settings-heading [data-slot="dialog-description"] { font-size: 11px; }
 .settings-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); min-height: 0; overflow: hidden; }
 .settings-nav { border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; padding: 14px 10px; }
-.settings-nav-item { align-items: center; background: transparent; border: 0; border-radius: 6px; color: var(--muted-foreground); cursor: pointer; display: flex; font-size: 11px; gap: 9px; min-height: 36px; padding: 0 10px; text-align: left; }
+.settings-nav-item { align-items: center; background: transparent; border: 0; border-radius: 6px; color: var(--muted-foreground); cursor: pointer; display: flex; font-size: 11px; gap: 9px; min-height: 36px; padding: 0 10px; text-align: left; white-space: nowrap; }
 .settings-nav-item:hover, .settings-nav-item:focus-visible { background: var(--secondary); color: var(--foreground); }
 .settings-nav-item:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; position: relative; z-index: 1; }
 .settings-nav-item.is-active { background: var(--secondary); color: var(--foreground); font-weight: 600; }
@@ -419,6 +419,7 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 .accent-violet { --swatch: #b8a2ff; }
 .settings-row, .settings-select-row { align-items: center; border-bottom: 1px solid var(--border); display: flex; gap: 14px; justify-content: space-between; min-height: 58px; }
 .settings-row > span, .settings-select-row > span, .daemon-status-row > span:nth-child(2) { display: flex; flex-direction: column; gap: 3px; }
+.settings-text-input { background: var(--background); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground); font: 12px var(--font-mono); height: 30px; min-width: 200px; padding: 0 9px; }
 .settings-row input { accent-color: var(--primary); height: 16px; width: 16px; }
 .settings-select-row select { background: var(--background); border: 1px solid var(--input); border-radius: 5px; color: var(--foreground); font-size: 10px; min-height: 30px; padding: 0 8px; }
 .settings-note { color: var(--muted-foreground); font-size: 9px; margin: 12px 0 0; }
@@ -831,10 +832,10 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 /* v5 dialogs: recent projects, tokens for the failure banners */
 .dialog-recent { display: flex; flex-direction: column; gap: 2px; margin: 0 0 12px; }
 .dialog-caps { color: var(--dim); font-size: 11px; font-weight: 500; letter-spacing: .06em; margin-bottom: 4px; text-transform: uppercase; }
-.dialog-recent-row { align-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--fg2); display: flex; font-size: 12.5px; gap: 10px; min-height: 36px; padding: 0 8px; text-align: left; transition: background-color .14s ease; }
+.dialog-recent-row { align-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--fg2); display: flex; font-size: 12.5px; gap: 10px; max-width: 100%; min-height: 36px; min-width: 0; overflow: hidden; padding: 0 8px; text-align: left; transition: background-color .14s ease; }
 .dialog-recent-row:hover, .dialog-recent-row.is-selected { background: var(--sel); }
 .dialog-recent-row strong { color: var(--fg); font-weight: 500; }
-.dialog-recent-row code { color: var(--dim); font: 11.5px var(--font-mono); margin-left: auto; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dialog-recent-row code { color: var(--dim); font: 11.5px var(--font-mono); margin-left: auto; max-width: 55%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .connection-warning { background: var(--danger-soft); border-bottom-color: var(--danger-line); }
 .history-warning { background: var(--warn-soft); border-bottom-color: var(--warn-line); }
 .recovery-notice { background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 12px; margin: 8px 20px; }

@@ -1,31 +1,50 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleAlert, LoaderCircle, TerminalSquare } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Terminal as XtermTerminal } from '@xterm/xterm'
+import type { ITheme, Terminal as XtermTerminal } from '@xterm/xterm'
 import { Button } from '@/components/ui/button'
-import { isDesktop, loadTerminalReplay, loadTerminalScreen, resizeTerminal, sendTerminalInput } from '@/api/daemon'
+import { isDesktop, loadTerminalReplay, resizeTerminal, sendTerminalInput } from '@/api/daemon'
+import { listenTerminalChunks, loadTerminalHistory, type TerminalChunk } from '@/api/terminalStream'
 import type { Conversation } from '@/data/preview'
 import '@xterm/xterm/css/xterm.css'
 
-const TERMINAL_REFRESH_INTERVAL_MS = 250
-const TERMINAL_SCROLLBACK_LINES = 5000
+const DEFAULT_SCROLLBACK_LINES = 10000
+const LINE_HEIGHT = 1.6
+const FONT_FAMILY = '"Geist Mono Variable", "Geist Mono", ui-monospace, monospace'
+const DEFAULT_THEME: ITheme = { background: '#060d16', foreground: '#c9d6e3', cursor: '#3dd6c6' }
 
 type TerminalBinding = Pick<Conversation, 'id'> & { generation: number }
+
+/** How a pane renders; each one is applied to the open terminal in place, without remounting. */
+export type TerminalLook = {
+  cursorStyle?: 'block' | 'bar' | 'underline'
+  scrollback?: number
+  theme?: ITheme
+}
 
 type TerminalViewProps = {
   conversation: Conversation
   desktop: boolean
+  fontSize: number
+  look?: TerminalLook
+  /** The accessible name of the terminal region. */
+  label?: string
+  /** Typing is held while the daemon is disconnected. */
+  inputDisabled?: boolean
+  /** Moves keyboard focus into the terminal when it becomes true. */
+  focused?: boolean
+  /** Told what the user types here, so a window can mirror it to other panes. */
+  onInput?: (data: string | Uint8Array) => void
 }
 
 type NativeConversation = Conversation & { generation: number; nativePane: number }
 
-export function TerminalView({ conversation, desktop }: TerminalViewProps) {
+export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, focused = false, onInput }: TerminalViewProps) {
   if (!desktop) return null
   if (!isDesktop()) return <div className="panel-empty"><TerminalSquare size={18} /><h2>Native terminal is not available</h2><p>Open Maitty Desktop to use the daemon-owned terminal.</p></div>
   if (!hasNativeTerminal(conversation)) return <NativeHandoffView conversation={conversation} />
 
-  return <ConnectedTerminalView conversation={conversation} />
+  return <ConnectedTerminalView conversation={conversation} fontSize={fontSize} look={look} label={label ?? `Native ${conversation.provider} terminal`} inputDisabled={inputDisabled} focused={focused} onInput={onInput} />
 }
 
 function NativeHandoffView({ conversation }: { conversation: Conversation }) {
@@ -44,56 +63,70 @@ function NativeHandoffView({ conversation }: { conversation: Conversation }) {
   </div>
 }
 
-function ConnectedTerminalView({ conversation }: { conversation: NativeConversation }) {
+type ConnectedProps = { conversation: NativeConversation; fontSize: number; look: TerminalLook; label: string; inputDisabled: boolean; focused: boolean; onInput: ((data: string | Uint8Array) => void) | undefined }
+
+function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisabled, focused, onInput }: ConnectedProps) {
   const term = conversation.nativePane
   const binding: TerminalBinding = useMemo(() => ({ id: conversation.id, generation: conversation.generation }), [conversation.id, conversation.generation])
-  const queryClient = useQueryClient()
   const inputQueue = useRef(Promise.resolve())
   const terminalHost = useRef<HTMLDivElement>(null)
   const terminal = useRef<XtermTerminal | null>(null)
   const inputFailedRef = useRef(false)
-  const resizeRetry = useRef<(() => void) | null>(null)
+  const fontSizeRef = useRef(fontSize)
+  const lookRef = useRef(look)
+  const inputDisabledRef = useRef(inputDisabled)
+  const onInputRef = useRef(onInput)
+  useEffect(() => { onInputRef.current = onInput })
+  const refitTerminal = useRef<(() => void) | null>(null)
+  const [connecting, setConnecting] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [inputFailed, setInputFailed] = useState(false)
   const [resizeError, setResizeError] = useState('')
-  const replayQuery = useQuery({
-    queryKey: ['terminal-replay', binding.id, binding.generation],
-    queryFn: () => loadTerminalReplay(binding),
-    staleTime: Infinity,
-  })
-  const screenQuery = useQuery({
-    queryKey: ['terminal-screen', binding.id, binding.generation],
-    queryFn: () => loadTerminalScreen(binding),
-    enabled: replayQuery.isSuccess,
-    refetchInterval: (query) =>
-      query.state.status === 'error' ? false : TERMINAL_REFRESH_INTERVAL_MS,
-  })
 
   const send = useCallback((data: string | Uint8Array) => {
-    if (!data || inputFailedRef.current) return
+    if (!data || inputFailedRef.current || inputDisabledRef.current) return
+    onInputRef.current?.(data)
     inputQueue.current = inputQueue.current.then(async () => {
-      const screen = await sendTerminalInput(binding, data)
-      terminal.current?.write(screen)
-      inputFailedRef.current = false
-      setInputFailed(false)
-      setResizeError('')
-      queryClient.setQueryData(['terminal-screen', binding.id, binding.generation], screen)
+      // The daemon echoes what was typed through the stream, so there is nothing to write here.
+      await sendTerminalInput(binding, data)
     }).catch(() => {
       inputFailedRef.current = true
       setInputFailed(true)
     })
-  }, [binding, queryClient])
+  }, [binding])
 
   useEffect(() => {
     const host = terminalHost.current
-    const replay = replayQuery.data
-    if (!host || !replay) return
+    if (!host) return
     const hostElement = host
-    const replayBytes = replay.slice()
     let isMounted = true
+    // Read through a function: after the first check TypeScript would treat isMounted as always true.
+    const stillMounted = () => isMounted
     let emulator: XtermTerminal | null = null
     let resizeObserver: ResizeObserver | null = null
+    let stopListening: (() => void) | null = null
     let disposeInput: (() => void) | null = null
     let disposeBinary: (() => void) | null = null
+    let frame = 0
+    let queued: Uint8Array[] = []
+
+    // Output is written once per animation frame, so a burst repaints once instead of per chunk.
+    const flush = () => {
+      frame = 0
+      if (!emulator || queued.length === 0) return
+      const bytes = new Uint8Array(queued.reduce((total, chunk) => total + chunk.length, 0))
+      let offset = 0
+      for (const chunk of queued) {
+        bytes.set(chunk, offset)
+        offset += chunk.length
+      }
+      queued = []
+      emulator.write(bytes)
+    }
+    const enqueue = (bytes: Uint8Array) => {
+      queued.push(bytes)
+      if (frame === 0) frame = requestAnimationFrame(flush)
+    }
 
     async function mountTerminal() {
       try {
@@ -104,12 +137,16 @@ function ConnectedTerminalView({ conversation }: { conversation: NativeConversat
         if (!isMounted) return
 
         emulator = new TerminalEmulator({
+          allowTransparency: true,
           cursorBlink: true,
-          fontFamily: '"Geist Mono", monospace',
-          fontSize: 12,
-          scrollback: TERMINAL_SCROLLBACK_LINES,
+          cursorStyle: lookRef.current.cursorStyle ?? 'block',
+          disableStdin: inputDisabledRef.current,
+          fontFamily: FONT_FAMILY,
+          fontSize: fontSizeRef.current,
+          lineHeight: LINE_HEIGHT,
+          scrollback: lookRef.current.scrollback ?? DEFAULT_SCROLLBACK_LINES,
           screenReaderMode: true,
-          theme: { background: '#060d16', foreground: '#c9d6e3', cursor: '#3dd6c6' },
+          theme: lookRef.current.theme ?? DEFAULT_THEME,
         })
         const terminalInstance = emulator
         const fit = new FitAddon()
@@ -155,26 +192,64 @@ function ConnectedTerminalView({ conversation }: { conversation: NativeConversat
               }
             })
         }
-        resizeRetry.current = () => {
+        refitTerminal.current = () => {
           lastFailedSize = ''
           fitAndResize()
         }
-        terminalInstance.write(replayBytes, () => {
-          if (!isMounted) return
-          resizeObserver = new ResizeObserver(fitAndResize)
-          resizeObserver.observe(hostElement)
-          fitAndResize()
 
-          const inputSubscription = terminalInstance.onData(send)
-          const binarySubscription = terminalInstance.onBinary((data) => {
-            send(Uint8Array.from(data, (character) => character.charCodeAt(0)))
-          })
-          disposeInput = () => { inputSubscription.dispose() }
-          disposeBinary = () => { binarySubscription.dispose() }
+        // Follow the live stream first, hold what arrives while the history loads, then write
+        // the history and continue from the next chunk: no gap and no repeat.
+        let lastSeq = 0
+        let caughtUp = false
+        const pending: TerminalChunk[] = []
+        const apply = (chunk: TerminalChunk) => {
+          if (chunk.seq <= lastSeq) return
+          lastSeq = chunk.seq
+          if (chunk.replay) {
+            flush()
+            terminalInstance.reset()
+          }
+          enqueue(chunk.bytes)
+        }
+        stopListening = await listenTerminalChunks(term, (chunk) => {
+          if (caughtUp) apply(chunk)
+          else pending.push(chunk)
         })
+        if (!stillMounted()) {
+          stopListening()
+          return
+        }
+        const history = await loadTerminalHistory(term)
+        if (!stillMounted()) return
+        if (history) {
+          lastSeq = history.seq
+          enqueue(history.bytes)
+        } else {
+          // The shell dropped an overlong history: ask the daemon for a fresh replay instead.
+          enqueue(await loadTerminalReplay(binding))
+          if (!stillMounted()) return
+        }
+        caughtUp = true
+        for (const chunk of pending) apply(chunk)
+        setConnecting(false)
+
+        resizeObserver = new ResizeObserver(fitAndResize)
+        resizeObserver.observe(hostElement)
+        fitAndResize()
+        // Geist Mono may still be loading; measure again once it is, so the grid fits the font.
+        const fonts = (document as { fonts?: FontFaceSet }).fonts
+        void fonts?.ready.then(() => { refitTerminal.current?.() })
+
+        const inputSubscription = terminalInstance.onData(send)
+        const binarySubscription = terminalInstance.onBinary((data) => {
+          send(Uint8Array.from(data, (character) => character.charCodeAt(0)))
+        })
+        disposeInput = () => { inputSubscription.dispose() }
+        disposeBinary = () => { binarySubscription.dispose() }
       } catch (error) {
         if (isMounted) {
-          setInputFailed(true)
+          setLoadError(true)
+          setConnecting(false)
           toast.error(error instanceof Error ? error.message : 'Could not start the terminal emulator')
         }
       }
@@ -183,38 +258,51 @@ function ConnectedTerminalView({ conversation }: { conversation: NativeConversat
     void mountTerminal()
     return () => {
       isMounted = false
-      resizeRetry.current = null
+      if (frame !== 0) cancelAnimationFrame(frame)
+      refitTerminal.current = null
+      stopListening?.()
       resizeObserver?.disconnect()
       disposeInput?.()
       disposeBinary?.()
       emulator?.dispose()
       terminal.current = null
     }
-  }, [binding, replayQuery.data, send])
+  }, [binding, term, send])
+
+  // The emulator is created once per pane, so a font change is applied to it in place.
+  useEffect(() => {
+    fontSizeRef.current = fontSize
+    const emulator = terminal.current
+    if (!emulator || emulator.options.fontSize === fontSize) return
+    emulator.options.fontSize = fontSize
+    refitTerminal.current?.()
+  }, [fontSize])
 
   useEffect(() => {
-    if (screenQuery.data) terminal.current?.write(screenQuery.data)
-  }, [screenQuery.data])
+    lookRef.current = look
+    const emulator = terminal.current
+    if (!emulator) return
+    if (look.cursorStyle && emulator.options.cursorStyle !== look.cursorStyle) emulator.options.cursorStyle = look.cursorStyle
+    if (look.scrollback && emulator.options.scrollback !== look.scrollback) emulator.options.scrollback = look.scrollback
+    if (look.theme && emulator.options.theme !== look.theme) emulator.options.theme = look.theme
+  }, [look])
 
-  async function reconnectTerminal() {
-    const result = replayQuery.isError
-      ? await replayQuery.refetch()
-      : await screenQuery.refetch()
-    if (result.isSuccess) {
-      inputFailedRef.current = false
-      setInputFailed(false)
-      resizeRetry.current?.()
-    }
-  }
+  useEffect(() => {
+    inputDisabledRef.current = inputDisabled
+    const emulator = terminal.current
+    if (emulator) emulator.options.disableStdin = inputDisabled
+  }, [inputDisabled])
+
+  useEffect(() => {
+    if (focused && !connecting) terminal.current?.focus()
+  }, [focused, connecting])
 
   return <div className="terminal-view">
-    <div className="terminal-heading"><span className="terminal-live-dot" />Native {conversation.provider} terminal · pane {term}<span className="terminal-mode-hint">Keys go straight to {conversation.provider} · Ctrl+` to return</span></div>
-    {(replayQuery.isLoading || screenQuery.isLoading) && <div className="terminal-load-status" role="status"><LoaderCircle size={14} />Connecting to terminal</div>}
-    {(replayQuery.isError || screenQuery.isError) && <div className="terminal-input-error" role="status"><p>Could not load the terminal. Check the daemon connection and retry.</p><Button variant="outline" size="sm" onClick={() => { void reconnectTerminal() }}>Retry</Button></div>}
-    <div className="terminal-screen" ref={terminalHost} role="region" aria-label={`Native ${conversation.provider} terminal`} aria-describedby="terminal-instructions" />
-    <p className="terminal-footnote" id="terminal-instructions">Click the terminal and type. Maitty sends keys to the selected daemon-owned pane.</p>
-    {inputFailed && <div className="terminal-input-error" role="status"><p>Input stopped because the daemon could not be reached. Retry the terminal connection before typing.</p><Button variant="outline" size="sm" onClick={() => { void reconnectTerminal() }}>Reconnect</Button></div>}
-    {resizeError && <div className="terminal-input-error" role="status"><p>{resizeError}</p><Button variant="outline" size="sm" onClick={() => { void reconnectTerminal() }}>Retry resize</Button></div>}
+    {connecting && !loadError && <div className="terminal-load-status" role="status"><LoaderCircle size={14} />Connecting to terminal</div>}
+    {loadError && <div className="terminal-input-error" role="status"><p>Could not load the terminal. Check the daemon connection and reopen this session.</p></div>}
+    <div className="terminal-screen" ref={terminalHost} role="region" aria-label={label} />
+    {inputFailed && <div className="terminal-input-error" role="status"><p>Input stopped because the daemon could not be reached.</p><Button variant="outline" size="sm" onClick={() => { inputFailedRef.current = false; setInputFailed(false) }}>Try typing again</Button></div>}
+    {resizeError && <div className="terminal-input-error" role="status"><p>{resizeError}</p><Button variant="outline" size="sm" onClick={() => { refitTerminal.current?.() }}>Retry resize</Button></div>}
   </div>
 }
 

@@ -2,6 +2,10 @@ export type SessionStatus = 'working' | 'needs-you' | 'done' | 'idle' | 'recover
 
 export type Conversation = {
   id: string
+  /** A terminal session's current folder, as its shell reports it. */
+  cwd?: string
+  /** The git repository's name when the folder is inside one. */
+  repo?: string | null
   generation?: number
   execution?: 'Native' | 'Structured'
   title: string
@@ -25,6 +29,12 @@ export type Conversation = {
   // A terminal session: an agent running in a terminal the daemon owns, shared with the terminal
   // app. Anything else is a chat. `nativePane` is its terminal's number.
   kind?: 'terminal'
+  /** The agent the daemon reports running in a terminal session; null for a plain shell. */
+  agent?: string | null
+  /** The program the daemon sees running in a terminal session (a shell's own name when idle). */
+  process?: string
+  /** The last prompt the agent in a terminal session was given, as one line; empty when unknown. */
+  summary?: string
 }
 
 export type Message = {

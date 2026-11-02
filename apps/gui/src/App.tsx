@@ -23,8 +23,6 @@ import {
   FileCode2,
   FolderOpen,
   FolderPlus,
-  Archive,
-  ArchiveRestore,
   GitBranch,
   Keyboard,
   LoaderCircle,
@@ -65,9 +63,8 @@ import { HighlightedCode } from '@/components/HighlightedCode'
 import { DiffText } from '@/components/DiffText'
 import { FilesView } from '@/features/review/FilesView'
 import { TerminalPanes } from '@/features/terminal/TerminalPanes'
+import { DesktopApp } from '@/features/workspace/DesktopApp'
 import { WorkingSinceContext, useWorkingSince } from '@/lib/working-since'
-import { OpenProjectDialog } from '@/features/projects/components/OpenProjectDialog'
-import { recentProjectsFrom } from '@/features/projects/recent-projects'
 import { setSpinnerStyle } from '@/lib/spinner-clock'
 import { Toaster } from '@/components/ui/sonner'
 import {
@@ -94,6 +91,8 @@ import {
   classifySubmissionFailure,
   createConversation as createDaemonConversation,
   archiveConversationOnDaemon,
+  defaultSessionFolder,
+  startShellSession,
   startTerminalSession,
   renameConversationOnDaemon,
   endConversation as endDaemonConversation,
@@ -166,7 +165,22 @@ import {
 } from '@/data/conversationPermissions'
 import { shortcutModifier } from '@/lib/shortcut-modifier'
 import { errorMessage } from '@/lib/error-message'
+import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import './App.css'
+
+const OTHER_FOLDERS = 'Other folders'
+
+/** The sidebar group a terminal session belongs to (ADR 0046). */
+function sessionGroup(
+  conversation: Conversation,
+  groupBy: 'repo' | 'folder',
+): string {
+  if (groupBy === 'folder') {
+    const folder = conversation.cwd ?? conversation.folder
+    return folder.split(/[\\/]/).filter(Boolean).at(-1) ?? folder
+  }
+  return conversation.repo ?? OTHER_FOLDERS
+}
 
 function focusMainContent(event: MouseEvent<HTMLAnchorElement>) {
   event.preventDefault()
@@ -196,43 +210,12 @@ const statusText: Record<SessionStatus, string> = {
   unknown: 'Disconnected',
 }
 
-function daemonProtocolMismatch(
-  error: unknown,
-): { daemonProtocol: number; guiProtocol: number } | null {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === 'string'
-        ? error
-        : ''
-  const versionMismatch =
-    /protocol v(\d+), (?:this one v|while this GUI needs v)(\d+)/.exec(message)
-  if (!versionMismatch) return null
-  const daemonProtocol = Number(versionMismatch[1])
-  const guiProtocol = Number(versionMismatch[2])
-  return Number.isSafeInteger(daemonProtocol) &&
-    Number.isSafeInteger(guiProtocol)
-    ? { daemonProtocol, guiProtocol }
-    : null
-}
-
-function daemonConnectionError(error: unknown): string {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === 'string'
-        ? error
-        : ''
-  const mismatch = daemonProtocolMismatch(error)
-  if (mismatch) {
-    return `The Maitty service uses protocol v${String(mismatch.daemonProtocol)}, but this GUI needs v${String(mismatch.guiProtocol)}. This GUI will leave the service running while it owns sessions.`
-  }
-  return message
-    ? `Could not connect to the local Maitty service: ${message}`
-    : 'Could not connect to the local Maitty service. Check that Maitty is installed, then retry.'
-}
-
+/** The desktop app is the terminal multiplexer; the browser preview keeps the older chat screens. */
 function App() {
+  return isDesktop() ? <DesktopApp /> : <PreviewApp />
+}
+
+function PreviewApp() {
   const desktop = isDesktop()
   const primaryModifier = shortcutModifier(navigator.userAgent)
   const sessionsQuery = useQuery({
@@ -262,12 +245,22 @@ function App() {
     readSidebarPreferences,
   )
   const [startedWith, setStartedWith] = useState(readConversationPermissions)
+  const [settingsPreferences, setSettingsPreferences] = useState(
+    readSettingsPreferences,
+  )
   const conversations = useMemo(() => {
-    const current = desktop ? (sessionsQuery.data ?? []) : previewSessions
+    // The desktop app is a terminal multiplexer: chat sessions are not shown (ADR 0046).
+    const current = desktop
+      ? (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal')
+      : previewSessions
     const withNames = current.map((conversation) => {
       const started = startedWith[conversation.id]
       return {
         ...conversation,
+        // Terminal sessions group by repository or folder (Settings); the browser preview keeps its own.
+        ...(desktop
+          ? { project: sessionGroup(conversation, settingsPreferences.groupBy) }
+          : {}),
         // The daemon holds the name for every client; only the browser preview keeps its own.
         title: desktop
           ? conversation.title
@@ -288,6 +281,7 @@ function App() {
     sessionsQuery.data,
     previewSessions,
     sidebarPreferences.renamedTitles,
+    settingsPreferences.groupBy,
     startedWith,
   ])
   const archivedIds = useMemo(
@@ -320,15 +314,11 @@ function App() {
     string | null
   >(null)
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false)
-  const [settingsPreferences, setSettingsPreferences] = useState(
-    readSettingsPreferences,
-  )
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     settingsPreferences.compactSidebar,
   )
   const [isCompactSidebar, setIsCompactSidebar] = useState(false)
   const [newDialogOpen, setNewDialogOpen] = useState(false)
-  const [openProjectOpen, setOpenProjectOpen] = useState(false)
   const [denyQueuedFor, setDenyQueuedFor] = useState<string | null>(null)
   const [workingSince, setWorkingSince] = useState<ReadonlyMap<string, number>>(
     new Map(),
@@ -458,13 +448,10 @@ function App() {
     if (terminalConversationId !== null)
       setTerminalConversationId(conversationId)
   }
-  // A chat has no terminal and a terminal session has no chat, decided when it starts. Only the
-  // browser preview, which has no daemon, still flips between the two views.
+  // The desktop app shows only terminal sessions (ADR 0046). The browser preview, which has no
+  // daemon, still flips between its chat and terminal views.
   const showTerminal = Boolean(
-    selected &&
-    (desktop && selected.execution === 'Native'
-      ? true
-      : terminalConversationId === selected.id),
+    selected && (desktop ? true : terminalConversationId === selected.id),
   )
   // Changes, files and context belong to a chat; a terminal session has none.
   const shownPanel = selected?.kind === 'terminal' ? null : activePanel
@@ -910,7 +897,7 @@ function App() {
       }
       if (hasModifier && key === 'o') {
         event.preventDefault()
-        setOpenProjectOpen(true)
+        openNewSession()
         return
       }
       if (event.key === 'Escape' && !inTerminal) {
@@ -1003,7 +990,7 @@ function App() {
       if (key === 'n') {
         if (daemonDisconnected) return
         event.preventDefault()
-        setNewDialogOpen(true)
+        openNewSession()
       } else if (event.shiftKey && key === 'd') {
         event.preventDefault()
         setActivePanel((panel) => (panel === 'diff' ? null : 'diff'))
@@ -1059,6 +1046,7 @@ function App() {
     selected,
     selectConversation,
     closeConversation,
+    openNewSession,
     toggleTerminal,
   ])
 
@@ -1105,33 +1093,24 @@ function App() {
       })
   }
 
+  // Closing a session ends it: a chat asks first (its agent stops), a terminal session closes
+  // its pane. There is no archive; a closed session leaves the list.
   function setArchived(conversationId: string, archived: boolean) {
+    if (!archived) return
     const conversation = conversations.find(
       (item) => item.id === conversationId,
     )
-    if (archived && conversation?.status === 'working') {
-      toast.message('Wait for this conversation to finish before archiving it')
+    if (conversation?.kind !== 'terminal') {
+      requestEndSession(conversationId)
       return
     }
-    putAway([conversationId], archived)
-    if (archived) {
-      if (openTabIds.includes(conversationId) && openTabIds.length > 1)
-        closeConversation(conversationId)
-      toast.message(
-        conversation?.kind === 'terminal'
-          ? 'Terminal session ended'
-          : 'Session closed',
-        conversation?.kind === 'terminal'
-          ? {
-              description:
-                'Its program was stopped, as when it is closed in the terminal app.',
-            }
-          : {
-              description:
-                'It keeps running in maittyd. Find it under Archived to reopen it.',
-            },
-      )
-    }
+    putAway([conversationId], true)
+    if (openTabIds.includes(conversationId) && openTabIds.length > 1)
+      closeConversation(conversationId)
+    toast.message('Terminal session closed', {
+      description:
+        'Its program was stopped, as when it is closed in the terminal app.',
+    })
   }
 
   function requestEndSession(conversationId: string) {
@@ -1145,6 +1124,12 @@ function App() {
     const target = endTarget
     if (!target) return
     setEndTarget(null)
+    if (!desktop) {
+      putAway([target.id], true)
+      if (openTabIds.includes(target.id) && openTabIds.length > 1)
+        closeConversation(target.id)
+      return
+    }
     void endDaemonConversation(target)
       .then(() => {
         // The agent is stopped; move the session out of the way, like an archived one.
@@ -1160,31 +1145,6 @@ function App() {
       .catch((error: unknown) => {
         toast.error(errorMessage(error, 'Could not end this session'))
       })
-  }
-
-  function closeProject(project: string) {
-    const sessions = conversations.filter(
-      (conversation) =>
-        conversation.project === project &&
-        !archivedIds.includes(conversation.id),
-    )
-    // Closing a project puts its chats away; a terminal session would end its program, so those
-    // are closed one by one.
-    const closable = sessions.filter(
-      (conversation) =>
-        conversation.status !== 'working' && conversation.kind !== 'terminal',
-    )
-    putAway(
-      closable.map((conversation) => conversation.id),
-      true,
-    )
-    const stillOpen = sessions.length - closable.length
-    toast.message(`${project} closed`, {
-      description:
-        stillOpen > 0
-          ? `${String(stillOpen)} working or terminal ${stillOpen === 1 ? 'session was' : 'sessions were'} left open. Closed chats keep running in maittyd and are under Archived.`
-          : 'Its sessions keep running in maittyd and are under Archived.',
-    })
   }
 
   function renameConversation(conversationId: string, title: string) {
@@ -1211,29 +1171,6 @@ function App() {
     }))
   }
 
-  const openProjectDialog = (
-    <OpenProjectDialog
-      open={openProjectOpen}
-      recents={recentProjectsFrom(conversations)}
-      canBrowse={desktop}
-      browsing={isChoosingFolder}
-      onClose={() => {
-        setOpenProjectOpen(false)
-      }}
-      onOpen={(folder) => {
-        setNewProject(folder)
-        setOpenProjectOpen(false)
-        setNewDialogOpen(true)
-      }}
-      onBrowse={() => {
-        void chooseFolder().then((folder) => {
-          if (!folder) return
-          setOpenProjectOpen(false)
-          setNewDialogOpen(true)
-        })
-      }}
-    />
-  )
 
   const settingsDialog = (
     <SettingsDialog
@@ -1462,7 +1399,6 @@ function App() {
           <div className="workspace-shell empty-shell">
             <ConversationSidebar
               conversations={[]}
-              archivedConversations={[]}
               selectedId=""
               filter={filter}
               pinnedIds={sidebarPreferences.pinnedIds}
@@ -1472,7 +1408,7 @@ function App() {
               drawerOpen={sidebarDrawerOpen}
               onFilter={setFilter}
               onNew={() => {
-                setNewDialogOpen(true)
+                openNewSession()
               }}
               onTogglePin={togglePin}
               onArchive={setArchived}
@@ -1486,14 +1422,12 @@ function App() {
                 setSidebarCollapsed((collapsed) => !collapsed)
               }}
               onNewInProject={() => {
-                setNewDialogOpen(true)
+                openNewSession()
               }}
-              openIds={[]}
               starting={startingSessions}
               onOpenProject={() => {
-                setOpenProjectOpen(true)
+                openNewSession()
               }}
-              onCloseProject={closeProject}
               daemonLabel={
                 sessionsQuery.isLoading
                   ? 'Connecting to Maitty daemon'
@@ -1532,7 +1466,7 @@ function App() {
                   ? 'Connecting to your local Maitty service.'
                   : sessionsQuery.isError
                     ? daemonConnectionError(sessionsQuery.error)
-                    : 'Open a project folder, start an agent session, and switch between chat and its native terminal at any time. Sessions live in maittyd, so closing this window never stops an agent.'}
+                    : 'Start an agent session in a folder, and switch between chat and its native terminal at any time. Sessions live in maittyd, so closing this window never stops an agent.'}
               </p>
               {!sessionsQuery.isLoading && !sessionsQuery.isError && (
                 <div
@@ -1603,11 +1537,11 @@ function App() {
               ) : (
                 <Button
                   onClick={() => {
-                    setOpenProjectOpen(true)
+                    openNewSession()
                   }}
                 >
                   <FolderOpen size={14} />
-                  Open a project folder
+                  New session
                   <span className="shortcut-hint">{primaryModifier} O</span>
                 </Button>
               )}
@@ -1638,8 +1572,7 @@ function App() {
             recentProjects={[]}
           />
           {settingsDialog}
-          {openProjectDialog}
-          {daemonRestartDialog}
+            {daemonRestartDialog}
           <Toaster
             position={settingsPreferences.toastPosition}
             theme={theme === 'day' ? 'light' : 'dark'}
@@ -1914,13 +1847,61 @@ function App() {
       })
   }
 
-  function createConversation() {
-    if (daemonDisconnected || conversationCreationPendingRef.current) return
-    const project = newProject.trim()
-    if (!project) {
-      toast.error('Choose a project folder first')
+  // A new session is a plain shell in the start folder; the user types what to run in it (ADR
+  // 0046). The dialog remains only for the browser preview, which has no daemon to start sessions in.
+  function openNewSession() {
+    if (!desktop) {
+      setNewDialogOpen(true)
       return
     }
+    if (daemonDisconnected || conversationCreationPendingRef.current) return
+    conversationCreationPendingRef.current = true
+    setConversationCreationPending(true)
+    const known = new Set(conversations.map((item) => item.id))
+    const chosen = settingsPreferences.startFolder
+    void (chosen ? Promise.resolve(chosen) : defaultSessionFolder())
+      .then((folder) => startShellSession(folder))
+      .then(async () => {
+        await queryClient.invalidateQueries({ queryKey: ['conversations'] })
+        const fresh = await queryClient.query({
+          queryKey: ['conversations'],
+          queryFn: loadConversations,
+          staleTime: 0,
+        })
+        const created = fresh.find(
+          (item) => item.kind === 'terminal' && !known.has(item.id),
+        )
+        if (created) selectConversation(created.id)
+      })
+      .catch((error: unknown) => {
+        toast.error(errorMessage(error, 'Could not start a shell'))
+      })
+      .finally(() => {
+        conversationCreationPendingRef.current = false
+        setConversationCreationPending(false)
+      })
+  }
+
+  function createConversation() {
+    if (daemonDisconnected || conversationCreationPendingRef.current) return
+    const typed = newProject.trim()
+    if (typed) {
+      startConversation(typed)
+      return
+    }
+    // No folder chosen: start in the home folder and let the user move on from there (cd), as in the terminal app.
+    void defaultSessionFolder()
+      .then((folder) => {
+        if (folder) startConversation(folder)
+        else toast.error('Choose a project folder first')
+      })
+      .catch((error: unknown) => {
+        toast.error(errorMessage(error, 'Could not find your home folder'))
+      })
+  }
+
+  function startConversation(project: string) {
+    if (daemonDisconnected || conversationCreationPendingRef.current) return
     if (desktop && newKind === 'terminal') {
       conversationCreationPendingRef.current = true
       setConversationCreationPending(true)
@@ -2060,9 +2041,6 @@ function App() {
             )}
             <ConversationSidebar
               conversations={filteredConversations}
-              archivedConversations={conversations.filter((conversation) =>
-                archivedIds.includes(conversation.id),
-              )}
               selectedId={selected.id}
               filter={filter}
               pinnedIds={sidebarPreferences.pinnedIds}
@@ -2072,7 +2050,7 @@ function App() {
               drawerOpen={sidebarDrawerOpen}
               onFilter={setFilter}
               onNew={() => {
-                setNewDialogOpen(true)
+                openNewSession()
               }}
               onTogglePin={togglePin}
               onArchive={setArchived}
@@ -2090,14 +2068,12 @@ function App() {
               }}
               onNewInProject={(folder) => {
                 setNewProject(folder)
-                setNewDialogOpen(true)
+                openNewSession()
               }}
-              openIds={openTabIds}
               starting={startingSessions}
               onOpenProject={() => {
-                setOpenProjectOpen(true)
+                openNewSession()
               }}
-              onCloseProject={closeProject}
               daemonLabel={
                 desktop
                   ? daemonDisconnected
@@ -2124,6 +2100,9 @@ function App() {
                   selectedId={selected.id}
                   onSelect={selectInCurrentView}
                   onClose={closeConversation}
+                  onNewTab={() => {
+                    openNewSession()
+                  }}
                   conversation={selected}
                   panel={shownPanel}
                   showTerminal={showTerminal}
@@ -2179,7 +2158,7 @@ function App() {
                       onSelect={selectInCurrentView}
                       primaryModifier={primaryModifier}
                       renderTerminal={(item) => (
-                        <TerminalView conversation={item} desktop={desktop} />
+                        <TerminalView conversation={item} desktop={desktop} fontSize={settingsPreferences.terminalFontSize} />
                       )}
                     />
                   </div>
@@ -2399,7 +2378,7 @@ function App() {
           }}
           onNew={() => {
             setCommandDialogOpen(false)
-            setNewDialogOpen(true)
+            openNewSession()
           }}
           onSettings={() => {
             setSettingsDialogOpen(true)
@@ -2425,7 +2404,6 @@ function App() {
           primaryModifier={primaryModifier}
         />
         {settingsDialog}
-        {openProjectDialog}
         <Dialog
           open={endTarget !== null}
           onOpenChange={(open) => {
@@ -2468,7 +2446,6 @@ function App() {
 
 type SidebarProps = {
   conversations: Conversation[]
-  archivedConversations: Conversation[]
   selectedId: string
   filter: string
   pinnedIds: string[]
@@ -2487,8 +2464,6 @@ type SidebarProps = {
   starting: { key: string; label: string; startedAt: number }[]
   onOpenProject: () => void
   onNewInProject: (folder: string) => void
-  onCloseProject: (project: string) => void
-  openIds: string[]
   daemonLabel: string
   sessionCount: number
   previewMode: boolean
@@ -2499,7 +2474,6 @@ type SidebarProps = {
 
 function ConversationSidebar({
   conversations,
-  archivedConversations,
   selectedId,
   filter,
   pinnedIds,
@@ -2520,17 +2494,19 @@ function ConversationSidebar({
   starting,
   onOpenProject,
   onNewInProject,
-  onCloseProject,
-  openIds,
   daemonLabel,
   sessionCount,
   previewMode,
   onOpenSettings,
 }: SidebarProps) {
-  const [archivedOpen, setArchivedOpen] = useState(false)
   const projects = Array.from(
     new Set(conversations.map((conversation) => conversation.project)),
-  )
+  ).sort((left, right) => {
+    // Sessions outside any repository sit under Other folders, last.
+    if (left === OTHER_FOLDERS) return 1
+    if (right === OTHER_FOLDERS) return -1
+    return left.localeCompare(right)
+  })
   const rowActions = {
     pinnedIds,
     selectedId,
@@ -2579,14 +2555,14 @@ function ConversationSidebar({
               className="sidebar-open-project"
               variant="ghost"
               size="icon-sm"
-              aria-label="Open project"
+              aria-label="New session"
               onClick={onOpenProject}
               disabled={disconnected}
             >
               <FolderPlus />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Open project · {primaryModifier} O</TooltipContent>
+          <TooltipContent>New session · {primaryModifier} O</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -2634,8 +2610,6 @@ function ConversationSidebar({
             )}
             disconnected={disconnected}
             onNewInProject={onNewInProject}
-            onCloseProject={onCloseProject}
-            openIds={openIds}
             {...rowActions}
           />
         ))}
@@ -2643,41 +2617,8 @@ function ConversationSidebar({
           <div className="no-sessions" role="status">
             {filter.trim()
               ? `No sessions match “${filter}”`
-              : 'No conversations yet. Open a project folder to get started.'}
+              : 'No sessions yet. Start one in a folder to get started.'}
           </div>
-        )}
-        {archivedConversations.length > 0 && (
-          <section className="session-group archived-group">
-            <button
-              className="archived-toggle"
-              type="button"
-              aria-expanded={archivedOpen}
-              onClick={() => {
-                setArchivedOpen((open) => !open)
-              }}
-            >
-              <Archive size={13} />
-              <span>Archived {archivedConversations.length}</span>
-              <ChevronDown
-                className={archivedOpen ? 'is-open' : ''}
-                size={13}
-              />
-            </button>
-            {archivedOpen && (
-              <div className="session-rows">
-                {archivedConversations.map((conversation) => (
-                  <SessionRow
-                    key={conversation.id}
-                    conversation={conversation}
-                    selected={conversation.id === selectedId}
-                    isPinned={pinnedIds.includes(conversation.id)}
-                    isArchived
-                    {...rowActions}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
         )}
       </ScrollArea>
       <div className="sidebar-bottom">
@@ -2728,27 +2669,17 @@ function ProjectSection({
   conversations,
   disconnected,
   onNewInProject,
-  onCloseProject,
-  openIds,
   ...actions
 }: {
   project: string
   conversations: Conversation[]
   disconnected: boolean
   onNewInProject: (folder: string) => void
-  onCloseProject: (project: string) => void
-  openIds: string[]
 } & SessionRowActions) {
   const needsYou = conversations.filter(
     (conversation) => conversation.status === 'needs-you',
   ).length
-  const [settledOpen, setSettledOpen] = useState(false)
-  const isOlder = (conversation: Conversation) =>
-    (conversation.status === 'done' || conversation.status === 'idle') &&
-    conversation.id !== actions.selectedId &&
-    !openIds.includes(conversation.id)
   const active = [...conversations]
-    .filter((conversation) => !isOlder(conversation))
     .sort((left, right) => {
       const attention = (conversation: Conversation) =>
         conversation.status === 'needs-you' ||
@@ -2763,7 +2694,6 @@ function ProjectSection({
       if (pinOrder !== 0) return pinOrder
       return 0
     })
-  const settled = conversations.filter(isOlder)
 
   return (
     <section className="project-section" aria-label={`${project} project`}>
@@ -2803,14 +2733,6 @@ function ProjectSection({
             <Plus size={14} />
             New session in {project}
           </ContextMenuItem>
-          <ContextMenuItem
-            onSelect={() => {
-              onCloseProject(project)
-            }}
-          >
-            <X size={14} />
-            Archive project
-          </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
 
@@ -2825,38 +2747,6 @@ function ProjectSection({
           />
         ))}
       </div>
-      {settled.length > 0 && (
-        <>
-          <button
-            className="inactive-toggle"
-            type="button"
-            aria-expanded={settledOpen}
-            onClick={() => {
-              setSettledOpen((open) => !open)
-            }}
-          >
-            <span>
-              {settledOpen
-                ? 'Hide older'
-                : `Show ${String(settled.length)} older`}
-            </span>
-            <ChevronDown className={settledOpen ? 'is-open' : ''} size={13} />
-          </button>
-          {settledOpen && (
-            <div className="session-rows">
-              {settled.map((conversation) => (
-                <SessionRow
-                  key={conversation.id}
-                  conversation={conversation}
-                  selected={conversation.id === actions.selectedId}
-                  isPinned={actions.pinnedIds.includes(conversation.id)}
-                  {...actions}
-                />
-              ))}
-            </div>
-          )}
-        </>
-      )}
       {disconnected && (
         <span className="project-offline">Last known statuses</span>
       )}
@@ -3019,13 +2909,12 @@ function SessionRow({
             Rename
           </ContextMenuItem>
           <ContextMenuItem
-            disabled={!isArchived && conversation.status === 'working'}
             onSelect={() => {
-              onArchive(conversation.id, !isArchived)
+              onArchive(conversation.id, true)
             }}
           >
-            {isArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-            {isArchived ? 'Unarchive session' : 'Archive session'}
+            <X size={14} />
+            Close session
           </ContextMenuItem>
           <ContextMenuItem
             variant="destructive"
@@ -3048,6 +2937,7 @@ function ConversationTabStrip({
   selectedId,
   onSelect,
   onClose,
+  onNewTab,
   conversation,
   panel,
   showTerminal,
@@ -3062,6 +2952,7 @@ function ConversationTabStrip({
   selectedId: string
   onSelect: (id: string) => void
   onClose: (id: string) => void
+  onNewTab: () => void
   conversation: Conversation
   panel: PanelTab | null
   showTerminal: boolean
@@ -3101,6 +2992,15 @@ function ConversationTabStrip({
           )}
         </Button>
       )}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="New tab"
+        title="New conversation in a new tab (Ctrl+N)"
+        onClick={onNewTab}
+      >
+        <Plus size={14} />
+      </Button>
       <div
         className="conversation-tabs"
         role="tablist"
@@ -4722,12 +4622,14 @@ function DiffView({
 function TerminalView({
   conversation,
   desktop,
+  fontSize,
 }: {
   conversation: Conversation
   desktop: boolean
+  fontSize: number
 }) {
   if (desktop)
-    return <DaemonTerminalView conversation={conversation} desktop={desktop} />
+    return <DaemonTerminalView conversation={conversation} desktop={desktop} fontSize={fontSize} />
   return (
     <div className="terminal-view">
       <div className="terminal-heading">
@@ -4838,7 +4740,7 @@ function NewConversationDialog({
               onChange={(event) => {
                 onProjectChange(event.target.value)
               }}
-              placeholder="Choose or enter a folder path"
+              placeholder="Home folder unless you choose one"
               autoFocus
             />
             <Button
@@ -5200,7 +5102,7 @@ function KeyboardDialog({
 }) {
   const shortcuts = [
     ['Open command switcher', primaryModifier, 'K'],
-    ['Open a project folder', primaryModifier, 'O'],
+    ['Start a session in a folder', primaryModifier, 'O'],
     ['Move through switcher results', '↑ or ↓', ''],
     ['Open the focused switcher result', 'Enter', ''],
     ['Open the focused conversation in terminal', primaryModifier, 'Enter'],

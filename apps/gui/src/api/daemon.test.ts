@@ -415,13 +415,13 @@ describe('terminal sessions shown beside chats', () => {
     ...overrides,
   })
 
-  it('lists an agent in a terminal of its own, and leaves out shells, popups, other machines and a chat terminal', async () => {
+  it('lists shells and agents in terminals of their own, and leaves out popups, other machines and a chat terminal', async () => {
     vi.mocked(invoke).mockResolvedValue({
       conversations: [],
       workspaces: [],
       terms: {
         '5': term({ label: 'Fix login' }),
-        '6': term({ id: 6, agent: null }),
+        '6': term({ id: 6, agent: null, status: 'Idle' }),
         '7': term({ id: 7, popup: true }),
         '8': term({ id: 8, remote: 'build-box' }),
         '9': term({ id: 9, conversation_id: 3 }),
@@ -432,7 +432,7 @@ describe('terminal sessions shown beside chats', () => {
 
     const sessions = await loadConversations()
 
-    expect(sessions).toHaveLength(1)
+    expect(sessions.map((session) => session.id)).toEqual(['t5', 't6', 't10'])
     expect(sessions[0]).toMatchObject({
       id: 't5',
       kind: 'terminal',
@@ -441,7 +441,10 @@ describe('terminal sessions shown beside chats', () => {
       status: 'working',
       nativePane: 5,
       named: true,
+      agent: 'claude',
     })
+    expect(sessions[1]).toMatchObject({ id: 't6', title: 'Shell 6', agent: null, status: 'idle', named: false })
+    expect(sessions[2]).toMatchObject({ id: 't10', agent: 'gemini' })
   })
 
   it('reads, types into, resizes, names and closes a terminal session by its pane number', async () => {
@@ -452,7 +455,6 @@ describe('terminal sessions shown beside chats', () => {
     await expect(loadTerminalScreen(target)).resolves.toBe('screen')
     vi.mocked(invoke).mockResolvedValueOnce([1, 2])
     await expect(loadTerminalReplay(target)).resolves.toEqual(Uint8Array.from([1, 2]))
-    vi.mocked(invoke).mockResolvedValueOnce('after')
     await sendTerminalInput(target, 'ls\r')
     await resizeTerminal(target, 100, 30)
     await renameConversationOnDaemon({ id: 't5' }, 'Fix login')
@@ -463,7 +465,7 @@ describe('terminal sessions shown beside chats', () => {
     expect(vi.mocked(invoke).mock.calls.map(([name, args]) => [name, args])).toEqual([
       ['pane_terminal_screen', { term: 5 }],
       ['pane_terminal_replay', { term: 5 }],
-      ['pane_terminal_input', { term: 5, data: [108, 115, 13] }],
+      ['terminal_input', { term: 5, data: [108, 115, 13] }],
       ['pane_terminal_resize', { term: 5, cols: 100, rows: 30 }],
       ['rename_terminal_session', { term: 5, name: 'Fix login' }],
       ['close_terminal_session', { term: 5 }],

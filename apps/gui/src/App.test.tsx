@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { previewConversations, previewMessages, type Message } from '@/data/preview'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { previewMessages, type Message } from '@/data/preview'
 import App from './App'
 
 describe('conversation workspace', () => {
@@ -27,7 +27,7 @@ describe('conversation workspace', () => {
     renderApp()
 
     expect(screen.queryByRole('complementary', { name: 'Conversation details' })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /^Review/ }))
+    await user.click(await findReviewButton())
     await user.click(screen.getByRole('tab', { name: 'Files' }))
 
     expect(screen.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
@@ -54,7 +54,6 @@ describe('conversation workspace', () => {
     const user = userEvent.setup()
     renderApp()
 
-    await user.click(screen.getByRole('button', { name: /Show 2 older/ }))
     await user.click(
       screen.getByRole('button', {
         name: /^Review the daemon restore flow, Done, maitty$/i,
@@ -74,47 +73,6 @@ describe('conversation workspace', () => {
     await user.keyboard('{Enter}')
 
     expect(screen.getByRole('main')).toHaveFocus()
-  })
-
-  it('shows cached sessions as disconnected and disables daemon actions after a connection failure', async () => {
-    vi.stubGlobal('isTauri', true)
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    client.setQueryData(['conversations'], structuredClone(previewConversations))
-    const cachedMessages = structuredClone(previewMessages['codex-43'] ?? [])
-    const pendingApproval: Message = {
-      id: 'offline-approval',
-      role: 'approval',
-      content: 'Codex wants to run a command',
-      detail: 'npm test',
-      time: 'Needs your decision',
-      providerRequestId: 'request-1',
-      approvalKind: 'Command',
-      approvalChoices: ['Accept', 'Decline'],
-    }
-    cachedMessages.push(pendingApproval)
-    client.setQueryData(['conversation-history', 'codex-43'], {
-      generation: 0,
-      receipt: null,
-      messages: cachedMessages,
-      nextOperation: 1,
-      error: null,
-      cancelling: false,
-          completeness: 'Complete',
-    })
-
-    try {
-      renderApp(client)
-
-      expect(await screen.findByRole('status', { name: 'Current status: Disconnected' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /last known Needs you/i })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled()
-      expect(screen.getByRole('button', { name: /New conversation/i })).toBeDisabled()
-      expect(screen.getByRole('button', { name: 'Allow once' })).toBeDisabled()
-      expect(screen.getByRole('button', { name: 'Decline' })).toBeDisabled()
-    } finally {
-      vi.unstubAllGlobals()
-    }
   })
 
   it('finds and opens a thread from the keyboard switcher', async () => {
@@ -139,13 +97,13 @@ describe('conversation workspace', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent('New conversation')
   })
 
-  it('opens the project folder flow with Ctrl+O', async () => {
+  it('starts a session in a folder with Ctrl+O', async () => {
     const user = userEvent.setup()
     renderApp()
 
     await user.keyboard('{Control>}o{/Control}')
 
-    expect(screen.getByRole('dialog')).toHaveTextContent('Open a project')
+    expect(screen.getByRole('dialog')).toHaveTextContent('New conversation')
   })
 
   it('opens the shortcut map with question mark', async () => {
@@ -155,7 +113,7 @@ describe('conversation workspace', () => {
     await user.keyboard('?')
 
     expect(screen.getByRole('dialog')).toHaveTextContent('Keyboard shortcuts')
-    expect(screen.getByRole('dialog')).toHaveTextContent('Open a project folder')
+    expect(screen.getByRole('dialog')).toHaveTextContent('Start a session in a folder')
     expect(screen.getByRole('dialog')).toHaveTextContent('Open settings')
     expect(screen.getByRole('dialog')).toHaveTextContent('Switch between chat and terminal')
     expect(screen.getByRole('dialog')).toHaveTextContent('Move through switcher results')
@@ -210,7 +168,7 @@ describe('conversation workspace', () => {
     const user = userEvent.setup()
     renderApp()
     await userEvent.setup().click(
-      await screen.findByRole('button', { name: /^Review/ }),
+      await findReviewButton(),
     )
 
     const changesTab = screen.getByRole('tab', { name: /^Changes/ })
@@ -231,7 +189,7 @@ describe('conversation workspace', () => {
     const user = userEvent.setup()
     renderApp()
     await userEvent.setup().click(
-      await screen.findByRole('button', { name: /^Review/ }),
+      await findReviewButton(),
     )
 
     await user.click(screen.getByRole('tab', { name: /^Changes/ }))
@@ -250,7 +208,7 @@ describe('conversation workspace', () => {
     const user = userEvent.setup()
     renderApp()
     await userEvent.setup().click(
-      await screen.findByRole('button', { name: /^Review/ }),
+      await findReviewButton(),
     )
 
     await user.click(screen.getByRole('tab', { name: /^Changes/ }))
@@ -266,7 +224,6 @@ describe('conversation workspace', () => {
     localStorage.clear()
     const app = renderApp()
 
-    await user.click(screen.getByRole('button', { name: /Show 2 older/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
     await user.type(screen.getByRole('textbox', { name: 'Message Claude' }), 'Keep this draft')
     app.unmount()
@@ -280,7 +237,6 @@ describe('conversation workspace', () => {
     const user = userEvent.setup()
     const app = renderApp()
 
-    await user.click(screen.getByRole('button', { name: /Show 2 older/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
     expect(screen.getByRole('heading', { name: 'Review the daemon restore flow' })).toBeInTheDocument()
 
@@ -326,18 +282,25 @@ describe('conversation workspace', () => {
     expect(await screen.findByText('Choose a project folder first')).toBeInTheDocument()
   })
 
-  it('pins, renames and archives settled conversations from their row menu', async () => {
+  it('opens a new conversation from the tab strip', async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await user.click(screen.getByRole('button', { name: 'New tab' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('New conversation')
+  })
+
+  it('pins, renames and closes sessions from their row menu', async () => {
     const user = userEvent.setup()
     localStorage.clear()
     const app = renderApp()
 
     await user.click(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
     fireEvent.contextMenu(screen.getByRole('button', { name: /^Add a conversation reconnect test,/ }))
-    expect(screen.getByRole('menuitem', { name: 'Archive session' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('menuitem', { name: 'Close session' })).toBeInTheDocument()
     await user.click(screen.getByRole('menuitem', { name: 'Pin conversation' }))
     expect(screen.getByRole('region', { name: 'maitty project' })).toContainElement(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
 
-    await user.click(screen.getByRole('button', { name: /Show 2 older/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
     fireEvent.contextMenu(screen.getByRole('button', { name: /^Review the daemon restore flow,/ }))
     await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
@@ -347,17 +310,14 @@ describe('conversation workspace', () => {
     await user.keyboard('{Enter}')
 
     fireEvent.contextMenu(screen.getByRole('button', { name: /^Review daemon recovery,/ }))
-    await user.click(screen.getByRole('menuitem', { name: 'Archive session' }))
-    await user.click(screen.getByRole('button', { name: /Archived 1/ }))
-    expect(screen.getByRole('button', { name: /^Review daemon recovery, Done, maitty$/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: 'Close session' }))
+    await user.click(screen.getByRole('button', { name: 'End session' }))
+    await waitFor(() => { expect(screen.queryByRole('button', { name: /^Review daemon recovery,/ })).not.toBeInTheDocument() })
 
     app.unmount()
     renderApp()
     expect(screen.getByRole('region', { name: 'maitty project' })).toContainElement(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
-    await user.click(screen.getByRole('button', { name: /Archived 1/ }))
-    expect(screen.getByRole('button', { name: /^Review daemon recovery, Done, maitty$/i })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /^Review daemon recovery, Done, maitty$/i }))
-    expect(screen.getByRole('tab', { name: /Review daemon recovery/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Review daemon recovery,/ })).not.toBeInTheDocument()
   })
 
   it('opens the next conversation that needs attention with Ctrl+Shift+A', async () => {
@@ -414,12 +374,12 @@ describe('conversation workspace', () => {
     expect(await screen.findByText('Use the existing helper instead')).toBeInTheDocument()
   })
 
-  it('opens a project from the palette by typing a folder path', async () => {
+  it('starts a session in a typed folder path with Ctrl+O', async () => {
     const user = userEvent.setup()
     renderApp()
 
     await user.keyboard('{Control>}o{/Control}')
-    await user.type(screen.getByRole('textbox', { name: 'Folder path, or search recent projects' }), '/home/casey/notes{Enter}')
+    await user.type(screen.getByRole('textbox', { name: 'Project folder' }), '/home/casey/notes')
 
     expect(await screen.findByRole('textbox', { name: 'Project folder' })).toHaveValue('/home/casey/notes')
   })
@@ -519,6 +479,15 @@ describe('conversation workspace', () => {
     }
   })
 })
+
+async function findReviewButton(): Promise<HTMLElement> {
+  // A session row can start with "Review" too, so match the header button by its class.
+  return waitFor(() => {
+    const button = document.querySelector<HTMLElement>('.review-button')
+    expect(button).not.toBeNull()
+    return button as HTMLElement
+  })
+}
 
 function renderApp(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(<QueryClientProvider client={client}><App /></QueryClientProvider>)
