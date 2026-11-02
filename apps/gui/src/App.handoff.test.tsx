@@ -142,6 +142,27 @@ describe('desktop chat and terminal handoff', () => {
     expect(await screen.findByRole('region', { name: 'Native Claude terminal' })).toHaveTextContent('Pane 43')
   })
 
+  it('returns to chat from a terminal view that shows a conversation still in chat', async () => {
+    const user = userEvent.setup()
+    const nativeConversation: Conversation = {
+      ...structuredConversation,
+      id: '41',
+      title: 'Native conversation',
+      execution: 'Native',
+      nativePane: 43,
+    }
+    daemon.loadConversations.mockResolvedValue([nativeConversation, structuredConversation])
+    renderDesktopApp()
+
+    await user.click(await screen.findByRole('button', { name: 'Show terminal' }))
+    await user.click(await screen.findByRole('button', { name: /older/ }))
+    await user.click(await screen.findByRole('button', { name: /^Example conversation,/ }))
+    await user.click(await screen.findByRole('button', { name: 'Return to chat' }))
+
+    expect(await screen.findByRole('textbox', { name: 'Message Codex' })).toBeInTheDocument()
+    expect(daemon.handoffToNative).not.toHaveBeenCalled()
+  })
+
   it('shows first-launch readiness, opens a Linux project folder, and keeps Settings available', async () => {
     const user = userEvent.setup()
     const folder = '/home/casey/projects/maitty'

@@ -332,22 +332,22 @@ describe('conversation workspace', () => {
     const app = renderApp()
 
     await user.click(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
-    await user.click(screen.getByRole('button', { name: 'Menu for Add a conversation reconnect test' }))
-    expect(screen.getByRole('menuitem', { name: 'Close session' })).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Add a conversation reconnect test,/ }))
+    expect(screen.getByRole('menuitem', { name: 'Archive session' })).toHaveAttribute('aria-disabled', 'true')
     await user.click(screen.getByRole('menuitem', { name: 'Pin conversation' }))
     expect(screen.getByRole('region', { name: 'maitty project' })).toContainElement(screen.getByRole('button', { name: /^Add a conversation reconnect test, Working, maitty$/i }))
 
     await user.click(screen.getByRole('button', { name: /Show 2 older/ }))
     await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
-    await user.click(screen.getByRole('button', { name: 'Menu for Review the daemon restore flow' }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Review the daemon restore flow,/ }))
     await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
     const renameField = screen.getByRole('textbox', { name: 'Rename Review the daemon restore flow' })
     await user.clear(renameField)
     await user.type(renameField, 'Review daemon recovery')
     await user.keyboard('{Enter}')
 
-    await user.click(screen.getByRole('button', { name: 'Menu for Review daemon recovery' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Close session' }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Review daemon recovery,/ }))
+    await user.click(screen.getByRole('menuitem', { name: 'Archive session' }))
     await user.click(screen.getByRole('button', { name: /Archived 1/ }))
     expect(screen.getByRole('button', { name: /^Review daemon recovery, Done, maitty$/i })).toBeInTheDocument()
 

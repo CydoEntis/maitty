@@ -1124,3 +1124,62 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 .first-run-checklist { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; border-top: 1px solid var(--line); max-width: 440px; padding: 6px 0; }
 .first-run-checklist > span { color: var(--fg); font-size: 13px; height: 34px; }
 .empty-mark { background: var(--accent-soft); border: 0; border-radius: 11px; height: 40px; width: 40px; }
+
+/* Custom title bar in the app's own colors (the native bar is off). */
+.title-bar { align-items: center; background: var(--bg); color: var(--muted-text); display: flex; flex: 0 0 32px; gap: 8px; height: 32px; padding-left: 12px; user-select: none; }
+.title-bar-logo { height: 18px; pointer-events: none; width: 18px; }
+.title-bar-name { font-size: 12px; pointer-events: none; }
+.title-bar-controls { align-items: stretch; display: flex; height: 100%; margin-left: auto; }
+.title-bar-controls button { align-items: center; background: transparent; border: 0; color: var(--muted-text); display: flex; justify-content: center; transition: background-color .14s ease, color .14s ease; width: 46px; }
+.title-bar-controls button:hover { background: var(--hover); color: var(--fg); }
+.title-bar-controls button.is-close:hover { background: #c42b1c; color: #fff; }
+.sidebar-heading { justify-content: flex-end; }
+.sidebar-rail-toggle, .sidebar-collapse-toggle { margin-right: auto; }
+
+/* Notification cards (custom and plain toasts share one look). */
+.notice-toast { background: var(--raise); border: 1px solid var(--line2); border-radius: 14px; box-shadow: 0 18px 50px rgb(0 0 0 / 50%); color: var(--fg); display: flex; font-family: var(--font-sans); gap: 12px; overflow: hidden; padding: 12px; position: relative; width: 368px; max-width: calc(100vw - 32px); }
+.notice-toast.is-needs { border-color: var(--warn-line); }
+.notice-toast.is-recovery, .notice-toast.is-error { border-color: var(--danger-line); }
+.notice-tile { align-items: center; align-self: flex-start; background: var(--sel); border-radius: 8px; display: flex; flex: none; height: 30px; justify-content: center; width: 30px; }
+.notice-toast.is-needs .notice-tile { background: var(--warn-soft); }
+.notice-toast.is-recovery .notice-tile, .notice-toast.is-error .notice-tile { background: var(--danger-soft); }
+.notice-main { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.notice-head { align-items: center; display: flex; font-size: 11.5px; gap: 6px; }
+.notice-kind { font-weight: 500; }
+.notice-toast.is-needs .notice-kind { color: var(--warn); }
+.notice-toast.is-recovery .notice-kind, .notice-toast.is-error .notice-kind { color: var(--danger); }
+.notice-toast.is-finished .notice-kind { color: var(--ok); }
+.notice-toast.is-info .notice-kind { color: var(--muted-text); }
+.notice-project, .notice-age { color: var(--dim); }
+.notice-age { margin-left: auto; }
+.notice-dismiss { background: transparent; border: 0; border-radius: 5px; color: var(--dim); display: flex; height: 20px; justify-content: center; align-items: center; width: 20px; }
+.notice-dismiss:hover { background: var(--sel); color: var(--fg); }
+.notice-title { font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notice-body { color: var(--muted-text); font-size: 12.5px; line-height: 1.5; }
+.notice-command { background: var(--well); border-radius: 7px; color: var(--fg); display: block; font: 12px/1.5 var(--font-mono); margin-top: 2px; max-height: 72px; overflow: hidden; padding: 6px 9px; word-break: break-all; }
+.notice-actions { display: flex; gap: 6px; margin-top: 6px; }
+.notice-actions button { background: transparent; border: 1px solid transparent; border-radius: 7px; color: var(--fg2); font-size: 12px; height: 26px; padding: 0 10px; }
+.notice-actions button:hover { background: var(--sel); }
+.notice-actions button:first-child { background: var(--raise); border-color: var(--line2); color: var(--fg); }
+.notice-actions button.is-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.notice-toast.is-needs .notice-actions button.is-primary { background: var(--warn); border-color: var(--warn); color: var(--on-warn); }
+.notice-countdown { animation: notice-countdown linear forwards; background: var(--ok); bottom: 0; height: 2px; left: 0; position: absolute; width: 100%; }
+@keyframes notice-countdown { to { width: 0; } }
+
+/* Plain toasts (errors, messages) in the same card. */
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast][data-styled="true"] { align-items: flex-start; background: var(--raise); border: 1px solid var(--line2); border-radius: 14px; box-shadow: 0 18px 50px rgb(0 0 0 / 50%); color: var(--fg); gap: 12px; padding: 12px; width: 368px; }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast][data-type="error"] { border-color: var(--danger-line); }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast][data-type="warning"] { border-color: var(--warn-line); }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-icon] { align-items: center; align-self: flex-start; background: var(--sel); border-radius: 8px; height: 30px; justify-content: center; margin: 0; width: 30px; }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast][data-type="error"] [data-icon] { background: var(--danger-soft); }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast][data-type="warning"] [data-icon] { background: var(--warn-soft); }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-title] { font-size: 13.5px; font-weight: 500; }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-description] { color: var(--muted-text); font-size: 12.5px; }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-close-button] { background: transparent; border: 0; color: var(--dim); left: auto; right: 8px; top: 8px; transform: none; }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-button] { background: var(--raise); border: 1px solid var(--line2); border-radius: 7px; color: var(--fg); font-size: 12px; height: 26px; }
+.maitty-toaster[data-sonner-toaster] [data-sonner-toast] [data-cancel] { background: transparent; color: var(--fg2); }
+
+/* Six toast positions in Settings */
+.toast-position-grid { grid-template-columns: repeat(3, 38px); }
+.toast-top-center i { left: 50%; top: 8px; transform: translateX(-50%); }
+.toast-bottom-center i { bottom: 3px; left: 50%; transform: translateX(-50%); }

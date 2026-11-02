@@ -1,6 +1,6 @@
 import type { SpinnerStyle } from '@/lib/spinner-clock'
 
-export type ToastPosition = 'top-right' | 'bottom-right' | 'bottom-left' | 'top-left'
+export type ToastPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
 
 export type SettingsPreferences = {
   accent: 'teal' | 'blue' | 'violet'
@@ -59,7 +59,7 @@ export function writeSettingsPreferences(preferences: SettingsPreferences): void
 }
 
 function isToastPosition(value: unknown): value is ToastPosition {
-  return value === 'top-right' || value === 'bottom-right' || value === 'bottom-left' || value === 'top-left'
+  return value === 'top-left' || value === 'top-center' || value === 'top-right' || value === 'bottom-left' || value === 'bottom-center' || value === 'bottom-right'
 }
 
 function isAccent(value: unknown): value is SettingsPreferences['accent'] {

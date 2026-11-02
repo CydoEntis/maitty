@@ -29,7 +29,6 @@ import {
   Keyboard,
   LoaderCircle,
   MessageSquarePlus,
-  MoreHorizontal,
   PanelRight,
   PanelLeft,
   Pin,
@@ -47,8 +46,16 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { StatusMark } from '@/components/StatusMark'
 import { Elapsed } from '@/components/Elapsed'
+import { TitleBar } from '@/components/TitleBar'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { DiffStat } from '@/components/DiffStat'
 import { useReviewStat } from '@/features/review/useReviewStat'
+import { showNotice } from '@/features/notifications/notify'
 import {
   showAttentionToast,
   showFinishedToast,
@@ -68,12 +75,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { TerminalView as DaemonTerminalView } from './TerminalView'
@@ -552,6 +553,12 @@ function App() {
       setTerminalConversationId(showTerminal ? null : selected.id)
       return
     }
+    // A conversation still in chat has nothing to hand back; Chat just closes the
+    // terminal view (for example after picking it in a split pane).
+    if (showTerminal && selected.execution === 'Structured') {
+      setTerminalConversationId(null)
+      return
+    }
     if (daemonDisconnected) {
       if (selected.execution === 'Native' && showTerminal) {
         setTerminalConversationId(null)
@@ -882,7 +889,13 @@ function App() {
       } else {
         if (!settingsPreferences.notifyFinished) continue
         if (conversation) {
-          void showFinishedToast(conversation, { open })
+          void showFinishedToast(conversation, {
+            open,
+            review: () => {
+              open()
+              setActivePanel('diff')
+            },
+          })
         } else {
           toast.success(`${notification.title} is done`, {
             action: { label: 'Open', onClick: open },
@@ -1196,7 +1209,7 @@ function App() {
       (item) => item.id === conversationId,
     )
     if (archived && conversation?.status === 'working') {
-      toast.message('Wait for this conversation to finish before closing it')
+      toast.message('Wait for this conversation to finish before archiving it')
       return
     }
     setSidebarPreferences((current) => ({
@@ -1208,9 +1221,9 @@ function App() {
     if (archived) {
       if (openTabIds.includes(conversationId) && openTabIds.length > 1)
         closeConversation(conversationId)
-      toast.message('Session closed', {
+      toast.message('Session archived', {
         description:
-          'It keeps running in maittyd. Find it under Archived to reopen it.',
+          'It keeps running in maittyd. Find it under Archived to bring it back.',
       })
     }
   }
@@ -1234,10 +1247,10 @@ function App() {
       ],
     }))
     const stillWorking = sessions.length - closable.length
-    toast.message(`${project} closed`, {
+    toast.message(`${project} archived`, {
       description:
         stillWorking > 0
-          ? `${String(stillWorking)} working ${stillWorking === 1 ? 'session was' : 'sessions were'} left open. Closed sessions keep running in maittyd and are under Archived.`
+          ? `${String(stillWorking)} working ${stillWorking === 1 ? 'session was' : 'sessions were'} left open. Archived sessions keep running in maittyd and are under Archived.`
           : 'Its sessions keep running in maittyd and are under Archived.',
     })
   }
@@ -1294,8 +1307,10 @@ function App() {
         return false
       }}
       onTestNotification={() => {
-        toast.message('Test notification', {
-          description: 'Maitty notifications are working.',
+        showNotice({
+          kind: 'info',
+          title: 'Test notification',
+          body: 'Maitty notifications are working.',
         })
         if (settingsPreferences.notificationSound) playNotificationSound()
       }}
@@ -1499,6 +1514,7 @@ function App() {
           >
             Skip to main content
           </a>
+          <TitleBar />
           <div className="workspace-shell empty-shell">
             <ConversationSidebar
               conversations={[]}
@@ -2031,6 +2047,7 @@ function App() {
           >
             Skip to conversation
           </a>
+          <TitleBar />
           <div className={`workspace-shell ${activePanel ? 'has-panel' : ''}`}>
             {isCompactSidebar && sidebarDrawerOpen && (
               <div
@@ -2552,12 +2569,6 @@ function ConversationSidebar({
         >
           <PanelLeft />
         </Button>
-        <div className="sidebar-brand">
-          <span className="brand-mark" aria-hidden="true">
-            <span />
-          </span>
-          <span className="sidebar-title">Maitty</span>
-        </div>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -2744,51 +2755,53 @@ function ProjectSection({
 
   return (
     <section className="project-section" aria-label={`${project} project`}>
-      <div className="project-heading">
-        <span>{project}</span>
-        {needsYou > 0 && (
-          <span className="project-needs">{needsYou} needs you</span>
-        )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              className="project-new"
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`New session in ${project}`}
-              disabled={disconnected}
-              onClick={() => {
-                onNewInProject(conversations[0]?.folder ?? '')
-              }}
-            >
-              <Plus />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>New session in {project}</TooltipContent>
-        </Tooltip>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              className="project-menu"
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Menu for project ${project}`}
-            >
-              <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="right">
-            <DropdownMenuItem
-              onSelect={() => {
-                onCloseProject(project)
-              }}
-            >
-              <X size={14} />
-              Close project
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div className="project-heading">
+            <span>{project}</span>
+            {needsYou > 0 && (
+              <span className="project-needs">{needsYou} needs you</span>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  className="project-new"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`New session in ${project}`}
+                  disabled={disconnected}
+                  onClick={() => {
+                    onNewInProject(conversations[0]?.folder ?? '')
+                  }}
+                >
+                  <Plus />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>New session in {project}</TooltipContent>
+            </Tooltip>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem
+            disabled={disconnected}
+            onSelect={() => {
+              onNewInProject(conversations[0]?.folder ?? '')
+            }}
+          >
+            <Plus size={14} />
+            New session in {project}
+          </ContextMenuItem>
+          <ContextMenuItem
+            onSelect={() => {
+              onCloseProject(project)
+            }}
+          >
+            <X size={14} />
+            Archive project
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+
       <div className="session-rows">
         {active.map((conversation) => (
           <SessionRow
@@ -2906,114 +2919,104 @@ function SessionRow({
   }
 
   return (
-    <div className={`session-row-shell ${selected ? 'is-selected' : ''}`}>
-      {isRenaming ? (
-        <div className="session-row-rename">
-          <input
-            autoFocus
-            aria-label={`Rename ${conversation.title}`}
-            value={renameDraft}
-            onChange={(event) => {
-              setRenameDraft(event.target.value)
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                saveRename()
-              } else if (event.key === 'Escape') setIsRenaming(false)
-            }}
-          />
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Save conversation name"
-            onClick={saveRename}
-          >
-            <Check />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Cancel rename"
-            onClick={() => {
-              setIsRenaming(false)
-            }}
-          >
-            <X />
-          </Button>
-        </div>
-      ) : (
-        <button
-          className={`session-row status-${conversation.status} ${selected ? 'is-selected' : ''} ${conversation.status === 'needs-you' ? 'is-attention' : ''} ${isArchived ? 'is-archived' : ''}`}
-          type="button"
-          onClick={() => {
-            onSelect(conversation.id)
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'F2') {
-              event.preventDefault()
-              beginRename()
-            }
-          }}
-          aria-label={`${conversation.title}, ${statusText[conversation.status]}${lastKnownText}, ${conversation.project}`}
-          aria-current={selected ? 'page' : undefined}
-        >
-          <StatusMark status={conversation.status} className="row-mark" />
-          <span className="session-row-copy">
-            <span className="session-row-top">
-              <span className="session-row-title">{conversation.title}</span>
-              <span className="session-updated">
-                <RowMeta conversation={conversation} />
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div className={`session-row-shell ${selected ? 'is-selected' : ''}`}>
+          {isRenaming ? (
+            <div className="session-row-rename">
+              <input
+                autoFocus
+                aria-label={`Rename ${conversation.title}`}
+                value={renameDraft}
+                onChange={(event) => {
+                  setRenameDraft(event.target.value)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    saveRename()
+                  } else if (event.key === 'Escape') setIsRenaming(false)
+                }}
+              />
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Save conversation name"
+                onClick={saveRename}
+              >
+                <Check />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Cancel rename"
+                onClick={() => {
+                  setIsRenaming(false)
+                }}
+              >
+                <X />
+              </Button>
+            </div>
+          ) : (
+            <button
+              className={`session-row status-${conversation.status} ${selected ? 'is-selected' : ''} ${conversation.status === 'needs-you' ? 'is-attention' : ''} ${isArchived ? 'is-archived' : ''}`}
+              type="button"
+              onClick={() => {
+                onSelect(conversation.id)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'F2') {
+                  event.preventDefault()
+                  beginRename()
+                }
+              }}
+              aria-label={`${conversation.title}, ${statusText[conversation.status]}${lastKnownText}, ${conversation.project}`}
+              aria-current={selected ? 'page' : undefined}
+            >
+              <StatusMark status={conversation.status} className="row-mark" />
+              <span className="session-row-copy">
+                <span className="session-row-top">
+                  <span className="session-row-title">
+                    {conversation.title}
+                  </span>
+                  <span className="session-updated">
+                    <RowMeta conversation={conversation} />
+                  </span>
+                </span>
+                <span className="session-row-bottom">
+                  <span>{rowSubline(conversation)}</span>
+                </span>
               </span>
-            </span>
-            <span className="session-row-bottom">
-              <span>{rowSubline(conversation)}</span>
-            </span>
-          </span>
-        </button>
-      )}
+            </button>
+          )}
+        </div>
+      </ContextMenuTrigger>
       {!isRenaming && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              className="session-row-menu"
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Menu for ${conversation.title}`}
-            >
-              <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="right">
-            <DropdownMenuItem
-              onSelect={() => {
-                onTogglePin(conversation.id)
-              }}
-            >
-              <Pin size={14} />
-              {isPinned ? 'Unpin conversation' : 'Pin conversation'}
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={beginRename}>
-              <Pencil size={14} />
-              Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={!isArchived && conversation.status === 'working'}
-              onSelect={() => {
-                onArchive(conversation.id, !isArchived)
-              }}
-            >
-              {isArchived ? (
-                <ArchiveRestore size={14} />
-              ) : (
-                <Archive size={14} />
-              )}
-              {isArchived ? 'Reopen session' : 'Close session'}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <ContextMenuContent>
+          <ContextMenuItem
+            onSelect={() => {
+              onTogglePin(conversation.id)
+            }}
+          >
+            <Pin size={14} />
+            {isPinned ? 'Unpin conversation' : 'Pin conversation'}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={beginRename}>
+            <Pencil size={14} />
+            Rename
+          </ContextMenuItem>
+          <ContextMenuItem
+            disabled={!isArchived && conversation.status === 'working'}
+            onSelect={() => {
+              onArchive(conversation.id, !isArchived)
+            }}
+          >
+            {isArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+            {isArchived ? 'Unarchive session' : 'Archive session'}
+          </ContextMenuItem>
+        </ContextMenuContent>
       )}
-    </div>
+    </ContextMenu>
   )
 }
 
@@ -3082,53 +3085,67 @@ function ConversationTabStrip({
         onKeyDown={handleTabKeyDown}
       >
         {tabs.map((tab) => (
-          <div
-            className={`conversation-tab ${tab.id === selectedId ? 'is-active' : ''} ${tab.status === 'working' && tab.id === selectedId ? 'is-shimmering' : ''}`}
-            key={tab.id}
-            onAuxClick={(event) => {
-              if (event.button === 1 && tabs.length > 1) onClose(tab.id)
-            }}
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab.id === selectedId}
-              aria-controls="conversation-main"
-              tabIndex={tab.id === selectedId ? 0 : -1}
-              title={`${tab.title} · ${statusText[tab.status]}`}
-              onClick={() => {
-                onSelect(tab.id)
-              }}
-            >
-              <StatusMark status={tab.status} />
-              <span>{tab.title}</span>
-              {tab.id === selectedId && (
-                <span
-                  className="sr-only"
-                  role="status"
-                  aria-label={`Current status: ${statusText[tab.status]}`}
-                />
-              )}
-            </button>
-            <Tooltip>
-              <TooltipTrigger asChild>
+          <ContextMenu key={tab.id}>
+            <ContextMenuTrigger asChild>
+              <div
+                className={`conversation-tab ${tab.id === selectedId ? 'is-active' : ''} ${tab.status === 'working' && tab.id === selectedId ? 'is-shimmering' : ''}`}
+                onAuxClick={(event) => {
+                  if (event.button === 1 && tabs.length > 1) onClose(tab.id)
+                }}
+              >
                 <button
-                  className="conversation-tab-close"
                   type="button"
-                  aria-label={`Close ${tab.title} tab`}
-                  disabled={tabs.length <= 1}
+                  role="tab"
+                  aria-selected={tab.id === selectedId}
+                  aria-controls="conversation-main"
+                  tabIndex={tab.id === selectedId ? 0 : -1}
+                  title={`${tab.title} · ${statusText[tab.status]}`}
                   onClick={() => {
-                    onClose(tab.id)
+                    onSelect(tab.id)
                   }}
                 >
-                  <X size={12} />
+                  <StatusMark status={tab.status} />
+                  <span>{tab.title}</span>
+                  {tab.id === selectedId && (
+                    <span
+                      className="sr-only"
+                      role="status"
+                      aria-label={`Current status: ${statusText[tab.status]}`}
+                    />
+                  )}
                 </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                Close tab · the session keeps running in maittyd
-              </TooltipContent>
-            </Tooltip>
-          </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className="conversation-tab-close"
+                      type="button"
+                      aria-label={`Close ${tab.title} tab`}
+                      disabled={tabs.length <= 1}
+                      onClick={() => {
+                        onClose(tab.id)
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Close tab · the session keeps running in maittyd
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem
+                disabled={tabs.length <= 1}
+                onSelect={() => {
+                  onClose(tab.id)
+                }}
+              >
+                <X size={14} />
+                Close tab
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         ))}
       </div>
       <div className="header-toolbar">
