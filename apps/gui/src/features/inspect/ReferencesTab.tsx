@@ -1,11 +1,12 @@
 import { repoReferences } from './api'
 import { ago, formatBytes, MS_PER_SECOND } from './format'
-import { messageOf, useRepoQuery } from './useRepoQuery'
+import { RepoError } from './RepoError'
+import { useRepoQuery } from './useRepoQuery'
 
 export function ReferencesTab({ term }: { term: number }) {
   const query = useRepoQuery(term, ['references'], () => repoReferences(term))
   if (query.isPending) return <p className="mx-inspect-note">Loading…</p>
-  if (query.isError) return <p className="mx-inspect-note is-error" role="alert">{messageOf(query.error)}</p>
+  if (query.isError) return <RepoError error={query.error} />
   // When the list was read, so the ages stay the same until it is read again.
   const now = query.dataUpdatedAt / MS_PER_SECOND
   return (

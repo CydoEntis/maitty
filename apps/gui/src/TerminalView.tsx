@@ -194,6 +194,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
             terminalInstance.clearSelection()
           },
           focus: () => { terminalInstance.focus() },
+          paste: (text) => { terminalInstance.paste(text) },
         })
 
         let resizeInFlight = false

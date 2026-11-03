@@ -1,11 +1,12 @@
 import { repoBranches, repoStatus } from './api'
-import { messageOf, useRepoQuery } from './useRepoQuery'
+import { RepoError } from './RepoError'
+import { useRepoQuery } from './useRepoQuery'
 
 export function BranchesTab({ term }: { term: number }) {
   const status = useRepoQuery(term, ['status'], () => repoStatus(term))
   const branches = useRepoQuery(term, ['branches'], () => repoBranches(term))
   if (branches.isPending || status.isPending) return <p className="mx-inspect-note">Loading…</p>
-  if (branches.isError) return <p className="mx-inspect-note is-error" role="alert">{messageOf(branches.error)}</p>
+  if (branches.isError) return <RepoError error={branches.error} />
   const here = status.data?.branch
   return (
     <div className="mx-inspect-body">

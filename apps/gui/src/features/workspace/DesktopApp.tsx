@@ -40,8 +40,12 @@ import { repoDiff, repoLocate } from '@/features/inspect/api'
 import { FindBar } from '@/features/find/FindBar'
 import { RestoreBanner } from './components/RestoreBanner'
 import { UpdateBanner } from '@/features/updates/UpdateBanner'
+import { formatDroppedPaths } from '@/features/terminal/droppedPaths'
+import { useFileDrop } from '@/features/terminal/useFileDrop'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
 import { sendNativeNotice } from '@/features/notifications/native'
+import { showSessionNotice } from '@/features/notifications/notify'
+import { sessionNoticeFor } from '@/features/notifications/noticeForSession'
 import { noticesFor } from '@/features/notifications/transitions'
 import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
 import { newWorktreeSession } from '@/features/worktrees/api'
@@ -242,6 +246,18 @@ export function DesktopApp() {
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
   const focusedId = focusedSessionId(layout)
   const focusedSession = focusedId ? sessionMap.get(focusedId) : undefined
+  // Files dropped on a pane type their paths into it; the pane under the pointer, else the focused one.
+  useFileDrop((paths, at) => {
+    const target = document.elementFromPoint(at.x, at.y)?.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ?? focusedId
+    const handle = target ? terminalHandles.current.get(target) : undefined
+    if (!handle) return
+    if (!online) {
+      toast.error('Reconnect to the Maitty service before dropping files on a pane')
+      return
+    }
+    handle.paste(formatDroppedPaths(paths, /Windows/i.test(navigator.userAgent)))
+    handle.focus()
+  })
   const visibleKey = [...visibleSessionIds(layout)].sort().join(' ')
   // The tab each session is open in; the sidebar shows it only once there is more than one tab.
   const tabOf = useMemo(() => {
@@ -665,25 +681,6 @@ export function DesktopApp() {
     retry: false,
   })
 
-  // A session that just started needing you, finished or failed: tell the system, if you are looking elsewhere.
-  const { notifyNeedsYou, notifyFinished, notifyError } = preferences
-  useEffect(() => {
-    const notices = online
-      ? noticesFor(lastStatuses.current, sessions, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
-      : []
-    lastStatuses.current = new Map(sessions.map((item) => [item.id, item.status]))
-    // In the window but on another pane: a toast you can click. Away from the window: the system's.
-    const inWindow = document.hasFocus()
-    for (const notice of notices) {
-      if (inWindow) {
-        toast(notice.title, { description: notice.body, action: { label: 'Open', onClick: () => { showSessionById(notice.sessionId) } } })
-        continue
-      }
-      lastNotified.current = { sessionId: notice.sessionId, at: Date.now() }
-      sendNativeNotice(notice.title, notice.body).catch((error: unknown) => { console.warn('Could not show a system notification', error) })
-    }
-  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, showSessionById])
-
   // Looking at a pane acknowledges it: a finished agent's done goes back to idle, as when the terminal app
   // focuses it, and an error in it leaves the inbox. Needs-you stays until the agent is answered.
   const viewedId = focusedSession?.id
@@ -717,6 +714,30 @@ export function DesktopApp() {
       .then(() => { flash(`Sent “${answer}” to ${displayName(target)}`) })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not answer the session')) })
   }, [sessionMap, sendTo, flash])
+
+  // A session that just started needing you, finished or failed: tell the system, if you are looking elsewhere.
+  const { notifyNeedsYou, notifyFinished, notifyError } = preferences
+  useEffect(() => {
+    const notices = online
+      ? noticesFor(lastStatuses.current, sessions, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
+      : []
+    lastStatuses.current = new Map(sessions.map((item) => [item.id, item.status]))
+    // In the window but on another pane: a toast you can click. Away from the window: the system's.
+    const inWindow = document.hasFocus()
+    for (const notice of notices) {
+      if (inWindow) {
+        const target = sessionMap.get(notice.sessionId)
+        const card = target && sessionNoticeFor(target, projectOf.get(target.id), {
+          open: () => { showSessionById(notice.sessionId) },
+          allow: online ? () => { answerSession(notice.sessionId, 'y') } : null,
+        })
+        if (card) showSessionNotice(notice.sessionId, card)
+        continue
+      }
+      lastNotified.current = { sessionId: notice.sessionId, at: Date.now() }
+      sendNativeNotice(notice.title, notice.body).catch((error: unknown) => { console.warn('Could not show a system notification', error) })
+    }
+  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, showSessionById, sessionMap, projectOf, answerSession])
 
   // Types the resume command into the session, as you would. Nothing resumes without this click.
   const resumeInterrupted = useCallback((target: SessionView) => {
@@ -863,6 +884,7 @@ export function DesktopApp() {
       onEndSession={endSession}
       onEndProject={endProject}
       onSetName={saveName}
+      onRenameSession={setRenameId}
       onPinSession={pinSession}
       onArchiveSession={(id) => { setArchived(id, true) }}
       archived={archivedSessions}
@@ -896,6 +918,7 @@ export function DesktopApp() {
                   portalContainer={root}
                   onSelect={(tabId) => { setLayout((current) => selectTab(current, tabId)) }}
                   onClose={closeTabById}
+                  onRenameSession={saveName}
                   newTabLabel={projectName ? `New session in ${projectName}` : 'New tab'}
                   onNewTab={newProjectSession}
                   inboxCount={inboxEntries.length}
@@ -1111,7 +1134,7 @@ export function DesktopApp() {
             )}
             {toastMessage && <Toast key={toastMessage.key} message={toastMessage.text} />}
           </div>
-          <Toaster position="bottom-right" theme={theme.light ? 'light' : 'dark'} />
+          <Toaster position="top-right" theme={theme.light ? 'light' : 'dark'} />
         </div>
       </EffectsContext.Provider>
     </ReducedMotionContext.Provider>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { repoFile, repoTree } from './api'
 import { joinPath, parentOf } from './format'
+import { RepoError } from './RepoError'
 import { messageOf, useRepoQuery } from './useRepoQuery'
 
 export type LookAt = { path: string; line?: number; key: number }
@@ -37,7 +38,7 @@ export function FilesTab({ term, lookAt }: { term: number; lookAt: LookAt | null
           ))}
         </nav>
         {tree.isPending && <p className="mx-inspect-note">Loading…</p>}
-        {tree.isError && <p className="mx-inspect-note is-error" role="alert">{messageOf(tree.error)}</p>}
+        {tree.isError && <RepoError error={tree.error} />}
         <ul className="mx-inspect-list" aria-label="Files">
           {tree.data?.map((entry) => {
             const path = joinPath(folder, entry.name)

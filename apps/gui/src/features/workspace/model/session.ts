@@ -156,21 +156,36 @@ export function toSessionView(conversation: Conversation, home: string): Session
 }
 
 /** The words after the process on a sidebar row's second line. */
-export function statusPhrase(session: SessionView): string {
+export function statusText(session: SessionView): string {
   switch (session.status) {
     case 'working':
-      return ' · working'
+      return 'working'
     case 'needs':
-      return ' · needs you'
+      return 'needs you'
     case 'done':
-      return ' · finished'
+      return 'finished'
     case 'error':
-      return ' · exited with error'
+      return 'exited with error'
     case 'unknown':
-      return session.lastKnownStatus ? ` · last seen ${STATUS_WORD[session.lastKnownStatus]}` : ' · unknown'
+      return session.lastKnownStatus ? `last seen ${STATUS_WORD[session.lastKnownStatus]}` : 'unknown'
     case 'idle':
-      return ' · idle'
+      return 'idle'
   }
+}
+
+export function statusPhrase(session: SessionView): string {
+  return ` · ${statusText(session)}`
+}
+
+/**
+ * Programs whose app icon already says what they are, so a row or tab need not write the name beside
+ * it. Keep in step with the icons in `glyphs.tsx`; any other program gets a tinted letter, which does not.
+ */
+const ICONED_PROGRAMS: ReadonlySet<string> = new Set(['claude', 'codex', 'deepseek', 'gemini', 'opencode', 'cargo', 'rustc', 'shell'])
+
+export function iconSaysProcess(process: string): boolean {
+  const program = process.split(/\s+/)[0] ?? ''
+  return program === '' || ICONED_PROGRAMS.has(program)
 }
 
 const STATUS_RANK: Record<SessionStatus, number> = { needs: 0, error: 0, working: 1, done: 2, idle: 2, unknown: 2 }

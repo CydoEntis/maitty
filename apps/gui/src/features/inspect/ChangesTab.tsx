@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { repoDiff } from './api'
 import { PatchView } from './PatchView'
-import { messageOf, useRepoQuery } from './useRepoQuery'
+import { RepoError } from './RepoError'
+import { useRepoQuery } from './useRepoQuery'
 
 export const CHANGES_REFRESH_MS = 4000
 
@@ -9,7 +10,7 @@ export function ChangesTab({ term }: { term: number }) {
   const query = useRepoQuery(term, ['diff'], () => repoDiff(term), CHANGES_REFRESH_MS)
   const [picked, setPicked] = useState<string | null>(null)
   if (query.isPending) return <p className="mx-inspect-note">Loading…</p>
-  if (query.isError) return <p className="mx-inspect-note is-error" role="alert">{messageOf(query.error)}</p>
+  if (query.isError) return <RepoError error={query.error} />
   const { files } = query.data
   const selected = files.find((file) => file.path === picked) ?? files[0]
   if (!selected) return <p className="mx-inspect-note">No changes. The working tree matches the last commit.</p>

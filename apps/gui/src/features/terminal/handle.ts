@@ -4,4 +4,6 @@ export type TerminalHandle = {
   find: (query: string, direction: 'next' | 'previous') => boolean
   clearFind: () => void
   focus: () => void
+  /** Types text into the terminal as a paste: it is never run unless it ends in a newline. */
+  paste: (text: string) => void
 }

@@ -57,6 +57,7 @@ export function PaneCard(props: PaneCardProps) {
     <section
       className={`mx-pane${ringed ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
       aria-label={`Terminal ${String(props.index + 1)}: ${session.cwdLabel}${ringed ? ', focused' : ''}`}
+      data-session-id={session.id}
       onMouseDown={() => { props.onFocus(pane.id) }}
       onDragOver={(event: DragEvent) => {
         event.preventDefault()

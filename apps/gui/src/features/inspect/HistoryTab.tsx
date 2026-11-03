@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { repoDiffRange, repoLog, repoSnapshots, restoreSnapshot } from './api'
 import { ago, MS_PER_SECOND } from './format'
 import { PatchView } from './PatchView'
+import { RepoError } from './RepoError'
 import { messageOf, useRepoQuery } from './useRepoQuery'
 
 type Entry = { id: string; kind: 'commit' | 'snapshot'; title: string; detail: string; time: number }
@@ -53,7 +54,7 @@ export function HistoryTab({ term, agentWorking, onNotice }: Props) {
   }
 
   if (log.isPending || snapshots.isPending) return <p className="mx-inspect-note">Loading…</p>
-  if (log.isError) return <p className="mx-inspect-note is-error" role="alert">{messageOf(log.error)}</p>
+  if (log.isError) return <RepoError error={log.error} />
 
   return (
     <div className="mx-inspect-body">

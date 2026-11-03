@@ -88,6 +88,20 @@ describe('desktop settings', () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ themeMode: 'light' }))
   })
 
+  it('opens the theme list outside its card, so the card cannot clip it, and closes it on Escape', async () => {
+    const user = userEvent.setup()
+    renderSettings('appearance')
+
+    await user.click(screen.getByRole('button', { name: 'Dark theme: Midnight' }))
+    const list = screen.getByRole('listbox', { name: 'Dark themes' })
+    expect(list.closest('.mx-scard')).toBeNull()
+    expect(list.closest('.mx-picker-menu')).toHaveAttribute('style', expect.stringContaining('left'))
+    expect(screen.getByRole('textbox', { name: 'Search dark themes' })).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox', { name: 'Dark themes' })).not.toBeInTheDocument()
+  })
+
   it('previews a hovered theme only for the slot that is in use, and ends the preview on leaving', async () => {
     const user = userEvent.setup()
     const { onPreviewTheme } = renderSettings('appearance', { preferences: { ...PREFS, themeMode: 'dark' } })

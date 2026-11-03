@@ -282,6 +282,10 @@
 .mx-tab.is-active { background-color: var(--raise); box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 0 0 1px var(--pane-line), 0 6px 16px rgba(0, 0, 0, .28); color: var(--fg); font-weight: 500; }
 .mx-tab-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-tab-label .mx-tab-folder { color: var(--muted); font-weight: 400; }
+/* A name edited where it is shown: on a sidebar row's title line and on a tab. */
+.mx-inline-name { all: unset; box-sizing: border-box; flex: 1; min-width: 0; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--well); box-shadow: inset 0 0 0 1px var(--accent-line); font: inherit; color: var(--fg); }
+.mx-inline-name::placeholder { color: var(--dim); }
+.mx-tab-label .mx-inline-name { flex: none; width: 150px; }
 .mx-tab-needs { width: 12px; height: 12px; flex: none; border-radius: 3.5px; background: var(--warn); display: flex; align-items: center; justify-content: center; gap: 2px; }
 .mx-tab-done, .mx-tab-error { width: 14px; height: 14px; flex: none; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
 .mx-tab-done { background: rgba(141, 184, 155, .18); }
@@ -448,9 +452,8 @@
 .mx-picker-pill { flex: none; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 600; color: var(--accent); background: var(--accent-soft); }
 .mx-picker-chevron { flex: none; color: var(--dim); transition: transform .18s var(--ease-out); }
 .mx-picker-button.is-open .mx-picker-chevron { transform: rotate(180deg); }
-.mx-picker-menu { position: absolute; z-index: 20; right: 0; top: calc(100% + 6px); width: 300px; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 12px; background: var(--raise); border: 1px solid var(--pane-line); box-shadow: 0 16px 44px rgba(0, 0, 0, .5); animation: v7fade .14s ease-out; }
-.mx-picker-menu.is-up { top: auto; bottom: calc(100% + 6px); }
-.mx-picker-list { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.mx-picker-menu { position: fixed; z-index: 60; width: 300px; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 12px; background: var(--raise); border: 1px solid var(--pane-line); box-shadow: 0 16px 44px rgba(0, 0, 0, .5); animation: v7fade .14s ease-out; }
+.mx-picker-list { max-height: 280px; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .mx-picker-list .mx-theme-card { width: 100%; text-align: left; }
 .mx-picker-list .mx-swatch { width: 34px; height: 24px; }
 .mx-picker-empty { padding: 14px 6px; font-size: 12.5px; color: var(--dim); }
@@ -587,12 +590,12 @@
 .mx-stack { display: flex; flex-direction: column; }
 .mx-stack .mx-row-wrap { position: relative; z-index: 1; }
 .mx-row.is-swapped { animation: v8swap .32s var(--ease-out); }
-.mx-tray { position: relative; z-index: 0; display: grid; gap: 4px; margin: -6px 5px 4px; padding: 10px 5px 5px; border-radius: 0 0 10px 10px; background: rgba(255, 255, 255, .028); box-shadow: inset 0 0 0 1px var(--pane-line); animation: v7fade .2s ease-out; }
+.mx-tray { position: relative; z-index: 0; display: grid; gap: 2px; margin: 0 0 4px; padding: 2px 4px 2px 10px; animation: v7fade .2s ease-out; }
 .mx-tray.is-stacked { grid-template-columns: minmax(0, 1fr); }
-.mx-tray-item { position: relative; min-width: 0; height: calc(24px * var(--icon-scale, 1)); box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 9px 0 3px; border-radius: 7px; background-color: rgba(255, 255, 255, .03); background-repeat: no-repeat; box-shadow: inset 0 0 0 1px var(--pane-line); cursor: pointer; transition: background-color .16s ease, box-shadow .16s ease, transform .2s var(--ease-out); }
+.mx-tray-item { position: relative; min-width: 0; height: calc(24px * var(--icon-scale, 1)); box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 9px 0 3px; border-radius: 7px; background-color: transparent; background-repeat: no-repeat; cursor: pointer; transition: background-color .16s ease, box-shadow .16s ease, transform .2s var(--ease-out); }
 .mx-tray-item.is-icons { width: 24px; padding: 0; justify-content: center; }
 .mx-tray-item.is-stacked { padding: 0 8px 0 3px; }
-.mx-tray-item:hover { background-color: rgba(255, 255, 255, .08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); transform: translateY(-1px) scale(1.06); }
+.mx-tray-item:hover { background-color: rgba(255, 255, 255, .08); transform: translateY(-1px) scale(1.06); }
 .mx-tray-item:active { transform: scale(.9); }
 .mx-tray-icon { position: relative; flex: none; display: flex; }
 .mx-tray-icon .mx-badge { right: -5px; bottom: -5px; width: 12px; height: 12px; border-radius: 3.5px; }
@@ -608,7 +611,7 @@
 .mx-tray-word.is-needs { color: var(--warn); }
 .mx-tray-word.is-done { color: var(--ok); }
 .mx-tray-word.is-error { color: var(--danger); }
-.mx-tray-more { height: calc(24px * var(--icon-scale, 1)); min-width: 0; box-sizing: border-box; padding: 0 6px; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1px var(--pane-line); font-family: var(--mono); font-size: 10.5px; color: var(--muted); cursor: pointer; transition: background-color .14s ease, color .14s ease, transform .12s ease; }
+.mx-tray-more { height: calc(24px * var(--icon-scale, 1)); min-width: 0; box-sizing: border-box; padding: 0 6px; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: transparent; font-family: var(--mono); font-size: 10.5px; color: var(--muted); cursor: pointer; transition: background-color .14s ease, color .14s ease, transform .12s ease; }
 .mx-tray-more:hover, .mx-tray-more.is-open { background: rgba(255, 255, 255, .07); color: var(--fg); }
 .mx-tray-more.is-needs { color: var(--warn); }
 .mx-tray-more:active { transform: scale(.92); }
@@ -831,11 +834,6 @@
 
 /* Session menu (right-click a row, tray item or rail icon), pin mark and the Archived section. */
 .mx-sessionmenu { position: fixed; z-index: 70; width: 260px; display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 12px; background: var(--raise); border: 1px solid var(--pane-line); box-shadow: 0 16px 44px rgba(0, 0, 0, .5); animation: v7fade .14s ease-out; }
-.mx-sm-name { display: flex; flex-direction: column; gap: 4px; padding-bottom: 6px; }
-.mx-sm-name .mx-menu-caps { padding: 0 2px; }
-.mx-sm-name input { all: unset; box-sizing: border-box; height: 32px; padding: 0 10px; border-radius: 8px; background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); font-size: 12.5px; color: var(--fg); }
-.mx-sm-name input::placeholder { color: var(--dim); }
-.mx-sm-name input:focus-visible { box-shadow: inset 0 0 0 1px var(--accent-line); outline: none; }
 .mx-sessionmenu .mx-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; }
 .mx-sessionmenu .mx-menu-item svg { flex: none; color: var(--muted); }
 .mx-sessionmenu .mx-menu-hint { margin-left: auto; }
@@ -851,6 +849,27 @@
 .mx-archived-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .mx-archived-name { font-size: 12.5px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-archived-proc { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+
+/* Notification card (design 10.3): the app, the project, what happened, and what you can do about it. */
+.mx-notice { position: relative; width: 356px; max-width: calc(100vw - 32px); display: flex; gap: 12px; padding: 12px 14px 12px 12px; border-radius: 16px; overflow: hidden; color: var(--fg); background: color-mix(in oklab, var(--raise) 82%, transparent); backdrop-filter: blur(18px) saturate(1.2); border: 1px solid var(--pane-line); box-shadow: 0 16px 44px rgba(0, 0, 0, .5); animation: v7fade .18s ease-out; }
+.mx-notice.is-needs { border-color: var(--warn-line); }
+.mx-notice.is-error { border-color: var(--danger-line); }
+.mx-notice-tile { flex: none; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: linear-gradient(140deg, color-mix(in oklab, var(--accent) 88%, white 12%), var(--accent)); color: var(--on-accent); font: 600 13px var(--mono); }
+.mx-notice-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mx-notice-head { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); }
+.mx-notice-app { font-weight: 600; letter-spacing: .08em; }
+.mx-notice-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
+.mx-notice-age { margin-left: auto; }
+.mx-notice-title { font-size: 13.5px; font-weight: 600; }
+.mx-notice-body { font-size: 12.5px; line-height: 1.4; color: var(--fg2); overflow-wrap: anywhere; }
+.mx-notice-actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.mx-notice-actions button { height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: var(--fg2); background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); transition: background-color .14s ease, color .14s ease; }
+.mx-notice-actions button:hover { background: var(--sel); color: var(--fg); }
+.mx-notice-actions button.is-primary { font-weight: 600; color: var(--on-warn); background: var(--warn); box-shadow: none; }
+.mx-notice-actions button.is-primary:hover { background: color-mix(in oklab, var(--warn) 88%, white 12%); color: var(--on-warn); }
+.mx-notice-actions button.is-quiet { background: transparent; box-shadow: none; }
+.mx-notice-countdown { position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; background: var(--accent); transform-origin: left; animation: mx-notice-count linear forwards; }
+@keyframes mx-notice-count { to { transform: scaleX(0); } }
 
 /* Update offer; it reuses the interrupted-agents banner's frame. */
 .mx-update { background: color-mix(in oklab, var(--accent) 12%, var(--pane)); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 40%, transparent); }
@@ -911,10 +930,8 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 :root[data-finish="flat"] .mx-tab:not(.is-active):focus-visible { box-shadow: none; transform: none; }
 :root[data-finish="flat"] .mx-tablist { background: transparent; box-shadow: none; border-radius: calc(10px * var(--rk)); }
 :root[data-finish="flat"] .mx-new-tab { background: transparent; box-shadow: none; }
-/* The session tray sits flush under its main row, with no box. */
-:root[data-finish="flat"] .mx-tray { margin: 0 0 4px; padding: 2px 0; border-radius: 0; background: transparent; box-shadow: none; }
-:root[data-finish="flat"] .mx-tray-item,
-:root[data-finish="flat"] .mx-tray-item:hover { box-shadow: none; transform: none; }
+/* Flat finish: a tray item does not lift on hover. */
+:root[data-finish="flat"] .mx-tray-item:hover { transform: none; }
 /* Top-bar buttons and status badges stay flat: no gradient, glow, lift or entrance. */
 :root[data-finish="flat"] .mx-inbox-button { background: var(--strip-bg, rgba(255, 255, 255, .025)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); }
 :root[data-finish="flat"] .mx-inbox-button:hover { background: var(--strip-hover, rgba(255, 255, 255, .06)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); transform: none; }

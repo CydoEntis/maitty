@@ -1987,6 +1987,39 @@ fn worktree_names_that_look_like_options_are_refused() {
 }
 
 #[test]
+fn a_repository_with_no_commits_says_so_instead_of_showing_a_git_error() {
+    let tmp = std::env::temp_dir().join(format!(
+        concat!(env!("APP_COMMAND"), "-no-commits-{}"),
+        std::process::id()
+    ));
+    let repo = tmp.join("fresh");
+    std::fs::create_dir_all(&repo).unwrap();
+    assert!(
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["init", "-q"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    let error = git::create_worktree(
+        &repo,
+        "warm-finch",
+        None,
+        "{repo_parent}/{repo}-worktrees/{branch}",
+    )
+    .unwrap_err();
+    assert!(format!("{error:#}").contains("no commits yet"), "{error:#}");
+    assert!(
+        !tmp.join("fresh-worktrees").exists(),
+        "nothing is created for a worktree that cannot be made"
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
 fn an_agent_typed_into_a_shell_gets_its_own_worktree() {
     let tmp = std::env::temp_dir().join(format!(
         concat!(env!("APP_COMMAND"), "-agent-wt-{}"),

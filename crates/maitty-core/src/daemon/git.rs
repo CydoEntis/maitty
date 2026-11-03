@@ -173,14 +173,23 @@ pub fn create_worktree(
     if path.exists() {
         bail!("{} already exists", path.display());
     }
+    let has = |r: &str| git(&root, &["show-ref", "--verify", "--quiet", r]).is_ok();
+    let existing = has(&format!("refs/heads/{branch}"))
+        || (base.is_none() && has(&format!("refs/remotes/origin/{branch}")));
+    // A branch with no commits has nothing to start from; say so before git's own message does.
+    if !existing
+        && base.is_none()
+        && git(&root, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_err()
+    {
+        bail!(
+            "this repository has no commits yet, so there is nothing to start a worktree from; make a first commit and it will work"
+        );
+    }
     if let Some(p) = path.parent() {
         std::fs::create_dir_all(p)?;
     }
     let p = path.to_string_lossy().into_owned();
-    let has = |r: &str| git(&root, &["show-ref", "--verify", "--quiet", r]).is_ok();
-    if has(&format!("refs/heads/{branch}"))
-        || (base.is_none() && has(&format!("refs/remotes/origin/{branch}")))
-    {
+    if existing {
         // Existing branch (git sets up tracking for a remote-only one).
         git(&root, &["worktree", "add", &p, branch])?;
     } else {

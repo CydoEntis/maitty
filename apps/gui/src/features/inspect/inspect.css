@@ -20,6 +20,9 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(255, 255,
 .mx-inspect-meta { flex: none; font-family: var(--mono); font-size: 11px; color: var(--dim); }
 .mx-inspect-note { margin: 0; padding: 4px 8px; font-size: 12.5px; color: var(--dim); }
 .mx-inspect-note.is-error { color: var(--danger); }
+.mx-inspect-empty { display: flex; flex-direction: column; gap: 6px; padding: 12px 8px; font-size: 12.5px; line-height: 1.5; color: var(--dim); }
+.mx-inspect-empty strong { font-weight: 600; color: var(--fg2); }
+.mx-inspect-empty code { font-family: var(--mono); color: var(--fg2); }
 .mx-inspect-summary { margin: 0; font-size: 13px; font-weight: 600; color: var(--fg); }
 .mx-inspect-file { margin: 0 0 6px; font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--fg2); }
 .mx-inspect-crumbs { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 6px; font-family: var(--mono); font-size: 12px; }

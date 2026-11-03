@@ -10,7 +10,7 @@ import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
 import { SessionStack } from './SessionStack'
 import { useSessionMenu, type SessionMenuActions } from './SessionMenu'
 import { RailPopoverLayer } from './RailPopovers'
-import { useRailHover, type RailHover } from './railHover'
+import { hoverHandlers, useRailHover, type RailHover } from './railHover'
 import { WorktreeMenu } from '@/features/worktrees/WorktreeMenu'
 
 export type SidebarProps = {
@@ -50,6 +50,8 @@ export type SidebarProps = {
   /** Ends every session in a project; the app asks first. */
   onEndProject: (ids: string[], name: string) => void
   onSetName: (id: string, name: string) => void
+  /** Opens the rename dialog, for a session with no room to rename it in place. */
+  onRenameSession: (id: string) => void
   onPinSession: (id: string, pinned: boolean) => void
   /** Puts a session away from the lists; it keeps running. */
   onArchiveSession: (id: string) => void
@@ -102,8 +104,10 @@ function DaemonFooterText({ online, sessionCount }: Pick<SidebarProps, 'online' 
 
 function Expanded(props: GroupProps) {
   const { groups, mode, primary, online, sessionCount, isOpen, onToggleGroup } = props
+  const hover = useRailHover()
   return (
     <div className="mx-sidebar-expanded">
+      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
       <div className="mx-sidebar-head">
         <span className="mx-sidebar-title">Projects</span>
         <span className="mx-spacer" />
@@ -118,7 +122,7 @@ function Expanded(props: GroupProps) {
           return (
             <div key={group.key} className={`mx-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`}>
               <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
-              <button type="button" className="mx-group-head" aria-expanded={open} title={group.path} onClick={() => { onToggleGroup(group.key) }}>
+              <button type="button" className="mx-group-head" aria-expanded={open} {...hoverHandlers(hover, { kind: 'folder', key: group.key })} onClick={() => { hover.close(); onToggleGroup(group.key) }}>
                 <Icon name="chevron" />
                 <span className={`mx-folder-tile${group.containsFocused ? ' is-focused' : ''}`} style={folderStyle(group.key, group.colorId)}><Icon name="folder" /></span>
                 <span className="mx-group-name">{group.name}</span>
@@ -143,8 +147,10 @@ function Expanded(props: GroupProps) {
                     online={online}
                     paneOf={props.paneOf}
                     portalContainer={props.portalContainer}
+                    hover={hover}
                     onShowSession={props.onShowSession}
                     onSetName={props.onSetName}
+                    onRenameSession={props.onRenameSession}
                     onPinSession={props.onPinSession}
                     onArchiveSession={props.onArchiveSession}
                     onEndSession={props.onEndSession}
@@ -305,7 +311,7 @@ function Rail(props: GroupProps) {
                         online,
                         portalContainer: props.portalContainer,
                         onShow: () => { props.onShowSession(session.id) },
-                        onSetName: (name) => { props.onSetName(session.id, name) },
+                        onRename: () => { props.onRenameSession(session.id) },
                         onPin: (pinned) => { props.onPinSession(session.id, pinned) },
                         onArchive: () => { props.onArchiveSession(session.id) },
                         onEnd: () => { props.onEndSession(session.id) },
