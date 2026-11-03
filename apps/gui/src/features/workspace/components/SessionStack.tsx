@@ -86,6 +86,7 @@ export function SessionStack(props: StackProps) {
   return (
     <div className={`mx-stack${hasTray ? ' has-tray' : ''}`}>
       <SessionRow
+        key={lead.id}
         session={lead}
         track={tracks.get(lead.id)}
         now={now}
@@ -129,6 +130,9 @@ function TrayItem({ session, style, track, now, selected, pane, actions, hover }
   const where = pane === undefined ? 'detached' : `pane ${String(pane)}`
   const label = `${displayName(session)}, ${session.process}, ${STATUS_WORD[session.status]}, ${where}`
   const word = stateWord(session, track, now)
+  // The program's name, unless its icon says it. A name you gave takes that place in the named style (the stacked one writes it after).
+  const program = iconSaysProcess(session.process) ? null : session.process.split(/\s+/)[0]
+  const leadLabel = style === 'icons' ? null : style === 'names' ? (session.name ?? program) : program
   return (
     <>
       <button type="button" className={`mx-tray-item is-${style} is-${session.status}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(SESSION_DRAG_TYPE, session.id) }} {...hoverHandlers(hover, { kind: 'session', id: session.id })} onContextMenu={(event) => { hover.close(); menu.onContextMenu(event) }} aria-label={label} onClick={actions.onShow}>
@@ -137,8 +141,8 @@ function TrayItem({ session, style, track, now, selected, pane, actions, hover }
           <StatusBadge status={session.status} rail />
           {unread && <span className="mx-tray-unread" aria-label="Unread" />}
         </span>
-        {style !== 'icons' && !iconSaysProcess(session.process) && <span className="mx-tray-proc">{session.process.split(/\s+/)[0]}</span>}
-        {style === 'stacked' && <span className="mx-tray-where">{session.title}</span>}
+        {leadLabel && <span className="mx-tray-proc">{leadLabel}</span>}
+        {style === 'stacked' && <span className="mx-tray-where">{displayName(session)}</span>}
         {style === 'stacked' && word && <span className={`mx-tray-word is-${session.status}`}>{word}</span>}
       </button>
       {menu.element}

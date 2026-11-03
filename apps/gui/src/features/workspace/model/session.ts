@@ -24,6 +24,8 @@ export type SessionView = {
   pinned: boolean
   /** Put away from the project lists and tabs. It keeps running in the daemon. */
   archived: boolean
+  /** The daemon no longer lists it, but its pane stays on screen until you close or restart it. */
+  ended: boolean
   /** The repo name and folder within it, or the `~` path: what a prompt would show. */
   promptPath: string
   /** What runs in the shell. The daemon reports agents only, so anything else reads as `shell`. */
@@ -143,6 +145,7 @@ export function toSessionView(conversation: Conversation, home: string): Session
     name: conversation.named ? conversation.title.trim() || null : null,
     pinned: conversation.pinned ?? false,
     archived: conversation.archived ?? false,
+    ended: false,
     promptPath,
     process: processName(conversation.agent, conversation.process),
     lastPrompt: (conversation.summary ?? '').trim(),

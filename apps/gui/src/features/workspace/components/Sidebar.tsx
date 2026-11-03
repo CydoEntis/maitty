@@ -32,6 +32,8 @@ export type SidebarProps = {
   /** The tab (counting from 1) each session is open in; empty when only one tab is open. */
   tabOf: ReadonlyMap<string, number>
   tabPanes: ReadonlyMap<string, readonly SessionView[]>
+  /** Sessions a tab shows. */
+  openIds: ReadonlySet<string>
   /** The pane (counting from 1) each session has in its tab; absent for a session no tab shows. */
   paneOf: ReadonlyMap<string, number>
   /** How a project's other sessions sit under its main row, and which session leads it. */
@@ -104,7 +106,7 @@ function Expanded(props: GroupProps) {
   const hover = useRailHover()
   return (
     <div className="mx-sidebar-expanded">
-      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} tracks={props.tracks} now={props.now} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
+      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} openIds={props.openIds} tracks={props.tracks} now={props.now} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
       <div className="mx-sidebar-head">
         <span className="mx-sidebar-title">Projects</span>
         <span className="mx-spacer" />
@@ -248,7 +250,7 @@ function Rail(props: GroupProps) {
   const hover = useRailHover()
   return (
     <div className="mx-rail">
-      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} tracks={props.tracks} now={props.now} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
+      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} openIds={props.openIds} tracks={props.tracks} now={props.now} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
       <div className="mx-rail-top">
         {props.canExpand && <button type="button" className="mx-icon-button mx-rail-button" aria-label="Expand sidebar" title={`Expand sidebar (${primary}B)`} onClick={props.onToggleRail}><Icon name="expand" /></button>}
         <button type="button" className="mx-icon-button mx-rail-button mx-rail-new" aria-label="New session" title={`New session (${primary}T)`} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" /></button>

@@ -1,6 +1,6 @@
 /**
- * Tabs hold layouts; panes hold sessions. A tab is one to four panes in columns. Closing a pane
- * or a tab only detaches: the session keeps running in the daemon and stays in the sidebar.
+ * Tabs hold layouts; panes hold sessions. A tab is one to four panes in columns. A pane goes only
+ * when you close it (`removeSessions`): one whose session stops being listed stays, as an ended pane.
  */
 export const MAX_PANES = 4
 
@@ -68,49 +68,16 @@ function compactColumns(panes: PaneSlot[]): PaneSlot[] {
 }
 
 /** Detaches one pane. The last pane of a tab stays; close the tab instead. */
-export function closePane(layout: Layout, paneId: string): Layout {
-  const tab = layout.tabs.find((candidate) => candidate.panes.some((pane) => pane.id === paneId))
-  if (!tab || tab.panes.length <= 1) return layout
-  const index = tab.panes.findIndex((pane) => pane.id === paneId)
-  const panes = compactColumns(tab.panes.filter((pane) => pane.id !== paneId))
-  const focus = tab.focus === paneId ? (panes[Math.max(0, index - 1)]?.id ?? tab.focus) : tab.focus
-  return replaceTab(layout, { ...tab, panes, focus, max: tab.max === paneId ? null : tab.max })
-}
-
 /** Which project a tab belongs to. Tabs of other projects stay in the layout but are not shown with this one. */
 export type TabGroup = (tab: Tab) => string
 
 const ONE_GROUP: TabGroup = () => ''
 
-/**
- * Closes a tab. When it was the one showing, the next tab of the same project opens (the one after
- * it, else the one before), and only when the project has none left does another project's tab.
- */
-export function closeTab(layout: Layout, tabId: string, groupOf: TabGroup = ONE_GROUP): Layout {
-  const index = layout.tabs.findIndex((tab) => tab.id === tabId)
-  const closing = layout.tabs[index]
-  if (!closing) return layout
-  const tabs = layout.tabs.filter((tab) => tab.id !== tabId)
-  if (layout.activeTabId !== tabId) return { tabs, activeTabId: layout.activeTabId }
-  const group = groupOf(closing)
-  const sameGroup = layout.tabs.filter((tab) => tab.id !== tabId && groupOf(tab) === group)
-  const after = sameGroup.find((tab) => layout.tabs.indexOf(tab) > index)
-  const next = after ?? sameGroup.at(-1) ?? tabs[Math.min(index, tabs.length - 1)]
-  return { tabs, activeTabId: next?.id ?? null }
-}
-
-/** What ⌘W closes: the focused pane, or the tab when it has one pane. */
-export function closeFocused(layout: Layout, groupOf: TabGroup = ONE_GROUP): { layout: Layout; closed: 'pane' | 'tab' | null } {
-  const tab = activeTab(layout)
-  if (!tab) return { layout, closed: null }
-  if (tab.panes.length > 1) return { layout: closePane(layout, tab.focus), closed: 'pane' }
-  return { layout: closeTab(layout, tab.id, groupOf), closed: 'tab' }
-}
-
 export function focusPane(layout: Layout, paneId: string): Layout {
   const tab = layout.tabs.find((candidate) => candidate.panes.some((pane) => pane.id === paneId))
   if (!tab) return layout
-  return { ...replaceTab(layout, { ...tab, focus: paneId }), activeTabId: tab.id }
+  // In a maximized tab the focused pane is the one on screen, so focus and maximize move together.
+  return { ...replaceTab(layout, { ...tab, focus: paneId, max: tab.max === null ? null : paneId }), activeTabId: tab.id }
 }
 
 export function cycleFocus(layout: Layout, step: 1 | -1): Layout {
@@ -144,7 +111,7 @@ export function showSession(layout: Layout, sessionId: string, makeId: MakeId): 
   const current = activeTab(layout)
   const holder = (current?.panes.some((pane) => pane.sessionId === sessionId) ? current : undefined) ?? layout.tabs.find((tab) => tab.panes.some((pane) => pane.sessionId === sessionId))
   const shown = holder?.panes.find((pane) => pane.sessionId === sessionId)
-  if (holder && shown) return { ...replaceTab(layout, { ...holder, focus: shown.id }), activeTabId: holder.id }
+  if (holder && shown) return { ...replaceTab(layout, { ...holder, focus: shown.id, max: holder.max === null ? null : shown.id }), activeTabId: holder.id }
   return openInNewTab(layout, sessionId, makeId)
 }
 
@@ -168,20 +135,50 @@ export function toggleMaximize(layout: Layout, paneId: string): Layout {
 }
 
 /** Drops panes whose session has ended, and tabs left empty. */
-export function reconcileLayout(layout: Layout, liveSessionIds: ReadonlySet<string>): Layout {
+export function reconcileLayout(layout: Layout, liveSessionIds: ReadonlySet<string>, groupOf: TabGroup = ONE_GROUP): Layout {
   const tabs = layout.tabs.flatMap((tab) => {
     const panes = tab.panes.filter((pane) => liveSessionIds.has(pane.sessionId))
     if (panes.length === tab.panes.length) return [tab]
     if (panes.length === 0) return []
     const compacted = compactColumns(panes)
-    const focus = compacted.some((pane) => pane.id === tab.focus) ? tab.focus : (compacted[0]?.id ?? tab.focus)
+    const focus = compacted.some((pane) => pane.id === tab.focus) ? tab.focus : neighbourPane(tab, compacted)
     const max = compacted.some((pane) => pane.id === tab.max) ? tab.max : null
     return [withValidWidths({ ...tab, panes: compacted, focus, max })]
   })
   const changed = tabs.length !== layout.tabs.length || tabs.some((tab, index) => tab !== layout.tabs[index])
   if (!changed) return layout
-  const activeTabId = tabs.some((tab) => tab.id === layout.activeTabId) ? layout.activeTabId : (tabs[0]?.id ?? null)
+  const activeTabId = tabs.some((tab) => tab.id === layout.activeTabId) ? layout.activeTabId : (nextActiveTab(layout, tabs, groupOf) ?? null)
   return { tabs, activeTabId }
+}
+
+/**
+ * Takes out the panes of these sessions and nothing else. A session that merely stopped being
+ * listed keeps its pane (it shows as ended), so only what is closed on purpose goes.
+ */
+export function removeSessions(layout: Layout, gone: ReadonlySet<string>, groupOf: TabGroup = ONE_GROUP): Layout {
+  const kept = new Set(layout.tabs.flatMap((tab) => tab.panes.map((pane) => pane.sessionId)).filter((id) => !gone.has(id)))
+  return reconcileLayout(layout, kept, groupOf)
+}
+
+/** When the focused pane's session ends, focus moves to the pane before it (as closing one does), else the first. */
+function neighbourPane(tab: Tab, remaining: PaneSlot[]): string {
+  const index = tab.panes.findIndex((pane) => pane.id === tab.focus)
+  const before = tab.panes.slice(0, Math.max(0, index)).reverse().find((pane) => remaining.some((kept) => kept.id === pane.id))
+  return before?.id ?? remaining[0]?.id ?? tab.focus
+}
+
+/**
+ * When the showing tab's sessions all ended: the tab that took its place, else the one before it,
+ * from the same project when there is one. It must not jump to whichever tab is first.
+ */
+function nextActiveTab(before: Layout, remaining: Tab[], groupOf: TabGroup): string | undefined {
+  const index = before.tabs.findIndex((tab) => tab.id === before.activeTabId)
+  const gone = before.tabs[index]
+  if (!gone) return remaining[0]?.id
+  const position = (tab: Tab) => before.tabs.findIndex((candidate) => candidate.id === tab.id)
+  const pick = (list: Tab[]) => list.find((tab) => position(tab) > index) ?? list.at(-1)
+  const sameProject = remaining.filter((tab) => groupOf(tab) === groupOf(gone))
+  return (pick(sameProject) ?? pick(remaining))?.id
 }
 
 /** The tab's panes as the columns they render in: one column when maximized or narrow. */

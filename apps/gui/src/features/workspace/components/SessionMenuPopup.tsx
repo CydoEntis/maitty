@@ -18,11 +18,23 @@ export function SessionMenuPopup({ session, actions, at, onClose }: Props) {
   useEffect(() => { close.current = onClose })
 
   useEffect(() => {
+    // Focus goes back to where it was when the menu closes.
+    const returnTo = document.activeElement instanceof HTMLElement ? document.activeElement : null
     root.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
     const onPointerDown = (event: PointerEvent) => {
       if (root.current && event.target instanceof Node && !root.current.contains(event.target)) close.current()
     }
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+        const items = Array.from(root.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? [])
+        if (items.length === 0) return
+        event.preventDefault()
+        event.stopPropagation()
+        const at = items.indexOf(document.activeElement as HTMLElement)
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (at + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+        items[next]?.focus()
+        return
+      }
       if (event.key !== 'Escape') return
       event.preventDefault()
       event.stopPropagation()
@@ -33,6 +45,7 @@ export function SessionMenuPopup({ session, actions, at, onClose }: Props) {
     return () => {
       document.removeEventListener('pointerdown', onPointerDown, true)
       document.removeEventListener('keydown', onKeyDown, true)
+      if (returnTo?.isConnected) returnTo.focus()
     }
   }, [])
 
