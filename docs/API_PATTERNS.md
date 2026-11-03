@@ -115,7 +115,9 @@ The optional Tauri GUI invokes only fixed desktop commands from
 `crates/maitty-desktop-client/`; validate webview input in both the TypeScript boundary and
 the Rust host. Never expose a generic process or shell command. A desktop
 protocol-mismatch restart must recheck the exact local protocol before stopping
-an older daemon and must refuse to downgrade a newer one.
+an older daemon and must refuse to downgrade a newer one. It stops an older daemon that
+owns sessions only after the user confirms, and only when those sessions are saved on disk
+(the next daemon restores them); one that isn't saving them is left running.
 
 ## Project-specific: response and error shapes
 
