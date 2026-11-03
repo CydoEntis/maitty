@@ -2226,6 +2226,7 @@ fn claude_reports_what_its_session_used() {
     let usage = |cost: f64| Usage {
         context: Some(30.0),
         cost: Some(cost),
+        ..Default::default()
     };
     let limits = vec![Limit {
         name: "5h".into(),
@@ -6841,4 +6842,113 @@ fn test_client(surface: Surface) -> Client {
         rejected: false,
         behind: std::cell::Cell::new(false),
     }
+}
+
+#[test]
+fn a_desktop_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resume() {
+    let (mut d, _rx) = daemon();
+    let dir = std::env::temp_dir();
+    let saved_pane = |owner: Surface, was_working: bool| persist::SavedPane {
+        cwd: Some(dir.clone()),
+        cmd: Some("codex".into()),
+        agent: Some("codex".into()),
+        owner,
+        was_working,
+        ..Default::default()
+    };
+    let ws = |pane: persist::SavedPane| persist::SavedWs {
+        name: String::new(),
+        cwd: dir.clone(),
+        worktree: false,
+        color: None,
+        group: None,
+        tabs: vec![persist::SavedTab {
+            name: String::new(),
+            layout: Node::Leaf(1),
+            focus: 1,
+            panes: [(1, pane)].into(),
+        }],
+        active_tab: 0,
+    };
+    d.restore(persist::Saved {
+        workspaces: vec![
+            ws(saved_pane(Surface::Desktop, true)),
+            ws(saved_pane(Surface::Desktop, false)),
+        ],
+        active: 0,
+        made_worktrees: Vec::new(),
+        conversations: Vec::new(),
+        pending_starts: Vec::new(),
+        conversation_operations: Vec::new(),
+    });
+    let [interrupted, finished] = [0, 1].map(|i| d.workspaces[i].tabs[0].focus);
+
+    let info = d.snapshot();
+    let offered = info.terms[&interrupted]
+        .interrupted
+        .clone()
+        .expect("it died mid-turn");
+    assert_eq!(offered.agent, "codex");
+    assert!(offered.resume.contains("resume"), "{}", offered.resume);
+    assert_eq!(
+        info.terms[&interrupted].agent, None,
+        "it is a shell now: nothing resumed on its own"
+    );
+    assert_eq!(
+        info.terms[&finished].interrupted, None,
+        "an agent that was not working is restored as before"
+    );
+
+    // Once an agent runs in the pane again, there is nothing left to offer.
+    d.terms.get_mut(&interrupted).unwrap().agent = Some("codex".into());
+    assert_eq!(d.snapshot().terms[&interrupted].interrupted, None);
+    close(&mut d, &[interrupted, finished]);
+}
+
+#[test]
+fn the_timeline_records_status_changes_and_the_shells_prompt_marks() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.set_status(t, Status::Working, "hook: UserPromptSubmit");
+    d.set_status(t, Status::Working, "hook: UserPromptSubmit");
+    d.set_status(t, Status::Done, "hook: Stop");
+    {
+        let pane = d.terms.get_mut(&t).unwrap();
+        pane.output(b"\x1b]133;A\x07\x1b]133;C\x07\x1b]133;D;2\x07");
+        pane.take_marks();
+    }
+    let events: Vec<_> = d.snapshot().terms[&t]
+        .timeline
+        .iter()
+        .map(|e| (e.kind, e.detail.clone()))
+        .collect();
+    assert_eq!(
+        events,
+        [
+            (TurnKind::Working, "hook: UserPromptSubmit".to_string()),
+            (TurnKind::Done, "hook: Stop".to_string()),
+            (TurnKind::Prompt, String::new()),
+            (TurnKind::CommandStarted, String::new()),
+            (TurnKind::CommandFinished, "2".to_string()),
+        ],
+        "a repeated report is one event"
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_blocked_pane_reports_what_it_is_asking_and_a_working_one_does_not() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    {
+        let pane = d.terms.get_mut(&t).unwrap();
+        pane.output(b"Bash command\r\n\r\n  rm -rf target\r\n\r\nDo you want to proceed?\r\n> 1. Yes\r\n  2. No\r\n");
+    }
+    d.set_status(t, Status::Working, "hook");
+    assert_eq!(d.snapshot().terms[&t].asking, "");
+    d.set_status(t, Status::Blocked, "hook: Notification");
+    let asking = d.snapshot().terms[&t].asking.clone();
+    assert!(asking.contains("rm -rf target"), "{asking}");
+    assert!(asking.contains("2. No"), "{asking}");
+    close(&mut d, &[t]);
 }

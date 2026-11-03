@@ -20,6 +20,7 @@ mod pr;
 mod repo;
 mod restore;
 mod scan;
+mod search;
 mod secrets;
 mod status;
 mod term;
@@ -175,6 +176,10 @@ pub enum Ev {
     WorktreeList {
         client: ClientId,
         result: Result<Vec<WorktreeEntry>, String>,
+    },
+    SearchReady {
+        client: ClientId,
+        hits: Vec<crate::protocol::SearchHit>,
     },
     RepoReady {
         client: ClientId,
@@ -777,6 +782,13 @@ impl Daemon {
                     self.may_use_terminal(client, term)?;
                 }
                 self.may(client, Grant::Admin, None)
+            }
+            Command::RestoreSnapshot { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("restoring a snapshot is yours to do, not a pane's")
+            }
+            Command::RestoreSnapshot { term, .. } => {
+                self.may_use_terminal(client, *term)?;
+                self.may(client, Grant::Write, Some(*term))
             }
             Command::RemoveWorktree { .. }
             | Command::CloseWorktree { .. }
@@ -1386,6 +1398,10 @@ impl Daemon {
                 if std::mem::take(&mut t.parser.callbacks_mut().title_changed) {
                     self.dirty = true;
                 }
+                if !t.parser.callbacks().marks.is_empty() {
+                    t.take_marks();
+                    self.dirty = true;
+                }
                 if let Some(text) = t.parser.callbacks_mut().copied.take() {
                     self.broadcast(|c| c.attach, ServerMsg::Clipboard { term: tid, text });
                 }
@@ -1732,6 +1748,9 @@ impl Daemon {
                 Ok(list) => self.send(client, ServerMsg::Reply(Reply::Worktrees(list))),
                 Err(e) => self.send(client, ServerMsg::Error(e)),
             },
+            Ev::SearchReady { client, hits } => {
+                self.send(client, ServerMsg::Reply(Reply::Search(hits)));
+            }
             Ev::RepoReady {
                 client,
                 tag,
@@ -2208,12 +2227,54 @@ impl Daemon {
                         Ok(replay) => ServerMsg::Reply(Reply::TerminalReplay(replay)),
                         Err(error) => ServerMsg::Error(format!("{error:#}")),
                     },
+                    Query::PaneSearch { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can search terminals".into())
+                    }
+                    Query::PaneSearch { query } => {
+                        let query = query.trim().to_string();
+                        if query.is_empty() || query.chars().count() > search::MAX_QUERY_CHARS {
+                            self.send(
+                                client,
+                                ServerMsg::Error(format!(
+                                    "A search is 1 to {} characters",
+                                    search::MAX_QUERY_CHARS
+                                )),
+                            );
+                            return;
+                        }
+                        let mut ids: Vec<TermId> = self
+                            .terms
+                            .keys()
+                            .copied()
+                            .filter(|term| {
+                                self.may_use_terminal(client, *term).is_ok()
+                                    && self.may(client, Grant::Read, Some(*term)).is_ok()
+                            })
+                            .collect();
+                        ids.sort_unstable();
+                        let panes: Vec<(TermId, Vec<u8>)> = ids
+                            .into_iter()
+                            .filter_map(|term| Some((term, self.terms.get(&term)?.replay())))
+                            .collect();
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let hits = search::search(&panes, &query);
+                            let _ = tx.blocking_send(Ev::SearchReady { client, hits });
+                        });
+                        return;
+                    }
                     Query::Repo { .. }
                         if self.clients.get(&client).is_some_and(|client| {
                             client.from.is_some() || client.structured.is_some()
                         }) =>
                     {
-                        ServerMsg::Error("Only a human client can read a repository this way".into())
+                        ServerMsg::Error(
+                            "Only a human client can read a repository this way".into(),
+                        )
                     }
                     Query::Repo { term, tag, request } => {
                         let root = self
@@ -2234,8 +2295,13 @@ impl Daemon {
                         };
                         let tx = self.tx.clone();
                         tokio::task::spawn_blocking(move || {
-                            let result = repo::answer(&root, &request).map_err(|e| format!("{e:#}"));
-                            let _ = tx.blocking_send(Ev::RepoReady { client, tag, result });
+                            let result =
+                                repo::answer(&root, &request).map_err(|e| format!("{e:#}"));
+                            let _ = tx.blocking_send(Ev::RepoReady {
+                                client,
+                                tag,
+                                result,
+                            });
                         });
                         return;
                     }
@@ -2411,6 +2477,13 @@ impl Daemon {
                         usage: t.usage.clone(),
                         resume_at: t.resume_at,
                         checks: t.checks.infos(),
+                        asking: if t.status == Status::Blocked {
+                            crate::prompt::asking(&t.parser.screen().contents())
+                        } else {
+                            String::new()
+                        },
+                        interrupted: t.interrupted.clone().filter(|_| t.agent.is_none()),
+                        timeline: t.timeline.iter().cloned().collect(),
                         subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                         started_by: t.started_by,
                         tab_of: t.tab_of.filter(|o| self.terms.contains_key(o)),

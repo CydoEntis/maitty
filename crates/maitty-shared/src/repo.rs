@@ -13,6 +13,9 @@ pub enum RepoRequest {
     Tree { path: Option<String> },
     /// One text file's contents.
     File { path: String },
+    /// Where a path seen in the pane's output is in this repository: absolute, or relative to
+    /// the pane's folder. Refused when it is not a file inside the repository.
+    Locate { path: String },
     /// The working tree against HEAD, or one file of it.
     Diff { path: Option<String> },
     /// Two commits or branches against each other, or one file of that.
@@ -25,16 +28,29 @@ pub enum RepoRequest {
     Branches,
     /// The latest commits on HEAD, newest first.
     Log { limit: usize },
+    /// Every worktree of the repository, open in the app or not.
+    Worktrees,
+    /// What the daemon saved of the checkout before each agent turn, newest first.
+    Snapshots,
+    /// The project's reference files (`.maitty/references/`), newest first.
+    References,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RepoReply {
     Status(RepoStatus),
     Tree(Vec<ConversationFileEntry>),
     File(String),
+    /// The repository-relative path (with `/`) that `Locate` found.
+    Located(String),
     Diff(ConversationDiff),
     Branches(Vec<RepoBranch>),
     Log(Vec<RepoCommit>),
+    Worktrees(Vec<crate::protocol::WorktreeEntry>),
+    Snapshots(Vec<RepoSnapshot>),
+    References(Vec<RepoReference>),
+    /// A restore finished: how many files changed.
+    Restored(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,4 +92,24 @@ pub struct RepoCommit {
     pub author: String,
     /// Unix seconds.
     pub time: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepoSnapshot {
+    pub commit: String,
+    /// Unix seconds.
+    pub at: u64,
+    /// What it was taken before ("before claude's turn").
+    pub why: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepoReference {
+    /// Relative to the references folder.
+    pub name: String,
+    /// "image", "pdf", "text" and so on, as the terminal app labels it.
+    pub kind: String,
+    pub bytes: u64,
+    /// Unix seconds.
+    pub modified: u64,
 }

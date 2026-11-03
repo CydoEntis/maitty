@@ -151,6 +151,9 @@ pub(super) fn term(
         usage: Default::default(),
         resume_at: None,
         checks: Vec::new(),
+        asking: String::new(),
+        interrupted: None,
+        timeline: Vec::new(),
     }
 }
 

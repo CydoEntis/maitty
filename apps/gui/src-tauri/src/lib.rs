@@ -192,6 +192,43 @@ async fn pane_terminal_resize(
 }
 
 #[tauri::command]
+async fn repo_query(
+    app: tauri::AppHandle,
+    term: u32,
+    question: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::repo_query(term, question, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn new_worktree_session(
+    app: tauri::AppHandle,
+    term: u32,
+    branch: String,
+    base: Option<String>,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::new_worktree_session(term, branch, base, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn search_panes(app: tauri::AppHandle, query: String) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::search_panes(query, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn restore_snapshot(app: tauri::AppHandle, term: u32, commit: String) -> Result<u64, String> {
+    maitty_desktop_client::restore_snapshot(term, commit, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn start_shell_session(
     app: tauri::AppHandle,
     cwd: PathBuf,
@@ -395,6 +432,7 @@ async fn restart_mismatched_daemon(expected_protocol: u32) -> Result<(), String>
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(terminal_stream::TerminalHistory::default())
         .manage(terminal_stream::TerminalKeys::default())
         .setup(|app| {
@@ -418,6 +456,10 @@ pub fn run() {
             pane_terminal_replay,
             terminal_stream::terminal_input,
             pane_terminal_resize,
+            repo_query,
+            search_panes,
+            new_worktree_session,
+            restore_snapshot,
             start_terminal_session,
             start_shell_session,
             rename_terminal_session,

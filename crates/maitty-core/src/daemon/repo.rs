@@ -6,9 +6,10 @@ use super::git::{
     resolve_conversation_path,
 };
 use crate::repo::{
-    ChangeKind, RepoBranch, RepoChange, RepoCommit, RepoReply, RepoRequest, RepoStatus,
+    ChangeKind, RepoBranch, RepoChange, RepoCommit, RepoReference, RepoReply, RepoRequest,
+    RepoSnapshot, RepoStatus,
 };
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use std::path::Path;
 
 const MAX_LOG: usize = 200;
@@ -24,19 +25,88 @@ pub fn answer(dir: &Path, request: &RepoRequest) -> Result<RepoReply> {
         RepoRequest::Status => RepoReply::Status(status(root)?),
         RepoRequest::Tree { path } => RepoReply::Tree(conversation_files(root, path.as_deref())?),
         RepoRequest::File { path } => RepoReply::File(conversation_file(root, path)?),
+        RepoRequest::Locate { path } => RepoReply::Located(locate(dir, root, path)?),
         RepoRequest::Diff { path } => RepoReply::Diff(diff(root, path.as_deref())?),
         RepoRequest::DiffRange { from, to, path } => {
             RepoReply::Diff(diff_range(root, from, to, path.as_deref())?)
         }
         RepoRequest::Branches => RepoReply::Branches(branches(root)?),
         RepoRequest::Log { limit } => RepoReply::Log(log(root, *limit)?),
+        RepoRequest::Worktrees => RepoReply::Worktrees(super::git::list_worktrees(root)?),
+        RepoRequest::Snapshots => RepoReply::Snapshots(
+            crate::snapshot::list(root)
+                .into_iter()
+                .map(|s| RepoSnapshot {
+                    commit: s.commit,
+                    at: s.at,
+                    why: s.why,
+                })
+                .collect(),
+        ),
+        RepoRequest::References => RepoReply::References(references(root)?),
     })
+}
+
+/// Put the checkout back as it was in one of its own snapshots (never an arbitrary commit).
+pub fn restore(dir: &Path, commit: &str) -> Result<RepoReply> {
+    if !crate::snapshot::list(dir)
+        .iter()
+        .any(|s| s.commit == commit)
+    {
+        bail!("That is not one of this checkout's snapshots");
+    }
+    let changed = crate::snapshot::restore(dir, commit).map_err(anyhow::Error::msg)?;
+    Ok(RepoReply::Restored(changed))
+}
+
+fn references(root: &Path) -> Result<Vec<RepoReference>> {
+    let project = crate::references::project_root(root);
+    let found = crate::references::of_project(&project).map_err(anyhow::Error::msg)?;
+    Ok(found
+        .items
+        .into_iter()
+        .map(|r| RepoReference {
+            name: r.name,
+            kind: r.kind.label().to_string(),
+            bytes: r.size,
+            modified: r.modified,
+        })
+        .collect())
+}
+
+/// `path` as seen in a pane in `dir`, made relative to the repository top `root`.
+fn locate(dir: &Path, root: &Path, path: &str) -> Result<String> {
+    let wanted = Path::new(path);
+    let full = if wanted.is_absolute() {
+        wanted.to_path_buf()
+    } else {
+        dir.join(wanted)
+    };
+    let full = full.canonicalize().context("That file does not exist")?;
+    let root = root.canonicalize().context("opening the repository")?;
+    let inside = full
+        .strip_prefix(&root)
+        .map_err(|_| anyhow::anyhow!("That file is outside this repository"))?;
+    if !full.is_file() {
+        bail!("That path is not a file");
+    }
+    Ok(inside
+        .components()
+        .map(|part| part.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/"))
 }
 
 fn status(root: &Path) -> Result<RepoStatus> {
     let out = git(
         root,
-        &["status", "--porcelain=v1", "--branch", "-z", "--untracked-files=all"],
+        &[
+            "status",
+            "--porcelain=v1",
+            "--branch",
+            "-z",
+            "--untracked-files=all",
+        ],
     )?;
     let mut entries = out.split('\0').filter(|entry| !entry.is_empty());
     let (branch, ahead, behind) = entries
@@ -142,7 +212,9 @@ fn diff_range(
 fn check_revision(revision: &str) -> Result<()> {
     if revision.is_empty()
         || revision.starts_with('-')
-        || revision.chars().any(|c| c.is_whitespace() || c.is_control())
+        || revision
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control())
     {
         bail!("That is not a branch or commit name");
     }
@@ -152,7 +224,11 @@ fn check_revision(revision: &str) -> Result<()> {
 fn branches(root: &Path) -> Result<Vec<RepoBranch>> {
     let out = git(
         root,
-        &["for-each-ref", "--format=%(HEAD)%(refname:short)", "refs/heads"],
+        &[
+            "for-each-ref",
+            "--format=%(HEAD)%(refname:short)",
+            "refs/heads",
+        ],
     )?;
     Ok(out
         .lines()
@@ -209,7 +285,10 @@ mod tests {
         std::fs::create_dir_all(repo.path()).expect("repository directory");
         run(repo.path(), &["init", "--quiet", "--initial-branch=main"]);
         run(repo.path(), &["config", "user.name", "Test User"]);
-        run(repo.path(), &["config", "user.email", "test@example.invalid"]);
+        run(
+            repo.path(),
+            &["config", "user.email", "test@example.invalid"],
+        );
         std::fs::write(repo.path().join("a.txt"), "one\n").expect("file");
         run(repo.path(), &["add", "a.txt"]);
         run(repo.path(), &["commit", "--quiet", "-m", "first"]);
@@ -226,10 +305,17 @@ mod tests {
             panic!("expected a status");
         };
         assert_eq!(status.branch.as_deref(), Some("main"));
-        let kinds: Vec<_> = status.files.iter().map(|f| (f.path.as_str(), f.kind)).collect();
+        let kinds: Vec<_> = status
+            .files
+            .iter()
+            .map(|f| (f.path.as_str(), f.kind))
+            .collect();
         assert_eq!(
             kinds,
-            [("a.txt", ChangeKind::Modified), ("new.txt", ChangeKind::Untracked)]
+            [
+                ("a.txt", ChangeKind::Modified),
+                ("new.txt", ChangeKind::Untracked)
+            ]
         );
     }
 
@@ -256,8 +342,14 @@ mod tests {
             parse_branch_line("main...origin/main [ahead 2, behind 1]"),
             (Some("main".into()), 2, 1)
         );
-        assert_eq!(parse_branch_line("main...origin/main [gone]"), (Some("main".into()), 0, 0));
-        assert_eq!(parse_branch_line("No commits yet on main"), (Some("main".into()), 0, 0));
+        assert_eq!(
+            parse_branch_line("main...origin/main [gone]"),
+            (Some("main".into()), 0, 0)
+        );
+        assert_eq!(
+            parse_branch_line("No commits yet on main"),
+            (Some("main".into()), 0, 0)
+        );
         assert_eq!(parse_branch_line("HEAD (no branch)"), (None, 0, 0));
     }
 
@@ -290,8 +382,7 @@ mod tests {
         let repo = repository();
         run(repo.path(), &["branch", "feature"]);
 
-        let RepoReply::Branches(list) = answer(repo.path(), &RepoRequest::Branches).unwrap()
-        else {
+        let RepoReply::Branches(list) = answer(repo.path(), &RepoRequest::Branches).unwrap() else {
             panic!("expected branches");
         };
         let list: Vec<_> = list.iter().map(|b| (b.name.as_str(), b.current)).collect();
@@ -318,7 +409,15 @@ mod tests {
         let repo = repository();
         assert!(diff_range(repo.path(), "--output=x", "HEAD", None).is_err());
         assert!(diff_range(repo.path(), "HEAD", "HEAD", Some("../x")).is_err());
-        assert!(answer(repo.path(), &RepoRequest::File { path: "../x".into() }).is_err());
+        assert!(
+            answer(
+                repo.path(),
+                &RepoRequest::File {
+                    path: "../x".into()
+                }
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -333,8 +432,121 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(reply, RepoReply::File("one
-".into()));
+        assert_eq!(reply, RepoReply::File("one\n".into()));
+    }
+
+    #[test]
+    fn a_restore_takes_back_a_turn_but_only_to_a_snapshot_the_daemon_took() {
+        let repo = repository();
+        let snapshot = crate::snapshot::take(repo.path(), "before claude's turn")
+            .unwrap()
+            .expect("a repository takes snapshots");
+        std::fs::write(
+            repo.path().join("a.txt"),
+            "the agent's edit
+",
+        )
+        .expect("edit");
+
+        let RepoReply::Snapshots(kept) = answer(repo.path(), &RepoRequest::Snapshots).unwrap()
+        else {
+            panic!("expected snapshots");
+        };
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].why, "before claude's turn");
+
+        assert!(restore(repo.path(), "0000000000000000000000000000000000000000").is_err());
+        assert_eq!(
+            restore(repo.path(), &snapshot.commit).unwrap(),
+            RepoReply::Restored(1)
+        );
+        // git may have written the file with this platform's line ending.
+        assert_eq!(
+            std::fs::read_to_string(repo.path().join("a.txt"))
+                .unwrap()
+                .trim_end(),
+            "one"
+        );
+    }
+
+    #[test]
+    fn references_list_the_project_folder_and_none_is_an_empty_list() {
+        let repo = repository();
+        assert_eq!(
+            answer(repo.path(), &RepoRequest::References).unwrap(),
+            RepoReply::References(Vec::new())
+        );
+        let folder = crate::references::folder(&crate::references::project_root(repo.path()));
+        std::fs::create_dir_all(&folder).expect("references folder");
+        std::fs::write(folder.join("home.png"), [0u8; 4]).expect("reference");
+
+        let RepoReply::References(found) = answer(repo.path(), &RepoRequest::References).unwrap()
+        else {
+            panic!("expected references");
+        };
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            (found[0].name.as_str(), found[0].kind.as_str()),
+            ("home.png", "image")
+        );
+    }
+
+    #[test]
+    fn locate_finds_a_file_by_absolute_or_pane_relative_path_and_nothing_outside() {
+        let repo = repository();
+        std::fs::create_dir(repo.path().join("sub")).expect("subfolder");
+        std::fs::write(
+            repo.path().join("sub/b.txt"),
+            "x
+",
+        )
+        .expect("file");
+        let outside = crate::daemon::persist::scratch_dir();
+        std::fs::create_dir_all(outside.path()).expect("outside folder");
+        std::fs::write(
+            outside.path().join("o.txt"),
+            "x
+",
+        )
+        .expect("outside file");
+
+        let locate_in =
+            |dir: &Path, path: &str| answer(dir, &RepoRequest::Locate { path: path.into() });
+        let absolute = repo.path().join("sub").join("b.txt");
+        assert_eq!(
+            locate_in(repo.path(), &absolute.to_string_lossy()).unwrap(),
+            RepoReply::Located("sub/b.txt".into())
+        );
+        assert_eq!(
+            locate_in(&repo.path().join("sub"), "b.txt").unwrap(),
+            RepoReply::Located("sub/b.txt".into())
+        );
+        assert!(locate_in(repo.path(), &outside.path().join("o.txt").to_string_lossy()).is_err());
+        assert!(locate_in(repo.path(), "../../etc/passwd").is_err());
+        assert!(locate_in(repo.path(), "sub").is_err());
+    }
+
+    #[test]
+    fn worktrees_list_the_main_checkout_and_each_linked_one() {
+        let repo = repository();
+        let linked = crate::daemon::persist::scratch_dir();
+        run(
+            repo.path(),
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feature",
+                &linked.path().to_string_lossy(),
+            ],
+        );
+
+        let RepoReply::Worktrees(list) = answer(repo.path(), &RepoRequest::Worktrees).unwrap()
+        else {
+            panic!("expected worktrees");
+        };
+        let summary: Vec<_> = list.iter().map(|w| (w.branch.as_str(), w.main)).collect();
+        assert_eq!(summary, [("main", true), ("feature", false)]);
     }
 
     #[test]

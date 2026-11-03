@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 66;
+pub const PROTOCOL_VERSION: u32 = 67;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -148,6 +148,9 @@ pub struct Usage {
     pub context: Option<f32>,
     /// What the session has cost so far at list price, in US dollars (Claude's estimate).
     pub cost: Option<f64>,
+    /// Tokens the provider says the session has used (what it reports, never an estimate).
+    #[serde(default)]
+    pub tokens: Option<u64>,
 }
 
 /// One of an agent's plan limits: how much is used and when it starts over.
@@ -308,6 +311,14 @@ pub enum Command {
     },
     /// Trade the places of two panes of one tab; each takes the other's size. An error when
     /// they are in different tabs.
+    /// Put the checkout `term` is in back as it was in a snapshot the daemon took (one that
+    /// `RepoRequest::Snapshots` listed), after saving what is there now. Only you can, and not
+    /// while the pane's agent works. The answer is `Reply::Repo { tag, Restored }`.
+    RestoreSnapshot {
+        term: TermId,
+        tag: u64,
+        commit: String,
+    },
     SwapPanes {
         a: TermId,
         b: TermId,
@@ -512,6 +523,11 @@ pub enum Query {
         tag: u64,
         request: crate::repo::RepoRequest,
     },
+    /// Where `query` appears in what the panes this app owns have printed recently (human
+    /// clients only; at most 100 hits, and 20 from any one pane).
+    PaneSearch {
+        query: String,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
@@ -683,6 +699,16 @@ pub enum Reply {
         tag: u64,
         reply: crate::repo::RepoReply,
     },
+    Search(Vec<SearchHit>),
+}
+
+/// One line of a pane's output that matched a search.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchHit {
+    pub term: TermId,
+    /// Counted from the start of what the daemon kept, from 1.
+    pub line: usize,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1030,6 +1056,55 @@ pub struct TermInfo {
     /// The output stays on the daemon. An older peer's single `check` reads as one checkpoint.
     #[serde(default, alias = "check", deserialize_with = "one_or_many_checks")]
     pub checks: Vec<CheckInfo>,
+    /// What a stopped agent is asking, off its screen: the exact command or file and its choices.
+    /// Empty unless the pane needs you and shows numbered choices.
+    #[serde(default)]
+    pub asking: String,
+    /// The agent that was mid-turn when the daemon restarted, left as a plain shell for you to
+    /// resume. Never resumed on its own; gone once an agent runs in the pane again.
+    #[serde(default)]
+    pub interrupted: Option<Interrupted>,
+    /// The latest turn events, oldest first: what the agent's own reports and the shell's prompt
+    /// marks (OSC 133) said happened, not what the screen looked like.
+    #[serde(default)]
+    pub timeline: Vec<TurnEvent>,
+}
+
+/// An agent that was working when the daemon restarted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Interrupted {
+    pub agent: String,
+    /// The command that brings its conversation back (`codex resume --last`).
+    pub resume: String,
+}
+
+/// One thing that happened in a pane.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TurnEvent {
+    /// Unix seconds.
+    pub at: u64,
+    pub kind: TurnKind,
+    /// What reported it ("hook: Stop", "exit 1"); may be empty.
+    #[serde(default)]
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TurnKind {
+    /// The agent started working.
+    Working,
+    /// The agent stopped for you.
+    NeedsYou,
+    /// The agent finished its turn.
+    Done,
+    /// The agent is idle again.
+    Idle,
+    /// The shell showed a prompt (OSC 133 A).
+    Prompt,
+    /// A command started running (OSC 133 C).
+    CommandStarted,
+    /// A command finished (OSC 133 D); `detail` is its exit code when it reported one.
+    CommandFinished,
 }
 
 pub fn one_or_many_checks<'de, D: serde::Deserializer<'de>>(
@@ -1329,6 +1404,9 @@ mod tests {
             ClientMsg::Query(Query::List),
             ClientMsg::Query(Query::Read { term: 3 }),
             ClientMsg::Query(Query::Worktrees { ws: 1 }),
+            ClientMsg::Query(Query::PaneSearch {
+                query: "error".into(),
+            }),
             ClientMsg::Query(Query::Repo {
                 term: 3,
                 tag: 9,
@@ -1452,6 +1530,11 @@ mod tests {
                 branch: Some("feat/x".into()),
             }),
             ClientMsg::Command(Command::SwapPanes { a: 3, b: 4 }),
+            ClientMsg::Command(Command::RestoreSnapshot {
+                term: 3,
+                tag: 4,
+                commit: "abc123".into(),
+            }),
         ];
         for m in &clients {
             round_trips(m);

@@ -605,6 +605,28 @@ impl Daemon {
                 });
                 return Ok(false);
             }
+            Command::RestoreSnapshot { term, tag, commit } => {
+                let pane = self
+                    .terms
+                    .get(&term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                // Its agent would keep writing into files being rolled back, even after you confirmed.
+                anyhow::ensure!(
+                    pane.status != Status::Working,
+                    "Its agent is working; wait for it to finish before restoring"
+                );
+                let dir = pane.cwd.clone();
+                let tx = self.tx.clone();
+                tokio::task::spawn_blocking(move || {
+                    let result = repo::restore(&dir, &commit).map_err(|e| format!("{e:#}"));
+                    let _ = tx.blocking_send(Ev::RepoReady {
+                        client,
+                        tag,
+                        result,
+                    });
+                });
+                return Ok(false);
+            }
             Command::MovePane { term, to, name } => {
                 let (from_ws, _) = self
                     .locate(term)

@@ -61,6 +61,9 @@ pub struct SavedPane {
     /// Finished and not looked at yet.
     #[serde(default)]
     pub unseen: bool,
+    /// It was in the middle of a turn when this was saved.
+    #[serde(default)]
+    pub was_working: bool,
     /// What it was called (its /rename, else its first prompt) and its model.
     #[serde(default)]
     pub name: String,

@@ -530,6 +530,106 @@ pub async fn rename_terminal_session(
     }
 }
 
+/// A read-only question about the repository a pane is in. `question` is a `RepoRequest` as
+/// JSON; the daemon scopes it to the pane's own checkout.
+pub async fn repo_query(term: u32, question: Value, daemon_executable: PathBuf) -> Result<Value> {
+    let question: maitty_shared::repo::RepoRequest =
+        serde_json::from_value(question).context("invalid repository request")?;
+    let reply = request(
+        ClientMsg::Query(Query::Repo {
+            term,
+            tag: 0,
+            request: question,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Repo { reply, .. } => Ok(serde_json::to_value(reply)?),
+        _ => bail!("daemon returned an unexpected repository reply"),
+    }
+}
+
+/// `git worktree add` for `branch` next to the repository `term` is in (new from `base`, or the
+/// repo's HEAD); the daemon opens it as a new session. `branch` names an existing branch to
+/// check it out instead.
+pub async fn new_worktree_session(
+    term: u32,
+    branch: String,
+    base: Option<String>,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let snapshot = match request(ClientMsg::Query(Query::List), daemon_executable.clone()).await? {
+        Reply::List(snapshot) => snapshot,
+        _ => bail!("daemon returned an unexpected session list reply"),
+    };
+    let ws = snapshot
+        .workspaces
+        .iter()
+        .find(|workspace| {
+            workspace
+                .tabs
+                .iter()
+                .any(|tab| tab.layout.leaves().contains(&term))
+        })
+        .map(|workspace| workspace.id)
+        .with_context(|| format!("pane {term} is not open"))?;
+    let reply = request(
+        ClientMsg::Command(Command::NewWorktree {
+            ws,
+            branch,
+            base,
+            cmd: None,
+            split: None,
+            from: None,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected worktree reply"),
+    }
+}
+
+/// Where `query` appears in what the app's terminal sessions printed recently.
+pub async fn search_panes(query: String, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Query(Query::PaneSearch { query }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Search(hits) => Ok(serde_json::to_value(hits)?),
+        _ => bail!("daemon returned an unexpected search reply"),
+    }
+}
+
+/// Put a pane's checkout back as it was in one of the daemon's snapshots. Returns how many
+/// files changed.
+pub async fn restore_snapshot(
+    term: u32,
+    commit: String,
+    daemon_executable: PathBuf,
+) -> Result<u64> {
+    let reply = request(
+        ClientMsg::Command(Command::RestoreSnapshot {
+            term,
+            tag: 0,
+            commit,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Repo {
+            reply: maitty_shared::repo::RepoReply::Restored(changed),
+            ..
+        } => Ok(changed as u64),
+        _ => bail!("daemon returned an unexpected restore reply"),
+    }
+}
+
 /// End a terminal session: its process stops, as when it is closed in the terminal app.
 pub async fn close_terminal_session(term: u32, daemon_executable: PathBuf) -> Result<Value> {
     let reply = request(

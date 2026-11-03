@@ -255,6 +255,7 @@ impl Daemon {
             agent: term.agent.clone(),
             session: term.agent.as_ref().and(term.session.clone()),
             unseen: term.status == Status::Done,
+            was_working: term.status == Status::Working,
             name: if term.name.is_empty() {
                 term.first_prompt.clone()
             } else {
@@ -440,6 +441,13 @@ impl Daemon {
                         .filter(|p| p.is_dir())
                         .unwrap_or_else(|| sw.cwd.clone());
                     let cmd = self.restore_cmd(&pane);
+                    // A desktop session's agent that died mid-turn is not started again on its
+                    // own: the pane comes back as a shell and offers the resume command.
+                    let interrupted = (pane.owner == Surface::Desktop && pane.was_working)
+                        .then(|| pane.agent.clone().zip(cmd.clone()))
+                        .flatten()
+                        .map(|(agent, resume)| Interrupted { agent, resume });
+                    let cmd = cmd.filter(|_| interrupted.is_none());
                     match self.spawn(cmd.as_deref(), &cwd, 120, 32) {
                         Ok(new) => {
                             if let Some(t) = self.terms.get_mut(&new) {
@@ -449,9 +457,12 @@ impl Daemon {
                                     t.seed_output(&out);
                                 }
                                 // Keep the original identity so the next save matches this one.
-                                t.cmd = pane.cmd.clone();
-                                t.session = pane.session.clone();
-                                t.agent = pane.agent.clone();
+                                if interrupted.is_none() {
+                                    t.cmd = pane.cmd.clone();
+                                    t.session = pane.session.clone();
+                                    t.agent = pane.agent.clone();
+                                }
+                                t.interrupted = interrupted;
                                 t.restore_unseen = pane.unseen;
                                 t.first_prompt = pane.name.clone();
                                 t.model = pane.model.clone();
