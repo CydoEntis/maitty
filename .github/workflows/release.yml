@@ -144,18 +144,29 @@ jobs:
         working-directory: apps/gui
         run: pnpm install --frozen-lockfile
 
+      # Releases also produce the signed update bundles the app downloads. Pull-request CI builds
+      # without them because it has no signing key.
       - name: Build GUI installers
         working-directory: apps/gui
-        run: pnpm desktop:build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        run: pnpm desktop:build --config src-tauri/tauri.updater.conf.json
 
       - name: Collect GUI installers
         shell: bash
         run: |
           mkdir -p dist
+          ver=$(node -p "JSON.parse(require('fs').readFileSync('apps/gui/src-tauri/tauri.conf.json', 'utf8')).version")
           case "${{ runner.os }}" in
-            Windows) find target/release/bundle -type f \( -iname '*.msi' -o -iname '*.exe' \) -exec cp {} dist/ \; ;;
-            macOS) find target/release/bundle -type f -iname '*.dmg' -exec cp {} dist/ \; ;;
-            Linux) find target/release/bundle -type f \( -iname '*.deb' -o -iname '*.rpm' -o -iname '*.appimage' \) -exec cp {} dist/ \; ;;
+            Windows) find target/release/bundle -type f \( -iname '*.msi' -o -iname '*.exe' -o -iname '*.sig' \) -exec cp {} dist/ \; ;;
+            macOS)
+              find target/release/bundle -type f -iname '*.dmg' -exec cp {} dist/ \;
+              # The update bundle is named after the app only; give it the version and arch.
+              cp target/release/bundle/macos/Maitty.app.tar.gz "dist/Maitty_${ver}_aarch64.app.tar.gz"
+              cp target/release/bundle/macos/Maitty.app.tar.gz.sig "dist/Maitty_${ver}_aarch64.app.tar.gz.sig"
+              ;;
+            Linux) find target/release/bundle -type f \( -iname '*.deb' -o -iname '*.rpm' -o -iname '*.appimage' -o -iname '*.appimage.sig' \) -exec cp {} dist/ \; ;;
           esac
           test -n "$(find dist -maxdepth 1 -type f -print -quit)" \
             || { echo "No GUI installers were collected" >&2; exit 1; }
@@ -194,6 +205,29 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+
+      # The app reads this file to learn what the newest version is and how to verify it.
+      - name: Update manifest
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          ver=${TAG#v}
+          win="Maitty_${ver}_x64-setup.exe"
+          mac="Maitty_${ver}_aarch64.app.tar.gz"
+          lin="Maitty_${ver}_amd64.AppImage"
+          for f in "$win" "$mac" "$lin"; do
+            test -f "dist/$f" && test -f "dist/$f.sig" || { echo "Missing update bundle or signature: $f" >&2; exit 1; }
+          done
+          jq -n --arg version "$ver" --rawfile notes notes.md --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg base "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG" \
+            --arg win "$win" --arg winsig "$(cat "dist/$win.sig")" \
+            --arg mac "$mac" --arg macsig "$(cat "dist/$mac.sig")" \
+            --arg lin "$lin" --arg linsig "$(cat "dist/$lin.sig")" \
+            '{version: $version, notes: $notes, pub_date: $date, platforms: {
+              "windows-x86_64": {signature: $winsig, url: "\($base)/\($win)"},
+              "darwin-aarch64": {signature: $macsig, url: "\($base)/\($mac)"},
+              "linux-x86_64": {signature: $linsig, url: "\($base)/\($lin)"}}}' > dist/latest.json
+          cat dist/latest.json
 
       - name: Checksums
         run: cd dist && find . -maxdepth 1 -type f ! -name sha256sums.txt -printf '%f\0' | sort -z | xargs -0 sha256sum > sha256sums.txt && cat sha256sums.txt

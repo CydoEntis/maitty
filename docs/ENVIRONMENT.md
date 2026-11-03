@@ -91,6 +91,16 @@ Two things to know when building on Windows while a desktop daemon is running:
   build the Tauri crate `maitty-gui` from Windows, because its `libdbus-sys` needs a
   Linux sysroot. Cross-check the rest with `--workspace --exclude maitty-gui`.
 
+The release workflow signs the desktop update bundles with a Tauri updater key. Generate one once
+with `pnpm exec tauri signer generate -w <path outside the repo>`, put its public half in
+`plugins.updater.pubkey` in `apps/gui/src-tauri/tauri.conf.json`, and store the private half as the
+repository secret `TAURI_SIGNING_PRIVATE_KEY`: in bash `gh secret set TAURI_SIGNING_PRIVATE_KEY < <key file>`, in
+PowerShell `Get-Content -Raw <key file> | gh secret set TAURI_SIGNING_PRIVATE_KEY`.
+Keep a backup of the private key: if it is lost, installed apps cannot verify a new key and users
+reinstall by hand once. To rotate it, publish a release signed by the old key that carries the new
+public key, then switch the secret. Local `pnpm desktop:build` does not need the key; only releases
+do. See [`docs/stack/tauri-updater.md`](stack/tauri-updater.md).
+
 Settings live in `config.toml` (`%APPDATA%\maitty\` on Windows,
 `~/.config/maitty/` elsewhere), with `config.local.toml` beside it for
 machine-only values. `config.example.toml` documents every key.

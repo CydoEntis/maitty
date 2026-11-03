@@ -39,6 +39,8 @@ import { isFirstRun, markWelcomed } from '@/features/welcome/welcomed'
 import { repoDiff, repoLocate } from '@/features/inspect/api'
 import { FindBar } from '@/features/find/FindBar'
 import { RestoreBanner } from './components/RestoreBanner'
+import { UpdateBanner } from '@/features/updates/UpdateBanner'
+import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
 import { sendNativeNotice } from '@/features/notifications/native'
 import { noticesFor } from '@/features/notifications/transitions'
 import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
@@ -156,6 +158,7 @@ export function DesktopApp() {
   const narrow = width < NARROW_WIDTH_PX
   const systemReducedMotion = useSystemReducedMotion()
   const systemDark = useSystemDark()
+  const updater = useUpdater()
   // A theme being hovered in Settings shows on the whole window until the pointer leaves or one is picked.
   const [previewTheme, setPreviewTheme] = useState<string | null>(null)
   const [welcomeOpen, setWelcomeOpen] = useState(isFirstRun)
@@ -905,6 +908,7 @@ export function DesktopApp() {
                     onClose={() => { setFindOpen(false); if (focusedId) terminalHandles.current.get(focusedId)?.focus() }}
                   />
                 )}
+                <UpdateBanner state={updater.state} dismissed={updater.dismissed} onInstall={updater.install} onRestart={updater.restart} onDismiss={updater.dismiss} />
                 <RestoreBanner
                   sessions={sessions.filter((item) => item.interrupted !== null && !dismissedRestores.has(item.id))}
                   online={online}
@@ -1089,6 +1093,7 @@ export function DesktopApp() {
                 systemReducedMotion={systemReducedMotion}
                 systemDark={systemDark}
                 onPreviewTheme={setPreviewTheme}
+                updates={{ summary: updaterSummary(updater.state), checking: updater.state.status === 'checking', onCheck: updater.check }}
                 onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}
                 mac={mac}
                 daemon={{ online, sessionCount: sessions.length }}
