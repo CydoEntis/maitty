@@ -72,6 +72,11 @@ pub struct SavedPane {
     /// The name you gave it (rename), which wins over everything else.
     #[serde(default)]
     pub label: String,
+    /// Pinned to the top of its project, and put away from the lists.
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
+    pub archived: bool,
     /// The pane that started it, by its id when this was saved (a key of some tab's `panes`).
     #[serde(default)]
     pub started_by: Option<TermId>,

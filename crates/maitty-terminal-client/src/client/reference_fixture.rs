@@ -120,6 +120,8 @@ pub(super) fn term(
         summary: String::new(),
         name: String::new(),
         label: label.into(),
+        pinned: false,
+        archived: false,
         model: String::new(),
         mem: 0,
         cpu: 0.0,

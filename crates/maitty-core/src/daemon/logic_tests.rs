@@ -6952,3 +6952,72 @@ fn a_blocked_pane_reports_what_it_is_asking_and_a_working_one_does_not() {
     assert!(asking.contains("2. No"), "{asking}");
     close(&mut d, &[t]);
 }
+
+#[test]
+fn pin_and_archive_stick_survive_a_restart_and_never_stop_the_pane() {
+    let (mut d, _rx) = daemon();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let t = d.workspaces[0].tabs[0].focus;
+    d.command(
+        0,
+        Command::PinPane {
+            term: t,
+            pinned: true,
+        },
+    )
+    .unwrap();
+    d.command(
+        0,
+        Command::ArchivePane {
+            term: t,
+            archived: true,
+        },
+    )
+    .unwrap();
+    assert!(
+        d.terms.contains_key(&t),
+        "archiving puts it away without stopping it"
+    );
+    let info = &d.snapshot().terms[&t];
+    assert_eq!((info.pinned, info.archived), (true, true));
+
+    let (mut d2, _rx2) = daemon();
+    d2.restore(d.saved());
+    let back = d2.workspaces[0].tabs[0].focus;
+    assert_eq!(
+        (d2.terms[&back].pinned, d2.terms[&back].archived),
+        (true, true),
+        "both come back after a restart"
+    );
+
+    d2.command(
+        0,
+        Command::ArchivePane {
+            term: back,
+            archived: false,
+        },
+    )
+    .unwrap();
+    d2.command(
+        0,
+        Command::PinPane {
+            term: back,
+            pinned: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        (d2.terms[&back].pinned, d2.terms[&back].archived),
+        (false, false)
+    );
+    close(&mut d, &[t]);
+    close(&mut d2, &[back]);
+}

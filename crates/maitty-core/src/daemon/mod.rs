@@ -2447,6 +2447,8 @@ impl Daemon {
                         },
                         model: t.model.clone(),
                         label: t.label.clone(),
+                        pinned: t.pinned,
+                        archived: t.archived,
                         mem: t.mem,
                         cpu: t.cpu,
                         bell: t.bell,

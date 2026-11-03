@@ -260,6 +260,10 @@ pub struct Term {
     pub first_prompt: String,
     /// Rename pane.
     pub label: String,
+    /// Pinned to the top of its project (Pin pane).
+    pub pinned: bool,
+    /// Put away from the project lists; it keeps running (Archive pane).
+    pub archived: bool,
     pub model: String,
 }
 
@@ -857,6 +861,8 @@ impl Term {
             name: String::new(),
             first_prompt: String::new(),
             label: String::new(),
+            pinned: false,
+            archived: false,
             model: String::new(),
             colors: crate::theme::Theme::named(&cfg.theme).terminal_foreground_background_rgb(),
         })

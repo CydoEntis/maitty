@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 67;
+pub const PROTOCOL_VERSION: u32 = 68;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -296,6 +296,16 @@ pub enum Command {
     RenamePane {
         term: TermId,
         name: String,
+    },
+    /// Keep a pane at the top of its project (and its lead), or let it go back to its place.
+    PinPane {
+        term: TermId,
+        pinned: bool,
+    },
+    /// Put a pane away from the project lists and tabs without stopping it, or bring it back.
+    ArchivePane {
+        term: TermId,
+        archived: bool,
     },
     /// The agent in `term` moves into a new worktree of its repo: made now, and when its turn
     /// ends it restarts there, resumed (the agent runs `<app> worktree --move`).
@@ -973,6 +983,12 @@ pub struct TermInfo {
     /// The name you gave the pane in the app (Rename pane), which wins over everything.
     #[serde(default)]
     pub label: String,
+    /// Pinned to the top of its project.
+    #[serde(default)]
+    pub pinned: bool,
+    /// Put away from the project lists; the process keeps running.
+    #[serde(default)]
+    pub archived: bool,
     /// The model it's using, short ("opus 4.5"), if known.
     pub model: String,
     /// Memory used by what runs in it (bytes).
@@ -1722,6 +1738,38 @@ mod tests {
             .unwrap()
             .extend(extra.as_object().unwrap().clone());
         decode(&rmp_serde::to_vec_named(&v).unwrap()).expect("a pane")
+    }
+
+    /// Pin and archive are new commands: a peer built before them can't read them.
+    #[test]
+    fn a_peer_from_before_pin_and_archive_cannot_read_them() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            RenamePane { term: TermId, name: String },
+        }
+        for command in [
+            Command::PinPane {
+                term: 3,
+                pinned: true,
+            },
+            Command::ArchivePane {
+                term: 3,
+                archived: true,
+            },
+        ] {
+            let bytes = encode(&command).unwrap();
+            assert!(decode::<OldCommand>(&bytes).is_err());
+            assert!(decode::<Command>(&bytes).is_ok());
+        }
+    }
+
+    #[test]
+    fn a_pane_from_before_pin_and_archive_decodes_as_neither() {
+        let term = pane_from(serde_json::json!({}));
+        assert!(!term.pinned && !term.archived);
+        let term = pane_from(serde_json::json!({ "pinned": true, "archived": true }));
+        assert!(term.pinned && term.archived);
     }
 
     #[test]

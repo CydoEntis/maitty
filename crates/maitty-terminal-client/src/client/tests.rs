@@ -106,6 +106,8 @@ mod design_tests {
             pid: 0,
             name: String::new(),
             label: String::new(),
+            pinned: false,
+            archived: false,
             model: String::new(),
             mem: 0,
             cpu: 0.0,

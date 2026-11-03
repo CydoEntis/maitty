@@ -9,6 +9,8 @@ struct Kept {
     session: Option<String>,
     cmd: Option<String>,
     label: String,
+    pinned: bool,
+    archived: bool,
     name: String,
     first_prompt: String,
     model: String,
@@ -25,6 +27,8 @@ impl Kept {
             session: t.session.clone(),
             cmd: t.cmd.clone(),
             label: t.label.clone(),
+            pinned: t.pinned,
+            archived: t.archived,
             name: t.name.clone(),
             first_prompt: t.first_prompt.clone(),
             model: t.model.clone(),
@@ -38,6 +42,7 @@ impl Kept {
     fn give(self, t: &mut Term) {
         (t.agent, t.session, t.cmd) = (self.agent, self.session, self.cmd);
         (t.label, t.name, t.first_prompt) = (self.label, self.name, self.first_prompt);
+        (t.pinned, t.archived) = (self.pinned, self.archived);
         (t.model, t.grants, t.started_by, t.tab_of) =
             (self.model, self.grants, self.started_by, self.tab_of);
         t.queue = self.queue;
@@ -263,6 +268,8 @@ impl Daemon {
             },
             model: term.model.clone(),
             label: term.label.clone(),
+            pinned: term.pinned,
+            archived: term.archived,
             started_by: term.started_by,
             owner: term.owner,
             tab_of: term.tab_of,
@@ -467,6 +474,7 @@ impl Daemon {
                                 t.first_prompt = pane.name.clone();
                                 t.model = pane.model.clone();
                                 t.label = pane.label.clone();
+                                (t.pinned, t.archived) = (pane.pinned, pane.archived);
                                 t.owner = pane.owner;
                                 t.queue = pane.queue.iter().cloned().collect();
                                 t.restore_checks(&check_dir, old, &pane);

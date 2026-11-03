@@ -315,6 +315,16 @@ impl Daemon {
                     t.label = name.trim().chars().take(60).collect();
                 }
             }
+            Command::PinPane { term, pinned } => {
+                if let Some(t) = self.terms.get_mut(&term) {
+                    t.pinned = pinned;
+                }
+            }
+            Command::ArchivePane { term, archived } => {
+                if let Some(t) = self.terms.get_mut(&term) {
+                    t.archived = archived;
+                }
+            }
             Command::MarkSeen { term } => {
                 if self
                     .terms
