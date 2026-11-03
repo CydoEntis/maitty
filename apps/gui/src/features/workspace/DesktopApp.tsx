@@ -385,10 +385,10 @@ export function DesktopApp() {
     const openFirst = !openedFirst.current
     openedFirst.current = true
     setLayout((current) => {
-      const reconciled = reconcileLayout(current, live)
+      const reconciled = reconcileLayout(current, live, tabGroup)
       return openFirst && reconciled.tabs.length === 0 && first ? openInNewTab(reconciled, first.id, makeId) : reconciled
     })
-  }, [sessions, sessionsQuery.dataUpdatedAt, sessionsQuery.isSuccess])
+  }, [sessions, sessionsQuery.dataUpdatedAt, sessionsQuery.isSuccess, tabGroup])
 
   useEffect(() => {
     const { tracks: next, moves } = trackSessions(tracksRef.current, sessions, new Set(visibleKey.split(' ').filter(Boolean)), Date.now())
@@ -484,12 +484,12 @@ export function DesktopApp() {
       .then(async () => {
         const gone = new Set(ended.map((session) => session.id))
         const live = new Set(sessions.map((session) => session.id).filter((id) => !gone.has(id)))
-        setLayout((current) => reconcileLayout(current, live))
+        setLayout((current) => reconcileLayout(current, live, tabGroup))
         flash(`${what} closed · ${ended.length === 1 ? 'session' : `${String(ended.length)} sessions`} ended`)
         await queryClient.invalidateQueries({ queryKey: ['conversations'] })
       })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not end the session')) })
-  }, [sessions, flash, queryClient])
+  }, [sessions, flash, queryClient, tabGroup])
 
   const sessionsOf = useCallback((tabs: readonly Tab[]) => [...new Set(tabs.flatMap((tab) => tab.panes.map((pane) => pane.sessionId)))], [])
 

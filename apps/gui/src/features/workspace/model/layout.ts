@@ -168,20 +168,41 @@ export function toggleMaximize(layout: Layout, paneId: string): Layout {
 }
 
 /** Drops panes whose session has ended, and tabs left empty. */
-export function reconcileLayout(layout: Layout, liveSessionIds: ReadonlySet<string>): Layout {
+export function reconcileLayout(layout: Layout, liveSessionIds: ReadonlySet<string>, groupOf: TabGroup = ONE_GROUP): Layout {
   const tabs = layout.tabs.flatMap((tab) => {
     const panes = tab.panes.filter((pane) => liveSessionIds.has(pane.sessionId))
     if (panes.length === tab.panes.length) return [tab]
     if (panes.length === 0) return []
     const compacted = compactColumns(panes)
-    const focus = compacted.some((pane) => pane.id === tab.focus) ? tab.focus : (compacted[0]?.id ?? tab.focus)
+    const focus = compacted.some((pane) => pane.id === tab.focus) ? tab.focus : neighbourPane(tab, compacted)
     const max = compacted.some((pane) => pane.id === tab.max) ? tab.max : null
     return [withValidWidths({ ...tab, panes: compacted, focus, max })]
   })
   const changed = tabs.length !== layout.tabs.length || tabs.some((tab, index) => tab !== layout.tabs[index])
   if (!changed) return layout
-  const activeTabId = tabs.some((tab) => tab.id === layout.activeTabId) ? layout.activeTabId : (tabs[0]?.id ?? null)
+  const activeTabId = tabs.some((tab) => tab.id === layout.activeTabId) ? layout.activeTabId : (nextActiveTab(layout, tabs, groupOf) ?? null)
   return { tabs, activeTabId }
+}
+
+/** When the focused pane's session ends, focus moves to the pane before it (as closing one does), else the first. */
+function neighbourPane(tab: Tab, remaining: PaneSlot[]): string {
+  const index = tab.panes.findIndex((pane) => pane.id === tab.focus)
+  const before = tab.panes.slice(0, Math.max(0, index)).reverse().find((pane) => remaining.some((kept) => kept.id === pane.id))
+  return before?.id ?? remaining[0]?.id ?? tab.focus
+}
+
+/**
+ * When the showing tab's sessions all ended: the tab that took its place, else the one before it,
+ * from the same project when there is one. It must not jump to whichever tab is first.
+ */
+function nextActiveTab(before: Layout, remaining: Tab[], groupOf: TabGroup): string | undefined {
+  const index = before.tabs.findIndex((tab) => tab.id === before.activeTabId)
+  const gone = before.tabs[index]
+  if (!gone) return remaining[0]?.id
+  const position = (tab: Tab) => before.tabs.findIndex((candidate) => candidate.id === tab.id)
+  const pick = (list: Tab[]) => list.find((tab) => position(tab) > index) ?? list.at(-1)
+  const sameProject = remaining.filter((tab) => groupOf(tab) === groupOf(gone))
+  return (pick(sameProject) ?? pick(remaining))?.id
 }
 
 /** The tab's panes as the columns they render in: one column when maximized or narrow. */

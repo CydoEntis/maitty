@@ -12,6 +12,7 @@ import {
   EMPTY_LAYOUT,
   focusedSessionId,
   openInNewTab,
+  focusPane,
   paneColumns,
   parseLayout,
   reconcileLayout,
@@ -23,6 +24,7 @@ import {
   visibleSessionIds,
   type Layout,
   type MakeId,
+  type Tab,
 } from './layout'
 
 function ids(): MakeId {
@@ -222,6 +224,51 @@ describe('tab layout', () => {
     expect(reconciled.tabs).toHaveLength(1)
     expect(cols(reconciled)).toEqual(['a@0'])
     expect(reconcileLayout(reconciled, new Set(['a']))).toBe(reconciled)
+  })
+
+  it('moves to the tab that took its place, not the first tab, when the showing tab’s session ends', () => {
+    const makeId = ids()
+    let layout: Layout = EMPTY_LAYOUT
+    for (const session of ['a', 'b', 'c', 'd']) layout = openInNewTab(layout, session, makeId)
+    layout = selectTab(layout, layout.tabs[2]?.id ?? '')
+
+    const reconciled = reconcileLayout(layout, new Set(['a', 'b', 'd']))
+
+    expect(reconciled.tabs.map((tab) => tab.panes[0]?.sessionId)).toEqual(['a', 'b', 'd'])
+    expect(activeTab(reconciled)?.panes[0]?.sessionId).toBe('d')
+  })
+
+  it('falls back to the tab before when the last tab’s session ends', () => {
+    const makeId = ids()
+    let layout: Layout = EMPTY_LAYOUT
+    for (const session of ['a', 'b', 'c']) layout = openInNewTab(layout, session, makeId)
+
+    const reconciled = reconcileLayout(layout, new Set(['a', 'b']))
+
+    expect(activeTab(reconciled)?.panes[0]?.sessionId).toBe('b')
+  })
+
+  it('prefers a tab of the same project over a nearer one of another', () => {
+    const makeId = ids()
+    let layout: Layout = EMPTY_LAYOUT
+    for (const session of ['a1', 'b1', 'a2']) layout = openInNewTab(layout, session, makeId)
+    layout = selectTab(layout, layout.tabs[1]?.id ?? '')
+    const project = (tab: Tab) => (tab.panes[0]?.sessionId.startsWith('a') ? 'a' : 'b')
+
+    const reconciled = reconcileLayout(layout, new Set(['a1', 'a2']), project)
+
+    expect(activeTab(reconciled)?.panes[0]?.sessionId).toBe('a2')
+  })
+
+  it('moves focus to the pane before the one whose session ended', () => {
+    const { layout } = withPanes('a', 'b', 'c')
+    const tab = activeTab(layout)
+    const middle = tab?.panes[1]?.id ?? ''
+    const focused = focusPane(layout, middle)
+
+    const reconciled = reconcileLayout(focused, new Set(['a', 'c']))
+
+    expect(activeTab(reconciled)?.focus).toBe(tab?.panes[0]?.id)
   })
 
   it('reads back a stored layout and ignores anything malformed', () => {
