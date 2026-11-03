@@ -183,7 +183,7 @@ describe('terminal view', () => {
     await waitFor(() => { expect(written()).toBe('hello ') })
     Object.defineProperty(document, 'hidden', { configurable: true, value: true })
     try {
-      act(() => { terminalState.onChunk?.(chunk(3, 'while away')) })
+      act(() => { terminalState.onChunk?.(chunk(4, 'while away')) })
 
       expect(written()).toBe('hello while away')
     } finally {
