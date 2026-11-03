@@ -10,11 +10,10 @@ export type SessionMenuActions = {
   /** Starts renaming it, where it is shown. */
   onRename: () => void
   onPin: (pinned: boolean) => void
-  onArchive: () => void
   onEnd: () => void
 }
 
-/** A right-click menu for a session: name it, pin it, open it, put it away, or end it. */
+/** A right-click menu for a session: name it, pin it, open it, or end it. */
 export function useSessionMenu(session: SessionView, actions: SessionMenuActions) {
   const [at, setAt] = useState<{ x: number; y: number } | null>(null)
   return {

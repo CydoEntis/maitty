@@ -4,6 +4,7 @@ import { MAX_PANES, type PaneSlot } from '../model/layout'
 import type { SessionView } from '../model/session'
 import { AppIcon, Icon } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
+import { runsAgent, useArmed } from './useArmed'
 import { PaneStatus } from './PaneStatus'
 import { usageParts } from '../model/usage'
 
@@ -48,16 +49,18 @@ const keepFocus = (event: Event) => { event.preventDefault() }
 export function PaneCard(props: PaneCardProps) {
   const { pane, session, paneCount, focused, maximized, primary, shift } = props
   const multi = paneCount > 1
-  const ringed = focused && multi
   const full = paneCount >= MAX_PANES
   const status = session.status
+  const closing = useArmed(runsAgent(session.process))
+  const closeLabel = closing.armed ? `Click again to close and stop ${session.process}` : 'Close pane · ends its session'
   return (
     <ContextMenuPrimitive.Root>
       <ContextMenuPrimitive.Trigger asChild>
     <section
-      className={`mx-pane${ringed ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
-      aria-label={`Terminal ${String(props.index + 1)}: ${session.cwdLabel}${ringed ? ', focused' : ''}`}
+      className={`mx-pane${focused ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
+      aria-label={`Terminal ${String(props.index + 1)}: ${session.cwdLabel}${focused ? ', focused' : ''}`}
       data-session-id={session.id}
+      data-pane={pane.id}
       onMouseDown={() => { props.onFocus(pane.id) }}
       onDragOver={(event: DragEvent) => {
         event.preventDefault()
@@ -93,7 +96,7 @@ export function PaneCard(props: PaneCardProps) {
           <button type="button" className="mx-pane-control" aria-label={`Split right (${primary}D)`} title={`Split right (${primary}D)`} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'right') }}><Icon name="splitRight" /></button>
           <button type="button" className="mx-pane-control" aria-label={`Split down (${primary}${shift}D)`} title={`Split down (${primary}${shift}D)`} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'down') }}><Icon name="splitDown" /></button>
           <button type="button" className="mx-pane-control" aria-label={maximized ? 'Restore layout' : 'Maximize pane'} title={maximized ? 'Restore layout' : 'Maximize pane'} disabled={!multi && !maximized} onMouseDown={stop} onClick={() => { props.onToggleMaximize(pane.id) }}>{maximized ? <Icon name="restore" /> : <Icon name="maximize" />}</button>
-          <button type="button" className="mx-pane-control" aria-label="Close pane · the session keeps running" title="Close pane · the session keeps running" disabled={!multi} onMouseDown={stop} onClick={() => { props.onClose(pane.id) }}><Icon name="close" /></button>
+          <button type="button" className={`mx-pane-control${closing.armed ? ' is-armed' : ''}`} aria-label={closeLabel} title={closeLabel} onMouseDown={stop} onBlur={closing.disarm} onClick={() => { if (closing.press()) props.onClose(pane.id) }}><Icon name="close" /></button>
         </span>
       </div>
       <div
@@ -107,7 +110,7 @@ export function PaneCard(props: PaneCardProps) {
       >
         {props.terminal}
       </div>
-      <PaneStatus status={status} workingSince={props.workingSince} now={props.now} />
+      {status !== 'idle' && <PaneStatus status={status} workingSince={props.workingSince} now={props.now} />}
     </section>
       </ContextMenuPrimitive.Trigger>
       <ContextMenuPrimitive.Portal container={props.portalContainer}>
@@ -119,8 +122,7 @@ export function PaneCard(props: PaneCardProps) {
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onRenameSession(session.id) }}>Rename…</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { void navigator.clipboard.writeText(session.cwd) }}>Copy folder path</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
-          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!multi} onSelect={() => { props.onClose(pane.id) }}>Close pane<span className="mx-menu-hint">keeps running</span></ContextMenuPrimitive.Item>
-          <ContextMenuPrimitive.Item className="mx-menu-item is-danger" disabled={!props.online} onSelect={() => { props.onEndSession(session.id) }}>Close session<span className="mx-menu-hint">ends it</span></ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item className={`mx-menu-item is-danger${closing.armed ? ' is-armed' : ''}`} disabled={!props.online} onSelect={(event) => { if (closing.press()) props.onEndSession(session.id); else event.preventDefault() }}>{closing.armed ? `Close and stop ${session.process}? Click again` : 'Close session'}<span className="mx-menu-hint">{closing.armed ? '' : 'ends it'}</span></ContextMenuPrimitive.Item>
         </ContextMenuPrimitive.Content>
       </ContextMenuPrimitive.Portal>
     </ContextMenuPrimitive.Root>

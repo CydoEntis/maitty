@@ -349,8 +349,9 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   choices as the agent printed them, instead of its last prompt.
 - **Status is shape and word.** Working is the TUI spinner, Needs you an amber tile with two pause
   bars, Done a green check, Exited a red `!`, Unknown a dashed square, Idle a small dot. Every pane
-  shows its status as a chip in its bottom-right corner, including Idle, and hovering or focusing
-  the chip opens a popover that says what the state means. Amber still means needs you and only
+  but an idle one shows its status as a chip in its bottom-right corner, and hovering or focusing
+  the chip opens a popover that says what the state means. An idle pane has no chip, and an idle
+  session's sidebar row has no state line: idle is the default and says nothing. Amber still means needs you and only
   that, in every theme.
 - **Colours follow the theme.** Folder colours, agent tiles, badges and the folder text are
   expressions over the active theme's tokens (`--accent`, `--ansi-*`, `--warn`, `--danger`,

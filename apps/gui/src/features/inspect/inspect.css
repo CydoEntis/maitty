@@ -45,3 +45,5 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(255, 255,
 .mx-preview span.is-target { background: color-mix(in oklab, var(--warn) 22%, transparent); }
 .mx-inspect .is-add { color: var(--ok); }
 .mx-inspect .is-remove { color: var(--danger); }
+
+.mx-app[data-side="right"] .mx-inspect { right: auto; left: var(--edge); animation-name: v14inspL; }

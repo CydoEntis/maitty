@@ -1,3 +1,4 @@
+import type { UpdaterState } from '@/features/updates/useUpdater'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { spinnerDefinition, type SpinnerStyle } from '@/lib/spinner-clock'
 import { THEMES } from '@/features/workspace/theme/themes'
@@ -21,7 +22,9 @@ export type DaemonInfo = {
 type DesktopSettingsProps = {
   section: DesktopSettingsSection
   /** The app's update check, when there is one to ask. */
-  updates?: { summary: string; checking: boolean; onCheck: () => void }
+  /** Shows a sample notification where notifications appear. */
+  onTestNotice?: () => void
+  updates?: { summary: string; status: UpdaterState['status']; onCheck: () => void; onDownload: () => void; onRestart: () => void }
   onSection: (section: DesktopSettingsSection) => void
   preferences: SettingsPreferences
   onChange: (preferences: SettingsPreferences) => void
@@ -156,7 +159,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
               {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} onShowWelcome={props.onShowWelcome} updates={props.updates} />}
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
               {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} projects={props.projects} />}
-              {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} />}
+              {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} onTestNotice={props.onTestNotice} />}
               {section === 'keys' && <HotkeysSection mac={props.mac} />}
               {section === 'daemon' && <DaemonSection daemon={props.daemon} />}
             </div>
@@ -260,14 +263,21 @@ function GeneralSection({ preferences, update, validateFolder, onShowWelcome, up
         </div>
       </Card>
       <Card title="Window" color="var(--ansi-blue)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 16h18" /></>}>
-        <Row label="Status bar" detail="A line at the bottom with the daemon, the branch, what is working and what needs you.">
+        <Row label="Status bar" detail="A line at the bottom with quick controls for theme, layout, text size and shortcuts.">
           <Switch label="Status bar" checked={preferences.statusBar} onChange={(value) => { update('statusBar', value) }} />
         </Row>
       </Card>
       {updates && (
         <Card title="Updates" color="var(--ansi-green)" iconPath={<path d="M12 4v10m0 0l-4-4m4 4l4-4M5 19h14" />}>
           <Row label="Maitty updates" detail={updates.summary}>
-            <button type="button" className="mx-text-button" disabled={updates.checking} onClick={updates.onCheck}>Check now</button>
+            <span className={`mx-upd-chip is-${updates.status}`}>{UPDATE_CHIP[updates.status]}</span>
+            <button type="button" className="mx-text-button" disabled={updates.status === 'checking' || updates.status === 'downloading'} onClick={updateAction(updates).run}>{updateAction(updates).label}</button>
+          </Row>
+          <Row label="Download updates automatically" detail="A new release is fetched in the background. Installing waits until you restart.">
+            <Switch label="Download updates automatically" checked={preferences.autoDownloadUpdates} onChange={(value) => { update('autoDownloadUpdates', value) }} />
+          </Row>
+          <Row label="Restart when nothing is running" detail="Restart into a downloaded update once no session is working or waiting on you. Sessions keep running either way.">
+            <Switch label="Restart when nothing is running" checked={preferences.restartWhenIdle} onChange={(value) => { update('restartWhenIdle', value) }} />
           </Row>
         </Card>
       )}
@@ -302,6 +312,22 @@ const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string;
 ]
 const ICON_COLOR_OPTIONS = [['color', 'Color'], ['grayscale', 'Grayscale']] as const
 const TRAY_OPTIONS = [['names', 'With names'], ['icons', 'Icons'], ['stacked', 'Stacked']] as const
+const UPDATE_CHIP: Record<UpdaterState['status'], string> = { idle: 'Not checked', checking: 'Checking…', current: 'Up to date', available: 'Update available', downloading: 'Downloading', ready: 'Ready to restart', failed: 'Failed' }
+
+/** The one button that fits where the update is. */
+function updateAction(updates: NonNullable<DesktopSettingsProps['updates']>): { label: string; run: () => void } {
+  switch (updates.status) {
+    case 'available': return { label: 'Download', run: updates.onDownload }
+    case 'ready': return { label: 'Restart now', run: updates.onRestart }
+    case 'failed': return { label: 'Retry', run: updates.onCheck }
+    case 'checking': return { label: 'Checking…', run: updates.onCheck }
+    case 'downloading': return { label: 'Downloading…', run: updates.onCheck }
+    case 'idle':
+    case 'current': return { label: 'Check now', run: updates.onCheck }
+  }
+}
+const TOAST_POSITIONS = [['top-left', 'Top left'], ['top-center', 'Top center'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom center'], ['bottom-right', 'Bottom right']] as const
+const SIDE_OPTIONS = [['left', 'Left'], ['right', 'Right']] as const
 const LEAD_OPTIONS = [['focused', 'Focused'], ['attention', 'Needs attention']] as const
 const ICON_OPTIONS = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']] as const
 const DENSITY_OPTIONS = [['compact', 'Compact'], ['comfortable', 'Comfortable'], ['spacious', 'Spacious']] as const
@@ -438,6 +464,9 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
       <Card title="Sidebar" color="var(--accent)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></>}
         foot={<>{preferences.trayStyle === 'stacked' ? 'One per line under the main row, with folder and status.' : preferences.trayStyle === 'icons' ? 'Small icon tabs under the main row.' : 'Small named tabs under the main row.'} {preferences.leadMode === 'attention' ? 'The session that most needs you leads: needs you, error, done, working.' : 'The session you are in leads; the others are sorted by attention.'}</>}
       >
+        <Row label="Sidebar position" detail="Which side of the window the sidebar sits on. Inspect and the inbox open from the other side.">
+          <Segmented label="Sidebar position" value={preferences.sidebarSide} options={SIDE_OPTIONS} onChange={(value) => { update('sidebarSide', value) }} />
+        </Row>
         <Row label="Other sessions in a project" detail="How a project's extra sessions sit under its main row.">
           <Segmented label="Other sessions in a project" value={preferences.trayStyle} options={TRAY_OPTIONS} onChange={(value) => { update('trayStyle', value) }} />
         </Row>
@@ -540,7 +569,7 @@ function HotkeysSection({ mac }: { mac: boolean }) {
 }
 
 /** Native notifications: sent only while the window is in the background, for the session you are not looking at. */
-function NotificationsSection({ preferences, update }: { preferences: SettingsPreferences; update: Update }) {
+function NotificationsSection({ preferences, update, onTestNotice }: { preferences: SettingsPreferences; update: Update; onTestNotice: (() => void) | undefined }) {
   return (
     <Card
       title="System notifications"
@@ -556,6 +585,14 @@ function NotificationsSection({ preferences, update }: { preferences: SettingsPr
       </Row>
       <Row label="Error" detail="A session's program exited with an error.">
         <Switch label="Notify when a session errors" checked={preferences.notifyError} onChange={(value) => { update('notifyError', value) }} />
+      </Row>
+      <Row label="Position" detail="Where notification cards appear in the window. Done is green, needs you amber and an error red.">
+        <div className="mx-pos-grid" role="group" aria-label="Notification position">
+          {TOAST_POSITIONS.map(([id, label]) => (
+            <button key={id} type="button" className={`mx-pos-cell${preferences.toastPosition === id ? ' is-on' : ''}`} aria-label={label} aria-pressed={preferences.toastPosition === id} title={label} onClick={() => { update('toastPosition', id) }} />
+          ))}
+        </div>
+        {onTestNotice && <button type="button" className="mx-text-button" onClick={onTestNotice}>Show a test</button>}
       </Row>
     </Card>
   )

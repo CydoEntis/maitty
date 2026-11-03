@@ -7,6 +7,7 @@ import { InlineName } from './InlineName'
 import { useSessionMenu } from './SessionMenu'
 import { hoverHandlers, type RailHover } from './railHover'
 import { useEffectClass } from './motion'
+import { runsAgent, useArmed } from './useArmed'
 
 export type SessionRowProps = {
   session: SessionView
@@ -23,7 +24,6 @@ export type SessionRowProps = {
   onShow: () => void
   onSetName: (name: string) => void
   onPin: (pinned: boolean) => void
-  onArchive: () => void
   onEnd: () => void
 }
 
@@ -37,11 +37,12 @@ export function SessionRow(props: SessionRowProps) {
   const meta = status === 'working' || status === 'needs' || !track?.changedAt ? '' : formatAgo(now - track.changedAt)
   const loud = selected || unread || status === 'needs'
   const effect = useEffectClass(status, selected)
+  const closing = useArmed(runsAgent(session.process))
   const [editing, setEditing] = useState(false)
-  const menu = useSessionMenu(session, { online, portalContainer: props.portalContainer, onShow: props.onShow, onRename: () => { setEditing(true) }, onPin: props.onPin, onArchive: props.onArchive, onEnd: props.onEnd })
+  const menu = useSessionMenu(session, { online, portalContainer: props.portalContainer, onShow: props.onShow, onRename: () => { setEditing(true) }, onPin: props.onPin, onEnd: props.onEnd })
   const rowClass = ['mx-row', selected && 'is-selected', loud && 'is-loud', props.swapped && 'is-swapped', moved ? 'is-moved' : effect].filter(Boolean).join(' ')
-  // The icon already names the program, and a working row has its spinner: say only what they do not.
-  const line2 = iconSaysProcess(session.process) ? (status === 'working' ? '' : statusText(session)) : <><span className="mx-proc">{session.process}</span>{statusPhrase(session)}</>
+  // The icon already names the program, a working row has its spinner and an idle one is the default: say only what they do not.
+  const line2 = iconSaysProcess(session.process) ? (status === 'working' || status === 'idle' ? '' : statusText(session)) : <><span className="mx-proc">{session.process}</span>{status === 'idle' ? '' : statusPhrase(session)}</>
   const line2Class = status === 'needs' ? 'is-needs' : status === 'error' ? 'is-error' : status === 'working' ? 'is-working' : ''
   const body = (
     <>
@@ -69,11 +70,12 @@ export function SessionRow(props: SessionRowProps) {
         {editing ? <div className={rowClass}>{body}</div> : <button type="button" className={rowClass} {...hoverHandlers(props.hover, { kind: 'session', id: session.id })} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(SESSION_DRAG_TYPE, session.id) }} aria-label={`${displayName(session)}, ${session.process}, ${STATUS_WORD[status]}`} aria-current={selected ? 'page' : undefined} onClick={props.onShow}>{body}</button>}
         <button
           type="button"
-          className="mx-icon-button mx-row-end"
-          aria-label={`Close session ${displayName(session)}`}
-          title="Close session · ends its shell"
+          className={`mx-icon-button mx-row-end${closing.armed ? ' is-armed' : ''}`}
+          aria-label={closing.armed ? `Click again to close and stop ${session.process}` : `Close session ${displayName(session)}`}
+          title={closing.armed ? `Click again to close and stop ${session.process}` : 'Close session · ends its shell'}
           disabled={!online}
-          onClick={props.onEnd}
+          onBlur={closing.disarm}
+          onClick={() => { if (closing.press()) props.onEnd() }}
         >
           <Icon name="close" size={11} strokeWidth={2.25} />
         </button>

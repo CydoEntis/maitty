@@ -45,6 +45,9 @@ type TerminalViewProps = {
 
 type NativeConversation = Conversation & { generation: number; nativePane: number }
 
+/** What Shift+Enter sends: Alt+Enter, which Claude Code and Codex take as a new line in their prompt. */
+const NEW_LINE_KEYS = '\x1b\r'
+
 export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, focused = false, onInput, onOpenPath, onHandle }: TerminalViewProps) {
   if (!desktop) return null
   if (!isDesktop()) return <div className="panel-empty"><TerminalSquare size={18} /><h2>Native terminal is not available</h2><p>Open Maitty Desktop to use the daemon-owned terminal.</p></div>
@@ -283,6 +286,12 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         const fonts = (document as { fonts?: FontFaceSet }).fonts
         void fonts?.ready.then(() => { refitTerminal.current?.() })
 
+        // A terminal sends the same byte for Shift+Enter as for Enter. Agents read ESC then Enter (Alt+Enter) as "new line", so that is what goes.
+        terminalInstance.attachCustomKeyEventHandler((event) => {
+          if (event.key !== 'Enter' || !event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return true
+          if (event.type === 'keydown') send(NEW_LINE_KEYS)
+          return false
+        })
         const inputSubscription = terminalInstance.onData(send)
         const binarySubscription = terminalInstance.onBinary((data) => {
           send(Uint8Array.from(data, (character) => character.charCodeAt(0)))
