@@ -65,6 +65,24 @@ describe('Inspect panel', () => {
     expect(await screen.findByRole('alert')).toBeTruthy()
   })
 
+  it('shows what the daemon said when it fails with a plain string, not a generic message', async () => {
+    vi.mocked(invoke).mockReset().mockRejectedValue('git diff: fatal: bad object HEAD')
+    renderPanel('changes')
+    expect(await screen.findByRole('alert')).toHaveTextContent('git diff: fatal: bad object HEAD')
+  })
+
+  it.each(['files', 'changes', 'branches', 'history', 'references'] as const)(
+    'explains a plain folder on the %s tab instead of calling it an error, and says what to do',
+    async (view) => {
+      vi.mocked(invoke).mockReset().mockRejectedValue('git rev-parse --show-toplevel: fatal: not a git repository (or any of the parent directories): .git')
+      renderPanel(view)
+      const note = await screen.findByRole('status')
+      expect(note).toHaveTextContent('This folder is not a git repository.')
+      expect(note).toHaveTextContent('git init')
+      expect(screen.queryByRole('alert')).toBeNull()
+    },
+  )
+
   it('opens a folder and previews a file in it', async () => {
     daemonAnswers({
       Tree: [{ name: 'src', is_directory: true }, { name: 'README.md', is_directory: false }],
