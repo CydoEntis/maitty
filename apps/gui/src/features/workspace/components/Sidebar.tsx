@@ -50,6 +50,8 @@ export type SidebarProps = {
   /** Ends every session in a project; the app asks first. */
   onEndProject: (ids: string[], name: string) => void
   onSetName: (id: string, name: string) => void
+  /** Opens the rename dialog, for a session with no room to rename it in place. */
+  onRenameSession: (id: string) => void
   onPinSession: (id: string, pinned: boolean) => void
   /** Puts a session away from the lists; it keeps running. */
   onArchiveSession: (id: string) => void
@@ -148,6 +150,7 @@ function Expanded(props: GroupProps) {
                     hover={hover}
                     onShowSession={props.onShowSession}
                     onSetName={props.onSetName}
+                    onRenameSession={props.onRenameSession}
                     onPinSession={props.onPinSession}
                     onArchiveSession={props.onArchiveSession}
                     onEndSession={props.onEndSession}
@@ -308,7 +311,7 @@ function Rail(props: GroupProps) {
                         online,
                         portalContainer: props.portalContainer,
                         onShow: () => { props.onShowSession(session.id) },
-                        onSetName: (name) => { props.onSetName(session.id, name) },
+                        onRename: () => { props.onRenameSession(session.id) },
                         onPin: (pinned) => { props.onPinSession(session.id, pinned) },
                         onArchive: () => { props.onArchiveSession(session.id) },
                         onEnd: () => { props.onEndSession(session.id) },

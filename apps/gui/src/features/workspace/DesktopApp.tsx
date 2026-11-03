@@ -884,6 +884,7 @@ export function DesktopApp() {
       onEndSession={endSession}
       onEndProject={endProject}
       onSetName={saveName}
+      onRenameSession={setRenameId}
       onPinSession={pinSession}
       onArchiveSession={(id) => { setArchived(id, true) }}
       archived={archivedSessions}
@@ -917,6 +918,7 @@ export function DesktopApp() {
                   portalContainer={root}
                   onSelect={(tabId) => { setLayout((current) => selectTab(current, tabId)) }}
                   onClose={closeTabById}
+                  onRenameSession={saveName}
                   newTabLabel={projectName ? `New session in ${projectName}` : 'New tab'}
                   onNewTab={newProjectSession}
                   inboxCount={inboxEntries.length}

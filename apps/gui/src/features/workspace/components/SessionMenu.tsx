@@ -7,8 +7,8 @@ export type SessionMenuActions = {
   /** Where the menu mounts, so it reads the theme's colours. */
   portalContainer: HTMLElement | null
   onShow: () => void
-  /** An empty name clears it. */
-  onSetName: (name: string) => void
+  /** Starts renaming it, where it is shown. */
+  onRename: () => void
   onPin: (pinned: boolean) => void
   onArchive: () => void
   onEnd: () => void

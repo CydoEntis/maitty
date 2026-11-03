@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 're
 import { createPortal } from 'react-dom'
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui'
 import type { Tab } from '../model/layout'
-import { iconSaysProcess, worstSession, type SessionView } from '../model/session'
+import { iconSaysProcess, MAX_SESSION_NAME_LENGTH, worstSession, type SessionView } from '../model/session'
+import { InlineName } from './InlineName'
 import { AppIcon, Icon, PauseBars, Spinner } from './glyphs'
 import { STATUS_LABEL } from '../model/statusText'
 import { useEffectClass } from './motion'
@@ -18,6 +19,8 @@ type TabBarProps = {
   portalContainer: HTMLElement | null
   onSelect: (tabId: string) => void
   onClose: (tabId: string) => void
+  /** Names the session a tab shows; an empty name clears it. */
+  onRenameSession: (sessionId: string, name: string) => void
   /** What the + button says it does: it opens a shell in the showing project. */
   newTabLabel: string
   onNewTab: () => void
@@ -118,7 +121,7 @@ export function TabBar(props: TabBarProps) {
           {edges.left && <button type="button" className="mx-icon-button mx-tab-scroll is-left" aria-label="Scroll tabs left" title="Scroll tabs left" onClick={() => { scroll(-1) }}><Icon name="chevron" /></button>}
           <div ref={listRef} role="tablist" aria-label="Tabs" className={`mx-tablist mx-no-scrollbar${edges.left ? ' has-left' : ''}${edges.right ? ' has-right' : ''}`} onKeyDown={onKeyDown} onScroll={measure}>
             {tabs.map((tab) => (
-              <TabButton key={tab.id} tab={tab} active={tab.id === activeTabId} sessions={props.sessions} primary={props.primary} canStart={props.canStart} portalContainer={props.portalContainer} onSelect={props.onSelect} onClose={props.onClose} onNewTab={props.onNewTab} />
+              <TabButton key={tab.id} tab={tab} active={tab.id === activeTabId} sessions={props.sessions} primary={props.primary} canStart={props.canStart} portalContainer={props.portalContainer} onSelect={props.onSelect} onClose={props.onClose} onNewTab={props.onNewTab} onRenameSession={props.onRenameSession} />
             ))}
           </div>
           {edges.right && <button type="button" className="mx-icon-button mx-tab-scroll" aria-label="Scroll tabs right" title="Scroll tabs right" onClick={() => { scroll(1) }}><Icon name="chevron" /></button>}
@@ -221,9 +224,9 @@ function TabPopover({ sessions, anchor }: { sessions: readonly SessionView[]; an
   )
 }
 
-type TabButtonProps = { tab: Tab; active: boolean; sessions: ReadonlyMap<string, SessionView>; primary: string; canStart: boolean; portalContainer: HTMLElement | null; onSelect: (id: string) => void; onClose: (id: string) => void; onNewTab: () => void }
+type TabButtonProps = { tab: Tab; active: boolean; sessions: ReadonlyMap<string, SessionView>; primary: string; canStart: boolean; portalContainer: HTMLElement | null; onSelect: (id: string) => void; onClose: (id: string) => void; onNewTab: () => void; onRenameSession: (sessionId: string, name: string) => void }
 
-function TabButton({ tab, active, sessions, primary, canStart, portalContainer, onSelect, onClose, onNewTab }: TabButtonProps) {
+function TabButton({ tab, active, sessions, primary, canStart, portalContainer, onSelect, onClose, onNewTab, onRenameSession }: TabButtonProps) {
   const focused = sessions.get(tab.panes.find((pane) => pane.id === tab.focus)?.sessionId ?? tab.panes[0]?.sessionId ?? '')
   const shown = tab.panes.flatMap((pane) => {
     const session = sessions.get(pane.sessionId)
@@ -236,6 +239,8 @@ function TabButton({ tab, active, sessions, primary, canStart, portalContainer, 
   const path = focused?.promptPath ?? ''
   const multi = tab.panes.length > 1
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
+  const [renaming, setRenaming] = useState(false)
+  const handFocusToField = useRef(false)
   return (
     <ContextMenuPrimitive.Root>
       <ContextMenuPrimitive.Trigger asChild>
@@ -260,7 +265,9 @@ function TabButton({ tab, active, sessions, primary, canStart, portalContainer, 
         {(shown.length > 0 ? shown : focused ? [focused] : []).slice(0, TAB_ICON_LIMIT).map((session) => <AppIcon key={session.id} process={session.process} size={20} />)}
         {shown.length === 0 && !focused && <AppIcon process={process} size={20} />}
       </span>
-      <span className="mx-tab-label">{!iconSaysProcess(process) && <span>{process}</span>}{multi && <span className="mx-tab-more">+{tab.panes.length - 1}</span>} <span className="mx-tab-folder">{focused?.name ?? path}</span></span>
+      <span className="mx-tab-label">{!iconSaysProcess(process) && <span>{process}</span>}{multi && <span className="mx-tab-more">+{tab.panes.length - 1}</span>} {renaming && focused
+        ? <InlineName value={focused.name ?? ''} placeholder={path} label={`Name for ${focused.title}`} maxLength={MAX_SESSION_NAME_LENGTH} onCommit={(name) => { setRenaming(false); onRenameSession(focused.id, name) }} onCancel={() => { setRenaming(false) }} />
+        : <span className="mx-tab-folder">{focused?.name ?? path}</span>}</span>
       {status === 'needs' && <span className="mx-tab-needs" title="Needs you"><PauseBars /></span>}
       {status === 'working' && <Spinner />}
       {status === 'done' && <span className="mx-tab-done" title="Done"><Icon name="check" /></span>}
@@ -282,7 +289,9 @@ function TabButton({ tab, active, sessions, primary, canStart, portalContainer, 
       </ContextMenuPrimitive.Trigger>
       {anchor && portalContainer && createPortal(<TabPopover sessions={shown} anchor={anchor} />, portalContainer)}
       <ContextMenuPrimitive.Portal container={portalContainer}>
-        <ContextMenuPrimitive.Content className="mx-menu">
+        {/* The name field takes focus itself; the menu must not hand it back to the tab. */}
+        <ContextMenuPrimitive.Content className="mx-menu" onCloseAutoFocus={(event) => { if (handFocusToField.current) { event.preventDefault(); handFocusToField.current = false } }}>
+          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!focused} onSelect={() => { handFocusToField.current = true; setRenaming(true) }}>Rename</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!canStart} onSelect={onNewTab}>New tab<span className="mx-menu-hint">{primary}T</span></ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { onClose(tab.id) }}>Close tab<span className="mx-menu-hint">sessions keep running</span></ContextMenuPrimitive.Item>

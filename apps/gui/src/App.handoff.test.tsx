@@ -282,15 +282,16 @@ describe('desktop terminal multiplexer', () => {
     expect(document.querySelector('.mx-rail-popover.is-tab')).toBeNull()
   })
 
-  it('renames a session from the Name field of its row menu, and the name shows on the row, the tab and the pane', async () => {
+  it('renames a session in place from its row menu, and the name shows on the row, the tab and the pane', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
     renderDesktopApp()
     const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
     fireEvent.contextMenu(await within(sidebar).findByRole('button', { name: /, shell, / }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }))
 
-    // The field already has the cursor, with the folder as its placeholder.
-    const field = await screen.findByRole('textbox', { name: 'Session name' })
+    // The row's own title becomes the field, with the cursor in it and the folder as its placeholder.
+    const field = await within(sidebar).findByRole('textbox', { name: /^Name for / })
     await waitFor(() => { expect(field).toHaveFocus() })
     expect(field).toHaveAttribute('placeholder', '~/a')
     // Once saved, the daemon reports the name, and every place that shows the session uses it.
@@ -298,28 +299,47 @@ describe('desktop terminal multiplexer', () => {
     await user.keyboard('Login fix{Enter}')
 
     await waitFor(() => { expect(daemon.renameConversationOnDaemon).toHaveBeenCalledWith({ id: 't2' }, 'Login fix') })
-    expect(screen.queryByRole('dialog', { name: /^Menu for/ })).not.toBeInTheDocument()
+    expect(within(sidebar).queryByRole('textbox')).not.toBeInTheDocument()
     await within(sidebar).findByRole('button', { name: /^Login fix, shell, / })
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Login fix')
     expect(document.querySelector('.mx-pane-name')).toHaveTextContent('Login fix')
   })
 
-  it('cancels a rename with Escape and sends nothing, and an empty name clears it', async () => {
+  it('cancels an in-place rename with Escape and sends nothing, and an empty name clears it', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`, { named: true, title: 'Login fix' })])
     renderDesktopApp()
     const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
     fireEvent.contextMenu(await within(sidebar).findByRole('button', { name: /^Login fix, shell, / }))
-    expect(await screen.findByRole('textbox', { name: 'Session name' })).toHaveValue('Login fix')
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }))
+    expect(await within(sidebar).findByRole('textbox', { name: /^Name for / })).toHaveValue('Login fix')
 
     await user.keyboard('{Escape}')
-    expect(screen.queryByRole('dialog', { name: /^Menu for/ })).not.toBeInTheDocument()
+    expect(within(sidebar).queryByRole('textbox')).not.toBeInTheDocument()
     expect(daemon.renameConversationOnDaemon).not.toHaveBeenCalled()
 
     fireEvent.contextMenu(within(sidebar).getByRole('button', { name: /^Login fix, shell, / }))
-    await user.clear(await screen.findByRole('textbox', { name: 'Session name' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }))
+    await user.clear(await within(sidebar).findByRole('textbox', { name: /^Name for / }))
     await user.keyboard('{Enter}')
     await waitFor(() => { expect(daemon.renameConversationOnDaemon).toHaveBeenCalledWith({ id: 't2' }, '') })
+  })
+
+  it('renames the session a tab shows from the tab menu, in the tab itself, and saves when you leave the field', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    const tab = await screen.findByRole('tab', { selected: true })
+    fireEvent.contextMenu(tab)
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }))
+
+    const field = await within(tab).findByRole('textbox', { name: /^Name for / })
+    await waitFor(() => { expect(field).toHaveFocus() })
+    await user.keyboard('Login fix')
+    await user.tab()
+
+    await waitFor(() => { expect(daemon.renameConversationOnDaemon).toHaveBeenCalledWith({ id: 't2' }, 'Login fix') })
+    expect(within(tab).queryByRole('textbox')).not.toBeInTheDocument()
   })
 
   it('pins a session from its menu, marks the pinned row, and offers to unpin it', async () => {
@@ -374,8 +394,9 @@ describe('desktop terminal multiplexer', () => {
 
       fireEvent.contextMenu(within(tray).getAllByRole('button')[0] as HTMLElement)
 
-      expect(await screen.findByRole('textbox', { name: 'Session name' })).toBeInTheDocument()
+      expect(await screen.findByRole('menuitem', { name: 'Rename' })).toBeInTheDocument()
       expect(screen.getByRole('menuitem', { name: 'Archive' })).toBeInTheDocument()
+      expect(screen.queryByRole('textbox', { name: 'Session name' })).not.toBeInTheDocument()
     } finally {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: wide })
     }

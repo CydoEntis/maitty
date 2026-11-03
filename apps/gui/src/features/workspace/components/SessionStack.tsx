@@ -44,6 +44,8 @@ export type StackProps = {
   hover: RailHover
   onShowSession: (id: string) => void
   onSetName: (id: string, name: string) => void
+  /** Opens the rename dialog, for a session with no room to rename it in place. */
+  onRenameSession: (id: string) => void
   onPinSession: (id: string, pinned: boolean) => void
   onArchiveSession: (id: string) => void
   onEndSession: (id: string) => void
@@ -100,7 +102,7 @@ export function SessionStack(props: StackProps) {
       />
       {hasTray && (
         <div role="group" aria-label={trayLabel} className={`mx-tray is-${props.trayStyle}${plan.hidden > 0 ? ' has-more' : ''}`} style={stacked ? undefined : { gridTemplateColumns: trayColumns(props.trayStyle, plan.shown.length, plan.hidden > 0) }}>
-          {plan.shown.map((session) => <TrayItem key={session.id} hover={props.hover} session={session} style={props.trayStyle} track={tracks.get(session.id)} now={now} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} actions={{ online: props.online, portalContainer: props.portalContainer, onShow: () => { props.onShowSession(session.id) }, onSetName: (name) => { props.onSetName(session.id, name) }, onPin: (pinned) => { props.onPinSession(session.id, pinned) }, onArchive: () => { props.onArchiveSession(session.id) }, onEnd: () => { props.onEndSession(session.id) } }} />)}
+          {plan.shown.map((session) => <TrayItem key={session.id} hover={props.hover} session={session} style={props.trayStyle} track={tracks.get(session.id)} now={now} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} actions={{ online: props.online, portalContainer: props.portalContainer, onShow: () => { props.onShowSession(session.id) }, onRename: () => { props.onRenameSession(session.id) }, onPin: (pinned) => { props.onPinSession(session.id, pinned) }, onArchive: () => { props.onArchiveSession(session.id) }, onEnd: () => { props.onEndSession(session.id) } }} />)}
           {plan.hidden > 0 && (
             <button type="button" className={`mx-tray-more${plan.hiddenNeeds ? ' is-needs' : ''}${menuAnchor ? ' is-open' : ''}`} aria-haspopup="menu" aria-expanded={menuAnchor !== null} aria-label={moreLabel} title={moreLabel} onClick={(event) => { setMenuAnchor(menuAnchor ? null : event.currentTarget.getBoundingClientRect()) }}>
               {stacked ? `+${String(plan.hidden)} more` : `+${String(plan.hidden)}`}

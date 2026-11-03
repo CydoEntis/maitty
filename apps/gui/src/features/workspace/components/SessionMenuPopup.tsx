@@ -1,24 +1,22 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { displayName, MAX_SESSION_NAME_LENGTH, type SessionView } from '../model/session'
+import { displayName, type SessionView } from '../model/session'
 import type { SessionMenuActions } from './SessionMenu'
 import { Icon } from './glyphs'
 
 const MENU_WIDTH_PX = 260
-const MENU_HEIGHT_PX = 236
+const MENU_HEIGHT_PX = 190
 const EDGE_PX = 8
 
 type Props = { session: SessionView; actions: SessionMenuActions; at: { x: number; y: number }; onClose: () => void }
 
 export function SessionMenuPopup({ session, actions, at, onClose }: Props) {
   const root = useRef<HTMLDivElement>(null)
-  const name = useRef<HTMLInputElement>(null)
   const close = useRef(onClose)
   useEffect(() => { close.current = onClose })
 
   useEffect(() => {
-    name.current?.focus()
-    name.current?.select()
+    root.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
     const onPointerDown = (event: PointerEvent) => {
       if (root.current && event.target instanceof Node && !root.current.contains(event.target)) close.current()
     }
@@ -43,23 +41,7 @@ export function SessionMenuPopup({ session, actions, at, onClose }: Props) {
   }
   const menu = (
     <div ref={root} role="dialog" aria-label={`Menu for ${displayName(session)}`} className="mx-sessionmenu" style={style}>
-      <label className="mx-sm-name">
-        <span className="mx-menu-caps">Name</span>
-        <input
-          ref={name}
-          aria-label="Session name"
-          placeholder={session.title}
-          defaultValue={session.name ?? ''}
-          maxLength={MAX_SESSION_NAME_LENGTH}
-          spellCheck={false}
-          onKeyDown={(event) => {
-            // Enter saves; an empty field clears the name. Keys typed here are the field's, not the menu's.
-            if (event.key !== 'Enter') return
-            event.preventDefault()
-            run(() => { actions.onSetName(event.currentTarget.value.trim()) })()
-          }}
-        />
-      </label>
+      <button type="button" role="menuitem" className="mx-menu-item" onClick={run(actions.onRename)}><Icon name="pencil" size={13} />Rename</button>
       <button type="button" role="menuitem" className="mx-menu-item" onClick={run(() => { actions.onPin(!session.pinned) })}>
         <Icon name="pin" size={13} />{session.pinned ? 'Unpin' : 'Pin to top'}
       </button>
