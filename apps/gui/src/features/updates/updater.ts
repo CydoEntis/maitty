@@ -1,0 +1,40 @@
+import { isTauri } from '@tauri-apps/api/core'
+
+export type AvailableUpdate = { version: string; notes: string }
+
+export type UpdateHandle = {
+  info: AvailableUpdate
+  /** Downloads and installs it. The fraction is null while the size is unknown. */
+  install: (onProgress: (fraction: number | null) => void) => Promise<void>
+}
+
+/**
+ * The newest release when it is newer than this app, else null. Null outside the desktop app too,
+ * where there is nothing to update. A failed check throws.
+ */
+export async function checkForUpdate(): Promise<UpdateHandle | null> {
+  if (!isTauri()) return null
+  const { check } = await import('@tauri-apps/plugin-updater')
+  const update = await check()
+  if (!update) return null
+  return {
+    info: { version: update.version, notes: update.body ?? '' },
+    install: async (onProgress) => {
+      let total = 0
+      let received = 0
+      await update.downloadAndInstall((event) => {
+        if (event.event === 'Started') total = event.data.contentLength ?? 0
+        if (event.event === 'Progress') {
+          received += event.data.chunkLength
+          onProgress(total > 0 ? Math.min(received / total, 1) : null)
+        }
+      })
+    },
+  }
+}
+
+/** Restarts the window only. The daemon and every session in it keep running. */
+export async function restartApp(): Promise<void> {
+  const { relaunch } = await import('@tauri-apps/plugin-process')
+  await relaunch()
+}

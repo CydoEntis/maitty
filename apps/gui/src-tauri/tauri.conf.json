@@ -40,5 +40,12 @@
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMzNzI5RUU4NTdGMUIxNUMKUldSY3NmRlg2SjV5TTF5VTJWUTQ1VnlHSlBWTU9uYnl5ZW50UzQzSFVXcU5zRlhqOGZIZXpucUsK",
+      "endpoints": ["https://github.com/CydoEntis/maitty/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
   }
 }

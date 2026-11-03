@@ -20,6 +20,8 @@ export type DaemonInfo = {
 
 type DesktopSettingsProps = {
   section: DesktopSettingsSection
+  /** The app's update check, when there is one to ask. */
+  updates?: { summary: string; checking: boolean; onCheck: () => void }
   onSection: (section: DesktopSettingsSection) => void
   preferences: SettingsPreferences
   onChange: (preferences: SettingsPreferences) => void
@@ -151,7 +153,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
           </header>
           <div className="mx-settings-scroll">
             <div className="mx-settings-sections" key={section}>
-              {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} onShowWelcome={props.onShowWelcome} />}
+              {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} onShowWelcome={props.onShowWelcome} updates={props.updates} />}
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
               {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} projects={props.projects} />}
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} />}
@@ -213,7 +215,7 @@ function Segmented<T extends string | number>({ label, value, options, onChange,
 const VALIDATE_DELAY_MS = 250
 type FolderCheck = 'saved' | 'missing' | 'checking'
 
-function GeneralSection({ preferences, update, validateFolder, onShowWelcome }: { preferences: SettingsPreferences; update: Update; validateFolder: (path: string) => Promise<boolean>; onShowWelcome: () => void }) {
+function GeneralSection({ preferences, update, validateFolder, onShowWelcome, updates }: { preferences: SettingsPreferences; update: Update; validateFolder: (path: string) => Promise<boolean>; onShowWelcome: () => void; updates: DesktopSettingsProps['updates'] }) {
   const [draft, setDraft] = useState(preferences.startFolder)
   const [check, setCheck] = useState<FolderCheck>('saved')
   const latest = useRef({ preferences, update })
@@ -262,6 +264,13 @@ function GeneralSection({ preferences, update, validateFolder, onShowWelcome }: 
           <Switch label="Status bar" checked={preferences.statusBar} onChange={(value) => { update('statusBar', value) }} />
         </Row>
       </Card>
+      {updates && (
+        <Card title="Updates" color="var(--ansi-green)" iconPath={<path d="M12 4v10m0 0l-4-4m4 4l4-4M5 19h14" />}>
+          <Row label="Maitty updates" detail={updates.summary}>
+            <button type="button" className="mx-text-button" disabled={updates.checking} onClick={updates.onCheck}>Check now</button>
+          </Row>
+        </Card>
+      )}
       <Card title="Sessions" color="var(--ansi-mag)" iconPath={<><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>}>
         <Row label="Reopen tabs on launch" detail="Restore the tabs and splits you had last time.">
           <Switch label="Reopen tabs on launch" checked={preferences.restoreTabs} onChange={(value) => { update('restoreTabs', value) }} />
