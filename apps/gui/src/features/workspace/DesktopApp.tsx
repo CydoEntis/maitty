@@ -40,6 +40,8 @@ import { repoDiff, repoLocate } from '@/features/inspect/api'
 import { FindBar } from '@/features/find/FindBar'
 import { RestoreBanner } from './components/RestoreBanner'
 import { UpdateBanner } from '@/features/updates/UpdateBanner'
+import { formatDroppedPaths } from '@/features/terminal/droppedPaths'
+import { useFileDrop } from '@/features/terminal/useFileDrop'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
 import { sendNativeNotice } from '@/features/notifications/native'
 import { noticesFor } from '@/features/notifications/transitions'
@@ -242,6 +244,18 @@ export function DesktopApp() {
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
   const focusedId = focusedSessionId(layout)
   const focusedSession = focusedId ? sessionMap.get(focusedId) : undefined
+  // Files dropped on a pane type their paths into it; the pane under the pointer, else the focused one.
+  useFileDrop((paths, at) => {
+    const target = document.elementFromPoint(at.x, at.y)?.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ?? focusedId
+    const handle = target ? terminalHandles.current.get(target) : undefined
+    if (!handle) return
+    if (!online) {
+      toast.error('Reconnect to the Maitty service before dropping files on a pane')
+      return
+    }
+    handle.paste(formatDroppedPaths(paths, /Windows/i.test(navigator.userAgent)))
+    handle.focus()
+  })
   const visibleKey = [...visibleSessionIds(layout)].sort().join(' ')
   // The tab each session is open in; the sidebar shows it only once there is more than one tab.
   const tabOf = useMemo(() => {

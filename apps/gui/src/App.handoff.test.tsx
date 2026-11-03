@@ -30,9 +30,18 @@ vi.mock('@/api/daemon', () => ({
   },
 }))
 
+const terminal = vi.hoisted(() => ({
+  pasted: [] as Array<[string, string]>,
+  drop: { current: null as null | ((paths: string[], at: { x: number; y: number }) => void) },
+}))
+
+vi.mock('@/features/terminal/useFileDrop', () => ({
+  useFileDrop: (onDrop: (paths: string[], at: { x: number; y: number }) => void) => { terminal.drop.current = onDrop },
+}))
+
 vi.mock('./TerminalView', () => ({
-  TerminalView: ({ conversation, label, focused, inputDisabled }: { conversation: Conversation; label: string; focused: boolean; inputDisabled: boolean }) => (
-    <div className="terminal-screen" role="region" aria-label={label} data-focused={String(focused)} data-input-disabled={String(inputDisabled)} tabIndex={0}>
+  TerminalView: ({ conversation, label, focused, inputDisabled, onHandle }: { conversation: Conversation; label: string; focused: boolean; inputDisabled: boolean; onHandle?: (handle: { find: () => boolean; clearFind: () => void; focus: () => void; paste: (text: string) => void } | null) => void }) => (
+    <div ref={() => { onHandle?.({ find: () => false, clearFind: () => {}, focus: () => {}, paste: (text) => { terminal.pasted.push([conversation.id, text]) } }) }} className="terminal-screen" role="region" aria-label={label} data-focused={String(focused)} data-input-disabled={String(inputDisabled)} tabIndex={0}>
       Pane {conversation.nativePane}
     </div>
   ),
@@ -803,6 +812,46 @@ describe('desktop terminal multiplexer', () => {
     expect(focusables[0]).toHaveFocus()
 
     await user.keyboard('{Escape}')
+  it('types the paths of files dropped on a pane into that pane, quoted, and never runs them', async () => {
+    terminal.pasted.length = 0
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    const pane = document.querySelector('[data-session-id="t2"]')
+    expect(pane).not.toBeNull()
+    document.elementFromPoint = vi.fn(() => pane)
+
+    act(() => { terminal.drop.current?.([`${HOME}/My Shot.png`, `${HOME}/b.png`], { x: 10, y: 10 }) })
+
+    expect(terminal.pasted).toEqual([['t2', `${HOME}/My\\ Shot.png ${HOME}/b.png `]])
+  })
+
+  it('types a drop that lands on no pane into the focused one', async () => {
+    terminal.pasted.length = 0
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    document.elementFromPoint = vi.fn(() => null)
+
+    act(() => { terminal.drop.current?.([`${HOME}/b.png`], { x: 1, y: 1 }) })
+
+    expect(terminal.pasted).toEqual([['t2', `${HOME}/b.png `]])
+  })
+
+  it('types nothing while the service is unreachable', async () => {
+    terminal.pasted.length = 0
+    daemon.loadConversations.mockResolvedValueOnce([term(2, `${HOME}/a`)]).mockRejectedValue(new Error('connection refused'))
+    const { client } = renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+    await screen.findByText('Disconnected from maittyd.')
+    document.elementFromPoint = vi.fn(() => null)
+
+    act(() => { terminal.drop.current?.([`${HOME}/b.png`], { x: 1, y: 1 }) })
+
+    expect(terminal.pasted).toEqual([])
+  })
+
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(newSession).toHaveFocus()
   })
