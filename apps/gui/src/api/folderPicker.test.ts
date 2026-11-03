@@ -16,6 +16,14 @@ describe('chooseProjectFolder', () => {
     expect(open).toHaveBeenCalledWith({ directory: true, multiple: false })
   })
 
+  it('opens at the folder it is given', async () => {
+    vi.mocked(open).mockResolvedValueOnce('/home/casey/dev')
+
+    await chooseProjectFolder('/home/casey/dev')
+
+    expect(open).toHaveBeenCalledWith({ directory: true, multiple: false, defaultPath: '/home/casey/dev' })
+  })
+
   it('returns no path when the picker is canceled', async () => {
     vi.mocked(open).mockResolvedValueOnce(null)
 

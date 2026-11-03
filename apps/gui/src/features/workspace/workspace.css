@@ -1073,3 +1073,5 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-pane-ended-button.is-primary { color: var(--on-accent); background: var(--accent); box-shadow: none; font-weight: 600; }
 .mx-pane-ended-button.is-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, #fff); }
 .mx-pane-ended-button:disabled { opacity: .5; cursor: default; }
+.mx-folder-row { display: flex; align-items: center; gap: 8px; }
+.mx-folder-row .mx-folder-field { flex: 1; min-width: 0; }
