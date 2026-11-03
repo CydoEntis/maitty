@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
 import App from './App'
+import { hotkeyRows } from './features/workspace/model/shortcuts'
 
 const daemon = vi.hoisted(() => ({
   loadConversations: vi.fn<() => Promise<Conversation[]>>(),
@@ -1041,6 +1042,28 @@ describe('desktop overlays and tab tools', () => {
     renderDesktopApp({ firstRun: true })
     await screen.findByRole('heading', { name: 'No sessions running' })
     expect(screen.queryByRole('dialog', { name: 'Welcome to Maitty' })).not.toBeInTheDocument()
+  })
+
+  it('shows every shortcut from the keymap on Ctrl+/, ignores other shortcuts while it is open, and closes with the key or Esc', async () => {
+    const user = userEvent.setup()
+    renderDesktopApp()
+    await screen.findByRole('heading', { name: 'No sessions running' })
+
+    await user.keyboard('{Control>}/{/Control}')
+    const dialog = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })
+    for (const row of hotkeyRows(false)) expect(dialog).toHaveTextContent(row.action)
+    for (const group of ['Sessions', 'Panes', 'Find & jump', 'Window']) expect(within(dialog).getByRole('region', { name: group })).toBeInTheDocument()
+
+    await user.keyboard('{Control>}k{/Control}')
+    expect(screen.queryByRole('dialog', { name: 'Command palette' })).not.toBeInTheDocument()
+
+    await user.keyboard('{Control>}/{/Control}')
+    expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument()
+
+    await user.keyboard('{Control>}/{/Control}')
+    await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument()
   })
 
   it('says it is all caught up when nothing needs you', async () => {

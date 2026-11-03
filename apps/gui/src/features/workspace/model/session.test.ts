@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
 import { displayName, groupInitials, groupSessions, processName, statusPhrase, tildePath, toSessionView, truncatePrompt, worstSession } from './session'
 import { formatAgo, formatElapsed, markSeen, trackSessions } from './tracking'
-import { hotkeyRows, matchShortcut } from './shortcuts'
+import { HOTKEY_GROUPS, hotkeyRows, matchShortcut } from './shortcuts'
 import { folderExists, resolveStartFolder } from './startFolder'
 
 vi.mock('@/api/daemon', () => ({
@@ -181,8 +181,21 @@ describe('window shortcuts', () => {
   })
 
   it('lists the hotkeys in the platform’s words', () => {
-    expect(hotkeyRows(true)[2]).toEqual({ action: 'Split down', chords: [['⌘', '⇧', 'D']] })
-    expect(hotkeyRows(false)[2]).toEqual({ action: 'Split down', chords: [['Ctrl', 'Shift', 'D']] })
+    expect(hotkeyRows(true)[2]).toEqual({ action: 'Split down', group: 'Panes', chords: [['⌘', '⇧', 'D']] })
+    expect(hotkeyRows(false)[2]).toEqual({ action: 'Split down', group: 'Panes', chords: [['Ctrl', 'Shift', 'D']] })
+  })
+
+  it('opens the shortcut overlay with the primary key and a slash', () => {
+    expect(matchShortcut(key('/', { ctrlKey: true }), false)).toBe('shortcuts')
+    expect(matchShortcut(key('/', { metaKey: true }), true)).toBe('shortcuts')
+    expect(matchShortcut(key('/'), false)).toBeNull()
+  })
+
+  it('puts every hotkey in a group of the shortcut overlay, and every group has some', () => {
+    const rows = hotkeyRows(false)
+    expect(rows.every((row) => HOTKEY_GROUPS.includes(row.group))).toBe(true)
+    for (const group of HOTKEY_GROUPS) expect(rows.some((row) => row.group === group)).toBe(true)
+    expect(rows.find((row) => row.action === 'Keyboard shortcuts')).toMatchObject({ group: 'Window', chords: [['Ctrl', '/']] })
   })
 })
 

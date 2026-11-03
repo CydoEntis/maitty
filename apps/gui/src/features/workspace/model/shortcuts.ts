@@ -16,6 +16,7 @@ export type ShortcutAction =
   | 'new-worktree'
   | 'broadcast'
   | 'focus-mode'
+  | 'shortcuts'
 
 type KeyInput = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>
 
@@ -57,6 +58,8 @@ export function matchShortcut(event: KeyInput, mac: boolean): ShortcutAction | n
       return 'find'
     case '.':
       return 'focus-mode'
+    case '/':
+      return 'shortcuts'
     default:
       return null
   }
@@ -74,7 +77,11 @@ export function keyLabels(mac: boolean): { primary: string; shift: string; contr
 /** One key combination as the keys to press, in order: `['⌘', '⇧', 'D']` on macOS, `['Ctrl', 'Shift', 'D']` elsewhere. */
 export type Chord = string[]
 
-export type HotkeyRow = { action: string; /** Alternatives: any one of these does it. */ chords: Chord[] }
+/** The sections of the shortcut overlay, in the order it shows them. */
+export const HOTKEY_GROUPS = ['Sessions', 'Panes', 'Find & jump', 'Window'] as const
+export type HotkeyGroup = (typeof HOTKEY_GROUPS)[number]
+
+export type HotkeyRow = { action: string; group: HotkeyGroup; /** Alternatives: any one of these does it. */ chords: Chord[] }
 
 /** The modifier keys drawn as symbols, which the keycaps set in the interface font. */
 const MODIFIER_SYMBOLS: ReadonlySet<string> = new Set(['⌘', '⇧', '⌃', '⌥'])
@@ -86,22 +93,23 @@ export function hotkeyRows(mac: boolean): HotkeyRow[] {
   const shift = mac ? '⇧' : 'Shift'
   const control = mac ? '⌃' : 'Ctrl'
   return [
-    { action: 'New session', chords: [[primary, 'T']] },
-    { action: 'Split right', chords: [[primary, 'D']] },
-    { action: 'Split down', chords: [[primary, shift, 'D']] },
-    { action: 'Move focus between panes', chords: [[primary, '['], [primary, ']']] },
-    { action: 'Close pane or tab', chords: [[primary, 'W']] },
-    { action: 'Next / previous tab in a project', chords: [[control, 'Tab'], [control, shift, 'Tab']] },
-    { action: 'Collapse sidebar', chords: [[primary, 'B']] },
-    { action: 'Command palette', chords: [[primary, 'K']] },
-    { action: 'Attention inbox', chords: [[primary, 'J']] },
-    { action: 'Inspect the repository', chords: [[primary, 'I']] },
-    { action: 'Find in the pane or every session', chords: [[primary, 'F']] },
-    { action: 'New worktree', chords: [[primary, shift, 'N']] },
-    { action: 'Broadcast to the tab', chords: [[primary, shift, 'B']] },
-    { action: 'Focus mode', chords: [[primary, '.']] },
-    { action: 'Interrupt', chords: [[control, 'C']] },
-    { action: 'Clear screen', chords: [[control, 'L']] },
-    { action: 'Settings', chords: [[primary, ',']] },
+    { action: 'New session', group: 'Sessions', chords: [[primary, 'T']] },
+    { action: 'Split right', group: 'Panes', chords: [[primary, 'D']] },
+    { action: 'Split down', group: 'Panes', chords: [[primary, shift, 'D']] },
+    { action: 'Move focus between panes', group: 'Panes', chords: [[primary, '['], [primary, ']']] },
+    { action: 'Close pane or tab', group: 'Panes', chords: [[primary, 'W']] },
+    { action: 'Next / previous tab in a project', group: 'Panes', chords: [[control, 'Tab'], [control, shift, 'Tab']] },
+    { action: 'Collapse sidebar', group: 'Window', chords: [[primary, 'B']] },
+    { action: 'Command palette', group: 'Find & jump', chords: [[primary, 'K']] },
+    { action: 'Attention inbox', group: 'Find & jump', chords: [[primary, 'J']] },
+    { action: 'Inspect the repository', group: 'Find & jump', chords: [[primary, 'I']] },
+    { action: 'Find in the pane or every session', group: 'Find & jump', chords: [[primary, 'F']] },
+    { action: 'New worktree', group: 'Sessions', chords: [[primary, shift, 'N']] },
+    { action: 'Broadcast to the tab', group: 'Panes', chords: [[primary, shift, 'B']] },
+    { action: 'Focus mode', group: 'Window', chords: [[primary, '.']] },
+    { action: 'Interrupt', group: 'Sessions', chords: [[control, 'C']] },
+    { action: 'Clear screen', group: 'Sessions', chords: [[control, 'L']] },
+    { action: 'Settings', group: 'Window', chords: [[primary, ',']] },
+    { action: 'Keyboard shortcuts', group: 'Window', chords: [[primary, '/']] },
   ]
 }

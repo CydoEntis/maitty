@@ -30,6 +30,7 @@ import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPane
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
 import { ConfirmEndDialog, type EndRequest } from './components/ConfirmEndDialog'
 import { HoverTips } from './components/HoverTips'
+import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { WelcomeDialog } from '@/features/welcome/WelcomeDialog'
 import { isFirstRun, markWelcomed } from '@/features/welcome/welcomed'
 import { repoDiff, repoLocate } from '@/features/inspect/api'
@@ -155,6 +156,7 @@ export function DesktopApp() {
   // A theme being hovered in Settings shows on the whole window until the pointer leaves or one is picked.
   const [previewTheme, setPreviewTheme] = useState<string | null>(null)
   const [welcomeOpen, setWelcomeOpen] = useState(isFirstRun)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [preferences, setPreferences] = useState(readSettingsPreferences)
   const [layout, setLayout] = useState<Layout>(() => (preferences.restoreTabs ? readLayout() : EMPTY_LAYOUT))
   // The width while the sidebar's edge is being dragged; it is saved when the pointer is released.
@@ -510,6 +512,9 @@ export function DesktopApp() {
       case 'focus-mode':
         setFocusMode((on) => !on)
         return
+      case 'shortcuts':
+        setShortcutsOpen((open) => !open)
+        return
       case 'inspect':
         setInspectOpen((open) => !open)
         return
@@ -533,12 +538,21 @@ export function DesktopApp() {
   const overlayOpen = paletteOpen || inboxOpen
   const modalOpen = settingsSection !== null || renameId !== null || overlayOpen
   const drawerShown = compact && drawerOpen
-  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown, welcomeOpen })
-  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown, welcomeOpen } })
+  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
+  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const state = shortcutState.current
       if (state.welcomeOpen) return
+      if (state.shortcutsOpen) {
+        // Only its own key closes it; Esc is the dialog's.
+        if (matchShortcut(event, mac) === 'shortcuts') {
+          event.preventDefault()
+          event.stopPropagation()
+          state.runShortcut('shortcuts')
+        }
+        return
+      }
       if (event.key === 'Escape') {
         // Innermost first: the palette or inbox, then focus mode, then Settings.
         if (state.overlayOpen) {
@@ -729,6 +743,7 @@ export function DesktopApp() {
       action('broadcast', showing?.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab', () => { runShortcut('broadcast') }, keys('B', true)),
       action('focus', 'Focus mode', () => { setFocusMode(true) }, keys('.')),
       action('settings', 'Open settings', () => { setSettingsSection('general') }, keys(',')),
+      action('shortcuts', 'Keyboard shortcuts', () => { setShortcutsOpen(true) }, keys('/')),
       ...(showing?.widths ? [action('reset-widths', 'Reset pane widths', () => { setLayout((current) => setColumnWidths(current, showing.id, null)) })] : []),
       action('start-codex', 'Start codex', () => { startAgent('codex') }),
     ]
@@ -980,6 +995,7 @@ export function DesktopApp() {
               />
             )}
             <HoverTips />
+            {shortcutsOpen && <ShortcutOverlay mac={mac} portalContainer={root} onClose={() => { setShortcutsOpen(false) }} />}
             {welcomeOpen && (
               <WelcomeDialog
                 mac={mac}

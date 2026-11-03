@@ -192,6 +192,11 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Settings dialog** (⌘,). A section list at the left and, at the right, a fixed header (the page title,
   a one-line description and a **Close** button with an `esc` keycap) above a body that scrolls; the page
   itself never scrolls. The title and description slide with the page.
+- **Shortcut overlay** (⌘/ or Ctrl+/, also in the palette). An 820px dialog over a blurred scrim, titled
+  "Keyboard shortcuts" with a Close `esc` button, holding an auto-fill grid (230px minimum) of Sessions,
+  Panes, Find & jump and Window with each action and its keycaps (several chords stack). It is generated
+  from the same table (`hotkeyRows`, each row has a group) that Settings › Hotkeys reads, so the two never
+  differ. Other shortcuts are ignored while it is open; ⌘/ and Esc close it.
 - **Sidebar.** A `Projects` title with a **+** button (a bordered square that lights up in the accent on hover) and the collapse button at the right; groups by git repo (or by folder, in Settings), sorted by
   name. A shell outside any repo is grouped by its own folder, so there is no catch-all group.
   A group's tile carries a ring when it holds the focused session. Each group is one **main row**

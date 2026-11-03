@@ -818,6 +818,17 @@
 .mx-scard-button { height: 30px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; color: var(--fg2); background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--pane-line); transition: background-color .14s ease, color .14s ease; }
 .mx-scard-button:hover { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-line); }
 
+/* Keyboard shortcut overlay. */
+.mx-shortcuts { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(820px, calc(100% - 32px)); max-height: calc(100% - 48px); transform: translate(-50%, -50%); display: flex; flex-direction: column; border-radius: var(--r16); background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 140px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); overflow: hidden; animation: v9dialog .26s var(--ease-out); }
+.mx-shortcuts-head { flex: none; display: flex; align-items: center; gap: 16px; padding: 14px 14px 14px 24px; border-bottom: 1px solid var(--pane-line); }
+.mx-shortcuts-title { flex: 1; margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em; color: var(--fg); }
+.mx-shortcuts-grid { min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 22px 28px; padding: 18px 24px 24px; align-items: start; }
+.mx-shortcuts-grid .mx-menu-caps { padding: 0 0 6px; }
+.mx-shortcuts-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.mx-shortcuts-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; border-bottom: 1px solid var(--pane-line); font-size: 12.5px; color: var(--fg2); }
+.mx-shortcuts-chords { flex: none; display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: 4px 0; }
+.mx-shortcuts-list li > span:first-child { min-width: 0; }
+
 /* Hover tooltip for anything with a title. */
 .mx-tip { position: fixed; z-index: 90; max-width: 240px; padding: 5px 9px; transform: translateX(-50%); border-radius: 8px; background: var(--raise); border: 1px solid var(--pane-line); box-shadow: 0 10px 28px rgba(0, 0, 0, .4); font-size: 12px; line-height: 1.4; color: var(--fg); pointer-events: none; animation: v7fade .12s ease-out; }
 
