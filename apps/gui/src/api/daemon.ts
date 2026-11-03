@@ -31,6 +31,8 @@ const TerminalSessionSchema = z.object({
   root: z.string().nullable().default(null),
   branch: z.string().nullable().default(null),
   label: z.string().default(''),
+  pinned: z.boolean().default(false),
+  archived: z.boolean().default(false),
   conversation_id: z.number().nullable().default(null),
   popup: z.boolean().default(false),
   remote: z.string().nullable().default(null),
@@ -506,6 +508,20 @@ export async function cancelTurn(conversation: Conversation): Promise<void> {
   })
 }
 
+/** Pin a session to the top of its project, or let it go back to its place. The daemon keeps it for every app. */
+export async function pinSessionOnDaemon(conversation: Pick<Conversation, 'id'>, pinned: boolean): Promise<void> {
+  if (!isDesktop()) return
+  const term = terminalOf(conversation.id)
+  if (term !== null) await invokeParsed('pin_terminal_session', NullSchema, { term, pinned })
+}
+
+/** Put a session away from the project lists and tabs, or bring it back. It keeps running: this is a view setting, never a kill. */
+export async function archiveSessionOnDaemon(conversation: Pick<Conversation, 'id'>, archived: boolean): Promise<void> {
+  if (!isDesktop()) return
+  const term = terminalOf(conversation.id)
+  if (term !== null) await invokeParsed('archive_terminal_session', NullSchema, { term, archived })
+}
+
 /** The user is looking at this pane: a finished agent's "done" becomes idle, as when the terminal app focuses it. */
 export async function markSeenOnDaemon(conversation: Pick<Conversation, 'id'>): Promise<void> {
   if (!isDesktop()) return
@@ -606,8 +622,9 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     context: null,
     nativePane: term.id,
     hasDiff: false,
-    archived: false,
     named: label !== '',
+    pinned: term.pinned,
+    archived: term.archived,
     agent: term.agent,
     process: term.process,
     summary: term.summary,

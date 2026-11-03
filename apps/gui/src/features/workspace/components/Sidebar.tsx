@@ -7,8 +7,8 @@ import { RailFolder } from './FolderTile'
 import { SidebarResizer } from './SidebarResizer'
 import { folderStyle } from './folderStyle'
 import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
-import { keepFocus } from './menuFocus'
 import { SessionStack } from './SessionStack'
+import { useSessionMenu, type SessionMenuActions } from './SessionMenu'
 import { RailPopoverLayer } from './RailPopovers'
 import { useRailHover, type RailHover } from './railHover'
 import { WorktreeMenu } from '@/features/worktrees/WorktreeMenu'
@@ -49,7 +49,13 @@ export type SidebarProps = {
   onEndSession: (id: string) => void
   /** Ends every session in a project; the app asks first. */
   onEndProject: (ids: string[], name: string) => void
-  onRenameSession: (id: string) => void
+  onSetName: (id: string, name: string) => void
+  onPinSession: (id: string, pinned: boolean) => void
+  /** Puts a session away from the lists; it keeps running. */
+  onArchiveSession: (id: string) => void
+  /** The sessions put away, and bringing one back. */
+  archived: SessionView[]
+  onRestoreSession: (id: string) => void
   onOpenSettings: () => void
 }
 
@@ -138,7 +144,9 @@ function Expanded(props: GroupProps) {
                     paneOf={props.paneOf}
                     portalContainer={props.portalContainer}
                     onShowSession={props.onShowSession}
-                    onRenameSession={props.onRenameSession}
+                    onSetName={props.onSetName}
+                    onPinSession={props.onPinSession}
+                    onArchiveSession={props.onArchiveSession}
                     onEndSession={props.onEndSession}
                   />
                 </div>
@@ -148,6 +156,7 @@ function Expanded(props: GroupProps) {
         })}
         {groups.length === 0 && <div className="mx-empty-note">No sessions. Projects show up here when a session cds into a git repo.</div>}
       </div>
+      {props.archived.length > 0 && <ArchivedSection sessions={props.archived} onRestore={props.onRestoreSession} />}
       <div className="mx-sidebar-foot">
         <span className={`mx-daemon-dot${online ? '' : ' is-offline'}`} aria-hidden="true" />
         <span className={`mx-daemon-text${online ? '' : ' is-offline'}`} role="status"><DaemonFooterText online={online} sessionCount={sessionCount} /></span>
@@ -158,39 +167,61 @@ function Expanded(props: GroupProps) {
 }
 
 /** A collapsed session: its icon and state, and a popover beside it that says what is going on. */
-function RailSessionButton(props: { session: SessionView; track: SessionTrack | undefined; selected: boolean; online: boolean; portalContainer: HTMLElement | null; hover: RailHover; onShow: () => void; onRename: () => void; onEnd: () => void }) {
-  const { session, track, selected, portalContainer, hover } = props
+function RailSessionButton(props: { session: SessionView; track: SessionTrack | undefined; selected: boolean; actions: SessionMenuActions; hover: RailHover }) {
+  const { session, track, selected, hover, actions } = props
   const target = { kind: 'session', id: session.id } as const
+  const menu = useSessionMenu(session, actions)
   const unread = Boolean(track?.unread) && !selected
   const words = `${displayName(session)}, ${session.process}, ${STATUS_WORD[session.status]}`
   return (
-    <ContextMenuPrimitive.Root onOpenChange={(open) => { if (open) hover.close() }}>
-      <ContextMenuPrimitive.Trigger asChild>
-        <button
-          type="button"
-          className={`mx-rail-row${selected ? ' is-selected' : ''}`}
-          aria-label={words}
-          aria-current={selected ? 'page' : undefined}
-          onMouseEnter={(event) => { hover.enter(target, event.currentTarget) }}
-          onMouseLeave={hover.leave}
-          onFocus={(event) => { hover.enter(target, event.currentTarget) }}
-          onBlur={hover.leave}
-          onClick={props.onShow}
-        >
-          <AppIcon process={session.process} size={28} dimmed={session.status === 'unknown'} />
-          <StatusBadge status={session.status} rail />
-          {unread && <span className="mx-rail-unread" />}
-        </button>
-      </ContextMenuPrimitive.Trigger>
-      <ContextMenuPrimitive.Portal container={portalContainer}>
-        <ContextMenuPrimitive.Content className="mx-menu" onCloseAutoFocus={keepFocus}>
-          <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={props.onShow}>Show in pane</ContextMenuPrimitive.Item>
-          <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={props.onRename}>Rename…</ContextMenuPrimitive.Item>
-          <ContextMenuPrimitive.Separator className="mx-menu-sep" />
-          <ContextMenuPrimitive.Item className="mx-menu-item is-danger" disabled={!props.online} onSelect={props.onEnd}>Close session<span className="mx-menu-hint">ends it</span></ContextMenuPrimitive.Item>
-        </ContextMenuPrimitive.Content>
-      </ContextMenuPrimitive.Portal>
-    </ContextMenuPrimitive.Root>
+    <>
+      <button
+        type="button"
+        className={`mx-rail-row${selected ? ' is-selected' : ''}`}
+        aria-label={words}
+        aria-current={selected ? 'page' : undefined}
+        onMouseEnter={(event) => { hover.enter(target, event.currentTarget) }}
+        onMouseLeave={hover.leave}
+        onFocus={(event) => { hover.enter(target, event.currentTarget) }}
+        onBlur={hover.leave}
+        onContextMenu={(event) => { hover.close(); menu.onContextMenu(event) }}
+        onClick={actions.onShow}
+      >
+        <AppIcon process={session.process} size={28} dimmed={session.status === 'unknown'} />
+        <StatusBadge status={session.status} rail />
+        {unread && <span className="mx-rail-unread" />}
+      </button>
+      {menu.element}
+    </>
+  )
+}
+
+/** Sessions put away: still running, out of the project lists and tabs, until restored. */
+function ArchivedSection({ sessions, onRestore }: { sessions: SessionView[]; onRestore: (id: string) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <section className="mx-archived" aria-label="Archived sessions">
+      <button type="button" className="mx-archived-head" aria-expanded={open} title="Archived sessions keep running" onClick={() => { setOpen(!open) }}>
+        <Icon name="chevron" />
+        <Icon name="archive" size={13} />
+        <span>Archived</span>
+        <span className="mx-count">{sessions.length}</span>
+      </button>
+      {open && (
+        <ul className="mx-archived-list">
+          {sessions.map((session) => (
+            <li key={session.id}>
+              <AppIcon process={session.process} size={20} dimmed={session.status === 'unknown'} />
+              <span className="mx-archived-text">
+                <span className="mx-archived-name">{displayName(session)}</span>
+                <span className="mx-archived-proc">{session.process}</span>
+              </span>
+              <button type="button" className="mx-scard-button" aria-label={`Restore ${displayName(session)}`} onClick={() => { onRestore(session.id) }}>Restore</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -269,12 +300,16 @@ function Rail(props: GroupProps) {
                       session={session}
                       track={tracks.get(session.id)}
                       selected={session.id === focusedId}
-                      online={online}
-                      portalContainer={props.portalContainer}
                       hover={hover}
-                      onShow={() => { props.onShowSession(session.id) }}
-                      onRename={() => { props.onRenameSession(session.id) }}
-                      onEnd={() => { props.onEndSession(session.id) }}
+                      actions={{
+                        online,
+                        portalContainer: props.portalContainer,
+                        onShow: () => { props.onShowSession(session.id) },
+                        onSetName: (name) => { props.onSetName(session.id, name) },
+                        onPin: (pinned) => { props.onPinSession(session.id, pinned) },
+                        onArchive: () => { props.onArchiveSession(session.id) },
+                        onEnd: () => { props.onEndSession(session.id) },
+                      }}
                     />
                   ))}
                 </div>

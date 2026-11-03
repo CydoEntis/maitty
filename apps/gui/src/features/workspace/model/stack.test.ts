@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { SessionStatus, SessionView } from './session'
 import { byPriority, chooseLead, planTray } from './stack'
 
-function session(id: string, status: SessionStatus): SessionView {
-  return { id, status } as SessionView
+function session(id: string, status: SessionStatus, pinned = false): SessionView {
+  return { id, status, pinned } as SessionView
 }
 
 const none = () => 0
@@ -30,6 +30,13 @@ describe('which session leads a project', () => {
 
   it('is nothing for an empty project', () => {
     expect(chooseLead([], 'focused', null, undefined, none)).toBeUndefined()
+  })
+
+  it('is a pinned session when you are not in the project, ahead of the last one picked and the most urgent', () => {
+    const withPin = [session('idle', 'idle', true), session('working', 'working'), session('needs', 'needs')]
+    expect(chooseLead(withPin, 'focused', 'elsewhere', 'working', none)?.id).toBe('idle')
+    expect(chooseLead(withPin, 'focused', 'working', undefined, none)?.id).toBe('working')
+    expect(chooseLead(withPin, 'attention', 'working', undefined, none)?.id).toBe('needs')
   })
 })
 
@@ -71,5 +78,10 @@ describe('the tray under the main row', () => {
     expect(plan.hiddenNeeds).toBe(false)
     const crowded = [...many(2, 'needs'), session('late', 'needs')]
     expect(planTray(crowded, 'names', none).hiddenNeeds).toBe(true)
+  })
+
+  it('puts pinned sessions first, whatever their state', () => {
+    const others = [session('wait', 'needs'), session('quiet', 'idle', true), session('run', 'working')]
+    expect(ids(planTray(others, 'icons', none).shown)).toEqual(['quiet', 'wait', 'run'])
   })
 })

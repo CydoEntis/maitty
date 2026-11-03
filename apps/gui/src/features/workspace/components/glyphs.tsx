@@ -47,6 +47,8 @@ const ICON_DRAWINGS = {
   broadcast: () => <Svg size={15} strokeWidth={1.8}><circle cx="12" cy="12" r="2" /><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19 5a10 10 0 0 1 0 14M5 19A10 10 0 0 1 5 5" /></Svg>,
   inbox: ({ size = 16 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></Svg>,
   repo: ({ size = 16 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M6 3v12" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" /></Svg>,
+  pin: ({ size = 13 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" /></Svg>,
+  archive: ({ size = 13 }: IconProps) => <Svg size={size} strokeWidth={1.8}><rect width="20" height="5" x="2" y="3" rx="1" /><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" /><path d="M10 12h4" /></Svg>,
   prompt: ({ size = 18 }: IconProps) => <Svg size={size}><path d="m5 8 4 4-4 4M12 17h7" /></Svg>,
   check: ({ size = 9, stroke = 'var(--ok)', strokeWidth = 3.5 }: IconProps) => <Svg size={size} strokeWidth={strokeWidth} stroke={stroke}><path d="M5 12.5 10 17 19 7" /></Svg>,
   bang: () => <Svg size={9} strokeWidth={3.5} stroke="var(--danger)"><path d="M12 6v7" /><path d="M12 18h.01" /></Svg>,

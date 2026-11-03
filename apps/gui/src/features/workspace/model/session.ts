@@ -20,6 +20,10 @@ export type SessionView = {
   title: string
   /** The name you gave the session; null until you rename it. The daemon keeps it for every app. */
   name: string | null
+  /** Pinned to the top of its project: it leads the project and sorts first in the tray. */
+  pinned: boolean
+  /** Put away from the project lists and tabs. It keeps running in the daemon. */
+  archived: boolean
   /** The repo name and folder within it, or the `~` path: what a prompt would show. */
   promptPath: string
   /** What runs in the shell. The daemon reports agents only, so anything else reads as `shell`. */
@@ -136,6 +140,8 @@ export function toSessionView(conversation: Conversation, home: string): Session
     branch,
     title,
     name: conversation.named ? conversation.title.trim() || null : null,
+    pinned: conversation.pinned ?? false,
+    archived: conversation.archived ?? false,
     promptPath,
     process: processName(conversation.agent, conversation.process),
     lastPrompt: (conversation.summary ?? '').trim(),

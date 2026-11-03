@@ -829,6 +829,29 @@
 .mx-shortcuts-chords { flex: none; display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: 4px 0; }
 .mx-shortcuts-list li > span:first-child { min-width: 0; }
 
+/* Session menu (right-click a row, tray item or rail icon), pin mark and the Archived section. */
+.mx-sessionmenu { position: fixed; z-index: 70; width: 260px; display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 12px; background: var(--raise); border: 1px solid var(--pane-line); box-shadow: 0 16px 44px rgba(0, 0, 0, .5); animation: v7fade .14s ease-out; }
+.mx-sm-name { display: flex; flex-direction: column; gap: 4px; padding-bottom: 6px; }
+.mx-sm-name .mx-menu-caps { padding: 0 2px; }
+.mx-sm-name input { all: unset; box-sizing: border-box; height: 32px; padding: 0 10px; border-radius: 8px; background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); font-size: 12.5px; color: var(--fg); }
+.mx-sm-name input::placeholder { color: var(--dim); }
+.mx-sm-name input:focus-visible { box-shadow: inset 0 0 0 1px var(--accent-line); outline: none; }
+.mx-sessionmenu .mx-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; }
+.mx-sessionmenu .mx-menu-item svg { flex: none; color: var(--muted); }
+.mx-sessionmenu .mx-menu-hint { margin-left: auto; }
+.mx-sm-gap { flex: none; width: 13px; }
+.mx-row-pin { flex: none; display: inline-flex; align-items: center; color: var(--accent); }
+.mx-archived { flex: none; border-top: 1px solid var(--pane-line); padding: 6px 8px; }
+.mx-archived-head { width: 100%; height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 8px; font-size: 12.5px; color: var(--muted); }
+.mx-archived-head:hover { background: rgba(255, 255, 255, .045); color: var(--fg); }
+.mx-archived-head > span:nth-of-type(1) { flex: 1; text-align: left; }
+.mx-archived-head[aria-expanded="true"] .mx-chevron { transform: rotate(90deg); }
+.mx-archived-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow-y: auto; }
+.mx-archived-list li { display: flex; align-items: center; gap: 9px; padding: 4px 6px; border-radius: 8px; }
+.mx-archived-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mx-archived-name { font-size: 12.5px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-archived-proc { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+
 /* Hover tooltip for anything with a title. */
 .mx-tip { position: fixed; z-index: 90; max-width: 240px; padding: 5px 9px; transform: translateX(-50%); border-radius: 8px; background: var(--raise); border: 1px solid var(--pane-line); box-shadow: 0 10px 28px rgba(0, 0, 0, .4); font-size: 12px; line-height: 1.4; color: var(--fg); pointer-events: none; animation: v7fade .12s ease-out; }
 

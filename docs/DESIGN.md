@@ -197,6 +197,15 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   Panes, Find & jump and Window with each action and its keycaps (several chords stack). It is generated
   from the same table (`hotkeyRows`, each row has a group) that Settings › Hotkeys reads, so the two never
   differ. Other shortcuts are ignored while it is open; ⌘/ and Esc close it.
+- **Session menu: name, pin, archive.** Right-click a sidebar row, a tray item or a rail icon for a 260px
+  menu: a **Name** field (the folder is its placeholder; Enter saves and an empty name clears it), **Pin to
+  top** or **Unpin**, **Open**, **Archive** (it keeps running) and **Close session** (ends it, after the
+  confirmation). A name replaces the folder title everywhere. A pinned session shows a pin on its main row,
+  leads its project when no focused session is in it, and sorts first in the tray. An archived session leaves
+  its project, the tabs, the inbox and the counts and is listed under a collapsible **Archived N** section at
+  the bottom of the sidebar with **Restore**; archiving is a view setting, never a kill. The daemon stores
+  the name, pinned and archived per session (`RenamePane`, `PinPane`, `ArchivePane`; they survive a daemon
+  restart), so the TUI shows the names too and ignores the other two.
 - **Sidebar.** A `Projects` title with a **+** button (a bordered square that lights up in the accent on hover) and the collapse button at the right; groups by git repo (or by folder, in Settings), sorted by
   name. A shell outside any repo is grouped by its own folder, so there is no catch-all group.
   A group's tile carries a ring when it holds the focused session. Each group is one **main row**

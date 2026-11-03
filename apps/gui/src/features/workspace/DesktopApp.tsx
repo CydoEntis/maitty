@@ -4,6 +4,8 @@ import { toast } from 'sonner'
 import {
   archiveConversationOnDaemon,
   markSeenOnDaemon,
+  pinSessionOnDaemon,
+  archiveSessionOnDaemon,
   defaultSessionFolder,
   isDesktop,
   loadConversations,
@@ -217,10 +219,13 @@ export function DesktopApp() {
   const mismatch = sessionsQuery.isError ? daemonProtocolMismatch(sessionsQuery.error) : null
   const restartStatusQuery = useQuery({ queryKey: ['daemon-restart-status', mismatch?.daemonProtocol], queryFn: loadDaemonRestartStatus, enabled: Boolean(mismatch), retry: false })
 
-  const sessions = useMemo(() => {
+  const everySession = useMemo(() => {
     const terminals = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal')
     return (online ? terminals : markConversationsDisconnected(terminals)).map((conversation) => toSessionView(conversation, home))
   }, [sessionsQuery.data, online, home])
+  // A session put away is out of the lists, tabs, inbox and counts, but still running in the daemon.
+  const sessions = useMemo(() => everySession.filter((session) => !session.archived), [everySession])
+  const archivedSessions = useMemo(() => everySession.filter((session) => session.archived), [everySession])
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
   const focusedId = focusedSessionId(layout)
   const focusedSession = focusedId ? sessionMap.get(focusedId) : undefined
@@ -437,6 +442,21 @@ export function DesktopApp() {
       })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not end the session')) })
   }, [endRequest, flash, queryClient, sessions])
+
+  const pinSession = useCallback((sessionId: string, pinned: boolean) => {
+    void pinSessionOnDaemon({ id: sessionId }, pinned)
+      .then(async () => { await queryClient.invalidateQueries({ queryKey: ['conversations'] }) })
+      .catch((error: unknown) => { toast.error(errorMessage(error, pinned ? 'Could not pin the session' : 'Could not unpin the session')) })
+  }, [queryClient])
+
+  const setArchived = useCallback((sessionId: string, archived: boolean) => {
+    void archiveSessionOnDaemon({ id: sessionId }, archived)
+      .then(async () => {
+        flash(archived ? 'Archived · the session keeps running' : 'Restored')
+        await queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      })
+      .catch((error: unknown) => { toast.error(errorMessage(error, archived ? 'Could not put the session away' : 'Could not bring the session back')) })
+  }, [flash, queryClient])
 
   const saveName = useCallback((sessionId: string, name: string) => {
     setRenameId(null)
@@ -831,7 +851,11 @@ export function DesktopApp() {
       onShowSession={(id) => { afterPick(); showSessionById(id) }}
       onEndSession={endSession}
       onEndProject={endProject}
-      onRenameSession={setRenameId}
+      onSetName={saveName}
+      onPinSession={pinSession}
+      onArchiveSession={(id) => { setArchived(id, true) }}
+      archived={archivedSessions}
+      onRestoreSession={(id) => { setArchived(id, false) }}
       onOpenSettings={() => { afterPick(); setSettingsSection('general') }}
     />
   )

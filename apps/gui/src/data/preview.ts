@@ -38,6 +38,8 @@ export type Conversation = {
   isGitRepository?: boolean
   // Put away in any client; the daemon keeps it running.
   archived?: boolean
+  // Pinned to the top of its project; the daemon keeps it for every app.
+  pinned?: boolean
   // Someone gave it a name (the daemon has one), as opposed to the automatic wording.
   named?: boolean
   // A terminal session: an agent running in a terminal the daemon owns, shared with the terminal
