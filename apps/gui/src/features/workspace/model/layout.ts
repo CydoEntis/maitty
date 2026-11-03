@@ -184,6 +184,15 @@ export function reconcileLayout(layout: Layout, liveSessionIds: ReadonlySet<stri
   return { tabs, activeTabId }
 }
 
+/**
+ * Takes out the panes of these sessions and nothing else. A session that merely stopped being
+ * listed keeps its pane (it shows as ended), so only what is closed on purpose goes.
+ */
+export function removeSessions(layout: Layout, gone: ReadonlySet<string>, groupOf: TabGroup = ONE_GROUP): Layout {
+  const kept = new Set(layout.tabs.flatMap((tab) => tab.panes.map((pane) => pane.sessionId)).filter((id) => !gone.has(id)))
+  return reconcileLayout(layout, kept, groupOf)
+}
+
 /** When the focused pane's session ends, focus moves to the pane before it (as closing one does), else the first. */
 function neighbourPane(tab: Tab, remaining: PaneSlot[]): string {
   const index = tab.panes.findIndex((pane) => pane.id === tab.focus)

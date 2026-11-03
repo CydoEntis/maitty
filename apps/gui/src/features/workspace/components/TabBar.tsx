@@ -7,7 +7,7 @@ import { InlineName } from './InlineName'
 import { AppIcon, Icon, PauseBars, Spinner } from './glyphs'
 import { STATUS_LABEL } from '../model/statusText'
 import { useEffectClass } from './motion'
-import { runsAgent, useArmed } from './useArmed'
+import { runsProgram, useArmed } from './useArmed'
 
 type TabBarProps = {
   /** The tabs of the project that is showing; other projects' tabs stay hidden until you go there. */
@@ -245,7 +245,7 @@ function TabButton({ tab, active, sessions, primary, canStart, otherTabs, portal
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
   const [renaming, setRenaming] = useState(false)
   const handFocusToField = useRef(false)
-  const agent = shown.find((session) => runsAgent(session.process))
+  const agent = shown.find((session) => runsProgram(session))
   const closing = useArmed(agent !== undefined)
   const closeLabel = closing.armed ? `Click again to close and stop ${agent?.process ?? 'it'}` : multi ? `Close tab · ends its ${String(tab.panes.length)} sessions` : 'Close tab · ends its session'
   return (

@@ -1064,3 +1064,12 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-pos-cell { border-radius: 4px; background: rgba(255, 255, 255, .07); cursor: pointer; transition: background-color .14s ease; }
 .mx-pos-cell:hover { background: rgba(255, 255, 255, .16); }
 .mx-pos-cell.is-on { background: var(--accent); }
+/* A pane whose session ended keeps its output; this card sits along its bottom. */
+.mx-pane-ended { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 3; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--raise) 94%, transparent); box-shadow: inset 0 0 0 1px var(--line2), 0 10px 28px rgba(0, 0, 0, .35); animation: v7fade .2s var(--ease-out); }
+.mx-pane-ended-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
+.mx-pane-ended-text small { font-size: 11.5px; color: var(--dim); }
+.mx-pane-ended-button { height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: var(--fg2); background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); cursor: pointer; }
+.mx-pane-ended-button:hover:not(:disabled) { background: var(--sel); color: var(--fg); }
+.mx-pane-ended-button.is-primary { color: var(--on-accent); background: var(--accent); box-shadow: none; font-weight: 600; }
+.mx-pane-ended-button.is-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, #fff); }
+.mx-pane-ended-button:disabled { opacity: .5; cursor: default; }

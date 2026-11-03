@@ -834,6 +834,51 @@ describe('desktop terminal multiplexer', () => {
     expect(await screen.findByText('a closed · 2 sessions ended')).toBeInTheDocument()
   })
 
+  it('keeps a pane when its session stops being listed, as an ended pane with its tab and name', async () => {
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    const { client } = renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+
+    daemon.loadConversations.mockResolvedValue([])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+
+    expect(screen.getByRole('tab', { selected: true })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /^Terminal 1: ~\/a/ })).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Session ended' })).toHaveTextContent('Restart shell')
+    expect(screen.queryByRole('button', { name: /^Status:/ })).not.toBeInTheDocument()
+  })
+
+  it('closes an ended pane without stopping anything', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    const { client } = renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    daemon.loadConversations.mockResolvedValue([])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+
+    await user.click(within(screen.getByRole('status', { name: 'Session ended' })).getByRole('button', { name: 'Close pane' }))
+
+    await waitFor(() => { expect(screen.queryByRole('tab')).not.toBeInTheDocument() })
+    expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
+  })
+
+  it('restarts an ended pane with a new shell in the same folder, in the same place', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    const { client } = renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    daemon.loadConversations.mockResolvedValue([])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+    daemon.loadConversations.mockResolvedValue([term(9, `${HOME}/a`)])
+
+    await user.click(within(screen.getByRole('status', { name: 'Session ended' })).getByRole('button', { name: 'Restart shell' }))
+
+    await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(`${HOME}/a`) })
+    await waitFor(() => { expect(screen.queryByRole('status', { name: 'Session ended' })).not.toBeInTheDocument() })
+    expect(screen.getByRole('region', { name: /^Terminal 1: ~\/a/ })).toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+  })
+
   it('shows the disconnected banner, marks every status Unknown and holds input', async () => {
     daemon.loadConversations.mockResolvedValueOnce([term(2, `${HOME}/a`, { status: 'working', agent: 'codex' })]).mockRejectedValue(new Error('connection refused'))
     const { client } = renderDesktopApp()

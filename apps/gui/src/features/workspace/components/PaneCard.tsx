@@ -4,7 +4,7 @@ import { MAX_PANES, type PaneSlot } from '../model/layout'
 import type { SessionView } from '../model/session'
 import { AppIcon, Icon } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
-import { runsAgent, useArmed } from './useArmed'
+import { runsProgram, useArmed } from './useArmed'
 import { PaneStatus } from './PaneStatus'
 import { usageParts } from '../model/usage'
 
@@ -31,6 +31,8 @@ export type PaneCardProps = {
   onSplit: (paneId: string, direction: 'right' | 'down') => void
   onToggleMaximize: (paneId: string) => void
   onClose: (paneId: string) => void
+  /** Starts a new shell in an ended pane's folder, in its place. */
+  onRestart: (paneId: string) => void
   onEndSession: (sessionId: string) => void
   onRenameSession: (sessionId: string) => void
   onDragStart: (paneId: string) => void
@@ -51,7 +53,8 @@ export function PaneCard(props: PaneCardProps) {
   const multi = paneCount > 1
   const full = paneCount >= MAX_PANES
   const status = session.status
-  const closing = useArmed(runsAgent(session.process))
+  const ended = session.ended
+  const closing = useArmed(runsProgram(session))
   const closeLabel = closing.armed ? `Click again to close and stop ${session.process}` : 'Close pane · ends its session'
   return (
     <ContextMenuPrimitive.Root>
@@ -110,7 +113,14 @@ export function PaneCard(props: PaneCardProps) {
       >
         {props.terminal}
       </div>
-      {status !== 'idle' && <PaneStatus status={status} workingSince={props.workingSince} now={props.now} />}
+      {ended && (
+        <div className="mx-pane-ended" role="status" aria-label="Session ended">
+          <span className="mx-pane-ended-text"><strong>Session ended</strong><small>Its output is kept above.</small></span>
+          <button type="button" className="mx-pane-ended-button is-primary" disabled={!props.online} onMouseDown={stop} onClick={() => { props.onRestart(pane.id) }}>Restart shell</button>
+          <button type="button" className="mx-pane-ended-button" onMouseDown={stop} onClick={() => { props.onClose(pane.id) }}>Close pane</button>
+        </div>
+      )}
+      {!ended && status !== 'idle' && <PaneStatus status={status} workingSince={props.workingSince} now={props.now} />}
     </section>
       </ContextMenuPrimitive.Trigger>
       <ContextMenuPrimitive.Portal container={props.portalContainer}>
@@ -122,7 +132,7 @@ export function PaneCard(props: PaneCardProps) {
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onRenameSession(session.id) }}>Rename…</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { void navigator.clipboard.writeText(session.cwd) }}>Copy folder path</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
-          <ContextMenuPrimitive.Item className={`mx-menu-item is-danger${closing.armed ? ' is-armed' : ''}`} disabled={!props.online} onSelect={(event) => { if (closing.press()) props.onEndSession(session.id); else event.preventDefault() }}>{closing.armed ? `Close and stop ${session.process}? Click again` : 'Close session'}<span className="mx-menu-hint">{closing.armed ? '' : 'ends it'}</span></ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item className={`mx-menu-item is-danger${closing.armed ? ' is-armed' : ''}`} disabled={!props.online && !ended} onSelect={(event) => { if (ended) props.onClose(pane.id); else if (closing.press()) props.onEndSession(session.id); else event.preventDefault() }}>{ended ? 'Close pane' : closing.armed ? `Close and stop ${session.process}? Click again` : 'Close session'}<span className="mx-menu-hint">{ended ? '' : closing.armed ? '' : 'ends it'}</span></ContextMenuPrimitive.Item>
         </ContextMenuPrimitive.Content>
       </ContextMenuPrimitive.Portal>
     </ContextMenuPrimitive.Root>

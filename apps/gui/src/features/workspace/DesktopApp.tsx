@@ -29,7 +29,8 @@ import { ColumnHandle } from './components/ColumnHandle'
 import { CommandPalette } from './components/CommandPalette'
 import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPanel'
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
-import { runsAgent } from './components/useArmed'
+import { runsProgram } from './components/useArmed'
+import { rememberSessions, withEnded } from './model/ended'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { StatusBar } from './components/StatusBar'
@@ -69,6 +70,7 @@ import {
   openInNewTab,
   paneColumns,
   reconcileLayout,
+  removeSessions,
   selectTab,
   setColumnWidths,
   toggleBroadcast,
@@ -256,6 +258,15 @@ export function DesktopApp() {
   }, [sessionsQuery.data, online, home])
   const sessions = everySession
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
+  // A session the daemon stops listing keeps its pane, shown as ended, so a refresh that misses one
+  // never closes a tab or moves your focus. A pane goes only when you close it.
+  const [remembered, setRemembered] = useState<ReadonlyMap<string, SessionView>>(() => new Map())
+  const [seenSessions, setSeenSessions] = useState(sessions)
+  if (seenSessions !== sessions) {
+    setSeenSessions(sessions)
+    setRemembered((before) => rememberSessions(before, sessions, layout))
+  }
+  const paneSessions = useMemo(() => withEnded(sessionMap, remembered), [sessionMap, remembered])
   const focusedId = focusedSessionId(layout)
   // A click anywhere outside the panes takes the border off the focused pane; a click in a pane, or focus moving to another pane, puts it back.
   const focusedPaneId = activeTab(layout)?.focus ?? null
@@ -315,9 +326,9 @@ export function DesktopApp() {
   // A tab belongs to the project of the session in its focused pane, so it moves when that shell cds into another repo.
   const tabGroup = useCallback((candidate: Tab): string => {
     const sessionId = candidate.panes.find((pane) => pane.id === candidate.focus)?.sessionId ?? candidate.panes[0]?.sessionId
-    const session = sessionId ? sessionMap.get(sessionId) : undefined
+    const session = sessionId ? paneSessions.get(sessionId) : undefined
     return session ? groupKeyOf(session, preferences.groupBy) : ''
-  }, [sessionMap, preferences.groupBy])
+  }, [paneSessions, preferences.groupBy])
 
   const reducedMotion = preferences.reduceMotion || systemReducedMotion
   const theme = findTheme(previewTheme ?? activeThemeName(preferences, systemDark))
@@ -373,9 +384,10 @@ export function DesktopApp() {
   const refetchSessions = sessionsQuery.refetch
   const retryAt = sessionsQuery.isError ? sessionsQuery.errorUpdatedAt + retryDelay : null
 
-  // Each fresh list: drop panes whose session ended, and open something on the first load when
-  // there is nothing to restore. `sessions` also changes when the home folder arrives; only a new
-  // list counts.
+  // The first list after launch: drop panes of sessions that are gone since last time, and open
+  // something when there is nothing to restore. Later lists never remove a pane: one that stopped
+  // being listed stays, as an ended pane. `sessions` also changes when the home folder arrives; only a
+  // new list counts.
   const reconciledAt = useRef(0)
   useEffect(() => {
     if (!sessionsQuery.isSuccess || reconciledAt.current === sessionsQuery.dataUpdatedAt) return
@@ -385,7 +397,7 @@ export function DesktopApp() {
     const openFirst = !openedFirst.current
     openedFirst.current = true
     setLayout((current) => {
-      const reconciled = reconcileLayout(current, live, tabGroup)
+      const reconciled = openFirst ? reconcileLayout(current, live, tabGroup) : current
       return openFirst && reconciled.tabs.length === 0 && first ? openInNewTab(reconciled, first.id, makeId) : reconciled
     })
   }, [sessions, sessionsQuery.dataUpdatedAt, sessionsQuery.isSuccess, tabGroup])
@@ -478,14 +490,17 @@ export function DesktopApp() {
   // Closing a pane, tab or session ends it; there is no way back, so a program that is running asks for a second click first.
   const [armedCloseAt, setArmedCloseAt] = useState(0)
   const endSessions = useCallback((ids: string[], what: string) => {
-    const ended = sessions.filter((session) => ids.includes(session.id))
-    if (ended.length === 0) return
-    void Promise.all(ended.map((session) => archiveConversationOnDaemon({ id: session.id }, true)))
+    const gone = new Set(ids)
+    const running = sessions.filter((session) => gone.has(session.id))
+    // Panes of sessions that already ended have nothing to stop: they just close.
+    if (running.length === 0) {
+      setLayout((current) => removeSessions(current, gone, tabGroup))
+      return
+    }
+    void Promise.all(running.map((session) => archiveConversationOnDaemon({ id: session.id }, true)))
       .then(async () => {
-        const gone = new Set(ended.map((session) => session.id))
-        const live = new Set(sessions.map((session) => session.id).filter((id) => !gone.has(id)))
-        setLayout((current) => reconcileLayout(current, live, tabGroup))
-        flash(`${what} closed · ${ended.length === 1 ? 'session' : `${String(ended.length)} sessions`} ended`)
+        setLayout((current) => removeSessions(current, gone, tabGroup))
+        flash(`${what} closed · ${running.length === 1 ? 'session' : `${String(running.length)} sessions`} ended`)
         await queryClient.invalidateQueries({ queryKey: ['conversations'] })
       })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not end the session')) })
@@ -509,6 +524,13 @@ export function DesktopApp() {
     const others = layout.tabs.filter((tab) => tab.id !== tabId && tabGroup(tab) === tabGroup(keep))
     endSessions(sessionsOf(others), others.length === 1 ? 'Tab' : `${String(others.length)} tabs`)
   }, [endSessions, layout, sessionsOf, tabGroup])
+
+  const restartPane = useCallback((paneId: string) => {
+    const pane = layout.tabs.flatMap((tab) => tab.panes).find((candidate) => candidate.id === paneId)
+    const old = pane ? paneSessions.get(pane.sessionId) : undefined
+    if (!old) return
+    runStart(() => Promise.resolve(old.cwd), (id) => { setLayout((current) => dropSession(current, paneId, id)) })
+  }, [layout, paneSessions, runStart])
 
   const endSession = useCallback((sessionId: string) => { endSessions([sessionId], 'Session') }, [endSessions])
   const endProject = useCallback((ids: string[], name: string) => { endSessions(ids, name) }, [endSessions])
@@ -629,15 +651,15 @@ export function DesktopApp() {
         const tab = activeTab(layout)
         if (!tab) return
         const single = tab.panes.length > 1
-        const targets = (single ? tab.panes.filter((pane) => pane.id === tab.focus) : tab.panes).flatMap((pane) => sessionMap.get(pane.sessionId) ?? [])
-        const agent = targets.find((session) => runsAgent(session.process))
+        const targets = single ? tab.panes.filter((pane) => pane.id === tab.focus) : tab.panes
+        const agent = targets.flatMap((pane) => paneSessions.get(pane.sessionId) ?? []).find((session) => runsProgram(session))
         if (agent && Date.now() - armedCloseAt > CLOSE_ARM_MS) {
           setArmedCloseAt(Date.now())
           flash(`Press ${mac ? '⌘' : 'Ctrl+'}W again to close and stop ${agent.process}`)
           return
         }
         setArmedCloseAt(0)
-        endSessions(targets.map((session) => session.id), single ? 'Pane' : 'Tab')
+        endSessions(targets.map((pane) => pane.sessionId), single ? 'Pane' : 'Tab')
         return
       }
       case 'next-tab':
@@ -687,7 +709,7 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, sessionMap, armedCloseAt])
+  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, paneSessions, armedCloseAt])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
@@ -1020,7 +1042,7 @@ export function DesktopApp() {
                 {!focusMode && <TabBar
                   tabs={visibleTabs}
                   activeTabId={layout.activeTabId}
-                  sessions={sessionMap}
+                  sessions={paneSessions}
                   primary={labels.primary}
                   canStart={canStart}
                   portalContainer={root}
@@ -1067,7 +1089,7 @@ export function DesktopApp() {
                         )}
                       <div className="mx-pane-column" style={tab.widths && tab.max === null && !narrow && tab.widths.length === columns.length ? { flexGrow: tab.widths[columnIndex] } : undefined}>
                         {column.map((pane) => {
-                          const session = sessionMap.get(pane.sessionId)
+                          const session = paneSessions.get(pane.sessionId)
                           if (!session) return null
                           const focused = pane.id === tab.focus
                           return (
@@ -1097,6 +1119,7 @@ export function DesktopApp() {
                                   look={look}
                                   label={`Shell in ${session.cwdLabel}`}
                                   inputDisabled={!online}
+                                  ended={session.ended}
                                   focused={focused && !modalOpen}
                                   onInput={(data) => { mirrorInput(session.id, data) }}
                                   onOpenPath={(path, line) => { openPath(session, path, line) }}
@@ -1113,6 +1136,7 @@ export function DesktopApp() {
                               }}
                               onToggleMaximize={(paneId) => { setLayout((current) => toggleMaximize(current, paneId)) }}
                               onClose={closePaneById}
+                              onRestart={restartPane}
                               onEndSession={endSession}
                               onRenameSession={setRenameId}
                               onDragStart={setDragId}
