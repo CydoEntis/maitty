@@ -15,6 +15,10 @@ Object.defineProperty(globalThis, 'ResizeObserver', {
 // jsdom does not lay anything out, so it has no scrollIntoView; every real browser does.
 Element.prototype.scrollIntoView = () => {}
 
+// jsdom has no pointer capture, which the toast library takes on a press; every real browser does.
+Element.prototype.setPointerCapture = () => {}
+Element.prototype.releasePointerCapture = () => {}
+
 // jsdom defaults to 1024px, which is the compact (drawer) layout; tests assume the docked sidebar.
 Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1280 })
 
