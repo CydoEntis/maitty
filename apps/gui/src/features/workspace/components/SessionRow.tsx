@@ -1,4 +1,4 @@
-import { displayName, statusPhrase, STATUS_WORD, type SessionView } from '../model/session'
+import { displayName, iconSaysProcess, statusPhrase, statusText, STATUS_WORD, type SessionView } from '../model/session'
 import { formatAgo, MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
 import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
@@ -37,6 +37,8 @@ export function SessionRow(props: SessionRowProps) {
   const effect = useEffectClass(status, selected)
   const menu = useSessionMenu(session, { online, portalContainer: props.portalContainer, onShow: props.onShow, onSetName: props.onSetName, onPin: props.onPin, onArchive: props.onArchive, onEnd: props.onEnd })
   const rowClass = ['mx-row', selected && 'is-selected', loud && 'is-loud', props.swapped && 'is-swapped', moved ? 'is-moved' : effect].filter(Boolean).join(' ')
+  // The icon already names the program, and a working row has its spinner: say only what they do not.
+  const line2 = iconSaysProcess(session.process) ? (status === 'working' ? '' : statusText(session)) : <><span className="mx-proc">{session.process}</span>{statusPhrase(session)}</>
   const line2Class = status === 'needs' ? 'is-needs' : status === 'error' ? 'is-error' : status === 'working' ? 'is-working' : ''
   return (
     <>
@@ -54,7 +56,7 @@ export function SessionRow(props: SessionRowProps) {
               {status === 'working' && <Spinner />}
               {meta && <span className={`mx-row-meta${status === 'working' ? ' is-working' : ''}`}>{meta}</span>}
             </span>
-            <span className={`mx-row-line2 ${line2Class}`}><span className="mx-proc">{session.process}</span>{statusPhrase(session)}</span>
+            {line2 && <span className={`mx-row-line2 ${line2Class}`}>{line2}</span>}
           </span>
         </button>
         <button

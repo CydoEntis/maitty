@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 're
 import { createPortal } from 'react-dom'
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui'
 import type { Tab } from '../model/layout'
-import { worstSession, type SessionView } from '../model/session'
+import { iconSaysProcess, worstSession, type SessionView } from '../model/session'
 import { AppIcon, Icon, PauseBars, Spinner } from './glyphs'
 import { STATUS_LABEL } from '../model/statusText'
 import { useEffectClass } from './motion'
@@ -260,7 +260,7 @@ function TabButton({ tab, active, sessions, primary, canStart, portalContainer, 
         {(shown.length > 0 ? shown : focused ? [focused] : []).slice(0, TAB_ICON_LIMIT).map((session) => <AppIcon key={session.id} process={session.process} size={20} />)}
         {shown.length === 0 && !focused && <AppIcon process={process} size={20} />}
       </span>
-      <span className="mx-tab-label"><span>{process}</span>{multi && <span className="mx-tab-more">+{tab.panes.length - 1}</span>} <span className="mx-tab-folder">{focused?.name ?? path}</span></span>
+      <span className="mx-tab-label">{!iconSaysProcess(process) && <span>{process}</span>}{multi && <span className="mx-tab-more">+{tab.panes.length - 1}</span>} <span className="mx-tab-folder">{focused?.name ?? path}</span></span>
       {status === 'needs' && <span className="mx-tab-needs" title="Needs you"><PauseBars /></span>}
       {status === 'working' && <Spinner />}
       {status === 'done' && <span className="mx-tab-done" title="Done"><Icon name="check" /></span>}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { displayName, STATUS_WORD, type SessionGroup, type SessionView } from '../model/session'
+import { displayName, iconSaysProcess, STATUS_WORD, type SessionGroup, type SessionView } from '../model/session'
 import { chooseLead, planTray, byPriority, type Activity } from '../model/stack'
 import { formatAgo, formatElapsed, type SessionTrack } from '../model/tracking'
 import type { TrayStyle } from '@/features/settings/preferences'
@@ -136,7 +136,7 @@ function TrayItem({ session, style, track, now, selected, pane, actions, hover }
           <StatusBadge status={session.status} rail />
           {unread && <span className="mx-tray-unread" aria-label="Unread" />}
         </span>
-        {style !== 'icons' && <span className="mx-tray-proc">{session.process.split(/\s+/)[0]}</span>}
+        {style !== 'icons' && !iconSaysProcess(session.process) && <span className="mx-tray-proc">{session.process.split(/\s+/)[0]}</span>}
         {style === 'stacked' && <span className="mx-tray-where">{session.title}</span>}
         {style === 'stacked' && word && <span className={`mx-tray-word is-${session.status}`}>{word}</span>}
       </button>

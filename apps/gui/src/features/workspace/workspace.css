@@ -586,12 +586,12 @@
 .mx-stack { display: flex; flex-direction: column; }
 .mx-stack .mx-row-wrap { position: relative; z-index: 1; }
 .mx-row.is-swapped { animation: v8swap .32s var(--ease-out); }
-.mx-tray { position: relative; z-index: 0; display: grid; gap: 4px; margin: -6px 5px 4px; padding: 10px 5px 5px; border-radius: 0 0 10px 10px; background: rgba(255, 255, 255, .028); box-shadow: inset 0 0 0 1px var(--pane-line); animation: v7fade .2s ease-out; }
+.mx-tray { position: relative; z-index: 0; display: grid; gap: 2px; margin: 0 0 4px; padding: 2px 4px 2px 10px; animation: v7fade .2s ease-out; }
 .mx-tray.is-stacked { grid-template-columns: minmax(0, 1fr); }
-.mx-tray-item { position: relative; min-width: 0; height: calc(24px * var(--icon-scale, 1)); box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 9px 0 3px; border-radius: 7px; background-color: rgba(255, 255, 255, .03); background-repeat: no-repeat; box-shadow: inset 0 0 0 1px var(--pane-line); cursor: pointer; transition: background-color .16s ease, box-shadow .16s ease, transform .2s var(--ease-out); }
+.mx-tray-item { position: relative; min-width: 0; height: calc(24px * var(--icon-scale, 1)); box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 9px 0 3px; border-radius: 7px; background-color: transparent; background-repeat: no-repeat; cursor: pointer; transition: background-color .16s ease, box-shadow .16s ease, transform .2s var(--ease-out); }
 .mx-tray-item.is-icons { width: 24px; padding: 0; justify-content: center; }
 .mx-tray-item.is-stacked { padding: 0 8px 0 3px; }
-.mx-tray-item:hover { background-color: rgba(255, 255, 255, .08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); transform: translateY(-1px) scale(1.06); }
+.mx-tray-item:hover { background-color: rgba(255, 255, 255, .08); transform: translateY(-1px) scale(1.06); }
 .mx-tray-item:active { transform: scale(.9); }
 .mx-tray-icon { position: relative; flex: none; display: flex; }
 .mx-tray-icon .mx-badge { right: -5px; bottom: -5px; width: 12px; height: 12px; border-radius: 3.5px; }
@@ -607,7 +607,7 @@
 .mx-tray-word.is-needs { color: var(--warn); }
 .mx-tray-word.is-done { color: var(--ok); }
 .mx-tray-word.is-error { color: var(--danger); }
-.mx-tray-more { height: calc(24px * var(--icon-scale, 1)); min-width: 0; box-sizing: border-box; padding: 0 6px; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1px var(--pane-line); font-family: var(--mono); font-size: 10.5px; color: var(--muted); cursor: pointer; transition: background-color .14s ease, color .14s ease, transform .12s ease; }
+.mx-tray-more { height: calc(24px * var(--icon-scale, 1)); min-width: 0; box-sizing: border-box; padding: 0 6px; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: transparent; font-family: var(--mono); font-size: 10.5px; color: var(--muted); cursor: pointer; transition: background-color .14s ease, color .14s ease, transform .12s ease; }
 .mx-tray-more:hover, .mx-tray-more.is-open { background: rgba(255, 255, 255, .07); color: var(--fg); }
 .mx-tray-more.is-needs { color: var(--warn); }
 .mx-tray-more:active { transform: scale(.92); }
@@ -910,10 +910,8 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 :root[data-finish="flat"] .mx-tab:not(.is-active):focus-visible { box-shadow: none; transform: none; }
 :root[data-finish="flat"] .mx-tablist { background: transparent; box-shadow: none; border-radius: calc(10px * var(--rk)); }
 :root[data-finish="flat"] .mx-new-tab { background: transparent; box-shadow: none; }
-/* The session tray sits flush under its main row, with no box. */
-:root[data-finish="flat"] .mx-tray { margin: 0 0 4px; padding: 2px 0; border-radius: 0; background: transparent; box-shadow: none; }
-:root[data-finish="flat"] .mx-tray-item,
-:root[data-finish="flat"] .mx-tray-item:hover { box-shadow: none; transform: none; }
+/* Flat finish: a tray item does not lift on hover. */
+:root[data-finish="flat"] .mx-tray-item:hover { transform: none; }
 /* Top-bar buttons and status badges stay flat: no gradient, glow, lift or entrance. */
 :root[data-finish="flat"] .mx-inbox-button { background: var(--strip-bg, rgba(255, 255, 255, .025)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); }
 :root[data-finish="flat"] .mx-inbox-button:hover { background: var(--strip-hover, rgba(255, 255, 255, .06)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); transform: none; }
