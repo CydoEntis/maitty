@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from 'react'
 
 const OPEN_DELAY_MS = 280
 const CLOSE_DELAY_MS = 160
@@ -54,3 +54,12 @@ export function useRailHover(): RailHover {
   return useMemo(() => ({ shown, enter, leave, hold, close }), [shown, enter, leave, hold, close])
 }
 
+/** The pointer and focus handlers that make an item open its popover; the item's own click and menu stay its own. */
+export function hoverHandlers(hover: RailHover, target: RailTarget) {
+  return {
+    onMouseEnter: (event: MouseEvent<HTMLElement>) => { hover.enter(target, event.currentTarget) },
+    onMouseLeave: hover.leave,
+    onFocus: (event: FocusEvent<HTMLElement>) => { hover.enter(target, event.currentTarget) },
+    onBlur: hover.leave,
+  }
+}

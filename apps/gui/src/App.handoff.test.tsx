@@ -402,6 +402,46 @@ describe('desktop terminal multiplexer', () => {
 
   it('says what a collapsed session is doing in a popover beside it', async () => {
     const user = userEvent.setup()
+  it('says what a docked session is doing in a popover beside its row, after a short hover', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { agent: 'claude', status: 'needs-you', summary: 'Fix the login redirect so it keeps the query string' })])
+    renderDesktopApp()
+    const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
+    const row = await within(sidebar).findByRole('button', { name: /, claude, / })
+
+    await user.hover(row)
+
+    expect(document.querySelector('.mx-railpop.is-session')).toBeNull()
+    const card = await waitFor(() => {
+      const found = document.querySelector('.mx-railpop.is-session')
+      expect(found).not.toBeNull()
+      return found
+    })
+    expect(card).toHaveTextContent('needs you')
+    expect(card).toHaveTextContent('claude · ~/code/maitty')
+    await user.unhover(row)
+    await waitFor(() => { expect(document.querySelector('.mx-railpop.is-session')).toBeNull() })
+  })
+
+  it('says what a docked project is in a popover beside its header, with its sessions', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { agent: 'claude', status: 'idle' })])
+    renderDesktopApp()
+    const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
+    const head = await within(sidebar).findByRole('button', { name: /maitty/, expanded: true })
+
+    await user.hover(head)
+
+    const card = await waitFor(() => {
+      const found = document.querySelector('.mx-railpop.is-project')
+      expect(found).not.toBeNull()
+      return found
+    })
+    expect(card).toHaveTextContent('maitty')
+    expect(card).toHaveTextContent('~/code/maitty')
+    expect(card).toHaveTextContent('claude')
+  })
+
     const wide = window.innerWidth
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
     try {

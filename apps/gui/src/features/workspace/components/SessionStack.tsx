@@ -7,6 +7,7 @@ import type { TrayStyle } from '@/features/settings/preferences'
 import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
 import { SessionRow } from './SessionRow'
+import { hoverHandlers, type RailHover } from './railHover'
 import { useSessionMenu, type SessionMenuActions } from './SessionMenu'
 
 const SWAP_MS = 320
@@ -39,6 +40,8 @@ export type StackProps = {
   /** The pane (counting from 1) each session has in its tab; absent for a session no tab shows. */
   paneOf: ReadonlyMap<string, number>
   portalContainer: HTMLElement | null
+  /** Opens a session's popover beside its row or tray item. */
+  hover: RailHover
   onShowSession: (id: string) => void
   onSetName: (id: string, name: string) => void
   onPinSession: (id: string, pinned: boolean) => void
@@ -88,6 +91,7 @@ export function SessionStack(props: StackProps) {
         online={props.online}
         swapped={swapped}
         portalContainer={props.portalContainer}
+        hover={props.hover}
         onShow={() => { props.onShowSession(lead.id) }}
         onSetName={(name) => { props.onSetName(lead.id, name) }}
         onPin={(pinned) => { props.onPinSession(lead.id, pinned) }}
@@ -96,7 +100,7 @@ export function SessionStack(props: StackProps) {
       />
       {hasTray && (
         <div role="group" aria-label={trayLabel} className={`mx-tray is-${props.trayStyle}${plan.hidden > 0 ? ' has-more' : ''}`} style={stacked ? undefined : { gridTemplateColumns: trayColumns(props.trayStyle, plan.shown.length, plan.hidden > 0) }}>
-          {plan.shown.map((session) => <TrayItem key={session.id} session={session} style={props.trayStyle} track={tracks.get(session.id)} now={now} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} actions={{ online: props.online, portalContainer: props.portalContainer, onShow: () => { props.onShowSession(session.id) }, onSetName: (name) => { props.onSetName(session.id, name) }, onPin: (pinned) => { props.onPinSession(session.id, pinned) }, onArchive: () => { props.onArchiveSession(session.id) }, onEnd: () => { props.onEndSession(session.id) } }} />)}
+          {plan.shown.map((session) => <TrayItem key={session.id} hover={props.hover} session={session} style={props.trayStyle} track={tracks.get(session.id)} now={now} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} actions={{ online: props.online, portalContainer: props.portalContainer, onShow: () => { props.onShowSession(session.id) }, onSetName: (name) => { props.onSetName(session.id, name) }, onPin: (pinned) => { props.onPinSession(session.id, pinned) }, onArchive: () => { props.onArchiveSession(session.id) }, onEnd: () => { props.onEndSession(session.id) } }} />)}
           {plan.hidden > 0 && (
             <button type="button" className={`mx-tray-more${plan.hiddenNeeds ? ' is-needs' : ''}${menuAnchor ? ' is-open' : ''}`} aria-haspopup="menu" aria-expanded={menuAnchor !== null} aria-label={moreLabel} title={moreLabel} onClick={(event) => { setMenuAnchor(menuAnchor ? null : event.currentTarget.getBoundingClientRect()) }}>
               {stacked ? `+${String(plan.hidden)} more` : `+${String(plan.hidden)}`}
@@ -115,10 +119,10 @@ function trayColumns(style: TrayStyle, shown: number, more: boolean): string {
   return more ? `${columns} 30px` : columns
 }
 
-type TrayItemProps = { session: SessionView; style: TrayStyle; track: SessionTrack | undefined; now: number; selected: boolean; pane: number | undefined; actions: SessionMenuActions }
+type TrayItemProps = { session: SessionView; style: TrayStyle; track: SessionTrack | undefined; now: number; selected: boolean; pane: number | undefined; actions: SessionMenuActions; hover: RailHover }
 
 /** One of a project's other sessions: its icon with the state on it, and the process for the named styles. */
-function TrayItem({ session, style, track, now, selected, pane, actions }: TrayItemProps) {
+function TrayItem({ session, style, track, now, selected, pane, actions, hover }: TrayItemProps) {
   const menu = useSessionMenu(session, actions)
   const unread = Boolean(track?.unread) && !selected
   const where = pane === undefined ? 'detached' : `pane ${String(pane)}`
@@ -126,7 +130,7 @@ function TrayItem({ session, style, track, now, selected, pane, actions }: TrayI
   const word = stateWord(session, track, now)
   return (
     <>
-      <button type="button" className={`mx-tray-item is-${style} is-${session.status}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(SESSION_DRAG_TYPE, session.id) }} onContextMenu={menu.onContextMenu} aria-label={label} title={`${displayName(session)} · ${session.process} · ${where} · ${STATUS_WORD[session.status]}`} onClick={actions.onShow}>
+      <button type="button" className={`mx-tray-item is-${style} is-${session.status}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(SESSION_DRAG_TYPE, session.id) }} {...hoverHandlers(hover, { kind: 'session', id: session.id })} onContextMenu={(event) => { hover.close(); menu.onContextMenu(event) }} aria-label={label} onClick={actions.onShow}>
         <span className="mx-tray-icon">
           <AppIcon process={session.process} size={18} dimmed={session.status === 'unknown'} />
           <StatusBadge status={session.status} rail />

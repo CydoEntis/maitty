@@ -3,6 +3,7 @@ import { formatAgo, MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/track
 import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
 import { useSessionMenu } from './SessionMenu'
+import { hoverHandlers, type RailHover } from './railHover'
 import { useEffectClass } from './motion'
 
 export type SessionRowProps = {
@@ -15,6 +16,8 @@ export type SessionRowProps = {
   swapped: boolean
   /** Where portalled menus mount, so they read the theme's colours. */
   portalContainer: HTMLElement | null
+  /** Opens the session's popover beside the row. */
+  hover: RailHover
   onShow: () => void
   onSetName: (name: string) => void
   onPin: (pinned: boolean) => void
@@ -37,8 +40,8 @@ export function SessionRow(props: SessionRowProps) {
   const line2Class = status === 'needs' ? 'is-needs' : status === 'error' ? 'is-error' : status === 'working' ? 'is-working' : ''
   return (
     <>
-      <div className="mx-row-wrap" onContextMenu={menu.onContextMenu}>
-        <button type="button" className={rowClass} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(SESSION_DRAG_TYPE, session.id) }} aria-label={`${displayName(session)}, ${session.process}, ${STATUS_WORD[status]}`} aria-current={selected ? 'page' : undefined} onClick={props.onShow}>
+      <div className="mx-row-wrap" onContextMenu={(event) => { props.hover.close(); menu.onContextMenu(event) }}>
+        <button type="button" className={rowClass} {...hoverHandlers(props.hover, { kind: 'session', id: session.id })} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(SESSION_DRAG_TYPE, session.id) }} aria-label={`${displayName(session)}, ${session.process}, ${STATUS_WORD[status]}`} aria-current={selected ? 'page' : undefined} onClick={props.onShow}>
           <span className="mx-row-icon">
             <AppIcon process={session.process} size={24} dimmed={status === 'unknown'} />
             <StatusBadge status={status} />
