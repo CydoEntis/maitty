@@ -257,6 +257,11 @@ function GeneralSection({ preferences, update, validateFolder, onShowWelcome }: 
           </div>
         </div>
       </Card>
+      <Card title="Window" color="var(--ansi-blue)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 16h18" /></>}>
+        <Row label="Status bar" detail="A line at the bottom with the daemon, the branch, what is working and what needs you.">
+          <Switch label="Status bar" checked={preferences.statusBar} onChange={(value) => { update('statusBar', value) }} />
+        </Row>
+      </Card>
       <Card title="Sessions" color="var(--ansi-mag)" iconPath={<><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>}>
         <Row label="Reopen tabs on launch" detail="Restore the tabs and splits you had last time.">
           <Switch label="Reopen tabs on launch" checked={preferences.restoreTabs} onChange={(value) => { update('restoreTabs', value) }} />

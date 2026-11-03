@@ -33,6 +33,7 @@ import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
 import { ConfirmEndDialog, type EndRequest } from './components/ConfirmEndDialog'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
+import { StatusBar } from './components/StatusBar'
 import { WelcomeDialog } from '@/features/welcome/WelcomeDialog'
 import { isFirstRun, markWelcomed } from '@/features/welcome/welcomed'
 import { repoDiff, repoLocate } from '@/features/inspect/api'
@@ -80,7 +81,7 @@ import {
 import { readLayout, writeLayout } from './model/layoutStorage'
 import { byPriority } from './model/stack'
 import { displayName, groupKeyOf, groupSessions, tildePath, toSessionView, type SessionView } from './model/session'
-import { isMacPlatform, keyLabels, matchShortcut, type ShortcutAction } from './model/shortcuts'
+import { hotkeyRows, isMacPlatform, keyLabels, matchShortcut, type ShortcutAction } from './model/shortcuts'
 import { folderExists, resolveStartFolder } from './model/startFolder'
 import { markSeen, MOVED_HIGHLIGHT_MS, trackSessions, type SessionTrack } from './model/tracking'
 import { folderColor } from './model/folderColor'
@@ -1001,6 +1002,20 @@ export function DesktopApp() {
                     canStart={canStart}
                     onNewSession={newSession}
                     onChangeStartFolder={() => { setSettingsSection('general') }}
+                  />
+                )}
+                {!focusMode && preferences.statusBar && (
+                  <StatusBar
+                    online={online}
+                    branch={focusedSession?.branch ?? null}
+                    working={sessions.filter((item) => item.status === 'working').length}
+                    needs={sessions.filter((item) => item.status === 'needs').length}
+                    process={focusedSession?.process ?? null}
+                    path={focusedSession?.cwdLabel ?? null}
+                    textSize={preferences.terminalFontSize}
+                    shortcutChord={hotkeyRows(mac).find((row) => row.action === 'Keyboard shortcuts')?.chords[0] ?? []}
+                    onOpenInbox={() => { setInboxOpen(true) }}
+                    onOpenShortcuts={() => { setShortcutsOpen(true) }}
                   />
                 )}
               </main>

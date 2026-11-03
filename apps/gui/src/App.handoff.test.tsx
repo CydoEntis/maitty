@@ -1127,6 +1127,47 @@ describe('desktop overlays and tab tools', () => {
     expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument()
   })
 
+  it('shows the daemon, branch, counts and focused session in a status bar, and its buttons open the inbox and the shortcuts', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([
+      inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { agent: 'claude', status: 'working' }),
+      inRepo(4, `${HOME}/code/maitty`, `${HOME}/code/maitty/crates`, { agent: 'codex', status: 'needs-you' }),
+    ])
+    renderDesktopApp()
+    const bar = await screen.findByLabelText('Status')
+
+    expect(bar).toHaveTextContent('maittyd')
+    expect(bar).toHaveTextContent('main')
+    expect(bar).toHaveTextContent('1 working')
+    expect(bar).toHaveTextContent('1 needs you')
+    expect(bar).toHaveTextContent('claude · ~/code/maitty')
+    expect(bar).toHaveTextContent('13px')
+
+    await user.click(within(bar).getByRole('button', { name: '1 needs you' }))
+    expect(await screen.findByRole('dialog', { name: 'Inbox' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await user.click(within(bar).getByRole('button', { name: 'Keyboard shortcuts' }))
+    expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument()
+  })
+
+  it('hides the status bar in focus mode and when Settings turns it off', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    const app = renderDesktopApp()
+    await screen.findByLabelText('Status')
+
+    await user.keyboard('{Control>}.{/Control}')
+    expect(screen.queryByLabelText('Status')).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await screen.findByLabelText('Status')
+
+    app.unmount()
+    window.localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: false }))
+    renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    expect(screen.queryByLabelText('Status')).not.toBeInTheDocument()
+  })
+
   it('says it is all caught up when nothing needs you', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([at(2)])

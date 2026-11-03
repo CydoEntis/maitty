@@ -206,6 +206,12 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   the bottom of the sidebar with **Restore**; archiving is a view setting, never a kill. The daemon stores
   the name, pinned and archived per session (`RenamePane`, `PinPane`, `ArchivePane`; they survive a daemon
   restart), so the TUI shows the names too and ignores the other two.
+- **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line and
+  clipped. At the left: the daemon dot and "maittyd" (or "reconnecting…"), the focused session's git branch,
+  a spinner and "N working" in the accent colour, and an amber "N needs you" that opens the Inbox. At the
+  right: the focused process and folder in mono, the terminal text size and the shortcuts keycaps, which open
+  the shortcut overlay. The counts are the sidebar's statuses, so they read zero when the daemon is
+  disconnected. Hidden in Focus mode and by Settings › General › Window › Status bar (on by default).
 - **Sidebar.** A `Projects` title with a **+** button (a bordered square that lights up in the accent on hover) and the collapse button at the right; groups by git repo (or by folder, in Settings), sorted by
   name. A shell outside any repo is grouped by its own folder, so there is no catch-all group.
   A group's tile carries a ring when it holds the focused session. Each group is one **main row**

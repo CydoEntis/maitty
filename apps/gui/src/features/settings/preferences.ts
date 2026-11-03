@@ -67,6 +67,8 @@ export type SettingsPreferences = {
   leadMode: LeadMode
   style: StyleChoice
   iconColor: IconColor
+  /** The bottom line of the window: daemon, branch, counts and the focused session. */
+  statusBar: boolean
   /** A colour the user gave a project, by the project's key (its repo or folder path). */
   projectColors: Record<string, string>
 }
@@ -124,6 +126,7 @@ function defaults(): SettingsPreferences {
     trayStyle: 'stacked',
     leadMode: 'focused',
     iconColor: 'color',
+    statusBar: true,
     projectColors: {},
   }
 }
@@ -173,6 +176,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       trayStyle: preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
       projectColors: stringRecord(preferences.projectColors),
       style: styleOf(preferences.style) ?? fallback.style,
+      statusBar: bool(preferences.statusBar, fallback.statusBar),
       iconColor: preferences.iconColor === 'color' || preferences.iconColor === 'grayscale' ? preferences.iconColor : fallback.iconColor,
       leadMode: preferences.leadMode === 'focused' || preferences.leadMode === 'attention' ? preferences.leadMode : fallback.leadMode,
     }

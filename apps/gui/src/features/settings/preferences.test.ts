@@ -23,7 +23,7 @@ const DEFAULTS: SettingsPreferences = {
   scrollback: 10000,
   effectWorking: true,
   effectNeedsYou: true,
-  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', style: 'glass', projectColors: {},
+  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, style: 'glass', projectColors: {},
 }
 
 describe('settings preferences', () => {
@@ -67,6 +67,14 @@ describe('settings preferences', () => {
     }
     expect([style('minimal'), style('expressive'), style('tiled'), style('flat'), style('glass')]).toEqual(['flat', 'glass', 'tiled', 'flat', 'glass'])
     expect(style('neon')).toBe('glass')
+  })
+
+  it('shows the status bar unless it was turned off', () => {
+    expect(readSettingsPreferences().statusBar).toBe(true)
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: false }))
+    expect(readSettingsPreferences().statusBar).toBe(false)
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: 'no' }))
+    expect(readSettingsPreferences().statusBar).toBe(true)
   })
 
   it('keeps icons in colour unless grayscale was chosen, in either style', () => {
