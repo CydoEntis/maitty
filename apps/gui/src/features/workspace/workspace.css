@@ -7,9 +7,9 @@
 @keyframes v7pulse { 0% { box-shadow: 0 0 0 0 rgba(242, 182, 90, .45); } 70% { box-shadow: 0 0 0 4px rgba(242, 182, 90, 0); } 100% { box-shadow: 0 0 0 0 rgba(242, 182, 90, 0); } }
 @keyframes v14focus { from { box-shadow: 0 0 0 0 var(--accent-line); } to { box-shadow: 0 0 0 8px transparent; } }
 @keyframes v7moved { 0% { background-color: rgba(95, 212, 191, .16); } 100% { background-color: transparent; } }
-@keyframes v7shim { from { background-position: 150% 0; } to { background-position: -50% 0; } }
-@keyframes v8breathe { 0%, 100% { background-size: 90% 200%; } 50% { background-size: 170% 260%; } }
-@keyframes v8doneonce { from { background-position: 150% 0; } to { background-position: -60% 0; } }
+@keyframes v14sweep { from { transform: translateX(-90%); } to { transform: translateX(30%); } }
+@keyframes v14sweepdone { from { transform: translateX(-90%); } to { transform: translateX(36%); } }
+@keyframes v14breathe { 0%, 100% { opacity: .55; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.15); } }
 @keyframes v8tabin { from { opacity: 0; transform: translateY(-3px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes v8pane { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes v8swap { from { opacity: .35; transform: translateY(5px) scale(.985); } to { opacity: 1; transform: none; } }
@@ -74,7 +74,6 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane);
   border: 1px solid var(--pane-line);
   border-radius: var(--r14);
-  backdrop-filter: blur(18px);
 }
 
 
@@ -344,7 +343,8 @@
   box-shadow: 0 14px 34px rgba(0, 0, 0, .3);
   outline-offset: -1px;
   overflow: hidden;
-  backdrop-filter: blur(18px);
+  /* Repaints inside a pane stay inside it. */
+  contain: paint;
   animation: v8pane .3s var(--ease-out);
   transition: border-color .2s ease, box-shadow .2s ease, background-color .35s ease;
 }
@@ -387,7 +387,7 @@
 .mx-toast { position: absolute; left: 50%; top: 58px; transform: translateX(-50%); z-index: 45; padding: 8px 14px; border-radius: 999px; background: var(--raise); border: 1px solid var(--line2); font-size: 12.5px; color: var(--fg); box-shadow: 0 12px 40px rgba(0, 0, 0, .45); white-space: nowrap; animation: v7fade .22s ease-out; }
 
 /* Settings */
-.mx-settings-scrim { position: absolute; inset: 0; z-index: 40; background: rgba(3, 5, 8, .5); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 24px; animation: v7scrim .2s ease-out; }
+.mx-settings-scrim { position: absolute; inset: 0; z-index: 40; background: rgba(3, 5, 8, .62); display: flex; align-items: center; justify-content: center; padding: 24px; animation: v7scrim .2s ease-out; }
 .mx-settings { width: 100%; max-width: 880px; height: 100%; max-height: 620px; display: flex; border-radius: var(--r16); background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); overflow: hidden; backdrop-filter: blur(24px); animation: v8pane .26s var(--ease-out); }
 .mx-settings-nav { width: 212px; flex: none; display: flex; flex-direction: column; padding: 18px 10px; background: rgba(0, 0, 0, .18); border-right: 1px solid var(--pane-line); overflow-y: auto; }
 .mx-app.is-narrow .mx-settings-nav { width: 176px; }
@@ -479,7 +479,7 @@
 .mx-effect-row { display: flex; align-items: center; gap: 12px; min-height: 36px; }
 .mx-effect-chip { width: 84px; height: 26px; flex: none; border-radius: 7px; background-color: var(--raise); background-repeat: no-repeat; box-shadow: inset 0 0 0 1px var(--pane-line); display: flex; align-items: center; gap: 6px; padding: 0 8px; font-size: 11.5px; }
 .mx-effect-chip span { color: var(--fg2); }
-.mx-effect-chip.mx-fx-done { background-position: 150% 0; animation: v7shim 2.6s cubic-bezier(.4, 0, .2, 1) infinite; }
+.mx-effect-chip.mx-fx-done::after { animation: v14sweep 2.6s cubic-bezier(.4, 0, .2, 1) infinite; }
 .mx-hotkey { font-family: var(--mono); font-size: 11.5px; color: var(--fg); padding: 3px 8px; border-radius: 6px; background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); white-space: pre; }
 .mx-hotkey-row { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 16px; border-top: 1px solid var(--pane-line); font-size: 13px; }
 .mx-hotkey-row > span:first-child { flex: 1; color: var(--fg2); }
@@ -497,9 +497,11 @@
 
 /* Status effects on rows and tabs, after the row and tab rules so their animation wins. The app
    adds these classes only for effects that are switched on (see EffectsContext). */
-.mx-fx-working { background-image: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--accent) calc(9% * var(--fx-k, .6)), transparent) 44%, color-mix(in srgb, var(--accent) calc(18% * var(--fx-k, .6)), transparent) 50%, color-mix(in srgb, var(--accent) calc(9% * var(--fx-k, .6)), transparent) 56%, transparent 70%); background-size: 250% 100%; background-position: 150% 0; animation: v7shim 2.6s cubic-bezier(.4, 0, .2, 1) infinite; }
-.mx-fx-needs { background-image: radial-gradient(closest-side, color-mix(in srgb, var(--warn) calc(22% * var(--fx-k, .6)), transparent), color-mix(in srgb, var(--warn) 0%, transparent)); background-size: 90% 200%; background-position: -30% 50%; animation: v8breathe 2.4s ease-in-out infinite; }
-.mx-fx-done { background-image: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--ok) calc(16% * var(--fx-k, .6)), transparent) 50%, transparent 65%); background-size: 250% 100%; background-position: -60% 0; animation: v8doneonce 1.4s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
+.mx-fx-working, .mx-fx-needs, .mx-fx-done { position: relative; overflow: hidden; isolation: isolate; }
+.mx-fx-working::after, .mx-fx-needs::after, .mx-fx-done::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: -1; pointer-events: none; will-change: transform, opacity; }
+.mx-fx-working::after { left: 0; width: 250%; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--accent) calc(9% * var(--fx-k, .6)), transparent) 44%, color-mix(in srgb, var(--accent) calc(18% * var(--fx-k, .6)), transparent) 50%, color-mix(in srgb, var(--accent) calc(9% * var(--fx-k, .6)), transparent) 56%, transparent 70%); transform: translateX(-90%); animation: v14sweep 2.6s cubic-bezier(.4, 0, .2, 1) infinite; }
+.mx-fx-needs::after { top: -50%; bottom: -50%; left: -30%; width: 120%; background: radial-gradient(closest-side, color-mix(in srgb, var(--warn) calc(22% * var(--fx-k, .6)), transparent), transparent); animation: v14breathe 2.4s ease-in-out infinite; }
+.mx-fx-done::after { left: 0; width: 250%; background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--ok) calc(16% * var(--fx-k, .6)), transparent) 50%, transparent 65%); transform: translateX(-90%); animation: v14sweepdone 1.4s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
 .mx-fx-strong { --fx-k: 1; }
 
 
@@ -515,7 +517,7 @@
 
 /* A session's state in the pane's bottom-right corner; the popover says what it means. */
 .mx-pane-status-wrap { position: absolute; right: 10px; bottom: 8px; z-index: 2; }
-.mx-pane-status { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 7px; border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 1; color: var(--muted); background: color-mix(in srgb, var(--raise) 82%, transparent); box-shadow: inset 0 0 0 1px var(--pane-line); cursor: default; backdrop-filter: blur(6px); animation: v9pop .26s var(--ease-out); transition: transform .16s var(--ease-out), box-shadow .16s ease; }
+.mx-pane-status { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 7px; border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 1; color: var(--muted); background: color-mix(in srgb, var(--raise) 94%, transparent); box-shadow: inset 0 0 0 1px var(--pane-line); cursor: default; animation: v9pop .26s var(--ease-out); transition: transform .16s var(--ease-out), box-shadow .16s ease; }
 .mx-pane-status:hover { transform: translateY(-1px); }
 .mx-pane-status.is-working { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent), 0 4px 14px -6px color-mix(in srgb, var(--accent) 55%, transparent); }
 .mx-pane-status.is-needs { color: var(--warn); background: var(--warn-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 42%, transparent), 0 4px 14px -6px color-mix(in srgb, var(--warn) 55%, transparent); }
@@ -685,7 +687,7 @@
 .mx-swatch-dot[aria-checked="true"] { box-shadow: 0 0 0 2px var(--pane), 0 0 0 4px var(--fg2); }
 
 /* Command palette */
-.mx-palette-scrim { position: absolute; inset: 0; z-index: 60; background: rgba(0, 0, 0, .5); backdrop-filter: blur(3px); animation: v7scrim .2s ease-out; }
+.mx-palette-scrim { position: absolute; inset: 0; z-index: 60; background: rgba(0, 0, 0, .58); animation: v7scrim .2s ease-out; }
 .mx-palette { position: absolute; top: 12%; left: 50%; width: min(600px, calc(100% - 24px)); transform: translateX(-50%); display: flex; flex-direction: column; border-radius: 16px; background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, 0) 120px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 30px 80px rgba(0, 0, 0, .55); backdrop-filter: blur(18px); overflow: hidden; animation: v8pane .22s var(--ease-out); }
 .mx-palette-input { flex: none; height: 54px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--pane-line); color: var(--dim); }
 .mx-palette-input input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; font: inherit; font-size: 15px; color: var(--fg); }
@@ -703,7 +705,7 @@
 
 /* Inbox */
 .mx-inbox-scrim { position: absolute; inset: 0; z-index: 55; background: rgba(0, 0, 0, .45); animation: v7scrim .2s ease-out; }
-.mx-inbox { position: absolute; top: 44px; right: 12px; bottom: 12px; width: min(440px, calc(100% - 24px)); display: flex; flex-direction: column; border-radius: 14px; background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 22px 60px rgba(0, 0, 0, .5); backdrop-filter: blur(18px); overflow: hidden; animation: v8insp .32s var(--ease-out); }
+.mx-inbox { position: absolute; top: 44px; right: 12px; bottom: 12px; width: min(440px, calc(100% - 24px)); display: flex; flex-direction: column; border-radius: 14px; background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 22px 60px rgba(0, 0, 0, .5); overflow: hidden; animation: v8insp .32s var(--ease-out); }
 .mx-inbox-head { flex: none; height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--pane-line); }
 .mx-inbox-head strong { font-size: 15px; font-weight: 600; }
 .mx-inbox-sub { font-size: 12px; color: var(--dim); }
@@ -799,7 +801,7 @@
 
 /* First-run welcome. */
 @keyframes v9stepin { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
-.mx-wel-scrim { position: fixed; inset: 0; z-index: 80; background: rgba(3, 5, 8, .55); backdrop-filter: blur(8px); animation: v7scrim .2s ease-out; }
+.mx-wel-scrim { position: fixed; inset: 0; z-index: 80; background: rgba(3, 5, 8, .66); animation: v7scrim .2s ease-out; }
 .mx-welcome { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(560px, calc(100% - 32px)); transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 18px; padding: 22px 24px 20px; border-radius: 16px; background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 140px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); animation: v9dialog .26s var(--ease-out); }
 .mx-wel-bars { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
 .mx-wel-bars span { height: 3px; border-radius: 2px; background: var(--line2); transition: background-color .3s ease; }

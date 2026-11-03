@@ -53,6 +53,8 @@ export type SettingsPreferences = {
   cursorStyle: CursorStyle
   /** Lines each pane keeps; maittyd keeps the full history. */
   scrollback: ScrollbackLines
+  /** Mirror the terminal's text into the page for screen readers. It makes every pane much heavier to draw. */
+  terminalScreenReader: boolean
   /** Status effects on sidebar rows and tabs, each off by itself; Reduce motion turns all off. */
   effectWorking: boolean
   effectNeedsYou: boolean
@@ -120,6 +122,7 @@ function defaults(): SettingsPreferences {
     lightTheme: 'Paper',
     cursorStyle: 'block',
     scrollback: SCROLLBACK_DEFAULT,
+    terminalScreenReader: false,
     style: 'glass',
     // Glass runs the status sweeps; Flat and Tiled start with them off. A choice made in Settings wins either way.
     effectWorking: true,
@@ -175,6 +178,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       ...themeChoice(preferences, fallback),
       cursorStyle: isCursorStyle(preferences.cursorStyle) ? preferences.cursorStyle : fallback.cursorStyle,
       scrollback: isScrollback(preferences.scrollback) ? preferences.scrollback : fallback.scrollback,
+      terminalScreenReader: bool(preferences.terminalScreenReader, fallback.terminalScreenReader),
       effectWorking: bool(preferences.effectWorking, fallback.effectWorking),
       effectNeedsYou: bool(preferences.effectNeedsYou, fallback.effectNeedsYou),
       effectDone: bool(preferences.effectDone, fallback.effectDone),

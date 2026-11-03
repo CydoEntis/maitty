@@ -1,5 +1,5 @@
 /* The find bar floats over the top right of the terminals, like the pane menus. */
-.mx-find { position: absolute; top: 8px; right: 16px; z-index: 40; width: min(460px, calc(100% - 32px)); display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 14px 40px rgba(0, 0, 0, .45); backdrop-filter: blur(18px); }
+.mx-find { position: absolute; top: 8px; right: 16px; z-index: 40; width: min(460px, calc(100% - 32px)); display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 14px 40px rgba(0, 0, 0, .45); }
 .mx-find-row { display: flex; align-items: center; gap: 6px; }
 .mx-find-input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border-radius: 8px; background: var(--well); color: var(--fg); font-size: 13px; box-shadow: inset 0 0 0 1px var(--pane-line); }
 .mx-find-input:focus { outline: 2px solid var(--accent); outline-offset: 0; }

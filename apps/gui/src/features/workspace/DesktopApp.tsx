@@ -321,7 +321,7 @@ export function DesktopApp() {
 
   const reducedMotion = preferences.reduceMotion || systemReducedMotion
   const theme = findTheme(previewTheme ?? activeThemeName(preferences, systemDark))
-  const look = useMemo(() => ({ cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, theme: xtermTheme(theme.tokens) }), [preferences.cursorStyle, preferences.scrollback, theme])
+  const look = useMemo(() => ({ cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, screenReader: preferences.terminalScreenReader, theme: xtermTheme(theme.tokens) }), [preferences.cursorStyle, preferences.scrollback, preferences.terminalScreenReader, theme])
   const effects = useMemo(() => {
     const allowed = online && !reducedMotion
     return { working: allowed && preferences.effectWorking, needs: allowed && preferences.effectNeedsYou, done: allowed && preferences.effectDone }

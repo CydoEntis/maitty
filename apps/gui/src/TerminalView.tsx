@@ -21,6 +21,7 @@ type TerminalBinding = Pick<Conversation, 'id'> & { generation: number }
 export type TerminalLook = {
   cursorStyle?: 'block' | 'bar' | 'underline'
   scrollback?: number
+  screenReader?: boolean
   theme?: ITheme
 }
 
@@ -84,6 +85,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   const fontSizeRef = useRef(fontSize)
   const lookRef = useRef(look)
   const inputDisabledRef = useRef(inputDisabled)
+  const focusedRef = useRef(focused)
   const onInputRef = useRef(onInput)
   useEffect(() => { onInputRef.current = onInput })
   const onOpenPathRef = useRef(onOpenPath)
@@ -155,14 +157,14 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
 
         emulator = new TerminalEmulator({
           allowTransparency: true,
-          cursorBlink: true,
+          cursorBlink: focusedRef.current,
           cursorStyle: lookRef.current.cursorStyle ?? 'block',
           disableStdin: inputDisabledRef.current,
           fontFamily: FONT_FAMILY,
           fontSize: fontSizeRef.current,
           lineHeight: LINE_HEIGHT,
           scrollback: lookRef.current.scrollback ?? DEFAULT_SCROLLBACK_LINES,
-          screenReaderMode: true,
+          screenReaderMode: lookRef.current.screenReader ?? false,
           theme: lookRef.current.theme ?? DEFAULT_THEME,
         })
         const terminalInstance = emulator
@@ -349,6 +351,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     if (!emulator) return
     if (look.cursorStyle && emulator.options.cursorStyle !== look.cursorStyle) emulator.options.cursorStyle = look.cursorStyle
     if (look.scrollback && emulator.options.scrollback !== look.scrollback) emulator.options.scrollback = look.scrollback
+    if (look.screenReader !== undefined && emulator.options.screenReaderMode !== look.screenReader) emulator.options.screenReaderMode = look.screenReader
     if (look.theme && emulator.options.theme !== look.theme) emulator.options.theme = look.theme
   }, [look])
 
@@ -359,6 +362,9 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   }, [inputDisabled])
 
   useEffect(() => {
+    focusedRef.current = focused
+    // A blinking cursor repaints its pane twice a second, so only the pane you are in blinks.
+    if (terminal.current) terminal.current.options.cursorBlink = focused
     if (focused && !connecting) terminal.current?.focus()
   }, [focused, connecting])
 

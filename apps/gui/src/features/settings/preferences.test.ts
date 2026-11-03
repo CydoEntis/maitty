@@ -23,7 +23,7 @@ const DEFAULTS: SettingsPreferences = {
   scrollback: 10000,
   effectWorking: true,
   effectNeedsYou: true,
-  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, style: 'glass', projectColors: {},
+  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, style: 'glass', projectColors: {},
 }
 
 describe('settings preferences', () => {

@@ -373,6 +373,9 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
         <Row label="Lines kept per pane" detail="Older output is dropped from the GUI. maittyd keeps the full history.">
           <Segmented label="Lines kept per pane" value={preferences.scrollback} options={SCROLLBACKS} onChange={(value) => { update('scrollback', value) }} />
         </Row>
+        <Row label="Screen reader support" detail="Mirrors each terminal's text into the page so a screen reader can read it. It makes every pane much heavier to draw, so leave it off unless you use one.">
+          <Switch label="Screen reader support" checked={preferences.terminalScreenReader} onChange={(value) => { update('terminalScreenReader', value) }} />
+        </Row>
       </Card>
     </>
   )
