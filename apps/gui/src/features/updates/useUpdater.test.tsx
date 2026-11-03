@@ -7,8 +7,8 @@ vi.mock('./updater', () => ({ checkForUpdate: vi.fn(), restartApp: vi.fn() }))
 
 const check = vi.mocked(checkForUpdate)
 
-function newer(install: UpdateHandle['install'] = () => Promise.resolve()): UpdateHandle {
-  return { info: { version: '0.59.0', notes: '- New: a thing' }, install }
+function newer(download: UpdateHandle['download'] = () => Promise.resolve(), install: UpdateHandle['install'] = () => Promise.resolve()): UpdateHandle {
+  return { info: { version: '0.59.0', notes: '- New: a thing' }, download, install }
 }
 
 beforeEach(() => {
@@ -23,30 +23,35 @@ describe('updater', () => {
     await waitFor(() => { expect(result.current.state.status).toBe('current') })
   })
 
-  it('offers a newer release without installing it', async () => {
+  it('offers a newer release without downloading or installing it', async () => {
+    const download = vi.fn(() => Promise.resolve())
     const install = vi.fn(() => Promise.resolve())
-    check.mockResolvedValue(newer(install))
+    check.mockResolvedValue(newer(download, install))
     const { result } = renderHook(() => useUpdater())
     await waitFor(() => { expect(result.current.state).toEqual({ status: 'available', version: '0.59.0', notes: '- New: a thing' }) })
+    expect(download).not.toHaveBeenCalled()
     expect(install).not.toHaveBeenCalled()
   })
 
   it('downloads with progress, then waits for a restart', async () => {
     let report: (fraction: number | null) => void = () => {}
     let finish: () => void = () => {}
-    check.mockResolvedValue(newer((onProgress) => { report = onProgress; return new Promise<void>((resolve) => { finish = resolve }) }))
+    const install = vi.fn(() => Promise.resolve())
+    check.mockResolvedValue(newer((onProgress) => { report = onProgress; return new Promise<void>((resolve) => { finish = resolve }) }, install))
     const { result } = renderHook(() => useUpdater())
     await waitFor(() => { expect(result.current.state.status).toBe('available') })
 
-    act(() => { result.current.install() })
+    act(() => { result.current.download() })
     expect(result.current.state).toEqual({ status: 'downloading', version: '0.59.0', progress: null })
     act(() => { report(0.5) })
     expect(result.current.state).toEqual({ status: 'downloading', version: '0.59.0', progress: 0.5 })
     act(() => { finish() })
     await waitFor(() => { expect(result.current.state).toEqual({ status: 'ready', version: '0.59.0' }) })
 
+    expect(install).not.toHaveBeenCalled()
     act(() => { result.current.restart() })
-    expect(vi.mocked(restartApp)).toHaveBeenCalledOnce()
+    await waitFor(() => { expect(vi.mocked(restartApp)).toHaveBeenCalledOnce() })
+    expect(install).toHaveBeenCalledOnce()
   })
 
   it('keeps a failed check quiet in the banner and reports it for Settings, and a retry can succeed', async () => {
@@ -61,11 +66,11 @@ describe('updater', () => {
     await waitFor(() => { expect(result.current.state.status).toBe('available') })
   })
 
-  it('reports a failed install and does not claim it is installed', async () => {
+  it('reports a failed download and does not claim it is ready', async () => {
     check.mockResolvedValue(newer(() => Promise.reject(new Error('signature mismatch'))))
     const { result } = renderHook(() => useUpdater())
     await waitFor(() => { expect(result.current.state.status).toBe('available') })
-    act(() => { result.current.install() })
+    act(() => { result.current.download() })
     await waitFor(() => { expect(result.current.state).toEqual({ status: 'failed', message: 'signature mismatch' }) })
   })
 

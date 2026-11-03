@@ -31,12 +31,14 @@ export type SidebarProps = {
   canExpand: boolean
   /** The tab (counting from 1) each session is open in; empty when only one tab is open. */
   tabOf: ReadonlyMap<string, number>
+  tabPanes: ReadonlyMap<string, readonly SessionView[]>
   /** The pane (counting from 1) each session has in its tab; absent for a session no tab shows. */
   paneOf: ReadonlyMap<string, number>
   /** How a project's other sessions sit under its main row, and which session leads it. */
   trayStyle: TrayStyle
   leadMode: LeadMode
   /** The docked sidebar's width in px, and how the user changes it by dragging its edge. */
+  side: 'left' | 'right'
   width: number
   onResize: (width: number) => void
   onResizeEnd: (width: number) => void
@@ -53,12 +55,11 @@ export type SidebarProps = {
   /** Opens the rename dialog, for a session with no room to rename it in place. */
   onRenameSession: (id: string) => void
   onPinSession: (id: string, pinned: boolean) => void
-  /** Puts a session away from the lists; it keeps running. */
-  onArchiveSession: (id: string) => void
-  /** The sessions put away, and bringing one back. */
-  archived: SessionView[]
-  onRestoreSession: (id: string) => void
   onOpenSettings: () => void
+  /** The footer's left slot while the daemon is reachable: the version, or an update that needs you. */
+  updateSlot: ReactNode
+  /** The rail's download button, present only while an update exists. */
+  railUpdateSlot: ReactNode
 }
 
 
@@ -91,23 +92,19 @@ export function Sidebar(props: SidebarProps) {
   return (
     <nav aria-label="Sessions by project" className={className}>
       {mode === 'rail' ? <Rail {...props} isOpen={isOpen} onToggleGroup={toggle} remembered={remembered} /> : <Expanded {...props} isOpen={isOpen} onToggleGroup={toggle} remembered={remembered} />}
-      {mode === 'docked' && <SidebarResizer width={props.width} onResize={props.onResize} onResizeEnd={props.onResizeEnd} onDragging={setResizing} />}
+      {mode === 'docked' && <SidebarResizer side={props.side} width={props.width} onResize={props.onResize} onResizeEnd={props.onResizeEnd} onDragging={setResizing} />}
     </nav>
   )
 }
 
 type GroupProps = SidebarProps & { isOpen: (group: SessionGroup) => boolean; onToggleGroup: (key: string) => void; remembered: ReadonlyMap<string, string> }
 
-function DaemonFooterText({ online, sessionCount }: Pick<SidebarProps, 'online' | 'sessionCount'>) {
-  return <>{online ? `maittyd · ${String(sessionCount)} session${sessionCount === 1 ? '' : 's'}` : 'Reconnecting to maittyd…'}</>
-}
-
 function Expanded(props: GroupProps) {
-  const { groups, mode, primary, online, sessionCount, isOpen, onToggleGroup } = props
+  const { groups, mode, primary, online, isOpen, onToggleGroup } = props
   const hover = useRailHover()
   return (
     <div className="mx-sidebar-expanded">
-      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
+      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} tracks={props.tracks} now={props.now} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
       <div className="mx-sidebar-head">
         <span className="mx-sidebar-title">Projects</span>
         <span className="mx-spacer" />
@@ -126,7 +123,6 @@ function Expanded(props: GroupProps) {
                 <Icon name="chevron" />
                 <span className={`mx-folder-tile${group.containsFocused ? ' is-focused' : ''}`} style={folderStyle(group.key, group.colorId)}><Icon name="folder" /></span>
                 <span className="mx-group-name">{group.name}</span>
-                {group.branch && <span className="mx-group-branch">{group.branch}</span>}
                 <span className="mx-spacer" />
                 {!open && online && group.workingCount > 0 && <Spinner />}
                 {online && group.needsCount > 0 && <span className="mx-needs-text">{NEEDS_SUFFIX(group.needsCount)}</span>}
@@ -152,7 +148,6 @@ function Expanded(props: GroupProps) {
                     onSetName={props.onSetName}
                     onRenameSession={props.onRenameSession}
                     onPinSession={props.onPinSession}
-                    onArchiveSession={props.onArchiveSession}
                     onEndSession={props.onEndSession}
                   />
                 </div>
@@ -162,10 +157,10 @@ function Expanded(props: GroupProps) {
         })}
         {groups.length === 0 && <div className="mx-empty-note">No sessions. Projects show up here when a session cds into a git repo.</div>}
       </div>
-      {props.archived.length > 0 && <ArchivedSection sessions={props.archived} onRestore={props.onRestoreSession} />}
       <div className="mx-sidebar-foot">
-        <span className={`mx-daemon-dot${online ? '' : ' is-offline'}`} aria-hidden="true" />
-        <span className={`mx-daemon-text${online ? '' : ' is-offline'}`} role="status"><DaemonFooterText online={online} sessionCount={sessionCount} /></span>
+        {online
+          ? <span className="mx-foot-slot">{props.updateSlot}</span>
+          : <><span className="mx-daemon-dot is-offline" aria-hidden="true" /><span className="mx-daemon-text is-offline" role="status">Reconnecting to maittyd…</span></>}
         <button type="button" className="mx-settings-button" title={`Settings (${primary},)`} onClick={props.onOpenSettings}><Icon name="gear" />Settings</button>
       </div>
     </div>
@@ -199,35 +194,6 @@ function RailSessionButton(props: { session: SessionView; track: SessionTrack | 
       </button>
       {menu.element}
     </>
-  )
-}
-
-/** Sessions put away: still running, out of the project lists and tabs, until restored. */
-function ArchivedSection({ sessions, onRestore }: { sessions: SessionView[]; onRestore: (id: string) => void }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <section className="mx-archived" aria-label="Archived sessions">
-      <button type="button" className="mx-archived-head" aria-expanded={open} title="Archived sessions keep running" onClick={() => { setOpen(!open) }}>
-        <Icon name="chevron" />
-        <Icon name="archive" size={13} />
-        <span>Archived</span>
-        <span className="mx-count">{sessions.length}</span>
-      </button>
-      {open && (
-        <ul className="mx-archived-list">
-          {sessions.map((session) => (
-            <li key={session.id}>
-              <AppIcon process={session.process} size={20} dimmed={session.status === 'unknown'} />
-              <span className="mx-archived-text">
-                <span className="mx-archived-name">{displayName(session)}</span>
-                <span className="mx-archived-proc">{session.process}</span>
-              </span>
-              <button type="button" className="mx-scard-button" aria-label={`Restore ${displayName(session)}`} onClick={() => { onRestore(session.id) }}>Restore</button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   )
 }
 
@@ -270,7 +236,7 @@ function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle,
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={onToggle}>{open ? 'Collapse' : 'Expand'}</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { void navigator.clipboard.writeText(group.key) }}>Copy path</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
-          <ContextMenuPrimitive.Item className="mx-menu-item is-danger" disabled={!online} onSelect={onEnd}>Close project<span className="mx-menu-hint">ends {group.sessions.length === 1 ? '1 session' : `${String(group.sessions.length)} sessions`}</span></ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item className="mx-menu-item is-danger" disabled={!online} onSelect={onEnd}>Close project tabs ({group.sessions.length})<span className="mx-menu-hint">ends {group.sessions.length === 1 ? '1 session' : `${String(group.sessions.length)} sessions`}</span></ContextMenuPrimitive.Item>
         </ContextMenuPrimitive.Content>
       </ContextMenuPrimitive.Portal>
     </ContextMenuPrimitive.Root>
@@ -282,7 +248,7 @@ function Rail(props: GroupProps) {
   const hover = useRailHover()
   return (
     <div className="mx-rail">
-      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
+      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} tracks={props.tracks} now={props.now} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
       <div className="mx-rail-top">
         {props.canExpand && <button type="button" className="mx-icon-button mx-rail-button" aria-label="Expand sidebar" title={`Expand sidebar (${primary}B)`} onClick={props.onToggleRail}><Icon name="expand" /></button>}
         <button type="button" className="mx-icon-button mx-rail-button mx-rail-new" aria-label="New session" title={`New session (${primary}T)`} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" /></button>
@@ -313,7 +279,6 @@ function Rail(props: GroupProps) {
                         onShow: () => { props.onShowSession(session.id) },
                         onRename: () => { props.onRenameSession(session.id) },
                         onPin: (pinned) => { props.onPinSession(session.id, pinned) },
-                        onArchive: () => { props.onArchiveSession(session.id) },
                         onEnd: () => { props.onEndSession(session.id) },
                       }}
                     />
@@ -325,6 +290,7 @@ function Rail(props: GroupProps) {
         })}
       </div>
       <div className="mx-rail-bottom">
+        {props.railUpdateSlot}
         <span className={`mx-daemon-dot${online ? '' : ' is-offline'}`} role="img" aria-label={online ? `maittyd · ${String(sessionCount)} sessions` : 'Reconnecting to maittyd…'} title={online ? `maittyd · ${String(sessionCount)} sessions` : 'Reconnecting to maittyd…'} />
         <button type="button" className="mx-icon-button mx-rail-button" aria-label="Settings" title={`Settings (${primary},)`} onClick={props.onOpenSettings}><Icon name="gear" /></button>
       </div>

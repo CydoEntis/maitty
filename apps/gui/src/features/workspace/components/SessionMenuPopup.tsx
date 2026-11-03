@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { displayName, type SessionView } from '../model/session'
 import type { SessionMenuActions } from './SessionMenu'
 import { Icon } from './glyphs'
+import { runsAgent, useArmed } from './useArmed'
 
 const MENU_WIDTH_PX = 260
 const MENU_HEIGHT_PX = 190
@@ -13,6 +14,7 @@ type Props = { session: SessionView; actions: SessionMenuActions; at: { x: numbe
 export function SessionMenuPopup({ session, actions, at, onClose }: Props) {
   const root = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
+  const closing = useArmed(runsAgent(session.process))
   useEffect(() => { close.current = onClose })
 
   useEffect(() => {
@@ -46,12 +48,15 @@ export function SessionMenuPopup({ session, actions, at, onClose }: Props) {
         <Icon name="pin" size={13} />{session.pinned ? 'Unpin' : 'Pin to top'}
       </button>
       <button type="button" role="menuitem" className="mx-menu-item" onClick={run(actions.onShow)}><span className="mx-sm-gap" />Open</button>
-      <button type="button" role="menuitem" className="mx-menu-item" onClick={run(actions.onArchive)}>
-        <Icon name="archive" size={13} />Archive<span className="mx-menu-hint" aria-hidden="true">keeps running</span>
-      </button>
       <div className="mx-menu-sep" />
-      <button type="button" role="menuitem" className="mx-menu-item is-danger" disabled={!actions.online} onClick={run(actions.onEnd)}>
-        <span className="mx-sm-gap" />Close session<span className="mx-menu-hint" aria-hidden="true">ends it</span>
+      <button
+        type="button"
+        role="menuitem"
+        className={`mx-menu-item is-danger${closing.armed ? ' is-armed' : ''}`}
+        disabled={!actions.online}
+        onClick={() => { if (closing.press()) run(actions.onEnd)() }}
+      >
+        <span className="mx-sm-gap" />{closing.armed ? `Close and stop ${session.process}? Click again` : 'Close session'}<span className="mx-menu-hint" aria-hidden="true">{closing.armed ? '' : 'ends it'}</span>
       </button>
     </div>
   )

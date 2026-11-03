@@ -16,6 +16,7 @@ const ICON_COLUMNS = 6
 
 /** How far beside the sidebar the +N menu opens, and how close to the window's top it may sit. */
 const MENU_GAP_PX = 8
+const MENU_WIDTH_PX = 300
 const MENU_TOP_MARGIN_PX = 12
 const MENU_RISE_PX = 60
 
@@ -47,7 +48,6 @@ export type StackProps = {
   /** Opens the rename dialog, for a session with no room to rename it in place. */
   onRenameSession: (id: string) => void
   onPinSession: (id: string, pinned: boolean) => void
-  onArchiveSession: (id: string) => void
   onEndSession: (id: string) => void
 }
 
@@ -97,12 +97,11 @@ export function SessionStack(props: StackProps) {
         onShow={() => { props.onShowSession(lead.id) }}
         onSetName={(name) => { props.onSetName(lead.id, name) }}
         onPin={(pinned) => { props.onPinSession(lead.id, pinned) }}
-        onArchive={() => { props.onArchiveSession(lead.id) }}
         onEnd={() => { props.onEndSession(lead.id) }}
       />
       {hasTray && (
         <div role="group" aria-label={trayLabel} className={`mx-tray is-${props.trayStyle}${plan.hidden > 0 ? ' has-more' : ''}`} style={stacked ? undefined : { gridTemplateColumns: trayColumns(props.trayStyle, plan.shown.length, plan.hidden > 0) }}>
-          {plan.shown.map((session) => <TrayItem key={session.id} hover={props.hover} session={session} style={props.trayStyle} track={tracks.get(session.id)} now={now} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} actions={{ online: props.online, portalContainer: props.portalContainer, onShow: () => { props.onShowSession(session.id) }, onRename: () => { props.onRenameSession(session.id) }, onPin: (pinned) => { props.onPinSession(session.id, pinned) }, onArchive: () => { props.onArchiveSession(session.id) }, onEnd: () => { props.onEndSession(session.id) } }} />)}
+          {plan.shown.map((session) => <TrayItem key={session.id} hover={props.hover} session={session} style={props.trayStyle} track={tracks.get(session.id)} now={now} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} actions={{ online: props.online, portalContainer: props.portalContainer, onShow: () => { props.onShowSession(session.id) }, onRename: () => { props.onRenameSession(session.id) }, onPin: (pinned) => { props.onPinSession(session.id, pinned) }, onEnd: () => { props.onEndSession(session.id) } }} />)}
           {plan.hidden > 0 && (
             <button type="button" className={`mx-tray-more${plan.hiddenNeeds ? ' is-needs' : ''}${menuAnchor ? ' is-open' : ''}`} aria-haspopup="menu" aria-expanded={menuAnchor !== null} aria-label={moreLabel} title={moreLabel} onClick={(event) => { setMenuAnchor(menuAnchor ? null : event.currentTarget.getBoundingClientRect()) }}>
               {stacked ? `+${String(plan.hidden)} more` : `+${String(plan.hidden)}`}
@@ -161,7 +160,8 @@ function StackMenu({ group, focusedId, tracks, now, anchor, activity, portalCont
     return () => { window.removeEventListener('keydown', onKey, true) }
   }, [onClose])
   const sidebar = portalContainer?.querySelector('nav.mx-sidebar')?.getBoundingClientRect()
-  const left = (sidebar?.right ?? anchor.right) + MENU_GAP_PX
+  const onRight = portalContainer?.dataset.side === 'right'
+  const left = onRight ? (sidebar?.left ?? anchor.left) - MENU_GAP_PX - MENU_WIDTH_PX : (sidebar?.right ?? anchor.right) + MENU_GAP_PX
   const top = Math.max(MENU_TOP_MARGIN_PX, anchor.top - MENU_RISE_PX)
   const sessions = [...group.sessions].sort(byPriority(activity))
   return (

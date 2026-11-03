@@ -373,6 +373,9 @@ impl App {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as usize)
             .unwrap_or(0);
+        // A name made up here starts a new branch from this checkout. Giving the daemon a base stops it
+        // checking out an old `origin/<name>` branch that happens to share the name.
+        let base = branch.is_none().then(|| "HEAD".to_string());
         let branch = branch.unwrap_or_else(|| {
             (0..WT_NAMES.len())
                 .map(|i| WT_NAMES[(n + i) % WT_NAMES.len()].to_string())
@@ -395,7 +398,7 @@ impl App {
         self.cmd(Command::NewWorktree {
             ws,
             branch,
-            base: None,
+            base,
             cmd,
             split: None,
             from: Some(proj.path.clone()),

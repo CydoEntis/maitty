@@ -17,6 +17,8 @@ export type ShortcutAction =
   | 'broadcast'
   | 'focus-mode'
   | 'shortcuts'
+  | 'text-larger'
+  | 'text-smaller'
 
 type KeyInput = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>
 
@@ -31,6 +33,8 @@ export function matchShortcut(event: KeyInput, mac: boolean): ShortcutAction | n
   if (!primary) return null
   const key = event.key.toLowerCase()
   if (key === 'd') return event.shiftKey ? 'split-down' : 'split-right'
+  if (key === '=' || key === '+') return 'text-larger'
+  if (key === '-') return 'text-smaller'
   if (event.shiftKey) {
     if (key === 'b') return 'broadcast'
     return key === 'n' ? 'new-worktree' : null
@@ -110,6 +114,8 @@ export function hotkeyRows(mac: boolean): HotkeyRow[] {
     { action: 'Interrupt', group: 'Sessions', chords: [[control, 'C']] },
     { action: 'Clear screen', group: 'Sessions', chords: [[control, 'L']] },
     { action: 'Settings', group: 'Window', chords: [[primary, ',']] },
+    { action: 'Larger text', group: 'Window', chords: [[primary, '=']] },
+    { action: 'Smaller text', group: 'Window', chords: [[primary, '−']] },
     { action: 'Keyboard shortcuts', group: 'Window', chords: [[primary, '/']] },
   ]
 }

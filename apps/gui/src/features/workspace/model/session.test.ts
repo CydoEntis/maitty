@@ -96,9 +96,9 @@ describe('session view', () => {
   it('groups a shell outside any repo by its own folder, not under a catch-all', () => {
     const sessions = [conversation(1, `${HOME}/personal/dynamic-ui`), repo(2, `${HOME}/maitty`, `${HOME}/maitty`)].map((item) => toSessionView(item, HOME))
     const groups = groupSessions(sessions, 'repo', null, HOME)
-    expect(groups.map((group) => [group.name, group.kind, group.branch])).toEqual([
-      ['dynamic-ui', 'folder', null],
-      ['maitty', 'repo', 'main'],
+    expect(groups.map((group) => [group.name, group.kind])).toEqual([
+      ['dynamic-ui', 'folder'],
+      ['maitty', 'repo'],
     ])
   })
 
@@ -215,5 +215,10 @@ describe('start folder', () => {
     await expect(folderExists('C:\\dev\\maitty')).resolves.toBe(true)
     await expect(folderExists('')).resolves.toBe(true)
     await expect(folderExists('/')).resolves.toBe(true)
+  })
+
+  it('strips markup an agent quotes and collapses whitespace in a quoted line', () => {
+    expect(truncatePrompt('<task-notification>\n  <task-id>bel0</task-id>   done </task-notification>')).toBe('bel0 done')
+    expect(truncatePrompt('compare a < b and c > d')).toBe('compare a < b and c > d')
   })
 })

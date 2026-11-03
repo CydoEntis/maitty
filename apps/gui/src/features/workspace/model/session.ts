@@ -56,7 +56,8 @@ const PROMPT_PREVIEW_CHARS = 160
 
 /** A prompt on one line, cut to a readable length. */
 export function truncatePrompt(text: string, limit = PROMPT_PREVIEW_CHARS): string {
-  const line = text.replace(/\s+/g, ' ').trim()
+  // Agents sometimes quote their own markup (`<task-notification>`); a card never shows it.
+  const line = text.replace(/<\/?[a-z][\w-]*(?:\s[^>]*)?>/gi, ' ').replace(/\s+/g, ' ').trim()
   return line.length <= limit ? line : `${line.slice(0, limit - 1).trimEnd()}…`
 }
 
@@ -208,7 +209,6 @@ export type SessionGroup = {
   kind: 'repo' | 'folder'
   /** Shown on hover: the repo or folder path. */
   path: string
-  branch: string | null
   sessions: SessionView[]
   containsFocused: boolean
   /** The colour the user gave the project (a `PROJECT_COLORS` id); undefined takes the one chosen from its path. */
@@ -234,7 +234,6 @@ export function groupSessions(sessions: readonly SessionView[], groupBy: GroupBy
         name: repoRoot ? (session.repoName ?? baseName(key)) : session.cwdLabel === '~' ? '~' : baseName(key),
         kind: repoRoot ? 'repo' : 'folder',
         path: tildePath(key, home),
-        branch: repoRoot ? session.branch : null,
         sessions: [],
         containsFocused: false,
         colorId: undefined,

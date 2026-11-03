@@ -206,13 +206,26 @@ pub fn create_worktree(
     Ok((path, repo))
 }
 
-/// The repository's local branches.
-pub fn branches(dir: &Path) -> Vec<String> {
+/// Branch names a made-up one must avoid: the local branches and `origin`'s, since
+/// `create_worktree` checks out an existing remote branch of the same name.
+pub fn branch_names_in_use(dir: &Path) -> Vec<String> {
+    const LOCAL: &str = "refs/heads/";
+    const REMOTE: &str = "refs/remotes/origin/";
     git(
         dir,
-        &["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+        &[
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/heads",
+            "refs/remotes/origin",
+        ],
     )
-    .map(|s| s.lines().map(str::to_string).collect())
+    .map(|s| {
+        s.lines()
+            .filter_map(|r| r.strip_prefix(LOCAL).or_else(|| r.strip_prefix(REMOTE)))
+            .map(str::to_string)
+            .collect()
+    })
     .unwrap_or_default()
 }
 
@@ -651,5 +664,65 @@ mod tests {
                 .is_empty()
         );
         assert!(conversation_file(project.path(), "linked/secret.txt").is_err());
+    }
+
+    #[test]
+    fn branch_names_in_use_counts_local_and_origin_branches_but_not_other_refs() {
+        let repository = crate::daemon::persist::scratch_dir();
+        std::fs::create_dir_all(repository.path()).expect("repository directory");
+        let at = repository.path();
+        git_at(at, &["init", "--quiet"]);
+        git_at(at, &["config", "user.name", "Test User"]);
+        git_at(at, &["config", "user.email", "test@example.invalid"]);
+        git_at(at, &["commit", "--quiet", "--allow-empty", "-m", "first"]);
+        git_at(at, &["branch", "feat/local"]);
+        git_at(
+            at,
+            &["update-ref", "refs/remotes/origin/swift-lynx", "HEAD"],
+        );
+        git_at(at, &["update-ref", "refs/remotes/upstream/other", "HEAD"]);
+        git_at(at, &["tag", "v1"]);
+
+        let names = branch_names_in_use(at);
+
+        assert!(names.contains(&"feat/local".to_string()), "{names:?}");
+        assert!(names.contains(&"swift-lynx".to_string()), "{names:?}");
+        assert!(!names.contains(&"other".to_string()), "{names:?}");
+        assert!(!names.contains(&"v1".to_string()), "{names:?}");
+    }
+
+    fn head_of(dir: &Path) -> String {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .expect("git should run");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    #[test]
+    fn a_worktree_with_a_base_starts_fresh_instead_of_reusing_an_origin_branch_of_that_name() {
+        let tmp = crate::daemon::persist::scratch_dir();
+        let repo = tmp.path().join("shop");
+        std::fs::create_dir_all(&repo).expect("repository directory");
+        git_at(&repo, &["init", "--quiet"]);
+        git_at(&repo, &["config", "user.name", "Test User"]);
+        git_at(&repo, &["config", "user.email", "test@example.invalid"]);
+        git_at(&repo, &["remote", "add", "origin", "https://example.invalid/shop.git"]);
+        git_at(&repo, &["commit", "--quiet", "--allow-empty", "-m", "old"]);
+        let old = head_of(&repo);
+        git_at(&repo, &["update-ref", "refs/remotes/origin/swift-lynx", "HEAD"]);
+        git_at(&repo, &["commit", "--quiet", "--allow-empty", "-m", "new"]);
+        let new = head_of(&repo);
+        let template = "{repo_parent}/{repo}-worktrees/{branch}";
+
+        let (reused, _) = create_worktree(&repo, "swift-lynx", None, template).expect("worktree");
+        assert_eq!(head_of(&reused), old, "no base: the old origin branch is checked out");
+        git_at(&repo, &["worktree", "remove", "--force", reused.to_str().expect("path")]);
+        git_at(&repo, &["branch", "-D", "swift-lynx"]);
+
+        let (fresh, _) = create_worktree(&repo, "swift-lynx", Some("HEAD"), template).expect("worktree");
+        assert_eq!(head_of(&fresh), new, "a base: a new branch from the current checkout");
     }
 }

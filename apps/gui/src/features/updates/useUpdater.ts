@@ -15,7 +15,7 @@ function messageOf(error: unknown): string {
   return typeof error === 'string' ? error : 'Could not reach the update server.'
 }
 
-/** Checks for a newer release once on launch, and again when asked. Nothing installs until `install` is called. */
+/** Checks for a newer release once on launch, and again when asked. Nothing is installed until `restart` is called. */
 export function useUpdater() {
   const [state, setState] = useState<UpdaterState>({ status: 'idle' })
   const [dismissed, setDismissed] = useState(false)
@@ -38,22 +38,27 @@ export function useUpdater() {
     settle(checkForUpdate())
   }, [settle])
 
-  const install = useCallback(() => {
+  const download = useCallback(() => {
     const found = handle.current
     if (!found) return
     const { version } = found.info
     setState({ status: 'downloading', version, progress: null })
     found
-      .install((progress) => { setState({ status: 'downloading', version, progress }) })
+      .download((progress) => { setState({ status: 'downloading', version, progress }) })
       .then(() => { setState({ status: 'ready', version }) })
       .catch((error: unknown) => { setState({ status: 'failed', message: messageOf(error) }) })
   }, [])
 
+  // Installing waits for this: the download alone changes nothing on disk that is running.
   const restart = useCallback(() => {
-    restartApp().catch((error: unknown) => { setState({ status: 'failed', message: messageOf(error) }) })
+    const found = handle.current
+    if (!found) return
+    found.install()
+      .then(restartApp)
+      .catch((error: unknown) => { setState({ status: 'failed', message: messageOf(error) }) })
   }, [])
 
-  return { state, dismissed, check, install, restart, dismiss: () => { setDismissed(true) } }
+  return { state, dismissed, check, download, restart, dismiss: () => { setDismissed(true) } }
 }
 
 /** One line for Settings. */
@@ -64,7 +69,7 @@ export function updaterSummary(state: UpdaterState): string {
     case 'current': return 'You are on the latest version.'
     case 'available': return `Maitty ${state.version} is available.`
     case 'downloading': return `Downloading Maitty ${state.version}…`
-    case 'ready': return `Maitty ${state.version} is installed. Restart to use it.`
+    case 'ready': return `Maitty ${state.version} is downloaded. Restart to use it.`
     case 'failed': return `Could not check for updates: ${state.message}`
   }
 }

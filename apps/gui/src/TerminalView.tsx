@@ -21,6 +21,7 @@ type TerminalBinding = Pick<Conversation, 'id'> & { generation: number }
 export type TerminalLook = {
   cursorStyle?: 'block' | 'bar' | 'underline'
   scrollback?: number
+  screenReader?: boolean
   theme?: ITheme
 }
 
@@ -44,6 +45,9 @@ type TerminalViewProps = {
 }
 
 type NativeConversation = Conversation & { generation: number; nativePane: number }
+
+/** What Shift+Enter sends: Alt+Enter, which Claude Code and Codex take as a new line in their prompt. */
+const NEW_LINE_KEYS = '\x1b\r'
 
 export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, focused = false, onInput, onOpenPath, onHandle }: TerminalViewProps) {
   if (!desktop) return null
@@ -81,6 +85,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   const fontSizeRef = useRef(fontSize)
   const lookRef = useRef(look)
   const inputDisabledRef = useRef(inputDisabled)
+  const focusedRef = useRef(focused)
   const onInputRef = useRef(onInput)
   useEffect(() => { onInputRef.current = onInput })
   const onOpenPathRef = useRef(onOpenPath)
@@ -152,14 +157,14 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
 
         emulator = new TerminalEmulator({
           allowTransparency: true,
-          cursorBlink: true,
+          cursorBlink: focusedRef.current,
           cursorStyle: lookRef.current.cursorStyle ?? 'block',
           disableStdin: inputDisabledRef.current,
           fontFamily: FONT_FAMILY,
           fontSize: fontSizeRef.current,
           lineHeight: LINE_HEIGHT,
           scrollback: lookRef.current.scrollback ?? DEFAULT_SCROLLBACK_LINES,
-          screenReaderMode: true,
+          screenReaderMode: lookRef.current.screenReader ?? false,
           theme: lookRef.current.theme ?? DEFAULT_THEME,
         })
         const terminalInstance = emulator
@@ -283,6 +288,12 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         const fonts = (document as { fonts?: FontFaceSet }).fonts
         void fonts?.ready.then(() => { refitTerminal.current?.() })
 
+        // A terminal sends the same byte for Shift+Enter as for Enter. Agents read ESC then Enter (Alt+Enter) as "new line", so that is what goes.
+        terminalInstance.attachCustomKeyEventHandler((event) => {
+          if (event.key !== 'Enter' || !event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return true
+          if (event.type === 'keydown') send(NEW_LINE_KEYS)
+          return false
+        })
         const inputSubscription = terminalInstance.onData(send)
         const binarySubscription = terminalInstance.onBinary((data) => {
           send(Uint8Array.from(data, (character) => character.charCodeAt(0)))
@@ -340,6 +351,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     if (!emulator) return
     if (look.cursorStyle && emulator.options.cursorStyle !== look.cursorStyle) emulator.options.cursorStyle = look.cursorStyle
     if (look.scrollback && emulator.options.scrollback !== look.scrollback) emulator.options.scrollback = look.scrollback
+    if (look.screenReader !== undefined && emulator.options.screenReaderMode !== look.screenReader) emulator.options.screenReaderMode = look.screenReader
     if (look.theme && emulator.options.theme !== look.theme) emulator.options.theme = look.theme
   }, [look])
 
@@ -350,6 +362,9 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   }, [inputDisabled])
 
   useEffect(() => {
+    focusedRef.current = focused
+    // A blinking cursor repaints its pane twice a second, so only the pane you are in blinks.
+    if (terminal.current) terminal.current.options.cursorBlink = focused
     if (focused && !connecting) terminal.current?.focus()
   }, [focused, connecting])
 

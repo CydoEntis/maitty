@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { SettingsPreferences } from '../preferences'
 import { DesktopSettings, type DesktopSettingsSection } from './DesktopSettings'
 
-const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, style: 'glass', projectColors: {} }
+const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, style: 'glass', projectColors: {} }
 
 function renderSettings(section: DesktopSettingsSection, overrides: Partial<Parameters<typeof DesktopSettings>[0]> = {}) {
   const onChange = vi.fn()
@@ -21,6 +21,42 @@ describe('desktop settings', () => {
     const nav = screen.getByRole('navigation', { name: 'Settings sections' })
     expect(nav).toHaveTextContent('ESSENTIALSGeneralGTERMINALText & cursorTAppearanceAWORKSPACENotificationsNHotkeys?ADVANCEDDaemonD')
     expect(within(nav).getByRole('button', { name: /General/ })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('picks where notifications appear and shows a test card', async () => {
+    const user = userEvent.setup()
+    const onTestNotice = vi.fn()
+    const { onChange } = renderSettings('notifications', { onTestNotice })
+
+    expect(screen.getByRole('button', { name: 'Bottom right' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: 'Bottom left' }))
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ toastPosition: 'bottom-left' }))
+    await user.click(screen.getByRole('button', { name: 'Show a test' }))
+    expect(onTestNotice).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the update state with one fitting button and two switches', async () => {
+    const user = userEvent.setup()
+    const updates = { summary: 'Maitty 0.61.0 is available.', status: 'available' as const, onCheck: vi.fn(), onDownload: vi.fn(), onRestart: vi.fn() }
+    const { onChange } = renderSettings('general', { updates })
+
+    expect(screen.getByText('Update available')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Download' }))
+    expect(updates.onDownload).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('switch', { name: 'Download updates automatically' })).toBeChecked()
+    expect(screen.getByRole('switch', { name: 'Restart when nothing is running' })).not.toBeChecked()
+    await user.click(screen.getByRole('switch', { name: 'Restart when nothing is running' }))
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ restartWhenIdle: true }))
+  })
+
+  it('offers Restart now once the update is downloaded', async () => {
+    const user = userEvent.setup()
+    const updates = { summary: 'ready', status: 'ready' as const, onCheck: vi.fn(), onDownload: vi.fn(), onRestart: vi.fn() }
+    renderSettings('general', { updates })
+
+    await user.click(screen.getByRole('button', { name: 'Restart now' }))
+
+    expect(updates.onRestart).toHaveBeenCalledTimes(1)
   })
 
   it('has one switch each for needs you, done and error notifications', async () => {

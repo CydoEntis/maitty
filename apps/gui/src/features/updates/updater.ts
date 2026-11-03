@@ -4,8 +4,10 @@ export type AvailableUpdate = { version: string; notes: string }
 
 export type UpdateHandle = {
   info: AvailableUpdate
-  /** Downloads and installs it. The fraction is null while the size is unknown. */
-  install: (onProgress: (fraction: number | null) => void) => Promise<void>
+  /** Downloads it and leaves it ready. The fraction is null while the size is unknown. */
+  download: (onProgress: (fraction: number | null) => void) => Promise<void>
+  /** Installs what was downloaded. On Windows the installer quits the app; elsewhere restart afterwards. */
+  install: () => Promise<void>
 }
 
 /**
@@ -19,10 +21,11 @@ export async function checkForUpdate(): Promise<UpdateHandle | null> {
   if (!update) return null
   return {
     info: { version: update.version, notes: update.body ?? '' },
-    install: async (onProgress) => {
+    install: () => update.install(),
+    download: async (onProgress) => {
       let total = 0
       let received = 0
-      await update.downloadAndInstall((event) => {
+      await update.download((event) => {
         if (event.event === 'Started') total = event.data.contentLength ?? 0
         if (event.event === 'Progress') {
           received += event.data.chunkLength

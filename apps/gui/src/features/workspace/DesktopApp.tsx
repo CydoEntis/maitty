@@ -5,7 +5,6 @@ import {
   archiveConversationOnDaemon,
   markSeenOnDaemon,
   pinSessionOnDaemon,
-  archiveSessionOnDaemon,
   defaultSessionFolder,
   isDesktop,
   loadConversations,
@@ -19,7 +18,7 @@ import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
 import { DesktopSettings, type DesktopSettingsSection } from '@/features/settings/components/DesktopSettings'
-import { readSettingsPreferences, writeSettingsPreferences } from '@/features/settings/preferences'
+import { readSettingsPreferences, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, writeSettingsPreferences } from '@/features/settings/preferences'
 import { sizeVariables } from './model/layoutSize'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import { errorMessage } from '@/lib/error-message'
@@ -30,7 +29,7 @@ import { ColumnHandle } from './components/ColumnHandle'
 import { CommandPalette } from './components/CommandPalette'
 import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPanel'
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
-import { ConfirmEndDialog, type EndRequest } from './components/ConfirmEndDialog'
+import { runsAgent } from './components/useArmed'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { StatusBar } from './components/StatusBar'
@@ -39,7 +38,9 @@ import { isFirstRun, markWelcomed } from '@/features/welcome/welcomed'
 import { repoDiff, repoLocate } from '@/features/inspect/api'
 import { FindBar } from '@/features/find/FindBar'
 import { RestoreBanner } from './components/RestoreBanner'
-import { UpdateBanner } from '@/features/updates/UpdateBanner'
+import { UpdateSlot } from '@/features/updates/UpdateSlot'
+import { appVersion } from '@/features/updates/appVersion'
+import { markRestarting, skippedUpdate, skipUpdate, takeRestarted } from '@/features/updates/updateMemory'
 import { formatDroppedPaths } from '@/features/terminal/droppedPaths'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
@@ -58,9 +59,6 @@ import { EmptyState, OfflineBanner, Toast, type RestartOffer } from './component
 import { TabBar } from './components/TabBar'
 import {
   activeTab,
-  closeFocused,
-  closePane,
-  closeTab,
   dropSession,
   cycleFocus,
   cycleTab,
@@ -98,8 +96,17 @@ import './workspace.css'
 const SESSION_REFRESH_MS = 1500
 const COMPACT_WIDTH_PX = 1100
 const MIN_TABS_FOR_NUMBERS = 2
+/** A tab's hover card lists its panes only when it has more than one. */
+const MIN_PANES_FOR_LIST = 2
 const NARROW_WIDTH_PX = 900
 const TOAST_MS = 2600
+/** What clicking the status bar's size resets the terminal text to. */
+const DEFAULT_TEXT_SIZE = 14
+/** How long a second ⌘W confirms closing a session that is running a program. */
+const CLOSE_ARM_MS = 4000
+/** How long "Restarting Maitty" shows before the window relaunches. */
+const RESTART_SCREEN_MS = 1200
+const TEST_NOTICE_MS = 6000
 const SECOND_MS = 1000
 const SLOW_TICK_MS = 30_000
 const DIFF_STAT_REFRESH_MS = 8000
@@ -172,6 +179,9 @@ export function DesktopApp() {
   const systemReducedMotion = useSystemReducedMotion()
   const systemDark = useSystemDark()
   const updater = useUpdater()
+  const [runningVersion, setRunningVersion] = useState<string | null>(null)
+  const [skippedVersion, setSkippedVersion] = useState(skippedUpdate)
+  const [restarting, setRestarting] = useState(false)
   // A theme being hovered in Settings shows on the whole window until the pointer leaves or one is picked.
   const [previewTheme, setPreviewTheme] = useState<string | null>(null)
   const [welcomeOpen, setWelcomeOpen] = useState(isFirstRun)
@@ -199,7 +209,11 @@ export function DesktopApp() {
   const [lookAt, setLookAt] = useState<LookAt | null>(null)
   // Inbox entries the user cleared, by the status they had; an entry comes back if the session changes state.
   const [cleared, setCleared] = useState<ReadonlyMap<string, SessionView['status']>>(new Map())
-  const [toastMessage, setToastMessage] = useState<{ text: string; key: number } | null>(null)
+  // After a restart into an update, the first thing said is what happened to the sessions.
+  const [toastMessage, setToastMessage] = useState<{ text: string; key: number } | null>(() => {
+    const version = takeRestarted()
+    return version ? { text: `Maitty ${version} · every session kept running`, key: Date.now() } : null
+  })
   const [tracks, setTracks] = useState<ReadonlyMap<string, SessionTrack>>(new Map())
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropId, setDropId] = useState<string | null>(null)
@@ -240,11 +254,24 @@ export function DesktopApp() {
     const terminals = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal')
     return (online ? terminals : markConversationsDisconnected(terminals)).map((conversation) => toSessionView(conversation, home))
   }, [sessionsQuery.data, online, home])
-  // A session put away is out of the lists, tabs, inbox and counts, but still running in the daemon.
-  const sessions = useMemo(() => everySession.filter((session) => !session.archived), [everySession])
-  const archivedSessions = useMemo(() => everySession.filter((session) => session.archived), [everySession])
+  const sessions = everySession
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
   const focusedId = focusedSessionId(layout)
+  // A click anywhere outside the panes takes the border off the focused pane; a click in a pane, or focus moving to another pane, puts it back.
+  const focusedPaneId = activeTab(layout)?.focus ?? null
+  const [outsidePanes, setOutsidePanes] = useState(false)
+  const [seenFocusedPane, setSeenFocusedPane] = useState(focusedPaneId)
+  if (seenFocusedPane !== focusedPaneId) {
+    setSeenFocusedPane(focusedPaneId)
+    setOutsidePanes(false)
+  }
+  useEffect(() => {
+    const onMouseDown = (event: MouseEvent) => {
+      setOutsidePanes(!(event.target instanceof Element && event.target.closest('[data-pane]')))
+    }
+    document.addEventListener('mousedown', onMouseDown, true)
+    return () => { document.removeEventListener('mousedown', onMouseDown, true) }
+  }, [])
   const focusedSession = focusedId ? sessionMap.get(focusedId) : undefined
   // Files dropped on a pane type their paths into it; the pane under the pointer, else the focused one.
   useFileDrop((paths, at) => {
@@ -259,6 +286,16 @@ export function DesktopApp() {
     handle.focus()
   })
   const visibleKey = [...visibleSessionIds(layout)].sort().join(' ')
+  // For a session whose tab has other panes, all of that tab's sessions (the hover card lists them).
+  const tabPanes = useMemo(() => {
+    const panes = new Map<string, readonly SessionView[]>()
+    for (const candidate of layout.tabs) {
+      if (candidate.panes.length < MIN_PANES_FOR_LIST) continue
+      const shown = candidate.panes.flatMap((pane) => sessionMap.get(pane.sessionId) ?? [])
+      for (const session of shown) panes.set(session.id, shown)
+    }
+    return panes
+  }, [layout.tabs, sessionMap])
   // The tab each session is open in; the sidebar shows it only once there is more than one tab.
   const tabOf = useMemo(() => {
     const numbers = new Map<string, number>()
@@ -284,7 +321,7 @@ export function DesktopApp() {
 
   const reducedMotion = preferences.reduceMotion || systemReducedMotion
   const theme = findTheme(previewTheme ?? activeThemeName(preferences, systemDark))
-  const look = useMemo(() => ({ cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, theme: xtermTheme(theme.tokens) }), [preferences.cursorStyle, preferences.scrollback, theme])
+  const look = useMemo(() => ({ cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, screenReader: preferences.terminalScreenReader, theme: xtermTheme(theme.tokens) }), [preferences.cursorStyle, preferences.scrollback, preferences.terminalScreenReader, theme])
   const effects = useMemo(() => {
     const allowed = online && !reducedMotion
     return { working: allowed && preferences.effectWorking, needs: allowed && preferences.effectNeedsYou, done: allowed && preferences.effectDone }
@@ -438,54 +475,49 @@ export function DesktopApp() {
     runStart(async () => cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { setLayout((current) => splitPane(current, source?.id ?? null, direction, id, makeId)) })
   }, [layout, sessionMap, runStart, preferences.startFolder, home])
 
-  const closePaneById = useCallback((paneId: string) => {
-    setLayout((current) => closePane(current, paneId))
-    flash('Pane closed · the session keeps running')
-  }, [flash])
-
-  const closeTabById = useCallback((tabId: string) => {
-    setLayout((current) => closeTab(current, tabId, tabGroup))
-    flash('Tab closed · sessions keep running')
-  }, [flash, tabGroup])
-
-  // Ending a session kills its shell, so every path that ends one (row, pane, menus, whole project) asks first.
-  const [endRequest, setEndRequest] = useState<EndRequest | null>(null)
-
-  const endSession = useCallback((sessionId: string) => {
-    const session = sessions.find((candidate) => candidate.id === sessionId)
-    setEndRequest({ ids: [sessionId], label: session ? displayName(session) : 'this session' })
-  }, [sessions])
-
-  const endProject = useCallback((ids: string[], name: string) => { setEndRequest({ ids, label: name }) }, [])
-
-  const confirmEnd = useCallback(() => {
-    if (!endRequest) return
-    const { ids } = endRequest
-    setEndRequest(null)
-    void Promise.all(ids.map((id) => archiveConversationOnDaemon({ id }, true)))
+  // Closing a pane, tab or session ends it; there is no way back, so a program that is running asks for a second click first.
+  const [armedCloseAt, setArmedCloseAt] = useState(0)
+  const endSessions = useCallback((ids: string[], what: string) => {
+    const ended = sessions.filter((session) => ids.includes(session.id))
+    if (ended.length === 0) return
+    void Promise.all(ended.map((session) => archiveConversationOnDaemon({ id: session.id }, true)))
       .then(async () => {
-        const ended = new Set(ids)
-        setLayout((current) => reconcileLayout(current, new Set(sessions.map((session) => session.id).filter((id) => !ended.has(id)))))
-        flash(ids.length === 1 ? 'Session ended' : `${String(ids.length)} sessions ended`)
+        const gone = new Set(ended.map((session) => session.id))
+        const live = new Set(sessions.map((session) => session.id).filter((id) => !gone.has(id)))
+        setLayout((current) => reconcileLayout(current, live))
+        flash(`${what} closed · ${ended.length === 1 ? 'session' : `${String(ended.length)} sessions`} ended`)
         await queryClient.invalidateQueries({ queryKey: ['conversations'] })
       })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not end the session')) })
-  }, [endRequest, flash, queryClient, sessions])
+  }, [sessions, flash, queryClient])
+
+  const sessionsOf = useCallback((tabs: readonly Tab[]) => [...new Set(tabs.flatMap((tab) => tab.panes.map((pane) => pane.sessionId)))], [])
+
+  const closePaneById = useCallback((paneId: string) => {
+    const pane = layout.tabs.flatMap((tab) => tab.panes).find((candidate) => candidate.id === paneId)
+    if (pane) endSessions([pane.sessionId], 'Pane')
+  }, [endSessions, layout])
+
+  const closeTabById = useCallback((tabId: string) => {
+    const tab = layout.tabs.find((candidate) => candidate.id === tabId)
+    if (tab) endSessions(sessionsOf([tab]), 'Tab')
+  }, [endSessions, layout, sessionsOf])
+
+  const closeOtherTabs = useCallback((tabId: string) => {
+    const keep = layout.tabs.find((candidate) => candidate.id === tabId)
+    if (!keep) return
+    const others = layout.tabs.filter((tab) => tab.id !== tabId && tabGroup(tab) === tabGroup(keep))
+    endSessions(sessionsOf(others), others.length === 1 ? 'Tab' : `${String(others.length)} tabs`)
+  }, [endSessions, layout, sessionsOf, tabGroup])
+
+  const endSession = useCallback((sessionId: string) => { endSessions([sessionId], 'Session') }, [endSessions])
+  const endProject = useCallback((ids: string[], name: string) => { endSessions(ids, name) }, [endSessions])
 
   const pinSession = useCallback((sessionId: string, pinned: boolean) => {
     void pinSessionOnDaemon({ id: sessionId }, pinned)
       .then(async () => { await queryClient.invalidateQueries({ queryKey: ['conversations'] }) })
       .catch((error: unknown) => { toast.error(errorMessage(error, pinned ? 'Could not pin the session' : 'Could not unpin the session')) })
   }, [queryClient])
-
-  const setArchived = useCallback((sessionId: string, archived: boolean) => {
-    void archiveSessionOnDaemon({ id: sessionId }, archived)
-      .then(async () => {
-        flash(archived ? 'Archived · the session keeps running' : 'Restored')
-        await queryClient.invalidateQueries({ queryKey: ['conversations'] })
-      })
-      .catch((error: unknown) => { toast.error(errorMessage(error, archived ? 'Could not put the session away' : 'Could not bring the session back')) })
-  }, [flash, queryClient])
 
   const saveName = useCallback((sessionId: string, name: string) => {
     setRenameId(null)
@@ -511,6 +543,66 @@ export function DesktopApp() {
   }, [showSessionById])
 
   // In a window too narrow for the sidebar, the same key opens and closes its drawer.
+  useEffect(() => {
+    let active = true
+    void appVersion().then((version) => { if (active) setRunningVersion(version) }).catch(() => undefined)
+    return () => { active = false }
+  }, [])
+
+  const restartNow = useCallback(() => {
+    if (updater.state.status !== 'ready') return
+    markRestarting(updater.state.version)
+    setRestarting(true)
+    window.setTimeout(() => { updater.restart() }, RESTART_SCREEN_MS)
+  }, [updater])
+
+  // With the setting on, a new release is fetched as soon as it is found. Installing still waits for a restart.
+  const updateStatus = updater.state.status
+  const updateOffered = updater.state.status === 'available' ? updater.state.version : null
+  const downloadUpdate = updater.download
+  useEffect(() => {
+    if (!preferences.autoDownloadUpdates || updateStatus !== 'available' || updateOffered === skippedVersion) return
+    const timer = window.setTimeout(downloadUpdate, 0)
+    return () => { window.clearTimeout(timer) }
+  }, [preferences.autoDownloadUpdates, updateStatus, updateOffered, skippedVersion, downloadUpdate])
+
+  // Optionally, a downloaded update restarts the window once nothing is working or waiting on you.
+  const busyCount = sessions.filter((session) => session.status === 'working' || session.status === 'needs').length
+  useEffect(() => {
+    if (!preferences.restartWhenIdle || updateStatus !== 'ready' || !online || busyCount > 0 || restarting) return
+    const timer = window.setTimeout(restartNow, 0)
+    return () => { window.clearTimeout(timer) }
+  }, [preferences.restartWhenIdle, updateStatus, online, busyCount, restarting, restartNow])
+
+  const showTestNotice = useCallback(() => {
+    showSessionNotice('test', {
+      kind: 'done',
+      color: 'var(--accent)',
+      title: 'Finished · a test',
+      body: 'A card like this appears when a session you are not looking at finishes.',
+      actions: [{ label: 'Open', primary: true, onClick: () => undefined }],
+      countdownMs: TEST_NOTICE_MS,
+    })
+  }, [])
+
+  const updateSlot = (variant: 'footer' | 'rail') => (
+    <UpdateSlot
+      variant={variant}
+      state={updater.state}
+      version={runningVersion}
+      skipped={skippedVersion}
+      portalContainer={root}
+      onInstall={updater.download}
+      onRestartNow={restartNow}
+      onCheck={updater.check}
+      onSkip={(version) => { skipUpdate(version); setSkippedVersion(version) }}
+    />
+  )
+
+  const setTextSize = useCallback((size: number) => {
+    setPreferences((current) => ({ ...current, terminalFontSize: Math.min(TERMINAL_FONT_SIZE_MAX, Math.max(TERMINAL_FONT_SIZE_MIN, size)) }))
+  }, [])
+
   const toggleSidebar = useCallback(() => {
     if (compact) setDrawerOpen((open) => !open)
     else setPreferences((current) => ({ ...current, compactSidebar: !current.compactSidebar }))
@@ -534,10 +626,18 @@ export function DesktopApp() {
         setLayout((current) => cycleFocus(current, 1))
         return
       case 'close': {
-        const result = closeFocused(layout, tabGroup)
-        setLayout(result.layout)
-        if (result.closed === 'pane') flash('Pane closed · the session keeps running')
-        if (result.closed === 'tab') flash('Tab closed · sessions keep running')
+        const tab = activeTab(layout)
+        if (!tab) return
+        const single = tab.panes.length > 1
+        const targets = (single ? tab.panes.filter((pane) => pane.id === tab.focus) : tab.panes).flatMap((pane) => sessionMap.get(pane.sessionId) ?? [])
+        const agent = targets.find((session) => runsAgent(session.process))
+        if (agent && Date.now() - armedCloseAt > CLOSE_ARM_MS) {
+          setArmedCloseAt(Date.now())
+          flash(`Press ${mac ? '⌘' : 'Ctrl+'}W again to close and stop ${agent.process}`)
+          return
+        }
+        setArmedCloseAt(0)
+        endSessions(targets.map((session) => session.id), single ? 'Pane' : 'Tab')
         return
       }
       case 'next-tab':
@@ -564,6 +664,12 @@ export function DesktopApp() {
       case 'shortcuts':
         setShortcutsOpen((open) => !open)
         return
+      case 'text-larger':
+        setTextSize(preferences.terminalFontSize + 1)
+        return
+      case 'text-smaller':
+        setTextSize(preferences.terminalFontSize - 1)
+        return
       case 'inspect':
         setInspectOpen((open) => !open)
         return
@@ -581,7 +687,7 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online])
+  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, sessionMap, armedCloseAt])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
@@ -788,6 +894,7 @@ export function DesktopApp() {
     const items: PaletteItem[] = [
       action('new-here', activeGroupKey ? `New session in ${projectName ?? 'this project'}` : 'New session', newProjectSession, keys('T')),
       action('new-start', 'New session in the start folder', newSession),
+      action('sidebar-side', preferences.sidebarSide === 'left' ? 'Move sidebar to the right' : 'Move sidebar to the left', () => { setPreferences((current) => ({ ...current, sidebarSide: current.sidebarSide === 'left' ? 'right' : 'left' })) }),
       action('split-right', 'Split right', () => { split(null, 'right') }, keys('D')),
       action('split-down', 'Split down', () => { split(null, 'down') }, keys('D', true)),
       action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('J')),
@@ -818,7 +925,7 @@ export function DesktopApp() {
     }
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById])
+  }, [labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide])
 
   const restartOffer: RestartOffer | null = mismatch
     ? {
@@ -860,8 +967,10 @@ export function DesktopApp() {
       portalContainer={root}
       onToggleRail={toggleSidebar}
       canExpand={!compact}
+      side={preferences.sidebarSide}
       width={sidebarWidth}
       tabOf={tabOf}
+      tabPanes={tabPanes}
       paneOf={paneOf}
       trayStyle={preferences.trayStyle}
       leadMode={preferences.leadMode}
@@ -886,17 +995,16 @@ export function DesktopApp() {
       onSetName={saveName}
       onRenameSession={setRenameId}
       onPinSession={pinSession}
-      onArchiveSession={(id) => { setArchived(id, true) }}
-      archived={archivedSessions}
-      onRestoreSession={(id) => { setArchived(id, false) }}
       onOpenSettings={() => { afterPick(); setSettingsSection('general') }}
+      updateSlot={updateSlot('footer')}
+      railUpdateSlot={updateSlot('rail')}
     />
   )
 
   return (
     <ReducedMotionContext.Provider value={reducedMotion}>
       <EffectsContext.Provider value={effects}>
-        <div ref={setRoot} className={`mx-app${narrow ? ' is-narrow' : ''}`} style={rootStyle} data-motion={reducedMotion ? 'reduced' : 'full'}>
+        <div ref={setRoot} className={`mx-app${narrow ? ' is-narrow' : ''}`} style={rootStyle} data-motion={reducedMotion ? 'reduced' : 'full'} data-side={preferences.sidebarSide}>
           <TitleBar />
           <div className="mx-window" role="application" aria-label="Maitty">
             {!focusMode && !compact && renderSidebar(sidebarMode, noop)}
@@ -918,6 +1026,7 @@ export function DesktopApp() {
                   portalContainer={root}
                   onSelect={(tabId) => { setLayout((current) => selectTab(current, tabId)) }}
                   onClose={closeTabById}
+                  onCloseOthers={closeOtherTabs}
                   onRenameSession={saveName}
                   newTabLabel={projectName ? `New session in ${projectName}` : 'New tab'}
                   onNewTab={newProjectSession}
@@ -938,7 +1047,6 @@ export function DesktopApp() {
                     onClose={() => { setFindOpen(false); if (focusedId) terminalHandles.current.get(focusedId)?.focus() }}
                   />
                 )}
-                <UpdateBanner state={updater.state} dismissed={updater.dismissed} onInstall={updater.install} onRestart={updater.restart} onDismiss={updater.dismiss} />
                 <RestoreBanner
                   sessions={sessions.filter((item) => item.interrupted !== null && !dismissedRestores.has(item.id))}
                   online={online}
@@ -971,7 +1079,7 @@ export function DesktopApp() {
                               paneCount={tab.panes.length}
                               broadcast={tab.broadcast === true}
                               onToggleBroadcast={() => { runShortcut('broadcast') }}
-                              focused={focused}
+                              focused={focused && !outsidePanes}
                               maximized={tab.max === pane.id}
                               dropTarget={dropId === pane.id && dragId !== pane.id}
                               workingSince={tracks.get(session.id)?.workingSince ?? null}
@@ -1041,14 +1149,21 @@ export function DesktopApp() {
                 {!focusMode && preferences.statusBar && (
                   <StatusBar
                     online={online}
-                    branch={focusedSession?.branch ?? null}
-                    working={sessions.filter((item) => item.status === 'working').length}
-                    needs={sessions.filter((item) => item.status === 'needs').length}
-                    process={focusedSession?.process ?? null}
-                    path={focusedSession?.cwdLabel ?? null}
+                    themeMode={preferences.themeMode}
+                    lightInUse={theme.light}
+                    activeTheme={theme.name}
+                    style={preferences.style}
                     textSize={preferences.terminalFontSize}
+                    minTextSize={TERMINAL_FONT_SIZE_MIN}
+                    maxTextSize={TERMINAL_FONT_SIZE_MAX}
                     shortcutChord={hotkeyRows(mac).find((row) => row.action === 'Keyboard shortcuts')?.chords[0] ?? []}
-                    onOpenInbox={() => { setInboxOpen(true) }}
+                    portalContainer={root}
+                    onThemeMode={(themeMode) => { setPreferences((current) => ({ ...current, themeMode })) }}
+                    onPickTheme={(name) => { setPreferences((current) => (findTheme(name).light ? { ...current, lightTheme: name } : { ...current, darkTheme: name })) }}
+                    onAllThemes={() => { setSettingsSection('appearance') }}
+                    onStyle={(style) => { setPreferences((current) => ({ ...current, style })) }}
+                    onTextSize={setTextSize}
+                    onResetTextSize={() => { setTextSize(DEFAULT_TEXT_SIZE) }}
                     onOpenShortcuts={() => { setShortcutsOpen(true) }}
                   />
                 )}
@@ -1080,7 +1195,6 @@ export function DesktopApp() {
                 onStartSession={newSession}
               />
             )}
-            <ConfirmEndDialog request={endRequest} portalContainer={root} onCancel={() => { setEndRequest(null) }} onConfirm={confirmEnd} />
             {paletteOpen && <CommandPalette items={paletteItems} onClose={() => { setPaletteOpen(false) }} />}
             {inboxOpen && (
               <InboxPanel
@@ -1123,7 +1237,8 @@ export function DesktopApp() {
                 systemReducedMotion={systemReducedMotion}
                 systemDark={systemDark}
                 onPreviewTheme={setPreviewTheme}
-                updates={{ summary: updaterSummary(updater.state), checking: updater.state.status === 'checking', onCheck: updater.check }}
+                onTestNotice={showTestNotice}
+                updates={{ summary: updaterSummary(updater.state), status: updater.state.status, onCheck: updater.check, onDownload: updater.download, onRestart: restartNow }}
                 onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}
                 mac={mac}
                 daemon={{ online, sessionCount: sessions.length }}
@@ -1133,8 +1248,14 @@ export function DesktopApp() {
               />
             )}
             {toastMessage && <Toast key={toastMessage.key} message={toastMessage.text} />}
+            {restarting && (
+              <div className="mx-restarting" role="status">
+                <strong>Restarting Maitty</strong>
+                <span>Reopening {layout.tabs.length === 1 ? '1 tab' : `${String(layout.tabs.length)} tabs`}. Your sessions never stopped.</span>
+              </div>
+            )}
           </div>
-          <Toaster position="top-right" theme={theme.light ? 'light' : 'dark'} />
+          <Toaster position={preferences.toastPosition} theme={theme.light ? 'light' : 'dark'} />
         </div>
       </EffectsContext.Provider>
     </ReducedMotionContext.Provider>
