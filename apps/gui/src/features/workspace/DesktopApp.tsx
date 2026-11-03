@@ -46,7 +46,7 @@ import { formatDroppedPaths } from '@/features/terminal/droppedPaths'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
 import { sendNativeNotice } from '@/features/notifications/native'
-import { showSessionNotice } from '@/features/notifications/notify'
+import { dismissSessionNotice, showSessionNotice } from '@/features/notifications/notify'
 import { sessionNoticeFor } from '@/features/notifications/noticeForSession'
 import { noticesFor } from '@/features/notifications/transitions'
 import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
@@ -112,7 +112,8 @@ const TEST_NOTICE_MS = 6000
 const SECOND_MS = 1000
 const SLOW_TICK_MS = 30_000
 const DIFF_STAT_REFRESH_MS = 8000
-const NOTIFICATION_CLICK_WINDOW_MS = 60_000
+/** A notification's click brings the window forward; returning later than this is not that click. */
+const NOTIFICATION_CLICK_WINDOW_MS = 15_000
 const MAX_RETRY_EXPONENT = 3
 const BACKOFF_BASE = 2
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
@@ -484,11 +485,17 @@ export function DesktopApp() {
     if (!tab || tab.panes.length >= MAX_PANES) return
     const source = tab.panes.find((pane) => pane.id === (paneId ?? tab.focus))
     const cwd = source ? sessionMap.get(source.sessionId)?.cwd : undefined
-    runStart(async () => cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { setLayout((current) => splitPane(current, source?.id ?? null, direction, id, makeId)) })
+    runStart(async () => cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
+      // If the tab changed or filled up while the shell started, the shell still gets a tab: it must not be left with no pane.
+      setLayout((current) => {
+        const next = splitPane(current, source?.id ?? null, direction, id, makeId)
+        return next === current ? openInNewTab(current, id, makeId) : next
+      })
+    })
   }, [layout, sessionMap, runStart, preferences.startFolder, home])
 
   // Closing a pane, tab or session ends it; there is no way back, so a program that is running asks for a second click first.
-  const [armedCloseAt, setArmedCloseAt] = useState(0)
+  const [armedClose, setArmedClose] = useState<{ key: string; at: number } | null>(null)
   const endSessions = useCallback((ids: string[], what: string) => {
     const gone = new Set(ids)
     const running = sessions.filter((session) => gone.has(session.id))
@@ -652,13 +659,19 @@ export function DesktopApp() {
         if (!tab) return
         const single = tab.panes.length > 1
         const targets = single ? tab.panes.filter((pane) => pane.id === tab.focus) : tab.panes
-        const agent = targets.flatMap((pane) => paneSessions.get(pane.sessionId) ?? []).find((session) => runsProgram(session))
-        if (agent && Date.now() - armedCloseAt > CLOSE_ARM_MS) {
-          setArmedCloseAt(Date.now())
-          flash(`Press ${mac ? '⌘' : 'Ctrl+'}W again to close and stop ${agent.process}`)
+        const shown = targets.flatMap((pane) => paneSessions.get(pane.sessionId) ?? [])
+        const agent = shown.find((session) => runsProgram(session))
+        // Ctrl+W is also a shell's delete-a-word, and closing ends the session, so the key asks twice,
+        // for this pane or tab only. Panes that already ended have nothing to lose.
+        const key = targets.map((pane) => pane.id).join(' ')
+        const confirmed = armedClose !== null && armedClose.key === key && Date.now() - armedClose.at <= CLOSE_ARM_MS
+        if (shown.some((session) => !session.ended) && !confirmed) {
+          setArmedClose({ key, at: Date.now() })
+          const chord = mac ? '⌘W' : 'Ctrl+W'
+          flash(agent ? `Press ${chord} again to close and stop ${agent.process}` : `Press ${chord} again to close this ${single ? 'pane' : 'tab'}`)
           return
         }
-        setArmedCloseAt(0)
+        setArmedClose(null)
         endSessions(targets.map((pane) => pane.sessionId), single ? 'Pane' : 'Tab')
         return
       }
@@ -709,7 +722,7 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, paneSessions, armedCloseAt])
+  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, paneSessions, armedClose])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
@@ -732,20 +745,28 @@ export function DesktopApp() {
       }
       if (event.key === 'Escape') {
         // Innermost first: the palette or inbox, then focus mode, then Settings.
+        // What Esc closes is not also sent on to the terminal, where it would interrupt an agent.
+        const consume = () => { event.preventDefault(); event.stopPropagation() }
         if (state.overlayOpen) {
+          consume()
           setPaletteOpen(false)
           setInboxOpen(false)
           return
         }
         if (state.settingsOpen) {
+          consume()
           setSettingsSection(null)
           return
         }
         if (state.drawerShown) {
+          consume()
           setDrawerOpen(false)
           return
         }
-        if (state.focusMode) setFocusMode(false)
+        if (state.focusMode) {
+          consume()
+          setFocusMode(false)
+        }
         return
       }
       if (state.overlayOpen) {
@@ -837,6 +858,11 @@ export function DesktopApp() {
   const answerSession = useCallback((sessionId: string, answer: Answer) => {
     const target = sessionMap.get(sessionId)
     if (!target) return
+    // A card can outlast the question. Typing into a session that is not asking would land in its shell.
+    if (target.status !== 'needs') {
+      flash(`${displayName(target)} is not asking any more`)
+      return
+    }
     // The answer is typed into the session's own prompt; the GUI never decides for it.
     void sendTo(target, answer)
       .then(() => { flash(`Sent “${answer}” to ${displayName(target)}`) })
@@ -846,12 +872,15 @@ export function DesktopApp() {
   // A session that just started needing you, finished or failed: tell the system, if you are looking elsewhere.
   const { notifyNeedsYou, notifyFinished, notifyError } = preferences
   useEffect(() => {
+    const previousStatuses = lastStatuses.current
     const notices = online
       ? noticesFor(lastStatuses.current, sessions, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
       : []
     lastStatuses.current = new Map(sessions.map((item) => [item.id, item.status]))
     // In the window but on another pane: a toast you can click. Away from the window: the system's.
     const inWindow = document.hasFocus()
+    // A card that said "Needs you" goes when the session stops needing you.
+    for (const item of sessions) if (item.status !== 'needs' && previousStatuses?.get(item.id) === 'needs') dismissSessionNotice(item.id)
     for (const notice of notices) {
       if (inWindow) {
         const target = sessionMap.get(notice.sessionId)
@@ -1079,7 +1108,7 @@ export function DesktopApp() {
                 {tab ? (
                   <div className="mx-panes">
                     {paneColumns(tab, narrow).map((column, columnIndex, columns) => (
-                      <Fragment key={column.map((pane) => pane.id).join(' ')}>
+                      <Fragment key={column[0]?.id ?? columnIndex}>
                         {columnIndex > 0 && tab.max === null && !narrow && (
                           <ColumnHandle
                             index={columnIndex - 1}

@@ -271,6 +271,26 @@ describe('tab layout', () => {
     expect(activeTab(reconciled)?.focus).toBe(tab?.panes[0]?.id)
   })
 
+  it('puts the focused pane on screen when a maximized tab is focused elsewhere', () => {
+    const { layout } = withPanes('a', 'b')
+    const first = activeTab(layout)?.panes[0]?.id ?? ''
+    const maximized = toggleMaximize(layout, first)
+
+    const viaSidebar = showSession(maximized, 'b', ids())
+    const second = activeTab(viaSidebar)?.panes[1]?.id
+    expect(activeTab(viaSidebar)?.max).toBe(second)
+    expect(activeTab(viaSidebar)?.focus).toBe(second)
+
+    const viaFocus = focusPane(maximized, second ?? '')
+    expect(activeTab(viaFocus)?.max).toBe(second)
+  })
+
+  it('leaves max alone when the tab is not maximized', () => {
+    const { layout } = withPanes('a', 'b')
+    const second = activeTab(layout)?.panes[1]?.id ?? ''
+    expect(activeTab(focusPane(layout, second))?.max).toBeNull()
+  })
+
   it('reads back a stored layout and ignores anything malformed', () => {
     const { layout } = withPanes('a', 'b')
     expect(parseLayout(JSON.parse(JSON.stringify(layout)))).toEqual(layout)

@@ -86,6 +86,7 @@ export function SessionStack(props: StackProps) {
   return (
     <div className={`mx-stack${hasTray ? ' has-tray' : ''}`}>
       <SessionRow
+        key={lead.id}
         session={lead}
         track={tracks.get(lead.id)}
         now={now}

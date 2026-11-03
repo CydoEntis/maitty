@@ -21,6 +21,11 @@ export function showNotice(
   )
 }
 
+/** Takes a session's card away, e.g. once the session is no longer waiting on you. */
+export function dismissSessionNotice(sessionId: string): void {
+  toast.dismiss(`session-${sessionId}`)
+}
+
 /**
  * A card for a terminal session. A newer one for the same session replaces the older, so a session never
  * stacks cards; one that needs you stays until you answer it, the others go by themselves.

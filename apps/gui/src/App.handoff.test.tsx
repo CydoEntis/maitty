@@ -742,6 +742,9 @@ describe('desktop terminal multiplexer', () => {
     expect(screen.getByRole('region', { name: 'Terminal 1: ~/code/maitty/apps, focused' })).toBeInTheDocument()
 
     await user.keyboard('{Control>}w{/Control}')
+    expect(await screen.findByText('Press Ctrl+W again to close this pane')).toBeInTheDocument()
+    expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
+    await user.keyboard('{Control>}w{/Control}')
     await waitFor(() => { expect(screen.getAllByRole('region', { name: /^Terminal \d/ })).toHaveLength(1) })
     expect(await screen.findByText('Pane closed · session ended')).toBeInTheDocument()
     expect(daemon.archiveConversationOnDaemon).toHaveBeenCalledTimes(1)
@@ -781,6 +784,58 @@ describe('desktop terminal multiplexer', () => {
     expect(await screen.findByText('Tab closed · session ended')).toBeInTheDocument()
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Undo/ })).not.toBeInTheDocument()
+  })
+
+  it('asks for Ctrl+W again for the pane you are in, not for the one you pressed it on before', async () => {
+    const user = userEvent.setup()
+    const claude = inRepo(2, `${HOME}/code/maitty`, `${HOME}/code/maitty/apps`, { agent: 'claude' })
+    daemon.loadConversations.mockResolvedValue([claude])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: /^Terminal 1:/ })
+    daemon.loadConversations.mockResolvedValue([claude, inRepo(7, `${HOME}/code/maitty`, `${HOME}/code/maitty/apps`, { agent: 'codex' })])
+    await user.keyboard('{Control>}d{/Control}')
+    await screen.findByRole('region', { name: /^Terminal 2:.*focused/ })
+
+    await user.keyboard('{Control>}w{/Control}')
+    expect(await screen.findByText(/Press Ctrl\+W again to close and stop codex/)).toBeInTheDocument()
+    await user.keyboard('{Control>}[[{/Control}')
+    await user.keyboard('{Control>}w{/Control}')
+    expect(await screen.findByText(/Press Ctrl\+W again to close and stop claude/)).toBeInTheDocument()
+
+    expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
+  })
+
+  it('does not pass Esc on to the terminal when it leaves focus mode', async () => {
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    fireEvent.keyDown(document.body, { key: '.', ctrlKey: true })
+    await waitFor(() => { expect(screen.queryByLabelText('Status')).not.toBeInTheDocument() })
+
+    const passedOn = fireEvent.keyDown(document.body, { key: 'Escape', cancelable: true })
+
+    expect(passedOn).toBe(false)
+    await waitFor(() => { expect(screen.getByLabelText('Status')).toBeInTheDocument() })
+  })
+
+  it('asks before Close other tabs ends a tab that runs an agent', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([
+      inRepo(2, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { agent: 'claude' }),
+      inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty/apps`),
+    ])
+    renderDesktopApp()
+    const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
+    await user.click(await within(sidebar).findByRole('button', { name: /apps, shell/ }))
+    await waitFor(() => { expect(screen.getAllByRole('tab')).toHaveLength(2) })
+    const shellTab = screen.getAllByRole('tab').find((tab) => tab.getAttribute('aria-selected') === 'true') as HTMLElement
+
+    fireEvent.contextMenu(shellTab)
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^Close other tabs/ }))
+
+    expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Programs are running/ }))
+    await waitFor(() => { expect(daemon.archiveConversationOnDaemon).toHaveBeenCalledWith({ id: 't2' }, true) })
   })
 
   it('takes two clicks to close a tab that runs an agent', async () => {

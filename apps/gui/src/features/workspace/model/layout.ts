@@ -110,7 +110,8 @@ export function closeFocused(layout: Layout, groupOf: TabGroup = ONE_GROUP): { l
 export function focusPane(layout: Layout, paneId: string): Layout {
   const tab = layout.tabs.find((candidate) => candidate.panes.some((pane) => pane.id === paneId))
   if (!tab) return layout
-  return { ...replaceTab(layout, { ...tab, focus: paneId }), activeTabId: tab.id }
+  // In a maximized tab the focused pane is the one on screen, so focus and maximize move together.
+  return { ...replaceTab(layout, { ...tab, focus: paneId, max: tab.max === null ? null : paneId }), activeTabId: tab.id }
 }
 
 export function cycleFocus(layout: Layout, step: 1 | -1): Layout {
@@ -144,7 +145,7 @@ export function showSession(layout: Layout, sessionId: string, makeId: MakeId): 
   const current = activeTab(layout)
   const holder = (current?.panes.some((pane) => pane.sessionId === sessionId) ? current : undefined) ?? layout.tabs.find((tab) => tab.panes.some((pane) => pane.sessionId === sessionId))
   const shown = holder?.panes.find((pane) => pane.sessionId === sessionId)
-  if (holder && shown) return { ...replaceTab(layout, { ...holder, focus: shown.id }), activeTabId: holder.id }
+  if (holder && shown) return { ...replaceTab(layout, { ...holder, focus: shown.id, max: holder.max === null ? null : shown.id }), activeTabId: holder.id }
   return openInNewTab(layout, sessionId, makeId)
 }
 

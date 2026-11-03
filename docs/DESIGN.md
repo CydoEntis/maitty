@@ -333,8 +333,10 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Close ends the session.** A pane's ×, a tab's × (and its menu's **Close tab** and **Close other
   tabs**), a session's **Close session**, **Close project tabs** and Ctrl+W all end the sessions they
   close, and a notice says so. When a program such as an agent is running, the first click only arms the
-  control ("Close and stop claude? Click again"; Ctrl+W asks to be pressed twice); a plain shell closes at
-  once. There is no undo. Closing the window never ends a session.
+  control ("Close and stop claude? Click again", also for **Close other tabs**); a plain shell closes at
+  once. Ctrl+W, which a shell also uses to delete a word, always asks to be pressed twice, for the same
+  pane or tab, unless that pane already ended. Esc that leaves focus mode or closes a panel is not also
+  sent to the terminal. There is no undo. Closing the window never ends a session.
 - **Sidebar footer and updates.** The footer's left slot shows the version, or what an update needs
   from you: a pill (**Update to x**, the download's percent, **Restart to update**, **Update failed**) that
   opens a card upward with the matching actions. The updater downloads first and installs only on
