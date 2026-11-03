@@ -506,7 +506,7 @@ describe('desktop terminal multiplexer', () => {
     })
     expect(card).toHaveTextContent('You asked: bel0 Background task finished')
     expect(card?.textContent).not.toContain('<')
-    expect(card).toHaveTextContent('Not open in a tab')
+    expect(card).toHaveTextContent('Open in a tab')
   })
 
   it('says what a docked project is in a popover beside its header, with its sessions', async () => {
@@ -1357,6 +1357,23 @@ describe('desktop overlays and tab tools', () => {
     expect(within(inbox).getAllByRole('article')).toHaveLength(1)
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: 'Inbox' })).not.toBeInTheDocument()
+  })
+
+  it('shows a session in the inbox again when it comes back to a state you cleared, after it moved on', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([at(2, { status: 'done' })])
+    const { client } = renderDesktopApp()
+    await user.click(await screen.findByRole('button', { name: /^Inbox, 1/ }))
+    const inbox = await screen.findByRole('dialog', { name: 'Inbox' })
+    await user.click(within(within(inbox).getByRole('article')).getByRole('button', { name: 'Clear' }))
+    expect(within(inbox).queryByRole('article')).not.toBeInTheDocument()
+
+    daemon.loadConversations.mockResolvedValue([at(2, { status: 'working' })])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+    daemon.loadConversations.mockResolvedValue([at(2, { status: 'done' })])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+
+    expect(within(screen.getByRole('dialog', { name: 'Inbox' })).getAllByRole('article')).toHaveLength(1)
   })
 
   it('marks a finished session seen once you are in its pane, and leaves a needs-you one alone', async () => {

@@ -50,7 +50,8 @@ const TerminalSessionSchema = z.object({
   }).default({ context: null, cost: null, tokens: null }),
 })
 const DaemonSnapshotSchema = z.object({
-  conversations: z.array(ConversationSummarySchema),
+  // Read one by one, like the terminals: a record this app can't read must not take every session offline.
+  conversations: z.array(z.unknown()).default([]),
   workspaces: z.array(WorkspaceSummarySchema),
   // Read one by one: a terminal this app can't read is left out rather than hiding every session.
   terms: z.record(z.string(), z.unknown()).default({}),
@@ -227,7 +228,12 @@ export async function loadConversations(): Promise<Conversation[]> {
     .filter(isTerminalSession)
     .map((term) => toTerminalConversation(term, snapshot.workspaces))
   return [
-    ...snapshot.conversations.map((conversation) => toConversation(conversation, snapshot.workspaces)),
+    ...snapshot.conversations
+      .flatMap((raw) => {
+        const parsed = ConversationSummarySchema.safeParse(raw)
+        return parsed.success ? [parsed.data] : []
+      })
+      .map((conversation) => toConversation(conversation, snapshot.workspaces)),
     ...terminals,
   ]
 }

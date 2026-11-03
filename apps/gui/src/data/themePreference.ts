@@ -5,7 +5,12 @@ export type ThemePreference = 'night' | 'abyss' | 'day'
 const DEFAULT_THEME: ThemePreference = 'night'
 
 export function readThemePreference(): ThemePreference {
-  const stored = localStorage.getItem(STORAGE_KEY)
+  let stored: string | null = null
+  try {
+    stored = localStorage.getItem(STORAGE_KEY)
+  } catch {
+    // Blocked storage reads as nothing saved.
+  }
   if (stored === null) return DEFAULT_THEME
   if (stored === 'night' || stored === 'abyss' || stored === 'day') return stored
 

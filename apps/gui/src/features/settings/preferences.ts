@@ -148,12 +148,21 @@ const bool = (value: unknown, fallback: boolean) => (typeof value === 'boolean' 
 
 /** Whether any settings were ever saved: a window with none has never been used. */
 export function hasSavedSettings(): boolean {
-  return localStorage.getItem(STORAGE_KEY) !== null
+  return readStored() !== null
+}
+
+/** Browser storage can be blocked; that reads as nothing saved, and the app still starts. */
+function readStored(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY)
+  } catch {
+    return null
+  }
 }
 
 export function readSettingsPreferences(): SettingsPreferences {
   const fresh = defaults()
-  const stored = localStorage.getItem(STORAGE_KEY)
+  const stored = readStored()
   if (stored === null) return fresh
   try {
     const value: unknown = JSON.parse(stored)

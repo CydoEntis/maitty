@@ -91,7 +91,7 @@ function PaneRow({ session, current }: { session: SessionView; current: boolean 
   )
 }
 
-function SessionPopover({ session, group, tabNumber, panes, changedAt, now }: { session: SessionView; group: SessionGroup; tabNumber: number | undefined; panes: readonly SessionView[]; changedAt: number | null; now: number }) {
+function SessionPopover({ session, group, tabNumber, open, panes, changedAt, now }: { session: SessionView; group: SessionGroup; tabNumber: number | undefined; open: boolean; panes: readonly SessionView[]; changedAt: number | null; now: number }) {
   const activity = activityOf(session)
   const ago = changedAt === null ? '' : formatAgo(now - changedAt)
   return (
@@ -106,7 +106,7 @@ function SessionPopover({ session, group, tabNumber, panes, changedAt, now }: { 
       </header>
       <div className="mx-sc-meta">
         <span className="mx-sc-path" dir="rtl"><bdi>{session.process} in {session.cwdLabel}</bdi></span>
-        <span className="mx-sc-where">{tabNumber !== undefined ? `Tab ${String(tabNumber)} · open` : 'Not open in a tab'}{ago ? ` · ${ago}` : ''}</span>
+        <span className="mx-sc-where">{tabNumber !== undefined ? `Tab ${String(tabNumber)} · open` : open ? 'Open in a tab' : 'Not open in a tab'}{ago ? ` · ${ago}` : ''}</span>
       </div>
       {activity.length > 0 && (
         <ul className="mx-sc-activity" aria-label="Last activity">
@@ -135,6 +135,7 @@ type LayerProps = {
   tabOf: ReadonlyMap<string, number>
   /** Every pane of the tab a session is open in, for sessions whose tab has more than one. */
   tabPanes: ReadonlyMap<string, readonly SessionView[]>
+  openIds: ReadonlySet<string>
   tracks: ReadonlyMap<string, SessionTrack>
   now: number
   portalContainer: HTMLElement | null
@@ -142,7 +143,7 @@ type LayerProps = {
 }
 
 /** The open rail popover, beside the item it is about. */
-export function RailPopoverLayer({ hover, groups, tabOf, tabPanes, tracks, now, portalContainer, onShowSession }: LayerProps) {
+export function RailPopoverLayer({ hover, groups, tabOf, tabPanes, openIds, tracks, now, portalContainer, onShowSession }: LayerProps) {
   const { shown } = hover
   if (!shown || !portalContainer) return null
   if (shown.target.kind === 'folder') {
@@ -155,5 +156,5 @@ export function RailPopoverLayer({ hover, groups, tabOf, tabPanes, tracks, now, 
   const group = groups.find((candidate) => candidate.sessions.some((session) => session.id === id))
   const session = group?.sessions.find((candidate) => candidate.id === id)
   if (!group || !session) return null
-  return createPortal(<Frame anchor={shown.anchor} hover={hover} className="is-session"><SessionPopover session={session} group={group} tabNumber={tabOf.get(id)} panes={tabPanes.get(id) ?? []} changedAt={tracks.get(id)?.changedAt ?? null} now={now} /></Frame>, portalContainer)
+  return createPortal(<Frame anchor={shown.anchor} hover={hover} className="is-session"><SessionPopover session={session} group={group} tabNumber={tabOf.get(id)} open={openIds.has(id)} panes={tabPanes.get(id) ?? []} changedAt={tracks.get(id)?.changedAt ?? null} now={now} /></Frame>, portalContainer)
 }

@@ -48,6 +48,9 @@ type TerminalViewProps = {
 
 type NativeConversation = Conversation & { generation: number; nativePane: number }
 
+/** After typing failed, the next key waits this long before it tries the daemon again. */
+const INPUT_RETRY_MS = 1500
+
 /** What Shift+Enter sends: Alt+Enter, which Claude Code and Codex take as a new line in their prompt. */
 const NEW_LINE_KEYS = '\x1b\r'
 
@@ -84,6 +87,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   const terminalHost = useRef<HTMLDivElement>(null)
   const terminal = useRef<XtermTerminal | null>(null)
   const inputFailedRef = useRef(false)
+  const inputFailedAt = useRef(0)
   const fontSizeRef = useRef(fontSize)
   const lookRef = useRef(look)
   const inputDisabledRef = useRef(inputDisabled)
@@ -105,13 +109,22 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   const [resizeError, setResizeError] = useState('')
 
   const send = useCallback((data: string | Uint8Array) => {
-    if (!data || inputFailedRef.current || inputDisabledRef.current) return
+    if (!data || inputDisabledRef.current) return
+    if (inputFailedRef.current) {
+      // The daemon may be back: after a pause the next key tries again, instead of waiting for a click.
+      if (Date.now() - inputFailedAt.current < INPUT_RETRY_MS) return
+      inputFailedRef.current = false
+      setInputFailed(false)
+    }
     onInputRef.current?.(data)
     inputQueue.current = inputQueue.current.then(async () => {
+      // Anything typed behind a key that failed is dropped with it, never sent out of order.
+      if (inputFailedRef.current) return
       // The daemon echoes what was typed through the stream, so there is nothing to write here.
       await sendTerminalInput(binding, data)
     }).catch(() => {
       inputFailedRef.current = true
+      inputFailedAt.current = Date.now()
       setInputFailed(true)
     })
   }, [binding])

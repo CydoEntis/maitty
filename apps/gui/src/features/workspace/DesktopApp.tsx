@@ -222,6 +222,7 @@ export function DesktopApp() {
   const [worktreeFrom, setWorktreeFrom] = useState<SessionView | null>(null)
   const [inspectView, setInspectView] = useState<InspectView>('changes')
   const [lookAt, setLookAt] = useState<LookAt | null>(null)
+  const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
   // Inbox entries the user cleared, by the status they had; an entry comes back if the session changes state.
   const [cleared, setCleared] = useState<ReadonlyMap<string, SessionView['status']>>(new Map())
   // After a restart into an update, the first thing said is what happened to the sessions.
@@ -280,6 +281,14 @@ export function DesktopApp() {
     setRemembered((before) => rememberSessions(before, sessions, layout))
   }
   const paneSessions = useMemo(() => withEnded(sessionMap, remembered), [sessionMap, remembered])
+  // A cleared Inbox entry stays hidden only while its session keeps the state it had when cleared;
+  // once it moves on, coming back to that state is news again.
+  const [seenForClear, setSeenForClear] = useState(sessions)
+  if (seenForClear !== sessions) {
+    setSeenForClear(sessions)
+    const stillCleared = new Map([...cleared].filter(([id, status]) => sessionMap.get(id)?.status === status))
+    if (stillCleared.size !== cleared.size) setCleared(stillCleared)
+  }
   const focusedId = focusedSessionId(layout)
   // A click anywhere outside the panes takes the border off the focused pane; a click in a pane, or focus moving to another pane, puts it back.
   const focusedPaneId = activeTab(layout)?.focus ?? null
@@ -309,7 +318,10 @@ export function DesktopApp() {
     handle.paste(formatDroppedPaths(paths, /Windows/i.test(navigator.userAgent)))
     handle.focus()
   })
-  const visibleKey = [...visibleSessionIds(layout)].sort().join(' ')
+  // With the window in the background nothing is being looked at, so a session that finishes then keeps its unread dot.
+  const visibleKey = windowFocused ? [...visibleSessionIds(layout)].sort().join(' ') : ''
+  // Every session some tab shows, so the hover card can say a session is open even with a single tab.
+  const openIds = useMemo(() => new Set(layout.tabs.flatMap((candidate) => candidate.panes.map((pane) => pane.sessionId))), [layout.tabs])
   // For a session whose tab has other panes, all of that tab's sessions (the hover card lists them).
   const tabPanes = useMemo(() => {
     const panes = new Map<string, readonly SessionView[]>()
@@ -809,7 +821,6 @@ export function DesktopApp() {
     return map
   }, [groups])
 
-  const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
   useEffect(() => {
     const gained = () => { setWindowFocused(true) }
     const lost = () => { setWindowFocused(false) }
@@ -1036,6 +1047,7 @@ export function DesktopApp() {
       width={sidebarWidth}
       tabOf={tabOf}
       tabPanes={tabPanes}
+      openIds={openIds}
       paneOf={paneOf}
       trayStyle={preferences.trayStyle}
       leadMode={preferences.leadMode}
@@ -1238,6 +1250,7 @@ export function DesktopApp() {
             </div>
             {inspectOpen && !focusMode && inspectTerm !== null && focusedSession && (
               <InspectPanel
+                key={inspectTerm}
                 term={inspectTerm}
                 title={`${displayName(focusedSession)} · ${focusedSession.cwdLabel}`}
                 view={inspectView}

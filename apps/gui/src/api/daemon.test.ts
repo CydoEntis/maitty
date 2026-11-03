@@ -432,6 +432,18 @@ describe('terminal sessions shown beside chats', () => {
     warn.mockRestore()
   })
 
+  it('still lists the terminals when one chat record cannot be read', async () => {
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [{ id: 'not a conversation' }],
+      workspaces: [],
+      terms: { '5': term({ label: 'Fix login' }) },
+    })
+
+    const listed = await loadConversations()
+
+    expect(listed.map((item) => item.title)).toEqual(['Fix login'])
+  })
+
   it('lists shells and agents in terminals of their own, and leaves out popups, other machines and a chat terminal', async () => {
     vi.mocked(invoke).mockResolvedValue({
       conversations: [],
