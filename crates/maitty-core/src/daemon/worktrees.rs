@@ -79,21 +79,27 @@ pub(super) fn create_trusted_worktree(
     Ok(made)
 }
 
+/// The first of `WT_NAMES`, counting on from `seed`, that is not in `taken`; with all of them
+/// taken, one with a number added.
+pub(super) fn made_up_branch(taken: &[String], seed: usize) -> String {
+    let names = crate::gitfs::WT_NAMES;
+    (0..names.len())
+        .map(|i| names[(seed + i) % names.len()].to_string())
+        .find(|b| !taken.contains(b))
+        .unwrap_or_else(|| format!("{}-{}", names[seed % names.len()], seed % 1000))
+}
+
 /// A new worktree for an agent about to start in `dir`, a folder of the repo's main
 /// checkout, on a made-up branch. Returns the folder to start in: the same subfolder of the
 /// new worktree.
 pub(super) fn agent_worktree(dir: &std::path::Path, template: &str) -> Result<PathBuf, String> {
     let head = crate::gitfs::head(dir).ok_or("not in a git repository")?;
-    let taken = git::branches(&head.main_root);
+    let taken = git::branch_names_in_use(&head.main_root);
     let n = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as usize)
         .unwrap_or(0);
-    let names = crate::gitfs::WT_NAMES;
-    let branch = (0..names.len())
-        .map(|i| names[(n + i) % names.len()].to_string())
-        .find(|b| !taken.contains(b))
-        .unwrap_or_else(|| format!("{}-{}", names[n % names.len()], n % 1000));
+    let branch = made_up_branch(&taken, n);
     let (path, _) = create_trusted_worktree(&head.main_root, &branch, None, template)?;
     let sub = dir
         .strip_prefix(&head.top)

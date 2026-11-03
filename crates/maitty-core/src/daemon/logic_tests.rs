@@ -2020,6 +2020,23 @@ fn a_repository_with_no_commits_says_so_instead_of_showing_a_git_error() {
 }
 
 #[test]
+fn a_made_up_branch_skips_names_already_in_use() {
+    let names = crate::gitfs::WT_NAMES;
+    let seed = 5;
+    assert_eq!(worktrees::made_up_branch(&[], seed), names[seed]);
+
+    let taken = vec![names[seed].to_string(), names[seed + 1].to_string()];
+    assert_eq!(worktrees::made_up_branch(&taken, seed), names[seed + 2]);
+
+    let all: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+    let numbered = worktrees::made_up_branch(&all, seed);
+    assert!(
+        numbered.starts_with(&format!("{}-", names[seed])) && !all.contains(&numbered),
+        "every name taken: {numbered}"
+    );
+}
+
+#[test]
 fn an_agent_typed_into_a_shell_gets_its_own_worktree() {
     let tmp = std::env::temp_dir().join(format!(
         concat!(env!("APP_COMMAND"), "-agent-wt-{}"),
