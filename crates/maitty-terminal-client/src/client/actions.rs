@@ -6,7 +6,11 @@ impl App {
     pub(super) fn act(&mut self, a: Action) {
         // A chat with no terminal can't be ended or renamed as a pane, but it can be put away
         // and named: the daemon keeps both for every client.
-        if let Some(id) = self.screen.cursor.and_then(|key| self.bare_conversation(key)) {
+        if let Some(id) = self
+            .screen
+            .cursor
+            .and_then(|key| self.bare_conversation(key))
+        {
             match a {
                 Action::ClosePane => return self.archive_conversation(id),
                 Action::RenameWorkspace => {
@@ -52,26 +56,15 @@ impl App {
             self.require_session_term(key);
             return;
         }
-        // These read files on this machine; over ssh the files are on the other one.
-        if crate::ipc::remote().is_some()
-            && matches!(
-                a,
-                Action::Files
-                    | Action::Changes
-                    | Action::Find(_)
-                    | Action::Branches
-                    | Action::References
-                    | Action::PasteImage
-                    | Action::AgentStatusSetup
+        // These read or change the files of the pane they apply to, which on another machine
+        // are not on this computer.
+        if let Some(feature) = routing::Feature::of(&a)
+            && !self.guard_local(
+                self.selected_term()
+                    .map_or(self.target_machine(), |t| t.machine),
+                feature,
             )
         {
-            self.notify(
-                format!(
-                    "{} isn't available over ssh yet (agents, panes and worktrees are)",
-                    a.describe()
-                ),
-                true,
-            );
             return;
         }
         if self.screen_act(&a) {
@@ -98,14 +91,18 @@ impl App {
             Action::Branches => self.toggle_branch_sheet(),
             Action::References => self.toggle_references_sheet(),
             Action::History => self.mode = Mode::History { sel: 0 },
+            Action::Machines => self.open_machines(),
             Action::SpawnTab(c) => {
-                if let Some(ws) = ws {
+                if let Some(ws) = self.target_ws() {
                     self.leave_shortcut_mode();
-                    self.cmd(Command::NewTab {
-                        ws,
-                        name: None,
-                        cmd: Some(c),
-                    });
+                    self.cmd_on(
+                        self.target_machine(),
+                        Command::NewTab {
+                            ws,
+                            name: None,
+                            cmd: Some(c),
+                        },
+                    );
                 }
             }
             // x closes what has the keys: a side panel (Files, Changes, Branch, a check) that
@@ -167,10 +164,7 @@ impl App {
             }
             Action::StopAgent => {
                 if let Some(term) = self.target_term() {
-                    self.send(ClientMsg::Input {
-                        term,
-                        data: vec![3],
-                    });
+                    self.send_input(term, vec![3]);
                 }
             }
             Action::ScrollUp | Action::ScrollDown => {
@@ -193,7 +187,7 @@ impl App {
                 let Some(w) = self.active_ws() else { return };
                 if w.git.is_none() {
                     let here = focused
-                        .and_then(|id| self.snap.terms.get(&id))
+                        .and_then(|id| self.term_info(id))
                         .map(|t| t.cwd.clone());
                     let hint = match here {
                         Some(h) if h != w.cwd => format!(
@@ -206,7 +200,10 @@ impl App {
                     return;
                 }
                 let ws = w.id;
-                self.send(ClientMsg::Query(Query::Worktrees { ws }));
+                self.send(
+                    self.focus_machine(),
+                    ClientMsg::Query(Query::Worktrees { ws }),
+                );
                 self.mode = Mode::Worktrees {
                     ws,
                     cmd,
@@ -273,6 +270,7 @@ impl App {
             self.sidebar = cfg.ui.sidebar;
         }
         let mouse_changed = cfg.ui.mouse != self.cfg.ui.mouse;
+        self.machines_edited(&cfg.machines);
         self.cfg = cfg;
         if mouse_changed {
             let _ = if self.cfg.ui.mouse {
@@ -349,6 +347,7 @@ impl App {
             Action::NextPrompt,
             Action::PasteImage,
             Action::History,
+            Action::Machines,
             Action::Settings,
             Action::Help,
             Action::ReloadConfig,
@@ -386,15 +385,16 @@ impl App {
 
     /// The workspace a command applies to: the one on screen.
     pub(super) fn target_ws(&self) -> Option<WsId> {
-        self.snap.active_ws
+        self.snap_of(self.target_machine())?.active_ws
     }
 
     /// The terminal a command applies to: the target pane's focused one.
-    pub(super) fn target_term(&self) -> Option<TermId> {
+    pub(super) fn target_term(&self) -> Option<ClientTerm> {
+        let machine = self.target_machine();
         self.target_ws()
-            .and_then(|ws| self.snap.workspace(ws))
+            .and_then(|ws| self.snap_of(machine)?.workspace(ws))
             .and_then(|w| w.tab())
-            .map(|t| t.focus)
+            .map(|t| ClientTerm::on(machine, t.focus))
             .or(self.focused())
     }
 
@@ -483,7 +483,7 @@ impl App {
             summary: info.as_ref().map(|i| i.summary.clone()).unwrap_or_default(),
             dirty: 0,
             ahead: 0,
-            agent: term,
+            agent: term.map(ClientTerm::local),
             dir: top,
             root: head.main_root.clone(),
         };
@@ -513,8 +513,11 @@ impl App {
 
     /// A path an agent printed (Ctrl+click): relative to where it runs. Text opens in the file
     /// viewer at that file (and line); anything else in its own app.
-    pub(super) fn open_path_from(&mut self, term: TermId, raw: &str, line: Option<u32>) {
-        let info = self.snap.terms.get(&term);
+    pub(super) fn open_path_from(&mut self, term: ClientTerm, raw: &str, line: Option<u32>) {
+        if !self.guard_local(term.machine, routing::Feature::Files) {
+            return;
+        }
+        let info = self.term_info(term);
         let bases: Vec<PathBuf> = [
             info.map(|t| t.cwd.clone()),
             info.and_then(|t| t.top.clone()),

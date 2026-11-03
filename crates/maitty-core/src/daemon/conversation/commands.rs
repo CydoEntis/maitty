@@ -478,6 +478,10 @@ impl Daemon {
                         .iter()
                         .any(|excluded| key.eq_ignore_ascii_case(excluded))
                 })
+                .map(|(key, value)| match crate::login_path::resolved() {
+                    Some(path) if key.eq_ignore_ascii_case("PATH") => (key, path.to_os_string()),
+                    _ => (key, value),
+                })
                 .collect(),
             #[cfg(test)]
             failure_point: None,

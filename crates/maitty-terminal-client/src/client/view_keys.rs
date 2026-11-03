@@ -180,7 +180,7 @@ impl App {
             }
             KeyCode::Char('r') => {
                 if let Some(term) = v.term {
-                    self.cmd(Command::FocusPane { term });
+                    self.cmd_on(term.machine, Command::FocusPane { term: term.term });
                     self.mode = Mode::Normal;
                     return false;
                 }
@@ -416,10 +416,10 @@ impl App {
                 }
                 Some(n) => {
                     if let Some(term) = self.focused() {
-                        self.send(ClientMsg::Input {
+                        self.send_input(
                             term,
-                            data: format!("{} ", files::quote_path(&n.path)).into_bytes(),
-                        });
+                            format!("{} ", files::quote_path(&n.path)).into_bytes(),
+                        );
                         self.notify(format!("inserted {}", n.path.display()), false);
                     }
                     return false;
@@ -725,10 +725,17 @@ impl App {
     pub(super) fn submit_prompt(&mut self, kind: PromptKind, input: String) {
         let input = input.trim().to_string();
         match kind {
-            PromptKind::RenamePane(term) => self.cmd(Command::RenamePane { term, name: input }),
-            PromptKind::RenameConversation(id) => {
-                self.cmd(Command::ConversationRename { id, title: input })
-            }
+            PromptKind::RenamePane(term) => self.cmd_on(
+                term.machine,
+                Command::RenamePane {
+                    term: term.term,
+                    name: input,
+                },
+            ),
+            PromptKind::RenameConversation(id) => self.cmd_on(
+                self.conversation_machine(id),
+                Command::ConversationRename { id, title: input },
+            ),
             PromptKind::RenameProject(key) => {
                 if input.is_empty() {
                     self.screen.saved.names.remove(&key);
@@ -737,21 +744,27 @@ impl App {
                 }
                 self.screen.save();
             }
-            PromptKind::RenameTab(ws, tab) => self.cmd(Command::RenameTab {
-                ws,
-                tab,
-                name: input,
-            }),
+            PromptKind::RenameTab(ws, tab) => self.cmd_on(
+                self.focus_machine(),
+                Command::RenameTab {
+                    ws,
+                    tab,
+                    name: input,
+                },
+            ),
             PromptKind::AddReference(root, dir) => self.add_reference(root, dir, &input),
             PromptKind::NewWorkspace => {
                 // A group starts with a shell where you are.
                 let name = (!input.is_empty()).then_some(input);
                 self.leave_shortcut_mode();
-                self.cmd(Command::NewWorkspace {
-                    cwd: Some(self.here_dir()),
-                    name,
-                    cmd: None,
-                });
+                self.cmd_on(
+                    self.focus_machine(),
+                    Command::NewWorkspace {
+                        cwd: Some(self.here_dir()),
+                        name,
+                        cmd: None,
+                    },
+                );
             }
             _ => {}
         }

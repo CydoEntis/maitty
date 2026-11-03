@@ -21,3 +21,7 @@ doctest = false
 
 [dependencies]
 maitty-terminal-client = { path = "../../crates/maitty-terminal-client" }
+
+[dev-dependencies]
+maitty-shared = { path = "../../crates/maitty-shared" }
+tokio = { version = "1", features = ["rt", "time", "macros"] }

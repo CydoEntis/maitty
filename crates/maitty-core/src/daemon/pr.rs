@@ -306,6 +306,9 @@ pub(super) fn diff(old: Option<&Reading>, new: &Reading) -> Vec<Change> {
 /// Ask `gh` about the pull request on `place`'s branch. Blocks.
 pub(super) fn read(place: &Place) -> Read {
     let mut cmd = std::process::Command::new("gh");
+    if let Some(path) = crate::login_path::resolved() {
+        cmd.env("PATH", path);
+    }
     cmd.args(["pr", "view"]);
     match place {
         Place::Branch(top, _) => cmd.current_dir(top),

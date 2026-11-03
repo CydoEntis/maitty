@@ -1,7 +1,8 @@
 //! Running other programs: without a console window flashing up on Windows, with their
 //! output or their error as text, and command lines through the user's shell.
 
-use std::path::Path;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// A system tool by its usual Windows home (System32 has curl and a tar that reads zips),
@@ -30,7 +31,7 @@ pub fn on_path(tool: &str) -> bool {
     } else {
         &[""]
     };
-    std::env::var_os("PATH").is_some_and(|path| {
+    crate::login_path::effective_path().is_some_and(|path| {
         std::env::split_paths(&path).any(|directory| {
             exts.iter().any(|extension| {
                 if extension.is_empty() {
@@ -43,9 +44,24 @@ pub fn on_path(tool: &str) -> bool {
     })
 }
 
-pub(crate) fn resolve_executable_path(path: &Path) -> anyhow::Result<std::path::PathBuf> {
+pub(crate) fn resolve_executable_path(path: &Path) -> anyhow::Result<PathBuf> {
+    resolve_executable_in(path, crate::login_path::effective_path().as_deref())
+}
+
+/// `path` made absolute; a bare name is first searched for on `search`, so a program only a
+/// login profile put on PATH is found.
+pub(crate) fn resolve_executable_in(
+    path: &Path,
+    search: Option<&OsStr>,
+) -> anyhow::Result<PathBuf> {
     #[cfg(unix)]
     {
+        if let Some(found) = bare_name(path)
+            .zip(search)
+            .and_then(|(name, search)| crate::shim::find_on_path(name, search, Path::new(""), &[]))
+        {
+            return Ok(std::fs::canonicalize(found)?);
+        }
         let file_name = path
             .file_name()
             .ok_or_else(|| anyhow::anyhow!("Executable path has no file name"))?;
@@ -57,7 +73,17 @@ pub(crate) fn resolve_executable_path(path: &Path) -> anyhow::Result<std::path::
     }
     #[cfg(windows)]
     {
+        let _ = search;
         Ok(path.canonicalize()?)
+    }
+}
+
+#[cfg(unix)]
+fn bare_name(path: &Path) -> Option<&str> {
+    let mut parts = path.components();
+    match (parts.next(), parts.next()) {
+        (Some(std::path::Component::Normal(name)), None) => name.to_str(),
+        _ => None,
     }
 }
 

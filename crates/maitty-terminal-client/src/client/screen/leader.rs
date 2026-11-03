@@ -207,7 +207,7 @@ impl App {
         };
         self.screen_act(&Action::ShellHere);
         // After the command goes, which clears it: this is the one session it is for.
-        let known = self.snap.terms.keys().copied().collect();
+        let known = self.all_terms().into_iter().map(|(t, _)| t).collect();
         *self.screen.new_tab.borrow_mut() = Some(PendingTab {
             at: Instant::now(),
             owner,
@@ -221,9 +221,7 @@ impl App {
         let i = self.screen.tab;
         if let Some(tab) = self.screen.tabs.get(i) {
             let name = self
-                .snap
-                .terms
-                .get(&tab.focus)
+                .term_info(tab.focus)
                 .map(|t| t.label.trim().to_string())
                 .unwrap_or_default();
             self.mode = Mode::RenameTab(Box::new(TabName { tab: i, name }));
@@ -235,25 +233,39 @@ impl App {
         match k.code {
             KeyCode::Enter => {
                 let name = nt.name.trim().to_string();
+                let found = self.screen.tabs.get(nt.tab).and_then(|tab| {
+                    let focus = tab.focus;
+                    let snap = self.snap_of(focus.machine)?;
+                    snap.workspaces.iter().find_map(|w| {
+                        w.tabs
+                            .iter()
+                            .find(|t| t.layout.contains(focus.term))
+                            .map(|t| (w.id, t.id))
+                    })
+                });
                 if let Some(tab) = self.screen.tabs.get_mut(nt.tab) {
                     let focus = tab.focus;
                     // The daemon owns the name: it outlives this view's tab being rebuilt, and
                     // `screen_sync` reads it back from the snapshot.
                     // A name an older version left on the tab would hide the session's.
-                    match self.snap.workspaces.iter().find_map(|w| {
-                        w.tabs
-                            .iter()
-                            .find(|t| t.layout.contains(focus))
-                            .map(|t| (w.id, t.id))
-                    }) {
-                        Some((ws, tab)) => self.cmd(Command::RenameTab {
-                            ws,
-                            tab,
-                            name: String::new(),
-                        }),
+                    match found {
+                        Some((ws, tab)) => self.cmd_on(
+                            focus.machine,
+                            Command::RenameTab {
+                                ws,
+                                tab,
+                                name: String::new(),
+                            },
+                        ),
                         None => tab.name = String::new(),
                     }
-                    self.cmd(Command::RenamePane { term: focus, name });
+                    self.cmd_on(
+                        focus.machine,
+                        Command::RenamePane {
+                            term: focus.term,
+                            name,
+                        },
+                    );
                 }
                 self.last_click = None;
                 self.mode = Mode::Normal;

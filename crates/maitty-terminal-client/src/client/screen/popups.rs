@@ -1,6 +1,7 @@
 //! Popups: shared panel helpers, jump, open a folder, palette, go to, history, memory.
 
 use super::*;
+use crate::client::ids::ClientTerm;
 
 // ---- overlays ------------------------------------------------------------------------------
 
@@ -361,13 +362,15 @@ pub(in crate::client) fn jump_list(model: &[Proj]) -> Vec<(Session, String, Stri
         let mut these = Vec::new();
         for p in model {
             for w in &p.wts {
-                for s in w.sessions.iter().filter(|s| s.status == st) {
+                // A machine whose line is down cannot be answered, so what it last said waits
+                // in the sidebar, not here.
+                for s in w.sessions.iter().filter(|s| s.status == st && !s.down) {
                     these.push((s.clone(), p.name.clone(), w.name.clone(), p.color));
                 }
             }
         }
-        // Waiting longest first.
-        these.sort_by_key(|(s, ..)| s.since);
+        // Waiting longest first, this computer's before another machine's at the same moment.
+        these.sort_by_key(|(s, ..)| (s.since, s.key.machine));
         out.extend(these);
     }
     // Only what needs you or finished: finding any session is Go to's job.
@@ -831,24 +834,24 @@ pub(in crate::client) enum GoRow {
     /// A section's heading (not a row you pick).
     Head(&'static str),
     /// An agent asking you: its question and answers on the line.
-    Ask(TermId),
+    Ask(ClientTerm),
     /// One that finished and you haven't looked at: what it said.
-    Done(TermId),
+    Done(ClientTerm),
     /// Two checkouts changed the same file (index into `heads_up`).
     Heads(usize),
     /// One whose check failed: the result and the first failing output line.
-    Failed(TermId),
+    Failed(ClientTerm),
     /// One whose check could not run: the work was never checked.
-    NotRun(TermId),
+    NotRun(ClientTerm),
     /// One whose repo-supplied check command waits for you to allow it.
-    Approve(TermId),
+    Approve(ClientTerm),
     /// A working agent gone silent: it may be stuck.
-    Quiet(TermId),
-    Sess(usize, TermId),
+    Quiet(ClientTerm),
+    Sess(usize, ClientTerm),
 }
 
 impl GoRow {
-    pub fn term(&self) -> Option<TermId> {
+    pub fn term(&self) -> Option<ClientTerm> {
         match self {
             GoRow::Ask(t)
             | GoRow::Done(t)
@@ -904,7 +907,7 @@ pub(in crate::client) fn draw_history(
     t: &Theme,
     sel: usize,
 ) {
-    let items: Vec<(u64, Option<TermId>, char, String)> =
+    let items: Vec<(u64, Option<ClientTerm>, char, String)> =
         app.history.iter().rev().cloned().collect();
     let buf = f.buffer_mut();
     dim_all(app, buf, area, t);
@@ -963,7 +966,7 @@ pub(in crate::client) fn draw_history(
             'x' => ("✕", t.err),
             _ => ("·", t.muted),
         };
-        let gone = term.is_some_and(|tm| !app.snap.terms.contains_key(&tm));
+        let gone = term.is_some_and(|tm| app.term_info(tm).is_none());
         put(
             buf,
             row.x + 2,

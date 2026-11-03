@@ -2,6 +2,7 @@
 //! per session (no second lines) with its tabs under it while it has several, and the new and
 //! menu hints pinned to the foot.
 
+use super::super::machine_group;
 use super::super::side_tabs::{draw_tab_line, tab_line, tab_segs};
 use super::*;
 
@@ -35,7 +36,7 @@ pub(in crate::client) fn draw_side(
     app.screen.side_rect = r;
     hit(app, r, ScreenHit::SideFocus);
     let side_has_keys = side_focused(app);
-    draw_head(buf, r, model, ink, side_has_keys);
+    draw_head(buf, r, model, ink, side_has_keys, app.machine.host());
     // The line under the header, level with the tab row's rule: teal (sky in shortcut mode) while
     // the sidebar has the keys, so which of sidebar and panes you are in is never a guess.
     let lit = if armed(app) { t.sky() } else { ink.teal };
@@ -48,11 +49,11 @@ pub(in crate::client) fn draw_side(
         ink.bg,
     );
     let lines = hairline_lines(app, model, t);
-    let shown: Vec<TermId> = app
+    let shown: Vec<ClientTerm> = app
         .screen
         .tabs
         .get(app.screen.tab)
-        .map(|tab| tab.layout.leaves())
+        .map(|tab| tab.leaves())
         .unwrap_or_default();
     let focus = open_row(app).map(|term| app.session_key(term));
     let top = r.y + 2;
@@ -70,6 +71,22 @@ pub(in crate::client) fn draw_side(
         let y = top + (i - scroll) as u16;
         match line {
             Line::Proj(pi) => draw_proj(app, buf, model, *pi, r, y, ink, t),
+            Line::Machine(machine) => machine_group::draw_header(
+                app,
+                buf,
+                (r.x + TEXT_IN, text_end(r)),
+                y,
+                *machine,
+                ink.bg,
+                t,
+            ),
+            Line::MachineNote(forms, color) => machine_group::draw_note(
+                buf,
+                (r.x + TEXT_IN, text_end(r)),
+                y,
+                (forms, *color),
+                ink.bg,
+            ),
             Line::Detail(term) => {
                 let Some((.., s)) = find_key(model, *term) else {
                     continue;
@@ -132,6 +149,18 @@ pub(in crate::client) fn draw_side(
                     ink,
                     t,
                 );
+                if s.down {
+                    machine_group::grey(
+                        buf,
+                        Rect {
+                            x: r.x,
+                            y,
+                            width: r.width,
+                            height: 1,
+                        },
+                        t,
+                    );
+                }
             }
             Line::Tab(owner, tab) => {
                 let Some(line) = tab_line(app, model, *owner, *tab, t) else {
@@ -224,7 +253,13 @@ fn hairline_lines(app: &App, model: &[Proj], t: &Theme) -> Vec<Line> {
         Line::Detail(term) => find_key(model, *term).is_some_and(|(.., s)| s.helpers_wanted > 0),
         _ => matches!(
             l,
-            Line::Proj(_) | Line::Sess(..) | Line::Tab(..) | Line::Empty(_) | Line::Gap
+            Line::Proj(_)
+                | Line::Sess(..)
+                | Line::Tab(..)
+                | Line::Empty(_)
+                | Line::Machine(_)
+                | Line::MachineNote(..)
+                | Line::Gap
         ),
     });
     if matches!(lines.last(), Some(Line::Gap)) {
@@ -234,12 +269,10 @@ fn hairline_lines(app: &App, model: &[Proj], t: &Theme) -> Vec<Line> {
 }
 
 /// `sessions` and how many, dim; `sessions` teal while the sidebar has the keys.
-fn draw_head(buf: &mut Buffer, r: Rect, model: &[Proj], ink: Ink, lit: bool) {
+fn draw_head(buf: &mut Buffer, r: Rect, model: &[Proj], ink: Ink, lit: bool, host: Option<&str>) {
     let st = Style::default().bg(ink.bg);
     let n = model.iter().map(|p| p.sessions().count()).sum::<usize>();
-    let host = crate::ipc::remote()
-        .map(|h| format!("⇄ {h}  "))
-        .unwrap_or_default();
+    let host = host.map(|h| format!("⇄ {h}  ")).unwrap_or_default();
     let count = format!("{host}{n}");
     let end = text_end(r);
     let cx = end.saturating_sub(count.width() as u16);
@@ -412,7 +445,11 @@ fn draw_session(
     if let Some(c) = marker {
         put(buf, r.x, y, &[seg("▎", st.fg(c))], r.x + 1);
     }
-    let working = working_glyph(app);
+    let working = if s.down {
+        machine_group::working_mark(app, true)
+    } else {
+        working_glyph(app)
+    };
     let (g, gc) = if plain_shell(s) {
         ("›".to_string(), ink.dim)
     } else {
@@ -446,7 +483,7 @@ fn draw_session(
         String::new()
     } else if needs {
         needs_words(app, s, model, end.saturating_sub(nx))
-    } else if s.is_agent && matches!(s.key, SessionKey::Pane(_)) {
+    } else if s.is_agent && matches!(s.key.key, SessionKey::Pane(_)) {
         age(s.since)
     } else {
         String::new()
@@ -509,17 +546,15 @@ const POINTER: &str = "▸ ";
 fn needs_words(app: &App, s: &Session, model: &[Proj], room: u16) -> String {
     let own = s
         .native_term
-        .and_then(|id| app.snap.terms.get(&id))
+        .and_then(|id| app.term_info(id))
         .is_none_or(pane_needs);
     let beside = app
         .screen
         .tabs
         .iter()
         .filter(|tab| Some(tab.owner) == s.native_term)
-        .flat_map(|tab| tab.layout.leaves())
-        .find(|term| {
-            Some(*term) != s.native_term && app.snap.terms.get(term).is_some_and(pane_needs)
-        });
+        .flat_map(|tab| tab.leaves())
+        .find(|term| Some(*term) != s.native_term && app.term_info(*term).is_some_and(pane_needs));
     match beside.filter(|_| !own) {
         Some(term) => {
             let kept = (s.name.width() as u16).min(NAME_KEPT);

@@ -115,11 +115,24 @@ A state change reaches attached clients as `ServerMsg::State` (the whole `Snapsh
 some panes differ from what that surface's clients last received, as `ServerMsg::TermsChanged`
 (the panes to replace and the ids to drop); the daemon compares encoded bytes and sends nothing
 when nothing visible changed, and a client that has just attached gets the next change in full. A
-client merges a delta into the snapshot it holds and treats the result as a state update. Replays
-follow `Hello.replays`: a terminal client takes every pane's replay on attach, the desktop window
+client merges a delta into the snapshot it holds and treats the result as a state update. For a pane delta from another machine the snapshot is that machine's own,
+and the delta is cleaned first (SECURITY, "remote daemon"). Replays follow `Hello.replays`: a terminal client takes every pane's replay on attach, the desktop window
 attaches without and sends `ClientMsg::WantReplay { term }` on its stream when it shows a pane; a
 desktop replay carries the last mebibyte of the ring and then the screen as it is, which is all the
 window's scrollback holds.
+
+Over ssh, `maitty proxy` writes `STREAM_MARKER` (`maitty-ipc-transport`) to stdout once, after it
+reaches the daemon and before it relays a byte. The marker sits outside the frames, so it is
+not a protocol change. The client sends its Hello, then discards stdout up to the marker (a
+remote login that prints text, such as `.bashrc`, would otherwise corrupt the frames) and
+reads frames from the first byte after it. At most 64 KiB is discarded and the wait is 30 s,
+longer than ssh's `ConnectTimeout` so a slow login is not cut off. If text arrived and the
+marker did not, the connection fails with "the remote login printed text before maitty
+started (or it runs an older maitty: update it)". If nothing arrived, the error is what ssh
+said. A remote from before the marker is not refused: when the first four bytes of its
+output are a plausible frame length (up to `MAX_FRAME_BYTES`), the client reads them as the
+first frame and the usual version check applies. Text never passes as a length. An old remote
+whose login also prints text can't be told from noise, and gets the error above, hint included.
 
 The optional Tauri GUI invokes only fixed desktop commands from
 `crates/maitty-desktop-client/`; validate webview input in both the TypeScript boundary and
@@ -413,6 +426,11 @@ Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links an
   saving what is there now. Only a human can, and not while the pane's agent works. It answers
   `Reply::Repo { Restored(n) }`. This is the one request that changes the repository; every other
   change stays in the pane's PTY.
+- `Snapshot.daemon_id` (`Option<String>`, `#[serde(default)]`) is the daemon's random id, kept
+  across its restarts. A daemon built before it sends none, and a window still connects to it. A
+  window records the id per machine name the first time it sees one and refuses a connection
+  whose id differs (see [SECURITY](SECURITY.md)). Added without a `PROTOCOL_VERSION` bump; a
+  test decodes the old shape.
 - `TermInfo` carries four more fields, each defaulted so an older peer's snapshot still reads:
   `asking` (what a stopped agent is waiting on, read off its screen: the exact command or file
   and its numbered choices; empty unless the pane needs you), `interrupted` (an agent that was
@@ -556,3 +574,171 @@ completeness. Exhaustion returns typed `RevisionExhausted`, preserves the prior
 view/cursor revision and surfaces at the daemon boundary. Cache loading/preparing
 rejects an exhausted manifest/projection revision; imported attachment revisions
 are checked before replacing the existing view. Revisions never wrap or saturate.
+
+## Project-specific: connections to other machines
+
+One supervisor task per `[[machines]]` entry (`client/link/`) keeps that machine's line up.
+It talks to the window only through `LinkEvent`s (a new line; a new state) and `LinkControl`
+commands (line ended, refuse, retry), so a dead machine cannot hold a lock or block drawing.
+With no `[[machines]]` entry nothing starts. `--remote host` is unchanged: the window's one
+machine, `MachineId::LOCAL`, connected by `open_or_spawn`.
+
+**Ids.** `MachineId` 0 is this computer. Configured machines get 1, 2, ... in name order
+(case-insensitive), so a run's ids follow from its config. Ids are never saved (layout is kept
+under the machine's name), so adding a machine renumbers the ones after it without harm.
+
+**States** (`ConnectionState`; `link::next(state, event, now)` is pure and takes the time):
+
+| State | Meaning | Left by |
+| --- | --- | --- |
+| `Connecting` | first dial of this run | success, or a classified failure |
+| `Connected` | a line is up | the line dropping (`LineDropped`, `WatchdogFired`) |
+| `Reconnecting { attempt, since }` | a line that was up dropped; the first `RECONNECT_DIALS` (3) failed dials still read as this | success, or a failure that needs a person, or the dials running out |
+| `NeedsLogin { why }` | ssh could not log in without a prompt | success |
+| `NeedsUpdate { why }` | the far side runs another protocol version, or has no app | success |
+| `Unreachable { since, why }` | no answer (also: no daemon running there; refused) | success; `Retry` shows `Reconnecting` |
+
+A failed dial in `NeedsLogin`, `NeedsUpdate` or `Unreachable` changes nothing a person sees
+except `why`: retries are quiet. `Retry` (a person asks, or the machine's config entry changed)
+dials at once. A machine's agents stay in the sidebar model through every state (the snapshot
+is kept, not cleared), and the next `State` replaces it.
+
+**Backoff** (`Backoff::DEFAULT`): no wait before the first dial and before the redial of a line
+that was up; after `n` failures in a row, 250 ms doubled `n - 1` times, never more than 30 s
+(250, 500, 1000, ..., 16000, 30000, 30000). A success resets it.
+
+**Failure classes** come from `link_failure::classify`, from structured signals: the error's
+type (`OtherVersion` is `NeedsUpdate`), ssh's exit status, and whether the far side ever sent
+its stream marker or a frame. Exit 127 is `NeedsUpdate` with the install text. Exit
+`NO_DAEMON_EXIT` (74) is `Unreachable` with the start-it text. Exit 255 with nothing received
+and one of three fixed tokens in stderr (`Permission denied`, `Host key verification failed`,
+`Too many authentication failures`) is `NeedsLogin`: the only place ssh's words are read.
+Everything else is `Unreachable` with ssh's last stderr line, control characters removed and
+cut to 200 characters. The fix text of each class is one constant in `link_failure.rs`
+(`FIX_LOGIN`, `FIX_UPDATE`, `FIX_INSTALL`, `FIX_NO_DAEMON`); `FIX_UPDATE` and `FIX_INSTALL` name
+`maitty machine update <name>` (and `--install`), with `<name>` as written, one text for every machine.
+
+**Custom transport.** A machine with `via` is reached by running the user's program
+(`Route::Command`, `ssh_command::command_argv`) in place of ssh: the same pipes, stream marker skipping,
+handshake and `SshEnd` (with `custom` set) as ssh. Text before the marker with no marker is the same login
+error. Its failures classify without ssh's words: exit 127 is `NeedsInstall`, `NO_DAEMON_EXIT` is
+`NoDaemon`, anything else is `Unreachable` with the program's last stderr line, never `NeedsLogin`. On
+Windows connecting fails with `a custom transport (via) is not supported on Windows in v1; use ssh`.
+
+**Attach only.** A configured machine's connection runs `<remote_cmd> proxy --attach-only`
+(built in `ssh_command.rs`). If no daemon runs there, the proxy exits `NO_DAEMON_EXIT` before
+writing anything, and the machine is `Unreachable` with `FIX_NO_DAEMON`. This holds for the
+first connection and every reconnect: the daemon on a machine is the user's to start. `--remote
+host` keeps starting the remote daemon, as it always has.
+
+**Liveness.** An idle line is kept honest by ssh itself (`ServerAliveInterval=15`,
+`ServerAliveCountMax=3`: ssh exits after 45 s of silence, which closes the line). The client's
+own watchdog is for the other failure: a frame that began and stopped arriving. The reader waits
+`STALL` (15 s) per window for a whole frame; two windows in a row with the same non-zero part of
+a frame buffered, and nothing more received, drop the line (`Burst.stalled`). A frame that
+trickles in grows the buffer every window, so a big frame on a slow link is never dropped; an
+idle line has no part of a frame buffered, so it is never dropped by this. (A line that stops
+right after a frame's four length bytes has nothing buffered; ssh's ServerAlive ends it.) A dial
+that never answers is dropped after `CONNECT_BUDGET` (ssh's connect timeout plus 5 s).
+
+**Teardown.** A line's ssh child is owned by a background task that kills it when the writing
+half is dropped and reaps it there; nothing awaits ssh's end on the way out. Ending a lost line
+drops its tasks at once, so a stalled line's ssh does not linger.
+
+**On reconnect** the daemon sends `State` and a `Replay` per pane on attach: `State` replaces
+the machine's snapshot and each `Replay` replaces that pane's screen. Typing sent while the
+machine was down is dropped, never queued: replaying keystrokes into a pane that moved on could
+run commands the person no longer meant. The window counts it and says, once the machine is
+back, "N keystrokes to <name> were not sent while it was disconnected".
+
+**Refusal.** A different daemon answering at a machine's name (`machine_ids`) parks the
+supervisor (`Refuse`): no dial until a person asks. A new line re-checks the id, so the same
+wrong daemon is refused again and a fixed one is let in; editing or removing the machine's
+`[[machines]]` entry and reloading the config clears the refusal and dials. A running
+supervisor keeps the entry it started with until the app restarts.
+
+## Project-specific: client routing across machines
+
+Every message the window sends is an `Outgoing { machine, msg }`; `client/routing.rs` and
+`App::{send, send_input, cmd_on}` decide `machine`. The rule:
+
+1. Anything addressed to a pane (a `ClientTerm`) goes to `term.machine`.
+2. Anything addressed to a project, session, tab or workspace goes to the machine that owns it:
+   the `ClientSession` / `Proj.machine`, or the focus machine for a workspace or tab id read from
+   the active workspace (`active_ws`, `active_tab`).
+3. A new session, pane, tab or workspace goes to `target_machine()`: the machine of the session
+   selected in the sidebar, else the focused one (ADR 0047); this computer when neither is anywhere else.
+   A project's own "new" (its row, a recipe, "+ New") goes to `Proj.machine`.
+4. Things with no owning machine (settings, themes, reload config, kill server, UI state) and
+   anything that acts on this computer's disk stay local.
+
+`focus_machine()` is the machine whose active workspace and tab hold the window's focus. It
+follows the last command that moved a focus (`routing::moves_focus`) and falls back to this
+computer when that machine is gone. `focused()`, `active_ws()`, `active_tab()`, `popup()` and
+`target_ws()` / `target_term()` read that machine's snapshot. A popup on another machine than the
+focus never takes the keys.
+
+| Outgoing path | Machine before | Machine after |
+| --- | --- | --- |
+| `Input` (typing, paste, mouse and focus reports, `send_input`) | `term.machine` | `term.machine` |
+| `Resize` (`sync_sizes`) | `term.machine` | `term.machine` |
+| `Hook`, `Usage` | sent by the CLI, never the window | unchanged |
+| `FocusPane` from pane clicks (`input.rs`), `MarkSeen` in the Inbox, `ConversationArchive` when a pane ends | this computer | `term.machine` |
+| `FocusPane`, `ClosePane`, `RenamePane`, `SetTabOf`, `SwapPanes`, `TeachAgent`, `ClearQueue`, check commands, `AnswerHelpers`, `AnswerSecret` | `term.machine` | unchanged |
+| `Query::CheckOutput` | `term.machine` | `term.machine`; the reply is taken only for an open sheet or waiting failure on that machine |
+| `Query::Worktrees` | this computer | focus machine (worktrees are local-only for other machines) |
+| `NewWorkspace` from new session, shell here, split, recipes, new-agent dialog | this computer | `target_machine()`, or `Proj.machine` for a project's own |
+| `NewWorkspace` from a split menu | this computer | `term.machine` of the pane split |
+| `NewTab` (`SpawnTab`) | this computer | `target_machine()` with that machine's active workspace |
+| `RenameTab`, `CloseWorkspace` (prompts carrying `WsId` / `TabId`) | this computer | `focus_machine()` (the ids came from its active workspace) |
+| `ConversationRename`, `ConversationArchive` | this computer | `conversation_machine(id)`: the selected session's machine if it lists the chat, else the first machine that does |
+| `NewWorktree`, `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree` | this computer | this computer; refused for another machine's project or pane |
+| `ForgetCheckApproval`, `ReloadConfig`, `KillServer`, first-state `SelectWorkspace` / `NewWorkspace` | this computer | this computer (no owning machine) |
+
+**Local-only features.** `Feature` (Files, Changes, Find, Branches, References, image paste, agent
+status setup, Worktrees) names what reads or writes a pane's files or runs git there. One gate,
+`App::guard_local(machine, feature)`, decides per pane: allowed when the pane's files are on this
+computer, otherwise a toast and nothing else. Every entry point calls it: `act()` for actions
+(with the selected pane's machine), the project menu for worktrees, `open_path_from`,
+`paste_image`, the Inbox's Changes / merge / discard keys, and new worktrees. A window attached
+to one remote daemon (`--remote`) keeps its own worktrees; every other feature there is gated too.
+The message is one format, `routing::local_only_message`: "<Feature> is local-only in v1: the
+files are on <machine>, not on this computer."
+
+A pane's folder becomes a path on this computer only through `App::local_cwd(term)`, which is
+`None` for a pane on another machine. Git runs only in `local_git_projects` (overlap and
+changed-line counters), never in a project whose machine is not this one.
+
+**Replies.** The wire is unchanged. For each `Command` or `Query` sent to another machine the
+window keeps a timestamp (`Routing::asked`); a `Reply` or `Error` from that machine is applied
+only while one is waiting (`awaiting`), and consumes the oldest (`answered`). A timestamp older
+than 30 s is dropped and at most 64 are kept, because most commands are never answered. An
+unsolicited reply or error is ignored (`remote_policy::Verdict::Answer`). This computer's own
+daemon is not subject to it.
+
+**A machine that is down.** `App::deliver` hands a message to `Connections::send`. On
+`NotConnected`, typing is counted (`unsent_input`, told when the machine is back); any other
+command or query raises one toast, "<machine> is disconnected; <what> was not sent."; resizes and
+the rest are dropped silently. Nothing blocks and nothing is queued.
+
+**One-shot commands.** `cli/target.rs` picks the machine of a command once, before it runs: a
+pane address `machine/id`, else `--on`, else the `--remote` adapter (`ipc::Machine::current()`),
+else this computer. Each command is handed that `Target` and opens its connection with
+`ipc::open_to`; nothing reads the environment for the machine after that. A configured machine only
+attaches. The pane a command runs in (`$MAITTY_TERM_ID`) is a pane of this computer's daemon, so it is
+the default pane only when the target is this computer or the ad-hoc `--remote` route; a command
+aimed at a named machine needs an explicit `--pane machine/id`. `ls` is unchanged for this computer;
+named at a machine it heads the list with `machine <name>`, writes panes as `name/id`, and
+`ls --json` adds `"machine"` to each workspace. `ls --all` asks this computer and every configured
+machine at the same time and prints those that answer; each that does not gets a line
+`<name>: unreachable (<why>)` (or `needs a login`, `is another version`, ...) on stderr, and the command
+fails only when none answered.
+
+**MCP tools.** `maitty_list`, `_read`, `_send`, `_wait` and `_start` take an optional `machine`; a
+session of another machine is written `machine/id` in a list and accepted as an `id` by every pane
+tool (the `machine` argument may then be left out; if both are given and differ, the call is an
+error). Omitted, a call is exactly as before. `machine = "all"` is for the list only. Errors that
+name a machine are typed, with `structuredContent.error.code` and the text `code: message`:
+`machine_not_enabled`, `unknown_machine`, `permission_denied`, `unsupported_for_remote`,
+`unreachable`. Answering, interrupting and starting are `unsupported_for_remote`. See SECURITY "MCP
+across machines" for who may reach what.

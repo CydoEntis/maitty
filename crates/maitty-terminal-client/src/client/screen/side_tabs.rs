@@ -20,7 +20,7 @@ pub(super) struct TabLine {
 }
 
 /// The tabs of session `owner`, in order, when it has two or more; a lone tab is the row itself.
-fn session_tab_indexes(app: &App, owner: TermId) -> Vec<usize> {
+fn session_tab_indexes(app: &App, owner: ClientTerm) -> Vec<usize> {
     let tabs: Vec<usize> = (0..app.screen.tabs.len())
         .filter(|&i| app.screen.tabs[i].owner == owner)
         .collect();
@@ -30,7 +30,7 @@ fn session_tab_indexes(app: &App, owner: TermId) -> Vec<usize> {
 /// The tabs of `owner` that get a line, by `ui.sidebar_tabs`: all, the busy ones (working or
 /// needing you) and the one on screen, or none. Never the tab the session's own pane is in:
 /// the session's row is that one, and a line for it would name the session twice.
-pub(super) fn shown_tab_indexes(app: &App, owner: TermId) -> Vec<usize> {
+pub(super) fn shown_tab_indexes(app: &App, owner: ClientTerm) -> Vec<usize> {
     let busy = |i: usize| {
         i == app.screen.tab
             || tab_agent(app, i)
@@ -38,7 +38,7 @@ pub(super) fn shown_tab_indexes(app: &App, owner: TermId) -> Vec<usize> {
     };
     let others = session_tab_indexes(app, owner)
         .into_iter()
-        .filter(|&i| !app.screen.tabs[i].layout.contains(owner));
+        .filter(|&i| !app.screen.tabs[i].contains(owner));
     match app.cfg.ui.sidebar_tabs.as_str() {
         "off" => Vec::new(),
         "busy" => others.filter(|&i| busy(i)).collect(),
@@ -50,7 +50,7 @@ pub(super) fn shown_tab_indexes(app: &App, owner: TermId) -> Vec<usize> {
 pub(super) fn tab_line(
     app: &App,
     model: &[Proj],
-    owner: TermId,
+    owner: ClientTerm,
     tab: usize,
     t: &Theme,
 ) -> Option<TabLine> {

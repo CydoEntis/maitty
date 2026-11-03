@@ -447,6 +447,8 @@ with its count. A question is never below a check.
   failure*); Delete marks seen.
 - Typing finds any session; the `› query` row shows only once you type. The last row is
   `↑↓ select   ⏎ open   r re-run   O override   Esc close`.
+- A session on another machine ends its head line with ` · on <machine>`, and a machine whose line
+  is down has no items (*machines in the sidebar*).
 - Existing theme slots only. Code lives in `client/screen/inbox.rs` (groups, drawing) and
   `client/screen/check_inbox.rs` (what each item says and its buttons).
 
@@ -513,7 +515,8 @@ restore it. There are no bare-letter keys for this in the sidebar.
   project's colour and, under it, each of its sessions as its mark (same glyph and colour as the row) and the first letter of its
   name, in the sidebar's order, a blank row between projects. The selected row is `accent` with `acc_ink` text while the column has the
   keys, else `btn`. At the foot a `+` chip starts a shell and a `≡` chip opens the Menu. Rows that don't fit scroll, the selected one kept in view, and a `…` in the
-  last place opens the sidebar. A click on a project's letter opens the sidebar.
+  last place opens the sidebar. A click on a project's letter opens the sidebar. A machine other than this one is a
+  row `●B` above its folders: its state glyph and its first letter (see *machines in the sidebar*).
   `ui.rounded` (Settings › Appearance › Rounded: `full`, `corners` or `off`, off by default) is the one shape setting. `corners` rounds every box's corners only. `full` rounds them too, and caps every chip (tabs, the SESSIONS title, card titles, + New, Menu, buttons, menu rows) on whatever ground it sits, the pointer's hover, and draws a selected or failed session row as one block, in place of the edge bar: half-circle caps for one line, square ends for more so its lines read as one even block, never a pill per line; what is right-aligned stops a cell short of the cap. The Settings tab strip carries no update dot: the mode bar's pill and the splash announce updates, and the version lives in one row, General › UPDATES › Version (`maitty 0.42.0 · up to date · u check now`, or `9.9.9 is out · Enter to update`; Enter or a click acts, `u` checks from any tab). Above the pages, only what is off shows: an installed or daemon version that differs, or a pending restart with Restart now.
 - **Column focus** is the sidebar focus with the sidebar collapsed (leader Focus the sidebar). `↑` `↓`, `←` `→` and `1`–`9` switch
   sessions, opening each in the pane while the keys stay on the column; `1`–`9` mean nothing elsewhere. Enter focuses the pane, Esc leaves.
@@ -521,9 +524,106 @@ restore it. There are no bare-letter keys for this in the sidebar.
 
 A session an agent started (a helper) steps in two columns under the session that started it, to two levels. A row asking to start helpers keeps its second line (`wants to start N helpers`), which gives way last.
 
+## Project-specific: machines in the sidebar
+
+Code: `client/screen/machine_group.rs` (header, notes, grey), `side.rs` (`Line::Machine`,
+`Line::MachineNote`), `rail.rs`, `check_inbox.rs`. Look: [DESIGN](DESIGN.md#sidebar).
+
+- **No header without a second machine.** A window with no other machine draws no header, chip or
+  note; its frames are the reference frames. The headers appear as soon as the window has a
+  `Remote` (a configured machine's first link event), which also heads this computer as
+  `this computer` so the groups read as groups. A machine nobody has heard from yet is a header
+  that says `connecting` and no sessions; it never leaves a gap.
+- **Order.** Machine by machine: this computer's folders (in the order you dragged them), then each
+  other machine in id order. A folder drags only within its machine. Sessions keep the saved order of
+  their own machine.
+- **Status is the daemon's word.** A remote row is drawn by the same code from the same `Status`
+  its daemon reported; nothing is recomputed or translated here (non-negotiable 5).
+- **Down.** `ConnectionState::is_down` (reconnecting, needs login, needs update, unreachable)
+  greys the machine's rows (`Session::down`, set when the model is built and rebuilt on every link
+  state) and drops them from the title counts and the Inbox groups; connecting is not down. How
+  long it has been down is `Remote::down_since`, kept across the failure states.
+- **Per-machine values.** Limits, today's spend and the daemon version come from that machine's
+  snapshot and are shown under its own header (this computer's under `this computer`), never
+  summed. The TUI shows them nowhere else.
+- **Narrow widths.** Every line is cut to the sidebar with display-width-aware `…`; the machine mark
+  leaves first, then the state's word (its glyph stays), and the name keeps eight cells.
+- **Inbox.** A remote item ends its head line with ` · on <machine>`; the sort across machines is the
+  existing one (longest waiting first) with this computer's before another's at the same moment.
+  Its keys reach that machine's daemon (`ClientTerm.machine`), and the local-only features say so as
+  they do for any remote pane.
+- **Alerts.** A remote agent that starts needing you or finishes is added to the notification
+  history named by its machine. Its toast and sound still wait for that machine's `notices` and
+  `sounds` opt-ins.
+
+## Project-specific: Machines dialog
+
+Code: `client/screen/machines.rs` (the view, its keys and its drawing), `client/machine_flow.rs` (what a
+choice does), `client/machine_config.rs` (the `[[machines]]` entry in `config.local.toml`),
+`maitty-core/src/machine_probe.rs` (the look at a machine). Opened by leader `w` or the command palette
+(`Machines`); `Mode::Machines`.
+
+- **Two lists.** *Yours*: the configured machines in name order, each as a state chip (the words of
+  [machines in the sidebar](#project-specific-machines-in-the-sidebar), plus `refused`, `waiting for login`
+  and `not started`), its name and its target, and under every machine that is not up the reason and the fix
+  in full, wrapped to the dialog and never cut. *Add*: a field and the hosts of `~/.ssh/config` (read off the
+  UI thread; `loading hosts from ~/.ssh/config…`, then `alias  user@hostname`). Typing filters the hosts and
+  adds a last row, `add as typed`, for the text itself (`user@host`). A host that is already a machine is not
+  offered again. `Tab` moves between the lists; the keys are in the bar under the dialog.
+- **Windows.** The dialog says, in a dim line at its top and on Windows only, `Windows: use ssh keys or an
+  agent. Password prompts work in the popup but are not remembered.`
+- **Adding is one step for a key-based host.** Enter on a host row (or on the typed text) first refuses a
+  target ssh would read as an option or that holds whitespace (the loader's own words, shown under the lists;
+  nothing runs and nothing is written). The name is the alias, made valid and unique (`build`, then
+  `build-2`); when nothing usable is left of the target, a name step asks for one and shows the loader's
+  reason inline. The entry is `name` and `target` only, and `target` is the alias, so ssh's own config for
+  it (user, port, key, jump host) still applies. Then the machine is looked at, off the UI thread, with `ssh
+  <target> maitty --version` that never asks anything (`BatchMode`, a short `ConnectTimeout`, stdin closed;
+  `Checking…`, `Esc` ends ssh and adds nothing, and a limit of 12 s ends it whatever ssh does).
+  - *It answers:* the entry is appended to `config.local.toml` (comments and the rest of the file kept,
+    written atomically, never `config.toml`), the machine's supervisor starts, and its group is in the
+    sidebar as `connecting` at once.
+  - *ssh needs a person* (a password, a code, an unknown host key): the entry is written, and ssh is run
+    **once**, interactively, in a popup pane on this computer's daemon (`Command::Popup`), so the prompts can
+    be answered. The popup line is the probe's without `BatchMode`, with the same hardening (`ForwardAgent=no`,
+    `-a`, `ConnectTimeout`, `--` before the target). When the popup pane closes the machine is dialled with
+    `BatchMode` as every connection is; whether the login worked is the connection's to say, and if it did
+    not the machine shows `needs login` with the fix. A popup has the keys only in plain typing mode, so
+    the dialog closes when it asks for the popup and a toast says `ssh needs you to log in: use the popup`;
+    the keys then go to ssh. A popup that is never seen (it ended between two reports of the daemon) is
+    taken as closed after 20 s. A `remote_cmd` that needs quoting, or an `ssh_args` word that holds a quote, cannot
+    be put on a pane's command line safely: the machine is added and the dialog says to run `ssh` once in a
+    terminal.
+  - *The app is missing, old or not running there:* the machine is added; its state shows `needs update`
+    or `unreachable` with the exact fix text.
+  - *ssh cannot reach it* (a bad host): ssh's last line, cleaned of control characters and cut, is shown
+    under the lists, and nothing is added. Nothing hangs: every look ends at its limit, on `Esc`, or when
+    ssh does.
+  A Windows remote is not supported in v1; the dialog does not guess one from the probe.
+- **Retry** (`r` or Enter on a machine in *Yours*) dials it now and clears a refusal. A machine with no
+  supervisor gets one.
+- **Remove** (`x`) asks first: `Removes build from this list. Its sessions keep running on build.` It then
+  deletes the entry from `config.local.toml`, stops the supervisor and the connection, takes the machine out
+  of the sidebar and the window's records, and forgets the daemon id recorded for the name. The machine, its
+  daemon, its sessions and its saved layout (kept under its name) are not touched.
+- **A refused machine** (a different daemon answers at its name) shows `refused` with the reason and the
+  fix: remove it and add it again, or fix the host name or DNS and retry.
+- Adding and removing take effect in the running window. Editing the file by hand still takes effect at the
+  next start.
+
 ## Project-specific: Hairline
 
 Not applicable: the Hairline look was removed ([ADR 0039](adr/0039-floating-is-the-only-look.md)); Floating is the only look.
+
+## Project-specific: features that need a pane's files
+
+Files, Changes, Find, Branches, References, image paste, connecting an agent, and worktree
+actions read or change the files of the pane they apply to. For a pane on another machine they do
+nothing but show one error toast, always in this form: "<Feature> is local-only in v1: the files
+are on <machine>, not on this computer." The check is per pane: moving the focus or the sidebar
+selection between a local and a remote pane turns the feature off and on. Menu entries that would
+run git in a remote pane's folder (Changes, Snapshots, Make it a git repo) are left out of that
+pane's menu instead.
 
 ## Project-specific: frame presentation
 

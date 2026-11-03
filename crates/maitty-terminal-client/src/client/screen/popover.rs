@@ -2,6 +2,7 @@
 //! (`m`), and why it has the status it has (`i`). A `◂` points at the row.
 
 use super::*;
+use crate::client::ids::{ClientTerm, Outgoing};
 use crate::protocol::{CheckInfo, CheckState, ClientMsg};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::{Duration, Instant};
@@ -10,7 +11,7 @@ use std::time::{Duration, Instant};
 /// or from an Inbox row (`inbox`: the Inbox's query and row, to go back to).
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::client) struct Compose {
-    pub term: TermId,
+    pub term: ClientTerm,
     pub text: String,
     pub side: bool,
     pub inbox: Option<(String, usize)>,
@@ -103,9 +104,7 @@ pub(in crate::client) fn compose_box(
     let s2 = Style::default().bg(t.card2);
     if c.text.is_empty() {
         let name = app
-            .snap
-            .terms
-            .get(&c.term)
+            .term_info(c.term)
             .map(|i| i.display_name())
             .unwrap_or_default();
         put(
@@ -132,9 +131,7 @@ pub(in crate::client) fn compose_box(
     }
     // To an agent that's working, Enter queues it for when the turn is over.
     let working = app
-        .snap
-        .terms
-        .get(&c.term)
+        .term_info(c.term)
         .is_some_and(|i| i.status == Status::Working);
     let keys = if working {
         cap_hints(
@@ -221,7 +218,7 @@ pub(in crate::client) fn frame_beside_row(
     buf: &mut Buffer,
     screen: Rect,
     side: Rect,
-    term: TermId,
+    term: ClientTerm,
     (x0, w, h): (u16, u16, u16),
     t: &Theme,
 ) -> (Rect, Rect) {
@@ -314,7 +311,7 @@ pub(in crate::client) fn draw_compose_pop(
     c: &Compose,
     t: &Theme,
 ) {
-    let Some(info) = app.snap.terms.get(&c.term).cloned() else {
+    let Some(info) = app.term_info(c.term).cloned() else {
         return;
     };
     let ascii = app.cfg.ui.glyphs == "ascii";
@@ -540,7 +537,7 @@ pub(in crate::client) fn draw_compose_pop(
 }
 
 /// What a blocked agent asks, when it has said nothing else the popover can quote.
-fn quote_fallback(app: &App, term: TermId) -> String {
+fn quote_fallback(app: &App, term: ClientTerm) -> String {
     let model = app.screen_model();
     find(&model, term)
         .and_then(|(_, _, s)| s.question.clone())
@@ -551,25 +548,29 @@ fn quote_fallback(app: &App, term: TermId) -> String {
 /// handed the follow-up to the agent. Called once a frame.
 pub(in crate::client) fn refresh_receipts(app: &mut App) {
     let now = Instant::now();
-    let snap = &app.snap.terms;
+    let live: HashMap<ClientTerm, (Status, bool)> = app
+        .all_terms()
+        .into_iter()
+        .map(|(term, i)| (term, (i.status, i.queued.is_empty())))
+        .collect();
     app.screen.receipts.retain(|term, r| {
-        let Some(info) = snap.get(term) else {
+        let Some(&(status, nothing_queued)) = live.get(term) else {
             return false;
         };
         if r.queued {
-            r.seen_queued |= !info.queued.is_empty();
-            if info.queued.is_empty() && (r.seen_queued || info.status != Status::Working) {
-                (r.queued, r.since, r.status) = (false, now, info.status);
+            r.seen_queued |= !nothing_queued;
+            if nothing_queued && (r.seen_queued || status != Status::Working) {
+                (r.queued, r.since, r.status) = (false, now, status);
             }
             return true;
         }
         let age = now.saturating_duration_since(r.since);
-        age < RECEIPT_MAX_SHOWN && !(info.status != r.status && age >= RECEIPT_MIN_SHOWN)
+        age < RECEIPT_MAX_SHOWN && !(status != r.status && age >= RECEIPT_MIN_SHOWN)
     });
 }
 
 /// A row's second line while it carries a receipt: `◷ queued "…"` dim, or `› sent "…"` accent.
-pub(in crate::client) fn receipt_segs(app: &App, term: TermId, t: &Theme) -> Option<Vec<Seg>> {
+pub(in crate::client) fn receipt_segs(app: &App, term: ClientTerm, t: &Theme) -> Option<Vec<Seg>> {
     let r = app.screen.receipts.get(&term)?;
     let ascii = app.cfg.ui.glyphs == "ascii";
     let (mark, word, color) = if r.queued {
@@ -603,10 +604,10 @@ pub(in crate::client) fn draw_why_pop(
     buf: &mut Buffer,
     screen: Rect,
     side: Rect,
-    term: TermId,
+    term: ClientTerm,
     t: &Theme,
 ) {
-    let Some(info) = app.snap.terms.get(&term).cloned() else {
+    let Some(info) = app.term_info(term).cloned() else {
         return;
     };
     if let Some(check) = info.check() {
@@ -614,7 +615,7 @@ pub(in crate::client) fn draw_why_pop(
             app,
             buf,
             popover_rect(screen, side, CHECK_WHY_W, CHECK_WHY_H),
-            &check_why_title(app, &info),
+            &check_why_title(app, term, &info),
             t,
         );
         hit(app, r, ScreenHit::CheckEvidence(term));
@@ -768,9 +769,9 @@ pub(in crate::client) fn draw_why_pop(
 }
 
 /// " WHY · fix-footer reads failed ": the session and the word it reads as.
-pub(in crate::client) fn check_why_title(app: &App, info: &TermInfo) -> String {
+pub(in crate::client) fn check_why_title(app: &App, term: ClientTerm, info: &TermInfo) -> String {
     let word = super::glyphs::Kind::of(info.status, info.check(), info.asleep).word();
-    format!("WHY · {} reads {word}", app.session_name(info.id))
+    format!("WHY · {} reads {word}", app.session_name(term))
 }
 
 /// What the check's run came to, as the last line: its words and colour. A result that isn't
@@ -897,15 +898,11 @@ impl App {
     /// with Esc comes back.
     pub(in crate::client) fn start_compose(
         &mut self,
-        term: TermId,
+        term: ClientTerm,
         side: bool,
         inbox: Option<(String, usize)>,
     ) {
-        let agent = self
-            .snap
-            .terms
-            .get(&term)
-            .is_some_and(|t| t.agent.is_some());
+        let agent = self.term_info(term).is_some_and(|t| t.agent.is_some());
         if !agent {
             self.notify("only an agent takes a follow-up".into(), true);
             return;
@@ -952,9 +949,7 @@ impl App {
                     self.screen.drafts.remove(&c.term);
                     // Typed into a working agent it would interrupt, or be lost: it waits its turn.
                     let working = self
-                        .snap
-                        .terms
-                        .get(&c.term)
+                        .term_info(c.term)
                         .is_some_and(|t| t.status == Status::Working);
                     if working && !ctrl {
                         self.queue_follow_up(c.term, &text);
@@ -976,16 +971,14 @@ impl App {
     }
 
     /// Show on `term`'s row that `text` was sent now, or is queued for the end of the turn.
-    fn note_receipt(&mut self, term: TermId, text: &str, queued: bool) {
+    fn note_receipt(&mut self, term: ClientTerm, text: &str, queued: bool) {
         let first = text
             .lines()
             .find(|l| !l.trim().is_empty())
             .unwrap_or_default()
             .trim();
         let status = self
-            .snap
-            .terms
-            .get(&term)
+            .term_info(term)
             .map(|t| t.status)
             .unwrap_or(Status::None);
         let receipt = Receipt {
@@ -999,46 +992,50 @@ impl App {
     }
 
     /// Leave `text` with the server for the agent: it's typed in when this turn is over.
-    pub(in crate::client) fn queue_follow_up(&mut self, term: TermId, text: &str) {
-        self.cmd(Command::QueueFollowUp {
-            term,
-            text: text.to_string(),
-        });
+    pub(in crate::client) fn queue_follow_up(&mut self, term: ClientTerm, text: &str) {
+        self.cmd_on(
+            term.machine,
+            Command::QueueFollowUp {
+                term: term.term,
+                text: text.to_string(),
+            },
+        );
         self.note_receipt(term, text, true);
     }
 
     /// Type `text` into the agent's prompt and press Enter (a moment later, once it has taken
     /// the text); several lines go in as one paste.
-    fn type_follow_up(&mut self, term: TermId, text: &str) {
+    fn type_follow_up(&mut self, term: ClientTerm, text: &str) {
+        let to = term;
         let bracketed = self
             .parsers
-            .get(&term)
+            .get(&to)
             .is_some_and(|p| p.screen().bracketed_paste());
         let data = if text.contains('\n') && bracketed {
             format!("\x1b[200~{}\x1b[201~", text.replace('\n', "\r"))
         } else {
             text.replace('\n', " ")
         };
-        self.send(ClientMsg::Input {
-            term,
-            data: data.into_bytes(),
-        });
+        self.send_input(to, data.into_bytes());
         let out = self.out.clone();
         std::thread::spawn(move || {
             std::thread::sleep(ENTER_AFTER);
-            let _ = out.send(ClientMsg::Input {
-                term,
-                data: b"\r".to_vec(),
+            let _ = out.send(Outgoing {
+                machine: to.machine,
+                msg: ClientMsg::Input {
+                    term: to.term,
+                    data: b"\r".to_vec(),
+                },
             });
         });
     }
 
     /// `i` again or Esc closes it; any other key closes it and does its own thing.
-    pub(in crate::client) fn on_why_key(&mut self, term: TermId, side: bool, k: &KeyEvent) {
+    pub(in crate::client) fn on_why_key(&mut self, term: ClientTerm, side: bool, k: &KeyEvent) {
         self.mode = if side { Mode::Side } else { Mode::Normal };
         // A check's timeline shows the keys that act; the ones it doesn't show are not passed on
         // to the pane behind it.
-        if let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check().cloned()) {
+        if let Some(info) = self.term_info(term).and_then(|t| t.check().cloned()) {
             let key = match k.code {
                 KeyCode::Enter => Some(('o', true)),
                 KeyCode::Char('r') => Some(('r', check::settled(&info))),
@@ -1130,7 +1127,7 @@ mod why_tests {
     fn the_title_says_what_the_session_reads_as() {
         let title = |stage| {
             let app = why_world(stage);
-            check_why_title(&app, &app.snap.terms[&1])
+            check_why_title(&app, ClientTerm::local(1), &app.snap.terms[&1])
         };
         assert_eq!(title(Stage::Failed), "WHY · fix-footer reads failed");
         assert_eq!(title(Stage::Stale), "WHY · fix-footer reads done · stale");
@@ -1168,7 +1165,7 @@ mod why_tests {
     fn a_click_on_it_opens_the_evidence() {
         let mut app = why_world(Stage::Failed);
         app.mode = Mode::Why {
-            term: 1,
+            term: ClientTerm::local(1),
             side: false,
         };
         crate::client::reference_fixture::frame(
@@ -1178,13 +1175,12 @@ mod why_tests {
             30,
             "unicode",
         );
+        assert!(app.hits.iter().any(|(_, h)| *h
+            == crate::client::Hit::Screen(ScreenHit::CheckEvidence(ClientTerm::local(1)))));
+        app.on_hy_hit(ScreenHit::CheckEvidence(ClientTerm::local(1)), false);
         assert!(
-            app.hits
-                .iter()
-                .any(|(_, h)| *h == crate::client::Hit::Screen(ScreenHit::CheckEvidence(1)))
+            matches!(&app.view, Some(crate::client::View::Check(v)) if v.term == ClientTerm::local(1))
         );
-        app.on_hy_hit(ScreenHit::CheckEvidence(1), false);
-        assert!(matches!(&app.view, Some(crate::client::View::Check(v)) if v.term == 1));
     }
 
     #[test]
@@ -1208,9 +1204,9 @@ mod message_tests {
 
     const QUESTION: &str = "Both lockfiles are in the repo.\nCI runs pnpm install, but the README says npm.\nTwo scripts call npx directly.\nUse pnpm or npm for the workspace?\nTell me which.";
 
-    fn open(term: TermId, text: &str) -> App {
+    fn open(term: ClientTerm, text: &str) -> App {
         let mut app = world(Stage::Failed);
-        app.snap.terms.get_mut(&term).unwrap().said = QUESTION.into();
+        app.snap.terms.get_mut(&term.term).unwrap().said = QUESTION.into();
         app.start_compose(term, true, None);
         if let Mode::Compose(c) = &mut app.mode {
             c.text = text.into();
@@ -1228,7 +1224,7 @@ mod message_tests {
     fn it_names_the_session_quotes_the_tail_and_points_at_the_row_in_every_layout_and_size() {
         for layout in LAYOUTS {
             for (w, h) in SIZES {
-                let mut app = open(3, "");
+                let mut app = open(ClientTerm::local(3), "");
                 let o = frame(&mut app, layout, w, h, "unicode");
                 let (quote, _) = size_tier(h);
                 assert!(
@@ -1267,7 +1263,7 @@ mod message_tests {
     fn it_grows_a_row_a_line_then_scrolls() {
         let rows_of = |lines: usize, w: u16, h: u16| {
             let mut app = open(
-                3,
+                ClientTerm::local(3),
                 &(1..=lines)
                     .map(|i| format!("line {i}"))
                     .collect::<Vec<_>>()
@@ -1367,7 +1363,7 @@ mod message_tests {
 
     #[test]
     fn a_working_agent_queues_and_the_row_says_so_then_says_sent() {
-        let mut app = open(2, "");
+        let mut app = open(ClientTerm::local(2), "");
         let o = frame(
             &mut app,
             crate::client::reference_fixture::Layout::Floating,
@@ -1397,7 +1393,10 @@ mod message_tests {
         let info = app.snap.terms.get_mut(&2).unwrap();
         info.queued = vec!["also test a duplicate".into()];
         refresh_receipts(&mut app);
-        assert!(app.screen.receipts[&2].queued, "still waiting");
+        assert!(
+            app.screen.receipts[&ClientTerm::local(2)].queued,
+            "still waiting"
+        );
         let info = app.snap.terms.get_mut(&2).unwrap();
         (info.queued, info.status) = (Vec::new(), Status::Idle);
         let o = frame(
@@ -1412,37 +1411,52 @@ mod message_tests {
 
     #[test]
     fn a_sent_receipt_clears_on_a_status_change_after_its_minimum_and_by_its_maximum() {
-        let mut app = open(3, "");
+        let mut app = open(ClientTerm::local(3), "");
         type_keys(&mut app, "pnpm");
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(!app.screen.receipts[&3].queued);
+        assert!(!app.screen.receipts[&ClientTerm::local(3)].queued);
         app.snap.terms.get_mut(&3).unwrap().status = Status::Working;
         refresh_receipts(&mut app);
-        assert!(app.screen.receipts.contains_key(&3), "too soon to clear");
-        app.screen.receipts.get_mut(&3).unwrap().since =
-            Instant::now() - RECEIPT_MIN_SHOWN - Duration::from_millis(1);
+        assert!(
+            app.screen.receipts.contains_key(&ClientTerm::local(3)),
+            "too soon to clear"
+        );
+        app.screen
+            .receipts
+            .get_mut(&ClientTerm::local(3))
+            .unwrap()
+            .since = Instant::now() - RECEIPT_MIN_SHOWN - Duration::from_millis(1);
         refresh_receipts(&mut app);
-        assert!(!app.screen.receipts.contains_key(&3), "the status changed");
-        app.note_receipt(3, "x", false);
-        app.screen.receipts.get_mut(&3).unwrap().since =
-            Instant::now() - RECEIPT_MAX_SHOWN - Duration::from_millis(1);
+        assert!(
+            !app.screen.receipts.contains_key(&ClientTerm::local(3)),
+            "the status changed"
+        );
+        app.note_receipt(ClientTerm::local(3), "x", false);
+        app.screen
+            .receipts
+            .get_mut(&ClientTerm::local(3))
+            .unwrap()
+            .since = Instant::now() - RECEIPT_MAX_SHOWN - Duration::from_millis(1);
         refresh_receipts(&mut app);
-        assert!(!app.screen.receipts.contains_key(&3), "timed out");
+        assert!(
+            !app.screen.receipts.contains_key(&ClientTerm::local(3)),
+            "timed out"
+        );
     }
 
     #[test]
     fn esc_keeps_the_draft_for_that_session_and_an_empty_enter_only_closes() {
-        let mut app = open(3, "");
+        let mut app = open(ClientTerm::local(3), "");
         type_keys(&mut app, "half a thought");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert!(app.mode == Mode::Side && app.screen.receipts.is_empty());
-        app.start_compose(1, true, None);
+        app.start_compose(ClientTerm::local(1), true, None);
         assert!(
             matches!(&app.mode, Mode::Compose(c) if c.text.is_empty()),
             "another session's box is empty"
         );
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        app.start_compose(3, true, None);
+        app.start_compose(ClientTerm::local(3), true, None);
         assert!(
             matches!(&app.mode, Mode::Compose(c) if c.text == "half a thought"),
             "its own draft is back"

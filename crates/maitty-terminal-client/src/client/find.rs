@@ -6,7 +6,6 @@ use super::render::truncate;
 use super::screen::{ScreenHit, chip, dim_all, hit, hovered, panel, panel_bar};
 use super::{App, Bg, Mode, files};
 use crate::proc::quiet;
-use crate::protocol::ClientMsg;
 use crate::theme::Theme;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Frame;
@@ -195,7 +194,7 @@ impl App {
     /// The folder to search: the focused agent's worktree (or the cursor's), else here.
     fn find_dir(&self) -> PathBuf {
         self.selected_term()
-            .and_then(|t| self.snap.terms.get(&t))
+            .and_then(|t| self.term_info(t))
             .map(|t| t.top.clone().unwrap_or_else(|| t.cwd.clone()))
             .unwrap_or_else(|| self.here_dir())
     }
@@ -237,10 +236,7 @@ impl App {
                         Some(l) => format!("{}:{l} ", t.path),
                         None => format!("{} ", t.path),
                     };
-                    self.send(ClientMsg::Input {
-                        term,
-                        data: text.into_bytes(),
-                    });
+                    self.send_input(term, text.into_bytes());
                     self.notify(format!("put {} in the prompt", t.path), false);
                 }
                 self.mode = Mode::Normal;

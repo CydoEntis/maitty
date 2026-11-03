@@ -16,7 +16,10 @@ pub(super) fn hairline_world(panes: usize) -> App {
     app.cfg.ui.rounded = crate::config::Rounding::Full;
     let tab = &mut app.screen.tabs[0];
     let f = tab.focus;
-    let others: Vec<TermId> = [1, 2, 3, 4, 5].into_iter().filter(|t| *t != f).collect();
+    let others: Vec<TermId> = [1, 2, 3, 4, 5]
+        .into_iter()
+        .filter(|t| *t != f.term)
+        .collect();
     let leaf = |t: TermId| Box::new(Node::Leaf(t));
     let side = |a: TermId, b: TermId| Node::Split {
         horizontal: true,
@@ -25,12 +28,12 @@ pub(super) fn hairline_world(panes: usize) -> App {
         b: leaf(b),
     };
     tab.layout = match panes {
-        1 => Node::Leaf(f),
-        2 => side(f, others[1]),
+        1 => Node::Leaf(f.term),
+        2 => side(f.term, others[1]),
         _ => Node::Split {
             horizontal: false,
             ratio: 0.5,
-            a: Box::new(side(f, others[1])),
+            a: Box::new(side(f.term, others[1])),
             b: Box::new(side(others[2], others[3])),
         },
     };
@@ -79,7 +82,7 @@ fn every_frame() -> impl Iterator<Item = (String, App, Buffer)> {
 }
 
 /// The pane `term` was drawn at.
-fn pane_at(app: &App, term: TermId) -> Rect {
+fn pane_at(app: &App, term: ClientTerm) -> Rect {
     app.screen
         .leaf_rects
         .iter()
@@ -207,7 +210,8 @@ fn the_tabs_have_their_own_row_over_the_panes() {
 fn a_pane_title_names_only_its_pane() {
     let mut app = hairline_world(1);
     let mut second = app.screen.tabs[app.screen.tab].clone();
-    (second.layout, second.focus, second.name) = (Node::Leaf(2), 2, "tests".into());
+    (second.layout, second.focus, second.name) =
+        (Node::Leaf(2), ClientTerm::local(2), "tests".into());
     app.screen.tabs.push(second);
     let buf = draw(&mut app, 160, 45);
     let title = Rect {
@@ -230,7 +234,7 @@ fn a_rule_says_the_panes_state() {
     let mut app = hairline_world(4);
     let buf = draw(&mut app, 160, 45);
     let t = app.theme.clone();
-    let rule = |app: &App, term: TermId| {
+    let rule = |app: &App, term: ClientTerm| {
         let r = pane_at(app, term);
         {
             let mut c: Vec<Color> = (r.x..r.right() - 1).map(|x| buf[(x, r.y)].fg).collect();
@@ -241,12 +245,20 @@ fn a_rule_says_the_panes_state() {
     let focus = app.focused().expect("a focused pane");
     assert_eq!(rule(&app, focus), vec![t.accent], "focused: teal");
     assert_eq!(
-        rule(&app, 3),
+        rule(&app, ClientTerm::local(3)),
         vec![t.blocked],
         "needs you, not focused: amber"
     );
-    assert_eq!(rule(&app, 4), vec![t.line], "done, not focused: line");
-    assert_eq!(rule(&app, 5), vec![t.line], "idle, not focused: line");
+    assert_eq!(
+        rule(&app, ClientTerm::local(4)),
+        vec![t.line],
+        "done, not focused: line"
+    );
+    assert_eq!(
+        rule(&app, ClientTerm::local(5)),
+        vec![t.line],
+        "idle, not focused: line"
+    );
 }
 
 #[test]
@@ -379,7 +391,7 @@ fn a_check_to_approve_needs_you_everywhere() {
     (fox.status, fox.checks) = (Status::Done, approve);
     let buf = draw(&mut app, 160, 45);
     let t = app.theme.clone();
-    let r = pane_at(&app, 4);
+    let r = pane_at(&app, ClientTerm::local(4));
     assert_eq!(buf[(r.x + 1, r.y)].fg, t.blocked, "its rule is amber");
     let bar = mode_bar_row(&app, buf.area);
     assert!(
@@ -421,9 +433,9 @@ fn a_helper_steps_in_and_keeps_its_ask_line() {
     );
     let (_, ask) = find_in(&buf, side, "helpers").expect("the wants-helpers line");
     assert!(
-        app.hits
-            .iter()
-            .any(|(hr, h)| *h == Hit::Screen(ScreenHit::HelperAsk(5)) && hr.y == ask),
+        app.hits.iter().any(|(hr, h)| *h
+            == Hit::Screen(ScreenHit::HelperAsk(ClientTerm::local(5)))
+            && hr.y == ask),
         "it takes the click"
     );
 }
@@ -481,7 +493,7 @@ fn a_lone_pane_has_no_title_row_and_its_tab_carries_its_close() {
         "it closes the only pane"
     );
     let mut second = app.screen.tabs[app.screen.tab].clone();
-    (second.layout, second.focus) = (Node::Leaf(2), 2);
+    (second.layout, second.focus) = (Node::Leaf(2), ClientTerm::local(2));
     app.screen.tabs.push(second);
     let buf = draw(&mut app, 160, 45);
     let (x, y) = find_in(&buf, tab_row(&app, &buf), "×").unwrap();
@@ -496,7 +508,8 @@ fn a_lone_pane_has_no_title_row_and_its_tab_carries_its_close() {
 fn a_sessions_tabs_are_plain_words_the_current_one_teal() {
     let mut app = hairline_world(1);
     let mut second = app.screen.tabs[app.screen.tab].clone();
-    (second.layout, second.focus, second.name) = (Node::Leaf(2), 2, "tests".into());
+    (second.layout, second.focus, second.name) =
+        (Node::Leaf(2), ClientTerm::local(2), "tests".into());
     app.screen.tabs.push(second);
     app.screen.tabs[app.screen.tab].name = "main".into();
     let buf = draw(&mut app, 160, 45);
@@ -527,7 +540,7 @@ fn every_theme_draws_hairline_from_its_own_roles() {
         let buf = draw(&mut app, 100, 30);
         let r = pane_at(&app, app.focused().unwrap());
         assert_eq!(buf[(r.x + 1, r.y)].fg, t.accent, "{name}: the focused rule");
-        let other = pane_at(&app, 3);
+        let other = pane_at(&app, ClientTerm::local(3));
         assert_eq!(
             buf[(other.x + 1, other.y)].fg,
             t.blocked,
@@ -641,7 +654,8 @@ fn a_lone_tab_still_offers_a_plus_that_opens_a_tab() {
 fn a_tab_out_of_view_shows_its_agents_state() {
     let mut app = hairline_world(1);
     let mut second = app.screen.tabs[app.screen.tab].clone();
-    (second.layout, second.focus, second.name) = (Node::Leaf(2), 2, "tests".into());
+    (second.layout, second.focus, second.name) =
+        (Node::Leaf(2), ClientTerm::local(2), "tests".into());
     app.screen.tabs.push(second);
     let buf = draw(&mut app, 160, 45);
     let (x, y) = find_in(&buf, tab_row(&app, &buf), "2 tests").expect("the other tab");
@@ -700,17 +714,21 @@ fn a_toast_is_a_round_outline_in_floating_and_a_solid_block_in_hairline() {
 fn a_split_pane_has_a_rule_and_no_title_and_the_rule_focuses_it() {
     let mut app = hairline_world(2);
     let buf = draw(&mut app, 160, 45);
-    let r = pane_at(&app, 3);
+    let r = pane_at(&app, ClientTerm::local(3));
     let top: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
     assert!(
         top.trim_end_matches('│').chars().all(|c| c == '─'),
         "the top row is only the rule: {top}"
     );
-    let (_, inner) = *app.panes.iter().find(|(id, _)| *id == 3).unwrap();
+    let (_, inner) = *app
+        .panes
+        .iter()
+        .find(|(id, _)| *id == ClientTerm::local(3))
+        .unwrap();
     assert_eq!(inner.y, r.y + 1, "the terminal starts under the rule");
     assert_eq!(
         hit_at(&app, r.x + 3, r.y),
-        Some(Hit::Pane(3)),
+        Some(Hit::Pane(ClientTerm::local(3))),
         "the rule focuses the pane"
     );
 }

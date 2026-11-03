@@ -86,6 +86,13 @@ in depth.
 pane associations share one private, synced temporary file renamed over the
 snapshot; there is no separate registry file or database.
 
+The client's own saved state is `maitty-ui.json` (`client/screen/mod.rs` `Saved`). Project
+keys (`order`, `closed`, `names`, `open_branches`) and the top-level `session_order` and
+`placed` describe this machine, so a file written before machines reads as it always did.
+`machines` holds the same `session_order` and `placed` for each other machine by its
+configured name, and a project on another machine is keyed `<machine>\u{1f}<folder>`. A machine
+that is not connected, or no longer configured, keeps its entries; they are never pruned.
+`machines` is left out of the file while it is empty.
 
 ## Project-specific: conventions
 
@@ -111,6 +118,13 @@ A retained registry prevents empty-daemon auto-exit from deleting its snapshot.
 Profile persistence does not establish verified native/app-server launch parity;
 see [the Codex contract](stack/codex-app-server.md).
 
+
+Two small files in the data folder name machines. `daemon-id` holds the daemon's own random
+128-bit id as hex, made on first start and replaced (with a warning) if unreadable, so a bad
+file never stops the daemon. `machine-ids.json` is the window's `{"ids": {name: daemon id}}`,
+per user and never synced, written atomically; unknown fields are ignored and a file that does
+not parse is kept as `.bak` and starts empty. Neither has a version: a new field is added with a
+default.
 
 ## Project-specific: structured history cache foundation
 

@@ -12,6 +12,25 @@ pub fn is_invisible(c: char) -> bool {
     )
 }
 
+/// A line break or tab: it becomes a space when sanitising, so the words around it stay apart.
+fn is_break(c: char) -> bool {
+    matches!(c, '\t' | '\n' | '\r' | '\u{85}' | '\u{2028}' | '\u{2029}')
+}
+
+/// `text` made safe to draw: control characters (escape sequences included) and invisible
+/// characters are dropped, and a line break or tab becomes a space, except that a `\n` stays
+/// when `keep_lines`. Idempotent; text in any script, and emoji, pass through untouched.
+pub fn sanitize(text: &str, keep_lines: bool) -> String {
+    text.chars()
+        .filter_map(|c| match c {
+            '\n' if keep_lines => Some('\n'),
+            c if is_break(c) => Some(' '),
+            c if c.is_control() || is_invisible(c) => None,
+            c => Some(c),
+        })
+        .collect()
+}
+
 /// Each invisible character in `text`, with its position (counted in characters).
 pub fn find(text: &str) -> Vec<(usize, char)> {
     text.chars()
@@ -76,6 +95,38 @@ mod tests {
             [(1, '\u{200d}')],
             "a joiner inside emoji is refused too"
         );
+    }
+
+    #[test]
+    fn sanitize_drops_what_draws_as_nothing_or_moves_the_cursor() {
+        let cases = [
+            ("\u{1b}[2J\u{1b}]52;c;AAAA\u{7}hi", "[2J]52;c;AAAAhi"),
+            ("a\0b", "ab"),
+            ("a\u{7f}b\u{9b}31m", "ab31m"),
+            ("\u{202e}evil\u{2066}", "evil"),
+            ("a\u{200b}b\u{feff}c\u{2060}", "abc"),
+            ("a\u{e0041}b", "ab"),
+            (
+                "one\r\ntwo\tthree\u{2028}four\u{85}five",
+                "one  two three four five",
+            ),
+        ];
+        for (hostile, safe) in cases {
+            assert_eq!(sanitize(hostile, false), safe, "{hostile:?}");
+            assert_eq!(sanitize(safe, false), safe, "idempotent");
+        }
+    }
+
+    #[test]
+    fn sanitize_keeps_line_breaks_only_when_asked() {
+        assert_eq!(sanitize("a\r\nb\tc\nd", true), "a \nb c\nd");
+        assert_eq!(sanitize("a\nb", false), "a b");
+    }
+
+    #[test]
+    fn sanitize_keeps_text_in_every_script() {
+        let plain = "café naïve — 日本語 한국어 العربية ✓ 🎉";
+        assert_eq!(sanitize(plain, false), plain);
     }
 
     #[test]

@@ -27,7 +27,10 @@ mod secret_prompt_tests {
         assert!(matches!(
             app.mode,
             Mode::Secret {
-                term: 1,
+                term: ClientTerm {
+                    machine: MachineId::LOCAL,
+                    term: 1
+                },
                 id: 41,
                 side: false
             }
@@ -248,9 +251,11 @@ mod design_tests {
         app.screen_sync();
         let mut p = vt100::Parser::new(20, 80, 0);
         p.process(b"> fix the flaky checkout test\r\n\r\nRun npm test -- checkout?\r\n\x1b[1m\xe2\x9d\xaf 1. Yes\x1b[0m\r\n  2. Yes, and always allow\r\n  3. No");
-        app.parsers.insert(1, p);
-        app.parsers.insert(2, vt100::Parser::new(20, 80, 0));
-        app.parsers.insert(3, vt100::Parser::new(20, 80, 0));
+        app.parsers.insert(ClientTerm::local(1), p);
+        app.parsers
+            .insert(ClientTerm::local(2), vt100::Parser::new(20, 80, 0));
+        app.parsers
+            .insert(ClientTerm::local(3), vt100::Parser::new(20, 80, 0));
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
@@ -305,12 +310,12 @@ mod design_tests {
                 .1
         };
         assert_eq!(
-            rendered(3).x,
-            rendered(2).x,
+            rendered(ClientTerm::local(3)).x,
+            rendered(ClientTerm::local(2)).x,
             "the screen renderer preserves the nested column"
         );
         assert!(
-            rendered(3).y > rendered(2).y,
+            rendered(ClientTerm::local(3)).y > rendered(ClientTerm::local(2)).y,
             "the screen renderer places the pane below its sibling"
         );
     }
@@ -465,7 +470,10 @@ mod screen_tests {
             assert!(matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::Map));
             key(&mut app, KeyCode::Esc);
             assert_eq!(app.mode, Mode::Normal);
-            assert!(rx.try_recv().is_err(), "looking at keys sends nothing");
+            assert!(
+                rx.try_recv().map(|o| o.msg).is_err(),
+                "looking at keys sends nothing"
+            );
         }
     }
 
@@ -555,7 +563,7 @@ mod screen_tests {
             Some("tidy-worktrees"),
             "and it is recent now"
         );
-        let _ = rx.try_recv();
+        let _ = rx.try_recv().map(|o| o.msg);
     }
 
     #[test]
@@ -609,7 +617,7 @@ mod screen_tests {
                 app.snap.terms.get_mut(&2).unwrap().label = "Review payments".into();
                 app.screen_fresh();
                 app.cfg.ui.motion = false;
-                app.screen_focus(1);
+                app.screen_focus(ClientTerm::local(1));
                 app.mode = Mode::Normal;
                 let (tx, mut rx) = mpsc::unbounded_channel();
                 app.out = tx;
@@ -634,8 +642,14 @@ mod screen_tests {
                         .map(|(r, _)| *r)
                 };
                 assert!(
-                    in_column(screen::ScreenHit::Session(SessionKey::Pane(1))).is_some()
-                        && in_column(screen::ScreenHit::Session(SessionKey::Pane(2))).is_some(),
+                    in_column(screen::ScreenHit::Session(ClientSession::local(
+                        SessionKey::Pane(1)
+                    )))
+                    .is_some()
+                        && in_column(screen::ScreenHit::Session(ClientSession::local(
+                            SessionKey::Pane(2)
+                        )))
+                        .is_some(),
                     "{w}x{h} {position}: a row per session"
                 );
                 assert!(
@@ -667,10 +681,13 @@ mod screen_tests {
                         });
                     }
                 };
-                let row = in_column(screen::ScreenHit::Session(SessionKey::Pane(2))).unwrap();
+                let row = in_column(screen::ScreenHit::Session(ClientSession::local(
+                    SessionKey::Pane(2),
+                )))
+                .unwrap();
                 click(&mut app, row);
                 assert!(
-                    std::iter::from_fn(|| rx.try_recv().ok())
+                    std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
                         .any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 })))
                 );
                 // More sessions than fit: the last row is a `…` that opens the sidebar.
@@ -719,13 +736,13 @@ mod screen_tests {
         let (_, mut app) = super::design_tests::render_with(120, 30);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
-        app.screen_focus(1);
+        app.screen_focus(ClientTerm::local(1));
         app.mode = Mode::Normal;
         let mut terminal = Terminal::new(TestBackend::new(120, 30)).unwrap();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         let x = app.screen.side_rect.x;
-        let active_y = app.screen.row_y[&1];
-        let hover_y = app.screen.row_y[&2];
+        let active_y = app.screen.row_y[&ClientTerm::local(1)];
+        let hover_y = app.screen.row_y[&ClientTerm::local(2)];
         let active_bg = terminal.backend().buffer()[(x + 8, active_y)].bg;
         for (column, row) in [(x + 10, hover_y), (x + 4, 3), (x + 4, 27), (80, 20)] {
             app.on_mouse(MouseEvent {
@@ -737,7 +754,7 @@ mod screen_tests {
             terminal.draw(|f| render::draw(&mut app, f)).unwrap();
             assert_eq!(
                 app.focused(),
-                Some(1),
+                Some(ClientTerm::local(1)),
                 "hover never changes the active pane"
             );
             if row != active_y {
@@ -761,7 +778,9 @@ mod screen_tests {
             active_bg,
             "hover has its own quieter style"
         );
-        app.screen_side_set(screen::SideItem::Sess(SessionKey::Pane(2)));
+        app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
+            SessionKey::Pane(2),
+        )));
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = terminal.backend().buffer();
         assert_ne!(
@@ -787,13 +806,13 @@ mod screen_tests {
             modifiers: KeyModifiers::NONE,
         });
         assert!(
-            std::iter::from_fn(|| rx.try_recv().ok())
+            std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
                 .any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 })))
         );
         app.snap.workspaces[0].tabs[0].focus = 2;
         app.screen_sync();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
-        assert_eq!(app.focused(), Some(2));
+        assert_eq!(app.focused(), Some(ClientTerm::local(2)));
         assert_eq!(terminal.backend().buffer()[(x + 2, hover_y)].symbol(), "▎");
         app.snap.terms.get_mut(&2).unwrap().asleep = true;
         app.screen_fresh();
@@ -821,7 +840,7 @@ mod screen_tests {
         assert!(app.quit.is_none() && app.restart_pending());
         assert_eq!(app.focused(), focused);
         assert!(
-            rx.try_recv().is_err(),
+            rx.try_recv().map(|o| o.msg).is_err(),
             "install completion sends no session commands"
         );
         assert!(app.notice.as_ref().is_some_and(|(text, ..)| {
@@ -840,7 +859,7 @@ mod screen_tests {
         app.update_installed("0.36.12".into());
 
         assert!(matches!(
-            rx.try_recv(),
+            rx.try_recv().map(|o| o.msg),
             Ok(ClientMsg::Command(Command::KillServer { forget: false }))
         ));
     }
@@ -853,7 +872,7 @@ mod screen_tests {
         app.installed_version = Some(Ok("0.36.12".into()));
         app.snap.daemon_version = "0.36.11".into();
         assert!(
-            rx.try_recv().is_err(),
+            rx.try_recv().map(|o| o.msg).is_err(),
             "open sessions must not be interrupted"
         );
 
@@ -862,7 +881,7 @@ mod screen_tests {
         app.on_server(ServerMsg::State(snapshot));
 
         assert!(matches!(
-            rx.try_recv(),
+            rx.try_recv().map(|o| o.msg),
             Ok(ClientMsg::Command(Command::KillServer { forget: false }))
         ));
     }
@@ -882,7 +901,7 @@ mod screen_tests {
 
         assert!(!app.daemon_restart_requested && !app.daemon_restart_reconnect);
         assert!(
-            rx.try_recv().is_err(),
+            rx.try_recv().map(|o| o.msg).is_err(),
             "a current daemon must not be restarted again"
         );
         assert!(
@@ -936,7 +955,9 @@ mod screen_tests {
         let at = app
             .hits
             .iter()
-            .filter_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Why(1))).then_some(*r))
+            .filter_map(|(r, h)| {
+                (*h == Hit::Screen(screen::ScreenHit::Why(ClientTerm::local(1)))).then_some(*r)
+            })
             .next_back()
             .expect("the status is clickable");
         app.on_mouse(MouseEvent {
@@ -962,7 +983,9 @@ mod screen_tests {
             let hits: Vec<_> = app
                 .hits
                 .iter()
-                .filter_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Why(1))).then_some(*r))
+                .filter_map(|(r, h)| {
+                    (*h == Hit::Screen(screen::ScreenHit::Why(ClientTerm::local(1)))).then_some(*r)
+                })
                 .collect();
             assert!(
                 hits.len() >= 2,
@@ -979,7 +1002,16 @@ mod screen_tests {
                 row: at.y,
                 modifiers: KeyModifiers::NONE,
             });
-            assert!(matches!(app.mode, Mode::Why { term: 1, .. }));
+            assert!(matches!(
+                app.mode,
+                Mode::Why {
+                    term: ClientTerm {
+                        machine: MachineId::LOCAL,
+                        term: 1
+                    },
+                    ..
+                }
+            ));
             let output = draw(&mut app, 120, 30);
             show(&output);
             assert!(
@@ -993,7 +1025,7 @@ mod screen_tests {
         info.status_why = "screen: queued question".into();
         info.why_screen_at = 1;
         app.mode = Mode::Why {
-            term: 1,
+            term: ClientTerm::local(1),
             side: false,
         };
         assert!(draw(&mut app, 120, 30).contains("Waiting for your answer"));
@@ -1024,11 +1056,12 @@ mod screen_tests {
             ws.active_tab = 200 + id;
             app.snap.workspaces.push(ws);
             app.snap.terms.insert(id, info);
-            app.parsers.insert(id, app.new_parser(30, 100));
+            app.parsers
+                .insert(ClientTerm::local(id), app.new_parser(30, 100));
         }
         app.snap.active_ws = Some(101);
         app.screen_fresh();
-        app.screen_focus(1);
+        app.screen_focus(ClientTerm::local(1));
         let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         app.sync_sizes();
@@ -1052,7 +1085,7 @@ mod screen_tests {
             let wanted = (cycle / 3) as u32 % PANES + 1;
             match action {
                 0 => {
-                    app.screen_focus(wanted);
+                    app.screen_focus(ClientTerm::local(wanted));
                     let mut acknowledged = app.snap.clone();
                     acknowledged.active_ws = Some(100 + wanted);
                     app.on_server(ServerMsg::State(acknowledged));
@@ -1077,7 +1110,7 @@ mod screen_tests {
             app.sync_sizes();
             timings[action].push(began.elapsed().as_secs_f64() * 1000.0);
             if action == 0 {
-                assert_eq!(app.focused(), Some(wanted));
+                assert_eq!(app.focused(), Some(ClientTerm::local(wanted)));
             }
             let area = terminal.backend().buffer().area;
             assert!(
@@ -1088,7 +1121,10 @@ mod screen_tests {
         }
         assert!(scrolled, "the benchmark really exercised scrollback");
         assert!(
-            app.parsers[&PANES].screen().contents().contains("stress-"),
+            app.parsers[&ClientTerm::local(PANES)]
+                .screen()
+                .contents()
+                .contains("stress-"),
             "output survived switching and rewrapping"
         );
         println!(
@@ -1410,7 +1446,7 @@ mod screen_tests {
                 .any(|l| matches!(l, screen::Line::Note(text, ..) if text.contains("subagent")))
         );
         assert!(
-            app.session_items(term)
+            app.session_items(ClientTerm::local(term))
                 .unwrap()
                 .1
                 .iter()
@@ -1451,7 +1487,7 @@ mod screen_tests {
         // Still "needs you", but what asked is gone (auto mode settled it).
         let mut p = vt100::Parser::new(40, 120, 0);
         p.process(b"* Waiting for 1 dynamic workflow to finish");
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         let o = draw(&mut app, 160, 45);
         assert!(
             !o.contains("● answer") && !o.contains(" Yes 1 "),
@@ -1525,7 +1561,7 @@ mod screen_tests {
         app.mode = Mode::Normal;
         app.cfg.ui.layout = layout.into();
         app.cfg.ui.fold_retired_layout();
-        app.menu_for_pane(1, (60, 1));
+        app.menu_for_pane(ClientTerm::local(1), (60, 1));
         app.screen_fresh();
         let mut term = Terminal::new(TestBackend::new(230, 50)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
@@ -1570,7 +1606,7 @@ mod screen_tests {
         app.mode = Mode::Normal;
 
         // Right-click menus.
-        app.menu_for_session(1, (10, 10));
+        app.menu_for_session(ClientTerm::local(1), (10, 10));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("Rename") && o.contains("Close"));
@@ -1583,7 +1619,10 @@ mod screen_tests {
             matches!(
                 app.mode,
                 Mode::Prompt {
-                    kind: PromptKind::RenamePane(1),
+                    kind: PromptKind::RenamePane(ClientTerm {
+                        machine: MachineId::LOCAL,
+                        term: 1
+                    }),
                     ..
                 }
             ),
@@ -1602,7 +1641,7 @@ mod screen_tests {
         app.mode = Mode::Normal;
 
         // herdr's pane menu, and closing asks first.
-        app.menu_for_pane(1, (40, 10));
+        app.menu_for_pane(ClientTerm::local(1), (40, 10));
         let o = draw(&mut app, 160, 45);
         show(&o);
         for item in [
@@ -1673,7 +1712,7 @@ mod screen_tests {
         // Claude draws pasted text and its diff panel on palette colour 8.
         let mut p = vt100::Parser::new(20, 80, 0);
         p.process(b"\x1b[100mpasted text\x1b[0m plain");
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let (_, inner) = app.panes[0];
@@ -1701,7 +1740,7 @@ mod screen_tests {
         let surface = ratatui::style::Color::Rgb(8, 9, 10);
         let mut parser = vt100::Parser::new(20, 80, 0);
         parser.process(b"\x1b[48;2;8;9;10m\x1b[2J");
-        app.parsers.insert(1, parser);
+        app.parsers.insert(ClientTerm::local(1), parser);
 
         let mut terminal =
             ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45)).unwrap();
@@ -1745,7 +1784,7 @@ mod screen_tests {
                 .as_bytes(),
             );
         }
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         let o = draw(&mut app, 160, 45);
         assert!(
             o.contains("line 100") && !o.contains("line 40 "),
@@ -1762,7 +1801,11 @@ mod screen_tests {
         }
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(!o.contains("line 100"), "scrolled up: {:?}", app.history(1));
+        assert!(
+            !o.contains("line 100"),
+            "scrolled up: {:?}",
+            app.history(ClientTerm::local(1))
+        );
         assert!(
             o.contains("↓ Back to bottom · 30 lines up"),
             "and it says so, with a way back"
@@ -1780,7 +1823,7 @@ mod screen_tests {
     fn to_bottom_at(app: &App, term: TermId) -> Option<Rect> {
         app.hits
             .iter()
-            .find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::ToBottom(term)))
+            .find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::ToBottom(ClientTerm::local(term))))
             .map(|(r, _)| *r)
     }
 
@@ -1793,10 +1836,10 @@ mod screen_tests {
         for i in 1..=100 {
             p.process(format!("line {i}\r\n").as_bytes());
         }
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         draw(&mut app, 160, 45);
         assert!(to_bottom_at(&app, 1).is_none(), "at the bottom: no button");
-        app.scroll_to(1, 30);
+        app.scroll_to(ClientTerm::local(1), 30);
         draw(&mut app, 160, 45);
         let at = to_bottom_at(&app, 1).expect("scrolled up: a button");
         let (_, inner) = app.panes[0];
@@ -1807,7 +1850,11 @@ mod screen_tests {
             row: at.y,
             modifiers: KeyModifiers::NONE,
         });
-        assert_eq!(app.history(1).0, 0, "one click: back at the newest line");
+        assert_eq!(
+            app.history(ClientTerm::local(1)).0,
+            0,
+            "one click: back at the newest line"
+        );
     }
 
     #[test]
@@ -1818,7 +1865,7 @@ mod screen_tests {
         app.out = tx;
         let mut p = vt100::Parser::new(40, 120, 1000);
         p.process(b"\x1b[?1049h");
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         draw(&mut app, 160, 45);
         let (_, inner) = app.panes[0];
         for _ in 0..3 {
@@ -1830,7 +1877,7 @@ mod screen_tests {
                 modifiers: KeyModifiers::NONE,
             });
         }
-        while rx.try_recv().is_ok() {}
+        while rx.try_recv().map(|o| o.msg).is_ok() {}
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("↓ Back to bottom"), "{o}");
         let at = to_bottom_at(&app, 1).expect("a button");
@@ -1840,7 +1887,7 @@ mod screen_tests {
             row: at.y,
             modifiers: KeyModifiers::NONE,
         });
-        let sent: Vec<u8> = std::iter::from_fn(|| rx.try_recv().ok())
+        let sent: Vec<u8> = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
             .filter_map(|m| {
                 if let ClientMsg::Input { term: 1, data } = m {
                     Some(data)
@@ -1867,7 +1914,7 @@ mod screen_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let mut p = vt100::Parser::new(40, 120, 1000);
         p.process(b"\x1b[?1049h");
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         draw(&mut app, 160, 45);
         let (_, inner) = app.panes[0];
         app.on_mouse(MouseEvent {
@@ -1895,7 +1942,7 @@ mod screen_tests {
             p.process(format!("line {i}\r\n").as_bytes());
         }
         p.process(b"\x1b[?1000h\x1b[?1006h");
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         draw(&mut app, 160, 45);
         let (_, inner) = app.panes[0];
         for _ in 0..5 {
@@ -1907,21 +1954,25 @@ mod screen_tests {
             });
         }
         assert_eq!(
-            app.history(1).0,
+            app.history(ClientTerm::local(1)).0,
             15,
             concat!(env!("APP_COMMAND"), " scrolled its history")
         );
         // A full-screen program (no history of its own here) gets the wheel itself.
         let mut p = vt100::Parser::new(40, 120, 1000);
         p.process(b"\x1b[?1049h\x1b[?1000h\x1b[?1006h");
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         app.on_mouse(MouseEvent {
             kind: MouseEventKind::ScrollUp,
             column: inner.x + 5,
             row: inner.y + 5,
             modifiers: KeyModifiers::NONE,
         });
-        assert_eq!(app.history(1).0, 0, "the program scrolls itself");
+        assert_eq!(
+            app.history(ClientTerm::local(1)).0,
+            0,
+            "the program scrolls itself"
+        );
     }
 
     #[test]
@@ -1932,7 +1983,7 @@ mod screen_tests {
         app.out = tx;
         let mut p = vt100::Parser::new(40, 120, 1000);
         p.process(b"\x1b[?1000h\x1b[?1006h");
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         draw(&mut app, 160, 45);
         let (_, pane) = app.panes[0];
 
@@ -1944,7 +1995,7 @@ mod screen_tests {
         });
 
         assert!(
-            matches!(rx.try_recv(), Ok(crate::protocol::ClientMsg::Input { term: 1, data }) if data == b"\x1b[<64;6;6M")
+            matches!(rx.try_recv().map(|o| o.msg), Ok(crate::protocol::ClientMsg::Input { term: 1, data }) if data == b"\x1b[<64;6;6M")
         );
     }
 
@@ -1954,7 +2005,8 @@ mod screen_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
-        app.parsers.insert(1, vt100::Parser::new(40, 120, 1000));
+        app.parsers
+            .insert(ClientTerm::local(1), vt100::Parser::new(40, 120, 1000));
         draw(&mut app, 160, 45);
         let (_, pane) = app.panes[0];
 
@@ -1966,7 +2018,7 @@ mod screen_tests {
         });
 
         assert!(
-            matches!(rx.try_recv(), Ok(crate::protocol::ClientMsg::Input { term: 1, data }) if data == b"\x1b[5~")
+            matches!(rx.try_recv().map(|o| o.msg), Ok(crate::protocol::ClientMsg::Input { term: 1, data }) if data == b"\x1b[5~")
         );
     }
 
@@ -1975,12 +2027,13 @@ mod screen_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
-        app.parsers.insert(1, vt100::Parser::new(40, 120, 1000));
+        app.parsers
+            .insert(ClientTerm::local(1), vt100::Parser::new(40, 120, 1000));
 
         app.on_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE));
 
         assert!(
-            matches!(rx.try_recv(), Ok(crate::protocol::ClientMsg::Input { term: 1, data }) if data == b"\x1b[5~")
+            matches!(rx.try_recv().map(|o| o.msg), Ok(crate::protocol::ClientMsg::Input { term: 1, data }) if data == b"\x1b[5~")
         );
     }
 
@@ -1991,25 +2044,33 @@ mod screen_tests {
         for i in 1..=100 {
             p.process(format!("line {i}\r\n").as_bytes());
         }
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         draw(&mut app, 160, 45);
         // PageUp at a prompt scrolls history; a scrollbar shows where you are.
         app.on_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE));
         assert!(
-            app.history(1).0 > 10,
+            app.history(ClientTerm::local(1)).0 > 10,
             "PageUp scrolled: {:?}",
-            app.history(1)
+            app.history(ClientTerm::local(1))
         );
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("┃"), "scrollbar thumb");
         app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
-        assert_eq!(app.history(1).0, 0, "typing goes back to the bottom");
+        assert_eq!(
+            app.history(ClientTerm::local(1)).0,
+            0,
+            "typing goes back to the bottom"
+        );
         // A full-screen program keeps PageUp for itself.
-        if let Some(p) = app.parsers.get_mut(&1) {
+        if let Some(p) = app.parsers.get_mut(&ClientTerm::local(1)) {
             p.process(b"\x1b[?1049h");
         }
         app.on_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE));
-        assert_eq!(app.history(1).0, 0, "PageUp went to the program");
+        assert_eq!(
+            app.history(ClientTerm::local(1)).0,
+            0,
+            "PageUp went to the program"
+        );
         // Synchronized output holds drawing until it ends.
         app.on_server(ServerMsg::Output {
             term: 1,
@@ -2026,7 +2087,7 @@ mod screen_tests {
             term: 1,
             data: b"\x1b[?1004h".to_vec(),
         });
-        assert!(app.focus_report.contains(&1));
+        assert!(app.focus_report.contains(&ClientTerm::local(1)));
         // A program's clipboard copy reaches the user (and says so).
         app.on_server(ServerMsg::Clipboard {
             term: 1,
@@ -2044,14 +2105,15 @@ mod screen_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // Narrow pane: a long line wraps over several rows.
         let long = "word ".repeat(40);
-        app.sizes.insert(1, (40, 20));
-        app.parsers.insert(1, vt100::Parser::new(20, 40, 1000));
+        app.sizes.insert(ClientTerm::local(1), (40, 20));
+        app.parsers
+            .insert(ClientTerm::local(1), vt100::Parser::new(20, 40, 1000));
         app.on_server(ServerMsg::Output {
             term: 1,
             data: format!("{long}\r\nend\x1b[5 q").into_bytes(),
         });
         let rows_of = |app: &App| {
-            let sc = app.parsers[&1].screen();
+            let sc = app.parsers[&ClientTerm::local(1)].screen();
             sc.rows(0, sc.size().1)
                 .filter(|l| l.contains("word"))
                 .count()
@@ -2060,7 +2122,7 @@ mod screen_tests {
         assert!(rows_narrow >= 5, "wrapped narrow: {rows_narrow}");
         // Wider: the same text re-wraps into fewer rows instead of being cut.
         app.panes = vec![(
-            1,
+            ClientTerm::local(1),
             Rect {
                 x: 0,
                 y: 0,
@@ -2074,9 +2136,14 @@ mod screen_tests {
             rows_wide < rows_narrow && rows_wide >= 1,
             "re-wrapped: {rows_wide} rows (was {rows_narrow})"
         );
-        assert!(app.parsers[&1].screen().contents().contains("end"));
+        assert!(
+            app.parsers[&ClientTerm::local(1)]
+                .screen()
+                .contents()
+                .contains("end")
+        );
         // The program asked for a blinking bar.
-        assert_eq!(app.cursor_style.get(&1), Some(&5));
+        assert_eq!(app.cursor_style.get(&ClientTerm::local(1)), Some(&5));
     }
 
     #[test]
@@ -2145,7 +2212,7 @@ mod screen_tests {
             app.sync_hold_until().is_none(),
             "navigation draws immediately instead of waiting for the old pane"
         );
-        app.snap.workspaces[0].tabs[0].focus = old;
+        app.snap.workspaces[0].tabs[0].focus = old.term;
         app.mode = Mode::Actions { sel: 0 };
         assert!(
             app.sync_hold_until().is_none(),
@@ -2223,9 +2290,15 @@ mod screen_tests {
     }
 
     /// Three panes in one tab, `a` focused: a beside b, c under b.
-    fn three_panes(app: &mut App) -> [TermId; 3] {
+    fn three_panes(app: &mut App) -> [ClientTerm; 3] {
         let a = app.focused().unwrap();
-        let others: Vec<TermId> = app.snap.terms.keys().copied().filter(|t| *t != a).collect();
+        let others: Vec<ClientTerm> = app
+            .snap
+            .terms
+            .keys()
+            .map(|t| ClientTerm::local(*t))
+            .filter(|t| *t != a)
+            .collect();
         let (b, c) = (others[0], others[1]);
         app.screen.tabs.clear();
         app.screen_place(a, None);
@@ -2300,7 +2373,11 @@ mod screen_tests {
 
     /// Where `term`'s box is drawn.
     fn card_of(app: &App, term: TermId) -> Rect {
-        app.pane_frames.iter().find(|(t, _)| *t == term).unwrap().1
+        app.pane_frames
+            .iter()
+            .find(|(t, _)| *t == ClientTerm::local(term))
+            .unwrap()
+            .1
     }
 
     #[test]
@@ -2324,7 +2401,7 @@ mod screen_tests {
                     app.update_available = update.then(|| "0.44.0".into());
                     if split {
                         let [_, b, _] = three_panes(&mut app);
-                        app.snap.terms.get_mut(&b).unwrap().status = Status::Blocked;
+                        app.snap.terms.get_mut(&b.term).unwrap().status = Status::Blocked;
                     }
                     if mode != "off" {
                         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
@@ -2339,7 +2416,7 @@ mod screen_tests {
                         .pane_frames
                         .iter()
                         .filter(|(id, r)| {
-                            r.y == top && app.snap.terms[id].status == Status::Blocked
+                            r.y == top && app.snap.terms[&id.term].status == Status::Blocked
                         })
                         .map(|(_, r)| *r)
                         .collect();
@@ -2438,13 +2515,16 @@ mod screen_tests {
 
     /// The three panes, the current tab at `place` among three tabs of the session; the other
     /// two show pane `c` and are named `other-tab-1` and `other-tab-2`.
-    fn three_tabs(app: &mut App, place: usize) -> [TermId; 3] {
+    fn three_tabs(app: &mut App, place: usize) -> [ClientTerm; 3] {
         let [a, b, c] = three_panes(app);
         let mut tabs: Vec<_> = (1..=2)
             .map(|k| {
                 let mut tab = app.screen.tabs[0].clone();
-                (tab.layout, tab.focus, tab.name) =
-                    (crate::layout::Node::Leaf(c), c, format!("other-tab-{k}"));
+                (tab.layout, tab.focus, tab.name) = (
+                    crate::layout::Node::Leaf(c.term),
+                    c,
+                    format!("other-tab-{k}"),
+                );
                 tab
             })
             .collect();
@@ -2455,25 +2535,19 @@ mod screen_tests {
 
     /// One session in three tabs, each tab one pane: an idle agent, one working and one that
     /// needs you, the first tab on screen.
-    fn tabbed_session(layout: &str) -> (App, [TermId; 3]) {
+    fn tabbed_session(layout: &str) -> (App, [ClientTerm; 3]) {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.cfg.ui.layout = layout.into();
         let [a, b, c] = three_panes(&mut app);
         let owner = app.screen.tabs[0].owner;
-        let tab = |id| screen::ScreenTab {
-            layout: crate::layout::Node::Leaf(id),
-            focus: id,
-            owner,
-            used: 0,
-            name: String::new(),
-        };
+        let tab = |id| screen::ScreenTab::single(id, owner);
         (app.screen.tabs, app.screen.tab) = (vec![tab(a), tab(b), tab(c)], 0);
         for (id, agent, status) in [
             (a, "claude", Status::Idle),
             (b, "codex", Status::Working),
             (c, "gemini", Status::Blocked),
         ] {
-            let info = app.snap.terms.get_mut(&id).unwrap();
+            let info = app.snap.terms.get_mut(&id.term).unwrap();
             (info.agent, info.status) = (Some(agent.into()), status);
         }
         (app, [a, b, c])
@@ -2589,7 +2663,7 @@ mod screen_tests {
             .map(|(id, _)| id)
             .expect("a shell");
         app.snap.terms.get_mut(&shell).unwrap().process = "pwsh.exe".into();
-        app.screen.cursor = Some(SessionKey::Pane(shell));
+        app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(shell)));
         app.mode = Mode::Normal;
         app.act(Action::ClosePane);
         assert!(
@@ -2603,13 +2677,13 @@ mod screen_tests {
             .find(|(_, t)| t.agent.is_some())
             .map(|(id, _)| id)
             .expect("an agent");
-        app.screen.cursor = Some(SessionKey::Pane(agent));
+        app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(agent)));
         app.mode = Mode::Normal;
         app.act(Action::ClosePane);
         assert!(matches!(app.mode, Mode::Confirm(_)), "an agent asks first");
         let (_, mut busy) = super::design_tests::render_with(160, 45);
         busy.snap.terms.get_mut(&shell).unwrap().process = "npm".into();
-        busy.screen.cursor = Some(SessionKey::Pane(shell));
+        busy.screen.cursor = Some(ClientSession::local(SessionKey::Pane(shell)));
         busy.mode = Mode::Normal;
         busy.act(Action::ClosePane);
         assert!(
@@ -2648,14 +2722,16 @@ mod screen_tests {
     fn alt_x_in_the_sidebar_closes_the_selected_session_and_asks_for_an_agent() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let focused = app.focused();
-        let agent = *app
+        let agent = app
             .snap
             .terms
             .iter()
-            .find(|(id, t)| t.agent.is_some() && Some(**id) != focused)
-            .map(|(id, _)| id)
+            .find(|(id, t)| t.agent.is_some() && Some(ClientTerm::local(**id)) != focused)
+            .map(|(id, _)| ClientTerm::local(*id))
             .expect("an agent not in focus");
-        app.screen_side_set(screen::SideItem::Sess(SessionKey::Pane(agent)));
+        app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
+            SessionKey::Pane(agent.term),
+        )));
         app.mode = Mode::Side;
         app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT));
         assert!(
@@ -2677,16 +2753,19 @@ mod screen_tests {
             .screen
             .tabs
             .iter()
-            .filter(|t| t.owner == 1)
+            .filter(|t| t.owner == ClientTerm::local(1))
             .map(|t| t.layout.first_leaf())
             .collect();
         assert_eq!(mine, vec![1, 3], "claude's own tab first, then the shell's");
         assert!(
-            !app.screen.tabs.iter().any(|t| t.owner == 3),
+            !app.screen
+                .tabs
+                .iter()
+                .any(|t| t.owner == ClientTerm::local(3)),
             "the shell is no session of its own"
         );
         let model = app.screen_model();
-        let rows: Vec<TermId> = model
+        let rows: Vec<ClientTerm> = model
             .iter()
             .flat_map(|p| {
                 p.sessions()
@@ -2695,7 +2774,7 @@ mod screen_tests {
             })
             .collect();
         assert!(
-            !rows.contains(&3),
+            !rows.contains(&ClientTerm::local(3)),
             "so it has no row in the sidebar: {rows:?}"
         );
     }
@@ -2843,9 +2922,9 @@ mod screen_tests {
                     (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
                     app.cfg.ui.fold_retired_layout();
                     let [a, ..] = three_tabs(&mut app, place);
-                    app.snap.terms.get_mut(&a).unwrap().status = Status::Working;
+                    app.snap.terms.get_mut(&a.term).unwrap().status = Status::Working;
                     let buf = drawn(&mut app, w, 24);
-                    let card = card_of(&app, a);
+                    let card = card_of(&app, a.term);
                     let title: String = (card.x..card.right())
                         .map(|x| buf[(x, card.y)].symbol())
                         .collect();
@@ -2906,7 +2985,13 @@ mod screen_tests {
         app.cfg.ui.panes = "floating".into();
         app.cfg.ui.gap = "2".into();
         let a = app.focused().unwrap();
-        let others: Vec<TermId> = app.snap.terms.keys().copied().filter(|t| *t != a).collect();
+        let others: Vec<ClientTerm> = app
+            .snap
+            .terms
+            .keys()
+            .map(|t| ClientTerm::local(*t))
+            .filter(|t| *t != a)
+            .collect();
         let (b, c) = (others[0], others[1]);
         app.screen.tabs.clear();
         app.screen_place(a, None);
@@ -3045,10 +3130,13 @@ mod screen_tests {
     fn split_intent_survives_the_focus_change_to_its_target_pane() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.screen.tabs.clear();
-        app.screen_place(1, None);
+        app.screen_place(ClientTerm::local(1), None);
 
-        app.menu_do(menu::Act::Split(2, crate::layout::Dir::Down));
-        app.screen_place(2, Some(1));
+        app.menu_do(menu::Act::Split(
+            ClientTerm::local(2),
+            crate::layout::Dir::Down,
+        ));
+        app.screen_place(ClientTerm::local(2), Some(ClientTerm::local(1)));
         assert!(
             app.screen.pending_split.is_some(),
             "focusing the pane chosen in the context menu must not consume the pending split"
@@ -3056,7 +3144,7 @@ mod screen_tests {
 
         app.snap.terms.insert(4, app.snap.terms[&3].clone());
         app.snap.terms.get_mut(&4).unwrap().id = 4;
-        app.screen_place(4, Some(2));
+        app.screen_place(ClientTerm::local(4), Some(ClientTerm::local(2)));
         let layout = &app.screen.tabs[app.screen.tab].layout;
         assert!(
             matches!(
@@ -3083,7 +3171,7 @@ mod screen_tests {
         let (tx, _rx) = mpsc::unbounded_channel();
         app.out = tx;
         app.screen.tabs.clear();
-        app.screen_place(1, None);
+        app.screen_place(ClientTerm::local(1), None);
         // A tab is asked for in claude's session, then a session is started instead.
         app.act(Action::NewTab);
         assert!(
@@ -3091,7 +3179,7 @@ mod screen_tests {
             "armed for the shell that answers it"
         );
         app.screen_new_session(PathBuf::from("/tmp"), Some("claude".into()), false);
-        app.screen_place(3, Some(1));
+        app.screen_place(ClientTerm::local(3), Some(ClientTerm::local(1)));
         app.screen_fresh();
         let own = app
             .screen
@@ -3099,9 +3187,13 @@ mod screen_tests {
             .iter()
             .find(|t| t.layout.contains(3))
             .expect("it has a tab");
-        assert_eq!(own.owner, 3, "its own session, not a tab of claude's");
+        assert_eq!(
+            own.owner,
+            ClientTerm::local(3),
+            "its own session, not a tab of claude's"
+        );
         assert!(
-            rows(&app).contains(&3),
+            rows(&app).contains(&ClientTerm::local(3)),
             "with its own sidebar row: {:?}",
             rows(&app)
         );
@@ -3113,16 +3205,16 @@ mod screen_tests {
         let (tx, _rx) = mpsc::unbounded_channel();
         app.out = tx;
         app.screen.tabs.clear();
-        app.screen_place(1, None);
+        app.screen_place(ClientTerm::local(1), None);
         app.act(Action::NewTab);
         // You pick another session before the shell arrives: it stays its own, and the tab waits.
-        app.screen_place(2, Some(1));
+        app.screen_place(ClientTerm::local(2), Some(ClientTerm::local(1)));
         assert!(
             app.screen
                 .tabs
                 .iter()
                 .find(|t| t.layout.contains(2))
-                .is_some_and(|t| t.owner == 2),
+                .is_some_and(|t| t.owner == ClientTerm::local(2)),
             "an existing session is not a tab"
         );
         assert!(
@@ -3134,13 +3226,13 @@ mod screen_tests {
         helper.id = 40;
         helper.started_by = Some(2);
         app.snap.terms.insert(40, helper);
-        app.screen_place(40, Some(2));
+        app.screen_place(ClientTerm::local(40), Some(ClientTerm::local(2)));
         assert!(
             app.screen
                 .tabs
                 .iter()
                 .find(|t| t.layout.contains(40))
-                .is_some_and(|t| t.owner == 40),
+                .is_some_and(|t| t.owner == ClientTerm::local(40)),
             "a helper keeps its own place"
         );
         // The shell the request is for: new, and nobody's helper.
@@ -3148,13 +3240,13 @@ mod screen_tests {
         shell.id = 41;
         shell.started_by = None;
         app.snap.terms.insert(41, shell);
-        app.screen_place(41, Some(40));
+        app.screen_place(ClientTerm::local(41), Some(ClientTerm::local(40)));
         assert!(
             app.screen
                 .tabs
                 .iter()
                 .find(|t| t.layout.contains(41))
-                .is_some_and(|t| t.owner == 1),
+                .is_some_and(|t| t.owner == ClientTerm::local(1)),
             "the new shell is claude's tab"
         );
         assert!(app.screen.new_tab.borrow().is_none(), "answered once");
@@ -3165,13 +3257,13 @@ mod screen_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.screen.tabs.clear();
         // Four sessions opened one after another, as in the sidebar's project.
-        app.screen_place(1, None);
+        app.screen_place(ClientTerm::local(1), None);
         for (id, prev) in [(2, 1), (3, 2)] {
-            app.screen_place(id, Some(prev));
+            app.screen_place(ClientTerm::local(id), Some(ClientTerm::local(prev)));
         }
         app.snap.terms.insert(4, app.snap.terms[&3].clone());
         app.snap.terms.get_mut(&4).unwrap().id = 4;
-        app.screen_place(4, Some(3));
+        app.screen_place(ClientTerm::local(4), Some(ClientTerm::local(3)));
         draw(&mut app, 160, 45);
         assert_eq!(
             app.session_tabs().len(),
@@ -3195,7 +3287,7 @@ mod screen_tests {
         let (tx, _rx) = mpsc::unbounded_channel();
         app.out = tx;
         app.screen.tabs.clear();
-        app.screen_place(1, None);
+        app.screen_place(ClientTerm::local(1), None);
         app.act(Action::NewTab);
         app.screen
             .new_tab
@@ -3203,17 +3295,19 @@ mod screen_tests {
             .as_mut()
             .expect("armed")
             .known
-            .remove(&3);
-        app.screen_place(3, Some(1));
+            .remove(&ClientTerm::local(3));
+        app.screen_place(ClientTerm::local(3), Some(ClientTerm::local(1)));
         assert_eq!(
-            app.screen.tabs[app.screen.tab].focus, 3,
+            app.screen.tabs[app.screen.tab].focus,
+            ClientTerm::local(3),
             "on claude's shell tab"
         );
         // Its row is picked in the sidebar: the session itself shows, not the shell.
-        app.screen_focus(1);
-        app.screen_place(1, Some(3));
+        app.screen_focus(ClientTerm::local(1));
+        app.screen_place(ClientTerm::local(1), Some(ClientTerm::local(3)));
         assert_eq!(
-            app.screen.tabs[app.screen.tab].focus, 1,
+            app.screen.tabs[app.screen.tab].focus,
+            ClientTerm::local(1),
             "the picked session is the one on screen"
         );
         assert!(app.screen.tabs[app.screen.tab].layout.contains(1));
@@ -3234,7 +3328,7 @@ mod screen_tests {
                 .collect::<Vec<_>>()
         };
         app.screen.tabs.clear();
-        app.screen_place(1, None);
+        app.screen_place(ClientTerm::local(1), None);
         draw(&mut app, 160, 45);
         assert_eq!(
             app.hits
@@ -3252,7 +3346,7 @@ mod screen_tests {
         app.act(Action::NewTab);
         assert_eq!(app.mode, Mode::Normal, "nothing to answer first");
         assert!(
-            matches!(&*app.screen.new_tab.borrow(), Some(p) if p.owner == 1),
+            matches!(&*app.screen.new_tab.borrow(), Some(p) if p.owner == ClientTerm::local(1)),
             "the next session is a tab of claude's: {:?}",
             app.screen.new_tab.borrow()
         );
@@ -3263,11 +3357,11 @@ mod screen_tests {
             .as_mut()
             .expect("armed")
             .known
-            .remove(&3);
-        app.screen_place(3, Some(1));
+            .remove(&ClientTerm::local(3));
+        app.screen_place(ClientTerm::local(3), Some(ClientTerm::local(1)));
         app.screen_fresh();
         assert!(
-            !rows(&app).contains(&3),
+            !rows(&app).contains(&ClientTerm::local(3)),
             "the shell is one of claude's tabs, not a row of its own: {:?}",
             rows(&app)
         );
@@ -3316,7 +3410,7 @@ mod screen_tests {
         );
         key(&mut app, KeyCode::Enter);
         // The daemon owns the name: play its part by applying the command to the snapshot.
-        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
         let focus = app.screen.tabs[app.screen.tab].focus;
         let label = sent
             .iter()
@@ -3324,12 +3418,12 @@ mod screen_tests {
                 crate::protocol::ClientMsg::Command(crate::protocol::Command::RenamePane {
                     term,
                     name,
-                }) if *term == focus => Some(name.clone()),
+                }) if *term == focus.term => Some(name.clone()),
                 _ => None,
             })
             .expect("the session is renamed, so the sidebar and every notice use the name");
         assert_eq!(label, "tests");
-        app.snap.terms.get_mut(&focus).unwrap().label = label;
+        app.snap.terms.get_mut(&focus.term).unwrap().label = label;
         assert_eq!(
             app.session_name(focus),
             "tests",
@@ -3357,7 +3451,7 @@ mod screen_tests {
             "the name comes back from the daemon: {o}"
         );
         // Another session: its own tab row, with none of claude's tabs in it.
-        app.screen_place(2, Some(3));
+        app.screen_place(ClientTerm::local(2), Some(ClientTerm::local(3)));
         draw(&mut app, 160, 45);
         assert_eq!(app.session_tabs().len(), 1);
         let side = app.screen.side_rect;
@@ -3373,9 +3467,10 @@ mod screen_tests {
             "codex has one tab"
         );
         // Back to claude: the tab you were last on there (the shell).
-        app.screen_place(1, Some(2));
+        app.screen_place(ClientTerm::local(1), Some(ClientTerm::local(2)));
         assert_eq!(
-            app.screen.tabs[app.screen.tab].focus, 3,
+            app.screen.tabs[app.screen.tab].focus,
+            ClientTerm::local(3),
             "back on the shell tab"
         );
         // Closing a tab asks first.
@@ -3387,7 +3482,7 @@ mod screen_tests {
             .unwrap();
         app.close_tab(mine);
         assert!(
-            matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if ts.contains(&1))),
+            matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if ts.contains(&ClientTerm::local(1)))),
             "{:?}",
             app.mode
         );
@@ -3409,9 +3504,9 @@ mod screen_tests {
         };
         // A drag whose release never came is over once the mouse moves with no button held.
         app.screen.drag = Some(screen::Drag::Session(
-            SessionKey::Pane(2),
+            ClientSession::local(SessionKey::Pane(2)),
             false,
-            screen::ScreenHit::Session(SessionKey::Pane(2)),
+            screen::ScreenHit::Session(ClientSession::local(SessionKey::Pane(2))),
         ));
         mouse(&mut app, MouseEventKind::Moved);
         assert!(
@@ -3419,7 +3514,7 @@ mod screen_tests {
             "a stuck drag doesn't keep the mouse from the panes"
         );
         // Claude Code's full-screen view, not taking the mouse: the wheel pages it.
-        assert!(app.snap.terms[&term].agent.is_some());
+        assert!(app.snap.terms[&term.term].agent.is_some());
         app.feed(term, b"\x1b[?1049h");
         assert!(app.parsers[&term].screen().alternate_screen());
         mouse(&mut app, MouseEventKind::ScrollUp);
@@ -3544,11 +3639,13 @@ mod screen_tests {
             .snap
             .terms
             .keys()
-            .find(|t| **t != focused)
+            .find(|t| **t != focused.term)
             .expect("a second session");
         // A click that takes the keys back from the sidebar must not leave its cursor behind:
         // close would act on that row, not on what you're in.
-        app.screen_side_set(screen::SideItem::Sess(SessionKey::Pane(other)));
+        app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
+            SessionKey::Pane(other),
+        )));
         let (_, r) = app.pane_frames[0];
         app.on_mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
@@ -3567,7 +3664,7 @@ mod screen_tests {
         );
         // Even a cursor left behind in normal mode is not a target.
         app.mode = Mode::Normal;
-        app.screen.cursor = Some(SessionKey::Pane(other));
+        app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(other)));
         app.act(Action::ClosePane);
         assert!(
             matches!(&app.mode, Mode::Confirm(c) if c.act == crate::client::menu::Act::End(vec![focused])),
@@ -3659,7 +3756,8 @@ mod screen_tests {
             .terms
             .get_mut(
                 &app.session_term(on)
-                    .expect("the selected test row has a pane"),
+                    .expect("the selected test row has a pane")
+                    .term,
             )
             .unwrap()
             .process = "npm".into();
@@ -3810,10 +3908,10 @@ mod screen_tests {
         let row = model
             .iter()
             .flat_map(|p| p.sessions().cloned().collect::<Vec<_>>())
-            .find(|s| s.native_term.unwrap() == 3)
+            .find(|s| s.native_term.unwrap() == ClientTerm::local(3))
             .unwrap();
         assert_eq!(row.name, "dst", "the row says what runs there, not 'shell'");
-        let (title, items) = app.session_items(3).unwrap();
+        let (title, items) = app.session_items(ClientTerm::local(3)).unwrap();
         let labels: Vec<&str> = items.iter().map(|(l, _)| l.as_str()).collect();
         assert!(labels.contains(&"dst is an agent…"), "{labels:?}");
         assert!(
@@ -3830,18 +3928,25 @@ mod screen_tests {
     fn jumps_between_commands_in_history() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let term = 1;
-        app.parsers.insert(term, vt100::Parser::new(20, 80, 1000));
-        app.marks.remove(&term);
+        app.parsers
+            .insert(ClientTerm::local(term), vt100::Parser::new(20, 80, 1000));
+        app.marks.remove(&ClientTerm::local(term));
         // Three commands, each with output long enough to scroll away.
         for n in 1..=3 {
-            app.feed(term, format!("\x1b]133;A\x07$ cmd{n}\r\n").as_bytes());
+            app.feed(
+                ClientTerm::local(term),
+                format!("\x1b]133;A\x07$ cmd{n}\r\n").as_bytes(),
+            );
             for i in 0..30 {
-                app.feed(term, format!("cmd{n} line {i}\r\n").as_bytes());
+                app.feed(
+                    ClientTerm::local(term),
+                    format!("cmd{n} line {i}\r\n").as_bytes(),
+                );
             }
         }
-        app.feed(term, b"\x1b]133;A\x07$ ");
+        app.feed(ClientTerm::local(term), b"\x1b]133;A\x07$ ");
         let top = |app: &App| {
-            let p = app.parsers.get(&term).unwrap();
+            let p = app.parsers.get(&ClientTerm::local(term)).unwrap();
             let (_, cols) = p.screen().size();
             p.screen()
                 .rows(0, cols)
@@ -3850,24 +3955,31 @@ mod screen_tests {
                 .trim_end()
                 .to_string()
         };
-        app.jump_prompt(term, true);
+        app.jump_prompt(ClientTerm::local(term), true);
         assert_eq!(top(&app), "$ cmd3", "back to the last command");
-        app.jump_prompt(term, true);
+        app.jump_prompt(ClientTerm::local(term), true);
         assert_eq!(top(&app), "$ cmd2");
-        app.jump_prompt(term, false);
+        app.jump_prompt(ClientTerm::local(term), false);
         assert_eq!(top(&app), "$ cmd3", "and forward again");
         // A history that fills up and drops its oldest lines: still the right command.
-        app.parsers.insert(term, vt100::Parser::new(20, 80, 50));
-        app.marks.remove(&term);
+        app.parsers
+            .insert(ClientTerm::local(term), vt100::Parser::new(20, 80, 50));
+        app.marks.remove(&ClientTerm::local(term));
         for n in 1..=4 {
-            app.feed(term, format!("\x1b]133;A\x07$ job{n}\r\n").as_bytes());
+            app.feed(
+                ClientTerm::local(term),
+                format!("\x1b]133;A\x07$ job{n}\r\n").as_bytes(),
+            );
             for i in 0..30 {
-                app.feed(term, format!("job{n} line {i}\r\n").as_bytes());
+                app.feed(
+                    ClientTerm::local(term),
+                    format!("job{n} line {i}\r\n").as_bytes(),
+                );
             }
         }
-        app.jump_prompt(term, true);
+        app.jump_prompt(ClientTerm::local(term), true);
         assert_eq!(top(&app), "$ job4", "found though the history shifted");
-        app.jump_prompt(term, true);
+        app.jump_prompt(ClientTerm::local(term), true);
         assert_eq!(top(&app), "$ job3");
     }
 
@@ -3879,13 +3991,17 @@ mod screen_tests {
         app.snap.terms.insert(9, pop);
         let mut p = vt100::Parser::new(30, 120, 0);
         p.process(b"> pick a file");
-        app.parsers.insert(9, p);
+        app.parsers.insert(ClientTerm::local(9), p);
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("> pick a file"), "drawn over the rest");
-        assert_eq!(app.typing_to(), Some(9), "typing goes to it");
+        assert_eq!(
+            app.typing_to(),
+            Some(ClientTerm::local(9)),
+            "typing goes to it"
+        );
         assert_ne!(
             app.focused(),
-            Some(9),
+            Some(ClientTerm::local(9)),
             "the pane you're on stays yours underneath"
         );
         app.snap.terms.remove(&9);
@@ -4150,8 +4266,8 @@ mod screen_tests {
         }
     }
 
-    fn sent(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<Command> {
-        std::iter::from_fn(|| rx.try_recv().ok())
+    fn sent(rx: &mut mpsc::UnboundedReceiver<Outgoing>) -> Vec<Command> {
+        std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
             .filter_map(|m| match m {
                 ClientMsg::Command(c) => Some(c),
                 _ => None,
@@ -4187,7 +4303,7 @@ mod screen_tests {
                 let (_, mut app) = super::design_tests::render_with(100, 30);
                 let (tx, mut rx) = mpsc::unbounded_channel();
                 app.out = tx;
-                app.screen.cursor = cursor.map(SessionKey::Pane);
+                app.screen.cursor = cursor.map(|id| ClientSession::local(SessionKey::Pane(id)));
                 app.mode = if cursor.is_some() {
                     Mode::Side
                 } else {
@@ -4367,7 +4483,7 @@ mod screen_tests {
             "Caps Lock must not open What happened; the new shell has the keys"
         );
         assert!(
-            std::iter::from_fn(|| rx.try_recv().ok()).any(|message| matches!(
+            std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(|message| matches!(
                 message,
                 ClientMsg::Command(Command::NewWorkspace { cmd: None, .. })
             )),
@@ -4596,7 +4712,10 @@ mod screen_tests {
             .find(|(_, h)| {
                 matches!(
                     h,
-                    Hit::Screen(screen::ScreenHit::Session(SessionKey::Pane(_)))
+                    Hit::Screen(screen::ScreenHit::Session(ClientSession {
+                        key: SessionKey::Pane(_),
+                        ..
+                    }))
                 )
             })
             .expect("a sidebar row");
@@ -4644,7 +4763,13 @@ mod screen_tests {
     fn tiled_square_and_faded() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let a = app.focused().unwrap();
-        let b = app.snap.terms.keys().copied().find(|t| *t != a).unwrap();
+        let b = app
+            .snap
+            .terms
+            .keys()
+            .map(|t| ClientTerm::local(*t))
+            .find(|t| *t != a)
+            .unwrap();
         app.screen.tabs.clear();
         app.screen_place(a, None);
         app.screen.pending_split = Some((a, Instant::now()));
@@ -4660,13 +4785,17 @@ mod screen_tests {
         let buf = term.backend().buffer().clone();
         let focus = app.focused().unwrap();
         let fg_at = |term: TermId| {
-            let (_, inner) = *app.panes.iter().find(|(t, _)| *t == term).unwrap();
+            let (_, inner) = *app
+                .panes
+                .iter()
+                .find(|(t, _)| *t == ClientTerm::local(term))
+                .unwrap();
             buf[(inner.x, inner.y)].fg
         };
         let other = if focus == a { b } else { a };
         assert_ne!(
-            fg_at(focus),
-            fg_at(other),
+            fg_at(focus.term),
+            fg_at(other.term),
             "the unfocused pane's text is faded"
         );
         // Tiled: no margin, cards edge to edge; square corners when asked.
@@ -4732,7 +4861,7 @@ mod screen_tests {
             "not in search"
         );
         assert!(
-            app.session_items(1)
+            app.session_items(ClientTerm::local(1))
                 .unwrap()
                 .1
                 .iter()
@@ -4775,7 +4904,9 @@ mod screen_tests {
     #[test]
     fn the_sidebar_foot_keeps_new_and_actions_without_a_global_footer() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.screen_side_set(screen::SideItem::Sess(SessionKey::Pane(2)));
+        app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
+            SessionKey::Pane(2),
+        )));
         let o = draw(&mut app, 160, 45);
         show(&o);
         // A row's keys are in its menu; the status line has the global ones.
@@ -4804,19 +4935,19 @@ mod screen_tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
         app.screen.tabs.clear();
-        app.screen_place(1, None);
+        app.screen_place(ClientTerm::local(1), None);
         *app.screen.new_tab.borrow_mut() = Some(screen::PendingTab {
             at: Instant::now(),
-            owner: 1,
+            owner: ClientTerm::local(1),
             known: HashSet::new(),
         });
-        app.screen_place(3, Some(1));
+        app.screen_place(ClientTerm::local(3), Some(ClientTerm::local(1)));
         *app.screen.new_tab.borrow_mut() = Some(screen::PendingTab {
             at: Instant::now(),
-            owner: 1,
+            owner: ClientTerm::local(1),
             known: HashSet::new(),
         });
-        app.screen_place(2, Some(3));
+        app.screen_place(ClientTerm::local(2), Some(ClientTerm::local(3)));
         assert_eq!(
             app.session_tabs().len(),
             3,
@@ -4881,7 +5012,7 @@ mod screen_tests {
         mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), at);
         let at = pill(&app, c);
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), at);
-        let order: Vec<TermId> = app
+        let order: Vec<ClientTerm> = app
             .session_tabs()
             .iter()
             .map(|i| app.screen.tabs[*i].focus)
@@ -4895,7 +5026,7 @@ mod screen_tests {
         let shell_tab = app
             .session_tabs()
             .into_iter()
-            .find(|i| app.screen.tabs[*i].focus == 3)
+            .find(|i| app.screen.tabs[*i].focus == ClientTerm::local(3))
             .unwrap();
         let at = pill(&app, shell_tab);
         mouse(&mut app, MouseEventKind::Down(MouseButton::Middle), at);
@@ -4905,7 +5036,7 @@ mod screen_tests {
             app.mode
         );
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        let closed = std::iter::from_fn(|| rx.try_recv().ok()).any(|m| {
+        let closed = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(|m| {
             matches!(
                 m,
                 crate::protocol::ClientMsg::Command(crate::protocol::Command::ClosePane {
@@ -4935,7 +5066,7 @@ mod screen_tests {
     #[test]
     fn copy_from_several_panes_at_once() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
-        let (a, b) = (1, 2);
+        let (a, b) = (ClientTerm::local(1), ClientTerm::local(2));
         app.screen.tabs.clear();
         app.screen_place(a, None);
         app.screen.pending_split = Some((a, Instant::now()));
@@ -5002,21 +5133,22 @@ mod screen_tests {
                 .iter()
                 .filter_map(|l| screen::line_term(&model, l))
                 .filter_map(|key| app.session_term(key))
-                .filter(|t| *t != 3)
+                .filter(|t| *t != ClientTerm::local(3))
                 .take(2)
                 .collect::<Vec<_>>()
         };
+        let both = [ClientTerm::local(1), ClientTerm::local(2)];
         // claude (1) and codex (2) share a group with the shell (3), which isn't counted.
-        assert_eq!(rows(&mut app, Status::Idle), [1, 2]);
+        assert_eq!(rows(&mut app, Status::Idle), both);
         assert_eq!(
             rows(&mut app, Status::Working),
-            [1, 2],
+            both,
             "starting work doesn't move it"
         );
-        assert_eq!(rows(&mut app, Status::Done), [1, 2], "nor does finishing");
+        assert_eq!(rows(&mut app, Status::Done), both, "nor does finishing");
         assert_eq!(
             rows(&mut app, Status::Blocked),
-            [1, 2],
+            both,
             "nor does needing you"
         );
     }
@@ -5053,7 +5185,7 @@ mod screen_tests {
             .filter_map(|l| match l {
                 screen::Line::Sess(.., depth) => screen::line_term(&model, l)
                     .and_then(|key| app.session_term(key))
-                    .map(|t| (t, *depth)),
+                    .map(|t| (t.term, *depth)),
                 _ => None,
             })
             .filter(|(t, _)| *t != 3)
@@ -5098,7 +5230,7 @@ mod screen_tests {
                 model
                     .iter()
                     .flat_map(|p| p.sessions())
-                    .find(|s| s.native_term.unwrap() == t)
+                    .find(|s| s.native_term.unwrap() == ClientTerm::local(t))
                     .unwrap()
                     .name
                     .clone()
@@ -5134,7 +5266,7 @@ mod screen_tests {
         let before = rows(&mut app);
         // claude, codex and the shell: one group.
         let (first, last) = (before[0], before[1]);
-        let at = |app: &App, t: SessionKey| {
+        let at = |app: &App, t: ClientSession| {
             app.hits
                 .iter()
                 .find_map(|(r, h)| {
@@ -5209,8 +5341,10 @@ mod screen_tests {
             app.hits
                 .iter()
                 .find_map(|(r, h)| {
-                    (*h == Hit::Screen(screen::ScreenHit::Session(SessionKey::Pane(t))))
-                        .then_some((r.x + 6, r.y))
+                    (*h == Hit::Screen(screen::ScreenHit::Session(ClientSession::local(
+                        SessionKey::Pane(t),
+                    ))))
+                    .then_some((r.x + 6, r.y))
                 })
                 .unwrap()
         };
@@ -5230,8 +5364,9 @@ mod screen_tests {
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), to);
         let g = groups(&app);
         assert!(
-            g.iter()
-                .any(|(n, ts)| n == "web" && ts.contains(&1) && ts.contains(&2)),
+            g.iter().any(|(n, ts)| n == "web"
+                && ts.contains(&ClientTerm::local(1))
+                && ts.contains(&ClientTerm::local(2))),
             "claude is in web now: {g:?}"
         );
         assert!(app.screen.drag.is_none());
@@ -5240,7 +5375,7 @@ mod screen_tests {
         assert!(
             groups(&app)
                 .iter()
-                .any(|(n, ts)| n == "web" && ts.contains(&1))
+                .any(|(n, ts)| n == "web" && ts.contains(&ClientTerm::local(1)))
         );
     }
 
@@ -5273,7 +5408,7 @@ mod screen_tests {
             cost: Some(1.2),
             ..Default::default()
         };
-        app.screen_focus(agent);
+        app.screen_focus(ClientTerm::local(agent));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(!o.contains("claude 5h"), "no plan limits on screen");
@@ -5366,14 +5501,14 @@ mod screen_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // Something running in it, so closing it asks.
         app.snap.terms.get_mut(&3).unwrap().process = "npm".into();
-        app.menu_act(menu::Act::End(vec![3]));
+        app.menu_act(menu::Act::End(vec![ClientTerm::local(3)]));
         assert!(matches!(app.mode, Mode::Confirm(_)), "closing asks first");
         app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
         assert!(
             matches!(app.mode, Mode::Normal),
             "x (as you asked to close) says yes"
         );
-        app.menu_act(menu::Act::End(vec![3]));
+        app.menu_act(menu::Act::End(vec![ClientTerm::local(3)]));
         app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::Normal), "so does Delete");
     }
@@ -5485,11 +5620,13 @@ mod screen_tests {
         let ssh = model
             .iter()
             .flat_map(|p| p.sessions())
-            .find(|s| s.native_term == Some(3))
+            .find(|s| s.native_term == Some(ClientTerm::local(3)))
             .expect("the ssh session");
         assert_eq!(ssh.name, "build-box", "its row says which machine");
         assert!(
-            model[0].sessions().any(|s| s.native_term == Some(3)),
+            model[0]
+                .sessions()
+                .any(|s| s.native_term == Some(ClientTerm::local(3))),
             "it stays with the folder it was started in"
         );
         let o = draw(&mut app, 160, 45);
@@ -5524,7 +5661,10 @@ mod screen_tests {
         let group_of = |term: TermId| {
             model
                 .iter()
-                .find(|p| p.sessions().any(|s| s.native_term.unwrap() == term))
+                .find(|p| {
+                    p.sessions()
+                        .any(|s| s.native_term.unwrap() == ClientTerm::local(term))
+                })
                 .map(|p| p.name.clone())
         };
         assert_eq!(
@@ -5547,18 +5687,19 @@ mod screen_tests {
             .terms
             .keys()
             .copied()
-            .find(|t| Some(*t) != app.focused())
+            .find(|t| Some(ClientTerm::local(*t)) != app.focused())
             .expect("a session that is not on screen");
         app.notify("codex finished".into(), false);
-        app.notice_term = Some(term);
+        app.notice_term = Some(ClientTerm::local(term));
         draw(&mut app, 160, 45);
         let r = app
             .hits
             .iter()
             .rev()
             .find_map(|(r, h)| {
-                (*h == Hit::Screen(screen::ScreenHit::Session(SessionKey::Pane(term)))
-                    && r.width > 20
+                (*h == Hit::Screen(screen::ScreenHit::Session(ClientSession::local(
+                    SessionKey::Pane(term),
+                ))) && r.width > 20
                     && r.height >= 3)
                     .then_some(*r)
             })
@@ -5575,7 +5716,7 @@ mod screen_tests {
             });
         }
         assert!(
-            std::iter::from_fn(|| rx.try_recv().ok()).any(
+            std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(
                 |m| matches!(m, ClientMsg::Command(Command::FocusPane { term: t }) if t == term)
             ),
             "the click on the note went to session {term}"
@@ -5600,18 +5741,19 @@ mod screen_tests {
             .terms
             .keys()
             .copied()
-            .find(|t| *t != focused)
+            .find(|t| *t != focused.term)
             .expect("a session that is not on screen");
         app.notify("codex finished".into(), false);
-        app.notice_term = Some(term);
+        app.notice_term = Some(ClientTerm::local(term));
         draw(&mut app, 160, 45);
         let r = app
             .hits
             .iter()
             .rev()
             .find_map(|(r, h)| {
-                (*h == Hit::Screen(screen::ScreenHit::Session(SessionKey::Pane(term)))
-                    && r.width > 20
+                (*h == Hit::Screen(screen::ScreenHit::Session(ClientSession::local(
+                    SessionKey::Pane(term),
+                ))) && r.width > 20
                     && r.height >= 3)
                     .then_some(*r)
             })
@@ -5634,7 +5776,7 @@ mod screen_tests {
                 modifiers: KeyModifiers::NONE,
             });
         }
-        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
         assert!(
             sent.iter().any(
                 |m| matches!(m, ClientMsg::Command(Command::FocusPane { term: t }) if *t == term)
@@ -5652,10 +5794,16 @@ mod screen_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let term = *app.snap.terms.keys().next().unwrap();
         app.notify("claude finished".into(), false);
-        app.notice_term = Some(term);
+        app.notice_term = Some(ClientTerm::local(term));
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("claude finished") && o.contains("click to open"));
-        assert!(app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::Session(SessionKey::Pane(term)))), "clicking it opens the session");
+        assert!(
+            app.hits.iter().any(|(_, h)| *h
+                == Hit::Screen(screen::ScreenHit::Session(ClientSession::local(
+                    SessionKey::Pane(term)
+                )))),
+            "clicking it opens the session"
+        );
         // Any other note isn't.
         app.notify("saved".into(), false);
         let o = draw(&mut app, 160, 45);
@@ -5666,14 +5814,20 @@ mod screen_tests {
     fn a_split_is_one_session_and_others_open_full_size() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
         let a = app.focused().unwrap();
-        let others: Vec<TermId> = app.snap.terms.keys().copied().filter(|t| *t != a).collect();
+        let others: Vec<ClientTerm> = app
+            .snap
+            .terms
+            .keys()
+            .map(|t| ClientTerm::local(*t))
+            .filter(|t| *t != a)
+            .collect();
         let (b, c) = (others[0], others[1]);
         app.screen.tabs.clear();
         app.screen_place(a, None);
         app.screen.pending_split = Some((a, Instant::now()));
         app.screen_place(b, Some(a));
         app.screen_fresh();
-        let rows: Vec<TermId> = app
+        let rows: Vec<ClientTerm> = app
             .screen_model()
             .iter()
             .flat_map(|p| {
@@ -5695,7 +5849,7 @@ mod screen_tests {
             "no title chips on the split's panes"
         );
         // b needs you: a's row says so.
-        app.snap.terms.get_mut(&b).unwrap().status = Status::Blocked;
+        app.snap.terms.get_mut(&b.term).unwrap().status = Status::Blocked;
         app.screen_fresh();
         let row = app
             .screen_model()
@@ -5708,7 +5862,7 @@ mod screen_tests {
         app.screen_place(c, Some(b));
         assert_eq!(
             app.screen.tabs[app.screen.tab].layout,
-            crate::layout::Node::Leaf(c),
+            crate::layout::Node::Leaf(c.term),
             "full size"
         );
         assert_eq!(
@@ -5721,16 +5875,13 @@ mod screen_tests {
             "this tab is c's own"
         );
         assert!(
-            app.screen
-                .tabs
-                .iter()
-                .any(|t| t.layout.leaves() == vec![a, b]),
+            app.screen.tabs.iter().any(|t| t.leaves() == vec![a, b]),
             "the split is kept: {:?}",
             app.screen.tabs
         );
         app.screen_place(a, Some(c));
         assert_eq!(
-            app.screen.tabs[app.screen.tab].layout.leaves(),
+            app.screen.tabs[app.screen.tab].leaves(),
             vec![a, b],
             "its row brings the split back"
         );
@@ -5740,7 +5891,13 @@ mod screen_tests {
     fn closing_a_split_pane_leaves_the_other() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
         let a = app.focused().unwrap();
-        let others: Vec<TermId> = app.snap.terms.keys().copied().filter(|t| *t != a).collect();
+        let others: Vec<ClientTerm> = app
+            .snap
+            .terms
+            .keys()
+            .map(|t| ClientTerm::local(*t))
+            .filter(|t| *t != a)
+            .collect();
         let (b, c) = (others[0], others[1]);
         app.screen.tabs.clear();
         app.screen_place(a, None);
@@ -5748,19 +5905,21 @@ mod screen_tests {
         app.screen_place(b, Some(a));
         assert_eq!(app.screen.tabs[0].layout.leaves().len(), 2);
         // b is closed; the server then focuses some other session, c.
-        app.snap.terms.remove(&b);
+        app.snap.terms.remove(&b.term);
         app.screen_place(c, Some(b));
         assert_eq!(
             app.screen.tabs[0].layout,
-            crate::layout::Node::Leaf(a),
+            crate::layout::Node::Leaf(a.term),
             "a takes the room; c doesn't slide into b's place"
         );
         // Closing from the ✕ takes it out of the split first.
         app.screen.pending_split = Some((a, Instant::now()));
-        app.snap.terms.insert(b, app.snap.terms[&c].clone());
+        app.snap
+            .terms
+            .insert(b.term, app.snap.terms[&c.term].clone());
         app.screen_place(b, Some(a));
         app.menu_do(menu::Act::End(vec![b]));
-        assert_eq!(app.screen.tabs[0].layout, crate::layout::Node::Leaf(a));
+        assert_eq!(app.screen.tabs[0].layout, crate::layout::Node::Leaf(a.term));
     }
 
     /// The frame as a buffer, for looking at single cells.
@@ -5961,13 +6120,13 @@ mod screen_tests {
 second line
 ",
         );
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         draw(&mut app, 160, 45);
-        assert!(app.enter_copy(1));
+        assert!(app.enter_copy(ClientTerm::local(1)));
         let r = app
             .panes
             .iter()
-            .find(|(t, _)| *t == 1)
+            .find(|(t, _)| *t == ClientTerm::local(1))
             .map(|(_, r)| *r)
             .unwrap();
         if let Mode::Copy(c) = &mut app.mode {
@@ -5985,13 +6144,13 @@ second line
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let mut p = vt100::Parser::new(20, 80, 100);
         p.process(b"alpha beta gamma\r\nsecond line\r\n");
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         draw(&mut app, 160, 45);
-        assert!(app.enter_copy(1));
+        assert!(app.enter_copy(ClientTerm::local(1)));
         let r = app
             .panes
             .iter()
-            .find(|(t, _)| *t == 1)
+            .find(|(t, _)| *t == ClientTerm::local(1))
             .map(|(_, r)| *r)
             .unwrap();
         if let Mode::Copy(c) = &mut app.mode {
@@ -6058,13 +6217,14 @@ second line
             .filter_map(|line| screen::line_term(&model, line))
             .collect::<Vec<_>>();
         assert!(
-            rows.contains(&SessionKey::Pane(2)) && rows.contains(&SessionKey::Pane(3)),
+            rows.contains(&ClientSession::local(SessionKey::Pane(2)))
+                && rows.contains(&ClientSession::local(SessionKey::Pane(3))),
             "resting sessions remain in the sidebar"
         );
         let screen = draw(&mut app, 160, 45);
         assert!(!screen.contains("settled ?") && !screen.contains("Snooze"));
         for term in [2, 3] {
-            let items = app.session_items(term).unwrap().1;
+            let items = app.session_items(ClientTerm::local(term)).unwrap().1;
             assert!(
                 !items
                     .iter()
@@ -6089,10 +6249,10 @@ second line
             })
             .collect();
         // None yet: it says when there will be, and opens nothing.
-        app.snapshots_menu(dir.clone(), 1, Vec::new(), (30, 6));
+        app.snapshots_menu(dir.clone(), ClientTerm::local(1), Vec::new(), (30, 6));
         assert!(!matches!(app.mode, Mode::ScreenMenu(_)));
         // Newest first, numbered, and no more than have a number to press.
-        app.snapshots_menu(dir.clone(), 1, kept, (30, 6));
+        app.snapshots_menu(dir.clone(), ClientTerm::local(1), kept, (30, 6));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
@@ -6113,7 +6273,7 @@ second line
                 dir,
                 "c1".into(),
                 "4m ago · before claude's turn".into(),
-                1
+                ClientTerm::local(1)
             )
         );
         assert!(c.note.contains("kept as a snapshot first") && c.yes == "Restore");
@@ -6132,7 +6292,12 @@ second line
             at: now - 120,
             why: "before claude's turn".into(),
         }];
-        app.snapshots_menu(std::path::PathBuf::from("/code/dsa-tool"), 1, kept, (30, 6));
+        app.snapshots_menu(
+            std::path::PathBuf::from("/code/dsa-tool"),
+            ClientTerm::local(1),
+            kept,
+            (30, 6),
+        );
     }
 
     #[test]
@@ -6173,11 +6338,11 @@ second line
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
         let key = |c: KeyCode, m: KeyModifiers| KeyEvent::new(c, m);
-        let sent = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>| {
-            std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>()
+        let sent = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<Outgoing>| {
+            std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect::<Vec<_>>()
         };
         let write = |app: &mut App, text: &str| {
-            app.start_compose(2, false, None);
+            app.start_compose(ClientTerm::local(2), false, None);
             for c in text.chars() {
                 app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
             }
@@ -6232,12 +6397,12 @@ second line
             o.lines().find(|l| l.contains("⏵")).unwrap_or("")
         );
         assert!(
-            app.session_items(2)
+            app.session_items(ClientTerm::local(2))
                 .unwrap()
                 .1
                 .iter()
                 .any(|(l, a)| l == "Drop queued follow-ups (2)"
-                    && *a == crate::client::menu::Act::ClearQueue(2))
+                    && *a == crate::client::menu::Act::ClearQueue(ClientTerm::local(2)))
         );
     }
 
@@ -6247,8 +6412,10 @@ second line
         app.got_state = true;
         app.snap.terms.get_mut(&2).unwrap().asleep = true;
         app.screen.tabs.clear();
-        app.screen_place(1, None);
-        app.screen_side_set(screen::SideItem::Sess(SessionKey::Pane(2)));
+        app.screen_place(ClientTerm::local(1), None);
+        app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
+            SessionKey::Pane(2),
+        )));
         let o = draw(&mut app, 160, 45);
         show(&o);
         let legacy_ui = o.lines().find(|line| line.contains("waking up"));
@@ -6265,7 +6432,9 @@ second line
             "sidebar selection doesn't replace the focused pane"
         );
         assert!(
-            !app.panes.iter().any(|(term, _)| *term == 2),
+            !app.panes
+                .iter()
+                .any(|(term, _)| *term == ClientTerm::local(2)),
             "legacy pane preview is removed"
         );
     }
@@ -6276,8 +6445,8 @@ second line
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let on = app.focused().unwrap();
         (
-            app.snap.terms.get_mut(&on).unwrap().cpu,
-            app.snap.terms.get_mut(&on).unwrap().mem,
+            app.snap.terms.get_mut(&on.term).unwrap().cpu,
+            app.snap.terms.get_mut(&on.term).unwrap().mem,
         ) = (62.0, gb(5));
         let o = draw(&mut app, 160, 45);
         show(&o);
@@ -6295,9 +6464,9 @@ second line
 
     /// What the client sent as helper answers, in order.
     fn helper_answers(
-        rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>,
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<Outgoing>,
     ) -> Vec<(TermId, crate::protocol::HelperChoice)> {
-        std::iter::from_fn(|| rx.try_recv().ok())
+        std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
             .filter_map(|m| match m {
                 crate::protocol::ClientMsg::Command(crate::protocol::Command::AnswerHelpers {
                     term,
@@ -6309,10 +6478,7 @@ second line
     }
 
     /// Session 2 asks for helpers: needs you, with three tasks.
-    fn asking_for_helpers() -> (
-        App,
-        tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>,
-    ) {
+    fn asking_for_helpers() -> (App, tokio::sync::mpsc::UnboundedReceiver<Outgoing>) {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
@@ -6345,7 +6511,9 @@ second line
             );
         }
         // Bare letters and digits do not answer from the sidebar (ADR 0014).
-        app.screen_side_set(screen::SideItem::Sess(SessionKey::Pane(2)));
+        app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
+            SessionKey::Pane(2),
+        )));
         for c in ['1', '2', '3', 'y'] {
             app.mode = Mode::Side;
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
@@ -6354,13 +6522,15 @@ second line
             helper_answers(&mut rx).is_empty(),
             "nothing is answered from the sidebar"
         );
-        app.screen_side_set(screen::SideItem::Sess(SessionKey::Pane(2)));
+        app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
+            SessionKey::Pane(2),
+        )));
         app.mode = Mode::Side;
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert_eq!(
             app.mode,
             Mode::Helpers {
-                term: 2,
+                term: ClientTerm::local(2),
                 side: true
             },
             "Enter on the row opens the question"
@@ -6392,7 +6562,7 @@ second line
             assert_eq!(
                 app.mode,
                 Mode::Helpers {
-                    term: 2,
+                    term: ClientTerm::local(2),
                     side: true
                 }
             );
@@ -6401,7 +6571,7 @@ second line
         // Esc is "later": nothing is sent and the row still asks.
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert_eq!(app.mode, Mode::Side);
-        assert!(helper_answers(&mut rx).is_empty() && app.helpers_asked(2));
+        assert!(helper_answers(&mut rx).is_empty() && app.helpers_asked(ClientTerm::local(2)));
         assert!(
             draw(&mut app, 160, 45).contains("wants to start 3 helpers"),
             "the row stays"
@@ -6410,7 +6580,7 @@ second line
         use crate::protocol::HelperChoice::{Allow, Always, No};
         for (key, want) in [('1', Allow), ('2', Always), ('3', No)] {
             app.mode = Mode::Helpers {
-                term: 2,
+                term: ClientTerm::local(2),
                 side: true,
             };
             app.on_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE));
@@ -6424,7 +6594,10 @@ second line
         let (mut app, mut rx) = asking_for_helpers();
         draw(&mut app, 160, 45);
         let line = app.hits.iter().rev().find_map(|(_, h)| match h {
-            Hit::Screen(screen::ScreenHit::HelperAsk(2)) => Some(*h),
+            Hit::Screen(screen::ScreenHit::HelperAsk(ClientTerm {
+                machine: MachineId::LOCAL,
+                term: 2,
+            })) => Some(*h),
             _ => None,
         });
         let Some(Hit::Screen(open)) = line else {
@@ -6432,15 +6605,28 @@ second line
         };
         app.on_hy_hit(open, false);
         assert!(
-            matches!(app.mode, Mode::Helpers { term: 2, .. }),
+            matches!(
+                app.mode,
+                Mode::Helpers {
+                    term: ClientTerm {
+                        machine: MachineId::LOCAL,
+                        term: 2
+                    },
+                    ..
+                }
+            ),
             "a click on the line opens the question"
         );
         draw(&mut app, 160, 45);
         let choose = |app: &App, c| {
             app.hits.iter().find_map(|(_, h)| match h {
-                Hit::Screen(screen::ScreenHit::HelperAnswer(2, got)) if *got == c => {
-                    Some(screen::ScreenHit::HelperAnswer(2, c))
-                }
+                Hit::Screen(screen::ScreenHit::HelperAnswer(
+                    ClientTerm {
+                        machine: MachineId::LOCAL,
+                        term: 2,
+                    },
+                    got,
+                )) if *got == c => Some(screen::ScreenHit::HelperAnswer(ClientTerm::local(2), c)),
                 _ => None,
             })
         };
@@ -6457,7 +6643,7 @@ second line
         // With the question gone from the row, a stale click answers nothing.
         app.snap.terms.get_mut(&2).unwrap().helper_ask.clear();
         app.mode = Mode::Helpers {
-            term: 2,
+            term: ClientTerm::local(2),
             side: false,
         };
         app.on_hy_hit(always, false);
@@ -6506,7 +6692,7 @@ second line
         let at = |app: &App| {
             screen::goto_rows(&app.screen_model(), "", screen::heads_up(app).len())
                 .iter()
-                .position(|r| matches!(r, screen::GoRow::Ask(2)))
+                .position(|r| matches!(r, screen::GoRow::Ask(ClientTerm { term: 2, .. })))
                 .expect("the asking session is in the Inbox")
         };
         for key in [KeyCode::Enter, KeyCode::Char('1')] {
@@ -6519,7 +6705,7 @@ second line
             assert_eq!(
                 app.mode,
                 Mode::Helpers {
-                    term: 2,
+                    term: ClientTerm::local(2),
                     side: false
                 },
                 "{key:?} on the row opens the question, not a message box or a typed number"
@@ -6564,7 +6750,9 @@ second line
     #[test]
     fn the_menu_opens_from_the_leader_not_from_a_bare_letter_in_the_sidebar() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.screen_side_set(screen::SideItem::Sess(SessionKey::Pane(2)));
+        app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
+            SessionKey::Pane(2),
+        )));
         assert_eq!(app.mode, Mode::Side);
         app.on_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE));
         assert!(
@@ -6580,7 +6768,12 @@ second line
         let items: Vec<(String, crate::client::menu::Act)> =
             ["Archive", "Ask", "Mark", "Inspect", "Jump", "Keep"]
                 .iter()
-                .map(|l| (l.to_string(), crate::client::menu::Act::RenamePane(1)))
+                .map(|l| {
+                    (
+                        l.to_string(),
+                        crate::client::menu::Act::RenamePane(ClientTerm::local(1)),
+                    )
+                })
                 .collect();
         let keys = crate::client::menu::menu_chars(&app, &items);
         assert!(
@@ -6617,7 +6810,9 @@ second line
             app.theme = app.cfg.theme();
             let t = app.theme.clone();
             // claude (1) is the selected row, in each state in turn.
-            app.screen_side_set(screen::SideItem::Sess(SessionKey::Pane(1)));
+            app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
+                SessionKey::Pane(1),
+            )));
             for (status, want) in [
                 (Status::Blocked, t.on_lit(t.blocked)),
                 (Status::Done, t.on_lit(t.done)),
@@ -6664,21 +6859,22 @@ second line
             app.on_server(crate::protocol::ServerMsg::Attention { term, status });
         };
         let due = |app: &mut App, term: TermId| {
-            app.settling.get_mut(&term).unwrap().1 = Instant::now() - Duration::from_millis(1);
+            app.settling.get_mut(&ClientTerm::local(term)).unwrap().1 =
+                Instant::now() - Duration::from_millis(1);
             app.settle_alerts();
         };
         // codex (2), not the session you're on.
         app.notice = None;
         attention(&mut app, 2, Status::Done);
         assert!(
-            app.notice.is_none() && app.settling.contains_key(&2),
+            app.notice.is_none() && app.settling.contains_key(&ClientTerm::local(2)),
             "finished: nothing yet, it waits"
         );
         // It went back to work by itself: nothing is ever said.
         app.snap.terms.get_mut(&2).unwrap().status = Status::Working;
         due(&mut app, 2);
         assert!(
-            app.notice.is_none() && !app.alerted.contains_key(&2),
+            app.notice.is_none() && !app.alerted.contains_key(&ClientTerm::local(2)),
             "it carried on: no note, no sound"
         );
         // Finished and still finished when the wait is over: now it's said.
@@ -6688,7 +6884,7 @@ second line
             app.notice
                 .as_ref()
                 .is_some_and(|(m, ..)| m.ends_with("finished"))
-                && app.alerted.contains_key(&2)
+                && app.alerted.contains_key(&ClientTerm::local(2))
                 && app
                     .last_alert
                     .is_some_and(|(kind, _)| kind == crate::alert::Kind::Done),
@@ -6704,15 +6900,15 @@ second line
             app.notice
                 .as_ref()
                 .is_some_and(|(m, ..)| m.ends_with("needs you"))
-                && app.alerted.contains_key(&2)
-                && !app.settling.contains_key(&2)
+                && app.alerted.contains_key(&ClientTerm::local(2))
+                && !app.settling.contains_key(&ClientTerm::local(2))
         );
         // A session another agent started: its finish is that agent's news, not yours.
         app.notice = None;
         app.snap.terms.get_mut(&2).unwrap().started_by = Some(1);
         attention(&mut app, 2, Status::Done);
         assert!(
-            app.notice.is_none() && !app.settling.contains_key(&2),
+            app.notice.is_none() && !app.settling.contains_key(&ClientTerm::local(2)),
             "a helper's finish is never said"
         );
         // But it still says when it needs you.
@@ -6729,7 +6925,7 @@ second line
         app.notice = None;
         app.snap.terms.get_mut(&2).unwrap().started_by = Some(999);
         attention(&mut app, 2, Status::Done);
-        assert!(app.settling.contains_key(&2));
+        assert!(app.settling.contains_key(&ClientTerm::local(2)));
     }
 
     #[test]
@@ -6742,24 +6938,24 @@ second line
             status: Status::Blocked,
         });
         assert!(
-            !app.alerted.contains_key(&2) && app.notice.is_none(),
+            !app.alerted.contains_key(&ClientTerm::local(2)) && app.notice.is_none(),
             "a transient ask must settle before ringing"
         );
         let mut working = app.snap.clone();
         working.terms.get_mut(&2).unwrap().status = Status::Working;
         app.on_server(ServerMsg::State(working));
         app.settle_alerts();
-        assert!(!app.alerted.contains_key(&2) && app.notice.is_none());
+        assert!(!app.alerted.contains_key(&ClientTerm::local(2)) && app.notice.is_none());
         // Attention can arrive after a newer working snapshot.
         app.on_server(ServerMsg::Attention {
             term: 2,
             status: Status::Blocked,
         });
-        let due = app.settling.get_mut(&2).unwrap();
+        let due = app.settling.get_mut(&ClientTerm::local(2)).unwrap();
         due.1 = Instant::now() - Duration::from_millis(1);
         app.settle_alerts();
         assert!(
-            !app.alerted.contains_key(&2) && app.notice.is_none(),
+            !app.alerted.contains_key(&ClientTerm::local(2)) && app.notice.is_none(),
             "stale attention must agree with the snapshot"
         );
     }
@@ -6770,7 +6966,7 @@ second line
         let id = app.focused().unwrap();
         app.window_focused = true;
         app.on_server(ServerMsg::Attention {
-            term: id,
+            term: id.term,
             status: Status::Blocked,
         });
         app.settling.get_mut(&id).unwrap().1 = Instant::now() - Duration::from_millis(1);
@@ -6788,11 +6984,11 @@ second line
         app.window_focused = false;
         let ask = |app: &mut App| {
             app.on_server(ServerMsg::Attention {
-                term: id,
+                term: id.term,
                 status: Status::Blocked,
             });
             let mut blocked = app.snap.clone();
-            blocked.terms.get_mut(&id).unwrap().status = Status::Blocked;
+            blocked.terms.get_mut(&id.term).unwrap().status = Status::Blocked;
             app.on_server(ServerMsg::State(blocked));
             app.settling.get_mut(&id).unwrap().1 = Instant::now() - Duration::from_millis(1);
             app.settle_alerts();
@@ -6804,7 +7000,7 @@ second line
             Instant::now() - Duration::from_secs(5),
         ));
         let mut next = app.snap.clone();
-        next.terms.get_mut(&id).unwrap().status = Status::Working;
+        next.terms.get_mut(&id.term).unwrap().status = Status::Working;
         app.on_server(ServerMsg::State(next));
         ask(&mut app);
         assert_eq!(
@@ -6909,9 +7105,12 @@ second line
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("messy (2 uncommitted)"));
-        assert!(rx.try_recv().is_err(), "nothing sent before you confirm");
+        assert!(
+            rx.try_recv().map(|o| o.msg).is_err(),
+            "nothing sent before you confirm"
+        );
         app.on_key(key(KeyCode::Enter));
-        let sent = std::iter::from_fn(|| rx.try_recv().ok()).find_map(|m| match m {
+        let sent = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).find_map(|m| match m {
             crate::protocol::ClientMsg::Command(crate::protocol::Command::TidyWorktrees {
                 items,
             }) => Some(items),
@@ -6962,17 +7161,16 @@ second line
                 why: "not merged anywhere".into(),
             });
         };
-        let removals =
-            |rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>| {
-                std::iter::from_fn(|| rx.try_recv().ok())
-                    .filter_map(|m| match m {
-                        crate::protocol::ClientMsg::Command(
-                            crate::protocol::Command::TidyWorktrees { items },
-                        ) => Some(items),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-            };
+        let removals = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<Outgoing>| {
+            std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
+                .filter_map(|m| match m {
+                    crate::protocol::ClientMsg::Command(
+                        crate::protocol::Command::TidyWorktrees { items },
+                    ) => Some(items),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
         ask(&mut app);
         assert!(
             matches!(&app.mode, Mode::Confirm(c) if c.what == "task" && c.note.contains("not merged anywhere") && c.danger),
@@ -7144,7 +7342,7 @@ second line
         app.got_state = true;
         app.snap.terms.get_mut(&1).unwrap().asleep = true;
         app.parsers
-            .get_mut(&1)
+            .get_mut(&ClientTerm::local(1))
             .unwrap()
             .process(b"Saved terminal contents\r\n");
         let o = draw(&mut app, 160, 45);
@@ -7205,14 +7403,14 @@ second line
         );
         // claude (1) is on a prompt; codex (2) isn't.
         app.notify("pane-one needs you".into(), false);
-        app.notice_term = Some(1);
+        app.notice_term = Some(ClientTerm::local(1));
         assert_eq!(
             toast(&mut app, "pane-one", "▲ Needs you"),
             (t.card, t.strong, t.blocked),
             "needs you: its state's colour"
         );
         app.notify("pane-two finished".into(), false);
-        app.notice_term = Some(2);
+        app.notice_term = Some(ClientTerm::local(2));
         assert_eq!(
             toast(&mut app, "pane-two", "✓ Done"),
             (t.card, t.strong, t.done),
@@ -7224,7 +7422,7 @@ second line
     fn a_needs_you_toast_offers_answer_and_later_on_its_bottom_border() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.notify("pane-one needs you".into(), false);
-        app.notice_term = Some(1);
+        app.notice_term = Some(ClientTerm::local(1));
         let buf = frame(&mut app, 160, 45);
         let r = app.screen.toast_rect;
         let bottom: String = (r.x..r.right())
@@ -7465,10 +7663,10 @@ second line
         let key = |app: &mut App, c: KeyCode, m: KeyModifiers| app.on_key(KeyEvent::new(c, m));
         // claude's row (it needs you): m writes to it from the sidebar.
         app.mode = Mode::Side;
-        app.screen.cursor = Some(SessionKey::Pane(1));
-        app.start_compose(1, true, None);
+        app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(1)));
+        app.start_compose(ClientTerm::local(1), true, None);
         assert!(
-            matches!(&app.mode, Mode::Compose(c) if c.term == 1 && c.side),
+            matches!(&app.mode, Mode::Compose(c) if c.term == ClientTerm::local(1) && c.side),
             "a follow-up to the row's agent"
         );
         for ch in "use the fake clock".chars() {
@@ -7490,7 +7688,7 @@ second line
         key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
         assert!(app.mode == Mode::Side, "sent: back on the sidebar");
         assert!(
-            app.screen.receipts.contains_key(&1),
+            app.screen.receipts.contains_key(&ClientTerm::local(1)),
             "the row carries the receipt, not a notice"
         );
         // i: why it has its status.
@@ -7869,7 +8067,8 @@ second line
             term: 2,
             status: Status::Done,
         });
-        app.settling.get_mut(&2).unwrap().1 = Instant::now() - Duration::from_millis(1);
+        app.settling.get_mut(&ClientTerm::local(2)).unwrap().1 =
+            Instant::now() - Duration::from_millis(1);
         app.settle_alerts();
         let said = app
             .notice
@@ -7900,7 +8099,8 @@ second line
             term: 2,
             status: Status::Done,
         });
-        app.settling.get_mut(&2).unwrap().1 = Instant::now() - Duration::from_millis(1);
+        app.settling.get_mut(&ClientTerm::local(2)).unwrap().1 =
+            Instant::now() - Duration::from_millis(1);
         app.settle_alerts();
         let said = app
             .notice
@@ -7928,7 +8128,8 @@ second line
             term: 2,
             status: Status::Done,
         });
-        app.settling.get_mut(&2).unwrap().1 = Instant::now() - Duration::from_millis(1);
+        app.settling.get_mut(&ClientTerm::local(2)).unwrap().1 =
+            Instant::now() - Duration::from_millis(1);
         app.settle_alerts();
         let said = app
             .notice
@@ -8039,7 +8240,13 @@ second line
     fn the_split_line_drags_again_and_again() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
         let a = app.focused().unwrap();
-        let b = app.snap.terms.keys().copied().find(|t| *t != a).unwrap();
+        let b = app
+            .snap
+            .terms
+            .keys()
+            .map(|t| ClientTerm::local(*t))
+            .find(|t| *t != a)
+            .unwrap();
         app.screen.tabs.clear();
         app.screen_place(a, None);
         app.screen.pending_split = Some((a, Instant::now()));
@@ -8238,10 +8445,11 @@ second line
             "Files has the keys, not shortcut mode: {:?}",
             std::mem::discriminant(&app.mode)
         );
-        while rx.try_recv().is_ok() {}
+        while rx.try_recv().map(|o| o.msg).is_ok() {}
         // k moves in Files; in shortcut mode it would stop the agent (Ctrl+C into its pane).
         tap(&mut app, 'k');
-        let sent: Vec<ClientMsg> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        let sent: Vec<ClientMsg> =
+            std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
         assert!(
             !sent.iter().any(|m| matches!(m, ClientMsg::Input { .. })),
             "nothing typed into a pane: {sent:?}"
@@ -8310,7 +8518,7 @@ second line
                 .terms
                 .keys()
                 .copied()
-                .find(|t| *t != before)
+                .find(|t| *t != before.term)
                 .unwrap();
             let mut next = app.snap.clone();
             let (ws, tab) = next.locate(new).map(|(w, t)| (w.id, t.id)).unwrap();
@@ -8322,10 +8530,15 @@ second line
                 }
             }
             app.on_server(ServerMsg::State(next));
-            assert_eq!(app.focused(), Some(new), "{c}: the new pane has the focus");
+            assert_eq!(
+                app.focused(),
+                Some(ClientTerm::local(new)),
+                "{c}: the new pane has the focus"
+            );
             assert_eq!(app.mode, Mode::Normal, "{c}: and the mode stays ended");
             tap(&mut app, 'a');
-            let typed: Vec<ClientMsg> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+            let typed: Vec<ClientMsg> =
+                std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
             assert!(
                 typed.iter().any(
                     |m| matches!(m, ClientMsg::Input { term, data } if *term == new && data == b"a")
@@ -8814,7 +9027,8 @@ second line
             ("inbox merge" | "inbox throw away", _) => {
                 give_keys(app, "inbox", true);
                 let term = *app.snap.terms.keys().next().expect("a session");
-                app.screen.inbox_confirm = Some((term, what == "inbox merge", false));
+                app.screen.inbox_confirm =
+                    Some((ClientTerm::local(term), what == "inbox merge", false));
             }
             ("settings capture" | "settings edit", _) => {
                 app.act(Action::Settings);
@@ -10094,9 +10308,12 @@ second line
                 let _ = draw(&mut app, w, h);
                 // And a right-click menu, and a question.
                 app.mode = Mode::Normal;
-                app.menu_for_session(1, (w.saturating_sub(1), h.saturating_sub(1)));
+                app.menu_for_session(
+                    ClientTerm::local(1),
+                    (w.saturating_sub(1), h.saturating_sub(1)),
+                );
                 let _ = draw(&mut app, w, h);
-                app.menu_act(menu::Act::End(vec![1]));
+                app.menu_act(menu::Act::End(vec![ClientTerm::local(1)]));
                 let _ = draw(&mut app, w, h);
             }
         }
@@ -10648,7 +10865,7 @@ mod shots {
         let mut split = crate::layout::Node::Leaf(1);
         split.split(1, crate::layout::Dir::Right, 3);
         app.screen.tabs[0].layout = split;
-        app.screen.tabs[0].focus = 1;
+        app.screen.tabs[0].focus = ClientTerm::local(1);
         cells(&mut app, 160, 45, "05-split", &dir);
         let (_, mut app) = render_with(160, 45);
         app.mode = Mode::GoTo {
@@ -10802,7 +11019,8 @@ mod check_row_tests {
                 layout: Node::Leaf(id),
                 focus: id,
             });
-            app.parsers.insert(id, vt100::Parser::new(20, 80, 0));
+            app.parsers
+                .insert(ClientTerm::local(id), vt100::Parser::new(20, 80, 0));
         }
         app.screen.tabs.clear();
         app.screen.last_focus = None;
@@ -11376,7 +11594,7 @@ mod check_row_tests {
         for layout in LAYOUTS {
             let mut app = one(w, h, layout, &CASES[2]);
             app.mode = Mode::Side;
-            app.screen.cursor = Some(SessionKey::Pane(20));
+            app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(20)));
             let buf = render(&mut app, w, h);
             show(&buf, &format!("selected {}", label(layout, w, h)));
             let y = row_of(&buf, &app, NAME);
@@ -11520,7 +11738,7 @@ mod check_why_tests {
         info.said = "done".into();
         info.checks = check.into_iter().collect();
         app.mode = Mode::Why {
-            term: 1,
+            term: ClientTerm::local(1),
             side: false,
         };
         app
@@ -11715,6 +11933,7 @@ mod check_sheet_tests {
 
     const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
     const TERM: TermId = 1;
+    const PANE: ClientTerm = ClientTerm::local(TERM);
     const SHEET_W: u16 = 72;
     const SHORT_OUTPUT: &str = "✓ renders the footer\n✓ links resolve\n✗ keeps the sticky footer\nError: expected 3 got 2\n";
 
@@ -11754,7 +11973,7 @@ mod check_sheet_tests {
         let term = app.snap.terms.get_mut(&TERM).unwrap();
         (term.status, term.said, term.checks) = (Status::Done, "tests pass".into(), vec![info]);
         app.screen_sync();
-        app.open_check_sheet(TERM);
+        app.open_check_sheet(PANE);
         if let Some(text) = output {
             app.on_server(ServerMsg::Reply(Reply::Text(text.into())));
         }
@@ -11836,8 +12055,8 @@ mod check_sheet_tests {
         app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
     }
 
-    fn sent(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<ClientMsg> {
-        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    fn sent(rx: &mut mpsc::UnboundedReceiver<Outgoing>) -> Vec<ClientMsg> {
+        std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect()
     }
 
     fn long_output(n: usize) -> String {
@@ -12276,8 +12495,8 @@ mod check_sheet_tests {
         app.out = tx;
         let term = app.snap.terms.get_mut(&TERM).unwrap();
         (term.status, term.checks) = (Status::Done, vec![check(CheckState::Failed, Some(1))]);
-        app.open_check_sheet(TERM);
-        let asks = |rx: &mut mpsc::UnboundedReceiver<ClientMsg>| {
+        app.open_check_sheet(PANE);
+        let asks = |rx: &mut mpsc::UnboundedReceiver<Outgoing>| {
             sent(rx)
                 .into_iter()
                 .filter(|m| {
@@ -12340,7 +12559,7 @@ mod check_sheet_tests {
         app.screen_sync();
         draw(&mut app, 160, 45);
         app.mode = Mode::Side;
-        app.screen.cursor = Some(SessionKey::Pane(TERM));
+        app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(TERM)));
         app.screen.cursor_proj = None;
         press(&mut app, KeyCode::Enter);
         app
@@ -12355,7 +12574,7 @@ mod check_sheet_tests {
         ] {
             let app = enter_on_row(Some(state), Status::Done);
             assert!(
-                matches!(&app.view, Some(View::Check(v)) if v.term == TERM),
+                matches!(&app.view, Some(View::Check(v)) if v.term == PANE),
                 "{state:?} opens the sheet"
             );
         }
@@ -12477,7 +12696,8 @@ mod check_inbox_tests {
                 layout: Node::Leaf(id),
                 focus: id,
             });
-            app.parsers.insert(id, vt100::Parser::new(20, 80, 0));
+            app.parsers
+                .insert(ClientTerm::local(id), vt100::Parser::new(20, 80, 0));
         }
         app.screen.tabs.clear();
         app.screen.last_focus = None;
@@ -12582,20 +12802,24 @@ mod check_inbox_tests {
                 .cloned()
                 .collect::<Vec<_>>()
         };
-        assert_eq!(section("NEEDS YOU"), [Ask(1)]);
+        assert_eq!(section("NEEDS YOU"), [Ask(ClientTerm::local(1))]);
         assert_eq!(
             section(FAILED),
-            [Failed(20), Failed(25)],
+            [Failed(ClientTerm::local(20)), Failed(ClientTerm::local(25))],
             "a failure stays listed once it has been looked at"
         );
         assert_eq!(
             section(NOT_RUN),
-            [NotRun(21)],
+            [NotRun(ClientTerm::local(21))],
             "unchecked work is listed until it is looked at"
         );
         assert_eq!(
             section(FINISHED),
-            [Done(22), Done(24), Done(23)],
+            [
+                Done(ClientTerm::local(22)),
+                Done(ClientTerm::local(24)),
+                Done(ClientTerm::local(23))
+            ],
             "passed and overridden (checked first), then no check, still just finished"
         );
     }
@@ -12640,7 +12864,7 @@ mod check_inbox_tests {
                     let at_ = format!("{} {what}", label(layout, w, h));
                     let extra: [Extra; 1] = [("sub", Status::Done, check)];
                     let mut app = scene(w, h, layout, &extra);
-                    let listed = rows(&app).contains(&screen::GoRow::Done(20));
+                    let listed = rows(&app).contains(&screen::GoRow::Done(ClientTerm::local(20)));
                     assert_eq!(listed, finished, "{at_}: listed under JUST FINISHED");
                     inbox(&mut app, w, h);
                     let mut home = scene(w, h, layout, &extra);
@@ -12668,7 +12892,7 @@ mod check_inbox_tests {
             "the old result is about an older turn, and an empty group is left out"
         );
         assert!(
-            rows.contains(&screen::GoRow::Ask(21))
+            rows.contains(&screen::GoRow::Ask(ClientTerm::local(21)))
                 && !rows.iter().any(|r| matches!(r, screen::GoRow::Failed(_)))
         );
     }
@@ -12904,7 +13128,10 @@ mod check_inbox_tests {
             assert!(
                 matches!(
                     rows.as_slice(),
-                    [screen::GoRow::Head("FOUND"), screen::GoRow::Sess(_, 20)]
+                    [
+                        screen::GoRow::Head("FOUND"),
+                        screen::GoRow::Sess(_, ClientTerm { term: 20, .. })
+                    ]
                 ),
                 "{at_}: {rows:?}"
             );
@@ -12941,10 +13168,11 @@ mod check_inbox_tests {
                         "{}: the Inbox closes",
                         label(layout, 100, 30)
                     );
-                    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+                    let sent: Vec<_> =
+                        std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
                     if output {
                         assert!(
-                            matches!(&app.view, Some(View::Check(v)) if v.term == term),
+                            matches!(&app.view, Some(View::Check(v)) if v.term == ClientTerm::local(term)),
                             "{key:?}: the output"
                         );
                     } else {
@@ -12977,9 +13205,9 @@ mod check_inbox_tests {
         assert_eq!(
             seen,
             [
-                screen::GoRow::Ask(1),
-                screen::GoRow::Failed(20),
-                screen::GoRow::NotRun(21)
+                screen::GoRow::Ask(ClientTerm::local(1)),
+                screen::GoRow::Failed(ClientTerm::local(20)),
+                screen::GoRow::NotRun(ClientTerm::local(21))
             ]
         );
     }
@@ -13318,7 +13546,7 @@ mod check_settings_tests {
         assert!(set("npm test", 600).apply(&mut doc).is_err());
     }
 
-    pub(super) fn app_with_channel() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+    pub(super) fn app_with_channel() -> (App, mpsc::UnboundedReceiver<Outgoing>) {
         let (_, mut app) = super::design_tests::render_with(100, 30);
         let (tx, rx) = mpsc::unbounded_channel();
         app.out = tx;
@@ -13363,7 +13591,7 @@ mod check_settings_tests {
         app.check_saved(Ok(cfg), "Saved. Runs after the next turn ends.", true);
         assert_eq!(app.cfg.check.len(), 1);
         let mut sent = Vec::new();
-        while let Ok(m) = rx.try_recv() {
+        while let Ok(m) = rx.try_recv().map(|o| o.msg) {
             sent.push(m);
         }
         assert!(
@@ -13430,6 +13658,7 @@ mod check_wiring_tests {
 
     const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
     const TERM: TermId = 1;
+    const PANE: ClientTerm = ClientTerm::local(TERM);
     const COMMAND: &str = "npm test";
     /// Keys a sidebar row already uses; a menu item must not take one (x is Close's).
     const TAKEN: [char; 5] = ['j', 'k', 'a', 'm', 'i'];
@@ -13440,7 +13669,7 @@ mod check_wiring_tests {
         CheckState::Overridden,
         CheckState::CouldNotRun,
     ];
-    type Rx = mpsc::UnboundedReceiver<ClientMsg>;
+    type Rx = mpsc::UnboundedReceiver<Outgoing>;
     type Layout = fn(&mut App);
 
     fn layouts() -> [(&'static str, Layout); 2] {
@@ -13498,7 +13727,7 @@ mod check_wiring_tests {
     }
 
     fn sent(rx: &mut Rx) -> Vec<ClientMsg> {
-        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+        std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect()
     }
 
     fn commands(rx: &mut Rx) -> Vec<Command> {
@@ -13613,7 +13842,7 @@ mod check_wiring_tests {
     }
 
     fn labels(app: &App) -> Vec<String> {
-        app.session_items(TERM)
+        app.session_items(PANE)
             .unwrap()
             .1
             .into_iter()
@@ -13666,7 +13895,7 @@ mod check_wiring_tests {
     fn a_checks_menu_items_keep_their_row_keys_and_rename_moves_over() {
         let keyed = |state: Option<CheckState>| {
             let (app, _) = rig(100, 30, |_| {}, state.map(info), Status::Done);
-            let items = app.session_items(TERM).unwrap().1;
+            let items = app.session_items(PANE).unwrap().1;
             items
                 .iter()
                 .map(|(l, _)| l.clone())
@@ -13708,7 +13937,7 @@ mod check_wiring_tests {
     fn on_its_row(state: CheckState) -> (App, Rx) {
         let (mut app, rx) = done(state);
         app.mode = Mode::Side;
-        app.screen.cursor = Some(SessionKey::Pane(TERM));
+        app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(TERM)));
         (app, rx)
     }
 
@@ -13740,7 +13969,7 @@ mod check_wiring_tests {
             let (mut app, _) = on_its_row(state);
             press(&mut app, KeyCode::Enter);
             assert!(
-                matches!(&app.view, Some(View::Check(v)) if v.term == TERM),
+                matches!(&app.view, Some(View::Check(v)) if v.term == PANE),
                 "{state:?}: Enter opens its evidence"
             );
         }
@@ -13755,10 +13984,10 @@ mod check_wiring_tests {
     #[test]
     fn the_menu_tells_override_from_output_by_case() {
         let (mut app, mut rx) = done(CheckState::Failed);
-        app.menu_for_session(TERM, (20, 10));
+        app.menu_for_session(PANE, (20, 10));
         app.on_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
         assert!(
-            matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, ..))),
+            matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(PANE, ..))),
             "O overrides: {:?}",
             app.mode
         );
@@ -13770,7 +13999,7 @@ mod check_wiring_tests {
         for state in ALL_STATES {
             for status in [Status::Done, Status::Working, Status::Idle] {
                 let (app, _) = rig(100, 30, |_| {}, Some(info(state)), status);
-                let items = app.session_items(TERM).unwrap().1;
+                let items = app.session_items(PANE).unwrap().1;
                 let keys = menu_chars(&app, &items);
                 let mut seen = Vec::new();
                 for ((label, act), key) in items.iter().zip(&keys) {
@@ -13794,7 +14023,7 @@ mod check_wiring_tests {
     }
 
     fn pick(app: &mut App, label: &str) {
-        app.menu_for_session(TERM, (20, 10));
+        app.menu_for_session(PANE, (20, 10));
         let (items, keys) = match &app.mode {
             Mode::ScreenMenu(m) => (m.items.clone(), menu_chars(app, &m.items)),
             other => panic!("no menu: {other:?}"),
@@ -13828,7 +14057,7 @@ mod check_wiring_tests {
             let (mut app, mut rx) = done(state);
             pick(&mut app, "Check output");
             assert!(
-                matches!(&app.view, Some(View::Check(v)) if v.term == TERM),
+                matches!(&app.view, Some(View::Check(v)) if v.term == PANE),
                 "{state:?}"
             );
             assert!(
@@ -13849,7 +14078,7 @@ mod check_wiring_tests {
         let (mut app, mut rx) = done(CheckState::Failed);
         pick(&mut app, "Override check…");
         assert!(
-            matches!(&app.mode, Mode::Confirm(c) if c.danger && matches!(c.act, Act::OverrideCheck(TERM, ..))),
+            matches!(&app.mode, Mode::Confirm(c) if c.danger && matches!(c.act, Act::OverrideCheck(PANE, ..))),
             "{:?}",
             app.mode
         );
@@ -13866,10 +14095,10 @@ mod check_wiring_tests {
     #[test]
     fn a_result_that_is_no_longer_failed_is_not_overridden_from_a_stale_menu() {
         let (mut app, mut rx) = done(CheckState::Failed);
-        app.menu_for_session(TERM, (20, 10));
+        app.menu_for_session(PANE, (20, 10));
         app.snap.terms.get_mut(&TERM).unwrap().checks = vec![info(CheckState::Passed)];
         app.screen_sync();
-        app.menu_act(Act::OverrideCheck(TERM, String::new(), None));
+        app.menu_act(Act::OverrideCheck(PANE, String::new(), None));
         assert!(
             commands(&mut rx).is_empty() && !matches!(app.mode, Mode::Confirm(_)),
             "{:?}",
@@ -13891,7 +14120,7 @@ mod check_wiring_tests {
                 let at = format!("{name} {w}x{h}");
                 let (mut app, mut rx) =
                     rig(w, h, layout, Some(info(CheckState::Failed)), Status::Done);
-                app.open_check_sheet(TERM);
+                app.open_check_sheet(PANE);
                 ask_override(&mut app);
                 let o = draw(&mut app, w, h);
                 let text = words(&o);
@@ -13944,7 +14173,7 @@ mod check_wiring_tests {
                 Status::Done,
             );
             plain(&mut app);
-            app.open_check_sheet(TERM);
+            app.open_check_sheet(PANE);
             let sheet = words(&draw(&mut app, w, h));
             assert!(
                 sheet.contains("/ Overridden by you") && !sheet.contains('⊘'),
@@ -13959,7 +14188,7 @@ mod check_wiring_tests {
                 let (mut app, _rx) = rig(w, h, layout, Some(info(state)), Status::Done);
                 plain(&mut app);
                 app.mode = Mode::Why {
-                    term: TERM,
+                    term: PANE,
                     side: false,
                 };
                 let why = words(&draw(&mut app, w, h));
@@ -13975,7 +14204,7 @@ mod check_wiring_tests {
 
             let (mut app, _rx) = rig(w, h, layout, Some(info(CheckState::Failed)), Status::Done);
             plain(&mut app);
-            app.open_check_sheet(TERM);
+            app.open_check_sheet(PANE);
             ask_override(&mut app);
             let confirm = words(&draw(&mut app, w, h));
             assert!(
@@ -13994,7 +14223,7 @@ mod check_wiring_tests {
     #[test]
     fn the_reason_is_optional_editable_and_bounded() {
         let (mut app, mut rx) = done(CheckState::Failed);
-        app.open_check_sheet(TERM);
+        app.open_check_sheet(PANE);
         ask_override(&mut app);
         press(&mut app, KeyCode::Enter);
         assert_eq!(
@@ -14002,7 +14231,7 @@ mod check_wiring_tests {
             [""],
             "an empty reason is fine"
         );
-        app.open_check_sheet(TERM);
+        app.open_check_sheet(PANE);
         ask_override(&mut app);
         typed(&mut app, "abc");
         press(&mut app, KeyCode::Backspace);
@@ -14013,7 +14242,7 @@ mod check_wiring_tests {
             ["ab\u{e9}d"],
             "backspace edits, a paste takes its first line"
         );
-        app.open_check_sheet(TERM);
+        app.open_check_sheet(PANE);
         ask_override(&mut app);
         typed(&mut app, &"x".repeat(400));
         press(&mut app, KeyCode::Enter);
@@ -14028,7 +14257,7 @@ mod check_wiring_tests {
     #[test]
     fn the_override_button_is_clickable_and_so_is_cancel() {
         let (mut app, mut rx) = done(CheckState::Failed);
-        app.open_check_sheet(TERM);
+        app.open_check_sheet(PANE);
         ask_override(&mut app);
         click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::ConfirmNo));
         assert_eq!(
@@ -14066,7 +14295,7 @@ mod check_wiring_tests {
         ];
         for (state, rerun, over, undo) in table {
             let (mut app, mut rx) = done(state);
-            app.open_check_sheet(TERM);
+            app.open_check_sheet(PANE);
             sent(&mut rx);
             press(&mut app, KeyCode::Char('r'));
             let cmds = commands(&mut rx);
@@ -14100,17 +14329,17 @@ mod check_wiring_tests {
     #[test]
     fn the_sheets_buttons_click_through_to_the_same_actions() {
         let (mut app, mut rx) = done(CheckState::Failed);
-        app.open_check_sheet(TERM);
+        app.open_check_sheet(PANE);
         click(&mut app, 100, 30, viewkey('r'));
         assert_eq!(rerun_of(&commands(&mut rx)), 1, "Re-run");
         click(&mut app, 100, 30, viewkey('O'));
         assert!(
-            matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, ..))),
+            matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(PANE, ..))),
             "Override…"
         );
         app.mode = Mode::Normal;
         let (mut app, mut rx) = done(CheckState::Overridden);
-        app.open_check_sheet(TERM);
+        app.open_check_sheet(PANE);
         click(&mut app, 100, 30, viewkey('u'));
         assert!(
             commands(&mut rx).iter().any(|c| matches!(
@@ -14132,7 +14361,7 @@ mod check_wiring_tests {
                 for state in ALL_STATES {
                     let at = format!("{name} {w}x{h} {state:?}");
                     let (mut app, _rx) = rig(w, h, layout, Some(info(state)), Status::Done);
-                    app.open_check_sheet(TERM);
+                    app.open_check_sheet(PANE);
                     let o = draw(&mut app, w, h);
                     // Above the mode bar, which names the sheet and its way out too.
                     let bar = screen::mode_bar_row(&app, Rect::new(0, 0, w, h)).y as usize;
@@ -14182,7 +14411,7 @@ mod check_wiring_tests {
             Some(info(CheckState::Failed)),
             Status::Working,
         );
-        app.open_check_sheet(TERM);
+        app.open_check_sheet(PANE);
         press(&mut app, KeyCode::Char('r'));
         assert_eq!(rerun_of(&commands(&mut rx)), 1);
         assert!(toast(&app).0.contains("queued"), "{}", toast(&app).0);
@@ -14217,7 +14446,7 @@ mod check_wiring_tests {
             Some(info(CheckState::Failed)),
             Status::Done,
         );
-        app.open_check_sheet(TERM);
+        app.open_check_sheet(PANE);
         press(&mut app, KeyCode::Char('r'));
         assert_eq!(rerun_of(&commands(&mut rx)), 1);
         assert!(
@@ -14228,14 +14457,14 @@ mod check_wiring_tests {
         running.exit_code = None;
         app.snap.terms.get_mut(&TERM).unwrap().checks = vec![running];
         app.screen_sync();
-        app.open_check_sheet(TERM);
+        app.open_check_sheet(PANE);
         press(&mut app, KeyCode::Esc);
         let o = draw(&mut app, 160, 45);
         assert!(
             o.contains("checking test ·") && ['◜', '◝', '◞', '◟'].iter().any(|g| o.contains(*g)),
             "the ring and its checkpoint's name:\n{o}"
         );
-        app.open_check_sheet(TERM);
+        app.open_check_sheet(PANE);
         press(&mut app, KeyCode::Char('r'));
         assert!(
             commands(&mut rx).is_empty(),
@@ -14273,7 +14502,7 @@ mod check_wiring_tests {
                 let open = || {
                     let (mut app, rx) = rig(100, 30, layout, Some(info(state)), Status::Done);
                     app.mode = Mode::Why {
-                        term: TERM,
+                        term: PANE,
                         side: false,
                     };
                     (app, rx)
@@ -14309,7 +14538,7 @@ mod check_wiring_tests {
                 let (mut app, mut rx3) = open();
                 press(&mut app, KeyCode::Char('O'));
                 assert_eq!(
-                    matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, ..))),
+                    matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(PANE, ..))),
                     state == CheckState::Failed,
                     "{at}: O"
                 );
@@ -14335,7 +14564,10 @@ mod check_wiring_tests {
                 panic!("no inbox: {:?}", app.mode)
             };
             let rows = screen::goto_rows(&app.screen_model(), "", 0);
-            if matches!(rows.get(*sel), Some(screen::GoRow::Failed(TERM))) {
+            if matches!(
+                rows.get(*sel),
+                Some(screen::GoRow::Failed(ClientTerm { term: TERM, .. }))
+            ) {
                 return;
             }
             press(app, KeyCode::Down);
@@ -14382,7 +14614,7 @@ mod check_wiring_tests {
         assert_eq!(rerun_of(&commands(&mut rx)), 1, "the Re-run button");
         press(&mut app, KeyCode::Char('O'));
         assert!(
-            matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, ..))),
+            matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(PANE, ..))),
             "O"
         );
         press(&mut app, KeyCode::Esc);
@@ -14403,7 +14635,7 @@ mod check_wiring_tests {
             Hit::Screen(screen::ScreenHit::InboxKey('\n')),
         );
         assert!(
-            matches!(&app.view, Some(View::Check(v)) if v.term == TERM) && app.mode == Mode::Normal,
+            matches!(&app.view, Some(View::Check(v)) if v.term == PANE) && app.mode == Mode::Normal,
             "the Output button"
         );
         app.view = None;
@@ -14427,7 +14659,7 @@ mod check_wiring_tests {
         goto_failed(&mut app);
         press(&mut app, KeyCode::Enter);
         assert!(
-            app.mode == Mode::Normal && matches!(&app.view, Some(View::Check(v)) if v.term == TERM),
+            app.mode == Mode::Normal && matches!(&app.view, Some(View::Check(v)) if v.term == PANE),
             "Enter is the first button: Output"
         );
         app.view = None;
@@ -14591,7 +14823,7 @@ mod restart_tests {
     const INSTALLED: &str = "9.9.9";
 
     /// The shop-api scene (3 sessions, 1 working) whose daemon is older than the installed the app.
-    fn scene(w: u16, h: u16, layout: (&str, &str)) -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+    fn scene(w: u16, h: u16, layout: (&str, &str)) -> (App, mpsc::UnboundedReceiver<Outgoing>) {
         let (_, mut app) = super::design_tests::render_with(w, h);
         (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.0.into(), layout.1.into());
         app.cfg.ui.fold_retired_layout();
@@ -14662,8 +14894,8 @@ mod restart_tests {
         app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
     }
 
-    fn sent(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<ClientMsg> {
-        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    fn sent(rx: &mut mpsc::UnboundedReceiver<Outgoing>) -> Vec<ClientMsg> {
+        std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect()
     }
 
     fn is_restart(act: &menu::Act) -> bool {
@@ -15363,12 +15595,13 @@ mod side_panel_width_tests {
     /// Whether `c` typed now reaches a pane (an `Input` goes out), drained afterwards.
     fn typed_into_a_pane(
         app: &mut App,
-        rx: &mut mpsc::UnboundedReceiver<ClientMsg>,
+        rx: &mut mpsc::UnboundedReceiver<Outgoing>,
         c: char,
     ) -> bool {
-        while rx.try_recv().is_ok() {}
+        while rx.try_recv().map(|o| o.msg).is_ok() {}
         key(app, c);
-        std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Input { .. }))
+        std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
+            .any(|m| matches!(m, ClientMsg::Input { .. }))
     }
 
     #[test]
@@ -15444,7 +15677,7 @@ mod side_panel_width_tests {
     fn changes_beside_a_working_pane() -> App {
         let (_, mut app) = super::design_tests::render_with(200, 50);
         let focused = app.focused().unwrap();
-        app.snap.terms.get_mut(&focused).unwrap().status = Status::Working;
+        app.snap.terms.get_mut(&focused.term).unwrap().status = Status::Working;
         app.show_view(changes_view());
         draw(&mut app, 200, 50);
         app
@@ -15503,7 +15736,7 @@ mod side_panel_width_tests {
             .expect("leader ← put the cursor on a sidebar row");
         app.snap
             .terms
-            .get_mut(&app.session_term(row).unwrap())
+            .get_mut(&app.session_term(row).unwrap().term)
             .unwrap()
             .status = Status::Working;
         leader_x(&mut app);
@@ -15533,7 +15766,13 @@ mod side_panel_width_tests {
     fn leader_x_with_no_panel_closes_the_focused_split() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
         let a = app.focused().unwrap();
-        let b = app.snap.terms.keys().copied().find(|t| *t != a).unwrap();
+        let b = app
+            .snap
+            .terms
+            .keys()
+            .map(|t| ClientTerm::local(*t))
+            .find(|t| *t != a)
+            .unwrap();
         app.screen.tabs.clear();
         app.screen_place(a, None);
         app.screen.pending_split = Some((a, Instant::now()));
@@ -15617,7 +15856,7 @@ mod side_panel_width_tests {
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
         app.snap.terms.get_mut(&1).unwrap().checks = vec![run(100)];
-        app.open_check_sheet(1);
+        app.open_check_sheet(ClientTerm::local(1));
         draw(&mut app, 200, 50);
         let (_, pane) = *app.pane_frames.first().unwrap();
         click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
@@ -15880,7 +16119,7 @@ mod files_panel_tests {
     fn ctrl_click_on_a_path_and_line_opens_files_in_the_panel_at_that_line() {
         let dir = project("reveal");
         let mut app = screen_in(&dir, 160, 45);
-        app.open_path_from(1, "src/main.rs", Some(40));
+        app.open_path_from(ClientTerm::local(1), "src/main.rs", Some(40));
         // Outside a repo, the tree is rooted at the file's folder.
         let root = files(&app).root.clone();
         tree_read(&mut app, &root);
@@ -15934,12 +16173,12 @@ mod files_panel_tests {
         let mut app = screen_in(&dir, 160, 45);
         let mut p = vt100::Parser::new(20, 80, 0);
         p.process(b"see src/main.rs:40\r\nand notes.txt:1\r\n");
-        app.parsers.insert(1, p);
+        app.parsers.insert(ClientTerm::local(1), p);
         draw(&mut app, 160, 45);
         let (_, inner) = *app
             .panes
             .iter()
-            .find(|(t, _)| *t == 1)
+            .find(|(t, _)| *t == ClientTerm::local(1))
             .expect("the pane is drawn");
         click(
             &mut app,
@@ -15962,7 +16201,7 @@ mod files_panel_tests {
         let (_, inner) = *app
             .panes
             .iter()
-            .find(|(t, _)| *t == 1)
+            .find(|(t, _)| *t == ClientTerm::local(1))
             .expect("the pane is still beside the panel");
         click(
             &mut app,
@@ -16363,7 +16602,7 @@ mod files_panel_tests {
         app.out = tx;
         key(&mut app, KeyCode::Char('e'));
         let mut opened = None;
-        while let Ok(msg) = rx.try_recv() {
+        while let Ok(msg) = rx.try_recv().map(|o| o.msg) {
             if let crate::protocol::ClientMsg::Command(crate::protocol::Command::NewWorkspace {
                 cmd,
                 ..
@@ -16385,7 +16624,7 @@ mod files_panel_tests {
     fn ctrl_click_on_a_markdown_path_and_line_opens_it_raw_at_that_line() {
         let dir = project_with_guide("mdreveal");
         let mut app = screen_in(&dir, 160, 45);
-        app.open_path_from(1, "GUIDE.md", Some(42));
+        app.open_path_from(ClientTerm::local(1), "GUIDE.md", Some(42));
         let root = files(&app).root.clone();
         tree_read(&mut app, &root);
         let (o, _) = frame(&mut app, 160, 45);
@@ -16610,7 +16849,10 @@ mod files_panel_tests {
             Some((copy::NO_TEXT, true)),
             "an empty paste is no image paste"
         );
-        assert!(out.try_recv().is_err(), "nothing reached the pane");
+        assert!(
+            out.try_recv().map(|o| o.msg).is_err(),
+            "nothing reached the pane"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -16622,7 +16864,7 @@ mod files_panel_tests {
         for code in ['c', 'x', 'v', 'a'] {
             press(&mut app, KeyCode::Char(code), KeyModifiers::CONTROL);
         }
-        while let Ok(msg) = out.try_recv() {
+        while let Ok(msg) = out.try_recv().map(|o| o.msg) {
             assert!(
                 !matches!(msg, ClientMsg::Input { .. }),
                 "a key went to the agent: {msg:?}"
@@ -16665,7 +16907,10 @@ mod files_panel_tests {
             Some("line_1 = 1;\nlet line_2 "),
             "Ctrl+C copies the selection"
         );
-        assert!(out.try_recv().is_err(), "Ctrl+C reached no pane");
+        assert!(
+            out.try_recv().map(|o| o.msg).is_err(),
+            "Ctrl+C reached no pane"
+        );
         key(&mut app, KeyCode::Char('y'));
         assert_eq!(
             last_copy(),
@@ -16801,8 +17046,8 @@ mod files_panel_tests {
     }
 
     /// What the next message to the server types into a pane, if anything.
-    fn typed(out: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Option<String> {
-        std::iter::from_fn(|| out.try_recv().ok()).find_map(|m| match m {
+    fn typed(out: &mut mpsc::UnboundedReceiver<Outgoing>) -> Option<String> {
+        std::iter::from_fn(|| out.try_recv().map(|o| o.msg).ok()).find_map(|m| match m {
             ClientMsg::Input { data, .. } => Some(String::from_utf8_lossy(&data).into_owned()),
             _ => None,
         })
@@ -16827,7 +17072,7 @@ mod files_panel_tests {
         let pane = app
             .pane_frames
             .iter()
-            .find(|(t, _)| *t == 1)
+            .find(|(t, _)| *t == ClientTerm::local(1))
             .map(|(_, r)| *r)
             .expect("the pane beside the panel");
         let inside = (pane.x + pane.width / 2, pane.y + pane.height / 2);
@@ -17193,10 +17438,11 @@ mod branch_view_tests {
     fn opened_from_shortcut_mode_its_keys_reach_it_and_k_types_nothing() {
         let (mut app, mut out) = super::check_settings_tests::app_with_channel();
         leader(&mut app, 'b');
-        while out.try_recv().is_ok() {}
+        while out.try_recv().map(|o| o.msg).is_ok() {}
         // k is the leader's stop-the-agent: here it moves up, and nothing goes to a pane.
         key(&mut app, KeyCode::Char('k'));
-        let sent: Vec<ClientMsg> = std::iter::from_fn(|| out.try_recv().ok()).collect();
+        let sent: Vec<ClientMsg> =
+            std::iter::from_fn(|| out.try_recv().map(|o| o.msg).ok()).collect();
         assert!(
             !sent.iter().any(|m| matches!(m, ClientMsg::Input { .. })),
             "nothing typed into a pane: {sent:?}"
@@ -17226,7 +17472,12 @@ mod branch_view_tests {
         assert_eq!(r.branch, "fix-footer", "read again after the switch");
         let s = r.snapshots[0].clone();
         std::fs::write(dir.join("a.txt"), "4").unwrap();
-        app.menu_do(Act::Restore(dir.clone(), s.commit, "now".into(), 1));
+        app.menu_do(Act::Restore(
+            dir.clone(),
+            s.commit,
+            "now".into(),
+            ClientTerm::local(1),
+        ));
         let restored = next_bg(&mut rx);
         app.on_bg(restored);
         let b = next_bg(&mut rx);
@@ -17312,7 +17563,11 @@ mod branch_view_tests {
         let Act::Restore(at, _, when, term) = &c.act else {
             panic!("{:?}", c.act)
         };
-        assert!(at == &dir && *term == 1 && when.ends_with("ago · before claude's turn"));
+        assert!(
+            at == &dir
+                && *term == ClientTerm::local(1)
+                && when.ends_with("ago · before claude's turn")
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -17582,8 +17837,9 @@ mod drawer_tab_tests {
     }
 
     /// Nothing typed into a pane since the last look.
-    fn no_input(out: &mut mpsc::UnboundedReceiver<ClientMsg>) -> bool {
-        std::iter::from_fn(|| out.try_recv().ok()).all(|m| !matches!(m, ClientMsg::Input { .. }))
+    fn no_input(out: &mut mpsc::UnboundedReceiver<Outgoing>) -> bool {
+        std::iter::from_fn(|| out.try_recv().map(|o| o.msg).ok())
+            .all(|m| !matches!(m, ClientMsg::Input { .. }))
     }
 
     #[test]
@@ -18078,7 +18334,7 @@ mod references_view_tests {
             ["mock.png"],
             "References added it, not the side-panel guard"
         );
-        let typed = std::iter::from_fn(|| out.try_recv().ok())
+        let typed = std::iter::from_fn(|| out.try_recv().map(|o| o.msg).ok())
             .filter(|m| matches!(m, ClientMsg::Input { .. }))
             .count();
         assert_eq!(typed, 0, "nothing typed into the pane");
@@ -18200,7 +18456,7 @@ mod pane_swap_tests {
 
     /// Panes 1 and 2 side by side in one tab, as the server keeps them, drawn in `layout`;
     /// and what the app sends.
-    fn side_by_side(layout: &str) -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+    fn side_by_side(layout: &str) -> (App, mpsc::UnboundedReceiver<Outgoing>) {
         let (_, mut app) = super::design_tests::render_with(W, H);
         let (tx, rx) = mpsc::unbounded_channel();
         app.out = tx;
@@ -18256,7 +18512,7 @@ mod pane_swap_tests {
     fn frame_of(app: &App, term: TermId) -> Rect {
         app.pane_frames
             .iter()
-            .find(|(id, _)| *id == term)
+            .find(|(id, _)| *id == ClientTerm::local(term))
             .map(|(_, r)| *r)
             .expect("the pane is drawn")
     }
@@ -18288,8 +18544,8 @@ mod pane_swap_tests {
         Position::new(r.x + r.width / 2, r.y + r.height / 2)
     }
 
-    fn swaps_sent(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<(TermId, TermId)> {
-        std::iter::from_fn(|| rx.try_recv().ok())
+    fn swaps_sent(rx: &mut mpsc::UnboundedReceiver<Outgoing>) -> Vec<(TermId, TermId)> {
+        std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
             .filter_map(|m| match m {
                 ClientMsg::Command(Command::SwapPanes { a, b }) => Some((a, b)),
                 _ => None,
@@ -18362,7 +18618,8 @@ mod pane_swap_tests {
         let at = title_spot(&app, 2);
         mouse(&mut app, MouseEventKind::Down(MouseButton::Left), at);
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), at);
-        let sent: Vec<ClientMsg> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        let sent: Vec<ClientMsg> =
+            std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
         assert!(
             sent.iter()
                 .any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))),
@@ -18402,7 +18659,7 @@ mod pane_swap_tests {
         assert_eq!(shown(&app), [2, 1]);
         assert_eq!(
             app.focused(),
-            Some(1),
+            Some(ClientTerm::local(1)),
             "the keys stay with the pane that moved"
         );
         assert_eq!(swaps_sent(&mut rx), [(1, 2)]);
@@ -18411,7 +18668,7 @@ mod pane_swap_tests {
     #[test]
     fn the_pane_menu_offers_a_move_toward_each_neighbour() {
         let (mut app, mut rx) = side_by_side("tiled");
-        app.menu_for_pane(1, (5, 5));
+        app.menu_for_pane(ClientTerm::local(1), (5, 5));
         let Mode::ScreenMenu(menu) = app.mode.clone() else {
             panic!("a menu")
         };
@@ -18423,7 +18680,7 @@ mod pane_swap_tests {
                 .any(|l| ["Move pane left", "Move pane up", "Move pane down"].contains(l)),
             "{labels:?}"
         );
-        app.menu_do(menu::Act::Swap(1, 2));
+        app.menu_do(menu::Act::Swap(ClientTerm::local(1), ClientTerm::local(2)));
         assert_eq!(shown(&app), [2, 1]);
         assert_eq!(swaps_sent(&mut rx), [(1, 2)]);
     }
@@ -18438,12 +18695,15 @@ mod pane_swap_tests {
             layout: Node::Leaf(2),
             focus: 2,
         });
-        assert!(app.swap_panes(1, 2));
+        assert!(app.swap_panes(ClientTerm::local(1), ClientTerm::local(2)));
         assert_eq!(shown(&app), [2, 1]);
         assert!(
             swaps_sent(&mut rx).is_empty(),
             "the server keeps them apart: nothing to tell it"
         );
-        assert!(!app.swap_panes(1, 3), "3 isn't shown beside them");
+        assert!(
+            !app.swap_panes(ClientTerm::local(1), ClientTerm::local(3)),
+            "3 isn't shown beside them"
+        );
     }
 }

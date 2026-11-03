@@ -283,7 +283,7 @@ const CHOICES: [(&str, &str, Carry); 4] = [
 impl App {
     /// Ctrl+Space g: switch the branch of the checkout you're in.
     pub(super) fn open_branches(&mut self, dir: Option<PathBuf>) {
-        let term = self.selected_term().and_then(|t| self.snap.terms.get(&t));
+        let term = self.selected_term().and_then(|t| self.term_info(t));
         let Some(dir) = dir.or_else(|| term.and_then(|t| t.top.clone())) else {
             self.notify("not in a git repo".into(), true);
             return;

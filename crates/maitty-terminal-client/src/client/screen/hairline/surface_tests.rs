@@ -25,10 +25,12 @@ fn surfaces() -> Vec<(&'static str, Open)> {
         ("key map", |app| app.act(Action::Palette)),
         ("all keys", |app| app.act(Action::Help)),
         ("connect agents", |app| app.act(Action::AgentStatusSetup)),
-        ("row menu", |app| app.menu_for_session(4, (10, 10))),
+        ("row menu", |app| {
+            app.menu_for_session(ClientTerm::local(4), (10, 10))
+        }),
         ("why", |app| {
             app.mode = Mode::Why {
-                term: 3,
+                term: ClientTerm::local(3),
                 side: true,
             }
         }),
@@ -145,7 +147,7 @@ fn a_one_line_prompt_keeps_its_frame() {
 #[test]
 fn a_menus_selection_is_a_raised_row_with_an_accent_bar() {
     let mut app = hairline_world(1);
-    app.menu_for_session(4, (10, 10));
+    app.menu_for_session(ClientTerm::local(4), (10, 10));
     let buf = draw(&mut app, 160, 45);
     let t = app.theme.clone();
     let (x, y) = find_in(&buf, buf.area, "Open beside").expect("the selected row");

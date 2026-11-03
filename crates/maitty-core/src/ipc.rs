@@ -3,12 +3,15 @@
 //! server on that machine.
 
 use crate::brand::{APP_COMMAND, APP_ENV};
+use crate::link_failure::SshEnd;
 use crate::protocol::{self, ClientMsg, ServerMsg};
+use crate::ssh_command::{self, ProxyMode};
 use anyhow::{Context, Result};
 use interprocess::local_socket::tokio::{RecvHalf, SendHalf, Stream, prelude::*};
 use interprocess::local_socket::{ListenerOptions, Name};
-pub use maitty_ipc_transport::{Reader, Writer, is_decode_error, send};
-use maitty_ipc_transport::{framed_parts, reader, writer};
+use maitty_ipc_transport::{LIMITS, NoMarker, framed_parts, reader, skip_login_noise, writer};
+pub use maitty_ipc_transport::{Reader, STREAM_MARKER, Writer, is_decode_error, send};
+use maitty_settings::config::MachineDef;
 
 #[allow(dead_code)]
 type Halves = (RecvHalf, SendHalf);
@@ -18,6 +21,12 @@ pub(crate) const STRUCTURED_ENV: [&str; 4] = [
     concat!(env!("APP_ENV"), "_CONVERSATION_GENERATION"),
     concat!(env!("APP_ENV"), "_CONVERSATION_CONNECTION"),
     concat!(env!("APP_ENV"), "_CONVERSATION_AUTH"),
+];
+/// The variables that send this client's commands to another machine.
+pub(crate) const REMOTE_ROUTE_ENV: [&str; 3] = [
+    concat!(env!("APP_ENV"), "_REMOTE"),
+    concat!(env!("APP_ENV"), "_SSH"),
+    concat!(env!("APP_ENV"), "_REMOTE_CMD"),
 ];
 pub(crate) const RUNTIME_ROUTE_ENV: [&str; 6] = [
     concat!(env!("APP_ENV"), "_SOCKET"),
@@ -149,29 +158,319 @@ fn socket_dir() -> Result<std::path::PathBuf> {
     )
 }
 
-/// The machine whose server this talks to (`--remote`), if not this one.
-pub fn remote() -> Option<String> {
-    std::env::var(concat!(env!("APP_ENV"), "_REMOTE"))
-        .ok()
-        .filter(|s| !s.trim().is_empty())
+/// The program that reaches a machine unless `<APP>_SSH` names another.
+pub const SSH_PROGRAM: &str = "ssh";
+
+/// How long one connection attempt may take: a little over ssh's own connect timeout, so ssh
+/// reports its failure before this gives up on it.
+pub const CONNECT_BUDGET: std::time::Duration =
+    std::time::Duration::from_secs(ssh_command::CONNECT_TIMEOUT_SECS as u64 + 5);
+
+/// The exit status of `proxy --attach-only` when no daemon is running on that machine. ssh
+/// passes the remote command's status through, so this is how the client tells that apart
+/// from a machine it could not reach.
+pub const NO_DAEMON_EXIT: i32 = 74;
+
+/// The flag `proxy` takes to attach without starting a daemon.
+pub const PROXY_ATTACH_ONLY_FLAG: &str = ssh_command::ATTACH_ONLY_FLAG;
+
+/// A machine whose daemon a connection reaches: this one, or another over ssh.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Machine {
+    name: String,
+    route: Route,
 }
 
-/// What ssh said when it failed (shown instead of a bare "connection closed").
-static SSH_ERR: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Route {
+    Local,
+    Ssh(SshRoute),
+    Command(CommandRoute),
+}
 
-/// `ssh host <app> proxy`, its stdio as the connection. <APP>_SSH replaces `ssh` (e.g.
-/// "ssh -p 2222"), <APP>_REMOTE_CMD the app's command on the far side (e.g. "~/.cargo/bin/<app>").
-async fn connect_remote(host: &str) -> Result<(Reader, Writer)> {
-    let ssh = std::env::var(concat!(env!("APP_ENV"), "_SSH")).unwrap_or_else(|_| "ssh".into());
-    let mut words = ssh.split_whitespace();
-    let prog = words.next().unwrap_or("ssh").to_string();
-    let remote_cmd = std::env::var(concat!(env!("APP_ENV"), "_REMOTE_CMD"))
-        .unwrap_or_else(|_| env!("APP_COMMAND").into());
-    let mut cmd = tokio::process::Command::new(&prog);
-    cmd.args(words)
-        .arg("-T")
-        .arg(host)
-        .arg(format!("{remote_cmd} proxy"))
+/// How to run `<app> proxy` on another machine through the user's own program (`via`) in
+/// place of ssh: it carries stdin and stdout unchanged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CommandRoute {
+    /// The program and its arguments, `{command}` still in place.
+    via: Vec<String>,
+    remote_cmd: String,
+    proxy: ProxyMode,
+}
+
+/// How to run `<app> proxy` on another machine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SshRoute {
+    target: String,
+    /// The program and its leading arguments (`["ssh", "-p", "2222"]`).
+    ssh: Vec<String>,
+    /// The app's command on the far side (`~/.cargo/bin/<app>`).
+    remote_cmd: String,
+    proxy: ProxyMode,
+}
+
+impl Machine {
+    /// This machine: the daemon on its own socket.
+    pub fn local() -> Machine {
+        Machine {
+            name: "local".into(),
+            route: Route::Local,
+        }
+    }
+
+    /// Another machine, reached by running `<remote_cmd> proxy` on `target` through `ssh`
+    /// (the program, then its leading arguments).
+    pub fn ssh(
+        target: impl Into<String>,
+        ssh: Vec<String>,
+        remote_cmd: impl Into<String>,
+    ) -> Machine {
+        let target = target.into();
+        Machine {
+            name: target.clone(),
+            route: Route::Ssh(SshRoute {
+                target,
+                ssh,
+                remote_cmd: remote_cmd.into(),
+                proxy: ProxyMode::StartsDaemon,
+            }),
+        }
+    }
+
+    /// This machine's proxy only attaches: it never starts a daemon the user did not.
+    pub fn attach_only(mut self) -> Machine {
+        if let Route::Ssh(route) = &mut self.route {
+            route.proxy = ProxyMode::AttachOnly;
+        }
+        self
+    }
+
+    /// A configured machine: `program` (ssh), the def's `ssh_args`, then its target. The
+    /// def must have passed `validate_machines`. Its daemon is the user's to start, so its
+    /// connections only attach.
+    pub fn from_def(def: &MachineDef, program: &str) -> Machine {
+        Machine::from_def_via(def, &[program.to_string()])
+    }
+
+    /// `from_def` with `ssh` as the program and its leading arguments: a window that adds a
+    /// machine while it runs keeps the program it started with, and tests put a shim there.
+    pub fn from_def_via(def: &MachineDef, ssh: &[String]) -> Machine {
+        match &def.via {
+            Some(via) => Machine::through_command(def, via),
+            None => Machine::named_by(def, ssh).attach_only(),
+        }
+    }
+
+    /// A configured machine reached by its own `via` program; its daemon is the user's to
+    /// start, so it only attaches.
+    fn through_command(def: &MachineDef, via: &[String]) -> Machine {
+        Machine {
+            name: def.name.clone(),
+            route: Route::Command(CommandRoute {
+                via: via.to_vec(),
+                remote_cmd: def.remote_cmd.as_deref().unwrap_or(APP_COMMAND).to_string(),
+                proxy: ProxyMode::AttachOnly,
+            }),
+        }
+    }
+
+    fn named_by(def: &MachineDef, ssh: &[String]) -> Machine {
+        let argv = ssh.iter().chain(def.ssh_args.iter()).cloned().collect();
+        let remote_cmd = def.remote_cmd.as_deref().unwrap_or(APP_COMMAND);
+        Machine {
+            name: def.name.clone(),
+            ..Machine::ssh(def.target.as_str(), argv, remote_cmd)
+        }
+    }
+
+    /// `--remote host` as a machine named after the host. `ssh` is `<APP>_SSH` (a program and
+    /// its leading arguments), `remote_cmd` is `<APP>_REMOTE_CMD`.
+    fn adhoc(host: &str, ssh: Option<&str>, remote_cmd: Option<String>) -> Machine {
+        let mut words = ssh.unwrap_or(SSH_PROGRAM).split_whitespace();
+        let program = words.next().unwrap_or(SSH_PROGRAM);
+        let def = MachineDef {
+            name: host.into(),
+            target: host.into(),
+            ssh_args: words.map(String::from).collect(),
+            remote_cmd,
+            ..MachineDef::default()
+        };
+        Machine::named_by(&def, &[program.to_string()])
+    }
+
+    /// The machine `--remote host` (or `<APP>_REMOTE`) names, else this one. The flag's
+    /// only reader: everything else is handed a `Machine`.
+    pub fn current() -> Machine {
+        let Some(host) = std::env::var(concat!(env!("APP_ENV"), "_REMOTE"))
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+        else {
+            return Machine::local();
+        };
+        let ssh = std::env::var(concat!(env!("APP_ENV"), "_SSH")).ok();
+        let remote_cmd = std::env::var(concat!(env!("APP_ENV"), "_REMOTE_CMD")).ok();
+        Machine::adhoc(&host, ssh.as_deref(), remote_cmd)
+    }
+
+    pub fn is_remote(&self) -> bool {
+        !matches!(self.route, Route::Local)
+    }
+
+    /// The program of this machine's custom transport, safe to show (its arguments can hold
+    /// tokens, so they are never shown); `None` when it is reached over ssh or is this computer.
+    pub fn transport_program(&self) -> Option<String> {
+        match &self.route {
+            Route::Command(route) => route.via.first().map(|p| crate::link_failure::clean(p)),
+            Route::Local | Route::Ssh(_) => None,
+        }
+    }
+
+    /// The line that checks this machine without asking anyone anything: it logs in with
+    /// what ssh already has and prints the app's version there.
+    pub fn probe_argv(&self) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_probe(
+            &route.ssh,
+            &route.target,
+            &route.remote_cmd,
+        )?)
+    }
+
+    /// The line that asks this machine for its platform (`uname -sm`), without asking a person.
+    pub fn platform_argv(&self) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_platform(&route.ssh, &route.target)?)
+    }
+
+    /// The line that asks this machine where its login shell finds the app.
+    pub fn where_argv(&self) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_where(&route.ssh, &route.target)?)
+    }
+
+    /// The options every connection to a machine carries, in words (see `doctor`).
+    pub fn hardening() -> String {
+        ssh_command::hardening_summary()
+    }
+
+    /// The line that runs the install script on this machine, the binary on its stdin.
+    pub fn install_argv(&self, destination: &str, bytes: u64) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_install(
+            &route.ssh,
+            &route.target,
+            destination,
+            bytes,
+        )?)
+    }
+
+    /// The line that has the app installed at `program` there restart its daemon if idle.
+    pub fn restart_if_idle_argv(&self, program: &str) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_restart_if_idle(
+            &route.ssh,
+            &route.target,
+            program,
+        )?)
+    }
+
+    /// The command that runs the app there, as configured (`remote_cmd`); `None` for this computer.
+    pub fn remote_cmd(&self) -> Option<&str> {
+        match &self.route {
+            Route::Ssh(route) => Some(route.remote_cmd.as_str()),
+            Route::Command(route) => Some(route.remote_cmd.as_str()),
+            Route::Local => None,
+        }
+    }
+
+    /// The first login as one line for a pane's shell: ssh may ask for a password, a code or
+    /// a host key, and prints the app's version there.
+    pub fn first_login_command(&self) -> Result<String> {
+        let route = self.ssh_route()?;
+        let argv = ssh_command::ssh_argv_interactive(&route.ssh, &route.target, &route.remote_cmd)?;
+        Ok(ssh_command::popup_command(&argv)?)
+    }
+
+    fn ssh_route(&self) -> Result<&SshRoute> {
+        match &self.route {
+            Route::Ssh(route) => Ok(route),
+            Route::Command(_) => {
+                anyhow::bail!("{} is reached through a custom transport, not ssh", self.name)
+            }
+            Route::Local => anyhow::bail!("this computer is not reached over ssh"),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The name to show for a remote machine; nothing for this one.
+    pub fn host(&self) -> Option<&str> {
+        self.is_remote().then_some(self.name.as_str())
+    }
+}
+
+/// What one ssh connection's stderr said and how it exited, collected as it ends (shown
+/// instead of a bare "connection closed", and how a failure is told apart). Each connection
+/// has its own.
+struct SshSaid {
+    stderr: tokio::task::JoinHandle<String>,
+    exit: tokio::sync::oneshot::Receiver<Option<i32>>,
+}
+
+impl SshSaid {
+    /// How long to wait for ssh to finish once the connection has failed.
+    const PATIENCE: std::time::Duration = std::time::Duration::from_secs(1);
+
+    /// Waits for ssh to exit on its own, so a failure it ended is seen as its own status and not
+    /// as the kill the caller gives it next.
+    async fn collect(self) -> (Option<i32>, String) {
+        let code = tokio::time::timeout(Self::PATIENCE, self.exit)
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .flatten();
+        let said = tokio::time::timeout(Self::PATIENCE, self.stderr)
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or_default();
+        (code, said)
+    }
+}
+
+type Spawned = (tokio::process::ChildStdout, Writer, SshSaid);
+
+/// `ssh [hardening] host -- <app> proxy`: its stdout still unread, its stdin as the writer.
+fn spawn_ssh(route: &SshRoute) -> Result<Spawned> {
+    let argv = ssh_command::ssh_argv(&route.ssh, &route.target, &route.remote_cmd, route.proxy)?;
+    let failed = format!("running {} (is OpenSSH installed?)", argv[0]);
+    spawn_piped(&argv, false, &failed)
+}
+
+/// The user's `via` program with the remote command, on plain pipes.
+fn spawn_command(route: &CommandRoute, name: &str) -> Result<Spawned> {
+    refuse_custom_transport_on(cfg!(windows))?;
+    let argv = ssh_command::command_argv(&route.via, &route.remote_cmd, route.proxy)?;
+    let failed = format!(
+        "running the custom transport {} for {name}",
+        crate::link_failure::clean(&argv[0])
+    );
+    spawn_piped(&argv, true, &failed)
+}
+
+/// A custom transport runs a program this app does not control, so it is a unix feature in v1.
+fn refuse_custom_transport_on(windows: bool) -> Result<()> {
+    anyhow::ensure!(!windows, "{}", maitty_settings::config::VIA_NOT_ON_WINDOWS);
+    Ok(())
+}
+
+/// `argv` with stdin, stdout and stderr piped (never a terminal). `own_session` detaches it
+/// from the controlling terminal, so a program that would prompt cannot read the user's.
+fn spawn_piped(argv: &[String], own_session: bool, failed: &str) -> Result<Spawned> {
+    let mut cmd = tokio::process::Command::new(&argv[0]);
+    cmd.args(&argv[1..])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -180,34 +479,99 @@ async fn connect_remote(host: &str) -> Result<(Reader, Writer)> {
     {
         cmd.creation_flags(crate::proc::CREATE_NO_WINDOW);
     }
-    let mut child = cmd
-        .spawn()
-        .with_context(|| format!("running {prog} (is OpenSSH installed?)"))?;
+    #[cfg(unix)]
+    if own_session {
+        // SAFETY: setsid is async-signal-safe and touches no memory the child shares. It
+        // leaves the controlling terminal behind, so the child cannot prompt on it.
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = own_session;
+    let mut child = cmd.spawn().with_context(|| failed.to_string())?;
     let stdin = child.stdin.take().context("ssh stdin")?;
     let stdout = child.stdout.take().context("ssh stdout")?;
-    if let Some(mut err) = child.stderr.take() {
-        tokio::spawn(async move {
+    let stderr = match child.stderr.take() {
+        Some(mut err) => tokio::spawn(async move {
             use tokio::io::AsyncReadExt;
             let mut buf = Vec::new();
             let _ = err.read_to_end(&mut buf).await;
-            *SSH_ERR.lock().unwrap() = String::from_utf8_lossy(&buf).trim().to_string();
-        });
-    }
+            String::from_utf8_lossy(&buf).trim().to_string()
+        }),
+        None => tokio::spawn(async { String::new() }),
+    };
+    let (kill, exit) = reap_in_background(child);
     // ssh lives as long as the connection's writing half.
     Ok((
-        reader(stdout),
-        writer(SshIn {
-            stdin,
-            _child: child,
-        }),
+        stdout,
+        writer(SshIn { stdin, _kill: kill }),
+        SshSaid { stderr, exit },
     ))
 }
 
-/// ssh's stdin, holding ssh itself: dropping the connection ends it (kill_on_drop), so
-/// nothing is left waiting on its pipes.
+/// A task that owns ssh until it exits, and kills it the moment the returned sender is dropped
+/// or sent to. Nobody awaits the child's end: ending a connection never waits on ssh.
+fn reap_in_background(
+    mut child: tokio::process::Child,
+) -> (
+    tokio::sync::oneshot::Sender<()>,
+    tokio::sync::oneshot::Receiver<Option<i32>>,
+) {
+    let (kill, killed) = tokio::sync::oneshot::channel::<()>();
+    let (exited, exit) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let status = tokio::select! {
+            status = child.wait() => status,
+            _ = killed => {
+                let _ = child.start_kill();
+                child.wait().await
+            }
+        };
+        let _ = exited.send(status.ok().and_then(|s| s.code()));
+    });
+    (kill, exit)
+}
+
+/// The remote's login printed text and `proxy` never announced itself, so the stream can't be
+/// framed. The hint is there because a remote from before the marker looks the same.
+#[derive(Debug)]
+struct LoginText;
+
+impl std::fmt::Display for LoginText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the remote login printed text before {APP_COMMAND} started (or it runs an older {APP_COMMAND}: update it)"
+        )
+    }
+}
+
+impl std::error::Error for LoginText {}
+
+/// Sends the Hello, then skips the login text ahead of the remote's first frame. The Hello
+/// goes first because a remote from before the marker only speaks once it has one.
+async fn greet_ssh(
+    stdout: tokio::process::ChildStdout,
+    w: &mut Writer,
+    hello: &ClientMsg,
+) -> Result<Reader> {
+    send(w, hello).await?;
+    match skip_login_noise(stdout, LIMITS).await {
+        Ok(resynced) => Ok(reader(resynced)),
+        Err(NoMarker::Text) => Err(LoginText.into()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// ssh's stdin, holding ssh's kill switch: dropping the connection ends ssh, so nothing is
+/// left waiting on its pipes.
 struct SshIn {
     stdin: tokio::process::ChildStdin,
-    _child: tokio::process::Child,
+    _kill: tokio::sync::oneshot::Sender<()>,
 }
 
 impl tokio::io::AsyncWrite for SshIn {
@@ -234,12 +598,32 @@ impl tokio::io::AsyncWrite for SshIn {
     }
 }
 
-/// `<app> proxy`, run by ssh on the far side: this machine's server (started if needed),
-/// over stdin and stdout.
-pub async fn proxy() -> Result<()> {
+/// No daemon runs here and `proxy --attach-only` was asked not to start one.
+#[derive(Debug)]
+pub struct NoDaemonHere;
+
+impl std::fmt::Display for NoDaemonHere {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "no {APP_COMMAND} server is running here")
+    }
+}
+
+impl std::error::Error for NoDaemonHere {}
+
+pub fn is_no_daemon_here(e: &anyhow::Error) -> bool {
+    e.is::<NoDaemonHere>()
+}
+
+/// `<app> proxy`, run by ssh on the far side: this machine's server over stdin and stdout.
+/// Started if needed, unless `attach_only`: then a missing server is `NoDaemonHere`, before
+/// anything is written to stdout.
+pub async fn proxy(attach_only: bool) -> Result<()> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut stream = connect().await;
     if stream.is_err() {
+        if attach_only {
+            return Err(NoDaemonHere.into());
+        }
         spawn_daemon(None)?;
         for _ in 0..60 {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -256,6 +640,10 @@ pub async fn proxy() -> Result<()> {
             " server here"
         ))?
         .split();
+    // Before any frame, so the client can tell the stream from login text printed ahead of it.
+    let mut out = tokio::io::stdout();
+    out.write_all(STREAM_MARKER).await?;
+    out.flush().await?;
     let up = async {
         let mut stdin = tokio::io::stdin();
         let mut buf = vec![0u8; 64 * 1024];
@@ -310,43 +698,60 @@ pub async fn recv_client(r: &mut Reader) -> Result<Option<ClientMsg>> {
     maitty_ipc_transport::receive(r).await
 }
 
-/// Connect and complete the handshake.
+/// Connect to the machine `--remote` names (else this one) and complete the handshake.
 pub async fn open(attach: bool) -> Result<(Reader, Writer)> {
+    open_to(&Machine::current(), attach).await
+}
+
+/// Connect to `machine` and complete the handshake.
+pub async fn open_to(machine: &Machine, attach: bool) -> Result<(Reader, Writer)> {
     let structured = structured_identity(STRUCTURED_ENV.map(std::env::var_os))?;
-    let (mut r, mut w) = match remote() {
-        Some(host) => connect_remote(&host).await?,
-        None => framed(connect().await?),
-    };
-    // A command run inside a pane says which (with the pane's secret): what it may do is
-    // that pane's to say. the app's own window is you.
     let from = (!attach && structured.is_none())
         .then(|| {
-            let term = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID"))
-                .ok()?
-                .parse()
-                .ok()?;
-            Some((
-                term,
-                std::env::var(concat!(env!("APP_ENV"), "_PANE_TOKEN")).unwrap_or_default(),
-            ))
+            pane_claim(
+                machine,
+                std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok(),
+                std::env::var(concat!(env!("APP_ENV"), "_PANE_TOKEN")).ok(),
+            )
         })
         .flatten();
-    send(
-        &mut w,
-        &ClientMsg::Hello {
-            version: protocol::PROTOCOL_VERSION,
-            attach,
-            from,
-            structured,
-            surface: protocol::Surface::Terminal,
-            replays: true,
-        },
-    )
-    .await?;
+    let hello = ClientMsg::Hello {
+        version: protocol::PROTOCOL_VERSION,
+        attach,
+        from,
+        structured,
+        surface: protocol::Surface::Terminal,
+        replays: true,
+    };
+    let (mut r, w, said) = match &machine.route {
+        Route::Local => {
+            let (r, mut w) = framed(connect().await?);
+            send(&mut w, &hello).await?;
+            (r, w, None)
+        }
+        Route::Ssh(route) => {
+            let (stdout, mut w, said) = spawn_ssh(route)?;
+            match greet_ssh(stdout, &mut w, &hello).await {
+                Ok(r) => (r, w, Some(said)),
+                Err(e) => return Err(ssh_failed(machine, said, e, false).await),
+            }
+        }
+        Route::Command(route) => {
+            let (stdout, mut w, said) = spawn_command(route, machine.name())?;
+            match greet_ssh(stdout, &mut w, &hello).await {
+                Ok(r) => (r, w, Some(said)),
+                Err(e) => return Err(ssh_failed(machine, said, e, false).await),
+            }
+        }
+    };
     let version = match maitty_ipc_transport::welcome_version(&mut r).await {
         Ok(version) => version,
-        Err(e) if remote().is_some() => return Err(e.context(ssh_failure())),
-        Err(e) => return Err(e),
+        Err(e) => {
+            return Err(match said {
+                Some(said) => ssh_failed(machine, said, e, true).await,
+                None => e,
+            });
+        }
     };
     if version == protocol::PROTOCOL_VERSION {
         Ok((r, w))
@@ -355,45 +760,92 @@ pub async fn open(attach: bool) -> Result<(Reader, Writer)> {
     }
 }
 
-fn ssh_failure() -> String {
-    // Give ssh a moment to say why.
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    let err = SSH_ERR.lock().unwrap().clone();
-    let host = remote().unwrap_or_default();
-    if err.contains("not found") || err.contains("not recognized") {
+/// A command run inside a pane says which (with the pane's secret): what it may do is that
+/// pane's to say. The app's own window is you. The pane belongs to this machine's daemon,
+/// so another machine, which is untrusted, never gets its id or secret.
+fn pane_claim(
+    machine: &Machine,
+    term: Option<String>,
+    token: Option<String>,
+) -> Option<(protocol::TermId, String)> {
+    if machine.is_remote() {
+        return None;
+    }
+    Some((term?.parse().ok()?, token.unwrap_or_default()))
+}
+
+/// `e` with what ssh said and how it exited, unless `e` already says why. `streamed` is
+/// whether the far side had spoken before the failure. The connection is still held while ssh
+/// is given a moment to exit; it is dropped (and ssh killed) when the caller returns.
+async fn ssh_failed(
+    machine: &Machine,
+    said: SshSaid,
+    e: anyhow::Error,
+    streamed: bool,
+) -> anyhow::Error {
+    if e.is::<LoginText>() {
+        return e;
+    }
+    let (code, said) = said.collect().await;
+    let program = machine.transport_program();
+    let message = match &program {
+        Some(program) => command_failure(machine.name(), program, &said),
+        None => ssh_failure(machine.name(), &said),
+    };
+    e.context(SshEnd {
+        code,
+        message,
+        said,
+        streamed,
+        custom: program.is_some(),
+    })
+}
+
+/// Why a custom transport to `host` failed, from what it said (which is not ssh's to read).
+fn command_failure(host: &str, program: &str, said: &str) -> String {
+    match crate::link_failure::clean(said).as_str() {
+        "" => format!("couldn't reach {APP_COMMAND} on {host} through {program}"),
+        said => format!("{host}: {program}: {said}"),
+    }
+}
+
+/// Why an ssh connection to `host` failed, from what ssh said.
+fn ssh_failure(host: &str, said: &str) -> String {
+    if said.contains("not found") || said.contains("not recognized") {
         format!(
-            "{host} has no `{APP_COMMAND}` on its PATH for ssh; install it there, or set {APP_ENV}_REMOTE_CMD to its full path ({err})"
+            "{host} has no `{APP_COMMAND}` on its PATH for ssh; install it there, or set {APP_ENV}_REMOTE_CMD to its full path ({said})"
         )
-    } else if err.is_empty() {
+    } else if said.is_empty() {
         format!("couldn't reach {APP_COMMAND} on {host} over ssh")
     } else {
-        format!("ssh {host}: {err}")
+        format!("ssh {host}: {said}")
     }
 }
 
 /// Connect, starting the daemon in the background if none is running.
 pub async fn open_or_spawn(attach: bool) -> Result<(Reader, Writer)> {
-    open_or_spawn_with(attach, None).await
+    open_or_spawn_with(&Machine::current(), attach, None).await
 }
 
 /// Reconnect after replacing the executable, spawning the newly installed image if needed.
 pub async fn open_or_spawn_installed(attach: bool) -> Result<(Reader, Writer)> {
     let exe = crate::installed_executable::installed_executable()?;
-    open_or_spawn_with(attach, Some(exe)).await
+    open_or_spawn_with(&Machine::current(), attach, Some(exe)).await
 }
 
 async fn open_or_spawn_with(
+    machine: &Machine,
     attach: bool,
     exe: Option<std::path::PathBuf>,
 ) -> Result<(Reader, Writer)> {
     if has_structured_identity() {
-        return open(attach).await;
+        return open_to(machine, attach).await;
     }
     // Over ssh the far side starts its own server.
-    if remote().is_some() {
-        return open(attach).await;
+    if machine.is_remote() {
+        return open_to(machine, attach).await;
     }
-    match open(attach).await {
+    match open_to(machine, attach).await {
         Ok(c) => return Ok(c),
         // A server is running: starting another would only fail to take its socket.
         Err(e) if other_version(&e).is_some() => return Err(e),
@@ -403,7 +855,7 @@ async fn open_or_spawn_with(
     let mut last = None;
     for _ in 0..60 {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        match open(attach).await {
+        match open_to(machine, attach).await {
             Ok(c) => return Ok(c),
             Err(e) => last = Some(e),
         }
@@ -448,6 +900,8 @@ fn daemon_command(exe: Option<&std::path::Path>) -> Result<std::process::Command
 
 #[cfg(test)]
 mod tests {
+    use super::{APP_COMMAND, MachineDef};
+
     #[test]
     fn daemon_command_starts_daemon() {
         let command = super::daemon_command(None).unwrap();
@@ -490,6 +944,248 @@ mod tests {
         );
         assert!(!format!("{claim:?}").contains("synthetic-token"));
     }
+    fn configured(name: &str) -> MachineDef {
+        MachineDef {
+            name: name.into(),
+            target: "me@10.0.0.2".into(),
+            ssh_args: vec!["-p".into(), "2222".into()],
+            ..MachineDef::default()
+        }
+    }
+
+    #[test]
+    fn a_configured_machine_runs_ssh_with_its_args_and_the_default_command() {
+        let m = super::Machine::from_def(&configured("box"), "ssh");
+        let want = super::Machine::ssh(
+            "me@10.0.0.2",
+            vec!["ssh".into(), "-p".into(), "2222".into()],
+            APP_COMMAND,
+        )
+        .attach_only();
+        assert_eq!((m.name(), m.host()), ("box", Some("box")));
+        assert_eq!(m.route, want.route);
+    }
+
+    #[test]
+    fn a_configured_machine_uses_its_own_remote_command() {
+        let mut def = configured("box");
+        def.remote_cmd = Some("~/bin/maitty".into());
+        let m = super::Machine::from_def(&def, "ssh");
+        let want = super::Machine::ssh(
+            "me@10.0.0.2",
+            vec!["ssh".into(), "-p".into(), "2222".into()],
+            "~/bin/maitty",
+        )
+        .attach_only();
+        assert_eq!(m.route, want.route);
+    }
+
+    #[test]
+    fn remote_host_is_a_machine_named_after_the_host() {
+        let m = super::Machine::adhoc("box", Some("ssh -p 2222"), Some("~/maitty".into()));
+        let want = super::Machine::ssh(
+            "box",
+            vec!["ssh".into(), "-p".into(), "2222".into()],
+            "~/maitty",
+        );
+        assert_eq!((m.name(), m.host()), ("box", Some("box")));
+        assert_eq!(m, want);
+    }
+
+    #[test]
+    fn remote_host_defaults_to_plain_ssh_and_the_app_command() {
+        for ssh in [None, Some(""), Some("  ")] {
+            let m = super::Machine::adhoc("box", ssh, None);
+            assert_eq!(
+                m,
+                super::Machine::ssh("box", vec!["ssh".into()], APP_COMMAND)
+            );
+        }
+    }
+
+    #[test]
+    fn only_a_remote_machine_has_a_host_to_show() {
+        let local = super::Machine::local();
+        assert!(!local.is_remote() && local.host().is_none());
+        let box_ = super::Machine::ssh("box", vec!["ssh".into()], "maitty");
+        assert!(box_.is_remote());
+        assert_eq!((box_.host(), box_.name()), (Some("box"), "box"));
+    }
+
+    #[test]
+    fn an_ssh_failure_is_told_from_what_ssh_said() {
+        let missing = super::ssh_failure("box", "bash: maitty: command not found");
+        assert!(missing.starts_with("box has no `"), "{missing}");
+        assert!(
+            missing.ends_with("(bash: maitty: command not found)"),
+            "the words stay: {missing}"
+        );
+        assert_eq!(
+            super::ssh_failure("box", "box: Permission denied (publickey)."),
+            "ssh box: box: Permission denied (publickey)."
+        );
+        assert!(super::ssh_failure("box", "").starts_with("couldn't reach "));
+    }
+
+    #[tokio::test]
+    async fn login_text_is_reported_as_it_is_and_other_failures_get_what_ssh_said() {
+        let said = || {
+            let (exited, exit) = tokio::sync::oneshot::channel();
+            let _ = exited.send(Some(255));
+            super::SshSaid {
+                stderr: tokio::spawn(async { "box: Permission denied".to_string() }),
+                exit,
+            }
+        };
+        let machine = super::Machine::ssh("box", vec!["ssh".into()], APP_COMMAND);
+
+        let text = super::ssh_failed(&machine, said(), super::LoginText.into(), false).await;
+        let text = format!("{text:#}");
+        assert!(
+            text.contains("the remote login printed text before"),
+            "{text}"
+        );
+        assert!(!text.contains("Permission denied"), "{text}");
+
+        let other = super::ssh_failed(&machine, said(), anyhow::anyhow!("closed"), false).await;
+        assert!(
+            format!("{other:#}").contains("Permission denied"),
+            "{other:#}"
+        );
+    }
+
+    #[test]
+    fn a_configured_machine_attaches_only_and_a_remote_flag_machine_starts_the_daemon() {
+        let configured = super::Machine::from_def(&configured("box"), "ssh");
+        let adhoc = super::Machine::adhoc("box", None, None);
+        let proxy = |m: &super::Machine| match &m.route {
+            super::Route::Ssh(route) => route.proxy,
+            super::Route::Command(route) => route.proxy,
+            super::Route::Local => panic!("a local machine has no proxy"),
+        };
+        assert_eq!(proxy(&configured), super::ProxyMode::AttachOnly);
+        assert_eq!(proxy(&adhoc), super::ProxyMode::StartsDaemon);
+    }
+
+    fn through(via: &[&str]) -> super::Machine {
+        let def = MachineDef {
+            via: Some(via.iter().map(|w| w.to_string()).collect()),
+            ..configured("fly")
+        };
+        super::Machine::from_def(&def, "ssh")
+    }
+
+    #[test]
+    fn a_via_machine_is_remote_attaches_only_and_shows_only_its_program() {
+        let m = through(&["/opt/relay", "--token", "s3cret", "{command}"]);
+        assert!(m.is_remote());
+        assert_eq!(m.transport_program().as_deref(), Some("/opt/relay"));
+        assert_eq!(m.host(), Some("fly"));
+        assert!(matches!(&m.route, super::Route::Command(r) if r.proxy == super::ProxyMode::AttachOnly));
+        assert_eq!(super::Machine::local().transport_program(), None);
+        assert_eq!(configured_machine().transport_program(), None);
+    }
+
+    fn configured_machine() -> super::Machine {
+        super::Machine::from_def(&configured("box"), "ssh")
+    }
+
+    #[test]
+    fn the_ssh_only_lines_are_refused_for_a_via_machine() {
+        let m = through(&["relay"]);
+        let words = |e: anyhow::Error| e.to_string();
+        assert!(words(m.probe_argv().unwrap_err()).contains("custom transport"));
+        assert!(words(m.platform_argv().unwrap_err()).contains("custom transport"));
+        assert!(words(m.where_argv().unwrap_err()).contains("custom transport"));
+        assert!(words(m.install_argv("/x", 1).unwrap_err()).contains("custom transport"));
+        assert!(words(m.first_login_command().unwrap_err()).contains("custom transport"));
+        assert_eq!(m.remote_cmd(), Some(APP_COMMAND));
+    }
+
+    #[test]
+    fn a_custom_transport_is_refused_on_windows_with_the_clear_message() {
+        let err = super::refuse_custom_transport_on(true).unwrap_err().to_string();
+        assert!(err.contains("not supported on Windows in v1") && err.contains("use ssh"), "{err}");
+        super::refuse_custom_transport_on(false).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn connecting_to_a_via_machine_on_windows_shows_the_message_and_spawns_nothing() {
+        let err = super::open_to(&through(&["relay.exe", "{command}"]), true)
+            .await
+            .err()
+            .expect("refused");
+        assert!(format!("{err:#}").contains("not supported on Windows in v1"), "{err:#}");
+        assert!(matches!(
+            crate::link_failure::classify(&err),
+            crate::link_failure::FailureClass::Unreachable(why) if why.contains("use ssh")
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_via_that_says_permission_denied_and_exits_255_is_unreachable_not_needs_login() {
+        let machine = through(&["relay"]);
+        let (exited, exit) = tokio::sync::oneshot::channel();
+        let _ = exited.send(Some(255));
+        let said = super::SshSaid {
+            stderr: tokio::spawn(async { "relay: Permission denied \u{1b}[31m(token)".to_string() }),
+            exit,
+        };
+        let error = super::ssh_failed(&machine, said, anyhow::anyhow!("closed"), false).await;
+        let class = crate::link_failure::classify(&error);
+        let crate::link_failure::FailureClass::Unreachable(why) = class else {
+            panic!("not unreachable: {class:?}");
+        };
+        assert!(why.contains("Permission denied") && !why.chars().any(char::is_control), "{why:?}");
+        assert!(format!("{error}").starts_with("fly: relay: "), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_via_that_exits_127_needs_the_app_installed() {
+        let machine = through(&["relay"]);
+        let (exited, exit) = tokio::sync::oneshot::channel();
+        let _ = exited.send(Some(127));
+        let said = super::SshSaid {
+            stderr: tokio::spawn(async { String::new() }),
+            exit,
+        };
+        let error = super::ssh_failed(&machine, said, anyhow::anyhow!("closed"), false).await;
+        assert_eq!(
+            crate::link_failure::classify(&error),
+            crate::link_failure::FailureClass::Install
+        );
+    }
+
+    #[tokio::test]
+    async fn the_failure_carries_ssh_s_exit_status_for_the_supervisor() {
+        let machine = super::Machine::ssh("box", vec!["ssh".into()], APP_COMMAND);
+        let (exited, exit) = tokio::sync::oneshot::channel();
+        let _ = exited.send(Some(255));
+        let said = super::SshSaid {
+            stderr: tokio::spawn(async { "box: Permission denied".to_string() }),
+            exit,
+        };
+        let error = super::ssh_failed(&machine, said, anyhow::anyhow!("closed"), false).await;
+        assert_eq!(
+            crate::link_failure::classify(&error),
+            crate::link_failure::FailureClass::Login
+        );
+    }
+
+    #[test]
+    fn only_this_machines_daemon_is_told_which_pane_is_asking() {
+        let claim =
+            |m: &super::Machine| super::pane_claim(m, Some("7".into()), Some("secret".into()));
+        assert_eq!(claim(&super::Machine::local()), Some((7, "secret".into())));
+        let remote = super::Machine::ssh("box", vec!["ssh".into()], "maitty");
+        assert_eq!(claim(&remote), None);
+        assert_eq!(
+            super::pane_claim(&super::Machine::local(), None, None),
+            None
+        );
+    }
+
     #[test]
     fn a_bad_message_is_a_decode_error() {
         let e = crate::protocol::decode::<crate::protocol::ServerMsg>(&[0xc1, 0xff]).unwrap_err();

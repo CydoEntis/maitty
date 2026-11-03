@@ -33,10 +33,10 @@ pub(in crate::client) fn draw_helpers_pop(
     buf: &mut Buffer,
     screen: Rect,
     side: Rect,
-    term: TermId,
+    term: ClientTerm,
     t: &Theme,
 ) {
-    let Some(info) = app.snap.terms.get(&term).cloned() else {
+    let Some(info) = app.term_info(term).cloned() else {
         return;
     };
     if info.helper_ask.is_empty() {
@@ -185,15 +185,13 @@ pub(in crate::client) fn draw_helpers_pop(
 
 impl App {
     /// Whether session `term` has asked to start helpers and waits for you.
-    pub(in crate::client) fn helpers_asked(&self, term: TermId) -> bool {
-        self.snap
-            .terms
-            .get(&term)
+    pub(in crate::client) fn helpers_asked(&self, term: ClientTerm) -> bool {
+        self.term_info(term)
             .is_some_and(|t| !t.helper_ask.is_empty())
     }
 
     /// Open the question beside `term`'s row; `side`: back to the sidebar after.
-    pub(in crate::client) fn open_helpers(&mut self, term: TermId, side: bool) {
+    pub(in crate::client) fn open_helpers(&mut self, term: ClientTerm, side: bool) {
         if self.helpers_asked(term) {
             self.screen.inbox_return = None;
             self.mode = Mode::Helpers { term, side };
@@ -204,7 +202,7 @@ impl App {
     /// goes back to the Inbox on that row.
     pub(in crate::client) fn open_helpers_from_inbox(
         &mut self,
-        term: TermId,
+        term: ClientTerm,
         query: String,
         sel: usize,
     ) {
@@ -223,7 +221,7 @@ impl App {
     }
 
     /// Send your answer, say what it did, and close the question.
-    pub(in crate::client) fn answer_helpers(&mut self, term: TermId, choice: HelperChoice) {
+    pub(in crate::client) fn answer_helpers(&mut self, term: ClientTerm, choice: HelperChoice) {
         let Mode::Helpers { side, .. } = self.mode else {
             return;
         };
@@ -232,7 +230,13 @@ impl App {
             return;
         }
         let who = self.session_name(term);
-        self.send(ClientMsg::Command(Command::AnswerHelpers { term, choice }));
+        self.send(
+            term.machine,
+            ClientMsg::Command(Command::AnswerHelpers {
+                term: term.term,
+                choice,
+            }),
+        );
         self.helpers_back(side);
         let said = match choice {
             HelperChoice::Allow => format!("{who} may start helpers"),
@@ -244,7 +248,7 @@ impl App {
         self.notify(said, false);
     }
 
-    pub(in crate::client) fn on_helpers_key(&mut self, term: TermId, side: bool, k: &KeyEvent) {
+    pub(in crate::client) fn on_helpers_key(&mut self, term: ClientTerm, side: bool, k: &KeyEvent) {
         let plain = !k
             .modifiers
             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);

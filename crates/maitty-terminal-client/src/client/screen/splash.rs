@@ -181,7 +181,7 @@ fn draw_swell(buf: &mut Buffer, (x, y): (u16, u16), w: u16, roll: u64, t: u64, t
 /// running; a first run has just New session and Open.
 pub(in crate::client) fn splash_options(app: &App) -> Vec<(String, String, char)> {
     let mut v = Vec::new();
-    if !app.snap.terms.is_empty() {
+    if !app.all_terms().is_empty() {
         v.push((
             "Resume where you left off".to_string(),
             "r".to_string(),
@@ -208,7 +208,7 @@ fn plays(app: &App) -> bool {
         && match app.cfg.ui.splash_animation.as_str() {
             "always" => true,
             "never" => false,
-            _ => app.splash_cold || app.snap.terms.is_empty(),
+            _ => app.splash_cold || app.all_terms().is_empty(),
         }
 }
 
@@ -288,10 +288,7 @@ fn cap(key: &str, on: bool, t: &Theme) -> Vec<Seg> {
 /// The version, barely there.
 fn foot(t: &Theme) -> Seg {
     seg(
-        format!(
-            concat!(env!("APP_COMMAND"), " {}"),
-            env!("APP_VERSION")
-        ),
+        format!(concat!(env!("APP_COMMAND"), " {}"), env!("APP_VERSION")),
         Style::default().fg(t.line).bg(t.bg),
     )
 }

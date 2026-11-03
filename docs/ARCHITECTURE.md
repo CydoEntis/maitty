@@ -54,12 +54,20 @@ layers*. Never reverse the direction.
 src/
   main.rs        argument parsing, picks client / daemon / CLI role
   cli.rs         one-shot subcommands (send, read, wait, hook, allow, doctor, â€¦)
+  cli/target.rs  which machine a one-shot command talks to and which pane it means: `PaneAddress` (`4`, `build/4`), `resolve_machine` (`local` or a configured name), `Target` (the machine, whether it was named, whether `$MAITTY_TERM_ID` is its pane, how its failures and replies are shown); the flags that choose it are in ENVIRONMENT "The command line on a machine"
+  cli/doctor_machines.rs  the machines section of `doctor`: per machine, reachable, app version, protocol, login PATH and ssh options (a custom transport: the protocol check and its program's name), each one line, all machines at once within one budget each (`machine_probe`, `link_failure`; nothing from a machine is shown uncleaned)
+  cli/machines_ls.rs  `ls --all`: this computer and every configured machine asked at the same time, one that does not answer reported on its own line
+  cli/mcp/machines.rs  the MCP tools' `machine` argument and `machine/id` ids: routing, the `mcp` opt-in, the calling pane's grants checked here before a machine is dialled, typed errors (`McpError`) and the cleaned, cut, `[machine: name]`-led replies (SECURITY "MCP across machines")
   tidy.rs        what removing a worktree would lose (shared by the close-time removal and the clean-up list)
   snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
   references.rs  a project's reference files (`.maitty/references/`): listed, added and removed (the terminal app edits them, the server lists them for the desktop app)
   prompt.rs      the question and numbered choices an agent is stopped on, read off its screen (the MCP answer tool and the inbox card share it)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
-  ipc.rs         local sockets and the SSH proxy
+  ipc.rs         local sockets and the SSH proxy; a machine's route is local, ssh or a custom transport (`via`, `Route::Command`, unix only)
+  ssh_command.rs the ssh argv for `<app> proxy` on another machine: hardening options, `--`, and the remote command quoted for the remote shell (`--attach-only` for a configured machine); also `command_argv` (a machine's custom transport: its own program, the remote command as `{command}` or last), the probe line, the interactive first-login line and `popup_command`, which makes that line safe for a pane's shell
+  remote_install.rs installing the app on another machine, as pure rules: the `uname -sm` parser, the installed-version check, the decision table (nothing is installed without a yes), the destination, the constant install script and its exit-code table
+  machine_probe.rs a look at a machine before it is added: `ssh ... maitty --version` with no prompt, ended by a limit or a cancel flag, and its result classified (ready, a failure class, cancelled); `locate` asks the same way where the login shell finds the app (`command -v`)
+  link_failure.rs why a connection to another machine failed, from ssh's exit status and what the far side sent: `classify`, the failure classes and their fix texts
   config.rs      config.toml (+ config.local.toml) loading, atomic state files
   keys.rs        actions, default bindings, key parsing
   theme.rs       built-in themes and contrast audit
@@ -78,6 +86,7 @@ src/
     check_source.rs which checks a project has (yours, else the repo's .maitty/checks.toml), where each comes from, whether it may run
     check_stale.rs  a pass gone stale: the worktree's tree when a run starts, compared on the git poll
     helpers.rs   sessions starting helpers: the ask / always / never rule, the request a session's row shows, and the projects you said Always for (helper-projects.json)
+    identity.rs  the daemon's random id, made on first start and kept in the data folder (daemon-id); sent in every snapshot
     secrets.rs   secrets agents ask you for: the pending requests, and what you typed, held in memory as single-use references (ADR-0036)
     pr.rs        each pane's pull request read through `gh`: the poll, the answer parsed, what changed between two readings, and the message queued for the agent
     approvals.rs your Always / Never / Once for repo-supplied check commands (kept in Maitty's data folder, read at start), and the ApproveCheck / ForgetCheckApproval commands
@@ -88,10 +97,30 @@ src/
     input.rs     keys, pastes, the mouse
     actions.rs   what each action does
     background.rs server messages and background results
+    connections.rs the registry of daemon connections, one per machine: a reader and a writer task each, one fair intake for the event loop, sends routed by machine; a connection that ends is marked lost and never ends the window
+    ids.rs       client-only ids: MachineId, ClientTerm (a pane on a machine), ClientSession, the machine-addressed Outgoing message, and MachineSnap / Remote (each machine's name, last snapshot and connection state, and when its line went down, so limits, spend, version and the active workspace stay per machine); never on the wire
+    link/        keeping each configured machine connected: mod.rs (`Links`, `LinkControl` with live `start`/`stop`/`retry`, ids for configured machines), state.rs (the pure state machine and backoff), supervisor.rs (the dial / hand over / redial task)
+    machine_config.rs the `[[machines]]` entry in `config.local.toml`: append, remove, and the name suggested for a target
+    machine_flow.rs what the Machines dialog does with a choice: probe, popup login, start/stop a supervisor, retry, remove (tests in `machine_flow/tests.rs`)
+    machine_links.rs what the window does with the supervisors' events: register lines, the toasts, counting typing a down machine dropped
+    remote_policy.rs what a message from another machine's daemon may do here: one verdict per `ServerMsg` variant (apply, answer only to a request this window sent, gated by the machine's opt-ins, or ignore), and the cleaning of what is let through; this computer's own daemon bypasses it
+    routing.rs   which machine a message goes to and what a pane's machine lets this window do: the focus machine, `target_machine()`, the unanswered-request count behind reply bookkeeping, the local-only `Feature` gate and `local_cwd`, and `deliver` (the down-machine toast); the table is in API_PATTERNS "client routing"
+    remote_snapshot.rs makes another machine's snapshot safe on ingest: strings cleaned and cut, lists capped, sizes clamped, by walking its serialized form
+    cli_machine_tests.rs the one-shot commands against a real daemon behind the fake-ssh shim, addressed by configured name (new, split, focus, popup, close, send, wait, ls, `ls --all`, kill-server, the explicit-pane rule)
+    doctor_machine_tests.rs `doctor`'s machine checks against the shim: a good machine, another protocol, a login needed, machines that never answer and are ended
+    mcp_machine_tests.rs the MCP tools against a real daemon behind the shim: list, read, send, wait with `machine/id` ids, the opt-in, the caller's grants, local-only operations
+    machine_ids.rs the daemon id first seen for each machine name (machine-ids.json) and the check that refuses a different one
+    ssh_hosts.rs the named hosts in `~/.ssh/config` (Include followed, patterns skipped), read through a file trait and loaded off the UI thread; a pure parser; the Machines dialog lists its hosts (ADR 0047)
+    routing_tests.rs which machine each outgoing message goes to, the reply bookkeeping and the local-only gate
+    remote_status_tests.rs a remote agent's row is the status its own daemon reported, against a real daemon behind the shim
+    machine_update_tests.rs `machine update` against the shim's `remote-sh` mode (the real install script on a temporary filesystem)
+    screen/machine_group_tests.rs, screen/machines_tests.rs frames of a machine's group in the sidebar, rail and Inbox, and of the Machines dialog
     view_keys.rs keys inside full-pane views and the remaining popups
     screen/      the layout: mod.rs (state, model, click targets), draw.rs (grid, pane cards
                  with the tabs in their title), side.rs (the sidebar card and its rows), side_tabs.rs (a session's tab lines, both looks), card.rs (cards, pills, fading; the Look from
                  settings), leader.rs (key map, actions list, new tab), popups.rs,
+                 machine_group.rs (a machine's header, its notes and the grey of a down machine's rows, in the sidebar and the rail),
+                 machines.rs (the Machines dialog: view, keys, drawing),
                  dialogs.rs, glyphs.rs (session and check marks), splash.rs, popover.rs (follow-up and why, beside a row), heads.rs (same-file heads-ups,
                  both diffs), sheet.rs (the card docked right of the panes:
                  Inbox, Changes), inbox.rs (the Inbox in it), behaviour.rs (its keys and clicks)
@@ -102,8 +131,10 @@ src/
     motion.rs (slides and glides), â€¦
     tests.rs     rendering and behaviour tests
   installed_executable.rs, version.rs, project.rs, gitfs.rs, alert.rs, reveal.rs,
-  restart.rs, sync.rs, cli/mcp.rs, cli/update.rs, cli/reveal.rs, cli/restart.rs
+  restart.rs, sync.rs, cli/mcp.rs, cli/update.rs, cli/reveal.rs, cli/restart.rs,
+  cli/machine_update.rs (`machine update <name>`: probe, decide, send, swap, ask the daemon; with `machine_update/binary.rs` for this computer's own build or a fetched, verified release, and `machine_update/ssh_run.rs` to run one ssh line)
   secret_files.rs  a secret handed to an agent as a private file, and clearing the stale ones
+  login_path.rs  the daemon host's login-shell PATH, resolved once at start and applied to panes, providers and lookups
   shim.rs        the per-agent launchers on a shell pane's PATH, and the PATH code `maitty agent-launch` shares
 docs/            these docs, the roadmap, design briefs
 config.example.toml
@@ -197,7 +228,8 @@ defaults, pure validation and appearance compatibility rules, terminal key actio
 default bindings, key parsing and built-in themes; terminal-specific mouse
 encoding stays in the terminal client. Config loading and filesystem migrations
 are core-owned. `maitty-ipc-transport` owns bounded,
-length-delimited protocol framing, Welcome handshake, socket identity formatting,
+length-delimited protocol framing, Welcome handshake, the stream marker and login-noise
+skipping for ssh (`stream_marker.rs`), socket identity formatting,
 private Unix socket-directory checks and platform socket-name conversion shared
 by the TUI and GUI; socket connection and daemon startup stay in their respective
 clients. The Tauri host
@@ -259,7 +291,7 @@ IPC, so closing either UI cannot end an agent session.
 
 ```text
 apps/
-  tui/                            installed `maitty` command and TUI entry point
+  tui/                            installed `maitty` command and TUI entry point; `examples/fake-ssh.rs` stands in for ssh in tests and `tests/fake_ssh.rs` drives the remote path through it (TESTING)
   gui/                            Tauri host and React interface
 crates/
   maitty-core/                    daemon, PTYs, persistence and process lifetime

@@ -1,7 +1,7 @@
 //! Copy mode: a frozen, scrollable view of a pane's whole history with vim-style motion,
 //! selection and search. Entering takes a snapshot; output keeps flowing underneath.
 
-use crate::protocol::TermId;
+use super::ids::ClientTerm;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
@@ -15,7 +15,7 @@ pub const FLASH_FOR: Duration = Duration::from_millis(700);
 /// after copy mode has closed.
 #[derive(Debug, Clone)]
 pub struct Flash {
-    pub term: TermId,
+    pub term: ClientTerm,
     /// (row, first column, one past the last column), relative to the pane's text area.
     pub spans: Vec<(u16, u16, u16)>,
     pub at: Instant,
@@ -41,7 +41,7 @@ impl Flash {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Copy {
-    pub term: TermId,
+    pub term: ClientTerm,
     pub lines: Vec<String>,
     /// First line shown.
     pub top: usize,
@@ -107,7 +107,7 @@ fn all_lines(parser: &mut vt100::Parser) -> Vec<String> {
 
 impl Copy {
     /// Snapshot `parser`, showing what the pane shows now (honouring its scroll offset).
-    pub fn new(term: TermId, parser: &mut vt100::Parser) -> Copy {
+    pub fn new(term: ClientTerm, parser: &mut vt100::Parser) -> Copy {
         let (rows, cols) = parser.screen().size();
         let scroll = parser.screen().scrollback();
         let (crow, ccol) = parser.screen().cursor_position();
@@ -591,7 +591,7 @@ mod tests {
     fn copy_of(text: &str) -> Copy {
         let mut p = vt100::Parser::new(4, 20, 100);
         p.process(text.replace('\n', "\r\n").as_bytes());
-        let mut c = Copy::new(1, &mut p);
+        let mut c = Copy::new(ClientTerm::local(1), &mut p);
         c.height = 4;
         c
     }

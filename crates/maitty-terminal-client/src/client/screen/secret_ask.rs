@@ -43,7 +43,7 @@ pub(in crate::client) fn draw_secret_pop(
     buf: &mut Buffer,
     screen: Rect,
     side: Rect,
-    term: TermId,
+    term: ClientTerm,
     t: &Theme,
 ) {
     let Some(req) = app.secret_request(term) else {
@@ -56,9 +56,7 @@ pub(in crate::client) fn draw_secret_pop(
     }
     let iw = w as usize - 4;
     let agent = app
-        .snap
-        .terms
-        .get(&term)
+        .term_info(term)
         .and_then(|i| i.agent.clone())
         .unwrap_or_else(|| "agent".into());
     let intro = wrap(&format!("{agent} asks for: {}", req.label), iw);
@@ -155,20 +153,20 @@ pub(in crate::client) fn draw_secret_pop(
 
 impl App {
     /// The request session `term` is waiting on you for, if any.
-    pub(in crate::client) fn secret_request(&self, term: TermId) -> Option<SecretRequest> {
-        self.snap
+    pub(in crate::client) fn secret_request(&self, term: ClientTerm) -> Option<SecretRequest> {
+        self.snap_of(term.machine)?
             .secret_requests
             .iter()
-            .find(|r| r.term == term)
+            .find(|r| r.term == term.term)
             .cloned()
     }
 
-    pub(in crate::client) fn secret_asked(&self, term: TermId) -> bool {
+    pub(in crate::client) fn secret_asked(&self, term: ClientTerm) -> bool {
         self.secret_request(term).is_some()
     }
 
     /// Open the question beside `term`'s row; `side`: back to the sidebar after.
-    pub(in crate::client) fn open_secret(&mut self, term: TermId, side: bool) {
+    pub(in crate::client) fn open_secret(&mut self, term: ClientTerm, side: bool) {
         if let Some(req) = self.secret_request(term) {
             self.screen.inbox_return = None;
             self.screen.secret_typed = SecretText::default();
@@ -186,18 +184,18 @@ impl App {
         if !matches!(self.mode, Mode::Normal | Mode::Side) || self.view.is_some() {
             return;
         }
-        let Some(request) = self
-            .snap
-            .secret_requests
-            .iter()
-            .find(|request| !self.screen.secret_offered.contains(&request.id))
-            .cloned()
-        else {
+        let Some((machine, request)) = self.machines().iter().find_map(|m| {
+            m.snap
+                .secret_requests
+                .iter()
+                .find(|request| !self.screen.secret_offered.contains(&(m.id, request.id)))
+                .map(|request| (m.id, request.clone()))
+        }) else {
             return;
         };
-        self.screen.secret_offered.insert(request.id);
+        self.screen.secret_offered.insert((machine, request.id));
         let side = matches!(self.mode, Mode::Side);
-        self.open_secret(request.term, side);
+        self.open_secret(ClientTerm::on(machine, request.term), side);
         self.screen.secret_guard = Some(Instant::now() + AUTO_OPEN_GUARD);
     }
 
@@ -210,7 +208,7 @@ impl App {
     /// Open the question from the Inbox's row `sel` (typed `query`): leaving it goes back there.
     pub(in crate::client) fn open_secret_from_inbox(
         &mut self,
-        term: TermId,
+        term: ClientTerm,
         query: String,
         sel: usize,
     ) {
@@ -221,7 +219,7 @@ impl App {
     }
 
     /// Whatever session `term` asks you, open it: helpers or a secret.
-    pub(in crate::client) fn open_ask(&mut self, term: TermId, side: bool) {
+    pub(in crate::client) fn open_ask(&mut self, term: ClientTerm, side: bool) {
         if self.secret_asked(term) {
             self.open_secret(term, side);
         } else {
@@ -231,7 +229,7 @@ impl App {
 
     pub(in crate::client) fn open_ask_from_inbox(
         &mut self,
-        term: TermId,
+        term: ClientTerm,
         query: String,
         sel: usize,
     ) {
@@ -243,7 +241,7 @@ impl App {
     }
 
     /// Whether session `term` asks you something this popover family answers.
-    pub(in crate::client) fn asks_you(&self, term: TermId) -> bool {
+    pub(in crate::client) fn asks_you(&self, term: ClientTerm) -> bool {
         self.helpers_asked(term) || self.secret_asked(term)
     }
 
@@ -258,7 +256,7 @@ impl App {
 
     /// Send your answer (None declines), say what it did, and close the question. A request
     /// that is gone, or was replaced, is not answered.
-    pub(in crate::client) fn answer_secret(&mut self, term: TermId, give: bool) {
+    pub(in crate::client) fn answer_secret(&mut self, term: ClientTerm, give: bool) {
         let Mode::Secret { id, side, .. } = self.mode else {
             return;
         };
@@ -273,7 +271,10 @@ impl App {
         }
         let value = give.then(|| std::mem::take(&mut self.screen.secret_typed));
         let who = self.session_name(term);
-        self.send(ClientMsg::Command(Command::AnswerSecret { id, value }));
+        self.send(
+            term.machine,
+            ClientMsg::Command(Command::AnswerSecret { id, value }),
+        );
         self.secret_back(side);
         self.notify(
             if give {
@@ -285,7 +286,7 @@ impl App {
         );
     }
 
-    pub(in crate::client) fn on_secret_key(&mut self, term: TermId, k: &KeyEvent) {
+    pub(in crate::client) fn on_secret_key(&mut self, term: ClientTerm, k: &KeyEvent) {
         let typing = !k
             .modifiers
             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);

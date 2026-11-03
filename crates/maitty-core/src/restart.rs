@@ -107,6 +107,13 @@ pub fn replace_older_idle_server(published: Option<&Activity>, ours: &str) -> bo
     published.is_some_and(|a| a.busy() == 0 && crate::version::newer_than(ours, &a.version))
 }
 
+/// Whether a daemon may be restarted right now to take a newly installed version: it published
+/// its activity and holds no session. One with sessions open, or that said nothing, is left
+/// running, so an update never ends anyone's work.
+pub fn idle_enough_to_restart(published: Option<&Activity>) -> bool {
+    published.is_some_and(|a| a.sessions == 0)
+}
+
 /// The agents in the saved session.
 pub fn saved_agents() -> usize {
     crate::daemon::saved_agent_count()
@@ -220,5 +227,18 @@ mod tests {
             "a file from another server process is ignored"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_a_daemon_with_no_session_is_restarted_for_an_update() {
+        let mut none = activity(0, 0);
+        none.sessions = 0;
+        assert!(idle_enough_to_restart(Some(&none)));
+        assert!(
+            !idle_enough_to_restart(Some(&activity(0, 0))),
+            "idle sessions are still sessions"
+        );
+        assert!(!idle_enough_to_restart(Some(&activity(2, 0))));
+        assert!(!idle_enough_to_restart(None), "unknown is left running");
     }
 }

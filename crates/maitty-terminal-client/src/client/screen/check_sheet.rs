@@ -45,7 +45,7 @@ type RunKey = (u64, CheckState, Option<i32>);
 /// A checkpoint's evidence in the sheet.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CheckView {
-    pub term: TermId,
+    pub term: ClientTerm,
     /// The checkpoint shown; Tab moves to the session's next one.
     pub name: String,
     pub output: Option<String>,
@@ -70,7 +70,7 @@ fn count_lines(output: &str) -> usize {
 }
 
 impl CheckView {
-    fn new(term: TermId, info: &CheckInfo) -> CheckView {
+    fn new(term: ClientTerm, info: &CheckInfo) -> CheckView {
         CheckView {
             term,
             name: info.name.clone(),
@@ -148,16 +148,14 @@ fn needs_a_look(info: &CheckInfo) -> bool {
 
 /// Whether the sheet shows a failure, which `m` sends to the agent.
 pub(super) fn sheet_failed(app: &App, v: &CheckView) -> bool {
-    app.snap
-        .terms
-        .get(&v.term)
+    app.term_info(v.term)
         .and_then(|t| shown(t, &v.name))
         .is_some_and(|i| i.state == CheckState::Failed)
 }
 
 impl App {
     /// Whether Enter on `term`'s sidebar row shows its evidence rather than focusing it.
-    pub(in crate::client) fn check_wants_a_look(&self, term: TermId) -> bool {
+    pub(in crate::client) fn check_wants_a_look(&self, term: ClientTerm) -> bool {
         let model = self.screen_model();
         find(&model, term)
             .and_then(|(.., s)| check::shown(s))
@@ -165,8 +163,8 @@ impl App {
     }
 
     /// The sheet on `term`'s headline checkpoint.
-    pub(in crate::client) fn open_check_sheet(&mut self, term: TermId) {
-        let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check()) else {
+    pub(in crate::client) fn open_check_sheet(&mut self, term: ClientTerm) {
+        let Some(info) = self.term_info(term).and_then(|t| t.check()) else {
             return;
         };
         let v = CheckView::new(term, info);
@@ -177,7 +175,13 @@ impl App {
 
     fn ask_check_output(&self, v: &CheckView) {
         let name = (!v.name.is_empty()).then(|| v.name.clone());
-        self.send(ClientMsg::Query(Query::CheckOutput { term: v.term, name }));
+        self.send(
+            v.term.machine,
+            ClientMsg::Query(Query::CheckOutput {
+                term: v.term.term,
+                name,
+            }),
+        );
     }
 
     /// After a snapshot: a sheet whose checks are gone closes, one whose checkpoint is gone
@@ -186,7 +190,7 @@ impl App {
         let Some(View::Check(v)) = &self.view else {
             return;
         };
-        let Some(info) = self.snap.terms.get(&v.term).and_then(|t| shown(t, &v.name)) else {
+        let Some(info) = self.term_info(v.term).and_then(|t| shown(t, &v.name)) else {
             self.view = None;
             return;
         };
@@ -212,7 +216,7 @@ impl App {
 
     /// Tab / Shift+Tab: the session's next or previous checkpoint.
     fn step_checkpoint(&mut self, v: &mut CheckView, back: bool) {
-        let Some(t) = self.snap.terms.get(&v.term) else {
+        let Some(t) = self.term_info(v.term) else {
             return;
         };
         let n = t.checks.len();
@@ -267,7 +271,7 @@ pub(in crate::client) fn check_title(app: &App) -> String {
     let session = find(&model, v.term)
         .map(|(.., s)| s.name.clone())
         .unwrap_or_default();
-    let name = match app.snap.terms.get(&v.term).and_then(|t| shown(t, &v.name)) {
+    let name = match app.term_info(v.term).and_then(|t| shown(t, &v.name)) {
         Some(c) if c.name.is_empty() => c.command.clone(),
         _ => v.name.clone(),
     };
@@ -739,7 +743,7 @@ pub(in crate::client) fn draw_check(
     t: &Theme,
     v: &mut CheckView,
 ) {
-    let Some(term) = app.snap.terms.get(&v.term).cloned() else {
+    let Some(term) = app.term_info(v.term).cloned() else {
         return;
     };
     let Some(info) = shown(&term, &v.name).cloned() else {
@@ -887,7 +891,7 @@ mod tests {
         if let Some(n) = line_count {
             term.checks[0].line_count = n;
         }
-        app.open_check_sheet(1);
+        app.open_check_sheet(ClientTerm::local(1));
         app.check_output_arrived(output.into());
         app
     }
@@ -1044,7 +1048,7 @@ mod tests {
     #[test]
     fn tab_moves_to_the_next_checkpoint_and_the_title_names_it() {
         let mut app = world(Stage::Multi);
-        app.open_check_sheet(1);
+        app.open_check_sheet(ClientTerm::local(1));
         assert_eq!(
             check_title(&app),
             "· fix-footer › test",
@@ -1072,10 +1076,10 @@ mod tests {
         let mut app = world(Stage::Multi);
         let (tx, mut rx) = crate::client::mpsc::unbounded_channel();
         app.out = tx;
-        app.open_check_sheet(1);
+        app.open_check_sheet(ClientTerm::local(1));
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         app.on_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
-        let reruns: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok())
+        let reruns: Vec<_> = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
             .filter_map(|m| match m {
                 crate::client::ClientMsg::Command(Command::RerunCheck { term, name }) => {
                     Some((term, name))
@@ -1092,7 +1096,7 @@ mod tests {
         app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
         app.on_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::NONE));
         assert!(
-            matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, Act::OverrideCheck(1, _, Some(n)) if n == "test")),
+            matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, Act::OverrideCheck(ClientTerm { machine: MachineId::LOCAL, term: 1 }, _, Some(n)) if n == "test")),
             "{:?}",
             app.mode
         );
@@ -1105,7 +1109,7 @@ mod tests {
         assert_eq!(
             app.mode,
             Mode::Why {
-                term: 1,
+                term: ClientTerm::local(1),
                 side: false
             }
         );

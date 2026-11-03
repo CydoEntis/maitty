@@ -789,6 +789,11 @@ pub struct Snapshot {
     pub conversations: Vec<ConversationSummary>,
     #[serde(default)]
     pub daemon_version: String,
+    /// Which daemon this is, random and kept across its restarts. Lets a window tell that a
+    /// different machine now answers at a saved name. `None` from a daemon built before it;
+    /// not a credential.
+    #[serde(default)]
+    pub daemon_id: Option<String>,
     pub workspaces: Vec<WorkspaceInfo>,
     pub active_ws: Option<WsId>,
     pub terms: BTreeMap<TermId, TermInfo>,
@@ -1658,6 +1663,41 @@ mod tests {
             panic!("expected a swap")
         };
         assert_eq!((a, b), (3, 4));
+    }
+
+    /// A `Snapshot` as a daemon built before `daemon_id` encoded it.
+    #[derive(Serialize)]
+    struct SnapshotWithoutId {
+        conversations: Vec<ConversationSummary>,
+        daemon_version: String,
+        workspaces: Vec<WorkspaceInfo>,
+        active_ws: Option<WsId>,
+        terms: BTreeMap<TermId, TermInfo>,
+    }
+
+    #[test]
+    fn a_snapshot_from_a_daemon_without_an_id_decodes_with_none() {
+        let old = SnapshotWithoutId {
+            conversations: Vec::new(),
+            daemon_version: "0.50.0".into(),
+            workspaces: Vec::new(),
+            active_ws: None,
+            terms: BTreeMap::new(),
+        };
+        let snapshot: Snapshot = decode(&encode(&old).unwrap()).unwrap();
+        assert_eq!(snapshot.daemon_id, None);
+        assert_eq!(snapshot.daemon_version, "0.50.0");
+    }
+
+    #[test]
+    fn a_daemon_id_round_trips_without_a_new_protocol_version() {
+        assert_eq!(PROTOCOL_VERSION, 69);
+        let snapshot = Snapshot {
+            daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
+            ..Snapshot::default()
+        };
+        let back: Snapshot = decode(&encode(&snapshot).unwrap()).unwrap();
+        assert_eq!(back.daemon_id, snapshot.daemon_id);
     }
 
     #[test]
