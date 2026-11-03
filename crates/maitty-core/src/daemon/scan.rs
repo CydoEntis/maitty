@@ -184,15 +184,7 @@ pub fn start(shared: Arc<Mutex<Shared>>, tx: mpsc::Sender<Ev>) {
                     (s.roots.clone(), s.agents.clone(), s.interval)
                 };
                 if !roots.is_empty() {
-                    sys.refresh_processes_specifics(
-                        ProcessesToUpdate::All,
-                        true,
-                        ProcessRefreshKind::nothing()
-                            .with_cmd(UpdateKind::OnlyIfNotSet)
-                            .with_cwd(UpdateKind::Always)
-                            .with_memory()
-                            .with_cpu(),
-                    );
+                    refresh_for_scan(&mut sys, &roots);
                     let found = scan(&sys, &roots, &agents);
                     if tx.blocking_send(Ev::Scan(found)).is_err() {
                         return;
@@ -202,6 +194,62 @@ pub fn start(shared: Arc<Mutex<Shared>>, tx: mpsc::Sender<Ev>) {
             }
         })
         .expect("spawning scanner thread");
+}
+
+/// The most processes read under one pane: a runaway tree is cut off here.
+const MAX_PER_ROOT: usize = 512;
+
+/// Who is whose parent, from the processes' own records.
+fn child_map(sys: &System) -> HashMap<Pid, Vec<Pid>> {
+    let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
+    for (pid, p) in sys.processes() {
+        if let Some(parent) = p.parent() {
+            children.entry(parent).or_default().push(*pid);
+        }
+    }
+    children
+}
+
+/// Brings `sys` up to date for `scan`. Knowing who is whose parent takes every process on the
+/// machine, but only each one's stat. The costly reads (command line, working directory, memory,
+/// CPU) go to the panes' own process trees alone: a few dozen processes, not the hundreds that
+/// run on a machine, which is what kept an idle daemon busy.
+fn refresh_for_scan(sys: &mut System, roots: &[(TermId, u32)]) {
+    // Threads are left out: sysinfo counts each one as a process, which is thousands of extra reads.
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().without_tasks(),
+    );
+    let children = child_map(sys);
+    let mut tree: Vec<Pid> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for &(_, root) in roots {
+        let mut queue = vec![Pid::from_u32(root)];
+        let mut i = 0;
+        while i < queue.len() {
+            let pid = queue[i];
+            i += 1;
+            if seen.insert(pid) {
+                tree.push(pid);
+            }
+            for c in children.get(&pid).into_iter().flatten() {
+                if queue.len() < MAX_PER_ROOT {
+                    queue.push(*c);
+                }
+            }
+        }
+    }
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&tree),
+        true,
+        ProcessRefreshKind::nothing()
+            .without_tasks()
+            .with_cmd(UpdateKind::OnlyIfNotSet)
+            .with_cwd(UpdateKind::Always)
+            .with_memory()
+            .with_cpu(),
+    );
 }
 
 fn stem(name: &std::ffi::OsStr) -> String {
@@ -214,12 +262,7 @@ fn scan(sys: &System, roots: &[(TermId, u32)], agents: &[CompiledAgent]) -> Vec<
     let cores = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1) as f32;
-    let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
-    for (pid, p) in sys.processes() {
-        if let Some(parent) = p.parent() {
-            children.entry(parent).or_default().push(*pid);
-        }
-    }
+    let children = child_map(sys);
     roots
         .iter()
         .map(|&(term, root)| {
@@ -263,7 +306,7 @@ fn scan(sys: &System, roots: &[(TermId, u32)], agents: &[CompiledAgent]) -> Vec<
                     }
                 }
                 for c in children.get(&pid).into_iter().flatten() {
-                    if queue.len() < 512 {
+                    if queue.len() < MAX_PER_ROOT {
                         queue.push((*c, depth + 1));
                     }
                 }
@@ -523,3 +566,30 @@ mod agent_tests {
         }
     }
 }
+
+#[cfg(all(test, unix))]
+mod refresh_tests {
+    use super::*;
+
+    #[test]
+    fn only_the_panes_own_tree_gets_the_costly_reads() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("sleep should start");
+        let me = std::process::id();
+        let mut sys = System::new();
+
+        refresh_for_scan(&mut sys, &[(1, me)]);
+
+        let kid = sys.process(Pid::from_u32(child.id())).expect("the child is known");
+        assert_eq!(kid.parent(), Some(Pid::from_u32(me)));
+        assert!(!kid.cmd().is_empty(), "its command line was read");
+        assert!(kid.memory() > 0, "its memory was read");
+        let init = sys.process(Pid::from_u32(1)).expect("init is known by its parent link");
+        assert!(init.cmd().is_empty(), "a process outside every pane is not read in full");
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+

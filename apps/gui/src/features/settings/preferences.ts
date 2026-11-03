@@ -11,6 +11,8 @@ export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spaciou
 export type IconSize = 'small' | 'medium' | 'large'
 /** How a project's other sessions sit under its main row in the sidebar. */
 export type TrayStyle = 'names' | 'icons' | 'stacked'
+/** Which side of the window the sidebar sits on. */
+export type SidebarSide = 'left' | 'right'
 /** The window style: Flat is solid panels, Tiled is edge-to-edge panes with square corners, Glass is floating frosted cards with sweeps. */
 export type StyleChoice = 'flat' | 'tiled' | 'glass'
 /** App and folder icons keep their colours, or drop to neutral gray tiles. Independent of the style. */
@@ -51,6 +53,8 @@ export type SettingsPreferences = {
   cursorStyle: CursorStyle
   /** Lines each pane keeps; maittyd keeps the full history. */
   scrollback: ScrollbackLines
+  /** Mirror the terminal's text into the page for screen readers. It makes every pane much heavier to draw. */
+  terminalScreenReader: boolean
   /** Status effects on sidebar rows and tabs, each off by itself; Reduce motion turns all off. */
   effectWorking: boolean
   effectNeedsYou: boolean
@@ -62,6 +66,7 @@ export type SettingsPreferences = {
   tabTextSize: number
   /** The docked sidebar's width in px; dragged with the mouse. */
   sidebarWidth: number
+  sidebarSide: SidebarSide
   iconSize: IconSize
   trayStyle: TrayStyle
   leadMode: LeadMode
@@ -69,6 +74,10 @@ export type SettingsPreferences = {
   iconColor: IconColor
   /** The bottom line of the window: daemon, branch, counts and the focused session. */
   statusBar: boolean
+  /** Fetch a new release in the background. Installing still waits for a restart. */
+  autoDownloadUpdates: boolean
+  /** Restart into a downloaded update when no session is working or waiting on you. */
+  restartWhenIdle: boolean
   /** A colour the user gave a project, by the project's key (its repo or folder path). */
   projectColors: Record<string, string>
 }
@@ -99,7 +108,7 @@ function defaults(): SettingsPreferences {
     reduceMotion: false,
     animateSidebarActivity: true,
     compactSidebar: false,
-    toastPosition: 'bottom-right',
+    toastPosition: 'top-right',
     notifyNeedsYou: true,
     notifyFinished: true,
     notifyError: true,
@@ -113,6 +122,7 @@ function defaults(): SettingsPreferences {
     lightTheme: 'Paper',
     cursorStyle: 'block',
     scrollback: SCROLLBACK_DEFAULT,
+    terminalScreenReader: false,
     style: 'glass',
     // Glass runs the status sweeps; Flat and Tiled start with them off. A choice made in Settings wins either way.
     effectWorking: true,
@@ -122,11 +132,14 @@ function defaults(): SettingsPreferences {
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
     sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
+    sidebarSide: 'left',
     iconSize: 'medium',
     trayStyle: 'stacked',
     leadMode: 'focused',
     iconColor: 'color',
     statusBar: true,
+    autoDownloadUpdates: true,
+    restartWhenIdle: false,
     projectColors: {},
   }
 }
@@ -165,6 +178,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       ...themeChoice(preferences, fallback),
       cursorStyle: isCursorStyle(preferences.cursorStyle) ? preferences.cursorStyle : fallback.cursorStyle,
       scrollback: isScrollback(preferences.scrollback) ? preferences.scrollback : fallback.scrollback,
+      terminalScreenReader: bool(preferences.terminalScreenReader, fallback.terminalScreenReader),
       effectWorking: bool(preferences.effectWorking, fallback.effectWorking),
       effectNeedsYou: bool(preferences.effectNeedsYou, fallback.effectNeedsYou),
       effectDone: bool(preferences.effectDone, fallback.effectDone),
@@ -172,11 +186,14 @@ export function readSettingsPreferences(): SettingsPreferences {
       sidebarTextSize: clampNumber(preferences.sidebarTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.sidebarTextSize),
       tabTextSize: clampNumber(preferences.tabTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.tabTextSize),
       sidebarWidth: clampNumber(preferences.sidebarWidth, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX, fallback.sidebarWidth),
+      sidebarSide: preferences.sidebarSide === 'left' || preferences.sidebarSide === 'right' ? preferences.sidebarSide : fallback.sidebarSide,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
       trayStyle: preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
       projectColors: stringRecord(preferences.projectColors),
       style: styleOf(preferences.style) ?? fallback.style,
       statusBar: bool(preferences.statusBar, fallback.statusBar),
+      autoDownloadUpdates: bool(preferences.autoDownloadUpdates, fallback.autoDownloadUpdates),
+      restartWhenIdle: bool(preferences.restartWhenIdle, fallback.restartWhenIdle),
       iconColor: preferences.iconColor === 'color' || preferences.iconColor === 'grayscale' ? preferences.iconColor : fallback.iconColor,
       leadMode: preferences.leadMode === 'focused' || preferences.leadMode === 'attention' ? preferences.leadMode : fallback.leadMode,
     }

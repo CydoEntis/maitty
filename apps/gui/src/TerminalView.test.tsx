@@ -16,6 +16,7 @@ const { loadTerminalReplay, resizeTerminal, sendTerminalInput, loadTerminalHisto
     writes: [] as Uint8Array[],
     resets: 0,
     onData: undefined as ((data: string) => void) | undefined,
+    keyHandler: undefined as ((event: Pick<KeyboardEvent, 'type' | 'key' | 'shiftKey' | 'ctrlKey' | 'altKey' | 'metaKey'>) => boolean) | undefined,
     onResize: undefined as (() => void) | undefined,
     resolveResize: undefined as (() => void) | undefined,
     onChunk: undefined as ((chunk: TerminalChunk) => void) | undefined,
@@ -64,6 +65,7 @@ vi.mock('@xterm/xterm', () => ({
       return { dispose: vi.fn() }
     }
     onBinary() { return { dispose: vi.fn() } }
+    attachCustomKeyEventHandler(handler: NonNullable<typeof terminalState.keyHandler>) { terminalState.keyHandler = handler }
     write(data: Uint8Array) { terminalState.writes.push(data) }
     dispose() {}
   },
@@ -157,6 +159,22 @@ describe('terminal view', () => {
 
     terminalState.onData?.('\u0003')
     await waitFor(() => { expect(sendTerminalInput).toHaveBeenCalledWith(binding, '\u0003') })
+  })
+
+  it('sends Alt+Enter for Shift+Enter so an agent starts a new line, and leaves Enter alone', async () => {
+    renderTerminal()
+    await screen.findByRole('region', { name: 'Native Codex terminal' })
+    await waitFor(() => { expect(terminalState.keyHandler).toBeDefined() })
+    const key = (extra: Partial<KeyboardEvent>) => ({ type: 'keydown', key: 'Enter', shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, ...extra })
+
+    expect(terminalState.keyHandler?.(key({ shiftKey: true }))).toBe(false)
+    await waitFor(() => { expect(sendTerminalInput).toHaveBeenCalledWith(binding, '\u001b\r') })
+    expect(sendTerminalInput).toHaveBeenCalledTimes(1)
+
+    expect(terminalState.keyHandler?.(key({ shiftKey: true, type: 'keyup' }))).toBe(false)
+    expect(terminalState.keyHandler?.(key({}))).toBe(true)
+    expect(terminalState.keyHandler?.(key({ shiftKey: true, ctrlKey: true }))).toBe(true)
+    expect(sendTerminalInput).toHaveBeenCalledTimes(1)
   })
 
   it('holds output that arrives while the history loads, so nothing is lost or repeated', async () => {

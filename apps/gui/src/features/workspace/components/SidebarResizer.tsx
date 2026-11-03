@@ -8,11 +8,13 @@ const clamp = (width: number) => Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WI
 type Drag = { startX: number; startWidth: number }
 
 /** The docked sidebar's right edge: drag it, or focus it and use the arrow keys; double-click resets. */
-export function SidebarResizer(props: { width: number; onResize: (width: number) => void; onResizeEnd: (width: number) => void; onDragging: (dragging: boolean) => void }) {
-  const { width, onResize, onResizeEnd, onDragging } = props
+export function SidebarResizer(props: { side: 'left' | 'right'; width: number; onResize: (width: number) => void; onResizeEnd: (width: number) => void; onDragging: (dragging: boolean) => void }) {
+  const { side, width, onResize, onResizeEnd, onDragging } = props
+  // On the right the edge is on the sidebar's left, so dragging toward the middle of the window widens it.
+  const grows = side === 'right' ? -1 : 1
   const drag = useRef<Drag | null>(null)
   const onKeyDown = (event: KeyboardEvent) => {
-    const next = event.key === 'ArrowLeft' ? width - KEY_STEP_PX : event.key === 'ArrowRight' ? width + KEY_STEP_PX : event.key === 'Home' ? SIDEBAR_WIDTH_DEFAULT : null
+    const next = event.key === 'ArrowLeft' ? width - grows * KEY_STEP_PX : event.key === 'ArrowRight' ? width + grows * KEY_STEP_PX : event.key === 'Home' ? SIDEBAR_WIDTH_DEFAULT : null
     if (next === null) return
     event.preventDefault()
     onResizeEnd(clamp(next))
@@ -38,14 +40,14 @@ export function SidebarResizer(props: { width: number; onResize: (width: number)
       }}
       onPointerMove={(event) => {
         const current = drag.current
-        if (current) onResize(clamp(current.startWidth + event.clientX - current.startX))
+        if (current) onResize(clamp(current.startWidth + grows * (event.clientX - current.startX)))
       }}
       onPointerUp={(event) => {
         const current = drag.current
         if (!current) return
         drag.current = null
         onDragging(false)
-        onResizeEnd(clamp(current.startWidth + event.clientX - current.startX))
+        onResizeEnd(clamp(current.startWidth + grows * (event.clientX - current.startX)))
       }}
       onPointerCancel={() => {
         drag.current = null

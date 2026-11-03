@@ -1,37 +1,102 @@
+import { DropdownMenu } from 'radix-ui'
 import { isModifierSymbol, type Chord } from '../model/shortcuts'
-import { Icon, Spinner } from './glyphs'
+import { THEMES, type ThemeMode } from '../theme/themes'
+import { Icon } from './glyphs'
+
+export type WindowStyle = 'flat' | 'tiled' | 'glass'
+
+const WINDOW_STYLES: readonly { id: WindowStyle; label: string }[] = [
+  { id: 'flat', label: 'Flat' },
+  { id: 'tiled', label: 'Tiled' },
+  { id: 'glass', label: 'Glass' },
+]
+const THEME_MODES: readonly { id: ThemeMode; label: string }[] = [
+  { id: 'dark', label: 'Dark' },
+  { id: 'light', label: 'Light' },
+  { id: 'system', label: 'System' },
+]
+const COMMON_THEMES = 6
 
 type Props = {
   online: boolean
-  /** The focused session's git branch, if it is in a repo. */
-  branch: string | null
-  working: number
-  needs: number
-  /** The focused session's process and folder. */
-  process: string | null
-  path: string | null
-  /** The terminal text size in px. */
+  themeMode: ThemeMode
+  /** Whether the theme in use is a light one: the quick list shows the themes of that kind. */
+  lightInUse: boolean
+  activeTheme: string
+  style: WindowStyle
   textSize: number
+  minTextSize: number
+  maxTextSize: number
   shortcutChord: Chord
-  onOpenInbox: () => void
+  portalContainer: HTMLElement | null
+  onThemeMode: (mode: ThemeMode) => void
+  onPickTheme: (name: string) => void
+  onAllThemes: () => void
+  onStyle: (style: WindowStyle) => void
+  onTextSize: (size: number) => void
+  onResetTextSize: () => void
   onOpenShortcuts: () => void
 }
 
-/** What is going on across every session, and where you are, in one quiet line at the bottom of the window. */
+/** Quick controls at the bottom right; the left stays empty unless the daemon drops. */
 export function StatusBar(props: Props) {
+  const themes = THEMES.filter((theme) => theme.light === props.lightInUse).slice(0, COMMON_THEMES)
+  const content = (className: string) => ({ className, sideOffset: 6, align: 'end' as const })
   return (
     <footer className="mx-statusbar" aria-label="Status">
-      <span className="mx-sb-item">
-        <span className={`mx-daemon-dot${props.online ? '' : ' is-offline'}`} aria-hidden="true" />
-        {props.online ? 'maittyd' : 'reconnecting…'}
-      </span>
-      {props.branch && <span className="mx-sb-item mono"><Icon name="branch" />{props.branch}</span>}
-      {props.working > 0 && <span className="mx-sb-item is-working"><Spinner />{props.working} working</span>}
-      {props.needs > 0 && <button type="button" className="mx-sb-item is-needs" title="Open the inbox" onClick={props.onOpenInbox}>{props.needs} needs you</button>}
+      {!props.online && (
+        <span className="mx-sb-item is-offline" role="status">
+          <span className="mx-daemon-dot is-offline" aria-hidden="true" />
+          Reconnecting to maittyd…
+        </span>
+      )}
       <span className="mx-spacer" />
-      {props.process && <span className="mx-sb-item mono">{props.process}{props.path ? ` · ${props.path}` : ''}</span>}
-      <span className="mx-sb-item">{props.textSize}px</span>
-      <button type="button" className="mx-sb-item" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" onClick={props.onOpenShortcuts}>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger className="mx-sb-item mx-sb-button" aria-label={`Theme: ${props.activeTheme}`}>
+          <Icon name="palette" />{props.activeTheme}
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal container={props.portalContainer}>
+          <DropdownMenu.Content {...content('mx-menu mx-sb-menu')}>
+            <DropdownMenu.RadioGroup value={props.themeMode} onValueChange={(value) => { props.onThemeMode(value as ThemeMode) }}>
+              <div className="mx-sb-modes" role="presentation">
+                {THEME_MODES.map((mode) => (
+                  <DropdownMenu.RadioItem key={mode.id} value={mode.id} className="mx-sb-mode" onSelect={(event) => { event.preventDefault(); props.onThemeMode(mode.id) }}>{mode.label}</DropdownMenu.RadioItem>
+                ))}
+              </div>
+            </DropdownMenu.RadioGroup>
+            <DropdownMenu.Separator className="mx-menu-sep" />
+            {themes.map((theme) => (
+              <DropdownMenu.Item key={theme.name} className="mx-menu-item" onSelect={() => { props.onPickTheme(theme.name) }}>
+                <span className="mx-sb-check" aria-hidden="true">{theme.name === props.activeTheme ? <Icon name="check" size={12} /> : null}</span>{theme.name}
+              </DropdownMenu.Item>
+            ))}
+            <DropdownMenu.Separator className="mx-menu-sep" />
+            <DropdownMenu.Item className="mx-menu-item" onSelect={props.onAllThemes}><span className="mx-sb-check" />All themes in Settings…</DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger className="mx-sb-item mx-sb-button" aria-label={`Layout style: ${props.style}`}>
+          <Icon name="layout" />{WINDOW_STYLES.find((item) => item.id === props.style)?.label}
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal container={props.portalContainer}>
+          <DropdownMenu.Content {...content('mx-menu mx-sb-menu')}>
+            <DropdownMenu.RadioGroup value={props.style} onValueChange={(value) => { props.onStyle(value as WindowStyle) }}>
+              {WINDOW_STYLES.map((item) => (
+                <DropdownMenu.RadioItem key={item.id} value={item.id} className="mx-menu-item">
+                  <span className="mx-sb-check" aria-hidden="true"><DropdownMenu.ItemIndicator><Icon name="check" size={12} /></DropdownMenu.ItemIndicator></span>{item.label}
+                </DropdownMenu.RadioItem>
+              ))}
+            </DropdownMenu.RadioGroup>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+      <span className="mx-sb-size" role="group" aria-label="Terminal text size">
+        <button type="button" className="mx-sb-step" aria-label="Smaller text" disabled={props.textSize <= props.minTextSize} onClick={() => { props.onTextSize(props.textSize - 1) }}>−</button>
+        <button type="button" className="mx-sb-number" aria-label={`Text size ${String(props.textSize)}px. Reset to default`} onClick={props.onResetTextSize}>{props.textSize}px</button>
+        <button type="button" className="mx-sb-step" aria-label="Larger text" disabled={props.textSize >= props.maxTextSize} onClick={() => { props.onTextSize(props.textSize + 1) }}>+</button>
+      </span>
+      <button type="button" className="mx-sb-item mx-sb-button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" onClick={props.onOpenShortcuts}>
         {props.shortcutChord.map((key) => <kbd key={key} className={`mx-keycap${isModifierSymbol(key) ? ' is-symbol' : ''}`}>{key}</kbd>)}
       </button>
     </footer>

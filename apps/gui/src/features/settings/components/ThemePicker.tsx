@@ -7,6 +7,8 @@ import { Icon } from '@/features/workspace/components/glyphs'
 const MENU_ROOM_PX = 380
 const MENU_WIDTH_PX = 300
 const MENU_GAP_PX = 6
+/** The scroll this opening causes must not close the menu it is making room for. */
+const OPENING_SCROLL_MS = 250
 const EDGE_PX = 8
 /** The smallest the list may be squeezed to when the window is short. */
 const MENU_MIN_HEIGHT_PX = 160
@@ -41,6 +43,7 @@ export function ThemePicker({ kind, value, inUse, dimmed, onPick, onPreview }: P
   const root = useRef<HTMLDivElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const search = useRef<HTMLInputElement>(null)
+  const openedAt = useRef(0)
   const light = kind === 'light'
   const noun = light ? 'light' : 'dark'
   const pool = useMemo(() => THEMES.filter((theme) => theme.light === light), [light])
@@ -71,6 +74,7 @@ export function ThemePicker({ kind, value, inUse, dimmed, onPick, onPreview }: P
     }
     // The menu is placed from the button once, so anything that moves the button closes it.
     const onScroll = (event: Event) => {
+      if (Date.now() - openedAt.current < OPENING_SCROLL_MS) return
       if (!(event.target instanceof Node && menu.current?.contains(event.target))) dismiss()
     }
     document.addEventListener('pointerdown', onPointerDown)
@@ -95,6 +99,11 @@ export function ThemePicker({ kind, value, inUse, dimmed, onPick, onPreview }: P
       return
     }
     setHost(root.current?.closest<HTMLElement>('.mx-app') ?? document.body)
+    openedAt.current = Date.now()
+    // Near the bottom, bring the button up so the whole list fits below it, rather than squeezing the list.
+    if (root.current && 'scrollIntoView' in root.current && window.innerHeight - root.current.getBoundingClientRect().bottom < MENU_ROOM_PX) {
+      root.current.scrollIntoView({ block: 'start', behavior: 'instant' })
+    }
     const rect = root.current?.getBoundingClientRect()
     if (rect) {
       const upward = window.innerHeight - rect.bottom < MENU_ROOM_PX && rect.top > window.innerHeight - rect.bottom

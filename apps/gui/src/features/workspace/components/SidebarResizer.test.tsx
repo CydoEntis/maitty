@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN } from '@/features/settings/preferences'
 import { SidebarResizer } from './SidebarResizer'
 
-function setup(width = 300) {
+function setup(width = 300, side: 'left' | 'right' = 'left') {
   const handlers = { onResize: vi.fn(), onResizeEnd: vi.fn(), onDragging: vi.fn() }
-  render(<SidebarResizer width={width} {...handlers} />)
+  render(<SidebarResizer side={side} width={width} {...handlers} />)
   return { handle: screen.getByRole('separator', { name: 'Resize sidebar' }), ...handlers }
 }
 
@@ -52,5 +52,24 @@ describe('sidebar resize handle', () => {
     expect(handle).toHaveAttribute('aria-valuenow', '300')
     expect(handle).toHaveAttribute('aria-valuemin', String(SIDEBAR_WIDTH_MIN))
     expect(handle).toHaveAttribute('aria-valuemax', String(SIDEBAR_WIDTH_MAX))
+  })
+
+  it('widens when dragged toward the middle of the window with the sidebar on the right', () => {
+    const { handle, onResize, onResizeEnd } = setup(300, 'right')
+
+    fireEvent.pointerDown(handle, { clientX: 900, pointerId: 1 })
+    fireEvent.pointerMove(handle, { clientX: 860, pointerId: 1 })
+    fireEvent.pointerUp(handle, { clientX: 850, pointerId: 1 })
+
+    expect(onResize).toHaveBeenCalledWith(340)
+    expect(onResizeEnd).toHaveBeenCalledWith(350)
+  })
+
+  it('reverses the arrow keys on the right', () => {
+    const { handle, onResizeEnd } = setup(300, 'right')
+
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+
+    expect(onResizeEnd).toHaveBeenCalledWith(316)
   })
 })
