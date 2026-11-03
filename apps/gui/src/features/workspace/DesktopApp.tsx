@@ -594,7 +594,8 @@ export function DesktopApp() {
     if (updater.state.status !== 'ready') return
     markRestarting(updater.state.version)
     setRestarting(true)
-    window.setTimeout(() => { updater.restart() }, RESTART_SCREEN_MS)
+    // If the install fails, the screen must not stay up: it goes, and so does the "kept running" note for the next launch.
+    window.setTimeout(() => { updater.restart(() => { setRestarting(false); takeRestarted() }) }, RESTART_SCREEN_MS)
   }, [updater])
 
   // With the setting on, a new release is fetched as soon as it is found. Installing still waits for a restart.
