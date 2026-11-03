@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Copy, Minus, Square, X } from 'lucide-react'
@@ -23,7 +23,8 @@ function hasWindowMetadata(): boolean {
 }
 
 function DesktopTitleBar() {
-  const appWindow = getCurrentWindow()
+  // One handle for the window's life: a new one each render re-subscribed to its events every second.
+  const appWindow = useMemo(() => getCurrentWindow(), [])
   const [maximized, setMaximized] = useState(false)
 
   useEffect(() => {

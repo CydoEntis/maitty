@@ -31,7 +31,9 @@ type Offer = Exclude<UpdaterState, { status: 'idle' | 'checking' | 'current' }>
 
 function offerOf(state: UpdaterState, skipped: string | null): Offer | null {
   if (state.status === 'available') return state.version === skipped ? null : state
-  if (state.status === 'downloading' || state.status === 'ready' || state.status === 'failed') return state
+  // A failed check is not something you started, so it gets no pill; Settings still says so.
+  if (state.status === 'failed') return state.during === 'update' ? state : null
+  if (state.status === 'downloading' || state.status === 'ready') return state
   return null
 }
 
@@ -120,7 +122,7 @@ export function UpdateSlot({ variant, state, version, skipped, portalContainer, 
             </ul>
             <div className="mx-upd-actions">
               <button type="button" className="mx-upd-primary" onClick={() => { setOpen(false); onRestartNow() }}>Restart now</button>
-              <button type="button" className="mx-upd-ghost" onClick={() => { setOpen(false) }}>On next launch</button>
+              <button type="button" className="mx-upd-ghost" onClick={() => { setOpen(false) }}>Later</button>
             </div>
           </>
         )

@@ -76,13 +76,20 @@ describe('update slot', () => {
 
   it('shows the real error on failure and retries', async () => {
     const user = userEvent.setup()
-    const actions = setup({ status: 'failed', message: 'signature mismatch' })
+    const actions = setup({ status: 'failed', message: 'signature mismatch', during: 'update' })
 
     await user.click(screen.getByRole('button', { name: 'Update failed' }))
     expect(screen.getByRole('dialog', { name: 'Update' })).toHaveTextContent('signature mismatch')
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
     expect(actions.onCheck).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows no pill for a failed check, which you did not start', () => {
+    setup({ status: 'failed', message: 'offline', during: 'check' })
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByText(/^Version/)).toBeInTheDocument()
   })
 
   it('closes the card with Escape', async () => {

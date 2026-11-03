@@ -34,6 +34,8 @@ type TerminalViewProps = {
   label?: string
   /** Typing is held while the daemon is disconnected. */
   inputDisabled?: boolean
+  /** The session is gone: the output stays, and nothing more is asked of the daemon. */
+  ended?: boolean
   /** Moves keyboard focus into the terminal when it becomes true. */
   focused?: boolean
   /** Told what the user types here, so a window can mirror it to other panes. */
@@ -46,15 +48,18 @@ type TerminalViewProps = {
 
 type NativeConversation = Conversation & { generation: number; nativePane: number }
 
+/** After typing failed, the next key waits this long before it tries the daemon again. */
+const INPUT_RETRY_MS = 1500
+
 /** What Shift+Enter sends: Alt+Enter, which Claude Code and Codex take as a new line in their prompt. */
 const NEW_LINE_KEYS = '\x1b\r'
 
-export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, focused = false, onInput, onOpenPath, onHandle }: TerminalViewProps) {
+export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, ended = false, focused = false, onInput, onOpenPath, onHandle }: TerminalViewProps) {
   if (!desktop) return null
   if (!isDesktop()) return <div className="panel-empty"><TerminalSquare size={18} /><h2>Native terminal is not available</h2><p>Open Maitty Desktop to use the daemon-owned terminal.</p></div>
   if (!hasNativeTerminal(conversation)) return <NativeHandoffView conversation={conversation} />
 
-  return <ConnectedTerminalView conversation={conversation} fontSize={fontSize} look={look} label={label ?? `Native ${conversation.provider} terminal`} inputDisabled={inputDisabled} focused={focused} onInput={onInput} onOpenPath={onOpenPath} onHandle={onHandle} />
+  return <ConnectedTerminalView conversation={conversation} fontSize={fontSize} look={look} label={label ?? `Native ${conversation.provider} terminal`} inputDisabled={inputDisabled || ended} ended={ended} focused={focused} onInput={onInput} onOpenPath={onOpenPath} onHandle={onHandle} />
 }
 
 function NativeHandoffView({ conversation }: { conversation: Conversation }) {
@@ -73,19 +78,22 @@ function NativeHandoffView({ conversation }: { conversation: Conversation }) {
   </div>
 }
 
-type ConnectedProps = { conversation: NativeConversation; fontSize: number; look: TerminalLook; label: string; inputDisabled: boolean; focused: boolean; onInput: ((data: string | Uint8Array) => void) | undefined; onOpenPath: ((path: string, line?: number) => void) | undefined; onHandle: ((handle: TerminalHandle | null) => void) | undefined }
+type ConnectedProps = { conversation: NativeConversation; fontSize: number; look: TerminalLook; label: string; inputDisabled: boolean; ended: boolean; focused: boolean; onInput: ((data: string | Uint8Array) => void) | undefined; onOpenPath: ((path: string, line?: number) => void) | undefined; onHandle: ((handle: TerminalHandle | null) => void) | undefined }
 
-function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisabled, focused, onInput, onOpenPath, onHandle }: ConnectedProps) {
+function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisabled, ended, focused, onInput, onOpenPath, onHandle }: ConnectedProps) {
   const term = conversation.nativePane
   const binding: TerminalBinding = useMemo(() => ({ id: conversation.id, generation: conversation.generation }), [conversation.id, conversation.generation])
   const inputQueue = useRef(Promise.resolve())
   const terminalHost = useRef<HTMLDivElement>(null)
   const terminal = useRef<XtermTerminal | null>(null)
   const inputFailedRef = useRef(false)
+  const inputFailedAt = useRef(0)
   const fontSizeRef = useRef(fontSize)
   const lookRef = useRef(look)
   const inputDisabledRef = useRef(inputDisabled)
   const focusedRef = useRef(focused)
+  const endedRef = useRef(ended)
+  useEffect(() => { endedRef.current = ended })
   const onInputRef = useRef(onInput)
   useEffect(() => { onInputRef.current = onInput })
   const onOpenPathRef = useRef(onOpenPath)
@@ -101,13 +109,22 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   const [resizeError, setResizeError] = useState('')
 
   const send = useCallback((data: string | Uint8Array) => {
-    if (!data || inputFailedRef.current || inputDisabledRef.current) return
+    if (!data || inputDisabledRef.current) return
+    if (inputFailedRef.current) {
+      // The daemon may be back: after a pause the next key tries again, instead of waiting for a click.
+      if (Date.now() - inputFailedAt.current < INPUT_RETRY_MS) return
+      inputFailedRef.current = false
+      setInputFailed(false)
+    }
     onInputRef.current?.(data)
     inputQueue.current = inputQueue.current.then(async () => {
+      // Anything typed behind a key that failed is dropped with it, never sent out of order.
+      if (inputFailedRef.current) return
       // The daemon echoes what was typed through the stream, so there is nothing to write here.
       await sendTerminalInput(binding, data)
     }).catch(() => {
       inputFailedRef.current = true
+      inputFailedAt.current = Date.now()
       setInputFailed(true)
     })
   }, [binding])
@@ -143,6 +160,11 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     }
     const enqueue = (bytes: Uint8Array) => {
       queued.push(bytes)
+      // A hidden window gets no animation frames, so output would pile up and then land in one freeze.
+      if (document.hidden) {
+        flush()
+        return
+      }
       if (frame === 0) frame = requestAnimationFrame(flush)
     }
 
@@ -209,6 +231,8 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         const fitAndResize = () => {
           if (!isMounted) return
           fit.fit()
+          // An ended session has no terminal left to resize.
+          if (endedRef.current) return
           const cols = terminalInstance.cols
           const rows = terminalInstance.rows
           if (cols < 1 || rows < 1) return

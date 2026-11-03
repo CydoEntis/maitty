@@ -57,7 +57,7 @@ describe('updater', () => {
   it('keeps a failed check quiet in the banner and reports it for Settings, and a retry can succeed', async () => {
     check.mockRejectedValueOnce(new Error('offline'))
     const { result } = renderHook(() => useUpdater())
-    await waitFor(() => { expect(result.current.state).toEqual({ status: 'failed', message: 'offline' }) })
+    await waitFor(() => { expect(result.current.state).toEqual({ status: 'failed', message: 'offline', during: 'check' }) })
     expect(updaterSummary(result.current.state)).toBe('Could not check for updates: offline')
 
     check.mockResolvedValue(newer())
@@ -71,17 +71,36 @@ describe('updater', () => {
     const { result } = renderHook(() => useUpdater())
     await waitFor(() => { expect(result.current.state.status).toBe('available') })
     act(() => { result.current.download() })
-    await waitFor(() => { expect(result.current.state).toEqual({ status: 'failed', message: 'signature mismatch' }) })
+    await waitFor(() => { expect(result.current.state).toEqual({ status: 'failed', message: 'signature mismatch', during: 'update' }) })
   })
 
-  it('brings the offer back after Later when you check again', async () => {
-    check.mockResolvedValue(newer())
+  it('does not replace a downloaded update when you check again', async () => {
+    const install = vi.fn(() => Promise.resolve())
+    check.mockResolvedValue(newer(() => Promise.resolve(), install))
     const { result } = renderHook(() => useUpdater())
     await waitFor(() => { expect(result.current.state.status).toBe('available') })
-    act(() => { result.current.dismiss() })
-    expect(result.current.dismissed).toBe(true)
+    act(() => { result.current.download() })
+    await waitFor(() => { expect(result.current.state.status).toBe('ready') })
+    check.mockClear()
+
     act(() => { result.current.check() })
+
+    expect(check).not.toHaveBeenCalled()
+    expect(result.current.state.status).toBe('ready')
+  })
+
+  it('tells the caller when the restart fails, and says it was the update that failed', async () => {
+    check.mockResolvedValue(newer(() => Promise.resolve(), () => Promise.reject(new Error('no space left'))))
+    const { result } = renderHook(() => useUpdater())
     await waitFor(() => { expect(result.current.state.status).toBe('available') })
-    expect(result.current.dismissed).toBe(false)
+    act(() => { result.current.download() })
+    await waitFor(() => { expect(result.current.state.status).toBe('ready') })
+    const onFailed = vi.fn()
+
+    act(() => { result.current.restart(onFailed) })
+
+    await waitFor(() => { expect(onFailed).toHaveBeenCalledTimes(1) })
+    expect(result.current.state).toEqual({ status: 'failed', message: 'no space left', during: 'update' })
+    expect(updaterSummary(result.current.state)).toBe('The update failed: no space left')
   })
 })

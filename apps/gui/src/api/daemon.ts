@@ -50,7 +50,8 @@ const TerminalSessionSchema = z.object({
   }).default({ context: null, cost: null, tokens: null }),
 })
 const DaemonSnapshotSchema = z.object({
-  conversations: z.array(ConversationSummarySchema),
+  // Read one by one, like the terminals: a record this app can't read must not take every session offline.
+  conversations: z.array(z.unknown()).default([]),
   workspaces: z.array(WorkspaceSummarySchema),
   // Read one by one: a terminal this app can't read is left out rather than hiding every session.
   terms: z.record(z.string(), z.unknown()).default({}),
@@ -218,18 +219,47 @@ export async function loadConversations(): Promise<Conversation[]> {
   if (!isDesktop()) return previewConversations
 
   const snapshot = await invokeParsed('list_sessions', DaemonSnapshotSchema)
+  for (const id of lastGoodTerm.keys()) if (!(String(id) in snapshot.terms)) lastGoodTerm.delete(id)
   const terminals = Object.values(snapshot.terms)
-    .map((term) => TerminalSessionSchema.safeParse(term))
-    .flatMap((parsed) => (parsed.success ? [parsed.data] : []))
+    .flatMap((term) => {
+      const read = readTerminal(term)
+      return read ? [read] : []
+    })
     .filter(isTerminalSession)
     .map((term) => toTerminalConversation(term, snapshot.workspaces))
   return [
-    ...snapshot.conversations.map((conversation) => toConversation(conversation, snapshot.workspaces)),
+    ...snapshot.conversations
+      .flatMap((raw) => {
+        const parsed = ConversationSummarySchema.safeParse(raw)
+        return parsed.success ? [parsed.data] : []
+      })
+      .map((conversation) => toConversation(conversation, snapshot.workspaces)),
     ...terminals,
   ]
 }
 
 type TerminalSession = z.infer<typeof TerminalSessionSchema>
+
+// A session that fails to read for one refresh must not vanish from the sidebar and come back
+// 1.5 seconds later, so it keeps its last good state, and the reason is logged once.
+const lastGoodTerm = new Map<number, TerminalSession>()
+const unreadable = new Set<number>()
+
+function readTerminal(raw: unknown): TerminalSession | null {
+  const parsed = TerminalSessionSchema.safeParse(raw)
+  const id = typeof raw === 'object' && raw !== null && 'id' in raw && typeof raw.id === 'number' ? raw.id : null
+  if (parsed.success) {
+    lastGoodTerm.set(parsed.data.id, parsed.data)
+    unreadable.delete(parsed.data.id)
+    return parsed.data
+  }
+  if (id === null) return null
+  if (!unreadable.has(id)) {
+    unreadable.add(id)
+    console.warn(`Session t${String(id)} could not be read; showing its last good state`, parsed.error.issues)
+  }
+  return lastGoodTerm.get(id) ?? null
+}
 
 // Terminal sessions are ids like "t12": the pane's number, kept apart from a chat's number.
 export function terminalSessionId(term: number): string {

@@ -29,7 +29,8 @@ import { ColumnHandle } from './components/ColumnHandle'
 import { CommandPalette } from './components/CommandPalette'
 import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPanel'
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
-import { runsAgent } from './components/useArmed'
+import { runsProgram } from './components/useArmed'
+import { rememberSessions, withEnded } from './model/ended'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { StatusBar } from './components/StatusBar'
@@ -45,7 +46,7 @@ import { formatDroppedPaths } from '@/features/terminal/droppedPaths'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
 import { sendNativeNotice } from '@/features/notifications/native'
-import { showSessionNotice } from '@/features/notifications/notify'
+import { dismissSessionNotice, showSessionNotice } from '@/features/notifications/notify'
 import { sessionNoticeFor } from '@/features/notifications/noticeForSession'
 import { noticesFor } from '@/features/notifications/transitions'
 import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
@@ -69,6 +70,7 @@ import {
   openInNewTab,
   paneColumns,
   reconcileLayout,
+  removeSessions,
   selectTab,
   setColumnWidths,
   toggleBroadcast,
@@ -110,7 +112,11 @@ const TEST_NOTICE_MS = 6000
 const SECOND_MS = 1000
 const SLOW_TICK_MS = 30_000
 const DIFF_STAT_REFRESH_MS = 8000
-const NOTIFICATION_CLICK_WINDOW_MS = 60_000
+const DIFF_STAT_IDLE_MS = 30_000
+/** A theme previews once the pointer rests on it, not as it passes over every row (each one repaints every terminal). */
+const THEME_PREVIEW_DELAY_MS = 140
+/** A notification's click brings the window forward; returning later than this is not that click. */
+const NOTIFICATION_CLICK_WINDOW_MS = 15_000
 const MAX_RETRY_EXPONENT = 3
 const BACKOFF_BASE = 2
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
@@ -184,6 +190,15 @@ export function DesktopApp() {
   const [restarting, setRestarting] = useState(false)
   // A theme being hovered in Settings shows on the whole window until the pointer leaves or one is picked.
   const [previewTheme, setPreviewTheme] = useState<string | null>(null)
+  const previewTimer = useRef<number | undefined>(undefined)
+  const previewThemeSoon = useCallback((name: string | null) => {
+    window.clearTimeout(previewTimer.current)
+    if (name === null) {
+      setPreviewTheme(null)
+      return
+    }
+    previewTimer.current = window.setTimeout(() => { setPreviewTheme(name) }, THEME_PREVIEW_DELAY_MS)
+  }, [])
   const [welcomeOpen, setWelcomeOpen] = useState(isFirstRun)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [preferences, setPreferences] = useState(readSettingsPreferences)
@@ -207,6 +222,7 @@ export function DesktopApp() {
   const [worktreeFrom, setWorktreeFrom] = useState<SessionView | null>(null)
   const [inspectView, setInspectView] = useState<InspectView>('changes')
   const [lookAt, setLookAt] = useState<LookAt | null>(null)
+  const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
   // Inbox entries the user cleared, by the status they had; an entry comes back if the session changes state.
   const [cleared, setCleared] = useState<ReadonlyMap<string, SessionView['status']>>(new Map())
   // After a restart into an update, the first thing said is what happened to the sessions.
@@ -256,6 +272,23 @@ export function DesktopApp() {
   }, [sessionsQuery.data, online, home])
   const sessions = everySession
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
+  // A session the daemon stops listing keeps its pane, shown as ended, so a refresh that misses one
+  // never closes a tab or moves your focus. A pane goes only when you close it.
+  const [remembered, setRemembered] = useState<ReadonlyMap<string, SessionView>>(() => new Map())
+  const [seenSessions, setSeenSessions] = useState(sessions)
+  if (seenSessions !== sessions) {
+    setSeenSessions(sessions)
+    setRemembered((before) => rememberSessions(before, sessions, layout))
+  }
+  const paneSessions = useMemo(() => withEnded(sessionMap, remembered), [sessionMap, remembered])
+  // A cleared Inbox entry stays hidden only while its session keeps the state it had when cleared;
+  // once it moves on, coming back to that state is news again.
+  const [seenForClear, setSeenForClear] = useState(sessions)
+  if (seenForClear !== sessions) {
+    setSeenForClear(sessions)
+    const stillCleared = new Map([...cleared].filter(([id, status]) => sessionMap.get(id)?.status === status))
+    if (stillCleared.size !== cleared.size) setCleared(stillCleared)
+  }
   const focusedId = focusedSessionId(layout)
   // A click anywhere outside the panes takes the border off the focused pane; a click in a pane, or focus moving to another pane, puts it back.
   const focusedPaneId = activeTab(layout)?.focus ?? null
@@ -285,7 +318,10 @@ export function DesktopApp() {
     handle.paste(formatDroppedPaths(paths, /Windows/i.test(navigator.userAgent)))
     handle.focus()
   })
-  const visibleKey = [...visibleSessionIds(layout)].sort().join(' ')
+  // With the window in the background nothing is being looked at, so a session that finishes then keeps its unread dot.
+  const visibleKey = windowFocused ? [...visibleSessionIds(layout)].sort().join(' ') : ''
+  // Every session some tab shows, so the hover card can say a session is open even with a single tab.
+  const openIds = useMemo(() => new Set(layout.tabs.flatMap((candidate) => candidate.panes.map((pane) => pane.sessionId))), [layout.tabs])
   // For a session whose tab has other panes, all of that tab's sessions (the hover card lists them).
   const tabPanes = useMemo(() => {
     const panes = new Map<string, readonly SessionView[]>()
@@ -315,9 +351,9 @@ export function DesktopApp() {
   // A tab belongs to the project of the session in its focused pane, so it moves when that shell cds into another repo.
   const tabGroup = useCallback((candidate: Tab): string => {
     const sessionId = candidate.panes.find((pane) => pane.id === candidate.focus)?.sessionId ?? candidate.panes[0]?.sessionId
-    const session = sessionId ? sessionMap.get(sessionId) : undefined
+    const session = sessionId ? paneSessions.get(sessionId) : undefined
     return session ? groupKeyOf(session, preferences.groupBy) : ''
-  }, [sessionMap, preferences.groupBy])
+  }, [paneSessions, preferences.groupBy])
 
   const reducedMotion = preferences.reduceMotion || systemReducedMotion
   const theme = findTheme(previewTheme ?? activeThemeName(preferences, systemDark))
@@ -373,9 +409,10 @@ export function DesktopApp() {
   const refetchSessions = sessionsQuery.refetch
   const retryAt = sessionsQuery.isError ? sessionsQuery.errorUpdatedAt + retryDelay : null
 
-  // Each fresh list: drop panes whose session ended, and open something on the first load when
-  // there is nothing to restore. `sessions` also changes when the home folder arrives; only a new
-  // list counts.
+  // The first list after launch: drop panes of sessions that are gone since last time, and open
+  // something when there is nothing to restore. Later lists never remove a pane: one that stopped
+  // being listed stays, as an ended pane. `sessions` also changes when the home folder arrives; only a
+  // new list counts.
   const reconciledAt = useRef(0)
   useEffect(() => {
     if (!sessionsQuery.isSuccess || reconciledAt.current === sessionsQuery.dataUpdatedAt) return
@@ -385,10 +422,10 @@ export function DesktopApp() {
     const openFirst = !openedFirst.current
     openedFirst.current = true
     setLayout((current) => {
-      const reconciled = reconcileLayout(current, live)
+      const reconciled = openFirst ? reconcileLayout(current, live, tabGroup) : current
       return openFirst && reconciled.tabs.length === 0 && first ? openInNewTab(reconciled, first.id, makeId) : reconciled
     })
-  }, [sessions, sessionsQuery.dataUpdatedAt, sessionsQuery.isSuccess])
+  }, [sessions, sessionsQuery.dataUpdatedAt, sessionsQuery.isSuccess, tabGroup])
 
   useEffect(() => {
     const { tracks: next, moves } = trackSessions(tracksRef.current, sessions, new Set(visibleKey.split(' ').filter(Boolean)), Date.now())
@@ -472,24 +509,33 @@ export function DesktopApp() {
     if (!tab || tab.panes.length >= MAX_PANES) return
     const source = tab.panes.find((pane) => pane.id === (paneId ?? tab.focus))
     const cwd = source ? sessionMap.get(source.sessionId)?.cwd : undefined
-    runStart(async () => cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { setLayout((current) => splitPane(current, source?.id ?? null, direction, id, makeId)) })
+    runStart(async () => cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
+      // If the tab changed or filled up while the shell started, the shell still gets a tab: it must not be left with no pane.
+      setLayout((current) => {
+        const next = splitPane(current, source?.id ?? null, direction, id, makeId)
+        return next === current ? openInNewTab(current, id, makeId) : next
+      })
+    })
   }, [layout, sessionMap, runStart, preferences.startFolder, home])
 
   // Closing a pane, tab or session ends it; there is no way back, so a program that is running asks for a second click first.
-  const [armedCloseAt, setArmedCloseAt] = useState(0)
+  const [armedClose, setArmedClose] = useState<{ key: string; at: number } | null>(null)
   const endSessions = useCallback((ids: string[], what: string) => {
-    const ended = sessions.filter((session) => ids.includes(session.id))
-    if (ended.length === 0) return
-    void Promise.all(ended.map((session) => archiveConversationOnDaemon({ id: session.id }, true)))
+    const gone = new Set(ids)
+    const running = sessions.filter((session) => gone.has(session.id))
+    // Panes of sessions that already ended have nothing to stop: they just close.
+    if (running.length === 0) {
+      setLayout((current) => removeSessions(current, gone, tabGroup))
+      return
+    }
+    void Promise.all(running.map((session) => archiveConversationOnDaemon({ id: session.id }, true)))
       .then(async () => {
-        const gone = new Set(ended.map((session) => session.id))
-        const live = new Set(sessions.map((session) => session.id).filter((id) => !gone.has(id)))
-        setLayout((current) => reconcileLayout(current, live))
-        flash(`${what} closed · ${ended.length === 1 ? 'session' : `${String(ended.length)} sessions`} ended`)
+        setLayout((current) => removeSessions(current, gone, tabGroup))
+        flash(`${what} closed · ${running.length === 1 ? 'session' : `${String(running.length)} sessions`} ended`)
         await queryClient.invalidateQueries({ queryKey: ['conversations'] })
       })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not end the session')) })
-  }, [sessions, flash, queryClient])
+  }, [sessions, flash, queryClient, tabGroup])
 
   const sessionsOf = useCallback((tabs: readonly Tab[]) => [...new Set(tabs.flatMap((tab) => tab.panes.map((pane) => pane.sessionId)))], [])
 
@@ -509,6 +555,13 @@ export function DesktopApp() {
     const others = layout.tabs.filter((tab) => tab.id !== tabId && tabGroup(tab) === tabGroup(keep))
     endSessions(sessionsOf(others), others.length === 1 ? 'Tab' : `${String(others.length)} tabs`)
   }, [endSessions, layout, sessionsOf, tabGroup])
+
+  const restartPane = useCallback((paneId: string) => {
+    const pane = layout.tabs.flatMap((tab) => tab.panes).find((candidate) => candidate.id === paneId)
+    const old = pane ? paneSessions.get(pane.sessionId) : undefined
+    if (!old) return
+    runStart(() => Promise.resolve(old.cwd), (id) => { setLayout((current) => dropSession(current, paneId, id)) })
+  }, [layout, paneSessions, runStart])
 
   const endSession = useCallback((sessionId: string) => { endSessions([sessionId], 'Session') }, [endSessions])
   const endProject = useCallback((ids: string[], name: string) => { endSessions(ids, name) }, [endSessions])
@@ -553,7 +606,8 @@ export function DesktopApp() {
     if (updater.state.status !== 'ready') return
     markRestarting(updater.state.version)
     setRestarting(true)
-    window.setTimeout(() => { updater.restart() }, RESTART_SCREEN_MS)
+    // If the install fails, the screen must not stay up: it goes, and so does the "kept running" note for the next launch.
+    window.setTimeout(() => { updater.restart(() => { setRestarting(false); takeRestarted() }) }, RESTART_SCREEN_MS)
   }, [updater])
 
   // With the setting on, a new release is fetched as soon as it is found. Installing still waits for a restart.
@@ -629,15 +683,21 @@ export function DesktopApp() {
         const tab = activeTab(layout)
         if (!tab) return
         const single = tab.panes.length > 1
-        const targets = (single ? tab.panes.filter((pane) => pane.id === tab.focus) : tab.panes).flatMap((pane) => sessionMap.get(pane.sessionId) ?? [])
-        const agent = targets.find((session) => runsAgent(session.process))
-        if (agent && Date.now() - armedCloseAt > CLOSE_ARM_MS) {
-          setArmedCloseAt(Date.now())
-          flash(`Press ${mac ? '⌘' : 'Ctrl+'}W again to close and stop ${agent.process}`)
+        const targets = single ? tab.panes.filter((pane) => pane.id === tab.focus) : tab.panes
+        const shown = targets.flatMap((pane) => paneSessions.get(pane.sessionId) ?? [])
+        const agent = shown.find((session) => runsProgram(session))
+        // Ctrl+W is also a shell's delete-a-word, and closing ends the session, so the key asks twice,
+        // for this pane or tab only. Panes that already ended have nothing to lose.
+        const key = targets.map((pane) => pane.id).join(' ')
+        const confirmed = armedClose !== null && armedClose.key === key && Date.now() - armedClose.at <= CLOSE_ARM_MS
+        if (shown.some((session) => !session.ended) && !confirmed) {
+          setArmedClose({ key, at: Date.now() })
+          const chord = mac ? '⌘W' : 'Ctrl+W'
+          flash(agent ? `Press ${chord} again to close and stop ${agent.process}` : `Press ${chord} again to close this ${single ? 'pane' : 'tab'}`)
           return
         }
-        setArmedCloseAt(0)
-        endSessions(targets.map((session) => session.id), single ? 'Pane' : 'Tab')
+        setArmedClose(null)
+        endSessions(targets.map((pane) => pane.sessionId), single ? 'Pane' : 'Tab')
         return
       }
       case 'next-tab':
@@ -687,7 +747,7 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, sessionMap, armedCloseAt])
+  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, paneSessions, armedClose])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
@@ -710,20 +770,28 @@ export function DesktopApp() {
       }
       if (event.key === 'Escape') {
         // Innermost first: the palette or inbox, then focus mode, then Settings.
+        // What Esc closes is not also sent on to the terminal, where it would interrupt an agent.
+        const consume = () => { event.preventDefault(); event.stopPropagation() }
         if (state.overlayOpen) {
+          consume()
           setPaletteOpen(false)
           setInboxOpen(false)
           return
         }
         if (state.settingsOpen) {
+          consume()
           setSettingsSection(null)
           return
         }
         if (state.drawerShown) {
+          consume()
           setDrawerOpen(false)
           return
         }
-        if (state.focusMode) setFocusMode(false)
+        if (state.focusMode) {
+          consume()
+          setFocusMode(false)
+        }
         return
       }
       if (state.overlayOpen) {
@@ -753,7 +821,6 @@ export function DesktopApp() {
     return map
   }, [groups])
 
-  const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
   useEffect(() => {
     const gained = () => { setWindowFocused(true) }
     const lost = () => { setWindowFocused(false) }
@@ -783,7 +850,8 @@ export function DesktopApp() {
       return { additions: diff.additions, deletions: diff.deletions }
     },
     enabled: inspectTerm !== null,
-    refetchInterval: DIFF_STAT_REFRESH_MS,
+    // The counts come from a full diff, so they are read slowly unless Inspect is open.
+    refetchInterval: inspectOpen ? DIFF_STAT_REFRESH_MS : DIFF_STAT_IDLE_MS,
     retry: false,
   })
 
@@ -815,6 +883,11 @@ export function DesktopApp() {
   const answerSession = useCallback((sessionId: string, answer: Answer) => {
     const target = sessionMap.get(sessionId)
     if (!target) return
+    // A card can outlast the question. Typing into a session that is not asking would land in its shell.
+    if (target.status !== 'needs') {
+      flash(`${displayName(target)} is not asking any more`)
+      return
+    }
     // The answer is typed into the session's own prompt; the GUI never decides for it.
     void sendTo(target, answer)
       .then(() => { flash(`Sent “${answer}” to ${displayName(target)}`) })
@@ -824,12 +897,15 @@ export function DesktopApp() {
   // A session that just started needing you, finished or failed: tell the system, if you are looking elsewhere.
   const { notifyNeedsYou, notifyFinished, notifyError } = preferences
   useEffect(() => {
+    const previousStatuses = lastStatuses.current
     const notices = online
       ? noticesFor(lastStatuses.current, sessions, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
       : []
     lastStatuses.current = new Map(sessions.map((item) => [item.id, item.status]))
     // In the window but on another pane: a toast you can click. Away from the window: the system's.
     const inWindow = document.hasFocus()
+    // A card that said "Needs you" goes when the session stops needing you.
+    for (const item of sessions) if (item.status !== 'needs' && previousStatuses?.get(item.id) === 'needs') dismissSessionNotice(item.id)
     for (const notice of notices) {
       if (inWindow) {
         const target = sessionMap.get(notice.sessionId)
@@ -971,6 +1047,7 @@ export function DesktopApp() {
       width={sidebarWidth}
       tabOf={tabOf}
       tabPanes={tabPanes}
+      openIds={openIds}
       paneOf={paneOf}
       trayStyle={preferences.trayStyle}
       leadMode={preferences.leadMode}
@@ -1020,7 +1097,7 @@ export function DesktopApp() {
                 {!focusMode && <TabBar
                   tabs={visibleTabs}
                   activeTabId={layout.activeTabId}
-                  sessions={sessionMap}
+                  sessions={paneSessions}
                   primary={labels.primary}
                   canStart={canStart}
                   portalContainer={root}
@@ -1057,7 +1134,7 @@ export function DesktopApp() {
                 {tab ? (
                   <div className="mx-panes">
                     {paneColumns(tab, narrow).map((column, columnIndex, columns) => (
-                      <Fragment key={column.map((pane) => pane.id).join(' ')}>
+                      <Fragment key={column[0]?.id ?? columnIndex}>
                         {columnIndex > 0 && tab.max === null && !narrow && (
                           <ColumnHandle
                             index={columnIndex - 1}
@@ -1067,7 +1144,7 @@ export function DesktopApp() {
                         )}
                       <div className="mx-pane-column" style={tab.widths && tab.max === null && !narrow && tab.widths.length === columns.length ? { flexGrow: tab.widths[columnIndex] } : undefined}>
                         {column.map((pane) => {
-                          const session = sessionMap.get(pane.sessionId)
+                          const session = paneSessions.get(pane.sessionId)
                           if (!session) return null
                           const focused = pane.id === tab.focus
                           return (
@@ -1097,6 +1174,7 @@ export function DesktopApp() {
                                   look={look}
                                   label={`Shell in ${session.cwdLabel}`}
                                   inputDisabled={!online}
+                                  ended={session.ended}
                                   focused={focused && !modalOpen}
                                   onInput={(data) => { mirrorInput(session.id, data) }}
                                   onOpenPath={(path, line) => { openPath(session, path, line) }}
@@ -1113,6 +1191,7 @@ export function DesktopApp() {
                               }}
                               onToggleMaximize={(paneId) => { setLayout((current) => toggleMaximize(current, paneId)) }}
                               onClose={closePaneById}
+                              onRestart={restartPane}
                               onEndSession={endSession}
                               onRenameSession={setRenameId}
                               onDragStart={setDragId}
@@ -1171,6 +1250,7 @@ export function DesktopApp() {
             </div>
             {inspectOpen && !focusMode && inspectTerm !== null && focusedSession && (
               <InspectPanel
+                key={inspectTerm}
                 term={inspectTerm}
                 title={`${displayName(focusedSession)} · ${focusedSession.cwdLabel}`}
                 view={inspectView}
@@ -1236,7 +1316,7 @@ export function DesktopApp() {
                 onChange={setPreferences}
                 systemReducedMotion={systemReducedMotion}
                 systemDark={systemDark}
-                onPreviewTheme={setPreviewTheme}
+                onPreviewTheme={previewThemeSoon}
                 onTestNotice={showTestNotice}
                 updates={{ summary: updaterSummary(updater.state), status: updater.state.status, onCheck: updater.check, onDownload: updater.download, onRestart: restartNow }}
                 onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}

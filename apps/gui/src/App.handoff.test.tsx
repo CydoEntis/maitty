@@ -401,6 +401,46 @@ describe('desktop terminal multiplexer', () => {
     expect(screen.queryByRole('menuitem', { name: 'Archive' })).not.toBeInTheDocument()
   })
 
+  it('shows a session’s own name in its small sidebar row, not its folder', async () => {
+    const wide = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
+    try {
+      daemon.loadConversations.mockResolvedValue([
+        term(2, `${HOME}/a`),
+        term(3, `${HOME}/a`, { title: 'Growth Tests', named: true }),
+      ])
+      renderDesktopApp()
+      const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
+      const tray = await within(sidebar).findByRole('group', { name: /^Other sessions in/ })
+
+      expect(tray).toHaveTextContent('Growth Tests')
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: wide })
+    }
+  })
+
+  it('moves through a session menu with the arrow keys and gives focus back when it closes', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    const row = await screen.findByRole('button', { name: '~/a, shell, idle' })
+    row.focus()
+    fireEvent.contextMenu(row)
+    const rename = await screen.findByRole('menuitem', { name: 'Rename' })
+    expect(rename).toHaveFocus()
+
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('menuitem', { name: /^Pin to top/ })).toHaveFocus()
+    await user.keyboard('{ArrowUp}{ArrowUp}')
+    expect(screen.getByRole('menuitem', { name: /^Close session/ })).toHaveFocus()
+    await user.keyboard('{Home}')
+    expect(rename).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => { expect(screen.queryByRole('menuitem', { name: 'Rename' })).not.toBeInTheDocument() })
+    expect(row).toHaveFocus()
+  })
+
   it('opens the same menu from a tray item', async () => {
     const wide = window.innerWidth
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
@@ -488,7 +528,7 @@ describe('desktop terminal multiplexer', () => {
     })
     expect(card).toHaveTextContent('You asked: bel0 Background task finished')
     expect(card?.textContent).not.toContain('<')
-    expect(card).toHaveTextContent('Not open in a tab')
+    expect(card).toHaveTextContent('Open in a tab')
   })
 
   it('says what a docked project is in a popover beside its header, with its sessions', async () => {
@@ -724,6 +764,9 @@ describe('desktop terminal multiplexer', () => {
     expect(screen.getByRole('region', { name: 'Terminal 1: ~/code/maitty/apps, focused' })).toBeInTheDocument()
 
     await user.keyboard('{Control>}w{/Control}')
+    expect(await screen.findByText('Press Ctrl+W again to close this pane')).toBeInTheDocument()
+    expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
+    await user.keyboard('{Control>}w{/Control}')
     await waitFor(() => { expect(screen.getAllByRole('region', { name: /^Terminal \d/ })).toHaveLength(1) })
     expect(await screen.findByText('Pane closed · session ended')).toBeInTheDocument()
     expect(daemon.archiveConversationOnDaemon).toHaveBeenCalledTimes(1)
@@ -763,6 +806,58 @@ describe('desktop terminal multiplexer', () => {
     expect(await screen.findByText('Tab closed · session ended')).toBeInTheDocument()
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Undo/ })).not.toBeInTheDocument()
+  })
+
+  it('asks for Ctrl+W again for the pane you are in, not for the one you pressed it on before', async () => {
+    const user = userEvent.setup()
+    const claude = inRepo(2, `${HOME}/code/maitty`, `${HOME}/code/maitty/apps`, { agent: 'claude' })
+    daemon.loadConversations.mockResolvedValue([claude])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: /^Terminal 1:/ })
+    daemon.loadConversations.mockResolvedValue([claude, inRepo(7, `${HOME}/code/maitty`, `${HOME}/code/maitty/apps`, { agent: 'codex' })])
+    await user.keyboard('{Control>}d{/Control}')
+    await screen.findByRole('region', { name: /^Terminal 2:.*focused/ })
+
+    await user.keyboard('{Control>}w{/Control}')
+    expect(await screen.findByText(/Press Ctrl\+W again to close and stop codex/)).toBeInTheDocument()
+    await user.keyboard('{Control>}[[{/Control}')
+    await user.keyboard('{Control>}w{/Control}')
+    expect(await screen.findByText(/Press Ctrl\+W again to close and stop claude/)).toBeInTheDocument()
+
+    expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
+  })
+
+  it('does not pass Esc on to the terminal when it leaves focus mode', async () => {
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    fireEvent.keyDown(document.body, { key: '.', ctrlKey: true })
+    await waitFor(() => { expect(screen.queryByLabelText('Status')).not.toBeInTheDocument() })
+
+    const passedOn = fireEvent.keyDown(document.body, { key: 'Escape', cancelable: true })
+
+    expect(passedOn).toBe(false)
+    await waitFor(() => { expect(screen.getByLabelText('Status')).toBeInTheDocument() })
+  })
+
+  it('asks before Close other tabs ends a tab that runs an agent', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([
+      inRepo(2, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { agent: 'claude' }),
+      inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty/apps`),
+    ])
+    renderDesktopApp()
+    const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
+    await user.click(await within(sidebar).findByRole('button', { name: /apps, shell/ }))
+    await waitFor(() => { expect(screen.getAllByRole('tab')).toHaveLength(2) })
+    const shellTab = screen.getAllByRole('tab').find((tab) => tab.getAttribute('aria-selected') === 'true') as HTMLElement
+
+    fireEvent.contextMenu(shellTab)
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^Close other tabs/ }))
+
+    expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Programs are running/ }))
+    await waitFor(() => { expect(daemon.archiveConversationOnDaemon).toHaveBeenCalledWith({ id: 't2' }, true) })
   })
 
   it('takes two clicks to close a tab that runs an agent', async () => {
@@ -814,6 +909,51 @@ describe('desktop terminal multiplexer', () => {
     expect(daemon.archiveConversationOnDaemon).toHaveBeenCalledWith({ id: 't2' }, true)
     expect(daemon.archiveConversationOnDaemon).toHaveBeenCalledWith({ id: 't3' }, true)
     expect(await screen.findByText('a closed · 2 sessions ended')).toBeInTheDocument()
+  })
+
+  it('keeps a pane when its session stops being listed, as an ended pane with its tab and name', async () => {
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    const { client } = renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+
+    daemon.loadConversations.mockResolvedValue([])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+
+    expect(screen.getByRole('tab', { selected: true })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /^Terminal 1: ~\/a/ })).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Session ended' })).toHaveTextContent('Restart shell')
+    expect(screen.queryByRole('button', { name: /^Status:/ })).not.toBeInTheDocument()
+  })
+
+  it('closes an ended pane without stopping anything', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    const { client } = renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    daemon.loadConversations.mockResolvedValue([])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+
+    await user.click(within(screen.getByRole('status', { name: 'Session ended' })).getByRole('button', { name: 'Close pane' }))
+
+    await waitFor(() => { expect(screen.queryByRole('tab')).not.toBeInTheDocument() })
+    expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
+  })
+
+  it('restarts an ended pane with a new shell in the same folder, in the same place', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    const { client } = renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+    daemon.loadConversations.mockResolvedValue([])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+    daemon.loadConversations.mockResolvedValue([term(9, `${HOME}/a`)])
+
+    await user.click(within(screen.getByRole('status', { name: 'Session ended' })).getByRole('button', { name: 'Restart shell' }))
+
+    await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(`${HOME}/a`) })
+    await waitFor(() => { expect(screen.queryByRole('status', { name: 'Session ended' })).not.toBeInTheDocument() })
+    expect(screen.getByRole('region', { name: /^Terminal 1: ~\/a/ })).toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
   })
 
   it('shows the disconnected banner, marks every status Unknown and holds input', async () => {
@@ -1239,6 +1379,23 @@ describe('desktop overlays and tab tools', () => {
     expect(within(inbox).getAllByRole('article')).toHaveLength(1)
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: 'Inbox' })).not.toBeInTheDocument()
+  })
+
+  it('shows a session in the inbox again when it comes back to a state you cleared, after it moved on', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([at(2, { status: 'done' })])
+    const { client } = renderDesktopApp()
+    await user.click(await screen.findByRole('button', { name: /^Inbox, 1/ }))
+    const inbox = await screen.findByRole('dialog', { name: 'Inbox' })
+    await user.click(within(within(inbox).getByRole('article')).getByRole('button', { name: 'Clear' }))
+    expect(within(inbox).queryByRole('article')).not.toBeInTheDocument()
+
+    daemon.loadConversations.mockResolvedValue([at(2, { status: 'working' })])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+    daemon.loadConversations.mockResolvedValue([at(2, { status: 'done' })])
+    await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+
+    expect(within(screen.getByRole('dialog', { name: 'Inbox' })).getAllByRole('article')).toHaveLength(1)
   })
 
   it('marks a finished session seen once you are in its pane, and leaves a needs-you one alone', async () => {

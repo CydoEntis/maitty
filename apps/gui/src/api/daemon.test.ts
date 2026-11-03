@@ -415,6 +415,35 @@ describe('terminal sessions shown beside chats', () => {
     ...overrides,
   })
 
+  it('keeps a session in the list with its last good state when one refresh cannot read it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const snapshot = (terms: Record<string, unknown>) => ({ conversations: [], workspaces: [], terms })
+    vi.mocked(invoke).mockResolvedValueOnce(snapshot({ '77': term({ id: 77, label: 'Server goodness' }) }))
+    expect((await loadConversations()).map((item) => item.title)).toEqual(['Server goodness'])
+
+    vi.mocked(invoke).mockResolvedValueOnce(snapshot({ '77': term({ id: 77, cwd: null }) }))
+    expect((await loadConversations()).map((item) => item.title)).toEqual(['Server goodness'])
+    expect(warn).toHaveBeenCalledTimes(1)
+
+    vi.mocked(invoke).mockResolvedValueOnce(snapshot({}))
+    expect(await loadConversations()).toEqual([])
+    vi.mocked(invoke).mockResolvedValueOnce(snapshot({ '77': term({ id: 77, cwd: null }) }))
+    expect(await loadConversations()).toEqual([])
+    warn.mockRestore()
+  })
+
+  it('still lists the terminals when one chat record cannot be read', async () => {
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [{ id: 'not a conversation' }],
+      workspaces: [],
+      terms: { '5': term({ label: 'Fix login' }) },
+    })
+
+    const listed = await loadConversations()
+
+    expect(listed.map((item) => item.title)).toEqual(['Fix login'])
+  })
+
   it('lists shells and agents in terminals of their own, and leaves out popups, other machines and a chat terminal', async () => {
     vi.mocked(invoke).mockResolvedValue({
       conversations: [],

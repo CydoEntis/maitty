@@ -7,7 +7,7 @@ import { InlineName } from './InlineName'
 import { AppIcon, Icon, PauseBars, Spinner } from './glyphs'
 import { STATUS_LABEL } from '../model/statusText'
 import { useEffectClass } from './motion'
-import { runsAgent, useArmed } from './useArmed'
+import { runsProgram, useArmed } from './useArmed'
 
 type TabBarProps = {
   /** The tabs of the project that is showing; other projects' tabs stay hidden until you go there. */
@@ -125,7 +125,7 @@ export function TabBar(props: TabBarProps) {
           {edges.left && <button type="button" className="mx-icon-button mx-tab-scroll is-left" aria-label="Scroll tabs left" title="Scroll tabs left" onClick={() => { scroll(-1) }}><Icon name="chevron" /></button>}
           <div ref={listRef} role="tablist" aria-label="Tabs" className={`mx-tablist mx-no-scrollbar${edges.left ? ' has-left' : ''}${edges.right ? ' has-right' : ''}`} onKeyDown={onKeyDown} onScroll={measure}>
             {tabs.map((tab) => (
-              <TabButton key={tab.id} tab={tab} active={tab.id === activeTabId} sessions={props.sessions} primary={props.primary} canStart={props.canStart} otherTabs={props.tabs.length - 1} portalContainer={props.portalContainer} onSelect={props.onSelect} onClose={props.onClose} onCloseOthers={props.onCloseOthers} onNewTab={props.onNewTab} onRenameSession={props.onRenameSession} />
+              <TabButton key={tab.id} tab={tab} active={tab.id === activeTabId} sessions={props.sessions} primary={props.primary} canStart={props.canStart} otherTabs={props.tabs.length - 1} othersRun={props.tabs.some((other) => other.id !== tab.id && other.panes.some((pane) => { const found = props.sessions.get(pane.sessionId); return found !== undefined && runsProgram(found) }))} portalContainer={props.portalContainer} onSelect={props.onSelect} onClose={props.onClose} onCloseOthers={props.onCloseOthers} onNewTab={props.onNewTab} onRenameSession={props.onRenameSession} />
             ))}
           </div>
           {edges.right && <button type="button" className="mx-icon-button mx-tab-scroll" aria-label="Scroll tabs right" title="Scroll tabs right" onClick={() => { scroll(1) }}><Icon name="chevron" /></button>}
@@ -228,9 +228,9 @@ function TabPopover({ sessions, anchor }: { sessions: readonly SessionView[]; an
   )
 }
 
-type TabButtonProps = { tab: Tab; active: boolean; sessions: ReadonlyMap<string, SessionView>; primary: string; canStart: boolean; otherTabs: number; portalContainer: HTMLElement | null; onSelect: (id: string) => void; onClose: (id: string) => void; onCloseOthers: (id: string) => void; onNewTab: () => void; onRenameSession: (sessionId: string, name: string) => void }
+type TabButtonProps = { tab: Tab; active: boolean; sessions: ReadonlyMap<string, SessionView>; primary: string; canStart: boolean; otherTabs: number; othersRun: boolean; portalContainer: HTMLElement | null; onSelect: (id: string) => void; onClose: (id: string) => void; onCloseOthers: (id: string) => void; onNewTab: () => void; onRenameSession: (sessionId: string, name: string) => void }
 
-function TabButton({ tab, active, sessions, primary, canStart, otherTabs, portalContainer, onSelect, onClose, onCloseOthers, onNewTab, onRenameSession }: TabButtonProps) {
+function TabButton({ tab, active, sessions, primary, canStart, otherTabs, othersRun, portalContainer, onSelect, onClose, onCloseOthers, onNewTab, onRenameSession }: TabButtonProps) {
   const focused = sessions.get(tab.panes.find((pane) => pane.id === tab.focus)?.sessionId ?? tab.panes[0]?.sessionId ?? '')
   const shown = tab.panes.flatMap((pane) => {
     const session = sessions.get(pane.sessionId)
@@ -245,8 +245,9 @@ function TabButton({ tab, active, sessions, primary, canStart, otherTabs, portal
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
   const [renaming, setRenaming] = useState(false)
   const handFocusToField = useRef(false)
-  const agent = shown.find((session) => runsAgent(session.process))
+  const agent = shown.find((session) => runsProgram(session))
   const closing = useArmed(agent !== undefined)
+  const closingOthers = useArmed(othersRun)
   const closeLabel = closing.armed ? `Click again to close and stop ${agent?.process ?? 'it'}` : multi ? `Close tab · ends its ${String(tab.panes.length)} sessions` : 'Close tab · ends its session'
   return (
     <ContextMenuPrimitive.Root>
@@ -303,7 +304,7 @@ function TabButton({ tab, active, sessions, primary, canStart, otherTabs, portal
           <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!canStart} onSelect={onNewTab}>New tab<span className="mx-menu-hint">{primary}T</span></ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
           <ContextMenuPrimitive.Item className={`mx-menu-item is-danger${closing.armed ? ' is-armed' : ''}`} onSelect={(event) => { if (closing.press()) onClose(tab.id); else event.preventDefault() }}>{closing.armed ? `Close and stop ${agent?.process ?? 'it'}? Click again` : 'Close tab'}<span className="mx-menu-hint">{closing.armed ? '' : multi ? `ends ${String(tab.panes.length)} sessions` : 'ends its session'}</span></ContextMenuPrimitive.Item>
-          <ContextMenuPrimitive.Item className="mx-menu-item is-danger" disabled={otherTabs === 0} onSelect={() => { onCloseOthers(tab.id) }}>Close other tabs<span className="mx-menu-hint">{otherTabs === 1 ? 'ends 1 tab' : `ends ${String(otherTabs)} tabs`}</span></ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item className={`mx-menu-item is-danger${closingOthers.armed ? ' is-armed' : ''}`} disabled={otherTabs === 0} onSelect={(event) => { if (closingOthers.press()) onCloseOthers(tab.id); else event.preventDefault() }}>{closingOthers.armed ? 'Programs are running. Click again' : 'Close other tabs'}<span className="mx-menu-hint">{closingOthers.armed ? '' : otherTabs === 1 ? 'ends 1 tab' : `ends ${String(otherTabs)} tabs`}</span></ContextMenuPrimitive.Item>
         </ContextMenuPrimitive.Content>
       </ContextMenuPrimitive.Portal>
     </ContextMenuPrimitive.Root>

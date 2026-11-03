@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { readSettingsPreferences, writeSettingsPreferences, type SettingsPreferences } from './preferences'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { hasSavedSettings, readSettingsPreferences, writeSettingsPreferences, type SettingsPreferences } from './preferences'
 
 const DEFAULTS: SettingsPreferences = {
   accent: 'teal',
@@ -44,6 +44,16 @@ describe('settings preferences', () => {
     localStorage.setItem('maitty.gui.settings.v1', '{')
 
     expect(readSettingsPreferences()).toEqual(DEFAULTS)
+  })
+
+  it('starts with the defaults when browser storage is blocked', () => {
+    const blocked = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied') })
+    try {
+      expect(readSettingsPreferences()).toEqual(DEFAULTS)
+      expect(hasSavedSettings()).toBe(false)
+    } finally {
+      blocked.mockRestore()
+    }
   })
 
   it('reads preferences saved before the terminal settings existed', () => {
