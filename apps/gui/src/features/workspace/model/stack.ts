@@ -15,7 +15,7 @@ export function byPriority(activity: Activity) {
 /** Pinned sessions first, then most urgent first. */
 function pinnedFirst(activity: Activity) {
   const urgent = byPriority(activity)
-  return (a: SessionView, b: SessionView): number => Number(b.pinned === true) - Number(a.pinned === true) || urgent(a, b)
+  return (a: SessionView, b: SessionView): number => Number(b.pinned) - Number(a.pinned) || urgent(a, b)
 }
 
 /**
