@@ -174,7 +174,10 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Floating cards on an ambient ground.** The window is `--bg` under two soft radial glows (an
   accent one top left, a violet one bottom right). The sidebar, the tab tray, each pane and
   Settings are cards: a faint top highlight over `--pane`, a `--pane-line` hairline, radius 14
-  (Settings 16), a soft drop shadow and an 18px backdrop blur. 8px outer margin, 12px between panes.
+  (Settings 16) and a soft drop shadow. 8px outer margin, 12px between panes. Only small popups and dialogs (menus,
+  popovers, the palette and Settings cards, notification cards) blur what is behind them (18px). The sidebar, panes,
+  tab tray and the big panels (Inbox, Inspect, Find) do not: only the soft ground is behind them, so a blur there
+  looks the same and costs a repaint on every frame.
 - **Window style: Flat, Tiled or Glass** (Settings › Appearance › Window style, `style`, stored with the other
   preferences; the root carries `data-style` and `data-finish`). The finish and the layout only; features and
   status colours do not change. The text above is **Glass**, the default for a fresh install: floating frosted cards, colour icons, glow and the status sweeps.
@@ -197,21 +200,20 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   Panes, Find & jump and Window with each action and its keycaps (several chords stack). It is generated
   from the same table (`hotkeyRows`, each row has a group) that Settings › Hotkeys reads, so the two never
   differ. Other shortcuts are ignored while it is open; ⌘/ and Esc close it.
-- **Session menu: name, pin, archive.** Right-click a sidebar row, a tray item or a rail icon for a 260px
+- **Session menu: name, pin, close.** Right-click a sidebar row, a tray item or a rail icon for a 260px
   menu: a **Name** field (the folder is its placeholder; Enter saves and an empty name clears it), **Pin to
-  top** or **Unpin**, **Open**, **Archive** (it keeps running) and **Close session** (ends it, after the
-  confirmation). A name replaces the folder title everywhere. A pinned session shows a pin on its main row,
-  leads its project when no focused session is in it, and sorts first in the tray. An archived session leaves
-  its project, the tabs, the inbox and the counts and is listed under a collapsible **Archived N** section at
-  the bottom of the sidebar with **Restore**; archiving is a view setting, never a kill. The daemon stores
-  the name, pinned and archived per session (`RenamePane`, `PinPane`, `ArchivePane`; they survive a daemon
-  restart), so the TUI shows the names too and ignores the other two.
-- **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line and
-  clipped. At the left: the daemon dot and "maittyd" (or "reconnecting…"), the focused session's git branch,
-  a spinner and "N working" in the accent colour, and an amber "N needs you" that opens the Inbox. At the
-  right: the focused process and folder in mono, the terminal text size and the shortcuts keycaps, which open
-  the shortcut overlay. The counts are the sidebar's statuses, so they read zero when the daemon is
-  disconnected. Hidden in Focus mode and by Settings › General › Window › Status bar (on by default).
+  top** or **Unpin**, **Open** and **Close session** (ends it). A name replaces the folder title everywhere.
+  A pinned session shows a pin on its main row, leads its project when no focused session is in it, and
+  sorts first in the tray. There is no Archive; a session archived by an older version shows as an ordinary
+  row. The daemon stores the name and pinned per session (`RenamePane`, `PinPane`; they survive a daemon
+  restart), so the TUI shows the names too and ignores the pin.
+- **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
+  The left is empty, except "Reconnecting to maittyd…" in amber with a dashed dot when the daemon is
+  unreachable. The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of
+  the kind in use, and "All themes in Settings…"), the **layout style** (Flat, Tiled or Glass), the terminal
+  **text size** (−, the size which resets it to 14px, +; Ctrl+= and Ctrl+− do the same) and the shortcuts
+  keycaps, which open the shortcut overlay. Hidden in Focus mode and by Settings › General › Window ›
+  Status bar (on by default).
 - **Sidebar.** A `Projects` title with a **+** button (a bordered square that lights up in the accent on hover) and the collapse button at the right; groups by git repo (or by folder, in Settings), sorted by
   name. A shell outside any repo is grouped by its own folder, so there is no catch-all group.
   A group's tile carries a ring when it holds the focused session. Each group is one **main row**
@@ -326,16 +328,29 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Worktrees (⌘⇧N).** The New worktree dialog names a branch and what to start it from (an
   existing branch is checked out instead), then opens a session in the new folder in a new tab. A
   project's right-click menu has a **Worktrees** submenu that opens a shell in any of the repo's
-  worktrees, and a **New worktree…** row. Worktrees group under their parent repo. **Close project** ends
-  every session in it. Anything that ends a session (the row's ×, a pane's or row's **Close session**,
-  **Close project**) opens one confirmation dialog first; closing a tab or pane only hides a view, the
-  sessions keep running, and does not ask.
+  worktrees, and a **New worktree…** row. Worktrees group under their parent repo. A folder's row shows
+  only its name: a branch belongs to a session, and a worktree's branch is not the folder's.
+- **Close ends the session.** A pane's ×, a tab's × (and its menu's **Close tab** and **Close other
+  tabs**), a session's **Close session**, **Close project tabs** and Ctrl+W all end the sessions they
+  close, and a notice says so. When a program such as an agent is running, the first click only arms the
+  control ("Close and stop claude? Click again"; Ctrl+W asks to be pressed twice); a plain shell closes at
+  once. There is no undo. Closing the window never ends a session.
+- **Sidebar footer and updates.** The footer's left slot shows the version, or what an update needs
+  from you: a pill (**Update to x**, the download's percent, **Restart to update**, **Update failed**) that
+  opens a card upward with the matching actions. The updater downloads first and installs only on
+  **Restart now**, so sessions keep running either way. Settings › General › Updates shows the state with
+  one fitting button and two switches: download automatically (on) and restart when nothing is running (off).
+- **Sidebar position.** Settings › Appearance › Sidebar › Sidebar position, or the palette, puts the sidebar
+  on the left or right. On the right the window mirrors: the resize edge is on its left, the narrow-window
+  drawer slides from the right, Inspect and the Inbox open from the left, and popovers open toward the middle.
 - **Notifications.** Settings › Notifications has one switch each for needs you, done and error. With
   one on, a session that changes to that state while you are not looking at it (the window is in the
   background, or it is not the focused pane) sends a system notification, once per change. It names
   the session and where it is and never what the agent asked. Clicking it brings the window forward
   and shows that session. Opening the app, a session you are in, and a reconnect after the daemon
-  was unreachable send nothing.
+  was unreachable send nothing. The in-window notification card follows the state: green for done, amber
+  for needs you, red for an error. Its position (any of the six corners and edges) is set in Settings ›
+  Notifications, which can show a test card.
 - **Interrupted agents.** When the daemon restarted while an agent was mid-turn in a desktop session,
   a banner above the panes says which agent and shows the command that brings it back
   (`codex resume --last`). **Resume** types it into that session; **Dismiss** hides the banner. Nothing
