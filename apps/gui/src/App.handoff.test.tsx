@@ -676,6 +676,8 @@ describe('desktop terminal multiplexer', () => {
 
   it('runs status effects only while they are switched on and motion is allowed', async () => {
     const user = userEvent.setup()
+    // Expressive keeps the sweeps on until they are switched off; Minimal starts with them off.
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'expressive', effectWorking: true, effectNeedsYou: true, effectDone: true }))
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`, { status: 'working', agent: 'codex' })])
     renderDesktopApp()
     const row = await screen.findByRole('button', { name: '~/a, codex, working' })

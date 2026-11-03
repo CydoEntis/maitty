@@ -175,6 +175,14 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   accent one top left, a violet one bottom right). The sidebar, the tab tray, each pane and
   Settings are cards: a faint top highlight over `--pane`, a `--pane-line` hairline, radius 14
   (Settings 16), a soft drop shadow and an 18px backdrop blur. 8px outer margin, 12px between panes.
+- **Style: Minimal or Expressive** (Settings › Appearance › Style, `style`, stored with the other preferences,
+  set on the root as `data-style`). The finish only; layout, features and status colours do not change.
+  The text above is **Expressive**. **Minimal** (the default for a fresh install) makes the window `--bg` with
+  no glow, cards flat `--main` with radius 8 (Settings 10), no blur or resting shadow, neutral `--raise`
+  icon tiles with the glyph in `--fg2`, no outline on the selected row or open tab, and the session tray flush
+  under its main row with no box. The focused pane's ring and the needs-you amber stay. Minimal starts with the
+  three status sweeps off; a choice made in Settings wins. Settings saved before styles existed read as
+  Expressive with the sweeps on. Minimal's rules are one block at the end of `workspace.css`.
 - **Sidebar.** A `Projects` title with a **+** button (a bordered square that lights up in the accent on hover) and the collapse button at the right; groups by git repo (or by folder, in Settings), sorted by
   name. A shell outside any repo is grouped by its own folder, so there is no catch-all group.
   A group's tile carries a ring when it holds the focused session. Each group is one **main row**

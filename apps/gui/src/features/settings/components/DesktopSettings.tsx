@@ -269,6 +269,7 @@ function setColor(colors: Record<string, string>, key: string, id: string | null
   return id === null ? rest : { ...rest, [key]: id }
 }
 
+const STYLE_OPTIONS = [['minimal', 'Minimal'], ['expressive', 'Expressive']] as const
 const TRAY_OPTIONS = [['names', 'With names'], ['icons', 'Icons'], ['stacked', 'Stacked']] as const
 const LEAD_OPTIONS = [['focused', 'Focused'], ['attention', 'Needs attention']] as const
 const ICON_OPTIONS = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']] as const
@@ -355,6 +356,13 @@ function AppearanceSection({ preferences, update, systemReducedMotion, projects 
   ]
   return (
     <>
+      <Card title="Style" color="var(--accent)" iconPath={<><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M4 10h16" /></>}
+        foot={preferences.style === 'minimal' ? 'Flat surfaces, neutral icons, no glow. Status sweeps start off.' : 'Floating glass cards, coloured app icons and glow.'}
+      >
+        <Row label="Style" detail="The finish only; layout, features and status colours stay the same.">
+          <Segmented label="Style" value={preferences.style} options={STYLE_OPTIONS} onChange={(value) => { update('style', value) }} />
+        </Row>
+      </Card>
       <Card title="Theme" color="var(--ansi-mag)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>} meta={<span className="mx-scard-meta">{THEMES.length} installed</span>}
         foot={<>Amber and red keep their meaning in every theme. Showing {shown.length} of {THEMES.length}.</>}
         footRow

@@ -10,6 +10,8 @@ export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spaciou
 export type IconSize = 'small' | 'medium' | 'large'
 /** How a project's other sessions sit under its main row in the sidebar. */
 export type TrayStyle = 'names' | 'icons' | 'stacked'
+/** The finish: Minimal is flat, Expressive is floating glass with colour and sweeps. */
+export type StyleChoice = 'minimal' | 'expressive'
 /** Which session leads a project: the one you are in, or the one that most needs you. */
 export type LeadMode = 'focused' | 'attention'
 
@@ -57,6 +59,7 @@ export type SettingsPreferences = {
   iconSize: IconSize
   trayStyle: TrayStyle
   leadMode: LeadMode
+  style: StyleChoice
   /** A colour the user gave a project, by the project's key (its repo or folder path). */
   projectColors: Record<string, string>
 }
@@ -97,9 +100,11 @@ function defaults(): SettingsPreferences {
     theme: THEME_FROM_PREFERENCE[readThemePreference()],
     cursorStyle: 'block',
     scrollback: SCROLLBACK_DEFAULT,
-    effectWorking: true,
-    effectNeedsYou: true,
-    effectDone: true,
+    style: 'minimal',
+    // Minimal starts with the status sweeps off; a choice made in Settings wins either way.
+    effectWorking: false,
+    effectNeedsYou: false,
+    effectDone: false,
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
@@ -114,13 +119,15 @@ function defaults(): SettingsPreferences {
 const bool = (value: unknown, fallback: boolean) => (typeof value === 'boolean' ? value : fallback)
 
 export function readSettingsPreferences(): SettingsPreferences {
-  const fallback = defaults()
+  const fresh = defaults()
   const stored = localStorage.getItem(STORAGE_KEY)
-  if (stored === null) return fallback
+  if (stored === null) return fresh
   try {
     const value: unknown = JSON.parse(stored)
-    if (typeof value !== 'object' || value === null) return fallback
+    if (typeof value !== 'object' || value === null) return fresh
     const preferences = value as Partial<Record<keyof SettingsPreferences, unknown>>
+    // Settings saved before styles existed keep the look they had: Expressive, sweeps on.
+    const fallback: SettingsPreferences = 'style' in preferences ? fresh : { ...fresh, style: 'expressive', effectWorking: true, effectNeedsYou: true, effectDone: true }
     return {
       accent: isAccent(preferences.accent) ? preferences.accent : fallback.accent,
       spinner: isSpinner(preferences.spinner) ? preferences.spinner : fallback.spinner,
@@ -149,11 +156,12 @@ export function readSettingsPreferences(): SettingsPreferences {
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
       trayStyle: preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
       projectColors: stringRecord(preferences.projectColors),
+      style: preferences.style === 'minimal' || preferences.style === 'expressive' ? preferences.style : fallback.style,
       leadMode: preferences.leadMode === 'focused' || preferences.leadMode === 'attention' ? preferences.leadMode : fallback.leadMode,
     }
   } catch {
     console.warn('Ignoring invalid Maitty settings')
-    return fallback
+    return fresh
   }
 }
 

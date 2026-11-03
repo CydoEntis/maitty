@@ -720,3 +720,36 @@
 .mx-sidebar .mx-app-icon.size-28 { width: calc(28px * var(--icon-scale, 1)); height: calc(28px * var(--icon-scale, 1)); font-size: calc(12px * var(--icon-scale, 1)); }
 .mx-sidebar .mx-app-icon.size-24 { width: calc(24px * var(--icon-scale, 1)); height: calc(24px * var(--icon-scale, 1)); font-size: calc(11px * var(--icon-scale, 1)); }
 .mx-sidebar .mx-app-icon.size-18 { width: calc(18px * var(--icon-scale, 1)); height: calc(18px * var(--icon-scale, 1)); font-size: calc(8.5px * var(--icon-scale, 1)); }
+
+/* Style: Minimal. Flat surfaces, neutral icons, no glow, no resting rings and smaller radii.
+   Expressive is the rules above; these only take things away. Accent and warn rings (the
+   focused pane, needs-you) and every status colour stay. */
+:root[data-style="minimal"] .mx-window { background: var(--bg); }
+:root[data-style="minimal"] .mx-card,
+:root[data-style="minimal"] .mx-pane { background: var(--main); backdrop-filter: none; border-radius: 8px; }
+:root[data-style="minimal"] .mx-pane { box-shadow: none; }
+:root[data-style="minimal"] .mx-pane.is-focused,
+:root[data-style="minimal"] .mx-pane.is-focused:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
+:root[data-style="minimal"] .mx-sidebar { box-shadow: none; }
+:root[data-style="minimal"] .mx-settings { background: var(--main); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
+:root[data-style="minimal"] .mx-settings-scrim { backdrop-filter: none; }
+:root[data-style="minimal"] .mx-rail-popover { box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
+/* Icons are neutral tiles; status badges on them keep their colours. */
+:root[data-style="minimal"] .mx-folder-tile,
+:root[data-style="minimal"] .mx-folder-tile.is-focused,
+:root[data-style="minimal"] .mx-app-icon { background: var(--raise); box-shadow: none; color: var(--fg2); }
+:root[data-style="minimal"] .mx-folder-tile svg path { fill: color-mix(in srgb, var(--fg2) 22%, transparent); }
+/* No outlines on the selected row, hovered rows or the open tab: the fill says it. */
+:root[data-style="minimal"] .mx-row.is-selected,
+:root[data-style="minimal"] .mx-rail-row.is-selected,
+:root[data-style="minimal"] .mx-tab.is-active { box-shadow: none; }
+:root[data-style="minimal"] .mx-row:not(.is-selected):hover,
+:root[data-style="minimal"] .mx-rail-row:not(.is-selected):hover,
+:root[data-style="minimal"] .mx-tab:not(.is-active):hover,
+:root[data-style="minimal"] .mx-tab:not(.is-active):focus-visible { box-shadow: none; transform: none; }
+:root[data-style="minimal"] .mx-tablist { background: transparent; box-shadow: none; border-radius: 10px; }
+:root[data-style="minimal"] .mx-new-tab { background: transparent; box-shadow: none; }
+/* The session tray sits flush under its main row, with no box. */
+:root[data-style="minimal"] .mx-tray { margin: 0 0 4px; padding: 2px 0; border-radius: 0; background: transparent; box-shadow: none; }
+:root[data-style="minimal"] .mx-tray-item,
+:root[data-style="minimal"] .mx-tray-item:hover { box-shadow: none; transform: none; }

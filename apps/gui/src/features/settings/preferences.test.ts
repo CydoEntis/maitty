@@ -19,9 +19,9 @@ const DEFAULTS: SettingsPreferences = {
   theme: 'Midnight',
   cursorStyle: 'block',
   scrollback: 10000,
-  effectWorking: true,
-  effectNeedsYou: true,
-  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', projectColors: {},
+  effectWorking: false,
+  effectNeedsYou: false,
+  effectDone: false, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', style: 'minimal', projectColors: {},
 }
 
 describe('settings preferences', () => {
@@ -47,7 +47,15 @@ describe('settings preferences', () => {
   it('reads preferences saved before the terminal settings existed', () => {
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ accent: 'blue', spinner: 'bars', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: true, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: false, notificationSound: false, terminalFontSize: 10, startFolder: '~/code', groupBy: 'folder' }))
 
-    expect(readSettingsPreferences()).toEqual({ ...DEFAULTS, accent: 'blue', spinner: 'bars', compactSidebar: true, notifyFinished: false, terminalFontSize: 12, startFolder: '~/code', groupBy: 'folder' })
+    expect(readSettingsPreferences()).toEqual({ ...DEFAULTS, style: 'expressive', effectWorking: true, effectNeedsYou: true, effectDone: true, accent: 'blue', spinner: 'bars', compactSidebar: true, notifyFinished: false, terminalFontSize: 12, startFolder: '~/code', groupBy: 'folder' })
+  })
+
+  it('starts a fresh install in Minimal with the sweeps off, and keeps Expressive for older settings', () => {
+    expect(readSettingsPreferences()).toMatchObject({ style: 'minimal', effectWorking: false, effectNeedsYou: false, effectDone: false })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ accent: 'blue' }))
+    expect(readSettingsPreferences()).toMatchObject({ style: 'expressive', effectWorking: true, effectNeedsYou: true, effectDone: true })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'minimal', effectWorking: true }))
+    expect(readSettingsPreferences()).toMatchObject({ style: 'minimal', effectWorking: true, effectDone: false })
   })
 
   it('keeps the interface sizes in range and falls back from nonsense', () => {

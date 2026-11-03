@@ -250,6 +250,10 @@ export function DesktopApp() {
     document.documentElement.dataset.reducedMotion = String(reducedMotion)
   }, [reducedMotion])
 
+  useEffect(() => {
+    document.documentElement.dataset.style = preferences.style
+  }, [preferences.style])
+
   useEffect(() => { writeLayout(layout) }, [layout])
 
   // A drag from the sidebar ends wherever it is released; the pane's highlight must not outlast it.
