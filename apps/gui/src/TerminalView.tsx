@@ -2,18 +2,58 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CircleAlert, LoaderCircle, TerminalSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ITheme, Terminal as XtermTerminal } from '@xterm/xterm'
+import type { WebglAddon } from '@xterm/addon-webgl'
 import { Button } from '@/components/ui/button'
 import { isDesktop, loadTerminalReplay, resizeTerminal, sendTerminalInput } from '@/api/daemon'
-import { listenTerminalChunks, loadTerminalHistory, type TerminalChunk } from '@/api/terminalStream'
+import { listenTerminalChunks, loadTerminalHistory, type TerminalChunk, type TerminalHistory } from '@/api/terminalStream'
 import type { Conversation } from '@/data/preview'
 import type { TerminalHandle } from '@/features/terminal/handle'
 import { findPathLinks } from '@/features/terminal/pathLinks'
+import { isWindowActive, useWindowActive } from '@/lib/window-activity'
+import { hasWebgl2 } from '@/lib/gpu'
 import '@xterm/xterm/css/xterm.css'
 
 const DEFAULT_SCROLLBACK_LINES = 10000
 const LINE_HEIGHT = 1.6
 const FONT_FAMILY = '"Geist Mono Variable", "Geist Mono", ui-monospace, monospace'
 const DEFAULT_THEME: ITheme = { background: '#060d16', foreground: '#c9d6e3', cursor: '#3dd6c6' }
+const TRANSPARENT = 'rgba(0,0,0,0)'
+/** The DOM renderer rebuilds each changed row as elements, so its writes land at most this often. */
+const DOM_FLUSH_GAP_MS = 32
+
+type Renderer = 'webgl' | 'dom'
+
+/**
+ * The pane's colours. The WebGL renderer draws on a see-through canvas so the card shows behind
+ * the text; the DOM renderer gets the theme's opaque terminal ground instead, since each row it
+ * repaints would otherwise blend through the card's gradient and shadow (docs/PERFORMANCE.md).
+ */
+function terminalTheme(look: TerminalLook, renderer: Renderer): ITheme {
+  const theme = look.theme ?? DEFAULT_THEME
+  return renderer === 'webgl' ? { ...theme, background: TRANSPARENT } : theme
+}
+
+/**
+ * Draws the terminal with WebGL, which paints rows on the GPU instead of rebuilding them as DOM
+ * elements. False when the addon could not start; `onContextLoss` fires if the GPU context goes
+ * away later, once the addon has let go of the terminal.
+ */
+async function loadWebglRenderer(terminal: XtermTerminal, onContextLoss: () => void): Promise<boolean> {
+  let addon: WebglAddon
+  try {
+    const { WebglAddon } = await import('@xterm/addon-webgl')
+    addon = new WebglAddon()
+    terminal.loadAddon(addon)
+  } catch (error) {
+    console.warn('The terminal falls back to the DOM renderer: WebGL could not start', error)
+    return false
+  }
+  addon.onContextLoss(() => {
+    addon.dispose()
+    onContextLoss()
+  })
+  return true
+}
 
 type TerminalBinding = Pick<Conversation, 'id'> & { generation: number }
 
@@ -50,6 +90,9 @@ type NativeConversation = Conversation & { generation: number; nativePane: numbe
 
 /** After typing failed, the next key waits this long before it tries the daemon again. */
 const INPUT_RETRY_MS = 1500
+
+/** How long a view waits for the replay the host asked the daemon for before it fetches one itself. */
+const REPLAY_WAIT_MS = 3000
 
 /** What Shift+Enter sends: Alt+Enter, which Claude Code and Codex take as a new line in their prompt. */
 const NEW_LINE_KEYS = '\x1b\r'
@@ -92,6 +135,8 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   const lookRef = useRef(look)
   const inputDisabledRef = useRef(inputDisabled)
   const focusedRef = useRef(focused)
+  const windowActive = useWindowActive()
+  const rendererRef = useRef<Renderer>('dom')
   const endedRef = useRef(ended)
   useEffect(() => { endedRef.current = ended })
   const onInputRef = useRef(onInput)
@@ -107,6 +152,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   const [loadError, setLoadError] = useState(false)
   const [inputFailed, setInputFailed] = useState(false)
   const [resizeError, setResizeError] = useState('')
+  const [transparent, setTransparent] = useState(() => hasWebgl2())
 
   const send = useCallback((data: string | Uint8Array) => {
     if (!data || inputDisabledRef.current) return
@@ -144,9 +190,12 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     let disposeCopy: (() => void) | null = null
     let frame = 0
     let queued: Uint8Array[] = []
+    let replayWait = 0
+    let renderer: Renderer = 'dom'
+    let lastFlushAt = 0
 
-    // Output is written once per animation frame, so a burst repaints once instead of per chunk.
-    const flush = () => {
+    const writeQueued = () => {
+      if (frame !== 0) cancelAnimationFrame(frame)
       frame = 0
       if (!emulator || queued.length === 0) return
       const bytes = new Uint8Array(queued.reduce((total, chunk) => total + chunk.length, 0))
@@ -157,15 +206,26 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       }
       queued = []
       emulator.write(bytes)
+      lastFlushAt = performance.now()
+    }
+    // Output is written once per animation frame, so a burst repaints once instead of per chunk. The
+    // DOM renderer pays for every flush, so with it a frame that comes too soon waits for the next.
+    const flushOnFrame = () => {
+      frame = 0
+      if (renderer === 'dom' && performance.now() - lastFlushAt < DOM_FLUSH_GAP_MS) {
+        frame = requestAnimationFrame(flushOnFrame)
+        return
+      }
+      writeQueued()
     }
     const enqueue = (bytes: Uint8Array) => {
       queued.push(bytes)
       // A hidden window gets no animation frames, so output would pile up and then land in one freeze.
       if (document.hidden) {
-        flush()
+        writeQueued()
         return
       }
-      if (frame === 0) frame = requestAnimationFrame(flush)
+      if (frame === 0) frame = requestAnimationFrame(flushOnFrame)
     }
 
     async function mountTerminal() {
@@ -177,9 +237,11 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         ])
         if (!isMounted) return
 
+        const wantsWebgl = hasWebgl2()
+        const startRenderer: Renderer = wantsWebgl ? 'webgl' : 'dom'
         emulator = new TerminalEmulator({
-          allowTransparency: true,
-          cursorBlink: focusedRef.current,
+          allowTransparency: wantsWebgl,
+          cursorBlink: focusedRef.current && isWindowActive(),
           cursorStyle: lookRef.current.cursorStyle ?? 'block',
           disableStdin: inputDisabledRef.current,
           fontFamily: FONT_FAMILY,
@@ -187,7 +249,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           lineHeight: LINE_HEIGHT,
           scrollback: lookRef.current.scrollback ?? DEFAULT_SCROLLBACK_LINES,
           screenReaderMode: lookRef.current.screenReader ?? false,
-          theme: lookRef.current.theme ?? DEFAULT_THEME,
+          theme: terminalTheme(lookRef.current, startRenderer),
         })
         const terminalInstance = emulator
         const fit = new FitAddon()
@@ -196,6 +258,22 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         terminalInstance.loadAddon(search)
         terminalInstance.open(hostElement)
         terminal.current = terminalInstance
+        const fallBackToDomRenderer = () => {
+          renderer = 'dom'
+          rendererRef.current = 'dom'
+          terminalInstance.options.allowTransparency = false
+          terminalInstance.options.theme = terminalTheme(lookRef.current, 'dom')
+          if (isMounted) setTransparent(false)
+        }
+        if (wantsWebgl) {
+          if (await loadWebglRenderer(terminalInstance, fallBackToDomRenderer)) {
+            renderer = 'webgl'
+            rendererRef.current = 'webgl'
+          } else {
+            fallBackToDomRenderer()
+          }
+          if (!stillMounted()) return
+        }
         // Cmd/Ctrl-click on a file name in the output opens it in the Inspect panel.
         terminalInstance.registerLinkProvider({
           provideLinks: (y, callback) => {
@@ -278,7 +356,8 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           if (chunk.seq <= lastSeq) return
           lastSeq = chunk.seq
           if (chunk.replay) {
-            flush()
+            window.clearTimeout(replayWait)
+            writeQueued()
             terminalInstance.reset()
           }
           enqueue(chunk.bytes)
@@ -291,15 +370,30 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           stopListening()
           return
         }
-        const history = await loadTerminalHistory(term)
+        // The host answers with what it holds, or with nothing once it has asked the daemon for
+        // the pane's replay over the stream (it arrives as the next chunk). Without a stream it
+        // refuses, and the replay is fetched from the daemon directly.
+        let history: TerminalHistory | null
+        try {
+          history = await loadTerminalHistory(term)
+        } catch {
+          history = null
+          if (!stillMounted()) return
+          enqueue(await loadTerminalReplay(binding))
+        }
         if (!stillMounted()) return
         if (history) {
           lastSeq = history.seq
           enqueue(history.bytes)
         } else {
-          // The shell dropped an overlong history: ask the daemon for a fresh replay instead.
-          enqueue(await loadTerminalReplay(binding))
-          if (!stillMounted()) return
+          // The stream may drop between the host's request and the daemon's answer; then the
+          // pane would stay blank, so after a while the replay is fetched directly.
+          replayWait = window.setTimeout(() => {
+            loadTerminalReplay(binding).then(
+              (bytes) => { if (stillMounted()) enqueue(bytes) },
+              () => { if (stillMounted()) setLoadError(true) },
+            )
+          }, REPLAY_WAIT_MS)
         }
         caughtUp = true
         for (const chunk of pending) apply(chunk)
@@ -349,6 +443,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       isMounted = false
       onHandleRef.current?.(null)
       if (frame !== 0) cancelAnimationFrame(frame)
+      window.clearTimeout(replayWait)
       refitTerminal.current = null
       stopListening?.()
       resizeObserver?.disconnect()
@@ -376,7 +471,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     if (look.cursorStyle && emulator.options.cursorStyle !== look.cursorStyle) emulator.options.cursorStyle = look.cursorStyle
     if (look.scrollback && emulator.options.scrollback !== look.scrollback) emulator.options.scrollback = look.scrollback
     if (look.screenReader !== undefined && emulator.options.screenReaderMode !== look.screenReader) emulator.options.screenReaderMode = look.screenReader
-    if (look.theme && emulator.options.theme !== look.theme) emulator.options.theme = look.theme
+    if (look.theme) emulator.options.theme = terminalTheme(look, rendererRef.current)
   }, [look])
 
   useEffect(() => {
@@ -387,12 +482,16 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
 
   useEffect(() => {
     focusedRef.current = focused
-    // A blinking cursor repaints its pane twice a second, so only the pane you are in blinks.
-    if (terminal.current) terminal.current.options.cursorBlink = focused
     if (focused && !connecting) terminal.current?.focus()
   }, [focused, connecting])
 
-  return <div className="terminal-view">
+  useEffect(() => {
+    // A blinking cursor repaints its pane twice a second, so only the pane you are in blinks, and
+    // only while the window is in front.
+    if (terminal.current) terminal.current.options.cursorBlink = focused && windowActive
+  }, [focused, windowActive, connecting])
+
+  return <div className={`terminal-view${transparent ? ' is-transparent' : ''}`}>
     {connecting && !loadError && <div className="terminal-load-status" role="status"><LoaderCircle size={14} />Connecting to terminal</div>}
     {loadError && <div className="terminal-input-error" role="status"><p>Could not load the terminal. Check the daemon connection and reopen this session.</p></div>}
     <div className="terminal-screen" ref={terminalHost} role="region" aria-label={label} />

@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '@fontsource-variable/geist/wght.css'
 import '@fontsource-variable/geist-mono/wght.css'
 import './index.css'
-import App from './App.tsx'
+import './App.css'
+import { Root } from './Root.tsx'
 import ErrorBoundary from './components/ErrorBoundary.tsx'
 
 const root = document.getElementById('root')
@@ -20,7 +21,7 @@ createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
-        <App />
+        <Root />
       </ErrorBoundary>
     </QueryClientProvider>
   </StrictMode>,

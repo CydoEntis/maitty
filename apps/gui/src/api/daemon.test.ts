@@ -482,7 +482,7 @@ describe('terminal sessions shown beside chats', () => {
 
     vi.mocked(invoke).mockResolvedValueOnce('screen')
     await expect(loadTerminalScreen(target)).resolves.toBe('screen')
-    vi.mocked(invoke).mockResolvedValueOnce([1, 2])
+    vi.mocked(invoke).mockResolvedValueOnce(Uint8Array.from([1, 2]).buffer)
     await expect(loadTerminalReplay(target)).resolves.toEqual(Uint8Array.from([1, 2]))
     await sendTerminalInput(target, 'ls\r')
     await resizeTerminal(target, 100, 30)

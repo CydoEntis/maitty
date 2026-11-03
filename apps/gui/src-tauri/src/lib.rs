@@ -129,14 +129,16 @@ async fn terminal_screen(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// Raw bytes: as JSON, a replay would be a number per byte, several megabytes of text to parse.
 #[tauri::command]
 async fn terminal_replay(
     app: tauri::AppHandle,
     id: u64,
     generation: u64,
-) -> Result<Vec<u8>, String> {
+) -> Result<tauri::ipc::Response, String> {
     maitty_desktop_client::terminal_replay(id, generation, daemon_executable(&app)?)
         .await
+        .map(tauri::ipc::Response::new)
         .map_err(|error| format!("{error:#}"))
 }
 
@@ -173,9 +175,13 @@ async fn pane_terminal_screen(app: tauri::AppHandle, term: u32) -> Result<String
 }
 
 #[tauri::command]
-async fn pane_terminal_replay(app: tauri::AppHandle, term: u32) -> Result<Vec<u8>, String> {
+async fn pane_terminal_replay(
+    app: tauri::AppHandle,
+    term: u32,
+) -> Result<tauri::ipc::Response, String> {
     maitty_desktop_client::pane_terminal_replay(term, daemon_executable(&app)?)
         .await
+        .map(tauri::ipc::Response::new)
         .map_err(|error| format!("{error:#}"))
 }
 
@@ -469,6 +475,8 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(terminal_stream::TerminalHistory::default())
         .manage(terminal_stream::TerminalKeys::default())
+        .manage(terminal_stream::TerminalOutput::default())
+        .manage(terminal_stream::LastSnapshot::default())
         .setup(|app| {
             terminal_stream::start(app.handle().clone());
             Ok(())
@@ -482,6 +490,7 @@ pub fn run() {
             suggest_project_folders,
             default_session_folder,
             terminal_stream::terminal_history,
+            terminal_stream::watch_terminal_output,
             terminal_screen,
             terminal_replay,
             send_terminal_input,

@@ -1,5 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { z } from 'zod'
+import { bytesOf } from './ipcBytes'
 import { previewConversations, type Conversation, type Message, type SessionStatus } from '@/data/preview'
 
 const StatusSchema = z.enum(['None', 'Idle', 'Working', 'Blocked', 'Done'])
@@ -141,8 +143,6 @@ const DaemonRestartStatusSchema = z.object({
   sessionCount: z.number().int().nonnegative(),
   activeTurnCount: z.number().int().nonnegative().nullable(),
 })
-const MaximumByteValue = 0xff
-const ByteArraySchema = z.array(z.number().int().min(0).max(MaximumByteValue))
 
 type ConversationSummary = z.infer<typeof ConversationSummarySchema>
 type WorkspaceSummary = z.infer<typeof WorkspaceSummarySchema>
@@ -217,8 +217,20 @@ const ReadPageLimit = 128
 
 export async function loadConversations(): Promise<Conversation[]> {
   if (!isDesktop()) return previewConversations
+  return conversationsFromSnapshot(await invoke<unknown>('list_sessions'))
+}
 
-  const snapshot = await invokeParsed('list_sessions', DaemonSnapshotSchema)
+/**
+ * Calls back with the daemon's snapshot each time it changes (the same shape `list_sessions`
+ * returns), or with null when the host lost the daemon and the list has to be asked for again.
+ */
+export function listenSessionsChanged(onChange: (snapshot: unknown) => void): Promise<() => void> {
+  return listen<unknown>('sessions-changed', (event) => { onChange(event.payload) })
+}
+
+/** The sessions in a daemon snapshot, from `list_sessions` or the `sessions-changed` event. */
+export function conversationsFromSnapshot(raw: unknown): Conversation[] {
+  const snapshot = DaemonSnapshotSchema.parse(raw)
   for (const id of lastGoodTerm.keys()) if (!(String(id) in snapshot.terms)) lastGoodTerm.delete(id)
   const terminals = Object.values(snapshot.terms)
     .flatMap((term) => {
@@ -451,13 +463,14 @@ export async function loadTerminalScreen(conversation: Pick<Conversation, 'id'> 
 export async function loadTerminalReplay(conversation: Pick<Conversation, 'id'> & { generation: number }): Promise<Uint8Array> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
   const term = terminalOf(conversation.id)
-  const bytes = term !== null
-    ? await invokeParsed('pane_terminal_replay', ByteArraySchema, { term })
-    : await invokeParsed('terminal_replay', ByteArraySchema, {
+  // The host answers with raw bytes: as JSON a replay would be a number per byte.
+  const reply = term !== null
+    ? await invoke<unknown>('pane_terminal_replay', { term })
+    : await invoke<unknown>('terminal_replay', {
       id: Number(conversation.id),
       generation: conversation.generation,
     })
-  return Uint8Array.from(bytes)
+  return bytesOf(reply)
 }
 
 export async function sendTerminalInput(conversation: Pick<Conversation, 'id'> & { generation: number }, input: string | Uint8Array): Promise<void> {

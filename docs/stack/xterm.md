@@ -19,9 +19,13 @@
 
 ## Project-specific: xterm
 
-Use the upstream `@xterm/xterm` package, `@xterm/addon-fit` and `@xterm/addon-search` (added
+Use the upstream `@xterm/xterm` package, `@xterm/addon-fit`, `@xterm/addon-search` (added
 for Find: it searches the emulator's own scrollback, so the window needs no copy of the
-output; it is the official addon and its 0.16 line pairs with xterm 6). The daemon
+output; it is the official addon and its 0.16 line pairs with xterm 6) and
+`@xterm/addon-webgl` (0.19 pairs with xterm 6). Load the WebGL addon after `open()` when
+`getContext('webgl2')` answers, and keep the DOM renderer as the fallback when it does not, when the
+addon throws, or on `onContextLoss`; the fallback draws on the theme's opaque terminal colour and
+flushes writes at most every 32 ms (`TerminalView.tsx`, [PERFORMANCE](../PERFORMANCE.md)). The daemon
 returns raw replay bytes when the terminal opens, then formatted ANSI screen
 snapshots. The emulator interprets control sequences and encodes keyboard, paste
 and terminal responses for the daemon.
