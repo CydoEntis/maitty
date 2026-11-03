@@ -1,4 +1,5 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
+import { Icon } from '@/features/workspace/components/glyphs'
 import { searchPanes, type SearchHit } from './api'
 import './find.css'
 
@@ -72,11 +73,11 @@ export function FindBar({ findInPane, clearPane, nameOf, onOpenSession, onClose,
         </div>
         {scope === 'pane' && (
           <>
-            <button type="button" className="mx-find-step" aria-label="Previous match" title="Previous (Shift+Enter)" onClick={() => { run('previous') }}>↑</button>
-            <button type="button" className="mx-find-step" aria-label="Next match" title="Next (Enter)" onClick={() => { run('next') }}>↓</button>
+            <button type="button" className="mx-find-step" aria-label="Previous match" title="Previous (Shift+Enter)" onClick={() => { run('previous') }}><Icon name="arrowUp" size={14} /></button>
+            <button type="button" className="mx-find-step" aria-label="Next match" title="Next (Enter)" onClick={() => { run('next') }}><Icon name="arrowDown" size={14} /></button>
           </>
         )}
-        <button type="button" className="mx-find-step" aria-label="Close find" title="Close (Esc)" onClick={close}>×</button>
+        <button type="button" className="mx-find-step" aria-label="Close find" title="Close (Esc)" onClick={close}><Icon name="close" size={13} strokeWidth={2.25} /></button>
       </div>
       {scope === 'pane' && missed && <p className="mx-find-note" role="status">No match in this pane</p>}
       {error && <p className="mx-find-note is-error" role="alert">{error}</p>}
