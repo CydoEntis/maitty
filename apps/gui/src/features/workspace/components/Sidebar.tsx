@@ -1,16 +1,16 @@
 import { useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui'
 import type { LeadMode, TrayStyle } from '@/features/settings/preferences'
-import { displayName, groupInitials, STATUS_WORD, truncatePrompt, type SessionGroup, type SessionView } from '../model/session'
-import { STATUS_LABEL } from '../model/statusText'
-import { formatAgo, formatElapsed, MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
+import { displayName, groupInitials, STATUS_WORD, type SessionGroup, type SessionView } from '../model/session'
+import { MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
 import { RailFolder } from './FolderTile'
 import { SidebarResizer } from './SidebarResizer'
 import { folderStyle } from './folderStyle'
 import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
 import { keepFocus } from './menuFocus'
 import { SessionStack } from './SessionStack'
+import { RailPopoverLayer } from './RailPopovers'
+import { useRailHover, type RailHover } from './railHover'
 import { WorktreeMenu } from '@/features/worktrees/WorktreeMenu'
 
 export type SidebarProps = {
@@ -47,16 +47,12 @@ export type SidebarProps = {
   onNewWorktree: (groupKey: string) => void
   onShowSession: (id: string) => void
   onEndSession: (id: string) => void
+  /** Ends every session in a project; the app asks first. */
+  onEndProject: (ids: string[], name: string) => void
   onRenameSession: (id: string) => void
   onOpenSettings: () => void
 }
 
-const HALF = 0.5
-
-/** The space between a collapsed folder and its popover. */
-const POPOVER_GAP_PX = 10
-/** How close to the top or bottom of the window a popover's middle may sit before it is held back. */
-const POPOVER_EDGE_PX = 90
 
 const NEEDS_SUFFIX = (count: number) => `${String(count)} need${count > 1 ? '' : 's'} you`
 
@@ -115,7 +111,7 @@ function Expanded(props: GroupProps) {
           const open = isOpen(group)
           return (
             <div key={group.key} className={`mx-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`}>
-              <ProjectMenu group={group} open={open} canStart={props.canStart} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }}>
+              <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
               <button type="button" className="mx-group-head" aria-expanded={open} title={group.path} onClick={() => { onToggleGroup(group.key) }}>
                 <Icon name="chevron" />
                 <span className={`mx-folder-tile${group.containsFocused ? ' is-focused' : ''}`} style={folderStyle(group.key, group.colorId)}><Icon name="folder" /></span>
@@ -139,7 +135,6 @@ function Expanded(props: GroupProps) {
                     tracks={props.tracks}
                     now={props.now}
                     online={online}
-                    tabOf={props.tabOf}
                     paneOf={props.paneOf}
                     portalContainer={props.portalContainer}
                     onShowSession={props.onShowSession}
@@ -163,96 +158,66 @@ function Expanded(props: GroupProps) {
 }
 
 /** A collapsed session: its icon and state, and a popover beside it that says what is going on. */
-function RailSessionButton(props: { session: SessionView; track: SessionTrack | undefined; now: number; selected: boolean; tabNumber: number | undefined; online: boolean; portalContainer: HTMLElement | null; onShow: () => void; onRename: () => void; onEnd: () => void }) {
-  const { session, track, now, selected, portalContainer } = props
-  const [anchor, setAnchor] = useState<DOMRect | null>(null)
-  const show = (element: HTMLElement) => { setAnchor(element.getBoundingClientRect()) }
+function RailSessionButton(props: { session: SessionView; track: SessionTrack | undefined; selected: boolean; online: boolean; portalContainer: HTMLElement | null; hover: RailHover; onShow: () => void; onRename: () => void; onEnd: () => void }) {
+  const { session, track, selected, portalContainer, hover } = props
+  const target = { kind: 'session', id: session.id } as const
   const unread = Boolean(track?.unread) && !selected
   const words = `${displayName(session)}, ${session.process}, ${STATUS_WORD[session.status]}`
   return (
-    <>
-      <ContextMenuPrimitive.Root onOpenChange={(open) => { if (open) setAnchor(null) }}>
-        <ContextMenuPrimitive.Trigger asChild>
-          <button
-            type="button"
-            className={`mx-rail-row${selected ? ' is-selected' : ''}`}
-            aria-label={words}
-            aria-current={selected ? 'page' : undefined}
-            onMouseEnter={(event) => { show(event.currentTarget) }}
-            onMouseLeave={() => { setAnchor(null) }}
-            onFocus={(event) => { show(event.currentTarget) }}
-            onBlur={() => { setAnchor(null) }}
-            onClick={props.onShow}
-          >
-            <AppIcon process={session.process} size={28} dimmed={session.status === 'unknown'} />
-            <StatusBadge status={session.status} rail />
-            {unread && <span className="mx-rail-unread" />}
-          </button>
-        </ContextMenuPrimitive.Trigger>
-        <ContextMenuPrimitive.Portal container={portalContainer}>
-          <ContextMenuPrimitive.Content className="mx-menu" onCloseAutoFocus={keepFocus}>
-            <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={props.onShow}>Show in pane</ContextMenuPrimitive.Item>
-            <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={props.onRename}>Rename…</ContextMenuPrimitive.Item>
-            <ContextMenuPrimitive.Separator className="mx-menu-sep" />
-            <ContextMenuPrimitive.Item className="mx-menu-item is-danger" disabled={!props.online} onSelect={props.onEnd}>Close session<span className="mx-menu-hint">ends it</span></ContextMenuPrimitive.Item>
-          </ContextMenuPrimitive.Content>
-        </ContextMenuPrimitive.Portal>
-      </ContextMenuPrimitive.Root>
-      {anchor && portalContainer && createPortal(<SessionPopover session={session} track={track} now={now} tabNumber={props.tabNumber} anchor={anchor} />, portalContainer)}
-    </>
+    <ContextMenuPrimitive.Root onOpenChange={(open) => { if (open) hover.close() }}>
+      <ContextMenuPrimitive.Trigger asChild>
+        <button
+          type="button"
+          className={`mx-rail-row${selected ? ' is-selected' : ''}`}
+          aria-label={words}
+          aria-current={selected ? 'page' : undefined}
+          onMouseEnter={(event) => { hover.enter(target, event.currentTarget) }}
+          onMouseLeave={hover.leave}
+          onFocus={(event) => { hover.enter(target, event.currentTarget) }}
+          onBlur={hover.leave}
+          onClick={props.onShow}
+        >
+          <AppIcon process={session.process} size={28} dimmed={session.status === 'unknown'} />
+          <StatusBadge status={session.status} rail />
+          {unread && <span className="mx-rail-unread" />}
+        </button>
+      </ContextMenuPrimitive.Trigger>
+      <ContextMenuPrimitive.Portal container={portalContainer}>
+        <ContextMenuPrimitive.Content className="mx-menu" onCloseAutoFocus={keepFocus}>
+          <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={props.onShow}>Show in pane</ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={props.onRename}>Rename…</ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Separator className="mx-menu-sep" />
+          <ContextMenuPrimitive.Item className="mx-menu-item is-danger" disabled={!props.online} onSelect={props.onEnd}>Close session<span className="mx-menu-hint">ends it</span></ContextMenuPrimitive.Item>
+        </ContextMenuPrimitive.Content>
+      </ContextMenuPrimitive.Portal>
+    </ContextMenuPrimitive.Root>
   )
 }
 
-/** What a session is doing, in words: the agent, its state and what that means, where it is and for how long. */
-function SessionPopover({ session, track, now, tabNumber, anchor }: { session: SessionView; track: SessionTrack | undefined; now: number; tabNumber: number | undefined; anchor: DOMRect }) {
-  const status = session.status
-  const since = status === 'working' && track?.workingSince ? `for ${formatElapsed(now - track.workingSince)}` : track?.changedAt && status !== 'unknown' ? `${formatAgo(now - track.changedAt)} ago` : ''
-  // Kept inside the window: a popover for a row near the top or bottom slides in rather than being cut off.
-  const top = Math.min(Math.max(anchor.top + anchor.height * HALF, POPOVER_EDGE_PX), window.innerHeight - POPOVER_EDGE_PX)
+/** A collapsed group: its folder, and a popover beside it that lists its sessions. */
+function RailFolderButton(props: { group: SessionGroup; open: boolean; online: boolean; label: string; hover: RailHover; onToggle: () => void }) {
+  const { group, open, online, hover } = props
+  const target = { kind: 'folder', key: group.key } as const
   return (
-    <div role="tooltip" className="mx-rail-popover is-session" style={{ top, left: anchor.right + POPOVER_GAP_PX }}>
-      <div className="mx-pop-head">
-        <AppIcon process={session.process} size={22} dimmed={status === 'unknown'} />
-        <strong>{session.process}</strong>
-        <span className={`mx-pop-state is-${status}`}>{STATUS_LABEL[status]}{since ? ` · ${since}` : ''}</span>
-      </div>
-      {session.name && <div className="mx-pop-name">{session.name}</div>}
-      <div className="mx-pop-path">{session.cwdLabel}</div>
-      {tabNumber !== undefined && <div className="mx-pop-tab">Open in tab {tabNumber}</div>}
-      {session.repoName && <div className="mx-pop-repo"><Icon name="branch" />{session.repoName}{session.branch ? ` · ${session.branch}` : ''}</div>}
-      {session.lastPrompt && <p className="mx-pop-prompt"><span className="mx-pop-label">Last prompt</span>{truncatePrompt(session.lastPrompt)}</p>}
-    </div>
-  )
-}
-
-/** A collapsed group: its folder, and a popover beside it that says what it is. */
-function RailFolderButton(props: { group: SessionGroup; open: boolean; online: boolean; label: string; portalContainer: HTMLElement | null; onToggle: () => void }) {
-  const { group, open, online, portalContainer } = props
-  const [anchor, setAnchor] = useState<DOMRect | null>(null)
-  const show = (element: HTMLElement) => { setAnchor(element.getBoundingClientRect()) }
-  return (
-    <>
-      <button
-        type="button"
-        className={`mx-rail-label${group.containsFocused ? ' has-focused' : ''}`}
-        aria-label={props.label}
-        aria-expanded={open}
-        onMouseEnter={(event) => { show(event.currentTarget) }}
-        onMouseLeave={() => { setAnchor(null) }}
-        onFocus={(event) => { show(event.currentTarget) }}
-        onBlur={() => { setAnchor(null) }}
-        onClick={props.onToggle}
-      >
-        <RailFolder colorKey={group.key} colorId={group.colorId} initials={groupInitials(group)} />
-        {online && group.needsCount > 0 && <span className="mx-rail-needs" />}
-      </button>
-      {anchor && portalContainer && createPortal(<FolderPopover group={group} anchor={anchor} />, portalContainer)}
-    </>
+    <button
+      type="button"
+      className={`mx-rail-label${group.containsFocused ? ' has-focused' : ''}`}
+      aria-label={props.label}
+      aria-expanded={open}
+      onMouseEnter={(event) => { hover.enter(target, event.currentTarget) }}
+      onMouseLeave={hover.leave}
+      onFocus={(event) => { hover.enter(target, event.currentTarget) }}
+      onBlur={hover.leave}
+      onClick={props.onToggle}
+    >
+      <RailFolder colorKey={group.key} colorId={group.colorId} initials={groupInitials(group)} />
+      {online && group.needsCount > 0 && <span className="mx-rail-needs" />}
+    </button>
   )
 }
 
 /** Right-click a project, in the sidebar or the rail: start a shell in it, fold it, copy its path. */
-function ProjectMenu({ group, open, canStart, portalContainer, onToggle, onNewSessionIn, onNewWorktree, children }: { group: SessionGroup; open: boolean; canStart: boolean; portalContainer: HTMLElement | null; onToggle: () => void; onNewSessionIn: (folder: string) => void; onNewWorktree: () => void; children: ReactNode }) {
+function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle, onNewSessionIn, onNewWorktree, onEnd, children }: { group: SessionGroup; open: boolean; canStart: boolean; online: boolean; portalContainer: HTMLElement | null; onToggle: () => void; onNewSessionIn: (folder: string) => void; onNewWorktree: () => void; onEnd: () => void; children: ReactNode }) {
   const lead = group.sessions[0]
   return (
     <ContextMenuPrimitive.Root>
@@ -265,37 +230,20 @@ function ProjectMenu({ group, open, canStart, portalContainer, onToggle, onNewSe
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={onToggle}>{open ? 'Collapse' : 'Expand'}</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { void navigator.clipboard.writeText(group.key) }}>Copy path</ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Separator className="mx-menu-sep" />
+          <ContextMenuPrimitive.Item className="mx-menu-item is-danger" disabled={!online} onSelect={onEnd}>Close project<span className="mx-menu-hint">ends {group.sessions.length === 1 ? '1 session' : `${String(group.sessions.length)} sessions`}</span></ContextMenuPrimitive.Item>
         </ContextMenuPrimitive.Content>
       </ContextMenuPrimitive.Portal>
     </ContextMenuPrimitive.Root>
   )
 }
 
-function FolderPopover({ group, anchor }: { group: SessionGroup; anchor: DOMRect }) {
-  return (
-    <div role="tooltip" className="mx-rail-popover" style={{ top: anchor.top + anchor.height * HALF, left: anchor.right + POPOVER_GAP_PX }}>
-      <div className="mx-pop-head">
-        <span className="mx-folder-tile" style={folderStyle(group.key, group.colorId)}><Icon name="folder" /></span>
-        <strong>{group.name}</strong>
-        {group.branch && <span className="mx-group-branch">{group.branch}</span>}
-      </div>
-      <div className="mx-pop-path">{group.path}</div>
-      <ul className="mx-pop-sessions">
-        {group.sessions.map((session) => (
-          <li key={session.id}>
-            <span className="mx-pop-title">{session.title}</span>
-            <span className="mx-pop-status">{session.process} · {STATUS_WORD[session.status]}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
 function Rail(props: GroupProps) {
   const { groups, focusedId, tracks, primary, online, sessionCount, isOpen, onToggleGroup } = props
+  const hover = useRailHover()
   return (
     <div className="mx-rail">
+      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
       <div className="mx-rail-top">
         {props.canExpand && <button type="button" className="mx-icon-button mx-rail-button" aria-label="Expand sidebar" title={`Expand sidebar (${primary}B)`} onClick={props.onToggleRail}><Icon name="expand" /></button>}
         <button type="button" className="mx-icon-button mx-rail-button mx-rail-new" aria-label="New session" title={`New session (${primary}T)`} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" /></button>
@@ -307,8 +255,8 @@ function Rail(props: GroupProps) {
           const label = `${group.name} · ${String(group.sessions.length)} session${group.sessions.length === 1 ? '' : 's'} · click to ${open ? 'collapse' : 'expand'}`
           return (
             <div key={group.key} className="mx-rail-group" style={folderStyle(group.key, group.colorId)}>
-              <ProjectMenu group={group} open={open} canStart={props.canStart} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }}>
-                <RailFolderButton group={group} open={open} online={online} label={label} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} />
+              <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
+                <RailFolderButton group={group} open={open} online={online} label={label} hover={hover} onToggle={() => { onToggleGroup(group.key) }} />
               </ProjectMenu>
               {open && (
                 <div className="mx-rail-rows">
@@ -317,11 +265,10 @@ function Rail(props: GroupProps) {
                       key={session.id}
                       session={session}
                       track={tracks.get(session.id)}
-                      now={props.now}
                       selected={session.id === focusedId}
-                      tabNumber={props.tabOf.get(session.id)}
                       online={online}
                       portalContainer={props.portalContainer}
+                      hover={hover}
                       onShow={() => { props.onShowSession(session.id) }}
                       onRename={() => { props.onRenameSession(session.id) }}
                       onEnd={() => { props.onEndSession(session.id) }}

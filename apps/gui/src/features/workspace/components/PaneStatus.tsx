@@ -28,7 +28,7 @@ export function PaneStatus({ status, workingSince, now }: { status: SessionStatu
   const elapsed = status === 'working' && workingSince !== null ? ` · ${formatElapsed(now - workingSince)}` : ''
   return (
     <span className="mx-pane-status-wrap">
-      <button type="button" className={`mx-pane-status is-${status}`} aria-label={`Status: ${label}`} aria-describedby={popoverId}>
+      <button key={status} type="button" className={`mx-pane-status is-${status}`} aria-label={`Status: ${label}`} aria-describedby={popoverId}>
         <span className="mx-pane-status-icon" aria-hidden="true"><Glyph status={status} /></span>
         <span>{label}{elapsed}</span>
       </button>

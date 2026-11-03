@@ -506,6 +506,13 @@ export async function cancelTurn(conversation: Conversation): Promise<void> {
   })
 }
 
+/** The user is looking at this pane: a finished agent's "done" becomes idle, as when the terminal app focuses it. */
+export async function markSeenOnDaemon(conversation: Pick<Conversation, 'id'>): Promise<void> {
+  if (!isDesktop()) return
+  const term = terminalOf(conversation.id)
+  if (term !== null) await invokeParsed('mark_terminal_seen', NullSchema, { term })
+}
+
 export async function renameConversationOnDaemon(conversation: Pick<Conversation, 'id'>, title: string): Promise<void> {
   const term = terminalOf(conversation.id)
   if (term !== null) {

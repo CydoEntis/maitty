@@ -119,6 +119,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     let stopListening: (() => void) | null = null
     let disposeInput: (() => void) | null = null
     let disposeBinary: (() => void) | null = null
+    let disposeCopy: (() => void) | null = null
     let frame = 0
     let queued: Uint8Array[] = []
 
@@ -287,6 +288,17 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         })
         disposeInput = () => { inputSubscription.dispose() }
         disposeBinary = () => { binarySubscription.dispose() }
+
+        // Selecting text copies it, once the mouse is released (not on every drag step).
+        const copySelection = () => {
+          if (!terminalInstance.hasSelection()) return
+          navigator.clipboard.writeText(terminalInstance.getSelection()).then(
+            () => { toast.success('Copied', { id: 'terminal-copy', duration: 1500 }) },
+            () => { toast.error('Could not copy the selection') },
+          )
+        }
+        hostElement.addEventListener('mouseup', copySelection)
+        disposeCopy = () => { hostElement.removeEventListener('mouseup', copySelection) }
       } catch (error) {
         if (isMounted) {
           setLoadError(true)
@@ -306,6 +318,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       resizeObserver?.disconnect()
       disposeInput?.()
       disposeBinary?.()
+      disposeCopy?.()
       emulator?.dispose()
       terminal.current = null
     }

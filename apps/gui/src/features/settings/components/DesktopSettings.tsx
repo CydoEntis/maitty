@@ -1,11 +1,12 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { spinnerDefinition, type SpinnerStyle } from '@/lib/spinner-clock'
 import { THEMES } from '@/features/workspace/theme/themes'
+import { ThemePicker } from './ThemePicker'
 import { hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/model/shortcuts'
 import { PROJECT_COLORS } from '@/features/workspace/model/folderColor'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
-import { SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type SettingsPreferences } from '../preferences'
+import { SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type SettingsPreferences, type StyleChoice } from '../preferences'
 
 export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'notifications' | 'keys' | 'daemon'
 
@@ -24,6 +25,12 @@ type DesktopSettingsProps = {
   onChange: (preferences: SettingsPreferences) => void
   /** The system asks for reduced motion; the switch then cannot turn motion back on. */
   systemReducedMotion: boolean
+  /** The operating system is set to dark; System mode follows it. */
+  systemDark: boolean
+  /** A theme hovered in a theme dropdown shows on the whole window; null ends the preview. */
+  onPreviewTheme: (name: string | null) => void
+  /** Closes Settings and plays the first-run welcome again. */
+  onShowWelcome: () => void
   mac: boolean
   daemon: DaemonInfo
   /** The projects in the sidebar, so each can be given a colour. */
@@ -135,16 +142,18 @@ export function DesktopSettings(props: DesktopSettingsProps) {
           ))}
         </nav>
         <div className="mx-settings-body">
-          <button type="button" className="mx-icon-button mx-settings-close" aria-label="Close settings" title="Close (esc)" onClick={props.onClose}><Icon name="close" /></button>
-          <div className="mx-settings-scroll">
-            <div className="mx-settings-header">
+          <header className="mx-settings-header">
+            <div className="mx-settings-heading" key={section}>
               <h2>{title}</h2>
               <p>{subtitle}</p>
             </div>
+            <button type="button" className="mx-settings-close" aria-label="Close settings" onClick={props.onClose}>Close<kbd>esc</kbd></button>
+          </header>
+          <div className="mx-settings-scroll">
             <div className="mx-settings-sections" key={section}>
-              {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} />}
+              {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} onShowWelcome={props.onShowWelcome} />}
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
-              {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} projects={props.projects} />}
+              {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} projects={props.projects} />}
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} />}
               {section === 'keys' && <HotkeysSection mac={props.mac} />}
               {section === 'daemon' && <DaemonSection daemon={props.daemon} />}
@@ -204,7 +213,7 @@ function Segmented<T extends string | number>({ label, value, options, onChange,
 const VALIDATE_DELAY_MS = 250
 type FolderCheck = 'saved' | 'missing' | 'checking'
 
-function GeneralSection({ preferences, update, validateFolder }: { preferences: SettingsPreferences; update: Update; validateFolder: (path: string) => Promise<boolean> }) {
+function GeneralSection({ preferences, update, validateFolder, onShowWelcome }: { preferences: SettingsPreferences; update: Update; validateFolder: (path: string) => Promise<boolean>; onShowWelcome: () => void }) {
   const [draft, setDraft] = useState(preferences.startFolder)
   const [check, setCheck] = useState<FolderCheck>('saved')
   const latest = useRef({ preferences, update })
@@ -258,6 +267,9 @@ function GeneralSection({ preferences, update, validateFolder }: { preferences: 
         <Row label="Closing the window" detail="Sessions are owned by maittyd and keep running.">
           <span style={{ fontSize: 12, color: 'var(--dim)' }}>Always keeps running</span>
         </Row>
+        <Row label="Welcome" detail="Replay the short intro: where sessions start and the keys to know.">
+          <button type="button" className="mx-scard-button" onClick={onShowWelcome}>Show the welcome again</button>
+        </Row>
       </Card>
     </>
   )
@@ -269,7 +281,12 @@ function setColor(colors: Record<string, string>, key: string, id: string | null
   return id === null ? rest : { ...rest, [key]: id }
 }
 
-const STYLE_OPTIONS = [['minimal', 'Minimal'], ['expressive', 'Expressive']] as const
+const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string; foot: string }> = [
+  { id: 'flat', name: 'Flat', blurb: 'Solid panels, soft corners, quiet', foot: 'Solid panels, no glow. Status sweeps start off.' },
+  { id: 'tiled', name: 'Tiled', blurb: 'Edge-to-edge panes, square corners, hairline dividers', foot: 'Edge-to-edge panes with square corners. Status sweeps start off.' },
+  { id: 'glass', name: 'Glass', blurb: 'Floating frosted cards, colour icons, status sweeps', foot: 'Floating glass cards and glow.' },
+]
+const ICON_COLOR_OPTIONS = [['color', 'Color'], ['grayscale', 'Grayscale']] as const
 const TRAY_OPTIONS = [['names', 'With names'], ['icons', 'Icons'], ['stacked', 'Stacked']] as const
 const LEAD_OPTIONS = [['focused', 'Focused'], ['attention', 'Needs attention']] as const
 const ICON_OPTIONS = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']] as const
@@ -336,18 +353,13 @@ function usePreviewClock(running: boolean): number {
   return now
 }
 
-type ThemeFilter = 'all' | 'dark' | 'light'
+const MODE_OPTIONS = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as const
 
-function AppearanceSection({ preferences, update, systemReducedMotion, projects }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; projects: DesktopSettingsProps['projects'] }) {
-  const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<ThemeFilter>('all')
+function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme, projects }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void; projects: DesktopSettingsProps['projects'] }) {
   const reduced = preferences.reduceMotion || systemReducedMotion
   const now = usePreviewClock(!reduced)
-  const shown = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    return THEMES.filter((theme) => (!needle || `${theme.name} ${theme.family}`.toLowerCase().includes(needle)) && (filter === 'all' || (filter === 'light') === theme.light))
-      .sort((a, b) => Number(b.name === preferences.theme) - Number(a.name === preferences.theme))
-  }, [query, filter, preferences.theme])
+  const darkInUse = preferences.themeMode === 'dark' || (preferences.themeMode === 'system' && systemDark)
+  const modeNote = preferences.themeMode === 'system' ? `Follows your OS. Right now: ${systemDark ? 'dark' : 'light'}.` : `Always uses your ${preferences.themeMode} theme.`
   const seconds = String(Math.floor(now / THOUSAND) % SECONDS_PER_MINUTE).padStart(SECONDS_DIGITS, '0')
   const effects: Array<{ key: 'effectWorking' | 'effectNeedsYou' | 'effectDone'; label: string; detail: string; color: string; glyph: ReactNode; short: string; fx: string }> = [
     { key: 'effectWorking', label: 'Working', detail: 'Teal sweep that repeats', color: 'var(--accent)', glyph: <SpinnerFrame spinner={preferences.spinner} now={now} reduced={reduced} />, short: '0:42', fx: 'mx-fx-working mx-fx-strong' },
@@ -356,40 +368,37 @@ function AppearanceSection({ preferences, update, systemReducedMotion, projects 
   ]
   return (
     <>
-      <Card title="Style" color="var(--accent)" iconPath={<><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M4 10h16" /></>}
-        foot={preferences.style === 'minimal' ? 'Flat surfaces, neutral icons, no glow. Status sweeps start off.' : 'Floating glass cards, coloured app icons and glow.'}
+      <Card title="Window style" color="var(--accent)" iconPath={<><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M4 10h16" /></>} meta={<span className="mx-scard-meta">Same features, different finish</span>}
+        foot={STYLE_CARDS.find((card) => card.id === preferences.style)?.foot}
       >
-        <Row label="Style" detail="The finish only; layout, features and status colours stay the same.">
-          <Segmented label="Style" value={preferences.style} options={STYLE_OPTIONS} onChange={(value) => { update('style', value) }} />
+        <div role="radiogroup" aria-label="Window style" className="mx-style-cards">
+          {STYLE_CARDS.map((card) => {
+            const selected = card.id === preferences.style
+            return (
+              <button key={card.id} type="button" role="radio" aria-checked={selected} className={`mx-style-card${selected ? ' is-selected' : ''}`} onClick={() => { update('style', card.id) }}>
+                <span className={`mx-style-preview is-${card.id}`} aria-hidden="true"><i className="mx-sp-side" /><i className="mx-sp-pane"><b /><b /><b /></i></span>
+                <span className="mx-style-name">{card.name}{selected && <span aria-hidden="true">✓</span>}</span>
+                <span className="mx-style-blurb">{card.blurb}</span>
+              </button>
+            )
+          })}
+        </div>
+        <Row label="Icons" detail="Agent and folder icons in their own colours, or neutral gray tiles.">
+          <Segmented label="Icons" value={preferences.iconColor} options={ICON_COLOR_OPTIONS} onChange={(value) => { update('iconColor', value) }} />
         </Row>
       </Card>
       <Card title="Theme" color="var(--ansi-mag)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>} meta={<span className="mx-scard-meta">{THEMES.length} installed</span>}
-        foot={<>Amber and red keep their meaning in every theme. Showing {shown.length} of {THEMES.length}.</>}
-        footRow
+        foot="Amber and red keep their meaning in every theme."
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px 10px' }}>
-          <label className="mx-search-field">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-            <input value={query} placeholder="Search themes" aria-label="Search themes" onChange={(event) => { setQuery(event.target.value) }} />
-          </label>
-          <Segmented label="Filter themes" value={filter} options={[['all', 'All'], ['dark', 'Dark'], ['light', 'Light']] as const} onChange={setFilter} tall />
-        </div>
-        <div role="listbox" aria-label="Themes" className="mx-theme-grid">
-          {shown.map((theme) => (
-            <button key={theme.name} type="button" role="option" aria-selected={theme.name === preferences.theme} className="mx-theme-card" onClick={() => { update('theme', theme.name) }}>
-              <span className="mx-swatch" style={{ background: theme.tokens.term }} aria-hidden="true">
-                <span><i style={{ width: 12, background: theme.tokens.accent }} /><i style={{ width: 16, background: theme.tokens.fg, opacity: 0.7 }} /></span>
-                <span><i style={{ width: 8, background: theme.tokens.ansiMag }} /><i style={{ width: 10, background: theme.tokens.ansiBlue }} /><i style={{ width: 6, background: theme.tokens.ansiGreen }} /></span>
-              </span>
-              <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <span className="mx-theme-name">{theme.name}</span>
-                <span className="mx-theme-sub">{theme.family}</span>
-              </span>
-              {theme.name === preferences.theme && <Icon name="check" size={14} stroke="var(--accent)" strokeWidth={2.5} />}
-            </button>
-          ))}
-          {shown.length === 0 && <span style={{ gridColumn: '1 / -1', padding: '16px 4px', fontSize: 12.5, color: 'var(--dim)' }}>No themes match.</span>}
-        </div>
+        <Row label="Appearance" detail={modeNote}>
+          <Segmented label="Appearance" value={preferences.themeMode} options={MODE_OPTIONS} onChange={(value) => { update('themeMode', value) }} />
+        </Row>
+        <Row label="Dark theme" detail="Used when the window is dark.">
+          <ThemePicker kind="dark" value={preferences.darkTheme} inUse={darkInUse} dimmed={!darkInUse && preferences.themeMode !== 'system'} onPick={(name) => { update('darkTheme', name) }} onPreview={onPreviewTheme} />
+        </Row>
+        <Row label="Light theme" detail="Used when the window is light.">
+          <ThemePicker kind="light" value={preferences.lightTheme} inUse={!darkInUse} dimmed={darkInUse && preferences.themeMode !== 'system'} onPick={(name) => { update('lightTheme', name) }} onPreview={onPreviewTheme} />
+        </Row>
       </Card>
       <Card title="Working spinner" color="var(--accent)" iconPath={<path d="M12 3a9 9 0 1 0 9 9" />} meta={<span className="mx-scard-meta">Live preview</span>} foot="Same frames as the Maitty TUI. Shown on tabs, pane headers and sidebar rows while something runs.">
         <div role="radiogroup" aria-label="Working spinner" className="mx-spinner-grid">

@@ -3,10 +3,11 @@ import { contrastRatio, mixOklab, parseColor } from './color'
 import { findTheme, generateTheme, MIN_TEXT_CONTRAST, paneSurface, themeStyle, THEMES, xtermTheme } from './themes'
 
 describe('themes', () => {
-  it('ships Midnight, Abyss and Paper plus the 23 generated themes from the design', () => {
-    expect(THEMES).toHaveLength(26)
+  it('ships Midnight, Abyss and Paper, the 23 generated themes from the design and High Contrast', () => {
+    expect(THEMES).toHaveLength(27)
     expect(THEMES.slice(0, 3).map((theme) => theme.name)).toEqual(['Midnight', 'Abyss', 'Paper'])
     expect(findTheme('Nord').family).toBe('Arctic · dark')
+    expect(findTheme('High Contrast')).toMatchObject({ family: 'Accessibility · dark', light: false })
     expect(findTheme('Gruvbox Light').light).toBe(true)
     expect(findTheme('No such theme').name).toBe('Midnight')
   })
@@ -29,10 +30,16 @@ describe('themes', () => {
   })
 
   it('never changes what amber and red mean', () => {
-    for (const theme of THEMES) {
+    for (const theme of THEMES.filter((candidate) => candidate.name !== 'High Contrast')) {
       expect(theme.tokens.warn).toBe(theme.light ? '#9A5B00' : '#F2B65A')
       expect(theme.tokens.danger).toBe(theme.light ? '#C0392F' : '#F07F78')
     }
+  })
+
+  it('makes High Contrast pure black and white with strong lines, and still amber and red', () => {
+    const { tokens } = findTheme('High Contrast')
+    expect([tokens.bg, tokens.fg, tokens.line, tokens.line2]).toEqual(['#000000', '#FFFFFF', '#5A5A5A', '#8A8A8A'])
+    expect([tokens.accent, tokens.warn, tokens.danger, tokens.ok]).toEqual(['#3CF2D2', '#FFC94D', '#FF7A7A', '#7CF29A'])
   })
 
   it('derives tokens from six inputs the way color-mix in oklab does', () => {

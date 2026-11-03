@@ -92,6 +92,15 @@ function trimTrailingSeparator(path: string): string {
   return path.length > 1 ? path.replace(/[\\/]+$/, '') : path
 }
 
+/**
+ * One spelling for a Windows path, so the same folder always groups together: git writes a
+ * worktree's main checkout as `C:/dev/x` while a shell's own folder reads `C:\dev\x`.
+ */
+function normalizeRoot(path: string): string {
+  const drive = /^([A-Za-z]):[\\/]/.exec(path)
+  return drive ? `${(drive[1] ?? '').toUpperCase()}${path.slice(1).replaceAll('/', '\\')}` : path
+}
+
 function baseName(path: string): string {
   return path.split(SEPARATOR).filter(Boolean).at(-1) ?? path
 }
@@ -109,7 +118,7 @@ export function tildePath(path: string, home: string): string {
 export function toSessionView(conversation: Conversation, home: string): SessionView {
   const cwd = trimTrailingSeparator(conversation.cwd ?? conversation.folder)
   const repoName = conversation.repo ?? null
-  const repoRoot = repoName === null ? null : trimTrailingSeparator(conversation.folder)
+  const repoRoot = repoName === null ? null : normalizeRoot(trimTrailingSeparator(conversation.folder))
   const inside = repoRoot !== null && cwd.length > repoRoot.length ? cwd.slice(repoRoot.length + 1).replaceAll('\\', '/') : ''
   const cwdLabel = tildePath(cwd, home)
   const title = repoName === null ? cwdLabel : inside === '' ? '(root)' : inside.split('/').slice(-TITLE_PARTS).join('/')

@@ -35,7 +35,6 @@ export type StackProps = {
   tracks: ReadonlyMap<string, SessionTrack>
   now: number
   online: boolean
-  tabOf: ReadonlyMap<string, number>
   /** The pane (counting from 1) each session has in its tab; absent for a session no tab shows. */
   paneOf: ReadonlyMap<string, number>
   portalContainer: HTMLElement | null
@@ -83,7 +82,6 @@ export function SessionStack(props: StackProps) {
         track={tracks.get(lead.id)}
         now={now}
         selected={lead.id === props.focusedId}
-        tabNumber={props.tabOf.get(lead.id)}
         online={props.online}
         swapped={swapped}
         portalContainer={props.portalContainer}

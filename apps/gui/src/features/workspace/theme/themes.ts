@@ -41,6 +41,9 @@ export type ThemeInputs = { bg: string; fg: string; accent: string; mag: string;
 /** `cardRing` is the solid card colour that rings a status badge so it reads as cut out of the card. */
 export type ThemeEntry = { name: string; family: string; light: boolean; tokens: ThemeTokens; cardRing: string }
 
+/** Which theme is in use: the dark theme, the light theme, or whichever one the system's own setting asks for. */
+export type ThemeMode = 'system' | 'dark' | 'light'
+
 export const DEFAULT_THEME = 'Midnight'
 export const MIN_TEXT_CONTRAST = 4.5
 
@@ -73,6 +76,16 @@ const PAPER: ThemeTokens = {
   bg: '#EEF0EE', main: '#FFFFFF', raise: '#F5F6F4', hover: '#F0F2F0', sel: '#E7EAE8', line: '#E3E6E4', line2: '#D2D7D4',
   well: '#F2F4F2', term: '#FAFBFA', fg: '#12171C', fg2: '#3B444C', muted: '#58626C', dim: '#646E78', accent: '#0E8F7A',
   accentSoft: 'rgba(14,143,122,.1)', accentLine: 'rgba(14,143,122,.5)', onAccent: '#FFFFFF', ...LIGHT_STATUS, ok: '#2F7A4B',
+}
+
+// Pure black and white with strong lines, for readability over polish. Warn and danger keep their meaning.
+const HIGH_CONTRAST: ThemeTokens = {
+  ansiBlue: '#8FB8FF', ansiMag: '#E3B5FF', ansiGreen: '#7CF29A', pane: 'rgba(0,0,0,.96)', paneLine: 'rgba(255,255,255,.3)',
+  bg: '#000000', main: '#000000', raise: '#0D0D0D', hover: '#0A0A0A', sel: '#1C1C1C', line: '#5A5A5A', line2: '#8A8A8A',
+  well: '#000000', term: '#000000', fg: '#FFFFFF', fg2: '#EDEDED', muted: '#CFCFCF', dim: '#ABABAB', accent: '#3CF2D2',
+  accentSoft: 'rgba(60,242,210,.16)', accentLine: 'rgba(60,242,210,.75)', onAccent: '#000000',
+  warn: '#FFC94D', warnSoft: 'rgba(255,201,77,.12)', warnLine: 'rgba(255,201,77,.6)', onWarn: '#000000',
+  danger: '#FF7A7A', dangerSoft: 'rgba(255,122,122,.12)', dangerLine: 'rgba(255,122,122,.6)', ok: '#7CF29A',
 }
 
 // Mix percentages from the design; `muted` and `dim` are raised when a theme would fall below
@@ -166,7 +179,14 @@ export const THEMES: readonly ThemeEntry[] = [
   ...GENERATED.map(([name, bg, fg, accent, mag, blue, green, light, family]) =>
     entry(name, `${family} · ${light ? 'light' : 'dark'}`, light, generateTheme({ bg, fg, accent, mag, blue, green, light })),
   ),
+  entry('High Contrast', 'Accessibility · dark', false, HIGH_CONTRAST, '#000000'),
 ]
+
+/** The theme in use for a mode. `systemDark` only matters in System mode. */
+export function activeThemeName(choice: { themeMode: ThemeMode; darkTheme: string; lightTheme: string }, systemDark: boolean): string {
+  const dark = choice.themeMode === 'dark' || (choice.themeMode === 'system' && systemDark)
+  return dark ? choice.darkTheme : choice.lightTheme
+}
 
 export function findTheme(name: string): ThemeEntry {
   const found = THEMES.find((theme) => theme.name === name) ?? THEMES[0]

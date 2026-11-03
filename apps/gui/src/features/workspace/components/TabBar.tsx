@@ -128,16 +128,16 @@ export function TabBar(props: TabBarProps) {
       {edges.over && <AllTabs tabs={tabs} activeTabId={activeTabId} sessions={props.sessions} onSelect={props.onSelect} />}
       <span className="mx-spacer" />
       {props.inspect && (
-        <button type="button" className={`mx-inbox-button${props.inspect.open ? ' is-open' : ''}`} aria-pressed={props.inspect.open} aria-label="Inspect" title={`Inspect (${props.primary}I)`} onClick={props.onToggleInspect}>
-          Inspect
+        <button type="button" className={`mx-inbox-button${props.inspect.open ? ' is-open' : ''}`} aria-pressed={props.inspect.open} aria-label="Repository" title={`Repository (${props.primary}I)`} onClick={props.onToggleInspect}>
+          <Icon name="repo" />
           {(props.inspect.additions > 0 || props.inspect.deletions > 0) && (
             <span className="mx-inspect-stat"><span className="is-add">+{props.inspect.additions}</span> <span className="is-remove">−{props.inspect.deletions}</span></span>
           )}
         </button>
       )}
       <button type="button" className="mx-inbox-button" aria-label={`Inbox, ${String(props.inboxCount)}${props.inboxNeeds ? ', something needs you' : ''}`} title={`Inbox (${props.primary}J)`} onClick={props.onOpenInbox}>
-        Inbox
-        {props.inboxCount > 0 && <span className={`mx-inbox-count${props.inboxNeeds ? ' is-needs' : ''}`}>{props.inboxCount}</span>}
+        <Icon name="inbox" />
+        {props.inboxCount > 0 && <span key={props.inboxCount} className={`mx-inbox-count${props.inboxNeeds ? ' is-needs' : ''}`}>{props.inboxCount}</span>}
       </button>
     </div>
   )

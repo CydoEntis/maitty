@@ -1,5 +1,6 @@
 import type { SpinnerStyle } from '@/lib/spinner-clock'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
+import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
 
 export type ToastPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
 export type CursorStyle = 'block' | 'bar' | 'underline'
@@ -10,8 +11,10 @@ export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spaciou
 export type IconSize = 'small' | 'medium' | 'large'
 /** How a project's other sessions sit under its main row in the sidebar. */
 export type TrayStyle = 'names' | 'icons' | 'stacked'
-/** The finish: Minimal is flat, Expressive is floating glass with colour and sweeps. */
-export type StyleChoice = 'minimal' | 'expressive'
+/** The window style: Flat is solid panels, Tiled is edge-to-edge panes with square corners, Glass is floating frosted cards with sweeps. */
+export type StyleChoice = 'flat' | 'tiled' | 'glass'
+/** App and folder icons keep their colours, or drop to neutral gray tiles. Independent of the style. */
+export type IconColor = 'color' | 'grayscale'
 /** Which session leads a project: the one you are in, or the one that most needs you. */
 export type LeadMode = 'focused' | 'attention'
 
@@ -40,8 +43,11 @@ export type SettingsPreferences = {
   startFolder: string
   /** How the sidebar groups sessions: by git repository, or by the folder they are in. */
   groupBy: 'repo' | 'folder'
-  /** The desktop theme's name (Settings › Appearance). */
-  theme: string
+  /** Which theme is in use: your dark one, your light one, or whichever the system asks for. */
+  themeMode: ThemeMode
+  /** The theme names used in dark and in light (Settings › Appearance). */
+  darkTheme: string
+  lightTheme: string
   cursorStyle: CursorStyle
   /** Lines each pane keeps; maittyd keeps the full history. */
   scrollback: ScrollbackLines
@@ -60,6 +66,7 @@ export type SettingsPreferences = {
   trayStyle: TrayStyle
   leadMode: LeadMode
   style: StyleChoice
+  iconColor: IconColor
   /** A colour the user gave a project, by the project's key (its repo or folder path). */
   projectColors: Record<string, string>
 }
@@ -82,6 +89,7 @@ const STORAGE_KEY = 'maitty.gui.settings.v1'
 const THEME_FROM_PREFERENCE: Record<ThemePreference, string> = { night: 'Midnight', abyss: 'Abyss', day: 'Paper' }
 
 function defaults(): SettingsPreferences {
+  const legacy = THEME_FROM_PREFERENCE[readThemePreference()]
   return {
     accent: 'teal',
     spinner: 'braille',
@@ -97,26 +105,35 @@ function defaults(): SettingsPreferences {
     terminalFontSize: 13,
     startFolder: '',
     groupBy: 'repo',
-    theme: THEME_FROM_PREFERENCE[readThemePreference()],
+    // The theme chosen before there were two slots keeps its look; otherwise follow the system.
+    themeMode: legacy === 'Paper' ? 'light' : legacy === 'Abyss' ? 'dark' : 'system',
+    darkTheme: legacy === 'Abyss' ? 'Abyss' : 'Midnight',
+    lightTheme: 'Paper',
     cursorStyle: 'block',
     scrollback: SCROLLBACK_DEFAULT,
-    style: 'minimal',
-    // Minimal starts with the status sweeps off; a choice made in Settings wins either way.
-    effectWorking: false,
-    effectNeedsYou: false,
-    effectDone: false,
+    style: 'glass',
+    // Glass runs the status sweeps; Flat and Tiled start with them off. A choice made in Settings wins either way.
+    effectWorking: true,
+    effectNeedsYou: true,
+    effectDone: true,
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
     sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
     iconSize: 'medium',
-    trayStyle: 'names',
+    trayStyle: 'stacked',
     leadMode: 'focused',
+    iconColor: 'color',
     projectColors: {},
   }
 }
 
 const bool = (value: unknown, fallback: boolean) => (typeof value === 'boolean' ? value : fallback)
+
+/** Whether any settings were ever saved: a window with none has never been used. */
+export function hasSavedSettings(): boolean {
+  return localStorage.getItem(STORAGE_KEY) !== null
+}
 
 export function readSettingsPreferences(): SettingsPreferences {
   const fresh = defaults()
@@ -126,8 +143,7 @@ export function readSettingsPreferences(): SettingsPreferences {
     const value: unknown = JSON.parse(stored)
     if (typeof value !== 'object' || value === null) return fresh
     const preferences = value as Partial<Record<keyof SettingsPreferences, unknown>>
-    // Settings saved before styles existed keep the look they had: Expressive, sweeps on.
-    const fallback: SettingsPreferences = 'style' in preferences ? fresh : { ...fresh, style: 'expressive', effectWorking: true, effectNeedsYou: true, effectDone: true }
+    const fallback = fresh
     return {
       accent: isAccent(preferences.accent) ? preferences.accent : fallback.accent,
       spinner: isSpinner(preferences.spinner) ? preferences.spinner : fallback.spinner,
@@ -143,7 +159,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       terminalFontSize: terminalFontSize(preferences.terminalFontSize, fallback.terminalFontSize),
       startFolder: typeof preferences.startFolder === 'string' ? preferences.startFolder.trim() : fallback.startFolder,
       groupBy: preferences.groupBy === 'folder' || preferences.groupBy === 'repo' ? preferences.groupBy : fallback.groupBy,
-      theme: typeof preferences.theme === 'string' && preferences.theme.trim() ? preferences.theme : fallback.theme,
+      ...themeChoice(preferences, fallback),
       cursorStyle: isCursorStyle(preferences.cursorStyle) ? preferences.cursorStyle : fallback.cursorStyle,
       scrollback: isScrollback(preferences.scrollback) ? preferences.scrollback : fallback.scrollback,
       effectWorking: bool(preferences.effectWorking, fallback.effectWorking),
@@ -156,7 +172,8 @@ export function readSettingsPreferences(): SettingsPreferences {
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
       trayStyle: preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
       projectColors: stringRecord(preferences.projectColors),
-      style: preferences.style === 'minimal' || preferences.style === 'expressive' ? preferences.style : fallback.style,
+      style: styleOf(preferences.style) ?? fallback.style,
+      iconColor: preferences.iconColor === 'color' || preferences.iconColor === 'grayscale' ? preferences.iconColor : fallback.iconColor,
       leadMode: preferences.leadMode === 'focused' || preferences.leadMode === 'attention' ? preferences.leadMode : fallback.leadMode,
     }
   } catch {
@@ -195,6 +212,31 @@ function isDensity(value: unknown): value is Density {
 
 function isAccent(value: unknown): value is SettingsPreferences['accent'] {
   return value === 'teal' || value === 'blue' || value === 'violet'
+}
+
+/** "minimal" and "expressive" were the names before the window styles; they read as Flat and Glass. */
+function styleOf(value: unknown): StyleChoice | null {
+  if (value === 'flat' || value === 'tiled' || value === 'glass') return value
+  if (value === 'minimal') return 'flat'
+  if (value === 'expressive') return 'glass'
+  return null
+}
+
+const isThemeMode = (value: unknown): value is ThemeMode => value === 'system' || value === 'dark' || value === 'light'
+
+/** A saved theme name, if it is a known theme of the wanted kind. */
+const themeOfKind = (value: unknown, light: boolean): string | null =>
+  typeof value === 'string' && THEMES.some((theme) => theme.name === value && theme.light === light) ? value : null
+
+/** The mode and both slots. Settings saved with one theme keep it: it fills its own slot and the mode pins to it. */
+function themeChoice(saved: Partial<Record<string, unknown>>, fallback: SettingsPreferences): Pick<SettingsPreferences, 'themeMode' | 'darkTheme' | 'lightTheme'> {
+  const old = typeof saved.theme === 'string' ? THEMES.find((theme) => theme.name === saved.theme) : undefined
+  const migrating = old !== undefined && !('themeMode' in saved)
+  return {
+    themeMode: isThemeMode(saved.themeMode) ? saved.themeMode : migrating ? (old.light ? 'light' : 'dark') : fallback.themeMode,
+    darkTheme: themeOfKind(saved.darkTheme, false) ?? (migrating && !old.light ? old.name : fallback.darkTheme),
+    lightTheme: themeOfKind(saved.lightTheme, true) ?? (migrating && old.light ? old.name : fallback.lightTheme),
+  }
 }
 
 function isSpinner(value: unknown): value is SpinnerStyle {

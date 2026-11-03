@@ -86,6 +86,13 @@ describe('session view', () => {
     ])
   })
 
+  it('groups a worktree with its main checkout when git spells the repo path with forward slashes', () => {
+    const worktree = repo(1, 'C:/dev/chameleon', 'C:\\dev\\chameleon-worktrees\\brave-wren')
+    const main = repo(2, 'C:\\dev\\chameleon', 'C:\\dev\\chameleon', { repo: 'chameleon' })
+    const groups = groupSessions([worktree, main].map((item) => toSessionView(item, HOME)), 'repo', null, HOME)
+    expect(groups.map((group) => [group.name, group.sessions.map((session) => session.id)])).toEqual([['chameleon', ['t1', 't2']]])
+  })
+
   it('groups a shell outside any repo by its own folder, not under a catch-all', () => {
     const sessions = [conversation(1, `${HOME}/personal/dynamic-ui`), repo(2, `${HOME}/maitty`, `${HOME}/maitty`)].map((item) => toSessionView(item, HOME))
     const groups = groupSessions(sessions, 'repo', null, HOME)

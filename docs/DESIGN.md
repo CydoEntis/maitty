@@ -175,14 +175,23 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   accent one top left, a violet one bottom right). The sidebar, the tab tray, each pane and
   Settings are cards: a faint top highlight over `--pane`, a `--pane-line` hairline, radius 14
   (Settings 16), a soft drop shadow and an 18px backdrop blur. 8px outer margin, 12px between panes.
-- **Style: Minimal or Expressive** (Settings › Appearance › Style, `style`, stored with the other preferences,
-  set on the root as `data-style`). The finish only; layout, features and status colours do not change.
-  The text above is **Expressive**. **Minimal** (the default for a fresh install) makes the window `--bg` with
-  no glow, cards flat `--main` with radius 8 (Settings 10), no blur or resting shadow, neutral `--raise`
-  icon tiles with the glyph in `--fg2`, no outline on the selected row or open tab, and the session tray flush
-  under its main row with no box. The focused pane's ring and the needs-you amber stay. Minimal starts with the
-  three status sweeps off; a choice made in Settings wins. Settings saved before styles existed read as
-  Expressive with the sweeps on. Minimal's rules are one block at the end of `workspace.css`.
+- **Window style: Flat, Tiled or Glass** (Settings › Appearance › Window style, `style`, stored with the other
+  preferences; the root carries `data-style` and `data-finish`). The finish and the layout only; features and
+  status colours do not change. The text above is **Glass**, the default for a fresh install: floating frosted cards, colour icons, glow and the status sweeps.
+  **Flat** makes the window `--bg` with no glow, cards flat `--main` with
+  radius 8 (Settings 10), no blur or resting shadow, flat top-bar buttons and status pills (no gradient, lift or
+  entrance), no outline on the selected row or open tab, and the session tray flush under its main row with no
+  box. **Tiled** is Flat's finish pulled edge to edge: square corners, 4px gaps between panes and at the
+  window's edge, the sidebar flush with a hairline, and a 40px tab bar that is a flush strip (tabs, **+**,
+  Repository and Inbox divided by hairlines, one line under the bar). Flat and Tiled share `data-finish="flat"`;
+  Tiled's layout rules are the last block of `workspace.css`. The focused pane's ring and the needs-you amber
+  stay in all three. Glass starts with the three status sweeps on and Flat and Tiled with them off; a choice made
+  in Settings wins. Settings saved as `minimal` read as Flat and `expressive` as Glass. **Icons** (Settings › Appearance › Icons, `iconColor`, set on the root as
+  `data-icons`) is separate from the style: `color` keeps app and folder icons in their own colours in every
+  style; `grayscale` makes them neutral `--raise` tiles with the glyph in `--fg2`.
+- **Settings dialog** (⌘,). A section list at the left and, at the right, a fixed header (the page title,
+  a one-line description and a **Close** button with an `esc` keycap) above a body that scrolls; the page
+  itself never scrolls. The title and description slide with the page.
 - **Sidebar.** A `Projects` title with a **+** button (a bordered square that lights up in the accent on hover) and the collapse button at the right; groups by git repo (or by folder, in Settings), sorted by
   name. A shell outside any repo is grouped by its own folder, so there is no catch-all group.
   A group's tile carries a ring when it holds the focused session. Each group is one **main row**
@@ -192,16 +201,26 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   the most urgent; Settings › Appearance › Sidebar can make it always the one that most needs you.
   Urgency runs needs you, error, done, working, idle, then most recently changed. The tray comes in
   three styles: **With names** (icon and process; two fit, more go behind **+N**), **Icons** (six
-  fit) and **Stacked** (one line each with folder and state; three fit). **+N** turns amber when a
+  fit) and **Stacked** (one line each with folder and state; three fit; the default). **+N** turns amber when a
   hidden session needs you and opens a side menu listing every session of the project. Clicking a
   session focuses its pane where it is open, else opens it in a **new tab**; it never replaces
   another pane. When the lead changes the new main row fades in. ⌘B folds
   it to a 60px rail of folder shapes (initials on the front) and icons. Every folder has its own colour,
   chosen from its path, in the sidebar and the rail; in the rail a folder and its sessions sit on one
-  strip in that colour, and hovering a collapsed folder opens a popover with its name, branch, path and
-  sessions; hovering a collapsed session opens one with its agent, its state and how long it
-  has been so, the last prompt the agent was given (shortened to a few lines), its folder and its
-  branch. A session with no prompt, such as a plain shell, shows no prompt line. Under 1100px the sidebar is not on screen: a **Sessions** button at the start of the tab bar (and ⌘B) slides it in over the panes on a scrim, and picking a session, starting one or opening Settings, a click on the scrim or Esc closes it.
+  strip in that colour. **Rail popovers** open beside the item on hover or keyboard focus after 280ms
+  (instantly once one is open), 10px to its right with an arrow pointing at it, and close 160ms after the
+  pointer leaves both the item and the popover, so the popover can be used. A project's (260px) shows its
+  colour, name, path and branch, then every session in priority order (icon, name, process, state word),
+  each one clickable, and the hint "Click the folder to collapse · right-click for more". A session's
+  (240px) shows its project and name, its state, process and path, a mono well with the pending approval
+  command (amber) or the last prompt (none for a plain shell), and "In tab N" when it is open in one.
+  They replace the browser's `title` tooltips in the rail. Under 1100px the sidebar is not on screen: a **Sessions** button at the start of the tab bar (and ⌘B) slides it in over the panes on a scrim, and picking a session, starting one or opening Settings, a click on the scrim or Esc closes it.
+- **First-run welcome.** On the first launch (no saved settings and no earlier welcome) a 560px dialog opens
+  over a blurred scrim with a progress bar per step: **Welcome** (the same sessions as the TUI, closing never
+  stops an agent, and the **New sessions start in** folder, checked before it continues) and **You're set**
+  (six keycaps, then **Start a session**). Skip and Esc leave it; global shortcuts are ignored while it is
+  open. A window that already has settings is never greeted. Settings › General › **Show the welcome again**
+  replays it. The "Bring your TUI setup" step comes with the shared config.
 - **Interface size.** Settings › Appearance › Interface size sets the sidebar icon size (Small 0.8, Medium 1,
   Large 1.2 times the project tiles, session icons, tray chips and the rail, whose width follows), the density (Compact 0.8,
   Comfortable 1, Spacious 1.25 times the row, tab and pane spacing), the sidebar text size and the
@@ -229,9 +248,10 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   lists every tab of the project; Esc or a click outside closes it.
 - **A tab says what is in it.** A tab shows a small icon for each pane it holds (up to three,
   overlapped) and `+N` for the panes beyond the first; hovering it opens a list of every pane with
-  its agent, folder and state. Once more than one tab is open, each main row carries a small
-  number chip for the tab it is open in (a tray item's tooltip says its pane), and a collapsed session's popover says "Open in tab N".
-  A session that is in no tab has no chip.
+  its agent, folder and state. A collapsed session's popover says "Open in tab N"; the expanded rows
+  carry no tab number. A working row shows its spinner and no run time, because the window only
+  knows when it first saw the change. Anything with a `title` shows a themed tooltip after a short
+  hover (`HoverTips`), not the browser's.
 - **Tabs hold layouts, panes hold sessions.** A tab is one to four panes in columns; closing a
   pane or tab detaches and the session stays in the sidebar. Ending a session is its own action
   on the sidebar row, a pane's menu or a row's menu. Right-click opens a menu on a pane (split,
@@ -281,7 +301,10 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Worktrees (⌘⇧N).** The New worktree dialog names a branch and what to start it from (an
   existing branch is checked out instead), then opens a session in the new folder in a new tab. A
   project's right-click menu has a **Worktrees** submenu that opens a shell in any of the repo's
-  worktrees, and a **New worktree…** row. Worktrees group under their parent repo.
+  worktrees, and a **New worktree…** row. Worktrees group under their parent repo. **Close project** ends
+  every session in it. Anything that ends a session (the row's ×, a pane's or row's **Close session**,
+  **Close project**) opens one confirmation dialog first; closing a tab or pane only hides a view, the
+  sessions keep running, and does not ask.
 - **Notifications.** Settings › Notifications has one switch each for needs you, done and error. With
   one on, a session that changes to that state while you are not looking at it (the window is in the
   background, or it is not the focused pane) sends a system notification, once per change. It names
@@ -312,9 +335,15 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   setting or the system's) and a disconnected daemon stop all of them, with every other
   animation.
 - **Process icons** are generic tiles, never a product's mark: `>_` shell, `✻` codex, `rs` cargo.
-- **Themes** are Midnight (default), Abyss and Paper plus themes generated from six inputs
-  (`bg fg accent mag blue green` and a light flag) by Oklab mixing. Muted and dim text keep 4.5:1
+- **Themes** are Midnight (default), Abyss and Paper, themes generated from six inputs
+  (`bg fg accent mag blue green` and a light flag) by Oklab mixing, and **High Contrast** (pure
+  black and white, lines `#5A5A5A`/`#8A8A8A`, amber and red kept). Muted and dim text keep 4.5:1
   on the pane; the theme tests check every theme. A pane's xterm palette comes from the same
-  tokens.
+  tokens. **Settings › Appearance › Theme** has an Appearance switch (System, Dark or Light:
+  `themeMode`) and a searchable dropdown each for the dark and the light theme (`darkTheme`,
+  `lightTheme`); the dropdown lists its theme in use first. System follows the OS's own dark or
+  light setting as it changes. Hovering a theme in the slot that is in use previews it on the
+  whole window; leaving the list or closing the menu restores it, and picking commits it. A
+  single theme saved by an older version fills its own slot and pins the mode to it.
 - **Type.** Geist for the UI, Geist Mono for terminals, paths, counts and keys, both bundled.
 

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   archiveConversationOnDaemon,
+  markSeenOnDaemon,
   defaultSessionFolder,
   isDesktop,
   loadConversations,
@@ -27,6 +28,10 @@ import { ColumnHandle } from './components/ColumnHandle'
 import { CommandPalette } from './components/CommandPalette'
 import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPanel'
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
+import { ConfirmEndDialog, type EndRequest } from './components/ConfirmEndDialog'
+import { HoverTips } from './components/HoverTips'
+import { WelcomeDialog } from '@/features/welcome/WelcomeDialog'
+import { isFirstRun, markWelcomed } from '@/features/welcome/welcomed'
 import { repoDiff, repoLocate } from '@/features/inspect/api'
 import { FindBar } from '@/features/find/FindBar'
 import { RestoreBanner } from './components/RestoreBanner'
@@ -77,7 +82,7 @@ import { folderExists, resolveStartFolder } from './model/startFolder'
 import { markSeen, MOVED_HIGHLIGHT_MS, trackSessions, type SessionTrack } from './model/tracking'
 import { folderColor } from './model/folderColor'
 import type { PaletteItem } from './model/palette'
-import { findTheme, themeStyle, THEMES, xtermTheme } from './theme/themes'
+import { activeThemeName, findTheme, themeStyle, THEMES, xtermTheme } from './theme/themes'
 import './workspace.css'
 
 const SESSION_REFRESH_MS = 1500
@@ -119,6 +124,21 @@ function useSystemReducedMotion(): boolean {
   return reduced
 }
 
+const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)'
+
+/** Whether the operating system is set to dark, following it as it changes (System mode needs it). */
+function useSystemDark(): boolean {
+  const query = typeof window.matchMedia === 'function' ? window.matchMedia(DARK_SCHEME_QUERY) : null
+  const [dark, setDark] = useState(() => query?.matches ?? true)
+  useEffect(() => {
+    if (!query) return
+    const onChange = () => { setDark(query.matches) }
+    query.addEventListener('change', onChange)
+    return () => { query.removeEventListener('change', onChange) }
+  }, [query])
+  return dark
+}
+
 /**
  * The desktop app: a terminal multiplexer window over sessions maittyd owns (ADR 0046). Tabs and
  * splits are this window's arrangement; closing them only detaches.
@@ -131,6 +151,10 @@ export function DesktopApp() {
   const compact = width < COMPACT_WIDTH_PX
   const narrow = width < NARROW_WIDTH_PX
   const systemReducedMotion = useSystemReducedMotion()
+  const systemDark = useSystemDark()
+  // A theme being hovered in Settings shows on the whole window until the pointer leaves or one is picked.
+  const [previewTheme, setPreviewTheme] = useState<string | null>(null)
+  const [welcomeOpen, setWelcomeOpen] = useState(isFirstRun)
   const [preferences, setPreferences] = useState(readSettingsPreferences)
   const [layout, setLayout] = useState<Layout>(() => (preferences.restoreTabs ? readLayout() : EMPTY_LAYOUT))
   // The width while the sidebar's edge is being dragged; it is saved when the pointer is released.
@@ -223,7 +247,7 @@ export function DesktopApp() {
   }, [sessionMap, preferences.groupBy])
 
   const reducedMotion = preferences.reduceMotion || systemReducedMotion
-  const theme = findTheme(preferences.theme)
+  const theme = findTheme(previewTheme ?? activeThemeName(preferences, systemDark))
   const look = useMemo(() => ({ cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, theme: xtermTheme(theme.tokens) }), [preferences.cursorStyle, preferences.scrollback, theme])
   const effects = useMemo(() => {
     const allowed = online && !reducedMotion
@@ -251,8 +275,14 @@ export function DesktopApp() {
   }, [reducedMotion])
 
   useEffect(() => {
+    // Flat and Tiled share one finish (neutral, no glow); Tiled changes the layout on top of it.
     document.documentElement.dataset.style = preferences.style
+    document.documentElement.dataset.finish = preferences.style === 'glass' ? 'glass' : 'flat'
   }, [preferences.style])
+
+  useEffect(() => {
+    document.documentElement.dataset.icons = preferences.iconColor
+  }, [preferences.iconColor])
 
   useEffect(() => { writeLayout(layout) }, [layout])
 
@@ -382,15 +412,29 @@ export function DesktopApp() {
     flash('Tab closed · sessions keep running')
   }, [flash, tabGroup])
 
+  // Ending a session kills its shell, so every path that ends one (row, pane, menus, whole project) asks first.
+  const [endRequest, setEndRequest] = useState<EndRequest | null>(null)
+
   const endSession = useCallback((sessionId: string) => {
-    void archiveConversationOnDaemon({ id: sessionId }, true)
+    const session = sessions.find((candidate) => candidate.id === sessionId)
+    setEndRequest({ ids: [sessionId], label: session ? displayName(session) : 'this session' })
+  }, [sessions])
+
+  const endProject = useCallback((ids: string[], name: string) => { setEndRequest({ ids, label: name }) }, [])
+
+  const confirmEnd = useCallback(() => {
+    if (!endRequest) return
+    const { ids } = endRequest
+    setEndRequest(null)
+    void Promise.all(ids.map((id) => archiveConversationOnDaemon({ id }, true)))
       .then(async () => {
-        setLayout((current) => reconcileLayout(current, new Set(sessions.map((session) => session.id).filter((id) => id !== sessionId))))
-        flash('Session ended')
+        const ended = new Set(ids)
+        setLayout((current) => reconcileLayout(current, new Set(sessions.map((session) => session.id).filter((id) => !ended.has(id)))))
+        flash(ids.length === 1 ? 'Session ended' : `${String(ids.length)} sessions ended`)
         await queryClient.invalidateQueries({ queryKey: ['conversations'] })
       })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not end the session')) })
-  }, [flash, queryClient, sessions])
+  }, [endRequest, flash, queryClient, sessions])
 
   const saveName = useCallback((sessionId: string, name: string) => {
     setRenameId(null)
@@ -489,11 +533,12 @@ export function DesktopApp() {
   const overlayOpen = paletteOpen || inboxOpen
   const modalOpen = settingsSection !== null || renameId !== null || overlayOpen
   const drawerShown = compact && drawerOpen
-  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown })
-  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown } })
+  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown, welcomeOpen })
+  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown, welcomeOpen } })
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const state = shortcutState.current
+      if (state.welcomeOpen) return
       if (event.key === 'Escape') {
         // Innermost first: the palette or inbox, then focus mode, then Settings.
         if (state.overlayOpen) {
@@ -539,13 +584,24 @@ export function DesktopApp() {
     return map
   }, [groups])
 
+  const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
+  useEffect(() => {
+    const gained = () => { setWindowFocused(true) }
+    const lost = () => { setWindowFocused(false) }
+    window.addEventListener('focus', gained)
+    window.addEventListener('blur', lost)
+    return () => {
+      window.removeEventListener('focus', gained)
+      window.removeEventListener('blur', lost)
+    }
+  }, [])
   const inboxEntries: InboxEntry[] = useMemo(() => {
     const activity = (id: string) => tracks.get(id)?.changedAt ?? 0
     return sessions
-      .filter((item) => (item.status === 'needs' || item.status === 'error' || item.status === 'done') && cleared.get(item.id) !== item.status)
+      .filter((item) => (item.status === 'needs' || item.status === 'error' || item.status === 'done') && cleared.get(item.id) !== item.status && !(item.status === 'error' && item.id === focusedId && windowFocused))
       .sort(byPriority(activity))
       .map((item) => ({ session: item, projectName: projectOf.get(item.id)?.name ?? '', projectColor: projectOf.get(item.id)?.color ?? 'var(--accent)' }))
-  }, [sessions, cleared, tracks, projectOf])
+  }, [sessions, cleared, tracks, projectOf, focusedId, windowFocused])
   const needsCount = inboxEntries.filter((entry) => entry.session.status === 'needs').length
   const needsElsewhere = sessions.filter((item) => item.status === 'needs' && item.id !== focusedId).length
 
@@ -569,11 +625,29 @@ export function DesktopApp() {
       ? noticesFor(lastStatuses.current, sessions, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
       : []
     lastStatuses.current = new Map(sessions.map((item) => [item.id, item.status]))
+    // In the window but on another pane: a toast you can click. Away from the window: the system's.
+    const inWindow = document.hasFocus()
     for (const notice of notices) {
+      if (inWindow) {
+        toast(notice.title, { description: notice.body, action: { label: 'Open', onClick: () => { showSessionById(notice.sessionId) } } })
+        continue
+      }
       lastNotified.current = { sessionId: notice.sessionId, at: Date.now() }
-      void sendNativeNotice(notice.title, notice.body).catch(() => { /* a notification that cannot be shown is not worth a toast */ })
+      sendNativeNotice(notice.title, notice.body).catch((error: unknown) => { console.warn('Could not show a system notification', error) })
     }
-  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError])
+  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, showSessionById])
+
+  // Looking at a pane acknowledges it: a finished agent's done goes back to idle, as when the terminal app
+  // focuses it, and an error in it leaves the inbox. Needs-you stays until the agent is answered.
+  const viewedId = focusedSession?.id
+  const viewedStatus = focusedSession?.status
+  useEffect(() => {
+    if (!online || !windowFocused || viewedId === undefined) return
+    if (viewedStatus !== 'done') return
+    markSeenOnDaemon({ id: viewedId })
+      .then(() => queryClient.invalidateQueries({ queryKey: ['conversations'] }))
+      .catch((error: unknown) => { console.warn('Could not mark the session seen', error) })
+  }, [online, windowFocused, viewedId, viewedStatus, queryClient])
 
   // Clicking a notification brings the window forward; that focus shows the session it was about.
   useEffect(() => {
@@ -602,7 +676,8 @@ export function DesktopApp() {
     const command = target.interrupted?.resume
     if (!command) return
     showSessionById(target.id)
-    void sendTo(target, `${command}`)
+    void sendTo(target, `${command}
+`)
       .then(() => { setDismissedRestores((current) => new Set(current).add(target.id)) })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not resume the agent')) })
   }, [sendTo, showSessionById])
@@ -672,7 +747,7 @@ export function DesktopApp() {
       const target = group.sessions.find((member) => member.id === focusedId) ?? group.sessions[0]
       if (target) items.push({ id: `project-${group.key}`, label: group.name, detail: group.path, kind: 'Project', dot: folderColor(group.key, group.colorId).from, run: () => { showSessionById(target.id) } })
     }
-    for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, theme: candidate.name })) } })
+    for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
   }, [labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById])
 
@@ -740,6 +815,7 @@ export function DesktopApp() {
       }}
       onShowSession={(id) => { afterPick(); showSessionById(id) }}
       onEndSession={endSession}
+      onEndProject={endProject}
       onRenameSession={setRenameId}
       onOpenSettings={() => { afterPick(); setSettingsSection('general') }}
     />
@@ -903,6 +979,19 @@ export function DesktopApp() {
                 onNotice={flash}
               />
             )}
+            <HoverTips />
+            {welcomeOpen && (
+              <WelcomeDialog
+                mac={mac}
+                startFolder={preferences.startFolder}
+                portalContainer={root}
+                validateFolder={folderExists}
+                onStartFolder={(path) => { setPreferences((current) => ({ ...current, startFolder: path })) }}
+                onClose={() => { markWelcomed(); setWelcomeOpen(false) }}
+                onStartSession={newSession}
+              />
+            )}
+            <ConfirmEndDialog request={endRequest} portalContainer={root} onCancel={() => { setEndRequest(null) }} onConfirm={confirmEnd} />
             {paletteOpen && <CommandPalette items={paletteItems} onClose={() => { setPaletteOpen(false) }} />}
             {inboxOpen && (
               <InboxPanel
@@ -943,11 +1032,14 @@ export function DesktopApp() {
                 preferences={preferences}
                 onChange={setPreferences}
                 systemReducedMotion={systemReducedMotion}
+                systemDark={systemDark}
+                onPreviewTheme={setPreviewTheme}
+                onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}
                 mac={mac}
                 daemon={{ online, sessionCount: sessions.length }}
                 projects={groups.map((group) => ({ key: group.key, name: group.name, colorId: group.colorId }))}
                 validateFolder={folderExists}
-                onClose={() => { setSettingsSection(null) }}
+                onClose={() => { setPreviewTheme(null); setSettingsSection(null) }}
               />
             )}
             {toastMessage && <Toast key={toastMessage.key} message={toastMessage.text} />}

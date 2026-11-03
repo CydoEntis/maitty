@@ -1,6 +1,7 @@
 /* The Inspect panel: a card docked at the right of the window, same material as the other cards. */
-.mx-inspect { flex: none; width: clamp(320px, 38%, 560px); margin: 8px 8px 8px 0; display: flex; flex-direction: column; min-height: 0; border-radius: 14px; background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 22px 60px rgba(0, 0, 0, .35); backdrop-filter: blur(18px); overflow: hidden; }
-.mx-app.is-narrow .mx-inspect { position: absolute; inset: 8px; width: auto; margin: 0; z-index: 50; }
+/* A drawer over the content, like the Inbox: the terminals keep their size and the panel slides in from the right. */
+.mx-inspect { position: absolute; top: 8px; right: 8px; bottom: 8px; z-index: 50; width: clamp(340px, 40%, 560px); display: flex; flex-direction: column; border-radius: 14px; background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 22px 60px rgba(0, 0, 0, .5); backdrop-filter: blur(18px); overflow: hidden; animation: v8insp .32s var(--ease-out); }
+.mx-app.is-narrow .mx-inspect { left: 8px; width: auto; }
 .mx-inspect-head { flex: none; height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--pane-line); }
 .mx-inspect-head strong { font-size: 15px; font-weight: 600; }
 .mx-inspect-sub { min-width: 0; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -35,14 +35,14 @@ type Props = {
 /** ⌘I: a read-only look at the focused pane's repository. Anything that changes it happens in the pane's terminal. */
 export function InspectPanel({ term, title, view, agentWorking, timeline, lookAt, onView, onClose, onNotice }: Props) {
   return (
-    <aside className="mx-inspect" aria-label="Inspect" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}>
+    <aside className="mx-inspect" aria-label="Repository" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}>
       <header className="mx-inspect-head">
-        <strong>Inspect</strong>
+        <strong>Repository</strong>
         <span className="mx-inspect-sub">{title}</span>
         <span className="mx-spacer" />
         <button type="button" className="mx-icon-button" aria-label="Close" title="Close (esc)" onClick={onClose}>×</button>
       </header>
-      <div role="tablist" aria-label="Inspect views" className="mx-inspect-tabs">
+      <div role="tablist" aria-label="Repository views" className="mx-inspect-tabs">
         {VIEWS.map((item) => (
           <button key={item.id} type="button" role="tab" aria-selected={view === item.id} className={view === item.id ? 'is-current' : undefined} onClick={() => { onView(item.id) }}>{item.label}</button>
         ))}
