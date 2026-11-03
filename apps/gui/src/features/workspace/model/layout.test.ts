@@ -1,0 +1,291 @@
+import { describe, expect, it } from 'vitest'
+import {
+  activeTab,
+  closeFocused,
+  closePane,
+  closeTab,
+  dropSession,
+  setColumnWidths,
+  toggleBroadcast,
+  cycleFocus,
+  cycleTab,
+  EMPTY_LAYOUT,
+  focusedSessionId,
+  openInNewTab,
+  paneColumns,
+  parseLayout,
+  reconcileLayout,
+  selectTab,
+  showSession,
+  splitPane,
+  swapSessions,
+  toggleMaximize,
+  visibleSessionIds,
+  type Layout,
+  type MakeId,
+} from './layout'
+
+function ids(): MakeId {
+  let next = 0
+  return (prefix) => {
+    next += 1
+    return `${prefix}${String(next)}`
+  }
+}
+
+function withPanes(...sessions: string[]): { layout: Layout; makeId: MakeId } {
+  const makeId = ids()
+  const [first, ...rest] = sessions
+  let layout = openInNewTab(EMPTY_LAYOUT, first ?? 's', makeId)
+  for (const session of rest) layout = splitPane(layout, null, 'right', session, makeId)
+  return { layout, makeId }
+}
+
+const cols = (layout: Layout) => activeTab(layout)?.panes.map((pane) => `${pane.sessionId}@${String(pane.col)}`)
+
+describe('tab layout', () => {
+  it('opens a session in a new tab and focuses it', () => {
+    const layout = openInNewTab(EMPTY_LAYOUT, 'a', ids())
+    expect(layout.tabs).toHaveLength(1)
+    expect(focusedSessionId(layout)).toBe('a')
+  })
+
+  it('splits right into a new column after the pane and down into the same column', () => {
+    const makeId = ids()
+    let layout = openInNewTab(EMPTY_LAYOUT, 'a', makeId)
+    layout = splitPane(layout, null, 'right', 'b', makeId)
+    expect(cols(layout)).toEqual(['a@0', 'b@1'])
+    layout = splitPane(layout, null, 'down', 'c', makeId)
+    expect(cols(layout)).toEqual(['a@0', 'b@1', 'c@1'])
+    const firstPane = activeTab(layout)?.panes[0]?.id ?? null
+    layout = splitPane(layout, firstPane, 'right', 'd', makeId)
+    expect(cols(layout)).toEqual(['a@0', 'd@1', 'b@2', 'c@2'])
+    expect(focusedSessionId(layout)).toBe('d')
+  })
+
+  it('holds at most four panes', () => {
+    const { layout, makeId } = withPanes('a', 'b', 'c', 'd')
+    expect(splitPane(layout, null, 'down', 'e', makeId)).toBe(layout)
+  })
+
+  it('closes a pane by detaching it, keeping the last pane of a tab', () => {
+    const { layout } = withPanes('a', 'b', 'c')
+    const tab = activeTab(layout)
+    const middle = tab?.panes[1]?.id ?? ''
+    const closed = closePane(layout, middle)
+    expect(cols(closed)).toEqual(['a@0', 'c@1'])
+    const single = withPanes('a').layout
+    expect(closePane(single, activeTab(single)?.focus ?? '')).toEqual(single)
+  })
+
+  it('moves focus to the previous pane when the focused one closes', () => {
+    const { layout } = withPanes('a', 'b', 'c')
+    expect(focusedSessionId(closePane(layout, activeTab(layout)?.focus ?? ''))).toBe('b')
+  })
+
+  it('closes the focused pane, or the tab when it has one pane', () => {
+    const { layout } = withPanes('a', 'b')
+    const first = closeFocused(layout)
+    expect(first.closed).toBe('pane')
+    const second = closeFocused(first.layout)
+    expect(second.closed).toBe('tab')
+    expect(second.layout.tabs).toHaveLength(0)
+    expect(closeFocused(second.layout).closed).toBeNull()
+  })
+
+  it('closes a tab and shows the one that took its place', () => {
+    const makeId = ids()
+    let layout = openInNewTab(EMPTY_LAYOUT, 'a', makeId)
+    layout = openInNewTab(layout, 'b', makeId)
+    layout = openInNewTab(layout, 'c', makeId)
+    const middle = layout.tabs[1]?.id ?? ''
+    layout = cycleTab(layout, -1)
+    layout = closeTab(layout, middle)
+    expect(focusedSessionId(layout)).toBe('c')
+  })
+
+  it('cycles pane focus and tabs both ways, wrapping around', () => {
+    const { layout, makeId } = withPanes('a', 'b')
+    expect(focusedSessionId(cycleFocus(layout, 1))).toBe('a')
+    expect(focusedSessionId(cycleFocus(layout, -1))).toBe('a')
+    const two = openInNewTab(layout, 'c', makeId)
+    expect(focusedSessionId(cycleTab(two, 1))).toBe('b')
+    expect(focusedSessionId(cycleTab(two, -1))).toBe('b')
+  })
+
+  it('focuses a sidebar session where it is shown, else opens it in a new tab', () => {
+    const { layout, makeId } = withPanes('a', 'b')
+    const shown = showSession(layout, 'a', makeId)
+    expect(focusedSessionId(shown)).toBe('a')
+    expect(cols(shown)).toEqual(['a@0', 'b@1'])
+    const opened = showSession(layout, 'z', makeId)
+    expect(opened.tabs).toHaveLength(2)
+    expect(cols(opened)).toEqual(['z@0'])
+    expect(activeTab(layout)?.panes).toHaveLength(2)
+    expect(showSession(EMPTY_LAYOUT, 'z', makeId).tabs).toHaveLength(1)
+  })
+
+  describe('tabs of one project', () => {
+    const project = (tab: { panes: Array<{ sessionId: string }> }) => (tab.panes[0]?.sessionId.startsWith('m') ? 'maitty' : 'docs')
+    const build = () => {
+      const makeId = ids()
+      let layout = openInNewTab(EMPTY_LAYOUT, 'm1', makeId)
+      layout = openInNewTab(layout, 'd1', makeId)
+      layout = openInNewTab(layout, 'm2', makeId)
+      layout = openInNewTab(layout, 'd2', makeId)
+      return layout
+    }
+    const at = (layout: ReturnType<typeof build>, index: number) => layout.tabs[index]?.id ?? ''
+
+    it('cycles only through the tabs of the project that is showing', () => {
+      const built = build()
+      const layout = selectTab(built, at(built, 0))
+      const next = cycleTab(layout, 1, project)
+      expect(focusedSessionId(next)).toBe('m2')
+      expect(focusedSessionId(cycleTab(next, 1, project))).toBe('m1')
+      expect(focusedSessionId(cycleTab(layout, -1, project))).toBe('m2')
+    })
+
+    it('stays put when the project has a single tab', () => {
+      const layout = build()
+      const only = selectTab({ ...layout, tabs: layout.tabs.filter((tab) => tab.id !== at(layout, 2)) }, at(layout, 0))
+      expect(cycleTab(only, 1, project).activeTabId).toBe(at(layout, 0))
+    })
+
+    it('closing the showing tab goes to the next tab of the same project, else the one before', () => {
+      const layout = build()
+      const first = selectTab(layout, at(layout, 0))
+      expect(focusedSessionId(closeTab(first, at(first, 0), project))).toBe('m2')
+      const last = selectTab(layout, at(layout, 2))
+      expect(focusedSessionId(closeTab(last, at(last, 2), project))).toBe('m1')
+    })
+
+    it('goes to another project only when the closed one had no tab left', () => {
+      const makeId = ids()
+      let layout = openInNewTab(EMPTY_LAYOUT, 'd1', makeId)
+      layout = openInNewTab(layout, 'm1', makeId)
+      const closed = closeTab(layout, layout.activeTabId ?? '', project)
+      expect(focusedSessionId(closed)).toBe('d1')
+    })
+
+    it('leaves the showing tab alone when another one is closed', () => {
+      const layout = build()
+      expect(closeTab(layout, at(layout, 0), project).activeTabId).toBe(layout.activeTabId)
+    })
+  })
+
+  it('finds a session shown in another tab and switches to it', () => {
+    const makeId = ids()
+    let layout = openInNewTab(EMPTY_LAYOUT, 'a', makeId)
+    layout = openInNewTab(layout, 'b', makeId)
+    layout = showSession(layout, 'a', makeId)
+    expect(layout.activeTabId).toBe(layout.tabs[0]?.id)
+    expect(visibleSessionIds(layout)).toEqual(new Set(['a']))
+  })
+
+  it('swaps the sessions of two panes, keeping their places', () => {
+    const { layout } = withPanes('a', 'b')
+    const [first, second] = activeTab(layout)?.panes ?? []
+    const swapped = swapSessions(layout, first?.id ?? '', second?.id ?? '')
+    expect(cols(swapped)).toEqual(['b@0', 'a@1'])
+    expect(activeTab(swapped)?.focus).toBe(second?.id)
+  })
+
+  it('maximizes one of several panes and restores the layout', () => {
+    const { layout } = withPanes('a', 'b')
+    const tab = activeTab(layout)
+    const first = tab?.panes[0]?.id ?? ''
+    const maxed = toggleMaximize(layout, first)
+    const maxedTab = activeTab(maxed)
+    if (!maxedTab) throw new Error('no tab')
+    expect(paneColumns(maxedTab, false).map((column) => column.map((pane) => pane.sessionId))).toEqual([['a']])
+    expect(activeTab(toggleMaximize(maxed, first))?.max).toBeNull()
+    const single = withPanes('a').layout
+    expect(toggleMaximize(single, activeTab(single)?.focus ?? '')).toBe(single)
+  })
+
+  it('stacks panes in one column when narrow', () => {
+    const { layout, makeId } = withPanes('a', 'b')
+    const three = splitPane(layout, null, 'down', 'c', makeId)
+    const tab = activeTab(three)
+    if (!tab) throw new Error('no tab')
+    expect(paneColumns(tab, false).map((column) => column.length)).toEqual([1, 2])
+    expect(paneColumns(tab, true).map((column) => column.length)).toEqual([1, 1, 1])
+  })
+
+  it('drops panes and tabs whose sessions ended', () => {
+    const makeId = ids()
+    let layout = openInNewTab(EMPTY_LAYOUT, 'a', makeId)
+    layout = splitPane(layout, null, 'right', 'b', makeId)
+    layout = openInNewTab(layout, 'c', makeId)
+    const reconciled = reconcileLayout(layout, new Set(['a']))
+    expect(reconciled.tabs).toHaveLength(1)
+    expect(cols(reconciled)).toEqual(['a@0'])
+    expect(reconcileLayout(reconciled, new Set(['a']))).toBe(reconciled)
+  })
+
+  it('reads back a stored layout and ignores anything malformed', () => {
+    const { layout } = withPanes('a', 'b')
+    expect(parseLayout(JSON.parse(JSON.stringify(layout)))).toEqual(layout)
+    expect(parseLayout({ tabs: [{ id: 't', panes: [{ id: 1 }] }, 'x'] })).toEqual(EMPTY_LAYOUT)
+    expect(parseLayout(null)).toEqual(EMPTY_LAYOUT)
+  })
+})
+
+describe('column widths', () => {
+  it('keeps dragged widths until the columns change, then goes back to equal', () => {
+    const { layout } = withPanes('a', 'b')
+    const tabId = layout.activeTabId ?? ''
+    const sized = setColumnWidths(layout, tabId, [2, 1])
+    expect(activeTab(sized)?.widths).toEqual([2, 1])
+    expect(activeTab(setColumnWidths(sized, tabId, null))?.widths).toBeUndefined()
+
+    const second = activeTab(sized)?.panes[1]?.id ?? ''
+    expect(activeTab(closePane(sized, second))?.widths).toBeUndefined()
+    expect(activeTab(reconcileLayout(sized, new Set(['a'])))?.widths).toBeUndefined()
+  })
+
+  it('survives a reload only when it matches the columns', () => {
+    const { layout } = withPanes('a', 'b')
+    const sized = setColumnWidths(layout, layout.activeTabId ?? '', [3, 1])
+    expect(activeTab(parseLayout(JSON.parse(JSON.stringify(sized))))?.widths).toEqual([3, 1])
+    const bad = JSON.parse(JSON.stringify(sized)) as { tabs: Array<{ widths: unknown }> }
+    if (bad.tabs[0]) bad.tabs[0].widths = [1, -2]
+    expect(activeTab(parseLayout(bad))?.widths).toBeUndefined()
+  })
+})
+
+describe('broadcast', () => {
+  it('turns on and off for one tab and is remembered', () => {
+    const { layout } = withPanes('a', 'b')
+    const on = toggleBroadcast(layout, layout.activeTabId ?? '')
+    expect(activeTab(on)?.broadcast).toBe(true)
+    expect(activeTab(parseLayout(JSON.parse(JSON.stringify(on))))?.broadcast).toBe(true)
+    expect(activeTab(toggleBroadcast(on, layout.activeTabId ?? ''))?.broadcast).toBe(false)
+  })
+})
+
+describe('dropping a session on a pane', () => {
+  it('swaps with the pane when the session is already in this tab', () => {
+    const { layout } = withPanes('a', 'b')
+    const first = activeTab(layout)?.panes[0]?.id ?? ''
+    expect(cols(dropSession(layout, first, 'b'))).toEqual(['b@0', 'a@1'])
+  })
+
+  it('moves a session from another tab here, and the pane it left takes this pane\'s session', () => {
+    const makeId = ids()
+    let layout = openInNewTab(EMPTY_LAYOUT, 'a', makeId)
+    layout = openInNewTab(layout, 'b', makeId)
+    const firstTab = layout.tabs[0]
+    layout = selectTab(layout, firstTab?.id ?? '')
+    const result = dropSession(layout, firstTab?.panes[0]?.id ?? '', 'b')
+    expect(result.tabs.map((tab) => tab.panes.map((pane) => pane.sessionId))).toEqual([['b'], ['a']])
+    expect(result.activeTabId).toBe(firstTab?.id)
+  })
+
+  it('replaces the pane\'s session when the session is shown nowhere', () => {
+    const { layout } = withPanes('a', 'b')
+    const first = activeTab(layout)?.panes[0]?.id ?? ''
+    expect(cols(dropSession(layout, first, 'z'))).toEqual(['z@0', 'b@1'])
+  })
+})

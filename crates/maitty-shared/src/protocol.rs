@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 65;
+pub const PROTOCOL_VERSION: u32 = 68;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -62,6 +62,17 @@ pub struct ConversationSummary {
     pub archived: bool,
 }
 
+/// Which app a client is. A terminal session belongs to the app that started it, and only
+/// that app may list, type into or resize it (ADR 0045). Clients that don't say are terminal
+/// clients, which is what the terminal app has always been.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Surface {
+    #[default]
+    Terminal,
+    Desktop,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum ClientMsg {
@@ -75,6 +86,8 @@ pub enum ClientMsg {
         from: Option<(TermId, String)>,
         #[serde(default)]
         structured: Option<StructuredIdentity>,
+        #[serde(default)]
+        surface: Surface,
     },
     Command(Command),
     Input {
@@ -135,6 +148,9 @@ pub struct Usage {
     pub context: Option<f32>,
     /// What the session has cost so far at list price, in US dollars (Claude's estimate).
     pub cost: Option<f64>,
+    /// Tokens the provider says the session has used (what it reports, never an estimate).
+    #[serde(default)]
+    pub tokens: Option<u64>,
 }
 
 /// One of an agent's plan limits: how much is used and when it starts over.
@@ -281,6 +297,16 @@ pub enum Command {
         term: TermId,
         name: String,
     },
+    /// Keep a pane at the top of its project (and its lead), or let it go back to its place.
+    PinPane {
+        term: TermId,
+        pinned: bool,
+    },
+    /// Put a pane away from the project lists and tabs without stopping it, or bring it back.
+    ArchivePane {
+        term: TermId,
+        archived: bool,
+    },
     /// The agent in `term` moves into a new worktree of its repo: made now, and when its turn
     /// ends it restarts there, resumed (the agent runs `<app> worktree --move`).
     MoveToWorktree {
@@ -295,6 +321,14 @@ pub enum Command {
     },
     /// Trade the places of two panes of one tab; each takes the other's size. An error when
     /// they are in different tabs.
+    /// Put the checkout `term` is in back as it was in a snapshot the daemon took (one that
+    /// `RepoRequest::Snapshots` listed), after saving what is there now. Only you can, and not
+    /// while the pane's agent works. The answer is `Reply::Repo { tag, Restored }`.
+    RestoreSnapshot {
+        term: TermId,
+        tag: u64,
+        commit: String,
+    },
     SwapPanes {
         a: TermId,
         b: TermId,
@@ -492,6 +526,18 @@ pub enum Query {
     TerminalReplay {
         term: TermId,
     },
+    /// A read-only question about the repository `term` is in (human clients only). The
+    /// answer echoes `tag`, so several can be in flight at once.
+    Repo {
+        term: TermId,
+        tag: u64,
+        request: crate::repo::RepoRequest,
+    },
+    /// Where `query` appears in what the panes this app owns have printed recently (human
+    /// clients only; at most 100 hits, and 20 from any one pane).
+    PaneSearch {
+        query: String,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
@@ -659,6 +705,20 @@ pub enum Reply {
     List(Snapshot),
     Text(String),
     Worktrees(Vec<WorktreeEntry>),
+    Repo {
+        tag: u64,
+        reply: crate::repo::RepoReply,
+    },
+    Search(Vec<SearchHit>),
+}
+
+/// One line of a pane's output that matched a search.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchHit {
+    pub term: TermId,
+    /// Counted from the start of what the daemon kept, from 1.
+    pub line: usize,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -923,6 +983,12 @@ pub struct TermInfo {
     /// The name you gave the pane in the app (Rename pane), which wins over everything.
     #[serde(default)]
     pub label: String,
+    /// Pinned to the top of its project.
+    #[serde(default)]
+    pub pinned: bool,
+    /// Put away from the project lists; the process keeps running.
+    #[serde(default)]
+    pub archived: bool,
     /// The model it's using, short ("opus 4.5"), if known.
     pub model: String,
     /// Memory used by what runs in it (bytes).
@@ -1006,6 +1072,55 @@ pub struct TermInfo {
     /// The output stays on the daemon. An older peer's single `check` reads as one checkpoint.
     #[serde(default, alias = "check", deserialize_with = "one_or_many_checks")]
     pub checks: Vec<CheckInfo>,
+    /// What a stopped agent is asking, off its screen: the exact command or file and its choices.
+    /// Empty unless the pane needs you and shows numbered choices.
+    #[serde(default)]
+    pub asking: String,
+    /// The agent that was mid-turn when the daemon restarted, left as a plain shell for you to
+    /// resume. Never resumed on its own; gone once an agent runs in the pane again.
+    #[serde(default)]
+    pub interrupted: Option<Interrupted>,
+    /// The latest turn events, oldest first: what the agent's own reports and the shell's prompt
+    /// marks (OSC 133) said happened, not what the screen looked like.
+    #[serde(default)]
+    pub timeline: Vec<TurnEvent>,
+}
+
+/// An agent that was working when the daemon restarted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Interrupted {
+    pub agent: String,
+    /// The command that brings its conversation back (`codex resume --last`).
+    pub resume: String,
+}
+
+/// One thing that happened in a pane.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TurnEvent {
+    /// Unix seconds.
+    pub at: u64,
+    pub kind: TurnKind,
+    /// What reported it ("hook: Stop", "exit 1"); may be empty.
+    #[serde(default)]
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TurnKind {
+    /// The agent started working.
+    Working,
+    /// The agent stopped for you.
+    NeedsYou,
+    /// The agent finished its turn.
+    Done,
+    /// The agent is idle again.
+    Idle,
+    /// The shell showed a prompt (OSC 133 A).
+    Prompt,
+    /// A command started running (OSC 133 C).
+    CommandStarted,
+    /// A command finished (OSC 133 D); `detail` is its exit code when it reported one.
+    CommandFinished,
 }
 
 pub fn one_or_many_checks<'de, D: serde::Deserializer<'de>>(
@@ -1265,6 +1380,7 @@ mod tests {
                 attach: true,
                 from: Some((3, "00ff".into())),
                 structured: None,
+                surface: Surface::Terminal,
             },
             ClientMsg::Input {
                 term: 3,
@@ -1304,6 +1420,18 @@ mod tests {
             ClientMsg::Query(Query::List),
             ClientMsg::Query(Query::Read { term: 3 }),
             ClientMsg::Query(Query::Worktrees { ws: 1 }),
+            ClientMsg::Query(Query::PaneSearch {
+                query: "error".into(),
+            }),
+            ClientMsg::Query(Query::Repo {
+                term: 3,
+                tag: 9,
+                request: crate::repo::RepoRequest::DiffRange {
+                    from: "main".into(),
+                    to: "HEAD".into(),
+                    path: Some("src/lib.rs".into()),
+                },
+            }),
             ClientMsg::Query(Query::CheckOutput {
                 term: 3,
                 name: None,
@@ -1418,6 +1546,11 @@ mod tests {
                 branch: Some("feat/x".into()),
             }),
             ClientMsg::Command(Command::SwapPanes { a: 3, b: 4 }),
+            ClientMsg::Command(Command::RestoreSnapshot {
+                term: 3,
+                tag: 4,
+                commit: "abc123".into(),
+            }),
         ];
         for m in &clients {
             round_trips(m);
@@ -1605,6 +1738,38 @@ mod tests {
             .unwrap()
             .extend(extra.as_object().unwrap().clone());
         decode(&rmp_serde::to_vec_named(&v).unwrap()).expect("a pane")
+    }
+
+    /// Pin and archive are new commands: a peer built before them can't read them.
+    #[test]
+    fn a_peer_from_before_pin_and_archive_cannot_read_them() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            RenamePane { term: TermId, name: String },
+        }
+        for command in [
+            Command::PinPane {
+                term: 3,
+                pinned: true,
+            },
+            Command::ArchivePane {
+                term: 3,
+                archived: true,
+            },
+        ] {
+            let bytes = encode(&command).unwrap();
+            assert!(decode::<OldCommand>(&bytes).is_err());
+            assert!(decode::<Command>(&bytes).is_ok());
+        }
+    }
+
+    #[test]
+    fn a_pane_from_before_pin_and_archive_decodes_as_neither() {
+        let term = pane_from(serde_json::json!({}));
+        assert!(!term.pinned && !term.archived);
+        let term = pane_from(serde_json::json!({ "pinned": true, "archived": true }));
+        assert!(term.pinned && term.archived);
     }
 
     #[test]

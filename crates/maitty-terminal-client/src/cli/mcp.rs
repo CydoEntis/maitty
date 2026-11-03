@@ -10,6 +10,7 @@
 
 use crate::brand::APP_COMMAND;
 use crate::cli;
+use crate::prompt::prompt_on;
 use crate::protocol::*;
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -145,30 +146,6 @@ fn tools() -> Value {
             "inputSchema": { "type": "object", "properties": { "id": id }, "required": ["id"] }
         }
     ])
-}
-
-/// The numbered choices on a screen and the question above them.
-fn prompt_on(screen: &str) -> (String, Vec<(u32, String)>) {
-    let lines: Vec<&str> = screen.lines().collect();
-    let mut opts = Vec::new();
-    let mut first = lines.len();
-    for (i, l) in lines.iter().enumerate().rev().take(20) {
-        let t = l
-            .trim()
-            .trim_matches(|c: char| "│┃ ".contains(c))
-            .trim_start_matches(['❯', '>', ' '])
-            .trim();
-        let mut ch = t.chars();
-        if let (Some(d), Some('.')) = (ch.next(), ch.next())
-            && let Some(n) = d.to_digit(10)
-        {
-            opts.push((n, ch.as_str().trim().to_string()));
-            first = i;
-        }
-    }
-    opts.reverse();
-    let question = lines[first.saturating_sub(6)..first].join(" ");
-    (question, opts)
 }
 
 /// A short id for the prompt on a screen: its question and choices, whitespace aside. An

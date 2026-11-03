@@ -81,6 +81,16 @@ On Arch Linux, including Omarchy, install the packages listed in
 `pnpm desktop:build`. Build on the target Linux host because the desktop shell
 links to its installed WebKitGTK.
 
+Two things to know when building on Windows while a desktop daemon is running:
+
+- `cargo build` fails with "Access is denied" if a `maitty-gui-daemon.exe` that
+  was started from `target\debug` is still running, because Windows will not let
+  cargo replace the running file. Don't kill it (it owns your sessions); build into
+  another folder instead: `CARGO_TARGET_DIR=C:/dev/maitty-gate-target cargo build`.
+- `cargo check --target x86_64-unknown-linux-gnu` (or `aarch64-apple-darwin`) cannot
+  build the Tauri crate `maitty-gui` from Windows, because its `libdbus-sys` needs a
+  Linux sysroot. Cross-check the rest with `--workspace --exclude maitty-gui`.
+
 Settings live in `config.toml` (`%APPDATA%\maitty\` on Windows,
 `~/.config/maitty/` elsewhere), with `config.local.toml` beside it for
 machine-only values. `config.example.toml` documents every key.

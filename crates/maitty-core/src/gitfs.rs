@@ -85,7 +85,10 @@ pub fn head(dir: &Path) -> Option<Head> {
     let main_git = gitdir
         .ancestors()
         .find(|a| a.file_name().is_some_and(|n| n == ".git"))?;
-    let main_root = main_git.parent()?.to_path_buf();
+    // Git writes the gitdir with forward slashes on Windows; rebuilding the path from its
+    // components gives the native spelling, so the main checkout and its worktrees share one
+    // root string (clients group sessions by it).
+    let main_root = main_git.parent()?.components().collect::<PathBuf>();
     Some(Head {
         branch: read_head(&gitdir)?,
         linked: true,
@@ -155,7 +158,13 @@ mod tests {
             wt.join(".git"),
             format!(
                 "gitdir: {}\n",
-                main.join(".git").join("worktrees").join("feat").display()
+                // As git writes it on Windows: forward slashes.
+                main.join(".git")
+                    .join("worktrees")
+                    .join("feat")
+                    .display()
+                    .to_string()
+                    .replace('\\', "/")
             ),
         )
         .unwrap();

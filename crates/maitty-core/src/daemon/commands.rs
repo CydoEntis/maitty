@@ -74,6 +74,11 @@ impl Daemon {
                 let by = self.starting(client, &helpers::task_label(cmd.as_deref(), None))?;
                 let term = self.spawn(cmd.as_deref(), &cwd, cols, rows)?;
                 self.started(term, by);
+                // The app that asked for it owns it: only that app may use this session.
+                let owner = self.surface_of(client);
+                if let Some(t) = self.terms.get_mut(&term) {
+                    t.owner = owner;
+                }
                 let id = self.next();
                 let tab = self.next();
                 let color = self.free_color();
@@ -100,12 +105,7 @@ impl Daemon {
                 self.poll_git_soon();
             }
             Command::CloseWorkspace { ws } => {
-                let terms: Vec<TermId> = self
-                    .workspaces
-                    .iter()
-                    .filter(|w| w.id == ws)
-                    .flat_map(|w| w.tabs.iter().flat_map(|t| t.layout.leaves()))
-                    .collect();
+                let terms = self.workspace_panes(ws);
                 let tops = self.worktrees_of(&terms);
                 for t in terms {
                     self.close_term(t);
@@ -313,6 +313,16 @@ impl Daemon {
             Command::RenamePane { term, name } => {
                 if let Some(t) = self.terms.get_mut(&term) {
                     t.label = name.trim().chars().take(60).collect();
+                }
+            }
+            Command::PinPane { term, pinned } => {
+                if let Some(t) = self.terms.get_mut(&term) {
+                    t.pinned = pinned;
+                }
+            }
+            Command::ArchivePane { term, archived } => {
+                if let Some(t) = self.terms.get_mut(&term) {
+                    t.archived = archived;
                 }
             }
             Command::MarkSeen { term } => {
@@ -600,6 +610,28 @@ impl Daemon {
                     let _ = tx.blocking_send(Ev::WorktreeRemoved {
                         client,
                         path,
+                        result,
+                    });
+                });
+                return Ok(false);
+            }
+            Command::RestoreSnapshot { term, tag, commit } => {
+                let pane = self
+                    .terms
+                    .get(&term)
+                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                // Its agent would keep writing into files being rolled back, even after you confirmed.
+                anyhow::ensure!(
+                    pane.status != Status::Working,
+                    "Its agent is working; wait for it to finish before restoring"
+                );
+                let dir = pane.cwd.clone();
+                let tx = self.tx.clone();
+                tokio::task::spawn_blocking(move || {
+                    let result = repo::restore(&dir, &commit).map_err(|e| format!("{e:#}"));
+                    let _ = tx.blocking_send(Ev::RepoReady {
+                        client,
+                        tag,
                         result,
                     });
                 });

@@ -113,6 +113,7 @@ pub fn session_facts(tail: &str) -> (Option<Usage>, Option<Vec<Limit>>) {
     let usage = window.zip(used).map(|(window, used)| Usage {
         context: Some((used / window * 100.0).min(100.0) as f32),
         cost: None,
+        tokens: info["total_token_usage"]["total_tokens"].as_u64(),
     });
     let limits: Vec<Limit> = ["primary", "secondary"]
         .iter()

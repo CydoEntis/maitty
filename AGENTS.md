@@ -25,7 +25,7 @@ Load them when the work touches their area, not all of them up front.
 | [`docs/UI.md`](docs/UI.md) | building or changing any user interface | component structure, UI state, async states, accessibility |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | changing how the app looks | the current visual language: themes, layouts, chips, sidebar, panels, splash |
 | [`docs/COMMIT-STANDARDS.md`](docs/COMMIT-STANDARDS.md) | committing, branching, opening a PR | message format, commit workflow, git safety |
-| the plan doc (see *Planning*) | starting, finishing, or scoping work | what is in, out, and in what order |
+| the Plane project (see *Planning*) | starting, finishing, or scoping work | what is in, out, and in what order |
 | [`docs/stack/`](docs/stack/) | touching a technology that has a stack doc | the rules for each technology used in this project |
 | [`docs/adr/`](docs/adr/) | changing a recorded decision | decisions that are expensive to reverse |
 
@@ -154,20 +154,24 @@ don't apply. When the need arrives, fill it in again.
 
 ## Planning
 
-Scope and order live in one **plan doc**, created and kept by the `roadmap`
-skill (`/roadmap init`, then `/roadmap feature …`, `/roadmap reconcile`). Its
-path is recorded in *Project-specific: workflow and tooling*. The default is
-`docs/PLANNING.md`.
+Scope and order live in **Plane**, not in a repo file. Where the Plane project
+is and how to reach it is recorded in *Project-specific: planning (Plane)*.
+Agents read and close tickets with the `plan-pull` skill.
 
-- Work only on what the current task names. Don't start the next item because
-  it looks close or convenient.
-- Mark work shipped or done in the plan only after its acceptance criteria are
-  met **and** the verification gate has passed in the real worktree. Partial,
-  unverified, or throwaway-branch work is not done.
-- Record follow-ups that surface mid-task in the plan. Don't silently widen the
-  current task.
+- Work only on the ticket you were given (`MAITTY-N`). Don't start the next one
+  because it looks close or convenient.
+- Claim a ticket before working on it (`plan-pull start`). If it is already
+  started or done, stop and say so.
+- Respect "blocked by" links. Don't start a ticket whose blockers are not Done.
+- Mark a ticket Done only after its acceptance criteria are met **and** the
+  verification gate has passed in the real worktree. Partial, unverified, or
+  throwaway-branch work is not done. The `done` comment names the commands you
+  ran and their results.
+- Record follow-ups that surface mid-task as new Backlog tickets with a label.
+  Don't silently widen the current ticket.
 - Reordering, adding, or cutting planned work is the user's decision. Propose
   it; don't make it.
+- Decisions that are expensive to reverse go in `docs/adr/`, not in a ticket.
 
 ## Workflow
 
@@ -294,7 +298,7 @@ runs a nested server with `MAITTY_SOCKET=<name> maitty`.
 
 ## Project-specific: workflow and tooling
 
-- **Plan:** `docs/ROADMAP.md` (the plan doc: phases, scope, decisions, rules). The current design is [`docs/DESIGN.md`](docs/DESIGN.md).
+- **Plan:** Plane, project `MAITTY` (see *Project-specific: planning (Plane)*). `docs/ROADMAP.md` is the legacy plan doc: it still holds the shipped-feature list and the declined list until ticket MAITTY-16 migrates them. Don't add new planned work to it. The current design is [`docs/DESIGN.md`](docs/DESIGN.md).
 - **Branches:** work lands on `dev` at https://github.com/CydoEntis/maitty; one
   commit per logical change, pushed after the gate passes.
 - **Install locally:** `cargo install --path apps/tui` (stop a running `maitty` first on
@@ -303,4 +307,20 @@ runs a nested server with `MAITTY_SOCKET=<name> maitty`.
   `vX.Y.Z` on `main` and push the tag. `.github/workflows/release.yml` builds Windows, macOS
   (Apple Silicon and Intel) and Linux (x64, ARM; static musl) archives with checksums and
   publishes the GitHub Release that `install.sh` / `install.ps1` download from.
-- **Tickets:** GitHub issues on CydoEntis/maitty, labelled by phase (`phase-5`, …) and linked from the plan.
+- **Tickets:** Plane work items `MAITTY-N` (see the next section). Older GitHub issues on CydoEntis/maitty (labelled `phase-5`, …) are history; don't file new planned work there.
+
+## Project-specific: planning (Plane)
+
+- **Server:** `http://192.168.1.244`, workspace `ideayard`, project key `MAITTY`.
+  The project is on the user's home network, so it is only reachable from there.
+- **Structure:** a *module* is a feature and acts as its phase (cycles are off). A
+  *label* is an area (`ssh`, `client`, `daemon`, `docs`, `adr`, `windows`,
+  `tooling`) or a type (`feature`, `bug`, `chore`, `spike`). States are Backlog,
+  Todo, In Progress, Done, Cancelled.
+- **Access:** the `plan-pull` skill (`~/.claude/skills/plan-pull/`). It reads
+  `PLANE_URL`, `PLANE_WORKSPACE` and `PLANE_TOKEN_FILE` from the environment.
+  The token never goes in the repo, fixtures, logs or output.
+- **Commands:** `brief MAITTY-N`, `start MAITTY-N`, `done MAITTY-N --gate "<results>"`,
+  `list MAITTY [--state …]`. If the skill isn't installed, say so and ask the
+  user; don't call the API by hand with a guessed token.
+- **Dependencies:** a ticket's "blocked by" links are real. Finish blockers first.

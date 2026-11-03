@@ -17,8 +17,10 @@ mod helpers;
 mod pane_terminal;
 mod persist;
 mod pr;
+mod repo;
 mod restore;
 mod scan;
+mod search;
 mod secrets;
 mod status;
 mod term;
@@ -79,7 +81,7 @@ pub(crate) enum ConversationFileResponse {
 
 #[allow(clippy::large_enum_variant)]
 pub enum Ev {
-    Connected(ClientId, mpsc::Sender<ServerMsg>, bool),
+    Connected(ClientId, mpsc::Sender<ServerMsg>, bool, Surface),
     StructuredConnected {
         id: ClientId,
         tx: mpsc::Sender<ServerMsg>,
@@ -175,6 +177,15 @@ pub enum Ev {
         client: ClientId,
         result: Result<Vec<WorktreeEntry>, String>,
     },
+    SearchReady {
+        client: ClientId,
+        hits: Vec<crate::protocol::SearchHit>,
+    },
+    RepoReady {
+        client: ClientId,
+        tag: u64,
+        result: Result<crate::repo::RepoReply, String>,
+    },
     ConversationDiffReady {
         client: ClientId,
         id: crate::conversation::ConversationId,
@@ -247,6 +258,8 @@ enum AutoUndo {
 struct Client {
     tx: mpsc::Sender<ServerMsg>,
     attach: bool,
+    /// The app it is (from its handshake): decides which terminal sessions it may use.
+    surface: Surface,
     /// The pane it acts from (its secret checked): what it may do is that pane's grants.
     /// None: you (the app's window, or a terminal outside the app).
     from: Option<TermId>,
@@ -455,13 +468,14 @@ async fn serve(
     ev: mpsc::Sender<Ev>,
 ) {
     let (mut r, mut w) = ipc::framed(stream);
-    let (attach, from, structured) = match ipc::recv_client(&mut r).await {
+    let (attach, from, structured, surface) = match ipc::recv_client(&mut r).await {
         Ok(Some(ClientMsg::Hello {
             attach,
             from,
             structured,
+            surface,
             ..
-        })) if from.is_none() || structured.is_none() => (attach, from, structured),
+        })) if from.is_none() || structured.is_none() => (attach, from, structured, surface),
         _ => return,
     };
     if ipc::send(
@@ -483,7 +497,7 @@ async fn serve(
             attach,
             claim,
         },
-        None => Ev::Connected(id, tx, attach),
+        None => Ev::Connected(id, tx, attach, surface),
     };
     if ev.send(connected).await.is_err() {
         return;
@@ -740,6 +754,7 @@ impl Daemon {
             | Command::NewWorktree { .. }
             | Command::Popup { .. } => self.may(client, Grant::Start, None),
             Command::ClosePane { term } => {
+                self.may_use_terminal(client, *term)?;
                 self.may(client, Grant::Admin, Some(*term)).or_else(|e| {
                     // Closing itself is fine.
                     if self.clients.get(&client).and_then(|c| c.from) == Some(*term) {
@@ -749,9 +764,33 @@ impl Daemon {
                     }
                 })
             }
-            Command::CloseWorkspace { .. }
-            | Command::CloseTab { .. }
-            | Command::RemoveWorktree { .. }
+            Command::CloseWorkspace { ws } => {
+                for term in self.workspace_panes(*ws) {
+                    self.may_use_terminal(client, term)?;
+                }
+                self.may(client, Grant::Admin, None)
+            }
+            Command::CloseTab { ws, tab } => {
+                let panes: Vec<TermId> = self
+                    .workspaces
+                    .iter()
+                    .filter(|w| w.id == *ws)
+                    .flat_map(|w| w.tabs.iter().filter(|t| t.id == *tab))
+                    .flat_map(|t| t.layout.leaves())
+                    .collect();
+                for term in panes {
+                    self.may_use_terminal(client, term)?;
+                }
+                self.may(client, Grant::Admin, None)
+            }
+            Command::RestoreSnapshot { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("restoring a snapshot is yours to do, not a pane's")
+            }
+            Command::RestoreSnapshot { term, .. } => {
+                self.may_use_terminal(client, *term)?;
+                self.may(client, Grant::Write, Some(*term))
+            }
+            Command::RemoveWorktree { .. }
             | Command::CloseWorktree { .. }
             | Command::TidyWorktrees { .. }
             | Command::KillServer { .. } => self.may(client, Grant::Admin, None),
@@ -975,8 +1014,13 @@ impl Daemon {
             if self.dirty {
                 self.dirty = false;
                 self.sync_scan_roots();
-                let snap = self.snapshot();
-                self.broadcast(|client| client.attach, ServerMsg::State(snap));
+                for surface in [Surface::Terminal, Surface::Desktop] {
+                    let snap = self.snapshot_for(surface);
+                    self.broadcast(
+                        |client| client.attach && client.surface == surface,
+                        ServerMsg::State(snap),
+                    );
+                }
             }
             if self.should_exit() {
                 tracing::info!("no panes left; exiting");
@@ -1157,18 +1201,19 @@ impl Daemon {
     fn handle(&mut self, ev: Ev) {
         self.drop_lagging_clients();
         match ev {
-            Ev::Connected(id, tx, attach) => {
+            Ev::Connected(id, tx, attach, surface) => {
                 let c = Client {
                     tx,
                     attach,
+                    surface,
                     from: None,
                     structured: None,
                     rejected: false,
                     behind: std::cell::Cell::new(false),
                 };
                 if attach {
-                    c.push(ServerMsg::State(self.snapshot()));
-                    for t in self.terms.values() {
+                    c.push(ServerMsg::State(self.snapshot_for(surface)));
+                    for t in self.terms.values().filter(|t| self.shown_to(t.id, surface)) {
                         c.push(ServerMsg::Replay {
                             term: t.id,
                             cols: t.cols,
@@ -1195,6 +1240,7 @@ impl Daemon {
                         Client {
                             tx,
                             attach: false,
+                            surface: Surface::Terminal,
                             from: None,
                             structured: None,
                             rejected: true,
@@ -1212,6 +1258,7 @@ impl Daemon {
                 let c = Client {
                     tx,
                     attach,
+                    surface: Surface::Terminal,
                     from: None,
                     structured: Some(owner),
                     rejected: false,
@@ -1227,8 +1274,12 @@ impl Daemon {
                         }
                         return;
                     }
-                    self.send(id, ServerMsg::State(self.snapshot()));
-                    for term in self.terms.values() {
+                    self.send(id, ServerMsg::State(self.snapshot_for(Surface::Terminal)));
+                    for term in self
+                        .terms
+                        .values()
+                        .filter(|t| self.shown_to(t.id, Surface::Terminal))
+                    {
                         self.send(
                             id,
                             ServerMsg::Replay {
@@ -1347,6 +1398,10 @@ impl Daemon {
                 if std::mem::take(&mut t.parser.callbacks_mut().title_changed) {
                     self.dirty = true;
                 }
+                if !t.parser.callbacks().marks.is_empty() {
+                    t.take_marks();
+                    self.dirty = true;
+                }
                 if let Some(text) = t.parser.callbacks_mut().copied.take() {
                     self.broadcast(|c| c.attach, ServerMsg::Clipboard { term: tid, text });
                 }
@@ -1365,7 +1420,10 @@ impl Daemon {
                         self.dirty = true;
                     }
                 }
-                self.broadcast(|c| c.attach, ServerMsg::Output { term: tid, data });
+                self.broadcast(
+                    |c| c.attach && self.shown_to(tid, c.surface),
+                    ServerMsg::Output { term: tid, data },
+                );
             }
             Ev::Exited(tid) => {
                 // A legacy sleeping agent's process was stopped on purpose; its pane stays.
@@ -1690,6 +1748,17 @@ impl Daemon {
                 Ok(list) => self.send(client, ServerMsg::Reply(Reply::Worktrees(list))),
                 Err(e) => self.send(client, ServerMsg::Error(e)),
             },
+            Ev::SearchReady { client, hits } => {
+                self.send(client, ServerMsg::Reply(Reply::Search(hits)));
+            }
+            Ev::RepoReady {
+                client,
+                tag,
+                result,
+            } => match result {
+                Ok(reply) => self.send(client, ServerMsg::Reply(Reply::Repo { tag, reply })),
+                Err(e) => self.send(client, ServerMsg::Error(e)),
+            },
             Ev::ConversationDiffReady {
                 client,
                 id,
@@ -1888,13 +1957,17 @@ impl Daemon {
                     .terms
                     .get(&term)
                     .is_some_and(|t| t.status == Status::Blocked);
-                if let Err(e) = self.may(client, Grant::Write, Some(term)).and_then(|_| {
-                    if asking {
-                        self.may(client, Grant::Respond, Some(term))
-                    } else {
-                        Ok(())
-                    }
-                }) {
+                if let Err(e) = self
+                    .may_use_terminal(client, term)
+                    .and_then(|_| self.may(client, Grant::Write, Some(term)))
+                    .and_then(|_| {
+                        if asking {
+                            self.may(client, Grant::Respond, Some(term))
+                        } else {
+                            Ok(())
+                        }
+                    })
+                {
                     self.send(client, ServerMsg::Error(format!("{e:#}")));
                     return;
                 }
@@ -1910,6 +1983,10 @@ impl Daemon {
                 }
             }
             ClientMsg::Resize { term, cols, rows } => {
+                if let Err(e) = self.may_use_terminal(client, term) {
+                    self.send(client, ServerMsg::Error(format!("{e:#}")));
+                    return;
+                }
                 if let Some(t) = self.terms.get_mut(&term)
                     && (t.cols, t.rows) != (cols, rows)
                 {
@@ -2135,20 +2212,103 @@ impl Daemon {
                         ServerMsg::Error("Only a human client can view a terminal this way".into())
                     }
                     Query::TerminalScreen { term } => match self
-                        .may(client, Grant::Read, Some(term))
+                        .may_use_terminal(client, term)
+                        .and_then(|()| self.may(client, Grant::Read, Some(term)))
                         .and_then(|()| self.pane_screen(term))
                     {
                         Ok(screen) => ServerMsg::Reply(Reply::Text(screen)),
                         Err(error) => ServerMsg::Error(format!("{error:#}")),
                     },
                     Query::TerminalReplay { term } => match self
-                        .may(client, Grant::Read, Some(term))
+                        .may_use_terminal(client, term)
+                        .and_then(|()| self.may(client, Grant::Read, Some(term)))
                         .and_then(|()| self.pane_replay(term))
                     {
                         Ok(replay) => ServerMsg::Reply(Reply::TerminalReplay(replay)),
                         Err(error) => ServerMsg::Error(format!("{error:#}")),
                     },
-                    Query::List => ServerMsg::Reply(Reply::List(self.snapshot())),
+                    Query::PaneSearch { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can search terminals".into())
+                    }
+                    Query::PaneSearch { query } => {
+                        let query = query.trim().to_string();
+                        if query.is_empty() || query.chars().count() > search::MAX_QUERY_CHARS {
+                            self.send(
+                                client,
+                                ServerMsg::Error(format!(
+                                    "A search is 1 to {} characters",
+                                    search::MAX_QUERY_CHARS
+                                )),
+                            );
+                            return;
+                        }
+                        let mut ids: Vec<TermId> = self
+                            .terms
+                            .keys()
+                            .copied()
+                            .filter(|term| {
+                                self.may_use_terminal(client, *term).is_ok()
+                                    && self.may(client, Grant::Read, Some(*term)).is_ok()
+                            })
+                            .collect();
+                        ids.sort_unstable();
+                        let panes: Vec<(TermId, Vec<u8>)> = ids
+                            .into_iter()
+                            .filter_map(|term| Some((term, self.terms.get(&term)?.replay())))
+                            .collect();
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let hits = search::search(&panes, &query);
+                            let _ = tx.blocking_send(Ev::SearchReady { client, hits });
+                        });
+                        return;
+                    }
+                    Query::Repo { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error(
+                            "Only a human client can read a repository this way".into(),
+                        )
+                    }
+                    Query::Repo { term, tag, request } => {
+                        let root = self
+                            .may_use_terminal(client, term)
+                            .and_then(|()| self.may(client, Grant::Read, Some(term)))
+                            .and_then(|()| {
+                                self.terms
+                                    .get(&term)
+                                    .map(|t| t.cwd.clone())
+                                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))
+                            });
+                        let root = match root {
+                            Ok(root) => root,
+                            Err(error) => {
+                                self.send(client, ServerMsg::Error(format!("{error:#}")));
+                                return;
+                            }
+                        };
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let result =
+                                repo::answer(&root, &request).map_err(|e| format!("{e:#}"));
+                            let _ = tx.blocking_send(Ev::RepoReady {
+                                client,
+                                tag,
+                                result,
+                            });
+                        });
+                        return;
+                    }
+                    Query::List => {
+                        let surface = self.surface_of(client);
+                        ServerMsg::Reply(Reply::List(self.snapshot_for(surface)))
+                    }
                     Query::Read { term } if self.may(client, Grant::Read, Some(term)).is_err() => {
                         ServerMsg::Error(format!(
                             "{:#}",
@@ -2207,6 +2367,53 @@ impl Daemon {
         ws.tab().map(|t| t.focus)
     }
 
+    /// Whether an app may see this pane. A pane that is gone is shown to nobody's list it can
+    /// act on anyway, so only a pane we know to belong to the other app is hidden.
+    fn shown_to(&self, term: TermId, surface: Surface) -> bool {
+        self.terms.get(&term).is_none_or(|t| t.owner == surface)
+    }
+
+    /// The app a client is. Clients that never said are terminal clients.
+    fn surface_of(&self, client: ClientId) -> Surface {
+        self.clients
+            .get(&client)
+            .map(|c| c.surface)
+            .unwrap_or_default()
+    }
+
+    /// Every pane in a workspace, across its tabs.
+    fn workspace_panes(&self, ws: WsId) -> Vec<TermId> {
+        self.workspaces
+            .iter()
+            .filter(|w| w.id == ws)
+            .flat_map(|w| w.tabs.iter().flat_map(|t| t.layout.leaves()))
+            .collect()
+    }
+
+    /// The state one app is shown: its own terminal sessions, the workspaces made of them, and
+    /// its own native conversation terminals (ADR 0045).
+    fn snapshot_for(&self, surface: Surface) -> Snapshot {
+        let mut snap = self.snapshot();
+        snap.terms.retain(|id, _| self.shown_to(*id, surface));
+        snap.workspaces.retain(|ws| {
+            ws.tabs.iter().all(|tab| {
+                tab.layout
+                    .leaves()
+                    .iter()
+                    .all(|t| self.shown_to(*t, surface))
+            })
+        });
+        snap.conversations
+            .retain(|c| c.native_term.is_none_or(|t| self.shown_to(t, surface)));
+        if snap
+            .active_ws
+            .is_some_and(|id| !snap.workspaces.iter().any(|ws| ws.id == id))
+        {
+            snap.active_ws = snap.workspaces.first().map(|ws| ws.id);
+        }
+        snap
+    }
+
     fn snapshot(&self) -> Snapshot {
         let terms: BTreeMap<TermId, TermInfo> = self
             .terms
@@ -2240,6 +2447,8 @@ impl Daemon {
                         },
                         model: t.model.clone(),
                         label: t.label.clone(),
+                        pinned: t.pinned,
+                        archived: t.archived,
                         mem: t.mem,
                         cpu: t.cpu,
                         bell: t.bell,
@@ -2270,6 +2479,13 @@ impl Daemon {
                         usage: t.usage.clone(),
                         resume_at: t.resume_at,
                         checks: t.checks.infos(),
+                        asking: if t.status == Status::Blocked {
+                            crate::prompt::asking(&t.parser.screen().contents())
+                        } else {
+                            String::new()
+                        },
+                        interrupted: t.interrupted.clone().filter(|_| t.agent.is_none()),
+                        timeline: t.timeline.iter().cloned().collect(),
                         subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                         started_by: t.started_by,
                         tab_of: t.tab_of.filter(|o| self.terms.contains_key(o)),

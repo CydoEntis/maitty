@@ -9,6 +9,8 @@ struct Kept {
     session: Option<String>,
     cmd: Option<String>,
     label: String,
+    pinned: bool,
+    archived: bool,
     name: String,
     first_prompt: String,
     model: String,
@@ -25,6 +27,8 @@ impl Kept {
             session: t.session.clone(),
             cmd: t.cmd.clone(),
             label: t.label.clone(),
+            pinned: t.pinned,
+            archived: t.archived,
             name: t.name.clone(),
             first_prompt: t.first_prompt.clone(),
             model: t.model.clone(),
@@ -38,6 +42,7 @@ impl Kept {
     fn give(self, t: &mut Term) {
         (t.agent, t.session, t.cmd) = (self.agent, self.session, self.cmd);
         (t.label, t.name, t.first_prompt) = (self.label, self.name, self.first_prompt);
+        (t.pinned, t.archived) = (self.pinned, self.archived);
         (t.model, t.grants, t.started_by, t.tab_of) =
             (self.model, self.grants, self.started_by, self.tab_of);
         t.queue = self.queue;
@@ -255,6 +260,7 @@ impl Daemon {
             agent: term.agent.clone(),
             session: term.agent.as_ref().and(term.session.clone()),
             unseen: term.status == Status::Done,
+            was_working: term.status == Status::Working,
             name: if term.name.is_empty() {
                 term.first_prompt.clone()
             } else {
@@ -262,7 +268,10 @@ impl Daemon {
             },
             model: term.model.clone(),
             label: term.label.clone(),
+            pinned: term.pinned,
+            archived: term.archived,
             started_by: term.started_by,
+            owner: term.owner,
             tab_of: term.tab_of,
             queue: term.queue.iter().cloned().collect(),
             account: term.account.clone(),
@@ -439,6 +448,13 @@ impl Daemon {
                         .filter(|p| p.is_dir())
                         .unwrap_or_else(|| sw.cwd.clone());
                     let cmd = self.restore_cmd(&pane);
+                    // A desktop session's agent that died mid-turn is not started again on its
+                    // own: the pane comes back as a shell and offers the resume command.
+                    let interrupted = (pane.owner == Surface::Desktop && pane.was_working)
+                        .then(|| pane.agent.clone().zip(cmd.clone()))
+                        .flatten()
+                        .map(|(agent, resume)| Interrupted { agent, resume });
+                    let cmd = cmd.filter(|_| interrupted.is_none());
                     match self.spawn(cmd.as_deref(), &cwd, 120, 32) {
                         Ok(new) => {
                             if let Some(t) = self.terms.get_mut(&new) {
@@ -448,13 +464,18 @@ impl Daemon {
                                     t.seed_output(&out);
                                 }
                                 // Keep the original identity so the next save matches this one.
-                                t.cmd = pane.cmd.clone();
-                                t.session = pane.session.clone();
-                                t.agent = pane.agent.clone();
+                                if interrupted.is_none() {
+                                    t.cmd = pane.cmd.clone();
+                                    t.session = pane.session.clone();
+                                    t.agent = pane.agent.clone();
+                                }
+                                t.interrupted = interrupted;
                                 t.restore_unseen = pane.unseen;
                                 t.first_prompt = pane.name.clone();
                                 t.model = pane.model.clone();
                                 t.label = pane.label.clone();
+                                (t.pinned, t.archived) = (pane.pinned, pane.archived);
+                                t.owner = pane.owner;
                                 t.queue = pane.queue.iter().cloned().collect();
                                 t.restore_checks(&check_dir, old, &pane);
                                 let now = term::unix_now();

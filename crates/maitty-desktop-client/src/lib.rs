@@ -408,35 +408,6 @@ pub async fn pane_terminal_replay(term: u32, daemon_executable: PathBuf) -> Resu
     }
 }
 
-/// Type into a terminal session and return its screen afterwards.
-pub async fn pane_terminal_input(
-    term: u32,
-    data: Vec<u8>,
-    daemon_executable: PathBuf,
-) -> Result<String> {
-    anyhow::ensure!(
-        !data.is_empty() && data.len() <= MAX_TERMINAL_INPUT_BYTES,
-        "Terminal input must contain between 1 and {MAX_TERMINAL_INPUT_BYTES} bytes"
-    );
-    let (mut reader, mut writer) = ipc::open_or_spawn_for_user(&daemon_executable)
-        .await
-        .context("connecting to the local daemon")?;
-    ipc::send_message(
-        &mut writer,
-        &ClientMsg::Command(Command::TerminalInput { term, data }),
-    )
-    .await?;
-    match receive_reply(&mut reader).await? {
-        Reply::Ok => {}
-        _ => bail!("daemon returned an unexpected terminal input reply"),
-    }
-    ipc::send_message(&mut writer, &ClientMsg::Query(Query::TerminalScreen { term })).await?;
-    match receive_reply(&mut reader).await? {
-        Reply::Text(screen) => Ok(screen),
-        _ => bail!("daemon returned an unexpected terminal screen reply"),
-    }
-}
-
 pub async fn pane_terminal_resize(
     term: u32,
     cols: u16,
@@ -451,6 +422,64 @@ pub async fn pane_terminal_resize(
     match reply {
         Reply::Ok => Ok(()),
         _ => bail!("daemon returned an unexpected terminal resize reply"),
+    }
+}
+
+/// A live stream of the terminal panes this app owns: each pane's replay, then its output as
+/// it happens. Pushed by the daemon, so the window never polls (ADR 0045).
+pub struct TerminalStream {
+    reader: ipc::Reader,
+}
+
+impl TerminalStream {
+    /// The next message, or `None` when the daemon closed the connection.
+    pub async fn next(&mut self) -> Result<Option<maitty_shared::protocol::ServerMsg>> {
+        ipc::receive_server(&mut self.reader).await
+    }
+}
+
+/// The other half of the stream's connection: what the user types goes back over it.
+pub struct TerminalInput {
+    writer: ipc::Writer,
+}
+
+impl TerminalInput {
+    pub async fn send(&mut self, term: u32, data: Vec<u8>) -> Result<()> {
+        anyhow::ensure!(
+            !data.is_empty() && data.len() <= MAX_TERMINAL_INPUT_BYTES,
+            "Terminal input must contain between 1 and {MAX_TERMINAL_INPUT_BYTES} bytes"
+        );
+        ipc::send_message(&mut self.writer, &ClientMsg::Input { term, data }).await
+    }
+}
+
+pub async fn open_terminal_stream(
+    daemon_executable: PathBuf,
+) -> Result<(TerminalStream, TerminalInput)> {
+    let (reader, writer) = ipc::open_stream_for_user(&daemon_executable)
+        .await
+        .context("connecting to the local daemon")?;
+    Ok((TerminalStream { reader }, TerminalInput { writer }))
+}
+
+/// Start a plain shell in a folder. The user types what they want to run in it (ADR 0046).
+pub async fn start_shell_session(cwd: PathBuf, daemon_executable: PathBuf) -> Result<Value> {
+    let cwd = cwd.canonicalize().context("resolving the start folder")?;
+    if !cwd.is_dir() {
+        bail!("the start folder is not a directory");
+    }
+    let reply = request(
+        ClientMsg::Command(Command::NewWorkspace {
+            cwd: Some(cwd),
+            name: None,
+            cmd: None,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected shell session reply"),
     }
 }
 
@@ -501,6 +530,106 @@ pub async fn rename_terminal_session(
     }
 }
 
+/// A read-only question about the repository a pane is in. `question` is a `RepoRequest` as
+/// JSON; the daemon scopes it to the pane's own checkout.
+pub async fn repo_query(term: u32, question: Value, daemon_executable: PathBuf) -> Result<Value> {
+    let question: maitty_shared::repo::RepoRequest =
+        serde_json::from_value(question).context("invalid repository request")?;
+    let reply = request(
+        ClientMsg::Query(Query::Repo {
+            term,
+            tag: 0,
+            request: question,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Repo { reply, .. } => Ok(serde_json::to_value(reply)?),
+        _ => bail!("daemon returned an unexpected repository reply"),
+    }
+}
+
+/// `git worktree add` for `branch` next to the repository `term` is in (new from `base`, or the
+/// repo's HEAD); the daemon opens it as a new session. `branch` names an existing branch to
+/// check it out instead.
+pub async fn new_worktree_session(
+    term: u32,
+    branch: String,
+    base: Option<String>,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let snapshot = match request(ClientMsg::Query(Query::List), daemon_executable.clone()).await? {
+        Reply::List(snapshot) => snapshot,
+        _ => bail!("daemon returned an unexpected session list reply"),
+    };
+    let ws = snapshot
+        .workspaces
+        .iter()
+        .find(|workspace| {
+            workspace
+                .tabs
+                .iter()
+                .any(|tab| tab.layout.leaves().contains(&term))
+        })
+        .map(|workspace| workspace.id)
+        .with_context(|| format!("pane {term} is not open"))?;
+    let reply = request(
+        ClientMsg::Command(Command::NewWorktree {
+            ws,
+            branch,
+            base,
+            cmd: None,
+            split: None,
+            from: None,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected worktree reply"),
+    }
+}
+
+/// Where `query` appears in what the app's terminal sessions printed recently.
+pub async fn search_panes(query: String, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Query(Query::PaneSearch { query }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Search(hits) => Ok(serde_json::to_value(hits)?),
+        _ => bail!("daemon returned an unexpected search reply"),
+    }
+}
+
+/// Put a pane's checkout back as it was in one of the daemon's snapshots. Returns how many
+/// files changed.
+pub async fn restore_snapshot(
+    term: u32,
+    commit: String,
+    daemon_executable: PathBuf,
+) -> Result<u64> {
+    let reply = request(
+        ClientMsg::Command(Command::RestoreSnapshot {
+            term,
+            tag: 0,
+            commit,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Repo {
+            reply: maitty_shared::repo::RepoReply::Restored(changed),
+            ..
+        } => Ok(changed as u64),
+        _ => bail!("daemon returned an unexpected restore reply"),
+    }
+}
+
 /// End a terminal session: its process stops, as when it is closed in the terminal app.
 pub async fn close_terminal_session(term: u32, daemon_executable: PathBuf) -> Result<Value> {
     let reply = request(
@@ -511,6 +640,53 @@ pub async fn close_terminal_session(term: u32, daemon_executable: PathBuf) -> Re
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected close reply"),
+    }
+}
+
+/// Pin a pane to the top of its project, or let it go back to its place.
+pub async fn pin_terminal_session(
+    term: u32,
+    pinned: bool,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::PinPane { term, pinned }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected pin reply"),
+    }
+}
+
+/// Put a pane away from the project lists without stopping it, or bring it back.
+pub async fn archive_terminal_session(
+    term: u32,
+    archived: bool,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ArchivePane { term, archived }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected archive reply"),
+    }
+}
+
+/// The user looked at a pane: the daemon turns a finished agent's done into idle.
+pub async fn mark_terminal_seen(term: u32, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::MarkSeen { term }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected mark-seen reply"),
     }
 }
 

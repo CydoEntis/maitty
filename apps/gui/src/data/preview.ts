@@ -1,7 +1,25 @@
 export type SessionStatus = 'working' | 'needs-you' | 'done' | 'idle' | 'recovery' | 'unknown'
 
+export type TurnKind = 'Working' | 'NeedsYou' | 'Done' | 'Idle' | 'Prompt' | 'CommandStarted' | 'CommandFinished'
+
+/** What the daemon reports about a terminal session beyond its status. */
+export type TerminalDetails = {
+  /** What a stopped agent is asking, off its screen: the exact command and its choices. */
+  asking: string
+  /** An agent that was mid-turn when the daemon restarted; offered a resume, never resumed on its own. */
+  interrupted: { agent: string; resume: string } | null
+  /** The latest turn events, oldest first; `at` is unix seconds. */
+  timeline: Array<{ at: number; kind: TurnKind; detail: string }>
+  /** What the provider reports the session has used; each is null when it did not say. */
+  usage: { context: number | null; cost: number | null; tokens: number | null }
+}
+
 export type Conversation = {
   id: string
+  /** A terminal session's current folder, as its shell reports it. */
+  cwd?: string
+  /** The git repository's name when the folder is inside one. */
+  repo?: string | null
   generation?: number
   execution?: 'Native' | 'Structured'
   title: string
@@ -20,11 +38,20 @@ export type Conversation = {
   isGitRepository?: boolean
   // Put away in any client; the daemon keeps it running.
   archived?: boolean
+  // Pinned to the top of its project; the daemon keeps it for every app.
+  pinned?: boolean
   // Someone gave it a name (the daemon has one), as opposed to the automatic wording.
   named?: boolean
   // A terminal session: an agent running in a terminal the daemon owns, shared with the terminal
   // app. Anything else is a chat. `nativePane` is its terminal's number.
   kind?: 'terminal'
+  /** The agent the daemon reports running in a terminal session; null for a plain shell. */
+  agent?: string | null
+  /** The program the daemon sees running in a terminal session (a shell's own name when idle). */
+  process?: string
+  /** The last prompt the agent in a terminal session was given, as one line; empty when unknown. */
+  summary?: string
+  details?: TerminalDetails
 }
 
 export type Message = {

@@ -33,6 +33,10 @@ Also active, independent of the GUI work (user's call, 2026-11-01):
 [Phase 39](#39--codex-status-from-its-own-hooks--active-independent-of-37-and-38), Codex status
 from its own lifecycle hooks, so a Codex pane stops ringing for things that did not happen.
 
+Planned, not started: [Phase 41](#41--desktop-v10-features-that-need-the-daemon--planned-after-the-v10-front-end-batch),
+the v10 desktop features that need new daemon queries or dependencies (Inspect panel, find,
+worktrees, notifications, restore banner, timeline, usage meter).
+
 Open validation items (need a real session on the named platform):
 - Pi full-screen scrolling on Linux: waiting on the failing pane's "Pane info (scrolling,
   mouse)" diagnostic before any fix.
@@ -1082,7 +1086,8 @@ installers from an isolated Cargo target because the running GUI held the defaul
 release binary open. The artifacts are in
 `target/gui-final-release-20261029/release/bundle/`.
 After the Windows provider-environment and visible-error fixes, the current GUI
-source and Rust daemon source were refreshed in the Arch container. All 100 GUI+tests passed there, and `pnpm desktop:build` rebuilt the Linux sidecar and GUI,
+source and Rust daemon source were refreshed in the Arch container. All 100 GUI
++tests passed there, and `pnpm desktop:build` rebuilt the Linux sidecar and GUI,
 producing `.deb`, `.rpm`, and AppImage packages. Package metadata was checked;
 the AppImage stayed open for 15 seconds under Xvfb and D-Bus and started its
 daemon on an isolated socket. The artifacts are in
@@ -1484,6 +1489,60 @@ Tickets, in order:
    the rule that `theme` follows the active slot.
 3. **Done 2026-11-01.** Browser tabs and the three Settings rows.
 4. **Built 2026-11-01; open: a live look at both tabs and the five new palettes (written from the projects' published colours, not copied from files).** The search-only flip command, docs, and a live look at both tabs.
+
+### 41 — Desktop v10 features that need the daemon · planned, after the v10 front-end batch
+
+Added 2026-11-02 at the user's request. The v10 design handoff (`maitty-gu.zip`, 17 features)
+has been built as far as the window alone can go: command palette, inbox, focus mode, broadcast,
+pane resize, drag a session into a pane, project colours and the project menu, on top of v9's
+project tabs and sidebar tray (spec in [DESIGN](DESIGN.md#desktop-app)). What is left needs new
+daemon queries, a dependency or data the daemon does not report yet. Names below are
+suggestions; match maittyd's API. Any new message needs a `PROTOCOL_VERSION` decision (Rules).
+
+Status 2026-11-02: items 1–12 are built on `quick-fox` (protocol 67); item 13 is deferred at the user's
+call (project colours stay in the window's settings until the terminal app should share them).
+Notifications (7) detect the change in the window from the session list it already polls, not from a
+new daemon event, so they work from the same status the sidebar shows; the desktop plugin has no
+action buttons, so a click only shows the session and answering stays in the inbox. The timeline
+(9) is the daemon's status reports plus OSC 133 prompt marks; it is held in memory, not saved.
+Not verified by running the app: the visuals of every new panel, a real OS notification, and a
+live nested daemon (tests cover the daemon with real git repos and the window with mocked IPC).
+Where the build differs from the wording below: History's checkpoints are the daemon's
+before-each-turn snapshots (the same ones the terminal app lists), and the confirmed Restore is
+`Command::RestoreSnapshot`, the one request that writes; References lists the project's
+`.maitty/references` (adding and removing stay in the terminal app); quick-look uses a
+`Locate` request so the daemon, not the window, decides what path is inside the repo.
+
+1. **Repo queries** (built 2026-11-02 as `Query::Repo`, protocol 66; see API_PATTERNS; the one change that the Inspect panel, compare and quick-look all use):
+   `repo_status`, `repo_tree`, `repo_file`, `repo_diff(path)` and `repo_diff(a, b)`,
+   `repo_branches`, `repo_log` (merged with checkpoints). Read-only, run in the background
+   (`spawn_bg`), scoped to the focused pane's repo. Mutations stay in the pane's PTY.
+2. **Inspect panel (⌘I)**: Files with preview, Changes with diff, Branches, History with
+   checkpoints and a confirmed Restore, References. The tab bar gets the Inspect button with
+   `+N −N`. Needs 1.
+3. **Checkpoint compare**: History's Compare toggle and `repo_diff(a, b)`. Needs 2.
+4. **Quick-look file links**: ⌘-click a path in output opens it in Inspect › Files, through the
+   xterm.js link provider. Needs 2.
+5. **Find (⌘F)**: the focused pane through the xterm.js search addon (a new dependency, to be
+   justified); all sessions through a daemon `pane_search(query)` over scrollback.
+6. **Worktree sessions (⌘⇧N)**: `worktree_list` and `worktree_add` (cached per repo), grouping
+   under the parent repo, the New worktree dialog, and the worktree list in the project menu.
+7. **Native notifications**: the Tauri notification plugin (a new dependency, with its
+   permission) and daemon events for needs-you, done and error with the session id. Click opens
+   the session; Allow once types `y`. Settings › Notifications has the three switches.
+8. **Restore banner and Resume**: the daemon reports which agents died mid-turn when it
+   restarted; the banner offers `codex resume --last` and never resumes on its own.
+9. **Turn timeline**: prompt marks (OSC 133) per pane and agent adapter events, not regexes.
+10. **Usage meter**: tokens as the provider reports them; the pill stays hidden when unknown.
+11. **Inbox detail**: the daemon reports the pending approval's exact command, so a needs-you
+    card shows it instead of the last prompt.
+12. **Narrow-window drawer**: under 1100px the sidebar slides over a scrim from a Sessions
+    button, instead of staying a rail. Window-only; ADR 0046's rail-only choice is replaced.
+13. **Project config**: project colours are saved in the window's settings today; move them to a
+    per-project config file if the TUI should share them.
+
+- **Exit:** each item works on a real nested daemon and in the app, the new messages have
+  protocol tests, and the verification gate passes on Linux, macOS and Windows targets.
 
 ## Rules
 

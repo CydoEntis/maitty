@@ -120,6 +120,8 @@ pub(super) fn term(
         summary: String::new(),
         name: String::new(),
         label: label.into(),
+        pinned: false,
+        archived: false,
         model: String::new(),
         mem: 0,
         cpu: 0.0,
@@ -151,6 +153,9 @@ pub(super) fn term(
         usage: Default::default(),
         resume_at: None,
         checks: Vec::new(),
+        asking: String::new(),
+        interrupted: None,
+        timeline: Vec::new(),
     }
 }
 

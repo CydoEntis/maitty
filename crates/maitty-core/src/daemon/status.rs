@@ -537,6 +537,15 @@ impl Daemon {
             .flatten();
         t.blocked_at = (new == Status::Blocked).then(Instant::now);
         t.status = new;
+        if let Some(kind) = match new {
+            Status::Working => Some(TurnKind::Working),
+            Status::Blocked => Some(TurnKind::NeedsYou),
+            Status::Done => Some(TurnKind::Done),
+            Status::Idle => Some(TurnKind::Idle),
+            Status::None => None,
+        } {
+            t.note(kind, why);
+        }
         t.status_since = term::unix_now();
         if new == Status::Working {
             t.turn_end_handled = false;

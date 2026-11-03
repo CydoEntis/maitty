@@ -56,6 +56,8 @@ src/
   cli.rs         one-shot subcommands (send, read, wait, hook, allow, doctor, â€¦)
   tidy.rs        what removing a worktree would lose (shared by the close-time removal and the clean-up list)
   snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
+  references.rs  a project's reference files (`.maitty/references/`): listed, added and removed (the terminal app edits them, the server lists them for the desktop app)
+  prompt.rs      the question and numbered choices an agent is stopped on, read off its screen (the MCP answer tool and the inbox card share it)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
   ipc.rs         local sockets and the SSH proxy
   config.rs      config.toml (+ config.local.toml) loading, atomic state files
@@ -70,6 +72,8 @@ src/
     status.rs    hook reports (checked on their own thread) and screen detection
     worktrees.rs making and trusting worktrees, spares, hooks, cleanup
     restore.rs   saving sessions and recovering agents left asleep by older versions
+    repo.rs      read-only answers about the repository a pane is in (`Query::Repo`), and the one snapshot restore
+    search.rs    find across sessions: text in what each pane printed recently
     check.rs     a pane's check result, and the runner: the project's check command run in the session's worktree when a turn ends
     check_source.rs which checks a project has (yours, else the repo's .maitty/checks.toml), where each comes from, whether it may run
     check_stale.rs  a pass gone stale: the worktree's tree when a run starts, compared on the git poll

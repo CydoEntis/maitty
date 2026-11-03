@@ -106,6 +106,8 @@ mod design_tests {
             pid: 0,
             name: String::new(),
             label: String::new(),
+            pinned: false,
+            archived: false,
             model: String::new(),
             mem: 0,
             cpu: 0.0,
@@ -144,6 +146,9 @@ mod design_tests {
             usage: Default::default(),
             resume_at: None,
             checks: Vec::new(),
+            asking: String::new(),
+            interrupted: None,
+            timeline: Vec::new(),
         }
     }
 
@@ -5266,6 +5271,7 @@ mod screen_tests {
         ti.usage = crate::protocol::Usage {
             context: Some(76.0),
             cost: Some(1.2),
+            ..Default::default()
         };
         app.screen_focus(agent);
         let o = draw(&mut app, 160, 45);

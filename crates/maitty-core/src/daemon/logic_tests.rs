@@ -1374,7 +1374,12 @@ fn from_pane(
     token: &str,
 ) -> mpsc::Receiver<ServerMsg> {
     let (tx, rx) = mpsc::channel(64);
-    d.handle(Ev::Connected(client, tx, false));
+    d.handle(Ev::Connected(
+        client,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     d.handle(Ev::From(client, term, token.into()));
     rx
 }
@@ -2089,7 +2094,12 @@ fn only_a_pane_shell_asks_for_an_agent_worktree() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let (tx, mut crx) = mpsc::channel(64);
-    d.handle(Ev::Connected(1, tx, false));
+    d.handle(Ev::Connected(
+        1,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     d.handle(Ev::Msg(
         1,
         ClientMsg::Command(Command::AgentWorktree {
@@ -2102,7 +2112,12 @@ fn only_a_pane_shell_asks_for_an_agent_worktree() {
     );
     d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
     let (tx, mut crx) = mpsc::channel(64);
-    d.handle(Ev::Connected(2, tx, false));
+    d.handle(Ev::Connected(
+        2,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&t].token.clone();
     d.handle(Ev::From(2, t, token));
     d.handle(Ev::Msg(
@@ -2118,7 +2133,12 @@ fn only_a_pane_shell_asks_for_an_agent_worktree() {
     // Another pane's id with the wrong secret is not that pane: nothing is made for it.
     d.terms.get_mut(&t).unwrap().agent = None;
     let (tx, mut crx) = mpsc::channel(64);
-    d.handle(Ev::Connected(3, tx, false));
+    d.handle(Ev::Connected(
+        3,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     d.handle(Ev::From(3, t, "not-the-secret".into()));
     d.handle(Ev::Msg(
         3,
@@ -2206,6 +2226,7 @@ fn claude_reports_what_its_session_used() {
     let usage = |cost: f64| Usage {
         context: Some(30.0),
         cost: Some(cost),
+        ..Default::default()
     };
     let limits = vec![Limit {
         name: "5h".into(),
@@ -2320,7 +2341,12 @@ fn closing_the_last_pane_keeps_an_open_window() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let (tx, _crx) = mpsc::channel(64);
-    d.handle(Ev::Connected(1, tx, true));
+    d.handle(Ev::Connected(
+        1,
+        tx,
+        true,
+        crate::protocol::Surface::Terminal,
+    ));
     d.close_term(t);
     assert!(
         !d.should_exit(),
@@ -2597,7 +2623,12 @@ fn an_agent_asks_you_and_gets_your_answer() {
     let t = pane(&mut d);
     // The agent's `<app> ask-human` is a client waiting for the reply.
     let (tx, mut asker) = mpsc::channel(8);
-    d.handle(Ev::Connected(5, tx, false));
+    d.handle(Ev::Connected(
+        5,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let ask = Command::AskHuman {
         term: t,
         text: "Deploy to staging?".into(),
@@ -2629,7 +2660,12 @@ fn a_pane_does_what_its_grants_allow() {
     let (a, b) = (pane(&mut d), pane(&mut d));
     // An agent in pane a, with a's secret.
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     let err =
@@ -3267,7 +3303,12 @@ fn the_snapshot_carries_a_check_summary_and_a_query_returns_its_output() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     d.message(
         7,
         ClientMsg::Query(Query::CheckOutput {
@@ -3308,7 +3349,12 @@ fn a_pane_may_not_read_another_panes_check_output_without_the_read_grant() {
     let (a, b) = (pane(&mut d), pane(&mut d));
     d.terms.get_mut(&b).unwrap().checks.points = vec![failed_check("secret-ish output").into()];
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.terms.get_mut(&a).unwrap().grants = Some(Vec::new());
@@ -4421,7 +4467,12 @@ fn a_read_only_pane_may_not_rerun_or_override_another_panes_check() {
     let (a, b) = (pane(&mut d), pane(&mut d));
     with_check(&mut d, b, CheckState::Failed, "FAIL");
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.terms.get_mut(&a).unwrap().grants = Some(vec!["read".into()]);
@@ -4470,7 +4521,12 @@ fn a_pane_may_not_override_its_own_check() {
     let a = pane(&mut d);
     with_check(&mut d, a, CheckState::Failed, "FAIL");
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.message(
@@ -4502,7 +4558,12 @@ fn only_you_answer_a_repo_check_approval() {
     );
     let kept = d.approvals.clone();
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.terms.get_mut(&a).unwrap().grants = Some(
@@ -4586,7 +4647,12 @@ fn overdue(d: &mut Daemon, t: TermId) {
 
 fn viewer(d: &mut Daemon) -> mpsc::Receiver<ServerMsg> {
     let (tx, mut rx) = mpsc::channel(64);
-    d.handle(Ev::Connected(40, tx, true));
+    d.handle(Ev::Connected(
+        40,
+        tx,
+        true,
+        crate::protocol::Surface::Terminal,
+    ));
     while rx.try_recv().is_ok() {}
     rx
 }
@@ -5352,7 +5418,12 @@ fn an_override_by_name_acts_on_that_checkpoint_and_says_who() {
     d.terms.get_mut(&reviewer).unwrap().label = "reviewer".into();
     d.terms.get_mut(&reviewer).unwrap().grants = Some(vec!["write".into()]);
     let (tx, mut out) = mpsc::channel(16);
-    d.handle(Ev::Connected(7, tx, false));
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+    ));
     let token = d.terms[&reviewer].token.clone();
     d.handle(Ev::From(7, reviewer, token));
     d.message(
@@ -6681,4 +6752,272 @@ fn terminal_requests_with_nothing_to_do_or_nowhere_to_go_are_refused() {
     }
     assert!(d.pane_screen(nowhere).is_err());
     assert!(d.pane_replay(nowhere).is_err());
+}
+
+#[test]
+fn a_terminal_session_belongs_to_the_app_that_started_it() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).expect("the pane").owner = Surface::Desktop;
+    let (tx, _) = mpsc::channel::<ServerMsg>(8);
+    d.clients.insert(
+        1,
+        Client {
+            tx,
+            attach: false,
+            surface: Surface::Terminal,
+            from: None,
+            structured: None,
+            rejected: false,
+            behind: std::cell::Cell::new(false),
+        },
+    );
+    assert!(
+        d.may_use_terminal(1, t).is_err(),
+        "the terminal app cannot use a desktop session"
+    );
+    d.clients.get_mut(&1).expect("the client").surface = Surface::Desktop;
+    assert!(
+        d.may_use_terminal(1, t).is_ok(),
+        "the app that started it can use it"
+    );
+    d.clients.get_mut(&1).expect("the client").from = Some(t);
+    d.clients.get_mut(&1).expect("the client").surface = Surface::Terminal;
+    assert!(
+        d.may_use_terminal(1, t).is_ok(),
+        "an agent acting from a pane goes by the pane's own grants"
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn each_app_is_shown_only_its_own_terminal_sessions() {
+    let (mut d, _rx) = daemon();
+    let terminal = pane(&mut d);
+    let desktop = pane(&mut d);
+    d.terms.get_mut(&desktop).expect("the pane").owner = Surface::Desktop;
+    let terminal_view = d.snapshot_for(Surface::Terminal);
+    let desktop_view = d.snapshot_for(Surface::Desktop);
+    assert!(terminal_view.terms.contains_key(&terminal));
+    assert!(!terminal_view.terms.contains_key(&desktop));
+    assert!(desktop_view.terms.contains_key(&desktop));
+    assert!(!desktop_view.terms.contains_key(&terminal));
+    close(&mut d, &[terminal, desktop]);
+}
+
+#[test]
+fn the_terminal_app_cannot_close_a_desktop_tab_or_workspace() {
+    let (mut d, _rx) = daemon();
+    d.clients.insert(1, test_client(Surface::Desktop));
+    d.clients.insert(2, test_client(Surface::Terminal));
+    d.command(
+        1,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let ws = d.workspaces[0].id;
+    let tab = d.workspaces[0].tabs[0].id;
+    let term = d.workspaces[0].tabs[0].focus;
+    assert_eq!(d.terms[&term].owner, Surface::Desktop);
+
+    assert!(d.may_command(2, &Command::CloseTab { ws, tab }).is_err());
+    assert!(d.may_command(2, &Command::CloseWorkspace { ws }).is_err());
+    assert!(d.may_command(1, &Command::CloseTab { ws, tab }).is_ok());
+    assert!(d.may_command(1, &Command::CloseWorkspace { ws }).is_ok());
+    close(&mut d, &[term]);
+}
+
+fn test_client(surface: Surface) -> Client {
+    let (tx, _) = mpsc::channel::<ServerMsg>(8);
+    Client {
+        tx,
+        attach: false,
+        surface,
+        from: None,
+        structured: None,
+        rejected: false,
+        behind: std::cell::Cell::new(false),
+    }
+}
+
+#[test]
+fn a_desktop_agent_that_died_mid_turn_comes_back_as_a_shell_that_offers_the_resume() {
+    let (mut d, _rx) = daemon();
+    let dir = std::env::temp_dir();
+    let saved_pane = |owner: Surface, was_working: bool| persist::SavedPane {
+        cwd: Some(dir.clone()),
+        cmd: Some("codex".into()),
+        agent: Some("codex".into()),
+        owner,
+        was_working,
+        ..Default::default()
+    };
+    let ws = |pane: persist::SavedPane| persist::SavedWs {
+        name: String::new(),
+        cwd: dir.clone(),
+        worktree: false,
+        color: None,
+        group: None,
+        tabs: vec![persist::SavedTab {
+            name: String::new(),
+            layout: Node::Leaf(1),
+            focus: 1,
+            panes: [(1, pane)].into(),
+        }],
+        active_tab: 0,
+    };
+    d.restore(persist::Saved {
+        workspaces: vec![
+            ws(saved_pane(Surface::Desktop, true)),
+            ws(saved_pane(Surface::Desktop, false)),
+        ],
+        active: 0,
+        made_worktrees: Vec::new(),
+        conversations: Vec::new(),
+        pending_starts: Vec::new(),
+        conversation_operations: Vec::new(),
+    });
+    let [interrupted, finished] = [0, 1].map(|i| d.workspaces[i].tabs[0].focus);
+
+    let info = d.snapshot();
+    let offered = info.terms[&interrupted]
+        .interrupted
+        .clone()
+        .expect("it died mid-turn");
+    assert_eq!(offered.agent, "codex");
+    assert!(offered.resume.contains("resume"), "{}", offered.resume);
+    assert_eq!(
+        info.terms[&interrupted].agent, None,
+        "it is a shell now: nothing resumed on its own"
+    );
+    assert_eq!(
+        info.terms[&finished].interrupted, None,
+        "an agent that was not working is restored as before"
+    );
+
+    // Once an agent runs in the pane again, there is nothing left to offer.
+    d.terms.get_mut(&interrupted).unwrap().agent = Some("codex".into());
+    assert_eq!(d.snapshot().terms[&interrupted].interrupted, None);
+    close(&mut d, &[interrupted, finished]);
+}
+
+#[test]
+fn the_timeline_records_status_changes_and_the_shells_prompt_marks() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.set_status(t, Status::Working, "hook: UserPromptSubmit");
+    d.set_status(t, Status::Working, "hook: UserPromptSubmit");
+    d.set_status(t, Status::Done, "hook: Stop");
+    {
+        let pane = d.terms.get_mut(&t).unwrap();
+        pane.output(b"\x1b]133;A\x07\x1b]133;C\x07\x1b]133;D;2\x07");
+        pane.take_marks();
+    }
+    let events: Vec<_> = d.snapshot().terms[&t]
+        .timeline
+        .iter()
+        .map(|e| (e.kind, e.detail.clone()))
+        .collect();
+    assert_eq!(
+        events,
+        [
+            (TurnKind::Working, "hook: UserPromptSubmit".to_string()),
+            (TurnKind::Done, "hook: Stop".to_string()),
+            (TurnKind::Prompt, String::new()),
+            (TurnKind::CommandStarted, String::new()),
+            (TurnKind::CommandFinished, "2".to_string()),
+        ],
+        "a repeated report is one event"
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_blocked_pane_reports_what_it_is_asking_and_a_working_one_does_not() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    {
+        let pane = d.terms.get_mut(&t).unwrap();
+        pane.output(b"Bash command\r\n\r\n  rm -rf target\r\n\r\nDo you want to proceed?\r\n> 1. Yes\r\n  2. No\r\n");
+    }
+    d.set_status(t, Status::Working, "hook");
+    assert_eq!(d.snapshot().terms[&t].asking, "");
+    d.set_status(t, Status::Blocked, "hook: Notification");
+    let asking = d.snapshot().terms[&t].asking.clone();
+    assert!(asking.contains("rm -rf target"), "{asking}");
+    assert!(asking.contains("2. No"), "{asking}");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn pin_and_archive_stick_survive_a_restart_and_never_stop_the_pane() {
+    let (mut d, _rx) = daemon();
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let t = d.workspaces[0].tabs[0].focus;
+    d.command(
+        0,
+        Command::PinPane {
+            term: t,
+            pinned: true,
+        },
+    )
+    .unwrap();
+    d.command(
+        0,
+        Command::ArchivePane {
+            term: t,
+            archived: true,
+        },
+    )
+    .unwrap();
+    assert!(
+        d.terms.contains_key(&t),
+        "archiving puts it away without stopping it"
+    );
+    let info = &d.snapshot().terms[&t];
+    assert_eq!((info.pinned, info.archived), (true, true));
+
+    let (mut d2, _rx2) = daemon();
+    d2.restore(d.saved());
+    let back = d2.workspaces[0].tabs[0].focus;
+    assert_eq!(
+        (d2.terms[&back].pinned, d2.terms[&back].archived),
+        (true, true),
+        "both come back after a restart"
+    );
+
+    d2.command(
+        0,
+        Command::ArchivePane {
+            term: back,
+            archived: false,
+        },
+    )
+    .unwrap();
+    d2.command(
+        0,
+        Command::PinPane {
+            term: back,
+            pinned: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        (d2.terms[&back].pinned, d2.terms[&back].archived),
+        (false, false)
+    );
+    close(&mut d, &[t]);
+    close(&mut d2, &[back]);
 }

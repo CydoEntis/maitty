@@ -66,3 +66,8 @@ export function currentFrame() {
 export function spinnerFrames() {
   return SPINNERS[style].frames
 }
+
+/** One style's frames and speed, for previews that animate a style other than the chosen one. */
+export function spinnerDefinition(spinner: SpinnerStyle): { frames: readonly string[]; intervalMs: number } {
+  return SPINNERS[spinner]
+}

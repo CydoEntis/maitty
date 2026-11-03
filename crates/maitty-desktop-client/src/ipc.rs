@@ -100,14 +100,38 @@ pub async fn receive_server(reader: &mut Reader) -> Result<Option<ServerMsg>> {
 }
 
 pub async fn open_for_user() -> Result<(Reader, Writer)> {
+    open_as(false).await
+}
+
+/// A connection that receives the terminal panes this app owns, live (replays, then output).
+pub async fn open_stream_for_user(daemon_executable: &std::path::Path) -> Result<(Reader, Writer)> {
+    match open_as(true).await {
+        Ok(connection) => return Ok(connection),
+        Err(error) if other_version(&error).is_some() => return Err(error),
+        Err(_) => {}
+    }
+    spawn_daemon(daemon_executable)?;
+    let mut last_error = None;
+    for _ in 0..60 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        match open_as(true).await {
+            Ok(connection) => return Ok(connection),
+            Err(error) => last_error = Some(error),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("daemon did not start")))
+}
+
+async fn open_as(attach: bool) -> Result<(Reader, Writer)> {
     let (mut reader, mut writer) = framed(connect().await?);
     send(
         &mut writer,
         &ClientMsg::Hello {
             version: protocol::PROTOCOL_VERSION,
-            attach: false,
+            attach,
             from: None,
             structured: None,
+            surface: protocol::Surface::Desktop,
         },
     )
     .await?;

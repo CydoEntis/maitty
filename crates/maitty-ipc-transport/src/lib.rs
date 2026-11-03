@@ -133,7 +133,7 @@ mod tests {
     #[cfg(unix)]
     use super::private_socket_dir;
     use super::{framed_parts, receive, send, socket_id, welcome_version};
-    use maitty_shared::protocol::{ClientMsg, PROTOCOL_VERSION, ServerMsg};
+    use maitty_shared::protocol::{ClientMsg, PROTOCOL_VERSION, ServerMsg, Surface};
 
     #[tokio::test]
     async fn local_clients_exchange_protocol_messages_in_length_delimited_frames() {
@@ -147,6 +147,7 @@ mod tests {
             attach: false,
             from: Some((7, "pane-secret".into())),
             structured: None,
+            surface: Surface::Terminal,
         };
 
         send(&mut left_writer, &message).await.unwrap();
@@ -158,6 +159,7 @@ mod tests {
                 attach: false,
                 from: Some((7, token)),
                 structured: None,
+                surface: Surface::Terminal,
             }) if token == "pane-secret"
         ));
     }

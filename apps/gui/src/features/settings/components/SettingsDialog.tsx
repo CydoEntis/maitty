@@ -3,7 +3,7 @@ import { Bell, Keyboard, Monitor, Radio, Settings2, SlidersHorizontal } from 'lu
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { ThemePreference } from '@/data/themePreference'
-import type { SettingsPreferences } from '../preferences'
+import { TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, type SettingsPreferences } from '../preferences'
 
 type SettingsSection = 'general' | 'appearance' | 'notifications' | 'daemon' | 'keyboard'
 type SettingsNavOrientation = 'horizontal' | 'vertical'
@@ -93,6 +93,11 @@ function SettingsDialog({ open, onClose, theme, onThemeChange, preferences, onPr
               <button type="button" className={preferences.restoreTabs ? 'is-selected' : ''} aria-pressed={preferences.restoreTabs} onClick={() => { updatePreference('restoreTabs', true) }}>Restore tabs</button>
               <button type="button" className={!preferences.restoreTabs ? 'is-selected' : ''} aria-pressed={!preferences.restoreTabs} onClick={() => { updatePreference('restoreTabs', false) }}>Start empty</button>
             </div></div>
+            <div className="settings-row"><span><strong>Group sessions by</strong><small>Repository groups sessions by their git repo; sessions outside a repo go under Other folders.</small></span><div className="segmented" role="group" aria-label="Group sessions by">
+              <button type="button" className={preferences.groupBy === 'repo' ? 'is-selected' : ''} aria-pressed={preferences.groupBy === 'repo'} onClick={() => { updatePreference('groupBy', 'repo') }}>Repository</button>
+              <button type="button" className={preferences.groupBy === 'folder' ? 'is-selected' : ''} aria-pressed={preferences.groupBy === 'folder'} onClick={() => { updatePreference('groupBy', 'folder') }}>Folder</button>
+            </div></div>
+            <label className="settings-row"><span><strong>Start folder</strong><small>New sessions open a shell here. Leave empty for your home folder, then cd anywhere.</small></span><input type="text" className="settings-text-input" placeholder="Home folder" value={preferences.startFolder} onChange={(event) => { updatePreference('startFolder', event.target.value) }} /></label>
             <div className="settings-row"><span><strong>Closing this window</strong><small>Conversations belong to maittyd, so closing the window or a tab never stops an agent.</small></span><span className="settings-value">Always keeps running</span></div>
           </>}
           {section === 'appearance' && <>
@@ -110,6 +115,10 @@ function SettingsDialog({ open, onClose, theme, onThemeChange, preferences, onPr
             <div className="accent-options" role="group" aria-label="Working spinner">
               {([['braille', 'Braille', '⠋⠙⠹'], ['snake', 'Snake', '⠇⠋⠙'], ['bars', 'Bars', '⣰⡄⣼⡀']] as const).map(([id, label, glyphs]) => <button key={id} type="button" className={`accent-option ${preferences.spinner === id ? 'is-selected' : ''}`} aria-pressed={preferences.spinner === id} onClick={() => { updatePreference('spinner', id) }}><span aria-hidden="true" className="spinner-sample">{glyphs}</span>{label}</button>)}
             </div>
+            <div className="settings-row"><span><strong>Terminal text size</strong><small>Size of the native terminal text, {preferences.terminalFontSize}px.</small></span><div className="segmented" role="group" aria-label="Terminal text size">
+              <button type="button" aria-label="Smaller terminal text" disabled={preferences.terminalFontSize <= TERMINAL_FONT_SIZE_MIN} onClick={() => { updatePreference('terminalFontSize', preferences.terminalFontSize - 1) }}>A−</button>
+              <button type="button" aria-label="Larger terminal text" disabled={preferences.terminalFontSize >= TERMINAL_FONT_SIZE_MAX} onClick={() => { updatePreference('terminalFontSize', preferences.terminalFontSize + 1) }}>A+</button>
+            </div></div>
             <label className="settings-row"><span><strong>Reduce motion</strong><small>Stop animated transitions and activity indicators.</small></span><input type="checkbox" checked={preferences.reduceMotion} onChange={(event) => { updatePreference('reduceMotion', event.target.checked) }} /></label>
             <label className="settings-row"><span><strong>Animate sidebar activity</strong><small>Show motion while a conversation is working.</small></span><input type="checkbox" checked={preferences.animateSidebarActivity} disabled={preferences.reduceMotion} onChange={(event) => { updatePreference('animateSidebarActivity', event.target.checked) }} /></label>
             <label className="settings-row"><span><strong>Compact sidebar</strong><small>Keep the conversation list collapsed.</small></span><input type="checkbox" checked={preferences.compactSidebar} onChange={(event) => { updatePreference('compactSidebar', event.target.checked) }} /></label>
@@ -132,7 +141,7 @@ function SettingsDialog({ open, onClose, theme, onThemeChange, preferences, onPr
           {section === 'keyboard' && <>
             <div className="settings-section-title"><h3>Keyboard</h3><p>Shortcuts available in Maitty Desktop.</p></div>
             <div className="keyboard-shortcut-list settings-shortcut-list">{[
-              ['Open command switcher', primaryModifier, 'K'], ['Move through switcher results', '↑ or ↓', ''], ['Open the focused result', 'Enter', ''], ['Open focused conversation in terminal', primaryModifier, 'Enter'], ['Close the command switcher', 'Esc', ''], ['Open a project folder', primaryModifier, 'O'], ['New conversation', primaryModifier, 'N'], ['Open settings', primaryModifier, ','], ['Next conversation needing attention', `${primaryModifier}+Shift`, 'A'], ['Show or hide Changes', `${primaryModifier}+Shift`, 'D'], ['Show or hide Context', primaryModifier, 'I'], ['Collapse or expand sidebar', primaryModifier, '\\'], ['Switch between chat and terminal', primaryModifier, '`'], ['Stop the current turn', primaryModifier, '.'], ['Previous conversation', 'Alt', '↑ or K'], ['Next conversation', 'Alt', '↓ or J'], ['Allow approval once', 'Y or A', ''], ['Decline approval', 'N', ''], ['Decline and stop turn', 'Shift', 'N'], ['Send message', 'Enter', ''], ['Add a new line', 'Shift', 'Enter'], ['Rename conversation', 'F2', ''], ['Show this shortcut list', '?', ''],
+              ['Open command switcher', primaryModifier, 'K'], ['Move through switcher results', '↑ or ↓', ''], ['Open the focused result', 'Enter', ''], ['Open focused conversation in terminal', primaryModifier, 'Enter'], ['Close the command switcher', 'Esc', ''], ['Start a session in a folder', primaryModifier, 'O'], ['New conversation', primaryModifier, 'N'], ['Open settings', primaryModifier, ','], ['Next conversation needing attention', `${primaryModifier}+Shift`, 'A'], ['Show or hide Changes', `${primaryModifier}+Shift`, 'D'], ['Show or hide Context', primaryModifier, 'I'], ['Collapse or expand sidebar', primaryModifier, '\\'], ['Switch between chat and terminal', primaryModifier, '`'], ['Stop the current turn', primaryModifier, '.'], ['Previous conversation', 'Alt', '↑ or K'], ['Next conversation', 'Alt', '↓ or J'], ['Allow approval once', 'Y or A', ''], ['Decline approval', 'N', ''], ['Decline and stop turn', 'Shift', 'N'], ['Send message', 'Enter', ''], ['Add a new line', 'Shift', 'Enter'], ['Rename conversation', 'F2', ''], ['Show this shortcut list', '?', ''],
             ].concat([['Previous changed file', '[', ''], ['Next changed file', ']', '']]).map(([action, modifier, key]) => <div className="keyboard-shortcut-row" key={action}><span>{action}</span><span>{modifier && modifier.split('+').map((part) => <kbd key={part}>{part}</kbd>)}{key && <kbd>{key}</kbd>}</span></div>)}</div>
           </>}
         </section>

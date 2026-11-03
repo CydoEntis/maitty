@@ -24,14 +24,30 @@ const WorkspaceSummarySchema = z.object({
 const TerminalSessionSchema = z.object({
   id: z.number().int().nonnegative(),
   agent: z.string().nullable(),
+  process: z.string().default(''),
+  summary: z.string().default(''),
   status: StatusSchema,
   cwd: z.string(),
   root: z.string().nullable().default(null),
   branch: z.string().nullable().default(null),
   label: z.string().default(''),
+  pinned: z.boolean().default(false),
+  archived: z.boolean().default(false),
   conversation_id: z.number().nullable().default(null),
   popup: z.boolean().default(false),
   remote: z.string().nullable().default(null),
+  asking: z.string().default(''),
+  interrupted: z.object({ agent: z.string(), resume: z.string() }).nullable().default(null),
+  timeline: z.array(z.object({
+    at: z.number().int().nonnegative(),
+    kind: z.enum(['Working', 'NeedsYou', 'Done', 'Idle', 'Prompt', 'CommandStarted', 'CommandFinished']),
+    detail: z.string().default(''),
+  })).default([]),
+  usage: z.object({
+    context: z.number().nullable().default(null),
+    cost: z.number().nullable().default(null),
+    tokens: z.number().nullable().default(null),
+  }).default({ context: null, cost: null, tokens: null }),
 })
 const DaemonSnapshotSchema = z.object({
   conversations: z.array(ConversationSummarySchema),
@@ -205,7 +221,7 @@ export async function loadConversations(): Promise<Conversation[]> {
   const terminals = Object.values(snapshot.terms)
     .map((term) => TerminalSessionSchema.safeParse(term))
     .flatMap((parsed) => (parsed.success ? [parsed.data] : []))
-    .filter(isAgentTerminalSession)
+    .filter(isTerminalSession)
     .map((term) => toTerminalConversation(term, snapshot.workspaces))
   return [
     ...snapshot.conversations.map((conversation) => toConversation(conversation, snapshot.workspaces)),
@@ -225,15 +241,11 @@ export function terminalOf(conversationId: string): number | null {
   return match?.[1] === undefined ? null : Number(match[1])
 }
 
-// A terminal this app can show as a session: a Codex or Claude agent in a pane of its own (not a
-// chat's terminal, a popup, or another machine's).
-function isAgentTerminalSession(term: TerminalSession): boolean {
-  return (
-    term.conversation_id === null &&
-    !term.popup &&
-    term.remote === null &&
-    (term.agent === 'claude' || term.agent === 'codex')
-  )
+// A terminal this app can show as a session: a shell (with or without an agent running in it) in
+// a pane of its own, not a chat's terminal, a popup, or another machine's (ADR 0046). The daemon
+// already leaves out panes another app owns (ADR 0045).
+function isTerminalSession(term: TerminalSession): boolean {
+  return term.conversation_id === null && !term.popup && term.remote === null
 }
 
 function toolActivityLabel(tool: { kind: string; label?: string | undefined }): string {
@@ -385,6 +397,12 @@ export async function loadConversationFile(
   })
 }
 
+/** The folder a new session starts in when none is chosen: the home folder. */
+export async function defaultSessionFolder(): Promise<string> {
+  if (!isDesktop()) return ''
+  return invokeParsed('default_session_folder', z.string())
+}
+
 export async function suggestProjectFolders(typed: string): Promise<string[]> {
   if (!isDesktop()) return []
   return invokeParsed('suggest_project_folders', z.array(z.string()), { typed })
@@ -412,12 +430,15 @@ export async function loadTerminalReplay(conversation: Pick<Conversation, 'id'> 
   return Uint8Array.from(bytes)
 }
 
-export async function sendTerminalInput(conversation: Pick<Conversation, 'id'> & { generation: number }, input: string | Uint8Array): Promise<string> {
+export async function sendTerminalInput(conversation: Pick<Conversation, 'id'> & { generation: number }, input: string | Uint8Array): Promise<void> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
   const data = Array.from(typeof input === 'string' ? new TextEncoder().encode(input) : input)
   const term = terminalOf(conversation.id)
-  if (term !== null) return invokeParsed('pane_terminal_input', z.string(), { term, data })
-  return invokeParsed('send_terminal_input', z.string(), {
+  if (term !== null) {
+    await invokeParsed('terminal_input', NullSchema, { term, data })
+    return
+  }
+  await invokeParsed('send_terminal_input', z.string(), {
     id: Number(conversation.id),
     generation: conversation.generation,
     data,
@@ -487,6 +508,27 @@ export async function cancelTurn(conversation: Conversation): Promise<void> {
   })
 }
 
+/** Pin a session to the top of its project, or let it go back to its place. The daemon keeps it for every app. */
+export async function pinSessionOnDaemon(conversation: Pick<Conversation, 'id'>, pinned: boolean): Promise<void> {
+  if (!isDesktop()) return
+  const term = terminalOf(conversation.id)
+  if (term !== null) await invokeParsed('pin_terminal_session', NullSchema, { term, pinned })
+}
+
+/** Put a session away from the project lists and tabs, or bring it back. It keeps running: this is a view setting, never a kill. */
+export async function archiveSessionOnDaemon(conversation: Pick<Conversation, 'id'>, archived: boolean): Promise<void> {
+  if (!isDesktop()) return
+  const term = terminalOf(conversation.id)
+  if (term !== null) await invokeParsed('archive_terminal_session', NullSchema, { term, archived })
+}
+
+/** The user is looking at this pane: a finished agent's "done" becomes idle, as when the terminal app focuses it. */
+export async function markSeenOnDaemon(conversation: Pick<Conversation, 'id'>): Promise<void> {
+  if (!isDesktop()) return
+  const term = terminalOf(conversation.id)
+  if (term !== null) await invokeParsed('mark_terminal_seen', NullSchema, { term })
+}
+
 export async function renameConversationOnDaemon(conversation: Pick<Conversation, 'id'>, title: string): Promise<void> {
   const term = terminalOf(conversation.id)
   if (term !== null) {
@@ -530,6 +572,11 @@ export async function createConversation(
   })
 }
 
+/** Starts a plain shell in a folder; the user types what to run (ADR 0046). */
+export async function startShellSession(folder: string): Promise<void> {
+  await invokeParsed('start_shell_session', NullSchema, { cwd: folder })
+}
+
 export async function startTerminalSession(folder: string, provider: 'Codex' | 'Claude'): Promise<void> {
   await invokeParsed('start_terminal_session', NullSchema, { cwd: folder, provider })
 }
@@ -545,6 +592,7 @@ export async function resumeConversation(conversation: Conversation): Promise<{ 
 
 function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[]): Conversation {
   const folder = term.root ?? term.cwd
+  const repo = term.root ? (term.root.split(/[\\/]/).filter(Boolean).at(-1) ?? null) : null
   const workspace = workspaces.find((candidate) => candidate.cwd === folder || candidate.cwd === term.cwd)
   const provider: Conversation['provider'] = term.agent === 'claude' ? 'Claude' : 'Codex'
   const label = term.label.trim()
@@ -560,9 +608,11 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     generation: 0,
     execution: 'Native',
     kind: 'terminal',
-    title: label || `${provider} terminal ${String(term.id)}`,
+    title: label || (term.agent === null ? `Shell ${String(term.id)}` : `${provider} terminal ${String(term.id)}`),
     project: folder.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Project',
     folder,
+    cwd: term.cwd,
+    repo,
     branch: term.branch ?? workspace?.git?.branch ?? 'working tree',
     provider,
     status,
@@ -572,8 +622,13 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     context: null,
     nativePane: term.id,
     hasDiff: false,
-    archived: false,
     named: label !== '',
+    pinned: term.pinned,
+    archived: term.archived,
+    agent: term.agent,
+    process: term.process,
+    summary: term.summary,
+    details: { asking: term.asking, interrupted: term.interrupted, timeline: term.timeline, usage: term.usage },
   }
 }
 

@@ -3,7 +3,9 @@
 
 use super::Ev;
 use crate::config::Config;
-use crate::protocol::{Status, SubagentActivity, TermId};
+use crate::protocol::{
+    Interrupted, Status, SubagentActivity, Surface, TermId, TurnEvent, TurnKind,
+};
 use anyhow::{Context, Result};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::collections::VecDeque;
@@ -11,6 +13,9 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tokio::sync::mpsc;
+
+const MAX_PENDING_MARKS: usize = 64;
+const TIMELINE_KEPT: usize = 60;
 
 #[derive(Default)]
 pub struct Callbacks {
@@ -21,10 +26,26 @@ pub struct Callbacks {
     /// The program rang the bell.
     pub rang: bool,
     pub progress: String,
+    /// Prompt marks the shell sent (OSC 133), waiting to be put on the pane's timeline: the
+    /// letter (A prompt, C command start, D command end) and what followed it.
+    pub marks: Vec<(u8, String)>,
 }
 
 impl vt100::Callbacks for Callbacks {
     fn unhandled_osc(&mut self, _: &mut vt100::Screen, params: &[&[u8]]) {
+        if params.first() == Some(&b"133".as_slice())
+            && let Some(mark) = params.get(1).and_then(|part| part.first())
+            && matches!(mark, b'A' | b'C' | b'D')
+        {
+            // Bounded: a pane nobody reads must not grow without end.
+            if self.marks.len() < MAX_PENDING_MARKS {
+                let rest = params
+                    .get(2)
+                    .map(|part| String::from_utf8_lossy(part).into_owned());
+                self.marks.push((*mark, rest.unwrap_or_default()));
+            }
+            return;
+        }
         if params.first() == Some(&b"9".as_slice()) && params.get(1) == Some(&b"4".as_slice()) {
             self.progress = params
                 .iter()
@@ -104,12 +125,18 @@ pub struct Term {
     pub remote: Option<String>,
     /// A floating pane (`<app> popup`), in no workspace.
     pub popup: bool,
+    /// The app that started it. Only that app may list, type into or resize it (ADR 0045).
+    pub owner: Surface,
     pub agent: Option<String>,
     pub status: Status,
     /// When the status last changed (unix seconds), for "working 3m".
     pub status_since: u64,
     /// What set the status: a hook's event, a pattern on screen, you.
     pub status_why: String,
+    /// What happened in the pane lately, oldest first (`Term::note`).
+    pub timeline: VecDeque<TurnEvent>,
+    /// An agent that was mid-turn when the daemon restarted; see `TermInfo::interrupted`.
+    pub interrupted: Option<Interrupted>,
     /// The last hook it reported (its event) and the last thing the screen showed that
     /// changed its status, each with when (unix seconds): the evidence "why" lays out.
     pub last_hook: Option<(String, u64)>,
@@ -233,6 +260,10 @@ pub struct Term {
     pub first_prompt: String,
     /// Rename pane.
     pub label: String,
+    /// Pinned to the top of its project (Pin pane).
+    pub pinned: bool,
+    /// Put away from the project lists; it keeps running (Archive pane).
+    pub archived: bool,
     pub model: String,
 }
 
@@ -757,10 +788,13 @@ impl Term {
             process,
             remote: None,
             popup: false,
+            owner: Surface::Terminal,
             agent: None,
             status: Status::None,
             status_since: unix_now(),
             status_why: String::new(),
+            timeline: VecDeque::new(),
+            interrupted: None,
             last_hook: None,
             last_hook_at: None,
             hooked_process_seen: false,
@@ -827,6 +861,8 @@ impl Term {
             name: String::new(),
             first_prompt: String::new(),
             label: String::new(),
+            pinned: false,
+            archived: false,
             model: String::new(),
             colors: crate::theme::Theme::named(&cfg.theme).terminal_foreground_background_rgb(),
         })
@@ -951,6 +987,37 @@ impl Term {
         if excess > 0 || self.ring.len() >= self.ring_cap {
             let cut = clean_start(self.ring.make_contiguous());
             self.ring.drain(..cut);
+        }
+    }
+
+    /// Put an event on the timeline. The same kind twice in a row (a hook repeating itself) is
+    /// one event, and only the latest `TIMELINE_KEPT` are kept.
+    pub fn note(&mut self, kind: TurnKind, detail: &str) {
+        if self
+            .timeline
+            .back()
+            .is_some_and(|last| last.kind == kind && last.detail == detail)
+        {
+            return;
+        }
+        if self.timeline.len() == TIMELINE_KEPT {
+            self.timeline.pop_front();
+        }
+        self.timeline.push_back(TurnEvent {
+            at: unix_now(),
+            kind,
+            detail: detail.to_string(),
+        });
+    }
+
+    /// Move the shell's prompt marks (OSC 133) onto the timeline.
+    pub fn take_marks(&mut self) {
+        for (mark, rest) in std::mem::take(&mut self.parser.callbacks_mut().marks) {
+            match mark {
+                b'A' => self.note(TurnKind::Prompt, ""),
+                b'C' => self.note(TurnKind::CommandStarted, ""),
+                _ => self.note(TurnKind::CommandFinished, &rest),
+            }
         }
     }
 
