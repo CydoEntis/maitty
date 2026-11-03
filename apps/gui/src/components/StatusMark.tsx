@@ -1,6 +1,6 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
-import { currentFrame, spinnerFrames, subscribe } from '@/lib/spinner-clock'
+import { attachSpinner, currentGlyph, spinnerFrames } from '@/lib/spinner-clock'
 
 export type StatusMarkState =
   'working' | 'needs-you' | 'done' | 'idle' | 'recovery' | 'unknown'
@@ -14,10 +14,14 @@ function prefersReducedMotion() {
 }
 
 function Spinner() {
-  const index = useSyncExternalStore(subscribe, currentFrame, () => 0)
-  const frames = spinnerFrames()
   // Reduced motion shows one static frame instead of animating.
-  return <>{frames[prefersReducedMotion() ? 0 : index % frames.length]}</>
+  const still = prefersReducedMotion()
+  const element = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (still || !element.current) return
+    return attachSpinner(element.current)
+  }, [still])
+  return <span ref={element}>{still ? spinnerFrames()[0] : currentGlyph()}</span>
 }
 
 /** Each state has a different shape, so color is never the only signal. */

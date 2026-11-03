@@ -177,7 +177,11 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   (Settings 16) and a soft drop shadow. 8px outer margin, 12px between panes. Only small popups and dialogs (menus,
   popovers, the palette and Settings cards, notification cards) blur what is behind them (18px). The sidebar, panes,
   tab tray and the big panels (Inbox, Inspect, Find) do not: only the soft ground is behind them, so a blur there
-  looks the same and costs a repaint on every frame.
+  looks the same and costs a repaint on every frame. A pane's terminal is see-through over its card only when
+  xterm draws with WebGL; on xterm's DOM renderer (no WebGL 2) it sits on the theme's opaque `--term` ground, so a
+  row repaint never blends through the card. On such a web view (`data-gpu="software"` on the root) Glass also
+  gives up its resting shadows, the card gradient and the popup blur, and nothing else: the colours, radii,
+  layout, focus ring and status colours stay ([PERFORMANCE](PERFORMANCE.md)).
 - **Window style: Flat, Tiled or Glass** (Settings › Appearance › Window style, `style`, stored with the other
   preferences; the root carries `data-style` and `data-finish`). The finish and the layout only; features and
   status colours do not change. The text above is **Glass**, the default for a fresh install: floating frosted cards, colour icons, glow and the status sweeps.
@@ -378,10 +382,14 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Colours follow the theme.** Folder colours, agent tiles, badges and the folder text are
   expressions over the active theme's tokens (`--accent`, `--ansi-*`, `--warn`, `--danger`,
   `--on-accent`), never fixed hex values, so switching theme recolours all of them.
-- **Status effects.** Working rows and tabs carry a slow teal sweep, Needs you a breathing amber
-  glow behind the icon, Done one green sweep. Each has its own switch; Reduce motion (the
-  setting or the system's) and a disconnected daemon stop all of them, with every other
-  animation.
+- **Status effects.** Working rows and tabs show one slow teal sweep as work starts, Needs you an
+  amber glow behind the icon that breathes three times and then rests, Done one green sweep. The
+  needs-you badge, the Inbox count and the update dot pulse three times with a ring. Nothing loops
+  and nothing animates `box-shadow`: an endless animation keeps a software-rendered web view
+  repainting the card for as long as the state lasts ([PERFORMANCE](PERFORMANCE.md)). Each has
+  its own switch; Reduce motion (the setting or the system's) and a disconnected daemon stop all
+  of them, with every other animation. The working spinner steps every 160 ms and holds while the
+  window is in the background.
 - **Process icons** are generic tiles, never a product's mark: `>_` shell, `✻` codex, `rs` cargo.
 - **Themes** are Midnight (default), Abyss and Paper, themes generated from six inputs
   (`bg fg accent mag blue green` and a light flag) by Oklab mixing, and **High Contrast** (pure

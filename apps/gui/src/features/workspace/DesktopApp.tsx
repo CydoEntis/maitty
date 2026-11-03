@@ -1,12 +1,15 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { z } from 'zod'
 import {
   archiveConversationOnDaemon,
   markSeenOnDaemon,
   pinSessionOnDaemon,
   defaultSessionFolder,
+  conversationsFromSnapshot,
   isDesktop,
+  listenSessionsChanged,
   loadConversations,
   loadDaemonRestartStatus,
   renameConversationOnDaemon,
@@ -18,10 +21,12 @@ import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
 import { DesktopSettings, type DesktopSettingsSection } from '@/features/settings/components/DesktopSettings'
-import { readSettingsPreferences, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, writeSettingsPreferences } from '@/features/settings/preferences'
+import { readSettingsPreferences, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, writeSettingsPreferences, type SettingsPreferences } from '@/features/settings/preferences'
+import type { Conversation } from '@/data/preview'
 import { sizeVariables } from './model/layoutSize'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import { errorMessage } from '@/lib/error-message'
+import { markGpu } from '@/lib/gpu'
 import { setSpinnerStyle } from '@/lib/spinner-clock'
 import { TerminalView } from '@/TerminalView'
 import { EffectsContext, ReducedMotionContext } from './components/motion'
@@ -90,13 +95,14 @@ import { byPriority } from './model/stack'
 import { displayName, groupKeyOf, groupSessions, tildePath, toSessionView, type SessionView } from './model/session'
 import { hotkeyRows, isMacPlatform, keyLabels, matchShortcut, type ShortcutAction } from './model/shortcuts'
 import { folderExists, resolveStartFolder } from './model/startFolder'
-import { markSeen, MOVED_HIGHLIGHT_MS, trackSessions, type SessionTrack } from './model/tracking'
+import { markSeen, trackSessions, tracksEqual, type SessionTrack } from './model/tracking'
 import { folderColor } from './model/folderColor'
 import type { PaletteItem } from './model/palette'
 import { activeThemeName, findTheme, themeStyle, THEMES, xtermTheme } from './theme/themes'
 import './workspace.css'
 
-const SESSION_REFRESH_MS = 1500
+/** The daemon pushes every change (`sessions-changed`); this slow poll only catches a stream that went quiet. */
+const SESSION_REFRESH_MS = 15_000
 const COMPACT_WIDTH_PX = 1100
 const MIN_TABS_FOR_NUMBERS = 2
 /** A tab's hover card lists its panes only when it has more than one. */
@@ -112,7 +118,6 @@ const RESTART_SCREEN_MS = 1200
 const ABSOLUTE_PATH = /^(\/|[A-Za-z]:[\\/])/
 const TEST_NOTICE_MS = 6000
 const SECOND_MS = 1000
-const SLOW_TICK_MS = 30_000
 const DIFF_STAT_REFRESH_MS = 8000
 const DIFF_STAT_IDLE_MS = 30_000
 /** A theme previews once the pointer rests on it, not as it passes over every row (each one repaints every terminal). */
@@ -138,7 +143,7 @@ function useWindowWidth(): number {
 }
 
 function useSystemReducedMotion(): boolean {
-  const query = typeof window.matchMedia === 'function' ? window.matchMedia(REDUCED_MOTION_QUERY) : null
+  const [query] = useState(() => (typeof window.matchMedia === 'function' ? window.matchMedia(REDUCED_MOTION_QUERY) : null))
   const [reduced, setReduced] = useState(() => query?.matches ?? false)
   useEffect(() => {
     if (!query) return
@@ -153,7 +158,7 @@ const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)'
 
 /** Whether the operating system is set to dark, following it as it changes (System mode needs it). */
 function useSystemDark(): boolean {
-  const query = typeof window.matchMedia === 'function' ? window.matchMedia(DARK_SCHEME_QUERY) : null
+  const [query] = useState(() => (typeof window.matchMedia === 'function' ? window.matchMedia(DARK_SCHEME_QUERY) : null))
   const [dark, setDark] = useState(() => query?.matches ?? true)
   useEffect(() => {
     if (!query) return
@@ -385,6 +390,8 @@ export function DesktopApp() {
     document.documentElement.dataset.reducedMotion = String(reducedMotion)
   }, [reducedMotion])
 
+  useEffect(() => { markGpu() }, [])
+
   useEffect(() => {
     // Flat and Tiled share one finish (neutral, no glow); Tiled changes the layout on top of it.
     document.documentElement.dataset.style = preferences.style
@@ -411,14 +418,53 @@ export function DesktopApp() {
   const refetchSessions = sessionsQuery.refetch
   const retryAt = sessionsQuery.isError ? sessionsQuery.errorUpdatedAt + retryDelay : null
 
+  // The host forwards the daemon's snapshots as they change, so the list is current without asking.
+  // A snapshot that does not read, or a dropped stream, sends the query to ask the daemon itself.
+  useEffect(() => {
+    const askAgain = () => { void queryClient.invalidateQueries({ queryKey: ['conversations'] }) }
+    const applySnapshot = (snapshot: unknown) => {
+      if (snapshot === null) {
+        askAgain()
+        return
+      }
+      let conversations: Conversation[]
+      try {
+        conversations = conversationsFromSnapshot(snapshot)
+      } catch (error: unknown) {
+        if (!(error instanceof z.ZodError)) throw error
+        console.warn('The daemon sent a session list this window cannot read; asking for it again', error)
+        askAgain()
+        return
+      }
+      // A poll still in flight answers with an older list than this push; it must not win.
+      void queryClient.cancelQueries({ queryKey: ['conversations'] })
+      queryClient.setQueryData(['conversations'], conversations)
+      setFailures(0)
+    }
+    let stop: (() => void) | null = null
+    let gone = false
+    listenSessionsChanged(applySnapshot).then(
+      (unlisten) => {
+        if (gone) unlisten()
+        else stop = unlisten
+      },
+      (error: unknown) => { toast.error(errorMessage(error, 'Could not follow the session list')) },
+    )
+    return () => {
+      gone = true
+      stop?.()
+    }
+  }, [queryClient])
+
   // The first list after launch: drop panes of sessions that are gone since last time, and open
   // something when there is nothing to restore. Later lists never remove a pane: one that stopped
   // being listed stays, as an ended pane. `sessions` also changes when the home folder arrives; only a
   // new list counts.
-  const reconciledAt = useRef(0)
+  const reconciled = useRef<readonly Conversation[] | null>(null)
   useEffect(() => {
-    if (!sessionsQuery.isSuccess || reconciledAt.current === sessionsQuery.dataUpdatedAt) return
-    reconciledAt.current = sessionsQuery.dataUpdatedAt
+    // An unchanged list keeps its identity (structural sharing), so only a real change counts here.
+    if (!sessionsQuery.isSuccess || reconciled.current === sessionsQuery.data) return
+    reconciled.current = sessionsQuery.data
     const live = new Set(sessions.map((session) => session.id))
     const first = [...sessions].sort((a, b) => a.pane - b.pane)[0]
     const openFirst = !openedFirst.current
@@ -427,12 +473,14 @@ export function DesktopApp() {
       const reconciled = openFirst ? reconcileLayout(current, live, tabGroup) : current
       return openFirst && reconciled.tabs.length === 0 && first ? openInNewTab(reconciled, first.id, makeId) : reconciled
     })
-  }, [sessions, sessionsQuery.dataUpdatedAt, sessionsQuery.isSuccess, tabGroup])
+  }, [sessions, sessionsQuery.data, sessionsQuery.isSuccess, tabGroup])
 
   useEffect(() => {
     const { tracks: next, moves } = trackSessions(tracksRef.current, sessions, new Set(visibleKey.split(' ').filter(Boolean)), Date.now())
-    tracksRef.current = next
-    setTracks(next)
+    if (!tracksEqual(tracksRef.current, next)) {
+      tracksRef.current = next
+      setTracks(next)
+    }
     const move = moves.at(-1)
     if (move) {
       const name = (path: string | null) => path?.split(/[\\/]/).filter(Boolean).at(-1) ?? ''
@@ -442,12 +490,11 @@ export function DesktopApp() {
 
   useEffect(() => {
     const next = markSeen(tracksRef.current, new Set(visibleKey.split(' ').filter(Boolean)))
-    tracksRef.current = next
-    setTracks(next)
+    if (!tracksEqual(tracksRef.current, next)) {
+      tracksRef.current = next
+      setTracks(next)
+    }
   }, [visibleKey])
-
-  const highlightUntil = Math.max(0, ...[...tracks.values()].map((track) => (track.movedAt ?? 0) + MOVED_HIGHLIGHT_MS))
-  const now = useClock(sessions.some((session) => session.status === 'working'), highlightUntil)
 
   // The session the daemon made since `known` was the whole list, if one appeared.
   const newSessionSince = useCallback(async (known: ReadonlySet<string>): Promise<string | null> => {
@@ -674,6 +721,19 @@ export function DesktopApp() {
     else setPreferences((current) => ({ ...current, compactSidebar: !current.compactSidebar }))
   }, [compact])
 
+  // The tab bar and status bar are memoised, so what they are handed keeps its identity.
+  const selectTabById = useCallback((tabId: string) => { setLayout((current) => selectTab(current, tabId)) }, [])
+  const openInbox = useCallback(() => { setInboxOpen(true) }, [])
+  const toggleInspect = useCallback(() => { setInspectOpen((open) => !open) }, [])
+  const openDrawer = useCallback(() => { setDrawerOpen(true) }, [])
+  const setThemeMode = useCallback((themeMode: SettingsPreferences['themeMode']) => { setPreferences((current) => ({ ...current, themeMode })) }, [])
+  const pickTheme = useCallback((name: string) => { setPreferences((current) => (findTheme(name).light ? { ...current, lightTheme: name } : { ...current, darkTheme: name })) }, [])
+  const openAppearance = useCallback(() => { setSettingsSection('appearance') }, [])
+  const setStyle = useCallback((style: SettingsPreferences['style']) => { setPreferences((current) => ({ ...current, style })) }, [])
+  const resetTextSize = useCallback(() => { setTextSize(DEFAULT_TEXT_SIZE) }, [setTextSize])
+  const openShortcuts = useCallback(() => { setShortcutsOpen(true) }, [])
+  const shortcutChord = useMemo(() => hotkeyRows(mac).find((row) => row.action === 'Keyboard shortcuts')?.chords[0] ?? [], [mac])
+
   const runShortcut = useCallback((action: ShortcutAction) => {
     switch (action) {
       case 'new-session':
@@ -862,10 +922,13 @@ export function DesktopApp() {
       return { additions: diff.additions, deletions: diff.deletions }
     },
     enabled: inspectTerm !== null,
-    // The counts come from a full diff, so they are read slowly unless Inspect is open.
+    // The counts come from a full diff, so they are read slowly unless Inspect is open, and not
+    // again just because the window came to the front.
     refetchInterval: inspectOpen ? DIFF_STAT_REFRESH_MS : DIFF_STAT_IDLE_MS,
+    refetchOnWindowFocus: false,
     retry: false,
   })
+  const inspect = useMemo(() => (inspectTerm === null ? null : { open: inspectOpen, additions: diffStat.data?.additions ?? 0, deletions: diffStat.data?.deletions ?? 0 }), [inspectTerm, inspectOpen, diffStat.data])
 
   // Looking at a pane acknowledges it: a finished agent's done goes back to idle, as when the terminal app
   // focuses it, and an error in it leaves the inbox. Needs-you stays until the agent is answered.
@@ -976,6 +1039,8 @@ export function DesktopApp() {
   }, [runStart, activeGroupKey, preferences.startFolder, home])
 
   const paletteItems: PaletteItem[] = useMemo(() => {
+    // Thirty-odd items with closures, built only while the palette can show them.
+    if (!paletteOpen) return []
     const keys = (letter: string, shifted = false) => `${labels.primary}${shifted ? labels.shift : ''}${letter}`
     const action = (id: string, label: string, run: () => void, shortcut?: string): PaletteItem => ({ id, label, kind: 'Action', run, ...(shortcut ? { shortcut } : {}) })
     const showing = activeTab(layout)
@@ -1013,7 +1078,7 @@ export function DesktopApp() {
     }
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide])
+  }, [paletteOpen, labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide])
 
   const restartOffer: RestartOffer | null = mismatch
     ? {
@@ -1045,7 +1110,6 @@ export function DesktopApp() {
       groups={groups}
       focusedId={focusedId}
       tracks={tracks}
-      now={now}
       mode={mode}
       online={online}
       sessionCount={sessions.length}
@@ -1113,7 +1177,7 @@ export function DesktopApp() {
                   primary={labels.primary}
                   canStart={canStart}
                   portalContainer={root}
-                  onSelect={(tabId) => { setLayout((current) => selectTab(current, tabId)) }}
+                  onSelect={selectTabById}
                   onClose={closeTabById}
                   onCloseOthers={closeOtherTabs}
                   onRenameSession={saveName}
@@ -1121,10 +1185,10 @@ export function DesktopApp() {
                   onNewTab={newProjectSession}
                   inboxCount={inboxEntries.length}
                   inboxNeeds={needsCount > 0}
-                  onOpenInbox={() => { setInboxOpen(true) }}
-                  inspect={inspectTerm === null ? null : { open: inspectOpen, additions: diffStat.data?.additions ?? 0, deletions: diffStat.data?.deletions ?? 0 }}
-                  onToggleInspect={() => { setInspectOpen((open) => !open) }}
-                  {...(compact ? { onOpenSessions: () => { setDrawerOpen(true) } } : {})}
+                  onOpenInbox={openInbox}
+                  inspect={inspect}
+                  onToggleInspect={toggleInspect}
+                  {...(compact ? { onOpenSessions: openDrawer } : {})}
                 />}
                 {findOpen && (
                   <FindBar
@@ -1172,7 +1236,6 @@ export function DesktopApp() {
                               maximized={tab.max === pane.id}
                               dropTarget={dropId === pane.id && dragId !== pane.id}
                               workingSince={tracks.get(session.id)?.workingSince ?? null}
-                              now={now}
                               primary={labels.primary}
                               shift={labels.shift}
                               online={online}
@@ -1247,15 +1310,15 @@ export function DesktopApp() {
                     textSize={preferences.terminalFontSize}
                     minTextSize={TERMINAL_FONT_SIZE_MIN}
                     maxTextSize={TERMINAL_FONT_SIZE_MAX}
-                    shortcutChord={hotkeyRows(mac).find((row) => row.action === 'Keyboard shortcuts')?.chords[0] ?? []}
+                    shortcutChord={shortcutChord}
                     portalContainer={root}
-                    onThemeMode={(themeMode) => { setPreferences((current) => ({ ...current, themeMode })) }}
-                    onPickTheme={(name) => { setPreferences((current) => (findTheme(name).light ? { ...current, lightTheme: name } : { ...current, darkTheme: name })) }}
-                    onAllThemes={() => { setSettingsSection('appearance') }}
-                    onStyle={(style) => { setPreferences((current) => ({ ...current, style })) }}
+                    onThemeMode={setThemeMode}
+                    onPickTheme={pickTheme}
+                    onAllThemes={openAppearance}
+                    onStyle={setStyle}
                     onTextSize={setTextSize}
-                    onResetTextSize={() => { setTextSize(DEFAULT_TEXT_SIZE) }}
-                    onOpenShortcuts={() => { setShortcutsOpen(true) }}
+                    onResetTextSize={resetTextSize}
+                    onOpenShortcuts={openShortcuts}
                   />
                 )}
               </main>
@@ -1292,7 +1355,6 @@ export function DesktopApp() {
               <InboxPanel
                 entries={inboxEntries}
                 tracks={tracks}
-                now={now}
                 online={online}
                 onAnswer={answerSession}
                 onClear={clearEntry}
@@ -1353,28 +1415,5 @@ export function DesktopApp() {
       </EffectsContext.Provider>
     </ReducedMotionContext.Provider>
   )
-}
-
-/**
- * The current time: every second while something shows elapsed time, else slowly, plus once when
- * a move highlight starts and once when it ends.
- */
-function useClock(working: boolean, highlightUntil: number): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const timer = window.setInterval(() => { setNow(Date.now()) }, working ? SECOND_MS : SLOW_TICK_MS)
-    return () => { window.clearInterval(timer) }
-  }, [working])
-  useEffect(() => {
-    const wait = highlightUntil - Date.now()
-    if (wait <= 0) return
-    const start = window.setTimeout(() => { setNow(Date.now()) }, 0)
-    const end = window.setTimeout(() => { setNow(Date.now()) }, wait)
-    return () => {
-      window.clearTimeout(start)
-      window.clearTimeout(end)
-    }
-  }, [highlightUntil])
-  return now
 }
 

@@ -1,5 +1,6 @@
 import { displayName, STATUS_WORD, truncatePrompt, type SessionView } from '../model/session'
-import { formatAgo, type SessionTrack } from '../model/tracking'
+import type { SessionTrack } from '../model/tracking'
+import { Ago } from './times'
 import { AppIcon, Icon } from './glyphs'
 
 export type InboxEntry = { session: SessionView; projectName: string; projectColor: string }
@@ -10,7 +11,6 @@ export type Answer = 'y' | 'a' | 'n'
 type InboxProps = {
   entries: readonly InboxEntry[]
   tracks: ReadonlyMap<string, SessionTrack>
-  now: number
   online: boolean
   onAnswer: (sessionId: string, answer: Answer) => void
   onClear: (sessionId: string) => void
@@ -20,7 +20,7 @@ type InboxProps = {
 }
 
 /** ⌘J: every session that needs you, failed or finished, across all projects. The GUI only types your answer into the session. */
-export function InboxPanel({ entries, tracks, now, online, onAnswer, onClear, onClearDone, onOpen, onClose }: InboxProps) {
+export function InboxPanel({ entries, tracks, online, onAnswer, onClear, onClearDone, onOpen, onClose }: InboxProps) {
   const settled = entries.some((entry) => entry.session.status !== 'needs')
   return (
     <div className="mx-inbox-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
@@ -36,7 +36,6 @@ export function InboxPanel({ entries, tracks, now, online, onAnswer, onClear, on
           {entries.map(({ session, projectName, projectColor }) => {
             const track = tracks.get(session.id)
             const needs = session.status === 'needs'
-            const since = track?.changedAt ? formatAgo(now - track.changedAt) : ''
             return (
               <article key={session.id} className={`mx-inbox-card is-${session.status}`} aria-label={`${displayName(session)}, ${STATUS_WORD[session.status]}`}>
                 <div className="mx-inbox-card-head">
@@ -44,7 +43,7 @@ export function InboxPanel({ entries, tracks, now, online, onAnswer, onClear, on
                   <span className="mx-inbox-dot" style={{ background: projectColor }} aria-hidden="true" />
                   <span className="mx-inbox-text">
                     <span className="mx-inbox-title"><strong>{projectName}</strong> {displayName(session)}</span>
-                    <span className="mx-inbox-meta">{session.process}{since ? ` · ${since}` : ''}</span>
+                    <span className="mx-inbox-meta">{session.process}{track?.changedAt ? <Ago at={track.changedAt} prefix=" · " /> : ''}</span>
                   </span>
                   <span className={`mx-inbox-word is-${session.status}`}>{needs ? 'Needs you' : session.status === 'error' ? 'Exited' : 'Done'}</span>
                 </div>

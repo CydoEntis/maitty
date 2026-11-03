@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { DropdownMenu } from 'radix-ui'
 import { isModifierSymbol, type Chord } from '../model/shortcuts'
 import { THEMES, type ThemeMode } from '../theme/themes'
@@ -38,8 +39,8 @@ type Props = {
   onOpenShortcuts: () => void
 }
 
-/** Quick controls at the bottom right; the left stays empty unless the daemon drops. */
-export function StatusBar(props: Props) {
+/** Quick controls at the bottom right; the left stays empty unless the daemon drops. Memoised, like the tab bar. */
+export const StatusBar = memo(function StatusBar(props: Props) {
   const themes = THEMES.filter((theme) => theme.light === props.lightInUse).slice(0, COMMON_THEMES)
   const content = (className: string) => ({ className, sideOffset: 6, align: 'end' as const })
   return (
@@ -101,4 +102,4 @@ export function StatusBar(props: Props) {
       </button>
     </footer>
   )
-}
+})

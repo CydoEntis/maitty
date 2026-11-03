@@ -4,7 +4,7 @@
 @keyframes v7fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes v7scrim { from { opacity: 0; } to { opacity: 1; } }
 @keyframes v7caret { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
-@keyframes v7pulse { 0% { box-shadow: 0 0 0 0 rgba(242, 182, 90, .45); } 70% { box-shadow: 0 0 0 4px rgba(242, 182, 90, 0); } 100% { box-shadow: 0 0 0 0 rgba(242, 182, 90, 0); } }
+@keyframes v7pulse { 0% { opacity: .9; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.7); } }
 @keyframes v14focus { from { box-shadow: 0 0 0 0 var(--accent-line); } to { box-shadow: 0 0 0 8px transparent; } }
 @keyframes v7moved { 0% { background-color: rgba(95, 212, 191, .16); } 100% { background-color: transparent; } }
 @keyframes v14sweep { from { transform: translateX(-90%); } to { transform: translateX(30%); } }
@@ -16,7 +16,6 @@
 @keyframes v8insp { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
 @keyframes v9pop { from { opacity: 0; transform: scale(.6); } 60% { opacity: 1; transform: scale(1.08); } to { opacity: 1; transform: none; } }
 @keyframes v9dialog { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(.97); } to { opacity: 1; transform: translate(-50%, -50%); } }
-@keyframes v9breathe { 0%, 100% { opacity: .35; } 50% { opacity: .85; } }
 @keyframes v8row { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
 
 .mx-app {
@@ -121,7 +120,10 @@
 .mx-folder-tile.is-focused { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .4), 0 0 0 2px var(--accent-soft), 0 1px 2px rgba(0, 0, 0, .3); }
 .mx-group-name { font-size: var(--sidebar-fs, 13.5px); font-weight: 600; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-group.has-focused .mx-group-name { color: var(--fg); }
-.mx-spin { font-family: var(--mono); font-size: 12px; color: var(--accent); flex: none; }
+/* A fixed width and layout containment keep a frame change inside the glyph: the row is not laid out
+   again 6 times a second. The clock writes the frame straight into the element (lib/spinner-clock.ts). */
+.mx-spin { display: inline-block; inline-size: 1ch; text-align: center; contain: layout style; font-family: var(--mono); font-size: 12px; color: var(--accent); flex: none; }
+.mx-spin.is-wide { inline-size: 2ch; }
 .mx-needs-text { font-size: 11.5px; color: var(--warn); white-space: nowrap; }
 .mx-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--raise); font-size: 11px; color: var(--muted); display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
 .mx-group-rows { position: relative; display: flex; flex-direction: column; gap: 2px; padding-left: 20px; animation: v7fade .2s ease-out; }
@@ -241,7 +243,12 @@
 .mx-row-icon .mx-badge { right: -4px; bottom: -4px; width: 14px; height: 14px; border-radius: 4px; }
 .mx-rail-row .mx-badge { right: 1px; bottom: 1px; width: 15px; height: 15px; border-radius: 4px; }
 .mx-badge { animation: v9pop .26s var(--ease-out); }
-.mx-badge.is-needs { gap: 1.5px; background: var(--warn); animation: v7pulse 2.4s ease-out infinite; }
+.mx-badge.is-needs { gap: 1.5px; background: var(--warn); }
+/* A pulse is a ring on a pseudo-element that scales out and fades a few times, then rests. An animated
+   box-shadow, or any endless animation, repaints the card on every frame for as long as the state lasts
+   (docs/PERFORMANCE.md). */
+.mx-inbox-count.is-needs, .mx-upd-dot { position: relative; }
+.mx-badge.is-needs::after, .mx-inbox-count.is-needs::after, .mx-upd-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px rgba(242, 182, 90, .45); opacity: 0; pointer-events: none; animation: v7pulse 2.4s ease-out 3; }
 .mx-badge.is-done { background: color-mix(in oklab, var(--ok) 24%, var(--bg)); }
 .mx-badge.is-error { background: color-mix(in oklab, var(--danger) 24%, var(--bg)); }
 .mx-row-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
@@ -380,7 +387,9 @@
 .mx-pane-body .terminal-screen { flex: 1; min-height: 0; margin: 0; background: transparent; border: 0; border-radius: 0; padding: 0; }
 /* The pane card carries the focus ring; the terminal draws none of its own. */
 .mx-pane-body .terminal-screen:focus-within { border-color: transparent; box-shadow: none; }
-.mx-pane-body .xterm, .mx-pane-body .xterm-viewport, .mx-pane-body .xterm-screen { background-color: transparent !important; }
+/* With the WebGL renderer the terminal is see-through and the card shows behind the text. The DOM
+   renderer keeps the theme's opaque terminal ground, so a row repaint never blends through the card. */
+.mx-pane-body .terminal-view.is-transparent .xterm, .mx-pane-body .terminal-view.is-transparent .xterm-viewport, .mx-pane-body .terminal-view.is-transparent .xterm-screen { background-color: transparent !important; }
 .mx-pane-body .terminal-input-error, .mx-pane-body .terminal-load-status { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 0; font-family: "Geist Variable", Geist, system-ui, sans-serif; font-size: 12.5px; color: var(--muted); }
 .mx-pane-body .terminal-input-error p { margin: 0; color: var(--danger); }
 
@@ -480,7 +489,6 @@
 .mx-effect-row { display: flex; align-items: center; gap: 12px; min-height: 36px; }
 .mx-effect-chip { width: 84px; height: 26px; flex: none; border-radius: 7px; background-color: var(--raise); background-repeat: no-repeat; box-shadow: inset 0 0 0 1px var(--pane-line); display: flex; align-items: center; gap: 6px; padding: 0 8px; font-size: 11.5px; }
 .mx-effect-chip span { color: var(--fg2); }
-.mx-effect-chip.mx-fx-done::after { animation: v14sweep 2.6s cubic-bezier(.4, 0, .2, 1) infinite; }
 .mx-hotkey { font-family: var(--mono); font-size: 11.5px; color: var(--fg); padding: 3px 8px; border-radius: 6px; background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); white-space: pre; }
 .mx-hotkey-row { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 16px; border-top: 1px solid var(--pane-line); font-size: 13px; }
 .mx-hotkey-row > span:first-child { flex: 1; color: var(--fg2); }
@@ -497,11 +505,13 @@
 .mx-menu-sep { height: 1px; margin: 4px 2px; background: var(--line2); }
 
 /* Status effects on rows and tabs, after the row and tab rules so their animation wins. The app
-   adds these classes only for effects that are switched on (see EffectsContext). */
+   adds these classes only for effects that are switched on (see EffectsContext). Each plays once when
+   the status appears and then rests: the signal is the change, and an endless animation keeps a
+   software-rendered web view repainting the card (docs/PERFORMANCE.md). */
 .mx-fx-working, .mx-fx-needs, .mx-fx-done { position: relative; overflow: hidden; isolation: isolate; }
-.mx-fx-working::after, .mx-fx-needs::after, .mx-fx-done::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: -1; pointer-events: none; will-change: transform, opacity; }
-.mx-fx-working::after { left: 0; width: 250%; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--accent) calc(9% * var(--fx-k, .6)), transparent) 44%, color-mix(in srgb, var(--accent) calc(18% * var(--fx-k, .6)), transparent) 50%, color-mix(in srgb, var(--accent) calc(9% * var(--fx-k, .6)), transparent) 56%, transparent 70%); transform: translateX(-90%); animation: v14sweep 2.6s cubic-bezier(.4, 0, .2, 1) infinite; }
-.mx-fx-needs::after { top: -50%; bottom: -50%; left: -30%; width: 120%; background: radial-gradient(closest-side, color-mix(in srgb, var(--warn) calc(22% * var(--fx-k, .6)), transparent), transparent); animation: v14breathe 2.4s ease-in-out infinite; }
+.mx-fx-working::after, .mx-fx-needs::after, .mx-fx-done::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: -1; pointer-events: none; }
+.mx-fx-working::after { left: 0; width: 250%; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--accent) calc(9% * var(--fx-k, .6)), transparent) 44%, color-mix(in srgb, var(--accent) calc(18% * var(--fx-k, .6)), transparent) 50%, color-mix(in srgb, var(--accent) calc(9% * var(--fx-k, .6)), transparent) 56%, transparent 70%); transform: translateX(-90%); animation: v14sweep 2.6s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
+.mx-fx-needs::after { top: -50%; bottom: -50%; left: -30%; width: 120%; background: radial-gradient(closest-side, color-mix(in srgb, var(--warn) calc(22% * var(--fx-k, .6)), transparent), transparent); opacity: .55; transform: scale(.8); animation: v14breathe 2.4s ease-in-out 3; }
 .mx-fx-done::after { left: 0; width: 250%; background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--ok) calc(16% * var(--fx-k, .6)), transparent) 50%, transparent 65%); transform: translateX(-90%); animation: v14sweepdone 1.4s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
 .mx-fx-strong { --fx-k: 1; }
 
@@ -524,7 +534,6 @@
 .mx-pane-status.is-needs { color: var(--warn); background: var(--warn-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 42%, transparent), 0 4px 14px -6px color-mix(in srgb, var(--warn) 55%, transparent); }
 .mx-pane-status.is-done { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 34%, transparent), 0 4px 14px -6px color-mix(in srgb, var(--ok) 45%, transparent); }
 .mx-pane-status.is-error { color: var(--danger); background: var(--danger-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 40%, transparent), 0 4px 14px -6px color-mix(in srgb, var(--danger) 50%, transparent); }
-.mx-pane-status.is-idle .mx-status-dot { animation: v9breathe 3.2s ease-in-out infinite; }
 .mx-pane-status.is-unknown { color: var(--dim); box-shadow: inset 0 0 0 1px var(--line2); }
 .mx-pane-status-icon { display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; font-family: var(--mono); }
 .mx-pane-status-icon svg { width: 13px; height: 13px; }
@@ -751,7 +760,7 @@
 .mx-inspect-stat .is-add { color: var(--ok); }
 .mx-inspect-stat .is-remove { color: var(--danger); }
 .mx-inbox-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: var(--sel); color: var(--fg2); font-variant-numeric: tabular-nums; animation: v9pop .28s var(--ease-out); }
-.mx-inbox-count.is-needs { background: var(--warn); color: var(--on-warn); animation: v9pop .28s var(--ease-out), v7pulse 2.4s ease-out .3s infinite; }
+.mx-inbox-count.is-needs { background: var(--warn); color: var(--on-warn); }
 
 /* Focus mode */
 .mx-focus-pill { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 45; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px 0 14px; border-radius: 999px; background: var(--raise); border: 1px solid var(--line2); box-shadow: 0 12px 40px rgba(0, 0, 0, .45); font-size: 12.5px; color: var(--fg2); white-space: nowrap; animation: v8pane .26s var(--ease-out); }
@@ -955,9 +964,19 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 :root[data-finish="flat"] .mx-pane-status:hover { animation: none; backdrop-filter: none; box-shadow: inset 0 0 0 1px var(--pane-line); transform: none; }
 :root[data-finish="flat"] .mx-pane-status.is-unknown { box-shadow: inset 0 0 0 1px var(--line2); }
 :root[data-finish="flat"] .mx-pane-status.is-done { background: transparent; }
-:root[data-finish="flat"] .mx-pane-status.is-idle .mx-status-dot { animation: none; }
 :root[data-finish="flat"] .mx-badge:not(.is-needs) { animation: none; }
 :root[data-finish="flat"] .mx-inspect { background: var(--main); backdrop-filter: none;  }
+
+/* A web view without GPU access (no WebGL 2) rasterises in software, where every resting shadow,
+   gradient and blur is paid again on each repaint (docs/PERFORMANCE.md). Glass keeps its colours,
+   radii and layout there and gives up only those three; the focus ring and status colours stay. */
+:root[data-gpu="software"] .mx-card,
+:root[data-gpu="software"] .mx-pane { background: var(--pane); box-shadow: none; }
+:root[data-gpu="software"] .mx-sidebar { box-shadow: none; }
+:root[data-gpu="software"] .mx-pane.is-focused,
+:root[data-gpu="software"] .mx-pane.is-focused:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
+:root[data-gpu="software"] :is(.mx-rail-popover, .mx-settings, .mx-settings-scrim, .mx-rename, .mx-stack-menu, .mx-alltabs-menu, .mx-palette, .mx-inbox, .mx-notice, .mx-inspect, .mx-pane-status) { backdrop-filter: none; }
+:root[data-gpu="software"] :is(.mx-stack-menu, .mx-alltabs-menu, .mx-palette, .mx-inbox, .mx-welcome, .mx-shortcuts, .mx-confirm) { background: var(--pane); }
 
 /* Window style variables, set on the app root so they can use the theme's colours. Glass is the default; Flat softens the radii and shadow; Tiled pulls the layout edge to
    edge (square corners, 4px gaps, a flush 40px tab strip with hairlines). The layout rules above read these.
@@ -1002,7 +1021,7 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-upd-pill.is-ready { background: var(--accent); color: var(--on-accent); box-shadow: none; }
 .mx-upd-pill.is-failed { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger-line); }
 .mx-upd-pill.is-rail { width: 36px; height: 28px; padding: 0; justify-content: center; border-radius: 8px; }
-.mx-upd-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: v7pulse 2.4s ease-out infinite; }
+.mx-upd-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .mx-upd-ring { width: 14px; height: 14px; border-radius: 50%; background: conic-gradient(var(--accent) var(--p, 0%), color-mix(in srgb, var(--accent) 22%, transparent) 0); -webkit-mask: radial-gradient(circle, transparent 4px, #000 4.5px); mask: radial-gradient(circle, transparent 4px, #000 4.5px); }
 .mx-upd-card { position: fixed; z-index: 70; width: 360px; max-width: calc(100vw - 24px); padding: 16px; border-radius: 14px; background: var(--main); border: 1px solid var(--line2); box-shadow: 0 16px 44px rgba(0, 0, 0, .5); color: var(--fg); animation: v7fade .18s var(--ease-out); }
 .mx-upd-card h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }

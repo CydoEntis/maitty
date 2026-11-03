@@ -110,21 +110,34 @@ every poll, IPC parsing. They still deserve cleaning up, mostly for battery and 
 
 ## Plan
 
-Tier 1 (small changes, measured gain; do first, measure after each):
+Done on 2026-11-03 on Windows (gate: build, tests, clippy, cross-checks). The WebKit harness
+needs a Linux machine with WebKitGTK, so the before/after numbers below are still owed: run
+scenario `b` (silent working session) and `b` with the stream, and put them in the next commit
+that touches this area.
 
-1. [ ] Status effects: one-shot on change, never infinite, no `box-shadow` animation. Files: `workspace.css` (lines above), `components/motion.ts` (`useEffectClass`), Settings › Motion copy.
-2. [ ] Spinner outside React, 150-200 ms, fixed width, paused when unfocused. Files: `lib/spinner-clock.ts`, `glyphs.tsx`, `StatusMark.tsx`, `workspace.css` `.mx-spin`.
-3. [ ] Cursor blink only with window focus. File: `TerminalView.tsx`.
+Tier 1 (small changes, measured gain):
+
+1. [x] Status effects play once when a status appears and then rest: the working sweep is one pass, the needs-you glow breathes three times, the needs-you badge, Inbox count and update dot pulse three times with a `transform` ring on a pseudo-element, the idle dot is still. Nothing animates `box-shadow` or loops. `workspace.css`, `App.css`, Settings › Motion copy.
+2. [x] Spinner outside React: `lib/spinner-clock.ts` writes each frame into the elements (`attachSpinner`) at 160 ms, and stops while the window is hidden or not focused (`lib/window-activity.ts`). `.mx-spin` has a fixed `inline-size` and `contain: layout`.
+3. [x] Cursor blink only while the pane is focused and the window is in front (`TerminalView.tsx`, `useWindowActive`).
 
 Tier 2 (needs a real machine to verify):
 
-4. [ ] WebGL renderer with fallback; opaque terminal background; write coalescing; scrollbar timer off. Files: `TerminalView.tsx`, `theme/themes.ts`, `workspace.css` `.mx-pane`, `package.json`.
+4. [x] `@xterm/addon-webgl` is loaded after `open()` when the web view has WebGL 2, with the DOM renderer as the fallback (no WebGL 2, the addon failing to start, or a lost context). With the DOM renderer the terminal background is the theme's opaque `term` colour and writes are flushed at most every 32 ms; with WebGL the canvas stays see-through over the card. Not done: xterm 6 has no option for the scrollbar's hide timer (`vertical: Auto` is hard-coded in its scrollable element), so that 500 ms timer still resets per scrolled line while the DOM renderer draws. Whether WebGL 2 works on the Linux WebKitGTK build is still to be seen on a real machine.
 
 Tier 3 (waste; not felt as lag with one session):
 
-5. [ ] Daemon: skip unchanged saves; snapshot once, only for attached clients.
-6. [ ] Tauri host: batch output events; replays as bytes; push state instead of polling.
-7. [ ] React: memo the big components, stop the per-poll double render, `matchMedia` once.
+5. [x] Daemon: the periodic save compares the serialised session with `last_saved` and skips the write (a barrier save still goes out); the process scan marks the state dirty for the clock only when `why_process_at` enters a new minute, which is the resolution the TUI's why popover shows it at; a surface's snapshot is built only when a client of that surface is attached.
+6. [x] Tauri host: output is gathered per pane for up to 12 ms or 64 KiB and sent as one raw frame over a `tauri::ipc::Channel` the webview opens once (`watch_terminal_output`), so nothing is base64-encoded, JSON-parsed or decoded per chunk, and each view sees only its pane's frames; replays and `terminal_history` are raw bytes (`tauri::ipc::Response`; the history reply is the sequence number as 8 big-endian bytes, then the output; empty means dropped); `ServerMsg::State` goes out as `sessions-changed` (the `Snapshot`, or `null` when the stream dropped) and the GUI sets the query data from it. The 1.5 s poll is now a 15 s safety net. Replays are trimmed and asked for per pane since item 11.
+7. [x] React: the reconcile is keyed on `data` identity, tracks are set only when one changed (`tracksEqual`), `TabBar` and `StatusBar` are memoised with stable callbacks, `matchMedia` is created once, the palette's items are built only while it is open, the diff stat does not refetch on window focus, and the browser preview (`App.tsx`) is a lazy chunk the desktop never loads (`Root.tsx`). Not memoised: `Sidebar` and `PaneCard`, whose props are rebuilt by the parent on every real change anyway; `HoverTips` was measured as negligible and is unchanged.
+
+Follow-ups done on the same day, after a second look:
+
+8. [x] The one-second clock is a shared store only the text showing a time subscribes to (`lib/clock.ts`; `components/times.tsx`: `Ago`, `ElapsedSince`), and a move highlight ends through `useRecent`, so a working session ticks a few small spans, not the window; the Settings spinner preview steps outside React; terminal output goes over one raw `tauri::ipc::Channel` instead of base64 events.
+9. [x] Glass on a web view without WebGL 2 (`data-gpu="software"`, set by `lib/gpu.ts`) drops its resting shadows, card gradient and popup blur, the three things the audit measured at 18, 10 and more points on software WebKitGTK; colours, radii and layout stay.
+10. [x] State deltas: when only panes changed, the daemon sends `ServerMsg::TermsChanged` (compared as encoded bytes against what that surface's clients last got) and nothing at all when nothing visible changed; `PROTOCOL_VERSION` 69. The TUI and the desktop host merge deltas into the snapshot they hold.
+11. [x] Replays only for viewed panes: the desktop stream attaches with `Hello.replays: false` and asks `WantReplay` per pane when a view opens; a desktop replay is the last 1 MiB of the ring plus the screen; the host keeps no history for a pane until its replay arrived.
+12. [x] The process scan runs every 5 s instead of every second while no client is attached.
 
 Verification for every step: run the WebKit harness scenario `b` (silent working session) and
 `b` with the stream before and after, and put the two numbers in the commit message. The target is

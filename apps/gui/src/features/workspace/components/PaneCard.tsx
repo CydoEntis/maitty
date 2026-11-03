@@ -20,7 +20,6 @@ export type PaneCardProps = {
   maximized: boolean
   dropTarget: boolean
   workingSince: number | null
-  now: number
   primary: string
   shift: string
   terminal: ReactNode
@@ -120,7 +119,7 @@ export function PaneCard(props: PaneCardProps) {
           <button type="button" className="mx-pane-ended-button" onMouseDown={stop} onClick={() => { props.onClose(pane.id) }}>Close pane</button>
         </div>
       )}
-      {!ended && status !== 'idle' && <PaneStatus status={status} workingSince={props.workingSince} now={props.now} />}
+      {!ended && status !== 'idle' && <PaneStatus status={status} workingSince={props.workingSince} />}
     </section>
       </ContextMenuPrimitive.Trigger>
       <ContextMenuPrimitive.Portal container={props.portalContainer}>

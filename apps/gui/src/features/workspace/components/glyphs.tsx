@@ -1,16 +1,22 @@
-import { useSyncExternalStore, type ReactNode } from 'react'
-import { currentFrame, spinnerFrames, subscribe } from '@/lib/spinner-clock'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { attachSpinner, currentGlyph, isWideSpinner, spinnerFrames } from '@/lib/spinner-clock'
 import { SHELL_PROCESS, type SessionStatus } from '../model/session'
 import { CLAUDE_MARK, CODEX_MARK, DEEPSEEK_MARK, GEMINI_MARK, OPENCODE_MARK } from './agentMarks'
 import { folderStyle } from './folderStyle'
 import { FOLDER_PATH } from './paths'
 import { useReducedMotion } from './motion'
 
+/** The working spinner. The shared clock writes each frame into the element itself, so a tick never re-renders React. */
 export function Spinner({ className = 'mx-spin', frozen = false }: { className?: string; frozen?: boolean }) {
   const reduced = useReducedMotion()
-  const index = useSyncExternalStore(subscribe, currentFrame, () => 0)
-  const frames = spinnerFrames()
-  return <span className={className} aria-hidden="true">{frames[reduced || frozen ? 0 : index % frames.length]}</span>
+  const still = reduced || frozen
+  const element = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (still || !element.current) return
+    return attachSpinner(element.current)
+  }, [still])
+  const classes = [className, isWideSpinner() && 'is-wide'].filter(Boolean).join(' ')
+  return <span ref={element} className={classes} aria-hidden="true">{still ? spinnerFrames()[0] : currentGlyph()}</span>
 }
 
 type SvgProps = { size: number; strokeWidth?: number; children: ReactNode; className?: string; fill?: string; stroke?: string }

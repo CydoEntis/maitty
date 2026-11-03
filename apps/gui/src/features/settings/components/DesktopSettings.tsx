@@ -1,6 +1,7 @@
 import type { UpdaterState } from '@/features/updates/useUpdater'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
-import { spinnerDefinition, type SpinnerStyle } from '@/lib/spinner-clock'
+import { spinnerDefinition, SPINNER_TICK_MS, type SpinnerStyle } from '@/lib/spinner-clock'
+import { useNow } from '@/lib/clock'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
 import { hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/model/shortcuts'
@@ -389,31 +390,20 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
 }
 
 const SPINNERS: ReadonlyArray<readonly [SpinnerStyle, string]> = [['braille', 'Braille'], ['snake', 'Snake'], ['bars', 'Bars']]
-const PREVIEW_TICK_MS = 40
 const SECONDS_PER_MINUTE = 60
 const SECONDS_DIGITS = 2
-
-function usePreviewClock(running: boolean): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!running) return
-    const timer = window.setInterval(() => { setNow(Date.now()) }, PREVIEW_TICK_MS)
-    return () => { window.clearInterval(timer) }
-  }, [running])
-  return now
-}
 
 const MODE_OPTIONS = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as const
 
 function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme, projects }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void; projects: DesktopSettingsProps['projects'] }) {
   const reduced = preferences.reduceMotion || systemReducedMotion
-  const now = usePreviewClock(!reduced)
+  const now = useNow()
   const darkInUse = preferences.themeMode === 'dark' || (preferences.themeMode === 'system' && systemDark)
   const modeNote = preferences.themeMode === 'system' ? `Follows your OS. Right now: ${systemDark ? 'dark' : 'light'}.` : `Always uses your ${preferences.themeMode} theme.`
   const seconds = String(Math.floor(now / THOUSAND) % SECONDS_PER_MINUTE).padStart(SECONDS_DIGITS, '0')
   const effects: Array<{ key: 'effectWorking' | 'effectNeedsYou' | 'effectDone'; label: string; detail: string; color: string; glyph: ReactNode; short: string; fx: string }> = [
-    { key: 'effectWorking', label: 'Working', detail: 'Teal sweep that repeats', color: 'var(--accent)', glyph: <SpinnerFrame spinner={preferences.spinner} now={now} reduced={reduced} />, short: '0:42', fx: 'mx-fx-working mx-fx-strong' },
-    { key: 'effectNeedsYou', label: 'Needs you', detail: 'Amber glow that breathes', color: 'var(--warn)', glyph: '◆', short: 'Allow?', fx: 'mx-fx-needs mx-fx-strong' },
+    { key: 'effectWorking', label: 'Working', detail: 'One teal sweep as work starts', color: 'var(--accent)', glyph: <PreviewSpinner spinner={preferences.spinner} reduced={reduced} />, short: '0:42', fx: 'mx-fx-working mx-fx-strong' },
+    { key: 'effectNeedsYou', label: 'Needs you', detail: 'Amber glow that breathes, then rests', color: 'var(--warn)', glyph: '◆', short: 'Allow?', fx: 'mx-fx-needs mx-fx-strong' },
     { key: 'effectDone', label: 'Done', detail: 'One green sweep, then still', color: 'var(--ok)', glyph: '✓', short: 'Done', fx: 'mx-fx-done mx-fx-strong' },
   ]
   return (
@@ -458,14 +448,14 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
             return (
               <button key={id} type="button" role="radio" aria-checked={selected} aria-label={name} className="mx-spinner-card" onClick={() => { update('spinner', id) }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span className="mx-spinner-glyph"><SpinnerFrame spinner={id} now={now} reduced={reduced} /></span>
+                  <span className="mx-spinner-glyph"><PreviewSpinner spinner={id} reduced={reduced} /></span>
                   <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>{name}</span>
                     <span style={{ fontSize: 11.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{definition.frames.length} frames · {definition.intervalMs} ms</span>
                   </span>
                   {selected && <Icon name="check" size={15} stroke="var(--accent)" strokeWidth={2.5} />}
                 </span>
-                <span className="mx-spinner-sample"><span style={{ color: 'var(--accent)' }}><SpinnerFrame spinner={id} now={now} reduced={reduced} /></span>cargo test<span style={{ flex: 1 }} /><span style={{ color: 'var(--dim)' }}>0:{seconds}</span></span>
+                <span className="mx-spinner-sample"><span style={{ color: 'var(--accent)' }}><PreviewSpinner spinner={id} reduced={reduced} /></span>cargo test<span style={{ flex: 1 }} /><span style={{ color: 'var(--dim)' }}>0:{seconds}</span></span>
               </button>
             )
           })}
@@ -542,9 +532,21 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
   )
 }
 
-function SpinnerFrame({ spinner, now, reduced }: { spinner: SpinnerStyle; now: number; reduced: boolean }) {
-  const { frames, intervalMs } = spinnerDefinition(spinner)
-  return <>{frames[reduced ? 0 : Math.floor(now / intervalMs) % frames.length]}</>
+/** One style's spinner, stepping on its own clock written straight into the element, so the page never re-renders for a frame. */
+function PreviewSpinner({ spinner, reduced }: { spinner: SpinnerStyle; reduced: boolean }) {
+  const { frames } = spinnerDefinition(spinner)
+  const element = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    const target = element.current
+    if (reduced || !target) return
+    let frame = 0
+    const timer = window.setInterval(() => {
+      frame = (frame + 1) % frames.length
+      target.textContent = frames[frame] ?? ''
+    }, SPINNER_TICK_MS)
+    return () => { window.clearInterval(timer) }
+  }, [frames, reduced])
+  return <span ref={element}>{frames[0]}</span>
 }
 
 /** A key combination as a row of key-shaped caps; the modifier symbols are set in the interface font. */

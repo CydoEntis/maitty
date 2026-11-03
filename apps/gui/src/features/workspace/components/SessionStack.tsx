@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { displayName, iconSaysProcess, STATUS_WORD, type SessionGroup, type SessionView } from '../model/session'
 import { chooseLead, planTray, byPriority, type Activity } from '../model/stack'
-import { formatAgo, formatElapsed, type SessionTrack } from '../model/tracking'
+import type { SessionTrack } from '../model/tracking'
+import { Ago, ElapsedSince } from './times'
 import type { TrayStyle } from '@/features/settings/preferences'
 import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
@@ -23,8 +24,8 @@ const MENU_RISE_PX = 60
 /** The words and colour a tray item or menu row gives a state; the idle ones say nothing. */
 const STATE_WORD: Record<SessionView['status'], string> = { working: '', needs: 'needs you', done: 'done', error: 'exited', idle: '', unknown: 'unknown' }
 
-function stateWord(session: SessionView, track: SessionTrack | undefined, now: number): string {
-  if (session.status === 'working') return track?.workingSince ? formatElapsed(now - track.workingSince) : ''
+function stateWord(session: SessionView, track: SessionTrack | undefined): ReactNode {
+  if (session.status === 'working') return track?.workingSince ? <ElapsedSince since={track.workingSince} /> : ''
   return STATE_WORD[session.status]
 }
 
@@ -36,7 +37,6 @@ export type StackProps = {
   trayStyle: TrayStyle
   leadMode: 'focused' | 'attention'
   tracks: ReadonlyMap<string, SessionTrack>
-  now: number
   online: boolean
   /** The pane (counting from 1) each session has in its tab; absent for a session no tab shows. */
   paneOf: ReadonlyMap<string, number>
@@ -72,7 +72,7 @@ function useChanged(value: string | undefined): boolean {
  * most urgent first. A project with many sessions folds the extras behind +N and a side menu.
  */
 export function SessionStack(props: StackProps) {
-  const { group, tracks, now } = props
+  const { group, tracks } = props
   const activity: Activity = (id) => tracks.get(id)?.changedAt ?? 0
   const lead = chooseLead(group.sessions, props.leadMode, props.focusedId, props.remembered, activity)
   const swapped = useChanged(lead?.id)
@@ -89,7 +89,6 @@ export function SessionStack(props: StackProps) {
         key={lead.id}
         session={lead}
         track={tracks.get(lead.id)}
-        now={now}
         selected={lead.id === props.focusedId}
         online={props.online}
         swapped={swapped}
@@ -102,7 +101,7 @@ export function SessionStack(props: StackProps) {
       />
       {hasTray && (
         <div role="group" aria-label={trayLabel} className={`mx-tray is-${props.trayStyle}${plan.hidden > 0 ? ' has-more' : ''}`} style={stacked ? undefined : { gridTemplateColumns: trayColumns(props.trayStyle, plan.shown.length, plan.hidden > 0) }}>
-          {plan.shown.map((session) => <TrayItem key={session.id} hover={props.hover} session={session} style={props.trayStyle} track={tracks.get(session.id)} now={now} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} actions={{ online: props.online, portalContainer: props.portalContainer, onShow: () => { props.onShowSession(session.id) }, onRename: () => { props.onRenameSession(session.id) }, onPin: (pinned) => { props.onPinSession(session.id, pinned) }, onEnd: () => { props.onEndSession(session.id) } }} />)}
+          {plan.shown.map((session) => <TrayItem key={session.id} hover={props.hover} session={session} style={props.trayStyle} track={tracks.get(session.id)} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} actions={{ online: props.online, portalContainer: props.portalContainer, onShow: () => { props.onShowSession(session.id) }, onRename: () => { props.onRenameSession(session.id) }, onPin: (pinned) => { props.onPinSession(session.id, pinned) }, onEnd: () => { props.onEndSession(session.id) } }} />)}
           {plan.hidden > 0 && (
             <button type="button" className={`mx-tray-more${plan.hiddenNeeds ? ' is-needs' : ''}${menuAnchor ? ' is-open' : ''}`} aria-haspopup="menu" aria-expanded={menuAnchor !== null} aria-label={moreLabel} title={moreLabel} onClick={(event) => { setMenuAnchor(menuAnchor ? null : event.currentTarget.getBoundingClientRect()) }}>
               {stacked ? `+${String(plan.hidden)} more` : `+${String(plan.hidden)}`}
@@ -121,15 +120,15 @@ function trayColumns(style: TrayStyle, shown: number, more: boolean): string {
   return more ? `${columns} 30px` : columns
 }
 
-type TrayItemProps = { session: SessionView; style: TrayStyle; track: SessionTrack | undefined; now: number; selected: boolean; pane: number | undefined; actions: SessionMenuActions; hover: RailHover }
+type TrayItemProps = { session: SessionView; style: TrayStyle; track: SessionTrack | undefined; selected: boolean; pane: number | undefined; actions: SessionMenuActions; hover: RailHover }
 
 /** One of a project's other sessions: its icon with the state on it, and the process for the named styles. */
-function TrayItem({ session, style, track, now, selected, pane, actions, hover }: TrayItemProps) {
+function TrayItem({ session, style, track, selected, pane, actions, hover }: TrayItemProps) {
   const menu = useSessionMenu(session, actions)
   const unread = Boolean(track?.unread) && !selected
   const where = pane === undefined ? 'detached' : `pane ${String(pane)}`
   const label = `${displayName(session)}, ${session.process}, ${STATUS_WORD[session.status]}, ${where}`
-  const word = stateWord(session, track, now)
+  const word = stateWord(session, track)
   // The program's name, unless its icon says it. A name you gave takes that place in the named style (the stacked one writes it after).
   const program = iconSaysProcess(session.process) ? null : session.process.split(/\s+/)[0]
   const leadLabel = style === 'icons' ? null : style === 'names' ? (session.name ?? program) : program
@@ -153,7 +152,7 @@ function TrayItem({ session, style, track, now, selected, pane, actions, hover }
 type MenuProps = StackProps & { anchor: DOMRect; activity: Activity; onClose: () => void }
 
 /** Every session of a project, most urgent first, in a menu beside the sidebar. */
-function StackMenu({ group, focusedId, tracks, now, anchor, activity, portalContainer, onShowSession, onClose }: MenuProps) {
+function StackMenu({ group, focusedId, tracks, anchor, activity, portalContainer, onShowSession, onClose }: MenuProps) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
@@ -184,7 +183,7 @@ function StackMenu({ group, focusedId, tracks, now, anchor, activity, portalCont
             const selected = session.id === focusedId
             const status = session.status
             const word = status === 'working' ? 'Working' : status === 'needs' ? 'Needs you' : status === 'done' ? 'Done' : status === 'error' ? 'Exited' : status === 'unknown' ? 'Unknown' : 'Idle'
-            const meta = status === 'working' ? (track?.workingSince ? formatElapsed(now - track.workingSince) : '') : track?.changedAt ? formatAgo(now - track.changedAt) : ''
+            const meta = status === 'working' ? (track?.workingSince ? <ElapsedSince since={track.workingSince} /> : '') : track?.changedAt ? <Ago at={track.changedAt} /> : ''
             return (
               <button key={session.id} type="button" role="menuitem" className={`mx-stack-menu-row${selected ? ' is-selected' : ''}`} onClick={() => { onClose(); onShowSession(session.id) }}>
                 <span className="mx-tray-icon"><AppIcon process={session.process} size={24} dimmed={status === 'unknown'} /><StatusBadge status={status} rail /></span>

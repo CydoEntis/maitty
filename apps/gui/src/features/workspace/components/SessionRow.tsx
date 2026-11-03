@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { displayName, iconSaysProcess, MAX_SESSION_NAME_LENGTH, statusPhrase, statusText, STATUS_WORD, type SessionView } from '../model/session'
-import { formatAgo, MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
+import { MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
+import { useRecent } from '@/lib/clock'
+import { Ago } from './times'
 import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
 import { InlineName } from './InlineName'
@@ -12,7 +14,6 @@ import { runsAgent, useArmed } from './useArmed'
 export type SessionRowProps = {
   session: SessionView
   track: SessionTrack | undefined
-  now: number
   selected: boolean
   online: boolean
   /** This row just took over as its project's main row. */
@@ -29,12 +30,12 @@ export type SessionRowProps = {
 
 /** A project's main row: the session's icon and state, what runs in it, and its menu. */
 export function SessionRow(props: SessionRowProps) {
-  const { session, track, now, selected, online } = props
+  const { session, track, selected, online } = props
   const unread = Boolean(track?.unread) && !selected
-  const moved = track?.movedAt !== null && track?.movedAt !== undefined && now - track.movedAt < MOVED_HIGHLIGHT_MS
+  const moved = useRecent(track?.movedAt ?? null, MOVED_HIGHLIGHT_MS)
   const status = session.status
   // How long ago it changed. A working row shows its spinner instead: a run time only counts from when this window saw it start.
-  const meta = status === 'working' || status === 'needs' || !track?.changedAt ? '' : formatAgo(now - track.changedAt)
+  const changedAt = status === 'working' || status === 'needs' ? null : track?.changedAt ?? null
   const loud = selected || unread || status === 'needs'
   const effect = useEffectClass(status, selected)
   const closing = useArmed(runsAgent(session.process))
@@ -58,7 +59,7 @@ export function SessionRow(props: SessionRowProps) {
               {session.pinned && <span className="mx-row-pin" role="img" aria-label="Pinned" title="Pinned to the top"><Icon name="pin" size={11} /></span>}
               {unread && <span className="mx-unread" aria-label="Unread" />}
               {status === 'working' && <Spinner />}
-              {meta && <span className={`mx-row-meta${status === 'working' ? ' is-working' : ''}`}>{meta}</span>}
+              {changedAt !== null && <span className="mx-row-meta"><Ago at={changedAt} /></span>}
             </span>
             {line2 && <span className={`mx-row-line2 ${line2Class}`}>{line2}</span>}
           </span>

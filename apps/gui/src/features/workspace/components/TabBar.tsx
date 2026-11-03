@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui'
 import type { Tab } from '../model/layout'
@@ -102,7 +102,8 @@ function useTabScroll(activeTabId: string | null, tabCount: number) {
   return { listRef, edges, measure, scroll }
 }
 
-export function TabBar(props: TabBarProps) {
+/** Memoised: it sits in the window's root, which renders on every list, clock and layout change. */
+export const TabBar = memo(function TabBar(props: TabBarProps) {
   const { tabs, activeTabId } = props
   const { listRef, edges, measure, scroll } = useTabScroll(activeTabId, tabs.length)
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -148,7 +149,7 @@ export function TabBar(props: TabBarProps) {
       </button>
     </div>
   )
-}
+})
 
 /** Every tab of the project with its state, for when they run off the bar. Opens leftward from its button. */
 function AllTabs({ tabs, activeTabId, sessions, onSelect }: { tabs: Tab[]; activeTabId: string | null; sessions: ReadonlyMap<string, SessionView>; onSelect: (tabId: string) => void }) {
