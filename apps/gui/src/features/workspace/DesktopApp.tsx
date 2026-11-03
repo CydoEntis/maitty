@@ -112,6 +112,9 @@ const TEST_NOTICE_MS = 6000
 const SECOND_MS = 1000
 const SLOW_TICK_MS = 30_000
 const DIFF_STAT_REFRESH_MS = 8000
+const DIFF_STAT_IDLE_MS = 30_000
+/** A theme previews once the pointer rests on it, not as it passes over every row (each one repaints every terminal). */
+const THEME_PREVIEW_DELAY_MS = 140
 /** A notification's click brings the window forward; returning later than this is not that click. */
 const NOTIFICATION_CLICK_WINDOW_MS = 15_000
 const MAX_RETRY_EXPONENT = 3
@@ -187,6 +190,15 @@ export function DesktopApp() {
   const [restarting, setRestarting] = useState(false)
   // A theme being hovered in Settings shows on the whole window until the pointer leaves or one is picked.
   const [previewTheme, setPreviewTheme] = useState<string | null>(null)
+  const previewTimer = useRef<number | undefined>(undefined)
+  const previewThemeSoon = useCallback((name: string | null) => {
+    window.clearTimeout(previewTimer.current)
+    if (name === null) {
+      setPreviewTheme(null)
+      return
+    }
+    previewTimer.current = window.setTimeout(() => { setPreviewTheme(name) }, THEME_PREVIEW_DELAY_MS)
+  }, [])
   const [welcomeOpen, setWelcomeOpen] = useState(isFirstRun)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [preferences, setPreferences] = useState(readSettingsPreferences)
@@ -826,7 +838,8 @@ export function DesktopApp() {
       return { additions: diff.additions, deletions: diff.deletions }
     },
     enabled: inspectTerm !== null,
-    refetchInterval: DIFF_STAT_REFRESH_MS,
+    // The counts come from a full diff, so they are read slowly unless Inspect is open.
+    refetchInterval: inspectOpen ? DIFF_STAT_REFRESH_MS : DIFF_STAT_IDLE_MS,
     retry: false,
   })
 
@@ -1289,7 +1302,7 @@ export function DesktopApp() {
                 onChange={setPreferences}
                 systemReducedMotion={systemReducedMotion}
                 systemDark={systemDark}
-                onPreviewTheme={setPreviewTheme}
+                onPreviewTheme={previewThemeSoon}
                 onTestNotice={showTestNotice}
                 updates={{ summary: updaterSummary(updater.state), status: updater.state.status, onCheck: updater.check, onDownload: updater.download, onRestart: restartNow }}
                 onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}

@@ -147,6 +147,11 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     }
     const enqueue = (bytes: Uint8Array) => {
       queued.push(bytes)
+      // A hidden window gets no animation frames, so output would pile up and then land in one freeze.
+      if (document.hidden) {
+        flush()
+        return
+      }
       if (frame === 0) frame = requestAnimationFrame(flush)
     }
 

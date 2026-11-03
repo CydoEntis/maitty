@@ -177,6 +177,20 @@ describe('terminal view', () => {
     expect(sendTerminalInput).toHaveBeenCalledTimes(1)
   })
 
+  it('writes output at once while the window is hidden, since no animation frame will come', async () => {
+    renderTerminal()
+    await screen.findByRole('region', { name: 'Native Codex terminal' })
+    await waitFor(() => { expect(written()).toBe('hello ') })
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    try {
+      act(() => { terminalState.onChunk?.(chunk(3, 'while away')) })
+
+      expect(written()).toBe('hello while away')
+    } finally {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+    }
+  })
+
   it('holds output that arrives while the history loads, so nothing is lost or repeated', async () => {
     let resolveHistory: (history: TerminalHistory) => void = () => {}
     loadTerminalHistory.mockReturnValue(new Promise<TerminalHistory>((resolve) => { resolveHistory = resolve }))
