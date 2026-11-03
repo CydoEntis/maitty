@@ -48,7 +48,9 @@ export function InboxPanel({ entries, tracks, now, online, onAnswer, onClear, on
                   </span>
                   <span className={`mx-inbox-word is-${session.status}`}>{needs ? 'Needs you' : session.status === 'error' ? 'Exited' : 'Done'}</span>
                 </div>
-                {session.lastPrompt && <div className="mx-inbox-well">{truncatePrompt(session.lastPrompt)}</div>}
+                {needs && session.asking !== ''
+                  ? <pre className="mx-inbox-well mx-inbox-asking" aria-label="What it is asking">{session.asking}</pre>
+                  : session.lastPrompt && <div className="mx-inbox-well">{truncatePrompt(session.lastPrompt)}</div>}
                 <div className="mx-inbox-actions">
                   {needs ? (
                     <>

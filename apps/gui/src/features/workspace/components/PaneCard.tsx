@@ -5,6 +5,7 @@ import type { SessionView } from '../model/session'
 import { AppIcon, Icon } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
 import { PaneStatus } from './PaneStatus'
+import { usageParts } from '../model/usage'
 
 export type PaneCardProps = {
   pane: PaneSlot
@@ -84,6 +85,7 @@ export function PaneCard(props: PaneCardProps) {
           <span className="mx-pane-cwd">{session.cwdLabel}</span>
         </span>
         {props.broadcast && <span className="mx-broadcast-pill">◉ Broadcast</span>}
+        {usageParts(session.usage).length > 0 && <span className="mx-pill mx-usage-pill" title="What the agent reports this session has used">{usageParts(session.usage).join(' · ')}</span>}
         {session.repoName && <span className="mx-pill mx-repo-pill" title={session.repoRoot ?? undefined}><Icon name="branch" />{session.repoName}</span>}
         <span className="mx-pane-controls">
           <button type="button" className={`mx-pane-control${props.broadcast ? ' is-on' : ''}`} aria-label={props.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab'} aria-pressed={props.broadcast} title={`Broadcast to idle panes in this tab (${primary}${shift}B)`} disabled={!multi} onMouseDown={stop} onClick={props.onToggleBroadcast}><Icon name="broadcast" /></button>

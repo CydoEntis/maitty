@@ -11,6 +11,9 @@ export type ShortcutAction =
   | 'settings'
   | 'palette'
   | 'inbox'
+  | 'inspect'
+  | 'find'
+  | 'new-worktree'
   | 'broadcast'
   | 'focus-mode'
 
@@ -27,7 +30,10 @@ export function matchShortcut(event: KeyInput, mac: boolean): ShortcutAction | n
   if (!primary) return null
   const key = event.key.toLowerCase()
   if (key === 'd') return event.shiftKey ? 'split-down' : 'split-right'
-  if (event.shiftKey) return key === 'b' ? 'broadcast' : null
+  if (event.shiftKey) {
+    if (key === 'b') return 'broadcast'
+    return key === 'n' ? 'new-worktree' : null
+  }
   switch (key) {
     case 't':
       return 'new-session'
@@ -45,6 +51,10 @@ export function matchShortcut(event: KeyInput, mac: boolean): ShortcutAction | n
       return 'palette'
     case 'j':
       return 'inbox'
+    case 'i':
+      return 'inspect'
+    case 'f':
+      return 'find'
     case '.':
       return 'focus-mode'
     default:
@@ -85,6 +95,9 @@ export function hotkeyRows(mac: boolean): HotkeyRow[] {
     { action: 'Collapse sidebar', chords: [[primary, 'B']] },
     { action: 'Command palette', chords: [[primary, 'K']] },
     { action: 'Attention inbox', chords: [[primary, 'J']] },
+    { action: 'Inspect the repository', chords: [[primary, 'I']] },
+    { action: 'Find in the pane or every session', chords: [[primary, 'F']] },
+    { action: 'New worktree', chords: [[primary, shift, 'N']] },
     { action: 'Broadcast to the tab', chords: [[primary, shift, 'B']] },
     { action: 'Focus mode', chords: [[primary, '.']] },
     { action: 'Interrupt', chords: [[control, 'C']] },

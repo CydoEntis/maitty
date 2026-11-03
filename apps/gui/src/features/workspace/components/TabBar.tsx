@@ -25,6 +25,11 @@ type TabBarProps = {
   inboxCount: number
   inboxNeeds: boolean
   onOpenInbox: () => void
+  /** The Inspect button: whether its panel is open and the focused pane's changed lines (null: not known). */
+  inspect: { open: boolean; additions: number; deletions: number } | null
+  onToggleInspect: () => void
+  /** Present in a window too narrow for the sidebar: the button that slides it in over the panes. */
+  onOpenSessions?: () => void
 }
 
 /** How far one press of an edge button scrolls: most of a screenful, never less than a tab or so. */
@@ -105,6 +110,9 @@ export function TabBar(props: TabBarProps) {
   }
   return (
     <div className="mx-tabbar">
+      {props.onOpenSessions && (
+        <button type="button" className="mx-inbox-button mx-sessions-button" aria-label="Sessions" title={`Sessions (${props.primary}B)`} onClick={props.onOpenSessions}>Sessions</button>
+      )}
       {tabs.length > 0 && (
         <div className="mx-tabstrip">
           {edges.left && <button type="button" className="mx-icon-button mx-tab-scroll is-left" aria-label="Scroll tabs left" title="Scroll tabs left" onClick={() => { scroll(-1) }}><Icon name="chevron" /></button>}
@@ -119,6 +127,14 @@ export function TabBar(props: TabBarProps) {
       <button type="button" className="mx-icon-button mx-new-tab" aria-label={props.newTabLabel} title={props.newTabLabel} disabled={!props.canStart} onClick={props.onNewTab}><Icon name="plus" /></button>
       {edges.over && <AllTabs tabs={tabs} activeTabId={activeTabId} sessions={props.sessions} onSelect={props.onSelect} />}
       <span className="mx-spacer" />
+      {props.inspect && (
+        <button type="button" className={`mx-inbox-button${props.inspect.open ? ' is-open' : ''}`} aria-pressed={props.inspect.open} aria-label="Inspect" title={`Inspect (${props.primary}I)`} onClick={props.onToggleInspect}>
+          Inspect
+          {(props.inspect.additions > 0 || props.inspect.deletions > 0) && (
+            <span className="mx-inspect-stat"><span className="is-add">+{props.inspect.additions}</span> <span className="is-remove">−{props.inspect.deletions}</span></span>
+          )}
+        </button>
+      )}
       <button type="button" className="mx-inbox-button" aria-label={`Inbox, ${String(props.inboxCount)}${props.inboxNeeds ? ', something needs you' : ''}`} title={`Inbox (${props.primary}J)`} onClick={props.onOpenInbox}>
         Inbox
         {props.inboxCount > 0 && <span className={`mx-inbox-count${props.inboxNeeds ? ' is-needs' : ''}`}>{props.inboxCount}</span>}

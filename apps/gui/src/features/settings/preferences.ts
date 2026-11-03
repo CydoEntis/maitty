@@ -30,6 +30,8 @@ export type SettingsPreferences = {
   toastPosition: ToastPosition
   notifyNeedsYou: boolean
   notifyFinished: boolean
+  /** A session's program exited with an error (a native notification, while the window is in the background). */
+  notifyError: boolean
   notificationSound: boolean
   terminalFontSize: number
   /** Where a new session starts. Empty: your home folder (ADR 0046). */
@@ -87,6 +89,7 @@ function defaults(): SettingsPreferences {
     toastPosition: 'bottom-right',
     notifyNeedsYou: true,
     notifyFinished: true,
+    notifyError: true,
     notificationSound: false,
     terminalFontSize: 13,
     startFolder: '',
@@ -128,6 +131,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       toastPosition: isToastPosition(preferences.toastPosition) ? preferences.toastPosition : fallback.toastPosition,
       notifyNeedsYou: bool(preferences.notifyNeedsYou, fallback.notifyNeedsYou),
       notifyFinished: bool(preferences.notifyFinished, fallback.notifyFinished),
+      notifyError: bool(preferences.notifyError, fallback.notifyError),
       notificationSound: bool(preferences.notificationSound, fallback.notificationSound),
       terminalFontSize: terminalFontSize(preferences.terminalFontSize, fallback.terminalFontSize),
       startFolder: typeof preferences.startFolder === 'string' ? preferences.startFolder.trim() : fallback.startFolder,

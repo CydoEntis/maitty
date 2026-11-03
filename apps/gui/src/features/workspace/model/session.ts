@@ -1,6 +1,6 @@
 import { terminalOf } from '@/api/daemon'
 import { assignProjectColors } from './folderColor'
-import type { Conversation } from '@/data/preview'
+import type { Conversation, TerminalDetails } from '@/data/preview'
 
 /** The status vocabulary of the desktop app. Each one has its own shape, never colour alone. */
 export type SessionStatus = 'working' | 'needs' | 'done' | 'error' | 'idle' | 'unknown'
@@ -26,6 +26,11 @@ export type SessionView = {
   process: string
   /** The last prompt the agent in this session was given; empty for a plain shell. */
   lastPrompt: string
+  /** What a stopped agent is asking (the exact command and choices); empty when it is not stopped on a choice. */
+  asking: string
+  interrupted: TerminalDetails['interrupted']
+  timeline: TerminalDetails['timeline']
+  usage: TerminalDetails['usage']
   status: SessionStatus
   /** The status before the daemon disconnected. */
   lastKnownStatus: SessionStatus | null
@@ -125,6 +130,10 @@ export function toSessionView(conversation: Conversation, home: string): Session
     promptPath,
     process: processName(conversation.agent, conversation.process),
     lastPrompt: (conversation.summary ?? '').trim(),
+    asking: conversation.details?.asking ?? '',
+    interrupted: conversation.details?.interrupted ?? null,
+    timeline: conversation.details?.timeline ?? [],
+    usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
     status,
     lastKnownStatus: lastKnown,
     conversation,

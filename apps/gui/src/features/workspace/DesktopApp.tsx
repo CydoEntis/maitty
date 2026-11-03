@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import {
   archiveConversationOnDaemon,
   defaultSessionFolder,
+  isDesktop,
   loadConversations,
   loadDaemonRestartStatus,
   renameConversationOnDaemon,
@@ -25,6 +26,16 @@ import { EffectsContext, ReducedMotionContext } from './components/motion'
 import { ColumnHandle } from './components/ColumnHandle'
 import { CommandPalette } from './components/CommandPalette'
 import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPanel'
+import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
+import { repoDiff, repoLocate } from '@/features/inspect/api'
+import { FindBar } from '@/features/find/FindBar'
+import { RestoreBanner } from './components/RestoreBanner'
+import { sendNativeNotice } from '@/features/notifications/native'
+import { noticesFor } from '@/features/notifications/transitions'
+import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
+import { newWorktreeSession } from '@/features/worktrees/api'
+import type { TerminalHandle } from '@/features/terminal/handle'
+import type { LookAt } from '@/features/inspect/FilesTab'
 import { PaneCard } from './components/PaneCard'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar } from './components/Sidebar'
@@ -76,9 +87,13 @@ const NARROW_WIDTH_PX = 900
 const TOAST_MS = 2600
 const SECOND_MS = 1000
 const SLOW_TICK_MS = 30_000
+const DIFF_STAT_REFRESH_MS = 8000
+const NOTIFICATION_CLICK_WINDOW_MS = 60_000
 const MAX_RETRY_EXPONENT = 3
 const BACKOFF_BASE = 2
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
+
+const noop = () => undefined
 
 const makeId: MakeId = (prefix) => `${prefix}-${crypto.randomUUID()}`
 
@@ -125,6 +140,18 @@ export function DesktopApp() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [inboxOpen, setInboxOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
+  const [inspectOpen, setInspectOpen] = useState(false)
+  const [findOpen, setFindOpen] = useState(false)
+  // Under 1100px the sidebar is a drawer over the panes, opened from the tab bar's Sessions button.
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  // Widening the window past the breakpoint puts the drawer away, so it does not come back open.
+  if (!compact && drawerOpen) setDrawerOpen(false)
+  // Interrupted agents whose banner you closed; the daemon stops reporting one once an agent runs again.
+  const [dismissedRestores, setDismissedRestores] = useState<ReadonlySet<string>>(new Set())
+  // The session a new worktree is made from, while the dialog is open.
+  const [worktreeFrom, setWorktreeFrom] = useState<SessionView | null>(null)
+  const [inspectView, setInspectView] = useState<InspectView>('changes')
+  const [lookAt, setLookAt] = useState<LookAt | null>(null)
   // Inbox entries the user cleared, by the status they had; an entry comes back if the session changes state.
   const [cleared, setCleared] = useState<ReadonlyMap<string, SessionView['status']>>(new Map())
   const [toastMessage, setToastMessage] = useState<{ text: string; key: number } | null>(null)
@@ -137,6 +164,9 @@ export function DesktopApp() {
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
   const tracksRef = useRef<ReadonlyMap<string, SessionTrack>>(new Map())
   const openedFirst = useRef(false)
+  const terminalHandles = useRef(new Map<string, TerminalHandle>())
+  const lastStatuses = useRef<ReadonlyMap<string, SessionView['status']> | null>(null)
+  const lastNotified = useRef<{ sessionId: string; at: number } | null>(null)
 
   // While maittyd is unreachable, try again after 1, 2, 4, then every 8 seconds.
   const retryDelay = BACKOFF_BASE ** Math.min(MAX_RETRY_EXPONENT, Math.max(0, failures - 1)) * SECOND_MS
@@ -167,6 +197,7 @@ export function DesktopApp() {
   }, [sessionsQuery.data, online, home])
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
   const focusedId = focusedSessionId(layout)
+  const focusedSession = focusedId ? sessionMap.get(focusedId) : undefined
   const visibleKey = [...visibleSessionIds(layout)].sort().join(' ')
   // The tab each session is open in; the sidebar shows it only once there is more than one tab.
   const tabOf = useMemo(() => {
@@ -272,14 +303,28 @@ export function DesktopApp() {
   const highlightUntil = Math.max(0, ...[...tracks.values()].map((track) => (track.movedAt ?? 0) + MOVED_HIGHLIGHT_MS))
   const now = useClock(sessions.some((session) => session.status === 'working'), highlightUntil)
 
-  const startShell = useCallback(async (folder: string): Promise<string | null> => {
-    const known = new Set(sessions.map((session) => session.id))
-    await startShellSession(folder)
+  // The session the daemon made since `known` was the whole list, if one appeared.
+  const newSessionSince = useCallback(async (known: ReadonlySet<string>): Promise<string | null> => {
     await queryClient.invalidateQueries({ queryKey: ['conversations'] })
     const fresh = await queryClient.query({ queryKey: ['conversations'], queryFn: loadConversations, staleTime: 0 })
     const created = fresh.filter((item) => item.kind === 'terminal' && !known.has(item.id)).sort((a, b) => (a.nativePane ?? 0) - (b.nativePane ?? 0)).at(-1)
     return created?.id ?? null
-  }, [sessions, queryClient])
+  }, [queryClient])
+
+  const startShell = useCallback(async (folder: string): Promise<string | null> => {
+    const known = new Set(sessions.map((session) => session.id))
+    await startShellSession(folder)
+    return newSessionSince(known)
+  }, [sessions, newSessionSince])
+
+  const createWorktree = useCallback(async (from: SessionView, branch: string, base: string | null) => {
+    const known = new Set(sessions.map((session) => session.id))
+    await newWorktreeSession(from.pane, branch, base)
+    const id = await newSessionSince(known)
+    setWorktreeFrom(null)
+    if (id) setLayout((current) => openInNewTab(current, id, makeId))
+    flash(`Worktree ${branch} ready`)
+  }, [sessions, newSessionSince, flash])
 
   const runStart = useCallback((folder: () => Promise<string>, place: (sessionId: string) => void) => {
     if (!online || starting) return
@@ -354,9 +399,22 @@ export function DesktopApp() {
     setLayout((current) => showSession(current, sessionId, makeId))
   }, [])
 
-  // A window too narrow for the sidebar always shows the rail, so there is nothing to toggle.
+  // Cmd/Ctrl-click on a file name in a pane's output: find it in that pane's repo, then show it in Inspect.
+  const openPath = useCallback((session: SessionView, path: string, line?: number) => {
+    void repoLocate(session.pane, path)
+      .then((relative) => {
+        showSessionById(session.id)
+        setLookAt({ path: relative, ...(line === undefined ? {} : { line }), key: Date.now() })
+        setInspectView('files')
+        setInspectOpen(true)
+      })
+      .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not open that file')) })
+  }, [showSessionById])
+
+  // In a window too narrow for the sidebar, the same key opens and closes its drawer.
   const toggleSidebar = useCallback(() => {
-    if (!compact) setPreferences((current) => ({ ...current, compactSidebar: !current.compactSidebar }))
+    if (compact) setDrawerOpen((open) => !open)
+    else setPreferences((current) => ({ ...current, compactSidebar: !current.compactSidebar }))
   }, [compact])
 
   const runShortcut = useCallback((action: ShortcutAction) => {
@@ -404,6 +462,15 @@ export function DesktopApp() {
       case 'focus-mode':
         setFocusMode((on) => !on)
         return
+      case 'inspect':
+        setInspectOpen((open) => !open)
+        return
+      case 'find':
+        setFindOpen((open) => !open)
+        return
+      case 'new-worktree':
+        if (focusedSession && online) setWorktreeFrom(focusedSession)
+        return
       case 'broadcast':
         if (layout.activeTabId) {
           const turningOn = !activeTab(layout)?.broadcast
@@ -412,13 +479,14 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup])
+  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
   const modalOpen = settingsSection !== null || renameId !== null || overlayOpen
-  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode })
-  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode } })
+  const drawerShown = compact && drawerOpen
+  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown })
+  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown } })
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const state = shortcutState.current
@@ -431,6 +499,10 @@ export function DesktopApp() {
         }
         if (state.settingsOpen) {
           setSettingsSection(null)
+          return
+        }
+        if (state.drawerShown) {
+          setDrawerOpen(false)
           return
         }
         if (state.focusMode) setFocusMode(false)
@@ -473,6 +545,43 @@ export function DesktopApp() {
   const needsCount = inboxEntries.filter((entry) => entry.session.status === 'needs').length
   const needsElsewhere = sessions.filter((item) => item.status === 'needs' && item.id !== focusedId).length
 
+  // Inspect looks at the focused pane's own repository; the tab bar's +N −N comes from the same daemon question.
+  const inspectTerm = online && isDesktop() && focusedSession ? focusedSession.pane : null
+  const diffStat = useQuery({
+    queryKey: ['repo', inspectTerm, 'diff-stat'],
+    queryFn: async () => {
+      const diff = await repoDiff(inspectTerm ?? 0)
+      return { additions: diff.additions, deletions: diff.deletions }
+    },
+    enabled: inspectTerm !== null,
+    refetchInterval: DIFF_STAT_REFRESH_MS,
+    retry: false,
+  })
+
+  // A session that just started needing you, finished or failed: tell the system, if you are looking elsewhere.
+  const { notifyNeedsYou, notifyFinished, notifyError } = preferences
+  useEffect(() => {
+    const notices = online
+      ? noticesFor(lastStatuses.current, sessions, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
+      : []
+    lastStatuses.current = new Map(sessions.map((item) => [item.id, item.status]))
+    for (const notice of notices) {
+      lastNotified.current = { sessionId: notice.sessionId, at: Date.now() }
+      void sendNativeNotice(notice.title, notice.body).catch(() => { /* a notification that cannot be shown is not worth a toast */ })
+    }
+  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError])
+
+  // Clicking a notification brings the window forward; that focus shows the session it was about.
+  useEffect(() => {
+    const onFocus = () => {
+      const notified = lastNotified.current
+      lastNotified.current = null
+      if (notified && Date.now() - notified.at < NOTIFICATION_CLICK_WINDOW_MS) showSessionById(notified.sessionId)
+    }
+    window.addEventListener('focus', onFocus)
+    return () => { window.removeEventListener('focus', onFocus) }
+  }, [showSessionById])
+
   const sendTo = useCallback((target: SessionView, data: string) => sendTerminalInput({ id: target.id, generation: target.conversation.generation ?? 0 }, data), [])
 
   const answerSession = useCallback((sessionId: string, answer: Answer) => {
@@ -483,6 +592,16 @@ export function DesktopApp() {
       .then(() => { flash(`Sent “${answer}” to ${displayName(target)}`) })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not answer the session')) })
   }, [sessionMap, sendTo, flash])
+
+  // Types the resume command into the session, as you would. Nothing resumes without this click.
+  const resumeInterrupted = useCallback((target: SessionView) => {
+    const command = target.interrupted?.resume
+    if (!command) return
+    showSessionById(target.id)
+    void sendTo(target, `${command}`)
+      .then(() => { setDismissedRestores((current) => new Set(current).add(target.id)) })
+      .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not resume the agent')) })
+  }, [sendTo, showSessionById])
 
   const clearEntry = useCallback((sessionId: string) => {
     const target = sessionMap.get(sessionId)
@@ -525,6 +644,9 @@ export function DesktopApp() {
       action('split-right', 'Split right', () => { split(null, 'right') }, keys('D')),
       action('split-down', 'Split down', () => { split(null, 'down') }, keys('D', true)),
       action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('J')),
+      action('inspect', 'Inspect the repository', () => { setInspectOpen(true) }, keys('I')),
+      ...(focusedSession ? [action('new-worktree', 'New worktree', () => { setWorktreeFrom(focusedSession) }, keys('N', true))] : []),
+      action('find', 'Find in the pane or every session', () => { setFindOpen(true) }, keys('F')),
       action('broadcast', showing?.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab', () => { runShortcut('broadcast') }, keys('B', true)),
       action('focus', 'Focus mode', () => { setFocusMode(true) }, keys('.')),
       action('settings', 'Open settings', () => { setSettingsSection('general') }, keys(',')),
@@ -548,7 +670,7 @@ export function DesktopApp() {
     }
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, theme: candidate.name })) } })
     return items
-  }, [labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, showSessionById])
+  }, [labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById])
 
   const restartOffer: RestartOffer | null = mismatch
     ? {
@@ -576,43 +698,63 @@ export function DesktopApp() {
   const sidebarWidth = liveSidebarWidth ?? preferences.sidebarWidth
   const rootStyle = { ...themeStyle(theme), ...sizeVariables(preferences, sidebarWidth) } as CSSProperties
 
+  // The sidebar, as the docked column or rail, or inside the drawer of a window under 1100px.
+  const renderSidebar = (mode: 'docked' | 'rail', afterPick: () => void) => (
+    <Sidebar
+      groups={groups}
+      focusedId={focusedId}
+      tracks={tracks}
+      now={now}
+      mode={mode}
+      online={online}
+      sessionCount={sessions.length}
+      primary={labels.primary}
+      startFolderLabel={startFolderLabel}
+      canStart={canStart}
+      portalContainer={root}
+      onToggleRail={toggleSidebar}
+      canExpand={!compact}
+      width={sidebarWidth}
+      tabOf={tabOf}
+      paneOf={paneOf}
+      trayStyle={preferences.trayStyle}
+      leadMode={preferences.leadMode}
+      onResize={setLiveSidebarWidth}
+      onResizeEnd={(width) => {
+        setPreferences((current) => ({ ...current, sidebarWidth: width }))
+        setLiveSidebarWidth(null)
+      }}
+      onNewSession={() => { afterPick(); newSession() }}
+      onNewSessionIn={(folder) => { afterPick(); startIn(folder) }}
+      onNewWorktree={(groupKey) => {
+        const group = groups.find((candidate) => candidate.key === groupKey)
+        const lead = group?.sessions.find((member) => member.id === focusedId) ?? group?.sessions[0]
+        if (lead) {
+          afterPick()
+          setWorktreeFrom(lead)
+        }
+      }}
+      onShowSession={(id) => { afterPick(); showSessionById(id) }}
+      onEndSession={endSession}
+      onRenameSession={setRenameId}
+      onOpenSettings={() => { afterPick(); setSettingsSection('general') }}
+    />
+  )
+
   return (
     <ReducedMotionContext.Provider value={reducedMotion}>
       <EffectsContext.Provider value={effects}>
         <div ref={setRoot} className={`mx-app${narrow ? ' is-narrow' : ''}`} style={rootStyle} data-motion={reducedMotion ? 'reduced' : 'full'}>
           <TitleBar />
           <div className="mx-window" role="application" aria-label="Maitty">
-            {!focusMode && <Sidebar
-                groups={groups}
-                focusedId={focusedId}
-                tracks={tracks}
-                now={now}
-                mode={sidebarMode}
-                online={online}
-                sessionCount={sessions.length}
-                primary={labels.primary}
-                startFolderLabel={startFolderLabel}
-                canStart={canStart}
-                portalContainer={root}
-                onToggleRail={toggleSidebar}
-                canExpand={!compact}
-                width={sidebarWidth}
-                tabOf={tabOf}
-                paneOf={paneOf}
-                trayStyle={preferences.trayStyle}
-                leadMode={preferences.leadMode}
-                onResize={setLiveSidebarWidth}
-                onResizeEnd={(width) => {
-                  setPreferences((current) => ({ ...current, sidebarWidth: width }))
-                  setLiveSidebarWidth(null)
-                }}
-                onNewSession={newSession}
-                onNewSessionIn={startIn}
-                onShowSession={showSessionById}
-                onEndSession={endSession}
-                onRenameSession={setRenameId}
-                onOpenSettings={() => { setSettingsSection('general') }}
-              />}
+            {!focusMode && !compact && renderSidebar(sidebarMode, noop)}
+            {!focusMode && drawerShown && (
+              <div className="mx-drawer-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawerOpen(false) }}>
+                <div className="mx-drawer" role="dialog" aria-label="Sessions" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setDrawerOpen(false) } }}>
+                  {renderSidebar('docked', () => { setDrawerOpen(false) })}
+                </div>
+              </div>
+            )}
             <div className="mx-main-wrap">
               <main className="mx-main" aria-label="Terminals">
                 {!focusMode && <TabBar
@@ -629,7 +771,26 @@ export function DesktopApp() {
                   inboxCount={inboxEntries.length}
                   inboxNeeds={needsCount > 0}
                   onOpenInbox={() => { setInboxOpen(true) }}
+                  inspect={inspectTerm === null ? null : { open: inspectOpen, additions: diffStat.data?.additions ?? 0, deletions: diffStat.data?.deletions ?? 0 }}
+                  onToggleInspect={() => { setInspectOpen((open) => !open) }}
+                  {...(compact ? { onOpenSessions: () => { setDrawerOpen(true) } } : {})}
                 />}
+                {findOpen && (
+                  <FindBar
+                    online={online}
+                    findInPane={(query, direction) => (focusedId ? terminalHandles.current.get(focusedId)?.find(query, direction) ?? false : false)}
+                    clearPane={() => { if (focusedId) terminalHandles.current.get(focusedId)?.clearFind() }}
+                    nameOf={(term) => { const found = sessions.find((item) => item.pane === term); return found ? displayName(found) : null }}
+                    onOpenSession={(term) => { const found = sessions.find((item) => item.pane === term); if (found) showSessionById(found.id) }}
+                    onClose={() => { setFindOpen(false); if (focusedId) terminalHandles.current.get(focusedId)?.focus() }}
+                  />
+                )}
+                <RestoreBanner
+                  sessions={sessions.filter((item) => item.interrupted !== null && !dismissedRestores.has(item.id))}
+                  online={online}
+                  onResume={resumeInterrupted}
+                  onDismiss={(id) => { setDismissedRestores((current) => new Set(current).add(id)) }}
+                />
                 {!online && <OfflineBanner retryAt={retryAt} detail={offlineDetail} restart={restartOffer} onRetry={() => { void refetchSessions() }} />}
                 {tab ? (
                   <div className="mx-panes">
@@ -676,6 +837,11 @@ export function DesktopApp() {
                                   inputDisabled={!online}
                                   focused={focused && !modalOpen}
                                   onInput={(data) => { mirrorInput(session.id, data) }}
+                                  onOpenPath={(path, line) => { openPath(session, path, line) }}
+                                  onHandle={(handle) => {
+                                    if (handle) terminalHandles.current.set(session.id, handle)
+                                    else terminalHandles.current.delete(session.id)
+                                  }}
                                 />
                               }
                               onFocus={(paneId) => { setLayout((current) => focusPane(current, paneId)) }}
@@ -720,6 +886,19 @@ export function DesktopApp() {
                 )}
               </main>
             </div>
+            {inspectOpen && !focusMode && inspectTerm !== null && focusedSession && (
+              <InspectPanel
+                term={inspectTerm}
+                title={`${displayName(focusedSession)} · ${focusedSession.cwdLabel}`}
+                view={inspectView}
+                agentWorking={focusedSession.status === 'working'}
+                timeline={focusedSession.timeline}
+                lookAt={lookAt}
+                onView={setInspectView}
+                onClose={() => { setInspectOpen(false) }}
+                onNotice={flash}
+              />
+            )}
             {paletteOpen && <CommandPalette items={paletteItems} onClose={() => { setPaletteOpen(false) }} />}
             {inboxOpen && (
               <InboxPanel
@@ -741,6 +920,14 @@ export function DesktopApp() {
                 <span className={needsElsewhere > 0 ? 'mx-focus-needs' : undefined}>{needsElsewhere > 0 ? `${String(needsElsewhere)} need you elsewhere` : 'Nothing else needs you'}</span>
                 <button type="button" className="mx-focus-exit" onClick={() => { setFocusMode(false) }}>Exit <kbd className="mx-keycap">{labels.primary}.</kbd></button>
               </div>
+            )}
+            {worktreeFrom && (
+              <NewWorktreeDialog
+                term={worktreeFrom.pane}
+                repoName={worktreeFrom.repoName ?? worktreeFrom.cwdLabel}
+                onCreate={(branch, base) => createWorktree(worktreeFrom, branch, base)}
+                onCancel={() => { setWorktreeFrom(null) }}
+              />
             )}
             {renameId !== null && sessionMap.get(renameId) && (
               <RenameDialog session={sessionMap.get(renameId) as SessionView} onSave={(name) => { saveName(renameId, name) }} onCancel={() => { setRenameId(null) }} />

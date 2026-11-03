@@ -11,6 +11,7 @@ const DEFAULTS: SettingsPreferences = {
   toastPosition: 'bottom-right',
   notifyNeedsYou: true,
   notifyFinished: true,
+  notifyError: true,
   notificationSound: false,
   terminalFontSize: 13,
   startFolder: '',

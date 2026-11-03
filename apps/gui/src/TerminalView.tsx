@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { isDesktop, loadTerminalReplay, resizeTerminal, sendTerminalInput } from '@/api/daemon'
 import { listenTerminalChunks, loadTerminalHistory, type TerminalChunk } from '@/api/terminalStream'
 import type { Conversation } from '@/data/preview'
+import type { TerminalHandle } from '@/features/terminal/handle'
+import { findPathLinks } from '@/features/terminal/pathLinks'
 import '@xterm/xterm/css/xterm.css'
 
 const DEFAULT_SCROLLBACK_LINES = 10000
@@ -35,16 +37,20 @@ type TerminalViewProps = {
   focused?: boolean
   /** Told what the user types here, so a window can mirror it to other panes. */
   onInput?: (data: string | Uint8Array) => void
+  /** A file path in the output was Cmd/Ctrl-clicked. */
+  onOpenPath?: (path: string, line?: number) => void
+  /** Receives the open terminal's controls, and null when it closes. */
+  onHandle?: (handle: TerminalHandle | null) => void
 }
 
 type NativeConversation = Conversation & { generation: number; nativePane: number }
 
-export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, focused = false, onInput }: TerminalViewProps) {
+export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, focused = false, onInput, onOpenPath, onHandle }: TerminalViewProps) {
   if (!desktop) return null
   if (!isDesktop()) return <div className="panel-empty"><TerminalSquare size={18} /><h2>Native terminal is not available</h2><p>Open Maitty Desktop to use the daemon-owned terminal.</p></div>
   if (!hasNativeTerminal(conversation)) return <NativeHandoffView conversation={conversation} />
 
-  return <ConnectedTerminalView conversation={conversation} fontSize={fontSize} look={look} label={label ?? `Native ${conversation.provider} terminal`} inputDisabled={inputDisabled} focused={focused} onInput={onInput} />
+  return <ConnectedTerminalView conversation={conversation} fontSize={fontSize} look={look} label={label ?? `Native ${conversation.provider} terminal`} inputDisabled={inputDisabled} focused={focused} onInput={onInput} onOpenPath={onOpenPath} onHandle={onHandle} />
 }
 
 function NativeHandoffView({ conversation }: { conversation: Conversation }) {
@@ -63,9 +69,9 @@ function NativeHandoffView({ conversation }: { conversation: Conversation }) {
   </div>
 }
 
-type ConnectedProps = { conversation: NativeConversation; fontSize: number; look: TerminalLook; label: string; inputDisabled: boolean; focused: boolean; onInput: ((data: string | Uint8Array) => void) | undefined }
+type ConnectedProps = { conversation: NativeConversation; fontSize: number; look: TerminalLook; label: string; inputDisabled: boolean; focused: boolean; onInput: ((data: string | Uint8Array) => void) | undefined; onOpenPath: ((path: string, line?: number) => void) | undefined; onHandle: ((handle: TerminalHandle | null) => void) | undefined }
 
-function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisabled, focused, onInput }: ConnectedProps) {
+function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisabled, focused, onInput, onOpenPath, onHandle }: ConnectedProps) {
   const term = conversation.nativePane
   const binding: TerminalBinding = useMemo(() => ({ id: conversation.id, generation: conversation.generation }), [conversation.id, conversation.generation])
   const inputQueue = useRef(Promise.resolve())
@@ -77,6 +83,12 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   const inputDisabledRef = useRef(inputDisabled)
   const onInputRef = useRef(onInput)
   useEffect(() => { onInputRef.current = onInput })
+  const onOpenPathRef = useRef(onOpenPath)
+  const onHandleRef = useRef(onHandle)
+  useEffect(() => {
+    onOpenPathRef.current = onOpenPath
+    onHandleRef.current = onHandle
+  })
   const refitTerminal = useRef<(() => void) | null>(null)
   const [connecting, setConnecting] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -130,9 +142,10 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
 
     async function mountTerminal() {
       try {
-        const [{ Terminal: TerminalEmulator }, { FitAddon }] = await Promise.all([
+        const [{ Terminal: TerminalEmulator }, { FitAddon }, { SearchAddon }] = await Promise.all([
           import('@xterm/xterm'),
           import('@xterm/addon-fit'),
+          import('@xterm/addon-search'),
         ])
         if (!isMounted) return
 
@@ -151,8 +164,36 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         const terminalInstance = emulator
         const fit = new FitAddon()
         terminalInstance.loadAddon(fit)
+        const search = new SearchAddon()
+        terminalInstance.loadAddon(search)
         terminalInstance.open(hostElement)
         terminal.current = terminalInstance
+        // Cmd/Ctrl-click on a file name in the output opens it in the Inspect panel.
+        terminalInstance.registerLinkProvider({
+          provideLinks: (y, callback) => {
+            const text = terminalInstance.buffer.active.getLine(y - 1)?.translateToString(true)
+            if (!text || !onOpenPathRef.current) {
+              callback(undefined)
+              return
+            }
+            const links = findPathLinks(text).map((link) => ({
+              range: { start: { x: link.start + 1, y }, end: { x: link.end, y } },
+              text: text.slice(link.start, link.end),
+              activate: (event: MouseEvent) => {
+                if (event.metaKey || event.ctrlKey) onOpenPathRef.current?.(link.path, link.line)
+              },
+            }))
+            callback(links.length > 0 ? links : undefined)
+          },
+        })
+        onHandleRef.current?.({
+          find: (query, direction) => (query === '' ? false : direction === 'next' ? search.findNext(query) : search.findPrevious(query)),
+          clearFind: () => {
+            search.clearDecorations()
+            terminalInstance.clearSelection()
+          },
+          focus: () => { terminalInstance.focus() },
+        })
 
         let resizeInFlight = false
         let resizePending = false
@@ -258,6 +299,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     void mountTerminal()
     return () => {
       isMounted = false
+      onHandleRef.current?.(null)
       if (frame !== 0) cancelAnimationFrame(frame)
       refitTerminal.current = null
       stopListening?.()

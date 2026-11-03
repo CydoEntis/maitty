@@ -34,6 +34,18 @@ const TerminalSessionSchema = z.object({
   conversation_id: z.number().nullable().default(null),
   popup: z.boolean().default(false),
   remote: z.string().nullable().default(null),
+  asking: z.string().default(''),
+  interrupted: z.object({ agent: z.string(), resume: z.string() }).nullable().default(null),
+  timeline: z.array(z.object({
+    at: z.number().int().nonnegative(),
+    kind: z.enum(['Working', 'NeedsYou', 'Done', 'Idle', 'Prompt', 'CommandStarted', 'CommandFinished']),
+    detail: z.string().default(''),
+  })).default([]),
+  usage: z.object({
+    context: z.number().nullable().default(null),
+    cost: z.number().nullable().default(null),
+    tokens: z.number().nullable().default(null),
+  }).default({ context: null, cost: null, tokens: null }),
 })
 const DaemonSnapshotSchema = z.object({
   conversations: z.array(ConversationSummarySchema),
@@ -592,6 +604,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     agent: term.agent,
     process: term.process,
     summary: term.summary,
+    details: { asking: term.asking, interrupted: term.interrupted, timeline: term.timeline, usage: term.usage },
   }
 }
 

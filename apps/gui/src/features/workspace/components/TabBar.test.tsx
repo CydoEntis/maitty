@@ -22,7 +22,7 @@ afterEach(() => {
 })
 
 function renderBar(count: number, activeTabId = 'tab-0') {
-  const props = { tabs: makeTabs(count), activeTabId, sessions: new Map(), primary: 'Ctrl', canStart: true, portalContainer: null, onSelect: vi.fn(), onClose: vi.fn(), newTabLabel: 'New session in maitty', onNewTab: vi.fn(), inboxCount: 0, inboxNeeds: false, onOpenInbox: vi.fn() }
+  const props = { tabs: makeTabs(count), activeTabId, sessions: new Map(), primary: 'Ctrl', canStart: true, portalContainer: null, onSelect: vi.fn(), onClose: vi.fn(), newTabLabel: 'New session in maitty', onNewTab: vi.fn(), inboxCount: 0, inboxNeeds: false, onOpenInbox: vi.fn(), inspect: null, onToggleInspect: vi.fn() }
   const view = render(<TabBar {...props} />)
   const list = screen.getByRole('tablist', { name: 'Tabs' })
   Object.defineProperty(list, 'scrollLeft', { configurable: true, writable: true, value: 0 })

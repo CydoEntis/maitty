@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { SettingsPreferences } from '../preferences'
 import { DesktopSettings, type DesktopSettingsSection } from './DesktopSettings'
 
-const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notificationSound: false, terminalFontSize: 13, startFolder: '', groupBy: 'repo', theme: 'Midnight', cursorStyle: 'block', scrollback: 10000, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', projectColors: {} }
+const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, startFolder: '', groupBy: 'repo', theme: 'Midnight', cursorStyle: 'block', scrollback: 10000, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', projectColors: {} }
 
 function renderSettings(section: DesktopSettingsSection, overrides: Partial<Parameters<typeof DesktopSettings>[0]> = {}) {
   const onChange = vi.fn()
@@ -17,8 +17,20 @@ describe('desktop settings', () => {
   it('groups the sections the way the design does', () => {
     renderSettings('general')
     const nav = screen.getByRole('navigation', { name: 'Settings sections' })
-    expect(nav).toHaveTextContent('ESSENTIALSGeneralGTERMINALText & cursorTAppearanceAWORKSPACEHotkeys?ADVANCEDDaemonD')
+    expect(nav).toHaveTextContent('ESSENTIALSGeneralGTERMINALText & cursorTAppearanceAWORKSPACENotificationsNHotkeys?ADVANCEDDaemonD')
     expect(within(nav).getByRole('button', { name: /General/ })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('has one switch each for needs you, done and error notifications', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderSettings('notifications')
+
+    await user.click(screen.getByRole('switch', { name: 'Notify when a session errors' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, notifyError: false })
+    await user.click(screen.getByRole('switch', { name: 'Notify when a session finishes' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, notifyFinished: false })
+    await user.click(screen.getByRole('switch', { name: 'Notify when a session needs you' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, notifyNeedsYou: false })
   })
 
   it('sets the text size, cursor and scrollback for every pane', async () => {

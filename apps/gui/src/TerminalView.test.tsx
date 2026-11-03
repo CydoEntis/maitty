@@ -22,6 +22,9 @@ const { loadTerminalReplay, resizeTerminal, sendTerminalInput, loadTerminalHisto
     cols: 80,
     rows: 24,
     options: undefined as { fontSize?: number } | undefined,
+    linkProvider: undefined as { provideLinks: (y: number, done: (links: Array<{ text: string; activate: (event: MouseEvent) => void }> | undefined) => void) => void } | undefined,
+    line: '',
+    searches: [] as string[],
   },
   toastError: vi.fn(),
 }))
@@ -48,6 +51,13 @@ vi.mock('@xterm/xterm', () => ({
     get rows() { return terminalState.rows }
     loadAddon() {}
     open() {}
+    focus() {}
+    clearSelection() {}
+    registerLinkProvider(provider: typeof terminalState.linkProvider) {
+      terminalState.linkProvider = provider
+      return { dispose: vi.fn() }
+    }
+    buffer = { active: { getLine: () => ({ translateToString: () => terminalState.line }) } }
     reset() { terminalState.resets += 1 }
     onData(callback: (data: string) => void) {
       terminalState.onData = callback
@@ -60,6 +70,13 @@ vi.mock('@xterm/xterm', () => ({
 }))
 
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }))
+vi.mock('@xterm/addon-search', () => ({
+  SearchAddon: class {
+    findNext(query: string) { terminalState.searches.push(`next:${query}`); return query === 'present' }
+    findPrevious(query: string) { terminalState.searches.push(`previous:${query}`); return true }
+    clearDecorations() {}
+  },
+}))
 
 const conversation: Conversation = {
   id: 't47',
@@ -97,6 +114,9 @@ describe('terminal view', () => {
     terminalState.cols = 80
     terminalState.rows = 24
     terminalState.options = undefined
+    terminalState.linkProvider = undefined
+    terminalState.line = ''
+    terminalState.searches = []
     vi.stubGlobal('ResizeObserver', class {
       private readonly callback: () => void
       constructor(callback: () => void) { this.callback = callback }
@@ -231,6 +251,37 @@ describe('terminal view', () => {
     expect(await screen.findByText('Input stopped because the daemon could not be reached.')).toBeInTheDocument()
     terminalState.onData?.('b')
     expect(sendTerminalInput).toHaveBeenCalledTimes(1)
+  })
+
+  it('turns a file name in the output into a link that opens only on Cmd or Ctrl click', async () => {
+    const onOpenPath = vi.fn()
+    render(<TerminalView conversation={conversation} desktop fontSize={12} onOpenPath={onOpenPath} />)
+    await waitFor(() => { expect(terminalState.linkProvider).toBeDefined() })
+    terminalState.line = 'error in src/main.rs:42:7 today'
+
+    const links = await new Promise<Array<{ text: string; activate: (event: MouseEvent) => void }> | undefined>((resolve) => { terminalState.linkProvider?.provideLinks(1, resolve) })
+    expect(links?.map((link) => link.text)).toEqual(['src/main.rs:42:7'])
+
+    links?.[0]?.activate({ metaKey: false, ctrlKey: false } as MouseEvent)
+    expect(onOpenPath).not.toHaveBeenCalled()
+    links?.[0]?.activate({ metaKey: false, ctrlKey: true } as MouseEvent)
+    expect(onOpenPath).toHaveBeenCalledWith('src/main.rs', 42)
+  })
+
+  it('hands the window a find handle while the terminal is open and takes it back when it closes', async () => {
+    const onHandle = vi.fn()
+    const view = render(<TerminalView conversation={conversation} desktop fontSize={12} onHandle={onHandle} />)
+    await waitFor(() => { expect(onHandle).toHaveBeenCalled() })
+
+    const handle = onHandle.mock.calls[0]?.[0] as { find: (query: string, direction: 'next' | 'previous') => boolean }
+    expect(handle.find('present', 'next')).toBe(true)
+    expect(handle.find('absent', 'next')).toBe(false)
+    expect(handle.find('', 'next')).toBe(false)
+    handle.find('again', 'previous')
+    expect(terminalState.searches).toEqual(['next:present', 'next:absent', 'previous:again'])
+
+    view.unmount()
+    expect(onHandle).toHaveBeenLastCalledWith(null)
   })
 
   it('says a chat session has no terminal instead of offering to switch it', () => {

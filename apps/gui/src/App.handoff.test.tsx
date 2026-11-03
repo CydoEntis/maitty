@@ -36,6 +36,11 @@ vi.mock('./TerminalView', () => ({
 
 const HOME = '/home/casey'
 
+/** Folds the docked sidebar to its rail, as a user does. */
+async function collapseSidebar() {
+  await userEvent.setup().click(await screen.findByRole('button', { name: 'Collapse sidebar' }))
+}
+
 function term(pane: number, cwd: string, extra: Partial<Conversation> = {}): Conversation {
   return {
     id: `t${String(pane)}`,
@@ -131,17 +136,43 @@ describe('desktop terminal multiplexer', () => {
     }
   })
 
-  it('shows only the collapsed rail in a window too narrow for the sidebar, with no drawer', async () => {
+  it('slides the sidebar in over the panes from a Sessions button in a window too narrow for it', async () => {
+    const user = userEvent.setup()
     const wide = window.innerWidth
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 })
     try {
       daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
       renderDesktopApp()
 
-      const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
-      expect(sidebar).toHaveClass('is-rail')
-      expect(screen.queryByRole('button', { name: 'Expand sidebar' })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /^Sessions/ })).not.toBeInTheDocument()
+      const open = await screen.findByRole('button', { name: 'Sessions' })
+      expect(screen.queryByRole('navigation', { name: 'Sessions by project' })).not.toBeInTheDocument()
+
+      await user.click(open)
+      const drawer = await screen.findByRole('dialog', { name: 'Sessions' })
+      const sidebar = within(drawer).getByRole('navigation', { name: 'Sessions by project' })
+      expect(sidebar).not.toHaveClass('is-rail')
+
+      await user.click(within(sidebar).getByRole('button', { name: /, shell, / }))
+      expect(screen.queryByRole('dialog', { name: 'Sessions' })).not.toBeInTheDocument()
+
+      await user.click(open)
+      await screen.findByRole('dialog', { name: 'Sessions' })
+      await user.keyboard('{Escape}')
+      expect(screen.queryByRole('dialog', { name: 'Sessions' })).not.toBeInTheDocument()
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: wide })
+    }
+  })
+
+  it('keeps the sidebar docked, with no Sessions button, in a window wide enough for it', async () => {
+    const wide = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
+    try {
+      daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+      renderDesktopApp()
+
+      expect(await screen.findByRole('navigation', { name: 'Sessions by project' })).not.toHaveClass('is-rail')
+      expect(screen.queryByRole('button', { name: 'Sessions' })).not.toBeInTheDocument()
     } finally {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: wide })
     }
@@ -300,10 +331,11 @@ describe('desktop terminal multiplexer', () => {
   it('opens a menu on right-click on a collapsed session, with rename and close', async () => {
     const user = userEvent.setup()
     const wide = window.innerWidth
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 })
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
     try {
       daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
       renderDesktopApp()
+      await collapseSidebar()
       const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
 
       fireEvent.contextMenu(await within(sidebar).findByRole('button', { name: /, shell, / }))
@@ -320,10 +352,11 @@ describe('desktop terminal multiplexer', () => {
   it('says what a collapsed session is doing in a popover beside it', async () => {
     const user = userEvent.setup()
     const wide = window.innerWidth
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 })
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
     try {
       daemon.loadConversations.mockResolvedValue([inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { agent: 'claude', status: 'needs-you', summary: 'Fix the login redirect so it keeps the query string' })])
       renderDesktopApp()
+      await collapseSidebar()
       const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
       const row = await within(sidebar).findByRole('button', { name: /, claude, / })
 
@@ -350,10 +383,11 @@ describe('desktop terminal multiplexer', () => {
   it('shows no prompt line in a popover for a session that has been given none', async () => {
     const user = userEvent.setup()
     const wide = window.innerWidth
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 })
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
     try {
       daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
       renderDesktopApp()
+      await collapseSidebar()
       const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
 
       await user.hover(await within(sidebar).findByRole('button', { name: /, shell, / }))
@@ -373,10 +407,11 @@ describe('desktop terminal multiplexer', () => {
   it('says what a collapsed folder is in a popover beside it', async () => {
     const user = userEvent.setup()
     const wide = window.innerWidth
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 })
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
     try {
       daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/personal/dynamic-ui`), inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty`)])
       renderDesktopApp()
+      await collapseSidebar()
       const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
 
       await user.hover(within(sidebar).getByRole('button', { name: /^dynamic-ui · 1 session/ }))

@@ -7,7 +7,7 @@ import { Icon } from '@/features/workspace/components/glyphs'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
 import { SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type SettingsPreferences } from '../preferences'
 
-export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'keys' | 'daemon'
+export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'notifications' | 'keys' | 'daemon'
 
 export type DaemonInfo = {
   online: boolean
@@ -35,7 +35,6 @@ type DesktopSettingsProps = {
 
 type NavItem = { id: DesktopSettingsSection; label: string; key: string; tint: string; path: string }
 
-// Notifications (N) joins WORKSPACE when background-session notifications exist.
 const NAV: Array<{ label: string; items: NavItem[] }> = [
   { label: 'ESSENTIALS', items: [{ id: 'general', label: 'General', key: 'G', tint: 'var(--accent)', path: 'M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4' }] },
   {
@@ -45,7 +44,13 @@ const NAV: Array<{ label: string; items: NavItem[] }> = [
       { id: 'appearance', label: 'Appearance', key: 'A', tint: 'var(--ansi-mag)', path: 'M12 3a9 9 0 1 0 0 18c1 0 1.5-.8 1.5-1.6 0-.9-.8-1.3-.8-2.2 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.4-4-7.6-9-7.6zM7.5 11.5h.01M10.5 7.5h.01M15.5 8.5h.01' },
     ],
   },
-  { label: 'WORKSPACE', items: [{ id: 'keys', label: 'Hotkeys', key: '?', tint: 'var(--ansi-blue)', path: 'M2 6h20v12H2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8' }] },
+  {
+    label: 'WORKSPACE',
+    items: [
+      { id: 'notifications', label: 'Notifications', key: 'N', tint: 'var(--warn)', path: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0' },
+      { id: 'keys', label: 'Hotkeys', key: '?', tint: 'var(--ansi-blue)', path: 'M2 6h20v12H2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8' },
+    ],
+  },
   { label: 'ADVANCED', items: [{ id: 'daemon', label: 'Daemon', key: 'D', tint: 'var(--accent)', path: 'M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01' }] },
 ]
 
@@ -53,11 +58,12 @@ const PAGE: Record<DesktopSettingsSection, [string, string]> = {
   general: ['General', 'Where sessions start and what happens to them.'],
   terminal: ['Text & cursor', 'How every pane renders. Changes apply instantly.'],
   appearance: ['Appearance', 'Colours, spinner and motion for the whole window.'],
+  notifications: ['Notifications', 'When the system should tell you a session needs you.'],
   keys: ['Hotkeys', 'Everything the window handles before the shell does.'],
   daemon: ['Daemon', 'The local maittyd that owns every session.'],
 }
 
-const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', '?': 'keys', d: 'daemon' }
+const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', n: 'notifications', '?': 'keys', d: 'daemon' }
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -139,6 +145,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
               {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} />}
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
               {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} projects={props.projects} />}
+              {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} />}
               {section === 'keys' && <HotkeysSection mac={props.mac} />}
               {section === 'daemon' && <DaemonSection daemon={props.daemon} />}
             </div>
@@ -497,6 +504,28 @@ function HotkeysSection({ mac }: { mac: boolean }) {
           </div>
         ))}
       </div>
+    </Card>
+  )
+}
+
+/** Native notifications: sent only while the window is in the background, for the session you are not looking at. */
+function NotificationsSection({ preferences, update }: { preferences: SettingsPreferences; update: Update }) {
+  return (
+    <Card
+      title="System notifications"
+      color="var(--warn)"
+      iconPath={<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0" />}
+      foot="Clicking a notification brings the window forward and shows that session. A notification names the session and where it is; it never shows what the agent asked, so nothing private appears on a locked screen. The system asks once whether Maitty may send them."
+    >
+      <Row label="Needs you" detail="An agent stopped for an answer or an approval.">
+        <Switch label="Notify when a session needs you" checked={preferences.notifyNeedsYou} onChange={(value) => { update('notifyNeedsYou', value) }} />
+      </Row>
+      <Row label="Done" detail="An agent finished its turn.">
+        <Switch label="Notify when a session finishes" checked={preferences.notifyFinished} onChange={(value) => { update('notifyFinished', value) }} />
+      </Row>
+      <Row label="Error" detail="A session's program exited with an error.">
+        <Switch label="Notify when a session errors" checked={preferences.notifyError} onChange={(value) => { update('notifyError', value) }} />
+      </Row>
     </Card>
   )
 }
