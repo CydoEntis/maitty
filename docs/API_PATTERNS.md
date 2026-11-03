@@ -373,14 +373,34 @@ background storage lock. Attachments never submit independent cache revisions.
 See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 process boundary and event/approval handling rules.
 
-Protocol 66 adds `Query::Repo { term, tag, request }` and `Reply::Repo { tag, reply }`: read-only
-looks at the repository a pane is in (`RepoRequest`: status, tree, file, working-tree diff,
-range diff, branches, log; `crates/maitty-shared/src/repo.rs`, answered by `daemon/repo.rs`). Human
-clients only, with the pane's read grant. The daemon roots every path at the top of the
-repository the pane's folder is in, refuses symbolic links and paths that climb out, refuses
-a revision that starts with `-`, and runs git on a blocking thread. The answer echoes `tag`, so
-a client can have several in flight. Nothing here changes the repository; changes stay in the
-pane's PTY.
+Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links and worktrees:
+
+- `Query::Repo { term, tag, request }` and `Reply::Repo { tag, reply }`: read-only looks at the
+  repository a pane is in (`RepoRequest`: status, tree, file, `Locate`, working-tree diff, range
+  diff, branches, log, worktrees, snapshots, references; `crates/maitty-shared/src/repo.rs`,
+  answered by `daemon/repo.rs`). Human clients only, with the pane's read grant. The daemon roots
+  every path at the top of the repository the pane's folder is in, refuses symbolic links and
+  paths that climb out, refuses a revision that starts with `-`, and runs git on a blocking
+  thread. `Locate` turns a path seen in the pane's output (absolute, or relative to the pane's
+  folder) into a repository-relative one, and refuses anything that is not a file inside the
+  repository. The answer echoes `tag`, so a client can have several in flight.
+- `Command::RestoreSnapshot { term, tag, commit }`: put the pane's checkout back as it was in one
+  of the daemon's own snapshots (the commit must be one `RepoRequest::Snapshots` lists), after
+  saving what is there now. Only a human can, and not while the pane's agent works. It answers
+  `Reply::Repo { Restored(n) }`. This is the one request that changes the repository; every other
+  change stays in the pane's PTY.
+- `TermInfo` carries four more fields, each defaulted so an older peer's snapshot still reads:
+  `asking` (what a stopped agent is waiting on, read off its screen: the exact command or file
+  and its numbered choices; empty unless the pane needs you), `interrupted` (an agent that was
+  mid-turn when the daemon restarted, with the command that resumes it), `timeline` (the latest
+  turn events, oldest first, from status reports and the shell's OSC 133 prompt marks, 60 kept in
+  memory) and `usage.tokens` (what the provider reported, never an estimate). The daemon never
+  resumes an `interrupted` agent: a desktop-owned pane saved mid-turn comes back as a plain shell,
+  and the window offers the command. Terminal-app panes restore as before.
+- `Query::PaneSearch { query }` and `Reply::Search`: where a word appears in what the app's own
+  panes printed recently, case-insensitively, at most 100 hits and 20 from one pane. Human clients
+  only, over the panes the client may use. The text is the pane's replay with escape sequences
+  removed, so it is what was printed, not what is on screen now.
 
 Protocol 65 removes the handoff between chat and terminal
 (`ConversationHandoffToNative`, `ConversationHandoffToChat`; see

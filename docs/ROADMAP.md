@@ -1499,7 +1499,19 @@ project tabs and sidebar tray (spec in [DESIGN](DESIGN.md#desktop-app)). What is
 daemon queries, a dependency or data the daemon does not report yet. Names below are
 suggestions; match maittyd's API. Any new message needs a `PROTOCOL_VERSION` decision (Rules).
 
-Not started; the order is a proposal for the user to settle.
+Status 2026-11-02: items 1–12 are built on `quick-fox` (protocol 67); item 13 is deferred at the user's
+call (project colours stay in the window's settings until the terminal app should share them).
+Notifications (7) detect the change in the window from the session list it already polls, not from a
+new daemon event, so they work from the same status the sidebar shows; the desktop plugin has no
+action buttons, so a click only shows the session and answering stays in the inbox. The timeline
+(9) is the daemon's status reports plus OSC 133 prompt marks; it is held in memory, not saved.
+Not verified by running the app: the visuals of every new panel, a real OS notification, and a
+live nested daemon (tests cover the daemon with real git repos and the window with mocked IPC).
+Where the build differs from the wording below: History's checkpoints are the daemon's
+before-each-turn snapshots (the same ones the terminal app lists), and the confirmed Restore is
+`Command::RestoreSnapshot`, the one request that writes; References lists the project's
+`.maitty/references` (adding and removing stay in the terminal app); quick-look uses a
+`Locate` request so the daemon, not the window, decides what path is inside the repo.
 
 1. **Repo queries** (built 2026-11-02 as `Query::Repo`, protocol 66; see API_PATTERNS; the one change that the Inspect panel, compare and quick-look all use):
    `repo_status`, `repo_tree`, `repo_file`, `repo_diff(path)` and `repo_diff(a, b)`,

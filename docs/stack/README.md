@@ -26,6 +26,7 @@ starter-owned sections forward. It never touches `Project-specific:` sections.
 | [shadcn-tailwind](shadcn-tailwind.md) | starter | 1.0.0 |
 | [tauri](tauri.md) | project | 2 |
 | [tauri-dialog](tauri-dialog.md) | project | 2.8.4 |
+| [tauri-notification](tauri-notification.md) | project | 2.8.0 |
 | [xterm](xterm.md) | project | 6.0.0 |
 | [claude-code-cli](claude-code-cli.md) | project | Claude Code CLI `2.1.314` observed locally; support range open |
 | [codex-app-server](codex-app-server.md) | project | codex-cli 0.164.0, 0.165.0 |

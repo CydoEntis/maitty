@@ -19,7 +19,9 @@
 
 ## Project-specific: xterm
 
-Use the upstream `@xterm/xterm` package and `@xterm/addon-fit`. The daemon
+Use the upstream `@xterm/xterm` package, `@xterm/addon-fit` and `@xterm/addon-search` (added
+for Find: it searches the emulator's own scrollback, so the window needs no copy of the
+output; it is the official addon and its 0.16 line pairs with xterm 6). The daemon
 returns raw replay bytes when the terminal opens, then formatted ANSI screen
 snapshots. The emulator interprets control sequences and encodes keyboard, paste
 and terminal responses for the daemon.

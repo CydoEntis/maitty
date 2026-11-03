@@ -193,7 +193,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   strip in that colour, and hovering a collapsed folder opens a popover with its name, branch, path and
   sessions; hovering a collapsed session opens one with its agent, its state and how long it
   has been so, the last prompt the agent was given (shortened to a few lines), its folder and its
-  branch. A session with no prompt, such as a plain shell, shows no prompt line. Under 1100px it is always the rail, with no expand button and no overlay drawer.
+  branch. A session with no prompt, such as a plain shell, shows no prompt line. Under 1100px the sidebar is not on screen: a **Sessions** button at the start of the tab bar (and ⌘B) slides it in over the panes on a scrim, and picking a session, starting one or opening Settings, a click on the scrim or Esc closes it.
 - **Interface size.** Settings › Appearance › Interface size sets the sidebar icon size (Small 0.8, Medium 1,
   Large 1.2 times the project tiles, session icons, tray chips and the rail, whose width follows), the density (Compact 0.8,
   Comfortable 1, Spacious 1.25 times the row, tab and pane spacing), the sidebar text size and the
@@ -256,6 +256,41 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Project colours and menu.** Settings › Appearance › Sidebar lets each project take a colour from
   teal, violet, blue, green, pink or orange (never amber or red). Right-clicking a project, in the
   sidebar or the rail, offers New session here, Collapse or Expand, and Copy path.
+- **Inspect (⌘I).** A card docked at the right of the window (over the panes under 900px) that
+  reads the focused pane's repository and never changes it: **Files** (folders and a text
+  preview), **Changes** (the working tree's diff, one file at a time), **Branches** (the current
+  one, its distance from the upstream), **History** and **References**. The tab bar's **Inspect**
+  button carries the focused pane's `+N −N`. History lists commits and the daemon's snapshots
+  (taken before each agent turn) newest first. **Restore** on a snapshot asks first, says that
+  what is there now is saved first, and is disabled while the agent works. **Compare** picks any
+  two entries and shows what differs between them.
+- **Quick-look links.** ⌘-click (Ctrl-click elsewhere) on a file name in a pane's output, with an
+  optional `:line`, opens it in Inspect › Files at that line. A name that is not a file in the
+  pane's repository says so in a toast.
+- **Find (⌘F).** A bar over the top right of the panes. **Pane** looks in the focused pane's
+  scrollback (Enter next, Shift+Enter previous); **All sessions** lists lines from every session's
+  recent output, and a click shows that session.
+- **Worktrees (⌘⇧N).** The New worktree dialog names a branch and what to start it from (an
+  existing branch is checked out instead), then opens a session in the new folder in a new tab. A
+  project's right-click menu has a **Worktrees** submenu that opens a shell in any of the repo's
+  worktrees, and a **New worktree…** row. Worktrees group under their parent repo.
+- **Notifications.** Settings › Notifications has one switch each for needs you, done and error. With
+  one on, a session that changes to that state while you are not looking at it (the window is in the
+  background, or it is not the focused pane) sends a system notification, once per change. It names
+  the session and where it is and never what the agent asked. Clicking it brings the window forward
+  and shows that session. Opening the app, a session you are in, and a reconnect after the daemon
+  was unreachable send nothing.
+- **Interrupted agents.** When the daemon restarted while an agent was mid-turn in a desktop session,
+  a banner above the panes says which agent and shows the command that brings it back
+  (`codex resume --last`). **Resume** types it into that session; **Dismiss** hides the banner. Nothing
+  resumes on its own.
+- **Usage pill.** A pane's header shows what the provider reports the session has used (tokens,
+  context filled, cost). It is not drawn when the provider said nothing, so no number is invented.
+- **Turn timeline.** Inspect › Timeline lists the focused pane's latest events, newest first: the
+  agent started working, stopped for you, finished (with how long the turn ran), and, in a shell
+  that marks its prompts, each prompt and command with its exit code.
+- **Inbox detail.** A needs-you card shows what the agent is asking, the exact command or file and its
+  choices as the agent printed them, instead of its last prompt.
 - **Status is shape and word.** Working is the TUI spinner, Needs you an amber tile with two pause
   bars, Done a green check, Exited a red `!`, Unknown a dashed square, Idle a small dot. Every pane
   shows its status as a chip in its bottom-right corner, including Idle, and hovering or focusing
