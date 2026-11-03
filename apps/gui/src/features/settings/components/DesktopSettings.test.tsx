@@ -38,7 +38,7 @@ describe('desktop settings', () => {
   it('leaves the start folder alone when the picker is cancelled', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('general', { onChooseFolder: vi.fn().mockResolvedValue(null) })
-    const before = (screen.getByRole('textbox', { name: 'Start folder' }) as HTMLInputElement).value
+    const before = screen.getByRole<HTMLInputElement>('textbox', { name: 'Start folder' }).value
 
     await user.click(screen.getByRole('button', { name: 'Browse…' }))
 

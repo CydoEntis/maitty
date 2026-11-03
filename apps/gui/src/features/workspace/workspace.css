@@ -161,10 +161,10 @@
 .mx-row-line2 .mx-proc { font-family: var(--mono); font-size: 11.5px; }
 .mx-row-end { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 7px; color: var(--dim); opacity: 0; background: var(--raise); transition: opacity .14s ease, background-color .14s ease, color .14s ease; }
 .mx-row-wrap:hover .mx-row-end, .mx-row-end:focus-visible { opacity: 1; }
-.mx-row-end:hover { color: var(--fg); background: var(--sel); }
+.mx-row-end:hover { color: var(--danger); background: var(--danger-soft); }
 /* The close button takes the row's top-right corner, so what sits there steps aside while it shows. */
-.mx-row-wrap:hover .mx-row-meta { opacity: 0; }
-.mx-row-meta { transition: opacity .14s ease; }
+.mx-row-wrap:hover .mx-row-meta, .mx-row-wrap:hover .mx-row-line1 > .mx-spin { opacity: 0; }
+.mx-row-meta, .mx-row-line1 > .mx-spin { transition: opacity .14s ease; }
 
 .mx-sidebar-foot { flex: none; padding: 10px 12px 12px; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--pane-line); }
 .mx-daemon-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
@@ -294,7 +294,7 @@
 .mx-tab-more { margin-left: 5px; font-size: 11.5px; font-weight: 500; color: var(--dim); font-variant-numeric: tabular-nums; }
 .mx-tab-close { width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--dim); opacity: .3; transition: opacity .14s ease, background-color .14s ease, color .14s ease; }
 .mx-tab.is-active .mx-tab-close, .mx-tab:hover .mx-tab-close, .mx-tab:focus-visible .mx-tab-close { opacity: .9; }
-.mx-tab-close:hover { opacity: 1 !important; background: var(--sel); color: var(--fg); }
+.mx-tab-close:hover { opacity: 1 !important; background: var(--danger-soft); color: var(--danger); }
 .mx-new-tab { width: 36px; height: var(--tabh); min-width: var(--tabh); border-radius: calc(11px * var(--rk)); border-right: var(--tabbr); background: rgba(255, 255, 255, .025); box-shadow: inset 0 0 0 1px var(--pane-line); margin-left: min(2px, var(--tbg)); color: var(--muted); }
 .mx-new-tab:not(:disabled):hover { background: rgba(255, 255, 255, .06); }
 
@@ -370,6 +370,7 @@
 .mx-pane-control { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--dim); transition: background-color .14s ease, color .14s ease, transform .12s ease; }
 .mx-pane-control:not(:disabled):hover { background: rgba(255, 255, 255, .09); color: var(--fg); }
 .mx-pane-control:not(:disabled):active { transform: scale(.88); }
+.mx-pane-control.is-close:not(:disabled):hover { background: var(--danger-soft); color: var(--danger); }
 .mx-pane-control:disabled { opacity: .3; }
 .mx-pane-body { flex: 1; min-height: 0; padding: 4px 18px 16px; font-family: var(--mono); line-height: 1.6; cursor: text; display: flex; }
 .mx-pane-body > * { flex: 1; min-width: 0; min-height: 0; }
