@@ -419,6 +419,28 @@ describe('desktop terminal multiplexer', () => {
     }
   })
 
+  it('moves through a session menu with the arrow keys and gives focus back when it closes', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    const row = await screen.findByRole('button', { name: '~/a, shell, idle' })
+    row.focus()
+    fireEvent.contextMenu(row)
+    const rename = await screen.findByRole('menuitem', { name: 'Rename' })
+    expect(rename).toHaveFocus()
+
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('menuitem', { name: /^Pin to top/ })).toHaveFocus()
+    await user.keyboard('{ArrowUp}{ArrowUp}')
+    expect(screen.getByRole('menuitem', { name: /^Close session/ })).toHaveFocus()
+    await user.keyboard('{Home}')
+    expect(rename).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => { expect(screen.queryByRole('menuitem', { name: 'Rename' })).not.toBeInTheDocument() })
+    expect(row).toHaveFocus()
+  })
+
   it('opens the same menu from a tray item', async () => {
     const wide = window.innerWidth
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
