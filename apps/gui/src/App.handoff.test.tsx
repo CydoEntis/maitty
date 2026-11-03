@@ -713,14 +713,28 @@ describe('desktop terminal multiplexer', () => {
     await waitFor(() => { expect(screen.queryByText('Disconnected from maittyd.')).not.toBeInTheDocument() })
   })
 
-  it('leaves an older daemon running while it owns sessions', async () => {
+  it('leaves an older daemon running while it owns sessions it is not saving', async () => {
     daemon.loadConversations.mockRejectedValue('connecting to the local daemon: the running server is another maitty version (protocol v49, this one v59); run maitty in a terminal to restart it')
     renderDesktopApp()
 
     expect(await screen.findByRole('button', { name: 'Service in use' })).toBeDisabled()
     expect(screen.getByText(/service uses protocol v49, but this GUI needs v59/)).toBeInTheDocument()
-    expect(screen.getByText(/owns 2 sessions, so Maitty leaves it running/)).toBeInTheDocument()
+    expect(screen.getByText(/owns 2 sessions but is not saving them, so Maitty leaves it running/)).toBeInTheDocument()
     expect(daemon.restartMismatchedDaemon).not.toHaveBeenCalled()
+  })
+
+  it('offers to restart an older daemon that owns saved sessions, says what survives, and asks twice', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockRejectedValue('connecting to the local daemon: the running maitty service uses protocol v49, while this GUI needs v62')
+    daemon.loadDaemonRestartStatus.mockResolvedValue({ daemonProtocol: 49, guiProtocol: 62, canRestart: true, sessionCount: 4, activeTurnCount: 1 })
+    daemon.restartMismatchedDaemon.mockResolvedValue(undefined)
+    renderDesktopApp()
+
+    await user.click(await screen.findByRole('button', { name: 'Restart and restore 4 sessions' }))
+    expect(screen.getByText(/They reopen in the same folders\. 1 working or waiting agent will offer a Resume\./)).toBeInTheDocument()
+    expect(daemon.restartMismatchedDaemon).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Click again to restart' }))
+    expect(daemon.restartMismatchedDaemon).toHaveBeenCalledWith(49)
   })
 
   it('restarts an idle older daemon only after a second click', async () => {
