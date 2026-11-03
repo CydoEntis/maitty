@@ -85,7 +85,7 @@ function PaneRow({ session, current }: { session: SessionView; current: boolean 
     <li className={`mx-sc-pane${current ? ' is-current' : ''}`}>
       <AppIcon process={session.process} size={18} />
       <span className="mx-sc-pane-name">{session.process}</span>
-      <span className="mx-sc-pane-dir">{session.title}</span>
+      <span className="mx-sc-pane-dir">{displayName(session)}</span>
       <span className={`mx-rp-state is-${session.status}`}>{STATUS_WORD[session.status]}</span>
     </li>
   )

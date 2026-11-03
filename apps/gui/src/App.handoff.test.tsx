@@ -401,6 +401,24 @@ describe('desktop terminal multiplexer', () => {
     expect(screen.queryByRole('menuitem', { name: 'Archive' })).not.toBeInTheDocument()
   })
 
+  it('shows a session’s own name in its small sidebar row, not its folder', async () => {
+    const wide = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
+    try {
+      daemon.loadConversations.mockResolvedValue([
+        term(2, `${HOME}/a`),
+        term(3, `${HOME}/a`, { title: 'Growth Tests', named: true }),
+      ])
+      renderDesktopApp()
+      const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
+      const tray = await within(sidebar).findByRole('group', { name: /^Other sessions in/ })
+
+      expect(tray).toHaveTextContent('Growth Tests')
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: wide })
+    }
+  })
+
   it('opens the same menu from a tray item', async () => {
     const wide = window.innerWidth
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
