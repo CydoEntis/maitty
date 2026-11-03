@@ -643,6 +643,19 @@ pub async fn close_terminal_session(term: u32, daemon_executable: PathBuf) -> Re
     }
 }
 
+/// The user looked at a pane: the daemon turns a finished agent's done into idle.
+pub async fn mark_terminal_seen(term: u32, daemon_executable: PathBuf) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::MarkSeen { term }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected mark-seen reply"),
+    }
+}
+
 pub async fn send_conversation(
     id: u64,
     generation: u64,

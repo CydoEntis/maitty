@@ -261,6 +261,16 @@ async fn rename_terminal_session(
 }
 
 #[tauri::command]
+async fn mark_terminal_seen(
+    app: tauri::AppHandle,
+    term: u32,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::mark_terminal_seen(term, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn close_terminal_session(
     app: tauri::AppHandle,
     term: u32,
@@ -463,6 +473,7 @@ pub fn run() {
             start_terminal_session,
             start_shell_session,
             rename_terminal_session,
+            mark_terminal_seen,
             close_terminal_session,
             send_conversation,
             approve_conversation,
