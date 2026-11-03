@@ -1,0 +1,32 @@
+run                           main%  proc%  raf/s blink focus anims int/s
+a-focus                         1.5    2.0   62.3     0 False     0   0.7
+a-focusnoblink                  1.9    2.4   62.3     0 False     0   0.7
+a-noanim                        2.0    2.7   62.2                 0   0.7
+a-nocursorblink                 2.1    2.7   62.1                 0   0.7
+a-none-x11dmabufoff             1.8    2.4   62.3     0 False     0   0.7
+a-none                          1.8    2.4   62.3     0 False     0   0.7
+b-hidechrome                   64.1   68.9   46.1     0 False     0  10.9
+b-noanim                       82.8   87.6   39.9     0 False     0  12.5
+b-none-x11dmabufoff            91.0   95.5   48.0     0 False     2  12.7
+b-none                         91.0   95.5   48.0     0 False     2  12.7
+b-nostream-x11dmabufoff        66.2   68.5   62.3     0 False     2  13.4
+b-nostream                     66.2   68.5   62.3     0 False     2  13.4
+b-nosweep                      74.7   78.9   50.2     0 False     0  12.9
+b-ns_hidechrome                 2.5    4.2   62.3     0 False     0  13.6
+b-ns_hidepanehead              57.4   59.2   62.3     0 False     2  13.4
+b-ns_hidesidebar               28.1   29.9   62.3     0 False     1  13.5
+b-ns_hidestatusbar             58.3   60.1   62.3     0 False     2  13.5
+b-ns_hidetabbar                20.3   22.0   62.3     0 False     1  13.6
+b-ns_noanim                    25.1   26.7   62.3     0 False     0  13.6
+b-ns_noanim_stoptimers          1.7    2.1   62.3     0 False     0     0
+b-ns_nogradient                48.1   50.2   62.3     0 False     2  13.5
+b-ns_noshadow                  39.8   41.9   62.2     0 False     2  13.5
+b-ns_nosweep                   25.8   27.3   62.2     0 False     0  13.6
+b-ns_stop1500                  64.2   66.1   62.3     0 False     2  12.7
+b-ns_stop1s                    61.8   63.7   62.2     0 False     2  12.4
+b-ns_stop80                    45.7   46.9   62.3     0 False     2   1.7
+b-ns_stoptimers                43.3   43.8   62.3     0 False     2     0
+e-noanim                       72.5   76.0   51.6     0 False     0  12.9
+e-none                         97.5  101.1   38.1     0 False     6  11.6
+e-nosweep                      97.6  102.1   33.6     0 False     2  12.5
+e-ns_noanim                    31.4   33.4   61.6     0 False     0  13.6

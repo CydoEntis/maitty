@@ -24,6 +24,7 @@ Load them when the work touches their area, not all of them up front.
 | [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) | adding config or env vars, changing setup | config loading, `.env.example`, local setup, environments |
 | [`docs/UI.md`](docs/UI.md) | building or changing any user interface | component structure, UI state, async states, accessibility |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | changing how the app looks | the current visual language: themes, layouts, chips, sidebar, panels, splash |
+| [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) | changing animations, timers, terminal rendering, polling, or the daemon's output path | the measured causes of GUI lag, the ranked plan, how to re-measure |
 | [`docs/COMMIT-STANDARDS.md`](docs/COMMIT-STANDARDS.md) | committing, branching, opening a PR | message format, commit workflow, git safety |
 | the Plane project (see *Planning*) | starting, finishing, or scoping work | what is in, out, and in what order |
 | [`docs/stack/`](docs/stack/) | touching a technology that has a stack doc | the rules for each technology used in this project |
