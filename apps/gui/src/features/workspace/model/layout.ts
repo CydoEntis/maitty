@@ -1,6 +1,6 @@
 /**
- * Tabs hold layouts; panes hold sessions. A tab is one to four panes in columns. Closing a pane
- * or a tab only detaches: the session keeps running in the daemon and stays in the sidebar.
+ * Tabs hold layouts; panes hold sessions. A tab is one to four panes in columns. A pane goes only
+ * when you close it (`removeSessions`): one whose session stops being listed stays, as an ended pane.
  */
 export const MAX_PANES = 4
 
@@ -68,44 +68,10 @@ function compactColumns(panes: PaneSlot[]): PaneSlot[] {
 }
 
 /** Detaches one pane. The last pane of a tab stays; close the tab instead. */
-export function closePane(layout: Layout, paneId: string): Layout {
-  const tab = layout.tabs.find((candidate) => candidate.panes.some((pane) => pane.id === paneId))
-  if (!tab || tab.panes.length <= 1) return layout
-  const index = tab.panes.findIndex((pane) => pane.id === paneId)
-  const panes = compactColumns(tab.panes.filter((pane) => pane.id !== paneId))
-  const focus = tab.focus === paneId ? (panes[Math.max(0, index - 1)]?.id ?? tab.focus) : tab.focus
-  return replaceTab(layout, { ...tab, panes, focus, max: tab.max === paneId ? null : tab.max })
-}
-
 /** Which project a tab belongs to. Tabs of other projects stay in the layout but are not shown with this one. */
 export type TabGroup = (tab: Tab) => string
 
 const ONE_GROUP: TabGroup = () => ''
-
-/**
- * Closes a tab. When it was the one showing, the next tab of the same project opens (the one after
- * it, else the one before), and only when the project has none left does another project's tab.
- */
-export function closeTab(layout: Layout, tabId: string, groupOf: TabGroup = ONE_GROUP): Layout {
-  const index = layout.tabs.findIndex((tab) => tab.id === tabId)
-  const closing = layout.tabs[index]
-  if (!closing) return layout
-  const tabs = layout.tabs.filter((tab) => tab.id !== tabId)
-  if (layout.activeTabId !== tabId) return { tabs, activeTabId: layout.activeTabId }
-  const group = groupOf(closing)
-  const sameGroup = layout.tabs.filter((tab) => tab.id !== tabId && groupOf(tab) === group)
-  const after = sameGroup.find((tab) => layout.tabs.indexOf(tab) > index)
-  const next = after ?? sameGroup.at(-1) ?? tabs[Math.min(index, tabs.length - 1)]
-  return { tabs, activeTabId: next?.id ?? null }
-}
-
-/** What ⌘W closes: the focused pane, or the tab when it has one pane. */
-export function closeFocused(layout: Layout, groupOf: TabGroup = ONE_GROUP): { layout: Layout; closed: 'pane' | 'tab' | null } {
-  const tab = activeTab(layout)
-  if (!tab) return { layout, closed: null }
-  if (tab.panes.length > 1) return { layout: closePane(layout, tab.focus), closed: 'pane' }
-  return { layout: closeTab(layout, tab.id, groupOf), closed: 'tab' }
-}
 
 export function focusPane(layout: Layout, paneId: string): Layout {
   const tab = layout.tabs.find((candidate) => candidate.panes.some((pane) => pane.id === paneId))

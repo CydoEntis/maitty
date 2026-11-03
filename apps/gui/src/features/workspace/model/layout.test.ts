@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   activeTab,
-  closeFocused,
-  closePane,
-  closeTab,
   dropSession,
   setColumnWidths,
   toggleBroadcast,
@@ -16,6 +13,7 @@ import {
   paneColumns,
   parseLayout,
   reconcileLayout,
+  removeSessions,
   selectTab,
   showSession,
   splitPane,
@@ -70,39 +68,28 @@ describe('tab layout', () => {
     expect(splitPane(layout, null, 'down', 'e', makeId)).toBe(layout)
   })
 
-  it('closes a pane by detaching it, keeping the last pane of a tab', () => {
+  it('removes a pane with its session and closes the columns up', () => {
     const { layout } = withPanes('a', 'b', 'c')
-    const tab = activeTab(layout)
-    const middle = tab?.panes[1]?.id ?? ''
-    const closed = closePane(layout, middle)
-    expect(cols(closed)).toEqual(['a@0', 'c@1'])
+    expect(cols(removeSessions(layout, new Set(['b'])))).toEqual(['a@0', 'c@1'])
+  })
+
+  it('removes the tab when its last pane goes', () => {
     const single = withPanes('a').layout
-    expect(closePane(single, activeTab(single)?.focus ?? '')).toEqual(single)
+    expect(removeSessions(single, new Set(['a'])).tabs).toHaveLength(0)
   })
 
-  it('moves focus to the previous pane when the focused one closes', () => {
+  it('moves focus to the previous pane when the focused one goes', () => {
     const { layout } = withPanes('a', 'b', 'c')
-    expect(focusedSessionId(closePane(layout, activeTab(layout)?.focus ?? ''))).toBe('b')
+    expect(focusedSessionId(removeSessions(layout, new Set(['c'])))).toBe('b')
   })
 
-  it('closes the focused pane, or the tab when it has one pane', () => {
-    const { layout } = withPanes('a', 'b')
-    const first = closeFocused(layout)
-    expect(first.closed).toBe('pane')
-    const second = closeFocused(first.layout)
-    expect(second.closed).toBe('tab')
-    expect(second.layout.tabs).toHaveLength(0)
-    expect(closeFocused(second.layout).closed).toBeNull()
-  })
-
-  it('closes a tab and shows the one that took its place', () => {
+  it('removes a tab and shows the one that took its place', () => {
     const makeId = ids()
     let layout = openInNewTab(EMPTY_LAYOUT, 'a', makeId)
     layout = openInNewTab(layout, 'b', makeId)
     layout = openInNewTab(layout, 'c', makeId)
-    const middle = layout.tabs[1]?.id ?? ''
     layout = cycleTab(layout, -1)
-    layout = closeTab(layout, middle)
+    layout = removeSessions(layout, new Set(['b']))
     expect(focusedSessionId(layout)).toBe('c')
   })
 
@@ -157,22 +144,22 @@ describe('tab layout', () => {
     it('closing the showing tab goes to the next tab of the same project, else the one before', () => {
       const layout = build()
       const first = selectTab(layout, at(layout, 0))
-      expect(focusedSessionId(closeTab(first, at(first, 0), project))).toBe('m2')
+      expect(focusedSessionId(removeSessions(first, new Set(['m1']), project))).toBe('m2')
       const last = selectTab(layout, at(layout, 2))
-      expect(focusedSessionId(closeTab(last, at(last, 2), project))).toBe('m1')
+      expect(focusedSessionId(removeSessions(last, new Set(['m2']), project))).toBe('m1')
     })
 
     it('goes to another project only when the closed one had no tab left', () => {
       const makeId = ids()
       let layout = openInNewTab(EMPTY_LAYOUT, 'd1', makeId)
       layout = openInNewTab(layout, 'm1', makeId)
-      const closed = closeTab(layout, layout.activeTabId ?? '', project)
+      const closed = removeSessions(layout, new Set(['m1']), project)
       expect(focusedSessionId(closed)).toBe('d1')
     })
 
     it('leaves the showing tab alone when another one is closed', () => {
       const layout = build()
-      expect(closeTab(layout, at(layout, 0), project).activeTabId).toBe(layout.activeTabId)
+      expect(removeSessions(layout, new Set(['m1']), project).activeTabId).toBe(layout.activeTabId)
     })
   })
 
@@ -307,8 +294,7 @@ describe('column widths', () => {
     expect(activeTab(sized)?.widths).toEqual([2, 1])
     expect(activeTab(setColumnWidths(sized, tabId, null))?.widths).toBeUndefined()
 
-    const second = activeTab(sized)?.panes[1]?.id ?? ''
-    expect(activeTab(closePane(sized, second))?.widths).toBeUndefined()
+    expect(activeTab(removeSessions(sized, new Set(['b'])))?.widths).toBeUndefined()
     expect(activeTab(reconcileLayout(sized, new Set(['a'])))?.widths).toBeUndefined()
   })
 
