@@ -149,6 +149,15 @@ function useSystemDark(): boolean {
  * The desktop app: a terminal multiplexer window over sessions maittyd owns (ADR 0046). Tabs and
  * splits are this window's arrangement; closing them only detaches.
  */
+/** What restarting an older service does to the sessions it owns, in words. */
+function olderServiceNote(status: { canRestart: boolean; sessionCount: number; activeTurnCount: number | null } | undefined): string {
+  if (!status || status.sessionCount === 0) return ''
+  const sessions = `${String(status.sessionCount)} session${status.sessionCount === 1 ? '' : 's'}`
+  if (!status.canRestart) return ` The older service owns ${sessions} but is not saving them, so Maitty leaves it running.`
+  const midTurn = status.activeTurnCount ? ` ${String(status.activeTurnCount)} working or waiting agent${status.activeTurnCount === 1 ? '' : 's'} will offer a Resume.` : ''
+  return ` Restarting it stops what is running in its ${sessions}. They reopen in the same folders.${midTurn}`
+}
+
 export function DesktopApp() {
   const queryClient = useQueryClient()
   const mac = isMacPlatform(navigator.userAgent)
@@ -792,7 +801,7 @@ export function DesktopApp() {
 
   const restartOffer: RestartOffer | null = mismatch
     ? {
-        label: restartStatusQuery.isPending ? 'Checking service…' : restartStatusQuery.isError ? 'Restart check failed' : restartStatusQuery.data.canRestart ? 'Restart service' : 'Service in use',
+        label: restartStatusQuery.isPending ? 'Checking service…' : restartStatusQuery.isError ? 'Restart check failed' : restartStatusQuery.data.canRestart ? (restartStatusQuery.data.sessionCount > 0 ? `Restart and restore ${String(restartStatusQuery.data.sessionCount)} session${restartStatusQuery.data.sessionCount === 1 ? '' : 's'}` : 'Restart service') : 'Service in use',
         canRestart: Boolean(restartStatusQuery.data?.canRestart),
         pending: restartPending,
         onRestart: () => {
@@ -804,9 +813,7 @@ export function DesktopApp() {
         },
       }
     : null
-  const offlineDetail = mismatch
-    ? `${daemonConnectionError(sessionsQuery.error)}${restartStatusQuery.data && !restartStatusQuery.data.canRestart && restartStatusQuery.data.sessionCount > 0 ? ` The older service owns ${String(restartStatusQuery.data.sessionCount)} sessions, so Maitty leaves it running.` : ''}`
-    : null
+  const offlineDetail = mismatch ? `${daemonConnectionError(sessionsQuery.error)}${olderServiceNote(restartStatusQuery.data)}` : null
 
   const tab = activeTab(layout)
   const visibleTabs = useMemo(() => layout.tabs.filter((candidate) => tabGroup(candidate) === activeGroupKey), [layout.tabs, tabGroup, activeGroupKey])

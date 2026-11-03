@@ -36,27 +36,41 @@ pub async fn daemon_restart_status() -> Result<Value> {
     Ok(json!({
         "daemonProtocol": daemon_protocol,
         "guiProtocol": maitty_shared::protocol::PROTOCOL_VERSION,
-        "canRestart": can_restart_mismatched_daemon(daemon_protocol, activity.as_ref()),
+        "canRestart": can_restart_mismatched_daemon(
+            daemon_protocol,
+            activity.as_ref(),
+            session_file().is_file(),
+        ),
         "sessionCount": session_count,
         "activeTurnCount": activity.as_ref().map(Activity::busy),
     }))
 }
 
-fn can_restart_mismatched_daemon(daemon_protocol: u32, activity: Option<&Activity>) -> bool {
+/// An older daemon may be replaced when its sessions are saved on disk (the next daemon
+/// restores them) or when it provably has none. One that owns sessions it isn't saving
+/// would lose them, so it is left running.
+fn can_restart_mismatched_daemon(
+    daemon_protocol: u32,
+    activity: Option<&Activity>,
+    sessions_saved: bool,
+) -> bool {
     daemon_protocol < maitty_shared::protocol::PROTOCOL_VERSION
-        && activity.is_some_and(|activity| activity.sessions == 0 && activity.busy() == 0)
+        && (sessions_saved || activity.is_some_and(|activity| activity.sessions == 0))
 }
 
-fn validate_restart_activity(activity: Option<&Activity>) -> Result<()> {
-    let Some(activity) = activity else {
-        bail!("couldn't verify that the older Maitty service has no sessions; it was left running")
-    };
-    anyhow::ensure!(
-        activity.sessions == 0 && activity.busy() == 0,
-        "the older Maitty service still owns {} sessions and was left running",
-        activity.sessions
-    );
-    Ok(())
+fn validate_restart_activity(activity: Option<&Activity>, sessions_saved: bool) -> Result<()> {
+    if sessions_saved || activity.is_some_and(|activity| activity.sessions == 0) {
+        return Ok(());
+    }
+    match activity {
+        Some(activity) => bail!(
+            "the older Maitty service owns {} sessions but isn't saving them, so a restart would lose them; it was left running",
+            activity.sessions
+        ),
+        None => bail!(
+            "couldn't verify that the older Maitty service's sessions are saved; it was left running"
+        ),
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -85,10 +99,14 @@ fn read_activity() -> Option<Activity> {
     (activity.pid == pid).then_some(activity)
 }
 
-fn saved_agent_count() -> usize {
+/// Where the daemon keeps this socket's saved sessions, which the next daemon restores.
+fn session_file() -> PathBuf {
     let label = std::env::var(format!("{APP_ENV}_SOCKET")).unwrap_or_else(|_| "default".into());
-    let path = ipc::data_dir().join(format!("session-{label}.json"));
-    let Ok(saved) = std::fs::read(path) else {
+    ipc::data_dir().join(format!("session-{label}.json"))
+}
+
+fn saved_agent_count() -> usize {
+    let Ok(saved) = std::fs::read(session_file()) else {
         return 0;
     };
     let Ok(saved) = serde_json::from_slice::<Value>(&saved) else {
@@ -168,7 +186,7 @@ pub async fn restart_mismatched_daemon(expected_protocol: u32) -> Result<()> {
         }
     };
     validate_restart_confirmation(daemon_protocol, expected_protocol)?;
-    validate_restart_activity(read_activity().as_ref())?;
+    validate_restart_activity(read_activity().as_ref(), session_file().is_file())?;
     tokio::task::spawn_blocking(stop_mismatched_daemon)
         .await
         .context(format!("waiting for the local {APP_NAME} service to stop"))??;
@@ -1213,33 +1231,48 @@ mod restart_confirmation_tests {
     }
 
     #[test]
-    fn only_restarts_an_older_service_that_proves_it_owns_no_sessions() {
+    fn an_older_service_with_saved_sessions_can_be_replaced_even_mid_turn() {
         let older = maitty_shared::protocol::PROTOCOL_VERSION - 1;
         assert!(can_restart_mismatched_daemon(
             older,
-            Some(&activity(0, 0, 0))
+            Some(&activity(4, 1, 1)),
+            true
         ));
-        assert!(!can_restart_mismatched_daemon(
+        assert!(can_restart_mismatched_daemon(older, None, true));
+    }
+
+    #[test]
+    fn an_older_service_with_no_sessions_can_be_replaced() {
+        let older = maitty_shared::protocol::PROTOCOL_VERSION - 1;
+        assert!(can_restart_mismatched_daemon(
             older,
-            Some(&activity(1, 0, 0))
-        ));
-        assert!(!can_restart_mismatched_daemon(
-            older,
-            Some(&activity(0, 1, 0))
-        ));
-        assert!(!can_restart_mismatched_daemon(older, None));
-        assert!(!can_restart_mismatched_daemon(
-            maitty_shared::protocol::PROTOCOL_VERSION + 1,
-            Some(&activity(0, 0, 0))
+            Some(&activity(0, 0, 0)),
+            false
         ));
     }
 
     #[test]
-    fn refuses_to_restart_when_session_ownership_is_active_or_unknown() {
-        assert!(validate_restart_activity(Some(&activity(0, 0, 0))).is_ok());
-        assert!(validate_restart_activity(Some(&activity(1, 0, 0))).is_err());
-        assert!(validate_restart_activity(Some(&activity(0, 1, 0))).is_err());
-        assert!(validate_restart_activity(None).is_err());
+    fn sessions_that_are_not_saved_are_never_thrown_away() {
+        let older = maitty_shared::protocol::PROTOCOL_VERSION - 1;
+        assert!(!can_restart_mismatched_daemon(
+            older,
+            Some(&activity(2, 0, 0)),
+            false
+        ));
+        assert!(!can_restart_mismatched_daemon(older, None, false));
+        assert!(validate_restart_activity(Some(&activity(2, 0, 0)), false).is_err());
+        assert!(validate_restart_activity(None, false).is_err());
+        assert!(validate_restart_activity(Some(&activity(2, 1, 0)), true).is_ok());
+        assert!(validate_restart_activity(Some(&activity(0, 0, 0)), false).is_ok());
+    }
+
+    #[test]
+    fn a_newer_service_is_never_replaced_by_an_older_gui() {
+        assert!(!can_restart_mismatched_daemon(
+            maitty_shared::protocol::PROTOCOL_VERSION + 1,
+            Some(&activity(0, 0, 0)),
+            true
+        ));
     }
 }
 

@@ -1291,7 +1291,7 @@ function PreviewApp() {
                   : mismatch.daemonProtocol > mismatch.guiProtocol
                     ? 'This service is newer than the one bundled with this GUI. Update the GUI before reconnecting; Maitty will not replace a newer service.'
                     : daemonRestartStatus?.sessionCount
-                      ? `This older service owns ${String(daemonRestartStatus.sessionCount)} sessions. Maitty will leave it running so your TUI work is not interrupted.`
+                      ? `This older service owns ${String(daemonRestartStatus.sessionCount)} sessions but is not saving them, so a restart would lose them. Maitty will leave it running.`
                       : daemonRestartStatus?.activeTurnCount === null
                         ? 'Maitty could not verify that the older service is idle, so it will leave the service running.'
                         : 'This older service still reports active work, so Maitty will leave it running.'}
