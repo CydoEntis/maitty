@@ -42,6 +42,8 @@ type DesktopSettingsProps = {
   projects: ReadonlyArray<{ key: string; name: string; colorId: string | undefined }>
   /** Resolves whether a typed folder exists. */
   validateFolder: (path: string) => Promise<boolean>
+  /** Opens the system's folder picker at the folder given; the path picked, or null when it is cancelled. */
+  onChooseFolder?: (current: string) => Promise<string | null>
   onClose: () => void
 }
 
@@ -156,7 +158,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
           </header>
           <div className="mx-settings-scroll">
             <div className="mx-settings-sections" key={section}>
-              {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} onShowWelcome={props.onShowWelcome} updates={props.updates} />}
+              {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} onChooseFolder={props.onChooseFolder} onShowWelcome={props.onShowWelcome} updates={props.updates} />}
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
               {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} projects={props.projects} />}
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} onTestNotice={props.onTestNotice} />}
@@ -218,7 +220,7 @@ function Segmented<T extends string | number>({ label, value, options, onChange,
 const VALIDATE_DELAY_MS = 250
 type FolderCheck = 'saved' | 'missing' | 'checking'
 
-function GeneralSection({ preferences, update, validateFolder, onShowWelcome, updates }: { preferences: SettingsPreferences; update: Update; validateFolder: (path: string) => Promise<boolean>; onShowWelcome: () => void; updates: DesktopSettingsProps['updates'] }) {
+function GeneralSection({ preferences, update, validateFolder, onChooseFolder, onShowWelcome, updates }: { preferences: SettingsPreferences; update: Update; validateFolder: (path: string) => Promise<boolean>; onChooseFolder: ((current: string) => Promise<string | null>) | undefined; onShowWelcome: () => void; updates: DesktopSettingsProps['updates'] }) {
   const [draft, setDraft] = useState(preferences.startFolder)
   const [check, setCheck] = useState<FolderCheck>('saved')
   const latest = useRef({ preferences, update })
@@ -256,9 +258,14 @@ function GeneralSection({ preferences, update, validateFolder, onShowWelcome, up
         foot="Every new session opens a shell here. Leave it empty for your home folder. Projects appear in the sidebar when a session cds into a git repo."
       >
         <div style={{ padding: '0 16px 14px' }}>
-          <div className={`mx-folder-field${missing ? ' is-invalid' : ''}`}>
-            <span className="mono" style={{ fontSize: 12, color: 'var(--dim)' }}>cd</span>
-            <input value={draft} placeholder="~" aria-label="Start folder" aria-invalid={missing} spellCheck={false} onChange={(event) => { setDraft(event.target.value) }} />
+          <div className="mx-folder-row">
+            <div className={`mx-folder-field${missing ? ' is-invalid' : ''}`}>
+              <span className="mono" style={{ fontSize: 12, color: 'var(--dim)' }}>cd</span>
+              <input value={draft} placeholder="~" aria-label="Start folder" aria-invalid={missing} spellCheck={false} onChange={(event) => { setDraft(event.target.value) }} />
+            </div>
+            {onChooseFolder && (
+              <button type="button" className="mx-text-button" onClick={() => { void onChooseFolder(draft.trim()).then((picked) => { if (picked) setDraft(picked) }) }}>Browse…</button>
+            )}
           </div>
         </div>
       </Card>

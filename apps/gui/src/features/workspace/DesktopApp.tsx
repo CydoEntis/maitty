@@ -46,6 +46,7 @@ import { formatDroppedPaths } from '@/features/terminal/droppedPaths'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
 import { sendNativeNotice } from '@/features/notifications/native'
+import { chooseProjectFolder } from '@/api/folderPicker'
 import { dismissSessionNotice, showSessionNotice } from '@/features/notifications/notify'
 import { sessionNoticeFor } from '@/features/notifications/noticeForSession'
 import { noticesFor } from '@/features/notifications/transitions'
@@ -108,6 +109,7 @@ const DEFAULT_TEXT_SIZE = 14
 const CLOSE_ARM_MS = 4000
 /** How long "Restarting Maitty" shows before the window relaunches. */
 const RESTART_SCREEN_MS = 1200
+const ABSOLUTE_PATH = /^(\/|[A-Za-z]:[\\/])/
 const TEST_NOTICE_MS = 6000
 const SECOND_MS = 1000
 const SLOW_TICK_MS = 30_000
@@ -627,6 +629,16 @@ export function DesktopApp() {
     const timer = window.setTimeout(restartNow, 0)
     return () => { window.clearTimeout(timer) }
   }, [preferences.restartWhenIdle, updateStatus, online, busyCount, restarting, restartNow])
+
+  const chooseStartFolder = useCallback(async (current: string): Promise<string | null> => {
+    try {
+      // `~` and other relative text mean nothing to the picker; it opens where it likes then.
+      return await chooseProjectFolder(ABSOLUTE_PATH.test(current) ? current : undefined)
+    } catch (error) {
+      toast.error(errorMessage(error, 'Could not open the folder picker'))
+      return null
+    }
+  }, [])
 
   const showTestNotice = useCallback(() => {
     showSessionNotice('test', {
@@ -1324,6 +1336,7 @@ export function DesktopApp() {
                 daemon={{ online, sessionCount: sessions.length }}
                 projects={groups.map((group) => ({ key: group.key, name: group.name, colorId: group.colorId }))}
                 validateFolder={folderExists}
+                onChooseFolder={chooseStartFolder}
                 onClose={() => { setPreviewTheme(null); setSettingsSection(null) }}
               />
             )}
