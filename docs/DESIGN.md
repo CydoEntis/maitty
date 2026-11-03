@@ -184,7 +184,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   box. **Tiled** is Flat's finish pulled edge to edge: square corners, 4px gaps between panes and at the
   window's edge, the sidebar flush with a hairline, and a 40px tab bar that is a flush strip (tabs, **+**,
   Repository and Inbox divided by hairlines, one line under the bar). Flat and Tiled share `data-finish="flat"`;
-  Tiled's layout rules are the last block of `workspace.css`. The focused pane's ring and the needs-you amber
+  The styles differ only in CSS variables set on the app root (`--rk` radius multiplier, `--r14`/`--r16`, `--pg` pane gap, `--ptop`, `--tbh`/`--tbp`/`--tbg`/`--tbb` for the tab bar, `--tabh`/`--tabbr` for tabs, `--sh` overlay shadow, and a few more beside them in `workspace.css`); the layout rules read them, so a style is a block of values, not a second set of rules. The focused pane's ring and the needs-you amber
   stay in all three. Glass starts with the three status sweeps on and Flat and Tiled with them off; a choice made
   in Settings wins. Settings saved as `minimal` read as Flat and `expressive` as Glass. **Icons** (Settings › Appearance › Icons, `iconColor`, set on the root as
   `data-icons`) is separate from the style: `color` keeps app and folder icons in their own colours in every

@@ -72,7 +72,7 @@
 .mx-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane);
   border: 1px solid var(--pane-line);
-  border-radius: 14px;
+  border-radius: var(--r14);
   backdrop-filter: blur(18px);
 }
 
@@ -83,7 +83,8 @@
   z-index: 31;
   flex: none;
   width: var(--sidebar-w, 264px);
-  margin: 8px 0 8px 8px;
+  margin: var(--sbm);
+  border-width: var(--sbw);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -244,10 +245,10 @@
 /* Tab bar */
 .mx-main-wrap { flex: 1; min-width: 0; display: flex; }
 .mx-main { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; }
-.mx-tabbar { flex: none; height: calc(56px * var(--pad, 1)); display: flex; align-items: center; gap: 6px; padding: 0 10px; }
-.mx-tablist { flex: 0 1 auto; max-width: 100%; min-width: 0; scroll-behavior: smooth; display: flex; align-items: center; gap: 4px; padding: 4px; border-radius: 14px; background: rgba(255, 255, 255, .025); box-shadow: inset 0 0 0 1px var(--pane-line); overflow-x: auto; }
+.mx-tabbar { flex: none; height: calc(var(--tbh) * var(--pad, 1)); display: flex; align-items: var(--tba); gap: var(--tbg); padding: var(--tbp); border-bottom: var(--tbb); }
+.mx-tablist { flex: 0 1 auto; max-width: 100%; min-width: 0; scroll-behavior: smooth; display: flex; align-items: center; gap: var(--tl); padding: var(--tl); border-radius: calc(14px * var(--rk)); background: rgba(255, 255, 255, .025); box-shadow: inset 0 0 0 1px var(--pane-line); overflow-x: auto; }
 .mx-tab {
-  height: calc(36px * var(--pad, 1));
+  height: calc(var(--tabh) * var(--pad, 1));
   flex: 0 0 auto;
   max-width: 250px;
   min-width: 120px;
@@ -255,7 +256,8 @@
   align-items: center;
   gap: 9px;
   padding: 0 6px 0 7px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--rk));
+  border-right: var(--tabbr);
   cursor: pointer;
   color: var(--muted);
   font-size: var(--tab-fs, 13.5px);
@@ -282,7 +284,7 @@
 .mx-tab-close { width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--dim); opacity: .3; transition: opacity .14s ease, background-color .14s ease, color .14s ease; }
 .mx-tab.is-active .mx-tab-close, .mx-tab:hover .mx-tab-close, .mx-tab:focus-visible .mx-tab-close { opacity: .9; }
 .mx-tab-close:hover { opacity: 1 !important; background: var(--sel); color: var(--fg); }
-.mx-new-tab { width: 36px; height: 36px; border-radius: 11px; background: rgba(255, 255, 255, .025); box-shadow: inset 0 0 0 1px var(--pane-line); margin-left: 2px; color: var(--muted); }
+.mx-new-tab { width: 36px; height: var(--tabh); min-width: var(--tabh); border-radius: calc(11px * var(--rk)); border-right: var(--tabbr); background: rgba(255, 255, 255, .025); box-shadow: inset 0 0 0 1px var(--pane-line); margin-left: min(2px, var(--tbg)); color: var(--muted); }
 .mx-new-tab:not(:disabled):hover { background: rgba(255, 255, 255, .06); }
 
 /* Offline banner */
@@ -314,9 +316,9 @@
 .mx-empty-note-small { font-size: 12px; color: var(--dim); }
 
 /* Panes */
-.mx-panes { flex: 1; min-height: 0; padding: 0 calc(12px * var(--pad, 1)) calc(12px * var(--pad, 1)); display: flex; flex-direction: row; gap: calc(12px * var(--pad, 1)); }
+.mx-panes { flex: 1; min-height: 0; padding: calc(var(--ptop) * var(--pad, 1)) calc(var(--pg) * var(--pad, 1)) calc(var(--pg) * var(--pad, 1)); display: flex; flex-direction: row; gap: calc(var(--pg) * var(--pad, 1)); }
 .mx-app.is-narrow .mx-panes { flex-direction: column; }
-.mx-pane-column { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: calc(12px * var(--pad, 1)); }
+.mx-pane-column { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: calc(var(--pg) * var(--pad, 1)); }
 .mx-pane {
   position: relative;
   flex: 1 1 0;
@@ -324,7 +326,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-radius: 14px;
+  border-radius: var(--r14);
   background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 120px), var(--pane);
   border: 1px solid var(--pane-line);
   box-shadow: 0 14px 34px rgba(0, 0, 0, .3);
@@ -372,7 +374,7 @@
 
 /* Settings */
 .mx-settings-scrim { position: absolute; inset: 0; z-index: 40; background: rgba(3, 5, 8, .5); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 24px; animation: v7scrim .2s ease-out; }
-.mx-settings { width: 100%; max-width: 880px; height: 100%; max-height: 620px; display: flex; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); overflow: hidden; backdrop-filter: blur(24px); animation: v8pane .26s var(--ease-out); }
+.mx-settings { width: 100%; max-width: 880px; height: 100%; max-height: 620px; display: flex; border-radius: var(--r16); background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); overflow: hidden; backdrop-filter: blur(24px); animation: v8pane .26s var(--ease-out); }
 .mx-settings-nav { width: 212px; flex: none; display: flex; flex-direction: column; padding: 18px 10px; background: rgba(0, 0, 0, .18); border-right: 1px solid var(--pane-line); overflow-y: auto; }
 .mx-app.is-narrow .mx-settings-nav { width: 176px; }
 .mx-settings-nav-title { font-size: 14px; font-weight: 600; padding: 0 10px 14px; }
@@ -553,8 +555,8 @@
 
 /* Tabs that do not fit scroll sideways: edge buttons appear only when more tabs lie beyond that end. */
 .mx-tabstrip { display: flex; align-items: center; gap: 2px; flex: 0 1 auto; min-width: 0; max-width: 100%; }
-.mx-tab-scroll { width: 26px; height: 32px; flex: none; border-radius: 9px; color: var(--muted); background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1px var(--pane-line); }
-.mx-tab-scroll:hover { background: var(--sel); color: var(--fg); }
+.mx-tab-scroll { width: var(--tsw); height: var(--tsh); flex: none; border-radius: calc(9px * var(--rk)); border-right: var(--tabbr); color: var(--muted); background: var(--strip-bg, rgba(255, 255, 255, .03)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); }
+.mx-tab-scroll:hover { background: var(--strip-hover, var(--sel)); color: var(--fg); }
 .mx-tab-scroll.is-left svg { transform: scaleX(-1); }
 /* The ends fade where tabs continue, a hint that there is more. */
 .mx-tablist.has-left { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px); mask-image: linear-gradient(to right, transparent 0, #000 28px); }
@@ -721,7 +723,7 @@
 .mx-inbox-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; font-size: 12.5px; color: var(--dim); }
 .mx-inbox-empty strong { font-size: 15px; color: var(--fg); }
 .mx-inbox-check { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: color-mix(in oklab, var(--ok) 20%, var(--bg)); }
-.mx-inbox-button { position: relative; height: 30px; min-width: 30px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 7px; border-radius: 9px; background: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .015)); box-shadow: inset 0 0 0 1px var(--pane-line); font-size: 12.5px; color: var(--fg2); cursor: pointer; transition: background-color .16s ease, box-shadow .16s ease, color .14s ease, transform .16s var(--ease-out); }
+.mx-inbox-button { position: relative; height: var(--ibh); min-width: var(--ibh); display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 7px; border-radius: calc(9px * var(--rk)); border-left: var(--tabbr); background: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .015)); box-shadow: inset 0 0 0 1px var(--pane-line); font-size: 12.5px; color: var(--fg2); cursor: pointer; transition: background-color .16s ease, box-shadow .16s ease, color .14s ease, transform .16s var(--ease-out); }
 .mx-inbox-button svg { transition: transform .2s var(--ease-out); }
 .mx-inbox-button:hover { background: linear-gradient(180deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .03)); color: var(--fg); transform: translateY(-1px); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, var(--pane-line)), 0 6px 16px -6px color-mix(in srgb, var(--accent) 40%, transparent); }
 .mx-inbox-button:hover svg { transform: scale(1.1); }
@@ -828,12 +830,12 @@
    focused pane, needs-you) and every status colour stay. */
 :root[data-finish="flat"] .mx-window { background: var(--bg); }
 :root[data-finish="flat"] .mx-card,
-:root[data-finish="flat"] .mx-pane { background: var(--main); backdrop-filter: none; border-radius: 8px; }
+:root[data-finish="flat"] .mx-pane { background: var(--main); backdrop-filter: none; }
 :root[data-finish="flat"] .mx-pane { box-shadow: none; }
 :root[data-finish="flat"] .mx-pane.is-focused,
 :root[data-finish="flat"] .mx-pane.is-focused:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
 :root[data-finish="flat"] .mx-sidebar { box-shadow: none; }
-:root[data-finish="flat"] .mx-settings { background: var(--main); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
+:root[data-finish="flat"] .mx-settings { background: var(--main); box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 :root[data-finish="flat"] .mx-settings-scrim { backdrop-filter: none; }
 :root[data-finish="flat"] .mx-rail-popover { box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 /* Settings › Appearance › Icons: Grayscale. Neutral tiles in either style; status badges on them keep their colours. */
@@ -849,17 +851,17 @@
 :root[data-finish="flat"] .mx-rail-row:not(.is-selected):hover,
 :root[data-finish="flat"] .mx-tab:not(.is-active):hover,
 :root[data-finish="flat"] .mx-tab:not(.is-active):focus-visible { box-shadow: none; transform: none; }
-:root[data-finish="flat"] .mx-tablist { background: transparent; box-shadow: none; border-radius: 10px; }
+:root[data-finish="flat"] .mx-tablist { background: transparent; box-shadow: none; border-radius: calc(10px * var(--rk)); }
 :root[data-finish="flat"] .mx-new-tab { background: transparent; box-shadow: none; }
 /* The session tray sits flush under its main row, with no box. */
 :root[data-finish="flat"] .mx-tray { margin: 0 0 4px; padding: 2px 0; border-radius: 0; background: transparent; box-shadow: none; }
 :root[data-finish="flat"] .mx-tray-item,
 :root[data-finish="flat"] .mx-tray-item:hover { box-shadow: none; transform: none; }
 /* Top-bar buttons and status badges stay flat: no gradient, glow, lift or entrance. */
-:root[data-finish="flat"] .mx-inbox-button { background: rgba(255, 255, 255, .025); box-shadow: inset 0 0 0 1px var(--pane-line); }
-:root[data-finish="flat"] .mx-inbox-button:hover { background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px var(--pane-line); transform: none; }
+:root[data-finish="flat"] .mx-inbox-button { background: var(--strip-bg, rgba(255, 255, 255, .025)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); }
+:root[data-finish="flat"] .mx-inbox-button:hover { background: var(--strip-hover, rgba(255, 255, 255, .06)); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); transform: none; }
 :root[data-finish="flat"] .mx-inbox-button:hover svg { transform: none; }
-:root[data-finish="flat"] .mx-inbox-button.is-open { background: rgba(255, 255, 255, .09); color: var(--fg); box-shadow: inset 0 0 0 1px var(--pane-line); }
+:root[data-finish="flat"] .mx-inbox-button.is-open { background: rgba(255, 255, 255, .09); color: var(--fg); box-shadow: var(--strip-ring, inset 0 0 0 1px var(--pane-line)); }
 :root[data-finish="flat"] .mx-inbox-count:not(.is-needs) { animation: none; }
 :root[data-finish="flat"] .mx-pane-status,
 :root[data-finish="flat"] .mx-pane-status:hover { animation: none; backdrop-filter: none; box-shadow: inset 0 0 0 1px var(--pane-line); transform: none; }
@@ -867,32 +869,23 @@
 :root[data-finish="flat"] .mx-pane-status.is-done { background: transparent; }
 :root[data-finish="flat"] .mx-pane-status.is-idle .mx-status-dot { animation: none; }
 :root[data-finish="flat"] .mx-badge:not(.is-needs) { animation: none; }
-:root[data-finish="flat"] .mx-inspect { background: var(--main); backdrop-filter: none; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
+:root[data-finish="flat"] .mx-inspect { background: var(--main); backdrop-filter: none;  }
 
-/* Window style: Tiled. Flat's finish with the layout pulled edge to edge: square corners, 4px gaps and a flush
-   strip tab bar split by hairlines. shortcut: overrides the Flat rules directly instead of the handoff's --rk/--pg variables. */
-:root[data-style="tiled"] .mx-card,
-:root[data-style="tiled"] .mx-pane,
-:root[data-style="tiled"] .mx-settings,
-:root[data-style="tiled"] .mx-inspect,
-:root[data-style="tiled"] .mx-tablist { border-radius: 0; }
-:root[data-style="tiled"] .mx-sidebar { margin: 0; border-width: 0 1px 0 0; box-shadow: none; }
-:root[data-style="tiled"] .mx-panes { padding: 4px; gap: 4px; }
-:root[data-style="tiled"] .mx-pane-column { gap: 4px; }
-:root[data-style="tiled"] .mx-inspect { top: 4px; right: 4px; bottom: 4px; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); }
-:root[data-style="tiled"] .mx-tabbar { height: 40px; gap: 0; padding: 0; align-items: stretch; border-bottom: 1px solid var(--pane-line); }
-:root[data-style="tiled"] .mx-tablist { padding: 0; gap: 0; background: transparent; box-shadow: none; }
-:root[data-style="tiled"] .mx-tab { height: 40px; border-radius: 0; border-right: 1px solid var(--pane-line); }
-:root[data-style="tiled"] .mx-tab.is-active { box-shadow: none; }
-:root[data-style="tiled"] .mx-tab:not(.is-active):hover,
-:root[data-style="tiled"] .mx-tab:not(.is-active):focus-visible { box-shadow: none; transform: none; }
-:root[data-style="tiled"] .mx-new-tab,
-:root[data-style="tiled"] .mx-tab-scroll,
-:root[data-style="tiled"] .mx-inbox-button { height: 40px; min-width: 40px; margin: 0; border-radius: 0; background: transparent; box-shadow: none; border-right: 1px solid var(--pane-line); }
-:root[data-style="tiled"] .mx-inbox-button { border-right: 0; border-left: 1px solid var(--pane-line); }
-:root[data-style="tiled"] .mx-new-tab:not(:disabled):hover,
-:root[data-style="tiled"] .mx-tab-scroll:hover,
-:root[data-style="tiled"] .mx-inbox-button:hover { background: rgba(255, 255, 255, .06); box-shadow: none; transform: none; }
+/* Window style variables, set on the app root so they can use the theme's colours. Glass is the default; Flat softens the radii and shadow; Tiled pulls the layout edge to
+   edge (square corners, 4px gaps, a flush 40px tab strip with hairlines). The layout rules above read these.
+   --rk multiplies the radii that Tiled squares off. --strip-* are the tab bar's buttons: Tiled drops their fill and ring. */
+.mx-app {
+  --rk: 1; --r14: 14px; --r16: 16px; --pg: 12px; --ptop: 0px; --tbh: 56px; --tbp: 0 10px; --tbg: 6px; --tbb: 0;
+  --tabh: 36px; --tabbr: 0; --sh: 0 22px 60px rgba(0, 0, 0, .5);
+  --sbm: 8px 0 8px 8px; --sbw: 1px; --tba: center; --tl: 4px; --edge: 8px; --tsh: 32px; --tsw: 26px; --ibh: 30px;
+}
+:root[data-style="flat"] .mx-app { --r14: 8px; --r16: 10px; --sh: 0 8px 24px rgba(0, 0, 0, .3); }
+:root[data-style="tiled"] .mx-app {
+  --rk: 0; --r14: 0px; --r16: 0px; --pg: 4px; --ptop: 4px; --tbh: 40px; --tbp: 0; --tbg: 0px; --tbb: 1px solid var(--pane-line);
+  --tabh: 40px; --tabbr: 1px solid var(--pane-line); --sh: 0 6px 18px rgba(0, 0, 0, .35);
+  --sbm: 0; --sbw: 0 1px 0 0; --tba: stretch; --tl: 0px; --edge: 4px; --tsh: 40px; --tsw: 40px; --ibh: 40px;
+  --strip-bg: transparent; --strip-ring: none; --strip-hover: rgba(255, 255, 255, .06);
+}
 
 /* Settings › Appearance › Window style cards. */
 .mx-style-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; padding: 0 14px 14px; }
