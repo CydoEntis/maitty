@@ -2683,7 +2683,7 @@ dependencies = [
 
 [[package]]
 name = "maitty"
-version = "0.62.0"
+version = "0.62.1"
 dependencies = [
  "maitty-terminal-client",
 ]
