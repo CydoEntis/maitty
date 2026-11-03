@@ -205,9 +205,14 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   hidden session needs you and opens a side menu listing every session of the project. Clicking a
   session focuses its pane where it is open, else opens it in a **new tab**; it never replaces
   another pane. When the lead changes the new main row fades in. ⌘B folds
-  it to a 60px rail of folder shapes (initials on the front) and icons. Every folder has its own colour,
-  chosen from its path, in the sidebar and the rail; in the rail a folder and its sessions sit on one
-  strip in that colour. **Rail popovers** open beside the item on hover or keyboard focus after 280ms
+  it to a 60px rail. Every folder has its own colour, chosen from its path, in the sidebar and the rail.
+  In the rail each project is a 48px group (radius 14, square in Tiled) tinted in its colour (6% collapsed,
+  9% open, 4% more when it holds the focused session) with an inset ring (20%, 34% focused); the focused
+  project also has a 3px bar at the rail's left edge. Its tile is an outlined folder filled 14% (26%
+  focused) with two letters inside: the initials of hyphenated parts (`maitty-docs` is `MD`), else the first
+  two letters (`maitty` is `Ma`). Badges on the tile: an amber square when something needs you; when the
+  group is folded, a count pill and a spinner if anything in it is working. An open group has a 20px
+  hairline under the tile, then its session icons. **Rail popovers** open beside the item on hover or keyboard focus after 280ms
   (instantly once one is open), 10px to its right with an arrow pointing at it, and close 160ms after the
   pointer leaves both the item and the popover, so the popover can be used. A project's (260px) shows its
   colour, name, path and branch, then every session in priority order (icon, name, process, state word),

@@ -184,15 +184,24 @@
 .mx-rail-divider { width: calc(28px * var(--icon-scale, 1)); height: 1px; background: var(--pane-line); flex: none; }
 .mx-rail-list { flex: 1; min-height: 0; width: 100%; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0 12px; }
 /* A folder and its sessions sit on one strip in the folder's colour, so the rail shows which belong together. */
-.mx-rail-group { display: flex; flex-direction: column; align-items: center; gap: 6px; width: calc(52px * var(--icon-scale, 1)); padding: 4px 0 6px; border-radius: 14px; background: color-mix(in srgb, var(--folder-from, #6FE0CB) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--folder-from, #6FE0CB) 24%, transparent); }
-.mx-rail-label { position: relative; width: calc(44px * var(--icon-scale, 1)); height: calc(34px * var(--icon-scale, 1)); display: flex; align-items: center; justify-content: center; border-radius: 9px; transition: background-color .14s ease, transform .2s var(--ease-out), box-shadow .14s ease; }
+.mx-rail-group { --tint: 6%; --ring: 20%; position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: calc(48px * var(--icon-scale, 1)); padding: 4px 0; border-radius: calc(14px * var(--rk)); background: color-mix(in srgb, var(--folder-from, #6FE0CB) var(--tint), transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--folder-from, #6FE0CB) var(--ring), transparent); transition: background-color .2s ease, box-shadow .2s ease; }
+.mx-rail-group.is-open { --tint: 9%; }
+.mx-rail-group.has-focused { --tint: 10%; --ring: 34%; }
+.mx-rail-group.is-open.has-focused { --tint: 13%; }
+.mx-rail-group.has-focused::before { content: ""; position: absolute; left: -6px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--folder-from, #6FE0CB); }
+.mx-rail-label { position: relative; width: calc(40px * var(--icon-scale, 1)); height: calc(36px * var(--icon-scale, 1)); display: flex; align-items: center; justify-content: center; border-radius: calc(9px * var(--rk)); transition: background-color .14s ease, transform .2s var(--ease-out); }
 .mx-rail-label:hover { background: rgba(255, 255, 255, .06); transform: scale(1.06); }
-.mx-rail-label.has-focused { box-shadow: 0 0 0 2px var(--accent-soft); }
+.mx-rail-folder-shape { fill: color-mix(in srgb, var(--folder-from, #6FE0CB) 14%, transparent); stroke: color-mix(in srgb, var(--folder-from, #6FE0CB) 55%, transparent); stroke-width: 1.4; transition: fill .2s ease; }
+.mx-rail-folder.is-focused .mx-rail-folder-shape { fill: color-mix(in srgb, var(--folder-from, #6FE0CB) 26%, transparent); }
+.mx-rail-folder svg { display: block; width: calc(30px * var(--icon-scale, 1)); height: calc(26px * var(--icon-scale, 1)); overflow: visible; }
+.mx-rail-folder-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-top: 3px; font-size: 10.5px; font-weight: 700; line-height: 1; color: color-mix(in srgb, var(--folder-from, #6FE0CB) 70%, var(--fg)); }
+.mx-rail-folder.is-focused .mx-rail-folder-text { color: var(--fg); }
+.mx-rail-needs { position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 2px; background: var(--warn); }
+.mx-rail-count { position: absolute; right: -2px; bottom: -2px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg); background: var(--raise); box-shadow: 0 0 0 2px var(--card-ring); }
+.mx-rail-spin { position: absolute; left: -2px; bottom: -2px; width: 15px; height: 15px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; line-height: 1; color: var(--accent); background: var(--well); box-shadow: 0 0 0 2px var(--card-ring); }
+.mx-rail-hairline { flex: none; width: 20px; height: 1px; background: color-mix(in srgb, var(--folder-from, #6FE0CB) 30%, transparent); }
+:root[data-icons="grayscale"] .mx-rail-group { --folder-from: var(--fg2) !important; --folder-to: var(--fg2) !important; }
 .mx-rail-folder { position: relative; display: flex; align-items: center; justify-content: center; }
-.mx-rail-folder svg { display: block; width: calc(34px * var(--icon-scale, 1)); height: calc(26px * var(--icon-scale, 1)); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35)); }
-.mx-rail-folder-back { fill: var(--folder-to, #2E9C88); }
-.mx-rail-folder-front { fill: var(--folder-from, #6FE0CB); }
-.mx-rail-folder-text { position: absolute; left: 0; right: 0; bottom: 3px; text-align: center; font-size: 9.5px; font-weight: 700; letter-spacing: .03em; color: var(--on-accent); text-transform: uppercase; line-height: 1; }
 /* What a collapsed folder is, beside it: fixed to the window so the rail's scrolling cannot clip it. */
 .mx-rail-popover { position: fixed; z-index: 50; transform: translateY(-50%); min-width: 200px; max-width: 300px; padding: 10px 12px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 14px 34px rgba(0, 0, 0, .35); backdrop-filter: blur(18px); pointer-events: none; animation: v7fade .14s ease-out; }
 .mx-pop-head { display: flex; align-items: center; gap: 8px; }
@@ -202,7 +211,6 @@
 .mx-pop-sessions li { display: flex; flex-direction: column; gap: 1px; }
 .mx-pop-title { font-size: 12.5px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-pop-status { font-family: var(--mono); font-size: 11px; color: var(--dim); }
-.mx-rail-needs { position: absolute; top: 1px; right: 0; width: 6px; height: 6px; border-radius: 2px; background: var(--warn); }
 .mx-rail-rows { display: flex; flex-direction: column; align-items: center; gap: 6px; animation: v7fade .2s ease-out; }
 .mx-rail-row { position: relative; width: calc(40px * var(--icon-scale, 1)); height: calc(40px * var(--icon-scale, 1)); display: flex; align-items: center; justify-content: center; border-radius: 11px; transition: background-color .16s ease, box-shadow .18s ease, transform .2s var(--ease-out); }
 .mx-rail-row:not(.is-selected):hover { background: rgba(255, 255, 255, .055); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); transform: scale(1.06); }

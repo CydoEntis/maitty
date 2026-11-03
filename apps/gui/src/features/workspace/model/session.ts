@@ -237,5 +237,7 @@ const MAX_INITIALS = 3
 /** The rail's short label for a group: initials of its parts (`maitty-docs` → `MD`), else two letters. */
 export function groupInitials(group: Pick<SessionGroup, 'kind' | 'name'>): string {
   const parts = group.name.split(/[-_.]/).filter(Boolean)
-  return (parts.length > 1 ? parts.map((part) => part[0] ?? '').join('').slice(0, MAX_INITIALS) : group.name.slice(0, SHORT_NAME_LETTERS)).toUpperCase()
+  if (parts.length > 1) return parts.map((part) => part[0] ?? '').join('').slice(0, MAX_INITIALS).toUpperCase()
+  const letters = group.name.slice(0, SHORT_NAME_LETTERS)
+  return `${letters.slice(0, 1).toUpperCase()}${letters.slice(1).toLowerCase()}`
 }

@@ -411,6 +411,41 @@ describe('desktop terminal multiplexer', () => {
     }
   })
 
+  it('draws each collapsed project as a tinted group with its two letters, and marks the focused one', async () => {
+    const user = userEvent.setup()
+    const wide = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 })
+    try {
+      daemon.loadConversations.mockResolvedValue([
+        inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { status: 'needs-you' }),
+        inRepo(4, `${HOME}/code/maitty`, `${HOME}/code/maitty`),
+        term(2, `${HOME}/personal/dynamic-ui`, { status: 'working' }),
+      ])
+      renderDesktopApp()
+      await collapseSidebar()
+      const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
+
+      const groups = Array.from(sidebar.querySelectorAll('.mx-rail-group'))
+      expect(groups).toHaveLength(2)
+      expect(Array.from(sidebar.querySelectorAll('.mx-rail-folder-text')).map((label) => label.textContent).sort()).toEqual(['DU', 'Ma'])
+      // Open groups show a hairline under the tile, then their sessions; only one holds the focused session.
+      expect(sidebar.querySelectorAll('.mx-rail-group.has-focused')).toHaveLength(1)
+      expect(sidebar.querySelectorAll('.mx-rail-group.is-open .mx-rail-hairline')).toHaveLength(2)
+      expect(sidebar.querySelector('.mx-rail-needs')).not.toBeNull()
+      expect(sidebar.querySelector('.mx-rail-count')).toBeNull()
+
+      // Folding a project leaves its tile with a count, and a spinner while something in it works.
+      await user.click(within(sidebar).getByRole('button', { name: /^dynamic-ui · 1 session/ }))
+      const folded = within(sidebar).getByRole('button', { name: /^dynamic-ui · 1 session/ }).closest('.mx-rail-group')
+      expect(folded).not.toHaveClass('is-open')
+      expect(folded?.querySelector('.mx-rail-count')).toHaveTextContent('1')
+      expect(folded?.querySelector('.mx-rail-spin')).not.toBeNull()
+      expect(folded?.querySelector('.mx-rail-hairline')).toBeNull()
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: wide })
+    }
+  })
+
   it('keeps a rail popover open while the pointer is on it, and opens a session from its list', async () => {
     const user = userEvent.setup()
     const wide = window.innerWidth

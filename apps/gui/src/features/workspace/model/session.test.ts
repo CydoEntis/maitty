@@ -104,8 +104,8 @@ describe('session view', () => {
 
   it('shortens a group to initials for the rail', () => {
     expect(groupInitials({ kind: 'repo', name: 'maitty-docs' })).toBe('MD')
-    expect(groupInitials({ kind: 'repo', name: 'maitty' })).toBe('MA')
-    expect(groupInitials({ kind: 'folder', name: 'Downloads' })).toBe('DO')
+    expect(groupInitials({ kind: 'repo', name: 'maitty' })).toBe('Ma')
+    expect(groupInitials({ kind: 'folder', name: 'Downloads' })).toBe('Do')
   })
 })
 

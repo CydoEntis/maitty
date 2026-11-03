@@ -210,8 +210,10 @@ function RailFolderButton(props: { group: SessionGroup; open: boolean; online: b
       onBlur={hover.leave}
       onClick={props.onToggle}
     >
-      <RailFolder colorKey={group.key} colorId={group.colorId} initials={groupInitials(group)} />
+      <RailFolder colorKey={group.key} colorId={group.colorId} initials={groupInitials(group)} focused={group.containsFocused} />
       {online && group.needsCount > 0 && <span className="mx-rail-needs" />}
+      {!open && <span className="mx-rail-count">{group.sessions.length}</span>}
+      {!open && online && group.workingCount > 0 && <span className="mx-rail-spin"><Spinner /></span>}
     </button>
   )
 }
@@ -254,12 +256,13 @@ function Rail(props: GroupProps) {
           const open = isOpen(group)
           const label = `${group.name} · ${String(group.sessions.length)} session${group.sessions.length === 1 ? '' : 's'} · click to ${open ? 'collapse' : 'expand'}`
           return (
-            <div key={group.key} className="mx-rail-group" style={folderStyle(group.key, group.colorId)}>
+            <div key={group.key} className={`mx-rail-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`} style={folderStyle(group.key, group.colorId)}>
               <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
                 <RailFolderButton group={group} open={open} online={online} label={label} hover={hover} onToggle={() => { onToggleGroup(group.key) }} />
               </ProjectMenu>
               {open && (
                 <div className="mx-rail-rows">
+                  <div className="mx-rail-hairline" />
                   {group.sessions.map((session) => (
                     <RailSessionButton
                       key={session.id}
