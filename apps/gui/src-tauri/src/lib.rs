@@ -261,6 +261,28 @@ async fn rename_terminal_session(
 }
 
 #[tauri::command]
+async fn pin_terminal_session(
+    app: tauri::AppHandle,
+    term: u32,
+    pinned: bool,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::pin_terminal_session(term, pinned, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn archive_terminal_session(
+    app: tauri::AppHandle,
+    term: u32,
+    archived: bool,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::archive_terminal_session(term, archived, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn mark_terminal_seen(
     app: tauri::AppHandle,
     term: u32,
@@ -474,6 +496,8 @@ pub fn run() {
             start_shell_session,
             rename_terminal_session,
             mark_terminal_seen,
+            pin_terminal_session,
+            archive_terminal_session,
             close_terminal_session,
             send_conversation,
             approve_conversation,

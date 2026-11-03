@@ -643,6 +643,40 @@ pub async fn close_terminal_session(term: u32, daemon_executable: PathBuf) -> Re
     }
 }
 
+/// Pin a pane to the top of its project, or let it go back to its place.
+pub async fn pin_terminal_session(
+    term: u32,
+    pinned: bool,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::PinPane { term, pinned }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected pin reply"),
+    }
+}
+
+/// Put a pane away from the project lists without stopping it, or bring it back.
+pub async fn archive_terminal_session(
+    term: u32,
+    archived: bool,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ArchivePane { term, archived }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected archive reply"),
+    }
+}
+
 /// The user looked at a pane: the daemon turns a finished agent's done into idle.
 pub async fn mark_terminal_seen(term: u32, daemon_executable: PathBuf) -> Result<Value> {
     let reply = request(
