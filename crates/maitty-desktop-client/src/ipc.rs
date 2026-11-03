@@ -132,6 +132,8 @@ async fn open_as(attach: bool) -> Result<(Reader, Writer)> {
             from: None,
             structured: None,
             surface: protocol::Surface::Desktop,
+            // The window asks for a pane's replay when it shows the pane (`WantReplay`).
+            replays: false,
         },
     )
     .await?;

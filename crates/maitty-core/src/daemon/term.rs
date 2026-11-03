@@ -15,6 +15,8 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 
 const MAX_PENDING_MARKS: usize = 64;
+/// How much of the ring a desktop pane is replayed: it keeps about ten thousand lines of scrollback.
+const DESKTOP_REPLAY_BYTES: usize = 1 << 20;
 const TIMELINE_KEPT: usize = 60;
 
 #[derive(Default)]
@@ -1022,12 +1024,27 @@ impl Term {
     }
 
     pub fn replay(&self) -> Vec<u8> {
+        self.replay_tail(usize::MAX)
+    }
+
+    /// The replay a surface gets: the desktop window keeps far less scrollback than the ring
+    /// holds, so it is sent only the end of it.
+    pub fn replay_for(&self, surface: crate::protocol::Surface) -> Vec<u8> {
+        match surface {
+            crate::protocol::Surface::Desktop => self.replay_tail(DESKTOP_REPLAY_BYTES),
+            crate::protocol::Surface::Terminal => self.replay(),
+        }
+    }
+
+    /// The last `limit` bytes of the ring, then the screen as it is now. Restoring the screen
+    /// after the history means a ring that starts mid-escape-sequence or spans resizes still
+    /// ends on the right picture, so the cut can fall anywhere.
+    pub(super) fn replay_tail(&self, limit: usize) -> Vec<u8> {
         let (a, b) = self.ring.as_slices();
-        // Restore the screen we know is current after replaying history, so a ring that
-        // starts mid-escape-sequence or spans resizes still ends on the right picture.
-        let mut out = Vec::with_capacity(a.len() + b.len() + 4096);
-        out.extend_from_slice(a);
-        out.extend_from_slice(b);
+        let skip = (a.len() + b.len()).saturating_sub(limit);
+        let mut out = Vec::with_capacity((a.len() + b.len()).min(limit) + 4096);
+        out.extend_from_slice(&a[skip.min(a.len())..]);
+        out.extend_from_slice(&b[skip.saturating_sub(a.len()).min(b.len())..]);
         out.extend_from_slice(b"\x1b[0m\x1b[2J\x1b[H");
         out.extend(self.parser.screen().state_formatted());
         out

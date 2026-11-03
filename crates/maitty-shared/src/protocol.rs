@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 68;
+pub const PROTOCOL_VERSION: u32 = 69;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -65,7 +65,7 @@ pub struct ConversationSummary {
 /// Which app a client is. A terminal session belongs to the app that started it, and only
 /// that app may list, type into or resize it (ADR 0045). Clients that don't say are terminal
 /// clients, which is what the terminal app has always been.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Surface {
     #[default]
@@ -76,9 +76,10 @@ pub enum Surface {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum ClientMsg {
-    /// First frame of every connection. `attach` clients get replays and live output.
-    /// `from`: the pane this request comes from (its id and secret), for a command run
-    /// inside a pane (an agent); the server checks what that pane may do.
+    /// First frame of every connection. `attach` clients get live output and, with `replays`,
+    /// every pane's replay up front; one that asks for panes as it shows them (the desktop
+    /// window) sends `WantReplay` instead. `from`: the pane this request comes from (its id and
+    /// secret), for a command run inside a pane (an agent); the server checks what that pane may do.
     Hello {
         version: u32,
         attach: bool,
@@ -88,12 +89,19 @@ pub enum ClientMsg {
         structured: Option<StructuredIdentity>,
         #[serde(default)]
         surface: Surface,
+        #[serde(default = "replays_by_default")]
+        replays: bool,
     },
     Command(Command),
     Input {
         term: TermId,
         #[serde(with = "serde_bytes")]
         data: Vec<u8>,
+    },
+    /// An attached client wants one pane's replay now, on this connection, in order with its
+    /// output.
+    WantReplay {
+        term: TermId,
     },
     Resize {
         term: TermId,
@@ -642,13 +650,24 @@ impl SubagentState {
     }
 }
 
+fn replays_by_default() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMsg {
     Welcome {
         version: u32,
     },
     State(Snapshot),
-    /// Sent once per terminal on attach: the recent output ring, to rebuild scrollback.
+    /// Only some panes changed since the last `State` or `TermsChanged` on this connection:
+    /// replace these and drop those. Everything else in the client's snapshot stands.
+    TermsChanged {
+        changed: Vec<TermInfo>,
+        removed: Vec<TermId>,
+    },
+    /// Sent per terminal on attach (or on `WantReplay`): the recent output ring, to rebuild
+    /// scrollback.
     Replay {
         term: TermId,
         cols: u16,
@@ -1381,11 +1400,13 @@ mod tests {
                 from: Some((3, "00ff".into())),
                 structured: None,
                 surface: Surface::Terminal,
+                replays: true,
             },
             ClientMsg::Input {
                 term: 3,
                 data: b"ls\r".to_vec(),
             },
+            ClientMsg::WantReplay { term: 3 },
             ClientMsg::Resize {
                 term: 3,
                 cols: 120,
@@ -1560,6 +1581,10 @@ mod tests {
                 version: PROTOCOL_VERSION,
             },
             ServerMsg::State(Snapshot::default()),
+            ServerMsg::TermsChanged {
+                changed: Vec::new(),
+                removed: vec![3],
+            },
             ServerMsg::Replay {
                 term: 3,
                 cols: 80,

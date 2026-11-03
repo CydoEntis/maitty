@@ -1379,6 +1379,7 @@ fn from_pane(
         tx,
         false,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     d.handle(Ev::From(client, term, token.into()));
     rx
@@ -2149,6 +2150,7 @@ fn only_a_pane_shell_asks_for_an_agent_worktree() {
         tx,
         false,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     d.handle(Ev::Msg(
         1,
@@ -2167,6 +2169,7 @@ fn only_a_pane_shell_asks_for_an_agent_worktree() {
         tx,
         false,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     let token = d.terms[&t].token.clone();
     d.handle(Ev::From(2, t, token));
@@ -2188,6 +2191,7 @@ fn only_a_pane_shell_asks_for_an_agent_worktree() {
         tx,
         false,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     d.handle(Ev::From(3, t, "not-the-secret".into()));
     d.handle(Ev::Msg(
@@ -2396,6 +2400,7 @@ fn closing_the_last_pane_keeps_an_open_window() {
         tx,
         true,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     d.close_term(t);
     assert!(
@@ -2678,6 +2683,7 @@ fn an_agent_asks_you_and_gets_your_answer() {
         tx,
         false,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     let ask = Command::AskHuman {
         term: t,
@@ -2715,6 +2721,7 @@ fn a_pane_does_what_its_grants_allow() {
         tx,
         false,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
@@ -3358,6 +3365,7 @@ fn the_snapshot_carries_a_check_summary_and_a_query_returns_its_output() {
         tx,
         false,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     d.message(
         7,
@@ -3404,6 +3412,7 @@ fn a_pane_may_not_read_another_panes_check_output_without_the_read_grant() {
         tx,
         false,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
@@ -4522,6 +4531,7 @@ fn a_read_only_pane_may_not_rerun_or_override_another_panes_check() {
         tx,
         false,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
@@ -4576,6 +4586,7 @@ fn a_pane_may_not_override_its_own_check() {
         tx,
         false,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
@@ -4613,6 +4624,7 @@ fn only_you_answer_a_repo_check_approval() {
         tx,
         false,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
@@ -4702,6 +4714,7 @@ fn viewer(d: &mut Daemon) -> mpsc::Receiver<ServerMsg> {
         tx,
         true,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     while rx.try_recv().is_ok() {}
     rx
@@ -5473,6 +5486,7 @@ fn an_override_by_name_acts_on_that_checkpoint_and_says_who() {
         tx,
         false,
         crate::protocol::Surface::Terminal,
+        true,
     ));
     let token = d.terms[&reviewer].token.clone();
     d.handle(Ev::From(7, reviewer, token));
@@ -7070,4 +7084,81 @@ fn pin_and_archive_stick_survive_a_restart_and_never_stop_the_pane() {
     );
     close(&mut d, &[t]);
     close(&mut d2, &[back]);
+}
+
+#[test]
+fn a_change_to_one_pane_reaches_clients_as_a_delta_and_no_change_as_nothing() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let surface = crate::protocol::Surface::Terminal;
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(7, tx, true, surface, false));
+    while crx.try_recv().is_ok() {}
+
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert!(
+        matches!(crx.try_recv(), Ok(ServerMsg::State(_))),
+        "the first change after an attach is the whole state"
+    );
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert!(crx.try_recv().is_err(), "nothing changed, so nothing is sent");
+
+    d.terms.get_mut(&t).unwrap().process = "vim".into();
+    d.publish_state(surface, d.snapshot_for(surface));
+    match crx.try_recv() {
+        Ok(ServerMsg::TermsChanged { changed, removed }) => {
+            assert_eq!(changed.iter().map(|term| term.id).collect::<Vec<_>>(), vec![t]);
+            assert_eq!(changed[0].process, "vim");
+            assert!(removed.is_empty());
+        }
+        other => panic!("one pane changed, so a delta: {other:?}"),
+    }
+
+    close(&mut d, &[t]);
+    d.publish_state(surface, d.snapshot_for(surface));
+    let gone = std::iter::from_fn(|| crx.try_recv().ok()).any(|m| match m {
+        ServerMsg::State(s) => !s.terms.contains_key(&t),
+        ServerMsg::TermsChanged { removed, .. } => removed.contains(&t),
+        _ => false,
+    });
+    assert!(gone, "a closed pane leaves the clients' state, whole or as a delta");
+}
+
+#[test]
+fn a_client_that_attached_without_replays_gets_one_when_it_asks() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        true,
+        crate::protocol::Surface::Terminal,
+        false,
+    ));
+    let replays_on_attach = std::iter::from_fn(|| crx.try_recv().ok())
+        .filter(|m| matches!(m, ServerMsg::Replay { .. }))
+        .count();
+    assert_eq!(replays_on_attach, 0);
+
+    d.handle(Ev::Msg(7, ClientMsg::WantReplay { term: t }));
+
+    assert!(matches!(crx.try_recv(), Ok(ServerMsg::Replay { term, .. }) if term == t));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_desktop_replay_is_the_end_of_the_ring_and_then_the_screen() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let term = d.terms.get_mut(&t).unwrap();
+    term.ring_push_for_test(b"0123456789");
+
+    let tail = term.replay_tail(4);
+    let full = term.replay();
+
+    assert!(tail.starts_with(b"6789[0m[2J[H"), "{tail:?}");
+    assert_eq!(term.replay_tail(usize::MAX), full);
+    assert!(full.len() > tail.len());
+    close(&mut d, &[t]);
 }

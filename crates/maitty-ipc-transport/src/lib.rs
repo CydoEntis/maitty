@@ -148,6 +148,7 @@ mod tests {
             from: Some((7, "pane-secret".into())),
             structured: None,
             surface: Surface::Terminal,
+            replays: true,
         };
 
         send(&mut left_writer, &message).await.unwrap();
@@ -160,6 +161,7 @@ mod tests {
                 from: Some((7, token)),
                 structured: None,
                 surface: Surface::Terminal,
+                replays: true,
             }) if token == "pane-secret"
         ));
     }

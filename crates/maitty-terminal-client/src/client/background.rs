@@ -77,6 +77,18 @@ impl App {
                 self.check_view_sync();
                 self.maybe_restart_daemon(last_session_closed);
             }
+            ServerMsg::TermsChanged { changed, removed } => {
+                // The same path as a full state, with the panes that changed put into the
+                // snapshot held here, so every rule a state update runs still runs.
+                let mut merged = self.snap.clone();
+                for id in removed {
+                    merged.terms.remove(&id);
+                }
+                for term in changed {
+                    merged.terms.insert(term.id, term);
+                }
+                self.on_server(ServerMsg::State(merged));
+            }
             ServerMsg::Replay {
                 term,
                 cols,
