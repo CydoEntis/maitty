@@ -44,6 +44,8 @@ import { formatDroppedPaths } from '@/features/terminal/droppedPaths'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
 import { sendNativeNotice } from '@/features/notifications/native'
+import { showSessionNotice } from '@/features/notifications/notify'
+import { sessionNoticeFor } from '@/features/notifications/noticeForSession'
 import { noticesFor } from '@/features/notifications/transitions'
 import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
 import { newWorktreeSession } from '@/features/worktrees/api'
@@ -679,25 +681,6 @@ export function DesktopApp() {
     retry: false,
   })
 
-  // A session that just started needing you, finished or failed: tell the system, if you are looking elsewhere.
-  const { notifyNeedsYou, notifyFinished, notifyError } = preferences
-  useEffect(() => {
-    const notices = online
-      ? noticesFor(lastStatuses.current, sessions, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
-      : []
-    lastStatuses.current = new Map(sessions.map((item) => [item.id, item.status]))
-    // In the window but on another pane: a toast you can click. Away from the window: the system's.
-    const inWindow = document.hasFocus()
-    for (const notice of notices) {
-      if (inWindow) {
-        toast(notice.title, { description: notice.body, action: { label: 'Open', onClick: () => { showSessionById(notice.sessionId) } } })
-        continue
-      }
-      lastNotified.current = { sessionId: notice.sessionId, at: Date.now() }
-      sendNativeNotice(notice.title, notice.body).catch((error: unknown) => { console.warn('Could not show a system notification', error) })
-    }
-  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, showSessionById])
-
   // Looking at a pane acknowledges it: a finished agent's done goes back to idle, as when the terminal app
   // focuses it, and an error in it leaves the inbox. Needs-you stays until the agent is answered.
   const viewedId = focusedSession?.id
@@ -731,6 +714,30 @@ export function DesktopApp() {
       .then(() => { flash(`Sent “${answer}” to ${displayName(target)}`) })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not answer the session')) })
   }, [sessionMap, sendTo, flash])
+
+  // A session that just started needing you, finished or failed: tell the system, if you are looking elsewhere.
+  const { notifyNeedsYou, notifyFinished, notifyError } = preferences
+  useEffect(() => {
+    const notices = online
+      ? noticesFor(lastStatuses.current, sessions, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
+      : []
+    lastStatuses.current = new Map(sessions.map((item) => [item.id, item.status]))
+    // In the window but on another pane: a toast you can click. Away from the window: the system's.
+    const inWindow = document.hasFocus()
+    for (const notice of notices) {
+      if (inWindow) {
+        const target = sessionMap.get(notice.sessionId)
+        const card = target && sessionNoticeFor(target, projectOf.get(target.id), {
+          open: () => { showSessionById(notice.sessionId) },
+          allow: online ? () => { answerSession(notice.sessionId, 'y') } : null,
+        })
+        if (card) showSessionNotice(notice.sessionId, card)
+        continue
+      }
+      lastNotified.current = { sessionId: notice.sessionId, at: Date.now() }
+      sendNativeNotice(notice.title, notice.body).catch((error: unknown) => { console.warn('Could not show a system notification', error) })
+    }
+  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, showSessionById, sessionMap, projectOf, answerSession])
 
   // Types the resume command into the session, as you would. Nothing resumes without this click.
   const resumeInterrupted = useCallback((target: SessionView) => {
@@ -1125,7 +1132,7 @@ export function DesktopApp() {
             )}
             {toastMessage && <Toast key={toastMessage.key} message={toastMessage.text} />}
           </div>
-          <Toaster position="bottom-right" theme={theme.light ? 'light' : 'dark'} />
+          <Toaster position="top-right" theme={theme.light ? 'light' : 'dark'} />
         </div>
       </EffectsContext.Provider>
     </ReducedMotionContext.Provider>

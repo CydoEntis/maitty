@@ -851,6 +851,27 @@
 .mx-archived-name { font-size: 12.5px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-archived-proc { font-family: var(--mono); font-size: 11px; color: var(--dim); }
 
+/* Notification card (design 10.3): the app, the project, what happened, and what you can do about it. */
+.mx-notice { position: relative; width: 356px; max-width: calc(100vw - 32px); display: flex; gap: 12px; padding: 12px 14px 12px 12px; border-radius: 16px; overflow: hidden; color: var(--fg); background: color-mix(in oklab, var(--raise) 82%, transparent); backdrop-filter: blur(18px) saturate(1.2); border: 1px solid var(--pane-line); box-shadow: 0 16px 44px rgba(0, 0, 0, .5); animation: v7fade .18s ease-out; }
+.mx-notice.is-needs { border-color: var(--warn-line); }
+.mx-notice.is-error { border-color: var(--danger-line); }
+.mx-notice-tile { flex: none; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: linear-gradient(140deg, color-mix(in oklab, var(--accent) 88%, white 12%), var(--accent)); color: var(--on-accent); font: 600 13px var(--mono); }
+.mx-notice-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mx-notice-head { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); }
+.mx-notice-app { font-weight: 600; letter-spacing: .08em; }
+.mx-notice-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
+.mx-notice-age { margin-left: auto; }
+.mx-notice-title { font-size: 13.5px; font-weight: 600; }
+.mx-notice-body { font-size: 12.5px; line-height: 1.4; color: var(--fg2); overflow-wrap: anywhere; }
+.mx-notice-actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.mx-notice-actions button { height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: var(--fg2); background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); transition: background-color .14s ease, color .14s ease; }
+.mx-notice-actions button:hover { background: var(--sel); color: var(--fg); }
+.mx-notice-actions button.is-primary { font-weight: 600; color: var(--on-warn); background: var(--warn); box-shadow: none; }
+.mx-notice-actions button.is-primary:hover { background: color-mix(in oklab, var(--warn) 88%, white 12%); color: var(--on-warn); }
+.mx-notice-actions button.is-quiet { background: transparent; box-shadow: none; }
+.mx-notice-countdown { position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; background: var(--accent); transform-origin: left; animation: mx-notice-count linear forwards; }
+@keyframes mx-notice-count { to { transform: scaleX(0); } }
+
 /* Update offer; it reuses the interrupted-agents banner's frame. */
 .mx-update { background: color-mix(in oklab, var(--accent) 12%, var(--pane)); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 40%, transparent); }
 .mx-update-notes { margin: 0; padding: 0 0 0 18px; font-size: 12px; color: var(--muted); }

@@ -1134,6 +1134,29 @@ describe('desktop overlays and tab tools', () => {
     await waitFor(() => { expect(JSON.parse(window.localStorage.getItem('maitty.gui.settings.v1') ?? '{}')).toMatchObject({ themeMode: 'dark', darkTheme: 'Abyss' }) })
   })
 
+  it('shows a card in the handoff design when a session you are not in needs you, and Allow once types the answer', async () => {
+    const user = userEvent.setup()
+    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    try {
+      daemon.loadConversations.mockResolvedValueOnce([at(2), at(3, { status: 'working' })])
+      const { client } = renderDesktopApp()
+      await screen.findByRole('navigation', { name: 'Sessions by project' })
+      daemon.loadConversations.mockResolvedValue([at(2), at(3, { status: 'needs-you', details: { asking: '$ git push origin main', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null } } })])
+      await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+
+      const card = (await screen.findByText('Needs you · maitty')).closest('.mx-notice')
+      expect(card).not.toBeNull()
+      expect(card).toHaveTextContent('MAITTY')
+      expect(card).toHaveTextContent('$ git push origin main')
+      expect(within(card as HTMLElement).getAllByRole('button').map((button) => button.textContent)).toEqual(['Allow once', 'Open', 'Dismiss'])
+
+      await user.click(within(card as HTMLElement).getByRole('button', { name: 'Allow once' }))
+      expect(daemon.sendTerminalInput).toHaveBeenCalledWith(expect.objectContaining({ id: 't3' }), 'y')
+    } finally {
+      focus.mockRestore()
+    }
+  })
+
   it('lists what needs you in the inbox and types the answer into that session', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([at(2), at(3, { status: 'needs-you', summary: 'Allow git push origin main?' }), at(4, { status: 'done' })])
