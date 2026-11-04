@@ -243,6 +243,19 @@ fn print_stdout(bytes: &[u8]) {
     out.flush().expect("flush stdout");
 }
 
+/// A folder as the shell reads it: Git's `sh` on Windows wants `/c/dir`, not `C:\dir`.
+fn shell_path(path: &std::path::Path) -> String {
+    let text = path.to_string_lossy().replace('\\', "/");
+    match text.as_bytes() {
+        [drive, b':', rest @ ..] if cfg!(windows) => format!(
+            "/{}{}",
+            (*drive as char).to_ascii_lowercase(),
+            String::from_utf8_lossy(rest)
+        ),
+        _ => text,
+    }
+}
+
 /// The remote command through `sh -c` in the fake remote home, with this process's stdio.
 fn run_remote_sh(own: &Own, args: &[String]) -> i32 {
     let remote = args.last().expect("ssh is given the remote command last");
@@ -262,9 +275,14 @@ fn run_remote_sh(own: &Own, args: &[String]) -> i32 {
     let path =
         std::env::join_paths(std::iter::once(home.join("bin")).chain(std::env::split_paths(&old)))
             .expect("a PATH");
+    // The fake `bin` goes first from inside the shell: Git's `sh` on Windows puts its own
+    // /usr/bin ahead of the PATH it was started with when that PATH lacks it (a CI runner's
+    // does), and the real `uname` would win over the fake one.
+    let bin = shell_path(&home.join("bin")).replace('\'', "'\\''");
+    let script = format!("PATH='{bin}':\"$PATH\"; export PATH; {remote}");
     Command::new("sh")
         .arg("-c")
-        .arg(remote)
+        .arg(script)
         .env("HOME", home)
         .env("PATH", path)
         .envs(own.env.iter().map(|(key, value)| (key, value)))
