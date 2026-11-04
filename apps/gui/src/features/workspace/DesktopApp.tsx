@@ -39,7 +39,7 @@ import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
 import { runsProgram } from './components/useArmed'
 import { rememberSessions, withEnded } from './model/ended'
 import { advanceLoginWatch, LOGIN_CHECK_MS, startLoginWatch, type LoginWatch } from './model/loginWatch'
-import { idsOfMachinesNotHeard, machineHeads, remoteTargetOf, remoteTerminals, type RemoteMachine } from './model/machines'
+import { announcementFor, idsOfMachinesNotHeard, machineHeads, remoteTargetOf, remoteTerminals, type RemoteMachine } from './model/machines'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { StatusBar } from './components/StatusBar'
@@ -286,8 +286,12 @@ export function DesktopApp() {
   // Other machines (ADR 0048): the host holds their connections and tells the window each one's state
   // and, when it changes, the sessions it lists. The window never connects.
   const [machines, setMachines] = useState<ReadonlyMap<number, RemoteMachine>>(new Map())
+  const machinesRef = useRef(machines)
+  useEffect(() => { machinesRef.current = machines }, [machines])
   // The first answer about the machines has come, so a Machines page can tell loading from empty.
   const [machinesKnown, setMachinesKnown] = useState(false)
+  // Said to a screen reader when a machine goes down or comes back.
+  const [machineSaid, setMachineSaid] = useState('')
   useEffect(() => {
     const stops: Array<() => void> = []
     let gone = false
@@ -304,6 +308,8 @@ export function DesktopApp() {
     const settle = (state: MachineState) => {
       if (state.machine === LOCAL_MACHINE) return
       names.set(state.machine, state.name)
+      const said = announcementFor(machinesRef.current.get(state.machine)?.state, state)
+      if (said !== null) setMachineSaid(said)
       change(state.machine, (before) => ({ conversations: before?.conversations ?? [], heard: before?.heard ?? false, state }))
       // Typing the machine could not take while it was down: say so once it is back.
       if (state.state === 'connected' && state.unsent) {
@@ -619,8 +625,6 @@ export function DesktopApp() {
   // being listed stays, as an ended pane. `sessions` also changes when the home folder arrives; only a
   // new list counts.
   const reconciled = useRef<readonly Conversation[] | null>(null)
-  const machinesRef = useRef(machines)
-  useEffect(() => { machinesRef.current = machines }, [machines])
   useEffect(() => {
     // An unchanged list keeps its identity (structural sharing), so only a real change counts here.
     if (!sessionsQuery.isSuccess || reconciled.current === sessionsQuery.data) return
@@ -1625,6 +1629,7 @@ export function DesktopApp() {
             )}
           </div>
           <Toaster position={preferences.toastPosition} theme={theme.light ? 'light' : 'dark'} />
+          <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{machineSaid}</div>
         </div>
       </EffectsContext.Provider>
     </ReducedMotionContext.Provider>

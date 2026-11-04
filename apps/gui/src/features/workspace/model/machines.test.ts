@@ -3,7 +3,7 @@ import { conversationsFromSnapshot } from '@/api/daemon'
 import { forgetMachines, parseSessionId, registerMachine, type MachineKind, type MachineState } from '@/api/machines'
 import type { Conversation } from '@/data/preview'
 import type { Layout } from './layout'
-import { idsOfMachinesNotHeard, machineChip, machineHeads, remoteTargetOf, remoteTerminals, updateCommandOf, type RemoteMachine } from './machines'
+import { idsOfMachinesNotHeard, announcementFor, machineChip, machineHeads, remoteTargetOf, remoteTerminals, updateCommandOf, type RemoteMachine } from './machines'
 import { groupSessions, toSessionView } from './session'
 
 afterEach(() => { forgetMachines() })
@@ -213,5 +213,24 @@ describe('the command that fixes a machine that needs an update', () => {
     expect(updateCommandOf({ ...state(1, 'build', 'needs-update'), why: 'run `maitty machine update build --install` (or set `remote_cmd` to its path), then retry' })).toBe('maitty machine update build --install')
     expect(updateCommandOf({ ...state(1, 'build', 'unreachable'), why: fix })).toBeNull()
     expect(updateCommandOf(state(1, 'build', 'needs-update'))).toBeNull()
+  })
+})
+
+describe('what a screen reader hears about a machine', () => {
+  it('says when a machine went down and why, once, and when it is back', () => {
+    const up = state(1, 'build', 'connected')
+    expect(announcementFor(up, { ...state(1, 'build', 'reconnecting'), attempt: 1 })).toBe('build disconnected: reconnecting #1')
+    expect(announcementFor(state(1, 'build', 'reconnecting'), state(1, 'build', 'unreachable'))).toBeNull()
+    expect(announcementFor(state(1, 'build', 'unreachable'), up)).toBe('build is back')
+  })
+
+  it('says nothing for a first connection or a machine still on its first dial', () => {
+    expect(announcementFor(undefined, state(1, 'build', 'connecting'))).toBeNull()
+    expect(announcementFor(state(1, 'build', 'connecting'), state(1, 'build', 'connected'))).toBeNull()
+    expect(announcementFor(undefined, state(1, 'build', 'connected'))).toBeNull()
+  })
+
+  it('tells a machine that is down when the window first hears of it', () => {
+    expect(announcementFor(undefined, state(1, 'build', 'needs-login'))).toBe('build disconnected: needs login')
   })
 })

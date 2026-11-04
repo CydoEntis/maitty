@@ -425,6 +425,19 @@ describe('adding a machine', () => {
     expect(onCancel).toHaveBeenCalled()
   })
 
+  it('ends the look with Esc, and keeps Settings open', async () => {
+    const user = userEvent.setup()
+    const onCancel = vi.fn()
+    const onClose = vi.fn()
+    const onAdd = vi.fn().mockReturnValue(new Promise(() => undefined))
+    renderSettings('machines', { machines: info({ add: { ...info().add, onAdd, onCancel } }), onClose })
+    await user.type(screen.getByRole('textbox', { name: 'Host or user@host' }), 'slow.example{Enter}')
+    screen.getByRole('button', { name: 'Cancel' }).focus()
+    await user.keyboard('{Escape}')
+    expect(onCancel).toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('points at the session to log in with when ssh needs a person', async () => {
     const user = userEvent.setup()
     const onAdd = vi.fn().mockResolvedValue({ outcome: 'login', name: 'box' })

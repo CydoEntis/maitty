@@ -121,3 +121,15 @@ export function remoteTargetOf(focused: { machine: number; machineName: string |
   if (focused === undefined || focused.machine === LOCAL_MACHINE || focused.machineName === null) return null
   return { machine: focused.machine, name: focused.machineName }
 }
+
+/**
+ * What a screen reader is told when a machine's line changes: that it went down and why in a word,
+ * or that it is back. Nothing for its first connection, for a change that is still down, or for a
+ * machine that is only connecting: the sidebar says those, and a reconnect storm would be noise.
+ */
+export function announcementFor(before: MachineState | undefined, after: MachineState): string | null {
+  const wasDown = before !== undefined && isDown(before)
+  if (isDown(after)) return wasDown ? null : `${after.name} disconnected: ${machineChip(after).word}`
+  if (after.state === 'connected' && wasDown) return `${after.name} is back`
+  return null
+}
