@@ -14,14 +14,14 @@ const POLL: Duration = Duration::from_millis(25);
 const MOST_OUTPUT_BYTES: u64 = 64 * 1024;
 
 /// How long a short question (a platform, a version, a restart) may take, connecting included.
-pub(crate) const ASK_LIMIT: Duration = Duration::from_secs(30);
+pub const ASK_LIMIT: Duration = Duration::from_secs(30);
 /// How long streaming a binary may take.
-pub(crate) const UPLOAD_LIMIT: Duration = Duration::from_secs(15 * 60);
+pub const UPLOAD_LIMIT: Duration = Duration::from_secs(15 * 60);
 
 /// What the caller can see and do while a long send runs: how many bytes have gone into the
 /// line, and a flag that ends it (ADR 0050).
 #[derive(Clone, Default)]
-pub(crate) struct Watch {
+pub struct Watch {
     /// The size being sent, set once the sender knows it.
     pub total: Arc<AtomicU64>,
     pub sent: Arc<AtomicU64>,
@@ -31,7 +31,7 @@ pub(crate) struct Watch {
 /// How much of the file is copied between looks at the cancel flag.
 const CHUNK: usize = 64 * 1024;
 
-pub(crate) struct Ran {
+pub struct Ran {
     /// `None` when a signal ended it, or the limit did, or `Watch::cancel` did.
     pub code: Option<i32>,
     /// Ended because `Watch::cancel` was set.
@@ -41,12 +41,12 @@ pub(crate) struct Ran {
 }
 
 /// Run `argv`; its stdin is `stdin`'s bytes, or nothing. Ended (killed) when `limit` passes.
-pub(crate) fn run(argv: &[String], stdin: Option<&Path>, limit: Duration) -> Result<Ran, String> {
+pub fn run(argv: &[String], stdin: Option<&Path>, limit: Duration) -> Result<Ran, String> {
     run_watched(argv, stdin, limit, &Watch::default())
 }
 
 /// `run`, counting the bytes written to the line and ending it early when `watch.cancel` is set.
-pub(crate) fn run_watched(
+pub fn run_watched(
     argv: &[String],
     stdin: Option<&Path>,
     limit: Duration,
@@ -65,7 +65,7 @@ pub(crate) fn run_watched(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(crate::proc::CREATE_NO_WINDOW);
+        command.creation_flags(crate::CREATE_NO_WINDOW);
     }
     let mut child = command
         .spawn()
@@ -150,4 +150,81 @@ fn drain(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<St
         }
         String::from_utf8_lossy(&bytes).into_owned()
     })
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    fn sh(script: &str) -> Vec<String> {
+        vec!["sh".into(), "-c".into(), script.into()]
+    }
+
+    fn file(label: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "ssh-run-{label}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    #[test]
+    fn the_file_reaches_stdin_whole_and_every_byte_is_counted() {
+        let body = vec![7u8; CHUNK * 3 + 11];
+        let path = file("whole", &body);
+        let watch = Watch::default();
+        let ran = run_watched(&sh("wc -c; echo said >&2"), Some(&path), ASK_LIMIT, &watch).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(ran.code, Some(0));
+        assert_eq!(ran.stdout.trim(), body.len().to_string());
+        assert_eq!(ran.stderr.trim(), "said");
+        assert_eq!(watch.sent.load(Ordering::Relaxed), body.len() as u64);
+        assert!(!ran.cancelled);
+    }
+
+    #[test]
+    fn an_exit_status_is_kept_apart_from_what_was_said() {
+        let ran = run(&sh("echo out; echo err >&2; exit 70"), None, ASK_LIMIT).unwrap();
+        assert_eq!(ran.code, Some(70));
+        assert_eq!(ran.stdout.trim(), "out");
+        assert_eq!(ran.stderr.trim(), "err");
+    }
+
+    #[test]
+    fn a_cancel_ends_a_line_that_would_run_on() {
+        let watch = Watch::default();
+        watch.cancel.store(true, Ordering::Relaxed);
+        let started = Instant::now();
+        let ran = run_watched(&sh("sleep 30"), None, ASK_LIMIT, &watch).unwrap();
+        assert!(ran.cancelled);
+        assert_eq!(ran.code, None);
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn the_time_limit_ends_a_line_that_never_finishes() {
+        let ran = run(&sh("sleep 30"), None, Duration::from_millis(200)).unwrap();
+        assert_eq!(ran.code, None);
+        assert!(!ran.cancelled, "the limit is not a cancel");
+    }
+
+    #[test]
+    fn a_program_that_cannot_start_says_so() {
+        let argv = vec!["definitely-not-a-program-ssh".to_owned()];
+        let e = run(&argv, None, ASK_LIMIT).err().expect("it cannot run");
+        assert!(e.contains("is OpenSSH installed"), "{e}");
+    }
+
+    #[test]
+    fn what_a_line_prints_is_bounded() {
+        let ran = run(
+            &sh("head -c 200000 /dev/zero | tr '\\0' x"),
+            None,
+            ASK_LIMIT,
+        )
+        .unwrap();
+        assert!(ran.stdout.len() as u64 <= MOST_OUTPUT_BYTES);
+    }
 }

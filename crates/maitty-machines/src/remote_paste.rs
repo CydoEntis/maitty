@@ -4,7 +4,7 @@
 //! Nothing here runs ssh; `Machine::paste_argv` builds the line and the caller runs it with the
 //! file on stdin.
 
-use crate::remote_install::PASTE_MARKER;
+use crate::PASTE_MARKER;
 use maitty_shared::hidden::{is_invisible, sanitize};
 
 /// The most bytes of one pasted image that are sent. A screenshot is a few megabytes.
@@ -256,7 +256,7 @@ mod tests {
     #[cfg(unix)]
     mod the_script {
         use super::*;
-        use crate::remote_install::PASTE_SCRIPT;
+        use crate::PASTE_SCRIPT;
         use std::io::Write;
         use std::os::unix::fs::PermissionsExt;
         use std::process::{Command, Stdio};

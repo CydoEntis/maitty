@@ -12,7 +12,7 @@ pub mod project;
 pub mod prompt;
 pub mod references;
 pub mod remote_install;
-pub mod remote_paste;
+pub use maitty_machines::remote_paste;
 pub mod restart;
 pub mod reveal;
 pub mod secret_files;

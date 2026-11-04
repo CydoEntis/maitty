@@ -5,9 +5,9 @@
 use super::remote_image::{send_file, upload};
 use super::remote_status_tests::built;
 use crate::brand::APP_COMMAND;
-use crate::cli::machine_update::ssh_run::Watch;
 use crate::ipc::Machine;
 use crate::remote_paste::MAX_PASTE_BYTES;
+use maitty_machines::ssh_run::Watch;
 use std::path::PathBuf;
 
 fn sh_has_the_tools() -> bool {
