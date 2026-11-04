@@ -57,7 +57,8 @@ const CSS_VARIABLES: Record<keyof ThemeTokens, string> = {
 }
 
 const DARK_STATUS = { warn: '#F2B65A', warnSoft: 'rgba(242,182,90,.07)', warnLine: 'rgba(242,182,90,.28)', onWarn: '#151007', danger: '#F07F78', dangerSoft: 'rgba(240,127,120,.07)', dangerLine: 'rgba(240,127,120,.3)' }
-const LIGHT_STATUS = { warn: '#9A5B00', warnSoft: 'rgba(154,91,0,.07)', warnLine: 'rgba(154,91,0,.3)', onWarn: '#FFFFFF', danger: '#C0392F', dangerSoft: 'rgba(192,57,47,.06)', dangerLine: 'rgba(192,57,47,.3)' }
+// Dark enough for AA on the grounds of every generated light theme (Gruvbox Light's cream is the tightest).
+const LIGHT_STATUS = { warn: '#8F5400', warnSoft: 'rgba(143,84,0,.07)', warnLine: 'rgba(143,84,0,.3)', onWarn: '#FFFFFF', danger: '#B8362C', dangerSoft: 'rgba(184,54,44,.06)', dangerLine: 'rgba(184,54,44,.3)' }
 // Paper and Day are darker than the generated light themes so amber and red pass AA on --term and --bg.
 const PAPER_STATUS = { warn: '#8A5000', warnSoft: 'rgba(138,80,0,.07)', warnLine: 'rgba(138,80,0,.3)', onWarn: '#FFFFFF', danger: '#B3342A', dangerSoft: 'rgba(179,52,42,.06)', dangerLine: 'rgba(179,52,42,.3)' }
 const DAY_STATUS = { warn: '#8C4F00', warnSoft: 'rgba(140,79,0,.07)', warnLine: 'rgba(140,79,0,.3)', onWarn: '#FFFFFF', danger: '#B1302A', dangerSoft: 'rgba(177,48,42,.06)', dangerLine: 'rgba(177,48,42,.3)' }
@@ -104,6 +105,16 @@ const MIX = {
   fg2: 80, muted: 62, dim: 52, accentSoft: 13, accentLine: 50, paneLine: 10, contrastStep: 2, full: 100,
 }
 
+const DARKEN_STEP = 2
+
+/** Mixes a colour toward black one step at a time until it reads as text on every ground. */
+function darkenUntilReadable(colour: string, grounds: readonly string[]): string {
+  let percent = 0
+  const passes = (candidate: string) => grounds.every((ground) => contrastRatio(candidate, ground) >= MIN_TEXT_CONTRAST)
+  while (percent < MIX.full && !passes(mixOklab(colour, '#000000', percent))) percent += DARKEN_STEP
+  return mixOklab(colour, '#000000', percent)
+}
+
 /** Builds every token from a theme's six inputs, as the TUI themes import. */
 export function generateTheme(inputs: ThemeInputs): ThemeTokens {
   const { bg, fg, accent, mag, blue, green, light } = inputs
@@ -116,6 +127,10 @@ export function generateTheme(inputs: ThemeInputs): ThemeTokens {
     while (percent < MIX.full && !passes(mixOklab(bg, fg, percent))) percent += MIX.contrastStep
     return mixOklab(bg, fg, Math.min(percent, MIX.full))
   }
+  // A light theme's published hues (Solarized cyan, Latte green) are pastel against its own ground, so
+  // they are darkened in place (same hue, less lightness) until they read as text on both grounds.
+  const hue = (colour: string) => (light ? darkenUntilReadable(colour, [bg, windowBg]) : colour)
+  const [accentText, magText, blueText, greenText] = [hue(accent), hue(mag), hue(blue), hue(green)]
   return {
     bg: windowBg,
     main: bg,
@@ -130,15 +145,15 @@ export function generateTheme(inputs: ThemeInputs): ThemeTokens {
     fg2: readable(MIX.fg2),
     muted: readable(MIX.muted),
     dim: readable(MIX.dim),
-    accent,
-    accentSoft: withAlpha(accent, MIX.accentSoft),
-    accentLine: withAlpha(accent, MIX.accentLine),
+    accent: accentText,
+    accentSoft: withAlpha(accentText, MIX.accentSoft),
+    accentLine: withAlpha(accentText, MIX.accentLine),
     onAccent: light ? '#FFFFFF' : bg,
     ...(light ? LIGHT_STATUS : DARK_STATUS),
-    ok: green,
-    ansiBlue: blue,
-    ansiMag: mag,
-    ansiGreen: green,
+    ok: greenText,
+    ansiBlue: blueText,
+    ansiMag: magText,
+    ansiGreen: greenText,
     pane: bg,
     paneLine: withAlpha(fg, MIX.paneLine),
   }
@@ -215,6 +230,8 @@ export function themeStyle(theme: ThemeEntry): Record<string, string> {
 const SELECTION_ALPHA = 25
 const SELECTION_ALPHA_STEP = 5
 const SELECTION_ALPHA_MIN = 10
+const INK = '#000000'
+const PAPER_WHITE = '#FFFFFF'
 
 /**
  * Opaque on purpose: xterm's WebGL renderer draws the selection without its alpha, so a
@@ -226,9 +243,22 @@ function selectionColors(tokens: ThemeTokens): { background: string; foreground:
   for (;;) {
     const background = composite(withAlpha(tokens.accent, alpha), tokens.term)
     const foreground = contrastRatio(tokens.fg, background) >= contrastRatio(tokens.term, background) ? tokens.fg : tokens.term
-    if (contrastRatio(foreground, background) >= MIN_TEXT_CONTRAST || alpha <= SELECTION_ALPHA_MIN) return { background, foreground }
+    if (contrastRatio(foreground, background) >= MIN_TEXT_CONTRAST) return { background, foreground }
+    // Even the faintest tint can leave a theme's own text short (a darkened light accent over a pale
+    // ground), so the text turns to plain black or white, whichever reads better.
+    if (alpha <= SELECTION_ALPHA_MIN) return { background, foreground: contrastRatio(INK, background) >= contrastRatio(PAPER_WHITE, background) ? INK : PAPER_WHITE }
     alpha -= SELECTION_ALPHA_STEP
   }
+}
+
+/**
+ * What xterm should enforce for colours a program picks itself. The 16 ANSI slots are audited, but
+ * a program also paints with the 256-colour cube and truecolour (Claude Code's pale blue 153 is
+ * unreadable on white), which no palette can fix; xterm nudges those until they reach the ratio.
+ * Dark themes keep every colour as the program asked.
+ */
+export function terminalMinimumContrast(theme: ThemeEntry): number {
+  return theme.light ? MIN_TEXT_CONTRAST : 1
 }
 
 /**

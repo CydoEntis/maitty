@@ -484,9 +484,12 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   black and white, lines `#5A5A5A`/`#8A8A8A`, amber and red kept). Every theme's `--pane` is its opaque
   `--main`. The foreground, terminal text (`--fg2`), muted and dim text keep 4.5:1 on both `--term` and the
   window `--bg`, and Midnight, Paper and Day also hold it for accent, amber, red, green and the ANSI blue,
-  magenta and green; the theme tests check this. Paper and Day use a darker amber and red than the generated
-  light themes so those pass. A pane's xterm palette comes from the same
-  tokens. **Settings › Appearance › Theme** has an Appearance switch (System, Dark or Light:
+  magenta and green; the theme tests check this. Every light theme holds it too, for accent, amber, red,
+  green, blue, magenta and all 15 ANSI text colours but black (the generated ones darken a published hue in
+  place until it passes). Paper and Day use a darker amber and red than the generated light themes. A pane's
+  xterm palette comes from the same tokens, and on a light theme xterm also lifts any 256-colour or truecolour
+  foreground a program picks to 4.5:1 (`minimumContrastRatio`; dark themes leave them as asked). The
+  scroll viewport behind the rows is painted `--term`, never xterm's black. **Settings › Appearance › Theme** has an Appearance switch (System, Dark or Light:
   `themeMode`) and a searchable dropdown each for the dark and the light theme (`darkTheme`,
   `lightTheme`); the dropdown lists its theme in use first. System follows the OS's own dark or
   light setting as it changes. Hovering a theme in the slot that is in use previews it on the

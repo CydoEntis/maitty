@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { contrastRatio, mixOklab, parseColor } from './color'
 import type { ThemeEntry } from './themes'
-import { findTheme, generateTheme, MIN_TEXT_CONTRAST, themeStyle, THEMES, xtermTheme } from './themes'
+import { findTheme, generateTheme, MIN_TEXT_CONTRAST, terminalMinimumContrast, themeStyle, THEMES, xtermTheme } from './themes'
 
 describe('themes', () => {
   it('ships Midnight, Abyss, Paper and Day, the 23 generated themes from the design and High Contrast', () => {
@@ -34,8 +34,8 @@ describe('themes', () => {
   it('never changes what amber and red mean within a kind of theme', () => {
     const generated = THEMES.filter((candidate) => !['High Contrast', 'Paper', 'Day'].includes(candidate.name))
     for (const theme of generated) {
-      expect(theme.tokens.warn).toBe(theme.light ? '#9A5B00' : '#F2B65A')
-      expect(theme.tokens.danger).toBe(theme.light ? '#C0392F' : '#F07F78')
+      expect(theme.tokens.warn).toBe(theme.light ? '#8F5400' : '#F2B65A')
+      expect(theme.tokens.danger).toBe(theme.light ? '#B8362C' : '#F07F78')
     }
   })
 
@@ -92,6 +92,11 @@ const TEXT_GROUNDS = (tokens: ThemeEntry['tokens']) => [['--term', tokens.term],
 const TERMINAL_TEXT_SLOTS = ['fg', 'fg2', 'muted', 'dim'] as const
 const STATUS_TEXT_SLOTS = ['accent', 'warn', 'danger', 'ok'] as const
 const ANSI_TEXT_SLOTS = ['ansiBlue', 'ansiMag', 'ansiGreen'] as const
+// Black is left out: it is the ground on purpose, so programs that paint with it vanish into the background.
+const ANSI_TEXT_COLOURS = [
+  'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+  'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite',
+] as const
 
 describe('contrast audit', () => {
   it.each(THEMES.map((theme) => [theme.name, theme] as const))('%s keeps text, terminal text and dim text readable on --term and --bg', (_name, theme) => {
@@ -112,6 +117,39 @@ describe('contrast audit', () => {
         expect(contrastRatio(tokens[slot], colour), `${slot} on ${ground}`).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
       }
     }
+  })
+
+  it('keeps accent, status and ANSI text readable on --term and --bg in every light theme', () => {
+    for (const theme of THEMES.filter((candidate) => candidate.light)) {
+      for (const [ground, colour] of TEXT_GROUNDS(theme.tokens)) {
+        for (const slot of [...STATUS_TEXT_SLOTS, ...ANSI_TEXT_SLOTS]) {
+          expect(contrastRatio(theme.tokens[slot], colour), `${theme.name} ${slot} on ${ground}`).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
+        }
+      }
+    }
+  })
+
+  it('keeps every ANSI colour but black readable on --term and --bg in every light theme', () => {
+    for (const theme of THEMES.filter((candidate) => candidate.light)) {
+      const palette = xtermTheme(theme.tokens)
+      for (const slot of ANSI_TEXT_COLOURS) {
+        for (const [ground, colour] of TEXT_GROUNDS(theme.tokens)) {
+          expect(contrastRatio(palette[slot] ?? '', colour), `${theme.name} ${slot} on ${ground}`).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
+        }
+      }
+    }
+  })
+
+  it('darkens a pastel light hue without leaving its family (Solarized Light cyan stays teal)', () => {
+    const { tokens } = findTheme('Solarized Light')
+    const { r, g, b } = parseColor(tokens.accent)
+    expect(g).toBeGreaterThan(r)
+    expect(b).toBeGreaterThan(r)
+  })
+
+  it('asks xterm to lift the colours a program picks itself on light themes only', () => {
+    expect(terminalMinimumContrast(findTheme('Paper'))).toBe(MIN_TEXT_CONTRAST)
+    expect(terminalMinimumContrast(findTheme('Midnight'))).toBe(1)
   })
 
   it('raises a generated theme\'s derived text until it passes (Monokai dim)', () => {
