@@ -1,0 +1,202 @@
+import type {
+  ApprovalDecision,
+  ApprovalEvent,
+  ChatEvent,
+  ChatProvider,
+  ItemFields,
+  ItemStatus,
+} from './chatEvents'
+import { changeKindOf, diffForChange } from './codexFileChange'
+import { parseApprovalRequest, parseHistoryEntry, type ApprovalRequest } from './historyInput'
+import { projectItem, statusOf } from './projectItem'
+
+/**
+ * The chat projection: a reducer over the daemon's conversation history.
+ *
+ * Feed it history entries as they are read (`applyHistoryEntries`) and the pending approvals
+ * (`applyApprovals`). Each call returns a new state and re-projects only what it was given:
+ * an entry the daemon updates in place (a tool going from Running to Completed) replaces that
+ * item's events at its original position, so order never changes and re-reading a page twice
+ * is harmless. `selectChatEvents` flattens the state into the list the view renders.
+ *
+ * Pure: the clock comes in as `nowMs`, and nothing here reads the DOM, Tauri or the network.
+ */
+
+type ItemRecord = {
+  readonly events: readonly ChatEvent[]
+  readonly firstSeenAtMs: number
+  readonly settledAtMs: number | null
+}
+
+type TurnRecord = {
+  readonly turnId: string
+  /** `null` until the daemon sends the turn's own status entry. */
+  readonly status: ItemStatus | null
+  readonly startedAtMs: number
+  readonly endedAtMs: number | null
+  readonly itemOrder: readonly string[]
+  readonly items: ReadonlyMap<string, ItemRecord>
+}
+
+type WorkingTurn = {
+  turnId: string
+  status: ItemStatus | null
+  startedAtMs: number
+  endedAtMs: number | null
+  itemOrder: string[]
+  items: Map<string, ItemRecord>
+}
+
+export type ChatProjection = {
+  readonly provider: ChatProvider
+  readonly turnOrder: readonly string[]
+  readonly turns: ReadonlyMap<string, TurnRecord>
+  readonly approvals: readonly ApprovalEvent[]
+  /** How many history entries or approvals failed validation and were left out. */
+  readonly rejectedInputs: number
+}
+
+export function createChatProjection(provider: ChatProvider): ChatProjection {
+  return { provider, turnOrder: [], turns: new Map(), approvals: [], rejectedInputs: 0 }
+}
+
+function approvalId(requestId: number | string): string {
+  return `approval:${typeof requestId}:${String(requestId)}`
+}
+
+export function applyHistoryEntries(state: ChatProjection, entries: readonly unknown[], nowMs: number): ChatProjection {
+  const turnOrder = [...state.turnOrder]
+  const working = new Map<string, WorkingTurn>()
+  let rejectedInputs = state.rejectedInputs
+
+  const turnFor = (turnId: string): WorkingTurn => {
+    const existing = working.get(turnId)
+    if (existing) return existing
+    const previous = state.turns.get(turnId)
+    const copy: WorkingTurn = previous
+      ? { ...previous, itemOrder: [...previous.itemOrder], items: new Map(previous.items) }
+      : { turnId, status: null, startedAtMs: nowMs, endedAtMs: null, itemOrder: [], items: new Map() }
+    if (!previous) turnOrder.push(turnId)
+    working.set(turnId, copy)
+    return copy
+  }
+
+  for (const raw of entries) {
+    const entry = parseHistoryEntry(raw)
+    if (entry === null) {
+      rejectedInputs += 1
+      continue
+    }
+    const turn = turnFor(entry.source.turn)
+    const status = statusOf(entry.state)
+
+    if (entry.content === 'TurnStatus') {
+      turn.status = status
+      if (status !== 'running') turn.endedAtMs ??= nowMs
+      continue
+    }
+
+    const id = `${entry.source.turn}:${entry.source.item}`
+    const previous = turn.items.get(id)
+    const firstSeenAtMs = previous?.firstSeenAtMs ?? nowMs
+    const settledAtMs = previous?.settledAtMs ?? (status === 'running' ? null : nowMs)
+    const base: ItemFields = { id, turnId: entry.source.turn, status, observed: { firstSeenAtMs, settledAtMs } }
+    if (!previous) turn.itemOrder.push(id)
+    turn.items.set(id, { events: projectItem(state.provider, entry.content, base), firstSeenAtMs, settledAtMs })
+  }
+
+  if (working.size === 0 && rejectedInputs === state.rejectedInputs) return state
+  return { ...state, turnOrder, turns: new Map([...state.turns, ...working]), rejectedInputs }
+}
+
+function approvalEventOf(request: ApprovalRequest): ApprovalEvent {
+  return {
+    kind: 'approval',
+    id: approvalId(request.request_id),
+    requestId: request.request_id,
+    turnId: request.turn_id ?? null,
+    itemId: request.item_id ?? null,
+    approvalKind: request.kind,
+    command: request.command ?? null,
+    reason: request.reason ?? null,
+    changes: request.changes.map((change) => ({
+      path: change.path,
+      kind: change.kind,
+      diff: diffForChange(changeKindOf(change.kind), change.diff, false),
+    })),
+    choices: request.choices,
+    resolution: { status: 'pending' },
+  }
+}
+
+/**
+ * Applies the daemon's list of approvals still waiting. The daemon forgets a request once it is
+ * answered, so a known request that is no longer listed is marked answered. Its choice is
+ * `unknown` unless `recordApprovalAnswer` saw it. An answered request never becomes pending again.
+ */
+export function applyApprovals(state: ChatProjection, pending: readonly unknown[]): ChatProjection {
+  const requests: ApprovalRequest[] = []
+  let rejectedInputs = state.rejectedInputs
+  for (const raw of pending) {
+    const request = parseApprovalRequest(raw)
+    if (request) requests.push(request)
+    else rejectedInputs += 1
+  }
+  const listed = new Set(requests.map((request) => approvalId(request.request_id)))
+  const known = new Set(state.approvals.map((approval) => approval.id))
+
+  const approvals: ApprovalEvent[] = state.approvals.map((approval) =>
+    approval.resolution.status === 'pending' && !listed.has(approval.id)
+      ? { ...approval, resolution: { status: 'answered', answer: 'unknown' } }
+      : approval,
+  )
+  for (const request of requests) {
+    if (!known.has(approvalId(request.request_id))) approvals.push(approvalEventOf(request))
+  }
+  return { ...state, approvals, rejectedInputs }
+}
+
+/** Marks a pending request answered with the user's choice, before the daemon confirms it. */
+export function recordApprovalAnswer(state: ChatProjection, requestId: number | string, decision: ApprovalDecision): ChatProjection {
+  const id = approvalId(requestId)
+  return {
+    ...state,
+    approvals: state.approvals.map((approval) =>
+      approval.id === id && approval.resolution.status === 'pending'
+        ? { ...approval, resolution: { status: 'answered', answer: decision } }
+        : approval,
+    ),
+  }
+}
+
+/**
+ * The events in reading order: each turn's items as first seen, then that turn's approvals, then
+ * its divider once the turn has ended. Approvals that name no known turn come last.
+ */
+export function selectChatEvents(state: ChatProjection): ChatEvent[] {
+  const events: ChatEvent[] = []
+  for (const turnId of state.turnOrder) {
+    const turn = state.turns.get(turnId)
+    if (!turn) continue
+    for (const itemId of turn.itemOrder) {
+      const item = turn.items.get(itemId)
+      if (item) events.push(...item.events)
+    }
+    events.push(...state.approvals.filter((approval) => approval.turnId === turnId))
+    if (turn.status !== null && turn.status !== 'running' && turn.endedAtMs !== null) {
+      events.push({ kind: 'turn', id: `turn:${turnId}`, turnId, outcome: turn.status, startedAtMs: turn.startedAtMs, endedAtMs: turn.endedAtMs })
+    }
+  }
+  events.push(...state.approvals.filter((approval) => approval.turnId === null || !state.turns.has(approval.turnId)))
+  return events
+}
+
+/** Projects a whole read in one call: the same result as applying it in any number of chunks. */
+export function projectConversation(
+  provider: ChatProvider,
+  entries: readonly unknown[],
+  approvals: readonly unknown[],
+  nowMs: number,
+): ChatEvent[] {
+  return selectChatEvents(applyApprovals(applyHistoryEntries(createChatProjection(provider), entries, nowMs), approvals))
+}

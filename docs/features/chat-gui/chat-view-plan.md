@@ -33,6 +33,23 @@ check for the view). Acceptance criteria are the bullets.
    become `edit`; `Bash`/`exec_command` become `command`; `TodoWrite`/plan items
    become `todo`; `Task` becomes `subagent`. Pure functions, tested with recorded
    adapter output. Every later ticket renders from this and nothing else.
+   **Done:** `apps/gui/src/features/chat/` (reducer `applyHistoryEntries` /
+   `applyApprovals`, flatten with `selectChatEvents`; event types in `chatEvents.ts`).
+   What the daemon's history carries today limits the cards, and later tickets must
+   not assume more:
+   - A Claude tool other than `Bash` reaches the history as its name only (the
+     adapter keeps just the text blocks of the input), so `Edit`, `MultiEdit`,
+     `Write`, `TodoWrite` and `Task` project to cards with the file, diff, items or
+     title marked unavailable. The projection already reads an optional `Tool.input`
+     and builds full cards from it; the daemon has to start sending it (CV-13).
+   - Codex `fileChange` carries every file's diff, so edits are complete. Codex
+     `plan` and helper-agent items are kept by kind only, so they project to a card
+     without items or title.
+   - There are no timestamps and no exit codes. Elapsed times are measured from when
+     the GUI first saw an item, so an already-finished item has none.
+   - A Claude approval names the command, or only "Edit: " for a file tool, with no
+     path. A Codex command label is cut at 256 characters.
+
 1. **CV-1 Switch and empty chat card.** The floating two-button switch (§B.3),
    the slide-and-fade transition (off under reduce motion), a `Settings → Claude /
    Codex` default of terminal or chat, and the chat card with its header (process,
