@@ -21,7 +21,7 @@ describe('features that need a pane\'s files', () => {
   })
 
   it('reads a session id: a name before the slash is another machine', () => {
-    expect(guardLocalSession('build/t12', 'file-drops')).toContain('on build')
-    expect(guardLocalSession('t12', 'file-drops')).toBeNull()
+    expect(guardLocalSession('build/t12', 'path-links')).toContain('on build')
+    expect(guardLocalSession('t12', 'path-links')).toBeNull()
   })
 })

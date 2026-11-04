@@ -644,6 +644,14 @@ folder there, starting at `~`, because the folder picker is this computer's; a f
 opens in the machine's home folder. Files, Changes, worktrees and the other features that read a pane's files
 are for this computer's sessions only.
 
+**Dropping files on a session of another machine** sends them there: drag up to 10 files from your file
+manager onto the pane. Each goes over ssh (not a custom transport) into `~/.cache/maitty/pastes` on that
+machine (private, cleared after a week), and its path there is typed into the pane. Only files are sent, up
+to 100 MB each; a folder is refused. A toast shows the file, how far it has got, and a **Cancel** button; if a
+file fails, the ones after it are not tried. The machine has to be `connected`. A file stays on the machine for
+a week, readable by you only, so do not send a secret you would not leave there. Dropping on a session of this
+computer types the file's path, as before.
+
 ## Never leave maitty
 
 | Leader + | Panel | What it does |

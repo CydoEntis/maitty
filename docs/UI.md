@@ -660,6 +660,20 @@ selection between a local and a remote pane turns the feature off and on. Menu e
 run git in a remote pane's folder (Changes, Snapshots, Make it a git repo) are left out of that
 pane's menu instead.
 
+**Dropping files on a pane** (`features/terminal/dropRoute.ts`, `useFileSends.tsx`, host `file_send.rs`,
+ADR 0050). On a pane of this computer the dropped paths are typed into it, quoted for its shell. On a
+pane of another machine a path here names nothing there, so the files are sent to that machine over its ssh
+line (regular files only, 100 MB each, at most 10 at a time; more are refused whole with one error toast,
+never cut) and the path each one is kept at is typed into the pane as it lands. A machine that is not
+`connected` is refused with one error toast. The send runs on the host's background worker, one at a time. A
+progress toast (`Sending a.log to build (2 of 3)`, a named progress bar with the percentage, and a
+**Cancel** button) stays until the host reports the end; it has no close button, because hiding it would not
+stop the send. It ends as `Sent 3 files to build`, an error toast with what ssh said (the files after the
+failed one are not tried), or `Stopped sending to build`. Cancel cuts the file now going and tries no other.
+What the machine reports is untrusted: the window types a path only if it is absolute, at most 4096
+characters and free of control and invisible characters, and a path that is not typed is named in the final
+toast instead.
+
 ## Project-specific: frame presentation
 
 Wrap each outer terminal frame in synchronized-update markers; end the update

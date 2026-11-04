@@ -361,6 +361,11 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Drag a session into a pane.** Any sidebar row or tray item drags onto a pane: in the same tab it
   swaps, in another tab it moves here, otherwise it replaces the pane's session. The session that
   leaves keeps running.
+- **Files dropped on a pane of another machine.** One sonner toast on the theme tokens (`bg-muted` track,
+  `bg-primary` fill, `text-muted-foreground` percentage): the title `Sending <file> to <machine>`, with
+  `(2 of 3)` for a drop of several, a thin `role="progressbar"` named `Sending <file>`, and sonner's own
+  action button **Cancel**. It has no close mark while it runs. It is then replaced by a success, error or
+  plain toast. See UI › *features that need a pane's files*.
 - **Project menu.** Right-clicking a project, in the
   sidebar or the rail, offers New session here, Collapse or Expand, and Copy path.
 - **Inspect (⌘I).** A card docked at the right of the window (over the panes under 900px) that

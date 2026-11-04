@@ -17,7 +17,6 @@ export const LOCAL_FEATURES = {
   inspect: 'Inspect',
   'review-stat': 'The change count',
   'path-links': 'Opening a file from the output',
-  'file-drops': 'Dropping files',
   'screen-text': 'The screen text',
   replay: 'A fresh replay',
 } as const

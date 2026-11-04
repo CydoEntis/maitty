@@ -46,6 +46,20 @@ vi.mock('@/api/machines', async (importOriginal) => ({
   listenMachineClipboard: () => Promise.resolve(() => undefined),
 }))
 
+const sends = vi.hoisted(() => ({
+  send: vi.fn<(machine: string, paths: readonly string[], transfer: string) => Promise<void>>(),
+  emit: { current: null as null | ((event: unknown) => void) },
+}))
+
+vi.mock('@/api/fileSends', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/fileSends')>()),
+  sendFilesToMachine: sends.send,
+  listenFileSends: (onEvent: (event: unknown) => void) => {
+    sends.emit.current = onEvent
+    return Promise.resolve(() => undefined)
+  },
+}))
+
 vi.mock('@/features/terminal/useFileDrop', () => ({
   useFileDrop: (onDrop: (paths: string[], at: { x: number; y: number }) => void) => { terminal.drop.current = onDrop },
 }))
@@ -99,11 +113,27 @@ describe('a pane of another machine and the features that need its files', () =>
     expect(screen.queryByRole('dialog', { name: /worktree/i })).toBeNull()
   })
 
-  it('does not type a dropped file into it and says why', async () => {
+  it('sends a dropped file to the machine and types the path it was kept at, not the path here', async () => {
     await openRemotePane()
+    sends.send.mockResolvedValue(undefined)
     document.elementFromPoint = vi.fn(() => null)
     act(() => { terminal.drop.current?.(['/home/casey/a.png'], { x: 1, y: 1 }) })
-    expect(await screen.findByText(REFUSAL('Dropping files'))).toBeInTheDocument()
-    await waitFor(() => { expect(terminal.pasted).toEqual([]) })
+    await waitFor(() => { expect(sends.send).toHaveBeenCalledTimes(1) })
+    const [machine, paths, transfer] = sends.send.mock.calls[0] ?? []
+    expect([machine, paths]).toEqual(['build', ['/home/casey/a.png']])
+    expect(terminal.pasted, 'nothing is typed until the machine has the file').toEqual([])
+    act(() => { sends.emit.current?.({ kind: 'sent', transfer, file: 'a.png', index: 0, count: 1, remotePath: '/home/dev/.cache/maitty/pastes/p-a.png' }) })
+    expect(terminal.pasted).toEqual([['build/t7', '/home/dev/.cache/maitty/pastes/p-a.png ']])
+    act(() => { sends.emit.current?.({ kind: 'done', transfer, sent: 1, count: 1 }) })
+    expect(await screen.findByText('Sent 1 file to build')).toBeInTheDocument()
+  })
+
+  it('refuses more than ten files for a machine and sends none', async () => {
+    await openRemotePane()
+    document.elementFromPoint = vi.fn(() => null)
+    const eleven = Array.from({ length: 11 }, (_, n) => `/home/casey/f${String(n)}`)
+    act(() => { terminal.drop.current?.(eleven, { x: 1, y: 1 }) })
+    expect(await screen.findByText('At most 10 files can be sent at a time; 11 were dropped.')).toBeInTheDocument()
+    expect(sends.send).not.toHaveBeenCalled()
   })
 })
