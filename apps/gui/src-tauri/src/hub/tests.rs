@@ -336,6 +336,22 @@ async fn a_machine_added_while_the_app_runs_connects_under_a_new_number() {
 }
 
 #[tokio::test]
+async fn a_machines_opt_ins_are_what_its_entry_says_and_nothing_for_a_stranger() {
+    let sandbox = Sandbox::new();
+    let opted = MachineDef {
+        notices: true,
+        ..machine("box", &sandbox, "proxy")
+    };
+    let watch = Watch::new(&[opted, machine("other", &sandbox, "proxy")], &sandbox, quick(WAIT));
+    let handle = watch.hub.handle();
+    // Ids follow the names in order: box, then other.
+    assert!(handle.opts_of(MachineId(1)).notices);
+    assert!(!handle.opts_of(MachineId(1)).sounds);
+    assert_eq!(handle.opts_of(MachineId(2)), Default::default());
+    assert_eq!(handle.opts_of(MachineId(9)), Default::default());
+}
+
+#[tokio::test]
 async fn removing_a_machine_that_is_not_there_says_nothing() {
     let sandbox = Sandbox::new();
     let mut watch = Watch::new(&[], &sandbox, quick(WAIT));
@@ -394,7 +410,10 @@ fn the_window_is_told_the_kind_and_what_a_person_must_do() {
             why: None,
             attempt: None,
             unsent: None,
-            since: None
+            since: None,
+            clipboard: false,
+            notices: false,
+            sounds: false
         }
     );
     assert_eq!(
@@ -483,6 +502,22 @@ mod vetting {
             text: "hello".into(),
         };
         assert!(opted_in.admit(BOX, clipboard).is_some());
+    }
+
+    #[tokio::test]
+    async fn an_opted_in_machines_notice_is_one_clean_line_led_by_its_name() {
+        let sandbox = Sandbox::new();
+        let mut def = machine("box", &sandbox, "hang");
+        def.notices = true;
+        let mut hub = Hub::start(&[def], &shim(), ids_file(&sandbox), quick(WAIT), None);
+        let hostile = format!("\u{1b}[31mdone\u{7}\n{}", "x".repeat(5000));
+        let Some(ServerMsg::Notice(text)) = hub.admit(BOX, ServerMsg::Notice(hostile)) else {
+            panic!("an opted-in notice is let through");
+        };
+        assert!(text.starts_with("[box] "), "{text}");
+        assert!(text.contains("done"), "{text}");
+        assert!(!text.chars().any(char::is_control), "{text:?}");
+        assert!(text.chars().count() < 400, "cut short: {}", text.len());
     }
 
     #[tokio::test]

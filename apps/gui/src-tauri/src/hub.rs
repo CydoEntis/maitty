@@ -103,6 +103,8 @@ struct Shared {
     allowance: Mutex<BTreeMap<MachineId, ReplyAllowance>>,
     /// Keystrokes a machine without a line could not take, counted until it is back.
     unsent: Mutex<BTreeMap<MachineId, u32>>,
+    /// What each machine may do to this computer (`notices`, `sounds`, `clipboard`), as configured.
+    opts: Mutex<BTreeMap<MachineId, MachineOpts>>,
     /// When each machine that is not connected stopped being, in milliseconds since the epoch.
     down_since: Mutex<BTreeMap<MachineId, u64>>,
 }
@@ -131,6 +133,14 @@ impl HubHandle {
         self.outbox
             .send(outgoing)
             .map_err(|_| NotConnected(machine))
+    }
+
+    /// What the machine may do to this computer; nothing for one that is not known.
+    pub fn opts_of(&self, machine: MachineId) -> MachineOpts {
+        lock(&self.shared.opts)
+            .get(&machine)
+            .copied()
+            .unwrap_or_default()
     }
 
     /// Whether a different daemon answered at the machine's name, so its line was turned away.
@@ -273,6 +283,7 @@ impl Hub {
         opts.insert(MachineId::LOCAL, MachineOpts::LOCAL);
         let links = Links::start(machines, timing, dial);
         let names_for_hub = names.clone();
+        let shared_opts = opts.clone();
         let (outbox_tx, outbox) = mpsc::unbounded_channel();
         let (commands_tx, commands) = mpsc::unbounded_channel();
         let (local_tx, local_events) = mpsc::unbounded_channel();
@@ -300,6 +311,7 @@ impl Hub {
                 commands: commands_tx,
                 shared: Arc::new(Shared {
                     names: Mutex::new(names),
+                    opts: Mutex::new(shared_opts),
                     ..Shared::default()
                 }),
             },
@@ -369,6 +381,7 @@ impl Hub {
                 self.opts
                     .insert(id, MachineOpts::named(std::slice::from_ref(&def), &def.name));
                 lock(&self.handle.shared.names).insert(id, def.name.clone());
+                lock(&self.handle.shared.opts).insert(id, MachineOpts::named(std::slice::from_ref(&def), &def.name));
             }
             Command::Retry(name) => {
                 let Some(machine) = self.control.id_of(&name) else {
@@ -393,6 +406,7 @@ impl Hub {
                 self.refused.remove(&machine);
                 let shared = &self.handle.shared;
                 lock(&shared.names).remove(&machine);
+                lock(&shared.opts).remove(&machine);
                 lock(&shared.up).remove(&machine);
                 lock(&shared.refused).remove(&machine);
                 lock(&shared.unsent).remove(&machine);
@@ -528,6 +542,10 @@ pub struct MachineState {
     pub unsent: Option<u32>,
     /// Since when the machine has not been connected, in milliseconds since the epoch.
     pub since: Option<u64>,
+    /// What the machine may do to this computer, from its entry in `config.local.toml`.
+    pub clipboard: bool,
+    pub notices: bool,
+    pub sounds: bool,
 }
 
 pub fn describe(machine: MachineId, name: &str, state: &ConnectionState) -> MachineState {
@@ -546,6 +564,9 @@ pub fn describe(machine: MachineId, name: &str, state: &ConnectionState) -> Mach
         attempt,
         unsent: None,
         since: None,
+        clipboard: false,
+        notices: false,
+        sounds: false,
     }
 }
 

@@ -61,6 +61,8 @@ pub enum Out {
     /// What another machine's daemon said went wrong with a request of ours, already cleaned and
     /// led by the machine's name.
     Error { machine: MachineId, text: String },
+    /// What another machine's daemon wants shown, already cleaned and led by the machine's name.
+    Notice { machine: MachineId, text: String },
     /// Ask the machine's daemon for the pane's replay.
     WantReplay { machine: MachineId, term: TermId },
 }
@@ -108,6 +110,9 @@ impl Streams {
             // Only another machine's: this computer's requests are answered on their own connection.
             ServerMsg::Error(text) if machine != MachineId::LOCAL => {
                 out.push(Out::Error { machine, text });
+            }
+            ServerMsg::Notice(text) if machine != MachineId::LOCAL => {
+                out.push(Out::Notice { machine, text });
             }
             ServerMsg::State(snapshot) => self.publish(machine, snapshot, &mut out),
             ServerMsg::TermsChanged { changed, removed } => {

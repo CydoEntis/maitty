@@ -38,6 +38,8 @@ const MACHINE_SESSIONS_EVENT: &str = "machine-sessions-changed";
 /// Carries what another machine said went wrong with a request: `{machine, text}`.
 /// Carries the number of a machine that was removed from the list.
 const MACHINE_REMOVED_EVENT: &str = "machine-removed";
+/// Carries what an opted-in machine wants shown: `{machine, text}`.
+const MACHINE_NOTICE_EVENT: &str = "machine-notice";
 const MACHINE_ERROR_EVENT: &str = "machine-error";
 
 /// The longest folder path sent to another machine.
@@ -343,6 +345,8 @@ pub enum Reaction {
     Frame(Vec<u8>),
     /// What another machine said went wrong with a request.
     Error { machine: MachineId, text: String },
+    /// What another machine, opted in to notices, wants shown.
+    Notice { machine: MachineId, text: String },
     /// A machine was taken out of the list.
     Removed { machine: MachineId },
     /// A machine's whole snapshot, or none when this computer's line ended.
@@ -378,6 +382,8 @@ pub fn react(
             if handle.is_refused(machine) {
                 told.state = "refused";
             }
+            let opts = handle.opts_of(machine);
+            (told.clipboard, told.notices, told.sounds) = (opts.clipboard, opts.notices, opts.sounds);
             told.since = handle.down_since(machine, state.is_connected(), now_ms());
             if state.is_connected() {
                 // Typing the machine could not take while it was down, now it can be said.
@@ -420,6 +426,7 @@ fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
         .filter_map(|out| match out {
             Out::Frame(frame) => Some(Reaction::Frame(frame)),
             Out::Error { machine, text } => Some(Reaction::Error { machine, text }),
+            Out::Notice { machine, text } => Some(Reaction::Notice { machine, text }),
             Out::Sessions { machine, snapshot } => Some(Reaction::Sessions { machine, snapshot }),
             Out::WantReplay { machine, term } => {
                 let _ = handle.send(Outgoing {
@@ -458,6 +465,15 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                     states.insert(told.machine, told.clone());
                 }
                 let _ = app.emit(MACHINE_STATE_EVENT, told);
+            }
+            Reaction::Notice { machine, text } => {
+                let _ = app.emit(
+                    MACHINE_NOTICE_EVENT,
+                    MachineError {
+                        machine: machine.0,
+                        text,
+                    },
+                );
             }
             Reaction::Removed { machine } => {
                 if let Ok(mut states) = app.state::<MachineStates>().0.lock() {
@@ -517,6 +533,9 @@ mod tests {
             attempt: None,
             unsent: None,
             since: None,
+            clipboard: false,
+            notices: false,
+            sounds: false,
         }
     }
 

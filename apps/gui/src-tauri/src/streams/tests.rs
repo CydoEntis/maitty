@@ -421,3 +421,19 @@ fn what_another_machine_says_went_wrong_is_given_and_this_computers_is_not() {
             .is_empty()
     );
 }
+
+#[test]
+fn what_another_machine_wants_shown_is_given_and_this_computers_is_not() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let said = streams.on_message(BOX, ServerMsg::Notice("[box] saved".into()), now);
+    assert!(matches!(
+        &said[..],
+        [Out::Notice { machine, text }] if *machine == BOX && text == "[box] saved"
+    ));
+    assert!(
+        streams
+            .on_message(LOCAL, ServerMsg::Notice("x".into()), now)
+            .is_empty()
+    );
+}

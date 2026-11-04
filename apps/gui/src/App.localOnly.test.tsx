@@ -42,6 +42,7 @@ vi.mock('@/api/machines', async (importOriginal) => ({
   listenMachineSessions: () => Promise.resolve(() => undefined),
   listenMachineError: () => Promise.resolve(() => undefined),
   listenMachineRemoved: () => Promise.resolve(() => undefined),
+  listenMachineNotice: () => Promise.resolve(() => undefined),
 }))
 
 vi.mock('@/features/terminal/useFileDrop', () => ({

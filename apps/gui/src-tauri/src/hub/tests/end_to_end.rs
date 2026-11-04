@@ -72,7 +72,7 @@ impl Host {
             match reaction {
                 Reaction::State(told) => self.states.push((told.machine, told.state)),
                 Reaction::Frame(frame) => self.frames.push(decode(&frame)),
-                Reaction::Error { .. } | Reaction::Removed { .. } => {}
+                Reaction::Error { .. } | Reaction::Removed { .. } | Reaction::Notice { .. } => {}
                 Reaction::Sessions { machine, snapshot } => {
                     self.sessions.insert(machine.0, snapshot.map(|s| *s));
                 }

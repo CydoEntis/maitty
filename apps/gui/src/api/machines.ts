@@ -97,6 +97,10 @@ const MachineStateSchema = z.object({
   unsent: z.number().nullable().optional(),
   /** Since when the machine has not been connected, in ms since the epoch. */
   since: z.number().nullable().optional(),
+  /** What the machine may do to this computer, from its entry in config.local.toml; off unless it says. */
+  clipboard: z.boolean().optional(),
+  notices: z.boolean().optional(),
+  sounds: z.boolean().optional(),
 })
 export type MachineState = z.infer<typeof MachineStateSchema>
 
@@ -206,4 +210,12 @@ export async function cancelAddMachine(): Promise<void> {
 /** Start a terminal session in a folder of another machine; the host says why it could not. */
 export async function startSessionOnMachine(machine: number, folder: string): Promise<void> {
   if (isTauri()) await invoke('start_session_on_machine', { machine, folder })
+}
+
+/** Calls back with what a machine that is allowed to raise notices wants shown (already cleaned, led by its name). */
+export function listenMachineNotice(onNotice: (text: string) => void): Promise<() => void> {
+  return listen<unknown>('machine-notice', (event) => {
+    const notice = MachineErrorSchema.safeParse(event.payload)
+    if (notice.success) onNotice(notice.data.text)
+  })
 }

@@ -17,7 +17,7 @@ import {
   sendTerminalInput,
   startShellSession,
 } from '@/api/daemon'
-import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineError, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, startSessionOnMachine, terminalOf, unregisterMachine, type MachineState } from '@/api/machines'
+import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, startSessionOnMachine, terminalOf, unregisterMachine, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -335,6 +335,11 @@ export function DesktopApp() {
     for (const listening of [
       listenMachineState(settle),
       listenMachineError((text) => { toast.error(text) }),
+      // A machine that was allowed to raise notices: in the window as a toast, away from it as the system's.
+      listenMachineNotice((text) => {
+        if (document.hasFocus()) toast.message(text)
+        else sendNativeNotice(text, '').catch((error: unknown) => { console.warn('Could not show a system notification', error) })
+      }),
       listenMachineRemoved((id) => {
         const name = names.get(id)
         names.delete(id)
@@ -1156,8 +1161,8 @@ export function DesktopApp() {
   const { notifyNeedsYou, notifyFinished, notifyError } = preferences
   useEffect(() => {
     const previousStatuses = lastStatuses.current
-    // What another machine's agents do raises no system notice: that is for a machine to opt in to (ADR 0048).
-    const mine = sessions.filter((item) => item.machine === LOCAL_MACHINE)
+    // What another machine's agents do raises no system notice unless its entry says notices = true (ADR 0048).
+    const mine = sessions.filter((item) => item.machine === LOCAL_MACHINE || machines.get(item.machine)?.state.notices === true)
     const notices = online
       ? noticesFor(lastStatuses.current, mine, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
       : []
@@ -1179,7 +1184,7 @@ export function DesktopApp() {
       lastNotified.current = { sessionId: notice.sessionId, at: Date.now() }
       sendNativeNotice(notice.title, notice.body).catch((error: unknown) => { console.warn('Could not show a system notification', error) })
     }
-  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, showSessionById, sessionMap, projectOf, answerSession])
+  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, showSessionById, sessionMap, projectOf, answerSession, machines])
 
   // Types the resume command into the session, as you would. Nothing resumes without this click.
   const resumeInterrupted = useCallback((target: SessionView) => {
