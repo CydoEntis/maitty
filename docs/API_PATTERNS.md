@@ -146,7 +146,12 @@ up to 12 ms or, for this computer, 64 KiB; a replay flushes what came before it;
 at most 256 KiB into a flush, and if 4 MiB of its output waits, that pane's waiting output is dropped
 and its daemon is asked for a fresh replay, so one machine cannot slow this computer's panes);
 history, sequence numbers and the last snapshot are kept per machine, and `terminal_history` and
-`terminal_input` take an optional `machine` (this computer when left out);
+`terminal_input` take an optional `machine` (this computer when left out), as do the pane commands
+(resize, rename, pin, archive, seen, close): a pane of another machine is asked over that machine's
+line (`PaneCommand` in `maitty-desktop-client` makes each message for both), a reply or error from it
+is taken only while a request of the host's is out to it (30 s, 64 kept, as in the terminal app), and
+typing or a command for a machine with no line is refused naming it, the typing counted and reported
+as `unsent` on the machine's next `machine-state` `connected`;
 the view uses the sequence number to catch up from `terminal_history`; `terminal_history` and the
 replay commands answer with raw bytes
 (`tauri::ipc::Response`), the history prefixed with its sequence number as 8 big-endian bytes and

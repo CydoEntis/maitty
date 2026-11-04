@@ -97,3 +97,6 @@ reaches the window on one raw channel with the machine in the frame header (`str
 shared with the terminal app); the web view never connects. Its tests run against the fake `ssh`
 shim (`crates/maitty-test-support`).
 
+Routing (`routing.rs`, `terminal_stream.rs`): the pane commands take an optional `machine` and a
+command for another machine's pane goes down that machine's line through the hub instead of opening
+a connection; this computer's commands are unchanged.

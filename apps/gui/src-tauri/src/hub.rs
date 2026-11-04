@@ -7,6 +7,7 @@
 //! (`machine_ids`). Nothing here knows about Tauri, so the whole of it is tested without a
 //! window, against the fake `ssh` shim.
 
+use crate::routing::{ReplyAllowance, expects_answer};
 use maitty_ipc_transport::{Reader, Writer};
 use maitty_machines::connections::{Burst, Connections, NotConnected, SERVER_BURST};
 use maitty_machines::link::{
@@ -15,14 +16,14 @@ use maitty_machines::link::{
 use maitty_machines::machine_ids::{IdCheck, MachineIds, check_daemon_id};
 use maitty_machines::remote_policy::{MachineOpts, vet};
 use maitty_machines::{Dial, MachineDef, MachineId, Outgoing};
-use maitty_shared::protocol::{ServerMsg, Surface};
+use maitty_shared::protocol::{ClientMsg, ServerMsg, Surface};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 /// How this computer's own line is made: a connection to its daemon, starting the daemon when
@@ -75,15 +76,42 @@ pub enum Update {
 #[derive(Clone)]
 pub struct HubHandle {
     outbox: mpsc::UnboundedSender<Outgoing>,
-    up: Arc<Mutex<BTreeSet<MachineId>>>,
+    shared: Arc<Shared>,
+}
+
+/// What the hub and the host's commands both look at.
+#[derive(Default)]
+struct Shared {
+    /// Machines with a line.
+    up: Mutex<BTreeSet<MachineId>>,
+    /// Each machine's name, for saying which one a refusal is about.
+    names: Mutex<BTreeMap<MachineId, String>>,
+    /// Requests out to each other machine that are waiting for an answer.
+    allowance: Mutex<BTreeMap<MachineId, ReplyAllowance>>,
+    /// Keystrokes a machine without a line could not take, counted until it is back.
+    unsent: Mutex<BTreeMap<MachineId, u32>>,
 }
 
 impl HubHandle {
-    /// Hand a message to its machine's line. Never waits. Refused when the machine has no line.
+    /// Hand a message to its machine's line. Never waits. Refused when the machine has no line;
+    /// typing a machine could not take is counted, so the person is told when it is back.
     pub fn send(&self, outgoing: Outgoing) -> Result<(), NotConnected> {
         let machine = outgoing.machine;
         if !self.is_up(machine) {
+            if matches!(outgoing.msg, ClientMsg::Input { .. })
+                && machine != MachineId::LOCAL
+                && lock(&self.shared.names).contains_key(&machine)
+            {
+                *lock(&self.shared.unsent).entry(machine).or_default() += 1;
+            }
             return Err(NotConnected(machine));
+        }
+        // What the machine says to this request may be taken as its answer.
+        if machine != MachineId::LOCAL && expects_answer(&outgoing.msg) {
+            lock(&self.shared.allowance)
+                .entry(machine)
+                .or_default()
+                .asked(Instant::now());
         }
         self.outbox
             .send(outgoing)
@@ -91,7 +119,17 @@ impl HubHandle {
     }
 
     pub fn is_up(&self, machine: MachineId) -> bool {
-        lock(&self.up).contains(&machine)
+        lock(&self.shared.up).contains(&machine)
+    }
+
+    /// The machine's name, as it is configured.
+    pub fn name_of(&self, machine: MachineId) -> Option<String> {
+        lock(&self.shared.names).get(&machine).cloned()
+    }
+
+    /// How many keystrokes the machine could not take while it was down, and start counting again.
+    pub fn take_unsent(&self, machine: MachineId) -> u32 {
+        lock(&self.shared.unsent).remove(&machine).unwrap_or(0)
     }
 }
 
@@ -182,6 +220,7 @@ impl Hub {
         names.insert(MachineId::LOCAL, maitty_machines::LOCAL_MACHINE.to_owned());
         opts.insert(MachineId::LOCAL, MachineOpts::LOCAL);
         let links = Links::start(machines, timing, dial);
+        let names_for_hub = names.clone();
         let (outbox_tx, outbox) = mpsc::unbounded_channel();
         let (local_tx, local_events) = mpsc::unbounded_channel();
         let (ended_tx, ended_rx) = mpsc::unbounded_channel();
@@ -198,13 +237,16 @@ impl Hub {
             connections: Connections::default(),
             ids: MachineIds::load(&ids_file),
             ids_file,
-            names,
+            names: names_for_hub,
             opts,
             refused: BTreeMap::new(),
             queue: VecDeque::new(),
             handle: HubHandle {
                 outbox: outbox_tx,
-                up: Arc::default(),
+                shared: Arc::new(Shared {
+                    names: Mutex::new(names),
+                    ..Shared::default()
+                }),
             },
             outbox,
             local_events,
@@ -262,7 +304,7 @@ impl Hub {
                 // refused again on its first State, a fixed one is let in.
                 self.refused.remove(&machine);
                 self.connections.add(machine, halves);
-                lock(&self.handle.up).insert(machine);
+                lock(&self.handle.shared.up).insert(machine);
                 self.queue.push_back(Update::LineUp { machine });
             }
             LinkEvent::State {
@@ -296,10 +338,10 @@ impl Hub {
         }
         if self.refused.contains_key(&machine) {
             self.connections.mark_lost(machine);
-            lock(&self.handle.up).remove(&machine);
+            lock(&self.handle.shared.up).remove(&machine);
         }
         if lost {
-            lock(&self.handle.up).remove(&machine);
+            lock(&self.handle.shared.up).remove(&machine);
             // A supervisor dials its machine again once told the line ended.
             if machine == MachineId::LOCAL {
                 if let Some(ended) = &self.local_ended {
@@ -337,9 +379,19 @@ impl Hub {
             }
         }
         let opts = self.opts.get(&machine).copied().unwrap_or_default();
-        // No request of the host's is waiting for an answer yet, so a reply or an error that
-        // nobody asked for is ignored.
-        vet(&opts, false, &name, msg)
+        // A reply or an error counts only while a request of the host's is out to the machine.
+        let asked = lock(&self.handle.shared.allowance)
+            .entry(machine)
+            .or_default()
+            .awaiting(Instant::now());
+        let vetted = vet(&opts, asked, &name, msg)?;
+        if matches!(vetted, ServerMsg::Reply(_) | ServerMsg::Error(_)) {
+            lock(&self.handle.shared.allowance)
+                .entry(machine)
+                .or_default()
+                .answered();
+        }
+        Some(vetted)
     }
 }
 
@@ -361,6 +413,8 @@ pub struct MachineState {
     pub why: Option<String>,
     /// Which dial a reconnect is on.
     pub attempt: Option<u32>,
+    /// On connecting: how many keystrokes the machine could not take while it was down.
+    pub unsent: Option<u32>,
 }
 
 pub fn describe(machine: MachineId, name: &str, state: &ConnectionState) -> MachineState {
@@ -377,6 +431,7 @@ pub fn describe(machine: MachineId, name: &str, state: &ConnectionState) -> Mach
         state: state.kind(),
         why,
         attempt,
+        unsent: None,
     }
 }
 

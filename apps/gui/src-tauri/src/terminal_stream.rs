@@ -16,7 +16,9 @@
 //! opens on it (`terminal_history`), so panes nobody looks at cost nothing to carry.
 
 use crate::hub::{Hub, HubHandle, LocalDial, MACHINE_STATE_EVENT, Update, describe};
+use crate::routing::{self, machine_of};
 use crate::streams::{Out, Streams};
+use maitty_desktop_client::PaneCommand;
 use maitty_machines::link::Timing;
 use maitty_machines::machine_ids::MachineIds;
 use maitty_machines::{MachineDef, MachineId, Outgoing};
@@ -49,12 +51,44 @@ pub struct TerminalOutput(Mutex<Option<Channel<Response>>>);
 pub struct Wire(OnceLock<HubHandle>);
 
 impl Wire {
+    #[cfg(test)]
+    pub fn reaching(handle: HubHandle) -> Wire {
+        let wire = Wire::default();
+        let _ = wire.0.set(handle);
+        wire
+    }
+
     fn send(&self, machine: MachineId, msg: ClientMsg) -> Result<(), String> {
-        self.0
-            .get()
-            .ok_or_else(|| NOT_CONNECTED.to_string())?
+        let handle = self.0.get().ok_or_else(|| NOT_CONNECTED.to_string())?;
+        handle
             .send(Outgoing { machine, msg })
-            .map_err(|_| NOT_CONNECTED.to_string())
+            .map_err(|_| refusal(handle, machine))
+    }
+
+    /// Ask the daemon of `term`'s machine (this computer when none is named) to do `command`.
+    /// The machine's line takes it without waiting; its answer is taken, if it comes, by the hub.
+    /// Refused, naming the machine, when the machine has no line.
+    pub fn command(
+        &self,
+        machine: Option<u16>,
+        term: u32,
+        command: PaneCommand,
+    ) -> Result<(), String> {
+        self.send(machine_of(machine), routing::message(term, command))
+    }
+}
+
+/// Why a machine took nothing: it is down, or it is not one of ours.
+fn refusal(handle: &HubHandle, machine: MachineId) -> String {
+    if machine == MachineId::LOCAL {
+        return NOT_CONNECTED.to_string();
+    }
+    match handle.name_of(machine) {
+        Some(name) => format!("{name} is not connected"),
+        None => format!(
+            "Machine {} is not one of this computer's machines",
+            machine.0
+        ),
     }
 }
 
@@ -85,10 +119,7 @@ pub async fn terminal_input(
             "Terminal input must contain between 1 and {largest} bytes"
         ));
     }
-    wire.send(
-        MachineId(machine.unwrap_or(0)),
-        ClientMsg::Input { term, data },
-    )
+    wire.command(machine, term, PaneCommand::Input(data))
 }
 
 /// What a view needs to open on a pane: the sequence number it ends at (`SEQ_BYTES`, big-endian),
@@ -103,7 +134,7 @@ pub async fn terminal_history(
     machine: Option<u16>,
     term: u32,
 ) -> Result<Response, String> {
-    let machine = MachineId(machine.unwrap_or(0));
+    let machine = machine_of(machine);
     let body = streams
         .0
         .lock()
@@ -112,7 +143,7 @@ pub async fn terminal_history(
     if let Some(body) = body {
         return Ok(Response::new(body));
     }
-    wire.send(machine, ClientMsg::WantReplay { term })?;
+    wire.command(Some(machine.0), term, PaneCommand::WantReplay)?;
     Ok(Response::new(Vec::new()))
 }
 
@@ -183,7 +214,12 @@ fn apply(app: &AppHandle, handle: &HubHandle, update: Update) {
             name,
             state,
         } => {
-            let _ = app.emit(MACHINE_STATE_EVENT, describe(machine, &name, &state));
+            let mut told = describe(machine, &name, &state);
+            if state.is_connected() {
+                // Typing the machine could not take while it was down, now it can be said.
+                told.unsent = Some(handle.take_unsent(machine)).filter(|n| *n > 0);
+            }
+            let _ = app.emit(MACHINE_STATE_EVENT, told);
         }
         Update::LineUp { machine } => {
             // Panes a view was watching are asked for again; the replay that comes puts each

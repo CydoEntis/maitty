@@ -297,7 +297,8 @@ fn the_window_is_told_the_kind_and_what_a_person_must_do() {
             name: "box".into(),
             state: "connected",
             why: None,
-            attempt: None
+            attempt: None,
+            unsent: None
         }
     );
     assert_eq!(
@@ -335,6 +336,8 @@ fn the_window_is_told_the_kind_and_what_a_person_must_do() {
     }
     assert_eq!(told(ConnectionState::Connecting).state, "connecting");
 }
+
+mod commands;
 
 mod vetting {
     use super::*;
