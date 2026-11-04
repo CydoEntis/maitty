@@ -289,6 +289,7 @@ Run from the repo root, in order; all must pass:
 cargo build
 cargo test
 cargo clippy --all-targets -- -D warnings
+scripts/check-gui-deps.sh   # the desktop app must not link maitty-core, maitty-terminal-client or maitty-settings
 cargo check --target x86_64-unknown-linux-gnu
 cargo check --target aarch64-apple-darwin
 ```

@@ -1,8 +1,13 @@
+pub mod hub;
+mod machines;
 mod project_files;
+pub mod routing;
+pub mod streams;
 
 use std::path::PathBuf;
 mod terminal_stream;
 
+use maitty_desktop_client::PaneCommand;
 use tauri::Manager;
 
 fn daemon_executable(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -188,10 +193,16 @@ async fn pane_terminal_replay(
 #[tauri::command]
 async fn pane_terminal_resize(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     term: u32,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
+    // Another machine's pane is asked over that machine's line; this computer's, as ever.
+    if routing::is_remote(machine) {
+        return wire.command(machine, term, PaneCommand::Resize { cols, rows });
+    }
     maitty_desktop_client::pane_terminal_resize(term, cols, rows, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -258,9 +269,16 @@ async fn start_terminal_session(
 #[tauri::command]
 async fn rename_terminal_session(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     term: u32,
     name: String,
 ) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::Rename(name))
+            .map(|()| serde_json::Value::Null);
+    }
     maitty_desktop_client::rename_terminal_session(term, name, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -269,9 +287,16 @@ async fn rename_terminal_session(
 #[tauri::command]
 async fn pin_terminal_session(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     term: u32,
     pinned: bool,
 ) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::Pin(pinned))
+            .map(|()| serde_json::Value::Null);
+    }
     maitty_desktop_client::pin_terminal_session(term, pinned, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -280,9 +305,16 @@ async fn pin_terminal_session(
 #[tauri::command]
 async fn archive_terminal_session(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     term: u32,
     archived: bool,
 ) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::Archive(archived))
+            .map(|()| serde_json::Value::Null);
+    }
     maitty_desktop_client::archive_terminal_session(term, archived, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -291,8 +323,15 @@ async fn archive_terminal_session(
 #[tauri::command]
 async fn mark_terminal_seen(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     term: u32,
 ) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::Seen)
+            .map(|()| serde_json::Value::Null);
+    }
     maitty_desktop_client::mark_terminal_seen(term, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -301,8 +340,15 @@ async fn mark_terminal_seen(
 #[tauri::command]
 async fn close_terminal_session(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     term: u32,
 ) -> Result<serde_json::Value, String> {
+    if routing::is_remote(machine) {
+        return wire
+            .command(machine, term, PaneCommand::Close)
+            .map(|()| serde_json::Value::Null);
+    }
     maitty_desktop_client::close_terminal_session(term, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -473,16 +519,22 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .manage(terminal_stream::TerminalHistory::default())
-        .manage(terminal_stream::TerminalKeys::default())
+        .manage(machines::Machines(maitty_machines::local_machines::local_machines()))
+        .manage(terminal_stream::StreamState::default())
+        .manage(terminal_stream::MachineStates::default())
         .manage(terminal_stream::TerminalOutput::default())
-        .manage(terminal_stream::LastSnapshot::default())
+        .manage(terminal_stream::Wire::default())
         .setup(|app| {
-            terminal_stream::start(app.handle().clone());
+            terminal_stream::start(
+                app.handle().clone(),
+                app.state::<machines::Machines>().0.machines.clone(),
+            );
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             list_sessions,
+            machines::list_machines,
+            terminal_stream::list_machines_overview,
             read_conversation,
             conversation_diff,
             conversation_files,

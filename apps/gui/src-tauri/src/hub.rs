@@ -1,0 +1,442 @@
+//! The host's connections to other machines (ADR 0048). One supervisor per configured machine
+//! keeps its line up through `maitty-machines`; this takes what the supervisors and the lines
+//! report and decides what the host may act on. The web view never connects.
+//!
+//! Everything a remote daemon says is vetted here, by the code the terminal app uses
+//! (`remote_policy`), and a different daemon answering at a machine's name is turned away
+//! (`machine_ids`). Nothing here knows about Tauri, so the whole of it is tested without a
+//! window, against the fake `ssh` shim.
+
+use crate::routing::{ReplyAllowance, expects_answer};
+use maitty_ipc_transport::{Reader, Writer};
+use maitty_machines::connections::{Burst, Connections, NotConnected, SERVER_BURST};
+use maitty_machines::link::{
+    ConnectionState, LinkControl, LinkEvent, Links, Timing, configured_machines,
+};
+use maitty_machines::machine_ids::{IdCheck, MachineIds, check_daemon_id};
+use maitty_machines::remote_policy::{MachineOpts, vet};
+use maitty_machines::{Dial, MachineDef, MachineId, Outgoing};
+use maitty_shared::protocol::{ClientMsg, ServerMsg, Surface};
+use serde::Serialize;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::future::Future;
+use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
+
+/// How this computer's own line is made: a connection to its daemon, starting the daemon when
+/// none answers.
+pub type LocalDial = Arc<
+    dyn Fn() -> Pin<Box<dyn Future<Output = anyhow::Result<(Reader, Writer)>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// How long to wait before this computer's line is made again.
+const LOCAL_REDIAL: Duration = Duration::from_secs(1);
+
+/// What a connection says about the host in its Hello: it attaches to the panes this app owns
+/// (ADR 0045) and asks for a pane's replay when a view opens on it. A desktop has no pane of
+/// its own, so there is no claim to make.
+fn dial() -> anyhow::Result<Dial> {
+    Ok(Dial {
+        attach: true,
+        surface: Surface::Desktop,
+        replays: false,
+        term: None,
+        token: None,
+        structured: None,
+    })
+}
+
+/// What the hub has to tell the host.
+#[derive(Debug)]
+pub enum Update {
+    /// A machine's connection changed state.
+    State {
+        machine: MachineId,
+        name: String,
+        state: ConnectionState,
+    },
+    /// What a machine said, admitted and vetted, in the order it was said.
+    Messages {
+        machine: MachineId,
+        msgs: Vec<ServerMsg>,
+    },
+    /// A machine's line came up, before anything it says.
+    LineUp { machine: MachineId },
+    /// A machine's line ended; its messages came first.
+    LineEnded { machine: MachineId },
+}
+
+/// Where the host sends what it has for a machine. Cheap to clone; it reaches the hub's lines
+/// without waiting for the hub's loop.
+#[derive(Clone)]
+pub struct HubHandle {
+    outbox: mpsc::UnboundedSender<Outgoing>,
+    shared: Arc<Shared>,
+}
+
+/// What the hub and the host's commands both look at.
+#[derive(Default)]
+struct Shared {
+    /// Machines with a line.
+    up: Mutex<BTreeSet<MachineId>>,
+    /// Each machine's name, for saying which one a refusal is about.
+    names: Mutex<BTreeMap<MachineId, String>>,
+    /// Requests out to each other machine that are waiting for an answer.
+    allowance: Mutex<BTreeMap<MachineId, ReplyAllowance>>,
+    /// Keystrokes a machine without a line could not take, counted until it is back.
+    unsent: Mutex<BTreeMap<MachineId, u32>>,
+}
+
+impl HubHandle {
+    /// Hand a message to its machine's line. Never waits. Refused when the machine has no line;
+    /// typing a machine could not take is counted, so the person is told when it is back.
+    pub fn send(&self, outgoing: Outgoing) -> Result<(), NotConnected> {
+        let machine = outgoing.machine;
+        if !self.is_up(machine) {
+            if matches!(outgoing.msg, ClientMsg::Input { .. })
+                && machine != MachineId::LOCAL
+                && lock(&self.shared.names).contains_key(&machine)
+            {
+                *lock(&self.shared.unsent).entry(machine).or_default() += 1;
+            }
+            return Err(NotConnected(machine));
+        }
+        // What the machine says to this request may be taken as its answer.
+        if machine != MachineId::LOCAL && expects_answer(&outgoing.msg) {
+            lock(&self.shared.allowance)
+                .entry(machine)
+                .or_default()
+                .asked(Instant::now());
+        }
+        self.outbox
+            .send(outgoing)
+            .map_err(|_| NotConnected(machine))
+    }
+
+    pub fn is_up(&self, machine: MachineId) -> bool {
+        lock(&self.shared.up).contains(&machine)
+    }
+
+    /// The machine's name, as it is configured.
+    pub fn name_of(&self, machine: MachineId) -> Option<String> {
+        lock(&self.shared.names).get(&machine).cloned()
+    }
+
+    /// How many keystrokes the machine could not take while it was down, and start counting again.
+    pub fn take_unsent(&self, machine: MachineId) -> u32 {
+        lock(&self.shared.unsent).remove(&machine).unwrap_or(0)
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Keep this computer's line up: dial, hand the line over, and dial again when it ends.
+async fn supervise_local(
+    dial: LocalDial,
+    events: mpsc::UnboundedSender<LinkEvent>,
+    mut ended: mpsc::UnboundedReceiver<()>,
+) {
+    let name = maitty_machines::LOCAL_MACHINE.to_owned();
+    let state = |state| LinkEvent::State {
+        machine: MachineId::LOCAL,
+        name: name.clone(),
+        state,
+    };
+    if events.send(state(ConnectionState::Connecting)).is_err() {
+        return;
+    }
+    loop {
+        if let Ok(halves) = dial().await {
+            if events
+                .send(LinkEvent::Line(MachineId::LOCAL, halves))
+                .is_err()
+                || events.send(state(ConnectionState::Connected)).is_err()
+            {
+                return;
+            }
+            if ended.recv().await.is_none() {
+                return;
+            }
+            let lost = ConnectionState::Reconnecting {
+                attempt: 1,
+                since: std::time::Instant::now(),
+            };
+            if events.send(state(lost)).is_err() {
+                return;
+            }
+        }
+        tokio::time::sleep(LOCAL_REDIAL).await;
+    }
+}
+
+pub struct Hub {
+    links: Links,
+    control: LinkControl,
+    connections: Connections,
+    ids: MachineIds,
+    ids_file: PathBuf,
+    names: BTreeMap<MachineId, String>,
+    opts: BTreeMap<MachineId, MachineOpts>,
+    /// Machines a different daemon answered for, with the reason. Cleared by a fresh line.
+    refused: BTreeMap<MachineId, String>,
+    queue: VecDeque<Update>,
+    handle: HubHandle,
+    outbox: mpsc::UnboundedReceiver<Outgoing>,
+    /// This computer's line, when the hub keeps it: what it says, and telling it a line ended.
+    local_events: mpsc::UnboundedReceiver<LinkEvent>,
+    local_ended: Option<mpsc::UnboundedSender<()>>,
+    local_task: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl Hub {
+    /// Start a supervisor for each of `defs`, reached through `ssh`, and for this computer's own
+    /// line when `local` says how to make it. Must run inside the runtime. With no machine and
+    /// no local line nothing starts.
+    pub fn start(
+        defs: &[MachineDef],
+        ssh: &str,
+        ids_file: PathBuf,
+        timing: Timing,
+        local: Option<LocalDial>,
+    ) -> Hub {
+        let machines = configured_machines(defs, ssh);
+        let mut names = machines
+            .iter()
+            .map(|(id, machine)| (*id, machine.name().to_owned()))
+            .collect::<BTreeMap<_, _>>();
+        let mut opts: BTreeMap<MachineId, MachineOpts> = names
+            .iter()
+            .map(|(id, name)| (*id, MachineOpts::named(defs, name)))
+            .collect();
+        names.insert(MachineId::LOCAL, maitty_machines::LOCAL_MACHINE.to_owned());
+        opts.insert(MachineId::LOCAL, MachineOpts::LOCAL);
+        let links = Links::start(machines, timing, dial);
+        let names_for_hub = names.clone();
+        let (outbox_tx, outbox) = mpsc::unbounded_channel();
+        let (local_tx, local_events) = mpsc::unbounded_channel();
+        let (ended_tx, ended_rx) = mpsc::unbounded_channel();
+        let (local_ended, local_task) = match local {
+            Some(dial) => (
+                Some(ended_tx),
+                Some(tokio::spawn(supervise_local(dial, local_tx, ended_rx))),
+            ),
+            None => (None, None),
+        };
+        Hub {
+            control: links.control(),
+            links,
+            connections: Connections::default(),
+            ids: MachineIds::load(&ids_file),
+            ids_file,
+            names: names_for_hub,
+            opts,
+            refused: BTreeMap::new(),
+            queue: VecDeque::new(),
+            handle: HubHandle {
+                outbox: outbox_tx,
+                shared: Arc::new(Shared {
+                    names: Mutex::new(names),
+                    ..Shared::default()
+                }),
+            },
+            outbox,
+            local_events,
+            local_ended,
+            local_task,
+        }
+    }
+
+    /// Whether anything is supervised: with nothing there is nothing to wait for.
+    pub fn any(&self) -> bool {
+        self.links.any() || self.local_task.is_some()
+    }
+
+    pub fn handle(&self) -> HubHandle {
+        self.handle.clone()
+    }
+
+    pub fn name_of(&self, machine: MachineId) -> Option<&str> {
+        self.names.get(&machine).map(String::as_str)
+    }
+
+    /// Dial the machine now, whatever the wait.
+    pub fn retry(&self, machine: MachineId) -> bool {
+        self.control.retry(machine)
+    }
+
+    /// Hand a message to its machine's line. Never waits.
+    pub fn send(&self, outgoing: Outgoing) -> Result<(), NotConnected> {
+        self.connections.send(outgoing)
+    }
+
+    /// The next thing to tell the host. Waits for ever with nothing to wait for. Safe to cut
+    /// short: whatever it had taken is kept for the next call.
+    pub async fn next(&mut self) -> Update {
+        loop {
+            if let Some(update) = self.queue.pop_front() {
+                return update;
+            }
+            tokio::select! {
+                event = self.links.next() => self.on_link_event(event),
+                Some(event) = self.local_events.recv() => self.on_link_event(event),
+                Some(outgoing) = self.outbox.recv() => {
+                    // A line that went since the handle looked has nowhere to take it.
+                    let _ = self.connections.send(outgoing);
+                }
+                burst = self.connections.recv_burst(SERVER_BURST) => self.on_burst(burst),
+            }
+        }
+    }
+
+    fn on_link_event(&mut self, event: LinkEvent) {
+        match event {
+            LinkEvent::Line(machine, halves) => {
+                // A fresh line is a fresh look at who answers: the same wrong daemon is
+                // refused again on its first State, a fixed one is let in.
+                self.refused.remove(&machine);
+                self.connections.add(machine, halves);
+                lock(&self.handle.shared.up).insert(machine);
+                self.queue.push_back(Update::LineUp { machine });
+            }
+            LinkEvent::State {
+                machine,
+                name,
+                state,
+            } => self.queue.push_back(Update::State {
+                machine,
+                name,
+                state,
+            }),
+        }
+    }
+
+    fn on_burst(&mut self, burst: Burst) {
+        let Burst {
+            machine,
+            msgs,
+            lost,
+            stalled,
+        } = burst;
+        let admitted: Vec<ServerMsg> = msgs
+            .into_iter()
+            .filter_map(|msg| self.admit(machine, msg))
+            .collect();
+        if !admitted.is_empty() {
+            self.queue.push_back(Update::Messages {
+                machine,
+                msgs: admitted,
+            });
+        }
+        if self.refused.contains_key(&machine) {
+            self.connections.mark_lost(machine);
+            lock(&self.handle.shared.up).remove(&machine);
+        }
+        if lost {
+            lock(&self.handle.shared.up).remove(&machine);
+            // A supervisor dials its machine again once told the line ended.
+            if machine == MachineId::LOCAL {
+                if let Some(ended) = &self.local_ended {
+                    let _ = ended.send(());
+                }
+            } else {
+                self.control.line_ended(machine, stalled);
+            }
+            self.queue.push_back(Update::LineEnded { machine });
+        }
+    }
+
+    /// The message to act on, or `None` when `machine` may not send it. A machine a different
+    /// daemon answers for says nothing that counts, and what the others say is vetted.
+    fn admit(&mut self, machine: MachineId, msg: ServerMsg) -> Option<ServerMsg> {
+        // This computer's own daemon is trusted as it always was.
+        if machine == MachineId::LOCAL {
+            return Some(msg);
+        }
+        if self.refused.contains_key(&machine) {
+            return None;
+        }
+        let name = self.names.get(&machine)?.clone();
+        if let ServerMsg::State(snapshot) = &msg {
+            match check_daemon_id(&mut self.ids, &name, snapshot.daemon_id.as_deref()) {
+                Ok(IdCheck::Recorded) => self.ids.save(&self.ids_file),
+                Ok(_) => {}
+                Err(mismatch) => {
+                    tracing::warn!("{mismatch}");
+                    let reason = mismatch.to_string();
+                    self.control.refuse(machine, reason.clone());
+                    self.refused.insert(machine, reason);
+                    return None;
+                }
+            }
+        }
+        let opts = self.opts.get(&machine).copied().unwrap_or_default();
+        // A reply or an error counts only while a request of the host's is out to the machine.
+        let asked = lock(&self.handle.shared.allowance)
+            .entry(machine)
+            .or_default()
+            .awaiting(Instant::now());
+        let vetted = vet(&opts, asked, &name, msg)?;
+        if matches!(vetted, ServerMsg::Reply(_) | ServerMsg::Error(_)) {
+            lock(&self.handle.shared.allowance)
+                .entry(machine)
+                .or_default()
+                .answered();
+        }
+        Some(vetted)
+    }
+}
+
+impl Drop for Hub {
+    fn drop(&mut self) {
+        if let Some(task) = &self.local_task {
+            task.abort();
+        }
+    }
+}
+
+/// A machine's state as the window is told it (`machine-state`): the kind, and the words that
+/// say what to do when a person has to act.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct MachineState {
+    pub machine: u16,
+    pub name: String,
+    pub state: &'static str,
+    pub why: Option<String>,
+    /// Which dial a reconnect is on.
+    pub attempt: Option<u32>,
+    /// On connecting: how many keystrokes the machine could not take while it was down.
+    pub unsent: Option<u32>,
+}
+
+pub fn describe(machine: MachineId, name: &str, state: &ConnectionState) -> MachineState {
+    let (why, attempt) = match state {
+        ConnectionState::NeedsLogin { why }
+        | ConnectionState::NeedsUpdate { why }
+        | ConnectionState::Unreachable { why, .. } => (Some(why.clone()), None),
+        ConnectionState::Reconnecting { attempt, .. } => (None, Some(*attempt)),
+        ConnectionState::Connecting | ConnectionState::Connected => (None, None),
+    };
+    MachineState {
+        machine: machine.0,
+        name: name.to_owned(),
+        state: state.kind(),
+        why,
+        attempt,
+        unsent: None,
+    }
+}
+
+/// The event the window listens to for each machine's state.
+pub const MACHINE_STATE_EVENT: &str = "machine-state";
+
+#[cfg(test)]
+mod tests;

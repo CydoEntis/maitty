@@ -24,4 +24,5 @@ maitty-terminal-client = { path = "../../crates/maitty-terminal-client" }
 
 [dev-dependencies]
 maitty-shared = { path = "../../crates/maitty-shared" }
+maitty-test-support = { path = "../../crates/maitty-test-support" }
 tokio = { version = "1", features = ["rt", "time", "macros"] }

@@ -49,6 +49,9 @@ jobs:
       - name: Prepare GUI daemon sidecar
         working-directory: apps/gui
         run: pnpm bundle:daemon:dev
+      - name: The desktop app stays off the daemon, the terminal client and settings (ADR 0048)
+        shell: bash
+        run: scripts/check-gui-deps.sh
       # One test at a time: CI's Windows machines stall when several tests start real
       # shells (ConPTY) at once. It also names a stuck test in the log.
       - run: cargo test --locked -- --test-threads=1

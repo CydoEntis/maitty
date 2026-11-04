@@ -34,6 +34,10 @@ export type Conversation = {
   permission: string
   context: number | null
   nativePane: number | null
+  /** The number the host gave the machine this session lives on; absent for this computer. */
+  machine?: number
+  /** The machine's name; absent for this computer. */
+  machineName?: string
   hasDiff: boolean
   isGitRepository?: boolean
   // Put away in any client; the daemon keeps it running.

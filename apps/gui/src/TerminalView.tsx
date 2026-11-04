@@ -125,6 +125,8 @@ type ConnectedProps = { conversation: NativeConversation; fontSize: number; look
 
 function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisabled, ended, focused, onInput, onOpenPath, onHandle }: ConnectedProps) {
   const term = conversation.nativePane
+  // Each machine numbers its own panes: the stream and its history are kept by machine and pane.
+  const machine = conversation.machine ?? 0
   const binding: TerminalBinding = useMemo(() => ({ id: conversation.id, generation: conversation.generation }), [conversation.id, conversation.generation])
   const inputQueue = useRef(Promise.resolve())
   const terminalHost = useRef<HTMLDivElement>(null)
@@ -362,10 +364,12 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           }
           enqueue(chunk.bytes)
         }
+        // This computer's panes are asked for exactly as before machines: a machine is named only when it is another.
+        const machineArg: [] | [number] = machine === 0 ? [] : [machine]
         stopListening = await listenTerminalChunks(term, (chunk) => {
           if (caughtUp) apply(chunk)
           else pending.push(chunk)
-        })
+        }, ...machineArg)
         if (!stillMounted()) {
           stopListening()
           return
@@ -375,7 +379,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         // refuses, and the replay is fetched from the daemon directly.
         let history: TerminalHistory | null
         try {
-          history = await loadTerminalHistory(term)
+          history = await loadTerminalHistory(term, ...machineArg)
         } catch {
           history = null
           if (!stillMounted()) return
@@ -453,7 +457,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       emulator?.dispose()
       terminal.current = null
     }
-  }, [binding, term, send])
+  }, [binding, term, machine, send])
 
   // The emulator is created once per pane, so a font change is applied to it in place.
   useEffect(() => {

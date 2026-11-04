@@ -4,14 +4,14 @@
 mod actions;
 mod background;
 mod branch;
-pub mod connections;
+pub use maitty_machines::connections;
 mod copy;
 mod design;
 mod files;
 mod find;
 mod ids;
 mod input;
-pub mod link;
+pub use maitty_machines::link;
 mod machine_config;
 mod machine_flow;
 mod machine_ids;
@@ -24,11 +24,15 @@ mod motion;
 mod overlap;
 mod pick;
 mod recipes;
+use maitty_machines::remote_policy;
+#[cfg(test)]
+mod remote_policy_tests;
+pub(crate) use maitty_machines::remote_snapshot;
+#[cfg(test)]
+mod remote_snapshot_tests;
 mod remote_image;
 #[cfg(test)]
 mod remote_image_tests;
-mod remote_policy;
-pub(crate) mod remote_snapshot;
 mod render;
 pub mod restart_prompt;
 mod routing;
@@ -47,7 +51,7 @@ use crate::keys::{self, Action, KeySpec};
 use crate::protocol::*;
 use crate::theme::Theme;
 use anyhow::Result;
-use connections::{Burst, Connections, NotConnected};
+use connections::{Burst, Connections, NotConnected, SERVER_BURST};
 use futures_util::{FutureExt, StreamExt};
 use ids::{ClientSession, ClientTerm, MachineId, MachineSnap, Outgoing, Remote};
 use ratatui::crossterm::event::{
@@ -102,8 +106,6 @@ struct NoticeCard {
     preview: Option<String>,
 }
 
-/// Server messages taken in one go before the next frame.
-const SERVER_BURST: usize = 512;
 /// Losing the server twice within this long is the server going, not a hiccup: stop.
 const REATTACH_AT_MOST_EVERY: Duration = Duration::from_secs(10);
 /// The daemon sends Bye before exiting; wait past its graceful shutdown window before spawning it again.
@@ -665,6 +667,7 @@ async fn run_async(opts: Options) -> Result<()> {
     let mut links = link::Links::start(
         link::configured_machines(&app.cfg.machines, ipc::SSH_PROGRAM),
         link::Timing::DEFAULT,
+        || ipc::terminal_dial(true),
     );
     app.links = links.control();
 
@@ -802,7 +805,7 @@ impl App {
             right_down: None,
             snap: Snapshot::default(),
             remotes: Default::default(),
-            machine_ids: machine_ids::MachineIds::load(),
+            machine_ids: machine_ids::load(),
             links: Default::default(),
             machine_flow: Default::default(),
             unsent_input: Default::default(),
@@ -2076,9 +2079,9 @@ mod cli_machine_tests;
 #[cfg(test)]
 mod doctor_machine_tests;
 #[cfg(test)]
-mod mcp_machine_tests;
-#[cfg(test)]
 mod machine_update_tests;
+#[cfg(test)]
+mod mcp_machine_tests;
 #[cfg(test)]
 mod remote_status_tests;
 #[cfg(test)]

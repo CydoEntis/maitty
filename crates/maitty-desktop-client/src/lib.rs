@@ -1,15 +1,51 @@
 use maitty_shared::conversation::{ApprovalPolicy, LaunchSettings, Provider, Sandbox, StartTarget};
 mod ipc;
 use anyhow::{Context, Result, bail};
+pub use ipc::data_dir;
 use maitty_shared::protocol::{ClientMsg, Command, Query, Reply, ServerMsg};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::time::Duration;
 
-const MAX_TERMINAL_INPUT_BYTES: usize = 16 * 1024;
+/// The most one keystroke message may carry.
+pub const MAX_TERMINAL_INPUT_BYTES: usize = 16 * 1024;
 const APP_COMMAND: &str = env!("MAITTY_APP_COMMAND");
 const APP_NAME: &str = env!("MAITTY_APP_NAME");
 const APP_ENV: &str = env!("MAITTY_APP_ENV");
+
+/// What the window may ask a pane's daemon to do, whichever machine the pane is on. One place
+/// makes each message, so this computer's panes and another machine's are asked the same way.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaneCommand {
+    Input(Vec<u8>),
+    WantReplay,
+    Resize { cols: u16, rows: u16 },
+    Rename(String),
+    Pin(bool),
+    Archive(bool),
+    Seen,
+    Close,
+}
+
+impl PaneCommand {
+    /// The message that asks `term`'s daemon.
+    pub fn message(self, term: u32) -> ClientMsg {
+        match self {
+            PaneCommand::Input(data) => ClientMsg::Input { term, data },
+            PaneCommand::WantReplay => ClientMsg::WantReplay { term },
+            PaneCommand::Resize { cols, rows } => {
+                ClientMsg::Command(Command::TerminalResize { term, cols, rows })
+            }
+            PaneCommand::Rename(name) => ClientMsg::Command(Command::RenamePane { term, name }),
+            PaneCommand::Pin(pinned) => ClientMsg::Command(Command::PinPane { term, pinned }),
+            PaneCommand::Archive(archived) => {
+                ClientMsg::Command(Command::ArchivePane { term, archived })
+            }
+            PaneCommand::Seen => ClientMsg::Command(Command::MarkSeen { term }),
+            PaneCommand::Close => ClientMsg::Command(Command::ClosePane { term }),
+        }
+    }
+}
 
 pub async fn list_sessions(daemon_executable: PathBuf) -> Result<Value> {
     let reply = request(ClientMsg::Query(Query::List), daemon_executable).await?;
@@ -433,7 +469,7 @@ pub async fn pane_terminal_resize(
     daemon_executable: PathBuf,
 ) -> Result<()> {
     let reply = request(
-        ClientMsg::Command(Command::TerminalResize { term, cols, rows }),
+        PaneCommand::Resize { cols, rows }.message(term),
         daemon_executable,
     )
     .await?;
@@ -467,13 +503,21 @@ impl TerminalInput {
             !data.is_empty() && data.len() <= MAX_TERMINAL_INPUT_BYTES,
             "Terminal input must contain between 1 and {MAX_TERMINAL_INPUT_BYTES} bytes"
         );
-        ipc::send_message(&mut self.writer, &ClientMsg::Input { term, data }).await
+        ipc::send_message(&mut self.writer, &PaneCommand::Input(data).message(term)).await
     }
 
     /// Ask for the pane's replay on this stream, in order with its output.
     pub async fn want_replay(&mut self, term: u32) -> Result<()> {
-        ipc::send_message(&mut self.writer, &ClientMsg::WantReplay { term }).await
+        ipc::send_message(&mut self.writer, &PaneCommand::WantReplay.message(term)).await
     }
+}
+
+/// This computer's daemon as a live line for the panes this app owns (replays, then output),
+/// started when none answers. The caller reads and writes it.
+pub async fn open_terminal_line(daemon_executable: PathBuf) -> Result<(ipc::Reader, ipc::Writer)> {
+    ipc::open_stream_for_user(&daemon_executable)
+        .await
+        .context("connecting to the local daemon")
 }
 
 pub async fn open_terminal_stream(
@@ -542,11 +586,7 @@ pub async fn rename_terminal_session(
     name: String,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
-    let reply = request(
-        ClientMsg::Command(Command::RenamePane { term, name }),
-        daemon_executable,
-    )
-    .await?;
+    let reply = request(PaneCommand::Rename(name).message(term), daemon_executable).await?;
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected rename reply"),
@@ -655,11 +695,7 @@ pub async fn restore_snapshot(
 
 /// End a terminal session: its process stops, as when it is closed in the terminal app.
 pub async fn close_terminal_session(term: u32, daemon_executable: PathBuf) -> Result<Value> {
-    let reply = request(
-        ClientMsg::Command(Command::ClosePane { term }),
-        daemon_executable,
-    )
-    .await?;
+    let reply = request(PaneCommand::Close.message(term), daemon_executable).await?;
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected close reply"),
@@ -672,11 +708,7 @@ pub async fn pin_terminal_session(
     pinned: bool,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
-    let reply = request(
-        ClientMsg::Command(Command::PinPane { term, pinned }),
-        daemon_executable,
-    )
-    .await?;
+    let reply = request(PaneCommand::Pin(pinned).message(term), daemon_executable).await?;
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected pin reply"),
@@ -690,7 +722,7 @@ pub async fn archive_terminal_session(
     daemon_executable: PathBuf,
 ) -> Result<Value> {
     let reply = request(
-        ClientMsg::Command(Command::ArchivePane { term, archived }),
+        PaneCommand::Archive(archived).message(term),
         daemon_executable,
     )
     .await?;
@@ -702,11 +734,7 @@ pub async fn archive_terminal_session(
 
 /// The user looked at a pane: the daemon turns a finished agent's done into idle.
 pub async fn mark_terminal_seen(term: u32, daemon_executable: PathBuf) -> Result<Value> {
-    let reply = request(
-        ClientMsg::Command(Command::MarkSeen { term }),
-        daemon_executable,
-    )
-    .await?;
+    let reply = request(PaneCommand::Seen.message(term), daemon_executable).await?;
     match reply {
         Reply::Ok => Ok(Value::Null),
         _ => bail!("daemon returned an unexpected mark-seen reply"),
@@ -1318,5 +1346,72 @@ mod executable_lookup_tests {
         assert!(output.status.success());
         assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
         std::fs::remove_dir_all(directory).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod pane_command_tests {
+    use super::*;
+
+    #[test]
+    fn each_pane_command_is_one_message_for_its_pane() {
+        let cases = [
+            (
+                PaneCommand::Input(b"ls\r".to_vec()),
+                ClientMsg::Input {
+                    term: 4,
+                    data: b"ls\r".to_vec(),
+                },
+            ),
+            (PaneCommand::WantReplay, ClientMsg::WantReplay { term: 4 }),
+            (
+                PaneCommand::Resize {
+                    cols: 100,
+                    rows: 30,
+                },
+                ClientMsg::Command(Command::TerminalResize {
+                    term: 4,
+                    cols: 100,
+                    rows: 30,
+                }),
+            ),
+            (
+                PaneCommand::Rename("build".into()),
+                ClientMsg::Command(Command::RenamePane {
+                    term: 4,
+                    name: "build".into(),
+                }),
+            ),
+            (
+                PaneCommand::Pin(true),
+                ClientMsg::Command(Command::PinPane {
+                    term: 4,
+                    pinned: true,
+                }),
+            ),
+            (
+                PaneCommand::Archive(false),
+                ClientMsg::Command(Command::ArchivePane {
+                    term: 4,
+                    archived: false,
+                }),
+            ),
+            (
+                PaneCommand::Seen,
+                ClientMsg::Command(Command::MarkSeen { term: 4 }),
+            ),
+            (
+                PaneCommand::Close,
+                ClientMsg::Command(Command::ClosePane { term: 4 }),
+            ),
+        ];
+        for (command, expected) in cases {
+            let shown = format!("{command:?}");
+            assert_eq!(
+                serde_json::to_string(&command.message(4)).unwrap(),
+                serde_json::to_string(&expected).unwrap(),
+                "{shown}"
+            );
+        }
     }
 }

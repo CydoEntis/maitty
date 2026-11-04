@@ -3,10 +3,10 @@
 //! commands, so a dead machine cannot hold up drawing.
 
 use super::state::{Backoff, ConnectionState, Event, next};
-use super::{Command, LinkEvent};
-use crate::connections::MachineId;
-use crate::ipc::{self, Machine};
+use super::{Command, LinkEvent, Opener};
 use crate::link_failure::{FailureClass, classify};
+use crate::{Machine, MachineId, open_remote};
+use maitty_ipc_transport::{Reader, Writer};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -20,7 +20,7 @@ pub struct Timing {
 
 impl Timing {
     pub const DEFAULT: Timing = Timing {
-        connect: ipc::CONNECT_BUDGET,
+        connect: crate::CONNECT_BUDGET,
         backoff: Backoff::DEFAULT,
     };
 }
@@ -65,6 +65,7 @@ pub(super) async fn supervise(
     name: String,
     machine: Machine,
     timing: Timing,
+    opener: Opener,
     events: mpsc::UnboundedSender<LinkEvent>,
     mut commands: mpsc::UnboundedReceiver<Command>,
 ) {
@@ -87,7 +88,13 @@ pub(super) async fn supervise(
             }
             Pause::Closed => return,
         }
-        match dial(&may_start.machine_for_dial(&machine), timing.connect).await {
+        match dial(
+            &may_start.machine_for_dial(&machine),
+            timing.connect,
+            &opener,
+        )
+        .await
+        {
             Ok(halves) => {
                 failures = 0;
                 if link.events.send(LinkEvent::Line(id, halves)).is_err() {
@@ -153,8 +160,10 @@ impl Link {
 async fn dial(
     machine: &Machine,
     within: Duration,
-) -> Result<(ipc::Reader, ipc::Writer), FailureClass> {
-    match tokio::time::timeout(within, ipc::open_to(machine, true)).await {
+    opener: &Opener,
+) -> Result<(Reader, Writer), FailureClass> {
+    let opened = async { open_remote(machine, opener()?).await };
+    match tokio::time::timeout(within, opened).await {
         Ok(Ok(halves)) => Ok(halves),
         Ok(Err(e)) => Err(classify(&e)),
         Err(_) => Err(FailureClass::Unreachable(format!(

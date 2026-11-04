@@ -63,12 +63,10 @@ src/
   references.rs  a project's reference files (`.maitty/references/`): listed, added and removed (the terminal app edits them, the server lists them for the desktop app)
   prompt.rs      the question and numbered choices an agent is stopped on, read off its screen (the MCP answer tool and the inbox card share it)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
-  ipc.rs         local sockets and the SSH proxy; a machine's route is local, ssh or a custom transport (`via`, `Route::Command`, unix only)
-  ssh_command.rs the ssh argv for `<app> proxy` on another machine: hardening options, `--`, and the remote command quoted for the remote shell (`--attach-only` for a redial, not for a first dial or a retry); also `command_argv` (a machine's custom transport: its own program, the remote command as `{command}` or last), the probe line, the interactive first-login line and `popup_command`, which makes that line safe for a pane's shell
-  remote_paste.rs sending a pasted image to another machine (ADR 0049): the file name, the check of the path the far side prints, the failure words; the script itself is in `remote_install`
-  remote_install.rs installing the app on another machine, as pure rules: the `uname -sm` parser, the installed-version check, the decision table (nothing is installed without a yes), the destination, the constant install script and its exit-code table
+  ipc.rs         local sockets and the `proxy` command; opening a connection to another machine (ssh or a custom transport) is `maitty-machines`, which this module re-exports
+  remote_paste.rs sending a pasted image to another machine (ADR 0049): the file name, the check of the path the far side prints, the failure words; the script itself is in `maitty-machines`
+  remote_install.rs installing the app on another machine, as pure rules: the `uname -sm` parser, the installed-version check, the decision table (nothing is installed without a yes), the destination, the install script's exit-code table (the script itself is in `maitty-machines`)
   machine_probe.rs a look at a machine before it is added: `ssh ... maitty --version` with no prompt, ended by a limit or a cancel flag, and its result classified (ready, a failure class, cancelled); `locate` asks the same way where the login shell finds the app (`command -v`)
-  link_failure.rs why a connection to another machine failed, from ssh's exit status and what the far side sent: `classify`, the failure classes and their fix texts
   config.rs      config.toml (+ config.local.toml) loading, atomic state files
   keys.rs        actions, default bindings, key parsing
   theme.rs       built-in themes and contrast audit
@@ -98,20 +96,18 @@ src/
     input.rs     keys, pastes, the mouse
     actions.rs   what each action does
     background.rs server messages and background results
-    connections.rs the registry of daemon connections, one per machine: a reader and a writer task each, one fair intake for the event loop, sends routed by machine; a connection that ends is marked lost and never ends the window
-    ids.rs       client-only ids: MachineId, ClientTerm (a pane on a machine), ClientSession, the machine-addressed Outgoing message, and MachineSnap / Remote (each machine's name, last snapshot and connection state, and when its line went down, so limits, spend, version and the active workspace stay per machine); never on the wire
-    link/        keeping each configured machine connected: mod.rs (`Links`, `LinkControl` with live `start`/`stop`/`retry`, ids for configured machines), state.rs (the pure state machine and backoff), supervisor.rs (the dial / hand over / redial task)
-    machine_config.rs the `[[machines]]` entry in `config.local.toml`: append, remove, and the name suggested for a target
+    ids.rs       client-only ids: ClientSession, and MachineSnap / Remote (each machine's name, last snapshot and connection state, and when its line went down, so limits, spend, version and the active workspace stay per machine); never on the wire (`MachineId`, `ClientTerm` and the machine-addressed `Outgoing` are in `maitty-machines`, and re-exported here)
+    machine_config.rs where this computer's `config.local.toml` is; the `[[machines]]` entry edits (append, remove, the name suggested for a target) are in `maitty-machines`, and re-exported here
     machine_flow.rs what the Machines dialog does with a choice: probe, popup login, start/stop a supervisor, retry, remove (tests in `machine_flow/tests.rs`)
     machine_links.rs what the window does with the supervisors' events: register lines, the toasts, counting typing a down machine dropped
-    remote_policy.rs what a message from another machine's daemon may do here: one verdict per `ServerMsg` variant (apply, answer only to a request this window sent, gated by the machine's opt-ins, or ignore), and the cleaning of what is let through; this computer's own daemon bypasses it
+    remote_policy_tests.rs what the window does with each verdict against a built `App` (the policy itself, `remote_policy` in `maitty-machines`: one verdict per `ServerMsg` variant (apply, answer only to a request this window sent, gated by the machine's opt-ins, or ignore) and the cleaning of what is let through; this computer's own daemon bypasses it)
     routing.rs   which machine a message goes to and what a pane's machine lets this window do: the focus machine, `target_machine()`, the unanswered-request count behind reply bookkeeping, the local-only `Feature` gate and `local_cwd`, and `deliver` (the down-machine toast); the table is in API_PATTERNS "client routing"
-    remote_snapshot.rs makes another machine's snapshot safe on ingest: strings cleaned and cut, lists capped, sizes clamped, by walking its serialized form
+    remote_snapshot_tests.rs the snapshot cleaning's tests, on a snapshot built from the reference fixture (the cleaning itself, `remote_snapshot` in `maitty-machines`: strings cleaned and cut, lists capped, sizes clamped, by walking the serialized form)
     cli_machine_tests.rs the one-shot commands against a real daemon behind the fake-ssh shim, addressed by configured name (new, split, focus, popup, close, send, wait, ls, `ls --all`, kill-server, the explicit-pane rule)
     doctor_machine_tests.rs `doctor`'s machine checks against the shim: a good machine, another protocol, a login needed, machines that never answer and are ended
     mcp_machine_tests.rs the MCP tools against a real daemon behind the shim: list, read, send, wait with `machine/id` ids, the opt-in, the caller's grants, local-only operations
-    machine_ids.rs the daemon id first seen for each machine name (machine-ids.json) and the check that refuses a different one
-    ssh_hosts.rs the named hosts in `~/.ssh/config` (Include followed, patterns skipped), read through a file trait and loaded off the UI thread; a pure parser; the Machines dialog lists its hosts (ADR 0047)
+    machine_ids.rs which file the daemon ids are kept in (`machine-ids.json` in the data folder); the store and the check that refuses a different id are `maitty-machines`' `machine_ids`
+    ssh_hosts.rs loads the named hosts in `~/.ssh/config` off the UI thread; the pure parser (Include followed, patterns skipped, read through a file trait) is `maitty-machines`' `ssh_hosts`; the Machines dialog lists its hosts (ADR 0047)
     routing_tests.rs which machine each outgoing message goes to, the reply bookkeeping and the local-only gate
     remote_status_tests.rs a remote agent's row is the status its own daemon reported, against a real daemon behind the shim
     remote_image.rs sends the clipboard image to the machine a pane is on over its ssh line and gives the path it is kept at there; `remote_image_tests.rs` runs it against the fake remote
@@ -229,7 +225,15 @@ icon, key, detection, snapshot and notification preference schemas and
 defaults, pure validation and appearance compatibility rules, terminal key actions,
 default bindings, key parsing and built-in themes; terminal-specific mouse
 encoding stays in the terminal client. Config loading and filesystem migrations
-are core-owned. `maitty-ipc-transport` owns bounded,
+are core-owned. `maitty-machines` owns the machine definition (`[[machines]]`) and its
+validation (`maitty-settings` re-exports them from `config`), the ssh line and its hardening
+(`ssh_command.rs`), the failure classes and their fix texts (`link_failure.rs`), the fixed remote
+scripts and the dial to another machine (`machine.rs`), the connection registry (`connections.rs`: one
+bounded reader and writer task per machine, one fair intake, sends routed by machine, a lost connection
+marked and never ending the window), the connection state machine and its supervisors (`link/`: `Links`,
+`LinkControl`, the pure state table and backoff) and the ids `MachineId`, `ClientTerm` and `Outgoing`, for both apps; `maitty-core` re-exports
+them as `ipc::Machine` and `link_failure`.
+`maitty-ipc-transport` owns bounded,
 length-delimited protocol framing, Welcome handshake, the stream marker and login-noise
 skipping for ssh (`stream_marker.rs`), socket identity formatting,
 private Unix socket-directory checks and platform socket-name conversion shared
@@ -281,7 +285,7 @@ and Tailwind; its rules live in `docs/stack/tauri.md`, `typescript.md`,
 - **Desktop client:** `maitty-desktop-client` owns desktop IPC and GUI operations.
   The Tauri host consumes it and does not link `maitty-core` or the terminal
   client.
-- **Shared packages:** `maitty-shared`, `maitty-settings`, and
+- **Shared packages:** `maitty-shared`, `maitty-settings`, `maitty-machines`, and
   `maitty-ipc-transport` hold the wire types, preferences, and transport framing
   used across those boundaries. Provider packages own provider-specific
   protocol mapping; core owns their daemon-managed processes and sessions.
@@ -302,7 +306,10 @@ crates/
   maitty-shared/                  wire protocol and shared contracts
   maitty-settings/                preference schemas, key actions and themes
   maitty-ipc-transport/           shared IPC framing and handshake
+  maitty-machines/                the `[[machines]]` definition and its checks and edits, the ssh line, failure classes, dial, connection registry and link supervisors, the cleaning and policy for what another machine sends, the daemon-id store, the `~/.ssh/config` parser, the reader of this computer's machine list (`local_machines`: `config.local.toml`, as both apps read it), and the atomic state-file helpers (`write_atomic`, `read_state`, which `maitty-core` re-exports), shared by both apps
+  maitty-test-support/            test-only helpers shared across crates: building and locating the fake-ssh shim, running a command with a time limit
   adapters/                       Codex, Claude and future provider adapters
+scripts/                          repository checks, e.g. `check-gui-deps.sh` (the desktop app's dependency rule)
 docs/                             architecture, roadmap and design specs
 ```
 
