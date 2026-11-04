@@ -203,10 +203,13 @@ export function themeStyle(theme: ThemeEntry): Record<string, string> {
 
 const SELECTION_ALPHA = 30
 
-/** xterm's palette from the same tokens, so a pane's ANSI colours follow the theme. */
+/**
+ * xterm's palette from the same tokens, so a pane's ANSI colours follow the theme. The background
+ * is the terminal ground; the pane makes it see-through when its renderer can afford that.
+ */
 export function xtermTheme(tokens: ThemeTokens): ITheme {
   return {
-    background: 'rgba(0,0,0,0)',
+    background: tokens.term,
     foreground: tokens.fg2,
     cursor: tokens.accent,
     cursorAccent: tokens.term,

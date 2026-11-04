@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 68;
+pub const PROTOCOL_VERSION: u32 = 69;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -65,7 +65,7 @@ pub struct ConversationSummary {
 /// Which app a client is. A terminal session belongs to the app that started it, and only
 /// that app may list, type into or resize it (ADR 0045). Clients that don't say are terminal
 /// clients, which is what the terminal app has always been.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Surface {
     #[default]
@@ -76,9 +76,10 @@ pub enum Surface {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum ClientMsg {
-    /// First frame of every connection. `attach` clients get replays and live output.
-    /// `from`: the pane this request comes from (its id and secret), for a command run
-    /// inside a pane (an agent); the server checks what that pane may do.
+    /// First frame of every connection. `attach` clients get live output and, with `replays`,
+    /// every pane's replay up front; one that asks for panes as it shows them (the desktop
+    /// window) sends `WantReplay` instead. `from`: the pane this request comes from (its id and
+    /// secret), for a command run inside a pane (an agent); the server checks what that pane may do.
     Hello {
         version: u32,
         attach: bool,
@@ -88,12 +89,19 @@ pub enum ClientMsg {
         structured: Option<StructuredIdentity>,
         #[serde(default)]
         surface: Surface,
+        #[serde(default = "replays_by_default")]
+        replays: bool,
     },
     Command(Command),
     Input {
         term: TermId,
         #[serde(with = "serde_bytes")]
         data: Vec<u8>,
+    },
+    /// An attached client wants one pane's replay now, on this connection, in order with its
+    /// output.
+    WantReplay {
+        term: TermId,
     },
     Resize {
         term: TermId,
@@ -642,13 +650,24 @@ impl SubagentState {
     }
 }
 
+fn replays_by_default() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMsg {
     Welcome {
         version: u32,
     },
     State(Snapshot),
-    /// Sent once per terminal on attach: the recent output ring, to rebuild scrollback.
+    /// Only some panes changed since the last `State` or `TermsChanged` on this connection:
+    /// replace these and drop those. Everything else in the client's snapshot stands.
+    TermsChanged {
+        changed: Vec<TermInfo>,
+        removed: Vec<TermId>,
+    },
+    /// Sent per terminal on attach (or on `WantReplay`): the recent output ring, to rebuild
+    /// scrollback.
     Replay {
         term: TermId,
         cols: u16,
@@ -770,6 +789,11 @@ pub struct Snapshot {
     pub conversations: Vec<ConversationSummary>,
     #[serde(default)]
     pub daemon_version: String,
+    /// Which daemon this is, random and kept across its restarts. Lets a window tell that a
+    /// different machine now answers at a saved name. `None` from a daemon built before it;
+    /// not a credential.
+    #[serde(default)]
+    pub daemon_id: Option<String>,
     pub workspaces: Vec<WorkspaceInfo>,
     pub active_ws: Option<WsId>,
     pub terms: BTreeMap<TermId, TermInfo>,
@@ -1381,11 +1405,13 @@ mod tests {
                 from: Some((3, "00ff".into())),
                 structured: None,
                 surface: Surface::Terminal,
+                replays: true,
             },
             ClientMsg::Input {
                 term: 3,
                 data: b"ls\r".to_vec(),
             },
+            ClientMsg::WantReplay { term: 3 },
             ClientMsg::Resize {
                 term: 3,
                 cols: 120,
@@ -1560,6 +1586,10 @@ mod tests {
                 version: PROTOCOL_VERSION,
             },
             ServerMsg::State(Snapshot::default()),
+            ServerMsg::TermsChanged {
+                changed: Vec::new(),
+                removed: vec![3],
+            },
             ServerMsg::Replay {
                 term: 3,
                 cols: 80,
@@ -1633,6 +1663,41 @@ mod tests {
             panic!("expected a swap")
         };
         assert_eq!((a, b), (3, 4));
+    }
+
+    /// A `Snapshot` as a daemon built before `daemon_id` encoded it.
+    #[derive(Serialize)]
+    struct SnapshotWithoutId {
+        conversations: Vec<ConversationSummary>,
+        daemon_version: String,
+        workspaces: Vec<WorkspaceInfo>,
+        active_ws: Option<WsId>,
+        terms: BTreeMap<TermId, TermInfo>,
+    }
+
+    #[test]
+    fn a_snapshot_from_a_daemon_without_an_id_decodes_with_none() {
+        let old = SnapshotWithoutId {
+            conversations: Vec::new(),
+            daemon_version: "0.50.0".into(),
+            workspaces: Vec::new(),
+            active_ws: None,
+            terms: BTreeMap::new(),
+        };
+        let snapshot: Snapshot = decode(&encode(&old).unwrap()).unwrap();
+        assert_eq!(snapshot.daemon_id, None);
+        assert_eq!(snapshot.daemon_version, "0.50.0");
+    }
+
+    #[test]
+    fn a_daemon_id_round_trips_without_a_new_protocol_version() {
+        assert_eq!(PROTOCOL_VERSION, 69);
+        let snapshot = Snapshot {
+            daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
+            ..Snapshot::default()
+        };
+        let back: Snapshot = decode(&encode(&snapshot).unwrap()).unwrap();
+        assert_eq!(back.daemon_id, snapshot.daemon_id);
     }
 
     #[test]

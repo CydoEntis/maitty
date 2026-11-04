@@ -317,8 +317,9 @@ fn split_rect(area: Rect, horizontal: bool, ratio: f32) -> (Rect, Rect) {
     }
 }
 
-/// The pane adjacent to `from` in direction `dir`, preferring the largest shared edge.
-pub fn neighbor(rects: &[(TermId, Rect)], from: TermId, dir: Dir) -> Option<TermId> {
+/// The pane adjacent to `from` in direction `dir`, preferring the largest shared edge. Generic
+/// over the pane id so the client can name panes by machine too.
+pub fn neighbor<T: Copy + Ord>(rects: &[(T, Rect)], from: T, dir: Dir) -> Option<T> {
     let (_, f) = rects.iter().find(|(id, _)| *id == from)?;
     let overlap = |a0: u16, a1: u16, b0: u16, b1: u16| a1.min(b1).saturating_sub(a0.max(b0));
     rects

@@ -447,6 +447,8 @@ with its count. A question is never below a check.
   failure*); Delete marks seen.
 - Typing finds any session; the `› query` row shows only once you type. The last row is
   `↑↓ select   ⏎ open   r re-run   O override   Esc close`.
+- A session on another machine ends its head line with ` · on <machine>`, and a machine whose line
+  is down has no items (*machines in the sidebar*).
 - Existing theme slots only. Code lives in `client/screen/inbox.rs` (groups, drawing) and
   `client/screen/check_inbox.rs` (what each item says and its buttons).
 
@@ -463,7 +465,7 @@ The layout and checkpoints are summed up in [DESIGN](DESIGN.md). The frame is [A
 - **Sheet** (`sheet.rs` `split_for_sheet`): docked right from 140 columns, the layout's gap from the panes; below 140, or when the panes would keep fewer than 52 columns (`PANES_KEEP`), it takes the pane column and Esc brings the panes back. Its width is per kind of view and saved (`Saved::sheet_w`): Inbox, checks and both-diffs start at 72 columns, Changes at half the screen, Files at 55%, Branch at 30%, References at 40% (all less when the panes would keep fewer than 52, so about 70 at 160×45); never under 32 (`SHEET_MIN`). Files, Changes, Branch and References open with a tab strip on the card's first inside row (`sheet.rs` `draw_drawer_tabs`): `Files f · Changes c · Branch b · References a`, each with its first leader key from the keymap, the open one a pill (`pill`, so `ui.rounded` caps apply) in `accent` while the panel has the keys, else `btn`; each is a click target (`ScreenHit::DrawerTab`). Where the strip does not fit, the keys go, then the long names (`Files · Chg · Br · Refs`), so every tab stays whole. In Changes, `c` commits only after a y/n question, since `c` is also its tab's key; Tab answers no to an open question rather than switching. Tab / Shift+Tab move along it while one of these views has the keys, except while Files' filter or editor takes text; switching runs that tab's action, so it opens for the same checkout (`screen_target_dir`) at its own remembered width. The Inbox and the check sheets have no strip. A click into a pane gives that pane the keys and leaves the view open beside it, unlit (`view_set_aside`); a click in the sheet, or asking for a view again (`f`, `c`, `b`, `a`), gives the view the keys back. Drag its left edge (it lights up while pointed at), or press `[` `]` (4 columns) and `=` (default) while it has the keys; in the Inbox only while its search is empty, in Files not while its filter or editor takes text. **Files** (`f`, Ctrl+click on `path:line`) shows the tree beside the selected file; a sheet under 60 columns (`FILES_BOTH_FROM`) shows the tree, or the opened file with a `‹` back to the tree. A `.md` or `.markdown` file previews drawn (`markdown.rs`: headings bold `strong`, a `line` rule under the first level, fenced code on `card`, inline code on `card2`, lists, quotes behind a muted `│`, tables cut to the width, links with their URL muted after them), without line numbers since drawn lines are not lines of the file; `m` (shown in the action row as Raw or Pretty) switches that file to its text and back, `i` and `e` always edit the text, and Ctrl+click on `file.md:42` opens it as text at that line. `f` again or Esc in the tree closes it. A drag (or a double-click, for a word) over the file shown selects its text, drawn or raw (`FilesTree::pick`, cleared when the file, its look or its width changes), and Ctrl+C copies it; `y` stays Copy path. `i` edits the file in the preview (`views::Edit`): Shift with the arrows, Home/End or PgUp/PgDn, Ctrl+A, or a mouse drag in the preview select, drawn in copy mode's colour (`render::select_style`); a click moves the cursor (Shift+click extends), a double-click takes a word, and typing or deleting replaces the selection. Ctrl+C and Ctrl+X copy and cut the selection, or the cursor's whole line when nothing is selected; Ctrl+V reads the clipboard off the UI thread (`copy::clipboard_reader`; a failed read toasts) and pastes at the cursor, and the terminal's own paste (`Event::Paste`, also a key burst) lands there as text, never in the pane and never as an image paste. Ctrl+Z undoes and Ctrl+Y redoes, a run of typing or of deleting being one step; the history keeps whole snapshots, capped at 32 MB and 500 steps (`UNDO_BYTES`, `UNDO_STEPS`), and an undo marks the file unsaved even when it gets back to what is on disk. A typed run over a selection is one step with the replacing, and undoing a line cut puts the cursor back where it was; Ctrl+X in an empty file does nothing. The header says `Ctrl+S save · Esc done`. While editing, the action row holds the editor's own buttons instead of the file browser's (whose letters would be typed into the file): `^S Save · ^C Copy · ^V Paste · ^Z Undo · Esc Done`, each a `Btn::ViewChord` that runs that key. Clicks and highlights count wide characters (CJK, emoji) as two columns and tabs as four; a pointer below the last line means the end of the file. A paste while Files has the keys stays in Files: the editor takes it, the filter takes its first line, and otherwise it is dropped with a toast rather than sent to the pane behind; once a click in a pane sets Files aside, or Files closes, pastes (and the empty paste that means an image) go to the pane as before. Windows hands a paste over as keys read in one burst (`input.rs` `paste_from_burst`); while Files has the keys (nothing over it), any two different characters in one burst are a paste however short, so its letters never run commands; one character repeated (a held `j`) and typing ahead that ends in Enter stay keys. Other views, References included, keep a burst as keys, as the panes do. References takes a real paste itself; while Changes, Branch or a check sheet has the keys, a paste is dropped with a toast and never reaches the pane behind. Copying from the file shown gives tabs as the four spaces the preview reads them as.
 - **Differences kept on purpose.** The app draws its own data where the reference frames have samples, and these on purpose: Settings › Check marks the row the keys are on by its label in bold `accent` (the reference draws every label dim and has no row cursor); evidence output colours only `✓` and failure lines (the reference also dims `>` command echoes, `❯ file:line` and `Duration`, and colours an assertion's continuation as a failure); the why popover's last line leaves out the reference's `· 1 of 59 tests failed` (output is not parsed for counts) and the evidence Source row leaves out when you chose never (`you chose never 14:31`; the time of a choice is not shown); and the several-checkpoints words add `could not run: <name>` and `checking: <name>` to the reference's four (`failed`, `needs you`, `next`, `all passed`), because a checkpoint that could not run is not a failure and checking must read apart from next. A re-run keeps the sheet or Inbox it was started from open (the reference closes it), and its result is told by the daemon's notices (`<place>: check failed`) and the row, not by the reference's `test passed (exit 0, 13.9s). fix-footer reads done.` / `test failed (exit 1). fix-footer is in the Inbox.` toasts.
 - **Message popover** (`popover.rs` `draw_compose_pop`): the follow-up to an agent, opened from the sidebar row or the leader (`M`). The screen is dimmed except the popover and its row. A full `accent` border in every layout (corners by `ui.rounded`), `card` ground, the input on `bg`, no shadow. Width `min(68, room right of the sidebar - 1)`. Title chip `MESSAGE <session> · <agent>`, with `● needs you` (the only amber), `working` or `done` at the right. Quote: the tail of the agent's last message, at most 4 / 3 / 2 lines at 160x45 / 100x30 / 80x24, labelled `<agent> asked` (blocked) or `<agent> said` plus `· last n of m lines` when cut, `muted` `▏` gutter, `text` words, not italic. Input: one row, growing a row per line to 6 / 4 / 3, then the top row reads `↑ n more lines`. Placement: top border a line above the row with `◂` on the row's first line; no room below, it opens upward with its bottom border just under the row; neither fits, pinned to the bottom. Hints are keycaps. Sending closes it and the row's second line carries the receipt (`receipts` on `Screen`): `◷ queued "…"` in `muted` until the server hands the follow-up to the agent, then `› sent "…"` in `accent`; it clears after `RECEIPT_MAX_SHOWN`, or on a status change once `RECEIPT_MIN_SHOWN` has passed. No toast.
-- **Toast** (`draw_toast`): one component for every Maitty notice, bottom right, its bottom edge `TOAST_ABOVE_INPUT` (5) rows above the screen's so it sits over the agent's input area. It draws a `line` outline on `bg` with round corners whatever `ui.rounded` says (`popups.rs` `panel_box`), its left side between the corners a heavy `┃` (ADR 0030). The `┃` is in the notice's colour (error `err`, about a session that needs you `blocked`, about a finished one `done`, otherwise `accent`; amber only for needs-you). Row 1 is the mark and the bold `strong` title with a `✕` at the right; row 2 the detail in `text`; an optional row 3 a preview in `muted` italics. `App::notify(msg, error)` makes a one-row toast whose title is the message; `App::notify_card(title, detail, preview, error)` adds the detail and preview rows. A plain toast clears after `TOAST_CLEAR` (2.4 s); errors (4.5 s), a note about a session (6 s) and the update toast with its **Restart now** button (12 s) stay longer. The `✕` or Esc clears it at once (Esc still reaches the pane). With motion on it slides in and fades out.
+- **Toast** (`draw_toast`): one component for every Maitty notice, bottom right, its bottom edge `TOAST_ABOVE_INPUT` (5) rows above the screen's so it sits over the agent's input area. It draws a `line` outline on `bg` with round corners whatever `ui.rounded` says (`popups.rs` `panel_box`), its left side between the corners a heavy `┃` (ADR 0030). The `┃` is in the notice's colour (error `err`, about a session that needs you `blocked`, about a finished one `done`, otherwise `accent`; amber only for needs-you). The bold `strong` title starts with the mark and has a `✕` at the right; the detail follows in `text`, then an optional preview in `muted` italics. Each wraps at the toast's settled width (`popover::wrap_capped`, so the text does not reflow during the slide-in): the title and detail on up to 3 lines (`TOAST_TITLE_LINES`, `TOAST_DETAIL_LINES`), the preview on up to 2 (`TOAST_PREVIEW_LINES`), the last ending in `…` only past that, the box's height following its lines and the limit shrinking to what the window can hold. The update toast's button is a single row. `App::notify(msg, error)` makes a one-row toast whose title is the message; `App::notify_card(title, detail, preview, error)` adds the detail and preview rows. A plain toast clears after `TOAST_CLEAR` (2.4 s); errors (4.5 s), a note about a session (6 s) and the update toast with its **Restart now** button (12 s) stay longer. The `✕` or Esc clears it at once (Esc still reaches the pane). With motion on it slides in and fades out.
 - **Selecting and copying**: a mouse drag or `v`/`V` in copy mode tints the selection sky (`blend(bg, sky, 0.38)`) with `strong` text, and, in keyboard copy mode, draws `y copy · Esc cancel` as keycaps (`design::keycap`) just after the selection's end; a mouse drag shows none, since releasing the button copies. `y` copies and closes copy mode; the copied cells then glow accent (`blend(bg, accent, 0.34)`) for `copy::FLASH_FOR` while the toast reads `Copied to clipboard`, `<n> characters · <m> lines from <session>` and a quoted preview of the first line.
 
 ## Project-specific: home screen check counters
@@ -513,7 +515,8 @@ restore it. There are no bare-letter keys for this in the sidebar.
   project's colour and, under it, each of its sessions as its mark (same glyph and colour as the row) and the first letter of its
   name, in the sidebar's order, a blank row between projects. The selected row is `accent` with `acc_ink` text while the column has the
   keys, else `btn`. At the foot a `+` chip starts a shell and a `≡` chip opens the Menu. Rows that don't fit scroll, the selected one kept in view, and a `…` in the
-  last place opens the sidebar. A click on a project's letter opens the sidebar.
+  last place opens the sidebar. A click on a project's letter opens the sidebar. A machine other than this one is a
+  row `●B` above its folders: its state glyph and its first letter (see *machines in the sidebar*).
   `ui.rounded` (Settings › Appearance › Rounded: `full`, `corners` or `off`, off by default) is the one shape setting. `corners` rounds every box's corners only. `full` rounds them too, and caps every chip (tabs, the SESSIONS title, card titles, + New, Menu, buttons, menu rows) on whatever ground it sits, the pointer's hover, and draws a selected or failed session row as one block, in place of the edge bar: half-circle caps for one line, square ends for more so its lines read as one even block, never a pill per line; what is right-aligned stops a cell short of the cap. The Settings tab strip carries no update dot: the mode bar's pill and the splash announce updates, and the version lives in one row, General › UPDATES › Version (`maitty 0.42.0 · up to date · u check now`, or `9.9.9 is out · Enter to update`; Enter or a click acts, `u` checks from any tab). Above the pages, only what is off shows: an installed or daemon version that differs, or a pending restart with Restart now.
 - **Column focus** is the sidebar focus with the sidebar collapsed (leader Focus the sidebar). `↑` `↓`, `←` `→` and `1`–`9` switch
   sessions, opening each in the pane while the keys stay on the column; `1`–`9` mean nothing elsewhere. Enter focuses the pane, Esc leaves.
@@ -521,9 +524,110 @@ restore it. There are no bare-letter keys for this in the sidebar.
 
 A session an agent started (a helper) steps in two columns under the session that started it, to two levels. A row asking to start helpers keeps its second line (`wants to start N helpers`), which gives way last.
 
+## Project-specific: machines in the sidebar
+
+Code: `client/screen/machine_group.rs` (header, notes, grey), `side.rs` (`Line::Machine`,
+`Line::MachineNote`), `rail.rs`, `check_inbox.rs`. Look: [DESIGN](DESIGN.md#sidebar).
+
+- **No header without a second machine.** A window with no other machine draws no header, chip or
+  note; its frames are the reference frames. The headers appear as soon as the window has a
+  `Remote` (a configured machine's first link event), which also heads this computer as
+  `this computer` so the groups read as groups. A machine nobody has heard from yet is a header
+  that says `connecting` and no sessions; it never leaves a gap.
+- **Order.** Machine by machine: this computer's folders (in the order you dragged them), then each
+  other machine in id order. A folder drags only within its machine. Sessions keep the saved order of
+  their own machine.
+- **Status is the daemon's word.** A remote row is drawn by the same code from the same `Status`
+  its daemon reported; nothing is recomputed or translated here (non-negotiable 5).
+- **Down.** `ConnectionState::is_down` (reconnecting, needs login, needs update, unreachable)
+  greys the machine's rows (`Session::down`, set when the model is built and rebuilt on every link
+  state) and drops them from the title counts and the Inbox groups; connecting is not down. How
+  long it has been down is `Remote::down_since`, kept across the failure states.
+- **Per-machine values.** Limits, today's spend and the daemon version come from that machine's
+  snapshot and are shown under its own header (this computer's under `this computer`), never
+  summed. The TUI shows them nowhere else.
+- **Narrow widths.** Every line is cut to the sidebar with display-width-aware `…`, except a down
+  machine's reason, which wraps onto up to 3 rows (`Line::MachineNote`, one per row, so scrolling and
+  hit-testing stay by row; `machine_group::note_room`) at the width the last frame drew the sidebar
+  (the narrowest before the first) and is recomputed with the lines on every frame, so a resize or a
+  drag re-wraps it; the machine mark
+  leaves first, then the state's word (its glyph stays), and the name keeps eight cells.
+- **Inbox.** A remote item ends its head line with ` · on <machine>`; the sort across machines is the
+  existing one (longest waiting first) with this computer's before another's at the same moment.
+  Its keys reach that machine's daemon (`ClientTerm.machine`), and the local-only features say so as
+  they do for any remote pane.
+- **Alerts.** A remote agent that starts needing you or finishes is added to the notification
+  history named by its machine. Its toast and sound still wait for that machine's `notices` and
+  `sounds` opt-ins.
+
+## Project-specific: Machines dialog
+
+Code: `client/screen/machines.rs` (the view, its keys and its drawing), `client/machine_flow.rs` (what a
+choice does), `client/machine_config.rs` (the `[[machines]]` entry in `config.local.toml`),
+`maitty-core/src/machine_probe.rs` (the look at a machine). Opened by leader `w` or the command palette
+(`Machines`); `Mode::Machines`.
+
+- **Two lists.** *Yours*: the configured machines in name order, each as a state chip (the words of
+  [machines in the sidebar](#project-specific-machines-in-the-sidebar), plus `refused`, `waiting for login`
+  and `not started`), its name and its target, and under every machine that is not up the reason and the fix
+  in full, wrapped to the dialog and never cut. *Add*: a field and the hosts of `~/.ssh/config` (read off the
+  UI thread; `loading hosts from ~/.ssh/config…`, then `alias  user@hostname`). Typing filters the hosts and
+  adds a last row, `add as typed`, for the text itself (`user@host`). A host that is already a machine is not
+  offered again. `Tab` moves between the lists; the keys are in the bar under the dialog.
+- **Windows.** The dialog says, in a dim line at its top and on Windows only, `Windows: use ssh keys or an
+  agent. Password prompts work in the popup but are not remembered.`
+- **Adding is one step for a key-based host.** Enter on a host row (or on the typed text) first refuses a
+  target ssh would read as an option or that holds whitespace (the loader's own words, shown under the lists;
+  nothing runs and nothing is written). The name is the alias, made valid and unique (`build`, then
+  `build-2`); when nothing usable is left of the target, a name step asks for one and shows the loader's
+  reason inline. The entry is `name` and `target` only, and `target` is the alias, so ssh's own config for
+  it (user, port, key, jump host) still applies. Then the machine is looked at, off the UI thread, with `ssh
+  <target> maitty --version` that never asks anything (`BatchMode`, a short `ConnectTimeout`, stdin closed;
+  `Checking…`, `Esc` ends ssh and adds nothing, and a limit of 12 s ends it whatever ssh does).
+  - *It answers:* the entry is appended to `config.local.toml` (comments and the rest of the file kept,
+    written atomically, never `config.toml`), the machine's supervisor starts, and its group is in the
+    sidebar as `connecting` at once.
+  - *ssh needs a person* (a password, a code, an unknown host key): the entry is written, and ssh is run
+    **once**, interactively, in a popup pane on this computer's daemon (`Command::Popup`), so the prompts can
+    be answered. The popup line is the probe's without `BatchMode`, with the same hardening (`ForwardAgent=no`,
+    `-a`, `ConnectTimeout`, `--` before the target). When the popup pane closes the machine is dialled with
+    `BatchMode` as every connection is; whether the login worked is the connection's to say, and if it did
+    not the machine shows `needs login` with the fix. A popup has the keys only in plain typing mode, so
+    the dialog closes when it asks for the popup and a toast says `ssh needs you to log in: use the popup`;
+    the keys then go to ssh. A popup that is never seen (it ended between two reports of the daemon) is
+    taken as closed after 20 s. A `remote_cmd` that needs quoting, or an `ssh_args` word that holds a quote, cannot
+    be put on a pane's command line safely: the machine is added and the dialog says to run `ssh` once in a
+    terminal.
+  - *The app is missing, old or not running there:* the machine is added; its state shows `needs update`
+    or `unreachable` with the exact fix text.
+  - *ssh cannot reach it* (a bad host): ssh's last line, cleaned of control characters and cut, is shown
+    under the lists, and nothing is added. Nothing hangs: every look ends at its limit, on `Esc`, or when
+    ssh does.
+  A Windows remote is not supported in v1; the dialog does not guess one from the probe.
+- **Retry** (`r` or Enter on a machine in *Yours*) dials it now and clears a refusal. A machine with no
+  supervisor gets one.
+- **Remove** (`x`) asks first: `Removes build from this list. Its sessions keep running on build.` It then
+  deletes the entry from `config.local.toml`, stops the supervisor and the connection, takes the machine out
+  of the sidebar and the window's records, and forgets the daemon id recorded for the name. The machine, its
+  daemon, its sessions and its saved layout (kept under its name) are not touched.
+- **A refused machine** (a different daemon answers at its name) shows `refused` with the reason and the
+  fix: remove it and add it again, or fix the host name or DNS and retry.
+- Adding and removing take effect in the running window. Editing the file by hand still takes effect at the
+  next start.
+
 ## Project-specific: Hairline
 
 Not applicable: the Hairline look was removed ([ADR 0039](adr/0039-floating-is-the-only-look.md)); Floating is the only look.
+
+## Project-specific: features that need a pane's files
+
+Files, Changes, Find, Branches, References, image paste, connecting an agent, and worktree
+actions read or change the files of the pane they apply to. For a pane on another machine they do
+nothing but show one error toast, always in this form: "<Feature> is local-only in v1: the files
+are on <machine>, not on this computer." The check is per pane: moving the focus or the sidebar
+selection between a local and a remote pane turns the feature off and on. Menu entries that would
+run git in a remote pane's folder (Changes, Snapshots, Make it a git repo) are left out of that
+pane's menu instead.
 
 ## Project-specific: frame presentation
 

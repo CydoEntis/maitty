@@ -1,16 +1,22 @@
-import { useSyncExternalStore, type ReactNode } from 'react'
-import { currentFrame, spinnerFrames, subscribe } from '@/lib/spinner-clock'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { attachSpinner, currentGlyph, isWideSpinner, spinnerFrames } from '@/lib/spinner-clock'
 import { SHELL_PROCESS, type SessionStatus } from '../model/session'
 import { CLAUDE_MARK, CODEX_MARK, DEEPSEEK_MARK, GEMINI_MARK, OPENCODE_MARK } from './agentMarks'
 import { folderStyle } from './folderStyle'
 import { FOLDER_PATH } from './paths'
 import { useReducedMotion } from './motion'
 
+/** The working spinner. The shared clock writes each frame into the element itself, so a tick never re-renders React. */
 export function Spinner({ className = 'mx-spin', frozen = false }: { className?: string; frozen?: boolean }) {
   const reduced = useReducedMotion()
-  const index = useSyncExternalStore(subscribe, currentFrame, () => 0)
-  const frames = spinnerFrames()
-  return <span className={className} aria-hidden="true">{frames[reduced || frozen ? 0 : index % frames.length]}</span>
+  const still = reduced || frozen
+  const element = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (still || !element.current) return
+    return attachSpinner(element.current)
+  }, [still])
+  const classes = [className, isWideSpinner() && 'is-wide'].filter(Boolean).join(' ')
+  return <span ref={element} className={classes} aria-hidden="true">{still ? spinnerFrames()[0] : currentGlyph()}</span>
 }
 
 type SvgProps = { size: number; strokeWidth?: number; children: ReactNode; className?: string; fill?: string; stroke?: string }
@@ -29,6 +35,8 @@ const ICON_DRAWINGS = {
   collapse: () => <Svg size={15} strokeWidth={1.8}><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16M15 10l-2 2 2 2" /></Svg>,
   expand: () => <Svg size={16} strokeWidth={1.8}><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16M13 10l2 2-2 2" /></Svg>,
   plus: ({ size = 15 }: IconProps) => <Svg size={size}><path d="M12 5v14M5 12h14" /></Svg>,
+  arrowUp: ({ size = 14, strokeWidth = 2 }: IconProps) => <Svg size={size} strokeWidth={strokeWidth}><path d="M12 19V5M6 11l6-6 6 6" /></Svg>,
+  arrowDown: ({ size = 14, strokeWidth = 2 }: IconProps) => <Svg size={size} strokeWidth={strokeWidth}><path d="M12 5v14M6 13l6 6 6-6" /></Svg>,
   close: ({ size = 13, strokeWidth = 2 }: IconProps) => <Svg size={size} strokeWidth={strokeWidth}><path d="M6 6l12 12M18 6 6 18" /></Svg>,
   chevron: () => <Svg className="mx-chevron" size={12} strokeWidth={2.25} stroke="var(--dim)"><path d="m9 6 6 6-6 6" /></Svg>,
   folder: () => (

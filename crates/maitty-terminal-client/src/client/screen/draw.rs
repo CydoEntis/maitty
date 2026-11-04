@@ -3,6 +3,8 @@
 
 use super::*;
 use crate::brand::APP_COMMAND;
+use crate::client::ids::ClientSession;
+use crate::client::ids::ClientTerm;
 
 // ---- main screen ---------------------------------------------------------------------------
 
@@ -370,7 +372,7 @@ pub(in crate::client) fn tab_close(app: &App, tab: usize, tabs: usize) -> Option
         return Some(ScreenHit::CloseTab(tab));
     }
     // A session's only tab: its only pane, or (split, its panes having no ✕) all of them.
-    match app.screen.tabs.get(tab)?.layout.leaves().as_slice() {
+    match app.screen.tabs.get(tab)?.leaves().as_slice() {
         [only] => Some(ScreenHit::CloseSplit(*only)),
         _ => Some(ScreenHit::CloseTab(tab)),
     }
@@ -379,6 +381,10 @@ pub(in crate::client) fn tab_close(app: &App, tab: usize, tabs: usize) -> Option
 /// A tab's most urgent agent, whose state the tab shows wherever it is drawn (its chip, its
 /// sidebar line), on screen or not: one that needs you first, then by its state.
 pub(in crate::client) fn tab_agent(app: &App, tab: usize) -> Option<&TermInfo> {
+    app.term_info(tab_agent_term(app, tab)?)
+}
+
+pub(in crate::client) fn tab_agent_term(app: &App, tab: usize) -> Option<ClientTerm> {
     let urgency = |i: &TermInfo| {
         if check::needs(i.status, i.check()) {
             0
@@ -386,16 +392,19 @@ pub(in crate::client) fn tab_agent(app: &App, tab: usize) -> Option<&TermInfo> {
             i.status.urgency()
         }
     };
-    let leaves = app.screen.tabs.get(tab)?.layout.leaves();
-    leaves
-        .iter()
-        .filter_map(|id| app.snap.terms.get(id))
-        .filter(|i| i.agent.is_some())
-        .min_by_key(|i| urgency(i))
+    app.screen
+        .tabs
+        .get(tab)?
+        .leaves()
+        .into_iter()
+        .filter_map(|t| app.term_info(t).map(|i| (t, i)))
+        .filter(|(_, i)| i.agent.is_some())
+        .min_by_key(|(_, i)| urgency(i))
+        .map(|(t, _)| t)
 }
 
 /// The tab on screen shows `term` alone: its tab carries its name, so its title doesn't repeat it.
-pub(in crate::client) fn lone_pane(app: &App, term: TermId) -> bool {
+pub(in crate::client) fn lone_pane(app: &App, term: ClientTerm) -> bool {
     matches!(app.screen.leaf_rects.as_slice(), [(id, _)] if *id == term)
 }
 
@@ -497,7 +506,7 @@ pub(in crate::client) fn tab_tools(
     row.right() - TOOLS_W
 }
 
-pub(in crate::client) fn find(model: &[Proj], term: TermId) -> Option<(&Proj, &Wt, &Session)> {
+pub(in crate::client) fn find(model: &[Proj], term: ClientTerm) -> Option<(&Proj, &Wt, &Session)> {
     model.iter().find_map(|p| {
         p.wts.iter().find_map(|w| {
             w.sessions
@@ -510,7 +519,7 @@ pub(in crate::client) fn find(model: &[Proj], term: TermId) -> Option<(&Proj, &W
 
 pub(in crate::client) fn find_key(
     model: &[Proj],
-    key: SessionKey,
+    key: ClientSession,
 ) -> Option<(&Proj, &Wt, &Session)> {
     model.iter().find_map(|p| {
         p.wts
@@ -578,7 +587,9 @@ pub(in crate::client) fn draw_main(
         .get(app.screen.tab)
         .map(|tab| tab.layout.clone())
         .filter(|l| {
-            l.contains(focus) && l.leaves().len() > 1 && app.screen.zoom != Some(app.screen.tab)
+            l.contains(focus.term)
+                && l.leaves().len() > 1
+                && app.screen.zoom != Some(app.screen.tab)
         });
     let Some(layout) = layout else {
         app.screen.leaf_rects = vec![(focus, area)];
@@ -597,8 +608,12 @@ pub(in crate::client) fn draw_main(
         layout.set_ratio(&[], shown);
     }
     let rects = layout.rects(area);
-    app.screen.leaf_rects = rects.clone();
+    app.screen.leaf_rects = rects
+        .iter()
+        .map(|(id, r)| (ClientTerm::on(focus.machine, *id), *r))
+        .collect();
     for (id, r) in rects {
+        let id = ClientTerm::on(focus.machine, id);
         if r.width >= PANE_DRAWN_FROM && r.height >= 3 {
             draw_session(app, f, inset(r), id, id == focus, model, t);
         }
@@ -756,11 +771,11 @@ pub(in crate::client) fn shortcut_waits(app: &App) -> bool {
 
 /// What a session is called on its pane: its sidebar name, else (a pane in another's tab or
 /// split has no row) your name for it or what runs in it.
-pub(in crate::client) fn session_name(app: &App, model: &[Proj], term: TermId) -> String {
+pub(in crate::client) fn session_name(app: &App, model: &[Proj], term: ClientTerm) -> String {
     if let Some((_, _, s)) = find(model, term) {
         return s.name.clone();
     }
-    let Some(info) = app.snap.terms.get(&term) else {
+    let Some(info) = app.term_info(term) else {
         return String::new();
     };
     if !info.label.trim().is_empty() {
@@ -922,7 +937,7 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
         );
         // The tab's glyph opens why, as a split pane's does: a lone pane's state is only here.
         if marks[n].is_some()
-            && let Some(agent) = tab_agent(app, i).map(|a| a.id)
+            && let Some(agent) = tab_agent_term(app, i)
         {
             hit(
                 app,
@@ -992,8 +1007,8 @@ const GRID_UNFOCUSED_FADE: f32 = 0.42;
 
 /// A pane's place among the tab's panes (0 first): top-left first, left to right and top to
 /// bottom. Pane colours colour panes by it, and every look numbers them by it.
-fn grid_index(app: &App, term: TermId) -> usize {
-    let mut order: Vec<(u16, u16, TermId)> = app
+fn grid_index(app: &App, term: ClientTerm) -> usize {
+    let mut order: Vec<(u16, u16, ClientTerm)> = app
         .screen
         .leaf_rects
         .iter()
@@ -1005,7 +1020,7 @@ fn grid_index(app: &App, term: TermId) -> usize {
 
 /// The number a pane shows in its title: its place in the tab in reading order, from 1. Only
 /// while the tab shows two panes or more, so a lone pane's title stays as it was.
-pub(in crate::client) fn pane_number(app: &App, term: TermId) -> Option<usize> {
+pub(in crate::client) fn pane_number(app: &App, term: ClientTerm) -> Option<usize> {
     let split =
         app.screen.leaf_rects.len() > 1 && app.screen.leaf_rects.iter().any(|(id, _)| *id == term);
     split.then(|| grid_index(app, term) + 1)
@@ -1032,7 +1047,7 @@ fn cut_label(label: &str, room: usize) -> String {
 }
 
 /// A pane's own colour (Pane colours), by its place; they repeat from the fifth.
-fn grid_color(app: &App, term: TermId, t: &Theme) -> Color {
+fn grid_color(app: &App, term: ClientTerm, t: &Theme) -> Color {
     let colors = t.grid_colors();
     colors[grid_index(app, term) % colors.len()]
 }
@@ -1045,14 +1060,15 @@ pub(in crate::client) fn draw_session(
     app: &mut App,
     f: &mut Frame,
     r: Rect,
-    term: TermId,
+    term: ClientTerm,
     focused: bool,
     model: &[Proj],
     t: &Theme,
 ) {
-    let Some(info) = app.snap.terms.get(&term).cloned() else {
+    let Some(info) = app.term_info(term).cloned() else {
         return;
     };
+    let pane = term;
     let look = Look::of(&app.cfg.ui);
     let st = info.status;
     // While the sidebar has the keys, no pane shows as focused.
@@ -1060,18 +1076,27 @@ pub(in crate::client) fn draw_session(
     let focused = focused && !side_focused(app) && !sheet_has_keys(app);
     let scrolled = app
         .parsers
-        .get(&term)
+        .get(&pane)
         .map(|p| p.screen().scrollback())
         .filter(|n| *n > 0);
     // Answer buttons only for a question asked through the app (ask-human), which has nowhere
     // else to be answered: an agent's own question is answered in its own prompt.
     let ask = st == Status::Blocked && info.agent.is_some() && app.pending_question(term).is_some();
     let (inside, inner, terminal_bg) = if look.hairline {
-        let surface = app.parsers.get(&term).map_or(pane_bg(t), |p| {
+        let surface = app.parsers.get(&pane).map_or(pane_bg(t), |p| {
             crate::client::render::terminal_surface_bg(p.screen(), pane_bg(t))
         });
-        let inside =
-            hairline::pane_frame(app, f.buffer_mut(), r, &info, focused, model, surface, t);
+        let inside = hairline::pane_frame(
+            app,
+            f.buffer_mut(),
+            r,
+            term,
+            &info,
+            focused,
+            model,
+            surface,
+            t,
+        );
         // The terminal: the pane's padding in from each side, from under the rule to the bottom.
         let below = if ask { 3 } else { 0 };
         let pad = hairline::PANE_PAD;
@@ -1083,7 +1108,7 @@ pub(in crate::client) fn draw_session(
         };
         (inside, inner, surface)
     } else {
-        let (inside, terminal_bg) = card_frame(app, f.buffer_mut(), r, &info, focused, t);
+        let (inside, terminal_bg) = card_frame(app, f.buffer_mut(), r, term, &info, focused, t);
         // The terminal: 3 columns in, a row below the title, down to the last row inside.
         let below = 1 + if ask { 2 } else { 0 };
         (
@@ -1097,19 +1122,19 @@ pub(in crate::client) fn draw_session(
             terminal_bg,
         )
     };
-    app.pane_frames.push((term, r));
-    app.panes.push((term, inner));
+    app.pane_frames.push((pane, r));
+    app.panes.push((pane, inner));
     // The whole inside of the card focuses the pane, as the reference's focus region does.
-    app.hits.push((inside, Hit::Pane(term)));
-    app.hits.push((inner, Hit::Pane(term)));
-    let copying = matches!(&app.mode, Mode::Copy(c) if c.term == term);
+    app.hits.push((inside, Hit::Pane(pane)));
+    app.hits.push((inner, Hit::Pane(pane)));
+    let copying = matches!(&app.mode, Mode::Copy(c) if c.term == pane);
     if copying {
         if let Mode::Copy(c) = &mut app.mode {
             c.height = inner.height as usize;
             c.width = inner.width as usize;
             crate::client::render::render_copy(c, inner, f.buffer_mut(), t);
         }
-    } else if let Some(p) = app.parsers.get(&term) {
+    } else if let Some(p) = app.parsers.get(&pane) {
         let screen = p.screen();
         render_screen(screen, inner, f.buffer_mut(), terminal_bg);
         if focused
@@ -1124,8 +1149,8 @@ pub(in crate::client) fn draw_session(
             }
         }
     }
-    draw_scrollbar(app, f.buffer_mut(), term, inner, terminal_bg, t);
-    draw_to_bottom(app, f.buffer_mut(), term, inner, scrolled, terminal_bg, t);
+    draw_scrollbar(app, f.buffer_mut(), pane, inner, terminal_bg, t);
+    draw_to_bottom(app, f.buffer_mut(), pane, inner, scrolled, terminal_bg, t);
 
     // Not the one you're in: its inside fades (the border and its amber tag stay as they are).
     if !focused {
@@ -1138,7 +1163,7 @@ pub(in crate::client) fn draw_session(
 
 /// A close confirm asks about this pane: its lines are lit in `err` until you answer, so you
 /// see which one goes.
-pub(in crate::client) fn closing(app: &App, term: TermId) -> bool {
+pub(in crate::client) fn closing(app: &App, term: ClientTerm) -> bool {
     matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if ts.contains(&term)))
 }
 
@@ -1148,12 +1173,12 @@ fn card_frame(
     app: &mut App,
     buf: &mut Buffer,
     r: Rect,
+    term: ClientTerm,
     info: &TermInfo,
     focused: bool,
     t: &Theme,
 ) -> (Rect, Color) {
     let look = Look::of(&app.cfg.ui);
-    let term = info.id;
     let grid_color = look.pane_colors.then(|| grid_color(app, term, t));
     let closing = closing(app, term);
     let border = if closing {
@@ -1178,7 +1203,7 @@ fn card_frame(
     // Just moved here: the border flares and settles, so you see where you landed.
     let on = app.motion_on();
     let flash = if focused {
-        app.motion.land(term as u64, on)
+        app.motion.land(term.motion_key(), on)
     } else {
         0.0
     };
@@ -1215,7 +1240,7 @@ fn card_frame(
 fn draw_scrollbar(
     app: &mut App,
     buf: &mut Buffer,
-    term: TermId,
+    term: ClientTerm,
     inner: Rect,
     terminal_bg: Color,
     t: &Theme,
@@ -1256,7 +1281,7 @@ fn draw_scrollbar(
 fn draw_to_bottom(
     app: &mut App,
     buf: &mut Buffer,
-    term: TermId,
+    term: ClientTerm,
     inner: Rect,
     scrolled: Option<usize>,
     terminal_bg: Color,
@@ -1302,7 +1327,7 @@ fn draw_answer_bar(
     app: &mut App,
     buf: &mut Buffer,
     r: Rect,
-    term: TermId,
+    term: ClientTerm,
     terminal_bg: Color,
     t: &Theme,
 ) {
@@ -1374,6 +1399,23 @@ const TOAST_MIN_W: usize = 40;
 const TOAST_TEXT_PAD: usize = 8;
 /// Rows between the card's bottom edge and the screen's: the agent's input area sits there.
 const TOAST_ABOVE_INPUT: u16 = 5;
+/// The most lines a toast's title and detail take, and its preview (an excerpt), before the end
+/// is cut with an ellipsis.
+const TOAST_TITLE_LINES: usize = 3;
+const TOAST_DETAIL_LINES: usize = 3;
+const TOAST_PREVIEW_LINES: usize = 2;
+/// Where a toast's rows after the title start, from its left edge, per look; the close and the
+/// bar leave two cells on the right.
+const TOAST_TEXT_X_FLOATING: usize = 2;
+const TOAST_TEXT_X_HAIRLINE: usize = 4;
+
+/// `text` wrapped on at most `max` lines of `width` cells, none when there is no text.
+fn toast_lines(text: Option<&str>, width: usize, max: usize) -> Vec<String> {
+    match text {
+        Some(t) if max > 0 => popover::wrap_capped(t, width, max),
+        _ => Vec::new(),
+    }
+}
 
 /// One toast for every notice, bottom right above the agent's input area: a `card` boxed in
 /// the notice's colour with a kind chip on its top border. Row 1 is the mark and bold
@@ -1389,7 +1431,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     let Some((title, at, err)) = app.notice.clone() else {
         return;
     };
-    let about = app.notice_term.filter(|t| app.snap.terms.contains_key(t));
+    let about = app.notice_term.filter(|t| app.term_info(*t).is_some());
     let restart = app.toast_restart();
     let hold = toast_hold(err, about.is_some(), restart);
     let shown = at.elapsed();
@@ -1424,7 +1466,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     };
     let preview = card.and_then(|c| c.preview);
     let needs = about
-        .and_then(|term| app.snap.terms.get(&term))
+        .and_then(|term| app.term_info(term))
         .is_some_and(|x| x.status == Status::Blocked);
     let (colour, mark, kind) = match (err, needs, about) {
         (true, ..) => (t.err, "✕", "Error"),
@@ -1452,7 +1494,40 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         .unwrap_or(0)
         .max(TOAST_MIN_W)
         .min((area.width as usize).saturating_sub(4)) as u16;
-    let h = 2 + 1 + u16::from(detail.is_some() || button.is_some()) + u16::from(preview.is_some());
+    // Wrapped against the settled width, not the sliding one, so the text does not reflow while
+    // the toast slides in. What the window cannot hold is left out, the title first kept.
+    let text_x = if look.hairline {
+        TOAST_TEXT_X_HAIRLINE
+    } else {
+        TOAST_TEXT_X_FLOATING
+    };
+    let text_room = (w as usize).saturating_sub(text_x + 2);
+    let mut rows_left = area.height.saturating_sub(TOAST_ABOVE_INPUT + 2) as usize;
+    let title_w = (w as usize).saturating_sub(TOAST_TEXT_PAD + 1);
+    let title_lines = toast_lines(
+        Some(&title),
+        title_w,
+        TOAST_TITLE_LINES.min(rows_left.saturating_sub(1).max(1)),
+    );
+    rows_left = rows_left.saturating_sub(title_lines.len());
+    let detail_lines = match button {
+        Some(_) => Vec::new(),
+        None => toast_lines(
+            detail.as_deref(),
+            text_room,
+            TOAST_DETAIL_LINES.min(rows_left),
+        ),
+    };
+    rows_left = rows_left.saturating_sub(detail_lines.len().max(usize::from(button.is_some())));
+    let preview_lines = toast_lines(
+        preview.as_deref(),
+        text_room,
+        TOAST_PREVIEW_LINES.min(rows_left),
+    );
+    let h = 2
+        + title_lines.len() as u16
+        + (detail_lines.len() as u16).max(u16::from(button.is_some()))
+        + preview_lines.len() as u16;
     if area.height < h + TOAST_ABOVE_INPUT || w < 12 {
         return;
     }
@@ -1499,15 +1574,11 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     // Floating: every row starts under the chip; Hairline puts the mark in front of the title and
     // indents what follows it. The title also leaves room for the close.
     let tx = if look.hairline { r.x + 4 } else { r.x + 2 };
-    let text_w = r.width.saturating_sub(tx - r.x + 2) as usize;
-    let title_w = r.width.saturating_sub(TOAST_TEXT_PAD as u16 + 1) as usize;
-    let title_seg = seg(
-        truncate(&title, title_w),
-        Style::default()
-            .fg(ink(t.strong, bg))
-            .bg(bg)
-            .add_modifier(Modifier::BOLD),
-    );
+    let title_style = Style::default()
+        .fg(ink(t.strong, bg))
+        .bg(bg)
+        .add_modifier(Modifier::BOLD);
+    let title_seg = seg(title_lines[0].clone(), title_style);
     let head = if look.hairline {
         vec![
             seg(
@@ -1523,6 +1594,15 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         vec![title_seg]
     };
     put(buf, r.x + 2, r.y + 1, &head, r.right() - 1);
+    for (i, line) in title_lines.iter().enumerate().skip(1) {
+        put(
+            buf,
+            tx,
+            r.y + 1 + i as u16,
+            &[seg(line.clone(), title_style)],
+            r.right() - 1,
+        );
+    }
     // Floating: the close is the red chip modals wear on their top border; Hairline keeps a
     // quiet ✕ on the title row.
     let close_chip = if look.hairline {
@@ -1548,37 +1628,23 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         height: 1,
     };
     put(buf, close.x, close.y, &close_chip, r.right() - 1);
-    let mut row = r.y + 2;
+    let mut row = r.y + 1 + title_lines.len() as u16;
     if let Some(b) = &button {
         put(buf, tx, row, b, r.right() - 1);
         row += 1;
-    } else if let Some(d) = &detail {
-        put(
-            buf,
-            tx,
-            row,
-            &[seg(
-                truncate(d, text_w),
-                Style::default().fg(ink(t.text, bg)).bg(bg),
-            )],
-            r.right() - 1,
-        );
-        row += 1;
     }
-    if let Some(p) = &preview {
-        put(
-            buf,
-            tx,
-            row,
-            &[seg(
-                truncate(p, text_w),
-                Style::default()
-                    .fg(ink(t.muted, bg))
-                    .bg(bg)
-                    .add_modifier(Modifier::ITALIC),
-            )],
-            r.right() - 1,
-        );
+    let detail_style = Style::default().fg(ink(t.text, bg)).bg(bg);
+    let preview_style = Style::default()
+        .fg(ink(t.muted, bg))
+        .bg(bg)
+        .add_modifier(Modifier::ITALIC);
+    let wrapped = detail_lines
+        .into_iter()
+        .map(|l| (l, detail_style))
+        .chain(preview_lines.into_iter().map(|l| (l, preview_style)));
+    for (line, style) in wrapped {
+        put(buf, tx, row, &[seg(line, style)], r.right() - 1);
+        row += 1;
     }
     if let Some(term) = about {
         hit(app, r, ScreenHit::Session(app.session_key(term)));

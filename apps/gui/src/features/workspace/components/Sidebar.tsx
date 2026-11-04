@@ -3,6 +3,7 @@ import { ContextMenu as ContextMenuPrimitive } from 'radix-ui'
 import type { LeadMode, TrayStyle } from '@/features/settings/preferences'
 import { displayName, groupInitials, STATUS_WORD, type SessionGroup, type SessionView } from '../model/session'
 import { MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
+import { useRecent } from '@/lib/clock'
 import { RailFolder } from './FolderTile'
 import { SidebarResizer } from './SidebarResizer'
 import { folderStyle } from './folderStyle'
@@ -17,7 +18,6 @@ export type SidebarProps = {
   groups: SessionGroup[]
   focusedId: string | null
   tracks: ReadonlyMap<string, SessionTrack>
-  now: number
   mode: 'docked' | 'rail'
   online: boolean
   sessionCount: number
@@ -68,7 +68,7 @@ export type SidebarProps = {
 const NEEDS_SUFFIX = (count: number) => `${String(count)} need${count > 1 ? '' : 's'} you`
 
 export function Sidebar(props: SidebarProps) {
-  const { mode, now, tracks } = props
+  const { mode, tracks } = props
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [resizing, setResizing] = useState(false)
   // The session last picked in each project, so a project leads with it while you are in another one.
@@ -85,11 +85,15 @@ export function Sidebar(props: SidebarProps) {
       return next
     })
   }
-  // A collapsed group opens for a moment when a session moves into it.
-  const isOpen = (group: SessionGroup) => !collapsed.has(group.key) || group.sessions.some((session) => {
+  // A collapsed group opens for a moment when a session moves into it. The latest move decides
+  // when that moment ends, so the sidebar re-renders once then instead of every second; a move
+  // within the same window as the latest one shares its moment.
+  const latestMove = Math.max(0, ...[...tracks.values()].map((track) => track.movedAt ?? 0))
+  const anyRecentMove = useRecent(latestMove > 0 ? latestMove : null, MOVED_HIGHLIGHT_MS)
+  const isOpen = (group: SessionGroup) => !collapsed.has(group.key) || (anyRecentMove && group.sessions.some((session) => {
     const movedAt = tracks.get(session.id)?.movedAt
-    return movedAt !== null && movedAt !== undefined && now - movedAt < MOVED_HIGHLIGHT_MS
-  })
+    return movedAt !== null && movedAt !== undefined && movedAt >= latestMove - MOVED_HIGHLIGHT_MS
+  }))
   const className = `mx-sidebar mx-card${mode === 'rail' ? ' is-rail' : ''}${resizing ? ' is-resizing' : ''}`
   return (
     <nav aria-label="Sessions by project" className={className}>
@@ -106,7 +110,7 @@ function Expanded(props: GroupProps) {
   const hover = useRailHover()
   return (
     <div className="mx-sidebar-expanded">
-      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} openIds={props.openIds} tracks={props.tracks} now={props.now} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
+      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} openIds={props.openIds} tracks={props.tracks} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
       <div className="mx-sidebar-head">
         <span className="mx-sidebar-title">Projects</span>
         <span className="mx-spacer" />
@@ -141,7 +145,6 @@ function Expanded(props: GroupProps) {
                     trayStyle={props.trayStyle}
                     leadMode={props.leadMode}
                     tracks={props.tracks}
-                    now={props.now}
                     online={online}
                     paneOf={props.paneOf}
                     portalContainer={props.portalContainer}
@@ -250,7 +253,7 @@ function Rail(props: GroupProps) {
   const hover = useRailHover()
   return (
     <div className="mx-rail">
-      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} openIds={props.openIds} tracks={props.tracks} now={props.now} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
+      <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} openIds={props.openIds} tracks={props.tracks} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
       <div className="mx-rail-top">
         {props.canExpand && <button type="button" className="mx-icon-button mx-rail-button" aria-label="Expand sidebar" title={`Expand sidebar (${primary}B)`} onClick={props.onToggleRail}><Icon name="expand" /></button>}
         <button type="button" className="mx-icon-button mx-rail-button mx-rail-new" aria-label="New session" title={`New session (${primary}T)`} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" /></button>

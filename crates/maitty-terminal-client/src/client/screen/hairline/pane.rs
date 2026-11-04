@@ -2,6 +2,7 @@
 //! between panes, never round the outside.
 
 use super::*;
+use crate::client::ids::ClientTerm;
 
 /// Where a pane sits among the tab's panes: whether another pane lies right of it.
 #[derive(Debug, Clone, Copy)]
@@ -11,7 +12,7 @@ struct Edges {
 
 impl Edges {
     /// A pane that is not one of the tab's (a floating popup) has no neighbours.
-    fn of(app: &App, term: TermId, r: Rect) -> Edges {
+    fn of(app: &App, term: ClientTerm, r: Rect) -> Edges {
         let mine = app.screen.leaf_rects.iter().any(|(id, _)| *id == term);
         let right = app
             .screen
@@ -34,6 +35,7 @@ pub(in crate::client) fn pane_frame(
     app: &mut App,
     buf: &mut Buffer,
     r: Rect,
+    term: ClientTerm,
     info: &TermInfo,
     focused: bool,
     _model: &[Proj],
@@ -42,7 +44,7 @@ pub(in crate::client) fn pane_frame(
 ) -> Rect {
     let ink = Ink::of(t);
     let r = r.intersection(buf.area);
-    let edges = Edges::of(app, info.id, r);
+    let edges = Edges::of(app, term, r);
     let body = Rect {
         width: r.width.saturating_sub(u16::from(edges.right)),
         ..r
@@ -66,12 +68,11 @@ pub(in crate::client) fn pane_frame(
         );
     }
     // A tab's only pane has no rule: the tab row over it names it (ADR 0030).
-    if lone_pane(app, info.id) {
+    if lone_pane(app, term) {
         fill(buf, body, surface);
         return body;
     }
-    app.hits
-        .push((Rect { height: 1, ..body }, Hit::Pane(info.id)));
+    app.hits.push((Rect { height: 1, ..body }, Hit::Pane(term)));
     fill(buf, Rect { height: 1, ..body }, ink.bg);
     let inside = Rect {
         y: body.y + 1,
@@ -84,7 +85,7 @@ pub(in crate::client) fn pane_frame(
         body.x,
         body.y,
         body.width,
-        rule_colour(app, info, focused, ink, t),
+        rule_colour(app, term, info, focused, ink, t),
         ink.bg,
     );
     inside
@@ -93,8 +94,15 @@ pub(in crate::client) fn pane_frame(
 /// The rule's colour: red while a confirm asks to close the pane, teal on the focused pane (sky
 /// in shortcut mode, as every focused edge), amber on one that needs you, else `line`. Focus
 /// wins over amber.
-fn rule_colour(app: &App, info: &TermInfo, focused: bool, ink: Ink, t: &Theme) -> Color {
-    if closing(app, info.id) {
+fn rule_colour(
+    app: &App,
+    term: ClientTerm,
+    info: &TermInfo,
+    focused: bool,
+    ink: Ink,
+    t: &Theme,
+) -> Color {
+    if closing(app, term) {
         return t.err;
     }
     match (focused, pane_needs(info)) {

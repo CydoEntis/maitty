@@ -2683,9 +2683,11 @@ dependencies = [
 
 [[package]]
 name = "maitty"
-version = "0.62.1"
+version = "0.63.0"
 dependencies = [
+ "maitty-shared",
  "maitty-terminal-client",
+ "tokio",
 ]
 
 [[package]]
@@ -2761,7 +2763,6 @@ dependencies = [
 name = "maitty-gui"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
  "maitty-desktop-client",
  "maitty-shared",
  "serde",

@@ -8,6 +8,7 @@ import { hotkeyRows } from './features/workspace/model/shortcuts'
 
 const daemon = vi.hoisted(() => ({
   loadConversations: vi.fn<() => Promise<Conversation[]>>(),
+  listenSessionsChanged: vi.fn(() => Promise.resolve(() => {})),
   defaultSessionFolder: vi.fn<() => Promise<string>>(),
   startShellSession: vi.fn<(folder: string) => Promise<void>>(),
   archiveConversationOnDaemon: vi.fn<(conversation: { id: string }, archived: boolean) => Promise<void>>(),
@@ -919,9 +920,9 @@ describe('desktop terminal multiplexer', () => {
     daemon.loadConversations.mockResolvedValue([])
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
 
+    expect(await screen.findByRole('status', { name: 'Session ended' })).toHaveTextContent('Restart shell')
     expect(screen.getByRole('tab', { selected: true })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: /^Terminal 1: ~\/a/ })).toBeInTheDocument()
-    expect(screen.getByRole('status', { name: 'Session ended' })).toHaveTextContent('Restart shell')
     expect(screen.queryByRole('button', { name: /^Status:/ })).not.toBeInTheDocument()
   })
 
@@ -933,7 +934,7 @@ describe('desktop terminal multiplexer', () => {
     daemon.loadConversations.mockResolvedValue([])
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
 
-    await user.click(within(screen.getByRole('status', { name: 'Session ended' })).getByRole('button', { name: 'Close pane' }))
+    await user.click(within(await screen.findByRole('status', { name: 'Session ended' })).getByRole('button', { name: 'Close pane' }))
 
     await waitFor(() => { expect(screen.queryByRole('tab')).not.toBeInTheDocument() })
     expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
@@ -948,7 +949,7 @@ describe('desktop terminal multiplexer', () => {
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
     daemon.loadConversations.mockResolvedValue([term(9, `${HOME}/a`)])
 
-    await user.click(within(screen.getByRole('status', { name: 'Session ended' })).getByRole('button', { name: 'Restart shell' }))
+    await user.click(within(await screen.findByRole('status', { name: 'Session ended' })).getByRole('button', { name: 'Restart shell' }))
 
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(`${HOME}/a`) })
     await waitFor(() => { expect(screen.queryByRole('status', { name: 'Session ended' })).not.toBeInTheDocument() })
@@ -1392,10 +1393,12 @@ describe('desktop overlays and tab tools', () => {
 
     daemon.loadConversations.mockResolvedValue([at(2, { status: 'working' })])
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+    // The window has to see the session working before it is done again, or nothing moved on.
+    await screen.findByRole('button', { name: /, working$/ })
     daemon.loadConversations.mockResolvedValue([at(2, { status: 'done' })])
     await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
 
-    expect(within(screen.getByRole('dialog', { name: 'Inbox' })).getAllByRole('article')).toHaveLength(1)
+    await waitFor(() => { expect(within(screen.getByRole('dialog', { name: 'Inbox' })).getAllByRole('article')).toHaveLength(1) })
   })
 
   it('marks a finished session seen once you are in its pane, and leaves a needs-you one alone', async () => {

@@ -410,6 +410,11 @@ fn keys_holder(app: &App) -> Option<Holder> {
             &[("↑↓", "move"), ("Enter", "go to it"), ("c", "clear")],
             ("Esc", "close"),
         ),
+        Mode::Machines(_) => holder(
+            "MACHINES",
+            &[("Tab", "yours / add"), ("Enter", "add or retry")],
+            ("Esc", "close"),
+        ),
         Mode::Tidy(_) => holder(
             "TIDY",
             &[
@@ -713,11 +718,10 @@ fn alerts(app: &App, needs: usize, t: &Theme) -> Vec<Piece> {
     }
     let lone = (needs == 1)
         .then(|| {
-            app.snap
-                .terms
-                .values()
-                .find(|i| check::needs(i.status, i.check()))
-                .map(|i| session_name(app, &app.screen_model(), i.id))
+            app.all_terms()
+                .into_iter()
+                .find(|(_, i)| check::needs(i.status, i.check()))
+                .map(|(t, _)| session_name(app, &app.screen_model(), t))
         })
         .flatten();
     let full = match lone {
@@ -735,7 +739,7 @@ fn alerts(app: &App, needs: usize, t: &Theme) -> Vec<Piece> {
 fn branch_piece(app: &App, t: &Theme) -> Option<Piece> {
     let branch = app
         .focused()
-        .and_then(|f| app.snap.terms.get(&f))
+        .and_then(|f| app.term_info(f))
         .and_then(|i| i.branch.clone())?;
     let words = format!("{} {branch}", check::marks(app).branch);
     Some(Piece {
@@ -747,10 +751,10 @@ fn branch_piece(app: &App, t: &Theme) -> Option<Piece> {
 
 /// What the tab's panes take of the machine, dim: `▲ 3% CPU · 1.2 GB`.
 fn load_piece(app: &App, t: &Theme) -> Option<Piece> {
-    let leaves = app.screen.tabs.get(app.screen.tab)?.layout.leaves();
+    let leaves = app.screen.tabs.get(app.screen.tab)?.leaves();
     let (cpu, mem) = leaves
         .iter()
-        .filter_map(|id| app.snap.terms.get(id))
+        .filter_map(|id| app.term_info(*id))
         .fold((0.0f32, 0u64), |(c, m), i| (c + i.cpu, m + i.mem));
     let gb = mem as f64 / f64::from(1u32 << 30);
     Some(Piece {
@@ -766,7 +770,7 @@ fn load_piece(app: &App, t: &Theme) -> Option<Piece> {
 fn pr_piece(app: &App, t: &Theme) -> Option<Piece> {
     let pr = app
         .focused()
-        .and_then(|f| app.snap.terms.get(&f))
+        .and_then(|f| app.term_info(f))
         .and_then(|i| i.pr.as_ref())?;
     let colour = match pr.tone() {
         crate::protocol::PrTone::Bad => t.err,

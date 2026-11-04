@@ -3,6 +3,7 @@
 //! to get wrong by reflex.
 use super::check_settings::{CheckDraft, CheckEdit};
 use super::*;
+use crate::client::ids::Outgoing;
 use crate::client::reference_fixture::{LAYOUTS, SIZES, Stage, frame, now, world};
 use crate::client::{ClientMsg, mpsc};
 use crate::config::CheckDef;
@@ -97,14 +98,14 @@ fn ctrl(app: &mut App, c: char) {
     app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL));
 }
 
-fn listening(app: &mut App) -> mpsc::UnboundedReceiver<ClientMsg> {
+fn listening(app: &mut App) -> mpsc::UnboundedReceiver<Outgoing> {
     let (tx, rx) = mpsc::unbounded_channel();
     app.out = tx;
     rx
 }
 
-fn sent(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<Command> {
-    std::iter::from_fn(|| rx.try_recv().ok())
+fn sent(rx: &mut mpsc::UnboundedReceiver<Outgoing>) -> Vec<Command> {
+    std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
         .filter_map(|m| match m {
             ClientMsg::Command(c) => Some(c),
             _ => None,
@@ -165,7 +166,7 @@ fn preset(name: &str) -> App {
     let mut app = match &name[..3] {
         "12 " => {
             let mut app = world(Stage::Failed);
-            app.ask_override(1, None);
+            app.ask_override(ClientTerm::local(1), None);
             app.on_paste("flaky legal test, tracked in #212".into());
             app
         }
@@ -182,8 +183,8 @@ fn preset(name: &str) -> App {
         _ => {}
     }
     match &name[..1] {
-        "1" if !name.starts_with("12") => app.open_project_check(1),
-        "A" => app.open_approval(1),
+        "1" if !name.starts_with("12") => app.open_project_check(ClientTerm::local(1)),
+        "A" => app.open_approval(ClientTerm::local(1)),
         _ => {}
     }
     if name.starts_with("A3") {
@@ -239,10 +240,10 @@ fn the_override_keeps_its_mark_in_plain_ascii() {
 
 // ---- approval ------------------------------------------------------------------------------
 
-fn approving() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+fn approving() -> (App, mpsc::UnboundedReceiver<Outgoing>) {
     let mut app = world(Stage::Approve);
     let rx = listening(&mut app);
-    app.open_approval(1);
+    app.open_approval(ClientTerm::local(1));
     assert!(matches!(app.mode, Mode::Approve(_)));
     shown(&mut app);
     (app, rx)
@@ -367,7 +368,7 @@ fn three_never_runs_it_and_opens_the_evidence() {
     key(&mut app, KeyCode::Char('3'));
     assert_eq!(choice(&sent(&mut rx)), [ApprovalChoice::Never]);
     assert!(
-        matches!(&app.view, Some(crate::client::View::Check(v)) if v.term == 1),
+        matches!(&app.view, Some(crate::client::View::Check(v)) if v.term == ClientTerm::local(1)),
         "the evidence sheet is on it"
     );
     assert_eq!(
@@ -420,10 +421,10 @@ fn it_opens_only_from_its_item_never_by_itself() {
     );
 
     app.mode = Mode::Side;
-    app.screen.cursor = Some(SessionKey::Pane(1));
+    app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(1)));
     key(&mut app, KeyCode::Enter);
     assert!(
-        matches!(&app.mode, Mode::Approve(a) if a.term == 1 && a.name == "test"),
+        matches!(&app.mode, Mode::Approve(a) if a.term == ClientTerm::local(1) && a.name == "test"),
         "Enter on its sidebar row"
     );
 
@@ -434,13 +435,13 @@ fn it_opens_only_from_its_item_never_by_itself() {
     }
     key(&mut app, KeyCode::Enter);
     assert!(
-        matches!(&app.mode, Mode::Approve(a) if a.term == 1),
+        matches!(&app.mode, Mode::Approve(a) if a.term == ClientTerm::local(1)),
         "Enter on its Inbox item"
     );
 
     let mut app = world(Stage::Failed);
     app.mode = Mode::Side;
-    app.screen.cursor = Some(SessionKey::Pane(1));
+    app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(1)));
     key(&mut app, KeyCode::Enter);
     assert!(
         !matches!(app.mode, Mode::Approve(_)),
@@ -459,7 +460,7 @@ fn with_several_waiting_the_next_opens_after_a_choice() {
         ..checks[0].clone()
     };
     checks.insert(0, build);
-    app.open_approval(1);
+    app.open_approval(ClientTerm::local(1));
     assert!(matches!(&app.mode, Mode::Approve(a) if a.name == "build"));
     shown(&mut app);
     key(&mut app, KeyCode::Char('1'));
@@ -592,10 +593,10 @@ fn a_command_that_changes_after_the_first_2_is_not_always_approved() {
 
 // ---- override ------------------------------------------------------------------------------
 
-fn overriding() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+fn overriding() -> (App, mpsc::UnboundedReceiver<Outgoing>) {
     let mut app = world(Stage::Failed);
     let rx = listening(&mut app);
-    app.ask_override(1, None);
+    app.ask_override(ClientTerm::local(1), None);
     (app, rx)
 }
 
@@ -656,7 +657,7 @@ fn escape_cancels_the_override() {
 #[test]
 fn comma_opens_the_project_s_check_from_the_evidence_and_the_inbox() {
     let mut app = world(Stage::Failed);
-    app.open_check_sheet(1);
+    app.open_check_sheet(ClientTerm::local(1));
     key(&mut app, KeyCode::Char(','));
     assert!(matches!(&app.mode, Mode::ProjectCheck(d) if d.project == site(&app)));
 
@@ -665,7 +666,7 @@ fn comma_opens_the_project_s_check_from_the_evidence_and_the_inbox() {
     let rows = goto_rows(&app.screen_model(), "", 0);
     let at = rows
         .iter()
-        .position(|r| *r == GoRow::Failed(1))
+        .position(|r| *r == GoRow::Failed(ClientTerm::local(1)))
         .expect("fix-footer in FAILED CHECKS");
     app.mode = Mode::GoTo {
         query: String::new(),
@@ -686,7 +687,7 @@ fn several_checkpoints_switch_with_the_arrows_on_their_row() {
             ..Default::default()
         })
         .into();
-    app.open_project_check(1);
+    app.open_project_check(ClientTerm::local(1));
     let text = frame(
         &mut app,
         crate::client::reference_fixture::Layout::Floating,
@@ -722,7 +723,7 @@ fn several_checkpoints_switch_with_the_arrows_on_their_row() {
 fn a_repo_s_checkpoint_is_read_only_and_del_forgets_your_choice() {
     let mut app = world(Stage::Never);
     let mut rx = listening(&mut app);
-    app.open_project_check(1);
+    app.open_project_check(ClientTerm::local(1));
     let text = frame(
         &mut app,
         crate::client::reference_fixture::Layout::Floating,
@@ -751,7 +752,7 @@ fn a_repo_s_checkpoint_is_read_only_and_del_forgets_your_choice() {
 #[test]
 fn typing_edits_the_draft_and_escape_drops_it() {
     let mut app = world(Stage::None);
-    app.open_project_check(1);
+    app.open_project_check(ClientTerm::local(1));
     for c in "npm test".chars() {
         key(&mut app, KeyCode::Char(c));
     }
@@ -858,12 +859,12 @@ fn saving_writes_the_named_check_in_place_and_keeps_comments() {
 fn ctrl_s_with_nothing_to_write_says_so_and_saves_nothing() {
     let mut app = world(Stage::Passed);
     with_check(&mut app, "npm test");
-    app.open_project_check(1);
+    app.open_project_check(ClientTerm::local(1));
     ctrl(&mut app, 's');
     assert_eq!(toast(&app), "nothing changed");
     assert!(matches!(&app.mode, Mode::ProjectCheck(d) if !d.saving));
     let mut app = world(Stage::None);
-    app.open_project_check(1);
+    app.open_project_check(ClientTerm::local(1));
     ctrl(&mut app, 's');
     assert_eq!(toast(&app), "type a command first");
 }

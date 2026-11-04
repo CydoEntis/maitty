@@ -715,7 +715,7 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 
 @media (prefers-reduced-motion: reduce) {
   .agent-avatar.status-working { animation: none; }
-  .status-mark.status-needs-you, .activity-running .activity-marker, .streaming-orb svg, .streaming-dots i, .terminal-cursor { animation: none; }
+  .status-mark.status-needs-you::after, .activity-running .activity-marker, .streaming-orb svg, .streaming-dots i, .terminal-cursor { animation: none; }
 }
 
 .conversation-header { align-items: center; gap: 8px; min-width: 0; }
@@ -749,13 +749,14 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 /* v5 status marks: shape-distinct, 14px slot. */
 .status-mark { align-items: center; display: inline-flex; flex: 0 0 auto; justify-content: center; }
 .status-mark.status-working { color: var(--primary); font: 13px/1 var(--font-mono); height: 14px; width: 14px; }
-.status-mark.status-needs-you { background: var(--warn); border-radius: 4px; gap: 2px; height: 14px; width: 14px; animation: needs-pulse 2.4s ease-out infinite; }
+.status-mark.status-needs-you { background: var(--warn); border-radius: 4px; gap: 2px; height: 14px; position: relative; width: 14px; }
+.status-mark.status-needs-you::after { border-radius: inherit; box-shadow: 0 0 0 2px color-mix(in srgb, var(--warn) 45%, transparent); content: ""; inset: 0; opacity: 0; pointer-events: none; position: absolute; }
 .status-mark.status-needs-you i { background: var(--on-warn); border-radius: 1px; height: 6px; width: 2px; }
 .status-mark.status-done { background: rgb(141 184 155 / 18%); border-radius: 4px; color: var(--ok); height: 14px; width: 14px; }
 .status-mark.status-recovery { background: rgb(240 127 120 / 18%); border-radius: 4px; color: var(--danger); height: 14px; width: 14px; }
 .status-mark.status-idle { border: 1.5px solid var(--idle); border-radius: 3px; height: 11px; width: 11px; }
 .status-mark.status-unknown { border: 1.5px dashed var(--dim); border-radius: 3.5px; height: 12px; width: 12px; }
-@keyframes needs-pulse { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 45%, transparent); } to { box-shadow: 0 0 0 4px transparent; } }
+@keyframes needs-pulse { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(1.7); } }
 
 /* v5 tab strip + conversation header */
 .tab-strip { align-items: center; display: flex; flex: 0 0 46px; gap: 8px; min-width: 0; padding: 7px 12px; }
@@ -1059,9 +1060,8 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 [data-approval-choice="AcceptForSession"]::after { content: "A"; }
 [data-approval-choice="Cancel"]::after { content: "\21E7N"; }
 
-/* Needs-you pulse only where the design pulses it */
-.status-mark.status-needs-you { animation: none; }
-.session-row .status-mark.status-needs-you { animation: needs-pulse 2.4s ease-out infinite; }
+/* Needs-you pulse only where the design pulses it: a ring that scales out a few times, then rests. */
+.session-row .status-mark.status-needs-you::after { animation: needs-pulse 2.4s ease-out 3; }
 
 /* Review sheet */
 .context-panel, .context-panel.is-diff, .context-panel.is-terminal { background: var(--main); border-left: 1px solid var(--line); }

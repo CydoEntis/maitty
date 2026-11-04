@@ -13,26 +13,27 @@ const REPO: &str = concat!("CydoEntis/", env!("APP_COMMAND"));
 
 /// The release build that runs on this machine.
 pub fn target() -> Option<&'static str> {
-    if cfg!(all(windows, target_arch = "x86_64")) || cfg!(all(windows, target_arch = "aarch64")) {
+    target_for(std::env::consts::OS, std::env::consts::ARCH)
+}
+
+/// The release build for a machine, named as `std::env::consts` names its OS and CPU.
+pub fn target_for(os: &str, arch: &str) -> Option<&'static str> {
+    match (os, arch) {
         // Windows on ARM runs the x64 build.
-        Some("x86_64-pc-windows-msvc")
-    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        Some("aarch64-apple-darwin")
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        Some("x86_64-apple-darwin")
-    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        Some("x86_64-unknown-linux-musl")
-    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
-        Some("aarch64-unknown-linux-musl")
-    } else {
-        None
+        ("windows", "x86_64" | "aarch64") => Some("x86_64-pc-windows-msvc"),
+        ("macos", "aarch64") => Some("aarch64-apple-darwin"),
+        ("macos", "x86_64") => Some("x86_64-apple-darwin"),
+        ("linux", "x86_64") => Some("x86_64-unknown-linux-musl"),
+        ("linux", "aarch64") => Some("aarch64-unknown-linux-musl"),
+        _ => None,
     }
 }
 
-fn asset_for(target: &str) -> String {
+/// The archive that holds `target`'s build: Windows releases are zips, the rest tarballs.
+pub(crate) fn asset_for(os: &str, target: &str) -> String {
     format!(
         "{APP_COMMAND}-{target}.{}",
-        if cfg!(windows) { "zip" } else { "tar.gz" }
+        if os == "windows" { "zip" } else { "tar.gz" }
     )
 }
 
@@ -110,7 +111,7 @@ fn tag_from_url(url: &str) -> Option<String> {
     version(tag).map(|_| tag.to_string())
 }
 
-fn download(tag: &str, name: &str, dir: &Path) -> Result<PathBuf> {
+pub(crate) fn download(tag: &str, name: &str, dir: &Path) -> Result<PathBuf> {
     let to = dir.join(name);
     let got = if gh_signed_in() {
         crate::proc::run(
@@ -141,7 +142,7 @@ fn download(tag: &str, name: &str, dir: &Path) -> Result<PathBuf> {
     Ok(to)
 }
 
-fn sha256_hex(path: &Path) -> Result<String> {
+pub(crate) fn sha256_hex(path: &Path) -> Result<String> {
     use sha2::{Digest, Sha256};
     let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
     Ok(Sha256::digest(&bytes)
@@ -169,7 +170,7 @@ pub fn run(check: bool, force: bool) -> Result<()> {
     let Some(target) = target() else {
         bail!("there's no release build for this machine; build from source")
     };
-    let asset = asset_for(target);
+    let asset = asset_for(std::env::consts::OS, target);
     let tmp = std::env::temp_dir().join(format!(
         concat!(env!("APP_COMMAND"), "-update-{}"),
         std::process::id()
@@ -241,7 +242,7 @@ fn offer_restart() -> Result<()> {
     let mut answer = String::new();
     std::io::stdin().read_line(&mut answer)?;
     if wants_restart(&answer, busy == 0) {
-        crate::cli::kill_server(false)?;
+        crate::cli::kill_server(&crate::cli::target::Target::current(), false)?;
         println!(concat!(
             "Run ",
             env!("APP_COMMAND"),
@@ -272,7 +273,7 @@ pub fn install_latest() -> Result<(String, PathBuf)> {
     let Some(target) = target() else {
         bail!("there's no release build for this machine; build from source")
     };
-    let asset = asset_for(target);
+    let asset = asset_for(std::env::consts::OS, target);
     let tmp = std::env::temp_dir().join(format!(
         concat!(env!("APP_COMMAND"), "-update-{}"),
         std::process::id()
@@ -296,6 +297,15 @@ fn integrate_opted_out() -> bool {
     std::env::var(concat!(env!("APP_ENV"), "_NO_INTEGRATE")).is_ok_and(|v| v == "1")
 }
 
+/// The sha256 `sha256sums.txt` lists for `asset`, lowercase.
+pub(crate) fn expected_checksum(sums: &str, asset: &str) -> Option<String> {
+    sums.lines().find_map(|l| {
+        l.split_once("  ")
+            .filter(|(_, n)| n.trim() == asset)
+            .map(|(h, _)| h.trim().to_lowercase())
+    })
+}
+
 fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Result<PathBuf> {
     if say {
         println!(
@@ -305,14 +315,8 @@ fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Resul
     }
     let archive = download(tag, asset, tmp)?;
     let sums = std::fs::read_to_string(download(tag, "sha256sums.txt", tmp)?)?;
-    let expected = sums
-        .lines()
-        .find_map(|l| {
-            l.split_once("  ")
-                .filter(|(_, n)| n.trim() == asset)
-                .map(|(h, _)| h.trim().to_lowercase())
-        })
-        .with_context(|| format!("no checksum for {asset}"))?;
+    let expected =
+        expected_checksum(&sums, asset).with_context(|| format!("no checksum for {asset}"))?;
     if sha256_hex(&archive)? != expected {
         bail!("checksum mismatch for {asset}; nothing was changed");
     }
@@ -588,7 +592,51 @@ mod tests {
     #[test]
     fn this_machine_has_a_build() {
         let t = target().expect("a release target for the platforms we build");
-        assert!(asset_for(t).starts_with(concat!(env!("APP_COMMAND"), "-")));
+        assert!(asset_for(std::env::consts::OS, t).starts_with(concat!(env!("APP_COMMAND"), "-")));
+    }
+
+    #[test]
+    fn each_os_and_cpu_has_its_own_release_asset() {
+        let rows = [
+            ("windows", "x86_64", "x86_64-pc-windows-msvc", "zip"),
+            ("windows", "aarch64", "x86_64-pc-windows-msvc", "zip"),
+            ("macos", "aarch64", "aarch64-apple-darwin", "tar.gz"),
+            ("macos", "x86_64", "x86_64-apple-darwin", "tar.gz"),
+            ("linux", "x86_64", "x86_64-unknown-linux-musl", "tar.gz"),
+            ("linux", "aarch64", "aarch64-unknown-linux-musl", "tar.gz"),
+        ];
+        for (os, arch, target, ext) in rows {
+            assert_eq!(target_for(os, arch), Some(target), "{os} {arch}");
+            assert_eq!(
+                asset_for(os, target),
+                format!("{}-{target}.{ext}", env!("APP_COMMAND"))
+            );
+        }
+        assert_eq!(target_for("linux", "riscv64"), None);
+        assert_eq!(target_for("freebsd", "x86_64"), None);
+    }
+
+    #[test]
+    fn the_self_update_still_targets_this_machine() {
+        assert_eq!(
+            target(),
+            target_for(std::env::consts::OS, std::env::consts::ARCH)
+        );
+    }
+
+    #[test]
+    fn a_checksum_is_the_listed_one_for_exactly_that_asset() {
+        let sums = "AAA1  maitty-a.tar.gz\nbbb2  maitty-b.tar.gz\n";
+        assert_eq!(
+            expected_checksum(sums, "maitty-a.tar.gz").as_deref(),
+            Some("aaa1")
+        );
+        assert_eq!(
+            expected_checksum(sums, "maitty-b.tar.gz").as_deref(),
+            Some("bbb2")
+        );
+        assert_eq!(expected_checksum(sums, "maitty-c.tar.gz"), None);
+        assert_eq!(expected_checksum(sums, "tar.gz"), None);
     }
 
     #[test]

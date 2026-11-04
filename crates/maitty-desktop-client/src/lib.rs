@@ -469,6 +469,11 @@ impl TerminalInput {
         );
         ipc::send_message(&mut self.writer, &ClientMsg::Input { term, data }).await
     }
+
+    /// Ask for the pane's replay on this stream, in order with its output.
+    pub async fn want_replay(&mut self, term: u32) -> Result<()> {
+        ipc::send_message(&mut self.writer, &ClientMsg::WantReplay { term }).await
+    }
 }
 
 pub async fn open_terminal_stream(

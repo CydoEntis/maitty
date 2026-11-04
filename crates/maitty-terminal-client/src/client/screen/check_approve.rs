@@ -34,7 +34,7 @@ const SPACE_RUN_MARKED_FROM: usize = 2;
 /// The modal for one checkpoint of one session; the next waiting one opens after a choice.
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::client) struct Approve {
-    pub term: TermId,
+    pub term: ClientTerm,
     pub name: String,
     /// 2 was pressed once: the next 2 means Always.
     pub armed: bool,
@@ -161,21 +161,17 @@ fn origin(info: &CheckInfo) -> String {
 }
 
 impl App {
-    pub(in crate::client) fn approval_waits(&self, term: TermId) -> bool {
-        self.snap
-            .terms
-            .get(&term)
+    pub(in crate::client) fn approval_waits(&self, term: ClientTerm) -> bool {
+        self.term_info(term)
             .is_some_and(|t| waiting(t).next().is_some())
     }
 
     /// Enter on a session's Inbox item or sidebar row: ask about its first checkpoint waiting
     /// for your approval, if one is.
-    pub(in crate::client) fn open_approval(&mut self, term: TermId) {
+    pub(in crate::client) fn open_approval(&mut self, term: ClientTerm) {
         self.screen.inbox_return = None;
         if let Some(name) = self
-            .snap
-            .terms
-            .get(&term)
+            .term_info(term)
             .and_then(|t| waiting(t).next())
             .map(|c| c.name.clone())
         {
@@ -236,9 +232,7 @@ impl App {
     /// whole. None when they can.
     fn not_readable(&self, a: &Approve) -> Option<&'static str> {
         let info = self
-            .snap
-            .terms
-            .get(&a.term)
+            .term_info(a.term)
             .and_then(|t| t.checks.iter().find(|c| c.name == a.name))?;
         match &a.shown_whole {
             Some(hash) if *hash == shown_hash(info) => None,
@@ -248,7 +242,7 @@ impl App {
     }
 
     fn approve(&mut self, mut a: Approve, choice: ApprovalChoice) {
-        let Some(term) = self.snap.terms.get(&a.term) else {
+        let Some(term) = self.term_info(a.term) else {
             return;
         };
         let project = project_name(term);
@@ -258,12 +252,15 @@ impl App {
             .find(|c| c.name == a.name)
             .map(|c| c.command.clone())
             .unwrap_or_default();
-        self.cmd(Command::ApproveCheck {
-            term: a.term,
-            name: a.name.clone(),
-            choice,
-            command_sha256: command_hash(&command),
-        });
+        self.cmd_on(
+            a.term.machine,
+            Command::ApproveCheck {
+                term: a.term.term,
+                name: a.name.clone(),
+                choice,
+                command_sha256: command_hash(&command),
+            },
+        );
         self.mode = Mode::Normal;
         self.screen.inbox_return = None;
         let said = match choice {
@@ -279,9 +276,7 @@ impl App {
         self.notify(said, false);
         a.answered.push(std::mem::take(&mut a.name));
         let next = self
-            .snap
-            .terms
-            .get(&a.term)
+            .term_info(a.term)
             .and_then(|t| {
                 waiting(t).find(|c| !a.answered.iter().any(|n| n.eq_ignore_ascii_case(&c.name)))
             })
@@ -319,7 +314,7 @@ pub(in crate::client) fn draw_approve(
     t: &Theme,
     a: &Approve,
 ) {
-    let Some(term) = app.snap.terms.get(&a.term).cloned() else {
+    let Some(term) = app.term_info(a.term).cloned() else {
         return;
     };
     let Some(info) = term.checks.iter().find(|c| c.name == a.name).cloned() else {

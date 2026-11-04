@@ -2,6 +2,7 @@
 //! project's colour; under it each session is its state mark and the first letter of its name.
 use super::side::Line;
 use super::*;
+use crate::client::ids::ClientSession;
 
 /// The column's width: a mark and a letter, a cell of room round each.
 pub(in crate::client) const RAIL_W: u16 = 5;
@@ -12,8 +13,10 @@ const FOOT_ROWS: u16 = 3;
 
 /// A row of the column.
 enum Row {
+    /// A machine other than this one: its state and first letter.
+    Machine(MachineId),
     Head(usize),
-    Sess(SessionKey),
+    Sess(ClientSession),
     Gap,
 }
 
@@ -27,7 +30,7 @@ fn initial(name: &str) -> String {
 /// A session's row: its mark and the first letter of its name. `on` is the selection, `lit`
 /// when the column has the keys (ink on the accent), else a raised row.
 fn session_segs(app: &App, s: &Session, on: bool, lit: bool, ground: Color, t: &Theme) -> Vec<Seg> {
-    let spinner = glyph(app, Status::Working);
+    let spinner = super::machine_group::working_mark(app, s.down);
     let mark = check::mark(app, s, t, &spinner);
     let state = check::kind(s);
     let new = super::side::is_new(s);
@@ -124,11 +127,12 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
         .iter()
         .filter_map(|l| match l {
             Line::Proj(pi) => Some(Row::Head(*pi)),
+            Line::Machine(machine) if *machine != MachineId::LOCAL => Some(Row::Machine(*machine)),
             Line::Gap => Some(Row::Gap),
             other => super::side::line_term(model, other).map(Row::Sess),
         })
         .collect();
-    let sessions: Vec<SessionKey> = rows
+    let sessions: Vec<ClientSession> = rows
         .iter()
         .filter_map(|r| {
             if let Row::Sess(key) = r {
@@ -210,6 +214,11 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
         }
         match row {
             Row::Gap => {}
+            Row::Machine(machine) => {
+                let segs = super::machine_group::rail_segs(app, *machine, ground, t);
+                put(buf, area.x, y, &segs, area.right());
+                hit(app, row_area, ScreenHit::ExpandSidebar);
+            }
             Row::Head(pi) => {
                 let p = &model[*pi];
                 put(
@@ -239,6 +248,9 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
                     area.right(),
                 );
                 hit(app, row_area, ScreenHit::Session(*key));
+                if s.down {
+                    super::machine_group::grey(buf, row_area, t);
+                }
                 if let Some(term) = s.native_term {
                     app.screen.row_y.insert(term, y);
                 }

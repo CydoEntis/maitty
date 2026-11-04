@@ -67,7 +67,7 @@ pub(crate) enum Facts {
 pub(crate) struct BranchSheet {
     pub dir: PathBuf,
     /// The session it was opened for: its check, and the agent a restore must wait for.
-    pub term: TermId,
+    pub term: ClientTerm,
     /// None while git is being read.
     pub facts: Option<Facts>,
     /// The row the keys are on: 0 is "Switch branch…", then one per snapshot.
@@ -77,7 +77,7 @@ pub(crate) struct BranchSheet {
 }
 
 impl BranchSheet {
-    fn new(dir: PathBuf, term: TermId) -> BranchSheet {
+    fn new(dir: PathBuf, term: ClientTerm) -> BranchSheet {
         BranchSheet {
             dir,
             term,
@@ -408,7 +408,7 @@ fn repo_lines(app: &App, v: &BranchSheet, r: &Repo, c: Style, t: &Theme) -> Vec<
         Ok(None) => {}
         Err(e) => out.push(labelled("Base", git_error(e, c, t), c, t)),
     }
-    let check = match app.snap.terms.get(&v.term).and_then(|s| s.check()) {
+    let check = match app.term_info(v.term).and_then(|s| s.check()) {
         Some(info) => check::result_words(info, t)
             .into_iter()
             .map(|(s, st)| (s, st.bg(c.bg.unwrap_or(t.bg))))

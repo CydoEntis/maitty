@@ -16,6 +16,21 @@ export type SessionTrack = {
 
 export type SessionMove = { id: string; from: string | null; to: string | null }
 
+function sameTrack(a: SessionTrack, b: SessionTrack): boolean {
+  return a.status === b.status && a.repoRoot === b.repoRoot && a.changedAt === b.changedAt && a.workingSince === b.workingSince && a.unread === b.unread && a.movedAt === b.movedAt
+}
+
+/** Whether two track maps say the same, so an unchanged list need not re-render what shows them. */
+export function tracksEqual(a: ReadonlyMap<string, SessionTrack>, b: ReadonlyMap<string, SessionTrack>): boolean {
+  if (a === b) return true
+  if (a.size !== b.size) return false
+  for (const [id, track] of a) {
+    const other = b.get(id)
+    if (!other || !sameTrack(track, other)) return false
+  }
+  return true
+}
+
 export const MOVED_HIGHLIGHT_MS = 1600
 
 const ATTENTION: ReadonlySet<SessionStatus> = new Set(['done', 'needs', 'error'])

@@ -2,8 +2,9 @@
 //! is at; the review screen shows what it changed and ships it (commit, merge, PR) or throws
 //! it away.
 
+use crate::client::ids::ClientTerm;
 use crate::proc::git;
-use crate::protocol::{TermId, WsId};
+use crate::protocol::WsId;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -22,7 +23,7 @@ pub struct TaskRow {
     pub summary: String,
     pub dirty: u32,
     pub ahead: u32,
-    pub agent: Option<TermId>,
+    pub agent: Option<ClientTerm>,
     pub dir: PathBuf,
     pub root: PathBuf,
 }

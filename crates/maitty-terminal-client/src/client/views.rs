@@ -4,7 +4,8 @@
 use super::files::FileEntry;
 use super::tasks::Review;
 use crate::brand::APP_COMMAND;
-use crate::protocol::{TermId, WsId};
+use crate::client::ids::ClientTerm;
+use crate::protocol::WsId;
 use crate::theme::Theme;
 use ratatui::style::{Color, Modifier, Style};
 use std::collections::{HashMap, HashSet};
@@ -20,7 +21,7 @@ pub struct ChangesView {
     /// The agent working in this worktree, and what it last said.
     pub agent: String,
     pub said: String,
-    pub term: Option<TermId>,
+    pub term: Option<ClientTerm>,
     pub ws: Option<WsId>,
     /// A linked worktree (can be merged or discarded), not the main checkout.
     pub linked: bool,

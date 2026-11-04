@@ -6,6 +6,9 @@ use serde::{Serialize, de::DeserializeOwned};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
+mod stream_marker;
+pub use stream_marker::{LIMITS, Limits, NoMarker, STREAM_MARKER, skip_login_noise};
+
 pub const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 
 pub fn socket_id(
@@ -148,6 +151,7 @@ mod tests {
             from: Some((7, "pane-secret".into())),
             structured: None,
             surface: Surface::Terminal,
+            replays: true,
         };
 
         send(&mut left_writer, &message).await.unwrap();
@@ -160,6 +164,7 @@ mod tests {
                 from: Some((7, token)),
                 structured: None,
                 surface: Surface::Terminal,
+                replays: true,
             }) if token == "pane-secret"
         ));
     }

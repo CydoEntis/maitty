@@ -3,6 +3,7 @@
 
 use super::App;
 use super::screen::Proj;
+use crate::client::ids::MachineId;
 use crate::protocol::Command;
 
 /// `fix the flaky checkout test` → `fix-the-flaky-checkout`
@@ -49,20 +50,23 @@ impl App {
             .find(|w| w.main)
             .map(|w| w.path.clone())
             .unwrap_or_else(|| p.path.clone());
-        if r.worktree && p.git {
+        if r.worktree && p.git && p.machine == MachineId::LOCAL {
             let branch = format!("{}-{}", slug(&r.name, 2), now() % 10_000);
             self.screen.pending_recipe = Some((branch.clone(), rest, std::time::Instant::now()));
             self.screen_start_worktree(p, Some(first), Some(branch));
         } else {
             // The last one started gets the focus, so start the first command last.
             for c in rest.iter().rev() {
-                self.cmd(Command::NewWorkspace {
-                    cwd: Some(main.clone()),
-                    name: None,
-                    cmd: Some(c.clone()),
-                });
+                self.cmd_on(
+                    p.machine,
+                    Command::NewWorkspace {
+                        cwd: Some(main.clone()),
+                        name: None,
+                        cmd: Some(c.clone()),
+                    },
+                );
             }
-            self.screen_new_session(main, Some(first), false);
+            self.screen_new_session_on(p.machine, main, Some(first), false);
         }
         self.notify(format!("recipe {}: {}", r.name, r.run.join(" + ")), false);
     }
@@ -94,7 +98,7 @@ impl App {
             });
         }
         if let Some(term) = w.sessions.iter().find_map(|s| s.native_term) {
-            self.cmd(Command::FocusPane { term });
+            self.cmd_on(term.machine, Command::FocusPane { term: term.term });
         }
     }
 }

@@ -18,7 +18,7 @@ const OUTPUT_WAIT: Duration = Duration::from_secs(3);
 /// A failure waiting for its output before the message box opens.
 #[derive(Debug, Clone)]
 pub(in crate::client) struct FailureAsk {
-    term: TermId,
+    pub(in crate::client) term: ClientTerm,
     name: String,
     inbox: Option<(String, usize)>,
     asked: Instant,
@@ -70,7 +70,7 @@ impl App {
     /// the same checkpoint holds it.
     pub(in crate::client) fn send_failure(
         &mut self,
-        term: TermId,
+        term: ClientTerm,
         name: String,
         output: Option<&str>,
         inbox: Option<(String, usize)>,
@@ -84,7 +84,13 @@ impl App {
             None => {
                 if inbox.is_some() {
                     let asked = (!name.is_empty()).then(|| name.clone());
-                    self.send(ClientMsg::Query(Query::CheckOutput { term, name: asked }));
+                    self.send(
+                        term.machine,
+                        ClientMsg::Query(Query::CheckOutput {
+                            term: term.term,
+                            name: asked,
+                        }),
+                    );
                 }
                 self.screen.failure_ask = Some(FailureAsk {
                     term,
@@ -122,15 +128,13 @@ impl App {
 
     fn open_failure_note(
         &mut self,
-        term: TermId,
+        term: ClientTerm,
         name: &str,
         output: &str,
         inbox: Option<(String, usize)>,
     ) {
         let Some(info) = self
-            .snap
-            .terms
-            .get(&term)
+            .term_info(term)
             .and_then(|t| t.checks.iter().find(|c| c.name == name))
             .filter(|c| c.state == CheckState::Failed)
             .cloned()
@@ -152,13 +156,14 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::ids::Outgoing;
     use crate::client::reference_fixture::{Stage, world};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::{Terminal, backend::TestBackend};
     use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
     /// fix-footer, whose test failed in `Stage::Failed`.
-    const FAILED: TermId = 1;
+    const FAILED: ClientTerm = ClientTerm::local(1);
 
     /// A hundred coloured lines, as a test runner prints them.
     fn sample_output() -> String {
@@ -167,19 +172,19 @@ mod tests {
             .collect()
     }
 
-    fn listen(app: &mut App) -> UnboundedReceiver<ClientMsg> {
+    fn listen(app: &mut App) -> UnboundedReceiver<Outgoing> {
         let (tx, rx) = unbounded_channel();
         app.out = tx;
         rx
     }
 
-    fn drain(rx: &mut UnboundedReceiver<ClientMsg>) -> Vec<ClientMsg> {
-        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    fn drain(rx: &mut UnboundedReceiver<Outgoing>) -> Vec<ClientMsg> {
+        std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect()
     }
 
     /// Whether anything was typed or queued for the agent.
     fn delivered(sent: &[ClientMsg]) -> bool {
-        sent.iter().any(|m| matches!(m, ClientMsg::Input { term, .. } | ClientMsg::Command(crate::protocol::Command::QueueFollowUp { term, .. }) if *term == FAILED))
+        sent.iter().any(|m| matches!(m, ClientMsg::Input { term, .. } | ClientMsg::Command(crate::protocol::Command::QueueFollowUp { term, .. }) if *term == FAILED.term))
     }
 
     fn press(app: &mut App, code: KeyCode) {
@@ -207,7 +212,7 @@ mod tests {
 
     fn the_failure_is_written_in(app: &App) {
         let c = written(app);
-        let exit = app.snap.terms[&FAILED]
+        let exit = app.snap.terms[&FAILED.term]
             .check()
             .and_then(|i| i.exit_code)
             .expect("an exit code");
@@ -247,7 +252,7 @@ mod tests {
         let sent = drain(&mut rx);
         assert!(
             sent.iter()
-                .any(|m| matches!(m, ClientMsg::Query(Query::CheckOutput { term: FAILED, .. }))),
+                .any(|m| matches!(m, ClientMsg::Query(Query::CheckOutput { term, .. }) if *term == FAILED.term)),
             "its output is asked for: {sent:?}"
         );
         assert!(

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { SettingsPreferences } from '../preferences'
@@ -21,6 +21,29 @@ describe('desktop settings', () => {
     const nav = screen.getByRole('navigation', { name: 'Settings sections' })
     expect(nav).toHaveTextContent('ESSENTIALSGeneralGTERMINALText & cursorTAppearanceAWORKSPACENotificationsNHotkeys?ADVANCEDDaemonD')
     expect(within(nav).getByRole('button', { name: /General/ })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('picks the start folder with the system picker and saves it like a typed one', async () => {
+    const user = userEvent.setup()
+    const onChooseFolder = vi.fn().mockResolvedValue('/home/casey/dev')
+    const { onChange } = renderSettings('general', { onChooseFolder })
+
+    await user.click(screen.getByRole('button', { name: 'Browse…' }))
+
+    expect(onChooseFolder).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('textbox', { name: 'Start folder' })).toHaveValue('/home/casey/dev')
+    await waitFor(() => { expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ startFolder: '/home/casey/dev' })) })
+  })
+
+  it('leaves the start folder alone when the picker is cancelled', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderSettings('general', { onChooseFolder: vi.fn().mockResolvedValue(null) })
+    const before = screen.getByRole<HTMLInputElement>('textbox', { name: 'Start folder' }).value
+
+    await user.click(screen.getByRole('button', { name: 'Browse…' }))
+
+    expect(screen.getByRole('textbox', { name: 'Start folder' })).toHaveValue(before)
+    expect(onChange).not.toHaveBeenCalled()
   })
 
   it('picks where notifications appear and shows a test card', async () => {
@@ -90,8 +113,8 @@ describe('desktop settings', () => {
     const { onChange } = renderSettings('appearance')
     const spinners = screen.getByRole('radiogroup', { name: 'Working spinner' })
     expect(within(spinners).getByRole('radio', { name: 'Braille' })).toHaveAttribute('aria-checked', 'true')
-    expect(spinners).toHaveTextContent('10 frames · 80 ms')
-    expect(spinners).toHaveTextContent('8 frames · 90 ms')
+    expect(spinners).toHaveTextContent('10 frames · 160 ms')
+    expect(spinners).toHaveTextContent('8 frames · 160 ms')
     await user.click(within(spinners).getByRole('radio', { name: 'Snake' }))
     expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, spinner: 'snake' })
   })

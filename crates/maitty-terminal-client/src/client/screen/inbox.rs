@@ -26,7 +26,9 @@ pub(super) fn inbox_rows(model: &[Proj], heads: usize) -> Vec<GoRow> {
     let mut quiet: Vec<&Session> = model
         .iter()
         .flat_map(Proj::sessions)
-        .filter(|s| s.status == Status::Working && s.quiet_since.is_some() && !s.quiet_seen)
+        .filter(|s| {
+            s.status == Status::Working && s.quiet_since.is_some() && !s.quiet_seen && !s.down
+        })
         .collect();
     quiet.sort_by_key(|s| (s.quiet_since, s.key));
     let needs: Vec<GoRow> = asks
@@ -173,6 +175,15 @@ fn row_height(row: &GoRow, item: Option<&Item>, selected: bool, extra: Extra) ->
     }
 }
 
+/// " · on build" after a remote machine's item; nothing for this computer's.
+fn on_machine(label: &str) -> String {
+    if label.is_empty() {
+        String::new()
+    } else {
+        format!(" · on {label}")
+    }
+}
+
 /// An item's lines at `y`: its head line and the lines under it, on `bg`.
 fn draw_item(buf: &mut Buffer, (x, y, right): (u16, u16, u16), it: &Item, bg: Color, t: &Theme) {
     let st = Style::default().bg(bg);
@@ -187,6 +198,7 @@ fn draw_item(buf: &mut Buffer, (x, y, right): (u16, u16, u16), it: &Item, bg: Co
             st.fg(t.strong).add_modifier(Modifier::BOLD),
         ),
         seg(format!(" · {}", it.folder), st.fg(t.muted)),
+        seg(on_machine(&it.machine), st.fg(t.muted)),
     ];
     put(buf, x, y, &head, right.saturating_sub(AGE_GAP));
     put(
@@ -374,6 +386,7 @@ fn draw_found(
     } else {
         (app.cfg.icons.shell.clone(), t.muted)
     };
+    let gc = if s.down { t.muted } else { gc };
     let what = if s.is_agent {
         s.agent.clone()
     } else {
@@ -387,6 +400,10 @@ fn draw_found(
             seg(format!("{gl} "), st.fg(gc)),
             seg(s.name.clone(), st.fg(t.strong).add_modifier(Modifier::BOLD)),
             seg(format!(" · {what} · {}", proj.name), st.fg(t.muted)),
+            seg(
+                on_machine(&app.machine_label_of(s.key.machine)),
+                st.fg(t.muted),
+            ),
         ],
         right,
     );
@@ -679,7 +696,7 @@ mod tests {
         let rows = goto_rows(&app.screen_model(), "", 0);
         let sel = rows
             .iter()
-            .position(|r| r.term() == Some(term))
+            .position(|r| r.term() == Some(ClientTerm::local(term)))
             .expect("the item is listed");
         app.mode = Mode::GoTo {
             query: String::new(),
@@ -765,7 +782,7 @@ mod tests {
         let (app, term) = quiet_world();
         let rows = inbox_rows(&app.screen_model(), 0);
         let at = |r: &GoRow| rows.iter().position(|x| x == r);
-        let quiet = at(&GoRow::Quiet(term)).expect("listed");
+        let quiet = at(&GoRow::Quiet(ClientTerm::local(term))).expect("listed");
         let ask = rows
             .iter()
             .position(|r| matches!(r, GoRow::Ask(_)))
@@ -811,13 +828,13 @@ mod tests {
         select(&mut app, term);
         app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
         assert!(
-            !inbox_rows(&app.screen_model(), 0).contains(&GoRow::Quiet(term)),
+            !inbox_rows(&app.screen_model(), 0).contains(&GoRow::Quiet(ClientTerm::local(term))),
             "seen"
         );
         app.snap.terms.get_mut(&term).unwrap().quiet_since = Some(now() - 60);
         app.screen_fresh();
         assert!(
-            inbox_rows(&app.screen_model(), 0).contains(&GoRow::Quiet(term)),
+            inbox_rows(&app.screen_model(), 0).contains(&GoRow::Quiet(ClientTerm::local(term))),
             "a new quiet spell is listed again"
         );
     }
@@ -903,7 +920,8 @@ mod tests {
                 layout: crate::layout::Node::Leaf(id),
                 focus: id,
             });
-            app.parsers.insert(id, vt100::Parser::new(20, 80, 0));
+            app.parsers
+                .insert(ClientTerm::local(id), vt100::Parser::new(20, 80, 0));
         };
         extra(40, CheckState::CouldNotRun, false);
         extra(41, CheckState::NeedsApproval, true);
@@ -921,17 +939,18 @@ mod tests {
                 .unwrap_or_else(|| panic!("{want:?} in {rows:?}"))
         };
         assert!(
-            at(&GoRow::Ask(3)) < at(&GoRow::Approve(41)),
+            at(&GoRow::Ask(ClientTerm::local(3))) < at(&GoRow::Approve(ClientTerm::local(41))),
             "the question first"
         );
         assert!(
-            at(&GoRow::Approve(41)) < at(&GoRow::Failed(1))
-                && at(&GoRow::Failed(1)) < at(&GoRow::NotRun(40))
+            at(&GoRow::Approve(ClientTerm::local(41))) < at(&GoRow::Failed(ClientTerm::local(1)))
+                && at(&GoRow::Failed(ClientTerm::local(1)))
+                    < at(&GoRow::NotRun(ClientTerm::local(40)))
         );
         assert!(
-            at(&GoRow::NotRun(40)) < at(&GoRow::Done(42))
-                && rows.contains(&GoRow::Done(43))
-                && rows.contains(&GoRow::Done(4)),
+            at(&GoRow::NotRun(ClientTerm::local(40))) < at(&GoRow::Done(ClientTerm::local(42)))
+                && rows.contains(&GoRow::Done(ClientTerm::local(43)))
+                && rows.contains(&GoRow::Done(ClientTerm::local(4))),
             "stale, never and no check finished"
         );
     }
@@ -961,7 +980,7 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
         assert!(
             sent.iter()
                 .any(|m| matches!(m, ClientMsg::Command(Command::RerunCheck { term: 1, .. }))),
@@ -975,7 +994,7 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        let sent = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        let sent = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
         (app, sent)
     }
 
@@ -988,22 +1007,23 @@ mod tests {
     fn enter_runs_each_item_s_first_button() {
         let (app, _) = enter(Stage::Failed, 3);
         assert!(
-            matches!(&app.mode, Mode::Compose(c) if c.term == 3 && c.inbox.is_some()),
+            matches!(&app.mode, Mode::Compose(c) if c.term == ClientTerm::local(3) && c.inbox.is_some()),
             "a question: Reply"
         );
         let (app, _) = enter(Stage::Failed, 1);
         assert!(
-            matches!(&app.view, Some(View::Check(v)) if v.term == 1) && app.mode == Mode::Normal,
+            matches!(&app.view, Some(View::Check(v)) if v.term == ClientTerm::local(1))
+                && app.mode == Mode::Normal,
             "a failure: Output"
         );
         let (app, _) = enter(Stage::Couldnt, 1);
         assert!(
-            matches!(&app.view, Some(View::Check(v)) if v.term == 1),
+            matches!(&app.view, Some(View::Check(v)) if v.term == ClientTerm::local(1)),
             "could not run: Output"
         );
         let (app, _) = enter(Stage::Approve, 1);
         assert!(
-            matches!(&app.mode, Mode::Approve(a) if a.term == 1),
+            matches!(&app.mode, Mode::Approve(a) if a.term == ClientTerm::local(1)),
             "a command waiting: read it"
         );
         let (app, sent) = enter(Stage::Passed, 1);
@@ -1032,7 +1052,7 @@ mod tests {
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
             app.out = tx;
             app.on_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
-            let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+            let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).collect();
             assert!(
                 app.mode == Mode::Normal && focused(&sent, term),
                 "{stage:?} {term}"

@@ -15,6 +15,8 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 
 const MAX_PENDING_MARKS: usize = 64;
+/// How much of the ring a desktop pane is replayed: it keeps about ten thousand lines of scrollback.
+const DESKTOP_REPLAY_BYTES: usize = 1 << 20;
 const TIMELINE_KEPT: usize = 60;
 
 #[derive(Default)]
@@ -577,6 +579,14 @@ fn argv(cfg: &Config, cmd: Option<&str>, once: bool) -> Vec<String> {
     shell
 }
 
+/// A pane works on this machine: `--remote` routing the daemon was started under (its host,
+/// ssh program and remote command) must not make the pane's own `maitty` reach another one.
+fn remove_remote_route(cmd: &mut CommandBuilder) {
+    for key in crate::ipc::REMOTE_ROUTE_ENV {
+        cmd.env_remove(key);
+    }
+}
+
 impl Term {
     /// The folder it works in, by name: its checkout's, else where its shell is.
     pub fn place(&self) -> String {
@@ -640,6 +650,9 @@ impl Term {
         if spec.cwd.is_dir() {
             cmd.cwd(spec.cwd);
         }
+        if let Some(path) = crate::login_path::resolved() {
+            cmd.env("PATH", path);
+        }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         for k in [
@@ -669,6 +682,7 @@ impl Term {
         cmd.env(env!("APP_ENV"), "1");
         cmd.env(concat!(env!("APP_ENV"), "_TERM_ID"), spec.id.to_string());
         cmd.env(concat!(env!("APP_ENV"), "_PANE_TOKEN"), &token);
+        remove_remote_route(&mut cmd);
         if let Ok(sock) = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")) {
             cmd.env(concat!(env!("APP_ENV"), "_SOCKET"), sock);
         }
@@ -1022,12 +1036,27 @@ impl Term {
     }
 
     pub fn replay(&self) -> Vec<u8> {
+        self.replay_tail(usize::MAX)
+    }
+
+    /// The replay a surface gets: the desktop window keeps far less scrollback than the ring
+    /// holds, so it is sent only the end of it.
+    pub fn replay_for(&self, surface: crate::protocol::Surface) -> Vec<u8> {
+        match surface {
+            crate::protocol::Surface::Desktop => self.replay_tail(DESKTOP_REPLAY_BYTES),
+            crate::protocol::Surface::Terminal => self.replay(),
+        }
+    }
+
+    /// The last `limit` bytes of the ring, then the screen as it is now. Restoring the screen
+    /// after the history means a ring that starts mid-escape-sequence or spans resizes still
+    /// ends on the right picture, so the cut can fall anywhere.
+    pub(super) fn replay_tail(&self, limit: usize) -> Vec<u8> {
         let (a, b) = self.ring.as_slices();
-        // Restore the screen we know is current after replaying history, so a ring that
-        // starts mid-escape-sequence or spans resizes still ends on the right picture.
-        let mut out = Vec::with_capacity(a.len() + b.len() + 4096);
-        out.extend_from_slice(a);
-        out.extend_from_slice(b);
+        let skip = (a.len() + b.len()).saturating_sub(limit);
+        let mut out = Vec::with_capacity((a.len() + b.len()).min(limit) + 4096);
+        out.extend_from_slice(&a[skip.min(a.len())..]);
+        out.extend_from_slice(&b[skip.saturating_sub(a.len()).min(b.len())..]);
         out.extend_from_slice(b"\x1b[0m\x1b[2J\x1b[H");
         out.extend(self.parser.screen().state_formatted());
         out
@@ -1218,6 +1247,20 @@ fn clean_start(buf: &[u8]) -> usize {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_pane_does_not_inherit_the_remote_routing() {
+        let mut cmd = super::CommandBuilder::new("sh");
+        for key in crate::ipc::REMOTE_ROUTE_ENV {
+            cmd.env(key, "box");
+        }
+        cmd.env("KEEP", "1");
+        super::remove_remote_route(&mut cmd);
+        for key in crate::ipc::REMOTE_ROUTE_ENV {
+            assert!(cmd.get_env(key).is_none(), "{key} reached the pane");
+        }
+        assert!(cmd.get_env("KEEP").is_some());
+    }
+
     #[test]
     fn a_cut_history_starts_at_a_clean_line() {
         let cut = "ʼ".as_bytes()[1..].to_vec();

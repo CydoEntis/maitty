@@ -87,6 +87,27 @@ word at the right; a click shows that tab. The foot holds **+ New** and **Menu**
 column (each project its first letter, each session its mark and first letter); hidden, the panes take everything. See UI › *sidebar check result* and *collapsed
 sidebar*.
 
+**Machines.** With one machine the sidebar is exactly as above. Once the window knows another
+machine, every machine's folders sit under a header, this computer first and the others in their
+stable id order (the sidebar never reorders itself, ADR 0034): `this computer` in `strong` bold,
+then `⇄ build` with its connection state at the right, a glyph and a word in a theme role
+(`connected` in `done`, `connecting` and `reconnecting #n` in `muted`, `needs login`, `needs
+update` and `unreachable` in `err`; amber stays for agents that need you). ASCII marks read
+`<> build` and `+`, `.`, `~`, `x`. The name is cut with a `…` before the word gives way to the
+glyph. A machine that dropped keeps its folders and sessions, drawn again in `muted`: no
+bold, no amber, the working mark held still. Under its header two `muted` lines say
+`disconnected since 2m ago` and why (`text`, the exact fix the link failure carries, wrapped onto
+up to three rows at the sidebar's width, the last ending in `…` only past three). Its needs-you and failed marks leave the title's counts and the Inbox
+until the line is back, and everything returns to normal on its own. A connected machine's header
+may carry up to two `muted` lines of what its own daemon reports, never added to another's: its
+plan limits (`claude 5h 23% · week 41%`) and `$9.00 today`, with `daemon 0.50.0` when that is not
+this window's version. Collapsed, a machine other than this one is a row `●B` (its state glyph,
+coloured as above, and its first letter) over its folders.
+
+The **Machines dialog** (leader `w`) is a standard modal: the same state chips and words as the header,
+the fix of a down machine written in full under it in `text`, the Add field on `card2`, and a dim line
+for Windows. Its behaviour is in [UI](UI.md#project-specific-machines-dialog).
+
 ## Pane titles and tabs
 
 The session's tabs sit on the first
@@ -137,7 +158,9 @@ One component for every notice: bottom right, above the agent's input area, a sm
 pane: a `card` boxed in the notice's colour (`err`, `blocked` for needs you, `done`, else the
 accent) with a kind chip carrying the notice's mark on the top border (`▲ Needs you`,
 `✕ Error`, `✓ Done`, `i Hint`, `✓ Notice`) and the modals' red ✕ chip at its right, then a bold
-title, a detail line and an optional preview in italics. A question waiting on you also has its
+title, a detail and an optional preview in italics. Every text row wraps at the toast's width
+instead of being cut: the title and the detail onto up to three lines, the preview (an excerpt) onto
+up to two, the last line ending in `…` only past that; the box grows with the lines. A question waiting on you also has its
 two answers as buttons on the bottom border: a green `Answer` that goes to the session and a
 red `Later esc` that dismisses it. Always round corners (ADR 0030). It slides in and fades out
 with motion on. See UI › *the frame* (Toast).
@@ -177,7 +200,11 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   (Settings 16) and a soft drop shadow. 8px outer margin, 12px between panes. Only small popups and dialogs (menus,
   popovers, the palette and Settings cards, notification cards) blur what is behind them (18px). The sidebar, panes,
   tab tray and the big panels (Inbox, Inspect, Find) do not: only the soft ground is behind them, so a blur there
-  looks the same and costs a repaint on every frame.
+  looks the same and costs a repaint on every frame. A pane's terminal is see-through over its card only when
+  xterm draws with WebGL; on xterm's DOM renderer (no WebGL 2) it sits on the theme's opaque `--term` ground, so a
+  row repaint never blends through the card. On such a web view (`data-gpu="software"` on the root) Glass also
+  gives up its resting shadows, the card gradient and the popup blur, and nothing else: the colours, radii,
+  layout, focus ring and status colours stay ([PERFORMANCE](PERFORMANCE.md)).
 - **Window style: Flat, Tiled or Glass** (Settings › Appearance › Window style, `style`, stored with the other
   preferences; the root carries `data-style` and `data-finish`). The finish and the layout only; features and
   status colours do not change. The text above is **Glass**, the default for a fresh install: floating frosted cards, colour icons, glow and the status sweeps.
@@ -378,10 +405,14 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Colours follow the theme.** Folder colours, agent tiles, badges and the folder text are
   expressions over the active theme's tokens (`--accent`, `--ansi-*`, `--warn`, `--danger`,
   `--on-accent`), never fixed hex values, so switching theme recolours all of them.
-- **Status effects.** Working rows and tabs carry a slow teal sweep, Needs you a breathing amber
-  glow behind the icon, Done one green sweep. Each has its own switch; Reduce motion (the
-  setting or the system's) and a disconnected daemon stop all of them, with every other
-  animation.
+- **Status effects.** Working rows and tabs show one slow teal sweep as work starts, Needs you an
+  amber glow behind the icon that breathes three times and then rests, Done one green sweep. The
+  needs-you badge, the Inbox count and the update dot pulse three times with a ring. Nothing loops
+  and nothing animates `box-shadow`: an endless animation keeps a software-rendered web view
+  repainting the card for as long as the state lasts ([PERFORMANCE](PERFORMANCE.md)). Each has
+  its own switch; Reduce motion (the setting or the system's) and a disconnected daemon stop all
+  of them, with every other animation. The working spinner steps every 160 ms and holds while the
+  window is in the background.
 - **Process icons** are generic tiles, never a product's mark: `>_` shell, `✻` codex, `rs` cargo.
 - **Themes** are Midnight (default), Abyss and Paper, themes generated from six inputs
   (`bg fg accent mag blue green` and a light flag) by Oklab mixing, and **High Contrast** (pure

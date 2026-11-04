@@ -21,7 +21,7 @@ fn conversation() -> ConversationSummary {
     }
 }
 
-fn app() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+fn app() -> (App, mpsc::UnboundedReceiver<Outgoing>) {
     let (tx, rx) = mpsc::unbounded_channel();
     let (bg_tx, _) = mpsc::unbounded_channel();
     let mut cfg = Config::default();
@@ -61,7 +61,7 @@ fn structured_only_conversation_renders_without_any_workspace_or_terminal() {
         let (mut app, mut out) = app();
         app.on_first_state();
         assert!(
-            out.try_recv().is_err(),
+            out.try_recv().map(|o| o.msg).is_err(),
             "attaching does not implicitly open a terminal"
         );
         let text = draw(&mut app, width, height);
@@ -83,11 +83,11 @@ fn structured_only_conversation_renders_without_any_workspace_or_terminal() {
 fn selecting_and_typing_on_an_unbound_conversation_sends_no_terminal_commands() {
     let (mut app, mut out) = app();
     let key = SessionKey::Conversation(ConversationId(41));
-    app.on_hy_hit(screen::ScreenHit::Session(key), false);
+    app.on_hy_hit(screen::ScreenHit::Session(ClientSession::local(key)), false);
     for code in [KeyCode::Enter, KeyCode::Right, KeyCode::Char('x')] {
         app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::Side));
-        assert_eq!(app.screen.cursor, Some(key));
+        assert_eq!(app.screen.cursor, Some(ClientSession::local(key)));
     }
     for action in [
         Action::StopAgent,
@@ -98,9 +98,12 @@ fn selecting_and_typing_on_an_unbound_conversation_sends_no_terminal_commands() 
     ] {
         app.act(action);
     }
-    app.on_hy_hit(screen::ScreenHit::RowMenuSess(key), false);
+    app.on_hy_hit(
+        screen::ScreenHit::RowMenuSess(ClientSession::local(key)),
+        false,
+    );
     draw(&mut app, 80, 24);
-    assert!(out.try_recv().is_err());
+    assert!(out.try_recv().map(|o| o.msg).is_err());
     assert!(app.screen.tabs.is_empty() && app.parsers.is_empty());
 }
 
@@ -108,7 +111,7 @@ fn selecting_and_typing_on_an_unbound_conversation_sends_no_terminal_commands() 
 fn conversation_row_and_selection_survive_native_binding_changes_without_duplicates() {
     let (mut app, mut out) = app();
     let key = SessionKey::Conversation(ConversationId(41));
-    app.screen_side_set(screen::SideItem::Sess(key));
+    app.screen_side_set(screen::SideItem::Sess(ClientSession::local(key)));
     app.screen.saved.session_order.push(key);
     let world = reference_fixture::world(reference_fixture::Stage::None);
     let mut native = world.snap.terms[&1].clone();
@@ -142,14 +145,14 @@ fn conversation_row_and_selection_survive_native_binding_changes_without_duplica
         let model = app.screen_model();
         let rows = model.iter().flat_map(|p| p.sessions()).collect::<Vec<_>>();
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].key, key);
-        assert_eq!(rows[0].native_term, binding);
-        assert_eq!(app.screen.cursor, Some(key));
-        assert_eq!(app.selected_term(), binding);
+        assert_eq!(rows[0].key, ClientSession::local(key));
+        assert_eq!(rows[0].native_term, binding.map(ClientTerm::local));
+        assert_eq!(app.screen.cursor, Some(ClientSession::local(key)));
+        assert_eq!(app.selected_term(), binding.map(ClientTerm::local));
         assert_eq!(app.screen.saved.session_order, [key]);
         assert!(draw(&mut app, 160, 45).contains("Codex 41"));
     }
-    assert!(out.try_recv().is_err());
+    assert!(out.try_recv().map(|o| o.msg).is_err());
 }
 
 #[test]
@@ -188,32 +191,35 @@ fn an_unbound_selected_row_never_sends_typing_to_the_focused_native_pane() {
     app.snap.active_ws = world.snap.active_ws;
     assert!(app.focused().is_some());
     let key = SessionKey::Conversation(ConversationId(41));
-    app.screen_side_set(screen::SideItem::Sess(key));
+    app.screen_side_set(screen::SideItem::Sess(ClientSession::local(key)));
     app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
     app.act(Action::StopAgent);
     // Closing the row puts that chat away; nothing reaches the pane that happens to be focused.
     app.act(Action::ClosePane);
-    let sent = std::iter::from_fn(|| out.try_recv().ok()).collect::<Vec<_>>();
+    let sent = std::iter::from_fn(|| out.try_recv().map(|o| o.msg).ok()).collect::<Vec<_>>();
     assert!(
         matches!(
             sent.as_slice(),
-            [ClientMsg::Command(Command::ConversationArchive { id: ConversationId(41), archived: true })]
+            [ClientMsg::Command(Command::ConversationArchive {
+                id: ConversationId(41),
+                archived: true
+            })]
         ),
         "{sent:?}"
     );
     assert!(matches!(app.mode, Mode::Side));
-    assert_eq!(app.screen.cursor, Some(key));
+    assert_eq!(app.screen.cursor, Some(ClientSession::local(key)));
 }
 
-fn app_with_unbound_selection() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+fn app_with_unbound_selection() -> (App, mpsc::UnboundedReceiver<Outgoing>) {
     let (mut app, out) = app();
     let world = reference_fixture::world(reference_fixture::Stage::None);
     app.snap.workspaces = world.snap.workspaces;
     app.snap.terms = world.snap.terms;
     app.snap.active_ws = world.snap.active_ws;
     assert!(app.focused().is_some());
-    app.screen_side_set(screen::SideItem::Sess(SessionKey::Conversation(
-        ConversationId(41),
+    app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
+        SessionKey::Conversation(ConversationId(41)),
     )));
     (app, out)
 }
@@ -225,7 +231,7 @@ fn pasting_text_on_an_unbound_conversation_never_reaches_the_native_pane() {
         app.mode = mode;
         app.on_event(Event::Paste("first\nsecond\n".into()));
         assert!(
-            out.try_recv().is_err(),
+            out.try_recv().map(|o| o.msg).is_err(),
             "pasted newlines must not execute in another pane"
         );
     }
@@ -247,7 +253,7 @@ fn pasting_a_windows_key_burst_on_an_unbound_conversation_never_reaches_the_nati
         .collect();
     app.on_burst(burst);
     assert!(
-        out.try_recv().is_err(),
+        out.try_recv().map(|o| o.msg).is_err(),
         "burst paste must not execute in another pane"
     );
 }
@@ -267,25 +273,25 @@ fn an_explicit_native_popup_still_takes_pastes_over_an_unbound_conversation() {
     app.snap.terms.insert(popup.id, popup);
     app.on_paste("popup\ntext".into());
     assert!(
-        matches!(out.try_recv().unwrap(), ClientMsg::Input { term: 999, data } if data == b"popup\rtext")
+        matches!(out.try_recv().map(|o| o.msg).unwrap(), ClientMsg::Input { term: 999, data } if data == b"popup\rtext")
     );
-    assert!(out.try_recv().is_err());
+    assert!(out.try_recv().map(|o| o.msg).is_err());
 }
 
 #[test]
 fn ordinary_native_pastes_keep_the_focused_pane_and_bracketed_newlines() {
     let (mut app, mut out) = app_with_unbound_selection();
     let term = app.focused().unwrap();
-    app.screen.cursor = Some(SessionKey::Pane(term));
+    app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(term.term)));
     app.mode = Mode::Normal;
     let mut parser = app.new_parser(24, 80);
     parser.process(b"\x1b[?2004h");
     app.parsers.insert(term, parser);
     app.on_paste("first\nsecond\n".into());
     assert!(
-        matches!(out.try_recv().unwrap(), ClientMsg::Input { term: target, data } if target == term && data == b"\x1b[200~first\rsecond\r\x1b[201~")
+        matches!(out.try_recv().map(|o| o.msg).unwrap(), ClientMsg::Input { term: target, data } if target == term.term && data == b"\x1b[200~first\rsecond\r\x1b[201~")
     );
-    assert!(out.try_recv().is_err());
+    assert!(out.try_recv().map(|o| o.msg).is_err());
 }
 
 #[test]
@@ -299,11 +305,11 @@ fn an_app_text_box_still_accepts_paste_over_an_unbound_conversation() {
     }));
     app.on_paste("draft\r\nmessage".into());
     assert!(matches!(&app.mode, Mode::Compose(c) if c.text == "draft\nmessage"));
-    assert!(out.try_recv().is_err());
+    assert!(out.try_recv().map(|o| o.msg).is_err());
 }
 
-fn sent(out: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<ClientMsg> {
-    std::iter::from_fn(|| out.try_recv().ok()).collect()
+fn sent(out: &mut mpsc::UnboundedReceiver<Outgoing>) -> Vec<ClientMsg> {
+    std::iter::from_fn(|| out.try_recv().map(|o| o.msg).ok()).collect()
 }
 
 #[test]
@@ -321,14 +327,17 @@ fn a_chat_put_away_in_another_client_leaves_this_sidebar() {
     let (mut app, _) = app();
     app.snap.conversations[0].archived = true;
     app.screen_fresh();
-    assert_eq!(app.screen_model().iter().flat_map(|p| p.sessions()).count(), 0);
+    assert_eq!(
+        app.screen_model().iter().flat_map(|p| p.sessions()).count(),
+        0
+    );
 }
 
 #[test]
 fn closing_a_chat_that_has_no_terminal_puts_it_away_instead_of_refusing() {
     let (mut app, mut out) = app();
     let key = SessionKey::Conversation(ConversationId(41));
-    app.on_hy_hit(screen::ScreenHit::Session(key), false);
+    app.on_hy_hit(screen::ScreenHit::Session(ClientSession::local(key)), false);
     app.act(Action::ClosePane);
     assert!(matches!(
         sent(&mut out).as_slice(),
@@ -343,7 +352,7 @@ fn closing_a_chat_that_has_no_terminal_puts_it_away_instead_of_refusing() {
 fn renaming_a_chat_sends_the_name_to_the_daemon_so_every_client_shows_it() {
     let (mut app, mut out) = app();
     let key = SessionKey::Conversation(ConversationId(41));
-    app.on_hy_hit(screen::ScreenHit::Session(key), false);
+    app.on_hy_hit(screen::ScreenHit::Session(ClientSession::local(key)), false);
     app.act(Action::RenameWorkspace);
     let Mode::Prompt { kind, input } = &mut app.mode else {
         panic!("a rename prompt opens");
@@ -358,14 +367,13 @@ fn renaming_a_chat_sends_the_name_to_the_daemon_so_every_client_shows_it() {
     ));
 }
 
-
 #[test]
 fn opening_a_chat_in_the_terminal_says_it_lives_in_the_desktop_app_and_sends_nothing() {
     for status in [Status::Idle, Status::Working] {
         let (mut app, mut out) = app();
         app.snap.conversations[0].status = status;
         let key = SessionKey::Conversation(ConversationId(41));
-        app.on_hy_hit(screen::ScreenHit::Session(key), false);
+        app.on_hy_hit(screen::ScreenHit::Session(ClientSession::local(key)), false);
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(sent(&mut out).is_empty());
         assert!(matches!(app.mode, Mode::Side));

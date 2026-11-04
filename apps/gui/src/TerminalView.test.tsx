@@ -22,7 +22,7 @@ const { loadTerminalReplay, resizeTerminal, sendTerminalInput, loadTerminalHisto
     onChunk: undefined as ((chunk: TerminalChunk) => void) | undefined,
     cols: 80,
     rows: 24,
-    options: undefined as { fontSize?: number } | undefined,
+    options: undefined as { fontSize?: number; cursorBlink?: boolean } | undefined,
     linkProvider: undefined as { provideLinks: (y: number, done: (links: Array<{ text: string; activate: (event: MouseEvent) => void }> | undefined) => void) => void } | undefined,
     line: '',
     searches: [] as string[],
@@ -43,8 +43,8 @@ vi.mock('@/api/terminalStream', () => ({ listenTerminalChunks, loadTerminalHisto
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
-    options: { fontSize?: number }
-    constructor(options: { fontSize?: number }) {
+    options: { fontSize?: number; cursorBlink?: boolean }
+    constructor(options: { fontSize?: number; cursorBlink?: boolean }) {
       this.options = options
       terminalState.options = this.options
     }
@@ -131,6 +131,9 @@ describe('terminal view', () => {
     // Output is written once per frame; run frames on the next tick so tests can wait for them.
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => window.setTimeout(() => { callback(0) }, 0))
     vi.stubGlobal('cancelAnimationFrame', (id: number) => { window.clearTimeout(id) })
+    // jsdom has no WebGL, so the view takes xterm's DOM renderer, as a web view without GPU access does.
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     listenTerminalChunks.mockImplementation((_term, onChunk) => {
       terminalState.onChunk = onChunk
       return Promise.resolve(() => { terminalState.onChunk = undefined })
@@ -141,7 +144,10 @@ describe('terminal view', () => {
     sendTerminalInput.mockResolvedValue()
   })
 
-  afterEach(() => { vi.unstubAllGlobals() })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
 
   it('writes the history, then live output once, and sends typing to the exact session', async () => {
     renderTerminal()
@@ -243,8 +249,20 @@ describe('terminal view', () => {
     expect(terminalState.resets).toBe(1)
   })
 
-  it('asks the daemon for a fresh replay when the shell dropped an overlong history', async () => {
+  it('waits for the replay the host asked for over the stream when it holds no history yet', async () => {
     loadTerminalHistory.mockResolvedValue(null)
+    renderTerminal()
+    await waitFor(() => { expect(loadTerminalHistory).toHaveBeenCalledWith(47) })
+    expect(loadTerminalReplay).not.toHaveBeenCalled()
+
+    act(() => { terminalState.onChunk?.(chunk(1, 'replayed', true)) })
+
+    await waitFor(() => { expect(written()).toBe('replayed') })
+    expect(terminalState.resets).toBe(1)
+  })
+
+  it('asks the daemon for a fresh replay itself when the host has no stream to ask over', async () => {
+    loadTerminalHistory.mockRejectedValue(new Error('The terminal is not connected to the daemon'))
     renderTerminal()
 
     await waitFor(() => { expect(loadTerminalReplay).toHaveBeenCalledWith(binding) })
@@ -337,6 +355,19 @@ describe('terminal view', () => {
 
     view.unmount()
     expect(onHandle).toHaveBeenLastCalledWith(null)
+  })
+
+  it('blinks the cursor only while the window is in front', async () => {
+    render(<TerminalView conversation={conversation} desktop fontSize={13} focused />)
+    await waitFor(() => { expect(terminalState.options?.cursorBlink).toBe(true) })
+
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    act(() => { window.dispatchEvent(new Event('blur')) })
+    expect(terminalState.options?.cursorBlink).toBe(false)
+
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(terminalState.options?.cursorBlink).toBe(true)
   })
 
   it('says a chat session has no terminal instead of offering to switch it', () => {

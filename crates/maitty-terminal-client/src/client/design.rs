@@ -1112,7 +1112,7 @@ pub(super) fn draw_files(
     }
     let who = app
         .focused()
-        .and_then(|id| app.snap.terms.get(&id))
+        .and_then(|id| app.term_info(id))
         .map(pane_name)
         .unwrap_or_else(|| "the pane".into());
     let insert = format!("Insert path into {who}");

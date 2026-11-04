@@ -7,9 +7,15 @@
 //! Starting a session is starting a helper: `[sessions] helpers` (ask / always / never) and
 //! `helpers_at_once` decide whether it may, and the daemon asks the user on the caller's row
 //! the first time (see `daemon/helpers.rs`). A refused start comes back as an error to read.
+//!
+//! The pane tools take an optional `machine`, and an id may be written `machine/id` (see
+//! `machines`); a machine is only reached when its `[[machines]]` entry says `mcp = true`.
+
+mod machines;
 
 use crate::brand::APP_COMMAND;
 use crate::cli;
+use crate::cli::target::Target;
 use crate::prompt::prompt_on;
 use crate::protocol::*;
 use anyhow::Result;
@@ -59,10 +65,13 @@ fn root_of(t: &TermInfo) -> PathBuf {
     t.root.clone().unwrap_or_else(|| t.cwd.clone())
 }
 
-struct Server {
+pub(crate) use machines::Reach;
+
+pub(crate) struct Server {
     cfg: crate::config::Config,
     root: PathBuf,
     me: Option<TermId>,
+    reach: Reach,
 }
 
 fn text(s: impl Into<String>) -> Value {
@@ -74,23 +83,25 @@ fn fail(s: impl Into<String>) -> Value {
 }
 
 fn tools() -> Value {
-    let id = json!({ "type": "integer", "description": "The session id (from the session list)." });
+    let id = json!({ "type": ["integer", "string"], "description": "The session id (from the session list). On another machine it is written machine/id, as the list shows it." });
+    let machine = json!({ "type": "string", "description": "Another computer, by the name the list gives it, if the session is not on this one. Leave out for this computer. Only machines the user has opened to agents can be reached." });
     json!([
         {
             "name": concat!(env!("APP_COMMAND"), "_list"),
-            "description": "List sessions in the caller's project, with their status and current task.",
-            "inputSchema": { "type": "object", "properties": {} }
+            "description": "List sessions in the caller's project, with their status and current task. With machine, that computer's sessions; \"all\" for this one and every machine open to agents.",
+            "inputSchema": { "type": "object", "properties": { "machine": machine } }
         },
         {
             "name": concat!(env!("APP_COMMAND"), "_read"),
             "description": "Read the end of a session's screen (what the agent shows right now).",
-            "inputSchema": { "type": "object", "properties": { "id": id, "lines": { "type": "integer", "description": "How many lines from the bottom (default 40)." } }, "required": ["id"] }
+            "inputSchema": { "type": "object", "properties": { "id": id, "machine": machine, "lines": { "type": "integer", "description": "How many lines from the bottom (default 40)." } }, "required": ["id"] }
         },
         {
             "name": concat!(env!("APP_COMMAND"), "_send"),
             "description": "Type a message into a session's prompt and press Enter, like a person would. With wait, returns once it has finished that turn, with its reply.",
             "inputSchema": { "type": "object", "properties": {
                 "id": id,
+                "machine": machine,
                 "text": { "type": "string" },
                 "wait": { "type": "boolean", "description": "Wait for its turn to end and return its reply (default false)." },
                 "timeout": { "type": "integer", "description": "Seconds to wait at most (default 600)." }
@@ -101,6 +112,7 @@ fn tools() -> Value {
             "description": "Wait until a session finishes its turn (or needs an answer), or until text matching a regex shows on its screen. Returns its reply or the matching line.",
             "inputSchema": { "type": "object", "properties": {
                 "id": id,
+                "machine": machine,
                 "regex": { "type": "string", "description": "Wait for this on the screen instead of the turn ending." },
                 "timeout": { "type": "integer", "description": "Seconds to wait at most (default 600)." }
             }, "required": ["id"] }
@@ -110,6 +122,7 @@ fn tools() -> Value {
             "description": concat!("Answer a session's numbered prompt (e.g. 1 = Yes, 3 = No). Pass the prompt id ", env!("APP_COMMAND"), "_list or ", env!("APP_COMMAND"), "_wait gave you; if the prompt on screen has changed since, nothing is sent and you get the current one. Saying yes is only allowed if the user has turned that on in ", env!("APP_COMMAND"), "'s settings; otherwise ask the user."),
             "inputSchema": { "type": "object", "properties": {
                 "id": id,
+                "machine": machine,
                 "choice": { "type": "integer", "minimum": 1, "maximum": 9 },
                 "prompt": { "type": "string", "description": concat!("The prompt id from ", env!("APP_COMMAND"), "_list or ", env!("APP_COMMAND"), "_wait.") }
             }, "required": ["id", "choice", "prompt"] }
@@ -118,6 +131,7 @@ fn tools() -> Value {
             "name": concat!(env!("APP_COMMAND"), "_start"),
             "description": "Start a helper: a new agent on a task. In a git repo it gets its own worktree and branch, so it never edits the same files as anyone else. Returns its session id. The first time, the user is asked to allow helpers; the error says so. Call it for every helper you want, then try again once they have answered. If the user said no, do the work yourself.",
             "inputSchema": { "type": "object", "properties": {
+                "machine": machine,
                 "prompt": { "type": "string", "description": "The task." },
                 "agent": { "type": "string", "description": "claude, codex, gemini, … (default: the user's first agent)." },
                 "worktree": { "type": "boolean", "description": "Own worktree (default true)." }
@@ -143,7 +157,7 @@ fn tools() -> Value {
         {
             "name": concat!(env!("APP_COMMAND"), "_interrupt"),
             "description": "Interrupt what a session is doing (Ctrl+C).",
-            "inputSchema": { "type": "object", "properties": { "id": id }, "required": ["id"] }
+            "inputSchema": { "type": "object", "properties": { "id": id, "machine": machine }, "required": ["id"] }
         }
     ])
 }
@@ -180,8 +194,26 @@ fn prompt_lines(question: &str, opts: &[(u32, String)]) -> String {
 }
 
 impl Server {
+    pub(crate) fn new(
+        cfg: crate::config::Config,
+        root: PathBuf,
+        me: Option<TermId>,
+        reach: Reach,
+    ) -> Server {
+        Server {
+            cfg,
+            root,
+            me,
+            reach,
+        }
+    }
+
     fn snapshot(&self) -> Result<Snapshot, String> {
-        match cli::block_on(cli::request(ClientMsg::Query(Query::List))) {
+        self.snapshot_on(&Target::current())
+    }
+
+    fn snapshot_on(&self, at: &Target) -> Result<Snapshot, String> {
+        match cli::block_on(cli::request_to(at, ClientMsg::Query(Query::List))) {
             Ok(Reply::List(s)) => Ok(s),
             Ok(_) => Err("unexpected reply".into()),
             Err(e) => Err(format!("{e:#}")),
@@ -194,17 +226,23 @@ impl Server {
 
     /// A session the caller may touch.
     fn session(&self, args: &Value) -> Result<TermInfo, String> {
+        self.session_on(&Target::current(), args)
+    }
+
+    /// A session on `at`. Which sessions of another machine are open to the caller is that
+    /// machine's `mcp` opt-in, not this computer's project scope.
+    fn session_on(&self, at: &Target, args: &Value) -> Result<TermInfo, String> {
         let id = args
             .get("id")
             .and_then(Value::as_u64)
             .ok_or("give the session id")? as TermId;
-        let snap = self.snapshot()?;
+        let snap = self.snapshot_on(at)?;
         let t = snap
             .terms
             .get(&id)
             .cloned()
-            .ok_or_else(|| format!("no session {id}"))?;
-        if !self.in_scope(&t) {
+            .ok_or_else(|| format!("no session {}", at.address(id)))?;
+        if !at.is_remote() && !self.in_scope(&t) {
             return Err(format!(
                 "session {id} is in another project; {APP_COMMAND} only lets you reach sessions in {}",
                 self.root.display()
@@ -214,31 +252,49 @@ impl Server {
     }
 
     fn screen(&self, id: TermId) -> Result<String, String> {
-        match cli::block_on(cli::request(ClientMsg::Query(Query::Read { term: id }))) {
+        self.screen_on(&Target::current(), id)
+    }
+
+    fn screen_on(&self, at: &Target, id: TermId) -> Result<String, String> {
+        match cli::block_on(cli::request_to(at, ClientMsg::Query(Query::Read { term: id }))) {
             Ok(Reply::Text(t)) => Ok(t),
             Ok(_) => Err("unexpected reply".into()),
             Err(e) => Err(format!("{e:#}")),
         }
     }
 
-    fn call(&self, name: &str, args: &Value) -> Value {
+    pub(crate) fn call(&self, name: &str, args: &Value) -> Value {
+        let Some(tool) = machines::tool_of(name) else {
+            return self.call_here(name, args);
+        };
+        match self.route(tool, args) {
+            Err(e) => e.into_value(),
+            Ok(machines::Routed::Local(args)) => self.call_here(name, &args),
+            Ok(machines::Routed::Remote(at, args)) => self.call_remote(tool, &at, &args),
+            Ok(machines::Routed::Everywhere) => self.list_everywhere(),
+        }
+    }
+
+    /// A tool on this computer.
+    fn call_here(&self, name: &str, args: &Value) -> Value {
+        let at = Target::current();
         let r = match name {
-            concat!(env!("APP_COMMAND"), "_list") => self.list(),
-            concat!(env!("APP_COMMAND"), "_read") => self.read(args),
-            concat!(env!("APP_COMMAND"), "_send") => self.send(args),
+            concat!(env!("APP_COMMAND"), "_list") => self.list(&at),
+            concat!(env!("APP_COMMAND"), "_read") => self.read(&at, args),
+            concat!(env!("APP_COMMAND"), "_send") => self.send(&at, args),
             concat!(env!("APP_COMMAND"), "_wait") => self.session(args).and_then(|t| {
                 let regex = args
                     .get("regex")
                     .and_then(Value::as_str)
                     .map(str::to_string);
-                self.wait(t.id, regex.as_deref(), args, false)
+                self.wait(&at, t.id, regex.as_deref(), args, false)
             }),
             concat!(env!("APP_COMMAND"), "_answer") => self.answer(args),
             concat!(env!("APP_COMMAND"), "_start") => self.start(args),
             concat!(env!("APP_COMMAND"), "_references") => self.references(args),
             concat!(env!("APP_COMMAND"), "_request_secret") => self.request_secret(args),
             concat!(env!("APP_COMMAND"), "_interrupt") => self.session(args).and_then(|t| {
-                cli::send(Some(t.id), "\x03".into(), false)
+                cli::send(&Target::current(), Some(t.id), "\x03".into(), false)
                     .map(|_| format!("interrupted {}", t.id))
                     .map_err(|e| format!("{e:#}"))
             }),
@@ -250,32 +306,46 @@ impl Server {
         }
     }
 
-    fn list(&self) -> Result<String, String> {
-        let snap = self.snapshot()?;
-        let mut out = Vec::new();
-        for t in snap.terms.values().filter(|t| self.in_scope(t)) {
-            let mut row = row_of(t, self.me);
-            if t.status == Status::Blocked
-                && let Ok(screen) = self.screen(t.id)
-            {
-                let (q, opts) = prompt_on(&screen);
-                row["question"] = json!(q.trim());
-                row["choices"] = json!(
-                    opts.iter()
-                        .map(|(n, l)| format!("{n}. {l}"))
-                        .collect::<Vec<_>>()
-                );
-                row["prompt"] = json!(prompt_id(&q, &opts));
-            }
-            out.push(row);
-        }
-        Ok(serde_json::to_string_pretty(&out).unwrap_or_default())
+    fn list(&self, at: &Target) -> Result<String, String> {
+        Ok(serde_json::to_string_pretty(&self.list_rows(at)?).unwrap_or_default())
     }
 
-    fn read(&self, args: &Value) -> Result<String, String> {
-        let t = self.session(args)?;
+    fn list_rows(&self, at: &Target) -> Result<Vec<Value>, String> {
+        let snap = self.snapshot_on(at)?;
+        Ok(snap
+            .terms
+            .values()
+            .filter(|t| at.is_remote() || self.in_scope(t))
+            .map(|t| self.row_on(at, t))
+            .collect())
+    }
+
+    /// A session as a list row. Another machine's prompts are not offered for answering from
+    /// here, so its row carries no prompt id.
+    fn row_on(&self, at: &Target, t: &TermInfo) -> Value {
+        if at.is_remote() {
+            return machines::remote_row(at, t);
+        }
+        let mut row = row_of(t, self.me);
+        if t.status == Status::Blocked
+            && let Ok(screen) = self.screen(t.id)
+        {
+            let (q, opts) = prompt_on(&screen);
+            row["question"] = json!(q.trim());
+            row["choices"] = json!(
+                opts.iter()
+                    .map(|(n, l)| format!("{n}. {l}"))
+                    .collect::<Vec<_>>()
+            );
+            row["prompt"] = json!(prompt_id(&q, &opts));
+        }
+        row
+    }
+
+    fn read(&self, at: &Target, args: &Value) -> Result<String, String> {
+        let t = self.session_on(at, args)?;
         let n = args.get("lines").and_then(Value::as_u64).unwrap_or(40) as usize;
-        let screen = self.screen(t.id)?;
+        let screen = self.screen_on(at, t.id)?;
         let lines: Vec<&str> = screen.lines().collect();
         Ok(lines[lines.len().saturating_sub(n)..]
             .join("\n")
@@ -283,9 +353,9 @@ impl Server {
             .to_string())
     }
 
-    fn send(&self, args: &Value) -> Result<String, String> {
-        let t = self.session(args)?;
-        if Some(t.id) == self.me {
+    fn send(&self, at: &Target, args: &Value) -> Result<String, String> {
+        let t = self.session_on(at, args)?;
+        if !at.is_remote() && Some(t.id) == self.me {
             return Err("that's you".into());
         }
         let msg = args
@@ -295,39 +365,53 @@ impl Server {
         // Text sent to a session that's waiting on a question would answer it; that goes
         // through the app_answer and the user's approval rules instead.
         if t.status == Status::Blocked && self.cfg.mcp.approve != "always" {
-            return Err(format!(
-                concat!(
-                    "session {} is waiting on a question; use ",
-                    env!("APP_COMMAND"),
-                    "_answer (the user's approval rules apply) or ask the user"
-                ),
-                t.id
-            ));
+            return Err(if at.is_remote() {
+                format!(
+                    "session {} is waiting on a question; answering it is local-only in v1, so ask the user",
+                    at.address(t.id)
+                )
+            } else {
+                format!(
+                    concat!(
+                        "session {} is waiting on a question; use ",
+                        env!("APP_COMMAND"),
+                        "_answer (the user's approval rules apply) or ask the user"
+                    ),
+                    t.id
+                )
+            });
         }
-        cli::send(Some(t.id), msg.to_string(), true).map_err(|e| format!("{e:#}"))?;
+        cli::send(at, Some(t.id), msg.to_string(), true).map_err(|e| format!("{e:#}"))?;
         if args.get("wait").and_then(Value::as_bool) == Some(true) {
-            return self.wait(t.id, None, args, true);
+            return self.wait(at, t.id, None, args, true);
         }
         Ok(format!(
             "sent to {} ({})",
-            t.id,
+            at.address(t.id),
             t.agent.unwrap_or_default()
         ))
     }
 
     fn wait(
         &self,
+        at: &Target,
         term: TermId,
         regex: Option<&str>,
         args: &Value,
         just_sent: bool,
     ) -> Result<String, String> {
-        if Some(term) == self.me {
+        if !at.is_remote() && Some(term) == self.me {
             return Err("that's you".into());
         }
         let secs = args.get("timeout").and_then(Value::as_u64).unwrap_or(600);
-        match cli::wait_on(term, regex, std::time::Duration::from_secs(secs), just_sent)
-            .map_err(|e| format!("{e:#}"))?
+        match cli::wait_on(
+            at,
+            term,
+            regex,
+            std::time::Duration::from_secs(secs),
+            just_sent,
+        )
+        .map_err(|e| format!("{e:#}"))?
         {
             cli::Waited::Matched(l) => Ok(format!("matched: {l}")),
             cli::Waited::TimedOut { quiet: Some(at) } => Err(format!(
@@ -337,13 +421,16 @@ impl Server {
             cli::Waited::TimedOut { quiet: None } => Err(format!("still going after {secs}s")),
             cli::Waited::Turn(s, said, check) => {
                 let reply = if said.trim().is_empty() {
-                    let screen = self.screen(term)?;
+                    let screen = self.screen_on(at, term)?;
                     let lines: Vec<&str> = screen.trim_end().lines().collect();
                     lines[lines.len().saturating_sub(30)..].join("\n")
                 } else {
                     said
                 };
                 let state = match s {
+                    Status::Blocked if at.is_remote() => {
+                        "needs an answer from the user (answering is local-only in v1)"
+                    }
                     Status::Blocked => concat!(
                         "needs an answer (see ",
                         env!("APP_COMMAND"),
@@ -356,13 +443,16 @@ impl Server {
                 let checked = check
                     .map(|c| format!("\n{}", cli::check_line(&c)))
                     .unwrap_or_default();
-                let prompt = if s == Status::Blocked {
+                let prompt = if s == Status::Blocked && !at.is_remote() {
                     let (q, opts) = prompt_on(&self.screen(term)?);
                     format!("\nprompt {}", prompt_id(&q, &opts))
                 } else {
                     String::new()
                 };
-                Ok(format!("{term} {state}:\n{reply}{checked}{prompt}"))
+                Ok(format!(
+                    "{} {state}:\n{reply}{checked}{prompt}",
+                    at.address(term)
+                ))
             }
         }
     }
@@ -418,7 +508,8 @@ impl Server {
                 }
             }
         }
-        cli::send(Some(t.id), choice.to_string(), false).map_err(|e| format!("{e:#}"))?;
+        cli::send(&Target::current(), Some(t.id), choice.to_string(), false)
+            .map_err(|e| format!("{e:#}"))?;
         Ok(format!(
             "answered {choice}{} on session {}",
             if label.is_empty() {
@@ -718,13 +809,14 @@ fn slug(s: &str) -> String {
 /// Run the server on stdin / stdout until stdin closes.
 pub fn run() -> Result<()> {
     let (cfg, _) = crate::config::Config::load_or_default();
-    let server = Server {
+    let server = Server::new(
         cfg,
-        root: caller_root(),
-        me: std::env::var(concat!(env!("APP_ENV"), "_TERM_ID"))
+        caller_root(),
+        std::env::var(concat!(env!("APP_ENV"), "_TERM_ID"))
             .ok()
             .and_then(|s| s.parse().ok()),
-    };
+        Reach::live(),
+    );
     let stdin = std::io::stdin();
     let mut out = std::io::stdout();
     for line in stdin.lock().lines() {
@@ -836,12 +928,37 @@ mod tests {
     const LS_PROMPT: &str = "Bash command\n  ls\nDo you want to proceed?\n❯ 1. Yes\n  2. No";
 
     #[test]
+    fn a_session_here_is_listed_by_its_number_and_one_elsewhere_by_machine_slash_number() {
+        let t: TermInfo = serde_json::from_value(json!({
+            "id": 4, "cols": 80, "rows": 24, "title": "", "process": "node", "agent": "claude",
+            "status": "Done", "cwd": "/code", "summary": "", "name": "", "model": "", "said": "",
+            "branch": null, "linked": false, "subagents": [], "root": null, "top": null,
+            "since": 0, "asleep": false, "win32_input": false,
+        }))
+        .unwrap();
+        let server = Server::new(
+            crate::config::Config::default(),
+            std::env::temp_dir(),
+            None,
+            Reach::live(),
+        );
+        let here = server.row_on(&Target::current(), &t);
+        assert_eq!(here["id"], 4);
+        assert!(here.get("machine").is_none(), "a local row is as it always was");
+        let there = Target::of(crate::ipc::Machine::ssh("build", vec!["ssh".into()], "maitty"));
+        let row = server.row_on(&there, &t);
+        assert_eq!((&row["id"], &row["machine"]), (&json!("build/4"), &json!("build")));
+        assert!(row.get("prompt").is_none() && row.get("you").is_none());
+    }
+
+    #[test]
     fn a_helper_task_with_hidden_characters_is_never_started() {
-        let server = Server {
-            cfg: crate::config::Config::default(),
-            root: std::env::temp_dir(),
-            me: None,
-        };
+        let server = Server::new(
+            crate::config::Config::default(),
+            std::env::temp_dir(),
+            None,
+            Reach::live(),
+        );
         let err = server
             .start(&json!({ "prompt": "fix the bug\u{e0049}\u{e0067}" }))
             .unwrap_err();
@@ -928,11 +1045,7 @@ mod tests {
     fn refs_server(root: &Path, scope: &str) -> Server {
         let mut cfg = crate::config::Config::default();
         cfg.mcp.scope = scope.into();
-        Server {
-            cfg,
-            root: root.to_path_buf(),
-            me: None,
-        }
+        Server::new(cfg, root.to_path_buf(), None, Reach::live())
     }
 
     #[test]

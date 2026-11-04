@@ -20,7 +20,6 @@ export type PaneCardProps = {
   maximized: boolean
   dropTarget: boolean
   workingSince: number | null
-  now: number
   primary: string
   shift: string
   terminal: ReactNode
@@ -99,7 +98,7 @@ export function PaneCard(props: PaneCardProps) {
           <button type="button" className="mx-pane-control" aria-label={`Split right (${primary}D)`} title={`Split right (${primary}D)`} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'right') }}><Icon name="splitRight" /></button>
           <button type="button" className="mx-pane-control" aria-label={`Split down (${primary}${shift}D)`} title={`Split down (${primary}${shift}D)`} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'down') }}><Icon name="splitDown" /></button>
           <button type="button" className="mx-pane-control" aria-label={maximized ? 'Restore layout' : 'Maximize pane'} title={maximized ? 'Restore layout' : 'Maximize pane'} disabled={!multi && !maximized} onMouseDown={stop} onClick={() => { props.onToggleMaximize(pane.id) }}>{maximized ? <Icon name="restore" /> : <Icon name="maximize" />}</button>
-          <button type="button" className={`mx-pane-control${closing.armed ? ' is-armed' : ''}`} aria-label={closeLabel} title={closeLabel} onMouseDown={stop} onBlur={closing.disarm} onClick={() => { if (closing.press()) props.onClose(pane.id) }}><Icon name="close" /></button>
+          <button type="button" className={`mx-pane-control is-close${closing.armed ? ' is-armed' : ''}`} aria-label={closeLabel} title={closeLabel} onMouseDown={stop} onBlur={closing.disarm} onClick={() => { if (closing.press()) props.onClose(pane.id) }}><Icon name="close" /></button>
         </span>
       </div>
       <div
@@ -120,7 +119,7 @@ export function PaneCard(props: PaneCardProps) {
           <button type="button" className="mx-pane-ended-button" onMouseDown={stop} onClick={() => { props.onClose(pane.id) }}>Close pane</button>
         </div>
       )}
-      {!ended && status !== 'idle' && <PaneStatus status={status} workingSince={props.workingSince} now={props.now} />}
+      {!ended && status !== 'idle' && <PaneStatus status={status} workingSince={props.workingSince} />}
     </section>
       </ContextMenuPrimitive.Trigger>
       <ContextMenuPrimitive.Portal container={props.portalContainer}>

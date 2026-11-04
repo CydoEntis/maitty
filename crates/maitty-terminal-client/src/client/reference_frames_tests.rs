@@ -215,7 +215,7 @@ fn select_in_inbox(app: &mut App, term: TermId) {
     let rows = goto_rows(&app.screen_model(), "", 0);
     let sel = rows
         .iter()
-        .position(|r: &GoRow| r.term() == Some(term))
+        .position(|r: &GoRow| r.term() == Some(ClientTerm::local(term)))
         .expect("the item is listed");
     app.mode = Mode::GoTo {
         query: String::new(),
@@ -246,7 +246,7 @@ fn open(id: &str) -> App {
     match over {
         Over::Rows => {
             app.mode = Mode::Side;
-            app.screen.cursor = Some(SessionKey::Pane(1));
+            app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(1)));
         }
         Over::Evidence | Over::Override => {
             let (output, lines) = match id {
@@ -258,23 +258,23 @@ fn open(id: &str) -> App {
             if let Some(n) = lines {
                 app.snap.terms.get_mut(&1).unwrap().checks[0].line_count = n;
             }
-            app.open_check_sheet(1);
+            app.open_check_sheet(ClientTerm::local(1));
             app.check_output_arrived(output.into());
             if over == Over::Override {
-                app.ask_override(1, None);
+                app.ask_override(ClientTerm::local(1), None);
                 app.on_paste("flaky legal test, tracked in #212".into());
             }
         }
         Over::Inbox => select_in_inbox(&mut app, if id == "C2" { 3 } else { 1 }),
         Over::Why => {
             app.mode = Mode::Why {
-                term: 1,
+                term: ClientTerm::local(1),
                 side: true,
             }
         }
-        Over::Settings => app.open_project_check(1),
+        Over::Settings => app.open_project_check(ClientTerm::local(1)),
         Over::Approve => {
-            app.open_approval(1);
+            app.open_approval(ClientTerm::local(1));
             // The first 2, pressed once the command was on screen.
             if id == "A3"
                 && let Mode::Approve(a) = &mut app.mode
@@ -1189,7 +1189,7 @@ fn finished_lists_the_session_with_a_check_result_first_then_the_newest() {
             .iter()
             .filter_map(|r| {
                 if let GoRow::Done(t) = r {
-                    Some(*t)
+                    Some(t.term)
                 } else {
                     None
                 }
@@ -1243,7 +1243,11 @@ fn a_click_anywhere_inside_a_panes_card_is_the_pane() {
             (card.right() - 2, card.bottom() - 2),
             (term.x, term.y),
         ] {
-            assert_eq!(top(x, y), Some(Hit::Pane(1)), "{id} {layout:?}: ({x},{y})");
+            assert_eq!(
+                top(x, y),
+                Some(Hit::Pane(ClientTerm::local(1))),
+                "{id} {layout:?}: ({x},{y})"
+            );
         }
     }
 }
@@ -1256,7 +1260,7 @@ fn overriding_from_the_inbox_opens_the_evidence() {
     press(&mut app, KeyCode::Char('O'));
     press(&mut app, KeyCode::Enter);
     assert!(
-        matches!(&app.view, Some(View::Check(v)) if v.term == 1),
+        matches!(&app.view, Some(View::Check(v)) if v.term == ClientTerm::local(1)),
         "the evidence sheet"
     );
     assert!(

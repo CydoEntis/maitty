@@ -72,7 +72,7 @@ fn world(stage: Stage) -> App {
     let owner = app.screen.tabs[app.screen.tab].owner;
     app.screen.tabs.push(ScreenTab {
         layout: Node::Leaf(2),
-        focus: 2,
+        focus: ClientTerm::local(2),
         owner,
         used: 0,
         name: String::new(),
@@ -204,7 +204,7 @@ fn a_failed_session_reads_failed_in_plain_ascii() {
 #[test]
 fn a_sheet_docks_72_wide_at_160_and_takes_the_pane_column_below_140() {
     for open in [
-        |app: &mut App| app.open_check_sheet(1),
+        |app: &mut App| app.open_check_sheet(ClientTerm::local(1)),
         |app: &mut App| app.act(Action::Jump),
     ] {
         for layout in LAYOUTS {
@@ -569,7 +569,13 @@ fn the_pointer_tints_exactly_the_region_under_it_once() {
             matches!(h, Hit::Screen(ScreenHit::CloseTab(_)))
         }),
         ("a sidebar row", |h| {
-            matches!(h, Hit::Screen(ScreenHit::Session(SessionKey::Pane(3))))
+            matches!(
+                h,
+                Hit::Screen(ScreenHit::Session(ClientSession {
+                    key: SessionKey::Pane(3),
+                    ..
+                }))
+            )
         }),
         ("a modal button", |h| {
             matches!(h, Hit::Screen(ScreenHit::ConfirmYes))
@@ -692,9 +698,10 @@ fn block_rows(app: &App) -> Vec<(TermId, Rect)> {
         .hits
         .iter()
         .filter_map(|(r, h)| match h {
-            super::super::Hit::Screen(ScreenHit::Session(SessionKey::Pane(t))) if r.height >= 2 => {
-                Some((*t, *r))
-            }
+            super::super::Hit::Screen(ScreenHit::Session(ClientSession {
+                key: SessionKey::Pane(t),
+                ..
+            })) if r.height >= 2 => Some((*t, *r)),
             _ => None,
         })
         .collect();
@@ -759,7 +766,8 @@ fn a_selected_or_hovered_two_line_session_is_one_even_block() {
                             if selected {
                                 app.mode = Mode::Side;
                                 app.screen.cursor_proj = None;
-                                app.screen.cursor = Some(SessionKey::Pane(term));
+                                app.screen.cursor =
+                                    Some(ClientSession::local(SessionKey::Pane(term)));
                             } else {
                                 app.mode = Mode::Normal;
                                 let row = block_rows(&app)
@@ -823,19 +831,18 @@ fn a_selected_one_line_session_keeps_square_ends() {
             .hits
             .iter()
             .find_map(|(r, h)| match h {
-                super::super::Hit::Screen(ScreenHit::Session(SessionKey::Pane(t)))
-                    if r.height == 1 =>
-                {
-                    Some((*t, *r))
-                }
+                super::super::Hit::Screen(ScreenHit::Session(ClientSession {
+                    key: SessionKey::Pane(t),
+                    ..
+                })) if r.height == 1 => Some((*t, *r)),
                 _ => None,
             })
             .expect("a one-line session");
         app.mode = Mode::Side;
         app.screen.cursor_proj = None;
-        app.screen.cursor = Some(SessionKey::Pane(term));
+        app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(term)));
         let buf = drawn_in(&mut app, layout);
-        let row = app.hits.iter().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::Session(SessionKey::Pane(t))) if *t == term).then_some(*r)).expect("the row");
+        let row = app.hits.iter().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::Session(ClientSession { key: SessionKey::Pane(t), .. })) if *t == term).then_some(*r)).expect("the row");
         let t = app.theme.clone();
         let (left, right) = (&buf[(row.x, row.y)], &buf[(row.right() - 1, row.y)]);
         assert_ne!(left.symbol(), CAP_L, "no left pill cap: {layout}");
@@ -972,11 +979,15 @@ fn a_block_of_lines_ends_in_soft_corners_and_one_line_in_caps() {
 fn border_chips_world(sheet: bool) -> App {
     let mut app = world(Stage::None);
     let tab = &mut app.screen.tabs[0];
-    let other = if tab.focus == 2 { 3 } else { 2 };
+    let other = if tab.focus == ClientTerm::local(2) {
+        3
+    } else {
+        2
+    };
     tab.layout = Node::Split {
         horizontal: true,
         ratio: 0.5,
-        a: Box::new(Node::Leaf(tab.focus)),
+        a: Box::new(Node::Leaf(tab.focus.term)),
         b: Box::new(Node::Leaf(other)),
     };
     app.update_available = Some("9.9.9".into());

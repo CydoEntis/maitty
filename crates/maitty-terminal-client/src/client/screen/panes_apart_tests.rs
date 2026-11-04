@@ -2,6 +2,7 @@
 //! lights its pane, focus that stays lit under a menu, and clicks that give a pane the keys.
 
 use super::*;
+use crate::client::ids::Outgoing;
 use crate::client::reference_fixture::{Stage, world};
 use crate::layout::Node;
 use crate::protocol::ClientMsg;
@@ -22,7 +23,10 @@ fn split_world(look: &str, panes: usize) -> App {
     };
     let tab = &mut app.screen.tabs[0];
     let f = tab.focus;
-    let others: Vec<TermId> = [1, 2, 3, 4, 5].into_iter().filter(|t| *t != f).collect();
+    let others: Vec<TermId> = [1, 2, 3, 4, 5]
+        .into_iter()
+        .filter(|t| *t != f.term)
+        .collect();
     let leaf = |t: TermId| Box::new(Node::Leaf(t));
     let side = |a: TermId, b: TermId| Node::Split {
         horizontal: true,
@@ -31,12 +35,12 @@ fn split_world(look: &str, panes: usize) -> App {
         b: leaf(b),
     };
     tab.layout = match panes {
-        1 => Node::Leaf(f),
-        2 => side(f, others[1]),
+        1 => Node::Leaf(f.term),
+        2 => side(f.term, others[1]),
         _ => Node::Split {
             horizontal: false,
             ratio: 0.5,
-            a: Box::new(side(f, others[1])),
+            a: Box::new(side(f.term, others[1])),
             b: leaf(others[2]),
         },
     };
@@ -77,8 +81,8 @@ fn click(app: &mut App, x: u16, y: u16) {
 }
 
 /// The panes focused by the commands sent so far.
-fn focused_by(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<TermId> {
-    std::iter::from_fn(|| rx.try_recv().ok())
+fn focused_by(rx: &mut mpsc::UnboundedReceiver<Outgoing>) -> Vec<TermId> {
+    std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok())
         .filter_map(|m| match m {
             ClientMsg::Command(Command::FocusPane { term }) => Some(term),
             _ => None,
@@ -87,7 +91,7 @@ fn focused_by(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<TermId> {
 }
 
 /// A cell on `term`'s title row that no chip, tab or ✕ takes: the bare border or rule.
-fn bare_title_cell(app: &App, term: TermId) -> (u16, u16) {
+fn bare_title_cell(app: &App, term: ClientTerm) -> (u16, u16) {
     assert!(
         app.screen.leaf_rects.len() > 1,
         "{} draws the split: {:?}",
@@ -118,8 +122,8 @@ fn bare_title_cell(app: &App, term: TermId) -> (u16, u16) {
 fn a_click_on_a_pane_s_title_row_takes_the_keys_from_the_sidebar_in_every_look() {
     for look in LOOKS {
         let mut app = split_world(look, 2);
-        let other = app.screen.tabs[0].layout.leaves()[1];
-        app.screen_side_set(SideItem::Sess(SessionKey::Pane(1)));
+        let other = app.screen.tabs[0].leaves()[1];
+        app.screen_side_set(SideItem::Sess(ClientSession::local(SessionKey::Pane(1))));
         let (w, h) = wide(look);
         draw(&mut app, w, h);
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -129,7 +133,7 @@ fn a_click_on_a_pane_s_title_row_takes_the_keys_from_the_sidebar_in_every_look()
         assert_eq!(app.mode, Mode::Normal, "{look}: the sidebar lets go");
         assert_eq!(
             focused_by(&mut rx),
-            vec![other],
+            vec![other.term],
             "{look}: the pane clicked is focused"
         );
     }
@@ -139,7 +143,7 @@ fn a_click_on_a_pane_s_title_row_takes_the_keys_from_the_sidebar_in_every_look()
 fn a_click_on_a_pane_s_title_row_takes_the_keys_from_a_side_panel_in_every_look() {
     for look in LOOKS {
         let mut app = split_world(look, 2);
-        let other = app.screen.tabs[0].layout.leaves()[1];
+        let other = app.screen.tabs[0].leaves()[1];
         app.act(Action::Jump);
         assert!(sheet_has_keys(&app), "{look}: the Inbox has the keys");
         let (w, h) = wide(look);
@@ -155,7 +159,7 @@ fn a_click_on_a_pane_s_title_row_takes_the_keys_from_a_side_panel_in_every_look(
         );
         assert_eq!(
             focused_by(&mut rx),
-            vec![other],
+            vec![other.term],
             "{look}: the pane clicked is focused"
         );
     }
@@ -218,7 +222,8 @@ fn no_pane_has_a_title_in_any_look() {
             let top = title_of(&buf, *r);
             assert!(
                 !top.chars().any(char::is_alphanumeric),
-                "{label}: pane {term}'s top edge carries no words, its tab names it: {top}\n{}",
+                "{label}: pane {}'s top edge carries no words, its tab names it: {top}\n{}",
+                term.term,
                 text(&buf)
             );
         }
@@ -246,7 +251,8 @@ fn a_named_tab_keeps_its_name_on_its_tab() {
         tabs(&app, &buf)
     );
     let mut second = app.screen.tabs[0].clone();
-    (second.layout, second.focus, second.name) = (Node::Leaf(5), 5, String::new());
+    (second.layout, second.focus, second.name) =
+        (Node::Leaf(5), ClientTerm::local(5), String::new());
     app.screen.tabs.push(second);
     let buf = draw(&mut app, 160, 45);
     assert!(
@@ -269,7 +275,7 @@ fn closing_a_pane_names_it_and_lights_it_in_every_look() {
         let mut app = split_world(look, 2);
         let (w, h) = wide(look);
         draw(&mut app, w, h);
-        let [first, second] = [0, 1].map(|i| app.screen.tabs[0].layout.leaves()[i]);
+        let [first, second] = [0, 1].map(|i| app.screen.tabs[0].leaves()[i]);
         app.menu_act(crate::client::menu::Act::End(vec![second]));
         let buf = draw(&mut app, w, h);
         let screen = text(&buf);
@@ -281,7 +287,7 @@ fn closing_a_pane_names_it_and_lights_it_in_every_look() {
             screen.contains("pixls"),
             "{look}: and its folder:\n{screen}"
         );
-        let rect = |term: TermId| {
+        let rect = |term: ClientTerm| {
             app.screen
                 .leaf_rects
                 .iter()
@@ -345,7 +351,7 @@ fn focus_cell(look: &str, r: Rect) -> (u16, u16) {
 
 #[test]
 fn the_focused_pane_stays_lit_under_a_menu_popover_or_confirm_in_every_look() {
-    type Open = fn(&mut App, TermId, TermId);
+    type Open = fn(&mut App, ClientTerm, ClientTerm);
     let overlays: [(&str, Open, bool); 4] = [
         (
             "the pane's menu",
@@ -378,7 +384,7 @@ fn the_focused_pane_stays_lit_under_a_menu_popover_or_confirm_in_every_look() {
             let mut app = split_world(look, 2);
             let (w, h) = wide(look);
             let before = draw(&mut app, w, h);
-            let [focus, other] = [0, 1].map(|i| app.screen.tabs[0].layout.leaves()[i]);
+            let [focus, other] = [0, 1].map(|i| app.screen.tabs[0].leaves()[i]);
             let r = app
                 .screen
                 .leaf_rects
@@ -563,11 +569,11 @@ fn pressing_a_shown_key_runs_its_item() {
         app.mode
     );
     let mut app = split_world("floating", 2);
-    let before = app.screen.tabs[0].layout.leaves();
+    let before = app.screen.tabs[0].leaves();
     pane_menu(&mut app);
     press(&mut app, KeyCode::Right, KeyModifiers::ALT);
     assert_eq!(app.mode, Mode::Normal);
-    let after = app.screen.tabs[0].layout.leaves();
+    let after = app.screen.tabs[0].leaves();
     assert_eq!(
         after,
         before.iter().rev().copied().collect::<Vec<_>>(),
@@ -594,7 +600,7 @@ fn a_sessions_only_tab_split_still_has_a_close_that_asks_for_all_its_panes() {
             row: close.y,
             modifiers: KeyModifiers::NONE,
         });
-        let leaves = app.screen.tabs[app.screen.tab].layout.leaves();
+        let leaves = app.screen.tabs[app.screen.tab].leaves();
         assert!(
             matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if *ts == leaves)),
             "{look}: asks to close every pane: {:?}",

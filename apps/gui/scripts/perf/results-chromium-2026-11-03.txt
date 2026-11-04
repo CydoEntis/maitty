@@ -1,0 +1,485 @@
+label                         busy% taskB%  prof% script  style layout  paint   comp  other     gc draw/s main/s  lay/s  sty/s tasks/s   long  tmo/s  int/s  raf/s  heapΔ nodesΔ
+a-cpu                           2.5      3    2.8    2.1    5.6    0.8    1.3   10.8      4      0      2     60      0     60    140      0    0.7    0.7    0.0   -0.2      0
+a-gpu                           2.4    2.9    2.8    1.9    5.5    0.8    1.3   10.9      4      0      2     60      0   60.1  140.1      0    0.6    0.6    0.0   -0.5      0
+a-gpu-bare                      0.1    0.4    0.4                    0      0    0.3    0.3             0      2      0      0   15.2      0    0.0    0.0    0.0    0.2      0
+a-gpu-dsf2                      2.6    3.1      3    1.8    5.4    0.9    1.4   12.2    4.3      0      2     60      0   60.1  140.1      0    0.6    0.6    0.0   -0.6      0
+a-gpu-flatstyle                 2.1    2.7    2.7    1.6      5    0.7    1.1    9.4    3.7             2     60      0   60.1    142      0    0.6    0.6    0.0    4.0      0
+a-gpu-hidechrome                1.7    2.1    2.2    1.5    3.9    0.5    0.7    7.3    2.9      0      2     60      0   60.2  140.2      0    0.6    0.6    0.0   -1.2      0
+a-gpu-hidesidebar               1.7    2.2    2.2    1.5      4    0.5    0.9    7.4    2.9      0      2     60      0     60  140.1      0    0.6    0.6    0.0   -0.4      0
+a-gpu-noanim                    0.2    0.6    0.7    1.7             0      0    0.3    0.4      0      0      2      0      0     18      0    0.6    0.6    0.0   -0.2      0
+a-gpu-nocursorblink             0.3    0.6    0.7    1.6             0      0    0.6    0.7      0      0      2      0      0     18      0    0.6    0.6    0.0   -0.8      0
+a-gpu-poll                             1.8                                                                                                      0.7    0.7    0.0   -1.4   -297
+a-gpu-st                        2.2      3    6.6    1.8    5.8    0.7    1.1    8.7    3.4             2     60      0   60.2  140.1      0    0.6    0.6    0.0   -0.2      0
+a-gpu-stopalltimers               2    2.5    2.2    0.1    4.9    0.7    1.2    9.5    3.6             2     60      0   60.1  137.5      0    0.0    0.0    0.0    0.2      0
+b-cpu                          24.1   31.4   27.8   68.4   50.9   55.5   34.2   15.5   15.2    1.4     60     60   32.8     80    464      0   20.7   14.2   58.7    2.1  -7638
+b-cpu-bare                     24.2   30.1   27.5   76.7   53.9   53.8   30.6    8.2   16.8    1.7     20     42   21.4     30    736      0   20.0    0.0   58.1    0.7   -412
+b-cpu-hidechrome                 26   33.2   30.4   88.4   53.5   56.2   32.1   12.7   15.5    1.7   27.5     60   33.6   80.1  706.9      0   20.7   14.2   58.1    1.7   -331
+b-cpu-noanim                     22   26.8   24.9   62.6   45.3   51.2   34.9    9.8   14.8    1.4   28.8     48     33   26.8  546.9      0   20.6   14.2   58.8    5.4   9812
+b-gpu                          21.7   28.3   25.8   58.2   46.8   51.6   32.9   12.5   13.6    1.3     60     60     33     80  470.8      0   20.7   14.2   58.8    2.4  16888
+b-gpu-bare                     21.5     26   24.6   66.5   49.1   48.5   27.9    7.2   14.4    1.5     20   40.8   21.3     30  609.6      0   20.0    0.0   58.1    1.8   1700
+b-gpu-dsf2                     22.7   29.1   26.8   64.5     49   52.8   33.1     13   13.5      1     60     60   32.9   80.1  492.9      0   20.6   14.2   58.8    5.7 -13918
+b-gpu-flatstyle                27.1   35.8   30.4   81.1   55.5   60.4   36.7   16.9   19.3    1.4     60     60   32.9     80  639.8      0   20.6   14.1   58.7    1.9 -10894
+b-gpu-hidechrome               25.7     34   30.8   87.8   51.7   52.8   31.9   13.9   17.5    1.4   27.6     60   33.5   80.2 1130.9      0   20.7   14.2   58.0   -1.4  16072
+b-gpu-hidepanehead             23.1   30.1     27   64.4   49.9   54.3   32.5   13.2   15.2    1.4     60     60   32.9   80.1  493.8      0   20.7   14.2   58.7    2.8  -4386
+b-gpu-hidesidebar              24.4   31.6   28.1   78.6   48.5   52.2   32.6   14.5   16.4    1.5     60     60   32.9     80  584.1      0   20.6   14.2   58.1    2.0   1160
+b-gpu-hidestatusbar            24.7   32.5   28.8   70.5   52.6   57.4   34.5   15.1   15.2    1.4     60     60   32.9   80.1  485.9      0   20.7   14.2   58.8   -0.9  11514
+b-gpu-hidetabbar               23.9   31.2   27.9   67.2   50.7   56.1   32.7   14.6   16.6    1.4     60     60     33   80.1  489.7      0   20.7   14.2   58.8    4.3  -1308
+b-gpu-hideterminal             19.6   23.9   23.4   62.2   45.5   57.7    6.7    8.7   13.9    1.3     60   43.8   32.8   64.8  364.2      0   20.6   14.1   58.8    2.2  -6958
+b-gpu-hidetitlebar             23.5   30.9   26.8   65.2   50.9   55.1   33.6   13.4   15.1    1.5     60     60   32.9   80.1  445.3      0   20.6   14.1   58.7    7.1   5466
+b-gpu-noanim                   22.6   28.3   25.7   67.8   44.6     51   35.6   11.2   14.8    1.5   29.8   48.1   32.9   26.8  515.5      0   20.7   14.1   58.8    1.3  16340
+b-gpu-nocursorblink            23.1   29.9   26.9   66.8     47   55.5   34.3   11.6   14.3    1.5     60   43.1   32.9   64.4  649.2      0   20.7   14.2   58.9    4.5   6834
+b-gpu-nogradient               24.8   33.5   29.3   68.2   54.1   57.8   35.5   15.1   15.6    1.4     30     60     33     80  529.9      0   20.6   14.2   58.8    6.7  26804
+b-gpu-noshadow                 24.3   32.7     28   64.4   51.9     60   34.7   15.1   15.4    1.4     60     60   32.9   80.1  534.1      0   20.6   14.2   58.8    2.6 -20662
+b-gpu-nostream                  5.2    6.4    7.9    8.5    9.6   11.7    6.5   10.1    5.8    0.1     60     60   12.5   60.1  275.6      0    0.7   14.1    0.0   -2.2  -1776
+b-gpu-poll                            20.5                                                                                                     20.7   14.2   58.7    4.3 -18786
+b-gpu-reducemotion             26.6   35.4     30   77.3   55.4   59.9   36.5   17.6   18.1    1.4     60     60     33   80.1  557.2      0   20.6   14.2   58.7    3.5  -7184
+b-gpu-st                       23.6  107.7   41.7  162.5   21.8   17.2   11.3    3.6     19    0.3   21.5   20.8   13.1   27.9  149.9      0   20.6   14.2   58.6    1.8   1632
+b-gpu-stacks                   23.6   30.4   27.4   69.2   47.7   53.5   35.7   13.6   14.3    1.7     60     60   34.9   80.2  464.9      0   20.6   14.1   58.7    4.4  -4364
+b-gpu-stop1500                 25.2   32.2   28.1     71   53.8   59.4   33.8   16.1   16.3    1.4     60     60   32.9   80.1  449.6      0   20.0   13.6   58.7    2.0   1984
+b-gpu-stop1s                   27.2   35.7   30.5   77.9   56.6   62.9   37.9   17.2     18    1.5     60     60   32.9     80  652.4      0   20.7   13.2   58.8    5.3   9148
+b-gpu-stop80ms                 24.6   30.8     27   70.6   55.4     55   30.8   16.2   16.3    1.3     60     60   20.5   80.1    513      0   20.7    1.7   58.8    2.7 -21056
+b-gpu-stopalltimers            23.6   29.9   26.5   68.6   54.3   51.6   28.7   15.4   16.1    1.4     60     60   20.5     80    550      0   20.0    0.0   58.8    3.0   5086
+c-cpu                          20.1   26.9     23   58.6   37.8   46.4   29.3   16.4   12.1    0.6     60     60   32.5     80  464.1      0   40.6   14.2  119.7    7.4  34900
+c-gpu                          19.9   26.6   23.7   55.8   36.7   46.3     31   16.3   12.1    0.7     60     60   32.5   80.1  460.4      0   40.7   14.2  120.1    4.9  29470
+c-gpu-poll                            14.8                                                                                                     40.7   14.2  120.1   19.0   7800
+d-cpu                            28   38.7   32.3   80.1   65.8   64.7   34.5   15.1   18.1    1.3   57.8   59.7   40.6   87.5  597.5      0   20.6   14.2   63.1   12.8  23680
+d-gpu                          28.4   38.9   32.3   79.5   67.3   65.7   35.7   15.1   18.9    1.7   57.5   59.9   40.3   87.5  631.7      0   20.7   14.2   63.1    0.8  25760
+e-cpu                          26.3   36.4   28.9   64.2   57.4   58.4   49.3   17.6     15    1.4     60     60   32.9     80  484.5      0   20.7   14.2   58.8    2.5 -12718
+e-gpu                          26.8   37.3   30.2   66.9   55.6   59.8   50.9   17.2   16.3    1.3     60     60   32.8     80  554.4      0   20.6   14.2   58.8    7.5  -9152
+
+== experiment deltas (busy% vs same scenario/gpu baseline) ==
+a-gpu-bare                     busy    2.4 ->    0.1 Δ   -2.3  script   -1.9 style   -5.5 layout   -0.8 paint   -1.3 comp  -10.6  taskB    2.9 ->    0.4
+a-gpu-flatstyle                busy    2.4 ->    2.1 Δ   -0.3  script   -0.3 style   -0.5 layout   -0.1 paint   -0.2 comp   -1.5  taskB    2.9 ->    2.7
+a-gpu-hidechrome               busy    2.4 ->    1.7 Δ   -0.7  script   -0.4 style   -1.6 layout   -0.3 paint   -0.6 comp   -3.6  taskB    2.9 ->    2.1
+a-gpu-hidesidebar              busy    2.4 ->    1.7 Δ   -0.7  script   -0.4 style   -1.5 layout   -0.3 paint   -0.4 comp   -3.5  taskB    2.9 ->    2.2
+a-gpu-noanim                   busy    2.4 ->    0.2 Δ   -2.2  script   -0.2 style   -5.5 layout   -0.8 paint   -1.3 comp  -10.6  taskB    2.9 ->    0.6
+a-gpu-nocursorblink            busy    2.4 ->    0.3 Δ   -2.1  script   -0.3 style   -5.5 layout   -0.8 paint   -1.3 comp  -10.3  taskB    2.9 ->    0.6
+a-gpu-stopalltimers            busy    2.4 ->      2 Δ   -0.4  script   -1.8 style   -0.6 layout   -0.1 paint   -0.1 comp   -1.4  taskB    2.9 ->    2.5
+b-cpu-bare                     busy   24.1 ->   24.2 Δ    0.1  script    8.3 style    3.0 layout   -1.7 paint   -3.6 comp   -7.3  taskB   31.4 ->   30.1
+b-cpu-hidechrome               busy   24.1 ->     26 Δ    1.9  script   20.0 style    2.6 layout    0.7 paint   -2.1 comp   -2.8  taskB   31.4 ->   33.2
+b-cpu-noanim                   busy   24.1 ->     22 Δ   -2.1  script   -5.8 style   -5.6 layout   -4.3 paint    0.7 comp   -5.7  taskB   31.4 ->   26.8
+b-gpu-bare                     busy   21.7 ->   21.5 Δ   -0.2  script    8.3 style    2.3 layout   -3.1 paint   -5.0 comp   -5.3  taskB   28.3 ->     26
+b-gpu-flatstyle                busy   21.7 ->   27.1 Δ    5.4  script   22.9 style    8.7 layout    8.8 paint    3.8 comp    4.4  taskB   28.3 ->   35.8
+b-gpu-hidechrome               busy   21.7 ->   25.7 Δ    4.0  script   29.6 style    4.9 layout    1.2 paint   -1.0 comp    1.4  taskB   28.3 ->     34
+b-gpu-hidepanehead             busy   21.7 ->   23.1 Δ    1.4  script    6.2 style    3.1 layout    2.7 paint   -0.4 comp    0.7  taskB   28.3 ->   30.1
+b-gpu-hidesidebar              busy   21.7 ->   24.4 Δ    2.7  script   20.4 style    1.7 layout    0.6 paint   -0.3 comp    2.0  taskB   28.3 ->   31.6
+b-gpu-hidestatusbar            busy   21.7 ->   24.7 Δ    3.0  script   12.3 style    5.8 layout    5.8 paint    1.6 comp    2.6  taskB   28.3 ->   32.5
+b-gpu-hidetabbar               busy   21.7 ->   23.9 Δ    2.2  script    9.0 style    3.9 layout    4.5 paint   -0.2 comp    2.1  taskB   28.3 ->   31.2
+b-gpu-hideterminal             busy   21.7 ->   19.6 Δ   -2.1  script    4.0 style   -1.3 layout    6.1 paint  -26.2 comp   -3.8  taskB   28.3 ->   23.9
+b-gpu-hidetitlebar             busy   21.7 ->   23.5 Δ    1.8  script    7.0 style    4.1 layout    3.5 paint    0.7 comp    0.9  taskB   28.3 ->   30.9
+b-gpu-noanim                   busy   21.7 ->   22.6 Δ    0.9  script    9.6 style   -2.2 layout   -0.6 paint    2.7 comp   -1.3  taskB   28.3 ->   28.3
+b-gpu-nocursorblink            busy   21.7 ->   23.1 Δ    1.4  script    8.6 style    0.2 layout    3.9 paint    1.4 comp   -0.9  taskB   28.3 ->   29.9
+b-gpu-nogradient               busy   21.7 ->   24.8 Δ    3.1  script   10.0 style    7.3 layout    6.2 paint    2.6 comp    2.6  taskB   28.3 ->   33.5
+b-gpu-noshadow                 busy   21.7 ->   24.3 Δ    2.6  script    6.2 style    5.1 layout    8.4 paint    1.8 comp    2.6  taskB   28.3 ->   32.7
+b-gpu-nostream                 busy   21.7 ->    5.2 Δ  -16.5  script  -49.7 style  -37.2 layout  -39.9 paint  -26.4 comp   -2.4  taskB   28.3 ->    6.4
+b-gpu-reducemotion             busy   21.7 ->   26.6 Δ    4.9  script   19.1 style    8.6 layout    8.3 paint    3.6 comp    5.1  taskB   28.3 ->   35.4
+b-gpu-stop1500                 busy   21.7 ->   25.2 Δ    3.5  script   12.8 style    7.0 layout    7.8 paint    0.9 comp    3.6  taskB   28.3 ->   32.2
+b-gpu-stop1s                   busy   21.7 ->   27.2 Δ    5.5  script   19.7 style    9.8 layout   11.3 paint    5.0 comp    4.7  taskB   28.3 ->   35.7
+b-gpu-stop80ms                 busy   21.7 ->   24.6 Δ    2.9  script   12.4 style    8.6 layout    3.4 paint   -2.1 comp    3.7  taskB   28.3 ->   30.8
+b-gpu-stopalltimers            busy   21.7 ->   23.6 Δ    1.9  script   10.4 style    7.5 layout    0.0 paint   -4.2 comp    2.9  taskB   28.3 ->   29.9
+
+== poll samples ==
+a-gpu-poll
+┌─────────┬────┬────────┬───────┬───────────┬─────────────┬────────────┬───────────┬───────┐
+│ (index) │ t  │ heapMB │ nodes │ listeners │ layoutCount │ styleCount │ xtermRows │ spans │
+├─────────┼────┼────────┼───────┼───────────┼─────────────┼────────────┼───────────┼───────┤
+│ 0       │ 0  │ 9.8    │ 770   │ 467       │ 64          │ 370        │ 26        │ 105   │
+│ 1       │ 5  │ 10.7   │ 770   │ 548       │ 64          │ 672        │ 26        │ 105   │
+│ 2       │ 10 │ 9.1    │ 770   │ 656       │ 64          │ 973        │ 26        │ 105   │
+│ 3       │ 15 │ 9.4    │ 770   │ 737       │ 64          │ 1273       │ 26        │ 105   │
+│ 4       │ 20 │ 9.4    │ 770   │ 818       │ 64          │ 1573       │ 26        │ 105   │
+│ 5       │ 25 │ 8.1    │ 473   │ 316       │ 64          │ 1874       │ 26        │ 105   │
+│ 6       │ 30 │ 8.3    │ 473   │ 343       │ 64          │ 2174       │ 26        │ 105   │
+│ 7       │ 35 │ 8.3    │ 473   │ 424       │ 64          │ 2474       │ 26        │ 105   │
+│ 8       │ 40 │ 8.3    │ 473   │ 505       │ 64          │ 2774       │ 26        │ 105   │
+│ 9       │ 45 │ 7.8    │ 473   │ 613       │ 64          │ 3074       │ 26        │ 105   │
+│ 10      │ 50 │ 7.8    │ 473   │ 694       │ 64          │ 3374       │ 26        │ 105   │
+│ 11      │ 55 │ 8.1    │ 473   │ 802       │ 64          │ 3675       │ 26        │ 105   │
+└─────────┴────┴────────┴───────┴───────────┴─────────────┴────────────┴───────────┴───────┘
+b-gpu-poll
+┌─────────┬────┬────────┬───────┬───────────┬─────────────┬────────────┬───────────┬───────┐
+│ (index) │ t  │ heapMB │ nodes │ listeners │ layoutCount │ styleCount │ xtermRows │ spans │
+├─────────┼────┼────────┼───────┼───────────┼─────────────┼────────────┼───────────┼───────┤
+│ 0       │ 0  │ 8.7    │ 27775 │ 316       │ 331         │ 524        │ 26        │ 489   │
+│ 1       │ 5  │ 11.3   │ 8783  │ 289       │ 502         │ 925        │ 26        │ 481   │
+│ 2       │ 10 │ 14.7   │ 15942 │ 316       │ 665         │ 1326       │ 26        │ 510   │
+│ 3       │ 15 │ 8.4    │ 16529 │ 289       │ 828         │ 1727       │ 26        │ 490   │
+│ 4       │ 20 │ 8.5    │ 17037 │ 289       │ 991         │ 2127       │ 26        │ 506   │
+│ 5       │ 25 │ 10.6   │ 21351 │ 316       │ 1153        │ 2529       │ 26        │ 444   │
+│ 6       │ 30 │ 14.5   │ 14341 │ 289       │ 1316        │ 2929       │ 26        │ 446   │
+│ 7       │ 35 │ 11.5   │ 7109  │ 289       │ 1478        │ 3329       │ 26        │ 472   │
+│ 8       │ 40 │ 16.9   │ 18927 │ 316       │ 1641        │ 3729       │ 26        │ 466   │
+│ 9       │ 45 │ 11.5   │ 6941  │ 262       │ 1804        │ 4130       │ 26        │ 463   │
+│ 10      │ 50 │ 17.6   │ 20447 │ 289       │ 1966        │ 4530       │ 26        │ 427   │
+│ 11      │ 55 │ 9.3    │ 1307  │ 262       │ 2129        │ 4930       │ 26        │ 510   │
+└─────────┴────┴────────┴───────┴───────────┴─────────────┴────────────┴───────────┴───────┘
+c-gpu-poll
+┌─────────┬────┬────────┬───────┬───────────┬─────────────┬────────────┬───────────┬───────┐
+│ (index) │ t  │ heapMB │ nodes │ listeners │ layoutCount │ styleCount │ xtermRows │ spans │
+├─────────┼────┼────────┼───────┼───────────┼─────────────┼────────────┼───────────┼───────┤
+│ 0       │ 0  │ 12.6   │ 31433 │ 553       │ 455         │ 694        │ 44        │ 318   │
+│ 1       │ 5  │ 12.1   │ 29639 │ 553       │ 618         │ 1096       │ 44        │ 323   │
+│ 2       │ 10 │ 15.7   │ 24143 │ 553       │ 781         │ 1496       │ 44        │ 310   │
+│ 3       │ 15 │ 10.8   │ 2199  │ 400       │ 943         │ 1897       │ 44        │ 324   │
+│ 4       │ 20 │ 22.2   │ 23071 │ 553       │ 1106        │ 2298       │ 44        │ 303   │
+│ 5       │ 25 │ 13.8   │ 4895  │ 502       │ 1268        │ 2698       │ 44        │ 301   │
+│ 6       │ 30 │ 22     │ 21405 │ 502       │ 1431        │ 3098       │ 44        │ 291   │
+│ 7       │ 35 │ 17.3   │ 36371 │ 553       │ 1593        │ 3498       │ 44        │ 336   │
+│ 8       │ 40 │ 16.7   │ 8587  │ 502       │ 1756        │ 3899       │ 44        │ 321   │
+│ 9       │ 45 │ 21.6   │ 18667 │ 502       │ 1919        │ 4299       │ 44        │ 318   │
+│ 10      │ 50 │ 25.7   │ 27233 │ 553       │ 2081        │ 4699       │ 44        │ 309   │
+│ 11      │ 55 │ 29     │ 33645 │ 604       │ 2244        │ 5099       │ 44        │ 324   │
+└─────────┴────┴────────┴───────┴───────────┴─────────────┴────────────┴───────────┴───────┘
+
+== top functions per baseline ==
+-- a-cpu (profile busy 2.8%)
+    21074.4ms  97.2%  (idle) @ (idle):0
+      583.1ms   2.7%  (program) @ (program):0
+        1.7ms     0%  updateCallback (Gs) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:5445
+        1.6ms     0%  (garbage collector) @ (garbage collector):0
+        1.5ms     0%  renderWithHooks (Yo) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4627
+        1.4ms     0%  jsxProd (r) @ pnpm/react@19.3.1/node_modules/react/cjs/react-jsx-runtime.production.js:14
+        1.2ms     0%  defaultQueryOptions @ pnpm/@tanstack+query-core@5.105.0/node_modules/@tanstack/query-core/build/modern/queryClient.js:675
+        1.1ms     0%  (anonymous) @ :0
+        1.1ms     0%  (anonymous) @ index-D-cdp54j.js:1
+        1.1ms     0%  set webkitSpeechRecognitionEvent @ set webkitSpeechRecognitionEvent:0
+        1.1ms     0%  site @ mock-tauri.js:62
+        1.1ms     0%  (anonymous) @ mock-tauri.js:312
+        1.1ms     0%  (anonymous) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4249
+        1.1ms     0%  mapRemainingChildren (r) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:3598
+        0.7ms     0%  useRailHover (DI) @ home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/features/workspace/components/railHover.ts:23
+        0.7ms     0%  updateEffectImpl (Fs) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:5373
+        0.7ms     0%  attemptEarlyBailoutIfNoScheduledUpdate (cl) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:7658
+        0.6ms     0%  createWorkInProgress (ji) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:2668
+        0.6ms     0%  updateWorkInProgressHook (rs) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4749
+        0.6ms     0%  DesktopApp (aR) @ home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/features/workspace/DesktopApp.tsx:180
+        0.6ms     0%  themeStyle (rk) @ home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/features/workspace/theme/themes.ts:198
+        0.6ms     0%  shallowEqualObjects (ie) @ pnpm/@tanstack+query-core@5.105.0/node_modules/@tanstack/query-core/build/modern/utils.js:183
+   files: (idle)=21074.4ms | (program)=583.1ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=10.8ms | mock-tauri.js=2.8ms | (garbage collector)=1.6ms | pnpm/react@19.3.1/node_modules/react/cjs/react-jsx-runtime.production.js=1.4ms | pnpm/@tanstack+query-core@5.105.0/node_modules/@tanstack/query-core/build/modern/queryClient.js=1.2ms | =1.1ms | index-D-cdp54j.js=1.1ms | pnpm/@tanstack+query-core@5.105.0/node_modules/@tanstack/query-core/build/modern/utils.js=1.1ms
+   trace top events: ProxyMain::BeginMainFrame=8.02 | UpdateLayoutTree=5.55 | Commit=2.72 | FunctionCall=1.59 | RunTask=1.28 | LocalFrameView::ScheduleAnimation=0.96 | ThreadControllerImpl::RunTask=0.87 | Paint=0.69 | Layerize=0.58 | PrePaint=0.47 | MainFrameAborted=0.38 | BlinkScheduler_PerformMicrotaskCheckpoint=0.26 | IntersectionObserverController::computeIntersections=0.23 | RunMicrotasks=0.21
+   dom: {"nodes":311,"xtermRows":26,"xtermSpans":105,"panes":1,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-tab.is-active:v8tabin","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_1"],"animatedPseudo":["section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":24,"gradients":9,"pseudoGradients":0,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"1500@index-D-cdp54j.js:9:51474":0.6837450998267847} events/s 0.0
+-- a-gpu (profile busy 2.8%)
+      21036ms  97.2%  (idle) @ (idle):0
+      585.8ms   2.7%  (program) @ (program):0
+        1.7ms     0%  renderWithHooks (Yo) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4627
+        1.7ms     0%  (garbage collector) @ (garbage collector):0
+        1.1ms     0%  (anonymous) @ :0
+        1.1ms     0%  site @ mock-tauri.js:62
+        1.1ms     0%  getDocumentDirection (_r) @ pnpm/sonner@2.0.8_@types+react@19.3.0_react-dom@19.3.1_react@19.3.1__react@19.3.1/node_modules/sonner/dist/index.mjs:889
+        0.7ms     0%  beginWork (ll) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:7768
+        0.6ms     0%  useUncontrolledState (fo) @ pnpm/@radix-ui+react-use-controllable-state@1.3.0_@types+react@19.3.0_react@19.3.1/node_modules/@radix-ui/react-use-controllable-state/dist/index.mjs:52
+        0.6ms     0%  reconcileChildrenArray (h) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:3905
+        0.6ms     0%  bubbleProperties (hl) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:8335
+        0.6ms     0%  (anonymous) @ pnpm/@radix-ui+react-context@1.3.0_@types+react@19.3.0_react@19.3.1/node_modules/@radix-ui/react-context/dist/index.mjs:82
+        0.6ms     0%  trackProp @ pnpm/@tanstack+query-core@5.105.0/node_modules/@tanstack/query-core/build/modern/queryObserver.js:189
+        0.6ms     0%  recursivelyTraverseLayoutEffects (Pu) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:11117
+        0.6ms     0%  updateWorkInProgressHook (rs) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4749
+        0.6ms     0%  (anonymous) @ pnpm/@radix-ui+react-context@1.3.0_@types+react@19.3.0_react@19.3.1/node_modules/@radix-ui/react-context/dist/index.mjs:37
+        0.6ms     0%  themeStyle (rk) @ home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/features/workspace/theme/themes.ts:198
+        0.6ms     0%  e._zod.run @ pnpm/zod@4.6.7/node_modules/zod/v4/core/schemas.js:97
+        0.6ms     0%  (anonymous) @ pnpm/@radix-ui+react-popper@1.4.0_@types+react-dom@19.3.0_@types+react@19.3.0__@types+react@_8afc6f49a39cf3de4250aed01ab9dae8/node_modules/@radix-ui/react-popper/dist/index.mjs:39
+        0.6ms     0%  updateProperties (dp) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:15035
+        0.6ms     0%  readTerminal (UE) @ home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/api/daemon.ts:248
+        0.6ms     0%  updateSyncExternalStore (fs) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4980
+   files: (idle)=21036ms | (program)=585.8ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=9.4ms | pnpm/@radix-ui+react-context@1.3.0_@types+react@19.3.0_react@19.3.1/node_modules/@radix-ui/react-context/dist/index.mjs=1.7ms | (garbage collector)=1.7ms | mock-tauri.js=1.5ms | =1.1ms | pnpm/zod@4.6.7/node_modules/zod/v4/core/schemas.js=1.1ms | pnpm/sonner@2.0.8_@types+react@19.3.0_react-dom@19.3.1_react@19.3.1__react@19.3.1/node_modules/sonner/dist/index.mjs=1.1ms | pnpm/@radix-ui+react-use-controllable-state@1.3.0_@types+react@19.3.0_react@19.3.1/node_modules/@radix-ui/react-use-controllable-state/dist/index.mjs=0.6ms
+   trace top events: ProxyMain::BeginMainFrame=8.14 | UpdateLayoutTree=5.52 | Commit=2.68 | FunctionCall=1.38 | RunTask=1.25 | LocalFrameView::ScheduleAnimation=0.93 | ThreadControllerImpl::RunTask=0.86 | Paint=0.7 | Layerize=0.57 | PrePaint=0.49 | MainFrameAborted=0.38 | BlinkScheduler_PerformMicrotaskCheckpoint=0.27 | IntersectionObserverController::computeIntersections=0.24 | RunMicrotasks=0.2
+   dom: {"nodes":311,"xtermRows":26,"xtermSpans":105,"panes":1,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-tab.is-active:v8tabin","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_1"],"animatedPseudo":["section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":24,"gradients":9,"pseudoGradients":0,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"1500@index-D-cdp54j.js:9:51474":0.6398566721026594} events/s 0.0
+-- a-gpu-st (profile busy 6.6%)
+    10201.5ms  93.4%  (idle) @ (idle):0
+      696.5ms   6.4%  (program) @ (program):0
+        4.1ms     0%  clearInterval @ clearInterval:0
+        1.2ms     0%  setInterval @ setInterval:0
+        1.1ms     0%  renderWithHooks (Yo) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4627
+        1.1ms     0%  batchedUpdates$1 (wn) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:1663
+        1.1ms     0%  (garbage collector) @ (garbage collector):0
+          1ms     0%  setTimeout @ setTimeout:0
+        0.9ms     0%  getListener (Tn) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:1686
+        0.6ms     0%  SessionRow (kI) @ home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/features/workspace/components/SessionRow.tsx:31
+        0.6ms     0%  isStaleByTime @ pnpm/@tanstack+query-core@5.105.0/node_modules/@tanstack/query-core/build/modern/query.js:243
+        0.6ms     0%  createRetryer (Te) @ pnpm/@tanstack+query-core@5.105.0/node_modules/@tanstack/query-core/build/modern/retryer.js:65
+        0.6ms     0%  window.setInterval @ mock-tauri.js:70
+        0.6ms     0%  #v @ pnpm/@tanstack+query-core@5.105.0/node_modules/@tanstack/query-core/build/modern/queryObserver.js:289
+        0.6ms     0%  getQueryDefaults @ pnpm/@tanstack+query-core@5.105.0/node_modules/@tanstack/query-core/build/modern/queryClient.js:620
+        0.6ms     0%  useFiber (a) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:3606
+        0.6ms     0%  replaceEqualDeep (re) @ pnpm/@tanstack+query-core@5.105.0/node_modules/@tanstack/query-core/build/modern/utils.js:148
+        0.6ms     0%  Icon ($) @ home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/features/workspace/components/glyphs.tsx:65
+        0.6ms     0%  bubbleProperties (hl) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:8335
+        0.6ms     0%  updateSlot (p) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:3786
+        0.6ms     0%  e.createElement @ pnpm/react@19.3.1/node_modules/react/cjs/react.production.js:453
+        0.6ms     0%  (anonymous) @ home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/features/workspace/DesktopApp.tsx:627
+   files: (idle)=10201.5ms | (program)=696.5ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=6.1ms | clearInterval=4.1ms | setInterval=1.2ms | (garbage collector)=1.1ms | pnpm/react@19.3.1/node_modules/react/cjs/react.production.js=1.1ms | setTimeout=1ms | mock-tauri.js=0.9ms | home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/features/workspace/DesktopApp.tsx=0.8ms
+   trace top events: ProxyMain::BeginMainFrame=6.49 | UpdateLayoutTree=5.84 | Commit=2.13 | FunctionCall=1.38 | RunTask=1.08 | LocalFrameView::ScheduleAnimation=0.8 | ThreadControllerImpl::RunTask=0.76 | Paint=0.6 | Layerize=0.53 | PrePaint=0.4 | MainFrameAborted=0.32 | RunMicrotasks=0.23 | BlinkScheduler_PerformMicrotaskCheckpoint=0.23 | IntersectionObserverController::computeIntersections=0.21
+   dom: {"nodes":311,"xtermRows":26,"xtermSpans":105,"panes":1,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-tab.is-active:v8tabin","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_1"],"animatedPseudo":["section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":24,"gradients":9,"pseudoGradients":0,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"1500@index-D-cdp54j.js:9:51474":0.6313416009019166} events/s 0.0
+-- b-cpu (profile busy 27.8%)
+      17897ms  72.2%  (idle) @ (idle):0
+     5733.7ms  23.1%  (program) @ (program):0
+        367ms   1.5%  replaceChildren @ replaceChildren:0
+      190.5ms   0.8%  createRow @ xterm/src/browser/renderer/dom/DomRendererRowFactory.ts:61
+      166.5ms   0.7%  (garbage collector) @ (garbage collector):0
+       36.5ms   0.1%  createElement @ createElement:0
+       32.3ms   0.1%  get @ xterm/src/browser/renderer/dom/WidthCache.ts:134
+       15.4ms   0.1%  renderRows @ xterm/src/browser/renderer/dom/DomRenderer.ts:441
+       13.2ms   0.1%  requestAnimationFrame @ requestAnimationFrame:0
+       10.3ms     0%  encode @ encode:0
+       10.2ms     0%  setTimeout @ setTimeout:0
+        8.6ms     0%  (anonymous) @ mock-tauri.js:347
+        8.4ms     0%  clearTimeout @ clearTimeout:0
+          8ms     0%  clone @ xterm/src/common/buffer/BufferLine.ts:447
+        7.6ms     0%  forEachDecorationAtCell @ xterm/src/common/services/DecorationService.ts:82
+        7.1ms     0%  dispatch @ mock-tauri.js:120
+        6.3ms     0%  codeLine @ mock-tauri.js:324
+        6.1ms     0%  (anonymous) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:13931
+        6.1ms     0%  b64 @ mock-tauri.js:143
+        6.1ms     0%  getNoBgTrimmedLength @ xterm/src/common/buffer/BufferLine.ts:470
+        5.3ms     0%  loadCell @ xterm/src/common/buffer/BufferLine.ts:181
+        5.2ms     0%  _innerWrite @ xterm/src/common/input/WriteBuffer.ts:160
+   files: (idle)=17897ms | (program)=5733.7ms | replaceChildren=367ms | xterm/src/browser/renderer/dom/DomRendererRowFactory.ts=198.2ms | (garbage collector)=166.5ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=65.2ms | mock-tauri.js=40.5ms | createElement=36.5ms | xterm/src/browser/renderer/dom/WidthCache.ts=32.3ms | xterm/src/common/buffer/BufferLine.ts=21.9ms
+   trace top events: FunctionCall=59.15 | UpdateLayoutTree=50.9 | Layout=37.74 | Paint=21.49 | PrePaint=16.94 | Layerize=12.39 | ProxyMain::BeginMainFrame=12.08 | ThreadControllerImpl::RunTask=8.98 | Commit=2.97 | RunTask=2.38 | LocalFrameView::ScheduleAnimation=1.62 | V8.GC_MC_INCREMENTAL=1.32 | FireAnimationFrame=1.18 | TimerFire=1.08
+   dom: {"nodes":734,"xtermRows":26,"xtermSpans":512,"panes":1,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-tab.is-active.mx-fx-working:v8tabin","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_1","button.mx-pane-status.is-working:v9pop"],"animatedPseudo":["button.mx-row.is-selected.is-loud","div.mx-tab.is-active.mx-fx-working","section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":26,"gradients":9,"pseudoGradients":2,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"80@index-D-cdp54j.js:49:85233":12.51456436360549,"1500@index-D-cdp54j.js:9:51474":0.6669203579350889,"1000@index-D-cdp54j.js:110:10516":0.9807652322574836,"30000@index-D-cdp54j.js:9:51474":0.03923060929029934} events/s 20.0
+-- b-gpu (profile busy 25.8%)
+    18389.5ms  74.2%  (idle) @ (idle):0
+     5450.7ms    22%  (program) @ (program):0
+      282.4ms   1.1%  replaceChildren @ replaceChildren:0
+        152ms   0.6%  (garbage collector) @ (garbage collector):0
+      137.9ms   0.6%  createRow @ xterm/src/browser/renderer/dom/DomRendererRowFactory.ts:61
+       39.7ms   0.2%  createElement @ createElement:0
+       31.5ms   0.1%  get @ xterm/src/browser/renderer/dom/WidthCache.ts:134
+       12.8ms   0.1%  renderRows @ xterm/src/browser/renderer/dom/DomRenderer.ts:441
+        9.7ms     0%  requestAnimationFrame @ requestAnimationFrame:0
+        8.9ms     0%  dispatch @ mock-tauri.js:120
+        8.2ms     0%  getNoBgTrimmedLength @ xterm/src/common/buffer/BufferLine.ts:470
+        8.1ms     0%  clone @ xterm/src/common/buffer/BufferLine.ts:447
+        7.9ms     0%  clearTimeout @ clearTimeout:0
+        7.4ms     0%  (anonymous) @ mock-tauri.js:101
+        6.8ms     0%  setTimeout @ setTimeout:0
+        5.9ms     0%  forEachDecorationAtCell @ xterm/src/common/services/DecorationService.ts:82
+        5.8ms     0%  loadCell @ xterm/src/common/buffer/BufferLine.ts:181
+        5.5ms     0%  renderWithHooks (Yo) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4627
+        5.1ms     0%  codeLine @ mock-tauri.js:324
+          5ms     0%  (anonymous) @ mock-tauri.js:347
+        4.6ms     0%  flush (g) @ home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/TerminalView.tsx:149
+        4.5ms     0%  encode @ encode:0
+   files: (idle)=18389.5ms | (program)=5450.7ms | replaceChildren=282.4ms | (garbage collector)=152ms | xterm/src/browser/renderer/dom/DomRendererRowFactory.ts=142.1ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=47.6ms | createElement=39.7ms | mock-tauri.js=36.8ms | xterm/src/browser/renderer/dom/WidthCache.ts=31.5ms | xterm/src/common/buffer/BufferLine.ts=23.7ms
+   trace top events: FunctionCall=49.49 | UpdateLayoutTree=46.77 | Layout=35.6 | Paint=20.87 | PrePaint=15.28 | Layerize=11.75 | ProxyMain::BeginMainFrame=9.72 | ThreadControllerImpl::RunTask=8.25 | Commit=2.33 | RunTask=2.02 | LocalFrameView::ScheduleAnimation=1.32 | V8.GC_MC_INCREMENTAL=1.17 | FireAnimationFrame=1.1 | TimerFire=0.82
+   dom: {"nodes":729,"xtermRows":26,"xtermSpans":507,"panes":1,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-tab.is-active.mx-fx-working:v8tabin","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_1","button.mx-pane-status.is-working:v9pop"],"animatedPseudo":["button.mx-row.is-selected.is-loud","div.mx-tab.is-active.mx-fx-working","section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":26,"gradients":9,"pseudoGradients":2,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"80@index-D-cdp54j.js:49:85233":12.499705195679036,"1500@index-D-cdp54j.js:9:51474":0.6682232337312692,"1000@index-D-cdp54j.js:110:10516":0.9826812260753959,"30000@index-D-cdp54j.js:9:51474":0.039307249043015836} events/s 20.0
+-- b-gpu-st (profile busy 41.7%)
+    15239.4ms  58.3%  (idle) @ (idle):0
+     5706.8ms  21.8%  (program) @ (program):0
+       3412ms  13.1%  replaceChildren @ replaceChildren:0
+      476.1ms   1.8%  renderRows @ xterm/src/browser/renderer/dom/DomRenderer.ts:441
+      238.8ms   0.9%  createRow @ xterm/src/browser/renderer/dom/DomRendererRowFactory.ts:61
+      193.9ms   0.7%  (garbage collector) @ (garbage collector):0
+      147.6ms   0.6%  clearTimeout @ clearTimeout:0
+      110.2ms   0.4%  setTimeout @ setTimeout:0
+       83.3ms   0.3%  setTextContent (ln) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:1420
+       83.3ms   0.3%  requestAnimationFrame @ requestAnimationFrame:0
+       60.6ms   0.2%  createElement @ createElement:0
+       41.6ms   0.2%  get @ xterm/src/browser/renderer/dom/WidthCache.ts:134
+       24.4ms   0.1%  setTop @ xterm/src/vs/base/browser/fastDomNode.ts:69
+       14.5ms   0.1%  forEachByKey @ xterm/src/common/SortedList.ts:147
+       14.2ms   0.1%  forEachDecorationAtCell @ xterm/src/common/services/DecorationService.ts:82
+       10.6ms     0%  loadCell @ xterm/src/common/buffer/BufferLine.ts:181
+       10.5ms     0%  getNoBgTrimmedLength @ xterm/src/common/buffer/BufferLine.ts:470
+          8ms     0%  renderWithHooks (Yo) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4627
+        7.5ms     0%  clone @ xterm/src/common/buffer/BufferLine.ts:447
+        6.6ms     0%  dispatch @ mock-tauri.js:120
+        6.3ms     0%  (anonymous) @ mock-tauri.js:101
+        5.5ms     0%  batchedUpdates$1 (wn) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:1663
+   files: (idle)=15239.4ms | (program)=5706.8ms | replaceChildren=3412ms | xterm/src/browser/renderer/dom/DomRenderer.ts=477.7ms | xterm/src/browser/renderer/dom/DomRendererRowFactory.ts=243.2ms | (garbage collector)=193.9ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=171ms | clearTimeout=147.6ms | setTimeout=110.2ms | requestAnimationFrame=83.3ms
+   trace top events: FunctionCall=158.65 | UpdateLayoutTree=21.79 | ThreadControllerImpl::RunTask=17.43 | Layout=12.25 | Paint=7.31 | PrePaint=4.79 | Layerize=3.91 | ProxyMain::BeginMainFrame=2.79 | Commit=0.68 | RunTask=0.56 | V8.GC_MARK_COMPACTOR=0.46 | FireAnimationFrame=0.41 | LocalFrameView::ScheduleAnimation=0.35 | V8.HandleInterrupts=0.25
+   dom: {"nodes":681,"xtermRows":26,"xtermSpans":459,"panes":1,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-tab.is-active.mx-fx-working:v8tabin","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_1","button.mx-pane-status.is-working:v9pop"],"animatedPseudo":["button.mx-row.is-selected.is-loud","div.mx-tab.is-active.mx-fx-working","section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":26,"gradients":9,"pseudoGradients":2,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"80@index-D-cdp54j.js:49:85233":12.498121616662889,"1000@index-D-cdp54j.js:110:10516":0.9895873420818122,"1500@index-D-cdp54j.js:9:51474":0.6597248947212082,"30000@index-D-cdp54j.js:9:51474":0.03665138304006712} events/s 20.0
+-- b-gpu-stacks (profile busy 27.4%)
+     8982.4ms  72.6%  (idle) @ (idle):0
+     2826.8ms  22.8%  (program) @ (program):0
+      143.7ms   1.2%  replaceChildren @ replaceChildren:0
+       91.4ms   0.7%  (garbage collector) @ (garbage collector):0
+       72.6ms   0.6%  createRow @ xterm/src/browser/renderer/dom/DomRendererRowFactory.ts:61
+         56ms   0.5%  site @ mock-tauri.js:62
+         19ms   0.2%  createElement @ createElement:0
+       14.5ms   0.1%  get @ xterm/src/browser/renderer/dom/WidthCache.ts:134
+        9.3ms   0.1%  setTimeout @ setTimeout:0
+          9ms   0.1%  renderRows @ xterm/src/browser/renderer/dom/DomRenderer.ts:441
+        5.9ms     0%  parse @ xterm/src/common/parser/EscapeSequenceParser.ts:519
+        5.3ms     0%  forEachDecorationAtCell @ xterm/src/common/services/DecorationService.ts:82
+          5ms     0%  requestAnimationFrame @ requestAnimationFrame:0
+        4.3ms     0%  clone @ xterm/src/common/buffer/BufferLine.ts:447
+        3.4ms     0%  encode @ encode:0
+        3.4ms     0%  dispatch @ mock-tauri.js:120
+        3.3ms     0%  loadCell @ xterm/src/common/buffer/BufferLine.ts:181
+          3ms     0%  jsxProd (r) @ pnpm/react@19.3.1/node_modules/react/cjs/react-jsx-runtime.production.js:14
+        2.9ms     0%  setTop @ xterm/src/vs/base/browser/fastDomNode.ts:69
+        2.8ms     0%  (anonymous) @ mock-tauri.js:347
+        2.7ms     0%  getNoBgTrimmedLength @ xterm/src/common/buffer/BufferLine.ts:470
+        2.7ms     0%  postMessage @ postMessage:0
+   files: (idle)=8982.4ms | (program)=2826.8ms | replaceChildren=143.7ms | (garbage collector)=91.4ms | xterm/src/browser/renderer/dom/DomRendererRowFactory.ts=75.5ms | mock-tauri.js=75.2ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=25.6ms | createElement=19ms | xterm/src/browser/renderer/dom/WidthCache.ts=14.5ms | xterm/src/common/buffer/BufferLine.ts=11.7ms
+   trace top events: FunctionCall=58.94 | UpdateLayoutTree=47.73 | Layout=36.8 | Paint=22.62 | PrePaint=15.99 | Layerize=12.77 | ProxyMain::BeginMainFrame=10.61 | ThreadControllerImpl::RunTask=8.55 | Commit=2.55 | RunTask=2.21 | LocalFrameView::ScheduleAnimation=1.48 | V8.GC_MC_INCREMENTAL=1.45 | FireAnimationFrame=1.15 | TimerFire=0.9
+   dom: {"nodes":680,"xtermRows":26,"xtermSpans":458,"panes":1,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-tab.is-active.mx-fx-working:v8tabin","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_1","button.mx-pane-status.is-working:v9pop"],"animatedPseudo":["button.mx-row.is-selected.is-loud","div.mx-tab.is-active.mx-fx-working","section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":26,"gradients":9,"pseudoGradients":2,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"80@index-D-cdp54j.js:49:85233":12.502162323484832,"1000@index-D-cdp54j.js:110:10516":0.9435594206403647,"1500@index-D-cdp54j.js:9:51474":0.6290396137602431} events/s 20.0
+-- c-cpu (profile busy 23%)
+    19429.8ms    77%  (idle) @ (idle):0
+     5087.6ms  20.2%  (program) @ (program):0
+      160.2ms   0.6%  replaceChildren @ replaceChildren:0
+       95.4ms   0.4%  createRow @ xterm/src/browser/renderer/dom/DomRendererRowFactory.ts:61
+       77.3ms   0.3%  (garbage collector) @ (garbage collector):0
+         19ms   0.1%  createElement @ createElement:0
+       17.7ms   0.1%  get @ xterm/src/browser/renderer/dom/WidthCache.ts:134
+       17.3ms   0.1%  setTimeout @ setTimeout:0
+       10.1ms     0%  renderRows @ xterm/src/browser/renderer/dom/DomRenderer.ts:441
+          9ms     0%  clearTimeout @ clearTimeout:0
+        8.9ms     0%  renderWithHooks (Yo) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4627
+        8.7ms     0%  dispatch @ mock-tauri.js:120
+          8ms     0%  parse @ xterm/src/common/parser/EscapeSequenceParser.ts:519
+        7.9ms     0%  setTextContent (ln) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:1420
+        7.2ms     0%  (anonymous) @ mock-tauri.js:101
+        6.9ms     0%  codeLine @ mock-tauri.js:324
+        6.8ms     0%  commitMutationEffectsOnFiber (ku) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:10497
+        6.3ms     0%  getNoBgTrimmedLength @ xterm/src/common/buffer/BufferLine.ts:470
+        6.1ms     0%  encode @ encode:0
+        5.8ms     0%  performUnitOfWork (tf) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:12706
+        5.5ms     0%  clone @ xterm/src/common/buffer/BufferLine.ts:447
+        5.4ms     0%  _innerWrite @ xterm/src/common/input/WriteBuffer.ts:160
+   files: (idle)=19429.8ms | (program)=5087.6ms | replaceChildren=160.2ms | xterm/src/browser/renderer/dom/DomRendererRowFactory.ts=97.8ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=94.9ms | (garbage collector)=77.3ms | mock-tauri.js=40.6ms | createElement=19ms | xterm/src/browser/renderer/dom/WidthCache.ts=17.7ms | setTimeout=17.3ms
+   trace top events: FunctionCall=51.11 | UpdateLayoutTree=37.77 | Layout=28.6 | PrePaint=16.24 | Paint=16.22 | ProxyMain::BeginMainFrame=12.88 | Layerize=11.21 | ThreadControllerImpl::RunTask=5.84 | Commit=3.09 | RunTask=2.25 | UpdateLayer=1.9 | FireAnimationFrame=1.69 | LocalFrameView::ScheduleAnimation=1.63 | IntersectionObserverController::computeIntersections=1.47
+   dom: {"nodes":823,"xtermRows":44,"xtermSpans":322,"panes":4,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-group.is-open:v7fade","div.mx-group-rows:v7fade","button.mx-row.mx-fx-working:v8row","div.mx-group.is-open:v7fade","div.mx-group-rows:v7fade","button.mx-row:v8row","div.mx-group.is-open:v7fade","div.mx-group-rows:v7fade","button.mx-row:v8row","div.mx-tab.is-active.mx-fx-working:v8tabin","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_1","button.mx-pane-status.is-working:v9pop","section.mx-pane:v8pane","button.mx-pane-status.is-working:v9pop","section.mx-pane:v8pane","section.mx-pane:v8pane"],"animatedPseudo":["button.mx-row.is-selected.is-loud","button.mx-row.mx-fx-working","div.mx-tab.is-active.mx-fx-working","section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":60,"gradients":23,"pseudoGradients":3,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"80@index-D-cdp54j.js:49:85233":12.529147670018977,"1500@index-D-cdp54j.js:9:51474":0.6573935505874154,"1000@index-D-cdp54j.js:110:10516":1.0054254303101648,"30000@index-D-cdp54j.js:9:51474":0.03867020885808326} events/s 40.0
+-- c-gpu (profile busy 23.7%)
+      19271ms  76.3%  (idle) @ (idle):0
+     5291.6ms    21%  (program) @ (program):0
+      144.2ms   0.6%  replaceChildren @ replaceChildren:0
+       85.6ms   0.3%  (garbage collector) @ (garbage collector):0
+       85.3ms   0.3%  createRow @ xterm/src/browser/renderer/dom/DomRendererRowFactory.ts:61
+       18.3ms   0.1%  setTimeout @ setTimeout:0
+         14ms   0.1%  encode @ encode:0
+       11.7ms     0%  requestAnimationFrame @ requestAnimationFrame:0
+       10.6ms     0%  codeLine @ mock-tauri.js:324
+       10.5ms     0%  clearTimeout @ clearTimeout:0
+         10ms     0%  createElement @ createElement:0
+        9.9ms     0%  clone @ xterm/src/common/buffer/BufferLine.ts:447
+        8.7ms     0%  renderRows @ xterm/src/browser/renderer/dom/DomRenderer.ts:441
+        8.7ms     0%  renderWithHooks (Yo) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4627
+        8.5ms     0%  get @ xterm/src/browser/renderer/dom/WidthCache.ts:134
+        7.4ms     0%  performUnitOfWork (tf) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:12706
+        7.4ms     0%  b64 @ mock-tauri.js:143
+        7.2ms     0%  (anonymous) @ mock-tauri.js:347
+        6.8ms     0%  dispatch @ dispatch:0
+        6.5ms     0%  print @ xterm/src/common/InputHandler.ts:512
+        5.9ms     0%  dispatchEvent (Eh) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:17907
+          5ms     0%  generate @ mock-tauri.js:333
+   files: (idle)=19271ms | (program)=5291.6ms | replaceChildren=144.2ms | xterm/src/browser/renderer/dom/DomRendererRowFactory.ts=85.7ms | (garbage collector)=85.6ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=82.3ms | mock-tauri.js=39.8ms | xterm/src/common/buffer/BufferLine.ts=19.2ms | setTimeout=18.3ms | encode=14ms
+   trace top events: FunctionCall=48.57 | UpdateLayoutTree=36.74 | Layout=28.32 | Paint=17.03 | PrePaint=16.42 | ProxyMain::BeginMainFrame=12.71 | Layerize=12.09 | ThreadControllerImpl::RunTask=5.75 | Commit=3.05 | RunTask=2.27 | UpdateLayer=1.93 | LocalFrameView::ScheduleAnimation=1.72 | FireAnimationFrame=1.45 | IntersectionObserverController::computeIntersections=1.42
+   dom: {"nodes":856,"xtermRows":44,"xtermSpans":355,"panes":4,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-group.is-open:v7fade","div.mx-group-rows:v7fade","button.mx-row.mx-fx-working:v8row","div.mx-group.is-open:v7fade","div.mx-group-rows:v7fade","button.mx-row:v8row","div.mx-group.is-open:v7fade","div.mx-group-rows:v7fade","button.mx-row:v8row","div.mx-tab.is-active.mx-fx-working:v8tabin","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_2","button.mx-pane-status.is-working:v9pop","section.mx-pane:v8pane","button.mx-pane-status.is-working:v9pop","section.mx-pane:v8pane","section.mx-pane:v8pane"],"animatedPseudo":["button.mx-row.is-selected.is-loud","button.mx-row.mx-fx-working","div.mx-tab.is-active.mx-fx-working","section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":60,"gradients":23,"pseudoGradients":3,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"80@index-D-cdp54j.js:49:85233":12.50596438305933,"1500@index-D-cdp54j.js:9:51474":0.6541581369600266,"1000@index-D-cdp54j.js:110:10516":1.0004771506447465,"30000@index-D-cdp54j.js:9:51474":0.038479890409413325} events/s 39.9
+-- d-cpu (profile busy 32.3%)
+    17404.4ms  67.7%  (idle) @ (idle):0
+       6795ms  26.4%  (program) @ (program):0
+      389.7ms   1.5%  replaceChildren @ replaceChildren:0
+      309.9ms   1.2%  createRow @ xterm/src/browser/renderer/dom/DomRendererRowFactory.ts:61
+        206ms   0.8%  (garbage collector) @ (garbage collector):0
+       45.6ms   0.2%  createElement @ createElement:0
+       35.5ms   0.1%  get @ xterm/src/browser/renderer/dom/WidthCache.ts:134
+         25ms   0.1%  renderRows @ xterm/src/browser/renderer/dom/DomRenderer.ts:441
+       21.1ms   0.1%  resize @ xterm/src/common/buffer/BufferLine.ts:350
+       17.4ms   0.1%  loadCell @ xterm/src/common/buffer/BufferLine.ts:181
+       12.7ms     0%  getTrimmedLength @ xterm/src/common/buffer/BufferLine.ts:461
+       11.8ms     0%  requestAnimationFrame @ requestAnimationFrame:0
+       11.5ms     0%  copyCellsFrom @ xterm/src/common/buffer/BufferLine.ts:479
+       10.3ms     0%  DesktopApp (aR) @ home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/features/workspace/DesktopApp.tsx:180
+        9.7ms     0%  forEachByKey @ xterm/src/common/SortedList.ts:147
+        9.6ms     0%  renderWithHooks (Yo) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4627
+        9.2ms     0%  setTimeout @ setTimeout:0
+        8.5ms     0%  dispatch @ mock-tauri.js:120
+        8.2ms     0%  forEachDecorationAtCell @ xterm/src/common/services/DecorationService.ts:82
+          8ms     0%  getNoBgTrimmedLength @ xterm/src/common/buffer/BufferLine.ts:470
+        7.5ms     0%  setCell @ xterm/src/common/buffer/BufferLine.ts:198
+        6.8ms     0%  performUnitOfWork (tf) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:12706
+   files: (idle)=17404.4ms | (program)=6795ms | replaceChildren=389.7ms | xterm/src/browser/renderer/dom/DomRendererRowFactory.ts=312.9ms | (garbage collector)=206ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=95.1ms | xterm/src/common/buffer/BufferLine.ts=92.1ms | createElement=45.6ms | mock-tauri.js=37ms | xterm/src/browser/renderer/dom/WidthCache.ts=35.5ms
+   trace top events: FunctionCall=68.93 | UpdateLayoutTree=65.82 | Layout=46.79 | Paint=22.44 | PrePaint=17.18 | ProxyMain::BeginMainFrame=11.88 | Layerize=11.62 | ThreadControllerImpl::RunTask=10.91 | Commit=2.76 | RunTask=2.53 | LocalFrameView::ScheduleAnimation=1.62 | V8.GC_MC_INCREMENTAL=1.22 | FireAnimationFrame=1.17 | EventDispatch=1.01
+   dom: {"nodes":531,"xtermRows":20,"xtermSpans":315,"panes":1,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-tab.is-active.mx-fx-working:v8tabin","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_1","button.mx-pane-status.is-working:v9pop"],"animatedPseudo":["button.mx-row.is-selected.is-loud","div.mx-tab.is-active.mx-fx-working","section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":26,"gradients":9,"pseudoGradients":2,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"80@index-D-cdp54j.js:49:85233":12.529862209120955,"1500@index-D-cdp54j.js:9:51474":0.6793298788077626,"1000@index-D-cdp54j.js:110:10516":0.9812542693889904,"30000@index-D-cdp54j.js:9:51474":0.03774054882265348} events/s 20.0
+-- d-gpu (profile busy 32.3%)
+    17471.5ms  67.7%  (idle) @ (idle):0
+     6815.3ms  26.4%  (program) @ (program):0
+      390.5ms   1.5%  replaceChildren @ replaceChildren:0
+      294.5ms   1.1%  createRow @ xterm/src/browser/renderer/dom/DomRendererRowFactory.ts:61
+      200.8ms   0.8%  (garbage collector) @ (garbage collector):0
+       51.8ms   0.2%  createElement @ createElement:0
+         47ms   0.2%  get @ xterm/src/browser/renderer/dom/WidthCache.ts:134
+       19.6ms   0.1%  renderRows @ xterm/src/browser/renderer/dom/DomRenderer.ts:441
+       18.6ms   0.1%  resize @ xterm/src/common/buffer/BufferLine.ts:350
+       15.2ms   0.1%  setTimeout @ setTimeout:0
+       12.8ms     0%  getTrimmedLength @ xterm/src/common/buffer/BufferLine.ts:461
+       11.5ms     0%  forEachDecorationAtCell @ xterm/src/common/services/DecorationService.ts:82
+       11.4ms     0%  forEachByKey @ xterm/src/common/SortedList.ts:147
+        9.7ms     0%  loadCell @ xterm/src/common/buffer/BufferLine.ts:181
+        9.2ms     0%  requestAnimationFrame @ requestAnimationFrame:0
+        8.7ms     0%  renderWithHooks (Yo) @ pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js:4627
+        8.6ms     0%  copyCellsFrom @ xterm/src/common/buffer/BufferLine.ts:479
+        8.4ms     0%  getDocumentDirection (_r) @ pnpm/sonner@2.0.8_@types+react@19.3.0_react-dom@19.3.1_react@19.3.1__react@19.3.1/node_modules/sonner/dist/index.mjs:889
+          8ms     0%  clone @ xterm/src/common/buffer/BufferLine.ts:447
+        7.5ms     0%  DesktopApp (aR) @ home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/features/workspace/DesktopApp.tsx:180
+        7.1ms     0%  setCell @ xterm/src/common/buffer/BufferLine.ts:198
+        7.1ms     0%  (anonymous) @ mock-tauri.js:347
+   files: (idle)=17471.5ms | (program)=6815.3ms | replaceChildren=390.5ms | xterm/src/browser/renderer/dom/DomRendererRowFactory.ts=299.6ms | (garbage collector)=200.8ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=104ms | xterm/src/common/buffer/BufferLine.ts=77.8ms | createElement=51.8ms | xterm/src/browser/renderer/dom/WidthCache.ts=47ms | mock-tauri.js=35.4ms
+   trace top events: FunctionCall=68.73 | UpdateLayoutTree=67.29 | Layout=47.92 | Paint=22.81 | PrePaint=17.07 | Layerize=12.36 | ProxyMain::BeginMainFrame=11.84 | ThreadControllerImpl::RunTask=11.03 | Commit=2.77 | RunTask=2.62 | LocalFrameView::ScheduleAnimation=1.64 | V8.GC_MC_INCREMENTAL=1.55 | FireAnimationFrame=1.14 | TimerFire=0.99
+   dom: {"nodes":547,"xtermRows":20,"xtermSpans":331,"panes":1,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-tab.is-active.mx-fx-working:v8tabin","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_1","button.mx-pane-status.is-working:v9pop"],"animatedPseudo":["button.mx-row.is-selected.is-loud","div.mx-tab.is-active.mx-fx-working","section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":26,"gradients":9,"pseudoGradients":2,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"80@index-D-cdp54j.js:49:85233":12.515409362968938,"1000@index-D-cdp54j.js:110:10516":0.9771791094209982,"1500@index-D-cdp54j.js:9:51474":0.6765086142145372,"30000@index-D-cdp54j.js:9:51474":0.037583811900807625} events/s 20.0
+-- e-cpu (profile busy 28.9%)
+    18505.1ms  71.1%  (idle) @ (idle):0
+     6372.8ms  24.5%  (program) @ (program):0
+      334.1ms   1.3%  replaceChildren @ replaceChildren:0
+      189.1ms   0.7%  createRow @ xterm/src/browser/renderer/dom/DomRendererRowFactory.ts:61
+      170.8ms   0.7%  (garbage collector) @ (garbage collector):0
+       40.1ms   0.2%  createElement @ createElement:0
+       30.2ms   0.1%  get @ xterm/src/browser/renderer/dom/WidthCache.ts:134
+       22.6ms   0.1%  renderRows @ xterm/src/browser/renderer/dom/DomRenderer.ts:441
+         19ms   0.1%  setTimeout @ setTimeout:0
+         11ms     0%  getNoBgTrimmedLength @ xterm/src/common/buffer/BufferLine.ts:470
+       10.2ms     0%  clearTimeout @ clearTimeout:0
+        8.6ms     0%  clone @ xterm/src/common/buffer/BufferLine.ts:447
+        8.6ms     0%  forEachDecorationAtCell @ xterm/src/common/services/DecorationService.ts:82
+        8.3ms     0%  (anonymous) @ mock-tauri.js:101
+        7.9ms     0%  flush (g) @ home/vox/personal/maitty-worktrees/swift-lynx/apps/gui/src/TerminalView.tsx:149
+        7.9ms     0%  forEachByKey @ xterm/src/common/SortedList.ts:147
+        6.7ms     0%  loadCell @ xterm/src/common/buffer/BufferLine.ts:181
+        6.2ms     0%  codeLine @ mock-tauri.js:324
+        5.9ms     0%  dispatch @ mock-tauri.js:120
+        5.7ms     0%  (anonymous) @ mock-tauri.js:347
+        5.7ms     0%  requestAnimationFrame @ requestAnimationFrame:0
+        5.7ms     0%  parse @ xterm/src/common/parser/EscapeSequenceParser.ts:519
+   files: (idle)=18505.1ms | (program)=6372.8ms | replaceChildren=334.1ms | xterm/src/browser/renderer/dom/DomRendererRowFactory.ts=193.9ms | (garbage collector)=170.8ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=69.1ms | createElement=40.1ms | mock-tauri.js=39.4ms | xterm/src/browser/renderer/dom/WidthCache.ts=30.2ms | xterm/src/browser/renderer/dom/DomRenderer.ts=27.7ms
+   trace top events: UpdateLayoutTree=57.36 | FunctionCall=54.86 | Layout=37.94 | Paint=32.3 | PrePaint=19.74 | Layerize=16.32 | ProxyMain::BeginMainFrame=13.62 | ThreadControllerImpl::RunTask=9.18 | Commit=2.92 | RunTask=1.95 | LocalFrameView::ScheduleAnimation=1.42 | FireAnimationFrame=1.28 | V8.GC_MC_INCREMENTAL=1.25 | AnimationHost::TickAnimations=1.24
+   dom: {"nodes":754,"xtermRows":26,"xtermSpans":452,"panes":1,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-group.is-open:v7fade","div.mx-group-rows:v7fade","button.mx-row.mx-fx-working:v8row","div.mx-group.is-open:v7fade","div.mx-group-rows:v7fade","button.mx-row:v8row","div.mx-group.is-open:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-loud.mx-fx-needs:v8row","span.mx-badge.is-needs:v7pulse","div.mx-tab.is-active.mx-fx-working:v8tabin","span.mx-inbox-count.is-needs:v9pop, v7pulse","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_1","button.mx-pane-status.is-working:v9pop"],"animatedPseudo":["button.mx-row.is-selected.is-loud","button.mx-row.mx-fx-working","button.mx-row.is-loud.mx-fx-needs","div.mx-tab.is-active.mx-fx-working","section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":34,"gradients":15,"pseudoGradients":4,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"80@index-D-cdp54j.js:49:85233":12.496931557028104,"1500@index-D-cdp54j.js:9:51474":0.6694784762693626,"1000@index-D-cdp54j.js:110:10516":1.004217714404044,"30000@index-D-cdp54j.js:9:51474":0.03719324868163126} events/s 20.0
+-- e-gpu (profile busy 30.2%)
+    18307.1ms  69.8%  (idle) @ (idle):0
+     6698.2ms  25.5%  (program) @ (program):0
+      370.2ms   1.4%  replaceChildren @ replaceChildren:0
+      186.2ms   0.7%  createRow @ xterm/src/browser/renderer/dom/DomRendererRowFactory.ts:61
+      181.6ms   0.7%  (garbage collector) @ (garbage collector):0
+       42.6ms   0.2%  get @ xterm/src/browser/renderer/dom/WidthCache.ts:134
+       36.9ms   0.1%  createElement @ createElement:0
+       19.2ms   0.1%  setTimeout @ setTimeout:0
+       14.2ms   0.1%  renderRows @ xterm/src/browser/renderer/dom/DomRenderer.ts:441
+         13ms     0%  clone @ xterm/src/common/buffer/BufferLine.ts:447
+       12.6ms     0%  dispatch @ mock-tauri.js:120
+       11.2ms     0%  requestAnimationFrame @ requestAnimationFrame:0
+       10.8ms     0%  codeLine @ mock-tauri.js:324
+       10.5ms     0%  forEachDecorationAtCell @ xterm/src/common/services/DecorationService.ts:82
+       10.2ms     0%  encode @ encode:0
+        8.5ms     0%  forEachByKey @ xterm/src/common/SortedList.ts:147
+        8.1ms     0%  (anonymous) @ mock-tauri.js:101
+        6.9ms     0%  b64 @ mock-tauri.js:143
+        6.2ms     0%  (anonymous) @ mock-tauri.js:347
+        5.5ms     0%  clearTimeout @ clearTimeout:0
+        5.4ms     0%  getNoBgTrimmedLength @ xterm/src/common/buffer/BufferLine.ts:470
+        5.3ms     0%  loadCell @ xterm/src/common/buffer/BufferLine.ts:181
+   files: (idle)=18307.1ms | (program)=6698.2ms | replaceChildren=370.2ms | xterm/src/browser/renderer/dom/DomRendererRowFactory.ts=190.7ms | (garbage collector)=181.6ms | pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.production.js=85.5ms | mock-tauri.js=63.2ms | xterm/src/browser/renderer/dom/WidthCache.ts=42.6ms | createElement=36.9ms | xterm/src/common/buffer/BufferLine.ts=24.4ms
+   trace top events: FunctionCall=56.95 | UpdateLayoutTree=55.55 | Layout=39.19 | Paint=33.27 | PrePaint=19.87 | Layerize=17.01 | ProxyMain::BeginMainFrame=13.08 | ThreadControllerImpl::RunTask=9.89 | Commit=3.01 | RunTask=2.36 | LocalFrameView::ScheduleAnimation=1.61 | V8.GC_MC_INCREMENTAL=1.22 | TimerFire=1.2 | AnimationHost::TickAnimations=1.17
+   dom: {"nodes":770,"xtermRows":26,"xtermSpans":468,"panes":1,"animated":["div.mx-sidebar-expanded:v7fade","div.mx-group.is-open.has-focused:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-selected.is-loud:v8row","div.mx-group.is-open:v7fade","div.mx-group-rows:v7fade","button.mx-row.mx-fx-working:v8row","div.mx-group.is-open:v7fade","div.mx-group-rows:v7fade","button.mx-row:v8row","div.mx-group.is-open:v7fade","div.mx-group-rows:v7fade","button.mx-row.is-loud.mx-fx-needs:v8row","span.mx-badge.is-needs:v7pulse","div.mx-tab.is-active.mx-fx-working:v8tabin","span.mx-inbox-count.is-needs:v9pop, v7pulse","section.mx-pane.is-focused:v8pane","span.xterm-cursor.xterm-cursor-blink.xterm-cursor-block:blink_block_1","button.mx-pane-status.is-working:v9pop"],"animatedPseudo":["button.mx-row.is-selected.is-loud","button.mx-row.mx-fx-working","button.mx-row.is-loud.mx-fx-needs","div.mx-tab.is-active.mx-fx-working","section.mx-pane.is-focused"],"backdrop":0,"filters":0,"shadows":34,"gradients":15,"pseudoGradients":4,"willChange":0,"cursorBlinkEls":1}
+   intervals: {"80@index-D-cdp54j.js:49:85233":12.519203497946927,"1500@index-D-cdp54j.js:9:51474":0.6647364689175359,"1000@index-D-cdp54j.js:110:10516":0.997104703376304,"30000@index-D-cdp54j.js:9:51474":0.036929803828751995} events/s 20.0

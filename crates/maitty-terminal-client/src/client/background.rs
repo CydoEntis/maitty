@@ -5,17 +5,102 @@ use super::*;
 impl App {
     /// A message from the server can close a popup with no key pressed: shortcut mode held
     /// under it comes back then, not after a key has gone to the pane.
-    pub(super) fn on_server(&mut self, msg: ServerMsg) {
-        self.apply_server(msg);
+    pub(super) fn on_machine_server(&mut self, machine: MachineId, msg: ServerMsg) {
+        if !self.admits(machine, &msg) {
+            return;
+        }
+        let Some(msg) = self.vetted(machine, msg) else {
+            return;
+        };
+        if machine != MachineId::LOCAL && matches!(msg, ServerMsg::Reply(_) | ServerMsg::Error(_)) {
+            self.route.answered(machine);
+        }
+        self.apply_server(machine, msg);
         self.keep_shortcut_mode();
     }
 
-    fn apply_server(&mut self, msg: ServerMsg) {
+    /// Whether to act on a message from `machine`. Another machine's state is held back when a
+    /// different daemon answers at its name: its saved layout must not be reused for it. The
+    /// reason is told once, and everything else it says is dropped.
+    fn admits(&mut self, machine: MachineId, msg: &ServerMsg) -> bool {
+        if machine == MachineId::LOCAL {
+            return true;
+        }
+        if self.refused.contains_key(&machine) {
+            return false;
+        }
+        let ServerMsg::State(snap) = msg else {
+            return true;
+        };
+        let name = self.machine_name(machine).to_owned();
+        match machine_ids::check_daemon_id(&mut self.machine_ids, &name, snap.daemon_id.as_deref())
+        {
+            Ok(machine_ids::IdCheck::Recorded) => {
+                self.machine_ids.save();
+                true
+            }
+            Ok(_) => true,
+            Err(mismatch) => {
+                tracing::warn!("{mismatch}");
+                let reason = mismatch.to_string();
+                self.notify(reason.clone(), true);
+                self.links.refuse(machine, reason.clone());
+                self.refused.insert(machine, reason);
+                false
+            }
+        }
+    }
+
+    /// The snapshot `machine` holds with a delta applied; removing a pane it does not have is
+    /// harmless.
+    fn merged_terms(
+        &self,
+        machine: MachineId,
+        changed: Vec<TermInfo>,
+        removed: Vec<TermId>,
+    ) -> Snapshot {
+        let mut merged = self.snap_of(machine).cloned().unwrap_or_default();
+        for id in removed {
+            merged.terms.remove(&id);
+        }
+        for term in changed {
+            merged.terms.insert(term.id, term);
+        }
+        merged
+    }
+
+    /// What another machine's daemon says, cleaned and held to what its entry allows. This
+    /// computer's own daemon is trusted as it was.
+    fn vetted(&self, machine: MachineId, msg: ServerMsg) -> Option<ServerMsg> {
+        if machine == MachineId::LOCAL {
+            return Some(msg);
+        }
+        let name = self.machine_name(machine);
+        let asked = self.route.awaiting(machine);
+        remote_policy::vet(&self.machine_opts(machine), asked, name, msg)
+    }
+
+    /// What `machine` may do on this computer: everything for this one, only its opt-ins for
+    /// any other.
+    pub(super) fn machine_opts(&self, machine: MachineId) -> remote_policy::MachineOpts {
+        if machine == MachineId::LOCAL {
+            return remote_policy::MachineOpts::LOCAL;
+        }
+        remote_policy::MachineOpts::named(&self.cfg.machines, self.machine_name(machine))
+    }
+
+    #[cfg(test)]
+    pub(super) fn on_server(&mut self, msg: ServerMsg) {
+        self.on_machine_server(MachineId::LOCAL, msg);
+    }
+
+    fn apply_server(&mut self, machine: MachineId, msg: ServerMsg) {
         // Output doesn't change the sidebar; everything else might. Output for a pane you
         // can't see changes nothing on screen at all: no redraw for it.
         match &msg {
             ServerMsg::Output { term, .. } => {
-                if self.panes.iter().any(|(t, _)| t == term) || self.panes.is_empty() {
+                let term = ClientTerm::on(machine, *term);
+                if self.panes.iter().any(|(t, _)| *t == term) || self.panes.is_empty() {
                     self.dirty = true;
                 }
             }
@@ -25,27 +110,22 @@ impl App {
             }
         }
         match msg {
+            ServerMsg::State(s) if machine != MachineId::LOCAL => {
+                self.sync_terms(machine, &s);
+                self.remember_changes(machine, &s);
+                self.remotes.entry(machine).or_default().snap = s;
+                self.screen_sync();
+            }
             ServerMsg::State(s) => {
-                self.settling
-                    .retain(|id, (status, _)| s.terms.get(id).is_some_and(|t| t.status == *status));
-                self.parsers.retain(|id, _| s.terms.contains_key(id));
-                for (id, t) in &s.terms {
-                    if !self.parsers.contains_key(id) {
-                        let p = self.new_parser(t.rows, t.cols);
-                        self.parsers.insert(*id, p);
-                    }
-                    // Trust the daemon's size for panes we aren't showing.
-                    if !self.panes.iter().any(|(p, _)| p == id) {
-                        self.sizes.insert(*id, (t.cols, t.rows));
-                    }
-                }
+                self.sync_terms(machine, &s);
                 let first = !self.got_state;
                 let last_session_closed = !self.snap.terms.is_empty() && s.terms.is_empty();
                 self.got_state = true;
                 if !first {
-                    self.remember_changes(&s);
+                    self.remember_changes(MachineId::LOCAL, &s);
                 }
                 self.snap = s;
+                self.on_login_snapshot();
                 if self.daemon_restart_reconnect {
                     let daemon_matches_install = self
                         .installed_version
@@ -77,12 +157,21 @@ impl App {
                 self.check_view_sync();
                 self.maybe_restart_daemon(last_session_closed);
             }
+            ServerMsg::TermsChanged { changed, removed } => {
+                // Re-entering as a whole snapshot runs every rule a state update runs for this
+                // machine: the daemon-id check, the cleaning and caps, and the side effects. A
+                // delta arriving before any state merges into an empty snapshot, which has no
+                // daemon id; that is accepted only while no id is recorded for the name.
+                let merged = self.merged_terms(machine, changed, removed);
+                self.on_machine_server(machine, ServerMsg::State(merged));
+            }
             ServerMsg::Replay {
                 term,
                 cols,
                 rows,
                 data,
             } => {
+                let term = ClientTerm::on(machine, term);
                 let p = self.new_parser(rows, cols);
                 self.parsers.insert(term, p);
                 self.marks.remove(&term);
@@ -94,6 +183,7 @@ impl App {
                 self.sizes.insert(term, (cols, rows));
             }
             ServerMsg::Output { term, data } => {
+                let term = ClientTerm::on(machine, term);
                 self.keep_raw(term, &data, false);
                 if let Some(c) = keys::last_cursor_style(&data) {
                     self.cursor_style.insert(term, c);
@@ -118,7 +208,7 @@ impl App {
                     _ => {}
                 }
                 if !self.parsers.contains_key(&term)
-                    && let Some(t) = self.snap.terms.get(&term)
+                    && let Some(t) = self.term_info(term)
                 {
                     let p = self.new_parser(t.rows, t.cols);
                     self.parsers.insert(term, p);
@@ -126,6 +216,7 @@ impl App {
                 self.feed(term, &data);
             }
             ServerMsg::Attention { term, status } => {
+                let term = ClientTerm::on(machine, term);
                 self.settling.remove(&term);
                 if (status != Status::Done || !self.is_helper(term))
                     && let Some(delay) = crate::alert::settle_delay(status)
@@ -134,22 +225,27 @@ impl App {
                 }
             }
             ServerMsg::Clipboard { term, text } => {
+                let term = ClientTerm::on(machine, term);
                 let n = text.chars().count();
                 copy::to_clipboard(&text);
                 let who = self.session_name(term);
-                self.notify(
-                    format!(
-                        "{who} copied {n} character{} to your clipboard",
-                        if n == 1 { "" } else { "s" }
-                    ),
-                    false,
+                let told = format!(
+                    "{who} copied {n} character{} to your clipboard",
+                    if n == 1 { "" } else { "s" }
                 );
+                let told = if machine == MachineId::LOCAL {
+                    told
+                } else {
+                    remote_policy::tagged(self.machine_name(machine), &told)
+                };
+                self.notify(told, false);
             }
             ServerMsg::Error(e) => {
                 // The output a failure waited for may be what failed; a later reply is not its.
                 self.screen.failure_ask = None;
                 self.notify(e, true);
             }
+            ServerMsg::Notice(n) if machine != MachineId::LOCAL => self.notify(n, false),
             ServerMsg::Notice(n) => {
                 self.undo_hint = false;
                 self.notify(n, false)
@@ -168,18 +264,44 @@ impl App {
             ServerMsg::Raise => crate::reveal::raise_window(),
             // The server stopped for the update: an older window can't speak to the new one, so
             // the installed the app takes its place; a current window just connects again.
+            // Another machine's daemon stopping ends its connection, not the window.
+            ServerMsg::Bye if machine != MachineId::LOCAL => {}
             ServerMsg::Bye if self.daemon_restart_requested && self.window_stale() => {
                 self.relaunch_window()
             }
             ServerMsg::Bye if self.daemon_restart_requested => self.daemon_restart_reconnect = true,
             ServerMsg::Bye => self.quit = Some("server exited".into()),
-            ServerMsg::Reply(Reply::Worktrees(list)) => {
+            // Worktrees are listed for this computer's own folders only.
+            ServerMsg::Reply(Reply::Worktrees(list)) if machine == MachineId::LOCAL => {
                 if let Mode::Worktrees { items, .. } = &mut self.mode {
                     *items = Some(list);
                 }
             }
-            ServerMsg::Reply(Reply::Text(text)) => self.check_output_arrived(text),
+            ServerMsg::Reply(Reply::Text(text)) if self.check_asked_of(machine) => {
+                self.check_output_arrived(text)
+            }
             ServerMsg::Welcome { .. } | ServerMsg::Reply(_) => {}
+        }
+    }
+
+    /// Per-pane state of `machine` follows what its daemon reports: no parser, size or pending
+    /// alert for a pane it no longer lists, and a parser and size for each it does.
+    pub(super) fn sync_terms(&mut self, machine: MachineId, s: &Snapshot) {
+        self.settling.retain(|id, (status, _)| {
+            id.machine != machine || s.terms.get(&id.term).is_some_and(|t| t.status == *status)
+        });
+        self.parsers
+            .retain(|id, _| id.machine != machine || s.terms.contains_key(&id.term));
+        for (id, t) in &s.terms {
+            let id = ClientTerm::on(machine, *id);
+            if !self.parsers.contains_key(&id) {
+                let p = self.new_parser(t.rows, t.cols);
+                self.parsers.insert(id, p);
+            }
+            // Trust the daemon's size for panes we aren't showing.
+            if !self.panes.iter().any(|(p, _)| *p == id) {
+                self.sizes.insert(id, (t.cols, t.rows));
+            }
         }
     }
 
@@ -206,12 +328,14 @@ impl App {
     }
 
     /// Whether another session's agent started this one (and is still there to hear of it).
-    fn is_helper(&self, term: TermId) -> bool {
-        self.snap
-            .terms
-            .get(&term)
+    fn is_helper(&self, term: ClientTerm) -> bool {
+        let Some(snap) = self.snap_of(term.machine) else {
+            return false;
+        };
+        snap.terms
+            .get(&term.term)
             .and_then(|t| t.started_by)
-            .is_some_and(|by| self.snap.terms.contains_key(&by))
+            .is_some_and(|by| snap.terms.contains_key(&by))
     }
 
     /// Recheck queued alerts after short-lived prompts and automatic continuations settle.
@@ -225,12 +349,7 @@ impl App {
             .collect();
         for (term, status) in due {
             self.settling.remove(&term);
-            if self
-                .snap
-                .terms
-                .get(&term)
-                .is_some_and(|t| t.status == status)
-            {
+            if self.term_info(term).is_some_and(|t| t.status == status) {
                 self.alert_now(term, status);
                 self.dirty = true;
             }
@@ -240,22 +359,19 @@ impl App {
     /// Needs-you alerts use two rising notes and background completions one soft note; the
     /// pane you are looking at rings neither.
     /// With no window open the server shows a desktop notification instead.
-    fn alert_now(&mut self, term: TermId, status: Status) {
-        if !self
-            .snap
-            .terms
-            .get(&term)
-            .is_some_and(|t| t.status == status)
-        {
+    pub(super) fn alert_now(&mut self, term: ClientTerm, status: Status) {
+        if !self.term_info(term).is_some_and(|t| t.status == status) {
             return;
         }
         // You are looking at it: a sound adds nothing.
         if self.focused() == Some(term) && self.window_focused {
             return;
         }
+        let opts = self.machine_opts(term.machine);
         // The same news again soon, or another agent just rang: the note says it, quietly.
         let now = Instant::now();
-        if let Some(kind) = crate::alert::Kind::for_status(status)
+        if opts.sounds
+            && let Some(kind) = crate::alert::Kind::for_status(status)
             && crate::alert::should_alert(
                 &status,
                 self.alerted.get(&term).map(|(s, at)| (s, *at)),
@@ -269,7 +385,7 @@ impl App {
             self.last_alert = Some((kind, now));
             crate::alert::ring(&self.cfg.notify, kind);
         }
-        if self.focused() == Some(term) {
+        if self.focused() == Some(term) || !opts.notices {
             return;
         }
         let who = self.describe_term(term);
@@ -278,15 +394,24 @@ impl App {
         } else {
             "finished"
         };
-        self.notify(format!("{who} {what}"), false);
+        let told = format!("{who} {what}");
+        let told = if term.machine == MachineId::LOCAL {
+            told
+        } else {
+            remote_policy::tagged(self.machine_name(term.machine), &told)
+        };
+        self.notify(told, false);
         self.notice_term = Some(term);
     }
 
-    /// Note what changed between two states: agents that now need you or finished.
-    pub(super) fn remember_changes(&mut self, new: &crate::protocol::Snapshot) {
+    /// Note what changed on `machine` between two states: agents that now need you or finished.
+    /// Another machine's lines name it. A pane it had not listed before is not news, so the first
+    /// state after a connect says nothing.
+    pub(super) fn remember_changes(&mut self, machine: MachineId, new: &crate::protocol::Snapshot) {
         let mut events = Vec::new();
         for (id, t) in &new.terms {
-            let old = self.snap.terms.get(id);
+            let old = self.snap_of(machine).and_then(|snap| snap.terms.get(id));
+            let id = &ClientTerm::on(machine, *id);
             let name = if t.label.trim().is_empty() {
                 t.display_name()
             } else {
@@ -340,6 +465,11 @@ impl App {
             }
         }
         for (id, k, text) in events {
+            let text = if machine == MachineId::LOCAL {
+                text
+            } else {
+                remote_policy::tagged(self.machine_name(machine), &text)
+            };
             self.remember(Some(id), k, text);
         }
     }

@@ -89,7 +89,7 @@ impl Daemon {
             return None;
         }
         match self.dispatch_session_save(barrier) {
-            Ok(task) => Some(task),
+            Ok(task) => task,
             Err(e) => {
                 tracing::warn!("saving session: {e:#}");
                 None
@@ -106,23 +106,31 @@ impl Daemon {
         Ok(())
     }
 
+    /// Write the session file off the loop. None when the file already holds this session and
+    /// no write is on its way (one in flight may land something newer than this): a barrier
+    /// still needs its own write acknowledged, nothing else does, and the periodic save would
+    /// otherwise fsync the same bytes every two seconds.
     fn dispatch_session_save(
         &mut self,
         barrier: Option<u64>,
-    ) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+    ) -> anyhow::Result<Option<tokio::task::JoinHandle<()>>> {
         anyhow::ensure!(
             self.session_path.is_absolute(),
             "session save requires an absolute file path"
         );
         let saved = self.saved();
         let text = serde_json::to_string(&saved)?;
+        if barrier.is_none() && text == self.last_saved && self.saves_in_flight == 0 {
+            return Ok(None);
+        }
         let ticket = persist::next_session_ticket()?;
+        self.saves_in_flight += 1;
         if let Some(token) = barrier {
             self.conversation_barriers.insert(token, ticket);
         }
         let path = self.session_path.clone();
         let tx = self.tx.clone();
-        Ok(tokio::task::spawn_blocking(move || {
+        Ok(Some(tokio::task::spawn_blocking(move || {
             let result =
                 persist::save_session_ticket(&path, ticket, &saved).map_err(|e| format!("{e:#}"));
             // The daemon may already be gone during shutdown; the committed file remains authoritative.
@@ -132,7 +140,7 @@ impl Daemon {
                 result,
                 barrier,
             });
-        }))
+        })))
     }
 
     #[cfg(test)]

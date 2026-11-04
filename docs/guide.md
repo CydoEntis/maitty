@@ -98,6 +98,7 @@ and your configured custom ones; rows click and the wheel scrolls.
   keyboard. Hover is a separate, quieter tint.
 - Collapsing the sidebar (leader, then `z`) leaves a narrow column
   down the side, each project as its first letter in its colour and each session as its mark and first letter: click a row to go to it, `»` (`«` with the sidebar on the right) or `…` to expand the sidebar again.
+- With a second machine, each machine's folders sit under a header of its own; see *Machines* below.
 - Nothing moves in the sidebar by itself: a session that needs you or finishes keeps its row (its mark and name say so, and the Inbox lists what needs you), and a session on another machine stays with the folder it was started from. Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
@@ -347,6 +348,8 @@ project's references (`maitty_references`, see *References* above) and ask you f
 they reach only their project or every session; `maitty grant <pane> read,write,…` changes
 one pane's rights.
 
+An agent can also reach another machine you have opened to agents; see *Agents on a machine* under *Machines*.
+
 ## From any shell
 
 ```sh
@@ -366,6 +369,229 @@ maitty worktree feature/login -- codex
 The worktree command creates or opens a separate checkout for the task. When an
 agent asks for input, its status turns red and it appears in the Inbox. Select it,
 answer, and return to your other work.
+
+## Machines
+
+maitty can show the agents of other computers next to yours. Each computer keeps running its own maitty;
+this window connects to it over `ssh` and shows its folders and sessions under a header of their own.
+Closing the window, or losing the connection, never stops anything over there.
+
+### Add a machine
+
+Leader `w` (or `Machines` in the command palette) lists the computers maitty reaches over ssh and
+adds more. Pick a host from your `~/.ssh/config` and press Enter: if ssh logs in on its own (a key, an
+agent, a known host) the machine is added and connecting in that one step. If ssh needs you (a password, a
+code, a host key you have not accepted) it opens in a popup, you answer, and the machine connects when the
+popup closes. You can also type `user@host`. Windows has no ssh agent to remember a password, so use keys or
+the agent there.
+
+Each machine in the dialog shows how it stands; when it is down the reason and what to do about it are written
+in full under it. `r` tries it again, `x` removes it from the list: the machine and its sessions keep running,
+and its saved layout is kept in case you add it back.
+
+The dialog writes the machine to `config.local.toml`, beside `config.toml`. That file belongs to this computer
+and is never synced; a `[[machines]]` entry in the synced `config.toml` is refused. You can write the entry
+yourself, and a change made by hand takes effect the next time maitty starts:
+
+```toml
+[[machines]]
+name = "build"                      # how you address it: --on build, build/4
+target = "me@10.0.0.2"              # a host, user@host or a Host alias from ~/.ssh/config
+ssh_args = ["-p", "2222"]           # optional: extra ssh arguments, one per entry
+remote_cmd = "~/.local/bin/maitty"  # optional: where maitty is on that machine (default: maitty)
+```
+
+Four more keys decide what a machine may do, all `false` until you turn them on. `clipboard` lets its panes
+write your clipboard, `notices` lets it raise notices (which include bringing this window to the front) and
+`sounds` lets it play sounds; what it raises starts with `[build]`. `mcp` opens it to agents (see *Agents on a
+machine*). `config.example.toml` lists every key.
+
+Adding a machine starts maitty there if it is not running, so you can create the first session from this
+computer. If the connection drops later, maitty only reconnects to a maitty that is still running there; it
+never starts one you stopped. Press retry on the machine to start it there again. If maitty is not
+installed there, see *Install or update maitty on a machine*.
+
+### What you see
+
+With a second machine, each machine's folders sit under a header: `this computer`, then `⇄ build` with how its
+connection is at the right. A session on another machine stays with the folder it was started from, its status
+is the one its own maitty reports, and what its agents need shows in the Inbox with `· on build`.
+
+| Shown | What it means, and what to do |
+| --- | --- |
+| `connecting` | The first try this run. |
+| `connected` | The line is up. |
+| `reconnecting #2` | A line that was up dropped. maitty tries again at once, then after 250 ms, doubling up to 30 s; three tries in a row without an answer make it `unreachable`. |
+| `needs login` | ssh cannot log in without asking you. Make plain `ssh` to that machine work in a terminal (load your key, accept its host key), then press `r`. |
+| `needs update` | The machine runs another version of maitty, or has none on its PATH. Run `maitty machine update <name>` (add `--install` when there is none, or set `remote_cmd` to its path), then press `r`. |
+| `unreachable` | No answer, or maitty is not running there. The reason is written under it (ssh's last line, or "maitty is not running on that machine; retry to start it there"); maitty keeps trying in the background. |
+| `refused` | A different computer now answers at that name. If you replaced the machine, remove it and add it again; otherwise check the host name and DNS. |
+
+When a machine drops, its sessions stay in the sidebar, greyed, with `disconnected since 2m ago` and what to do
+about it. They come back by themselves when the line does, each pane showing its screen again. Its needs-you
+and failed marks leave the title's counts and the Inbox while it is down. Typing sent to a machine while it
+was down is dropped, never queued (replaying keystrokes into a pane that moved on could run commands you no
+longer meant); when the machine is back, maitty says how much was not sent.
+
+### The command line on another machine
+
+The commands you script with work on a machine you added: `--on <machine>` runs one there, and a pane
+there is written `machine/id`.
+
+```sh
+maitty ls --on build                     # build's workspaces; its panes are listed as build/4
+maitty send --pane build/4 "run the tests"
+maitty read build/4
+maitty wait --pane build/4 --regex "tests passed"
+maitty split --pane build/4 -- htop
+maitty new --on build ~/code/api -- claude
+maitty ls --all                          # this computer and every machine; one that is down is named on stderr
+```
+
+`--on` may come before or after the command, `local` means this computer, and `machine/id` works
+wherever a pane does (`read`, `focus`, `grant`, `handoff`, `--pane`). It works with `ls`, `read`,
+`send`, `wait`, `split`, `handoff`, `new`, `focus`, `close`, `grant`, `teach`, `popup` and
+`kill-server`. A name that is not `local` or a machine you added is refused, and the error lists the names
+that work.
+
+The pane a command runs in is on this computer, so on another machine you always say which pane:
+`maitty send --on build "hi"` is refused until you add `--pane build/4`. The other machine is never
+told which pane here you are in. What a machine prints is cleaned before it reaches your terminal;
+`read --raw` prints a machine's screen exactly as it sent it. If a machine cannot be reached the error
+is one line with the fix (log in with plain `ssh`, `maitty machine update <name>` to install or update maitty there, retry the machine to start maitty there).
+`kill-server --on build` stops every session on that machine, so it needs `--yes`. `--remote host`
+still works as before, and cannot be combined with `--on`.
+
+### What a machine needs
+
+A machine you add only needs the `maitty` program. There is no desktop app on it and nothing to build.
+
+- **The program.** The same `maitty` you run here, for Linux or macOS (x86_64 or aarch64). The Linux downloads
+  are static, so they run on any Linux. Installing it puts one file at `~/.local/bin/maitty` for your user.
+  `maitty machine update <name> --install` does this over ssh for you, so you do not need to log in and
+  install it by hand. A Windows machine cannot be the remote yet.
+- **A way in.** ssh must get in without asking you anything: a key (or your ssh agent) for that user. Run plain
+  `ssh <target>` once first, so its host key is known and you can see that it works.
+- **maitty on the PATH ssh uses.** A program in `~/.local/bin` is on the PATH of most logins. If ssh cannot find
+  it, set `remote_cmd` on the machine to its full path.
+- **The same version.** This computer, the machine and any desktop app must speak the same protocol. A machine
+  on another version shows `needs update`; run `maitty machine update <name>`.
+
+Nothing else needs installing. Agents such as Claude Code or Codex run there as they do anywhere, so install
+the ones you want to use on that machine yourself.
+
+`maitty doctor` checks the way in, the program, its version and the protocol for every machine you added (see "Check a machine with doctor" below).
+
+### Install or update maitty on a machine
+
+`maitty machine update <name>` installs or updates maitty on a machine you added, over ssh. It looks first,
+says what it found, and changes nothing without a yes.
+
+```sh
+maitty machine update build --install   # not installed there yet: install this version
+maitty machine update build --yes       # an older version there: replace it
+maitty machine update build             # asks, when you are at a keyboard
+maitty machine update build --force     # a newer version there: put this one on instead (a downgrade)
+```
+
+```
+probing build…
+build: linux x86_64, maitty 0.58.0 (this is 0.60.0)
+sending 14.2 MB (sha256 3f2a9c1b7d04)…
+verified: it arrived whole and runs there
+installed to ~/.local/bin/maitty
+asking the daemon on build to restart if no session is open…
+daemon: left running: 3 open session(s); it keeps them
+build: maitty 0.60.0 installed to ~/.local/bin/maitty
+```
+
+- **Never silent.** A machine with no maitty needs `--install` (or a `y` at the question); an older one needs
+  `--yes` (or a `y`). With neither and no keyboard the command stops and says which flag to pass. A machine
+  that already has this version is left alone; a newer one is not downgraded without `--force`.
+- **The binary.** If the machine has the same system and CPU as this computer, this computer's own maitty is
+  sent. Otherwise the matching release is fetched here (this version's, else the latest, said aloud), checked
+  against the release's `sha256sums.txt`, unpacked, and then sent: the machine never needs GitHub. A bad or
+  missing checksum stops before anything is sent.
+- **It goes in whole or not at all.** The file is written beside its destination, its size is checked, it is
+  run with `--version`, and only then renamed over the old one. Any failed step leaves the old maitty as it
+  was and says so ("the old version is unchanged", or "nothing was installed" on a first install).
+- **Where.** At the machine's `remote_cmd` when that is an absolute path or starts with `~/`; otherwise at
+  `~/.local/bin/maitty`. If `maitty` is not found on that machine's PATH afterwards, the command says to set
+  `remote_cmd = "~/.local/bin/maitty"` for it in `config.local.toml` (it does not edit your config).
+- **Running sessions survive.** Nothing is killed. The old daemon keeps running on the old file. The new
+  maitty then restarts it only when it has no session open; otherwise it says it left it running, and the
+  daemon takes the new version the next time it restarts (when its sessions are closed).
+- **Not supported: a Windows machine as the remote.** In v1 Windows is never the remote; the command says so
+  and exits. Linux and macOS (x86_64 and aarch64) are supported.
+
+Exit status: 0 done or already up to date, 2 a mistake in how it was asked (an unknown machine, a flag
+missing), 1 a step that did not work.
+
+### Agents on a machine
+
+An agent can reach a machine from your `[[machines]]` list through the same MCP tools it uses here
+(see *Agents that steer agents (MCP)* above), but only a machine you opened to agents with `mcp = true` in
+its entry. `maitty_list`, `maitty_read`, `maitty_send`,
+`maitty_wait` and `maitty_start` take an optional `machine`; a session on another machine is
+listed, and passed back to any tool, as `machine/id` (`build/4`), and `machine = "all"` lists this
+computer and every open machine, with one that is down reported inline. The agent's own pane
+needs the `read` grant to list, read or wait on another machine and `write` to send to it, as it
+does here. Every reply from another machine starts with `[machine: build]`, so the agent can tell
+whose words follow, and is cleaned of control characters and cut at 32,768 characters. Answering
+a prompt, interrupting, and starting agents or worktrees are local-only: they return
+`unsupported_for_remote`. A machine that is not opened returns `machine_not_enabled` and is never
+contacted.
+
+### Custom transports
+
+A machine can be reached through a program of your own instead of ssh, for example `fly ssh console`.
+In `config.local.toml` (never the synced file: it is a program this computer runs):
+
+```toml
+[[machines]]
+name = "fly"
+target = "my-app"
+via = ["fly", "ssh", "console", "-C", "{command}"]
+```
+
+`via` is the program and its arguments, one entry each, not a shell line. `{command}` is replaced by what
+must run on the far side (`'maitty' proxy --attach-only`); leave it out and the command is added as the last
+argument. The program must pass stdin and stdout through unchanged and must not ask questions or use a
+terminal. Text it prints before maitty starts is skipped, as for ssh. It does not work on Windows, and
+`ssh_args` cannot be set beside it. `maitty machine update` will not install over it: install maitty on that
+machine yourself. `maitty doctor` names the program (never its arguments) and checks the protocol.
+
+### Check a machine with doctor
+
+With machines configured, `maitty doctor` ends with a section for each, checked all at once, one line a
+check:
+
+```
+ machine build
+ ✓ reachable              ssh logs in without a prompt
+ ✓ maitty version         0.60.0 (same as this computer)
+ ✓ protocol               protocol 69, the same as this computer
+ ✓ login PATH             maitty found at /home/me/.local/bin/maitty
+ ✓ ssh options            BatchMode=yes ForwardAgent=no -a -T ConnectTimeout=15 ServerAlive=15x3 + your ssh_args: -p 2222
+```
+
+A machine ssh cannot log in to gets one ✕ line with the fix, then `skipped: not reachable` and the ssh options.
+A version that differs says `maitty machine update <name>`; a daemon on another protocol says the same. The
+login PATH line shows where the machine's login shell finds maitty (the program, never the whole PATH) and
+notes when your `remote_cmd` is something else. Each machine has about 30 seconds in all, so one that never
+answers does not hold up the rest. The section is not printed when there are no machines.
+
+### Limits
+
+- The machine you reach must run Linux or macOS (x86_64 or aarch64). A Windows machine as the remote is not
+  supported. A Windows computer can reach those machines, but it has no ssh agent to remember a password, so use
+  keys or an agent there.
+- Files, Changes, Find, Branches, References, pasting an image, connecting an agent and worktrees read this
+  computer's disk, so for a pane on another machine they do nothing but say so: "Files is local-only in v1: the
+  files are on build, not on this computer."
+- `maitty --remote host` still works as before: one ad-hoc machine named after the host, not in your list. Unlike
+  a machine you added, it starts the daemon there when none is running, and it keeps its own worktrees.
+- The desktop app has no machines; this is the terminal app's.
 
 ## Never leave maitty
 

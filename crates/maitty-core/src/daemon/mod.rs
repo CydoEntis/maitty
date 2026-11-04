@@ -14,6 +14,7 @@ mod contain;
 mod conversation;
 mod git;
 mod helpers;
+mod identity;
 mod pane_terminal;
 mod persist;
 mod pr;
@@ -53,6 +54,8 @@ const INTEGRATION_STARTUP_GRACE: Duration = Duration::from_secs(3);
 const GIT_POLL_EVERY: Duration = Duration::from_secs(3);
 /// How often a changed session is saved to disk.
 const SAVE_EVERY: Duration = Duration::from_secs(2);
+/// How often panes' processes are read while no client is attached.
+const IDLE_SCAN_EVERY: Duration = Duration::from_secs(5);
 /// How often panes' new output is saved to disk (what's lost if the server is killed).
 const OUTPUT_SAVE_EVERY: Duration = Duration::from_secs(30);
 /// A pane's CPU share is passed on when it has moved this many points.
@@ -81,7 +84,9 @@ pub(crate) enum ConversationFileResponse {
 
 #[allow(clippy::large_enum_variant)]
 pub enum Ev {
-    Connected(ClientId, mpsc::Sender<ServerMsg>, bool, Surface),
+    /// A client said Hello: whether it attaches, its surface, and whether it wants every
+    /// pane's replay up front.
+    Connected(ClientId, mpsc::Sender<ServerMsg>, bool, Surface, bool),
     StructuredConnected {
         id: ClientId,
         tx: mpsc::Sender<ServerMsg>,
@@ -255,6 +260,28 @@ enum AutoUndo {
     },
 }
 
+/// The last state a surface's clients were sent, as encoded bytes: the snapshot without its
+/// panes, and each pane on its own.
+struct SentState {
+    rest: bytes::Bytes,
+    terms: BTreeMap<TermId, bytes::Bytes>,
+}
+
+impl SentState {
+    /// None when a part would not encode; the caller then sends the whole snapshot.
+    fn encode(snap: &Snapshot) -> Option<Self> {
+        let mut rest = snap.clone();
+        rest.terms.clear();
+        let rest = crate::protocol::encode(&rest).ok()?;
+        let terms = snap
+            .terms
+            .iter()
+            .map(|(id, term)| crate::protocol::encode(term).ok().map(|bytes| (*id, bytes)))
+            .collect::<Option<BTreeMap<_, _>>>()?;
+        Some(Self { rest, terms })
+    }
+}
+
 struct Client {
     tx: mpsc::Sender<ServerMsg>,
     attach: bool,
@@ -309,6 +336,8 @@ struct Daemon {
     last_save: Instant,
     last_output_save: Instant,
     last_saved: String,
+    /// What each surface's attached clients last received (see `publish_state`).
+    sent_state: HashMap<Surface, SentState>,
     /// What was last noted for whoever replaces this server (see `restart`).
     last_activity: Option<crate::restart::Activity>,
     /// Where check output tails are kept.
@@ -319,6 +348,8 @@ struct Daemon {
     /// file counts only after a restart.
     approvals: approvals::Approvals,
     approvals_file: PathBuf,
+    /// Who this daemon is to a window; see `identity`.
+    id: String,
     /// The projects where you said sessions may always start helpers, read once at start.
     helper_projects: helpers::Projects,
     helper_projects_file: PathBuf,
@@ -340,6 +371,8 @@ struct Daemon {
     conversation_cache_writes: BTreeMap<crate::conversation::ConversationId, u64>,
     session_path: PathBuf,
     session_saved_ticket: u64,
+    /// Session writes dispatched and not yet reported back (see `dispatch_session_save`).
+    saves_in_flight: u32,
     conversation_runtimes: conversation::Registry,
     conversation_history: conversation::history::Attachments,
     /// Plan limits by agent, as last reported.
@@ -418,6 +451,7 @@ pub fn run(on_start: impl FnOnce()) -> Result<()> {
             tokio::task::spawn_blocking(move || drop_spare_dir(&p));
             save_spare(None);
         }
+        crate::login_path::resolve_at_start().await;
         let (cfg, err) = Config::load_or_default();
         if let Some(e) = err {
             tracing::warn!("config: {e}");
@@ -468,14 +502,17 @@ async fn serve(
     ev: mpsc::Sender<Ev>,
 ) {
     let (mut r, mut w) = ipc::framed(stream);
-    let (attach, from, structured, surface) = match ipc::recv_client(&mut r).await {
+    let (attach, from, structured, surface, replays) = match ipc::recv_client(&mut r).await {
         Ok(Some(ClientMsg::Hello {
             attach,
             from,
             structured,
             surface,
+            replays,
             ..
-        })) if from.is_none() || structured.is_none() => (attach, from, structured, surface),
+        })) if from.is_none() || structured.is_none() => {
+            (attach, from, structured, surface, replays)
+        }
         _ => return,
     };
     if ipc::send(
@@ -497,7 +534,7 @@ async fn serve(
             attach,
             claim,
         },
-        None => Ev::Connected(id, tx, attach, surface),
+        None => Ev::Connected(id, tx, attach, surface, replays),
     };
     if ev.send(connected).await.is_err() {
         return;
@@ -930,11 +967,17 @@ impl Daemon {
             last_save: Instant::now(),
             last_output_save: Instant::now(),
             last_saved: String::new(),
+            sent_state: HashMap::new(),
             last_activity: None,
             check_dir: persist::check_output_dir(),
             resolver: check_source::resolve,
             approvals: approvals::Approvals::default(),
             approvals_file: approvals::path(),
+            id: if cfg!(test) {
+                identity::generate()
+            } else {
+                identity::load_or_create(&identity::path())
+            },
             helper_projects: helpers::Projects::default(),
             helper_projects_file: helpers::path(),
             made_worktrees: Vec::new(),
@@ -956,6 +999,7 @@ impl Daemon {
                 persist::path()
             },
             session_saved_ticket: 0,
+            saves_in_flight: 0,
             conversation_runtimes: conversation::Registry::default(),
             conversation_history: conversation::history::Attachments::default(),
             limits: BTreeMap::new(),
@@ -987,6 +1031,7 @@ impl Daemon {
                     }
                 }
                 _ = tick.tick() => {
+                    self.sync_scan_interval();
                     self.update_statuses();
                     self.settled_alerts();
                     self.phone_alerts();
@@ -1015,11 +1060,13 @@ impl Daemon {
                 self.dirty = false;
                 self.sync_scan_roots();
                 for surface in [Surface::Terminal, Surface::Desktop] {
+                    // A snapshot is built only for a surface with someone attached to read it.
+                    let attached = |client: &Client| client.attach && client.surface == surface;
+                    if !self.clients.values().any(attached) {
+                        continue;
+                    }
                     let snap = self.snapshot_for(surface);
-                    self.broadcast(
-                        |client| client.attach && client.surface == surface,
-                        ServerMsg::State(snap),
-                    );
+                    self.publish_state(surface, snap);
                 }
             }
             if self.should_exit() {
@@ -1089,6 +1136,41 @@ impl Daemon {
         // Exit once the last pane is closed and no window is left, or if nobody ever started one.
         self.had_terms
             || (self.clients.is_empty() && self.empty_since.elapsed() > EXIT_WHEN_UNUSED_FOR)
+    }
+
+    /// Send the surface's clients what changed since the last state they got: only the panes
+    /// that differ when the rest of the snapshot is the same, the whole snapshot otherwise, and
+    /// nothing when nothing visible changed. Compared as encoded bytes, so no field is left out.
+    fn publish_state(&mut self, surface: Surface, snap: Snapshot) {
+        let attached = |client: &Client| client.attach && client.surface == surface;
+        let Some(encoded) = SentState::encode(&snap) else {
+            self.sent_state.remove(&surface);
+            self.broadcast(attached, ServerMsg::State(snap));
+            return;
+        };
+        let message = match self.sent_state.get(&surface) {
+            Some(previous) if previous.rest == encoded.rest => {
+                let changed: Vec<TermInfo> = snap
+                    .terms
+                    .iter()
+                    .filter(|(id, _)| previous.terms.get(id) != encoded.terms.get(id))
+                    .map(|(_, term)| term.clone())
+                    .collect();
+                let removed: Vec<TermId> = previous
+                    .terms
+                    .keys()
+                    .filter(|id| !encoded.terms.contains_key(id))
+                    .copied()
+                    .collect();
+                (!changed.is_empty() || !removed.is_empty())
+                    .then_some(ServerMsg::TermsChanged { changed, removed })
+            }
+            _ => Some(ServerMsg::State(snap)),
+        };
+        self.sent_state.insert(surface, encoded);
+        if let Some(message) = message {
+            self.broadcast(attached, message);
+        }
     }
 
     fn broadcast(&self, filter: impl Fn(&Client) -> bool, msg: ServerMsg) {
@@ -1201,7 +1283,7 @@ impl Daemon {
     fn handle(&mut self, ev: Ev) {
         self.drop_lagging_clients();
         match ev {
-            Ev::Connected(id, tx, attach, surface) => {
+            Ev::Connected(id, tx, attach, surface, replays) => {
                 let c = Client {
                     tx,
                     attach,
@@ -1213,13 +1295,18 @@ impl Daemon {
                 };
                 if attach {
                     c.push(ServerMsg::State(self.snapshot_for(surface)));
-                    for t in self.terms.values().filter(|t| self.shown_to(t.id, surface)) {
-                        c.push(ServerMsg::Replay {
-                            term: t.id,
-                            cols: t.cols,
-                            rows: t.rows,
-                            data: t.replay(),
-                        });
+                    // The next change goes out in full: a delta against what the others saw
+                    // could skip something this client's snapshot has not got.
+                    self.sent_state.remove(&surface);
+                    if replays {
+                        for t in self.terms.values().filter(|t| self.shown_to(t.id, surface)) {
+                            c.push(ServerMsg::Replay {
+                                term: t.id,
+                                cols: t.cols,
+                                rows: t.rows,
+                                data: t.replay_for(surface),
+                            });
+                        }
                     }
                 }
                 self.clients.insert(id, c);
@@ -1275,6 +1362,7 @@ impl Daemon {
                         return;
                     }
                     self.send(id, ServerMsg::State(self.snapshot_for(Surface::Terminal)));
+                    self.sent_state.remove(&Surface::Terminal);
                     for term in self
                         .terms
                         .values()
@@ -1333,6 +1421,7 @@ impl Daemon {
                 result,
                 barrier,
             } => {
+                self.saves_in_flight = self.saves_in_flight.saturating_sub(1);
                 if matches!(result, Ok(persist::SessionCommit::Committed))
                     && ticket >= self.session_saved_ticket
                 {
@@ -1447,12 +1536,15 @@ impl Daemon {
                     let Some(t) = self.terms.get_mut(&f.term) else {
                         continue;
                     };
-                    // Redraw for memory only when it moved by a few MB.
+                    // The scan runs every second, and a snapshot for the clock alone would have
+                    // every client rebuild its view twice a second with nothing else changed. The
+                    // why popover shows the age in minutes, so a new minute is worth a snapshot.
                     let observed_at = term::unix_now();
-                    if t.last_process != observed_at {
-                        t.last_process = observed_at;
+                    if t.last_process / 60 != observed_at / 60 {
                         self.dirty = true;
                     }
+                    t.last_process = observed_at;
+                    // Redraw for memory only when it moved by a few MB.
                     if t.mem.abs_diff(f.mem) > 4 << 20 {
                         t.mem = f.mem;
                         self.dirty = true;
@@ -1951,6 +2043,29 @@ impl Daemon {
         }
         match msg {
             ClientMsg::Hello { .. } => {}
+            ClientMsg::WantReplay { term } => {
+                let Some(surface) = self
+                    .clients
+                    .get(&client)
+                    .filter(|c| c.attach)
+                    .map(|c| c.surface)
+                else {
+                    return;
+                };
+                if let Err(error) = self.may(client, Grant::Read, Some(term)) {
+                    self.send(client, ServerMsg::Error(error.to_string()));
+                    return;
+                }
+                if let Some(t) = self.terms.get(&term).filter(|t| t.owner == surface) {
+                    let replay = ServerMsg::Replay {
+                        term,
+                        cols: t.cols,
+                        rows: t.rows,
+                        data: t.replay_for(surface),
+                    };
+                    self.send(client, replay);
+                }
+            }
             ClientMsg::Input { term, data } => {
                 // Typing into another pane needs write; into one that's asking, respond.
                 let asking = self
@@ -2501,6 +2616,7 @@ impl Daemon {
         Snapshot {
             conversations: self.conversation_summaries(),
             daemon_version: env!("APP_VERSION").into(),
+            daemon_id: Some(self.id.clone()),
             workspaces: self.workspaces.clone(),
             active_ws: self.active_ws,
             terms,
@@ -2514,6 +2630,18 @@ impl Daemon {
             spent_today: self.spent_today(),
             today: usage::today(&self.turns, &self.spent, term::unix_now()),
         }
+    }
+
+    /// With nobody attached, the process scan slows down: no one reads its evidence live, and
+    /// a notification a few seconds later is the only thing that depends on it.
+    fn sync_scan_interval(&self) {
+        let every = Duration::from_millis(self.cfg.detection.scan_interval_ms);
+        let wanted = if self.has_viewer() {
+            every
+        } else {
+            every.max(IDLE_SCAN_EVERY)
+        };
+        self.scan.lock().unwrap().interval = wanted;
     }
 
     fn sync_scan_roots(&self) {
