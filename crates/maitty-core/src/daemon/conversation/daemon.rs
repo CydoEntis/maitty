@@ -421,6 +421,14 @@ impl Daemon {
                                 .get(&(turn_id.clone(), item_id.clone()))
                         })
                         .cloned()
+                        // Claude states an edit's diff in the request itself; Codex sends it
+                        // earlier, as a patch update.
+                        .or_else(|| {
+                            params
+                                .get("changes")
+                                .and_then(serde_json::Value::as_array)
+                                .and_then(|changes| file_change_previews(changes))
+                        })
                         .unwrap_or_default();
                     let choices = match kind {
                         crate::conversation::ApprovalRequestKind::FileChange
@@ -600,6 +608,7 @@ impl Daemon {
                 if let Ok(Some(super::history::Update::SetTurnStatus {
                     turn,
                     state: turn_state,
+                    ..
                 })) = &update
                 {
                     let cancelled_turn = cancellation_finished

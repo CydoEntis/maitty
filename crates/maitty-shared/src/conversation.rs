@@ -85,8 +85,21 @@ pub struct ReadResult {
     pub error: Option<String>,
     pub checks: Vec<crate::protocol::CheckInfo>,
     pub approvals: Vec<ApprovalRequest>,
+    /// The most recent approvals a person already answered, oldest first, so the answer
+    /// survives a restart of the viewing app.
+    #[serde(default)]
+    pub answered_approvals: Vec<AnsweredApproval>,
     #[serde(default)]
     pub cancelling: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnsweredApproval {
+    pub request: ApprovalRequest,
+    pub decision: ApprovalDecision,
+    /// Unix milliseconds when the daemon relayed the answer to the provider.
+    #[serde(default)]
+    pub answered_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -428,6 +441,22 @@ pub mod tests {
             .remove("awaiting_first_user_message");
         let legacy: Conversation = serde_json::from_value(legacy).unwrap();
         assert!(!legacy.awaiting_first_user_message);
+    }
+
+    #[test]
+    fn a_read_from_before_answered_approvals_still_decodes() {
+        let read: ReadResult = serde_json::from_value(serde_json::json!({
+            "conversation": 1,
+            "generation": 2,
+            "status": "Working",
+            "receipt": null,
+            "history": { "entries": [], "next": null, "completeness": "Complete" },
+            "error": null,
+            "checks": [],
+            "approvals": []
+        }))
+        .unwrap();
+        assert!(read.answered_approvals.is_empty());
     }
 
     #[test]

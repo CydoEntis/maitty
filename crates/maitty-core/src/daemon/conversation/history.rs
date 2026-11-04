@@ -10,7 +10,12 @@ pub(in crate::daemon) enum Update {
     ProviderError { message: String, will_retry: bool },
     UpsertItem(Entry),
     AppendDelta { source: SourceId, delta: String },
-    SetTurnStatus { turn: String, state: ItemState },
+    SetTurnStatus {
+        turn: String,
+        state: ItemState,
+        started_at_ms: Option<u64>,
+        completed_at_ms: Option<u64>,
+    },
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(in crate::daemon) struct History {
@@ -38,7 +43,12 @@ impl History {
             Update::ProviderError { .. } => false,
             Update::UpsertItem(entry) => self.upsert(entry),
             Update::AppendDelta { source, delta } => self.append_delta(source, &delta),
-            Update::SetTurnStatus { turn, state } => {
+            Update::SetTurnStatus {
+                turn,
+                state,
+                started_at_ms,
+                completed_at_ms,
+            } => {
                 let mut changed = self.upsert(Entry {
                     source: SourceId {
                         conversation: self.conversation,
@@ -47,6 +57,8 @@ impl History {
                     },
                     content: Content::TurnStatus,
                     state: state.clone(),
+                    started_at_ms,
+                    completed_at_ms,
                 });
                 if matches!(state, ItemState::Failed | ItemState::Interrupted) {
                     for entry in &mut self.entries {
@@ -68,7 +80,7 @@ impl History {
         }
         Ok(())
     }
-    fn upsert(&mut self, entry: Entry) -> bool {
+    fn upsert(&mut self, mut entry: Entry) -> bool {
         if entry.source.conversation != self.conversation {
             return false;
         }
@@ -97,6 +109,8 @@ impl History {
             .iter_mut()
             .find(|old| old.source == entry.source)
         {
+            // A completion event carries no start time; the row keeps the one its start event set.
+            entry.started_at_ms = entry.started_at_ms.or(old.started_at_ms);
             if *old == entry {
                 return incomplete;
             }
@@ -124,6 +138,8 @@ impl History {
                     text: String::new(),
                 },
                 state: ItemState::Running,
+                started_at_ms: None,
+                completed_at_ms: None,
             });
         }
         if let Some(Entry {
