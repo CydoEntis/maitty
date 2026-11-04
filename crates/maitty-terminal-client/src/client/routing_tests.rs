@@ -10,13 +10,12 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 const THERE: MachineId = MachineId(1);
 
-const ALL: [Feature; 8] = [
+const ALL: [Feature; 7] = [
     Feature::Files,
     Feature::Changes,
     Feature::Find,
     Feature::Branches,
     Feature::References,
-    Feature::PasteImage,
     Feature::AgentStatus,
     Feature::Worktrees,
 ];
@@ -291,7 +290,6 @@ fn every_gated_action_is_refused_on_a_remote_pane_and_none_opens_anything() {
         Action::Find(0),
         Action::Branches,
         Action::References,
-        Action::PasteImage,
         Action::AgentStatusSetup,
         Action::NewWorktree(None),
         Action::RemoveWorktree,
@@ -320,6 +318,44 @@ fn every_gated_action_is_refused_on_a_remote_pane_and_none_opens_anything() {
             sent(&mut rx)
         );
     }
+}
+
+#[test]
+fn pasting_an_image_into_a_remote_pane_is_sent_to_that_machine_and_not_refused() {
+    let (mut app, mut rx) = two_machines();
+    app.cfg.machines.push(maitty_settings::config::MachineDef {
+        name: "build".into(),
+        target: "build".into(),
+        ..Default::default()
+    });
+    focus(&app, THERE);
+    sent(&mut rx);
+    app.notice = None;
+    app.act(Action::PasteImage);
+    let (text, _, error) = app.notice.clone().expect("a toast");
+    assert!(!error, "{text}");
+    assert_eq!(text, "sending the clipboard image to build…");
+    assert!(
+        !text.contains("local-only"),
+        "an image can be sent to another machine"
+    );
+    assert!(
+        sent(&mut rx).is_empty(),
+        "nothing goes to a daemon: the image goes over ssh"
+    );
+}
+
+#[test]
+fn a_remote_pane_whose_machine_is_not_configured_cannot_be_sent_an_image() {
+    let (mut app, mut rx) = two_machines();
+    focus(&app, THERE);
+    sent(&mut rx);
+    app.notice = None;
+    app.act(Action::PasteImage);
+    let (text, _, error) = app.notice.clone().expect("a toast");
+    assert!(error, "{text}");
+    assert_eq!(text, "build is not one of this computer's machines");
+    assert!(sent(&mut rx).is_empty());
 }
 
 /// A folder on this computer that git would read as a repo.
