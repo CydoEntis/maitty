@@ -72,3 +72,14 @@ describe('themes', () => {
     expect(palette.brightBlack).toBe('#75808B')
   })
 })
+
+describe('terminal palette', () => {
+  it('selects with an opaque tint of the accent and keeps the text readable', () => {
+    for (const theme of THEMES) {
+      const palette = xtermTheme(theme.tokens)
+      const selection = parseColor(palette.selectionBackground ?? '')
+      expect(selection.a).toBe(1)
+      expect(contrastRatio(palette.selectionForeground ?? '', palette.selectionBackground ?? ''), theme.name).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
+    }
+  })
+})

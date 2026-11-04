@@ -201,19 +201,39 @@ export function themeStyle(theme: ThemeEntry): Record<string, string> {
   return style
 }
 
-const SELECTION_ALPHA = 30
+/** The selection starts as this much accent over the ground and fades until the text stays readable. */
+const SELECTION_ALPHA = 25
+const SELECTION_ALPHA_STEP = 5
+const SELECTION_ALPHA_MIN = 10
+
+/**
+ * Opaque on purpose: xterm's WebGL renderer draws the selection without its alpha, so a
+ * translucent accent became a solid block with the text lost on it. The text keeps the theme's
+ * foreground where it passes, else the ground colour, and the tint fades until one of them does.
+ */
+function selectionColors(tokens: ThemeTokens): { background: string; foreground: string } {
+  let alpha = SELECTION_ALPHA
+  for (;;) {
+    const background = composite(withAlpha(tokens.accent, alpha), tokens.term)
+    const foreground = contrastRatio(tokens.fg, background) >= contrastRatio(tokens.term, background) ? tokens.fg : tokens.term
+    if (contrastRatio(foreground, background) >= MIN_TEXT_CONTRAST || alpha <= SELECTION_ALPHA_MIN) return { background, foreground }
+    alpha -= SELECTION_ALPHA_STEP
+  }
+}
 
 /**
  * xterm's palette from the same tokens, so a pane's ANSI colours follow the theme. The background
  * is the terminal ground; the pane makes it see-through when its renderer can afford that.
  */
 export function xtermTheme(tokens: ThemeTokens): ITheme {
+  const selection = selectionColors(tokens)
   return {
     background: tokens.term,
     foreground: tokens.fg2,
     cursor: tokens.accent,
     cursorAccent: tokens.term,
-    selectionBackground: withAlpha(tokens.accent, SELECTION_ALPHA),
+    selectionBackground: selection.background,
+    selectionForeground: selection.foreground,
     // The ground, not the well: programs paint with ANSI black expecting it to vanish into the
     // background, as Claude Code does under its prompt and status line.
     black: tokens.term,
