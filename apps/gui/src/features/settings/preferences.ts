@@ -86,6 +86,10 @@ export type SettingsPreferences = {
   perfOverlay: boolean
   /** The card shows behind a pane's text (Glass with WebGL); programs' own backgrounds show as boxes. */
   terminalSeeThrough: boolean
+  /** Glass paints two faint tints of the theme over the window ground. Off is a flat ground; the software path is always flat. */
+  backgroundGlow: boolean
+  /** The terminal cursor blinks while its pane is focused. xterm drives it, so it is off by default. */
+  cursorBlink: boolean
   /** Fetch a new release in the background. Installing still waits for a restart. */
   autoDownloadUpdates: boolean
   /** Restart into a downloaded update when no session is working or waiting on you. */
@@ -153,6 +157,8 @@ function defaults(): SettingsPreferences {
     statusBar: true,
     perfOverlay: false,
     terminalSeeThrough: false,
+    backgroundGlow: false,
+    cursorBlink: false,
     autoDownloadUpdates: true,
     restartWhenIdle: false,
     projectColors: {},
@@ -219,6 +225,8 @@ export function readSettingsPreferences(): SettingsPreferences {
       statusBar: bool(preferences.statusBar, fallback.statusBar),
       perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),
       terminalSeeThrough: bool(preferences.terminalSeeThrough, fallback.terminalSeeThrough),
+      backgroundGlow: bool(preferences.backgroundGlow, fallback.backgroundGlow),
+      cursorBlink: bool(preferences.cursorBlink, fallback.cursorBlink),
       autoDownloadUpdates: bool(preferences.autoDownloadUpdates, fallback.autoDownloadUpdates),
       restartWhenIdle: bool(preferences.restartWhenIdle, fallback.restartWhenIdle),
       iconColor: preferences.iconColor === 'color' || preferences.iconColor === 'grayscale' ? preferences.iconColor : fallback.iconColor,

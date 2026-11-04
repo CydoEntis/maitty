@@ -194,29 +194,34 @@ The desktop app is a terminal multiplexer window ([ADR 0046](adr/0046-desktop-ap
 no chat, every session a shell that maittyd owns. The design handoff (v10, terminal-first) is the
 reference for exact sizes, shadows and timings; `workspace.css` carries them.
 
-- **Floating cards on an ambient ground.** The window is `--bg` under two soft radial glows (an
-  accent one top left, a violet one bottom right). The sidebar, the tab tray, each pane and
-  Settings are cards: a faint top highlight over `--pane`, a `--pane-line` hairline, radius 14
-  (Settings 16) and a soft drop shadow. 8px outer margin, 12px between panes. Only small popups and dialogs (menus,
-  popovers, the palette and Settings cards, notification cards) blur what is behind them (18px). The sidebar, panes,
-  tab tray and the big panels (Inbox, Inspect, Find) do not: only the soft ground is behind them, so a blur there
-  looks the same and costs a repaint on every frame. A pane's terminal sits on the theme's opaque `--term` ground, and ANSI
-  black is that ground, so a program that paints with it (Claude Code under its prompt and status line) leaves no
-  box. Settings › Appearance › See-through terminal lets the card show behind the text instead, only when xterm
-  draws with WebGL (the DOM renderer repaints rows, and each would blend through the card); such programs then show
-  as boxes on it. On such a web view (`data-gpu="software"` on the root) Glass also
-  gives up its resting shadows, the card gradient and the popup blur, and nothing else: the colours, radii,
-  layout, focus ring and status colours stay ([PERFORMANCE](PERFORMANCE.md)).
+- **Floating cards on a flat ground.** The window is the theme's `--bg`. The sidebar, the tab tray, each pane
+  and the big panels (Inbox, Inspect, Find) are cards: opaque `--card` (`--main`), a 1px `--pane-line` hairline,
+  radius 14 (Settings 16), 8px outer margin and 12px between panes. Dark themes add a 1px top highlight
+  (`--sh`, an inset line with no blur radius); light themes add nothing. Cards have no resting drop shadow and
+  no gradient, so a spinner ticking inside one repaints only its glyph. Only small, short-lived surfaces blur
+  what is behind them and cast a soft shadow: menus, popovers, the palette, Settings and other centred dialogs
+  with their scrims, and notification cards (`--blur-pop`, `--sh-pop`). The sidebar, panes, tab tray and
+  drawers never blur. **Background glow** (Settings › Appearance, `backgroundGlow`, set on the root as
+  `data-glow`) is off by default; on, the ground is `--bg` under two faint tints, one of the accent and one of the
+  magenta, painted once behind the opaque cards. A pane's terminal sits on the theme's opaque `--term`
+  ground, and ANSI black is that ground, so a program that paints with it (Claude Code under its prompt and status
+  line) leaves no box. Settings › Appearance › See-through terminal lets the card show behind the text instead, only
+  when xterm draws with WebGL (the DOM renderer repaints rows, and each would blend through the card); such programs
+  then show as boxes on it. On a web view without WebGL 2 (`data-gpu="software"` on the root) Glass uses the same
+  rules with cheaper token values: no blur, a 1px ring instead of the soft popover shadow, and always a flat
+  ground; the colours, radii, layout, focus ring and status colours stay ([PERFORMANCE](PERFORMANCE.md)). The
+  focused pane has one even `--accent-line` border all the way round, flashed once when focus arrives, and no
+  extra line on its header.
 - **Window style: Flat, Tiled or Glass** (Settings › Appearance › Window style, `style`, stored with the other
   preferences; the root carries `data-style` and `data-finish`). The finish and the layout only; features and
-  status colours do not change. The text above is **Glass**, the default for a fresh install: floating frosted cards, colour icons, glow and the status sweeps.
+  status colours do not change. The text above is **Glass**, the default for a fresh install: floating opaque cards, colour icons and the status sweeps.
   **Flat** makes the window `--bg` with no glow, cards flat `--main` with
   radius 8 (Settings 10), no blur or resting shadow, flat top-bar buttons and status pills (no gradient, lift or
   entrance), no outline on the selected row or open tab, and the session tray flush under its main row with no
   box. **Tiled** is Flat's finish pulled edge to edge: square corners, 4px gaps between panes and at the
   window's edge, the sidebar flush with a hairline, and a 40px tab bar that is a flush strip (tabs, **+**,
   Repository and Inbox divided by hairlines, one line under the bar). Flat and Tiled share `data-finish="flat"`;
-  The styles differ only in CSS variables set on the app root (`--rk` radius multiplier, `--r14`/`--r16`, `--pg` pane gap, `--ptop`, `--tbh`/`--tbp`/`--tbg`/`--tbb` for the tab bar, `--tabh`/`--tabbr` for tabs, `--sh` overlay shadow, and a few more beside them in `workspace.css`); the layout rules read them, so a style is a block of values, not a second set of rules. The focused pane's ring and the needs-you amber
+  The styles differ only in CSS variables set on the app root (`--rk` radius multiplier, `--r14`/`--r16`, `--pg` pane gap, `--ptop`, `--tbh`/`--tbp`/`--tbg`/`--tbb` for the tab bar, `--tabh`/`--tabbr` for tabs, and a few more beside them in `workspace.css`); the layout rules read them, so a style is a block of values, not a second set of rules. The focused pane's ring and the needs-you amber
   stay in all three. Glass starts with the three status sweeps on and Flat and Tiled with them off; a choice made
   in Settings wins. Settings saved as `minimal` read as Flat and `expressive` as Glass. **Icons** (Settings › Appearance › Icons, `iconColor`, set on the root as
   `data-icons`) is separate from the style: `color` keeps app and folder icons in their own colours in every
@@ -412,17 +417,21 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   `--on-accent`), never fixed hex values, so switching theme recolours all of them.
 - **Status effects.** Working rows and tabs show one slow teal sweep as work starts, Needs you an
   amber glow behind the icon that breathes three times and then rests, Done one green sweep. The
-  needs-you badge, the Inbox count and the update dot pulse three times with a ring. Nothing loops
-  and nothing animates `box-shadow`: an endless animation keeps a software-rendered web view
+  needs-you badge and the Inbox count pop once with a ring (.6s) and the update dot once (.7s), as `transform`
+  and `opacity` on a pseudo-element. Nothing loops, the terminal caret is steady (blinking is Settings › Text ›
+  Blink, xterm's own option, off by default), and nothing animates `box-shadow`, `filter` or `backdrop-filter`: an endless animation keeps a software-rendered web view
   repainting the card for as long as the state lasts ([PERFORMANCE](PERFORMANCE.md)). Each has
   its own switch; Reduce motion (the setting or the system's) and a disconnected daemon stop all
   of them, with every other animation. The working spinner steps every 160 ms and holds while the
   window is in the background.
 - **Process icons** are generic tiles, never a product's mark: `>_` shell, `✻` codex, `rs` cargo.
-- **Themes** are Midnight (default), Abyss and Paper, themes generated from six inputs
-  (`bg fg accent mag blue green` and a light flag) by Oklab mixing, and **High Contrast** (pure
-  black and white, lines `#5A5A5A`/`#8A8A8A`, amber and red kept). Muted and dim text keep 4.5:1
-  on the pane; the theme tests check every theme. A pane's xterm palette comes from the same
+- **Themes** are Midnight (default), Abyss, Paper and Day (a cool light theme), themes generated from six
+  inputs (`bg fg accent mag blue green` and a light flag) by Oklab mixing, and **High Contrast** (pure
+  black and white, lines `#5A5A5A`/`#8A8A8A`, amber and red kept). Every theme's `--pane` is its opaque
+  `--main`. The foreground, terminal text (`--fg2`), muted and dim text keep 4.5:1 on both `--term` and the
+  window `--bg`, and Midnight, Paper and Day also hold it for accent, amber, red, green and the ANSI blue,
+  magenta and green; the theme tests check this. Paper and Day use a darker amber and red than the generated
+  light themes so those pass. A pane's xterm palette comes from the same
   tokens. **Settings › Appearance › Theme** has an Appearance switch (System, Dark or Light:
   `themeMode`) and a searchable dropdown each for the dark and the light theme (`darkTheme`,
   `lightTheme`); the dropdown lists its theme in use first. System follows the OS's own dark or

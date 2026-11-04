@@ -6,7 +6,7 @@ import type { SettingsPreferences } from '../preferences'
 import { machineHeads, type RemoteMachine } from '@/features/workspace/model/machines'
 import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from './DesktopSettings'
 
-const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, style: 'glass', projectColors: {} }
+const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass', projectColors: {} }
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
   return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
@@ -273,6 +273,15 @@ describe('appearance section', () => {
     const { onChange } = renderSettings('appearance')
     await user.click(screen.getByRole('switch', { name: 'See-through terminal' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ terminalSeeThrough: true }))
+  })
+
+  it('turns the background glow on, starting from off', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderSettings('appearance')
+    const glow = screen.getByRole('switch', { name: 'Background glow' })
+    expect(glow).toHaveAttribute('aria-checked', 'false')
+    await user.click(glow)
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ backgroundGlow: true }))
   })
 })
 

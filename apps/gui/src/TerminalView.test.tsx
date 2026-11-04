@@ -372,8 +372,14 @@ describe('terminal view', () => {
     expect(onHandle).toHaveBeenLastCalledWith(null)
   })
 
-  it('blinks the cursor only while the window is in front', async () => {
+  it('keeps the cursor steady unless blinking is asked for', async () => {
     render(<TerminalView conversation={conversation} desktop fontSize={13} focused />)
+    await waitFor(() => { expect(terminalState.options).toBeDefined() })
+    expect(terminalState.options?.cursorBlink).toBe(false)
+  })
+
+  it('blinks the cursor only while the window is in front', async () => {
+    render(<TerminalView conversation={conversation} desktop fontSize={13} look={{ cursorBlink: true }} focused />)
     await waitFor(() => { expect(terminalState.options?.cursorBlink).toBe(true) })
 
     vi.spyOn(document, 'hasFocus').mockReturnValue(false)
