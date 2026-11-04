@@ -253,6 +253,21 @@ async fn search_panes(app: tauri::AppHandle, query: String) -> Result<serde_json
         .map_err(|error| format!("{error:#}"))
 }
 
+/// What agents reported using over a period (`day`, `week` or `month`), from the daemon's
+/// usage store on this computer.
+#[tauri::command]
+async fn usage_report(app: tauri::AppHandle, period: String) -> Result<serde_json::Value, String> {
+    let period = match period.as_str() {
+        "day" => maitty_shared::usage_report::UsagePeriod::Day,
+        "week" => maitty_shared::usage_report::UsagePeriod::Week,
+        "month" => maitty_shared::usage_report::UsagePeriod::Month,
+        other => return Err(format!("unknown usage period: {other}")),
+    };
+    maitty_desktop_client::usage_report(period, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn restore_snapshot(
     app: tauri::AppHandle,
@@ -587,6 +602,7 @@ pub fn run() {
             pane_terminal_resize,
             repo_query,
             search_panes,
+            usage_report,
             new_worktree_session,
             restore_snapshot,
             start_terminal_session,
