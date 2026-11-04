@@ -128,7 +128,7 @@ describe('desktop settings', () => {
   it('picks a dark and a light theme separately, from searchable dropdowns that list the one in use first', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('appearance', { preferences: { ...PREFS, darkTheme: 'Nord' } })
-    expect(screen.getByText('27 installed')).toBeInTheDocument()
+    expect(screen.getByText('28 installed')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Dark theme: Nord' }))
     const dark = screen.getByRole('listbox', { name: 'Dark themes' })
