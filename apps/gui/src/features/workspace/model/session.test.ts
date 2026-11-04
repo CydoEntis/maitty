@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
-import { displayName, groupInitials, groupSessions, processName, statusPhrase, tildePath, toSessionView, truncatePrompt, worstSession } from './session'
+import { displayName, groupInitials, groupSessions, processName, statusText, tildePath, toSessionView, truncatePrompt, worstSession } from './session'
 import { formatAgo, formatElapsed, markSeen, trackSessions } from './tracking'
 import { HOTKEY_GROUPS, hotkeyRows, matchShortcut } from './shortcuts'
 import { folderExists, resolveStartFolder } from './startFolder'
@@ -27,7 +27,7 @@ describe('session view', () => {
   })
 
   it('names a shell by where it is within its repo, or by its ~ path outside one', () => {
-    expect(toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty`), HOME)).toMatchObject({ title: '(root)', promptPath: 'maitty', repoName: 'maitty', branch: 'main', process: 'shell' })
+    expect(toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty`), HOME)).toMatchObject({ title: 'main', promptPath: 'maitty', repoName: 'maitty', branch: 'main', process: 'shell' })
     expect(toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty/crates/maitty-core/src`), HOME)).toMatchObject({ title: 'maitty-core/src', promptPath: 'maitty/crates/maitty-core/src' })
     expect(toSessionView(conversation(1, `${HOME}/Downloads`, { agent: 'codex' }), HOME)).toMatchObject({ title: '~/Downloads', repoName: null, branch: null, process: 'codex' })
   })
@@ -63,12 +63,12 @@ describe('session view', () => {
   })
 
   it('says each status in words on the row', () => {
-    const view = (status: Conversation['status'], extra: Partial<Conversation> = {}) => statusPhrase(toSessionView(conversation(1, HOME, { status, ...extra }), HOME))
-    expect(view('working')).toBe(' · working')
-    expect(view('needs-you')).toBe(' · needs you')
-    expect(view('done')).toBe(' · finished')
-    expect(view('idle')).toBe(' · idle')
-    expect(view('unknown', { lastKnownStatus: 'working' })).toBe(' · last seen working')
+    const view = (status: Conversation['status'], extra: Partial<Conversation> = {}) => statusText(toSessionView(conversation(1, HOME, { status, ...extra }), HOME))
+    expect(view('working')).toBe('working')
+    expect(view('needs-you')).toBe('needs you')
+    expect(view('done')).toBe('finished')
+    expect(view('idle')).toBe('idle')
+    expect(view('unknown', { lastKnownStatus: 'working' })).toBe('last seen working')
   })
 
   it('reports what needs you first, then what is working', () => {

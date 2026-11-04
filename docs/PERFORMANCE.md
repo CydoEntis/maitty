@@ -123,7 +123,7 @@ Tier 1 (small changes, measured gain):
 
 Tier 2 (needs a real machine to verify):
 
-4. [x] `@xterm/addon-webgl` is loaded after `open()` when the web view has WebGL 2, with the DOM renderer as the fallback (no WebGL 2, the addon failing to start, or a lost context). With the DOM renderer the terminal background is the theme's opaque `term` colour and writes are flushed at most every 32 ms; with WebGL the canvas stays see-through over the card. Not done: xterm 6 has no option for the scrollbar's hide timer (`vertical: Auto` is hard-coded in its scrollable element), so that 500 ms timer still resets per scrolled line while the DOM renderer draws. Whether WebGL 2 works on the Linux WebKitGTK build is still to be seen on a real machine.
+4. [x] `@xterm/addon-webgl` is loaded after `open()` when the web view has WebGL 2, with the DOM renderer as the fallback (no WebGL 2, the addon failing to start, or a lost context). With the DOM renderer the terminal background is the theme's opaque `term` colour and writes are flushed at most every 32 ms; with WebGL the canvas stays see-through over the card. Not done: xterm 6 has no option for the scrollbar's hide timer (`vertical: Auto` is hard-coded in its scrollable element), so that 500 ms timer still resets per scrolled line while the DOM renderer draws. On Linux, WebKitGTK 2.52 gives the AppImage WebGL 2 through the NVIDIA EGL libraries on an RTX 4060 under Wayland (seen 2026-11-04); the see-through canvas then answers a program's colour query with the theme's colours itself (see *Measuring in the app*).
 
 Tier 3 (waste; not felt as lag with one session):
 
@@ -142,6 +142,80 @@ Follow-ups done on the same day, after a second look:
 Verification for every step: run the WebKit harness scenario `b` (silent working session) and
 `b` with the stream before and after, and put the two numbers in the commit message. The target is
 a quiet working session under 5% and a streaming one under 40% on software-rendered WebKitGTK.
+
+## Measured again on Linux (2026-11-04)
+
+The same harness on the user's Linux machine (WebKitGTK 2.52.6, NVIDIA RTX 4060, Wayland), 15 s
+samples, web process CPU as a share of one core. "Software" is the offscreen run the audit used;
+"GPU" is a visible window with `WEBKIT_DISABLE_DMABUF_RENDERER=1`, which gets WebGL 2 and keeps
+the Glass finish, as the AppImage does on that machine. The harness mock now feeds output over the
+`watch_terminal_output` channel like the host (it had kept sending the old `terminal-chunk` events,
+so the streaming scenario measured nothing until it was fixed).
+
+| Scenario | Software | GPU | Nov 3 |
+| --- | --- | --- | --- |
+| 1 idle shell | 1.2% | 1.3% | 1.8% |
+| 1 working session, silent | 1.4% | 11.5% → **1.8%** | 66% |
+| same with ~20 KB/s output | 24.4% | 25.7% | 91% |
+
+- The silent working session's 11.5% on the GPU path was the spinner: swapping its glyph every
+  160 ms repainted the whole sidebar card, whose gradient (`ns_nogradient`: 1.5%) and shadow
+  (`ns_noshadow`: 7.5%) are repainted at full cost under GPU compositing; with the Flat finish
+  (1.6%), without the sidebar (1.6%) or with the 160 ms timer stopped (1.9%) it went away.
+  Fix: `.mx-spin` has `contain: layout style paint` and `will-change: transform`, so it paints
+  in its own layer and a frame change touches nothing else. 1.8% after.
+- Streaming at 25% is the terminal path itself: hiding the chrome (32.9%, the pane grows),
+  stopping animations (24.9%) or the cursor blink (25.1%) changes nothing, and the mock's own
+  generator costs under 1% (`genonly`). A Chromium profile shows almost no script time: the cost
+  is compositing the redrawn terminal, once per write. The mock sends 20 writes a second; the
+  host sends one every 12 ms under a steady stream, and with `--tick 12` the pane drew 37 times
+  a second and busy time doubled. Fix: writes now land at most every 32 ms on both renderers
+  (`FLUSH_GAP_MS`, waited out with a timer rather than polled frames), which held the draw rate
+  at 30 a second and took the 12 ms stream from 91% to 63% busy in Chromium's software-WebGL
+  profile. A key's echo waits at most 32 ms, and only while output is already streaming.
+  Still open: xterm 6's scrollbar-hide timer is reset per scrolled line (about 230 `setTimeout`
+  calls a second under the stream), and the WebGL addon asks for its own animation frames.
+- The AppImage with one idle pane was seen at about 13% of a core on the same machine before the
+  spinner fix, against 1.3% for the harness's idle shell; the difference is the real daemon's
+  traffic and whatever the user's panes were doing, which Settings › Performance now shows.
+
+## Measuring in the app
+
+Settings › Performance (`apps/gui/src/features/settings/components/PerformanceSection.tsx`) shows,
+once a second while it is open, what the web view and the processes are doing, and **Copy report**
+puts the same figures as plain text on the clipboard for a bug report or an agent. Its **Overlay**
+switch (`perfOverlay`) keeps a one-line readout in the window's corner (`PerfOverlay.tsx`) so a
+lag spike can be matched with what the app was doing. Nothing is sampled while neither is shown.
+
+What the numbers are and where they come from (`apps/gui/src/lib/perf-meter.ts`, the host's
+`performance.rs`):
+
+- **Frames**: animation frames per second, how many took over 50 ms (a hitch you feel), and the
+  worst one. The web view's main thread is busy when this drops while the window is idle.
+- **Drawing**: whether the web view has WebGL 2 (`data-gpu`) and how many open panes draw with
+  WebGL against xterm's DOM renderer. A DOM pane is cause 3 above.
+- **Animations running**: `document.getAnimations().length`. Each one repaints its card every
+  frame (cause 1), so an idle window should show 0. Also the element count of the DOM.
+- **Terminal output**: bytes and frames per second received over the host's channel, xterm
+  writes per second, and how long a write waited until xterm had parsed it.
+- **Processes**: CPU (percent of one core) and resident memory of the host, of the web view's
+  processes (the host's children: WebKit's web and network processes on Linux, WebView2 on
+  Windows; on macOS the content process is not a child, so the row says so) and of every daemon
+  of this product on the machine, found by its fixed `daemon` argument. Several daemons usually
+  means stale ones from other checkouts are still running. The first sample of a process reads 0;
+  the figure is the work since the previous sample, from `sysinfo`.
+
+Two things seen on the user's Linux machine that look like app bugs and are not:
+
+- **Another window shows faintly through Maitty.** Omarchy gives every window 98.5% opacity when
+  focused and 96% otherwise (`/usr/share/omarchy/default/hypr/windows.lua`, tag
+  `default-opacity`). Bright terminal text behind a dark window reads as a ghost. The fix is a
+  window rule for `maitty-gui` in the user's Hyprland config, not a change here.
+- **Black bars under Claude Code's prompt and status line.** With WebGL the terminal's theme
+  background is `rgba(0,0,0,0)`, and xterm answers a program's OSC 11 background query from that
+  colour with the alpha dropped: pure black. Claude Code asks (`ESC ] 11 ; ? ST`) and paints a few
+  cells in the colour it was told. `TerminalView.tsx` now answers OSC 10 and 11 queries with the
+  theme's own foreground and background and leaves everything else to xterm.
 
 ## What the measurement did not cover
 
@@ -164,10 +238,6 @@ The sweep plays once and finishes (`v14sweep:finished`); no 80 ms timer fires;
 the only intervals are the 15 s and 30 s ones. The silent-working target (under 5%)
 is met.
 
-**Still owed: the streaming number.** The harness's `mock-tauri.js` still emits
-`terminal-chunk` events and answers `list_sessions`, but the app now takes output
-through the `watch_terminal_output` channel and session state through the hub's
-messages, so in the harness no bytes reach xterm and scenario `e` lists one pane.
-Before the next measurement: teach the mock the channel (raw frames with the
-machine in the header, see `apps/gui/src-tauri/src/streams.rs`) and the hub's
-state messages, then rerun `b` and `e`. Ticket this with the performance page.
+**The streaming number** is in *Measured again on Linux* above: the mock now feeds the
+`watch_terminal_output` channel with the host's frame header (machine, pane, sequence, replay).
+Still owed: the hub's state messages, so that scenario `e` lists its four panes instead of one.

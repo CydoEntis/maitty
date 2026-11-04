@@ -25,6 +25,13 @@ const SCROLLBACK_DEFAULT = 10000
 const SCROLLBACK_LONG = 50000
 export const SCROLLBACK_CHOICES = [SCROLLBACK_SHORT, SCROLLBACK_DEFAULT, SCROLLBACK_LONG] as const
 export type ScrollbackLines = (typeof SCROLLBACK_CHOICES)[number]
+/** Lines scrolled per wheel notch, as a multiple of xterm's default (`scrollSensitivity`). */
+const SCROLL_NORMAL = 1
+const SCROLL_DOUBLE = 2
+const SCROLL_TRIPLE = 3
+const SCROLL_FASTEST = 5
+export const SCROLL_SPEED_CHOICES = [SCROLL_NORMAL, SCROLL_DOUBLE, SCROLL_TRIPLE, SCROLL_FASTEST] as const
+export type ScrollSpeed = (typeof SCROLL_SPEED_CHOICES)[number]
 
 export type SettingsPreferences = {
   accent: 'teal' | 'blue' | 'violet'
@@ -53,6 +60,7 @@ export type SettingsPreferences = {
   cursorStyle: CursorStyle
   /** Lines each pane keeps; maittyd keeps the full history. */
   scrollback: ScrollbackLines
+  scrollSpeed: ScrollSpeed
   /** Mirror the terminal's text into the page for screen readers. It makes every pane much heavier to draw. */
   terminalScreenReader: boolean
   /** Status effects on sidebar rows and tabs, each off by itself; Reduce motion turns all off. */
@@ -74,6 +82,8 @@ export type SettingsPreferences = {
   iconColor: IconColor
   /** The bottom line of the window: daemon, branch, counts and the focused session. */
   statusBar: boolean
+  /** A small readout of frames and process load over the window, for finding what lags. */
+  perfOverlay: boolean
   /** Fetch a new release in the background. Installing still waits for a restart. */
   autoDownloadUpdates: boolean
   /** Restart into a downloaded update when no session is working or waiting on you. */
@@ -122,6 +132,7 @@ function defaults(): SettingsPreferences {
     lightTheme: 'Paper',
     cursorStyle: 'block',
     scrollback: SCROLLBACK_DEFAULT,
+    scrollSpeed: SCROLL_NORMAL,
     terminalScreenReader: false,
     style: 'glass',
     // Glass runs the status sweeps; Flat and Tiled start with them off. A choice made in Settings wins either way.
@@ -138,6 +149,7 @@ function defaults(): SettingsPreferences {
     leadMode: 'focused',
     iconColor: 'color',
     statusBar: true,
+    perfOverlay: false,
     autoDownloadUpdates: true,
     restartWhenIdle: false,
     projectColors: {},
@@ -187,6 +199,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       ...themeChoice(preferences, fallback),
       cursorStyle: isCursorStyle(preferences.cursorStyle) ? preferences.cursorStyle : fallback.cursorStyle,
       scrollback: isScrollback(preferences.scrollback) ? preferences.scrollback : fallback.scrollback,
+      scrollSpeed: isScrollSpeed(preferences.scrollSpeed) ? preferences.scrollSpeed : fallback.scrollSpeed,
       terminalScreenReader: bool(preferences.terminalScreenReader, fallback.terminalScreenReader),
       effectWorking: bool(preferences.effectWorking, fallback.effectWorking),
       effectNeedsYou: bool(preferences.effectNeedsYou, fallback.effectNeedsYou),
@@ -201,6 +214,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       projectColors: stringRecord(preferences.projectColors),
       style: styleOf(preferences.style) ?? fallback.style,
       statusBar: bool(preferences.statusBar, fallback.statusBar),
+      perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),
       autoDownloadUpdates: bool(preferences.autoDownloadUpdates, fallback.autoDownloadUpdates),
       restartWhenIdle: bool(preferences.restartWhenIdle, fallback.restartWhenIdle),
       iconColor: preferences.iconColor === 'color' || preferences.iconColor === 'grayscale' ? preferences.iconColor : fallback.iconColor,
@@ -275,6 +289,10 @@ function isSpinner(value: unknown): value is SpinnerStyle {
 
 function isCursorStyle(value: unknown): value is CursorStyle {
   return value === 'block' || value === 'bar' || value === 'underline'
+}
+
+function isScrollSpeed(value: unknown): value is ScrollSpeed {
+  return SCROLL_SPEED_CHOICES.some((choice) => choice === value)
 }
 
 function isScrollback(value: unknown): value is ScrollbackLines {

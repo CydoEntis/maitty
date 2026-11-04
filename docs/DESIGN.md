@@ -221,7 +221,9 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   style; `grayscale` makes them neutral `--raise` tiles with the glyph in `--fg2`.
 - **Settings dialog** (⌘,). A section list at the left and, at the right, a fixed header (the page title,
   a one-line description and a **Close** button with an `esc` keycap) above a body that scrolls; the page
-  itself never scrolls. The title and description slide with the page.
+  itself never scrolls. The title and description slide with the page. Under Advanced, **Performance** shows live
+  frame, drawing, output and process figures with a **Copy report** button, and a switch for a corner readout over
+  the window ([PERFORMANCE](PERFORMANCE.md#measuring-in-the-app)).
 - **Shortcut overlay** (⌘/ or Ctrl+/, also in the palette). An 820px dialog over a blurred scrim, titled
   "Keyboard shortcuts" with a Close `esc` button, holding an auto-fill grid (230px minimum) of Sessions,
   Panes, Find & jump and Window with each action and its keycaps (several chords stack). It is generated
@@ -245,8 +247,9 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   name. A shell outside any repo is grouped by its own folder, so there is no catch-all group.
   A group's tile carries a ring when it holds the focused session. Each group is one **main row**
   with a **tray** of its other sessions hanging off its bottom edge. The main row is the process
-  icon with its status badge, the folder within the repo, then what the session is using and a
-  status phrase. The lead is the session you are in, else the last one picked in that project, else
+  icon with its status badge, then the program and where it works (`claude · dev`: the branch at the
+  checkout's root, the folder within the repo deeper in, the `~` path outside a repo), then a status
+  phrase when the session is not just working or idle. The lead is the session you are in, else the last one picked in that project, else
   the most urgent; Settings › Appearance › Sidebar can make it always the one that most needs you.
   Urgency runs needs you, error, done, working, idle, then most recently changed. The tray comes in
   three styles: **With names** (icon and process; two fit, more go behind **+N**), **Icons** (six

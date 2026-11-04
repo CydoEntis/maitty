@@ -20,7 +20,7 @@ export type SessionView = {
   repoRoot: string | null
   repoName: string | null
   branch: string | null
-  /** Where the shell is within its repo (`(root)`, `crates/maitty-core`), or its `~` path. */
+  /** The branch at a checkout's root, the folder deeper in (`crates/maitty-core`), or the `~` path outside a repo. */
   title: string
   /** The name you gave the session; null until you rename it. The daemon keeps it for every app. */
   name: string | null
@@ -140,9 +140,10 @@ export function toSessionView(conversation: Conversation, home: string): Session
   const repoRoot = repoName === null ? null : normalizeRoot(trimTrailingSeparator(conversation.folder))
   const inside = repoRoot !== null && cwd.length > repoRoot.length ? cwd.slice(repoRoot.length + 1).replaceAll('\\', '/') : ''
   const cwdLabel = tildePath(cwd, homeHere)
-  const title = repoName === null ? cwdLabel : inside === '' ? '(root)' : inside.split('/').slice(-TITLE_PARTS).join('/')
   const promptPath = repoName === null ? cwdLabel : inside === '' ? repoName : `${repoName}/${inside}`
   const branch = repoName !== null && conversation.branch && conversation.branch !== 'working tree' ? conversation.branch : null
+  // At a checkout's root the row says its branch; deeper in, the folder is what tells sessions apart.
+  const title = repoName === null ? cwdLabel : inside === '' ? branch ?? repoName : inside.split('/').slice(-TITLE_PARTS).join('/')
   const status = STATUS_FROM_CONVERSATION[conversation.status]
   const lastKnown = conversation.lastKnownStatus ? STATUS_FROM_CONVERSATION[conversation.lastKnownStatus] : null
   return {
@@ -189,10 +190,6 @@ export function statusText(session: SessionView): string {
     case 'idle':
       return 'idle'
   }
-}
-
-export function statusPhrase(session: SessionView): string {
-  return ` · ${statusText(session)}`
 }
 
 /**

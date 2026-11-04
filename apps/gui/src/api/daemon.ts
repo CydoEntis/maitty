@@ -208,6 +208,29 @@ export async function restartMismatchedDaemon(expectedProtocol: number): Promise
   await invoke('restart_mismatched_daemon', { expectedProtocol })
 }
 
+const ProcessLoadSchema = z.object({
+  pid: z.number().int().nonnegative(),
+  name: z.string(),
+  command: z.string(),
+  cpu: z.number(),
+  memory_bytes: z.number().nonnegative(),
+})
+const ProcessSampleSchema = z.object({
+  cores: z.number().int().positive(),
+  host: ProcessLoadSchema,
+  webview: z.array(ProcessLoadSchema),
+  daemons: z.array(ProcessLoadSchema),
+})
+
+export type ProcessLoad = z.infer<typeof ProcessLoadSchema>
+/** The host's, the web view's and the daemons' CPU (percent of one core) and memory. */
+export type ProcessSample = z.infer<typeof ProcessSampleSchema>
+
+export async function loadPerformanceSample(): Promise<ProcessSample> {
+  if (!isDesktop()) throw new Error('Process figures are available in the desktop app')
+  return invokeParsed('performance_sample', ProcessSampleSchema)
+}
+
 const MachineListSchema = z.object({ names: z.array(z.string()), error: z.string().nullable() })
 export type MachineList = z.infer<typeof MachineListSchema>
 
