@@ -196,8 +196,8 @@ The desktop window is terminal-only today; the chat body (G15-G18) does not exis
 
 ### Questions for the owner (they block the tickets named)
 
-1. Is chat in scope for the desktop? The README opens with "no chat UI" but specs a chat body. (G15-G18)
-2. Which providers get Chat at launch? (G16)
+1. ANSWERED 2026-11-04: yes, the chat view is wanted for the desktop (the README's "no chat UI" line is outdated). (G15-G18)
+2. ANSWERED 2026-11-04: Claude Code and Codex sessions get Chat first; other agents stay terminal-only. (G16)
 3. Keep typing y/a/n into the terminal as a fallback once approvals go by id? (G19)
 4. Windows/Linux shortcuts: bare Ctrl (code) or Ctrl+Shift for shell letters (spec)? (G1, G20)
 5. May the worktree API gain an agent choice and a first prompt? (G9)
