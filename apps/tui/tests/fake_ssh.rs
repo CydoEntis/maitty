@@ -778,9 +778,12 @@ async fn listen_until(
     done: impl Fn(&Heard, &[(u16, u16); 2]) -> bool,
 ) {
     use runtime::protocol::ServerMsg;
+    let watchdog = Watchdog::start("listen_until", WAIT * 2);
+    let mut bursts = 0usize;
     let listening = async {
         while !done(heard, sizes) {
             let burst = connections.recv_burst(512).await;
+            bursts += 1;
             assert!(!burst.lost, "machine {} was lost", burst.machine.0);
             let at = usize::from(burst.machine == THERE);
             for msg in burst.msgs {
@@ -803,11 +806,54 @@ async fn listen_until(
                     _ => {}
                 }
             }
+            watchdog.note(format!(
+                "{bursts} bursts; heard {} bytes here and {} there; sizes {sizes:?}",
+                heard.here.len(),
+                heard.there.len()
+            ));
         }
     };
     tokio::time::timeout(WAIT, listening)
         .await
         .expect("each machine reports what was sent to it");
+}
+
+/// Ends the whole test run, saying what it last saw, if the wait it guards is still going after
+/// `limit`. `tokio::time::timeout` cannot do this: it only fires when the runtime's thread gets
+/// back to it, and a hung CI run gave no output at all for 45 minutes.
+struct Watchdog {
+    progress: std::sync::Arc<std::sync::Mutex<String>>,
+    // Dropping this ends the watch: the thread sees the channel close.
+    _done: std::sync::mpsc::Sender<()>,
+}
+
+impl Watchdog {
+    fn start(what: &'static str, limit: Duration) -> Self {
+        let (done, closed) = std::sync::mpsc::channel::<()>();
+        let progress = std::sync::Arc::new(std::sync::Mutex::new(String::from("nothing yet")));
+        let seen = std::sync::Arc::clone(&progress);
+        std::thread::spawn(move || {
+            if closed.recv_timeout(limit) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+                use std::io::Write as _;
+                let last = seen.lock().map(|text| text.clone()).unwrap_or_default();
+                let _ = writeln!(
+                    std::io::stderr(),
+                    "fake_ssh: {what} still running after {limit:?}; last progress: {last}"
+                );
+                std::process::exit(2);
+            }
+        });
+        Watchdog {
+            progress,
+            _done: done,
+        }
+    }
+
+    fn note(&self, text: String) {
+        if let Ok(mut last) = self.progress.lock() {
+            *last = text;
+        }
+    }
 }
 
 #[test]
@@ -842,6 +888,7 @@ fn typing_and_resizing_reach_only_the_machine_that_owns_the_pane() {
         connections.send(input(MachineId::LOCAL, FOR_HERE)).unwrap();
         connections.send(resize(THERE, 101, 31)).unwrap();
         connections.send(resize(MachineId::LOCAL, 91, 25)).unwrap();
+        trace("typing_and_resizing: sent, listening");
         listen_until(&mut connections, &mut heard, &mut sizes, |heard, sizes| {
             heard.there.contains(FOR_THERE)
                 && heard.here.contains(FOR_HERE)
