@@ -13,6 +13,7 @@
 //! replay, which puts the view back in step.
 
 use maitty_machines::MachineId;
+use maitty_machines::remote_snapshot::sanitize_snapshot;
 use maitty_shared::protocol::{ServerMsg, Snapshot, TermId};
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
@@ -73,6 +74,13 @@ pub struct Streams {
 }
 
 impl Streams {
+    /// Whether `machine`'s last list has the pane.
+    fn lists(&self, machine: MachineId, term: TermId) -> bool {
+        self.last
+            .get(&machine)
+            .is_some_and(|list| list.terms.contains_key(&term))
+    }
+
     /// When the waiting output is due to be sent, if any waits.
     pub fn due(&self) -> Option<Instant> {
         self.since.map(|since| since + FLUSH_EVERY)
@@ -83,6 +91,17 @@ impl Streams {
         let mut out = Vec::new();
         match msg {
             ServerMsg::Replay { term, data, .. } => {
+                if machine != MachineId::LOCAL {
+                    if !self.lists(machine, term) {
+                        return out;
+                    }
+                    // A screen's replay is never this large; a machine that sends one is made to
+                    // start the pane over rather than being handed the window's channel.
+                    if data.len() > HISTORY_LIMIT_BYTES {
+                        self.drop_pane(machine, term, &mut out);
+                        return out;
+                    }
+                }
                 // A replay replaces the pane, so output held from before it lands first.
                 if machine == MachineId::LOCAL {
                     self.flush_into(now, &mut out);
@@ -91,7 +110,13 @@ impl Streams {
                 }
                 self.emit(machine, term, data, true, &mut out);
             }
-            ServerMsg::Output { term, data } => self.output(machine, term, data, now, &mut out),
+            ServerMsg::Output { term, data } => {
+                // Another machine's output for a pane it never listed would add an entry per
+                // number it makes up, so only the panes of its last list are tracked.
+                if machine == MachineId::LOCAL || self.lists(machine, term) {
+                    self.output(machine, term, data, now, &mut out);
+                }
+            }
             ServerMsg::State(snapshot) => self.publish(machine, snapshot, &mut out),
             ServerMsg::TermsChanged { changed, removed } => {
                 let merged = self.last.get(&machine).cloned().map(|mut merged| {
@@ -106,6 +131,22 @@ impl Streams {
                 // A delta before any whole snapshot has nothing to apply to; the next whole
                 // one comes with the next reconnect.
                 if let Some(merged) = merged {
+                    // Each delta was capped on its own, but merged into the list they would grow
+                    // it without end, so the merged list meets the caps of a whole one.
+                    let merged = if machine == MachineId::LOCAL {
+                        merged
+                    } else {
+                        match sanitize_snapshot(merged) {
+                            Ok(merged) => merged,
+                            Err(why) => {
+                                tracing::debug!(
+                                    why,
+                                    "refused a pane delta from another machine: the list it makes is past the caps"
+                                );
+                                return out;
+                            }
+                        }
+                    };
                     self.publish(machine, merged, &mut out);
                 }
             }

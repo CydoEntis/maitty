@@ -1,4 +1,5 @@
 use super::*;
+use maitty_machines::remote_snapshot::ITEMS_MAX;
 use maitty_shared::protocol::TermInfo;
 
 const LOCAL: MachineId = MachineId::LOCAL;
@@ -66,6 +67,7 @@ fn frames(outs: &[Out]) -> Vec<Parts> {
 fn a_frame_carries_its_machine_pane_sequence_and_replay_flag_before_the_output() {
     let mut streams = Streams::default();
     let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[7])), now);
     let replayed = streams.on_message(BOX, replay(7, b"screen"), now);
     assert_eq!(frames(&replayed), [(1, 7, 1, true, b"screen".to_vec())]);
     streams.on_message(BOX, output(7, b"more"), now);
@@ -78,6 +80,7 @@ fn a_frame_carries_its_machine_pane_sequence_and_replay_flag_before_the_output()
 fn two_machines_number_their_panes_apart() {
     let mut streams = Streams::default();
     let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[3])), now);
     streams.on_message(LOCAL, replay(3, b"mine"), now);
     streams.on_message(BOX, replay(3, b"theirs"), now);
     streams.on_message(BOX, output(3, b" more"), now);
@@ -129,6 +132,7 @@ fn a_replay_of_this_computer_lands_after_the_output_held_before_it() {
 fn a_replay_of_another_machine_only_puts_that_pane_in_order() {
     let mut streams = Streams::default();
     let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[1, 2])), now);
     streams.on_message(BOX, output(1, b"old"), now);
     streams.on_message(BOX, output(2, b"other"), now);
     let sent = streams.on_message(BOX, replay(1, b"fresh"), now);
@@ -145,6 +149,7 @@ fn a_replay_of_another_machine_only_puts_that_pane_in_order() {
 fn a_pane_without_a_replay_keeps_no_history_for_a_view_to_open_on() {
     let mut streams = Streams::default();
     let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[5])), now);
     streams.on_message(BOX, output(5, b"no replay yet"), now);
     streams.flush(now);
     assert!(streams.history(BOX, 5).is_none());
@@ -166,6 +171,7 @@ fn history_past_the_limit_is_dropped_for_a_fresh_replay() {
 fn a_new_line_restarts_the_histories_of_that_machine_alone_and_the_sequence_runs_on() {
     let mut streams = Streams::default();
     let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[1, 2])), now);
     streams.on_message(LOCAL, replay(1, b"here"), now);
     streams.on_message(BOX, replay(1, b"there"), now);
     streams.on_message(BOX, replay(2, b"two"), now);
@@ -182,6 +188,7 @@ fn a_new_line_restarts_the_histories_of_that_machine_alone_and_the_sequence_runs
         streams.due().is_none(),
         "output of the old line is not given"
     );
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[1, 2])), now);
     let sent = streams.on_message(BOX, replay(1, b"again"), now);
     assert_eq!(frames(&sent)[0].2, 2, "a view would drop a restart from 1");
     assert!(streams.line_up(BOX).contains(&1));
@@ -264,6 +271,7 @@ fn a_snapshot_forgets_only_that_machines_panes_that_went() {
 fn this_computers_line_ending_empties_its_list_and_another_machines_does_not() {
     let mut streams = Streams::default();
     let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[1])), now);
     streams.on_message(LOCAL, output(1, b"last words"), now);
     let local = streams.line_ended(LOCAL, now);
     assert_eq!(frames(&local).len(), 1, "what it said is given first");
@@ -281,6 +289,7 @@ fn this_computers_line_ending_empties_its_list_and_another_machines_does_not() {
 fn another_machine_gets_a_budget_per_flush_and_the_rest_waits() {
     let mut streams = Streams::default();
     let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[1])), now);
     streams.on_message(BOX, replay(1, b""), now);
     streams.on_message(
         BOX,
@@ -307,6 +316,7 @@ fn another_machine_gets_a_budget_per_flush_and_the_rest_waits() {
 fn a_machine_that_floods_is_dropped_to_a_fresh_replay_asked_for_once() {
     let mut streams = Streams::default();
     let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[1])), now);
     streams.on_message(BOX, replay(1, b"screen"), now);
     let chunk = vec![b'x'; 1024 * 1024];
     let mut wanted = 0;
@@ -404,4 +414,99 @@ fn what_the_flooding_machine_gets_through_in_a_flush_is_held_to_its_budget() {
             );
         }
     }
+}
+
+#[test]
+fn another_machines_pane_deltas_cannot_grow_its_list_past_the_cap() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[1])), now);
+    let mut refused = 0;
+    for batch in 0..20u32 {
+        let changed = (0..1_000)
+            .map(|i| pane(1_000 + batch * 1_000 + i))
+            .collect();
+        let out = streams.on_message(
+            BOX,
+            ServerMsg::TermsChanged {
+                changed,
+                removed: Vec::new(),
+            },
+            now,
+        );
+        if out.is_empty() {
+            refused += 1;
+        }
+    }
+    assert!(
+        streams.last[&BOX].terms.len() <= ITEMS_MAX,
+        "deltas that are each within the cap grew the list to {}",
+        streams.last[&BOX].terms.len()
+    );
+    assert!(refused > 0, "no delta was refused");
+}
+
+#[test]
+fn this_computers_pane_deltas_are_not_held_to_another_machines_cap() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    streams.on_message(LOCAL, ServerMsg::State(snapshot_of(&[1])), now);
+    let changed = (0..ITEMS_MAX as u32 + 5).map(|i| pane(10 + i)).collect();
+    let out = streams.on_message(
+        LOCAL,
+        ServerMsg::TermsChanged {
+            changed,
+            removed: Vec::new(),
+        },
+        now,
+    );
+    assert!(matches!(&out[..], [Out::Sessions { .. }]));
+}
+
+#[test]
+fn another_machines_output_and_replays_for_panes_it_never_listed_are_dropped() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[1])), now);
+
+    let out = streams.on_message(BOX, output(77, b"x"), now);
+    assert!(out.is_empty());
+    assert!(streams.pending.is_empty());
+    assert!(!streams.panes.contains_key(&(BOX, 77)));
+
+    let out = streams.on_message(BOX, replay(77, b"x"), now);
+    assert!(out.is_empty());
+    assert!(!streams.panes.contains_key(&(BOX, 77)));
+
+    // Before any list at all, nothing of another machine's is tracked either.
+    let out = streams.on_message(OTHER, output(1, b"x"), now);
+    assert!(out.is_empty());
+    assert!(!streams.panes.contains_key(&(OTHER, 1)));
+
+    // This computer's own panes are not held to a list, and a listed pane still gets its frames.
+    streams.on_message(LOCAL, output(5, b"x"), now);
+    assert!(streams.pending.contains_key(&(LOCAL, 5)));
+    let out = streams.on_message(BOX, replay(1, b"screen"), now);
+    assert_eq!(frames(&out), vec![(1, 1, 1, true, b"screen".to_vec())]);
+}
+
+#[test]
+fn a_replay_of_another_machine_past_the_history_limit_is_not_passed_on_and_is_asked_for_once() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    streams.on_message(BOX, ServerMsg::State(snapshot_of(&[1])), now);
+    let big = vec![b'x'; HISTORY_LIMIT_BYTES + 1];
+
+    let out = streams.on_message(BOX, replay(1, &big), now);
+    assert!(frames(&out).is_empty(), "the window was handed the replay");
+    assert!(matches!(
+        &out[..],
+        [Out::WantReplay { machine, term }] if *machine == BOX && *term == 1
+    ));
+
+    let again = streams.on_message(BOX, replay(1, &big), now);
+    assert!(
+        again.is_empty(),
+        "asked again for a replay already asked for"
+    );
 }
