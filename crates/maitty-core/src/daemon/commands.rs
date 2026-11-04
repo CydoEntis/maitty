@@ -889,6 +889,8 @@ impl Daemon {
                 } else {
                     self.save_outputs(true);
                 }
+                // Usage is history, not session state: it is kept even with --forget.
+                self.usage_store.save_now(term::unix_now());
                 for t in self.terms.values_mut() {
                     t.kill_tree();
                 }

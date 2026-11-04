@@ -7,6 +7,7 @@ use maitty_provider_codex::{
     goal_turn as codex_goal_turn, session_facts as codex_facts, session_metadata as codex_meta,
     task_event as codex_last_task_event, task_running as codex_running,
 };
+use crate::usage_report::{UsagePeriod, UsageReport};
 use regex::Regex;
 use std::path::Path;
 use std::sync::LazyLock;
@@ -42,6 +43,18 @@ impl Daemon {
         };
         let agent = t.agent.clone().unwrap_or_else(|| "claude".into());
         let place = t.place();
+        // Plan limits come only with a subscription, whose cost is not money the user pays.
+        let subscription = !limits.is_empty();
+        self.usage_store.observe(
+            term::unix_now(),
+            usage_store::Reported {
+                session: &session_key(t, self.usage_store.boot),
+                agent: &agent,
+                project: &place,
+                usage: &usage,
+                subscription,
+            },
+        );
         if let Some(cost) = usage.cost {
             let before = t.usage.cost.unwrap_or(0.0);
             // Lower than before: a new session (/clear) counting from zero.
@@ -63,6 +76,18 @@ impl Daemon {
         }
     }
 
+    /// Provider-reported usage over `period`, per session and per day.
+    pub(super) fn usage_report(&self, period: UsagePeriod) -> UsageReport {
+        let boot = self.usage_store.boot;
+        let open: HashMap<String, TermId> = self
+            .terms
+            .values()
+            .filter(|t| t.agent.is_some())
+            .map(|t| (session_key(t, boot), t.id))
+            .collect();
+        self.usage_store.report(period, term::unix_now(), &open)
+    }
+
     /// What sessions in the app have cost over the last day.
     pub(super) fn spent_today(&self) -> f64 {
         let now = term::unix_now();
@@ -74,8 +99,9 @@ impl Daemon {
     }
 
     /// A turn ended: note it, and how long the agent worked, for the day's summary.
-    pub(super) fn note_turn(&mut self, agent: String, place: String, secs: u64) {
+    pub(super) fn note_turn(&mut self, agent: String, place: String, secs: u64, session: String) {
         let now = term::unix_now();
+        self.usage_store.turn(now, &session, &agent, &place, secs);
         self.turns.retain(|(at, ..)| now.saturating_sub(*at) < DAY);
         self.turns.push((now, agent, place, secs));
     }
@@ -170,9 +196,21 @@ impl Daemon {
                 // must refresh the same liveness timestamp while a helper is active.
                 t.subagent_seen = Some(Instant::now());
             }
-            if let Some(u) = pane.usage.filter(|u| t.usage != *u) {
-                t.usage = u;
-                self.dirty = true;
+            if let Some(u) = pane.usage {
+                self.usage_store.observe(
+                    term::unix_now(),
+                    usage_store::Reported {
+                        session: &session_key(t, self.usage_store.boot),
+                        agent: "codex",
+                        project: &t.place(),
+                        usage: &u,
+                        subscription: false,
+                    },
+                );
+                if t.usage != u {
+                    t.usage = u;
+                    self.dirty = true;
+                }
             }
         }
         if let Some(l) = limits
@@ -240,6 +278,14 @@ impl Daemon {
             );
         }
     }
+}
+
+/// What names a session in the usage store: the agent's own session id, else the pane's
+/// number within this daemon run (pane numbers start over with each daemon).
+pub(super) fn session_key(t: &Term, boot: u64) -> String {
+    t.session
+        .clone()
+        .unwrap_or_else(|| format!("pane-{}-{boot}", t.id))
 }
 
 /// A disk snapshot is tied to the thread that owned the pane when polling began.

@@ -26,6 +26,7 @@ mod secrets;
 mod status;
 mod term;
 mod usage;
+mod usage_store;
 mod worktrees;
 
 use crate::brand::APP_COMMAND;
@@ -382,6 +383,8 @@ struct Daemon {
     spent: Vec<(u64, f64, String, String)>,
     /// Turns agents finished over the last day: (when, agent, folder, seconds working).
     turns: Vec<(u64, String, String, u64)>,
+    /// Provider-reported usage per session per day, kept on disk (ADR 0051).
+    usage_store: usage_store::UsageStore,
     codex_busy: bool,
     last_codex: Instant,
     /// The next pane runs its command once and ends with it (a popup).
@@ -1005,6 +1008,14 @@ impl Daemon {
             limits: BTreeMap::new(),
             spent: Vec::new(),
             turns: Vec::new(),
+            usage_store: if cfg!(test) {
+                usage_store::UsageStore::in_memory()
+            } else {
+                usage_store::UsageStore::open(
+                    usage_store::UsageStore::default_path(),
+                    term::unix_now(),
+                )
+            },
             codex_busy: false,
             last_codex: Instant::now() - Duration::from_secs(3600),
             next_once: false,
@@ -1037,6 +1048,7 @@ impl Daemon {
                     self.phone_alerts();
                     self.auto_continue();
                     self.poll_codex();
+                    self.usage_store.save_if_due(term::unix_now());
                     self.poll_git();
                     self.sweep_secrets();
                     self.poll_prs();
@@ -1073,6 +1085,7 @@ impl Daemon {
                 tracing::info!("no panes left; exiting");
                 // The user closed everything, so start fresh next time.
                 persist::forget();
+                self.usage_store.save_now(term::unix_now());
                 self.broadcast(|_| true, ServerMsg::Bye);
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 let _ = std::fs::remove_file(ipc::pid_file());
@@ -2348,6 +2361,16 @@ impl Daemon {
                         }) =>
                     {
                         ServerMsg::Error("Only a human client can search terminals".into())
+                    }
+                    Query::UsageReport { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can read usage".into())
+                    }
+                    Query::UsageReport { period } => {
+                        ServerMsg::Reply(Reply::UsageReport(self.usage_report(period)))
                     }
                     Query::PaneSearch { query } => {
                         let query = query.trim().to_string();
