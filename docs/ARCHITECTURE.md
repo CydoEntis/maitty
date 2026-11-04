@@ -300,6 +300,7 @@ crates/
   maitty-shared/                  wire protocol and shared contracts
   maitty-settings/                preference schemas, key actions and themes
   maitty-ipc-transport/           shared IPC framing and handshake
+  maitty-machines/                planned, not created yet (ADR 0048): machine list, ssh lines and link state shared by both apps
   adapters/                       Codex, Claude and future provider adapters
 docs/                             architecture, roadmap and design specs
 ```

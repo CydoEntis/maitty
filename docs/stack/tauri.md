@@ -80,3 +80,4 @@ stopping it, then reconnect through the bundled daemon. Never downgrade a newer
 daemon or restart a remote service from the GUI.
 The target OS floor is the existing project support floor; do not raise it
 without updating this section and the release workflow.
+The host links `maitty-desktop-client`, `maitty-shared` and `maitty-ipc-transport`, plus the planned `crates/maitty-machines` (ADR 0048, not created yet) once it exists; it never links `maitty-core`, `maitty-settings` or `maitty-terminal-client`.
