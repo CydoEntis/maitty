@@ -1,6 +1,6 @@
 // Injected with page.addInitScript before the app loads. Emulates the Tauri 2 host:
 // window.isTauri, __TAURI_INTERNALS__.invoke/transformCallback/metadata, the event plugin,
-// and a fake maittyd that answers list_sessions and streams terminal-chunk events.
+// and a fake maittyd that answers list_sessions and streams output frames over the channel the view opens.
 // Reads its configuration from window.__SCENARIO (set by an earlier init script).
 (() => {
   const S = window.__SCENARIO || {}
@@ -116,6 +116,9 @@
     return id
   }
 
+  let outputChannel = null
+  // An experiment: keep generating output but deliver none, to see what the generator itself costs.
+  let sinkOutput = false
   function dispatch(event, payload) {
     const subs = listeners.get(event)
     if (!subs || subs.size === 0) return
@@ -216,9 +219,18 @@
       case 'suggest_project_folders':
         return []
       case 'terminal_history': {
+        // Raw bytes, as the host answers since the output moved to a channel: the sequence number
+        // as 8 big-endian bytes, then the screen.
         const s = sessions.find((x) => x.id === args.term) || sessions[0]
-        return { seq: seqs.get(args.term) || 0, data: b64(initialScreen(s)) }
+        const screen = initialScreen(s)
+        const reply = new Uint8Array(8 + screen.length)
+        new DataView(reply.buffer).setBigUint64(0, BigInt(seqs.get(args.term) || 0))
+        reply.set(screen, 8)
+        return reply.buffer
       }
+      case 'watch_terminal_output':
+        outputChannel = args.onChunk
+        return null
       case 'pane_terminal_replay':
       case 'terminal_replay': {
         const s = sessions.find((x) => x.id === args.term) || sessions[0]
@@ -341,15 +353,28 @@
     while (out.length < budgetPerTick) out += codeLine()
     return out
   }
+  // One frame per pane per tick over the channel the view opened: the pane as 4 big-endian bytes,
+  // the sequence number as 8, one replay byte, then the output (apps/gui/src/api/terminalStream.ts).
+  function frameOf(term, seq, data) {
+    const frame = new Uint8Array(13 + data.length)
+    const view = new DataView(frame.buffer)
+    view.setUint32(0, term)
+    view.setBigUint64(4, BigInt(seq))
+    frame[12] = 0
+    frame.set(data, 13)
+    return frame.buffer
+  }
   const streaming = sessions.filter((s) => s.stream)
   if (streaming.length > 0) {
     origSetInterval(() => {
       for (const s of streaming) {
+        if (!outputChannel) continue
         const seq = (seqs.get(s.id) || 0) + 1
         seqs.set(s.id, seq)
-        dispatch('terminal-chunk', { term: s.id, seq, replay: false, data: b64(encoder.encode(generate(s.id))) })
+        const frame = frameOf(s.id, seq, encoder.encode(generate(s.id)))
+        if (!sinkOutput) outputChannel.onmessage(frame)
       }
     }, tickMs)
   }
-  window.__mock = { dispatch, listeners, sessions }
+  window.__mock = { dispatch, listeners, sessions, dropStream: () => { outputChannel = null }, sinkOutput: () => { sinkOutput = true } }
 })()

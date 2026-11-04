@@ -24,8 +24,10 @@ const warmSec = Number(args.warm || 5)
 const experiment = args.exp || 'none'
 const dsf = Number(args.dsf || 1)
 const poll = args.poll === 'true'
+// How often the mock sends a frame of output; the host flushes every 12 ms under a steady stream.
+const tickMs = Number(args.tick || 50)
 const stackTrace = args.stacktrace === 'true'
-const label = `${scenario}-${gpu}${experiment !== 'none' ? `-${experiment}` : ''}${dsf !== 1 ? `-dsf${dsf}` : ''}${poll ? '-poll' : ''}${args.stacks === 'true' ? '-stacks' : ''}${stackTrace ? '-st' : ''}`
+const label = `${scenario}-${gpu}${experiment !== 'none' ? `-${experiment}` : ''}${dsf !== 1 ? `-dsf${dsf}` : ''}${poll ? '-poll' : ''}${tickMs !== 50 ? `-tick${tickMs}` : ''}${args.stacks === 'true' ? '-stacks' : ''}${stackTrace ? '-st' : ''}`
 
 const SCENARIOS = {
   a: { sessions: [{ id: 1, status: 'Idle', stream: false, agent: null }], panes: ['t1'] },
@@ -88,7 +90,7 @@ await page.addInitScript(({ scenarioConfig, layoutJson }) => {
     localStorage.setItem('maitty.gui.settings.v1', '{}')
     localStorage.setItem('maitty.gui.layout.v1', layoutJson)
   } catch {}
-}, { scenarioConfig: { sessions: sc.sessions, bytesPerSec: 20000, tickMs: 50, timerStacks: args.stacks === 'true' }, layoutJson: JSON.stringify(layout) })
+}, { scenarioConfig: { sessions: sc.sessions, bytesPerSec: 20000, tickMs, timerStacks: args.stacks === 'true' }, layoutJson: JSON.stringify(layout) })
 await page.addInitScript({ path: path.join(HERE, 'mock-tauri.js') })
 
 const cdp = await context.newCDPSession(page)
@@ -121,7 +123,7 @@ const EXPERIMENTS = {
   stop1500: async () => { await page.evaluate(() => { window.__perf.blockPeriod(1500) }) },
   stop30s: async () => { await page.evaluate(() => { window.__perf.blockPeriod(30000) }) },
   stopalltimers: async () => { await page.evaluate(() => { for (const ms of [80, 1000, 1500, 8000, 30000]) window.__perf.blockPeriod(ms) }) },
-  nostream: async () => { await page.evaluate(() => { window.__mock.listeners.get('terminal-chunk')?.clear() }) },
+  nostream: async () => { await page.evaluate(() => { window.__mock.dropStream() }) },
   // Only the xterm DOM output: hide everything but the terminal screen and stop timers.
   bare: async () => {
     await page.addStyleTag({ content: '.mx-sidebar, .mx-tabbar, .mx-statusbar, .mx-pane-head, .title-bar { display: none !important; } *, *::before, *::after { animation: none !important; transition: none !important; }' })

@@ -27,6 +27,7 @@ ap.add_argument('--measure', type=float, default=20)
 ap.add_argument('--warm', type=float, default=5)
 ap.add_argument('--exp', default='none')
 ap.add_argument('--visible', action='store_true', help='use a real window (only when allowed)')
+ap.add_argument('--tick', type=int, default=50, help='ms between output frames; the host flushes every 12 under a steady stream')
 args = ap.parse_args()
 
 SESSIONS = {
@@ -49,7 +50,7 @@ threading.Thread(target=httpd.serve_forever, daemon=True).start()
 
 ucm = WebKit2.UserContentManager()
 pre = f"""
-window.__SCENARIO = {json.dumps({'sessions': SESSIONS[args.scenario], 'bytesPerSec': 20000, 'tickMs': 50})};
+window.__SCENARIO = {json.dumps({'sessions': SESSIONS[args.scenario], 'bytesPerSec': 20000, 'tickMs': args.tick})};
 try {{ localStorage.setItem('maitty.gui.welcomed.v1','1'); localStorage.setItem('maitty.gui.settings.v1','{{}}'); localStorage.setItem('maitty.gui.layout.v1', {json.dumps(json.dumps(layout))}); }} catch (e) {{}}
 """
 with open(os.path.join(HERE, 'mock-tauri.js')) as f:
@@ -61,22 +62,25 @@ EXPS = {
     'noanim': "const s=document.createElement('style');s.textContent='*,*::before,*::after{animation:none!important;transition:none!important}';document.head.appendChild(s)",
     'nocursorblink': "const s=document.createElement('style');s.textContent='.xterm .xterm-cursor-blink{animation:none!important}';document.head.appendChild(s)",
     'hidechrome': "const s=document.createElement('style');s.textContent='.mx-sidebar,.mx-tabbar,.mx-statusbar,.mx-pane-head,.title-bar{display:none!important}';document.head.appendChild(s)",
-    'nostream': "window.__mock.listeners.get('terminal-chunk')?.clear()",
-    'ns_noanim': "window.__mock.listeners.get('terminal-chunk')?.clear(); const s=document.createElement('style');s.textContent='*,*::before,*::after{animation:none!important;transition:none!important}';document.head.appendChild(s); ",
-    'ns_nosweep': "window.__mock.listeners.get('terminal-chunk')?.clear(); const s=document.createElement('style');s.textContent='.mx-fx-working::after,.mx-fx-needs::after,.mx-fx-done::after,.mx-effect-chip::after{animation:none!important}';document.head.appendChild(s); ",
-    'ns_nopulse': "window.__mock.listeners.get('terminal-chunk')?.clear(); const s=document.createElement('style');s.textContent='.mx-badge.is-needs,.mx-inbox-count.is-needs{animation:none!important}';document.head.appendChild(s); ",
-    'ns_hidechrome': "window.__mock.listeners.get('terminal-chunk')?.clear(); const s=document.createElement('style');s.textContent='.mx-sidebar,.mx-tabbar,.mx-statusbar,.mx-pane-head,.title-bar{display:none!important}';document.head.appendChild(s); ",
-    'ns_hidesidebar': "window.__mock.listeners.get('terminal-chunk')?.clear(); const s=document.createElement('style');s.textContent='.mx-sidebar{display:none!important}';document.head.appendChild(s); ",
-    'ns_hidetabbar': "window.__mock.listeners.get('terminal-chunk')?.clear(); const s=document.createElement('style');s.textContent='.mx-tabbar{display:none!important}';document.head.appendChild(s); ",
-    'ns_hidepanehead': "window.__mock.listeners.get('terminal-chunk')?.clear(); const s=document.createElement('style');s.textContent='.mx-pane-head{display:none!important}';document.head.appendChild(s); ",
-    'ns_hidestatusbar': "window.__mock.listeners.get('terminal-chunk')?.clear(); const s=document.createElement('style');s.textContent='.mx-statusbar{display:none!important}';document.head.appendChild(s); ",
-    'ns_stoptimers': "window.__mock.listeners.get('terminal-chunk')?.clear(); for (const ms of [80,1000,1500,8000,30000]) window.__perf.blockPeriod(ms); ",
-    'ns_stop80': "window.__mock.listeners.get('terminal-chunk')?.clear(); window.__perf.blockPeriod(80); ",
-    'ns_stop1s': "window.__mock.listeners.get('terminal-chunk')?.clear(); window.__perf.blockPeriod(1000); ",
-    'ns_stop1500': "window.__mock.listeners.get('terminal-chunk')?.clear(); window.__perf.blockPeriod(1500); ",
-    'ns_noanim_stoptimers': "window.__mock.listeners.get('terminal-chunk')?.clear(); const s=document.createElement('style');s.textContent='*,*::before,*::after{animation:none!important;transition:none!important}';document.head.appendChild(s); for (const ms of [80,1000,1500,8000,30000]) window.__perf.blockPeriod(ms); ",
-    'ns_noshadow': "window.__mock.listeners.get('terminal-chunk')?.clear(); const s=document.createElement('style');s.textContent='*{box-shadow:none!important;text-shadow:none!important;filter:none!important}';document.head.appendChild(s); ",
-    'ns_nogradient': "window.__mock.listeners.get('terminal-chunk')?.clear(); const s=document.createElement('style');s.textContent='*,*::before,*::after{background-image:none!important}';document.head.appendChild(s); ",
+    'nostream': "window.__mock.dropStream()",
+    'ns_noanim': "window.__mock.dropStream(); const s=document.createElement('style');s.textContent='*,*::before,*::after{animation:none!important;transition:none!important}';document.head.appendChild(s); ",
+    'ns_nosweep': "window.__mock.dropStream(); const s=document.createElement('style');s.textContent='.mx-fx-working::after,.mx-fx-needs::after,.mx-fx-done::after,.mx-effect-chip::after{animation:none!important}';document.head.appendChild(s); ",
+    'ns_nopulse': "window.__mock.dropStream(); const s=document.createElement('style');s.textContent='.mx-badge.is-needs,.mx-inbox-count.is-needs{animation:none!important}';document.head.appendChild(s); ",
+    'ns_hidechrome': "window.__mock.dropStream(); const s=document.createElement('style');s.textContent='.mx-sidebar,.mx-tabbar,.mx-statusbar,.mx-pane-head,.title-bar{display:none!important}';document.head.appendChild(s); ",
+    'ns_hidesidebar': "window.__mock.dropStream(); const s=document.createElement('style');s.textContent='.mx-sidebar{display:none!important}';document.head.appendChild(s); ",
+    'ns_hidetabbar': "window.__mock.dropStream(); const s=document.createElement('style');s.textContent='.mx-tabbar{display:none!important}';document.head.appendChild(s); ",
+    'ns_hidepanehead': "window.__mock.dropStream(); const s=document.createElement('style');s.textContent='.mx-pane-head{display:none!important}';document.head.appendChild(s); ",
+    'ns_hidestatusbar': "window.__mock.dropStream(); const s=document.createElement('style');s.textContent='.mx-statusbar{display:none!important}';document.head.appendChild(s); ",
+    'ns_stoptimers': "window.__mock.dropStream(); for (const ms of [80,1000,1500,8000,30000]) window.__perf.blockPeriod(ms); ",
+    'genonly': "window.__mock.sinkOutput(); ",
+    'ns_stop160': "window.__mock.dropStream(); window.__perf.blockPeriod(160); ",
+    'ns_flat': "window.__mock.dropStream(); document.documentElement.dataset.finish='flat'; document.documentElement.dataset.style='flat'; ",
+    'ns_stop80': "window.__mock.dropStream(); window.__perf.blockPeriod(80); ",
+    'ns_stop1s': "window.__mock.dropStream(); window.__perf.blockPeriod(1000); ",
+    'ns_stop1500': "window.__mock.dropStream(); window.__perf.blockPeriod(1500); ",
+    'ns_noanim_stoptimers': "window.__mock.dropStream(); const s=document.createElement('style');s.textContent='*,*::before,*::after{animation:none!important;transition:none!important}';document.head.appendChild(s); for (const ms of [80,1000,1500,8000,30000]) window.__perf.blockPeriod(ms); ",
+    'ns_noshadow': "window.__mock.dropStream(); const s=document.createElement('style');s.textContent='*{box-shadow:none!important;text-shadow:none!important;filter:none!important}';document.head.appendChild(s); ",
+    'ns_nogradient': "window.__mock.dropStream(); const s=document.createElement('style');s.textContent='*,*::before,*::after{background-image:none!important}';document.head.appendChild(s); ",
     'nosweep': "const s=document.createElement('style');s.textContent='.mx-fx-working::after,.mx-fx-needs::after,.mx-fx-done::after,.mx-effect-chip::after{animation:none!important}';document.head.appendChild(s); ",
     'focus': "document.querySelector('.xterm-helper-textarea')?.focus()",
     'focusnoblink': "document.querySelector('.xterm-helper-textarea')?.focus(); const s=document.createElement('style');s.textContent='.xterm .xterm-cursor-blink{animation:none!important}';document.head.appendChild(s)",
