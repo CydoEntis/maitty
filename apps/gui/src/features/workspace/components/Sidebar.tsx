@@ -211,6 +211,7 @@ function RailSessionButton(props: { session: SessionView; track: SessionTrack | 
         type="button"
         className={`mx-rail-row${selected ? ' is-selected' : ''}`}
         aria-label={words}
+        data-hovercard=""
         aria-current={selected ? 'page' : undefined}
         onMouseEnter={(event) => { hover.enter(target, event.currentTarget) }}
         onMouseLeave={hover.leave}
@@ -237,6 +238,7 @@ function RailFolderButton(props: { group: SessionGroup; open: boolean; online: b
       type="button"
       className={`mx-rail-label${group.containsFocused ? ' has-focused' : ''}`}
       aria-label={props.label}
+      data-hovercard=""
       aria-expanded={open}
       onMouseEnter={(event) => { hover.enter(target, event.currentTarget) }}
       onMouseLeave={hover.leave}

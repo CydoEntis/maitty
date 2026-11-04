@@ -330,8 +330,13 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   overlapped) and `+N` for the panes beyond the first; hovering it opens a list of every pane with
   its agent, folder and state. A collapsed session's popover says "Open in tab N"; the expanded rows
   carry no tab number. A working row shows its spinner and no run time, because the window only
-  knows when it first saw the change. Anything with a `title` shows a themed tooltip after a short
-  hover (`HoverTips`), not the browser's.
+  knows when it first saw the change. Anything with a `title`, and every icon-only button, radio or switch
+  (by its `aria-label`), shows a themed tooltip (`HoverTips`), not the browser's: 420 ms after the
+  pointer rests, 40 ms when another tip was on screen in the last 400 ms; hidden on a press, a key
+  or the wheel; held back while a menu or a rich hover card is open. A trailing `(keys)` becomes
+  keycaps and text after ` · ` a muted second line. It sits above the control, below it within 56px
+  of the top, and beside it for a control marked `data-tip-side`. A control that opens its own hover
+  card carries `data-hovercard` and gets no tip.
 - **Tabs hold layouts, panes hold sessions.** A tab is one to four panes in columns; closing a
   pane or tab detaches and the session stays in the sidebar. Ending a session is its own action
   on the sidebar row, a pane's menu or a row's menu. Right-click opens a menu on a pane (split,

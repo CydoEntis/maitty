@@ -1,20 +1,48 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
+import { Keycaps } from '@/features/shortcuts/Keycaps'
+import { parseTip } from './tipText'
 
-const SHOW_DELAY_MS = 350
+const SHOW_DELAY_MS = 420
+/** After a tip was on screen, the next one comes almost at once, so moving along a row of buttons does not stall. */
+const FOLLOW_ON_DELAY_MS = 40
+const FOLLOW_ON_WINDOW_MS = 400
 const GAP_PX = 8
 const EDGE_PX = 8
 /** Half the tooltip's widest size, so a tip centred near a window edge stays inside it. */
 const HALF_WIDTH_PX = 120
-const FLIP_BELOW_PX = 44
+/** A control this close to the top gets its tip below it, where there is room. */
+const FLIP_BELOW_PX = 56
 const CENTRE_RATIO = 0.5
+/** What a tip never covers: a menu, or a rich hover card, which already says more than the tip would. */
+const RICH_OVERLAY = '[role="menu"], .mx-rail-popover, .mx-sessionmenu'
+/** Controls that carry only an icon name their action by `aria-label` alone. */
+const ICON_CONTROLS = 'button, [role="button"], [role="radio"], [role="switch"]'
+/** Marks a control, such as an activity-bar item, whose tip goes beside it, away from the window edge. */
+const SIDE_ATTRIBUTE = 'data-tip-side'
+/** Marks a control that opens its own rich hover card, and so gets no tip. */
+const HOVER_CARD_ATTRIBUTE = 'data-hovercard'
 
-type Tip = { text: string; rect: DOMRect }
+type Tip = { text: string; rect: DOMRect; side: boolean }
+
+/** The control a tip belongs to and its words: a `title` (or the `data-tip` it was moved to), else an icon-only control's `aria-label`. */
+function sourceOf(start: Element): { element: HTMLElement; text: string } | null {
+  for (let element: Element | null = start; element; element = element.parentElement) {
+    if (!(element instanceof HTMLElement)) continue
+    // A rail row opens a hover card of its own; a tip beside it would say less and cover it.
+    if (element.hasAttribute(HOVER_CARD_ATTRIBUTE)) return null
+    const text = element.getAttribute('title') ?? element.dataset.tip
+    if (text) return { element, text }
+    const label = element.getAttribute('aria-label')
+    if (label && element.matches(ICON_CONTROLS) && element.textContent.trim() === '') return { element, text: label }
+  }
+  return null
+}
 
 /**
- * A themed tooltip for anything with a `title`, in place of the browser's slow, unstyled one.
- * Hovering takes the `title` off the element and puts it back on leaving, so the browser's own
- * tooltip never doubles up with this one.
+ * A themed tooltip for anything with a `title`, and for icon-only controls with an `aria-label`
+ * (v18 B.4), in place of the browser's slow, unstyled one. Hovering takes the `title` off the
+ * element and puts it back on leaving, so the browser's own tooltip never doubles up with this one.
  */
 export function HoverTips() {
   const [tip, setTip] = useState<Tip | null>(null)
@@ -22,23 +50,40 @@ export function HoverTips() {
   useEffect(() => {
     let current: HTMLElement | null = null
     let timer = 0
+    let shown = false
+    let lastVisibleAt = Number.NEGATIVE_INFINITY
 
     const release = () => {
       window.clearTimeout(timer)
+      if (shown) lastVisibleAt = Date.now()
+      shown = false
       if (current?.dataset.tip !== undefined && !current.hasAttribute('title')) current.setAttribute('title', current.dataset.tip)
       current = null
       setTip(null)
     }
+    const dismiss = () => {
+      window.clearTimeout(timer)
+      if (shown) lastVisibleAt = Date.now()
+      shown = false
+      setTip(null)
+    }
     const over = (event: PointerEvent) => {
-      const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[title], [data-tip]') : null
-      if (!target || target === current) return
+      const source = event.target instanceof Element ? sourceOf(event.target) : null
+      if (!source || source.element === current) return
       release()
-      const text = target.getAttribute('title')
-      if (!text) return
-      target.dataset.tip = text
-      target.removeAttribute('title')
-      current = target
-      timer = window.setTimeout(() => { setTip({ text, rect: target.getBoundingClientRect() }) }, SHOW_DELAY_MS)
+      const { element, text } = source
+      // The native tooltip would otherwise show even when ours is held back.
+      if (element.hasAttribute('title')) {
+        element.dataset.tip = text
+        element.removeAttribute('title')
+      }
+      current = element
+      const delay = Date.now() - lastVisibleAt < FOLLOW_ON_WINDOW_MS ? FOLLOW_ON_DELAY_MS : SHOW_DELAY_MS
+      timer = window.setTimeout(() => {
+        if (document.querySelector(RICH_OVERLAY)) return
+        shown = true
+        setTip({ text, rect: element.getBoundingClientRect(), side: element.hasAttribute(SIDE_ATTRIBUTE) })
+      }, delay)
     }
     const out = (event: PointerEvent) => {
       if (current && !(event.relatedTarget instanceof Node && current.contains(event.relatedTarget))) release()
@@ -48,6 +93,7 @@ export function HoverTips() {
     document.addEventListener('pointerout', out)
     document.addEventListener('pointerdown', release)
     document.addEventListener('keydown', release)
+    document.addEventListener('wheel', dismiss, { passive: true })
     window.addEventListener('blur', release)
     return () => {
       release()
@@ -55,13 +101,39 @@ export function HoverTips() {
       document.removeEventListener('pointerout', out)
       document.removeEventListener('pointerdown', release)
       document.removeEventListener('keydown', release)
+      document.removeEventListener('wheel', dismiss)
       window.removeEventListener('blur', release)
     }
   }, [])
 
   if (!tip) return null
-  const centre = Math.min(Math.max(tip.rect.left + tip.rect.width * CENTRE_RATIO, EDGE_PX + HALF_WIDTH_PX), window.innerWidth - EDGE_PX - HALF_WIDTH_PX)
-  const below = tip.rect.bottom + FLIP_BELOW_PX < window.innerHeight
-  const place = below ? { top: tip.rect.bottom + GAP_PX } : { bottom: window.innerHeight - tip.rect.top + GAP_PX }
-  return createPortal(<div role="tooltip" className="mx-tip" style={{ left: centre, ...place }}>{tip.text}</div>, document.body)
+  const content = parseTip(tip.text)
+  return createPortal(
+    <div role="tooltip" className="mx-tip" style={placement(tip)}>
+      <span className="mx-tip-line">
+        <span className="mx-tip-name">{content.name}</span>
+        {content.keys && <Keycaps chord={content.keys} className="mx-tip-keys" />}
+      </span>
+      {content.hint && <span className="mx-tip-hint">{content.hint}</span>}
+    </div>,
+    document.body,
+  )
+}
+
+/** The slide-in direction rides on custom properties the stylesheet reads. */
+type TipStyle = CSSProperties & Record<`--${string}`, string>
+
+/** Above by default, below near the top of the window, beside the control for a side tip; clamped to the window's width. */
+function placement({ rect, side }: Pick<Tip, 'rect' | 'side'>): TipStyle {
+  if (side) {
+    const onLeftHalf = rect.left + rect.width * CENTRE_RATIO < window.innerWidth * CENTRE_RATIO
+    const middle = rect.top + rect.height * CENTRE_RATIO
+    return onLeftHalf
+      ? { left: rect.right + GAP_PX, top: middle, transform: 'translateY(-50%)', '--tip-dx': '-4px' }
+      : { right: window.innerWidth - rect.left + GAP_PX, top: middle, transform: 'translateY(-50%)', '--tip-dx': '4px' }
+  }
+  const centre = Math.min(Math.max(rect.left + rect.width * CENTRE_RATIO, EDGE_PX + HALF_WIDTH_PX), window.innerWidth - EDGE_PX - HALF_WIDTH_PX)
+  return rect.top < FLIP_BELOW_PX
+    ? { left: centre, top: rect.bottom + GAP_PX, '--tip-dy': '-4px' }
+    : { left: centre, bottom: window.innerHeight - rect.top + GAP_PX, '--tip-dy': '4px' }
 }

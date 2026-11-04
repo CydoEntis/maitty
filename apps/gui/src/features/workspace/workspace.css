@@ -959,7 +959,16 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-statusbar .mx-keycap { transform: scale(.9); transform-origin: right center; }
 
 /* Hover tooltip for anything with a title. */
-.mx-tip { position: fixed; z-index: 90; max-width: 240px; padding: 5px 9px; transform: translateX(-50%); border-radius: 8px; background: var(--raise); border: 1px solid var(--pane-line); box-shadow: 0 10px 28px rgba(0, 0, 0, .4); font-size: 12px; line-height: 1.4; color: var(--fg); pointer-events: none; animation: v7fade .12s ease-out; }
+.mx-tip { position: fixed; z-index: 90; max-width: 260px; display: flex; flex-direction: column; gap: 2px; padding: 5px 9px; transform: translateX(-50%); border-radius: 8px; background: var(--raise); border: 1px solid var(--pane-line); box-shadow: 0 10px 28px rgba(0, 0, 0, .4); line-height: 1.4; color: var(--fg); pointer-events: none; animation: mx-tip-in .16s ease-out; }
+.mx-tip-line { display: flex; align-items: center; gap: 8px; }
+.mx-tip-name { font-size: 12px; font-weight: 500; }
+.mx-tip-keys { display: inline-flex; gap: 2px; }
+.mx-tip .mx-keycap { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 4px; border-bottom-width: 2px; font-size: 10.5px; }
+.mx-tip-hint { font-size: 11.5px; color: var(--fg2); }
+/* The slide comes from the side the tip is anchored to, through the standalone `translate` so it does not fight the centring transform. */
+@keyframes mx-tip-in { from { opacity: 0; translate: var(--tip-dx, 0) var(--tip-dy, 0); } to { opacity: 1; translate: 0 0; } }
+:root:has(.mx-app[data-motion="reduced"]) .mx-tip { animation: none; }
+@media (prefers-reduced-motion: reduce) { .mx-tip { animation: none; } }
 
 /* Confirm before ending sessions. */
 .mx-confirm-scrim { position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, .5); animation: v7scrim .2s ease-out; }
