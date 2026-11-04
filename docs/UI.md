@@ -109,6 +109,15 @@ only: a new session there is a plain shell, closing a pane or tab detaches, and 
 session is its own action ([ADR 0046](adr/0046-desktop-app-is-a-terminal-multiplexer.md);
 its look is in [DESIGN](DESIGN.md#desktop-app)).
 
+The desktop app also shows other machines' terminal sessions (ADR 0048).
+Its host holds one supervised connection per machine and the web view only renders: it knows a machine by
+name, never by where it points. A session of another machine has the id `build/t12` (the machine's name, so a
+saved layout survives a restart; this computer's stay `t12`). **Settings › Machines** retries, removes and
+adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
+with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
+login that needs a person run in a session named `ssh <name>`); **New session** on a pane of another machine
+asks for a folder on that machine. Features that read a pane's files are for this computer's panes only.
+
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,
 and status colours (`working`, `blocked` = needs you, `done`, `idle`, `err`).
