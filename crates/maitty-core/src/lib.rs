@@ -6,7 +6,7 @@ pub mod gitfs;
 pub mod installed_executable;
 pub mod ipc;
 mod login_path;
-pub mod machine_probe;
+pub use maitty_machines::machine_probe;
 pub mod proc;
 pub mod project;
 pub mod prompt;

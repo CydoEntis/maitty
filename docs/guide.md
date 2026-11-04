@@ -596,6 +596,46 @@ answers does not hold up the rest. The section is not printed when there are no 
   a machine you added, it starts the daemon there when none is running, and it keeps its own worktrees.
 - The desktop app has no machines; this is the terminal app's.
 
+### Machines in the desktop app
+
+The desktop app uses the same machine list as the terminal app (`config.local.toml`), so a machine added in
+one shows in the other the next time that app starts.
+
+With one machine the sidebar looks as it always did. Once you have another, every machine's folders sit under
+a header: **this computer** first, then the others. A machine's header carries its state as a shape and a
+word: `connected`, `connecting`, `reconnecting #2`, `needs login`, `needs update`, `unreachable` or `refused`
+(a different computer answers at that name). When you have to act, the fix is written under the header, in
+full. A machine that is down keeps its folders and sessions, dimmed, with `disconnected since 2m ago`; its
+sessions' needs-you and done marks leave the counts and the Inbox until it is back, and everything returns on
+its own. An Inbox row from another machine says `· on build`.
+
+**Settings › Machines** (or *Machines* in the command palette) lists them:
+
+- **Retry** dials a machine now and lets a refused one be looked at again.
+- **Remove** asks first, then takes the machine out of the list and out of `config.local.toml`. Its sessions
+  keep running on it and the layout you saved is kept.
+- **Add a machine** lists the hosts in `~/.ssh/config` that are not machines yet, or takes `user@host`. The
+  desktop app first looks at the machine over ssh without asking anything (12 seconds at most; *Cancel* ends
+  it) and adds it only when ssh could reach it. If ssh needs you to type a password or accept a host key, the
+  machine is added and ssh opens in a session named `ssh <name>`; the machine connects when that session
+  closes. On Windows use ssh keys or an agent: password prompts work in that session but are not remembered.
+  A machine whose app is missing or old is added too; its header then says `needs update` with the fix.
+
+A machine that needs an update or no app at all says `needs update`, with the exact command to run (for example
+`maitty machine update build --install`) and a **Copy command** button. The desktop app never installs or restarts
+anything on a machine: you run the command in a terminal.
+
+Each machine on that page has two switches, both off until you turn them on: **Copy to your clipboard** (what
+that machine's sessions ask to copy is put on your clipboard) and **Notifications** (its notices, and a notice when
+its sessions need you or finish, each starting with `[name]`). They are written to the machine's entry in
+`config.local.toml`, as `clipboard = true` and `notices = true`. The desktop app plays no sounds, so there is no
+switch for them.
+
+A new session (**New session**, ⌘T) starts where the focused session is. On another machine it asks for a
+folder there, starting at `~`, because the folder picker is this computer's; a folder that does not exist
+opens in the machine's home folder. Files, Changes, worktrees and the other features that read a pane's files
+are for this computer's sessions only.
+
 ## Never leave maitty
 
 | Leader + | Panel | What it does |

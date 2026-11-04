@@ -2,6 +2,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { z } from 'zod'
 import { bytesOf } from './ipcBytes'
+import { assertLocal, type LocalFeature } from '@/lib/localOnly'
 import { LOCAL_MACHINE, addressOf, machineArgs, terminalOf, terminalSessionId } from './machines'
 import { previewConversations, type Conversation, type Message, type SessionStatus } from '@/data/preview'
 
@@ -507,15 +508,15 @@ export async function suggestProjectFolders(typed: string): Promise<string[]> {
 }
 
 /** Questions the host answers by opening its own connection to this computer's daemon cannot be asked of another machine's pane. */
-function refuseOtherMachine(pane: { machine: number; machineName: string | null }, what: string): void {
-  if (pane.machine !== LOCAL_MACHINE) throw new Error(`${what} of a pane on ${pane.machineName ?? 'another machine'} is not available`)
+function refuseOtherMachine(pane: { machine: number; machineName: string | null }, feature: LocalFeature): void {
+  assertLocal(pane, feature)
 }
 
 export async function loadTerminalScreen(conversation: Pick<Conversation, 'id'> & { generation: number }): Promise<string> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
   const pane = addressOf(conversation.id)
   if (pane !== null) {
-    refuseOtherMachine(pane, 'The screen text')
+    refuseOtherMachine(pane, 'screen-text')
     return invokeParsed('pane_terminal_screen', z.string(), { term: pane.term })
   }
   return invokeParsed('terminal_screen', z.string(), {
@@ -527,7 +528,7 @@ export async function loadTerminalScreen(conversation: Pick<Conversation, 'id'> 
 export async function loadTerminalReplay(conversation: Pick<Conversation, 'id'> & { generation: number }): Promise<Uint8Array> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
   const pane = addressOf(conversation.id)
-  if (pane !== null) refuseOtherMachine(pane, 'A fresh replay')
+  if (pane !== null) refuseOtherMachine(pane, 'replay')
   // The host answers with raw bytes: as JSON a replay would be a number per byte.
   const reply = pane !== null
     ? await invoke<unknown>('pane_terminal_replay', { term: pane.term })

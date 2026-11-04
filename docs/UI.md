@@ -109,6 +109,15 @@ only: a new session there is a plain shell, closing a pane or tab detaches, and 
 session is its own action ([ADR 0046](adr/0046-desktop-app-is-a-terminal-multiplexer.md);
 its look is in [DESIGN](DESIGN.md#desktop-app)).
 
+The desktop app also shows other machines' terminal sessions (ADR 0048).
+Its host holds one supervised connection per machine and the web view only renders: it knows a machine by
+name, never by where it points. A session of another machine has the id `build/t12` (the machine's name, so a
+saved layout survives a restart; this computer's stay `t12`). **Settings › Machines** retries, removes and
+adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
+with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
+login that needs a person run in a session named `ssh <name>`); **New session** on a pane of another machine
+asks for a folder on that machine. A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
+
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,
 and status colours (`working`, `blocked` = needs you, `done`, `idle`, `err`).
@@ -564,7 +573,7 @@ Code: `client/screen/machine_group.rs` (header, notes, grey), `side.rs` (`Line::
 
 Code: `client/screen/machines.rs` (the view, its keys and its drawing), `client/machine_flow.rs` (what a
 choice does), `client/machine_config.rs` (where `config.local.toml` is; the `[[machines]]` entry edits are in `maitty-machines`),
-`maitty-core/src/machine_probe.rs` (the look at a machine). Opened by leader `w` or the command palette
+`maitty-machines/src/machine_probe.rs` (the look at a machine). Opened by leader `w` or the command palette
 (`Machines`); `Mode::Machines`.
 
 - **Two lists.** *Yours*: the configured machines in name order, each as a state chip (the words of

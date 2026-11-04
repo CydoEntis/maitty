@@ -1,3 +1,4 @@
+mod add_machine;
 pub mod hub;
 mod machines;
 mod performance;
@@ -174,7 +175,13 @@ async fn resize_terminal(
 }
 
 #[tauri::command]
-async fn pane_terminal_screen(app: tauri::AppHandle, term: u32) -> Result<String, String> {
+async fn pane_terminal_screen(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+) -> Result<String, String> {
+    wire.require_local(machine, "The screen text")?;
     maitty_desktop_client::pane_terminal_screen(term, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -212,9 +219,12 @@ async fn pane_terminal_resize(
 #[tauri::command]
 async fn repo_query(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     term: u32,
     question: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    wire.require_local(machine, "Inspect")?;
     maitty_desktop_client::repo_query(term, question, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -223,10 +233,13 @@ async fn repo_query(
 #[tauri::command]
 async fn new_worktree_session(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     term: u32,
     branch: String,
     base: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    wire.require_local(machine, "Worktrees")?;
     maitty_desktop_client::new_worktree_session(term, branch, base, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -240,7 +253,14 @@ async fn search_panes(app: tauri::AppHandle, query: String) -> Result<serde_json
 }
 
 #[tauri::command]
-async fn restore_snapshot(app: tauri::AppHandle, term: u32, commit: String) -> Result<u64, String> {
+async fn restore_snapshot(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    commit: String,
+) -> Result<u64, String> {
+    wire.require_local(machine, "Restoring a snapshot")?;
     maitty_desktop_client::restore_snapshot(term, commit, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -526,6 +546,7 @@ pub fn run() {
         .manage(terminal_stream::TerminalOutput::default())
         .manage(terminal_stream::Wire::default())
         .manage(performance::ProcessStats::default())
+        .manage(add_machine::AddProbe::default())
         .setup(|app| {
             terminal_stream::start(
                 app.handle().clone(),
@@ -537,6 +558,13 @@ pub fn run() {
             list_sessions,
             machines::list_machines,
             terminal_stream::list_machines_overview,
+            terminal_stream::retry_machine,
+            terminal_stream::start_session_on_machine,
+            terminal_stream::remove_machine,
+            terminal_stream::set_machine_grant,
+            add_machine::list_ssh_hosts,
+            add_machine::add_machine,
+            add_machine::cancel_add_machine,
             read_conversation,
             conversation_diff,
             conversation_files,

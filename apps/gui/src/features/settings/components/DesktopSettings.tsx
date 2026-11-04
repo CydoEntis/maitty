@@ -8,10 +8,37 @@ import { PerformanceSection } from './PerformanceSection'
 import { hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/model/shortcuts'
 import { PROJECT_COLORS } from '@/features/workspace/model/folderColor'
 import { Icon } from '@/features/workspace/components/glyphs'
+import { errorMessage } from '@/lib/error-message'
+import type { Added, Grant, HostChoice } from '@/api/machines'
+import { DisconnectedSince } from '@/features/workspace/components/times'
+import type { MachineHead } from '@/features/workspace/model/machines'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
 import { SCROLL_SPEED_CHOICES, SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type ScrollSpeed, type SettingsPreferences, type StyleChoice } from '../preferences'
 
-export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'notifications' | 'keys' | 'daemon' | 'performance'
+export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'notifications' | 'machines' | 'keys' | 'daemon' | 'performance'
+
+/** The other machines, for the Machines page: what the window knows of each, and what it can ask of the host. */
+export type MachinesInfo = {
+  /** The host has answered about the machines: before that the page says it is loading. */
+  known: boolean
+  list: readonly MachineHead[]
+  onRetry: (name: string) => void
+  onRemove: (name: string) => void
+  /** Allow or stop one of a machine's powers over this computer. */
+  onGrant: (name: string, grant: Grant, on: boolean) => void
+  /** Puts a command on the clipboard to run in a terminal; the app never runs it on a machine. */
+  onCopyCommand: (command: string) => void
+  add: {
+    /** Windows has no ssh agent by default: the page says to use keys. */
+    windows: boolean
+    /** The hosts of ~/.ssh/config that are not machines yet. Stable between renders. */
+    loadHosts: () => Promise<HostChoice[]>
+    /** Looks at the target and adds it. Rejects with the words to show when it cannot be added. */
+    onAdd: (target: string, name?: string) => Promise<Added>
+    /** Ends the look that is running. */
+    onCancel: () => void
+  }
+}
 
 export type DaemonInfo = {
   online: boolean
@@ -42,6 +69,7 @@ type DesktopSettingsProps = {
   daemon: DaemonInfo
   /** The running app's version, for the performance report; null until known. */
   appVersion: string | null
+  machines: MachinesInfo
   /** The projects in the sidebar, so each can be given a colour. */
   projects: ReadonlyArray<{ key: string; name: string; colorId: string | undefined }>
   /** Resolves whether a typed folder exists. */
@@ -66,6 +94,7 @@ const NAV: Array<{ label: string; items: NavItem[] }> = [
     label: 'WORKSPACE',
     items: [
       { id: 'notifications', label: 'Notifications', key: 'N', tint: 'var(--warn)', path: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0' },
+      { id: 'machines', label: 'Machines', key: 'M', tint: 'var(--ansi-green)', path: 'M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01M17 7h.01M17 17h.01' },
       { id: 'keys', label: 'Hotkeys', key: '?', tint: 'var(--ansi-blue)', path: 'M2 6h20v12H2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8' },
     ],
   },
@@ -83,12 +112,13 @@ const PAGE: Record<DesktopSettingsSection, [string, string]> = {
   terminal: ['Text & cursor', 'How every pane renders. Changes apply instantly.'],
   appearance: ['Appearance', 'Colours, spinner and motion for the whole window.'],
   notifications: ['Notifications', 'When the system should tell you a session needs you.'],
+  machines: ['Machines', 'Other computers whose sessions show up beside this one.'],
   keys: ['Hotkeys', 'Everything the window handles before the shell does.'],
   daemon: ['Daemon', 'The local maittyd that owns every session.'],
   performance: ['Performance', 'What the window is spending its time on, measured live.'],
 }
 
-const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', n: 'notifications', '?': 'keys', d: 'daemon', p: 'performance' }
+const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', n: 'notifications', m: 'machines', '?': 'keys', d: 'daemon', p: 'performance' }
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -173,6 +203,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
               {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} projects={props.projects} />}
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} onTestNotice={props.onTestNotice} />}
+              {section === 'machines' && <MachinesSection machines={props.machines} />}
               {section === 'keys' && <HotkeysSection mac={props.mac} />}
               {section === 'daemon' && <DaemonSection daemon={props.daemon} />}
               {section === 'performance' && <PerformanceSection preferences={preferences} update={update} appVersion={props.appVersion} />}
@@ -641,3 +672,180 @@ function DaemonSection({ daemon }: { daemon: DaemonInfo }) {
   )
 }
 
+
+function MachinesSection({ machines }: { machines: MachinesInfo }) {
+  return (
+    <>
+      <MachineList machines={machines} />
+      {machines.known && <AddMachineCard add={machines.add} />}
+    </>
+  )
+}
+
+type HostsState = { status: 'loading' } | { status: 'ready'; hosts: readonly HostChoice[] } | { status: 'failed'; message: string }
+
+function AddMachineCard({ add }: { add: MachinesInfo['add'] }) {
+  const [hosts, setHosts] = useState<HostsState>({ status: 'loading' })
+  const [text, setText] = useState('')
+  const [checking, setChecking] = useState<string | null>(null)
+  const [naming, setNaming] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  const [note, setNote] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const { loadHosts } = add
+  useEffect(() => {
+    let gone = false
+    loadHosts().then(
+      (list) => { if (!gone) setHosts({ status: 'ready', hosts: list }) },
+      (error: unknown) => { if (!gone) setHosts({ status: 'failed', message: errorMessage(error, 'Could not read ~/.ssh/config') }) },
+    )
+    return () => { gone = true }
+  }, [loadHosts])
+
+  const submit = (target: string, chosenName?: string) => {
+    setChecking(target)
+    setNote(null)
+    add.onAdd(target, chosenName).then(
+      (result) => {
+        setChecking(null)
+        switch (result.outcome) {
+          case 'needs-name':
+            setNaming(target)
+            setName('')
+            return
+          case 'cancelled':
+            setNote({ kind: 'ok', text: 'Cancelled. Nothing was added.' })
+            return
+          case 'added':
+            setNote({ kind: 'ok', text: `Added ${result.name}.${result.version ? ` ${result.version} answered there.` : ''} Connecting.` })
+            break
+          case 'login':
+            setNote({ kind: 'ok', text: `Added ${result.name}. ssh needs you to log in: use the session named “ssh ${result.name}”.` })
+            break
+          case 'login-manual':
+            setNote({ kind: 'error', text: `Added ${result.name}. Run “ssh ${result.target}” once in a terminal to log in, then retry (${result.why}).` })
+            break
+        }
+        setText('')
+        setNaming(null)
+        setHosts((current) => current.status === 'ready' ? { status: 'ready', hosts: current.hosts.filter((host) => host.alias !== target) } : current)
+      },
+      (error: unknown) => {
+        setChecking(null)
+        setNote({ kind: 'error', text: errorMessage(error, 'Could not add the machine') })
+      },
+    )
+  }
+
+  const typed = text.trim()
+  const shown = hosts.status === 'ready' ? hosts.hosts.filter((host) => `${host.alias} ${host.detail}`.toLowerCase().includes(typed.toLowerCase())) : []
+  const icon = <><circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" /></>
+  return (
+    <Card title="Add a machine" color="var(--accent)" iconPath={icon}>
+      {add.windows && <p className="mx-scard-note">Windows: use ssh keys or an agent. Password prompts work in the session but are not remembered.</p>}
+      {checking !== null
+        ? (
+          <div className="mx-scard-row" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); add.onCancel() } }}>
+            <div className="mx-scard-text"><span role="status">Checking {checking}…</span><span>Esc ends ssh and adds nothing.</span></div>
+            <button type="button" className="mx-scard-button" onClick={add.onCancel}>Cancel</button>
+          </div>
+        )
+        : naming !== null
+          ? (
+            <form className="mx-scard-row" onSubmit={(event) => { event.preventDefault(); if (name.trim() !== '') submit(naming, name.trim()) }}>
+              <div className="mx-scard-text"><span>Name for {naming}</span><span>A short name for the sidebar, such as build.</span></div>
+              <input className="mx-scard-input" aria-label="Machine name" value={name} autoFocus onChange={(event) => { setName(event.target.value) }} />
+              <button type="submit" className="mx-scard-button" disabled={name.trim() === ''}>Add</button>
+              <button type="button" className="mx-scard-button" onClick={() => { setNaming(null) }}>Back</button>
+            </form>
+          )
+          : (
+            <form className="mx-scard-row" onSubmit={(event) => { event.preventDefault(); if (typed !== '') submit(typed) }}>
+              <div className="mx-scard-text"><span>Host</span><span>Pick one below, or type user@host.</span></div>
+              <input className="mx-scard-input" aria-label="Host or user@host" value={text} placeholder="user@host" onChange={(event) => { setText(event.target.value) }} />
+              <button type="submit" className="mx-scard-button" disabled={typed === ''}>Add</button>
+            </form>
+          )}
+      {note && <p className="mx-scard-note" role={note.kind === 'error' ? 'alert' : 'status'}>{note.text}</p>}
+      {checking === null && naming === null && (
+        hosts.status === 'loading'
+          ? <p className="mx-scard-note" role="status">Loading hosts from ~/.ssh/config…</p>
+          : hosts.status === 'failed'
+            ? <p className="mx-scard-note" role="alert">{hosts.message}</p>
+            : hosts.hosts.length === 0
+              ? <p className="mx-scard-note">No hosts in ~/.ssh/config. Type user@host above.</p>
+              : (
+                <ul className="mx-host-list" aria-label="Hosts in ~/.ssh/config">
+                  {shown.map((host) => (
+                    <li key={host.alias}>
+                      <button type="button" className="mx-host-row" onClick={() => { submit(host.alias) }}>
+                        <span>{host.alias}</span><span className="mx-host-detail">{host.detail}</span>
+                      </button>
+                    </li>
+                  ))}
+                  {shown.length === 0 && <li className="mx-scard-note">No host matches “{typed}”. Add presses Enter for it as typed.</li>}
+                </ul>
+              )
+      )}
+    </Card>
+  )
+}
+
+function MachineList({ machines }: { machines: MachinesInfo }) {
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const icon = <><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>
+  if (!machines.known) {
+    return <Card title="Machines" color="var(--ansi-green)" iconPath={icon}><p className="mx-scard-note" role="status">Loading machines…</p></Card>
+  }
+  if (machines.list.length === 0) {
+    return (
+      <Card title="Machines" color="var(--ansi-green)" iconPath={icon}>
+        <p className="mx-scard-note">No other machines. List them as [[machines]] in config.local.toml and restart the app.</p>
+      </Card>
+    )
+  }
+  return (
+    <Card title="Machines" color="var(--ansi-green)" iconPath={icon} meta={<span className="mx-scard-meta">{machines.list.length}</span>}>
+      {machines.list.map((head) => {
+        const name = head.label
+        const chip = head.chip
+        const asking = confirming === name
+        return (
+          <Fragment key={head.key}>
+          <div className="mx-scard-row mx-machine-row">
+            <div className="mx-scard-text">
+              <span>
+                {name}
+                {chip && <span className={`mx-machine-chip is-${chip.tone}`}> <span aria-hidden="true">{chip.glyph}</span> {chip.word}</span>}
+              </span>
+              {head.down && <span><DisconnectedSince at={head.downSince} /></span>}
+              {head.why !== null && head.chip?.tone === 'bad' && <span className="mx-machine-fix">{head.why}</span>}
+              {head.updateCommand !== null && <span className="mx-machine-fix mono">{head.updateCommand}</span>}
+              {asking && <span role="alert">Removes {name} from this list. Its sessions keep running on {name}.</span>}
+            </div>
+            {asking
+              ? (
+                <>
+                  <button type="button" className="mx-scard-button is-danger" onClick={() => { setConfirming(null); machines.onRemove(name) }}>Remove {name}</button>
+                  <button type="button" className="mx-scard-button" onClick={() => { setConfirming(null) }}>Keep</button>
+                </>
+              )
+              : (
+                <>
+                  {head.updateCommand !== null && <button type="button" className="mx-scard-button" aria-label={`Copy the update command for ${name}`} onClick={() => { if (head.updateCommand !== null) machines.onCopyCommand(head.updateCommand) }}>Copy command</button>}
+                  <button type="button" className="mx-scard-button" disabled={chip?.word === 'connected'} aria-label={`Retry ${name}`} onClick={() => { machines.onRetry(name) }}>Retry</button>
+                  <button type="button" className="mx-scard-button" aria-label={`Remove ${name}`} onClick={() => { setConfirming(name) }}>Remove</button>
+                </>
+              )}
+          </div>
+          <Row label={`Copy to your clipboard`} detail={`Let ${name} put text on your clipboard.`}>
+            <Switch label={`Allow ${name} to copy to your clipboard`} checked={head.grants.clipboard} onChange={(on) => { machines.onGrant(name, 'clipboard', on) }} />
+          </Row>
+          <Row label="Notifications" detail={`Let ${name} raise notices, and tell you when its sessions need you or finish.`}>
+            <Switch label={`Allow ${name} to notify you`} checked={head.grants.notices} onChange={(on) => { machines.onGrant(name, 'notices', on) }} />
+          </Row>
+          </Fragment>
+        )
+      })}
+    </Card>
+  )
+}

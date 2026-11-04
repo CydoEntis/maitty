@@ -14,8 +14,9 @@ use maitty_machines::link::{
     ConnectionState, LinkControl, LinkEvent, Links, Timing, configured_machines,
 };
 use maitty_machines::machine_ids::{IdCheck, MachineIds, check_daemon_id};
+use maitty_machines::machine_config::Grant;
 use maitty_machines::remote_policy::{MachineOpts, vet};
-use maitty_machines::{Dial, MachineDef, MachineId, Outgoing};
+use maitty_machines::{Dial, Machine, MachineDef, MachineId, Outgoing};
 use maitty_shared::protocol::{ClientMsg, ServerMsg, Surface};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -51,9 +52,19 @@ fn dial() -> anyhow::Result<Dial> {
     })
 }
 
+/// What the host asks of the hub about a machine, by name.
+#[derive(Debug)]
+enum Command {
+    Add(Box<MachineDef>),
+    Retry(String),
+    Remove(String),
+}
+
 /// What the hub has to tell the host.
 #[derive(Debug)]
 pub enum Update {
+    /// A machine was taken out of the list: the window drops everything it holds for it.
+    Removed { machine: MachineId },
     /// A machine's connection changed state.
     State {
         machine: MachineId,
@@ -76,6 +87,7 @@ pub enum Update {
 #[derive(Clone)]
 pub struct HubHandle {
     outbox: mpsc::UnboundedSender<Outgoing>,
+    commands: mpsc::UnboundedSender<Command>,
     shared: Arc<Shared>,
 }
 
@@ -84,12 +96,18 @@ pub struct HubHandle {
 struct Shared {
     /// Machines with a line.
     up: Mutex<BTreeSet<MachineId>>,
+    /// Machines a different daemon answered for: told to the window as `refused`, not `unreachable`.
+    refused: Mutex<BTreeSet<MachineId>>,
     /// Each machine's name, for saying which one a refusal is about.
     names: Mutex<BTreeMap<MachineId, String>>,
     /// Requests out to each other machine that are waiting for an answer.
     allowance: Mutex<BTreeMap<MachineId, ReplyAllowance>>,
     /// Keystrokes a machine without a line could not take, counted until it is back.
     unsent: Mutex<BTreeMap<MachineId, u32>>,
+    /// What each machine may do to this computer (`notices`, `sounds`, `clipboard`), as configured.
+    opts: Mutex<BTreeMap<MachineId, MachineOpts>>,
+    /// When each machine that is not connected stopped being, in milliseconds since the epoch.
+    down_since: Mutex<BTreeMap<MachineId, u64>>,
 }
 
 impl HubHandle {
@@ -118,6 +136,58 @@ impl HubHandle {
             .map_err(|_| NotConnected(machine))
     }
 
+    /// Turn one of a machine's grants on or off, for what it says from now on. Returns the
+    /// machine's number, or `None` when no machine has that name.
+    pub fn set_grant(&self, name: &str, grant: Grant, on: bool) -> Option<MachineId> {
+        let machine = self.id_of(name)?;
+        let mut all = lock(&self.shared.opts);
+        let opts = all.entry(machine).or_default();
+        match grant {
+            Grant::Clipboard => opts.clipboard = on,
+            Grant::Notices => opts.notices = on,
+            Grant::Sounds => opts.sounds = on,
+        }
+        Some(machine)
+    }
+
+    /// The number of the machine called `name`, in any case.
+    pub fn id_of(&self, name: &str) -> Option<MachineId> {
+        lock(&self.shared.names)
+            .iter()
+            .find(|(id, known)| **id != MachineId::LOCAL && known.eq_ignore_ascii_case(name))
+            .map(|(id, _)| *id)
+    }
+
+    /// What the machine may do to this computer; nothing for one that is not known.
+    pub fn opts_of(&self, machine: MachineId) -> MachineOpts {
+        lock(&self.shared.opts)
+            .get(&machine)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Whether a different daemon answered at the machine's name, so its line was turned away.
+    pub fn is_refused(&self, machine: MachineId) -> bool {
+        lock(&self.shared.refused).contains(&machine)
+    }
+
+    /// Ask the hub to start dialling a machine added while the app runs. It shows as connecting
+    /// at once; its entry is already in the config file.
+    pub fn add(&self, def: MachineDef) {
+        let _ = self.commands.send(Command::Add(Box::new(def)));
+    }
+
+    /// Ask the hub to dial the machine named `name` now, letting a refused daemon be looked at again.
+    pub fn retry(&self, name: &str) {
+        let _ = self.commands.send(Command::Retry(name.to_owned()));
+    }
+
+    /// Ask the hub to stop the machine named `name` and forget it. Its sessions, its daemon and
+    /// the layout saved under its name are not touched.
+    pub fn remove(&self, name: &str) {
+        let _ = self.commands.send(Command::Remove(name.to_owned()));
+    }
+
     pub fn is_up(&self, machine: MachineId) -> bool {
         lock(&self.shared.up).contains(&machine)
     }
@@ -125,6 +195,18 @@ impl HubHandle {
     /// The machine's name, as it is configured.
     pub fn name_of(&self, machine: MachineId) -> Option<String> {
         lock(&self.shared.names).get(&machine).cloned()
+    }
+
+    /// When the machine's present outage began: the first state that was not connected since it
+    /// last was. `None` while it is connected.
+    pub fn down_since(&self, machine: MachineId, connected: bool, now_ms: u64) -> Option<u64> {
+        let mut down = lock(&self.shared.down_since);
+        if connected {
+            down.remove(&machine);
+            None
+        } else {
+            Some(*down.entry(machine).or_insert(now_ms))
+        }
     }
 
     /// How many keystrokes the machine could not take while it was down, and start counting again.
@@ -184,13 +266,15 @@ pub struct Hub {
     connections: Connections,
     ids: MachineIds,
     ids_file: PathBuf,
+    /// The ssh program (and shim, in tests) machines added later are reached through.
+    ssh: String,
     names: BTreeMap<MachineId, String>,
-    opts: BTreeMap<MachineId, MachineOpts>,
     /// Machines a different daemon answered for, with the reason. Cleared by a fresh line.
     refused: BTreeMap<MachineId, String>,
     queue: VecDeque<Update>,
     handle: HubHandle,
     outbox: mpsc::UnboundedReceiver<Outgoing>,
+    commands: mpsc::UnboundedReceiver<Command>,
     /// This computer's line, when the hub keeps it: what it says, and telling it a line ended.
     local_events: mpsc::UnboundedReceiver<LinkEvent>,
     local_ended: Option<mpsc::UnboundedSender<()>>,
@@ -222,6 +306,7 @@ impl Hub {
         let links = Links::start(machines, timing, dial);
         let names_for_hub = names.clone();
         let (outbox_tx, outbox) = mpsc::unbounded_channel();
+        let (commands_tx, commands) = mpsc::unbounded_channel();
         let (local_tx, local_events) = mpsc::unbounded_channel();
         let (ended_tx, ended_rx) = mpsc::unbounded_channel();
         let (local_ended, local_task) = match local {
@@ -237,18 +322,21 @@ impl Hub {
             connections: Connections::default(),
             ids: MachineIds::load(&ids_file),
             ids_file,
+            ssh: ssh.to_owned(),
             names: names_for_hub,
-            opts,
             refused: BTreeMap::new(),
             queue: VecDeque::new(),
             handle: HubHandle {
                 outbox: outbox_tx,
+                commands: commands_tx,
                 shared: Arc::new(Shared {
                     names: Mutex::new(names),
+                    opts: Mutex::new(opts),
                     ..Shared::default()
                 }),
             },
             outbox,
+            commands,
             local_events,
             local_ended,
             local_task,
@@ -288,11 +376,63 @@ impl Hub {
             tokio::select! {
                 event = self.links.next() => self.on_link_event(event),
                 Some(event) = self.local_events.recv() => self.on_link_event(event),
+                Some(command) = self.commands.recv() => self.on_command(command),
                 Some(outgoing) = self.outbox.recv() => {
                     // A line that went since the handle looked has nowhere to take it.
                     let _ = self.connections.send(outgoing);
                 }
                 burst = self.connections.recv_burst(SERVER_BURST) => self.on_burst(burst),
+            }
+        }
+    }
+
+    fn on_command(&mut self, command: Command) {
+        match command {
+            Command::Add(def) => {
+                if self.control.id_of(&def.name).is_some() {
+                    return;
+                }
+                let machine = Machine::from_def(&def, &self.ssh);
+                // Named before the supervisor starts, so nothing it says is dropped as unnamed.
+                let Some(id) = self.control.start(machine) else {
+                    return;
+                };
+                self.names.insert(id, def.name.clone());
+                lock(&self.handle.shared.names).insert(id, def.name.clone());
+                lock(&self.handle.shared.opts).insert(id, MachineOpts::named(std::slice::from_ref(&def), &def.name));
+            }
+            Command::Retry(name) => {
+                let Some(machine) = self.control.id_of(&name) else {
+                    return;
+                };
+                if self.connections.is_connected(machine) {
+                    return;
+                }
+                self.refused.remove(&machine);
+                lock(&self.handle.shared.refused).remove(&machine);
+                self.control.retry(machine);
+            }
+            Command::Remove(name) => {
+                let Some(machine) = self.control.id_of(&name) else {
+                    return;
+                };
+                // The id store is keyed by the name as configured, not as it was typed.
+                let configured = self.names.remove(&machine).unwrap_or(name);
+                self.control.stop(machine);
+                self.connections.remove(machine);
+                self.refused.remove(&machine);
+                let shared = &self.handle.shared;
+                lock(&shared.names).remove(&machine);
+                lock(&shared.opts).remove(&machine);
+                lock(&shared.up).remove(&machine);
+                lock(&shared.refused).remove(&machine);
+                lock(&shared.unsent).remove(&machine);
+                lock(&shared.allowance).remove(&machine);
+                lock(&shared.down_since).remove(&machine);
+                if self.ids.forget(&configured) {
+                    self.ids.save(&self.ids_file);
+                }
+                self.queue.push_back(Update::Removed { machine });
             }
         }
     }
@@ -303,6 +443,7 @@ impl Hub {
                 // A fresh line is a fresh look at who answers: the same wrong daemon is
                 // refused again on its first State, a fixed one is let in.
                 self.refused.remove(&machine);
+                lock(&self.handle.shared.refused).remove(&machine);
                 self.connections.add(machine, halves);
                 lock(&self.handle.shared.up).insert(machine);
                 self.queue.push_back(Update::LineUp { machine });
@@ -374,11 +515,12 @@ impl Hub {
                     let reason = mismatch.to_string();
                     self.control.refuse(machine, reason.clone());
                     self.refused.insert(machine, reason);
+                    lock(&self.handle.shared.refused).insert(machine);
                     return None;
                 }
             }
         }
-        let opts = self.opts.get(&machine).copied().unwrap_or_default();
+        let opts = self.handle.opts_of(machine);
         // A reply or an error counts only while a request of the host's is out to the machine.
         let asked = lock(&self.handle.shared.allowance)
             .entry(machine)
@@ -415,13 +557,25 @@ pub struct MachineState {
     pub attempt: Option<u32>,
     /// On connecting: how many keystrokes the machine could not take while it was down.
     pub unsent: Option<u32>,
+    /// Since when the machine has not been connected, in milliseconds since the epoch.
+    pub since: Option<u64>,
+    /// What the machine may do to this computer, from its entry in `config.local.toml`.
+    pub clipboard: bool,
+    pub notices: bool,
+    pub sounds: bool,
+}
+
+/// A fix text is one constant for every machine, with `<name>` where the machine goes: the window
+/// is given the command it can run.
+fn fix_for(why: &str, name: &str) -> String {
+    why.replace("<name>", name)
 }
 
 pub fn describe(machine: MachineId, name: &str, state: &ConnectionState) -> MachineState {
     let (why, attempt) = match state {
         ConnectionState::NeedsLogin { why }
         | ConnectionState::NeedsUpdate { why }
-        | ConnectionState::Unreachable { why, .. } => (Some(why.clone()), None),
+        | ConnectionState::Unreachable { why, .. } => (Some(fix_for(why, name)), None),
         ConnectionState::Reconnecting { attempt, .. } => (None, Some(*attempt)),
         ConnectionState::Connecting | ConnectionState::Connected => (None, None),
     };
@@ -432,6 +586,10 @@ pub fn describe(machine: MachineId, name: &str, state: &ConnectionState) -> Mach
         why,
         attempt,
         unsent: None,
+        since: None,
+        clipboard: false,
+        notices: false,
+        sounds: false,
     }
 }
 

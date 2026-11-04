@@ -17,7 +17,7 @@ import {
   sendTerminalInput,
   startShellSession,
 } from '@/api/daemon'
-import { LOCAL_MACHINE, listenMachineSessions, machineNameOf, listenMachineState, loadMachinesOverview, type MachineState } from '@/api/machines'
+import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, setMachineGrant, startSessionOnMachine, terminalOf, unregisterMachine, type Grant, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -27,6 +27,7 @@ import type { Conversation } from '@/data/preview'
 import { sizeVariables } from './model/layoutSize'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import { errorMessage } from '@/lib/error-message'
+import { guardLocal, guardLocalSession } from '@/lib/localOnly'
 import { markGpu } from '@/lib/gpu'
 import { PerfOverlay } from './components/PerfOverlay'
 import { setSpinnerStyle } from '@/lib/spinner-clock'
@@ -38,7 +39,8 @@ import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPane
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
 import { runsProgram } from './components/useArmed'
 import { rememberSessions, withEnded } from './model/ended'
-import { idsOfMachinesNotHeard, remoteTerminals, type RemoteMachine, remoteStartRefusal } from './model/machines'
+import { advanceLoginWatch, LOGIN_CHECK_MS, startLoginWatch, type LoginWatch } from './model/loginWatch'
+import { announcementFor, idsOfMachinesNotHeard, machineHeads, remoteStartRefusal, remoteTargetOf, remoteTerminals, type RemoteMachine } from './model/machines'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { StatusBar } from './components/StatusBar'
@@ -63,6 +65,7 @@ import { newWorktreeSession } from '@/features/worktrees/api'
 import type { TerminalHandle } from '@/features/terminal/handle'
 import type { LookAt } from '@/features/inspect/FilesTab'
 import { PaneCard } from './components/PaneCard'
+import { RemoteSessionDialog } from './components/RemoteSessionDialog'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar } from './components/Sidebar'
 import { EmptyState, OfflineBanner, Toast, type RestartOffer } from './components/states'
@@ -107,6 +110,9 @@ import './workspace.css'
 /** The daemon pushes every change (`sessions-changed`); this slow poll only catches a stream that went quiet. */
 const SESSION_REFRESH_MS = 15_000
 const COMPACT_WIDTH_PX = 1100
+/** How long a new session on another machine is waited for, and how often its list is looked at. */
+const REMOTE_START_WAIT_MS = 8000
+const REMOTE_START_POLL_MS = 250
 const MIN_TABS_FOR_NUMBERS = 2
 /** A tab's hover card lists its panes only when it has more than one. */
 const MIN_PANES_FOR_LIST = 2
@@ -244,6 +250,8 @@ export function DesktopApp() {
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropId, setDropId] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  // A new session on another machine asks for a folder there first.
+  const [remoteStart, setRemoteStart] = useState<{ machine: number; name: string } | null>(null)
   const [failures, setFailures] = useState(0)
   const [restartPending, setRestartPending] = useState(false)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
@@ -279,6 +287,12 @@ export function DesktopApp() {
   // Other machines (ADR 0048): the host holds their connections and tells the window each one's state
   // and, when it changes, the sessions it lists. The window never connects.
   const [machines, setMachines] = useState<ReadonlyMap<number, RemoteMachine>>(new Map())
+  const machinesRef = useRef(machines)
+  useEffect(() => { machinesRef.current = machines }, [machines])
+  // The first answer about the machines has come, so a Machines page can tell loading from empty.
+  const [machinesKnown, setMachinesKnown] = useState(false)
+  // Said to a screen reader when a machine goes down or comes back.
+  const [machineSaid, setMachineSaid] = useState('')
   useEffect(() => {
     const stops: Array<() => void> = []
     let gone = false
@@ -295,6 +309,8 @@ export function DesktopApp() {
     const settle = (state: MachineState) => {
       if (state.machine === LOCAL_MACHINE) return
       names.set(state.machine, state.name)
+      const said = announcementFor(machinesRef.current.get(state.machine)?.state, state)
+      if (said !== null) setMachineSaid(said)
       change(state.machine, (before) => ({ conversations: before?.conversations ?? [], heard: before?.heard ?? false, state }))
       // Typing the machine could not take while it was down: say so once it is back.
       if (state.state === 'connected' && state.unsent) {
@@ -318,9 +334,38 @@ export function DesktopApp() {
         settle(machine)
         if (machine.snapshot !== null) list(machine.machine, machine.name, machine.snapshot)
       }
-    }, (error: unknown) => { console.warn('Could not read the state of the machines', error) })
+      setMachinesKnown(true)
+    }, (error: unknown) => {
+      console.warn('Could not read the state of the machines', error)
+      if (!gone) setMachinesKnown(true)
+    })
     for (const listening of [
       listenMachineState(settle),
+      listenMachineError((text) => { toast.error(text) }),
+      // A machine that was allowed to raise notices: in the window as a toast, away from it as the system's.
+      // Text a machine that was allowed to asks to put on the clipboard.
+      listenMachineClipboard((id, text) => {
+        const name = names.get(id) ?? 'A machine'
+        navigator.clipboard.writeText(text).then(
+          () => { toast.message(`${name} copied ${String(text.length)} characters to your clipboard`) },
+          (error: unknown) => { toast.error(errorMessage(error, `Could not copy what ${name} sent`)) },
+        )
+      }),
+      listenMachineNotice((text) => {
+        if (document.hasFocus()) toast.message(text)
+        else sendNativeNotice(text, '').catch((error: unknown) => { console.warn('Could not show a system notification', error) })
+      }),
+      listenMachineRemoved((id) => {
+        const name = names.get(id)
+        names.delete(id)
+        if (name !== undefined) unregisterMachine(name)
+        setMachines((current) => {
+          if (!current.has(id)) return current
+          const next = new Map(current)
+          next.delete(id)
+          return next
+        })
+      }),
       listenMachineSessions((id, snapshot) => {
         const name = names.get(id)
         if (snapshot !== null && name !== undefined) list(id, name, snapshot)
@@ -380,9 +425,9 @@ export function DesktopApp() {
     const handle = target ? terminalHandles.current.get(target) : undefined
     if (!handle) return
     // A dropped file is a path on this computer; typed into another machine's shell it would name nothing there.
-    const machineName = target ? machineNameOf(target) : null
-    if (machineName !== null) {
-      toast.error(`Dropping files on a pane on ${machineName} is not available`)
+    const refusal = target ? guardLocalSession(target, 'file-drops') : null
+    if (refusal !== null) {
+      toast.error(refusal)
       return
     }
     if (!online) {
@@ -421,6 +466,59 @@ export function DesktopApp() {
     for (const candidate of layout.tabs) candidate.panes.forEach((pane, index) => { numbers.set(pane.sessionId, index + 1) })
     return numbers
   }, [layout.tabs])
+  const heads = useMemo(() => machineHeads(machines), [machines])
+  const retryNamed = useCallback((name: string) => {
+    retryMachine(name).catch((error: unknown) => { toast.error(errorMessage(error, `Could not retry ${name}`)) })
+  }, [])
+  // A first login runs in a session on this computer; the machine is dialled again when it closes.
+  const localTermsRef = useRef<ReadonlySet<number>>(new Set())
+  const loginsRef = useRef<LoginWatch[]>([])
+  const [watchingLogins, setWatchingLogins] = useState(false)
+  const checkLogins = useCallback(() => {
+    const next: LoginWatch[] = []
+    for (const watch of loginsRef.current) {
+      const step = advanceLoginWatch(watch, localTermsRef.current, Date.now())
+      if (step.dial) retryNamed(watch.machine)
+      if (step.watch) next.push(step.watch)
+    }
+    loginsRef.current = next
+    setWatchingLogins(next.length > 0)
+  }, [retryNamed])
+  useEffect(() => {
+    const terms = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal').map((item) => terminalOf(item.id))
+    localTermsRef.current = new Set(terms.filter((term): term is number => term !== null))
+  }, [sessionsQuery.data])
+  useEffect(() => {
+    if (!watchingLogins) return
+    const timer = setInterval(checkLogins, LOGIN_CHECK_MS)
+    return () => { clearInterval(timer) }
+  }, [watchingLogins, checkLogins])
+  const addNamed = useCallback(async (target: string, name?: string) => {
+    const added = await addMachine(target, name)
+    if (added.outcome === 'login') {
+      loginsRef.current = [...loginsRef.current, startLoginWatch(added.name, localTermsRef.current, Date.now())]
+      setWatchingLogins(true)
+    }
+    return added
+  }, [])
+  const grantNamed = useCallback((name: string, grant: Grant, on: boolean) => {
+    setMachineGrant(name, grant, on).catch((error: unknown) => { toast.error(errorMessage(error, `Could not change ${name}`)) })
+  }, [])
+  const copyCommand = useCallback((command: string) => {
+    navigator.clipboard.writeText(command).then(
+      () => { toast.message('Copied. Run it in a terminal on this computer.') },
+      (error: unknown) => { toast.error(errorMessage(error, 'Could not copy the command')) },
+    )
+  }, [])
+  const cancelAdding = useCallback(() => {
+    cancelAddMachine().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not cancel')) })
+  }, [])
+  const removeNamed = useCallback((name: string) => {
+    removeMachine(name).then(
+      () => { toast.message(`Removed ${name}. Its sessions keep running on ${name}.`) },
+      (error: unknown) => { toast.error(errorMessage(error, `Could not remove ${name}`)) },
+    )
+  }, [])
   const groups = useMemo(() => groupSessions(sessions, preferences.groupBy, focusedId, home, preferences.projectColors), [sessions, preferences.groupBy, focusedId, home, preferences.projectColors])
   // A tab belongs to the project of the session in its focused pane, so it moves when that shell cds into another repo.
   const tabGroup = useCallback((candidate: Tab): string => {
@@ -528,8 +626,6 @@ export function DesktopApp() {
   // being listed stays, as an ended pane. `sessions` also changes when the home folder arrives; only a
   // new list counts.
   const reconciled = useRef<readonly Conversation[] | null>(null)
-  const machinesRef = useRef(machines)
-  useEffect(() => { machinesRef.current = machines }, [machines])
   useEffect(() => {
     // An unchanged list keeps its identity (structural sharing), so only a real change counts here.
     if (!sessionsQuery.isSuccess || reconciled.current === sessionsQuery.data) return
@@ -603,8 +699,32 @@ export function DesktopApp() {
 
   const newSession = useCallback(() => {
     setSettingsSection(null)
+    // A new session goes where the focused one is: on another machine the folder is typed there,
+    // because the folder picker and the start folder are this computer's.
+    const remote = remoteTargetOf(focusedSession)
+    if (remote !== null) {
+      setRemoteStart(remote)
+      return
+    }
     runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
-  }, [runStart, preferences.startFolder, home])
+  }, [runStart, preferences.startFolder, home, focusedSession])
+
+  const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string) => {
+    const known = new Set((machinesRef.current.get(target.machine)?.conversations ?? []).map((item) => item.id))
+    await startSessionOnMachine(target.machine, folder)
+    setRemoteStart(null)
+    // The machine tells its new session in its next list; the tab opens when it does.
+    const deadline = Date.now() + REMOTE_START_WAIT_MS
+    while (Date.now() < deadline) {
+      const fresh = machinesRef.current.get(target.machine)?.conversations.find((item) => item.kind === 'terminal' && !known.has(item.id))
+      if (fresh) {
+        setLayout((current) => openInNewTab(current, fresh.id, makeId))
+        return
+      }
+      await new Promise((resolve) => { setTimeout(resolve, REMOTE_START_POLL_MS) })
+    }
+    toast.error(`${target.name} did not report the new session`)
+  }, [])
 
   // The + after the tabs starts a shell in the project you are in; ⌘T and the sidebar's New use the start folder.
   const activeGroupKey = (() => {
@@ -726,8 +846,9 @@ export function DesktopApp() {
   // Cmd/Ctrl-click on a file name in a pane's output: find it in that pane's repo, then show it in Inspect.
   const openPath = useCallback((session: SessionView, path: string, line?: number) => {
     // Files and Changes look at this computer's own checkouts; a pane of another machine has none here.
-    if (session.machine !== LOCAL_MACHINE) {
-      toast.message(`Files are not available for a pane on ${session.machineName ?? 'another machine'} yet`)
+    const refusal = guardLocal(session, 'path-links')
+    if (refusal !== null) {
+      toast.message(refusal)
       return
     }
     void repoLocate(session.pane, path)
@@ -820,7 +941,12 @@ export function DesktopApp() {
   // The tab bar and status bar are memoised, so what they are handed keeps its identity.
   const selectTabById = useCallback((tabId: string) => { setLayout((current) => selectTab(current, tabId)) }, [])
   const openInbox = useCallback(() => { setInboxOpen(true) }, [])
-  const toggleInspect = useCallback(() => { setInspectOpen((open) => !open) }, [])
+  // The repository view reads this computer's checkouts: on a pane of another machine it says so.
+  const inspectRefusal = guardLocal(focusedSession, 'inspect')
+  const toggleInspect = useCallback(() => {
+    if (inspectRefusal !== null) toast.message(inspectRefusal)
+    else setInspectOpen((open) => !open)
+  }, [inspectRefusal])
   const openDrawer = useCallback(() => { setDrawerOpen(true) }, [])
   const setThemeMode = useCallback((themeMode: SettingsPreferences['themeMode']) => { setPreferences((current) => ({ ...current, themeMode })) }, [])
   const pickTheme = useCallback((name: string) => { setPreferences((current) => (findTheme(name).light ? { ...current, lightTheme: name } : { ...current, darkTheme: name })) }, [])
@@ -899,14 +1025,17 @@ export function DesktopApp() {
         setTextSize(preferences.terminalFontSize - 1)
         return
       case 'inspect':
-        setInspectOpen((open) => !open)
+        toggleInspect()
         return
       case 'find':
         setFindOpen((open) => !open)
         return
-      case 'new-worktree':
-        if (focusedSession && online && focusedSession.machine === LOCAL_MACHINE) setWorktreeFrom(focusedSession)
+      case 'new-worktree': {
+        const refusal = guardLocal(focusedSession, 'worktrees')
+        if (refusal !== null) toast.message(refusal)
+        else if (focusedSession && online) setWorktreeFrom(focusedSession)
         return
+      }
       case 'broadcast':
         if (layout.activeTabId) {
           const turningOn = !activeTab(layout)?.broadcast
@@ -915,14 +1044,14 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, paneSessions, armedClose])
+  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, paneSessions, armedClose, toggleInspect])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
-  const modalOpen = settingsSection !== null || renameId !== null || overlayOpen
+  const modalOpen = settingsSection !== null || renameId !== null || remoteStart !== null || overlayOpen
   const drawerShown = compact && drawerOpen
-  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
-  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
+  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
+  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const state = shortcutState.current
@@ -1025,7 +1154,10 @@ export function DesktopApp() {
     refetchOnWindowFocus: false,
     retry: false,
   })
-  const inspect = useMemo(() => (inspectTerm === null ? null : { open: inspectOpen, additions: diffStat.data?.additions ?? 0, deletions: diffStat.data?.deletions ?? 0 }), [inspectTerm, inspectOpen, diffStat.data])
+  const inspect = useMemo(() => {
+    if (inspectTerm !== null) return { open: inspectOpen, additions: diffStat.data?.additions ?? 0, deletions: diffStat.data?.deletions ?? 0 }
+    return inspectRefusal === null ? null : { open: false, additions: 0, deletions: 0, refusal: inspectRefusal }
+  }, [inspectTerm, inspectOpen, diffStat.data, inspectRefusal])
 
   // Looking at a pane acknowledges it: a finished agent's done goes back to idle, as when the terminal app
   // focuses it, and an error in it leaves the inbox. Needs-you stays until the agent is answered.
@@ -1070,8 +1202,8 @@ export function DesktopApp() {
   const { notifyNeedsYou, notifyFinished, notifyError } = preferences
   useEffect(() => {
     const previousStatuses = lastStatuses.current
-    // What another machine's agents do raises no system notice: that is for a machine to opt in to (ADR 0048).
-    const mine = sessions.filter((item) => item.machine === LOCAL_MACHINE)
+    // What another machine's agents do raises no system notice unless its entry says notices = true (ADR 0048).
+    const mine = sessions.filter((item) => item.machine === LOCAL_MACHINE || machines.get(item.machine)?.state.notices === true)
     const notices = online
       ? noticesFor(lastStatuses.current, mine, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
       : []
@@ -1093,7 +1225,7 @@ export function DesktopApp() {
       lastNotified.current = { sessionId: notice.sessionId, at: Date.now() }
       sendNativeNotice(notice.title, notice.body).catch((error: unknown) => { console.warn('Could not show a system notification', error) })
     }
-  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, showSessionById, sessionMap, projectOf, answerSession])
+  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, showSessionById, sessionMap, projectOf, answerSession, machines])
 
   // Types the resume command into the session, as you would. Nothing resumes without this click.
   const resumeInterrupted = useCallback((target: SessionView) => {
@@ -1155,12 +1287,13 @@ export function DesktopApp() {
       action('split-right', 'Split right', () => { split(null, 'right') }, keys('D')),
       action('split-down', 'Split down', () => { split(null, 'down') }, keys('D', true)),
       action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('J')),
-      action('inspect', 'Inspect the repository', () => { setInspectOpen(true) }, keys('I')),
-      ...(focusedSession && focusedSession.machine === LOCAL_MACHINE ? [action('new-worktree', 'New worktree', () => { setWorktreeFrom(focusedSession) }, keys('N', true))] : []),
+      action('inspect', 'Inspect the repository', () => { if (inspectRefusal !== null) toast.message(inspectRefusal); else setInspectOpen(true) }, keys('I')),
+      ...(focusedSession ? [action('new-worktree', 'New worktree', () => { runShortcut('new-worktree') }, keys('N', true))] : []),
       action('find', 'Find in the pane or every session', () => { setFindOpen(true) }, keys('F')),
       action('broadcast', showing?.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab', () => { runShortcut('broadcast') }, keys('B', true)),
       action('focus', 'Focus mode', () => { setFocusMode(true) }, keys('.')),
       action('settings', 'Open settings', () => { setSettingsSection('general') }, keys(',')),
+      action('machines', 'Machines', () => { setSettingsSection('machines') }),
       action('shortcuts', 'Keyboard shortcuts', () => { setShortcutsOpen(true) }, keys('/')),
       ...(showing?.widths ? [action('reset-widths', 'Reset pane widths', () => { setLayout((current) => setColumnWidths(current, showing.id, null)) })] : []),
       action('start-codex', 'Start codex', () => { startAgent('codex') }),
@@ -1182,7 +1315,7 @@ export function DesktopApp() {
     }
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [paletteOpen, labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide])
+  }, [paletteOpen, labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal])
 
   const restartOffer: RestartOffer | null = mismatch
     ? {
@@ -1212,6 +1345,7 @@ export function DesktopApp() {
   const renderSidebar = (mode: 'docked' | 'rail', afterPick: () => void) => (
     <Sidebar
       groups={groups}
+      machineHeads={heads}
       focusedId={focusedId}
       tracks={tracks}
       mode={mode}
@@ -1297,6 +1431,7 @@ export function DesktopApp() {
                 {findOpen && (
                   <FindBar
                     online={online}
+                    otherMachines={heads.length > 0}
                     findInPane={(query, direction) => (focusedId ? terminalHandles.current.get(focusedId)?.find(query, direction) ?? false : false)}
                     clearPane={() => { if (focusedId) terminalHandles.current.get(focusedId)?.clearFind() }}
                     nameOf={(term, machine) => { const found = sessions.find((item) => item.machine === machine && item.pane === term); return found ? displayName(found) : null }}
@@ -1483,6 +1618,9 @@ export function DesktopApp() {
                 onCancel={() => { setWorktreeFrom(null) }}
               />
             )}
+            {remoteStart !== null && (
+              <RemoteSessionDialog machineName={remoteStart.name} onStart={(folder) => startOnMachine(remoteStart, folder)} onCancel={() => { setRemoteStart(null) }} />
+            )}
             {renameId !== null && sessionMap.get(renameId) && (
               <RenameDialog session={sessionMap.get(renameId) as SessionView} onSave={(name) => { saveName(renameId, name) }} onCancel={() => { setRenameId(null) }} />
             )}
@@ -1501,6 +1639,7 @@ export function DesktopApp() {
                 mac={mac}
                 daemon={{ online, sessionCount: sessions.length }}
                 appVersion={runningVersion}
+                machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed, onGrant: grantNamed, onCopyCommand: copyCommand, add: { windows: navigator.userAgent.includes('Windows'), loadHosts: listSshHosts, onAdd: addNamed, onCancel: cancelAdding } }}
                 projects={groups.map((group) => ({ key: group.key, name: group.name, colorId: group.colorId }))}
                 validateFolder={folderExists}
                 onChooseFolder={chooseStartFolder}
@@ -1517,6 +1656,7 @@ export function DesktopApp() {
             )}
           </div>
           <Toaster position={preferences.toastPosition} theme={theme.light ? 'light' : 'dark'} />
+          <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{machineSaid}</div>
         </div>
       </EffectsContext.Provider>
     </ReducedMotionContext.Provider>

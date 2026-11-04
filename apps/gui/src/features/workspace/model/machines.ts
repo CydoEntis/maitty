@@ -1,7 +1,7 @@
 import { markConversationsDisconnected } from '@/data/connection'
 import type { Conversation } from '@/data/preview'
 import type { MachineState } from '@/api/machines'
-import { machineNameOf } from '@/api/machines'
+import { LOCAL_MACHINE, machineNameOf } from '@/api/machines'
 import type { Layout } from './layout'
 
 /** What the window holds of one other machine: how its line is, and the sessions it last listed. */
@@ -41,6 +41,97 @@ export function idsOfMachinesNotHeard(layout: Layout, machines: ReadonlyMap<numb
     }
   }
   return [...ids]
+}
+
+/** How a chip is coloured: up, on its way, or needing a person. Amber stays for agents that need you. */
+export type ChipTone = 'ok' | 'quiet' | 'bad'
+
+/** A machine's state as a header shows it: a shape and a word, so colour is never the only signal. */
+export type MachineChip = { glyph: string; word: string; tone: ChipTone }
+
+export function machineChip(state: MachineState): MachineChip {
+  switch (state.state) {
+    case 'connected':
+      return { glyph: '●', word: 'connected', tone: 'ok' }
+    case 'connecting':
+      return { glyph: '○', word: 'connecting', tone: 'quiet' }
+    case 'reconnecting':
+      return { glyph: '◐', word: state.attempt === null ? 'reconnecting' : `reconnecting #${String(state.attempt)}`, tone: 'quiet' }
+    case 'needs-login':
+      return { glyph: '▲', word: 'needs login', tone: 'bad' }
+    case 'needs-update':
+      return { glyph: '▲', word: 'needs update', tone: 'bad' }
+    case 'unreachable':
+      return { glyph: '✕', word: 'unreachable', tone: 'bad' }
+    case 'refused':
+      return { glyph: '✕', word: 'refused', tone: 'bad' }
+  }
+}
+
+/** One machine's header in the sidebar. `name` is null for this computer. */
+export type MachineHead = {
+  key: string
+  name: string | null
+  label: string
+  chip: MachineChip | null
+  why: string | null
+  /** True once a line that was wanted is not up (not while it is still the first dial). */
+  down: boolean
+  /** Since when, in ms since the epoch; null when the host did not say. */
+  downSince: number | null
+  /** What the machine is allowed to do to this computer. */
+  grants: { clipboard: boolean; notices: boolean }
+  /** The command that brings the app on a machine that needs it up to date, to copy; null when none is needed. */
+  updateCommand: string | null
+}
+
+const UPDATE_COMMAND = /`(maitty machine update [^`]+)`/
+
+/** The command a needs-update fix names, as the host wrote it (the machine's name is in it). */
+export function updateCommandOf(state: MachineState): string | null {
+  if (state.state !== 'needs-update') return null
+  return UPDATE_COMMAND.exec(state.why ?? '')?.[1] ?? null
+}
+
+/** Whether a machine's sessions are shown as last seen: its line is not up and not on its first dial. */
+export function isDown(state: MachineState): boolean {
+  return state.state !== 'connected' && state.state !== 'connecting'
+}
+
+export const THIS_COMPUTER = 'this computer'
+
+/**
+ * The headers the sidebar groups its folders under: this computer first, then the others in the
+ * order of their ids, which only changes when the machine list does (the sidebar never reorders
+ * itself). Nothing while there is no other machine, so one machine looks as it always did.
+ */
+export function machineHeads(machines: ReadonlyMap<number, RemoteMachine>): MachineHead[] {
+  if (machines.size === 0) return []
+  const others = [...machines.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true }, updateCommand: updateCommandOf(machine.state) }))
+  return [{ key: 'machine-0', name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null, grants: { clipboard: false, notices: false }, updateCommand: null }, ...others]
+}
+
+/**
+ * Where a new session goes: the machine of the focused session when it is not this computer, else
+ * nothing (this computer, its start folder and its folder picker).
+ */
+export function remoteTargetOf(focused: { machine: number; machineName: string | null } | undefined): { machine: number; name: string } | null {
+  if (focused === undefined || focused.machine === LOCAL_MACHINE || focused.machineName === null) return null
+  return { machine: focused.machine, name: focused.machineName }
+}
+
+/**
+ * What a screen reader is told when a machine's line changes: that it went down and why in a word,
+ * or that it is back. Nothing for its first connection, for a change that is still down, or for a
+ * machine that is only connecting: the sidebar says those, and a reconnect storm would be noise.
+ */
+export function announcementFor(before: MachineState | undefined, after: MachineState): string | null {
+  const wasDown = before !== undefined && isDown(before)
+  if (isDown(after)) return wasDown ? null : `${after.name} disconnected: ${machineChip(after).word}`
+  if (after.state === 'connected' && wasDown) return `${after.name} is back`
+  return null
 }
 
 /**

@@ -430,4 +430,13 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   whole window; leaving the list or closing the menu restores it, and picking commits it. A
   single theme saved by an older version fills its own slot and pins the mode to it.
 - **Type.** Geist for the UI, Geist Mono for terminals, paths, counts and keys, both bundled.
-
+- **Machines.** With another machine, the sidebar's folders sit under a header per machine: `this
+  computer` first, then the others in id order, in a small uppercase `--dim` label. A machine's state is a
+  chip at the right of its header: a glyph and a word (`●` connected in `--done`; `○` connecting and `◐`
+  reconnecting #n in `--dim`; `▲` needs login and needs update and `✕` unreachable and refused in
+  `--danger`), so colour never carries it alone, and nothing animates. Amber stays for agents that need
+  you. A machine that is down shows `disconnected since 2m ago` and its fix (wrapped, in `--dim`) under the
+  header, and its folders are drawn at 60% opacity. With one machine there is no header. **Settings ›
+  Machines** is a card per machine (chip, how long, the fix in full, **Retry**, a confirmed **Remove**) and an
+  **Add a machine** card (a field, then the `~/.ssh/config` hosts as rows); its states are loading, empty,
+  error and checking, and it works with the keyboard alone.

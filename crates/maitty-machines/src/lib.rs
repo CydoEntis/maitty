@@ -13,6 +13,7 @@ pub mod local_machines;
 mod machine;
 pub mod machine_config;
 pub mod machine_ids;
+pub mod machine_probe;
 pub mod remote_policy;
 mod remote_scripts;
 pub mod remote_snapshot;

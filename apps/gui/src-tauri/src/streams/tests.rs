@@ -417,6 +417,51 @@ fn what_the_flooding_machine_gets_through_in_a_flush_is_held_to_its_budget() {
 }
 
 #[test]
+fn what_another_machine_says_went_wrong_is_given_and_this_computers_is_not() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let said = streams.on_message(BOX, ServerMsg::Error("[box] no such pane".into()), now);
+    assert!(matches!(
+        &said[..],
+        [Out::Error { machine, text }] if *machine == BOX && text == "[box] no such pane"
+    ));
+    assert!(
+        streams
+            .on_message(LOCAL, ServerMsg::Error("x".into()), now)
+            .is_empty()
+    );
+}
+
+#[test]
+fn what_another_machine_wants_shown_is_given_and_this_computers_is_not() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let said = streams.on_message(BOX, ServerMsg::Notice("[box] saved".into()), now);
+    assert!(matches!(
+        &said[..],
+        [Out::Notice { machine, text }] if *machine == BOX && text == "[box] saved"
+    ));
+    assert!(
+        streams
+            .on_message(LOCAL, ServerMsg::Notice("x".into()), now)
+            .is_empty()
+    );
+}
+
+#[test]
+fn what_another_machine_asks_to_copy_is_given_and_this_computers_is_not() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let msg = || ServerMsg::Clipboard { term: 1, text: "ls".into() };
+    let said = streams.on_message(BOX, msg(), now);
+    assert!(matches!(
+        &said[..],
+        [Out::Clipboard { machine, text }] if *machine == BOX && text == "ls"
+    ));
+    assert!(streams.on_message(LOCAL, msg(), now).is_empty());
+}
+
+#[test]
 fn another_machines_pane_deltas_cannot_grow_its_list_past_the_cap() {
     let mut streams = Streams::default();
     let now = Instant::now();

@@ -72,3 +72,24 @@ describe('Find bar', () => {
     expect(props.onClose).toHaveBeenCalled()
   })
 })
+
+describe('Find bar with other machines', () => {
+  it('names the all-sessions search as this computer\'s, since the daemon it asks is this computer\'s', async () => {
+    vi.mocked(invoke).mockReset().mockResolvedValue([])
+    renderBar({ otherMachines: true })
+    expect(screen.queryByRole('button', { name: 'All sessions' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'This computer' }))
+    expect(screen.getByLabelText('Search text')).toHaveAttribute('placeholder', 'Find in this computer\'s sessions')
+    fireEvent.change(screen.getByLabelText('Search text'), { target: { value: 'error' } })
+    fireEvent.keyDown(screen.getByLabelText('Search text'), { key: 'Enter' })
+    expect(await screen.findByText('No session on this computer printed that recently')).toBeInTheDocument()
+  })
+
+  it('keeps the pane search for any pane, whichever machine it is on', () => {
+    const props = renderBar({ otherMachines: true })
+    const input = screen.getByLabelText('Search text')
+    fireEvent.change(input, { target: { value: 'x' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(props.findInPane).toHaveBeenCalledWith('x', 'next')
+  })
+})
