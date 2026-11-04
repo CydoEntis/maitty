@@ -1,10 +1,19 @@
-# The verification gate on every push and pull request (see AGENTS.md).
+# The verification gate on every pull request and every push to dev (see AGENTS.md).
+# main only ever receives dev, which was already checked, and the release workflow
+# builds it again; a change to docs alone has nothing to build.
 name: ci
 
 on:
   push:
-    branches: [dev, main]
+    branches: [dev]
+    paths-ignore: ['docs/**', '**.md']
   pull_request:
+    paths-ignore: ['docs/**', '**.md']
+
+# A newer push to the same branch or pull request makes the older run's answer moot.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
