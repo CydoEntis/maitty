@@ -266,5 +266,5 @@ instead of about 14% of a core; find what flips (animation or compositing mode) 
 
 Batch A (parallel): G1+G20+G2 shortcuts, G22 daemon history, G12 usage store, ticket 15.
 Batch B: G16 chat switch (after G22), G8 Overview and G9 New agent on a branch (after G1), G13 usage
-page (after G12 and G1). Held: G11 brain dump, which needs the owner to choose which model and
-account the split uses.
+page (after G12 and G1). Postponed by the owner (2026-11-04): G11 brain dump; undecided whether it will be built at all.
+Until then Ctrl+Shift+N stays 'new worktree'.
