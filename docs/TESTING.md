@@ -194,6 +194,13 @@ chmod mktemp cat dirname tr cut` on `PATH` (any Linux or macOS host; Git for Win
 print `skipped:` and pass when there is none. The rest of the machine-update logic (the `uname` parser,
 version compare, the decision table, the exit-code table, archive listing checks, checksums, asset names)
 is pure and runs everywhere. The one unix-only assertion (the `0755` mode) is `#[cfg(unix)]`.
+`client/remote_image_tests.rs` sends a pasted image the same way (ADR 0049): the real paste script
+runs in the fake home, and the tests check that the file arrives whole and private, that two pastes are two
+files, that an image over 25 MB never starts ssh, that a machine reached by a custom transport is told it
+needs ssh, and that a failed login says so and keeps nothing. The script itself is also run directly
+(`maitty-core`'s `remote_paste` tests: a short upload is not kept, a bad name writes nothing, old pastes are
+cleared, only pastes are cleared). They need `sh` with `wc mv mktemp cat tr printf rm mkdir find` and print
+`skipped:` and pass when there is none.
 
 `client/cli_machine_tests.rs` runs the one-shot commands in-process against a real daemon behind the shim, the
 way `--on build` reaches it: a `[[machines]]` entry whose `ssh_args` carry `--mode=`, `--maitty=`, `--env=`

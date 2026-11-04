@@ -86,7 +86,6 @@ pub(super) enum Feature {
     Find,
     Branches,
     References,
-    PasteImage,
     AgentStatus,
     Worktrees,
 }
@@ -99,7 +98,6 @@ impl Feature {
             Action::Find(_) => Feature::Find,
             Action::Branches => Feature::Branches,
             Action::References => Feature::References,
-            Action::PasteImage => Feature::PasteImage,
             Action::AgentStatusSetup => Feature::AgentStatus,
             Action::NewWorktree(_) | Action::RemoveWorktree | Action::TidyWorktrees => {
                 Feature::Worktrees
@@ -115,7 +113,6 @@ impl Feature {
             Feature::Find => "Find",
             Feature::Branches => "Branches",
             Feature::References => "References",
-            Feature::PasteImage => "Pasting an image",
             Feature::AgentStatus => "Connecting an agent",
             Feature::Worktrees => "Worktrees",
         }

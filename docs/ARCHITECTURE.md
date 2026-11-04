@@ -64,6 +64,7 @@ src/
   prompt.rs      the question and numbered choices an agent is stopped on, read off its screen (the MCP answer tool and the inbox card share it)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
   ipc.rs         local sockets and the `proxy` command; opening a connection to another machine (ssh or a custom transport) is `maitty-machines`, which this module re-exports
+  remote_paste.rs sending a pasted image to another machine (ADR 0049): the file name, the check of the path the far side prints, the failure words; the script itself is in `maitty-machines`
   remote_install.rs installing the app on another machine, as pure rules: the `uname -sm` parser, the installed-version check, the decision table (nothing is installed without a yes), the destination, the install script's exit-code table (the script itself is in `maitty-machines`)
   machine_probe.rs a look at a machine before it is added: `ssh ... maitty --version` with no prompt, ended by a limit or a cancel flag, and its result classified (ready, a failure class, cancelled); `locate` asks the same way where the login shell finds the app (`command -v`)
   config.rs      config.toml (+ config.local.toml) loading, atomic state files
@@ -109,6 +110,7 @@ src/
     ssh_hosts.rs loads the named hosts in `~/.ssh/config` off the UI thread; the pure parser (Include followed, patterns skipped, read through a file trait) is `maitty-machines`' `ssh_hosts`; the Machines dialog lists its hosts (ADR 0047)
     routing_tests.rs which machine each outgoing message goes to, the reply bookkeeping and the local-only gate
     remote_status_tests.rs a remote agent's row is the status its own daemon reported, against a real daemon behind the shim
+    remote_image.rs sends the clipboard image to the machine a pane is on over its ssh line and gives the path it is kept at there; `remote_image_tests.rs` runs it against the fake remote
     machine_update_tests.rs `machine update` against the shim's `remote-sh` mode (the real install script on a temporary filesystem)
     screen/machine_group_tests.rs, screen/machines_tests.rs frames of a machine's group in the sidebar, rail and Inbox, and of the Machines dialog
     view_keys.rs keys inside full-pane views and the remaining popups

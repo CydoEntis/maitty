@@ -30,6 +30,9 @@ mod remote_policy_tests;
 pub(crate) use maitty_machines::remote_snapshot;
 #[cfg(test)]
 mod remote_snapshot_tests;
+mod remote_image;
+#[cfg(test)]
+mod remote_image_tests;
 mod render;
 pub mod restart_prompt;
 mod routing;
@@ -1886,7 +1889,8 @@ impl App {
     /// (Claude Code, Codex and friends attach an image given by path).
     pub(super) fn paste_image(&mut self) {
         let Some(term) = self.typing_to() else { return };
-        if !self.guard_local(term.machine, routing::Feature::PasteImage) {
+        if remote_image::is_remote(term) {
+            self.paste_image_to_machine(term);
             return;
         }
         // Reading the clipboard and encoding the PNG can take a while for a big image.
@@ -1907,6 +1911,53 @@ impl App {
                     app.send_input(term, data.into_bytes());
                     app.notify(
                         format!("pasted the clipboard image ({w}×{h}) as a file"),
+                        false,
+                    );
+                }
+                Err(e) => app.notify(e, true),
+            }))
+        });
+    }
+
+    /// The clipboard's image, sent to the machine the pane is on and kept there as a file; its
+    /// path there is typed into the pane. The upload is ssh, run off the UI thread.
+    fn paste_image_to_machine(&mut self, term: ClientTerm) {
+        let name = self.machine_name(term.machine).to_owned();
+        let def = self
+            .cfg
+            .machines
+            .iter()
+            .find(|def| def.name.eq_ignore_ascii_case(&name))
+            .cloned();
+        let Some(def) = def else {
+            self.notify(
+                format!("{name} is not one of this computer's machines"),
+                true,
+            );
+            return;
+        };
+        let machine = ipc::Machine::from_def_via(&def, &self.machine_flow.ssh);
+        self.notify(format!("sending the clipboard image to {name}…"), false);
+        self.spawn_bg(move || {
+            let sent = remote_image::send(&machine, &name);
+            Bg::Then(Box::new(move |app: &mut App| match sent {
+                Ok(sent) => {
+                    let text = files::quote_path(std::path::Path::new(&sent.path));
+                    let bracketed = app
+                        .parsers
+                        .get(&term)
+                        .is_some_and(|p| p.screen().bracketed_paste());
+                    let data = if bracketed {
+                        format!("\x1b[200~{text} \x1b[201~")
+                    } else {
+                        format!("{text} ")
+                    };
+                    app.send_input(term, data.into_bytes());
+                    app.notify(
+                        format!(
+                            "pasted the clipboard image ({}×{}) to {name}",
+                            sent.width, sent.height
+                        ),
                         false,
                     );
                 }
