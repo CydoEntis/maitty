@@ -7,7 +7,7 @@
 //! become an ssh option or extra shell code.
 
 use self::SshCommandError::*;
-use maitty_settings::config::VIA_PLACEHOLDER;
+use crate::VIA_PLACEHOLDER;
 
 pub(crate) const CONNECT_TIMEOUT_SECS: u32 = 15;
 const SERVER_ALIVE_INTERVAL_SECS: u32 = 15;
@@ -49,6 +49,8 @@ pub(crate) enum SshCommandError {
     RemoteCommandNotPlain(String),
     /// A word of the first login's command that no local shell would read the same way.
     CannotQuote(String),
+    /// A pasted file's name must be a plain word that cannot be a path or an option.
+    BadPasteName(String),
 }
 
 impl std::fmt::Display for SshCommandError {
@@ -76,6 +78,10 @@ impl std::fmt::Display for SshCommandError {
             CannotQuote(word) => write!(
                 f,
                 "{word:?} cannot be passed safely to a shell; run ssh to that machine in a terminal once to log in"
+            ),
+            BadPasteName(name) => write!(
+                f,
+                "{name:?} is not a name a pasted file may have: letters, digits, `.`, `_` and `-`, not starting with a dot"
             ),
         }
     }
@@ -114,7 +120,11 @@ pub(crate) fn command_argv(
     }
     let remote = remote_command(remote_cmd, mode)?;
     let mut argv = via.to_vec();
-    match argv.iter_mut().skip(1).find(|word| *word == VIA_PLACEHOLDER) {
+    match argv
+        .iter_mut()
+        .skip(1)
+        .find(|word| *word == VIA_PLACEHOLDER)
+    {
         Some(slot) => *slot = remote,
         None => argv.push(remote),
     }
@@ -150,7 +160,7 @@ impl Shape {
 fn build(ssh: &[String], target: &str, remote: String, shape: Shape) -> Vec<String> {
     let (program, user_args) = match ssh.split_first() {
         Some((program, rest)) => (program.as_str(), rest),
-        None => (crate::ipc::SSH_PROGRAM, &[][..]),
+        None => (crate::SSH_PROGRAM, &[][..]),
     };
     let mut argv = vec![program.to_string()];
     if shape.batch {
@@ -209,14 +219,14 @@ pub(crate) fn ssh_argv_platform(
     target: &str,
 ) -> Result<Vec<String>, SshCommandError> {
     validate_target(target)?;
-    let remote = sh_script(crate::remote_install::PLATFORM_SCRIPT, &[]);
+    let remote = sh_script(crate::remote_scripts::PLATFORM_SCRIPT, &[]);
     Ok(build(ssh, target, remote, Shape::PROBE))
 }
 
 /// Asks the far side where its login shell finds the app (`command -v`), without asking a person.
 pub(crate) fn ssh_argv_where(ssh: &[String], target: &str) -> Result<Vec<String>, SshCommandError> {
     validate_target(target)?;
-    let remote = sh_script(crate::remote_install::WHERE_SCRIPT, &[]);
+    let remote = sh_script(crate::remote_scripts::WHERE_SCRIPT, &[]);
     Ok(build(ssh, target, remote, Shape::PROBE))
 }
 
@@ -243,8 +253,36 @@ pub(crate) fn ssh_argv_install(
         return Err(RemoteCommandHasControlCharacter);
     }
     let remote = sh_script(
-        crate::remote_install::INSTALL_SCRIPT,
+        crate::remote_scripts::INSTALL_SCRIPT,
         &[destination, &bytes.to_string()],
+    );
+    Ok(build(ssh, target, remote, Shape::PROXY))
+}
+
+/// The longest name a pasted file may have.
+const PASTE_NAME_MAX: usize = 64;
+
+/// Runs the paste script on the far side; the image goes in on stdin. `name` and `bytes` are
+/// its two arguments.
+pub(crate) fn ssh_argv_paste(
+    ssh: &[String],
+    target: &str,
+    name: &str,
+    bytes: u64,
+) -> Result<Vec<String>, SshCommandError> {
+    validate_target(target)?;
+    let plain = !name.is_empty()
+        && name.len() <= PASTE_NAME_MAX
+        && !name.starts_with('.')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if !plain {
+        return Err(BadPasteName(name.to_owned()));
+    }
+    let remote = sh_script(
+        crate::remote_scripts::PASTE_SCRIPT,
+        &[name, &bytes.to_string()],
     );
     Ok(build(ssh, target, remote, Shape::PROXY))
 }
@@ -392,7 +430,10 @@ mod tests {
     #[test]
     fn a_custom_transport_without_a_placeholder_gets_it_as_the_last_argument() {
         let got = via(&["relay", "--to", "box"], "maitty", ProxyMode::AttachOnly);
-        assert_eq!(got, args(&["relay", "--to", "box", "'maitty' proxy --attach-only"]));
+        assert_eq!(
+            got,
+            args(&["relay", "--to", "box", "'maitty' proxy --attach-only"])
+        );
         let starts = via(&["relay"], "maitty", ProxyMode::StartsDaemon);
         assert_eq!(starts, args(&["relay", "'maitty' proxy"]));
     }
@@ -414,7 +455,10 @@ mod tests {
             ProxyMode::AttachOnly,
         );
         assert_eq!(got.len(), 3);
-        assert_eq!(got[1], r"'x'\''; touch /tmp/pwned; '\''' proxy --attach-only");
+        assert_eq!(
+            got[1],
+            r"'x'\''; touch /tmp/pwned; '\''' proxy --attach-only"
+        );
         assert_eq!(got[2], "after");
     }
 
@@ -805,7 +849,7 @@ mod tests {
             .unwrap_or_else(|| panic!("{remote}"));
         assert_eq!(
             script,
-            quote_word(crate::remote_install::INSTALL_SCRIPT),
+            quote_word(crate::remote_scripts::INSTALL_SCRIPT),
             "the script text is the constant, with no argument in it"
         );
         assert!(argv.contains(&"BatchMode=yes".to_string()));
@@ -867,5 +911,52 @@ mod tests {
             String::from_utf8_lossy(&out.stdout),
             "me@box|a b|$(touch pwned)|x;y|~|"
         );
+    }
+
+    #[test]
+    fn the_paste_line_runs_a_fixed_script_with_the_name_and_size_as_its_last_words() {
+        let line = ssh_argv_paste(
+            &args(&["ssh", "-p", "22"]),
+            "box",
+            "paste-1-000000ab.png",
+            1234,
+        )
+        .unwrap();
+        let dashes = position(&line, "--");
+        assert_eq!(line[dashes + 1], "box", "the host follows `--`");
+        let remote = line.last().unwrap();
+        assert!(remote.starts_with("sh -c '"), "{remote}");
+        assert!(
+            remote.ends_with(" sh 'paste-1-000000ab.png' '1234'"),
+            "{remote}"
+        );
+        assert!(remote.contains(crate::remote_scripts::PASTE_MARKER));
+        assert!(
+            line.iter().any(|word| word == "BatchMode=yes"),
+            "never asks a person"
+        );
+        assert!(line.iter().any(|word| word == "ForwardAgent=no"));
+    }
+
+    #[test]
+    fn a_pasted_files_name_cannot_be_a_path_an_option_or_shell_syntax() {
+        let name = |name: &str| ssh_argv_paste(&args(&["ssh"]), "box", name, 1);
+        for bad in [
+            "",
+            ".hidden",
+            "a b",
+            "../x",
+            "a/b",
+            "x;rm -rf ~",
+            "x$(id)",
+            "x\ny",
+            "-oProxyCommand=x",
+            &"a".repeat(65),
+        ] {
+            assert_eq!(name(bad), Err(BadPasteName(bad.to_owned())), "{bad:?}");
+        }
+        assert!(name("paste-1.png").is_ok());
+        assert!(name("a_b-c.9").is_ok());
+        assert!(ssh_argv_paste(&args(&["ssh"]), "-oProxyCommand=x", "p.png", 1).is_err());
     }
 }

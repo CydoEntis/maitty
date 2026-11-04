@@ -137,10 +137,21 @@ whose login also prints text can't be told from noise, and gets the error above,
 The optional Tauri GUI invokes only fixed desktop commands from
 `crates/maitty-desktop-client/`; validate webview input in both the TypeScript boundary and
 the Rust host. Never expose a generic process or shell command. Between the Tauri host and the
-webview (`apps/gui/src-tauri/src/terminal_stream.rs`, `apps/gui/src/api/`): pane output arrives as
-raw frames over the channel the webview opens once with `watch_terminal_output` (the pane as 4
-big-endian bytes, the sequence number as 8, one replay byte, then the output), one frame per pane
-per flush (the host gathers reads for up to 12 ms or 64 KiB; a replay flushes what came before it);
+webview (`apps/gui/src-tauri/src/terminal_stream.rs`, `streams.rs`, `apps/gui/src/api/`): pane output
+arrives, from every machine, as raw frames over the one channel the webview opens once with
+`watch_terminal_output` (the machine as 2 big-endian bytes, 0 for this computer, the pane as 4, the
+sequence number as 8, one replay byte, then the output; this header is the host-to-webview format
+only and the daemon protocol is unchanged), one frame per pane per flush (the host gathers reads for
+up to 12 ms or, for this computer, 64 KiB; a replay flushes what came before it; another machine gets
+at most 256 KiB into a flush, and if 4 MiB of its output waits, that pane's waiting output is dropped
+and its daemon is asked for a fresh replay, so one machine cannot slow this computer's panes);
+history, sequence numbers and the last snapshot are kept per machine, and `terminal_history` and
+`terminal_input` take an optional `machine` (this computer when left out), as do the pane commands
+(resize, rename, pin, archive, seen, close): a pane of another machine is asked over that machine's
+line (`PaneCommand` in `maitty-desktop-client` makes each message for both), a reply or error from it
+is taken only while a request of the host's is out to it (30 s, 64 kept, as in the terminal app), and
+typing or a command for a machine with no line is refused naming it, the typing counted and reported
+as `unsent` on the machine's next `machine-state` `connected`;
 the view uses the sequence number to catch up from `terminal_history`; `terminal_history` and the
 replay commands answer with raw bytes
 (`tauri::ipc::Response`), the history prefixed with its sequence number as 8 big-endian bytes and
@@ -148,7 +159,13 @@ empty once the host has asked the daemon for the pane's replay over the stream (
 pane's next frame) and an error when there is no stream, so the view fetches a replay itself; the
 daemon's `Snapshot` goes out as a `sessions-changed` event
 whenever it changes, with `null` when the stream dropped, and the webview sets its session query
-from it instead of polling (a 15 s poll remains as a safety net). A desktop
+from it instead of polling (a 15 s poll remains as a safety net); another machine's goes out as
+`machine-sessions-changed` (`{machine, snapshot}`), after the host has cleaned it, and its connection
+state as `machine-state`; `list_machines_overview` gives a window that starts late each machine's last state and
+snapshot. The window names a machine's terminal sessions `build/t12` (the machine's name, so a saved
+layout survives a restart; this computer's stay `t12`) and passes the number the host gave the
+machine (`machine`) with each command, only for a pane of another machine. Files, Changes, Find,
+worktrees, file drops and system notices are for this computer's panes only. A desktop
 protocol-mismatch restart must recheck the exact local protocol before stopping
 an older daemon and must refuse to downgrade a newer one. It stops an older daemon that
 owns sessions only after the user confirms, and only when those sessions are saved on disk
@@ -577,7 +594,7 @@ are checked before replacing the existing view. Revisions never wrap or saturate
 
 ## Project-specific: connections to other machines
 
-One supervisor task per `[[machines]]` entry (`client/link/`) keeps that machine's line up.
+One supervisor task per `[[machines]]` entry (`link/` in `maitty-machines`) keeps that machine's line up.
 It talks to the window only through `LinkEvent`s (a new line; a new state) and `LinkControl`
 commands (line ended, refuse, retry), so a dead machine cannot hold a lock or block drawing.
 With no `[[machines]]` entry nothing starts. `--remote host` is unchanged: the window's one
@@ -614,12 +631,12 @@ its stream marker or a frame. Exit 127 is `NeedsUpdate` with the install text. E
 and one of three fixed tokens in stderr (`Permission denied`, `Host key verification failed`,
 `Too many authentication failures`) is `NeedsLogin`: the only place ssh's words are read.
 Everything else is `Unreachable` with ssh's last stderr line, control characters removed and
-cut to 200 characters. The fix text of each class is one constant in `link_failure.rs`
+cut to 200 characters. The fix text of each class is one constant in `maitty-machines` (`link_failure.rs`)
 (`FIX_LOGIN`, `FIX_UPDATE`, `FIX_INSTALL`, `FIX_NO_DAEMON`); `FIX_UPDATE` and `FIX_INSTALL` name
 `maitty machine update <name>` (and `--install`), with `<name>` as written, one text for every machine.
 
 **Custom transport.** A machine with `via` is reached by running the user's program
-(`Route::Command`, `ssh_command::command_argv`) in place of ssh: the same pipes, stream marker skipping,
+(`Route::Command`, `ssh_command::command_argv`, both in `maitty-machines`) in place of ssh: the same pipes, stream marker skipping,
 handshake and `SshEnd` (with `custom` set) as ssh. Text before the marker with no marker is the same login
 error. Its failures classify without ssh's words: exit 127 is `NeedsInstall`, `NO_DAEMON_EXIT` is
 `NoDaemon`, anything else is `Unreachable` with the program's last stderr line, never `NeedsLogin`. On
@@ -627,11 +644,11 @@ Windows connecting fails with `a custom transport (via) is not supported on Wind
 
 **Attach only, and when the daemon may start.** A daemon exits ~30 s after it has no session and
 no attached window, so a fresh machine has nothing to attach to. The supervisor therefore decides
-per dial (`MayStart` in `link/supervisor.rs`): the dial runs `<remote_cmd> proxy` (the daemon is
+per dial (`MayStart` in `maitty-machines`' `link/supervisor.rs`): the dial runs `<remote_cmd> proxy` (the daemon is
 started if none runs, as `--remote host` does; `Machine::starting`) on the machine's first dial,
 on every retry of a failed first dial, and after an explicit `Command::Retry` (the Machines
 dialog's retry, also after a refusal). The redials after an established line ended (stalled or
-closed) run `<remote_cmd> proxy --attach-only` (built in `ssh_command.rs`): if no daemon runs
+closed) run `<remote_cmd> proxy --attach-only` (built in `maitty-machines`' `ssh_command.rs`): if no daemon runs
 there, the proxy exits `NO_DAEMON_EXIT` before writing anything, and the machine is `Unreachable`
 with `FIX_NO_DAEMON` ("retry to start it there") until a person retries, so a dropped link never
 brings back a daemon the user stopped. `Machine::from_def` is attach-only by default, which is
@@ -730,7 +747,7 @@ the rest are dropped silently. Nothing blocks and nothing is queued.
 **One-shot commands.** `cli/target.rs` picks the machine of a command once, before it runs: a
 pane address `machine/id`, else `--on`, else the `--remote` adapter (`ipc::Machine::current()`),
 else this computer. Each command is handed that `Target` and opens its connection with
-`ipc::open_to`; nothing reads the environment for the machine after that. A configured machine only
+`ipc::open_to` (for another machine, `maitty_machines::open_remote`); nothing reads the environment for the machine after that. A configured machine only
 attaches. The pane a command runs in (`$MAITTY_TERM_ID`) is a pane of this computer's daemon, so it is
 the default pane only when the target is this computer or the ad-hoc `--remote` route; a command
 aimed at a named machine needs an explicit `--pane machine/id`. `ls` is unchanged for this computer;

@@ -4,9 +4,10 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
+
+use maitty_test_support::{fake_ssh, output_within, text};
 
 const MAITTY: &str = env!("CARGO_BIN_EXE_maitty");
 const WAIT: Duration = Duration::from_secs(60);
@@ -74,95 +75,40 @@ impl Sandbox {
     }
 }
 
+/// How long the cleanup waits for `kill-server`. A daemon that will not answer must not stall
+/// the whole suite: the CI job has a fixed time limit and gives no output when it hits it.
+const CLEANUP_WAIT: Duration = Duration::from_secs(10);
+
 impl Drop for Sandbox {
     fn drop(&mut self) {
         // Must not panic: a test that failed is already unwinding, and a second panic aborts.
-        let _ = self
+        let stopping = self
             .local(MAITTY)
             .arg("kill-server")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status();
+            .spawn();
+        if let Ok(mut child) = stopping {
+            let start = Instant::now();
+            while matches!(child.try_wait(), Ok(None)) {
+                if start.elapsed() > CLEANUP_WAIT {
+                    // Straight to stderr: the test harness hides what a passing test prints,
+                    // and this is the line that says why a run was slow.
+                    use std::io::Write as _;
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "fake_ssh: kill-server did not finish within {CLEANUP_WAIT:?}; gave up on it"
+                    );
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        }
         let _ = std::fs::remove_dir_all(&self.dir);
     }
-}
-
-/// `target/<profile>/examples/fake-ssh`, built here: `cargo test --test <name>` does not
-/// build examples.
-fn fake_ssh() -> PathBuf {
-    static BUILT: OnceLock<PathBuf> = OnceLock::new();
-    BUILT
-        .get_or_init(|| {
-            let exe = std::env::current_exe().expect("the test's own path");
-            let profile = exe
-                .parent()
-                .and_then(Path::parent)
-                .expect("target/<profile>");
-            let path = profile
-                .join("examples")
-                .join(format!("fake-ssh{}", std::env::consts::EXE_SUFFIX));
-            // Always ask cargo: it is a no-op when current, and `cargo test --test` would
-            // otherwise leave a stale shim from an earlier build.
-            let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-            let built = Command::new(cargo)
-                .args(["build", "--package", "maitty", "--example", "fake-ssh"])
-                .status()
-                .expect("run cargo");
-            assert!(built.success(), "building the fake-ssh example failed");
-            path
-        })
-        .clone()
-}
-
-/// Runs to completion, or is killed once `limit` passes (a hung connection must fail the
-/// test, not stall the suite). Output goes to files, not pipes: a daemon started by the
-/// command inherits its pipes on Windows, and reading them would wait for the daemon to exit.
-fn output_within(mut command: Command, limit: Duration) -> Output {
-    static NEXT: AtomicU32 = AtomicU32::new(0);
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let base = std::env::temp_dir().join(format!("fakessh-out-{}-{n}", std::process::id()));
-    let (out_path, err_path) = (base.with_extension("out"), base.with_extension("err"));
-    let mut child = command
-        .stdin(Stdio::null())
-        .stdout(std::fs::File::create(&out_path).expect("create the stdout file"))
-        .stderr(std::fs::File::create(&err_path).expect("create the stderr file"))
-        .spawn()
-        .expect("start the process");
-    let start = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait().expect("poll the process") {
-            break Some(status);
-        }
-        if start.elapsed() > limit {
-            let _ = child.kill();
-            let _ = child.wait();
-            break None;
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    };
-    let read = |path: &Path| {
-        let bytes = std::fs::read(path).unwrap_or_default();
-        let _ = std::fs::remove_file(path);
-        bytes
-    };
-    let (stdout, stderr) = (read(&out_path), read(&err_path));
-    let Some(status) = status else {
-        panic!(
-            "still running after {limit:?}:
-{}",
-            text(&stderr)
-        );
-    };
-    Output {
-        status,
-        stdout,
-        stderr,
-    }
-}
-
-fn text(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).into_owned()
 }
 
 #[test]
@@ -592,12 +538,12 @@ async fn two_machines_talking(
 
     let mut connections = Connections::default();
     for (id, sandbox, name) in [(MachineId::LOCAL, here, "here"), (THERE, there, "there")] {
-        connections.add(
-            id,
-            open_to(&machine(name, sandbox), true)
-                .await
-                .expect("connect"),
-        );
+        trace(&format!("opening {name}"));
+        let opened = tokio::time::timeout(WAIT, open_to(&machine(name, sandbox), true))
+            .await
+            .unwrap_or_else(|_| panic!("{name}: the daemon did not answer the handshake in {WAIT:?}"));
+        trace(&format!("opened {name}"));
+        connections.add(id, opened.expect("connect"));
         let open = ClientMsg::Command(Command::NewWorkspace {
             cwd: None,
             name: None,
@@ -631,7 +577,15 @@ async fn two_machines_talking(
     tokio::time::timeout(WAIT, heard)
         .await
         .expect("both machines deliver a pane and its output");
+    trace("both machines delivered a pane and output");
     connections
+}
+
+/// A line straight to stderr: the test harness hides what a passing test prints, and a run
+/// that hangs is only ever read from the CI log.
+fn trace(what: &str) {
+    use std::io::Write as _;
+    let _ = writeln!(std::io::stderr(), "fake_ssh trace: {what}");
 }
 
 fn runtime() -> tokio::runtime::Runtime {
@@ -748,9 +702,12 @@ async fn listen_until(
     done: impl Fn(&Heard, &[(u16, u16); 2]) -> bool,
 ) {
     use runtime::protocol::ServerMsg;
+    let watchdog = Watchdog::start("listen_until", WAIT * 2);
+    let mut bursts = 0usize;
     let listening = async {
         while !done(heard, sizes) {
             let burst = connections.recv_burst(512).await;
+            bursts += 1;
             assert!(!burst.lost, "machine {} was lost", burst.machine.0);
             let at = usize::from(burst.machine == THERE);
             for msg in burst.msgs {
@@ -773,11 +730,54 @@ async fn listen_until(
                     _ => {}
                 }
             }
+            watchdog.note(format!(
+                "{bursts} bursts; heard {} bytes here and {} there; sizes {sizes:?}",
+                heard.here.len(),
+                heard.there.len()
+            ));
         }
     };
     tokio::time::timeout(WAIT, listening)
         .await
         .expect("each machine reports what was sent to it");
+}
+
+/// Ends the whole test run, saying what it last saw, if the wait it guards is still going after
+/// `limit`. `tokio::time::timeout` cannot do this: it only fires when the runtime's thread gets
+/// back to it, and a hung CI run gave no output at all for 45 minutes.
+struct Watchdog {
+    progress: std::sync::Arc<std::sync::Mutex<String>>,
+    // Dropping this ends the watch: the thread sees the channel close.
+    _done: std::sync::mpsc::Sender<()>,
+}
+
+impl Watchdog {
+    fn start(what: &'static str, limit: Duration) -> Self {
+        let (done, closed) = std::sync::mpsc::channel::<()>();
+        let progress = std::sync::Arc::new(std::sync::Mutex::new(String::from("nothing yet")));
+        let seen = std::sync::Arc::clone(&progress);
+        std::thread::spawn(move || {
+            if closed.recv_timeout(limit) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+                use std::io::Write as _;
+                let last = seen.lock().map(|text| text.clone()).unwrap_or_default();
+                let _ = writeln!(
+                    std::io::stderr(),
+                    "fake_ssh: {what} still running after {limit:?}; last progress: {last}"
+                );
+                std::process::exit(2);
+            }
+        });
+        Watchdog {
+            progress,
+            _done: done,
+        }
+    }
+
+    fn note(&self, text: String) {
+        if let Ok(mut last) = self.progress.lock() {
+            *last = text;
+        }
+    }
 }
 
 #[test]
@@ -787,6 +787,7 @@ fn typing_and_resizing_reach_only_the_machine_that_owns_the_pane() {
 
     const FOR_THERE: &str = "typed-for-the-build-box";
     const FOR_HERE: &str = "typed-for-this-computer";
+    trace("typing_and_resizing: start");
     let (here, there) = (Sandbox::new(), Sandbox::new());
     let runtime = runtime();
     runtime.block_on(async {
@@ -811,6 +812,7 @@ fn typing_and_resizing_reach_only_the_machine_that_owns_the_pane() {
         connections.send(input(MachineId::LOCAL, FOR_HERE)).unwrap();
         connections.send(resize(THERE, 101, 31)).unwrap();
         connections.send(resize(MachineId::LOCAL, 91, 25)).unwrap();
+        trace("typing_and_resizing: sent, listening");
         listen_until(&mut connections, &mut heard, &mut sizes, |heard, sizes| {
             heard.there.contains(FOR_THERE)
                 && heard.here.contains(FOR_HERE)
@@ -825,8 +827,10 @@ fn typing_and_resizing_reach_only_the_machine_that_owns_the_pane() {
             !heard.here.contains(FOR_THERE),
             "the other machine's typing reached this computer"
         );
+        trace("typing_and_resizing: asserted");
     });
     runtime.shutdown_background();
+    trace("typing_and_resizing: runtime shut down");
 }
 
 // ---- the connection supervisor, against real daemons through the shim ----------------------
@@ -896,7 +900,7 @@ mod supervised {
 
     impl Window {
         fn new(machines: Vec<(MachineId, Machine)>, timing: Timing) -> Window {
-            let links = Links::start(machines, timing);
+            let links = Links::start(machines, timing, || runtime::ipc::terminal_dial(true));
             Window {
                 control: links.control(),
                 links,

@@ -80,4 +80,31 @@ stopping it, then reconnect through the bundled daemon. Never downgrade a newer
 daemon or restart a remote service from the GUI.
 The target OS floor is the existing project support floor; do not raise it
 without updating this section and the release workflow.
-The host links `maitty-desktop-client`, `maitty-shared` and `maitty-ipc-transport`, plus the planned `crates/maitty-machines` (ADR 0048, not created yet) once it exists; it never links `maitty-core`, `maitty-settings` or `maitty-terminal-client`.
+
+Machines (ADR 0048): the host reads the `[[machines]]` list of `config.local.toml` once at start
+through `maitty-machines` (`machines.rs`, command `list_machines`); a hand edit applies on the next
+start. The window is told names only, plus the error when the file is bad, and shows it as a toast
+without stopping the app. The host may link `maitty-machines`, `maitty-desktop-client`,
+`maitty-shared` and `maitty-ipc-transport`, never `maitty-core`, `maitty-settings` or
+`maitty-terminal-client` (`scripts/check-gui-deps.sh` checks it).
+
+Connections (ADR 0048): `hub.rs` holds one supervised connection per configured machine through
+`maitty-machines` (`Links`, `Connections`), dials with the desktop surface and no pane claim, and
+tells the window each machine's state as `machine-state` (`{machine, name, state, why, attempt}`;
+this computer's own line is machine 0, named `local`, and is held by the same hub). All output
+reaches the window on one raw channel with the machine in the frame header (`streams.rs`). Every message from a machine is vetted by
+`remote_policy` and a different daemon answering at a known name is turned away (`machine_ids`,
+shared with the terminal app); the web view never connects. Its tests run against the fake `ssh`
+shim (`crates/maitty-test-support`).
+
+Routing (`routing.rs`, `terminal_stream.rs`): the pane commands take an optional `machine` and a
+command for another machine's pane goes down that machine's line through the hub instead of opening
+a connection; this computer's commands are unchanged.
+
+In the web view (`api/machines.ts`, `features/workspace/model/machines.ts`): a session of another machine
+has an id `<name>/t<pane>`, is listed after this computer's, is led by the machine's name in the
+sidebar and tabs, and forms projects of its own. The saved layout is `maitty.gui.layout.v2` (v1 is read
+as it is and left in place). Until the machine has listed its sessions, a layout's panes for it are kept.
+
+The glue's per-update logic is `terminal_stream::react` (no window involved), so the host's behaviour
+is tested end to end against real daemons (`hub/tests/end_to_end.rs`).

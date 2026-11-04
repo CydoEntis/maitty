@@ -15,12 +15,8 @@ use maitty_shared::hidden::sanitize;
 /// The line the platform probe prints before `uname`, so login text ahead of it is skipped.
 pub const PLATFORM_MARKER: &str = "maitty-platform";
 
-/// Run on the far side as `sh -c <this> sh`.
-pub const PLATFORM_SCRIPT: &str = "printf '%s\\n' maitty-platform; uname -sm";
+pub use maitty_machines::{INSTALL_SCRIPT, PASTE_MARKER, PASTE_SCRIPT, PLATFORM_SCRIPT, WHERE_SCRIPT};
 
-/// Where the far side's login shell finds the app, for `doctor`: a fixed script, so nothing a
-/// person or a machine supplies can reach the remote shell.
-pub const WHERE_SCRIPT: &str = concat!("command -v ", env!("APP_COMMAND"));
 
 /// Most bytes ever streamed to a machine (the binary is some 15 MB).
 pub const MOST_BINARY_BYTES: u64 = 200 * 1024 * 1024;
@@ -32,39 +28,6 @@ pub const DEFAULT_DESTINATION: &str = concat!("~/.local/bin/", env!("APP_COMMAND
 pub const EXIT_BYTE_COUNT: i32 = 70;
 pub const EXIT_WONT_RUN: i32 = 71;
 pub const EXIT_CANNOT_WRITE: i32 = 72;
-
-/// `$1` is the destination (a leading `~/` is the far side's home), `$2` the byte count
-/// expected on stdin. The new file is written beside the destination so the final `mv` is a
-/// rename, and is made executable by its owner alone until it has run `--version`.
-pub const INSTALL_SCRIPT: &str = concat!(
-    "umask 077\n",
-    "dest=$1\n",
-    "want=$2\n",
-    "case $dest in\n",
-    "  \"~/\"*) dest=$HOME/$(printf '%s' \"$dest\" | cut -c3-) ;;\n",
-    "esac\n",
-    "[ ! -d \"$dest\" ] || exit 72\n",
-    "dir=$(dirname -- \"$dest\")\n",
-    "mkdir -p -- \"$dir\" || exit 72\n",
-    "tmp=$(mktemp \"$dir/.",
-    env!("APP_COMMAND"),
-    "-new.XXXXXX\") || exit 72\n",
-    "trap 'rm -f -- \"$tmp\"' EXIT\n",
-    "trap 'exit 72' HUP INT TERM\n",
-    "cat > \"$tmp\" || exit 72\n",
-    "got=$(wc -c < \"$tmp\" | tr -d ' ')\n",
-    "[ \"$got\" = \"$want\" ] || exit 70\n",
-    "chmod 700 -- \"$tmp\" || exit 72\n",
-    "case $(\"$tmp\" --version 2>/dev/null) in\n",
-    "  \"",
-    env!("APP_COMMAND"),
-    " \"*) ;;\n",
-    "  *) exit 71 ;;\n",
-    "esac\n",
-    "chmod 755 -- \"$tmp\" || exit 72\n",
-    "mv -f -- \"$tmp\" \"$dest\" || exit 72\n",
-    "echo OK\n",
-);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Os {

@@ -9,9 +9,9 @@ type Props = {
   /** Selects the next/previous match in the focused pane; false when there is none. */
   findInPane: (query: string, direction: 'next' | 'previous') => boolean
   clearPane: () => void
-  /** What a session is called, by the daemon's pane number; null when it is not one of ours. */
-  nameOf: (term: number) => string | null
-  onOpenSession: (term: number) => void
+  /** What a session is called, by its machine and the pane number on it; null when it is not one of ours. */
+  nameOf: (term: number, machine: number) => string | null
+  onOpenSession: (term: number, machine: number) => void
   onClose: () => void
   online: boolean
 }
@@ -87,9 +87,9 @@ export function FindBar({ findInPane, clearPane, nameOf, onOpenSession, onClose,
           : (
             <ul className="mx-find-hits" aria-label="Matches">
               {hits.map((hit) => (
-                <li key={`${String(hit.term)}:${String(hit.line)}`}>
-                  <button type="button" onClick={() => { onOpenSession(hit.term); close() }}>
-                    <span className="mx-find-session">{nameOf(hit.term) ?? `Session ${String(hit.term)}`}</span>
+                <li key={`${String(hit.machine)}/${String(hit.term)}:${String(hit.line)}`}>
+                  <button type="button" onClick={() => { onOpenSession(hit.term, hit.machine); close() }}>
+                    <span className="mx-find-session">{nameOf(hit.term, hit.machine) ?? `Session ${String(hit.term)}`}</span>
                     <span className="mx-find-text">{hit.text}</span>
                   </button>
                 </li>

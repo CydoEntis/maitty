@@ -21,7 +21,9 @@
 
 The GUI uses `@tauri-apps/plugin-updater` and `@tauri-apps/plugin-process` with
 `tauri-plugin-updater` and `tauri-plugin-process` 2.x, desktop targets only. The capability allows
-`updater:allow-check`, `updater:allow-download-and-install` and `process:allow-restart`.
+`updater:allow-check`, `updater:allow-download`, `updater:allow-install` and
+`process:allow-restart`. The app downloads in the background and installs on restart, which are two
+commands, so the combined `updater:allow-download-and-install` does not cover it.
 
 The app reads `https://github.com/CydoEntis/maitty/releases/latest/download/latest.json`. The release
 workflow builds with `src-tauri/tauri.updater.conf.json` (which sets `createUpdaterArtifacts`) and

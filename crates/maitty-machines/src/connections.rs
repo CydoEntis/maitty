@@ -3,17 +3,20 @@
 //! window sends by machine. A connection that ends is marked lost and stays in the registry:
 //! it never ends the window.
 
-pub use super::ids::{MachineId, Outgoing};
-use crate::ipc;
-use crate::protocol::{ClientMsg, ServerMsg};
+pub use crate::ids::{MachineId, Outgoing};
+use maitty_ipc_transport as ipc;
+use maitty_shared::protocol::{ClientMsg, ServerMsg};
 use std::task::Poll;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+/// Server messages taken in one go before the next frame.
+pub const SERVER_BURST: usize = 512;
+
 /// How many messages a reader holds ahead of the loop. Past it the reader stops reading its
 /// socket, so a daemon sees a window that falls behind and lets go of it, as it always has.
-const INBOX: usize = super::SERVER_BURST;
+const INBOX: usize = SERVER_BURST;
 
 /// How long a frame may sit part-arrived, with no more of it coming, before the line is
 /// judged dead. Two quiet windows in a row decide it, so a dead line is dropped within twice
@@ -212,7 +215,7 @@ impl Stall {
 async fn read_until_lost(mut reader: ipc::Reader, inbox: mpsc::Sender<Inbound>, stall: Duration) {
     let mut watch = Stall::default();
     let end = loop {
-        match tokio::time::timeout(stall, ipc::recv_server(&mut reader)).await {
+        match tokio::time::timeout(stall, ipc::receive::<ServerMsg>(&mut reader)).await {
             Ok(Ok(Some(m))) => {
                 watch.progressed();
                 if inbox.send(Ok(m)).await.is_err() {
@@ -372,7 +375,7 @@ mod tests {
             },
         };
         connections.send(kept).unwrap();
-        let heard: ClientMsg = within(ipc::recv_client(&mut here_daemon.0))
+        let heard: ClientMsg = within(ipc::receive::<ClientMsg>(&mut here_daemon.0))
             .await
             .unwrap()
             .unwrap();
@@ -399,7 +402,7 @@ mod tests {
 
     /// The bytes of one `Notice` frame, as a daemon would write them.
     fn frame_of(text: &str) -> Vec<u8> {
-        let body = crate::protocol::encode(&notice(text)).unwrap();
+        let body = maitty_shared::protocol::encode(&notice(text)).unwrap();
         let mut bytes = (body.len() as u32).to_be_bytes().to_vec();
         bytes.extend_from_slice(&body);
         bytes

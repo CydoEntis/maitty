@@ -103,6 +103,7 @@ import {
   loadConversationDiff,
   loadConversations,
   loadDaemonRestartStatus,
+  loadMachines,
   loadMessages,
   restartMismatchedDaemon,
   resumeConversation as resumeDaemonConversation,
@@ -237,6 +238,22 @@ function PreviewApp() {
     enabled: Boolean(mismatch),
     retry: false,
   })
+  const machinesQuery = useQuery({
+    queryKey: ['machines'],
+    queryFn: loadMachines,
+    enabled: desktop,
+    retry: false,
+    staleTime: Infinity,
+  })
+  const machinesError = machinesQuery.data?.error ?? null
+  useEffect(() => {
+    if (machinesError) {
+      toast.error(`Machines are not available: ${machinesError}`, {
+        id: 'machines-config',
+        duration: Infinity,
+      })
+    }
+  }, [machinesError])
   const [daemonRestartDialogOpen, setDaemonRestartDialogOpen] = useState(false)
   const [daemonRestartPending, setDaemonRestartPending] = useState(false)
   const daemonDisconnected = desktop && sessionsQuery.isError

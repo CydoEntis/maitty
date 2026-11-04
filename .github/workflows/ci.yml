@@ -1,10 +1,19 @@
-# The verification gate on every push and pull request (see AGENTS.md).
+# The verification gate on every pull request and every push to dev (see AGENTS.md).
+# main only ever receives dev, which was already checked, and the release workflow
+# builds it again; a change to docs alone has nothing to build.
 name: ci
 
 on:
   push:
-    branches: [dev, main]
+    branches: [dev]
+    paths-ignore: ['docs/**', '**.md']
   pull_request:
+    paths-ignore: ['docs/**', '**.md']
+
+# A newer push to the same branch or pull request makes the older run's answer moot.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -40,9 +49,15 @@ jobs:
       - name: Prepare GUI daemon sidecar
         working-directory: apps/gui
         run: pnpm bundle:daemon:dev
+      - name: The desktop app stays off the daemon, the terminal client and settings (ADR 0048)
+        shell: bash
+        run: scripts/check-gui-deps.sh
       # One test at a time: CI's Windows machines stall when several tests start real
       # shells (ConPTY) at once. It also names a stuck test in the log.
+      # A test that still stalls would hold the job for its whole 45 minute limit, so the
+      # step has its own, well above the 5 to 10 minutes a passing run takes.
       - run: cargo test --locked -- --test-threads=1
+        timeout-minutes: 15
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: node --experimental-vm-modules --test crates/maitty-terminal-client/src/cli/integrations.test.mjs
 

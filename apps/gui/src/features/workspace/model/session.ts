@@ -8,8 +8,12 @@ export type SessionStatus = 'working' | 'needs' | 'done' | 'error' | 'idle' | 'u
 /** One daemon-owned shell as the window shows it. Every view reads this model, not the wire shape. */
 export type SessionView = {
   id: string
-  /** The daemon's pane number; it only grows, so it is also the creation order. */
+  /** The daemon's pane number; it only grows, so it is also the creation order. Each machine numbers its own. */
   pane: number
+  /** The number the host gave the machine this session lives on; 0 for this computer. */
+  machine: number
+  /** The machine's name; null for this computer. */
+  machineName: string | null
   cwd: string
   /** The current folder with the home folder written as `~`. */
   cwdLabel: string
@@ -45,9 +49,14 @@ export type SessionView = {
 
 export const SHELL_PROCESS = 'shell'
 
-/** What a row calls a session: the name you gave it, else where it is. */
-export function displayName(session: Pick<SessionView, 'name' | 'title'>): string {
-  return session.name ?? session.title
+/** What leads the name of a session on another machine, so it is never taken for one here. */
+export function machinePrefix(machineName: string | null | undefined): string {
+  return machineName ? `${machineName} · ` : ''
+}
+
+/** What a row calls a session: the name you gave it, else where it is, led by its machine when it is not this computer. */
+export function displayName(session: Pick<SessionView, 'name' | 'title'> & { machineName?: string | null }): string {
+  return `${machinePrefix(session.machineName)}${session.name ?? session.title}`
 }
 
 /** The longest name a session may be given. */
@@ -124,10 +133,13 @@ export function tildePath(path: string, home: string): string {
 
 export function toSessionView(conversation: Conversation, home: string): SessionView {
   const cwd = trimTrailingSeparator(conversation.cwd ?? conversation.folder)
+  const machineName = conversation.machineName ?? null
+  // The home folder written as `~` is this computer's; another machine's paths are shown as they are.
+  const homeHere = machineName === null ? home : ''
   const repoName = conversation.repo ?? null
   const repoRoot = repoName === null ? null : normalizeRoot(trimTrailingSeparator(conversation.folder))
   const inside = repoRoot !== null && cwd.length > repoRoot.length ? cwd.slice(repoRoot.length + 1).replaceAll('\\', '/') : ''
-  const cwdLabel = tildePath(cwd, home)
+  const cwdLabel = tildePath(cwd, homeHere)
   const title = repoName === null ? cwdLabel : inside === '' ? '(root)' : inside.split('/').slice(-TITLE_PARTS).join('/')
   const promptPath = repoName === null ? cwdLabel : inside === '' ? repoName : `${repoName}/${inside}`
   const branch = repoName !== null && conversation.branch && conversation.branch !== 'working tree' ? conversation.branch : null
@@ -136,6 +148,8 @@ export function toSessionView(conversation: Conversation, home: string): Session
   return {
     id: conversation.id,
     pane: conversation.nativePane ?? terminalOf(conversation.id) ?? 0,
+    machine: conversation.machine ?? 0,
+    machineName,
     cwd,
     cwdLabel,
     repoRoot,
@@ -201,9 +215,18 @@ export function worstSession(sessions: readonly SessionView[]): SessionView | un
 
 export type GroupBy = 'repo' | 'folder'
 
-/** The project a session belongs to: its git repo's root, or (outside a repo, or grouping by folder) its own folder. */
-export function groupKeyOf(session: Pick<SessionView, 'repoRoot' | 'cwd'>, groupBy: GroupBy): string {
+/** Where a session's project is: its git repo's root, or (outside a repo, or grouping by folder) its own folder. */
+function placeOf(session: Pick<SessionView, 'repoRoot' | 'cwd'>, groupBy: GroupBy): string {
   return (groupBy === 'repo' ? session.repoRoot : null) ?? session.cwd
+}
+
+/**
+ * The project a session belongs to: its git repo's root, or (outside a repo, or grouping by folder)
+ * its own folder. A folder of another machine is a project of its own, whatever a folder here is called.
+ */
+export function groupKeyOf(session: Pick<SessionView, 'repoRoot' | 'cwd'> & { machineName?: string | null }, groupBy: GroupBy): string {
+  const place = placeOf(session, groupBy)
+  return session.machineName ? `${session.machineName}\u0000${place}` : place
 }
 
 export type SessionGroup = {
@@ -212,6 +235,8 @@ export type SessionGroup = {
   kind: 'repo' | 'folder'
   /** Shown on hover: the repo or folder path. */
   path: string
+  /** The machine the project is on; null for this computer. */
+  machineName: string | null
   sessions: SessionView[]
   containsFocused: boolean
   /** The colour the user gave the project (a `PROJECT_COLORS` id); undefined takes the one chosen from its path. */
@@ -230,13 +255,15 @@ export function groupSessions(sessions: readonly SessionView[], groupBy: GroupBy
   for (const session of [...sessions].sort((a, b) => a.pane - b.pane)) {
     const repoRoot = groupBy === 'repo' ? session.repoRoot : null
     const key = groupKeyOf(session, groupBy)
+    const place = placeOf(session, groupBy)
     let group = groups.get(key)
     if (!group) {
       group = {
         key,
-        name: repoRoot ? (session.repoName ?? baseName(key)) : session.cwdLabel === '~' ? '~' : baseName(key),
+        name: `${machinePrefix(session.machineName)}${repoRoot ? (session.repoName ?? baseName(place)) : session.cwdLabel === '~' ? '~' : baseName(place)}`,
         kind: repoRoot ? 'repo' : 'folder',
-        path: tildePath(key, home),
+        path: tildePath(place, session.machineName ? '' : home),
+        machineName: session.machineName,
         sessions: [],
         containsFocused: false,
         colorId: undefined,

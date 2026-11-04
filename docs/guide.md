@@ -193,7 +193,10 @@ still has them loads, and they are ignored.
 - **Copy:** drag to select; double-click copies a word, path or link. Programs that copy (OSC 52,
   e.g. Claude's `/copy`, nvim) put it on your clipboard. Ctrl+click opens a link.
 - **Images:** `Ctrl+Space`, then `Ctrl+V` (or a paste while an image is on the
-  clipboard) saves the image and pastes its path; Claude Code and Codex attach it.
+  clipboard) saves the image and pastes its path; Claude Code and Codex attach it. In a pane on
+  another machine the image is sent to that machine over ssh (up to 25 MB), kept there in
+  `~/.cache/maitty/pastes` (private, cleared after a week), and its path there is pasted. It needs
+  ssh to that machine (not a custom transport) and a login that works without a prompt.
 - **Keys:** on Windows, combos plain terminals can't send (Ctrl+Shift+letter, Ctrl+Enter, Ctrl+Tab)
   reach programs exactly, as native key records. Shift+Enter is still a newline for agents.
 - **Resize:** text re-wraps to the new width (history included). Programs' cursor shape (bar,
@@ -462,6 +465,26 @@ is one line with the fix (log in with plain `ssh`, `maitty machine update <name>
 `kill-server --on build` stops every session on that machine, so it needs `--yes`. `--remote host`
 still works as before, and cannot be combined with `--on`.
 
+### What a machine needs
+
+A machine you add only needs the `maitty` program. There is no desktop app on it and nothing to build.
+
+- **The program.** The same `maitty` you run here, for Linux or macOS (x86_64 or aarch64). The Linux downloads
+  are static, so they run on any Linux. Installing it puts one file at `~/.local/bin/maitty` for your user.
+  `maitty machine update <name> --install` does this over ssh for you, so you do not need to log in and
+  install it by hand. A Windows machine cannot be the remote yet.
+- **A way in.** ssh must get in without asking you anything: a key (or your ssh agent) for that user. Run plain
+  `ssh <target>` once first, so its host key is known and you can see that it works.
+- **maitty on the PATH ssh uses.** A program in `~/.local/bin` is on the PATH of most logins. If ssh cannot find
+  it, set `remote_cmd` on the machine to its full path.
+- **The same version.** This computer, the machine and any desktop app must speak the same protocol. A machine
+  on another version shows `needs update`; run `maitty machine update <name>`.
+
+Nothing else needs installing. Agents such as Claude Code or Codex run there as they do anywhere, so install
+the ones you want to use on that machine yourself.
+
+`maitty doctor` checks the way in, the program, its version and the protocol for every machine you added (see "Check a machine with doctor" below).
+
 ### Install or update maitty on a machine
 
 `maitty machine update <name>` installs or updates maitty on a machine you added, over ssh. It looks first,
@@ -566,7 +589,7 @@ answers does not hold up the rest. The section is not printed when there are no 
 - The machine you reach must run Linux or macOS (x86_64 or aarch64). A Windows machine as the remote is not
   supported. A Windows computer can reach those machines, but it has no ssh agent to remember a password, so use
   keys or an agent there.
-- Files, Changes, Find, Branches, References, pasting an image, connecting an agent and worktrees read this
+- Files, Changes, Find, Branches, References, connecting an agent and worktrees read this
   computer's disk, so for a pane on another machine they do nothing but say so: "Files is local-only in v1: the
   files are on build, not on this computer."
 - `maitty --remote host` still works as before: one ad-hoc machine named after the host, not in your list. Unlike

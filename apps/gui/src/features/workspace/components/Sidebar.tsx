@@ -12,6 +12,7 @@ import { SessionStack } from './SessionStack'
 import { useSessionMenu, type SessionMenuActions } from './SessionMenu'
 import { RailPopoverLayer } from './RailPopovers'
 import { hoverHandlers, useRailHover, type RailHover } from './railHover'
+import { LOCAL_MACHINE } from '@/api/machines'
 import { WorktreeMenu } from '@/features/worktrees/WorktreeMenu'
 
 export type SidebarProps = {
@@ -235,11 +236,11 @@ function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle,
       <ContextMenuPrimitive.Portal container={portalContainer}>
         <ContextMenuPrimitive.Content className="mx-menu mx-project-menu" aria-label={`${group.name} project`}>
           <ContextMenuPrimitive.Label className="mx-menu-caps">{group.name}</ContextMenuPrimitive.Label>
-          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!canStart} onSelect={() => { onNewSessionIn(group.key) }}>New session here</ContextMenuPrimitive.Item>
-          {lead && <WorktreeMenu term={lead.pane} portalContainer={portalContainer} canStart={canStart} onOpenFolder={onNewSessionIn} onNewWorktree={onNewWorktree} />}
+          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!canStart || group.machineName !== null} onSelect={() => { onNewSessionIn(group.key) }}>New session here</ContextMenuPrimitive.Item>
+          {lead && lead.machine === LOCAL_MACHINE && <WorktreeMenu term={lead.pane} portalContainer={portalContainer} canStart={canStart} onOpenFolder={onNewSessionIn} onNewWorktree={onNewWorktree} />}
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={onToggle}>{open ? 'Collapse' : 'Expand'}</ContextMenuPrimitive.Item>
-          <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { void navigator.clipboard.writeText(group.key) }}>Copy path</ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { void navigator.clipboard.writeText(group.path) }}>Copy path</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
           <ContextMenuPrimitive.Item className="mx-menu-item is-danger" disabled={!online} onSelect={onEnd}>Close project tabs ({group.sessions.length})<span className="mx-menu-hint">ends {group.sessions.length === 1 ? '1 session' : `${String(group.sessions.length)} sessions`}</span></ContextMenuPrimitive.Item>
         </ContextMenuPrimitive.Content>
