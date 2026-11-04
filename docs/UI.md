@@ -116,7 +116,7 @@ saved layout survives a restart; this computer's stay `t12`). **Settings › Mac
 adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
 with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
 login that needs a person run in a session named `ssh <name>`); **New session** on a pane of another machine
-asks for a folder on that machine. Features that read a pane's files are for this computer's panes only.
+asks for a folder on that machine. Features that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
 
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,

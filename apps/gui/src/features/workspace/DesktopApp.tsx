@@ -17,7 +17,7 @@ import {
   sendTerminalInput,
   startShellSession,
 } from '@/api/daemon'
-import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineError, listenMachineRemoved, listenMachineSessions, machineNameOf, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, startSessionOnMachine, terminalOf, unregisterMachine, type MachineState } from '@/api/machines'
+import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineError, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, startSessionOnMachine, terminalOf, unregisterMachine, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -27,6 +27,7 @@ import type { Conversation } from '@/data/preview'
 import { sizeVariables } from './model/layoutSize'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import { errorMessage } from '@/lib/error-message'
+import { guardLocal, guardLocalSession } from '@/lib/localOnly'
 import { markGpu } from '@/lib/gpu'
 import { setSpinnerStyle } from '@/lib/spinner-clock'
 import { TerminalView } from '@/TerminalView'
@@ -404,9 +405,9 @@ export function DesktopApp() {
     const handle = target ? terminalHandles.current.get(target) : undefined
     if (!handle) return
     // A dropped file is a path on this computer; typed into another machine's shell it would name nothing there.
-    const machineName = target ? machineNameOf(target) : null
-    if (machineName !== null) {
-      toast.error(`Dropping files on a pane on ${machineName} is not available`)
+    const refusal = target ? guardLocalSession(target, 'file-drops') : null
+    if (refusal !== null) {
+      toast.error(refusal)
       return
     }
     if (!online) {
@@ -799,8 +800,9 @@ export function DesktopApp() {
   // Cmd/Ctrl-click on a file name in a pane's output: find it in that pane's repo, then show it in Inspect.
   const openPath = useCallback((session: SessionView, path: string, line?: number) => {
     // Files and Changes look at this computer's own checkouts; a pane of another machine has none here.
-    if (session.machine !== LOCAL_MACHINE) {
-      toast.message(`Files are not available for a pane on ${session.machineName ?? 'another machine'} yet`)
+    const refusal = guardLocal(session, 'path-links')
+    if (refusal !== null) {
+      toast.message(refusal)
       return
     }
     void repoLocate(session.pane, path)
@@ -893,7 +895,12 @@ export function DesktopApp() {
   // The tab bar and status bar are memoised, so what they are handed keeps its identity.
   const selectTabById = useCallback((tabId: string) => { setLayout((current) => selectTab(current, tabId)) }, [])
   const openInbox = useCallback(() => { setInboxOpen(true) }, [])
-  const toggleInspect = useCallback(() => { setInspectOpen((open) => !open) }, [])
+  // The repository view reads this computer's checkouts: on a pane of another machine it says so.
+  const inspectRefusal = guardLocal(focusedSession, 'inspect')
+  const toggleInspect = useCallback(() => {
+    if (inspectRefusal !== null) toast.message(inspectRefusal)
+    else setInspectOpen((open) => !open)
+  }, [inspectRefusal])
   const openDrawer = useCallback(() => { setDrawerOpen(true) }, [])
   const setThemeMode = useCallback((themeMode: SettingsPreferences['themeMode']) => { setPreferences((current) => ({ ...current, themeMode })) }, [])
   const pickTheme = useCallback((name: string) => { setPreferences((current) => (findTheme(name).light ? { ...current, lightTheme: name } : { ...current, darkTheme: name })) }, [])
@@ -972,14 +979,17 @@ export function DesktopApp() {
         setTextSize(preferences.terminalFontSize - 1)
         return
       case 'inspect':
-        setInspectOpen((open) => !open)
+        toggleInspect()
         return
       case 'find':
         setFindOpen((open) => !open)
         return
-      case 'new-worktree':
-        if (focusedSession && online && focusedSession.machine === LOCAL_MACHINE) setWorktreeFrom(focusedSession)
+      case 'new-worktree': {
+        const refusal = guardLocal(focusedSession, 'worktrees')
+        if (refusal !== null) toast.message(refusal)
+        else if (focusedSession && online) setWorktreeFrom(focusedSession)
         return
+      }
       case 'broadcast':
         if (layout.activeTabId) {
           const turningOn = !activeTab(layout)?.broadcast
@@ -988,7 +998,7 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, paneSessions, armedClose])
+  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, paneSessions, armedClose, toggleInspect])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
@@ -1098,7 +1108,10 @@ export function DesktopApp() {
     refetchOnWindowFocus: false,
     retry: false,
   })
-  const inspect = useMemo(() => (inspectTerm === null ? null : { open: inspectOpen, additions: diffStat.data?.additions ?? 0, deletions: diffStat.data?.deletions ?? 0 }), [inspectTerm, inspectOpen, diffStat.data])
+  const inspect = useMemo(() => {
+    if (inspectTerm !== null) return { open: inspectOpen, additions: diffStat.data?.additions ?? 0, deletions: diffStat.data?.deletions ?? 0 }
+    return inspectRefusal === null ? null : { open: false, additions: 0, deletions: 0, refusal: inspectRefusal }
+  }, [inspectTerm, inspectOpen, diffStat.data, inspectRefusal])
 
   // Looking at a pane acknowledges it: a finished agent's done goes back to idle, as when the terminal app
   // focuses it, and an error in it leaves the inbox. Needs-you stays until the agent is answered.
@@ -1223,8 +1236,8 @@ export function DesktopApp() {
       action('split-right', 'Split right', () => { split(null, 'right') }, keys('D')),
       action('split-down', 'Split down', () => { split(null, 'down') }, keys('D', true)),
       action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('J')),
-      action('inspect', 'Inspect the repository', () => { setInspectOpen(true) }, keys('I')),
-      ...(focusedSession && focusedSession.machine === LOCAL_MACHINE ? [action('new-worktree', 'New worktree', () => { setWorktreeFrom(focusedSession) }, keys('N', true))] : []),
+      action('inspect', 'Inspect the repository', () => { if (inspectRefusal !== null) toast.message(inspectRefusal); else setInspectOpen(true) }, keys('I')),
+      ...(focusedSession ? [action('new-worktree', 'New worktree', () => { runShortcut('new-worktree') }, keys('N', true))] : []),
       action('find', 'Find in the pane or every session', () => { setFindOpen(true) }, keys('F')),
       action('broadcast', showing?.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab', () => { runShortcut('broadcast') }, keys('B', true)),
       action('focus', 'Focus mode', () => { setFocusMode(true) }, keys('.')),
@@ -1251,7 +1264,7 @@ export function DesktopApp() {
     }
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [paletteOpen, labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide])
+  }, [paletteOpen, labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal])
 
   const restartOffer: RestartOffer | null = mismatch
     ? {

@@ -152,6 +152,13 @@ impl Wire {
         wire
     }
 
+    /// Refuse a request about a pane's files when the pane is on another machine.
+    pub fn require_local(&self, machine: Option<u16>, label: &str) -> Result<(), String> {
+        routing::require_local(machine, label, |id| {
+            self.0.get().and_then(|handle| handle.name_of(id))
+        })
+    }
+
     /// The hub's handle, or why there is none yet.
     pub fn handle(&self) -> Result<&HubHandle, String> {
         self.0.get().ok_or_else(|| NOT_CONNECTED.to_string())

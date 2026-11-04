@@ -33,7 +33,8 @@ type TabBarProps = {
   inboxNeeds: boolean
   onOpenInbox: () => void
   /** The Inspect button: whether its panel is open and the focused pane's changed lines (null: not known). */
-  inspect: { open: boolean; additions: number; deletions: number } | null
+  /** `refusal` is the words for why the repository view is not available for this pane. */
+  inspect: { open: boolean; additions: number; deletions: number; refusal?: string } | null
   onToggleInspect: () => void
   /** Present in a window too narrow for the sidebar: the button that slides it in over the panes. */
   onOpenSessions?: () => void
@@ -136,7 +137,7 @@ export const TabBar = memo(function TabBar(props: TabBarProps) {
       {edges.over && <AllTabs tabs={tabs} activeTabId={activeTabId} sessions={props.sessions} onSelect={props.onSelect} />}
       <span className="mx-spacer" />
       {props.inspect && (
-        <button type="button" className={`mx-inbox-button${props.inspect.open ? ' is-open' : ''}`} aria-pressed={props.inspect.open} aria-label="Repository" title={`Repository (${props.primary}I)`} onClick={props.onToggleInspect}>
+        <button type="button" className={`mx-inbox-button${props.inspect.open ? ' is-open' : ''}`} aria-pressed={props.inspect.open} aria-disabled={props.inspect.refusal !== undefined} aria-label="Repository" title={props.inspect.refusal ?? `Repository (${props.primary}I)`} onClick={props.onToggleInspect}>
           <Icon name="repo" />
           {(props.inspect.additions > 0 || props.inspect.deletions > 0) && (
             <span className="mx-inspect-stat"><span className="is-add">+{props.inspect.additions}</span> <span className="is-remove">−{props.inspect.deletions}</span></span>

@@ -583,8 +583,8 @@ describe('commands for a pane, on whichever machine it is', () => {
   })
 
   it('does not ask this computer\'s daemon for the screen or replay of another machine\'s pane', async () => {
-    await expect(loadTerminalScreen(there)).rejects.toThrow('on build is not available')
-    await expect(loadTerminalReplay(there)).rejects.toThrow('on build is not available')
+    await expect(loadTerminalScreen(there)).rejects.toThrow('The screen text is local-only in v1: the files are on build, not on this computer.')
+    await expect(loadTerminalReplay(there)).rejects.toThrow('A fresh replay is local-only in v1: the files are on build, not on this computer.')
     expect(invoke).not.toHaveBeenCalled()
   })
 
