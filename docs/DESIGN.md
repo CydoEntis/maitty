@@ -221,7 +221,9 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   style; `grayscale` makes them neutral `--raise` tiles with the glyph in `--fg2`.
 - **Settings dialog** (⌘,). A section list at the left and, at the right, a fixed header (the page title,
   a one-line description and a **Close** button with an `esc` keycap) above a body that scrolls; the page
-  itself never scrolls. The title and description slide with the page.
+  itself never scrolls. The title and description slide with the page. Under Advanced, **Performance** shows live
+  frame, drawing, output and process figures with a **Copy report** button, and a switch for a corner readout over
+  the window ([PERFORMANCE](PERFORMANCE.md#measuring-in-the-app)).
 - **Shortcut overlay** (⌘/ or Ctrl+/, also in the palette). An 820px dialog over a blurred scrim, titled
   "Keyboard shortcuts" with a Close `esc` button, holding an auto-fill grid (230px minimum) of Sessions,
   Panes, Find & jump and Window with each action and its keycaps (several chords stack). It is generated

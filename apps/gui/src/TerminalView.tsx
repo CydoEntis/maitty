@@ -11,15 +11,22 @@ import type { TerminalHandle } from '@/features/terminal/handle'
 import { findPathLinks } from '@/features/terminal/pathLinks'
 import { isWindowActive, useWindowActive } from '@/lib/window-activity'
 import { hasWebgl2 } from '@/lib/gpu'
+import { oscColor } from '@/lib/osc-color'
+import { beginFlush, forgetRenderer, reportRenderer } from '@/lib/perf-meter'
 import '@xterm/xterm/css/xterm.css'
 
 const DEFAULT_SCROLLBACK_LINES = 10000
+const DEFAULT_SCROLL_SPEED = 1
 const LINE_HEIGHT = 1.6
 const FONT_FAMILY = '"Geist Mono Variable", "Geist Mono", ui-monospace, monospace'
 const DEFAULT_THEME: ITheme = { background: '#060d16', foreground: '#c9d6e3', cursor: '#3dd6c6' }
 const TRANSPARENT = 'rgba(0,0,0,0)'
-/** The DOM renderer rebuilds each changed row as elements, so its writes land at most this often. */
-const DOM_FLUSH_GAP_MS = 32
+/**
+ * Writes land at most this often: every write redraws the terminal, and under a steady stream the
+ * host sends a batch every 12 ms, so without a gap the pane would redraw on every frame. A key's
+ * echo waits at most this long, and only while output is already streaming.
+ */
+const FLUSH_GAP_MS = 32
 
 type Renderer = 'webgl' | 'dom'
 
@@ -32,6 +39,11 @@ function terminalTheme(look: TerminalLook, renderer: Renderer): ITheme {
   const theme = look.theme ?? DEFAULT_THEME
   return renderer === 'webgl' ? { ...theme, background: TRANSPARENT } : theme
 }
+
+/** The slots a program's colour query names (`ESC ] 11 ; ? ST` asks for the background). */
+const OSC_FOREGROUND = 10
+const OSC_BACKGROUND = 11
+const OSC_QUERY = '?'
 
 /**
  * Draws the terminal with WebGL, which paints rows on the GPU instead of rebuilding them as DOM
@@ -61,6 +73,8 @@ type TerminalBinding = Pick<Conversation, 'id'> & { generation: number }
 export type TerminalLook = {
   cursorStyle?: 'block' | 'bar' | 'underline'
   scrollback?: number
+  /** Lines per wheel notch as a multiple of xterm's default. */
+  scrollSpeed?: number
   screenReader?: boolean
   theme?: ITheme
 }
@@ -189,14 +203,16 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     let disposeBinary: (() => void) | null = null
     let disposeCopy: (() => void) | null = null
     let frame = 0
+    let flushWait = 0
     let queued: Uint8Array[] = []
     let replayWait = 0
-    let renderer: Renderer = 'dom'
     let lastFlushAt = 0
 
     const writeQueued = () => {
       if (frame !== 0) cancelAnimationFrame(frame)
       frame = 0
+      window.clearTimeout(flushWait)
+      flushWait = 0
       if (!emulator || queued.length === 0) return
       const bytes = new Uint8Array(queued.reduce((total, chunk) => total + chunk.length, 0))
       let offset = 0
@@ -205,15 +221,20 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         offset += chunk.length
       }
       queued = []
-      emulator.write(bytes)
+      emulator.write(bytes, beginFlush())
       lastFlushAt = performance.now()
     }
-    // Output is written once per animation frame, so a burst repaints once instead of per chunk. The
-    // DOM renderer pays for every flush, so with it a frame that comes too soon waits for the next.
+    // Output is written once per animation frame, so a burst repaints once instead of per chunk, and
+    // a frame that comes too soon after the last write waits for the next.
     const flushOnFrame = () => {
       frame = 0
-      if (renderer === 'dom' && performance.now() - lastFlushAt < DOM_FLUSH_GAP_MS) {
-        frame = requestAnimationFrame(flushOnFrame)
+      const sinceLastFlush = performance.now() - lastFlushAt
+      if (sinceLastFlush < FLUSH_GAP_MS) {
+        // Sleep out the gap rather than asking for every frame until it has passed.
+        flushWait = window.setTimeout(() => {
+          flushWait = 0
+          if (frame === 0) frame = requestAnimationFrame(flushOnFrame)
+        }, FLUSH_GAP_MS - sinceLastFlush)
         return
       }
       writeQueued()
@@ -225,7 +246,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         writeQueued()
         return
       }
-      if (frame === 0) frame = requestAnimationFrame(flushOnFrame)
+      if (frame === 0 && flushWait === 0) frame = requestAnimationFrame(flushOnFrame)
     }
 
     async function mountTerminal() {
@@ -248,6 +269,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           fontSize: fontSizeRef.current,
           lineHeight: LINE_HEIGHT,
           scrollback: lookRef.current.scrollback ?? DEFAULT_SCROLLBACK_LINES,
+          scrollSensitivity: lookRef.current.scrollSpeed ?? DEFAULT_SCROLL_SPEED,
           screenReaderMode: lookRef.current.screenReader ?? false,
           theme: terminalTheme(lookRef.current, startRenderer),
         })
@@ -259,21 +281,36 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         terminalInstance.open(hostElement)
         terminal.current = terminalInstance
         const fallBackToDomRenderer = () => {
-          renderer = 'dom'
           rendererRef.current = 'dom'
+          reportRenderer(terminalInstance, 'dom')
           terminalInstance.options.allowTransparency = false
           terminalInstance.options.theme = terminalTheme(lookRef.current, 'dom')
           if (isMounted) setTransparent(false)
         }
         if (wantsWebgl) {
           if (await loadWebglRenderer(terminalInstance, fallBackToDomRenderer)) {
-            renderer = 'webgl'
             rendererRef.current = 'webgl'
+            reportRenderer(terminalInstance, 'webgl')
           } else {
             fallBackToDomRenderer()
           }
           if (!stillMounted()) return
+        } else {
+          reportRenderer(terminalInstance, 'dom')
         }
+        // The WebGL canvas is see-through, so xterm's own answer to a program's colour query would
+        // be black (it drops the alpha): a program that paints with the colour it was told, as
+        // Claude Code does, would then leave black bars on the glass. Answer with the theme's
+        // colours instead; anything but a query falls through to xterm.
+        const answerColorQuery = (slot: 'foreground' | 'background') => (data: string) => {
+          if (data !== OSC_QUERY) return false
+          const color = oscColor((lookRef.current.theme ?? DEFAULT_THEME)[slot] ?? '')
+          if (color === null) return false
+          send(`\x1b]${String(slot === 'background' ? OSC_BACKGROUND : OSC_FOREGROUND)};${color}\x1b\\`)
+          return true
+        }
+        terminalInstance.parser.registerOscHandler(OSC_FOREGROUND, answerColorQuery('foreground'))
+        terminalInstance.parser.registerOscHandler(OSC_BACKGROUND, answerColorQuery('background'))
         // Cmd/Ctrl-click on a file name in the output opens it in the Inspect panel.
         terminalInstance.registerLinkProvider({
           provideLinks: (y, callback) => {
@@ -443,6 +480,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       isMounted = false
       onHandleRef.current?.(null)
       if (frame !== 0) cancelAnimationFrame(frame)
+      window.clearTimeout(flushWait)
       window.clearTimeout(replayWait)
       refitTerminal.current = null
       stopListening?.()
@@ -450,6 +488,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       disposeInput?.()
       disposeBinary?.()
       disposeCopy?.()
+      if (emulator) forgetRenderer(emulator)
       emulator?.dispose()
       terminal.current = null
     }
@@ -470,6 +509,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     if (!emulator) return
     if (look.cursorStyle && emulator.options.cursorStyle !== look.cursorStyle) emulator.options.cursorStyle = look.cursorStyle
     if (look.scrollback && emulator.options.scrollback !== look.scrollback) emulator.options.scrollback = look.scrollback
+    if (look.scrollSpeed && emulator.options.scrollSensitivity !== look.scrollSpeed) emulator.options.scrollSensitivity = look.scrollSpeed
     if (look.screenReader !== undefined && emulator.options.screenReaderMode !== look.screenReader) emulator.options.screenReaderMode = look.screenReader
     if (look.theme) emulator.options.theme = terminalTheme(look, rendererRef.current)
   }, [look])

@@ -1,5 +1,6 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { bytesOf } from './ipcBytes'
+import { countOutput } from '@/lib/perf-meter'
 
 /** One piece of a pane's output, in order. A replay replaces what the view shows. */
 export type TerminalChunk = { term: number; seq: number; replay: boolean; bytes: Uint8Array }
@@ -38,6 +39,7 @@ function ensureWatching(): Promise<void> {
     const onChunk = new Channel<ArrayBuffer>()
     onChunk.onmessage = (frame) => {
       const chunk = decodeFrame(bytesOf(frame))
+      countOutput(chunk.bytes.length)
       for (const handler of handlers.get(chunk.term) ?? []) handler(chunk)
     }
     await invoke('watch_terminal_output', { onChunk })

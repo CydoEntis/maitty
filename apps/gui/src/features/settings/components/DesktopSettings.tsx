@@ -4,13 +4,14 @@ import { spinnerDefinition, SPINNER_TICK_MS, type SpinnerStyle } from '@/lib/spi
 import { useNow } from '@/lib/clock'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
+import { PerformanceSection } from './PerformanceSection'
 import { hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/model/shortcuts'
 import { PROJECT_COLORS } from '@/features/workspace/model/folderColor'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
-import { SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type SettingsPreferences, type StyleChoice } from '../preferences'
+import { SCROLL_SPEED_CHOICES, SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type ScrollSpeed, type SettingsPreferences, type StyleChoice } from '../preferences'
 
-export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'notifications' | 'keys' | 'daemon'
+export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'notifications' | 'keys' | 'daemon' | 'performance'
 
 export type DaemonInfo = {
   online: boolean
@@ -39,6 +40,8 @@ type DesktopSettingsProps = {
   onShowWelcome: () => void
   mac: boolean
   daemon: DaemonInfo
+  /** The running app's version, for the performance report; null until known. */
+  appVersion: string | null
   /** The projects in the sidebar, so each can be given a colour. */
   projects: ReadonlyArray<{ key: string; name: string; colorId: string | undefined }>
   /** Resolves whether a typed folder exists. */
@@ -66,7 +69,13 @@ const NAV: Array<{ label: string; items: NavItem[] }> = [
       { id: 'keys', label: 'Hotkeys', key: '?', tint: 'var(--ansi-blue)', path: 'M2 6h20v12H2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8' },
     ],
   },
-  { label: 'ADVANCED', items: [{ id: 'daemon', label: 'Daemon', key: 'D', tint: 'var(--accent)', path: 'M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01' }] },
+  {
+    label: 'ADVANCED',
+    items: [
+      { id: 'daemon', label: 'Daemon', key: 'D', tint: 'var(--accent)', path: 'M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01' },
+      { id: 'performance', label: 'Performance', key: 'P', tint: 'var(--ansi-green)', path: 'M3 17l5-6 4 4 5-8 4 5' },
+    ],
+  },
 ]
 
 const PAGE: Record<DesktopSettingsSection, [string, string]> = {
@@ -76,9 +85,10 @@ const PAGE: Record<DesktopSettingsSection, [string, string]> = {
   notifications: ['Notifications', 'When the system should tell you a session needs you.'],
   keys: ['Hotkeys', 'Everything the window handles before the shell does.'],
   daemon: ['Daemon', 'The local maittyd that owns every session.'],
+  performance: ['Performance', 'What the window is spending its time on, measured live.'],
 }
 
-const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', n: 'notifications', '?': 'keys', d: 'daemon' }
+const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', n: 'notifications', '?': 'keys', d: 'daemon', p: 'performance' }
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -165,6 +175,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} onTestNotice={props.onTestNotice} />}
               {section === 'keys' && <HotkeysSection mac={props.mac} />}
               {section === 'daemon' && <DaemonSection daemon={props.daemon} />}
+              {section === 'performance' && <PerformanceSection preferences={preferences} update={update} appVersion={props.appVersion} />}
             </div>
           </div>
         </div>
@@ -175,7 +186,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
 
 type Update = <K extends keyof SettingsPreferences>(key: K, value: SettingsPreferences[K]) => void
 
-function Card({ title, color, iconPath, meta, children, foot, footRow = false }: { title: string; color: string; iconPath: ReactNode; meta?: ReactNode; children?: ReactNode; foot?: ReactNode; footRow?: boolean }) {
+export function Card({ title, color, iconPath, meta, children, foot, footRow = false }: { title: string; color: string; iconPath: ReactNode; meta?: ReactNode; children?: ReactNode; foot?: ReactNode; footRow?: boolean }) {
   return (
     <section className="mx-scard" aria-label={title}>
       <div className="mx-scard-head">
@@ -191,7 +202,7 @@ function Card({ title, color, iconPath, meta, children, foot, footRow = false }:
   )
 }
 
-function Row({ label, detail, children }: { label: string; detail?: string; children: ReactNode }) {
+export function Row({ label, detail, children }: { label: string; detail?: string; children: ReactNode }) {
   return (
     <div className="mx-scard-row">
       <div className="mx-scard-text"><span>{label}</span>{detail && <span>{detail}</span>}</div>
@@ -348,6 +359,7 @@ const FONT_SIZES = Array.from({ length: TERMINAL_FONT_SIZE_MAX - TERMINAL_FONT_S
 const CURSORS: ReadonlyArray<readonly [CursorStyle, string]> = [['block', 'Block'], ['bar', 'Bar'], ['underline', 'Underline']]
 const THOUSAND = 1000
 const SCROLLBACKS: ReadonlyArray<readonly [ScrollbackLines, string]> = SCROLLBACK_CHOICES.map((lines) => [lines, `${String(lines / THOUSAND)}k`] as const)
+const SCROLL_SPEEDS: ReadonlyArray<readonly [ScrollSpeed, string]> = SCROLL_SPEED_CHOICES.map((speed) => [speed, speed === 1 ? 'Normal' : `${String(speed)}×`] as const)
 
 function caretStyle(cursor: CursorStyle): CSSProperties {
   return { width: cursor === 'bar' ? '2px' : '.6em', height: cursor === 'underline' ? '2px' : '1.25em', alignSelf: cursor === 'underline' ? 'flex-end' : 'center' }
@@ -380,6 +392,9 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
       <Card title="Scrollback" color="var(--ansi-green)" iconPath={<path d="m5 8 4 4-4 4M12 17h7" />}>
         <Row label="Lines kept per pane" detail="Older output is dropped from the GUI. maittyd keeps the full history.">
           <Segmented label="Lines kept per pane" value={preferences.scrollback} options={SCROLLBACKS} onChange={(value) => { update('scrollback', value) }} />
+        </Row>
+        <Row label="Scroll speed" detail="Lines per wheel notch. Normal is xterm's own pace, which feels slow at this line height.">
+          <Segmented label="Scroll speed" value={preferences.scrollSpeed} options={SCROLL_SPEEDS} onChange={(value) => { update('scrollSpeed', value) }} />
         </Row>
         <Row label="Screen reader support" detail="Mirrors each terminal's text into the page so a screen reader can read it. It makes every pane much heavier to draw, so leave it off unless you use one.">
           <Switch label="Screen reader support" checked={preferences.terminalScreenReader} onChange={(value) => { update('terminalScreenReader', value) }} />

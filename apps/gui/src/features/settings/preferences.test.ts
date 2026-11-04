@@ -20,10 +20,10 @@ const DEFAULTS: SettingsPreferences = {
   darkTheme: 'Midnight',
   lightTheme: 'Paper',
   cursorStyle: 'block',
-  scrollback: 10000,
+  scrollback: 10000, scrollSpeed: 1,
   effectWorking: true,
   effectNeedsYou: true,
-  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, style: 'glass', projectColors: {},
+  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, style: 'glass', projectColors: {},
 }
 
 describe('settings preferences', () => {

@@ -26,6 +26,7 @@ const { loadTerminalReplay, resizeTerminal, sendTerminalInput, loadTerminalHisto
     linkProvider: undefined as { provideLinks: (y: number, done: (links: Array<{ text: string; activate: (event: MouseEvent) => void }> | undefined) => void) => void } | undefined,
     line: '',
     searches: [] as string[],
+    oscHandlers: new Map<number, (data: string) => boolean | Promise<boolean>>(),
   },
   toastError: vi.fn(),
 }))
@@ -66,7 +67,8 @@ vi.mock('@xterm/xterm', () => ({
     }
     onBinary() { return { dispose: vi.fn() } }
     attachCustomKeyEventHandler(handler: NonNullable<typeof terminalState.keyHandler>) { terminalState.keyHandler = handler }
-    write(data: Uint8Array) { terminalState.writes.push(data) }
+    write(data: Uint8Array, done?: () => void) { terminalState.writes.push(data); done?.() }
+    parser = { registerOscHandler: (ident: number, handler: (data: string) => boolean | Promise<boolean>) => { terminalState.oscHandlers.set(ident, handler); return { dispose: vi.fn() } } }
     dispose() {}
   },
 }))
@@ -165,6 +167,19 @@ describe('terminal view', () => {
 
     terminalState.onData?.('\u0003')
     await waitFor(() => { expect(sendTerminalInput).toHaveBeenCalledWith(binding, '\u0003') })
+  })
+
+  it("answers a program's background query with the theme colour, not the see-through canvas", async () => {
+    renderTerminal()
+    expect(await screen.findByRole('region', { name: 'Native Codex terminal' })).toBeInTheDocument()
+    await waitFor(() => { expect(terminalState.oscHandlers.has(11)).toBe(true) })
+
+    expect(terminalState.oscHandlers.get(11)?.('?')).toBe(true)
+    await waitFor(() => { expect(sendTerminalInput).toHaveBeenCalledWith(binding, '\u001b]11;rgb:0606/0d0d/1616\u001b\\') })
+    expect(terminalState.oscHandlers.get(10)?.('?')).toBe(true)
+    await waitFor(() => { expect(sendTerminalInput).toHaveBeenCalledWith(binding, '\u001b]10;rgb:c9c9/d6d6/e3e3\u001b\\') })
+    // Setting a colour is xterm's business.
+    expect(terminalState.oscHandlers.get(11)?.('#000000')).toBe(false)
   })
 
   it('sends Alt+Enter for Shift+Enter so an agent starts a new line, and leaves Enter alone', async () => {

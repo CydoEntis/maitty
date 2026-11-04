@@ -1036,6 +1036,8 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-upd-primary:hover { background: color-mix(in srgb, var(--accent) 88%, #fff); }
 .mx-upd-ghost { height: 30px; padding: 0 10px; border-radius: 8px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
 .mx-upd-ghost:hover { background: rgba(255, 255, 255, .06); color: var(--fg); }
+/* Settings › Performance › Overlay: a corner readout that never takes the pointer. */
+.mx-perf-hud { position: absolute; right: 12px; bottom: 36px; z-index: 80; display: flex; gap: 10px; padding: 4px 9px; border-radius: 8px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line); font-family: var(--mono); font-size: 11px; color: var(--fg2); pointer-events: none; white-space: nowrap; }
 .mx-restarting { position: absolute; inset: 0; z-index: 90; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: var(--bg); animation: v7scrim .2s ease-out; }
 .mx-restarting strong { font-size: 18px; font-weight: 600; }
 .mx-restarting span { font-size: 13px; color: var(--muted); }

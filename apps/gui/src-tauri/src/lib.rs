@@ -1,3 +1,4 @@
+mod performance;
 mod project_files;
 
 use std::path::PathBuf;
@@ -477,6 +478,7 @@ pub fn run() {
         .manage(terminal_stream::TerminalKeys::default())
         .manage(terminal_stream::TerminalOutput::default())
         .manage(terminal_stream::LastSnapshot::default())
+        .manage(performance::ProcessStats::default())
         .setup(|app| {
             terminal_stream::start(app.handle().clone());
             Ok(())
@@ -522,7 +524,8 @@ pub fn run() {
             codex_executable_path,
             claude_executable_path,
             daemon_restart_status,
-            restart_mismatched_daemon
+            restart_mismatched_daemon,
+            performance::performance_sample
         ])
         .run(tauri::generate_context!())
         .expect("Maitty desktop host failed");

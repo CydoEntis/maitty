@@ -27,6 +27,7 @@ import { sizeVariables } from './model/layoutSize'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import { errorMessage } from '@/lib/error-message'
 import { markGpu } from '@/lib/gpu'
+import { PerfOverlay } from './components/PerfOverlay'
 import { setSpinnerStyle } from '@/lib/spinner-clock'
 import { TerminalView } from '@/TerminalView'
 import { EffectsContext, ReducedMotionContext } from './components/motion'
@@ -364,7 +365,7 @@ export function DesktopApp() {
 
   const reducedMotion = preferences.reduceMotion || systemReducedMotion
   const theme = findTheme(previewTheme ?? activeThemeName(preferences, systemDark))
-  const look = useMemo(() => ({ cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, screenReader: preferences.terminalScreenReader, theme: xtermTheme(theme.tokens) }), [preferences.cursorStyle, preferences.scrollback, preferences.terminalScreenReader, theme])
+  const look = useMemo(() => ({ cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, scrollSpeed: preferences.scrollSpeed, screenReader: preferences.terminalScreenReader, theme: xtermTheme(theme.tokens) }), [preferences.cursorStyle, preferences.scrollback, preferences.scrollSpeed, preferences.terminalScreenReader, theme])
   const effects = useMemo(() => {
     const allowed = online && !reducedMotion
     return { working: allowed && preferences.effectWorking, needs: allowed && preferences.effectNeedsYou, done: allowed && preferences.effectDone }
@@ -1396,6 +1397,7 @@ export function DesktopApp() {
                 onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}
                 mac={mac}
                 daemon={{ online, sessionCount: sessions.length }}
+                appVersion={runningVersion}
                 projects={groups.map((group) => ({ key: group.key, name: group.name, colorId: group.colorId }))}
                 validateFolder={folderExists}
                 onChooseFolder={chooseStartFolder}
@@ -1403,6 +1405,7 @@ export function DesktopApp() {
               />
             )}
             {toastMessage && <Toast key={toastMessage.key} message={toastMessage.text} />}
+            {preferences.perfOverlay && <PerfOverlay />}
             {restarting && (
               <div className="mx-restarting" role="status">
                 <strong>Restarting Maitty</strong>
