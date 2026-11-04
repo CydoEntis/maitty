@@ -387,6 +387,12 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   ended** with **Restart shell** (a new shell in the same folder, in the same place) and **Close pane**
   (which stops nothing). Only the first list after launch drops panes of sessions that died while the app
   was closed. The sidebar still lists only the sessions the daemon lists, and an ended session's row goes.
+- **Switching sessions.** A pane shows at once: the last screen it had (kept in memory per session,
+  `features/terminal/screenCache.ts`, bounded in size and count) or the replay in one write per frame. A
+  pane on this computer never shows a spinner, overlay or "Connecting" text. A pane on another machine
+  that has not attached after 300 ms shows a 24 px strip under the pane header (spinner, **Catching up
+  from <machine> · N ms**, a 2 px progress line on its top edge) that sits in the flow, never over the
+  terminal, and goes when the stream is live. A real failure keeps its banner; it is not a loading state.
 - **Sidebar footer and updates.** The footer's left slot shows the version, or what an update needs
   from you: a pill (**Update to x**, the download's percent, **Restart to update**, **Update failed**) that
   opens a card upward with the matching actions. The updater downloads first and installs only on

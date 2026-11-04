@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
 import type { TerminalChunk, TerminalHistory } from '@/api/terminalStream'
+import { clearScreens } from '@/features/terminal/screenCache'
 import { TerminalView } from './TerminalView'
 
 type Target = Pick<Conversation, 'id'> & { generation: number }
@@ -104,11 +105,13 @@ const conversation: Conversation = {
 const binding = { id: conversation.id, generation: conversation.generation }
 const bytes = (text: string) => new TextEncoder().encode(text)
 const chunk = (seq: number, text: string, replay = false): TerminalChunk => ({ machine: 0, term: 47, seq, replay, bytes: bytes(text) })
+const RESET = '\x1bc'
 const written = () => terminalState.writes.map((part) => new TextDecoder().decode(part)).join('')
 
 describe('terminal view', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    clearScreens()
     terminalState.writes = []
     terminalState.resets = 0
     terminalState.onData = undefined
@@ -260,8 +263,8 @@ describe('terminal view', () => {
 
     act(() => { terminalState.onChunk?.(chunk(4, 'new screen', true)) })
 
-    await waitFor(() => { expect(written()).toBe('hello new screen') })
-    expect(terminalState.resets).toBe(1)
+    // The reset travels in the same write as the replay, so nothing queued before it can land after it.
+    await waitFor(() => { expect(written()).toBe(`hello ${RESET}new screen`) })
   })
 
   it('waits for the replay the host asked for over the stream when it holds no history yet', async () => {
@@ -272,8 +275,7 @@ describe('terminal view', () => {
 
     act(() => { terminalState.onChunk?.(chunk(1, 'replayed', true)) })
 
-    await waitFor(() => { expect(written()).toBe('replayed') })
-    expect(terminalState.resets).toBe(1)
+    await waitFor(() => { expect(written()).toBe(`${RESET}replayed`) })
   })
 
   it('asks the daemon for a fresh replay itself when the host has no stream to ask over', async () => {
@@ -389,6 +391,113 @@ describe('terminal view', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     act(() => { window.dispatchEvent(new Event('focus')) })
     expect(terminalState.options?.cursorBlink).toBe(true)
+  })
+
+  it('writes everything that arrives with the history in one write', async () => {
+    let resolveHistory: (history: TerminalHistory) => void = () => {}
+    loadTerminalHistory.mockReturnValue(new Promise<TerminalHistory>((resolve) => { resolveHistory = resolve }))
+    renderTerminal()
+    await waitFor(() => { expect(terminalState.onChunk).toBeDefined() })
+    act(() => {
+      terminalState.onChunk?.(chunk(4, 'one '))
+      terminalState.onChunk?.(chunk(5, 'two '))
+      terminalState.onChunk?.(chunk(6, 'three'))
+    })
+    await act(async () => {
+      resolveHistory({ seq: 3, bytes: bytes('line1\nline2\nline3 ') })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => { expect(written()).toBe('line1\nline2\nline3 one two three') })
+    expect(terminalState.writes).toHaveLength(1)
+  })
+
+  it('writes a replay and the output queued before it as one write', async () => {
+    renderTerminal()
+    await waitFor(() => { expect(written()).toBe('hello ') })
+
+    act(() => {
+      terminalState.onChunk?.(chunk(4, 'dropped'))
+      terminalState.onChunk?.(chunk(5, 'new screen', true))
+    })
+
+    await waitFor(() => { expect(written()).toBe(`hello ${RESET}new screen`) })
+    expect(terminalState.writes).toHaveLength(2)
+  })
+
+  it('shows the last screen of a session at once when it is opened again, and rewrites it only if it changed', async () => {
+    const first = renderTerminal()
+    await waitFor(() => { expect(written()).toBe('hello ') })
+    act(() => { terminalState.onChunk?.(chunk(4, 'world')) })
+    await waitFor(() => { expect(written()).toBe('hello world') })
+    first.unmount()
+
+    terminalState.writes = []
+    loadTerminalHistory.mockReturnValue(new Promise<TerminalHistory>(() => {}))
+    renderTerminal()
+
+    // The history has not answered, and the screen is already there.
+    await waitFor(() => { expect(written()).toBe('hello world') })
+
+    terminalState.writes = []
+    loadTerminalHistory.mockResolvedValue({ seq: 4, bytes: bytes('hello world') })
+    renderTerminal()
+    await waitFor(() => { expect(loadTerminalHistory).toHaveBeenCalledTimes(3) })
+    await new Promise((resolve) => { window.setTimeout(resolve, 20) })
+    // The kept screen ended where the history does, so only the kept screen was written.
+    expect(written()).toBe('hello world')
+  })
+
+  it('replaces the last screen with the history when the pane moved on', async () => {
+    const first = renderTerminal()
+    await waitFor(() => { expect(written()).toBe('hello ') })
+    first.unmount()
+
+    terminalState.writes = []
+    loadTerminalHistory.mockResolvedValue({ seq: 9, bytes: bytes('newer') })
+    renderTerminal()
+
+    await waitFor(() => { expect(written()).toContain(`${RESET}newer`) })
+  })
+
+  describe('while attaching', () => {
+    beforeEach(() => { vi.useFakeTimers() })
+    afterEach(() => { vi.useRealTimers() })
+
+    it('never shows a loader for a pane on this computer', async () => {
+      loadTerminalHistory.mockReturnValue(new Promise<TerminalHistory>(() => {}))
+      renderTerminal()
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(screen.queryByText(/Connecting|Catching up/)).not.toBeInTheDocument()
+    })
+
+    it('shows the catching-up strip for another machine only after 300 ms, and removes it once live', async () => {
+      let resolveHistory: (history: TerminalHistory) => void = () => {}
+      loadTerminalHistory.mockReturnValue(new Promise<TerminalHistory>((resolve) => { resolveHistory = resolve }))
+      renderTerminal({ ...conversation, machine: 2, machineName: 'devbox' })
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(299) })
+      expect(screen.queryByText(/Catching up/)).not.toBeInTheDocument()
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(screen.getByRole('status')).toHaveTextContent(/Catching up from devbox · \d+ ms/)
+
+      await act(async () => {
+        resolveHistory({ seq: 3, bytes: bytes('hello ') })
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(screen.queryByText(/Catching up/)).not.toBeInTheDocument()
+    })
+
+    it('shows nothing for another machine that attaches within 300 ms', async () => {
+      renderTerminal({ ...conversation, machine: 2, machineName: 'devbox' })
+      await act(async () => { await vi.advanceTimersByTimeAsync(50) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+
+      expect(screen.queryByText(/Catching up/)).not.toBeInTheDocument()
+    })
   })
 
   it('says a chat session has no terminal instead of offering to switch it', () => {
