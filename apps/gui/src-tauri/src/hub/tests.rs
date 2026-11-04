@@ -45,6 +45,7 @@ struct Watch {
     msgs: Vec<(MachineId, ServerMsg)>,
     up: Vec<MachineId>,
     ended: Vec<MachineId>,
+    removed: Vec<MachineId>,
 }
 
 impl Watch {
@@ -55,6 +56,7 @@ impl Watch {
             msgs: Vec::new(),
             up: Vec::new(),
             ended: Vec::new(),
+            removed: Vec::new(),
         }
     }
 
@@ -66,6 +68,7 @@ impl Watch {
             }
             Update::LineUp { machine } => self.up.push(machine),
             Update::LineEnded { machine } => self.ended.push(machine),
+            Update::Removed { machine } => self.removed.push(machine),
         }
     }
 
@@ -270,6 +273,52 @@ async fn a_different_daemon_at_a_known_name_is_turned_away_and_says_nothing_that
     assert!(quiet.is_err(), "the watch only ends by timing out");
     assert_eq!(sandbox.calls_made(), parked, "no dial while parked");
     assert_eq!(watch.snapshots(BOX), 0);
+
+    // A person asking again clears the refusal and dials.
+    watch.hub.handle().retry("BOX");
+    let dialled = async {
+        while sandbox.calls_made() == parked {
+            let _ = tokio::time::timeout(Duration::from_millis(50), watch.step()).await;
+        }
+    };
+    tokio::time::timeout(WAIT, dialled)
+        .await
+        .expect("retry dials a parked machine");
+}
+
+#[tokio::test]
+async fn removing_a_machine_stops_it_and_forgets_it_and_its_daemon_id() {
+    let mut sandbox = Sandbox::new();
+    sandbox.start_daemon();
+    let mut watch = Watch::new(&[machine("box", &sandbox, "proxy")], &sandbox, quick(WAIT));
+    watch
+        .until("connected and a snapshot", |w| {
+            w.is(BOX, "connected") && w.snapshots(BOX) > 0
+        })
+        .await;
+    assert!(MachineIds::load(&ids_file(&sandbox)).forget("box"));
+
+    let handle = watch.hub.handle();
+    handle.remove("Box");
+    watch
+        .until("the machine is removed", |w| w.removed == [BOX])
+        .await;
+    assert!(!handle.is_up(BOX));
+    assert_eq!(handle.name_of(BOX), None);
+    assert!(!watch.hub.retry(BOX), "nothing supervises it any more");
+    assert!(
+        !MachineIds::load(&ids_file(&sandbox)).forget("box"),
+        "the daemon id recorded for the name is gone"
+    );
+}
+
+#[tokio::test]
+async fn removing_a_machine_that_is_not_there_says_nothing() {
+    let sandbox = Sandbox::new();
+    let mut watch = Watch::new(&[], &sandbox, quick(WAIT));
+    watch.hub.handle().remove("ghost");
+    let quiet = tokio::time::timeout(Duration::from_millis(300), watch.step()).await;
+    assert!(quiet.is_err(), "no update for a machine that was never there");
 }
 
 #[tokio::test]
@@ -477,6 +526,7 @@ mod local_line {
             msgs: Vec::new(),
             up: Vec::new(),
             ended: Vec::new(),
+            removed: Vec::new(),
         }
     }
 

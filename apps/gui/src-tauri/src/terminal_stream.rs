@@ -36,6 +36,8 @@ const SESSIONS_EVENT: &str = "sessions-changed";
 /// Carries another machine's whole snapshot as it changes: `{machine, snapshot}`.
 const MACHINE_SESSIONS_EVENT: &str = "machine-sessions-changed";
 /// Carries what another machine said went wrong with a request: `{machine, text}`.
+/// Carries the number of a machine that was removed from the list.
+const MACHINE_REMOVED_EVENT: &str = "machine-removed";
 const MACHINE_ERROR_EVENT: &str = "machine-error";
 
 const NOT_CONNECTED: &str = "The terminal is not connected to the daemon";
@@ -70,6 +72,42 @@ pub fn overview(states: &MachineStates, streams: &Streams) -> Vec<MachineOvervie
             state: state.clone(),
         })
         .collect()
+}
+
+/// Dial a machine now, and let a daemon that was refused be looked at again.
+#[tauri::command]
+pub fn retry_machine(wire: tauri::State<'_, Wire>, name: String) -> Result<(), String> {
+    wire.0
+        .get()
+        .ok_or_else(|| NOT_CONNECTED.to_string())?
+        .retry(&name);
+    Ok(())
+}
+
+/// Take a machine out of the list: its entry leaves `config.local.toml` first, and only when
+/// that worked is its connection stopped and its record forgotten. The machine, its sessions and
+/// the layout saved under its name are not touched.
+#[tauri::command]
+pub async fn remove_machine(wire: tauri::State<'_, Wire>, name: String) -> Result<(), String> {
+    let handle = wire.0.get().ok_or_else(|| NOT_CONNECTED.to_string())?;
+    let file = maitty_machines::local_machines::config_path().with_file_name("config.local.toml");
+    let entry = name.clone();
+    tauri::async_runtime::spawn_blocking(move || remove_entry(&file, &entry))
+        .await
+        .map_err(|error| format!("Could not remove {name}: {error}"))??;
+    handle.remove(&name);
+    Ok(())
+}
+
+/// Delete the entry named `name` from the machine file.
+fn remove_entry(file: &std::path::Path, name: &str) -> Result<(), String> {
+    match maitty_machines::machine_config::remove_machine(file, name) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(format!(
+            "{name} is not in config.local.toml, so it cannot be removed here."
+        )),
+        Err(error) => Err(format!("Could not remove {name}: {error:#}")),
+    }
 }
 
 #[tauri::command]
@@ -259,6 +297,8 @@ pub enum Reaction {
     Frame(Vec<u8>),
     /// What another machine said went wrong with a request.
     Error { machine: MachineId, text: String },
+    /// A machine was taken out of the list.
+    Removed { machine: MachineId },
     /// A machine's whole snapshot, or none when this computer's line ended.
     Sessions {
         machine: MachineId,
@@ -298,6 +338,10 @@ pub fn react(
                 told.unsent = Some(handle.take_unsent(machine)).filter(|n| *n > 0);
             }
             return vec![Reaction::State(told)];
+        }
+        Update::Removed { machine } => {
+            streams.forget(machine);
+            return vec![Reaction::Removed { machine }];
         }
         Update::LineUp { machine } => {
             // Panes a view was watching are asked for again; the replay that comes puts each
@@ -369,6 +413,12 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                 }
                 let _ = app.emit(MACHINE_STATE_EVENT, told);
             }
+            Reaction::Removed { machine } => {
+                if let Ok(mut states) = app.state::<MachineStates>().0.lock() {
+                    states.remove(&machine.0);
+                }
+                let _ = app.emit(MACHINE_REMOVED_EVENT, machine.0);
+            }
             Reaction::Error { machine, text } => {
                 let _ = app.emit(
                     MACHINE_ERROR_EVENT,
@@ -422,6 +472,24 @@ mod tests {
             unsent: None,
             since: None,
         }
+    }
+
+    #[test]
+    fn removing_an_entry_takes_only_that_machine_out_of_the_file() {
+        let dir = std::env::temp_dir().join(format!("maitty-gui-remove-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("config.local.toml");
+        std::fs::write(
+            &file,
+            "[[machines]]\nname = 'box'\ntarget = 'box'\n\n# mine\n[[machines]]\nname = 'build'\ntarget = 'build'\n",
+        )
+        .unwrap();
+        remove_entry(&file, "BOX").unwrap();
+        let left = std::fs::read_to_string(&file).unwrap();
+        assert!(left.contains("# mine") && left.contains("build") && !left.contains("'box'"), "{left}");
+        let again = remove_entry(&file, "box").unwrap_err();
+        assert!(again.contains("not in config.local.toml"), "{again}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -17,7 +17,7 @@ import {
   sendTerminalInput,
   startShellSession,
 } from '@/api/daemon'
-import { LOCAL_MACHINE, listenMachineError, listenMachineSessions, machineNameOf, listenMachineState, loadMachinesOverview, type MachineState } from '@/api/machines'
+import { LOCAL_MACHINE, listenMachineError, listenMachineRemoved, listenMachineSessions, machineNameOf, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, unregisterMachine, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -278,6 +278,8 @@ export function DesktopApp() {
   // Other machines (ADR 0048): the host holds their connections and tells the window each one's state
   // and, when it changes, the sessions it lists. The window never connects.
   const [machines, setMachines] = useState<ReadonlyMap<number, RemoteMachine>>(new Map())
+  // The first answer about the machines has come, so a Machines page can tell loading from empty.
+  const [machinesKnown, setMachinesKnown] = useState(false)
   useEffect(() => {
     const stops: Array<() => void> = []
     let gone = false
@@ -317,10 +319,25 @@ export function DesktopApp() {
         settle(machine)
         if (machine.snapshot !== null) list(machine.machine, machine.name, machine.snapshot)
       }
-    }, (error: unknown) => { console.warn('Could not read the state of the machines', error) })
+      setMachinesKnown(true)
+    }, (error: unknown) => {
+      console.warn('Could not read the state of the machines', error)
+      if (!gone) setMachinesKnown(true)
+    })
     for (const listening of [
       listenMachineState(settle),
       listenMachineError((text) => { toast.error(text) }),
+      listenMachineRemoved((id) => {
+        const name = names.get(id)
+        names.delete(id)
+        if (name !== undefined) unregisterMachine(name)
+        setMachines((current) => {
+          if (!current.has(id)) return current
+          const next = new Map(current)
+          next.delete(id)
+          return next
+        })
+      }),
       listenMachineSessions((id, snapshot) => {
         const name = names.get(id)
         if (snapshot !== null && name !== undefined) list(id, name, snapshot)
@@ -422,6 +439,15 @@ export function DesktopApp() {
     return numbers
   }, [layout.tabs])
   const heads = useMemo(() => machineHeads(machines), [machines])
+  const retryNamed = useCallback((name: string) => {
+    retryMachine(name).catch((error: unknown) => { toast.error(errorMessage(error, `Could not retry ${name}`)) })
+  }, [])
+  const removeNamed = useCallback((name: string) => {
+    removeMachine(name).then(
+      () => { toast.message(`Removed ${name}. Its sessions keep running on ${name}.`) },
+      (error: unknown) => { toast.error(errorMessage(error, `Could not remove ${name}`)) },
+    )
+  }, [])
   const groups = useMemo(() => groupSessions(sessions, preferences.groupBy, focusedId, home, preferences.projectColors), [sessions, preferences.groupBy, focusedId, home, preferences.projectColors])
   // A tab belongs to the project of the session in its focused pane, so it moves when that shell cds into another repo.
   const tabGroup = useCallback((candidate: Tab): string => {
@@ -1138,6 +1164,7 @@ export function DesktopApp() {
       action('broadcast', showing?.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab', () => { runShortcut('broadcast') }, keys('B', true)),
       action('focus', 'Focus mode', () => { setFocusMode(true) }, keys('.')),
       action('settings', 'Open settings', () => { setSettingsSection('general') }, keys(',')),
+      action('machines', 'Machines', () => { setSettingsSection('machines') }),
       action('shortcuts', 'Keyboard shortcuts', () => { setShortcutsOpen(true) }, keys('/')),
       ...(showing?.widths ? [action('reset-widths', 'Reset pane widths', () => { setLayout((current) => setColumnWidths(current, showing.id, null)) })] : []),
       action('start-codex', 'Start codex', () => { startAgent('codex') }),
@@ -1478,6 +1505,7 @@ export function DesktopApp() {
                 onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}
                 mac={mac}
                 daemon={{ online, sessionCount: sessions.length }}
+                machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed }}
                 projects={groups.map((group) => ({ key: group.key, name: group.name, colorId: group.colorId }))}
                 validateFolder={folderExists}
                 onChooseFolder={chooseStartFolder}

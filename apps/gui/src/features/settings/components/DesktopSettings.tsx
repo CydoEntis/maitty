@@ -7,10 +7,21 @@ import { ThemePicker } from './ThemePicker'
 import { hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/model/shortcuts'
 import { PROJECT_COLORS } from '@/features/workspace/model/folderColor'
 import { Icon } from '@/features/workspace/components/glyphs'
+import { DisconnectedSince } from '@/features/workspace/components/times'
+import type { MachineHead } from '@/features/workspace/model/machines'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
 import { SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type SettingsPreferences, type StyleChoice } from '../preferences'
 
-export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'notifications' | 'keys' | 'daemon'
+export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'notifications' | 'machines' | 'keys' | 'daemon'
+
+/** The other machines, for the Machines page: what the window knows of each, and what it can ask of the host. */
+export type MachinesInfo = {
+  /** The host has answered about the machines: before that the page says it is loading. */
+  known: boolean
+  list: readonly MachineHead[]
+  onRetry: (name: string) => void
+  onRemove: (name: string) => void
+}
 
 export type DaemonInfo = {
   online: boolean
@@ -39,6 +50,7 @@ type DesktopSettingsProps = {
   onShowWelcome: () => void
   mac: boolean
   daemon: DaemonInfo
+  machines: MachinesInfo
   /** The projects in the sidebar, so each can be given a colour. */
   projects: ReadonlyArray<{ key: string; name: string; colorId: string | undefined }>
   /** Resolves whether a typed folder exists. */
@@ -63,6 +75,7 @@ const NAV: Array<{ label: string; items: NavItem[] }> = [
     label: 'WORKSPACE',
     items: [
       { id: 'notifications', label: 'Notifications', key: 'N', tint: 'var(--warn)', path: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0' },
+      { id: 'machines', label: 'Machines', key: 'M', tint: 'var(--ansi-green)', path: 'M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01M17 7h.01M17 17h.01' },
       { id: 'keys', label: 'Hotkeys', key: '?', tint: 'var(--ansi-blue)', path: 'M2 6h20v12H2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8' },
     ],
   },
@@ -74,11 +87,12 @@ const PAGE: Record<DesktopSettingsSection, [string, string]> = {
   terminal: ['Text & cursor', 'How every pane renders. Changes apply instantly.'],
   appearance: ['Appearance', 'Colours, spinner and motion for the whole window.'],
   notifications: ['Notifications', 'When the system should tell you a session needs you.'],
+  machines: ['Machines', 'Other computers whose sessions show up beside this one.'],
   keys: ['Hotkeys', 'Everything the window handles before the shell does.'],
   daemon: ['Daemon', 'The local maittyd that owns every session.'],
 }
 
-const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', n: 'notifications', '?': 'keys', d: 'daemon' }
+const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', n: 'notifications', m: 'machines', '?': 'keys', d: 'daemon' }
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -163,6 +177,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
               {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} projects={props.projects} />}
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} onTestNotice={props.onTestNotice} />}
+              {section === 'machines' && <MachinesSection machines={props.machines} />}
               {section === 'keys' && <HotkeysSection mac={props.mac} />}
               {section === 'daemon' && <DaemonSection daemon={props.daemon} />}
             </div>
@@ -623,3 +638,53 @@ function DaemonSection({ daemon }: { daemon: DaemonInfo }) {
   )
 }
 
+
+function MachinesSection({ machines }: { machines: MachinesInfo }) {
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const icon = <><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>
+  if (!machines.known) {
+    return <Card title="Machines" color="var(--ansi-green)" iconPath={icon}><p className="mx-scard-note" role="status">Loading machines…</p></Card>
+  }
+  if (machines.list.length === 0) {
+    return (
+      <Card title="Machines" color="var(--ansi-green)" iconPath={icon}>
+        <p className="mx-scard-note">No other machines. List them as [[machines]] in config.local.toml and restart the app.</p>
+      </Card>
+    )
+  }
+  return (
+    <Card title="Machines" color="var(--ansi-green)" iconPath={icon} meta={<span className="mx-scard-meta">{machines.list.length}</span>}>
+      {machines.list.map((head) => {
+        const name = head.label
+        const chip = head.chip
+        const asking = confirming === name
+        return (
+          <div key={head.key} className="mx-scard-row mx-machine-row">
+            <div className="mx-scard-text">
+              <span>
+                {name}
+                {chip && <span className={`mx-machine-chip is-${chip.tone}`}> <span aria-hidden="true">{chip.glyph}</span> {chip.word}</span>}
+              </span>
+              {head.down && <span><DisconnectedSince at={head.downSince} /></span>}
+              {head.why !== null && head.chip?.tone === 'bad' && <span className="mx-machine-fix">{head.why}</span>}
+              {asking && <span role="alert">Removes {name} from this list. Its sessions keep running on {name}.</span>}
+            </div>
+            {asking
+              ? (
+                <>
+                  <button type="button" className="mx-scard-button is-danger" onClick={() => { setConfirming(null); machines.onRemove(name) }}>Remove {name}</button>
+                  <button type="button" className="mx-scard-button" onClick={() => { setConfirming(null) }}>Keep</button>
+                </>
+              )
+              : (
+                <>
+                  <button type="button" className="mx-scard-button" disabled={chip?.word === 'connected'} aria-label={`Retry ${name}`} onClick={() => { machines.onRetry(name) }}>Retry</button>
+                  <button type="button" className="mx-scard-button" aria-label={`Remove ${name}`} onClick={() => { setConfirming(name) }}>Remove</button>
+                </>
+              )}
+          </div>
+        )
+      })}
+    </Card>
+  )
+}

@@ -51,9 +51,18 @@ fn dial() -> anyhow::Result<Dial> {
     })
 }
 
+/// What the host asks of the hub about a machine, by name.
+#[derive(Debug)]
+enum Command {
+    Retry(String),
+    Remove(String),
+}
+
 /// What the hub has to tell the host.
 #[derive(Debug)]
 pub enum Update {
+    /// A machine was taken out of the list: the window drops everything it holds for it.
+    Removed { machine: MachineId },
     /// A machine's connection changed state.
     State {
         machine: MachineId,
@@ -76,6 +85,7 @@ pub enum Update {
 #[derive(Clone)]
 pub struct HubHandle {
     outbox: mpsc::UnboundedSender<Outgoing>,
+    commands: mpsc::UnboundedSender<Command>,
     shared: Arc<Shared>,
 }
 
@@ -125,6 +135,17 @@ impl HubHandle {
     /// Whether a different daemon answered at the machine's name, so its line was turned away.
     pub fn is_refused(&self, machine: MachineId) -> bool {
         lock(&self.shared.refused).contains(&machine)
+    }
+
+    /// Ask the hub to dial the machine named `name` now, letting a refused daemon be looked at again.
+    pub fn retry(&self, name: &str) {
+        let _ = self.commands.send(Command::Retry(name.to_owned()));
+    }
+
+    /// Ask the hub to stop the machine named `name` and forget it. Its sessions, its daemon and
+    /// the layout saved under its name are not touched.
+    pub fn remove(&self, name: &str) {
+        let _ = self.commands.send(Command::Remove(name.to_owned()));
     }
 
     pub fn is_up(&self, machine: MachineId) -> bool {
@@ -212,6 +233,7 @@ pub struct Hub {
     queue: VecDeque<Update>,
     handle: HubHandle,
     outbox: mpsc::UnboundedReceiver<Outgoing>,
+    commands: mpsc::UnboundedReceiver<Command>,
     /// This computer's line, when the hub keeps it: what it says, and telling it a line ended.
     local_events: mpsc::UnboundedReceiver<LinkEvent>,
     local_ended: Option<mpsc::UnboundedSender<()>>,
@@ -243,6 +265,7 @@ impl Hub {
         let links = Links::start(machines, timing, dial);
         let names_for_hub = names.clone();
         let (outbox_tx, outbox) = mpsc::unbounded_channel();
+        let (commands_tx, commands) = mpsc::unbounded_channel();
         let (local_tx, local_events) = mpsc::unbounded_channel();
         let (ended_tx, ended_rx) = mpsc::unbounded_channel();
         let (local_ended, local_task) = match local {
@@ -264,12 +287,14 @@ impl Hub {
             queue: VecDeque::new(),
             handle: HubHandle {
                 outbox: outbox_tx,
+                commands: commands_tx,
                 shared: Arc::new(Shared {
                     names: Mutex::new(names),
                     ..Shared::default()
                 }),
             },
             outbox,
+            commands,
             local_events,
             local_ended,
             local_task,
@@ -309,11 +334,50 @@ impl Hub {
             tokio::select! {
                 event = self.links.next() => self.on_link_event(event),
                 Some(event) = self.local_events.recv() => self.on_link_event(event),
+                Some(command) = self.commands.recv() => self.on_command(command),
                 Some(outgoing) = self.outbox.recv() => {
                     // A line that went since the handle looked has nowhere to take it.
                     let _ = self.connections.send(outgoing);
                 }
                 burst = self.connections.recv_burst(SERVER_BURST) => self.on_burst(burst),
+            }
+        }
+    }
+
+    fn on_command(&mut self, command: Command) {
+        match command {
+            Command::Retry(name) => {
+                let Some(machine) = self.control.id_of(&name) else {
+                    return;
+                };
+                if self.connections.is_connected(machine) {
+                    return;
+                }
+                self.refused.remove(&machine);
+                lock(&self.handle.shared.refused).remove(&machine);
+                self.control.retry(machine);
+            }
+            Command::Remove(name) => {
+                let Some(machine) = self.control.id_of(&name) else {
+                    return;
+                };
+                // The id store is keyed by the name as configured, not as it was typed.
+                let configured = self.names.remove(&machine).unwrap_or(name);
+                self.control.stop(machine);
+                self.connections.remove(machine);
+                self.opts.remove(&machine);
+                self.refused.remove(&machine);
+                let shared = &self.handle.shared;
+                lock(&shared.names).remove(&machine);
+                lock(&shared.up).remove(&machine);
+                lock(&shared.refused).remove(&machine);
+                lock(&shared.unsent).remove(&machine);
+                lock(&shared.allowance).remove(&machine);
+                lock(&shared.down_since).remove(&machine);
+                if self.ids.forget(&configured) {
+                    self.ids.save(&self.ids_file);
+                }
+                self.queue.push_back(Update::Removed { machine });
             }
         }
     }

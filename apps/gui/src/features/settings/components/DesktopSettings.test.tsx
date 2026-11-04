@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { SettingsPreferences } from '../preferences'
+import { machineHeads, type RemoteMachine } from '@/features/workspace/model/machines'
 import { DesktopSettings, type DesktopSettingsSection } from './DesktopSettings'
 
 const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, style: 'glass', projectColors: {} }
@@ -11,7 +12,7 @@ function renderSettings(section: DesktopSettingsSection, overrides: Partial<Para
   const onSection = vi.fn()
   const onPreviewTheme = vi.fn()
   const onShowWelcome = vi.fn()
-  render(<DesktopSettings section={section} onSection={onSection} preferences={PREFS} onChange={onChange} systemReducedMotion={false} systemDark onPreviewTheme={onPreviewTheme} onShowWelcome={onShowWelcome} mac={false} daemon={{ online: true, sessionCount: 3 }} projects={[{ key: '/code/maitty', name: 'maitty', colorId: undefined }]} validateFolder={() => Promise.resolve(true)} onClose={vi.fn()} {...overrides} />)
+  render(<DesktopSettings section={section} onSection={onSection} preferences={PREFS} onChange={onChange} systemReducedMotion={false} systemDark onPreviewTheme={onPreviewTheme} onShowWelcome={onShowWelcome} mac={false} daemon={{ online: true, sessionCount: 3 }} machines={{ known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn() }} projects={[{ key: '/code/maitty', name: 'maitty', colorId: undefined }]} validateFolder={() => Promise.resolve(true)} onClose={vi.fn()} {...overrides} />)
   return { onChange, onSection, onPreviewTheme, onShowWelcome }
 }
 
@@ -19,7 +20,7 @@ describe('desktop settings', () => {
   it('groups the sections the way the design does', () => {
     renderSettings('general')
     const nav = screen.getByRole('navigation', { name: 'Settings sections' })
-    expect(nav).toHaveTextContent('ESSENTIALSGeneralGTERMINALText & cursorTAppearanceAWORKSPACENotificationsNHotkeys?ADVANCEDDaemonD')
+    expect(nav).toHaveTextContent('ESSENTIALSGeneralGTERMINALText & cursorTAppearanceAWORKSPACENotificationsNMachinesMHotkeys?ADVANCEDDaemonD')
     expect(within(nav).getByRole('button', { name: /General/ })).toHaveAttribute('aria-current', 'page')
   })
 
@@ -246,5 +247,58 @@ describe('desktop settings', () => {
     await user.click(screen.getByRole('switch', { name: 'Status bar' }))
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ statusBar: false }))
+  })
+})
+
+function box(kind: RemoteMachine['state']['state'], why: string | null = null): RemoteMachine {
+  return { state: { machine: 1, name: 'box', state: kind, why, attempt: null, since: Date.now() - 180_000 }, conversations: [], heard: true }
+}
+
+describe('the Machines page', () => {
+  const others = (kind: RemoteMachine['state']['state'], why: string | null = null) => machineHeads(new Map([[1, box(kind, why)]])).filter((head) => head.name !== null)
+
+  it('says it is loading until the host has answered', () => {
+    renderSettings('machines', { machines: { known: false, list: [], onRetry: vi.fn(), onRemove: vi.fn() } })
+    expect(screen.getByRole('status')).toHaveTextContent('Loading machines')
+  })
+
+  it('says where machines come from when there are none', () => {
+    renderSettings('machines')
+    expect(screen.getByText(/No other machines/)).toBeInTheDocument()
+  })
+
+  it('shows a machine that is down with its word, how long, and its fix in full', () => {
+    renderSettings('machines', { machines: { known: true, list: others('needs-login', 'run ssh box once to log in'), onRetry: vi.fn(), onRemove: vi.fn() } })
+    expect(screen.getByText(/needs login/)).toBeInTheDocument()
+    expect(screen.getByText('disconnected since 3m ago')).toBeInTheDocument()
+    expect(screen.getByText('run ssh box once to log in')).toBeInTheDocument()
+  })
+
+  it('retries a machine that is down, and has nothing to retry on one that is up', async () => {
+    const user = userEvent.setup()
+    const onRetry = vi.fn()
+    const down = renderSettings('machines', { machines: { known: true, list: others('unreachable', 'no answer'), onRetry, onRemove: vi.fn() } })
+    await user.click(screen.getByRole('button', { name: 'Retry box' }))
+    expect(onRetry).toHaveBeenCalledWith('box')
+    expect(down.onChange).not.toHaveBeenCalled()
+  })
+
+  it('does not offer a retry for a machine that is connected', () => {
+    renderSettings('machines', { machines: { known: true, list: others('connected'), onRetry: vi.fn(), onRemove: vi.fn() } })
+    expect(screen.getByRole('button', { name: 'Retry box' })).toBeDisabled()
+  })
+
+  it('asks before removing, and says what stays', async () => {
+    const user = userEvent.setup()
+    const onRemove = vi.fn()
+    renderSettings('machines', { machines: { known: true, list: others('connected'), onRetry: vi.fn(), onRemove } })
+    await user.click(screen.getByRole('button', { name: 'Remove box' }))
+    expect(onRemove).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Removes box from this list. Its sessions keep running on box.')
+    await user.click(screen.getByRole('button', { name: 'Keep' }))
+    expect(onRemove).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Remove box' }))
+    await user.click(screen.getByRole('button', { name: 'Remove box' }))
+    expect(onRemove).toHaveBeenCalledWith('box')
   })
 })

@@ -535,6 +535,8 @@ pub fn run() {
             list_sessions,
             machines::list_machines,
             terminal_stream::list_machines_overview,
+            terminal_stream::retry_machine,
+            terminal_stream::remove_machine,
             read_conversation,
             conversation_diff,
             conversation_files,

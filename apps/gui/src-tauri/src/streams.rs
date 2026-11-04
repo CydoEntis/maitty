@@ -81,6 +81,16 @@ impl Streams {
         self.since.map(|since| since + FLUSH_EVERY)
     }
 
+    /// Drop everything held for a machine that is no longer one: its panes, snapshot and waiting output.
+    pub fn forget(&mut self, machine: MachineId) {
+        self.panes.retain(|(m, _), _| *m != machine);
+        self.pending.retain(|(m, _), _| *m != machine);
+        if self.pending.is_empty() {
+            self.since = None;
+        }
+        self.last.remove(&machine);
+    }
+
     /// What `machine` said, already vetted.
     pub fn on_message(&mut self, machine: MachineId, msg: ServerMsg, now: Instant) -> Vec<Out> {
         let mut out = Vec::new();

@@ -17,6 +17,11 @@ export function registerMachine(name: string, machine: number): void {
   idsByName.set(name.toLowerCase(), machine)
 }
 
+/** Forget one machine's number: its sessions can no longer be addressed. */
+export function unregisterMachine(name: string): void {
+  idsByName.delete(name.toLowerCase())
+}
+
 /** Forget every machine. For tests: the registry belongs to the window's lifetime. */
 export function forgetMachines(): void {
   idsByName.clear()
@@ -143,3 +148,24 @@ export function listenMachineError(onError: (text: string) => void): Promise<() 
   })
 }
 
+
+/** Dial a machine now; a daemon that was refused is looked at again. */
+export async function retryMachine(name: string): Promise<void> {
+  if (isTauri()) await invoke('retry_machine', { name })
+}
+
+/**
+ * Take a machine out of the list. Its sessions keep running on it and the layout saved under its
+ * name is kept. Rejects with the host's words when the entry could not be removed.
+ */
+export async function removeMachine(name: string): Promise<void> {
+  if (isTauri()) await invoke('remove_machine', { name })
+}
+
+/** Calls back with the number of a machine that was removed from the list. */
+export function listenMachineRemoved(onRemoved: (machine: number) => void): Promise<() => void> {
+  return listen<unknown>('machine-removed', (event) => {
+    const machine = z.number().int().positive().safeParse(event.payload)
+    if (machine.success) onRemoved(machine.data)
+  })
+}
