@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Copy, Minus, Square, X } from 'lucide-react'
+import { TitleBarView } from './TitleBarView'
+import { titleBarPlatform, type TitleBarPlatform } from './title-bar-platform'
 
 /**
  * The window's own title bar, drawn in the app's colors. The native bar is turned
  * off in tauri.conf.json, so this one carries the logo, the drag area and the
- * minimize, maximize and close buttons. It renders nothing outside the desktop app.
+ * window buttons, drawn the way the platform draws them. It renders nothing
+ * outside the desktop app. `platform` overrides detection, for tests and previews.
  */
-export function TitleBar() {
+export function TitleBar({ platform = titleBarPlatform(navigator.userAgent) }: { platform?: TitleBarPlatform }) {
   if (!isTauri() || !hasWindowMetadata()) return null
-  return <DesktopTitleBar />
+  return <DesktopTitleBar platform={platform} />
 }
 
 // getCurrentWindow() needs the host's window metadata, which a real Tauri
@@ -22,7 +24,7 @@ function hasWindowMetadata(): boolean {
   return internals?.metadata !== undefined
 }
 
-function DesktopTitleBar() {
+function DesktopTitleBar({ platform }: { platform: TitleBarPlatform }) {
   // One handle for the window's life: a new one each render re-subscribed to its events every second.
   const appWindow = useMemo(() => getCurrentWindow(), [])
   const [maximized, setMaximized] = useState(false)
@@ -47,39 +49,20 @@ function DesktopTitleBar() {
   }, [appWindow])
 
   return (
-    <header className="title-bar" data-tauri-drag-region>
-      <img className="title-bar-logo" src="/maitty-logo.png" alt="" />
-      <span className="title-bar-name">Maitty</span>
-      <div className="title-bar-controls">
-        <button
-          type="button"
-          aria-label="Minimize"
-          onClick={() => {
-            void appWindow.minimize()
-          }}
-        >
-          <Minus size={14} />
-        </button>
-        <button
-          type="button"
-          aria-label={maximized ? 'Restore' : 'Maximize'}
-          onClick={() => {
-            void appWindow.toggleMaximize()
-          }}
-        >
-          {maximized ? <Copy size={12} /> : <Square size={12} />}
-        </button>
-        <button
-          type="button"
-          className="is-close"
-          aria-label="Close window"
-          onClick={() => {
-            void appWindow.close()
-          }}
-        >
-          <X size={15} />
-        </button>
-      </div>
-    </header>
+    <TitleBarView
+      platform={platform}
+      actions={{
+        maximized,
+        onMinimize: () => {
+          void appWindow.minimize()
+        },
+        onToggleMaximize: () => {
+          void appWindow.toggleMaximize()
+        },
+        onClose: () => {
+          void appWindow.close()
+        },
+      }}
+    />
   )
 }
