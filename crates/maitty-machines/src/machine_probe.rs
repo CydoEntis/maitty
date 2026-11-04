@@ -5,7 +5,7 @@
 //!
 //! It blocks, so a window runs it on a background thread; setting `cancel` ends it.
 
-use crate::ipc::Machine;
+use crate::machine::Machine;
 use crate::link_failure::{FailureClass, SshEnd, classify};
 use maitty_shared::hidden::sanitize;
 use std::io::Read;
@@ -101,7 +101,7 @@ fn collect(argv: &[String], limit: Duration, cancel: &AtomicBool) -> Result<Ende
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(crate::proc::CREATE_NO_WINDOW);
+        command.creation_flags(crate::CREATE_NO_WINDOW);
     }
     let mut child = match command.spawn() {
         Ok(child) => child,
