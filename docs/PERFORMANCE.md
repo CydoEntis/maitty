@@ -149,3 +149,25 @@ a quiet working session under 5% and a streaming one under 40% on software-rende
 - The daemon and Tauri's real IPC were mocked (IPC cost emulated with `JSON.stringify`/`parse`). Keyboard focus, real resize and DPI scaling were not exercised in WebKit.
 - Output rate (20 KB/s) is a guess at what Claude Code produces; cost scales roughly linearly with it.
 - Single 15-20 s samples; WebKit numbers are ±4 points, Chromium ±3.
+
+## Linux measurement, 2026-11-04 (after the plan, on v0.64.0 + plumbing)
+
+WebKitGTK 2.52.6, software compositing (`WEBKIT_DISABLE_COMPOSITING_MODE=1`), the
+harness's scenarios `a` and `b`, 20 s measured after 5 s warm:
+
+| Scenario | 2026-11-03 | 2026-11-04 |
+| --- | --- | --- |
+| `a` one idle shell | 1.5% | 1.1% |
+| `b` one working session, silent | 58% | 1.6% |
+
+The sweep plays once and finishes (`v14sweep:finished`); no 80 ms timer fires;
+the only intervals are the 15 s and 30 s ones. The silent-working target (under 5%)
+is met.
+
+**Still owed: the streaming number.** The harness's `mock-tauri.js` still emits
+`terminal-chunk` events and answers `list_sessions`, but the app now takes output
+through the `watch_terminal_output` channel and session state through the hub's
+messages, so in the harness no bytes reach xterm and scenario `e` lists one pane.
+Before the next measurement: teach the mock the channel (raw frames with the
+machine in the header, see `apps/gui/src-tauri/src/streams.rs`) and the hub's
+state messages, then rerun `b` and `e`. Ticket this with the performance page.
