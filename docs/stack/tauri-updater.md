@@ -5,6 +5,7 @@
 > **Fills:** SECURITY § supply chain, ENVIRONMENT § releases
 
 ## Rules
+<!-- local: owner approved idle installs on 2026-11-04; the stack default was install on a click only -->
 
 - Install an update only on a click, or when **Install updates when idle** is on (the default) and the
   app is idle: no agent working or waiting on an answer, no keyboard input for 5 minutes, and the window
