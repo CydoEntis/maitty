@@ -161,7 +161,11 @@ daemon's `Snapshot` goes out as a `sessions-changed` event
 whenever it changes, with `null` when the stream dropped, and the webview sets its session query
 from it instead of polling (a 15 s poll remains as a safety net); another machine's goes out as
 `machine-sessions-changed` (`{machine, snapshot}`), after the host has cleaned it, and its connection
-state as `machine-state`. A desktop
+state as `machine-state`; `list_machines_overview` gives a window that starts late each machine's last state and
+snapshot. The window names a machine's terminal sessions `build/t12` (the machine's name, so a saved
+layout survives a restart; this computer's stay `t12`) and passes the number the host gave the
+machine (`machine`) with each command, only for a pane of another machine. Files, Changes, Find,
+worktrees, file drops and system notices are for this computer's panes only. A desktop
 protocol-mismatch restart must recheck the exact local protocol before stopping
 an older daemon and must refuse to downgrade a newer one. It stops an older daemon that
 owns sessions only after the user confirms, and only when those sessions are saved on disk

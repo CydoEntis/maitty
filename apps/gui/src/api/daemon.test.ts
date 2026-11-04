@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke, isTauri } from '@tauri-apps/api/core'
-import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, loadDaemonRestartStatus, loadMachines, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
+import { forgetMachines, registerMachine } from './machines'
+import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, conversationsFromSnapshot, markSeenOnDaemon, pinSessionOnDaemon, archiveSessionOnDaemon, loadDaemonRestartStatus, loadMachines, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -522,5 +523,79 @@ describe('machines', () => {
     vi.mocked(invoke).mockReset()
     expect(await loadMachines()).toEqual({ names: [], error: null })
     expect(invoke).not.toHaveBeenCalled()
+  })
+})
+
+describe('commands for a pane, on whichever machine it is', () => {
+  const pane = { id: 't7', generation: 0 }
+  const there = { id: 'build/t7', generation: 0 }
+
+  beforeEach(() => {
+    forgetMachines()
+    registerMachine('build', 3)
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(invoke).mockReset().mockResolvedValue(null)
+  })
+
+  it('asks the host about a pane of this computer exactly as before machines', async () => {
+    await sendTerminalInput(pane, 'ls')
+    await resizeTerminal(pane, 100, 30)
+    await renameConversationOnDaemon(pane, 'api')
+    await archiveConversationOnDaemon(pane, true)
+    await markSeenOnDaemon(pane)
+    await pinSessionOnDaemon(pane, true)
+    await archiveSessionOnDaemon(pane, true)
+    expect(vi.mocked(invoke).mock.calls).toEqual([
+      ['terminal_input', { term: 7, data: [108, 115] }],
+      ['pane_terminal_resize', { term: 7, cols: 100, rows: 30 }],
+      ['rename_terminal_session', { term: 7, name: 'api' }],
+      ['close_terminal_session', { term: 7 }],
+      ['mark_terminal_seen', { term: 7 }],
+      ['pin_terminal_session', { term: 7, pinned: true }],
+      ['archive_terminal_session', { term: 7, archived: true }],
+    ])
+  })
+
+  it('names the machine to the host for a pane of another, and nothing else about the call changes', async () => {
+    await sendTerminalInput(there, 'ls')
+    await resizeTerminal(there, 100, 30)
+    await renameConversationOnDaemon(there, 'api')
+    await archiveConversationOnDaemon(there, true)
+    await markSeenOnDaemon(there)
+    await pinSessionOnDaemon(there, true)
+    await archiveSessionOnDaemon(there, false)
+    expect(vi.mocked(invoke).mock.calls).toEqual([
+      ['terminal_input', { term: 7, data: [108, 115], machine: 3 }],
+      ['pane_terminal_resize', { term: 7, cols: 100, rows: 30, machine: 3 }],
+      ['rename_terminal_session', { term: 7, name: 'api', machine: 3 }],
+      ['close_terminal_session', { term: 7, machine: 3 }],
+      ['mark_terminal_seen', { term: 7, machine: 3 }],
+      ['pin_terminal_session', { term: 7, pinned: true, machine: 3 }],
+      ['archive_terminal_session', { term: 7, archived: false, machine: 3 }],
+    ])
+  })
+
+  it('sends nothing for a machine the host has not told it of', async () => {
+    forgetMachines()
+    await expect(sendTerminalInput(there, 'ls')).rejects.toThrow('build is not one of this computer\'s machines')
+    await expect(pinSessionOnDaemon(there, true)).rejects.toThrow('build is not one of this computer\'s machines')
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('does not ask this computer\'s daemon for the screen or replay of another machine\'s pane', async () => {
+    await expect(loadTerminalScreen(there)).rejects.toThrow('on build is not available')
+    await expect(loadTerminalReplay(there)).rejects.toThrow('on build is not available')
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('lists only the terminals of another machine, with ids that name it', () => {
+    const snapshot = {
+      terms: { '7': { id: 7, agent: null, process: 'bash', status: 'Idle', cwd: '/srv', summary: '', name: 'n', label: '', pinned: false, archived: false, branch: null, root: null, conversation_id: null, popup: false, remote: null } },
+      workspaces: [],
+      conversations: [{ id: 5, generation: 1, execution: 'Structured', provider: 'Claude', cwd: '/srv', worktree: null, state: 'Running', status: 'Idle', native_term: null, checks: [] }],
+    }
+    const listed = conversationsFromSnapshot(snapshot, { id: 3, name: 'build' })
+    expect(listed.map((item) => item.id)).toEqual(['build/t7'])
+    expect(conversationsFromSnapshot(snapshot).map((item) => item.id)).toEqual(['5', 't7'])
   })
 })

@@ -17,6 +17,7 @@ import {
   sendTerminalInput,
   startShellSession,
 } from '@/api/daemon'
+import { LOCAL_MACHINE, listenMachineSessions, machineNameOf, listenMachineState, loadMachinesOverview, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -36,6 +37,7 @@ import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPane
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
 import { runsProgram } from './components/useArmed'
 import { rememberSessions, withEnded } from './model/ended'
+import { idsOfMachinesNotHeard, remoteTerminals, type RemoteMachine } from './model/machines'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { StatusBar } from './components/StatusBar'
@@ -273,10 +275,68 @@ export function DesktopApp() {
   const mismatch = sessionsQuery.isError ? daemonProtocolMismatch(sessionsQuery.error) : null
   const restartStatusQuery = useQuery({ queryKey: ['daemon-restart-status', mismatch?.daemonProtocol], queryFn: loadDaemonRestartStatus, enabled: Boolean(mismatch), retry: false })
 
+  // Other machines (ADR 0048): the host holds their connections and tells the window each one's state
+  // and, when it changes, the sessions it lists. The window never connects.
+  const [machines, setMachines] = useState<ReadonlyMap<number, RemoteMachine>>(new Map())
+  useEffect(() => {
+    const stops: Array<() => void> = []
+    let gone = false
+    const keep = (stop: () => void) => { if (gone) stop(); else stops.push(stop) }
+    const change = (id: number, update: (before: RemoteMachine | undefined) => RemoteMachine | undefined) => {
+      setMachines((current) => {
+        const next = update(current.get(id))
+        if (next === undefined) return current
+        return new Map(current).set(id, next)
+      })
+    }
+    // The host names a machine in its state, and only by number in its snapshots.
+    const names = new Map<number, string>()
+    const settle = (state: MachineState) => {
+      if (state.machine === LOCAL_MACHINE) return
+      names.set(state.machine, state.name)
+      change(state.machine, (before) => ({ conversations: before?.conversations ?? [], heard: before?.heard ?? false, state }))
+      // Typing the machine could not take while it was down: say so once it is back.
+      if (state.state === 'connected' && state.unsent) {
+        toast.message(`${String(state.unsent)} ${state.unsent === 1 ? 'keystroke' : 'keystrokes'} to ${state.name} ${state.unsent === 1 ? 'was' : 'were'} not sent while it was disconnected`)
+      }
+    }
+    const list = (id: number, name: string, snapshot: unknown) => {
+      let conversations: Conversation[]
+      try {
+        conversations = conversationsFromSnapshot(snapshot, { id, name })
+      } catch (error: unknown) {
+        if (!(error instanceof z.ZodError)) throw error
+        console.warn(`${name} sent a session list this window cannot read`, error)
+        return
+      }
+      change(id, (before) => (before ? { ...before, conversations, heard: true } : undefined))
+    }
+    void loadMachinesOverview().then((overview) => {
+      if (gone) return
+      for (const machine of overview) {
+        settle(machine)
+        if (machine.snapshot !== null) list(machine.machine, machine.name, machine.snapshot)
+      }
+    }, (error: unknown) => { console.warn('Could not read the state of the machines', error) })
+    for (const listening of [
+      listenMachineState(settle),
+      listenMachineSessions((id, snapshot) => {
+        const name = names.get(id)
+        if (snapshot !== null && name !== undefined) list(id, name, snapshot)
+      }),
+    ]) {
+      listening.then(keep, (error: unknown) => { toast.error(errorMessage(error, 'Could not follow the machines')) })
+    }
+    return () => {
+      gone = true
+      for (const stop of stops) stop()
+    }
+  }, [])
   const everySession = useMemo(() => {
     const terminals = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal')
-    return (online ? terminals : markConversationsDisconnected(terminals)).map((conversation) => toSessionView(conversation, home))
-  }, [sessionsQuery.data, online, home])
+    const here = online ? terminals : markConversationsDisconnected(terminals)
+    return [...here, ...remoteTerminals(machines)].map((conversation) => toSessionView(conversation, home))
+  }, [sessionsQuery.data, online, home, machines])
   const sessions = everySession
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
   // A session the daemon stops listing keeps its pane, shown as ended, so a refresh that misses one
@@ -318,6 +378,12 @@ export function DesktopApp() {
     const target = document.elementFromPoint(at.x, at.y)?.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ?? focusedId
     const handle = target ? terminalHandles.current.get(target) : undefined
     if (!handle) return
+    // A dropped file is a path on this computer; typed into another machine's shell it would name nothing there.
+    const machineName = target ? machineNameOf(target) : null
+    if (machineName !== null) {
+      toast.error(`Dropping files on a pane on ${machineName} is not available`)
+      return
+    }
     if (!online) {
       toast.error('Reconnect to the Maitty service before dropping files on a pane')
       return
@@ -461,15 +527,20 @@ export function DesktopApp() {
   // being listed stays, as an ended pane. `sessions` also changes when the home folder arrives; only a
   // new list counts.
   const reconciled = useRef<readonly Conversation[] | null>(null)
+  const machinesRef = useRef(machines)
+  useEffect(() => { machinesRef.current = machines }, [machines])
   useEffect(() => {
     // An unchanged list keeps its identity (structural sharing), so only a real change counts here.
     if (!sessionsQuery.isSuccess || reconciled.current === sessionsQuery.data) return
     reconciled.current = sessionsQuery.data
-    const live = new Set(sessions.map((session) => session.id))
-    const first = [...sessions].sort((a, b) => a.pane - b.pane)[0]
+    const listed = sessions.map((session) => session.id)
+    // This computer's first pane, else the first of another machine.
+    const first = [...sessions].sort((a, b) => a.machine - b.machine || a.pane - b.pane)[0]
     const openFirst = !openedFirst.current
     openedFirst.current = true
     setLayout((current) => {
+      // A machine that has not answered yet has not lost its panes: they are unknown, not gone.
+      const live = new Set([...listed, ...idsOfMachinesNotHeard(current, machinesRef.current)])
       const reconciled = openFirst ? reconcileLayout(current, live, tabGroup) : current
       return openFirst && reconciled.tabs.length === 0 && first ? openInNewTab(reconciled, first.id, makeId) : reconciled
     })
@@ -634,6 +705,11 @@ export function DesktopApp() {
 
   // Cmd/Ctrl-click on a file name in a pane's output: find it in that pane's repo, then show it in Inspect.
   const openPath = useCallback((session: SessionView, path: string, line?: number) => {
+    // Files and Changes look at this computer's own checkouts; a pane of another machine has none here.
+    if (session.machine !== LOCAL_MACHINE) {
+      toast.message(`Files are not available for a pane on ${session.machineName ?? 'another machine'} yet`)
+      return
+    }
     void repoLocate(session.pane, path)
       .then((relative) => {
         showSessionById(session.id)
@@ -809,7 +885,7 @@ export function DesktopApp() {
         setFindOpen((open) => !open)
         return
       case 'new-worktree':
-        if (focusedSession && online) setWorktreeFrom(focusedSession)
+        if (focusedSession && online && focusedSession.machine === LOCAL_MACHINE) setWorktreeFrom(focusedSession)
         return
       case 'broadcast':
         if (layout.activeTabId) {
@@ -914,7 +990,8 @@ export function DesktopApp() {
   const needsElsewhere = sessions.filter((item) => item.status === 'needs' && item.id !== focusedId).length
 
   // Inspect looks at the focused pane's own repository; the tab bar's +N −N comes from the same daemon question.
-  const inspectTerm = online && isDesktop() && focusedSession ? focusedSession.pane : null
+  // A pane of another machine has no checkout on this computer, so there is nothing to inspect.
+  const inspectTerm = online && isDesktop() && focusedSession && focusedSession.machine === LOCAL_MACHINE ? focusedSession.pane : null
   const diffStat = useQuery({
     queryKey: ['repo', inspectTerm, 'diff-stat'],
     queryFn: async () => {
@@ -973,10 +1050,12 @@ export function DesktopApp() {
   const { notifyNeedsYou, notifyFinished, notifyError } = preferences
   useEffect(() => {
     const previousStatuses = lastStatuses.current
+    // What another machine's agents do raises no system notice: that is for a machine to opt in to (ADR 0048).
+    const mine = sessions.filter((item) => item.machine === LOCAL_MACHINE)
     const notices = online
-      ? noticesFor(lastStatuses.current, sessions, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
+      ? noticesFor(lastStatuses.current, mine, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
       : []
-    lastStatuses.current = new Map(sessions.map((item) => [item.id, item.status]))
+    lastStatuses.current = new Map(mine.map((item) => [item.id, item.status]))
     // In the window but on another pane: a toast you can click. Away from the window: the system's.
     const inWindow = document.hasFocus()
     // A card that said "Needs you" goes when the session stops needing you.
@@ -1052,7 +1131,7 @@ export function DesktopApp() {
       action('split-down', 'Split down', () => { split(null, 'down') }, keys('D', true)),
       action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('J')),
       action('inspect', 'Inspect the repository', () => { setInspectOpen(true) }, keys('I')),
-      ...(focusedSession ? [action('new-worktree', 'New worktree', () => { setWorktreeFrom(focusedSession) }, keys('N', true))] : []),
+      ...(focusedSession && focusedSession.machine === LOCAL_MACHINE ? [action('new-worktree', 'New worktree', () => { setWorktreeFrom(focusedSession) }, keys('N', true))] : []),
       action('find', 'Find in the pane or every session', () => { setFindOpen(true) }, keys('F')),
       action('broadcast', showing?.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab', () => { runShortcut('broadcast') }, keys('B', true)),
       action('focus', 'Focus mode', () => { setFocusMode(true) }, keys('.')),
@@ -1195,8 +1274,8 @@ export function DesktopApp() {
                     online={online}
                     findInPane={(query, direction) => (focusedId ? terminalHandles.current.get(focusedId)?.find(query, direction) ?? false : false)}
                     clearPane={() => { if (focusedId) terminalHandles.current.get(focusedId)?.clearFind() }}
-                    nameOf={(term) => { const found = sessions.find((item) => item.pane === term); return found ? displayName(found) : null }}
-                    onOpenSession={(term) => { const found = sessions.find((item) => item.pane === term); if (found) showSessionById(found.id) }}
+                    nameOf={(term, machine) => { const found = sessions.find((item) => item.machine === machine && item.pane === term); return found ? displayName(found) : null }}
+                    onOpenSession={(term, machine) => { const found = sessions.find((item) => item.machine === machine && item.pane === term); if (found) showSessionById(found.id) }}
                     onClose={() => { setFindOpen(false); if (focusedId) terminalHandles.current.get(focusedId)?.focus() }}
                   />
                 )}

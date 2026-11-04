@@ -100,3 +100,8 @@ shim (`crates/maitty-test-support`).
 Routing (`routing.rs`, `terminal_stream.rs`): the pane commands take an optional `machine` and a
 command for another machine's pane goes down that machine's line through the hub instead of opening
 a connection; this computer's commands are unchanged.
+
+In the web view (`api/machines.ts`, `features/workspace/model/machines.ts`): a session of another machine
+has an id `<name>/t<pane>`, is listed after this computer's, is led by the machine's name in the
+sidebar and tabs, and forms projects of its own. The saved layout is `maitty.gui.layout.v2` (v1 is read
+as it is and left in place). Until the machine has listed its sessions, a layout's panes for it are kept.

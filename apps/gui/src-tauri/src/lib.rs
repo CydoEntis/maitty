@@ -521,6 +521,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(machines::Machines(maitty_machines::local_machines::local_machines()))
         .manage(terminal_stream::StreamState::default())
+        .manage(terminal_stream::MachineStates::default())
         .manage(terminal_stream::TerminalOutput::default())
         .manage(terminal_stream::Wire::default())
         .setup(|app| {
@@ -533,6 +534,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_sessions,
             machines::list_machines,
+            terminal_stream::list_machines_overview,
             read_conversation,
             conversation_diff,
             conversation_files,

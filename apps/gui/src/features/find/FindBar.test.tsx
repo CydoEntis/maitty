@@ -50,7 +50,8 @@ describe('Find bar', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /api server/ }))
     expect(vi.mocked(invoke)).toHaveBeenCalledWith('search_panes', { query: 'error' })
-    expect(props.onOpenSession).toHaveBeenCalledWith(7)
+    // A hit names its machine as well as the pane: every machine numbers its own panes. Only this computer's are searched.
+    expect(props.onOpenSession).toHaveBeenCalledWith(7, 0)
     expect(props.onClose).toHaveBeenCalled()
   })
 

@@ -172,6 +172,11 @@ impl Streams {
         out
     }
 
+    /// The whole snapshot a machine last gave, for a window that was not there to hear it.
+    pub fn last_snapshot(&self, machine: MachineId) -> Option<&Snapshot> {
+        self.last.get(&machine)
+    }
+
     /// What a view needs to open on a pane: the sequence number it ends at (`SEQ_BYTES`,
     /// big-endian), then everything shown so far. None when the pane has no usable history.
     pub fn history(&self, machine: MachineId, term: TermId) -> Option<Vec<u8>> {

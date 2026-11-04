@@ -36,6 +36,14 @@ const terminal = vi.hoisted(() => ({
   drop: { current: null as null | ((paths: string[], at: { x: number; y: number }) => void) },
 }))
 
+// The window follows other machines through the host; there are none here.
+vi.mock('@/api/machines', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/machines')>()),
+  loadMachinesOverview: () => Promise.resolve([]),
+  listenMachineState: () => Promise.resolve(() => undefined),
+  listenMachineSessions: () => Promise.resolve(() => undefined),
+}))
+
 vi.mock('@/features/terminal/useFileDrop', () => ({
   useFileDrop: (onDrop: (paths: string[], at: { x: number; y: number }) => void) => { terminal.drop.current = onDrop },
 }))

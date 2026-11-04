@@ -15,7 +15,7 @@
 //! The stream attaches without replays: a pane's replay is asked for over the stream when a view
 //! opens on it (`terminal_history`), so panes nobody looks at cost nothing to carry.
 
-use crate::hub::{Hub, HubHandle, LocalDial, MACHINE_STATE_EVENT, Update, describe};
+use crate::hub::{Hub, HubHandle, LocalDial, MACHINE_STATE_EVENT, MachineState, Update, describe};
 use crate::routing::{self, machine_of};
 use crate::streams::{Out, Streams};
 use maitty_desktop_client::PaneCommand;
@@ -24,6 +24,7 @@ use maitty_machines::machine_ids::MachineIds;
 use maitty_machines::{MachineDef, MachineId, Outgoing};
 use maitty_shared::protocol::{ClientMsg, Snapshot};
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 use tauri::ipc::{Channel, Response};
@@ -39,6 +40,46 @@ const NOT_CONNECTED: &str = "The terminal is not connected to the daemon";
 
 #[derive(Default)]
 pub struct StreamState(Mutex<Streams>);
+
+/// Each machine's last state, for a window that was not there to hear it change.
+#[derive(Default)]
+pub struct MachineStates(Mutex<BTreeMap<u16, MachineState>>);
+
+/// A machine as the window finds it when it starts: its state, and the snapshot it last gave.
+#[derive(Clone, Serialize, Debug)]
+pub struct MachineOverview {
+    #[serde(flatten)]
+    pub state: MachineState,
+    pub snapshot: Option<Box<Snapshot>>,
+}
+
+/// The overview of every machine but this computer, which the window asks for itself.
+pub fn overview(states: &MachineStates, streams: &Streams) -> Vec<MachineOverview> {
+    let Ok(states) = states.0.lock() else {
+        return Vec::new();
+    };
+    states
+        .values()
+        .filter(|state| state.machine != MachineId::LOCAL.0)
+        .map(|state| MachineOverview {
+            snapshot: streams
+                .last_snapshot(MachineId(state.machine))
+                .map(|snapshot| Box::new(snapshot.clone())),
+            state: state.clone(),
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn list_machines_overview(
+    states: tauri::State<'_, MachineStates>,
+    streams: tauri::State<'_, StreamState>,
+) -> Vec<MachineOverview> {
+    match streams.0.lock() {
+        Ok(streams) => overview(&states, &streams),
+        Err(_) => Vec::new(),
+    }
+}
 
 /// The window's channel for output frames. None until the window asks; a window that reloads
 /// asks again and takes the place of the old one.
@@ -219,6 +260,9 @@ fn apply(app: &AppHandle, handle: &HubHandle, update: Update) {
                 // Typing the machine could not take while it was down, now it can be said.
                 told.unsent = Some(handle.take_unsent(machine)).filter(|n| *n > 0);
             }
+            if let Ok(mut states) = app.state::<MachineStates>().0.lock() {
+                states.insert(told.machine, told.clone());
+            }
             let _ = app.emit(MACHINE_STATE_EVENT, told);
         }
         Update::LineUp { machine } => {
@@ -288,5 +332,54 @@ fn perform(app: &AppHandle, handle: &HubHandle, out: Option<Vec<Out>>) {
                 });
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use maitty_shared::protocol::ServerMsg;
+
+    fn state(machine: u16, name: &str, kind: &'static str) -> MachineState {
+        MachineState {
+            machine,
+            name: name.into(),
+            state: kind,
+            why: None,
+            attempt: None,
+            unsent: None,
+        }
+    }
+
+    #[test]
+    fn a_window_that_starts_late_is_told_each_machine_and_the_snapshot_it_last_gave() {
+        let states = MachineStates::default();
+        {
+            let mut held = states.0.lock().unwrap();
+            held.insert(0, state(0, "local", "connected"));
+            held.insert(1, state(1, "box", "connected"));
+            held.insert(2, state(2, "build", "needs-login"));
+        }
+        let mut streams = Streams::default();
+        let now = Instant::now();
+        streams.on_message(MachineId(1), ServerMsg::State(Snapshot::default()), now);
+
+        let told = overview(&states, &streams);
+        assert_eq!(
+            told.iter()
+                .map(|m| m.state.name.as_str())
+                .collect::<Vec<_>>(),
+            ["box", "build"],
+            "this computer is not among them"
+        );
+        assert!(told[0].snapshot.is_some());
+        assert!(
+            told[1].snapshot.is_none(),
+            "a machine never heard from has none"
+        );
+        let json = serde_json::to_value(&told[0]).unwrap();
+        assert_eq!(json["machine"], 1);
+        assert_eq!(json["state"], "connected");
+        assert!(json.get("snapshot").is_some());
     }
 }

@@ -2,6 +2,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { z } from 'zod'
 import { bytesOf } from './ipcBytes'
+import { LOCAL_MACHINE, addressOf, machineArgs, terminalOf, terminalSessionId } from './machines'
 import { previewConversations, type Conversation, type Message, type SessionStatus } from '@/data/preview'
 
 const StatusSchema = z.enum(['None', 'Idle', 'Working', 'Blocked', 'Done'])
@@ -240,17 +241,28 @@ export function listenSessionsChanged(onChange: (snapshot: unknown) => void): Pr
   return listen<unknown>('sessions-changed', (event) => { onChange(event.payload) })
 }
 
-/** The sessions in a daemon snapshot, from `list_sessions` or the `sessions-changed` event. */
-export function conversationsFromSnapshot(raw: unknown): Conversation[] {
+/** A machine whose snapshot this is: its number for this run, and its name. This computer when left out. */
+export type SnapshotMachine = { id: number; name: string }
+
+/**
+ * The sessions in a daemon snapshot, from `list_sessions` or the `sessions-changed` event, or
+ * (with `machine`) in another machine's snapshot from `machine-sessions-changed`. Another
+ * machine's terminals are all the window shows of it; its ids carry the machine's name.
+ */
+export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachine): Conversation[] {
   const snapshot = DaemonSnapshotSchema.parse(raw)
-  for (const id of lastGoodTerm.keys()) if (!(String(id) in snapshot.terms)) lastGoodTerm.delete(id)
+  const from = machine?.id ?? LOCAL_MACHINE
+  for (const key of lastGoodTerm.keys()) {
+    if (isOfMachine(key, from) && !(String(termOfKey(key)) in snapshot.terms)) lastGoodTerm.delete(key)
+  }
   const terminals = Object.values(snapshot.terms)
     .flatMap((term) => {
-      const read = readTerminal(term)
+      const read = readTerminal(term, from)
       return read ? [read] : []
     })
     .filter(isTerminalSession)
-    .map((term) => toTerminalConversation(term, snapshot.workspaces))
+    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine))
+  if (machine !== undefined) return terminals
   return [
     ...snapshot.conversations
       .flatMap((raw) => {
@@ -266,34 +278,43 @@ type TerminalSession = z.infer<typeof TerminalSessionSchema>
 
 // A session that fails to read for one refresh must not vanish from the sidebar and come back
 // 1.5 seconds later, so it keeps its last good state, and the reason is logged once.
-const lastGoodTerm = new Map<number, TerminalSession>()
-const unreadable = new Set<number>()
+// Each machine numbers its panes from 1, so these are kept by machine and pane together.
+const lastGoodTerm = new Map<string, TerminalSession>()
+const unreadable = new Set<string>()
 
-function readTerminal(raw: unknown): TerminalSession | null {
+function paneKey(machine: number, term: number): string {
+  return `${String(machine)}:${String(term)}`
+}
+
+function isOfMachine(key: string, machine: number): boolean {
+  return key.startsWith(`${String(machine)}:`)
+}
+
+function termOfKey(key: string): number {
+  return Number(key.slice(key.indexOf(':') + 1))
+}
+
+function readTerminal(raw: unknown, machine: number): TerminalSession | null {
   const parsed = TerminalSessionSchema.safeParse(raw)
   const id = typeof raw === 'object' && raw !== null && 'id' in raw && typeof raw.id === 'number' ? raw.id : null
   if (parsed.success) {
-    lastGoodTerm.set(parsed.data.id, parsed.data)
-    unreadable.delete(parsed.data.id)
+    const key = paneKey(machine, parsed.data.id)
+    lastGoodTerm.set(key, parsed.data)
+    unreadable.delete(key)
     return parsed.data
   }
   if (id === null) return null
-  if (!unreadable.has(id)) {
-    unreadable.add(id)
-    console.warn(`Session t${String(id)} could not be read; showing its last good state`, parsed.error.issues)
+  const key = paneKey(machine, id)
+  if (!unreadable.has(key)) {
+    unreadable.add(key)
+    console.warn(`Session ${machine === LOCAL_MACHINE ? '' : `of machine ${String(machine)} `}t${String(id)} could not be read; showing its last good state`, parsed.error.issues)
   }
-  return lastGoodTerm.get(id) ?? null
+  return lastGoodTerm.get(key) ?? null
 }
 
-// Terminal sessions are ids like "t12": the pane's number, kept apart from a chat's number.
-export function terminalSessionId(term: number): string {
-  return `t${String(term)}`
-}
-
-export function terminalOf(conversationId: string): number | null {
-  const match = /^t(\d+)$/.exec(conversationId)
-  return match?.[1] === undefined ? null : Number(match[1])
-}
+// Terminal sessions are ids like "t12", the pane's number kept apart from a chat's number, or
+// "build/t12" for a pane of another machine (see `machines.ts`).
+export { terminalOf, terminalSessionId }
 
 // A terminal this app can show as a session: a shell (with or without an agent running in it) in
 // a pane of its own, not a chat's terminal, a popup, or another machine's (ADR 0046). The daemon
@@ -462,10 +483,18 @@ export async function suggestProjectFolders(typed: string): Promise<string[]> {
   return invokeParsed('suggest_project_folders', z.array(z.string()), { typed })
 }
 
+/** Questions the host answers by opening its own connection to this computer's daemon cannot be asked of another machine's pane. */
+function refuseOtherMachine(pane: { machine: number; machineName: string | null }, what: string): void {
+  if (pane.machine !== LOCAL_MACHINE) throw new Error(`${what} of a pane on ${pane.machineName ?? 'another machine'} is not available`)
+}
+
 export async function loadTerminalScreen(conversation: Pick<Conversation, 'id'> & { generation: number }): Promise<string> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
-  const term = terminalOf(conversation.id)
-  if (term !== null) return invokeParsed('pane_terminal_screen', z.string(), { term })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) {
+    refuseOtherMachine(pane, 'The screen text')
+    return invokeParsed('pane_terminal_screen', z.string(), { term: pane.term })
+  }
   return invokeParsed('terminal_screen', z.string(), {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -474,10 +503,11 @@ export async function loadTerminalScreen(conversation: Pick<Conversation, 'id'> 
 
 export async function loadTerminalReplay(conversation: Pick<Conversation, 'id'> & { generation: number }): Promise<Uint8Array> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
-  const term = terminalOf(conversation.id)
+  const pane = addressOf(conversation.id)
+  if (pane !== null) refuseOtherMachine(pane, 'A fresh replay')
   // The host answers with raw bytes: as JSON a replay would be a number per byte.
-  const reply = term !== null
-    ? await invoke<unknown>('pane_terminal_replay', { term })
+  const reply = pane !== null
+    ? await invoke<unknown>('pane_terminal_replay', { term: pane.term })
     : await invoke<unknown>('terminal_replay', {
       id: Number(conversation.id),
       generation: conversation.generation,
@@ -488,9 +518,9 @@ export async function loadTerminalReplay(conversation: Pick<Conversation, 'id'> 
 export async function sendTerminalInput(conversation: Pick<Conversation, 'id'> & { generation: number }, input: string | Uint8Array): Promise<void> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
   const data = Array.from(typeof input === 'string' ? new TextEncoder().encode(input) : input)
-  const term = terminalOf(conversation.id)
-  if (term !== null) {
-    await invokeParsed('terminal_input', NullSchema, { term, data })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) {
+    await invokeParsed('terminal_input', NullSchema, { term: pane.term, data, ...machineArgs(pane) })
     return
   }
   await invokeParsed('send_terminal_input', z.string(), {
@@ -502,9 +532,9 @@ export async function sendTerminalInput(conversation: Pick<Conversation, 'id'> &
 
 export async function resizeTerminal(conversation: Pick<Conversation, 'id'> & { generation: number }, cols: number, rows: number): Promise<void> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
-  const term = terminalOf(conversation.id)
-  if (term !== null) {
-    await invokeParsed('pane_terminal_resize', NullSchema, { term, cols, rows })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) {
+    await invokeParsed('pane_terminal_resize', NullSchema, { term: pane.term, cols, rows, ...machineArgs(pane) })
     return
   }
   await invokeParsed('resize_terminal', NullSchema, {
@@ -566,28 +596,28 @@ export async function cancelTurn(conversation: Conversation): Promise<void> {
 /** Pin a session to the top of its project, or let it go back to its place. The daemon keeps it for every app. */
 export async function pinSessionOnDaemon(conversation: Pick<Conversation, 'id'>, pinned: boolean): Promise<void> {
   if (!isDesktop()) return
-  const term = terminalOf(conversation.id)
-  if (term !== null) await invokeParsed('pin_terminal_session', NullSchema, { term, pinned })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('pin_terminal_session', NullSchema, { term: pane.term, pinned, ...machineArgs(pane) })
 }
 
 /** Put a session away from the project lists and tabs, or bring it back. It keeps running: this is a view setting, never a kill. */
 export async function archiveSessionOnDaemon(conversation: Pick<Conversation, 'id'>, archived: boolean): Promise<void> {
   if (!isDesktop()) return
-  const term = terminalOf(conversation.id)
-  if (term !== null) await invokeParsed('archive_terminal_session', NullSchema, { term, archived })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('archive_terminal_session', NullSchema, { term: pane.term, archived, ...machineArgs(pane) })
 }
 
 /** The user is looking at this pane: a finished agent's "done" becomes idle, as when the terminal app focuses it. */
 export async function markSeenOnDaemon(conversation: Pick<Conversation, 'id'>): Promise<void> {
   if (!isDesktop()) return
-  const term = terminalOf(conversation.id)
-  if (term !== null) await invokeParsed('mark_terminal_seen', NullSchema, { term })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('mark_terminal_seen', NullSchema, { term: pane.term, ...machineArgs(pane) })
 }
 
 export async function renameConversationOnDaemon(conversation: Pick<Conversation, 'id'>, title: string): Promise<void> {
-  const term = terminalOf(conversation.id)
-  if (term !== null) {
-    await invokeParsed('rename_terminal_session', NullSchema, { term, name: title })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) {
+    await invokeParsed('rename_terminal_session', NullSchema, { term: pane.term, name: title, ...machineArgs(pane) })
     return
   }
   await invokeParsed('rename_conversation', NullSchema, { id: Number(conversation.id), title })
@@ -605,9 +635,9 @@ export async function endConversation(conversation: Conversation): Promise<void>
 // Closing a chat only puts it away, but closing a terminal session ends its program, as in the
 // terminal app. A terminal session that has ended is gone, so there is nothing to bring back.
 export async function archiveConversationOnDaemon(conversation: Pick<Conversation, 'id'>, archived: boolean): Promise<void> {
-  const term = terminalOf(conversation.id)
-  if (term !== null) {
-    if (archived) await invokeParsed('close_terminal_session', NullSchema, { term })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) {
+    if (archived) await invokeParsed('close_terminal_session', NullSchema, { term: pane.term, ...machineArgs(pane) })
     return
   }
   await invokeParsed('archive_conversation', NullSchema, { id: Number(conversation.id), archived })
@@ -645,7 +675,7 @@ export async function resumeConversation(conversation: Conversation): Promise<{ 
   })
 }
 
-function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[]): Conversation {
+function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[], machine?: SnapshotMachine): Conversation {
   const folder = term.root ?? term.cwd
   const repo = term.root ? (term.root.split(/[\\/]/).filter(Boolean).at(-1) ?? null) : null
   const workspace = workspaces.find((candidate) => candidate.cwd === folder || candidate.cwd === term.cwd)
@@ -659,7 +689,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
         ? 'done'
         : 'idle'
   return {
-    id: terminalSessionId(term.id),
+    id: terminalSessionId(term.id, machine?.name ?? null),
     generation: 0,
     execution: 'Native',
     kind: 'terminal',
@@ -676,6 +706,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     permission: 'Terminal session',
     context: null,
     nativePane: term.id,
+    ...(machine ? { machine: machine.id, machineName: machine.name } : {}),
     hasDiff: false,
     named: label !== '',
     pinned: term.pinned,
