@@ -28,6 +28,7 @@ const TRANSPARENT = 'rgba(0,0,0,0)'
  * echo waits at most this long, and only while output is already streaming.
  */
 const FLUSH_GAP_MS = 32
+const NO_MINIMUM_CONTRAST = 1
 
 type Renderer = 'webgl' | 'dom'
 
@@ -92,6 +93,8 @@ export type TerminalLook = {
   cursorBlink?: boolean
   screenReader?: boolean
   theme?: ITheme
+  /** xterm's own floor for the contrast of any foreground a program picks; 1 leaves colours as asked. */
+  minimumContrast?: number
 }
 
 type TerminalViewProps = {
@@ -305,6 +308,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           scrollSensitivity: lookRef.current.scrollSpeed ?? DEFAULT_SCROLL_SPEED,
           screenReaderMode: lookRef.current.screenReader ?? false,
           theme: terminalTheme(lookRef.current, startSeeThrough),
+          minimumContrastRatio: lookRef.current.minimumContrast ?? NO_MINIMUM_CONTRAST,
         })
         const terminalInstance = emulator
         const fit = new FitAddon()
@@ -589,6 +593,8 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     const seeThrough = seeThroughOf(look, rendererRef.current)
     if (emulator.options.allowTransparency !== seeThrough) emulator.options.allowTransparency = seeThrough
     if (look.theme) emulator.options.theme = terminalTheme(look, seeThrough)
+    const minimumContrast = look.minimumContrast ?? NO_MINIMUM_CONTRAST
+    if (emulator.options.minimumContrastRatio !== minimumContrast) emulator.options.minimumContrastRatio = minimumContrast
     setTransparent(seeThrough)
   }, [look])
 

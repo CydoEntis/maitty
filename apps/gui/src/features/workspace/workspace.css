@@ -424,6 +424,9 @@
 .mx-pane-body .terminal-screen { flex: 1; min-height: 0; margin: 0; background: transparent; border: 0; border-radius: 0; padding: 0; }
 /* The pane card carries the focus ring; the terminal draws none of its own. */
 .mx-pane-body .terminal-screen:focus-within { border-color: transparent; box-shadow: none; }
+/* xterm's own stylesheet paints the scroll viewport black. It is taller than the rows by the part of a
+   row that does not fit, so on the opaque renderers that remainder showed as a black bar along the pane's bottom edge. */
+.mx-pane-body .xterm-viewport { background-color: var(--term); }
 /* With the WebGL renderer the terminal is see-through and the card shows behind the text. The DOM
    renderer keeps the theme's opaque terminal ground, so a row repaint never blends through the card. */
 .mx-pane-body .terminal-view.is-transparent .xterm, .mx-pane-body .terminal-view.is-transparent .xterm-viewport, .mx-pane-body .terminal-view.is-transparent .xterm-screen { background-color: transparent !important; }
