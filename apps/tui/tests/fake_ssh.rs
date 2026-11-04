@@ -614,12 +614,12 @@ async fn two_machines_talking(
 
     let mut connections = Connections::default();
     for (id, sandbox, name) in [(MachineId::LOCAL, here, "here"), (THERE, there, "there")] {
-        connections.add(
-            id,
-            open_to(&machine(name, sandbox), true)
-                .await
-                .expect("connect"),
-        );
+        trace(&format!("opening {name}"));
+        let opened = tokio::time::timeout(WAIT, open_to(&machine(name, sandbox), true))
+            .await
+            .unwrap_or_else(|_| panic!("{name}: the daemon did not answer the handshake in {WAIT:?}"));
+        trace(&format!("opened {name}"));
+        connections.add(id, opened.expect("connect"));
         let open = ClientMsg::Command(Command::NewWorkspace {
             cwd: None,
             name: None,
@@ -653,7 +653,15 @@ async fn two_machines_talking(
     tokio::time::timeout(WAIT, heard)
         .await
         .expect("both machines deliver a pane and its output");
+    trace("both machines delivered a pane and output");
     connections
+}
+
+/// A line straight to stderr: the test harness hides what a passing test prints, and a run
+/// that hangs is only ever read from the CI log.
+fn trace(what: &str) {
+    use std::io::Write as _;
+    let _ = writeln!(std::io::stderr(), "fake_ssh trace: {what}");
 }
 
 fn runtime() -> tokio::runtime::Runtime {
@@ -809,6 +817,7 @@ fn typing_and_resizing_reach_only_the_machine_that_owns_the_pane() {
 
     const FOR_THERE: &str = "typed-for-the-build-box";
     const FOR_HERE: &str = "typed-for-this-computer";
+    trace("typing_and_resizing: start");
     let (here, there) = (Sandbox::new(), Sandbox::new());
     let runtime = runtime();
     runtime.block_on(async {
@@ -847,8 +856,10 @@ fn typing_and_resizing_reach_only_the_machine_that_owns_the_pane() {
             !heard.here.contains(FOR_THERE),
             "the other machine's typing reached this computer"
         );
+        trace("typing_and_resizing: asserted");
     });
     runtime.shutdown_background();
+    trace("typing_and_resizing: runtime shut down");
 }
 
 // ---- the connection supervisor, against real daemons through the shim ----------------------
