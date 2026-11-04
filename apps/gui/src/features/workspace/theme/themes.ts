@@ -214,7 +214,9 @@ export function xtermTheme(tokens: ThemeTokens): ITheme {
     cursor: tokens.accent,
     cursorAccent: tokens.term,
     selectionBackground: withAlpha(tokens.accent, SELECTION_ALPHA),
-    black: tokens.well,
+    // The ground, not the well: programs paint with ANSI black expecting it to vanish into the
+    // background, as Claude Code does under its prompt and status line.
+    black: tokens.term,
     brightBlack: tokens.dim,
     red: tokens.danger,
     brightRed: tokens.danger,

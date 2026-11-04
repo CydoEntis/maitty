@@ -31,13 +31,19 @@ const FLUSH_GAP_MS = 32
 type Renderer = 'webgl' | 'dom'
 
 /**
- * The pane's colours. The WebGL renderer draws on a see-through canvas so the card shows behind
- * the text; the DOM renderer gets the theme's opaque terminal ground instead, since each row it
- * repaints would otherwise blend through the card's gradient and shadow (docs/PERFORMANCE.md).
+ * The pane's colours. A see-through pane (Settings › Appearance, WebGL only) lets the card show
+ * behind the text; otherwise the theme's opaque terminal ground, which the DOM renderer needs
+ * since each row it repaints would blend through the card's gradient and shadow
+ * (docs/PERFORMANCE.md).
  */
-function terminalTheme(look: TerminalLook, renderer: Renderer): ITheme {
+function terminalTheme(look: TerminalLook, seeThrough: boolean): ITheme {
   const theme = look.theme ?? DEFAULT_THEME
-  return renderer === 'webgl' ? { ...theme, background: TRANSPARENT } : theme
+  return seeThrough ? { ...theme, background: TRANSPARENT } : theme
+}
+
+/** Only WebGL can afford a see-through canvas; the DOM renderer always sits on the opaque ground. */
+function seeThroughOf(look: TerminalLook, renderer: Renderer): boolean {
+  return renderer === 'webgl' && (look.seeThrough ?? false)
 }
 
 /** The slots a program's colour query names (`ESC ] 11 ; ? ST` asks for the background). */
@@ -75,6 +81,8 @@ export type TerminalLook = {
   scrollback?: number
   /** Lines per wheel notch as a multiple of xterm's default. */
   scrollSpeed?: number
+  /** The card shows behind the text (WebGL only); programs' own backgrounds then show as boxes. */
+  seeThrough?: boolean
   screenReader?: boolean
   theme?: ITheme
 }
@@ -168,7 +176,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   const [loadError, setLoadError] = useState(false)
   const [inputFailed, setInputFailed] = useState(false)
   const [resizeError, setResizeError] = useState('')
-  const [transparent, setTransparent] = useState(() => hasWebgl2())
+  const [transparent, setTransparent] = useState(() => hasWebgl2() && (look.seeThrough ?? false))
 
   const send = useCallback((data: string | Uint8Array) => {
     if (!data || inputDisabledRef.current) return
@@ -262,8 +270,9 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
 
         const wantsWebgl = hasWebgl2()
         const startRenderer: Renderer = wantsWebgl ? 'webgl' : 'dom'
+        const startSeeThrough = seeThroughOf(lookRef.current, startRenderer)
         emulator = new TerminalEmulator({
-          allowTransparency: wantsWebgl,
+          allowTransparency: startSeeThrough,
           cursorBlink: focusedRef.current && isWindowActive(),
           cursorStyle: lookRef.current.cursorStyle ?? 'block',
           disableStdin: inputDisabledRef.current,
@@ -273,7 +282,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           scrollback: lookRef.current.scrollback ?? DEFAULT_SCROLLBACK_LINES,
           scrollSensitivity: lookRef.current.scrollSpeed ?? DEFAULT_SCROLL_SPEED,
           screenReaderMode: lookRef.current.screenReader ?? false,
-          theme: terminalTheme(lookRef.current, startRenderer),
+          theme: terminalTheme(lookRef.current, startSeeThrough),
         })
         const terminalInstance = emulator
         const fit = new FitAddon()
@@ -286,7 +295,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           rendererRef.current = 'dom'
           reportRenderer(terminalInstance, 'dom')
           terminalInstance.options.allowTransparency = false
-          terminalInstance.options.theme = terminalTheme(lookRef.current, 'dom')
+          terminalInstance.options.theme = terminalTheme(lookRef.current, false)
           if (isMounted) setTransparent(false)
         }
         if (wantsWebgl) {
@@ -300,10 +309,10 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         } else {
           reportRenderer(terminalInstance, 'dom')
         }
-        // The WebGL canvas is see-through, so xterm's own answer to a program's colour query would
-        // be black (it drops the alpha): a program that paints with the colour it was told, as
-        // Claude Code does, would then leave black bars on the glass. Answer with the theme's
-        // colours instead; anything but a query falls through to xterm.
+        // On a see-through canvas xterm's own answer to a program's colour query would be black
+        // (it drops the alpha): a program that paints with the colour it was told, as Claude Code
+        // does, would then leave black bars on the glass. Answer with the theme's colours instead;
+        // anything but a query falls through to xterm.
         const answerColorQuery = (slot: 'foreground' | 'background') => (data: string) => {
           if (data !== OSC_QUERY) return false
           const color = oscColor((lookRef.current.theme ?? DEFAULT_THEME)[slot] ?? '')
@@ -515,7 +524,10 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     if (look.scrollback && emulator.options.scrollback !== look.scrollback) emulator.options.scrollback = look.scrollback
     if (look.scrollSpeed && emulator.options.scrollSensitivity !== look.scrollSpeed) emulator.options.scrollSensitivity = look.scrollSpeed
     if (look.screenReader !== undefined && emulator.options.screenReaderMode !== look.screenReader) emulator.options.screenReaderMode = look.screenReader
-    if (look.theme) emulator.options.theme = terminalTheme(look, rendererRef.current)
+    const seeThrough = seeThroughOf(look, rendererRef.current)
+    if (emulator.options.allowTransparency !== seeThrough) emulator.options.allowTransparency = seeThrough
+    if (look.theme) emulator.options.theme = terminalTheme(look, seeThrough)
+    setTransparent(seeThrough)
   }, [look])
 
   useEffect(() => {

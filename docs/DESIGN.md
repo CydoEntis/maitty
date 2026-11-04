@@ -200,9 +200,11 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   (Settings 16) and a soft drop shadow. 8px outer margin, 12px between panes. Only small popups and dialogs (menus,
   popovers, the palette and Settings cards, notification cards) blur what is behind them (18px). The sidebar, panes,
   tab tray and the big panels (Inbox, Inspect, Find) do not: only the soft ground is behind them, so a blur there
-  looks the same and costs a repaint on every frame. A pane's terminal is see-through over its card only when
-  xterm draws with WebGL; on xterm's DOM renderer (no WebGL 2) it sits on the theme's opaque `--term` ground, so a
-  row repaint never blends through the card. On such a web view (`data-gpu="software"` on the root) Glass also
+  looks the same and costs a repaint on every frame. A pane's terminal sits on the theme's opaque `--term` ground, and ANSI
+  black is that ground, so a program that paints with it (Claude Code under its prompt and status line) leaves no
+  box. Settings › Appearance › See-through terminal lets the card show behind the text instead, only when xterm
+  draws with WebGL (the DOM renderer repaints rows, and each would blend through the card); such programs then show
+  as boxes on it. On such a web view (`data-gpu="software"` on the root) Glass also
   gives up its resting shadows, the card gradient and the popup blur, and nothing else: the colours, radii,
   layout, focus ring and status colours stay ([PERFORMANCE](PERFORMANCE.md)).
 - **Window style: Flat, Tiled or Glass** (Settings › Appearance › Window style, `style`, stored with the other
