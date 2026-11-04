@@ -3,7 +3,7 @@ import { conversationsFromSnapshot } from '@/api/daemon'
 import { forgetMachines, parseSessionId, registerMachine, type MachineKind, type MachineState } from '@/api/machines'
 import type { Conversation } from '@/data/preview'
 import type { Layout } from './layout'
-import { idsOfMachinesNotHeard, remoteTerminals, type RemoteMachine } from './machines'
+import { idsOfMachinesNotHeard, remoteStartRefusal, remoteTerminals, type RemoteMachine } from './machines'
 import { groupSessions, toSessionView } from './session'
 
 afterEach(() => { forgetMachines() })
@@ -126,5 +126,19 @@ describe('a saved layout at launch', () => {
     const box = machineOf(1, 'box', [term(4, '/srv')], 'connected', true)
     const build = machineOf(2, 'build', [], 'connecting', false)
     expect(idsOfMachinesNotHeard(layout, new Map([[1, box], [2, build]]))).toEqual(['build/t9'])
+  })
+})
+
+describe('starting a shell from another machine\'s pane', () => {
+  it('says why it cannot, naming the machine, so no folder of that machine becomes a local one', () => {
+    expect(remoteStartRefusal(true, 'build-box', 'Restarting this pane')).toBe('Restarting this pane is not available on build-box yet')
+  })
+
+  it('names another machine when it has no name yet', () => {
+    expect(remoteStartRefusal(true, null, 'Splitting this pane')).toBe('Splitting this pane is not available on another machine yet')
+  })
+
+  it('lets a pane of this computer start a shell', () => {
+    expect(remoteStartRefusal(false, null, 'Splitting this pane')).toBeNull()
   })
 })

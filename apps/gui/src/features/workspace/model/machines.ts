@@ -42,3 +42,12 @@ export function idsOfMachinesNotHeard(layout: Layout, machines: ReadonlyMap<numb
   }
   return [...ids]
 }
+
+/**
+ * Why a shell cannot be started from a pane or project of another machine, or null when it can. A
+ * shell of this computer starts in a folder of this computer; the folder another machine reports is
+ * only a string it chose, and not a place to start a process here.
+ */
+export function remoteStartRefusal(remote: boolean, machineName: string | null, what: string): string | null {
+  return remote ? `${what} is not available on ${machineName ?? 'another machine'} yet` : null
+}

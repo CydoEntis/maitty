@@ -37,7 +37,7 @@ import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPane
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
 import { runsProgram } from './components/useArmed'
 import { rememberSessions, withEnded } from './model/ended'
-import { idsOfMachinesNotHeard, remoteTerminals, type RemoteMachine } from './model/machines'
+import { idsOfMachinesNotHeard, remoteTerminals, type RemoteMachine, remoteStartRefusal } from './model/machines'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { StatusBar } from './components/StatusBar'
@@ -614,21 +614,35 @@ export function DesktopApp() {
     setSettingsSection(null)
     runStart(() => Promise.resolve(folder), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
   }, [runStart])
-  const projectName = groups.find((group) => group.key === activeGroupKey)?.name
+  const activeGroup = groups.find((group) => group.key === activeGroupKey)
+  const projectName = activeGroup?.name
+  // A project of another machine is keyed by that machine and its folder: not a folder to start a shell in here.
+  const remoteGroup = activeGroup?.machineName ?? null
   const newProjectSession = useCallback(() => {
     if (!activeGroupKey) {
       newSession()
       return
     }
+    const refusal = remoteStartRefusal(remoteGroup !== null, remoteGroup, 'A new session here')
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
     setSettingsSection(null)
     runStart(() => Promise.resolve(activeGroupKey), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
-  }, [activeGroupKey, newSession, runStart])
+  }, [activeGroupKey, remoteGroup, newSession, runStart])
 
   const split = useCallback((paneId: string | null, direction: SplitDirection) => {
     const tab = activeTab(layout)
     if (!tab || tab.panes.length >= MAX_PANES) return
     const source = tab.panes.find((pane) => pane.id === (paneId ?? tab.focus))
-    const cwd = source ? sessionMap.get(source.sessionId)?.cwd : undefined
+    const sourceSession = source ? sessionMap.get(source.sessionId) : undefined
+    const refusal = sourceSession ? remoteStartRefusal(sourceSession.machine !== LOCAL_MACHINE, sourceSession.machineName, 'Splitting this pane') : null
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
+    const cwd = sourceSession?.cwd
     runStart(async () => cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
       // If the tab changed or filled up while the shell started, the shell still gets a tab: it must not be left with no pane.
       setLayout((current) => {
@@ -680,6 +694,11 @@ export function DesktopApp() {
     const pane = layout.tabs.flatMap((tab) => tab.panes).find((candidate) => candidate.id === paneId)
     const old = pane ? paneSessions.get(pane.sessionId) : undefined
     if (!old) return
+    const refusal = remoteStartRefusal(old.machine !== LOCAL_MACHINE, old.machineName, 'Restarting this pane')
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
     runStart(() => Promise.resolve(old.cwd), (id) => { setLayout((current) => dropSession(current, paneId, id)) })
   }, [layout, paneSessions, runStart])
 
@@ -1110,12 +1129,17 @@ export function DesktopApp() {
   }, [layout, sessionMap, sendTo])
 
   const startAgent = useCallback((program: string) => {
+    const refusal = remoteStartRefusal(remoteGroup !== null, remoteGroup, `Starting ${program} here`)
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
     setSettingsSection(null)
     runStart(async () => activeGroupKey || resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
       setLayout((current) => openInNewTab(current, id, makeId))
       void sendTerminalInput({ id, generation: 0 }, `${program}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${program}`)) })
     })
-  }, [runStart, activeGroupKey, preferences.startFolder, home])
+  }, [runStart, activeGroupKey, remoteGroup, preferences.startFolder, home])
 
   const paletteItems: PaletteItem[] = useMemo(() => {
     // Thirty-odd items with closures, built only while the palette can show them.
