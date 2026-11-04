@@ -3,7 +3,7 @@ import { conversationsFromSnapshot } from '@/api/daemon'
 import { forgetMachines, parseSessionId, registerMachine, type MachineKind, type MachineState } from '@/api/machines'
 import type { Conversation } from '@/data/preview'
 import type { Layout } from './layout'
-import { idsOfMachinesNotHeard, remoteTerminals, type RemoteMachine } from './machines'
+import { idsOfMachinesNotHeard, machineChip, machineHeads, remoteTerminals, type RemoteMachine } from './machines'
 import { groupSessions, toSessionView } from './session'
 
 afterEach(() => { forgetMachines() })
@@ -126,5 +126,55 @@ describe('a saved layout at launch', () => {
     const box = machineOf(1, 'box', [term(4, '/srv')], 'connected', true)
     const build = machineOf(2, 'build', [], 'connecting', false)
     expect(idsOfMachinesNotHeard(layout, new Map([[1, box], [2, build]]))).toEqual(['build/t9'])
+  })
+})
+
+describe('machine chips', () => {
+  const words: Array<[MachineKind, string, string]> = [
+    ['connected', 'connected', 'ok'],
+    ['connecting', 'connecting', 'quiet'],
+    ['needs-login', 'needs login', 'bad'],
+    ['needs-update', 'needs update', 'bad'],
+    ['unreachable', 'unreachable', 'bad'],
+    ['refused', 'refused', 'bad'],
+  ]
+  it.each(words)('%s reads %s and is %s', (kind, word, tone) => {
+    const chip = machineChip(state(1, 'build', kind))
+    expect(chip.word).toBe(word)
+    expect(chip.tone).toBe(tone)
+    expect(chip.glyph).not.toBe('')
+  })
+
+  it('says which dial a reconnect is on', () => {
+    expect(machineChip({ ...state(1, 'build', 'reconnecting'), attempt: 2 }).word).toBe('reconnecting #2')
+    expect(machineChip(state(1, 'build', 'reconnecting')).word).toBe('reconnecting')
+  })
+
+  it('never colours a state alone: every kind has its own word, and shapes tell down from up', () => {
+    const chips = words.map(([kind]) => machineChip(state(1, 'build', kind)))
+    expect(new Set(chips.map((chip) => chip.word)).size).toBe(chips.length)
+    expect(machineChip(state(1, 'build', 'connected')).glyph).not.toBe(machineChip(state(1, 'build', 'unreachable')).glyph)
+  })
+})
+
+describe('machine headers', () => {
+  it('are none while this computer is the only machine', () => {
+    expect(machineHeads(new Map())).toEqual([])
+  })
+
+  it('put this computer first and the others in id order, whatever their names', () => {
+    const heads = machineHeads(new Map([
+      [3, machineOf(3, 'alpha', [])],
+      [1, machineOf(1, 'zeta', [], 'needs-login')],
+    ]))
+    expect(heads.map((head) => head.label)).toEqual(['this computer', 'zeta', 'alpha'])
+    expect(heads[0]).toMatchObject({ name: null, chip: null })
+    expect(heads[1]?.chip?.word).toBe('needs login')
+  })
+
+  it('carry the fix a person has to act on', () => {
+    const down = machineOf(1, 'box', [], 'needs-update')
+    const heads = machineHeads(new Map([[1, { ...down, state: { ...down.state, why: 'run maitty machine update box --install' } }]]))
+    expect(heads[1]?.why).toBe('run maitty machine update box --install')
   })
 })

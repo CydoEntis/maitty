@@ -77,7 +77,7 @@ export function addressOf(sessionId: string): SessionAddress | null {
   return null
 }
 
-export const MACHINE_KINDS = ['connecting', 'connected', 'reconnecting', 'needs-login', 'needs-update', 'unreachable'] as const
+export const MACHINE_KINDS = ['connecting', 'connected', 'reconnecting', 'needs-login', 'needs-update', 'unreachable', 'refused'] as const
 export type MachineKind = (typeof MACHINE_KINDS)[number]
 
 const MachineStateSchema = z.object({

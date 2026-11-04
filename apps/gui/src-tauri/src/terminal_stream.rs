@@ -282,6 +282,10 @@ pub fn react(
             state,
         } => {
             let mut told = describe(machine, &name, &state);
+            // The state machine has no word for it: a refusal reads as unreachable there.
+            if handle.is_refused(machine) {
+                told.state = "refused";
+            }
             if state.is_connected() {
                 // Typing the machine could not take while it was down, now it can be said.
                 told.unsent = Some(handle.take_unsent(machine)).filter(|n| *n > 0);

@@ -13,10 +13,13 @@ import { useSessionMenu, type SessionMenuActions } from './SessionMenu'
 import { RailPopoverLayer } from './RailPopovers'
 import { hoverHandlers, useRailHover, type RailHover } from './railHover'
 import { LOCAL_MACHINE } from '@/api/machines'
+import type { MachineHead } from '../model/machines'
 import { WorktreeMenu } from '@/features/worktrees/WorktreeMenu'
 
 export type SidebarProps = {
   groups: SessionGroup[]
+  /** Machine headers the folders sit under; empty while this computer is the only machine. */
+  machineHeads: readonly MachineHead[]
   focusedId: string | null
   tracks: ReadonlyMap<string, SessionTrack>
   mode: 'docked' | 'rail'
@@ -109,6 +112,47 @@ type GroupProps = SidebarProps & { isOpen: (group: SessionGroup) => boolean; onT
 function Expanded(props: GroupProps) {
   const { groups, mode, primary, online, isOpen, onToggleGroup } = props
   const hover = useRailHover()
+  const heads = props.machineHeads
+  const renderGroup = (group: SessionGroup) => {
+    const open = isOpen(group)
+    return (
+      <div key={group.key} className={`mx-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`}>
+        <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
+        <button type="button" className="mx-group-head" aria-expanded={open} {...hoverHandlers(hover, { kind: 'folder', key: group.key })} onClick={() => { hover.close(); onToggleGroup(group.key) }}>
+          <Icon name="chevron" />
+          <span className={`mx-folder-tile${group.containsFocused ? ' is-focused' : ''}`} style={folderStyle(group.key, group.colorId)}><Icon name="folder" /></span>
+          <span className="mx-group-name">{group.name}</span>
+          <span className="mx-spacer" />
+          {!open && online && group.workingCount > 0 && <Spinner />}
+          {online && group.needsCount > 0 && <span className="mx-needs-text">{NEEDS_SUFFIX(group.needsCount)}</span>}
+          <span className="mx-count">{group.sessions.length}</span>
+        </button>
+        </ProjectMenu>
+        {open && (
+          <div className="mx-group-rows">
+            <span className="mx-group-guide" aria-hidden="true" />
+            <SessionStack
+              group={group}
+              focusedId={props.focusedId}
+              remembered={props.remembered.get(group.key)}
+              trayStyle={props.trayStyle}
+              leadMode={props.leadMode}
+              tracks={props.tracks}
+              online={online}
+              paneOf={props.paneOf}
+              portalContainer={props.portalContainer}
+              hover={hover}
+              onShowSession={props.onShowSession}
+              onSetName={props.onSetName}
+              onRenameSession={props.onRenameSession}
+              onPinSession={props.onPinSession}
+              onEndSession={props.onEndSession}
+            />
+          </div>
+        )}
+      </div>
+    )
+  }
   return (
     <div className="mx-sidebar-expanded">
       <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} openIds={props.openIds} tracks={props.tracks} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
@@ -121,46 +165,9 @@ function Expanded(props: GroupProps) {
         )}
       </div>
       <div className="mx-sidebar-list">
-        {groups.map((group) => {
-          const open = isOpen(group)
-          return (
-            <div key={group.key} className={`mx-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`}>
-              <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
-              <button type="button" className="mx-group-head" aria-expanded={open} {...hoverHandlers(hover, { kind: 'folder', key: group.key })} onClick={() => { hover.close(); onToggleGroup(group.key) }}>
-                <Icon name="chevron" />
-                <span className={`mx-folder-tile${group.containsFocused ? ' is-focused' : ''}`} style={folderStyle(group.key, group.colorId)}><Icon name="folder" /></span>
-                <span className="mx-group-name">{group.name}</span>
-                <span className="mx-spacer" />
-                {!open && online && group.workingCount > 0 && <Spinner />}
-                {online && group.needsCount > 0 && <span className="mx-needs-text">{NEEDS_SUFFIX(group.needsCount)}</span>}
-                <span className="mx-count">{group.sessions.length}</span>
-              </button>
-              </ProjectMenu>
-              {open && (
-                <div className="mx-group-rows">
-                  <span className="mx-group-guide" aria-hidden="true" />
-                  <SessionStack
-                    group={group}
-                    focusedId={props.focusedId}
-                    remembered={props.remembered.get(group.key)}
-                    trayStyle={props.trayStyle}
-                    leadMode={props.leadMode}
-                    tracks={props.tracks}
-                    online={online}
-                    paneOf={props.paneOf}
-                    portalContainer={props.portalContainer}
-                    hover={hover}
-                    onShowSession={props.onShowSession}
-                    onSetName={props.onSetName}
-                    onRenameSession={props.onRenameSession}
-                    onPinSession={props.onPinSession}
-                    onEndSession={props.onEndSession}
-                  />
-                </div>
-              )}
-            </div>
-          )
-        })}
+        {heads.length === 0
+          ? groups.map(renderGroup)
+          : heads.map((head) => <MachineSection key={head.key} head={head} groups={groups.filter((group) => (group.machineName?.toLowerCase() ?? null) === (head.name?.toLowerCase() ?? null))} renderGroup={renderGroup} />)}
         {groups.length === 0 && <div className="mx-empty-note">No sessions. Projects show up here when a session cds into a git repo.</div>}
       </div>
       <div className="mx-sidebar-foot">
@@ -170,6 +177,22 @@ function Expanded(props: GroupProps) {
         <button type="button" className="mx-settings-button" title={`Settings (${primary},)`} onClick={props.onOpenSettings}><Icon name="gear" />Settings</button>
       </div>
     </div>
+  )
+}
+
+/** One machine's header, with its state as a chip, and its folders under it. */
+function MachineSection(props: { head: MachineHead; groups: SessionGroup[]; renderGroup: (group: SessionGroup) => ReactNode }) {
+  const { head, groups, renderGroup } = props
+  return (
+    <section className="mx-machine" aria-label={head.label}>
+      <div className="mx-machine-head">
+        <span className="mx-machine-name">{head.label}</span>
+        <span className="mx-spacer" />
+        {head.chip && <span className={`mx-machine-chip is-${head.chip.tone}`}><span aria-hidden="true">{head.chip.glyph}</span> {head.chip.word}</span>}
+      </div>
+      {head.why !== null && head.chip?.tone === 'bad' && <p className="mx-machine-why">{head.why}</p>}
+      {groups.map(renderGroup)}
+    </section>
   )
 }
 

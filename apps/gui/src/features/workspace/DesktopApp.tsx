@@ -37,7 +37,7 @@ import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPane
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
 import { runsProgram } from './components/useArmed'
 import { rememberSessions, withEnded } from './model/ended'
-import { idsOfMachinesNotHeard, remoteTerminals, type RemoteMachine } from './model/machines'
+import { idsOfMachinesNotHeard, machineHeads, remoteTerminals, type RemoteMachine } from './model/machines'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { StatusBar } from './components/StatusBar'
@@ -421,6 +421,7 @@ export function DesktopApp() {
     for (const candidate of layout.tabs) candidate.panes.forEach((pane, index) => { numbers.set(pane.sessionId, index + 1) })
     return numbers
   }, [layout.tabs])
+  const heads = useMemo(() => machineHeads(machines), [machines])
   const groups = useMemo(() => groupSessions(sessions, preferences.groupBy, focusedId, home, preferences.projectColors), [sessions, preferences.groupBy, focusedId, home, preferences.projectColors])
   // A tab belongs to the project of the session in its focused pane, so it moves when that shell cds into another repo.
   const tabGroup = useCallback((candidate: Tab): string => {
@@ -1188,6 +1189,7 @@ export function DesktopApp() {
   const renderSidebar = (mode: 'docked' | 'rail', afterPick: () => void) => (
     <Sidebar
       groups={groups}
+      machineHeads={heads}
       focusedId={focusedId}
       tracks={tracks}
       mode={mode}

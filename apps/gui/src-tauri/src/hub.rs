@@ -84,6 +84,8 @@ pub struct HubHandle {
 struct Shared {
     /// Machines with a line.
     up: Mutex<BTreeSet<MachineId>>,
+    /// Machines a different daemon answered for: told to the window as `refused`, not `unreachable`.
+    refused: Mutex<BTreeSet<MachineId>>,
     /// Each machine's name, for saying which one a refusal is about.
     names: Mutex<BTreeMap<MachineId, String>>,
     /// Requests out to each other machine that are waiting for an answer.
@@ -116,6 +118,11 @@ impl HubHandle {
         self.outbox
             .send(outgoing)
             .map_err(|_| NotConnected(machine))
+    }
+
+    /// Whether a different daemon answered at the machine's name, so its line was turned away.
+    pub fn is_refused(&self, machine: MachineId) -> bool {
+        lock(&self.shared.refused).contains(&machine)
     }
 
     pub fn is_up(&self, machine: MachineId) -> bool {
@@ -303,6 +310,7 @@ impl Hub {
                 // A fresh line is a fresh look at who answers: the same wrong daemon is
                 // refused again on its first State, a fixed one is let in.
                 self.refused.remove(&machine);
+                lock(&self.handle.shared.refused).remove(&machine);
                 self.connections.add(machine, halves);
                 lock(&self.handle.shared.up).insert(machine);
                 self.queue.push_back(Update::LineUp { machine });
@@ -374,6 +382,7 @@ impl Hub {
                     let reason = mismatch.to_string();
                     self.control.refuse(machine, reason.clone());
                     self.refused.insert(machine, reason);
+                    lock(&self.handle.shared.refused).insert(machine);
                     return None;
                 }
             }

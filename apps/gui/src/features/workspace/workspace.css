@@ -124,6 +124,15 @@
    again 6 times a second. The clock writes the frame straight into the element (lib/spinner-clock.ts). */
 .mx-spin { display: inline-block; inline-size: 1ch; text-align: center; contain: layout style; font-family: var(--mono); font-size: 12px; color: var(--accent); flex: none; }
 .mx-spin.is-wide { inline-size: 2ch; }
+.mx-machine { display: flex; flex-direction: column; gap: calc(6px * var(--pad, 1)); }
+.mx-machine + .mx-machine { margin-top: 6px; }
+.mx-machine-head { display: flex; align-items: center; gap: 8px; padding: 2px 8px 0 4px; min-width: 0; }
+.mx-machine-name { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* No animation: a state is told by its shape and its word, and the colour only backs them. */
+.mx-machine-chip { flex: none; font-size: 11.5px; white-space: nowrap; color: var(--dim); }
+.mx-machine-chip.is-ok { color: var(--done); }
+.mx-machine-chip.is-bad { color: var(--danger); }
+.mx-machine-why { margin: 0; padding: 0 8px 0 4px; font-size: 11.5px; line-height: 1.5; color: var(--dim); overflow-wrap: anywhere; text-wrap: pretty; }
 .mx-needs-text { font-size: 11.5px; color: var(--warn); white-space: nowrap; }
 .mx-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--raise); font-size: 11px; color: var(--muted); display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
 .mx-group-rows { position: relative; display: flex; flex-direction: column; gap: 2px; padding-left: 20px; animation: v7fade .2s ease-out; }

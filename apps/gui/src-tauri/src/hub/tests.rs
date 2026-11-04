@@ -249,6 +249,10 @@ async fn a_different_daemon_at_a_known_name_is_turned_away_and_says_nothing_that
         why.contains("a different machine answers at box"),
         "the reason is the refusal's own words: {why}"
     );
+    assert!(
+        watch.hub.handle().is_refused(BOX),
+        "the window is told refused, not just unreachable"
+    );
     assert_eq!(
         watch.snapshots(BOX),
         0,
