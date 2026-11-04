@@ -17,7 +17,7 @@ import {
   sendTerminalInput,
   startShellSession,
 } from '@/api/daemon'
-import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, startSessionOnMachine, terminalOf, unregisterMachine, type MachineState } from '@/api/machines'
+import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, setMachineGrant, startSessionOnMachine, terminalOf, unregisterMachine, type Grant, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -336,6 +336,14 @@ export function DesktopApp() {
       listenMachineState(settle),
       listenMachineError((text) => { toast.error(text) }),
       // A machine that was allowed to raise notices: in the window as a toast, away from it as the system's.
+      // Text a machine that was allowed to asks to put on the clipboard.
+      listenMachineClipboard((id, text) => {
+        const name = names.get(id) ?? 'A machine'
+        navigator.clipboard.writeText(text).then(
+          () => { toast.message(`${name} copied ${String(text.length)} characters to your clipboard`) },
+          (error: unknown) => { toast.error(errorMessage(error, `Could not copy what ${name} sent`)) },
+        )
+      }),
       listenMachineNotice((text) => {
         if (document.hasFocus()) toast.message(text)
         else sendNativeNotice(text, '').catch((error: unknown) => { console.warn('Could not show a system notification', error) })
@@ -485,6 +493,9 @@ export function DesktopApp() {
       setWatchingLogins(true)
     }
     return added
+  }, [])
+  const grantNamed = useCallback((name: string, grant: Grant, on: boolean) => {
+    setMachineGrant(name, grant, on).catch((error: unknown) => { toast.error(errorMessage(error, `Could not change ${name}`)) })
   }, [])
   const cancelAdding = useCallback(() => {
     cancelAddMachine().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not cancel')) })
@@ -1592,7 +1603,7 @@ export function DesktopApp() {
                 onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}
                 mac={mac}
                 daemon={{ online, sessionCount: sessions.length }}
-                machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed, add: { windows: navigator.userAgent.includes('Windows'), loadHosts: listSshHosts, onAdd: addNamed, onCancel: cancelAdding } }}
+                machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed, onGrant: grantNamed, add: { windows: navigator.userAgent.includes('Windows'), loadHosts: listSshHosts, onAdd: addNamed, onCancel: cancelAdding } }}
                 projects={groups.map((group) => ({ key: group.key, name: group.name, colorId: group.colorId }))}
                 validateFolder={folderExists}
                 onChooseFolder={chooseStartFolder}

@@ -63,6 +63,8 @@ pub enum Out {
     Error { machine: MachineId, text: String },
     /// What another machine's daemon wants shown, already cleaned and led by the machine's name.
     Notice { machine: MachineId, text: String },
+    /// Text another machine's daemon asks to be put on this computer's clipboard (it was allowed to).
+    Clipboard { machine: MachineId, text: String },
     /// Ask the machine's daemon for the pane's replay.
     WantReplay { machine: MachineId, term: TermId },
 }
@@ -110,6 +112,9 @@ impl Streams {
             // Only another machine's: this computer's requests are answered on their own connection.
             ServerMsg::Error(text) if machine != MachineId::LOCAL => {
                 out.push(Out::Error { machine, text });
+            }
+            ServerMsg::Clipboard { text, .. } if machine != MachineId::LOCAL => {
+                out.push(Out::Clipboard { machine, text });
             }
             ServerMsg::Notice(text) if machine != MachineId::LOCAL => {
                 out.push(Out::Notice { machine, text });

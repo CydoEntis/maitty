@@ -219,3 +219,19 @@ export function listenMachineNotice(onNotice: (text: string) => void): Promise<(
     if (notice.success) onNotice(notice.data.text)
   })
 }
+
+/** What a machine may be allowed to do to this computer, that the window can act on. */
+export type Grant = 'clipboard' | 'notices'
+
+/** Allow or stop one of a machine's powers; written to config.local.toml. Rejects with the host's words. */
+export async function setMachineGrant(name: string, grant: Grant, on: boolean): Promise<void> {
+  if (isTauri()) await invoke('set_machine_grant', { name, grant, on })
+}
+
+/** Calls back with text a machine that was allowed to asks to be copied (cut to a size the host allows). */
+export function listenMachineClipboard(onCopy: (machine: number, text: string) => void): Promise<() => void> {
+  return listen<unknown>('machine-clipboard', (event) => {
+    const copy = MachineErrorSchema.safeParse(event.payload)
+    if (copy.success) onCopy(copy.data.machine, copy.data.text)
+  })
+}

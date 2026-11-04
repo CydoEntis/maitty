@@ -559,6 +559,7 @@ pub fn run() {
             terminal_stream::retry_machine,
             terminal_stream::start_session_on_machine,
             terminal_stream::remove_machine,
+            terminal_stream::set_machine_grant,
             add_machine::list_ssh_hosts,
             add_machine::add_machine,
             add_machine::cancel_add_machine,

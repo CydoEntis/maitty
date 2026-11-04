@@ -8,7 +8,7 @@ import { hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/m
 import { PROJECT_COLORS } from '@/features/workspace/model/folderColor'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { errorMessage } from '@/lib/error-message'
-import type { Added, HostChoice } from '@/api/machines'
+import type { Added, Grant, HostChoice } from '@/api/machines'
 import { DisconnectedSince } from '@/features/workspace/components/times'
 import type { MachineHead } from '@/features/workspace/model/machines'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
@@ -23,6 +23,8 @@ export type MachinesInfo = {
   list: readonly MachineHead[]
   onRetry: (name: string) => void
   onRemove: (name: string) => void
+  /** Allow or stop one of a machine's powers over this computer. */
+  onGrant: (name: string, grant: Grant, on: boolean) => void
   add: {
     /** Windows has no ssh agent by default: the page says to use keys. */
     windows: boolean
@@ -788,7 +790,8 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
         const chip = head.chip
         const asking = confirming === name
         return (
-          <div key={head.key} className="mx-scard-row mx-machine-row">
+          <Fragment key={head.key}>
+          <div className="mx-scard-row mx-machine-row">
             <div className="mx-scard-text">
               <span>
                 {name}
@@ -812,6 +815,13 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
                 </>
               )}
           </div>
+          <Row label={`Copy to your clipboard`} detail={`Let ${name} put text on your clipboard.`}>
+            <Switch label={`Allow ${name} to copy to your clipboard`} checked={head.grants.clipboard} onChange={(on) => { machines.onGrant(name, 'clipboard', on) }} />
+          </Row>
+          <Row label="Notifications" detail={`Let ${name} raise notices, and tell you when its sessions need you or finish.`}>
+            <Switch label={`Allow ${name} to notify you`} checked={head.grants.notices} onChange={(on) => { machines.onGrant(name, 'notices', on) }} />
+          </Row>
+          </Fragment>
         )
       })}
     </Card>

@@ -8,7 +8,7 @@ import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from 
 const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, style: 'glass', projectColors: {} }
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
-  return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
+  return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
 }
 
 function renderSettings(section: DesktopSettingsSection, overrides: Partial<Parameters<typeof DesktopSettings>[0]> = {}) {
@@ -304,6 +304,35 @@ describe('the Machines page', () => {
     await user.click(screen.getByRole('button', { name: 'Remove box' }))
     await user.click(screen.getByRole('button', { name: 'Remove box' }))
     expect(onRemove).toHaveBeenCalledWith('box')
+  })
+})
+
+describe('what a machine may do to this computer', () => {
+  it('is off until allowed, and each switch asks for just its own power', async () => {
+    const user = userEvent.setup()
+    const onGrant = vi.fn()
+    const list = machineHeads(new Map([[1, box('connected')]])).filter((head) => head.name !== null)
+    renderSettings('machines', { machines: info({ list, onGrant }) })
+    const clipboard = screen.getByRole('switch', { name: 'Allow box to copy to your clipboard' })
+    const notices = screen.getByRole('switch', { name: 'Allow box to notify you' })
+    expect(clipboard).toHaveAttribute('aria-checked', 'false')
+    expect(notices).toHaveAttribute('aria-checked', 'false')
+    await user.click(notices)
+    expect(onGrant).toHaveBeenCalledWith('box', 'notices', true)
+    await user.click(clipboard)
+    expect(onGrant).toHaveBeenLastCalledWith('box', 'clipboard', true)
+  })
+
+  it('shows a power the machine has, and turns it off', async () => {
+    const user = userEvent.setup()
+    const onGrant = vi.fn()
+    const on = box('connected')
+    const list = machineHeads(new Map([[1, { ...on, state: { ...on.state, notices: true } }]])).filter((head) => head.name !== null)
+    renderSettings('machines', { machines: info({ list, onGrant }) })
+    const notices = screen.getByRole('switch', { name: 'Allow box to notify you' })
+    expect(notices).toHaveAttribute('aria-checked', 'true')
+    await user.click(notices)
+    expect(onGrant).toHaveBeenCalledWith('box', 'notices', false)
   })
 })
 

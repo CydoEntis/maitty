@@ -79,6 +79,8 @@ export type MachineHead = {
   down: boolean
   /** Since when, in ms since the epoch; null when the host did not say. */
   downSince: number | null
+  /** What the machine is allowed to do to this computer. */
+  grants: { clipboard: boolean; notices: boolean }
 }
 
 /** Whether a machine's sessions are shown as last seen: its line is not up and not on its first dial. */
@@ -97,8 +99,8 @@ export function machineHeads(machines: ReadonlyMap<number, RemoteMachine>): Mach
   if (machines.size === 0) return []
   const others = [...machines.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null }))
-  return [{ key: 'machine-0', name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null }, ...others]
+    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true } }))
+  return [{ key: 'machine-0', name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null, grants: { clipboard: false, notices: false } }, ...others]
 }
 
 /**

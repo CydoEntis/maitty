@@ -437,3 +437,16 @@ fn what_another_machine_wants_shown_is_given_and_this_computers_is_not() {
             .is_empty()
     );
 }
+
+#[test]
+fn what_another_machine_asks_to_copy_is_given_and_this_computers_is_not() {
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    let msg = || ServerMsg::Clipboard { term: 1, text: "ls".into() };
+    let said = streams.on_message(BOX, msg(), now);
+    assert!(matches!(
+        &said[..],
+        [Out::Clipboard { machine, text }] if *machine == BOX && text == "ls"
+    ));
+    assert!(streams.on_message(LOCAL, msg(), now).is_empty());
+}

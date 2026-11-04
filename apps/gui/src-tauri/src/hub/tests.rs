@@ -4,6 +4,7 @@
 
 use super::*;
 use maitty_machines::link::Backoff;
+use maitty_machines::machine_config::Grant;
 use maitty_machines::link_failure::{FIX_LOGIN, FIX_UPDATE};
 use maitty_test_support::{Sandbox, fake_ssh};
 use std::time::Duration;
@@ -349,6 +350,26 @@ async fn a_machines_opt_ins_are_what_its_entry_says_and_nothing_for_a_stranger()
     assert!(!handle.opts_of(MachineId(1)).sounds);
     assert_eq!(handle.opts_of(MachineId(2)), Default::default());
     assert_eq!(handle.opts_of(MachineId(9)), Default::default());
+}
+
+#[tokio::test]
+async fn a_grant_changes_what_the_hub_lets_through_at_once_and_only_for_that_machine() {
+    let sandbox = Sandbox::new();
+    let watch = Watch::new(
+        &[machine("box", &sandbox, "hang"), machine("other", &sandbox, "hang")],
+        &sandbox,
+        quick(WAIT),
+    );
+    let handle = watch.hub.handle();
+    assert_eq!(handle.id_of("BOX"), Some(MachineId(1)));
+    assert_eq!(handle.id_of("this computer"), None);
+    assert!(!handle.opts_of(MachineId(1)).clipboard);
+    assert_eq!(handle.set_grant("box", Grant::Clipboard, true), Some(MachineId(1)));
+    assert!(handle.opts_of(MachineId(1)).clipboard);
+    assert!(!handle.opts_of(MachineId(2)).clipboard);
+    handle.set_grant("box", Grant::Clipboard, false);
+    assert!(!handle.opts_of(MachineId(1)).clipboard);
+    assert_eq!(handle.set_grant("ghost", Grant::Notices, true), None);
 }
 
 #[tokio::test]

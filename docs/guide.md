@@ -598,6 +598,12 @@ its own. An Inbox row from another machine says `· on build`.
   closes. On Windows use ssh keys or an agent: password prompts work in that session but are not remembered.
   A machine whose app is missing or old is added too; its header then says `needs update` with the fix.
 
+Each machine on that page has two switches, both off until you turn them on: **Copy to your clipboard** (what
+that machine's sessions ask to copy is put on your clipboard) and **Notifications** (its notices, and a notice when
+its sessions need you or finish, each starting with `[name]`). They are written to the machine's entry in
+`config.local.toml`, as `clipboard = true` and `notices = true`. The desktop app plays no sounds, so there is no
+switch for them.
+
 A new session (**New session**, ⌘T) starts where the focused session is. On another machine it asks for a
 folder there, starting at `~`, because the folder picker is this computer's; a folder that does not exist
 opens in the machine's home folder. Files, Changes, worktrees and the other features that read a pane's files

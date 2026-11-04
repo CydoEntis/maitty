@@ -20,6 +20,7 @@ use crate::routing::{self, machine_of};
 use crate::streams::{Out, Streams};
 use maitty_desktop_client::PaneCommand;
 use maitty_machines::link::Timing;
+use maitty_machines::machine_config::Grant;
 use maitty_machines::machine_ids::MachineIds;
 use maitty_machines::{MachineDef, MachineId, Outgoing};
 use maitty_shared::protocol::{ClientMsg, Command, Snapshot};
@@ -40,6 +41,8 @@ const MACHINE_SESSIONS_EVENT: &str = "machine-sessions-changed";
 const MACHINE_REMOVED_EVENT: &str = "machine-removed";
 /// Carries what an opted-in machine wants shown: `{machine, text}`.
 const MACHINE_NOTICE_EVENT: &str = "machine-notice";
+/// Carries text an opted-in machine asks to be copied: `{machine, text}`.
+const MACHINE_CLIPBOARD_EVENT: &str = "machine-clipboard";
 const MACHINE_ERROR_EVENT: &str = "machine-error";
 
 /// The longest folder path sent to another machine.
@@ -112,6 +115,49 @@ pub async fn remove_machine(wire: tauri::State<'_, Wire>, name: String) -> Resul
         .map_err(|error| format!("Could not remove {name}: {error}"))??;
     handle.remove(&name);
     Ok(())
+}
+
+/// Allow or stop one of a machine's powers over this computer. The entry in `config.local.toml`
+/// is written first; only when that worked does the host start or stop acting on what the machine
+/// sends, and the window is told the machine's new state.
+#[tauri::command]
+pub async fn set_machine_grant(
+    app: AppHandle,
+    wire: tauri::State<'_, Wire>,
+    name: String,
+    grant: String,
+    on: bool,
+) -> Result<(), String> {
+    let handle = wire.handle()?.clone();
+    let grant = Grant::parse(&grant).ok_or_else(|| format!("{grant} is not something a machine can be allowed"))?;
+    if handle.id_of(&name).is_none() {
+        return Err(format!("{name} is not one of this computer's machines"));
+    }
+    let file = maitty_machines::local_machines::config_path().with_file_name("config.local.toml");
+    let entry = name.clone();
+    tauri::async_runtime::spawn_blocking(move || write_grant(&file, &entry, grant, on))
+        .await
+        .map_err(|error| format!("Could not change {name}: {error}"))??;
+    if let Some(machine) = handle.set_grant(&name, grant, on)
+        && let Ok(mut states) = app.state::<MachineStates>().0.lock()
+        && let Some(state) = states.get_mut(&machine.0)
+    {
+        let opts = handle.opts_of(machine);
+        (state.clipboard, state.notices, state.sounds) = (opts.clipboard, opts.notices, opts.sounds);
+        let _ = app.emit(MACHINE_STATE_EVENT, state.clone());
+    }
+    Ok(())
+}
+
+/// Write one grant of the entry named `name` in the machine file.
+fn write_grant(file: &std::path::Path, name: &str, grant: Grant, on: bool) -> Result<(), String> {
+    match maitty_machines::machine_config::set_grant(file, name, grant, on) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(format!(
+            "{name} is not in config.local.toml, so it cannot be changed here."
+        )),
+        Err(error) => Err(format!("Could not change {name}: {error:#}")),
+    }
 }
 
 /// Delete the entry named `name` from the machine file.
@@ -347,6 +393,8 @@ pub enum Reaction {
     Error { machine: MachineId, text: String },
     /// What another machine, opted in to notices, wants shown.
     Notice { machine: MachineId, text: String },
+    /// Text an opted-in machine asks to be copied.
+    Clipboard { machine: MachineId, text: String },
     /// A machine was taken out of the list.
     Removed { machine: MachineId },
     /// A machine's whole snapshot, or none when this computer's line ended.
@@ -427,6 +475,7 @@ fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
             Out::Frame(frame) => Some(Reaction::Frame(frame)),
             Out::Error { machine, text } => Some(Reaction::Error { machine, text }),
             Out::Notice { machine, text } => Some(Reaction::Notice { machine, text }),
+            Out::Clipboard { machine, text } => Some(Reaction::Clipboard { machine, text }),
             Out::Sessions { machine, snapshot } => Some(Reaction::Sessions { machine, snapshot }),
             Out::WantReplay { machine, term } => {
                 let _ = handle.send(Outgoing {
@@ -469,6 +518,15 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
             Reaction::Notice { machine, text } => {
                 let _ = app.emit(
                     MACHINE_NOTICE_EVENT,
+                    MachineError {
+                        machine: machine.0,
+                        text,
+                    },
+                );
+            }
+            Reaction::Clipboard { machine, text } => {
+                let _ = app.emit(
+                    MACHINE_CLIPBOARD_EVENT,
                     MachineError {
                         machine: machine.0,
                         text,
@@ -537,6 +595,19 @@ mod tests {
             notices: false,
             sounds: false,
         }
+    }
+
+    #[test]
+    fn a_grant_is_written_to_the_entry_and_a_missing_entry_says_so() {
+        let dir = std::env::temp_dir().join(format!("maitty-gui-grant-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("config.local.toml");
+        std::fs::write(&file, "[[machines]]\nname = 'box'\ntarget = 'box'\n").unwrap();
+        write_grant(&file, "BOX", Grant::Notices, true).unwrap();
+        assert!(std::fs::read_to_string(&file).unwrap().contains("notices = true"));
+        let missing = write_grant(&file, "ghost", Grant::Notices, true).unwrap_err();
+        assert!(missing.contains("not in config.local.toml"), "{missing}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

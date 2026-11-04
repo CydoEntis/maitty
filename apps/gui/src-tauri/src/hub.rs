@@ -14,6 +14,7 @@ use maitty_machines::link::{
     ConnectionState, LinkControl, LinkEvent, Links, Timing, configured_machines,
 };
 use maitty_machines::machine_ids::{IdCheck, MachineIds, check_daemon_id};
+use maitty_machines::machine_config::Grant;
 use maitty_machines::remote_policy::{MachineOpts, vet};
 use maitty_machines::{Dial, Machine, MachineDef, MachineId, Outgoing};
 use maitty_shared::protocol::{ClientMsg, ServerMsg, Surface};
@@ -135,6 +136,28 @@ impl HubHandle {
             .map_err(|_| NotConnected(machine))
     }
 
+    /// Turn one of a machine's grants on or off, for what it says from now on. Returns the
+    /// machine's number, or `None` when no machine has that name.
+    pub fn set_grant(&self, name: &str, grant: Grant, on: bool) -> Option<MachineId> {
+        let machine = self.id_of(name)?;
+        let mut all = lock(&self.shared.opts);
+        let opts = all.entry(machine).or_default();
+        match grant {
+            Grant::Clipboard => opts.clipboard = on,
+            Grant::Notices => opts.notices = on,
+            Grant::Sounds => opts.sounds = on,
+        }
+        Some(machine)
+    }
+
+    /// The number of the machine called `name`, in any case.
+    pub fn id_of(&self, name: &str) -> Option<MachineId> {
+        lock(&self.shared.names)
+            .iter()
+            .find(|(id, known)| **id != MachineId::LOCAL && known.eq_ignore_ascii_case(name))
+            .map(|(id, _)| *id)
+    }
+
     /// What the machine may do to this computer; nothing for one that is not known.
     pub fn opts_of(&self, machine: MachineId) -> MachineOpts {
         lock(&self.shared.opts)
@@ -246,7 +269,6 @@ pub struct Hub {
     /// The ssh program (and shim, in tests) machines added later are reached through.
     ssh: String,
     names: BTreeMap<MachineId, String>,
-    opts: BTreeMap<MachineId, MachineOpts>,
     /// Machines a different daemon answered for, with the reason. Cleared by a fresh line.
     refused: BTreeMap<MachineId, String>,
     queue: VecDeque<Update>,
@@ -283,7 +305,6 @@ impl Hub {
         opts.insert(MachineId::LOCAL, MachineOpts::LOCAL);
         let links = Links::start(machines, timing, dial);
         let names_for_hub = names.clone();
-        let shared_opts = opts.clone();
         let (outbox_tx, outbox) = mpsc::unbounded_channel();
         let (commands_tx, commands) = mpsc::unbounded_channel();
         let (local_tx, local_events) = mpsc::unbounded_channel();
@@ -303,7 +324,6 @@ impl Hub {
             ids_file,
             ssh: ssh.to_owned(),
             names: names_for_hub,
-            opts,
             refused: BTreeMap::new(),
             queue: VecDeque::new(),
             handle: HubHandle {
@@ -311,7 +331,7 @@ impl Hub {
                 commands: commands_tx,
                 shared: Arc::new(Shared {
                     names: Mutex::new(names),
-                    opts: Mutex::new(shared_opts),
+                    opts: Mutex::new(opts),
                     ..Shared::default()
                 }),
             },
@@ -378,8 +398,6 @@ impl Hub {
                     return;
                 };
                 self.names.insert(id, def.name.clone());
-                self.opts
-                    .insert(id, MachineOpts::named(std::slice::from_ref(&def), &def.name));
                 lock(&self.handle.shared.names).insert(id, def.name.clone());
                 lock(&self.handle.shared.opts).insert(id, MachineOpts::named(std::slice::from_ref(&def), &def.name));
             }
@@ -402,7 +420,6 @@ impl Hub {
                 let configured = self.names.remove(&machine).unwrap_or(name);
                 self.control.stop(machine);
                 self.connections.remove(machine);
-                self.opts.remove(&machine);
                 self.refused.remove(&machine);
                 let shared = &self.handle.shared;
                 lock(&shared.names).remove(&machine);
@@ -503,7 +520,7 @@ impl Hub {
                 }
             }
         }
-        let opts = self.opts.get(&machine).copied().unwrap_or_default();
+        let opts = self.handle.opts_of(machine);
         // A reply or an error counts only while a request of the host's is out to the machine.
         let asked = lock(&self.handle.shared.allowance)
             .entry(machine)
