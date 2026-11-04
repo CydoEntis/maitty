@@ -1155,6 +1155,8 @@ describe('desktop terminal multiplexer', () => {
     renderDesktopApp()
     const row = await screen.findByRole('button', { name: '~/a, codex, working' })
     expect(row).toHaveClass('mx-fx-working')
+    // jsdom has no WebGL 2, so the web view counts as software and Waves fall back to Sweep.
+    expect(row.querySelector('.mx-fx')).toHaveAttribute('data-style', 'sweep')
     expect(screen.getByRole('tab', { selected: true })).toHaveClass('mx-fx-working', 'mx-fx-strong')
 
     await user.keyboard('{Control>},{/Control}')

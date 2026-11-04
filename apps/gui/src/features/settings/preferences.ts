@@ -1,4 +1,6 @@
-import type { SpinnerStyle } from '@/lib/spinner-clock'
+import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
+import type { EffectStyle } from '@/lib/animation-level'
+import type { AnimationMode } from '@/lib/animation-auto'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
@@ -10,6 +12,8 @@ export type Density = 'compact' | 'comfortable' | 'spacious'
 export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spacious']
 /** How big the sidebar's and the rail's icons and tiles are. */
 export type IconSize = 'small' | 'medium' | 'large'
+/** Which working rows and tabs show the working effect: every one, only the one you are in, or none. */
+export type WorkingScope = 'all' | 'selected' | 'off'
 /** How a project's other sessions sit under its main row in the sidebar. */
 export type TrayStyle = 'names' | 'icons' | 'stacked'
 /** Which side of the window the sidebar sits on. */
@@ -72,6 +76,13 @@ export type SettingsPreferences = {
   effectWorking: boolean
   effectNeedsYou: boolean
   effectDone: boolean
+  /** Waves or Sweep for each status; the animation level can only make it cheaper. */
+  effectStyleWorking: EffectStyle
+  effectStyleNeedsYou: EffectStyle
+  effectStyleDone: EffectStyle
+  workingScope: WorkingScope
+  /** How much the status effects may move: Auto measures, the others fix the level. Reduce motion wins over all of them. */
+  animations: AnimationMode
   density: Density
   /** Text size of the sidebar's folder names and session rows, in px. */
   sidebarTextSize: number
@@ -152,6 +163,11 @@ function defaults(): SettingsPreferences {
     effectWorking: true,
     effectNeedsYou: true,
     effectDone: true,
+    effectStyleWorking: 'waves',
+    effectStyleNeedsYou: 'sweep',
+    effectStyleDone: 'sweep',
+    workingScope: 'all',
+    animations: 'auto',
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
@@ -198,7 +214,7 @@ export function readSettingsPreferences(): SettingsPreferences {
     const fallback = fresh
     return {
       accent: isAccent(preferences.accent) ? preferences.accent : fallback.accent,
-      spinner: isSpinner(preferences.spinner) ? preferences.spinner : fallback.spinner,
+      spinner: isSpinnerStyle(preferences.spinner) ? preferences.spinner : fallback.spinner,
       restoreTabs: bool(preferences.restoreTabs, fallback.restoreTabs),
       reduceMotion: bool(preferences.reduceMotion, fallback.reduceMotion),
       animateSidebarActivity: bool(preferences.animateSidebarActivity, fallback.animateSidebarActivity),
@@ -222,6 +238,11 @@ export function readSettingsPreferences(): SettingsPreferences {
       effectWorking: bool(preferences.effectWorking, fallback.effectWorking),
       effectNeedsYou: bool(preferences.effectNeedsYou, fallback.effectNeedsYou),
       effectDone: bool(preferences.effectDone, fallback.effectDone),
+      effectStyleWorking: effectStyle(preferences.effectStyleWorking, fallback.effectStyleWorking),
+      effectStyleNeedsYou: effectStyle(preferences.effectStyleNeedsYou, fallback.effectStyleNeedsYou),
+      effectStyleDone: effectStyle(preferences.effectStyleDone, fallback.effectStyleDone),
+      workingScope: preferences.workingScope === 'all' || preferences.workingScope === 'selected' || preferences.workingScope === 'off' ? preferences.workingScope : fallback.workingScope,
+      animations: isAnimationMode(preferences.animations) ? preferences.animations : fallback.animations,
       density: isDensity(preferences.density) ? preferences.density : fallback.density,
       sidebarTextSize: clampNumber(preferences.sidebarTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.sidebarTextSize),
       tabTextSize: clampNumber(preferences.tabTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.tabTextSize),
@@ -265,6 +286,14 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   return Math.min(max, Math.max(min, value))
 }
 
+function effectStyle(value: unknown, fallback: EffectStyle): EffectStyle {
+  return value === 'waves' || value === 'sweep' ? value : fallback
+}
+
+function isAnimationMode(value: unknown): value is AnimationMode {
+  return value === 'auto' || value === 'full' || value === 'light' || value === 'off'
+}
+
 function isDensity(value: unknown): value is Density {
   return value === 'compact' || value === 'comfortable' || value === 'spacious'
 }
@@ -296,10 +325,6 @@ function themeChoice(saved: Partial<Record<string, unknown>>, fallback: Settings
     darkTheme: themeOfKind(saved.darkTheme, false) ?? (migrating && !old.light ? old.name : fallback.darkTheme),
     lightTheme: themeOfKind(saved.lightTheme, true) ?? (migrating && old.light ? old.name : fallback.lightTheme),
   }
-}
-
-function isSpinner(value: unknown): value is SpinnerStyle {
-  return value === 'braille' || value === 'snake' || value === 'bars'
 }
 
 function isCursorStyle(value: unknown): value is CursorStyle {

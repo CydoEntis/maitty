@@ -1,15 +1,23 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { attachSpinner, currentGlyph, isWideSpinner, spinnerFrames } from '@/lib/spinner-clock'
+import { attachSpinner, currentGlyph, isWebSpinner, isWideSpinner, spinnerFrames, useSpinnerStyle } from '@/lib/spinner-clock'
+import { WebSpinner } from '@/components/WebSpinner'
 import { SHELL_PROCESS, type SessionStatus } from '../model/session'
 import { CLAUDE_MARK, CODEX_MARK, DEEPSEEK_MARK, GEMINI_MARK, OPENCODE_MARK } from './agentMarks'
 import { programStyle } from './programStyle'
 import { FOLDER_PATH } from './paths'
 import { useReducedMotion } from './motion'
 
-/** The working spinner. The shared clock writes each frame into the element itself, so a tick never re-renders React. */
+/** The working spinner: the Maitty TUI's text frames or a web SVG spinner, whichever was picked in Settings. */
 export function Spinner({ className = 'mx-spin', frozen = false }: { className?: string; frozen?: boolean }) {
   const reduced = useReducedMotion()
+  const style = useSpinnerStyle()
   const still = reduced || frozen
+  if (isWebSpinner(style)) return <WebSpinner kind={style} className={className} still={still} />
+  return <TextSpinner className={className} still={still} />
+}
+
+/** The shared clock writes each frame into the element itself, so a tick never re-renders React. */
+function TextSpinner({ className, still }: { className: string; still: boolean }) {
   const element = useRef<HTMLSpanElement>(null)
   useEffect(() => {
     if (still || !element.current) return

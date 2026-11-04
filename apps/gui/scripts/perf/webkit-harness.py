@@ -3,7 +3,7 @@
 WebKitWebProcess CPU. Uses a GtkOffscreenWindow so nothing is shown on screen (WebKit may treat
 the page as hidden; the script reports document.hidden so that is visible in the result).
 
-Usage: /usr/bin/python3 webkit-harness.py --scenario a|b|e [--measure 20] [--warm 5] [--exp noanim|nocursorblink|none]
+Usage: /usr/bin/python3 webkit-harness.py --scenario a|b|e|w [--measure 20] [--warm 5] [--exp noanim|nocursorblink|none]
 """
 import argparse
 import http.server
@@ -27,6 +27,7 @@ ap.add_argument('--measure', type=float, default=20)
 ap.add_argument('--warm', type=float, default=5)
 ap.add_argument('--exp', default='none')
 ap.add_argument('--visible', action='store_true', help='use a real window (only when allowed)')
+ap.add_argument('--settings', default='{}', help='JSON merged into the saved settings, e.g. {"animations":"full"}')
 ap.add_argument('--tick', type=int, default=50, help='ms between output frames; the host flushes every 12 under a steady stream')
 args = ap.parse_args()
 
@@ -35,7 +36,10 @@ SESSIONS = {
     'b': [{'id': 1, 'status': 'Working', 'stream': True}],
     'e': [{'id': 1, 'status': 'Working', 'stream': True}, {'id': 2, 'status': 'Working', 'stream': False}, {'id': 3, 'status': 'Idle', 'stream': False, 'agent': None}, {'id': 4, 'status': 'Blocked', 'stream': False}],
 }
-layout = {'tabs': [{'id': 'tab-1', 'panes': [{'id': 'pane-1', 'sessionId': 't1', 'col': 0}], 'focus': 'pane-1', 'max': None}], 'activeTabId': 'tab-1'}
+# w: several working rows and tabs at once (one streams), the worst case for a looping status effect.
+SESSIONS['w'] = [{'id': 1, 'status': 'Working', 'stream': True}] + [{'id': n, 'status': 'Working', 'stream': False} for n in range(2, 7)]
+TAB_SESSIONS = 3 if args.scenario == 'w' else 1
+layout = {'tabs': [{'id': f'tab-{n}', 'panes': [{'id': f'pane-{n}', 'sessionId': f't{n}', 'col': 0}], 'focus': f'pane-{n}', 'max': None} for n in range(1, TAB_SESSIONS + 1)], 'activeTabId': 'tab-1'}
 
 
 class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -51,7 +55,7 @@ threading.Thread(target=httpd.serve_forever, daemon=True).start()
 ucm = WebKit2.UserContentManager()
 pre = f"""
 window.__SCENARIO = {json.dumps({'sessions': SESSIONS[args.scenario], 'bytesPerSec': 20000, 'tickMs': args.tick})};
-try {{ localStorage.setItem('maitty.gui.welcomed.v1','1'); localStorage.setItem('maitty.gui.settings.v1','{{}}'); localStorage.setItem('maitty.gui.layout.v1', {json.dumps(json.dumps(layout))}); }} catch (e) {{}}
+try {{ localStorage.setItem('maitty.gui.welcomed.v1','1'); localStorage.setItem('maitty.gui.settings.v1', {json.dumps(json.dumps(json.loads(args.settings)))}); localStorage.setItem('maitty.gui.layout.v1', {json.dumps(json.dumps(layout))}); }} catch (e) {{}}
 """
 with open(os.path.join(HERE, 'mock-tauri.js')) as f:
     mock = f.read()
@@ -185,7 +189,7 @@ def step_end():
         with open(os.path.join(HERE, 'results', f'webkit-{args.scenario}-{args.exp}.json'), 'w') as f:
             json.dump(out, f, indent=1)
         Gtk.main_quit()
-    js("JSON.stringify({ snap: window.__perf.snapshot(), rafPerSec: window.__rafN / window.__perf.snapshot().seconds, hidden: document.hidden, panes: document.querySelectorAll('.mx-pane').length, rows: document.querySelectorAll('.xterm-rows > div').length, anims: document.getAnimations().map(a => a.animationName + ':' + a.playState), blinkEls: document.querySelectorAll('.xterm-cursor-blink').length, hasFocus: document.hasFocus(), active: document.activeElement && document.activeElement.className })", got)
+    js("JSON.stringify({ snap: window.__perf.snapshot(), rafPerSec: window.__rafN / window.__perf.snapshot().seconds, hidden: document.hidden, gpu: document.documentElement.dataset.gpu, fx: Array.from(document.querySelectorAll('.mx-fx')).reduce((n, e) => { n[e.dataset.style] = (n[e.dataset.style] || 0) + 1; return n }, {}), panes: document.querySelectorAll('.mx-pane').length, rows: document.querySelectorAll('.xterm-rows > div').length, anims: document.getAnimations().map(a => a.animationName + ':' + a.playState), blinkEls: document.querySelectorAll('.xterm-cursor-blink').length, hasFocus: document.hasFocus(), active: document.activeElement && document.activeElement.className })", got)
     return False
 
 

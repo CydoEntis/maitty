@@ -26,7 +26,7 @@ const DEFAULTS: SettingsPreferences = {
   scrollback: 10000, scrollSpeed: 1,
   effectWorking: true,
   effectNeedsYou: true,
-  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
+  effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
@@ -85,6 +85,22 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences()).toMatchObject({ style: 'flat', effectWorking: false, effectNeedsYou: false, effectDone: false })
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'flat', effectWorking: true }))
     expect(readSettingsPreferences()).toMatchObject({ style: 'flat', effectWorking: true, effectDone: true })
+  })
+
+  it('defaults to Waves for working and Sweep for the rest, and ignores nonsense', () => {
+    expect(readSettingsPreferences()).toMatchObject({ effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ effectStyleWorking: 'sweep', effectStyleDone: 'waves', effectStyleNeedsYou: 'glitter', workingScope: 'selected' }))
+    expect(readSettingsPreferences()).toMatchObject({ effectStyleWorking: 'sweep', effectStyleDone: 'waves', effectStyleNeedsYou: 'sweep', workingScope: 'selected' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ workingScope: 'some' }))
+    expect(readSettingsPreferences().workingScope).toBe('all')
+  })
+
+  it('defaults Animations to Auto and ignores a value it does not know', () => {
+    expect(readSettingsPreferences().animations).toBe('auto')
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ animations: 'light' }))
+    expect(readSettingsPreferences().animations).toBe('light')
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ animations: 'turbo' }))
+    expect(readSettingsPreferences().animations).toBe('auto')
   })
 
   it('reads the old style names as Flat and Glass, keeps Tiled, and falls back from nonsense', () => {

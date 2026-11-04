@@ -6,8 +6,6 @@
 @keyframes v7pulse { 0% { opacity: .9; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.7); } }
 @keyframes v14focus { from { opacity: 1; } to { opacity: 0; } }
 @keyframes v7moved { 0% { background-color: rgba(95, 212, 191, .16); } 100% { background-color: transparent; } }
-@keyframes v14sweep { from { transform: translateX(-90%); } to { transform: translateX(30%); } }
-@keyframes v14sweepdone { from { transform: translateX(-90%); } to { transform: translateX(36%); } }
 @keyframes v8tabin { from { opacity: 0; transform: translateY(-3px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes v8pane { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes v8swap { from { opacity: .35; transform: translateY(5px) scale(.985); } to { opacity: 1; transform: none; } }
@@ -130,6 +128,26 @@
    again 6 times a second. The clock writes the frame straight into the element (lib/spinner-clock.ts). */
 .mx-spin { display: inline-block; inline-size: 1ch; text-align: center; contain: layout style paint; will-change: transform; font-family: var(--mono); font-size: 12px; color: var(--accent); flex: none; }
 .mx-spin.is-wide { inline-size: 2ch; }
+/* Web spinners (components/WebSpinner.tsx): inline SVG in the text colour, 1em square, each in its own
+   paint-contained layer. Only transform and opacity move. They hold still under Reduce motion (the
+   rule near the end of this file) and while the window is hidden or in the background. */
+.mx-wspin { display: inline-block; inline-size: 1em; block-size: 1em; flex: none; contain: paint; will-change: transform; vertical-align: -.125em; }
+.mx-wspin svg { display: block; inline-size: 100%; block-size: 100%; }
+.mx-wspin[data-kind="circle"] svg { animation: mx-wspin-turn .8s linear infinite; }
+.mx-wspin[data-kind="spokes"] svg { animation: mx-wspin-turn .9s steps(8) infinite; }
+.mx-wspin-dot { transform-box: fill-box; transform-origin: center; animation: mx-wspin-dot 1s ease-in-out infinite; }
+.mx-wspin-dot:nth-child(2) { animation-delay: .16s; }
+.mx-wspin-dot:nth-child(3) { animation-delay: .32s; }
+.mx-wspin-bar { transform-box: fill-box; transform-origin: 50% 100%; animation: mx-wspin-bar .9s ease-in-out infinite; }
+.mx-wspin-bar:nth-child(2) { animation-delay: .15s; }
+.mx-wspin-bar:nth-child(3) { animation-delay: .3s; }
+.mx-wspin-ring { transform-box: fill-box; transform-origin: center; animation: mx-wspin-ping 1.3s ease-out infinite; }
+.mx-wspin.is-still svg, .mx-wspin.is-still svg * { animation: none; }
+:root[data-window="inactive"] .mx-wspin svg, :root[data-window="inactive"] .mx-wspin svg * { animation-play-state: paused; }
+@keyframes mx-wspin-turn { to { transform: rotate(360deg); } }
+@keyframes mx-wspin-dot { 0%, 100% { transform: scale(.5); opacity: .35; } 50% { transform: scale(1); opacity: 1; } }
+@keyframes mx-wspin-bar { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+@keyframes mx-wspin-ping { from { transform: scale(.35); opacity: 1; } to { transform: scale(1); opacity: 0; } }
 .mx-machine { display: flex; flex-direction: column; gap: calc(6px * var(--pad, 1)); }
 .mx-machine + .mx-machine { margin-top: 6px; }
 .mx-machine-head { display: flex; align-items: center; gap: 8px; padding: 2px 8px 0 4px; min-width: 0; }
@@ -494,17 +512,11 @@
 .mx-swatch i { height: 3px; border-radius: 2px; display: block; }
 .mx-theme-name { font-size: 12.5px; font-weight: 500; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-theme-sub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-spinner-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 12px 12px; }
-.mx-spinner-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px; background: rgba(255, 255, 255, .02); box-shadow: inset 0 0 0 1px var(--pane-line); transition: background-color .16s ease, box-shadow .16s ease, transform .12s ease; }
-.mx-spinner-card:active { transform: scale(.98); }
-.mx-spinner-card[aria-checked="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); }
-.mx-spinner-glyph { width: 36px; height: 36px; flex: none; border-radius: 9px; background: var(--term); box-shadow: inset 0 0 0 1px var(--pane-line); display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 19px; line-height: 1; color: var(--accent); }
-.mx-spinner-sample { display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 9px; border-radius: 7px; background: var(--term); box-shadow: inset 0 0 0 1px var(--pane-line); font-family: var(--mono); font-size: 11.5px; color: var(--fg2); white-space: nowrap; overflow: hidden; }
 .mx-effects { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 14px; border-top: 1px solid var(--pane-line); transition: opacity .2s ease; }
 .mx-effects.is-locked { opacity: .45; }
 .mx-effect-row { display: flex; align-items: center; gap: 12px; min-height: 36px; }
 .mx-effect-chip { width: 84px; height: 26px; flex: none; border-radius: 7px; background-color: var(--raise); background-repeat: no-repeat; box-shadow: inset 0 0 0 1px var(--pane-line); display: flex; align-items: center; gap: 6px; padding: 0 8px; font-size: 11.5px; }
-.mx-effect-chip span { color: var(--fg2); }
+.mx-effect-chip > span:not(.mx-fx) { color: var(--fg2); }
 .mx-hotkey { font-family: var(--mono); font-size: 11.5px; color: var(--fg); padding: 3px 8px; border-radius: 6px; background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); white-space: pre; }
 .mx-hotkey-row { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 16px; border-top: 1px solid var(--pane-line); font-size: 13px; }
 .mx-hotkey-row > span:first-child { flex: 1; color: var(--fg2); }
@@ -520,16 +532,32 @@
 .mx-menu-hint { margin-left: auto; padding-left: 18px; font-family: var(--mono); font-size: 11px; color: var(--dim); }
 .mx-menu-sep { height: 1px; margin: 4px 2px; background: var(--line2); }
 
-/* Status effects on rows and tabs, after the row and tab rules so their animation wins. The app
-   adds these classes only for effects that are switched on (see EffectsContext). Each plays once when
-   the status appears and then rests: the signal is the change, and an endless animation keeps a
-   software-rendered web view repainting the card (docs/PERFORMANCE.md). */
+/* Status effects on rows and tabs, after the row and tab rules so their layer sits behind the
+   content. The app renders a `.mx-fx` child only for effects that are switched on and allowed (see
+   EffectsContext, StatusEffect). The child is clipped to its host, paints once and then only moves
+   with `transform` on its own layer: never box-shadow, filter or background-position, which would
+   repaint the card every frame (docs/PERFORMANCE.md).
+   Sweep crosses once when the status appears and rests. Waves drift forever, which is the one
+   deliberate loop; they stop with the window (data-window) and the app drops them to Sweep where
+   frames run slow (lib/animation-level.ts). */
 .mx-fx-working, .mx-fx-needs, .mx-fx-done { position: relative; overflow: hidden; isolation: isolate; }
-.mx-fx-working::after, .mx-fx-needs::after, .mx-fx-done::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: -1; pointer-events: none; }
-.mx-fx-working::after { left: 0; width: 250%; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--accent) calc(9% * var(--fx-k, .6)), transparent) 44%, color-mix(in srgb, var(--accent) calc(18% * var(--fx-k, .6)), transparent) 50%, color-mix(in srgb, var(--accent) calc(9% * var(--fx-k, .6)), transparent) 56%, transparent 70%); transform: translateX(-90%); animation: v14sweep 2.6s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
-.mx-fx-needs::after { top: -50%; bottom: -50%; left: -30%; width: 120%; background: radial-gradient(closest-side, color-mix(in srgb, var(--warn) calc(22% * var(--fx-k, .6)), transparent), transparent); opacity: .55; transform: scale(.8); animation: v14breathe 2.4s ease-in-out 3; }
-.mx-fx-done::after { left: 0; width: 250%; background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--ok) calc(16% * var(--fx-k, .6)), transparent) 50%, transparent 65%); transform: translateX(-90%); animation: v14sweepdone 1.4s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
+.mx-fx { position: absolute; inset: 0; z-index: -1; overflow: hidden; contain: paint; pointer-events: none; border-radius: inherit; }
+.mx-fx[data-status="working"] { color: var(--accent); }
+.mx-fx[data-status="needs"] { color: var(--warn); }
+.mx-fx[data-status="done"] { color: var(--ok); }
 .mx-fx-strong { --fx-k: 1; }
+.mx-fx-band { position: absolute; top: 0; bottom: 0; left: 0; width: 30%; will-change: transform; transform: translate3d(-110%, 0, 0); background: linear-gradient(90deg, transparent, color-mix(in srgb, currentColor calc(20% * var(--fx-k, .6)), transparent) 50%, transparent); animation: mx-fx-sweep 1.4s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
+.mx-fx-wave { position: absolute; top: 0; bottom: 0; left: 0; width: 200%; will-change: transform; animation: mx-fx-drift 18s linear infinite; }
+.mx-fx-wave.is-reverse { animation-duration: 28s; animation-direction: reverse; }
+.mx-fx-wave svg { display: block; width: 100%; height: 100%; }
+.mx-fx-wave path { fill: currentColor; fill-opacity: calc(.11 * var(--fx-k, .6)); }
+.mx-fx-wave.is-reverse path { fill-opacity: calc(.08 * var(--fx-k, .6)); }
+:root[data-window="inactive"] .mx-fx-wave { animation-play-state: paused; }
+@keyframes mx-fx-sweep { from { transform: translate3d(-110%, 0, 0); } to { transform: translate3d(330%, 0, 0); } }
+@keyframes mx-fx-drift { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-50%, 0, 0); } }
+/* The Settings preview repeats the one-pass sweep so there is something to see. */
+.mx-effect-chip .mx-fx-band { animation: mx-fx-sweep-preview 3.2s cubic-bezier(.4, 0, .2, 1) infinite; }
+@keyframes mx-fx-sweep-preview { 0% { transform: translate3d(-110%, 0, 0); } 45%, 100% { transform: translate3d(330%, 0, 0); } }
 
 
 /* Reduce motion (the setting or the system's) stops slides, lifts, pulses and sweeps; spinners

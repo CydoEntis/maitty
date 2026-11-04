@@ -440,15 +440,39 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Colours follow the theme.** Agent tiles, badges and the folder text are
   expressions over the active theme's tokens (`--accent`, `--ansi-*`, `--warn`, `--danger`,
   `--on-accent`), never fixed hex values, so switching theme recolours all of them.
-- **Status effects.** Working rows and tabs show one slow teal sweep as work starts, Needs you an
-  amber glow behind the icon that breathes three times and then rests, Done one green sweep. The
-  needs-you badge and the Inbox count pop once with a ring (.6s) and the update dot once (.7s), as `transform`
-  and `opacity` on a pseudo-element. Nothing loops, the terminal caret is steady (blinking is Settings › Text ›
-  Blink, xterm's own option, off by default), and nothing animates `box-shadow`, `filter` or `backdrop-filter`: an endless animation keeps a software-rendered web view
-  repainting the card for as long as the state lasts ([PERFORMANCE](PERFORMANCE.md)). Each has
-  its own switch; Reduce motion (the setting or the system's) and a disconnected daemon stop all
-  of them, with every other animation. The working spinner steps every 160 ms and holds while the
-  window is in the background.
+- **Status effects.** Settings › Appearance › Motion has, for Working, Needs you and Done, an on/off switch, a
+  **Waves / Sweep** choice and a live preview chip clipped to the chip. **Waves** are two layers of soft sine
+  bands (SVG paths in the status colour at low alpha) that drift at different speeds and in opposite directions
+  (a 200%-wide layer translating -50% over 18 s and 28 s, linear). It is the default for Working and the one
+  deliberate loop in the window; it stops while the window is hidden or in the background (`data-window` on
+  `<html>`). **Sweep** is one soft band that crosses once in 1.4 s when the status appears and then rests; the
+  default for Needs you and Done. Both are an absolutely positioned `.mx-fx` child of the row or tab
+  (`StatusEffect`), `overflow: hidden; contain: paint`, with `will-change: transform` on the moving layers; only
+  `transform` (`translate3d`) animates, never `box-shadow`, `filter` or `background-position`. A **Working
+  effect** setting (All / Selected / Off) limits which working rows and tabs animate; Selected means only the
+  one you are in. A style is capped by the animation level (`lib/animation-level.ts`), set by **Animations**
+  (Settings › Appearance › Motion, `animations`): **Auto** (default) starts at Waves with WebGL 2 and at Sweep
+  without it (`data-gpu="software"`), then samples animation-frame times for 3 s starting 2 s after launch and
+  again each time Waves begin to run (`lib/frame-monitor.ts`, `useAdaptiveAnimations`); if a quarter of the
+  frames take over 40 ms it steps down one level (Waves, Sweep, none) and never steps up within a run, and the
+  monitor stops itself after each verdict. **Full** always allows Waves, **Light** only Sweep, **Off** none.
+  Settings › Performance says what Auto chose and why (`describeAnimations`). Reduce motion (the setting or the
+  system's) and a disconnected daemon remove every layer, and a fixed choice is never measured. The needs-you badge and the Inbox count pop once with a ring (.6s) and
+  the update dot once (.7s), as `transform` and `opacity` on a pseudo-element. The terminal caret is steady
+  (blinking is Settings › Text › Blink, xterm's own option, off by default), and nothing animates `box-shadow`,
+  `filter` or `backdrop-filter` ([PERFORMANCE](PERFORMANCE.md)). The working spinner steps every 160 ms and
+  holds while the window is in the background.
+- **Working spinner** (Settings › Appearance › Theme, `spinner`) is a dropdown row under the dark and light theme:
+  a 220x40 button with a live preview tile, the name, its source ("From the Maitty TUI" or "Web icon") and a
+  chevron. The list is the Radix dropdown menu (`SpinnerPicker`, 260px wide, at most 340px tall, flipping upward
+  when there is no room) in two groups, **Maitty TUI** (Braille, Snake, Bars) and **Web** (Circle, Dots,
+  Equalizer, Spokes, Ping), each with a live preview and the picked one ticked. TUI spinners keep the TUI's exact
+  frame strings, stepped by the shared clock. Web spinners are inline SVG in the text colour, 1em square
+  (`WebSpinner`), each in its own `display: inline-block; contain: paint; will-change: transform` span, moved by
+  CSS with `transform` and `opacity` only: Circle rotates .8s, Dots scale and fade 1s staggered .16s, Equalizer
+  scales 3 bars .9s staggered .15s, Spokes step eight times in .9s, Ping scales a ring and fades it 1.3s. They
+  hold still under Reduce motion and pause while the window is in the background. Text-only places (a hover
+  card) show the Braille frames while a web spinner is picked.
 - **Process icons** are generic tiles, never a product's mark: `>_` shell, `✻` codex, `rs` cargo.
 - **Themes** are Midnight (default), Abyss, Paper and Day (a cool light theme), themes generated from six
   inputs (`bg fg accent mag blue green` and a light flag) by Oklab mixing, and **High Contrast** (pure

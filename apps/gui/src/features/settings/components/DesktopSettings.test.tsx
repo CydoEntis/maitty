@@ -6,7 +6,7 @@ import type { SettingsPreferences } from '../preferences'
 import { machineHeads, type RemoteMachine } from '@/features/workspace/model/machines'
 import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from './DesktopSettings'
 
-const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
+const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
   return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
@@ -127,15 +127,84 @@ describe('desktop settings', () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, scrollback: 50000 })
   })
 
-  it('picks a working spinner from cards showing the TUI frames', async () => {
+  it('picks a working spinner from a dropdown of TUI and web spinners', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('appearance')
-    const spinners = screen.getByRole('radiogroup', { name: 'Working spinner' })
-    expect(within(spinners).getByRole('radio', { name: 'Braille' })).toHaveAttribute('aria-checked', 'true')
-    expect(spinners).toHaveTextContent('10 frames · 160 ms')
-    expect(spinners).toHaveTextContent('8 frames · 160 ms')
-    await user.click(within(spinners).getByRole('radio', { name: 'Snake' }))
-    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, spinner: 'snake' })
+    const button = screen.getByRole('button', { name: 'Working spinner' })
+    expect(button).toHaveTextContent('Braille')
+    expect(button).toHaveTextContent('From the Maitty TUI')
+
+    await user.click(button)
+    const list = await screen.findByRole('menu', { name: 'Working spinner' })
+    const choices = within(list).getAllByRole('menuitemradio')
+    // The preview glyph is Braille text inside the item; the name is what is left.
+    expect(choices.map((choice) => choice.textContent.replace(/[\u2800-\u28FF]/g, ''))).toEqual(['Braille', 'Snake', 'Bars', 'Circle', 'Dots', 'Equalizer', 'Spokes', 'Ping'])
+    expect(list).toHaveTextContent('Maitty TUI')
+    expect(list).toHaveTextContent('Web')
+    expect(within(list).getByRole('menuitemradio', { name: 'Braille' })).toHaveAttribute('aria-checked', 'true')
+    expect(list.querySelectorAll('.mx-wspin')).toHaveLength(5)
+
+    await user.click(within(list).getByRole('menuitemradio', { name: 'Circle' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, spinner: 'circle' })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('names a web spinner as a web icon, and closes the list with Esc without closing Settings', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    renderSettings('appearance', { preferences: { ...PREFS, spinner: 'ping' }, onClose })
+    const button = screen.getByRole('button', { name: 'Working spinner' })
+    expect(button).toHaveTextContent('Ping')
+    expect(button).toHaveTextContent('Web icon')
+
+    await user.click(button)
+    await screen.findByRole('menu', { name: 'Working spinner' })
+    await user.keyboard('{Escape}')
+
+    await waitFor(() => { expect(screen.queryByRole('menu')).toBeNull() })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('picks Waves or Sweep for each status and a scope for the working effect', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderSettings('appearance')
+    const working = screen.getByRole('radiogroup', { name: 'Working style' })
+    expect(within(working).getByRole('radio', { name: 'Waves' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(screen.getByRole('radiogroup', { name: 'Done style' })).getByRole('radio', { name: 'Sweep' })).toHaveAttribute('aria-checked', 'true')
+
+    await user.click(within(working).getByRole('radio', { name: 'Sweep' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, effectStyleWorking: 'sweep' })
+    await user.click(within(screen.getByRole('radiogroup', { name: 'Needs you style' })).getByRole('radio', { name: 'Waves' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, effectStyleNeedsYou: 'waves' })
+    await user.click(within(screen.getByRole('radiogroup', { name: 'Working effect' })).getByRole('radio', { name: 'Selected' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, workingScope: 'selected' })
+  })
+
+  it('picks how much the animations may move, with Auto as the default', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderSettings('appearance')
+    const animations = screen.getByRole('radiogroup', { name: 'Animations' })
+    expect(within(animations).getAllByRole('radio').map((radio) => radio.textContent)).toEqual(['Auto', 'Full', 'Light', 'Off'])
+    expect(within(animations).getByRole('radio', { name: 'Auto' })).toHaveAttribute('aria-checked', 'true')
+
+    await user.click(within(animations).getByRole('radio', { name: 'Light' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, animations: 'light' })
+  })
+
+  it('says on the Performance page what Auto chose and why', () => {
+    renderSettings('performance')
+
+    // jsdom has no WebGL 2, so the web view counts as software rendering.
+    expect(screen.getByText('Auto: Software rendering detected, using Sweep')).toBeInTheDocument()
+  })
+
+  it('clips a live preview to each status chip', () => {
+    renderSettings('appearance')
+    const chips = document.querySelectorAll('.mx-effect-chip')
+
+    expect(chips).toHaveLength(3)
+    expect(chips[0]?.querySelectorAll('.mx-fx-wave')).toHaveLength(2)
+    expect(chips[1]?.querySelector('.mx-fx-band')).not.toBeNull()
   })
 
   it('picks a dark and a light theme separately, from searchable dropdowns that list the one in use first', async () => {
