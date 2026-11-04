@@ -451,6 +451,37 @@ async fn a_refused_machine_is_let_in_once_it_is_removed_and_added_again() {
 }
 
 #[tokio::test]
+async fn a_computer_without_ssh_says_so_instead_of_hanging() {
+    let sandbox = Sandbox::new();
+    let missing = "maitty-no-such-ssh-program";
+    let mut watch = Watch {
+        hub: Hub::start(
+            &[MachineDef {
+                name: "box".into(),
+                target: "box".into(),
+                ..MachineDef::default()
+            }],
+            missing,
+            ids_file(&sandbox),
+            quick(WAIT),
+            None,
+        ),
+        states: Vec::new(),
+        msgs: Vec::new(),
+        up: Vec::new(),
+        ended: Vec::new(),
+        removed: Vec::new(),
+    };
+    watch
+        .until("unreachable", |w| w.is(BOX, "unreachable"))
+        .await;
+    let Some(ConnectionState::Unreachable { why, .. }) = watch.state_of(BOX) else {
+        panic!("{:?}", watch.state_of(BOX));
+    };
+    assert!(why.contains("is OpenSSH installed?"), "{why}");
+}
+
+#[tokio::test]
 async fn with_no_machine_nothing_starts() {
     let sandbox = Sandbox::new();
     let hub = Hub::start(&[], &shim(), ids_file(&sandbox), quick(WAIT), None);
