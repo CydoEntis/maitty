@@ -8,7 +8,7 @@ import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from 
 const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, style: 'glass', projectColors: {} }
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
-  return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
+  return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
 }
 
 function renderSettings(section: DesktopSettingsSection, overrides: Partial<Parameters<typeof DesktopSettings>[0]> = {}) {
@@ -284,6 +284,20 @@ describe('the Machines page', () => {
     expect(screen.getByText(/refused/)).toBeInTheDocument()
     expect(screen.getByText(why)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Remove box' })).toBeEnabled()
+  })
+
+  it('offers to copy the update command, and never runs it', async () => {
+    const user = userEvent.setup()
+    const onCopyCommand = vi.fn()
+    renderSettings('machines', { machines: info({ list: others('needs-update', 'run `maitty machine update box --install` (or set `remote_cmd` to its path), then retry'), onCopyCommand }) })
+    expect(screen.getByText('maitty machine update box --install')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Copy the update command for box' }))
+    expect(onCopyCommand).toHaveBeenCalledWith('maitty machine update box --install')
+  })
+
+  it('has no command to copy for a machine that needs nothing installed', () => {
+    renderSettings('machines', { machines: info({ list: others('unreachable', 'no answer') }) })
+    expect(screen.queryByRole('button', { name: /Copy the update command/ })).toBeNull()
   })
 
   it('retries a machine that is down, and has nothing to retry on one that is up', async () => {

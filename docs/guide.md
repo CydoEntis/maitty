@@ -598,6 +598,10 @@ its own. An Inbox row from another machine says `· on build`.
   closes. On Windows use ssh keys or an agent: password prompts work in that session but are not remembered.
   A machine whose app is missing or old is added too; its header then says `needs update` with the fix.
 
+A machine that needs an update or no app at all says `needs update`, with the exact command to run (for example
+`maitty machine update build --install`) and a **Copy command** button. The desktop app never installs or restarts
+anything on a machine: you run the command in a terminal.
+
 Each machine on that page has two switches, both off until you turn them on: **Copy to your clipboard** (what
 that machine's sessions ask to copy is put on your clipboard) and **Notifications** (its notices, and a notice when
 its sessions need you or finish, each starting with `[name]`). They are written to the machine's entry in

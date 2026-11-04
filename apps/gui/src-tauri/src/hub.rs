@@ -565,11 +565,17 @@ pub struct MachineState {
     pub sounds: bool,
 }
 
+/// A fix text is one constant for every machine, with `<name>` where the machine goes: the window
+/// is given the command it can run.
+fn fix_for(why: &str, name: &str) -> String {
+    why.replace("<name>", name)
+}
+
 pub fn describe(machine: MachineId, name: &str, state: &ConnectionState) -> MachineState {
     let (why, attempt) = match state {
         ConnectionState::NeedsLogin { why }
         | ConnectionState::NeedsUpdate { why }
-        | ConnectionState::Unreachable { why, .. } => (Some(why.clone()), None),
+        | ConnectionState::Unreachable { why, .. } => (Some(fix_for(why, name)), None),
         ConnectionState::Reconnecting { attempt, .. } => (None, Some(*attempt)),
         ConnectionState::Connecting | ConnectionState::Connected => (None, None),
     };

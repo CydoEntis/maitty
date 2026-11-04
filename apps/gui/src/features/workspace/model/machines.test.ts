@@ -3,7 +3,7 @@ import { conversationsFromSnapshot } from '@/api/daemon'
 import { forgetMachines, parseSessionId, registerMachine, type MachineKind, type MachineState } from '@/api/machines'
 import type { Conversation } from '@/data/preview'
 import type { Layout } from './layout'
-import { idsOfMachinesNotHeard, machineChip, machineHeads, remoteTargetOf, remoteTerminals, type RemoteMachine } from './machines'
+import { idsOfMachinesNotHeard, machineChip, machineHeads, remoteTargetOf, remoteTerminals, updateCommandOf, type RemoteMachine } from './machines'
 import { groupSessions, toSessionView } from './session'
 
 afterEach(() => { forgetMachines() })
@@ -203,5 +203,15 @@ describe('where a new session goes', () => {
     expect(remoteTargetOf({ machine: 2, machineName: 'build' })).toEqual({ machine: 2, name: 'build' })
     expect(remoteTargetOf({ machine: 0, machineName: null })).toBeNull()
     expect(remoteTargetOf(undefined)).toBeNull()
+  })
+})
+
+describe('the command that fixes a machine that needs an update', () => {
+  it('is the one the fix text names, for a machine that needs an update only', () => {
+    const fix = 'run `maitty machine update build`, then retry'
+    expect(updateCommandOf({ ...state(1, 'build', 'needs-update'), why: fix })).toBe('maitty machine update build')
+    expect(updateCommandOf({ ...state(1, 'build', 'needs-update'), why: 'run `maitty machine update build --install` (or set `remote_cmd` to its path), then retry' })).toBe('maitty machine update build --install')
+    expect(updateCommandOf({ ...state(1, 'build', 'unreachable'), why: fix })).toBeNull()
+    expect(updateCommandOf(state(1, 'build', 'needs-update'))).toBeNull()
   })
 })

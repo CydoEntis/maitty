@@ -197,6 +197,20 @@ async fn a_failed_login_needs_login_with_the_fix_and_the_retries_are_quiet() {
     assert_eq!(watch.kinds(BOX), ["connecting", "needs-login"]);
 }
 
+#[test]
+fn a_fix_names_the_machine_so_the_command_can_be_run_as_it_stands() {
+    let told = describe(
+        MachineId(2),
+        "build",
+        &ConnectionState::NeedsUpdate {
+            why: maitty_machines::link_failure::FIX_INSTALL.into(),
+        },
+    );
+    let why = told.why.expect("a fix");
+    assert!(why.contains("`maitty machine update build --install`"), "{why}");
+    assert!(!why.contains("<name>"), "{why}");
+}
+
 #[tokio::test]
 async fn a_daemon_of_another_version_needs_an_update_with_the_fix() {
     let sandbox = Sandbox::new();

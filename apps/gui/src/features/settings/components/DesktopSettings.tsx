@@ -25,6 +25,8 @@ export type MachinesInfo = {
   onRemove: (name: string) => void
   /** Allow or stop one of a machine's powers over this computer. */
   onGrant: (name: string, grant: Grant, on: boolean) => void
+  /** Puts a command on the clipboard to run in a terminal; the app never runs it on a machine. */
+  onCopyCommand: (command: string) => void
   add: {
     /** Windows has no ssh agent by default: the page says to use keys. */
     windows: boolean
@@ -799,6 +801,7 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
               </span>
               {head.down && <span><DisconnectedSince at={head.downSince} /></span>}
               {head.why !== null && head.chip?.tone === 'bad' && <span className="mx-machine-fix">{head.why}</span>}
+              {head.updateCommand !== null && <span className="mx-machine-fix mono">{head.updateCommand}</span>}
               {asking && <span role="alert">Removes {name} from this list. Its sessions keep running on {name}.</span>}
             </div>
             {asking
@@ -810,6 +813,7 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
               )
               : (
                 <>
+                  {head.updateCommand !== null && <button type="button" className="mx-scard-button" aria-label={`Copy the update command for ${name}`} onClick={() => { if (head.updateCommand !== null) machines.onCopyCommand(head.updateCommand) }}>Copy command</button>}
                   <button type="button" className="mx-scard-button" disabled={chip?.word === 'connected'} aria-label={`Retry ${name}`} onClick={() => { machines.onRetry(name) }}>Retry</button>
                   <button type="button" className="mx-scard-button" aria-label={`Remove ${name}`} onClick={() => { setConfirming(name) }}>Remove</button>
                 </>

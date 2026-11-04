@@ -81,6 +81,16 @@ export type MachineHead = {
   downSince: number | null
   /** What the machine is allowed to do to this computer. */
   grants: { clipboard: boolean; notices: boolean }
+  /** The command that brings the app on a machine that needs it up to date, to copy; null when none is needed. */
+  updateCommand: string | null
+}
+
+const UPDATE_COMMAND = /`(maitty machine update [^`]+)`/
+
+/** The command a needs-update fix names, as the host wrote it (the machine's name is in it). */
+export function updateCommandOf(state: MachineState): string | null {
+  if (state.state !== 'needs-update') return null
+  return UPDATE_COMMAND.exec(state.why ?? '')?.[1] ?? null
 }
 
 /** Whether a machine's sessions are shown as last seen: its line is not up and not on its first dial. */
@@ -99,8 +109,8 @@ export function machineHeads(machines: ReadonlyMap<number, RemoteMachine>): Mach
   if (machines.size === 0) return []
   const others = [...machines.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true } }))
-  return [{ key: 'machine-0', name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null, grants: { clipboard: false, notices: false } }, ...others]
+    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null, grants: { clipboard: machine.state.clipboard === true, notices: machine.state.notices === true }, updateCommand: updateCommandOf(machine.state) }))
+  return [{ key: 'machine-0', name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null, grants: { clipboard: false, notices: false }, updateCommand: null }, ...others]
 }
 
 /**

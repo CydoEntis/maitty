@@ -497,6 +497,12 @@ export function DesktopApp() {
   const grantNamed = useCallback((name: string, grant: Grant, on: boolean) => {
     setMachineGrant(name, grant, on).catch((error: unknown) => { toast.error(errorMessage(error, `Could not change ${name}`)) })
   }, [])
+  const copyCommand = useCallback((command: string) => {
+    navigator.clipboard.writeText(command).then(
+      () => { toast.message('Copied. Run it in a terminal on this computer.') },
+      (error: unknown) => { toast.error(errorMessage(error, 'Could not copy the command')) },
+    )
+  }, [])
   const cancelAdding = useCallback(() => {
     cancelAddMachine().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not cancel')) })
   }, [])
@@ -1603,7 +1609,7 @@ export function DesktopApp() {
                 onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}
                 mac={mac}
                 daemon={{ online, sessionCount: sessions.length }}
-                machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed, onGrant: grantNamed, add: { windows: navigator.userAgent.includes('Windows'), loadHosts: listSshHosts, onAdd: addNamed, onCancel: cancelAdding } }}
+                machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed, onGrant: grantNamed, onCopyCommand: copyCommand, add: { windows: navigator.userAgent.includes('Windows'), loadHosts: listSshHosts, onAdd: addNamed, onCancel: cancelAdding } }}
                 projects={groups.map((group) => ({ key: group.key, name: group.name, colorId: group.colorId }))}
                 validateFolder={folderExists}
                 onChooseFolder={chooseStartFolder}
