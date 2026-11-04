@@ -281,3 +281,13 @@ xterm's `minimumContrastRatio` should also apply on dark themes.
 The code now uses warn #8F5400 and danger #B8362C for generated light themes (the handoff says
 #9A5B00 and #C0392F) and applies xterm `minimumContrastRatio` 4.5 on light themes. Update
 `GLASS_AND_TILED.md` section 3 when the design is next revised.
+
+## 18. Decide how conversation history treats secrets (spike, `daemon`, `docs`)
+
+Found building G22: the history now stores the full input of a tool call (bounded to 64 KiB, escapes
+stripped). The history has never redacted secrets, so a Claude `Write` of a `.env` file, or a command
+that echoes a token, is now readable by any machine or client with a read grant, and lands in the
+private history cache when it is on. `docs/SECURITY.md` says so plainly. Decide: redact by pattern
+(keys, tokens, `.env` content), omit input for sensitive paths, or accept and document. Also confirm
+against a live Claude CLI that `can_use_tool` carries `tool_use_id` (the fake CLI does; the code falls
+back to the request id). Blocks nothing, but decide before the chat view ships widely.
