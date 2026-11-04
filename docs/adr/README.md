@@ -64,5 +64,5 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0044](0044-chat-and-terminal-are-separate-sessions.md) | Chat and terminal are separate sessions, chosen when one starts | Accepted |
 | [0045](0045-each-session-belongs-to-one-app.md) | Each session belongs to one app: the terminal app or the desktop app | Accepted, supersedes 0044 |
 | [0046](0046-desktop-app-is-a-terminal-multiplexer.md) | The desktop app is a terminal multiplexer: plain shells, no chat | Accepted, supersedes 0044's chat kind |
-| [0047](0047-multiple-machines.md) | One terminal app, several machines | Accepted |
-| [0048](0048-machines-in-the-desktop-app.md) | Machines in the desktop app, through one shared crate | Proposed |
+| [0047](0047-multiple-machines.md) | One terminal app, several machines | Accepted, amended by 0048 |
+| [0048](0048-machines-in-the-desktop-app.md) | Machines in the desktop app, through one shared crate | Accepted |

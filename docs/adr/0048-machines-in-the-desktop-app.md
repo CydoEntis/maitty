@@ -1,6 +1,6 @@
 # 0048. Machines in the desktop app, through one shared crate
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-03
 - **Amends:** [0047](0047-multiple-machines.md) (decision 13: the connection code leaves the
   terminal client now that a second consumer exists)
