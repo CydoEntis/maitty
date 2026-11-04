@@ -8,6 +8,7 @@ use super::screen::machines::{MachineNotice, MachineStep, MachinesView, add_rows
 use super::*;
 use crate::client::link::ConnectionState;
 use crate::client::machine_config;
+use crate::client::machine_ids;
 use crate::link_failure::FailureClass;
 use crate::machine_probe::{self, Probe};
 use maitty_settings::config::MachineDef;
@@ -397,7 +398,7 @@ impl App {
             self.machine_forgotten(id);
         }
         if self.machine_ids.forget(&def.name) {
-            self.machine_ids.save();
+            machine_ids::save(&self.machine_ids);
         }
         self.screen_sync();
         self.dirty = true;

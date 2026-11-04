@@ -329,7 +329,7 @@ for a machine that is down is dropped, never queued and replayed.
 
 A remote daemon is someone else's computer, so everything it sends is untrusted: it can forge
 status, clipboard writes, toasts and prompts. Two rules hold for every message from a machine
-that is not this one (`client/remote_policy.rs`, `client/remote_snapshot.rs`):
+that is not this one (`remote_policy.rs`, `remote_snapshot.rs` in `maitty-machines`):
 
 - **Clean on ingest.** A `State`, and the panes of a `TermsChanged`, are made safe before they are kept: every string loses control
   characters (escape sequences included), hidden and direction-changing characters and line

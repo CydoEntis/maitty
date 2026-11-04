@@ -563,7 +563,7 @@ Code: `client/screen/machine_group.rs` (header, notes, grey), `side.rs` (`Line::
 ## Project-specific: Machines dialog
 
 Code: `client/screen/machines.rs` (the view, its keys and its drawing), `client/machine_flow.rs` (what a
-choice does), `client/machine_config.rs` (the `[[machines]]` entry in `config.local.toml`),
+choice does), `client/machine_config.rs` (where `config.local.toml` is; the `[[machines]]` entry edits are in `maitty-machines`),
 `maitty-core/src/machine_probe.rs` (the look at a machine). Opened by leader `w` or the command palette
 (`Machines`); `Mode::Machines`.
 

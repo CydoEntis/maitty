@@ -24,8 +24,12 @@ mod motion;
 mod overlap;
 mod pick;
 mod recipes;
-mod remote_policy;
-pub(crate) mod remote_snapshot;
+use maitty_machines::remote_policy;
+#[cfg(test)]
+mod remote_policy_tests;
+pub(crate) use maitty_machines::remote_snapshot;
+#[cfg(test)]
+mod remote_snapshot_tests;
 mod render;
 pub mod restart_prompt;
 mod routing;
@@ -798,7 +802,7 @@ impl App {
             right_down: None,
             snap: Snapshot::default(),
             remotes: Default::default(),
-            machine_ids: machine_ids::MachineIds::load(),
+            machine_ids: machine_ids::load(),
             links: Default::default(),
             machine_flow: Default::default(),
             unsent_input: Default::default(),
@@ -2024,9 +2028,9 @@ mod cli_machine_tests;
 #[cfg(test)]
 mod doctor_machine_tests;
 #[cfg(test)]
-mod mcp_machine_tests;
-#[cfg(test)]
 mod machine_update_tests;
+#[cfg(test)]
+mod mcp_machine_tests;
 #[cfg(test)]
 mod remote_status_tests;
 #[cfg(test)]
