@@ -8,8 +8,6 @@ export type PaletteItem = {
   kind: PaletteKind
   /** The keys that do the same thing, written as the platform does. */
   shortcut?: string
-  /** A project colour dot, as a CSS colour. */
-  dot?: string
   /** Shown instead of the kind, such as "needs you". */
   badge?: string
   /** Themes only appear once something is typed. */

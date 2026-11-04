@@ -52,7 +52,6 @@ export function CommandPalette({ items, onClose }: { items: readonly PaletteItem
         <div ref={list} id="mx-palette-list" role="listbox" aria-label="Results" className="mx-palette-list">
           {results.map((item, index) => (
             <div key={item.id} role="option" aria-selected={index === active} className={`mx-palette-row${index === active ? ' is-selected' : ''}`} onMouseMove={() => { setSelected(index) }} onClick={() => { run(item) }}>
-              {item.dot && <span className="mx-palette-dot" style={{ background: item.dot }} aria-hidden="true" />}
               <span className="mx-palette-label">{item.label}</span>
               {item.detail && <span className="mx-palette-detail">{item.detail}</span>}
               <span className="mx-spacer" />

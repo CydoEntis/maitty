@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { attachSpinner, currentGlyph, isWideSpinner, spinnerFrames } from '@/lib/spinner-clock'
 import { SHELL_PROCESS, type SessionStatus } from '../model/session'
 import { CLAUDE_MARK, CODEX_MARK, DEEPSEEK_MARK, GEMINI_MARK, OPENCODE_MARK } from './agentMarks'
-import { folderStyle } from './folderStyle'
+import { programStyle } from './programStyle'
 import { FOLDER_PATH } from './paths'
 import { useReducedMotion } from './motion'
 
@@ -110,7 +110,7 @@ export function AppIcon({ process, size, dimmed = false }: { process: string; si
   const className = `mx-app-icon size-${String(size)}${dimmed ? ' is-dimmed' : ''}`
   if (icon) return <span className={`${className} is-${icon.kind}`} aria-hidden="true">{icon.glyph}</span>
   // Any other agent or program: its first letter on a colour taken from its name, so each stays recognisable.
-  return <span className={`${className} is-tinted`} style={folderStyle(program)} aria-hidden="true">{program.charAt(0).toUpperCase()}</span>
+  return <span className={`${className} is-tinted`} style={programStyle(program)} aria-hidden="true">{program.charAt(0).toUpperCase()}</span>
 }
 
 /** The badge on a sidebar row's icon: a shape per status, so colour is never the only signal. */

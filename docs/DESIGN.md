@@ -219,10 +219,10 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   The styles differ only in CSS variables set on the app root (`--rk` radius multiplier, `--r14`/`--r16`, `--pg` pane gap, `--ptop`, `--tbh`/`--tbp`/`--tbg`/`--tbb` for the tab bar, `--tabh`/`--tabbr` for tabs, `--sh` overlay shadow, and a few more beside them in `workspace.css`); the layout rules read them, so a style is a block of values, not a second set of rules. The focused pane's ring and the needs-you amber
   stay in all three. Glass starts with the three status sweeps on and Flat and Tiled with them off; a choice made
   in Settings wins. Settings saved as `minimal` read as Flat and `expressive` as Glass. **Icons** (Settings › Appearance › Icons, `iconColor`, set on the root as
-  `data-icons`) is separate from the style: `color` keeps app and folder icons in their own colours in every
-  style; `grayscale` makes them neutral `--raise` tiles with the glyph in `--fg2`.
+  `data-icons`) is separate from the style: `color` keeps app icons in their own colours in every
+  style; `grayscale` makes them neutral `--raise` tiles with the glyph in `--fg2`. Project tiles are always neutral.
 - **Settings dialog** (⌘,). A section list at the left and, at the right, a fixed header (the page title,
-  a one-line description and a **Close** button with an `esc` keycap) above a body that scrolls; the page
+  a one-line description and a 30x30 **×** icon button, tooltip "Close (Esc)", no label) above a body that scrolls; the page
   itself never scrolls. The title and description slide with the page. Under Advanced, **Performance** shows live
   frame, drawing, output and process figures with a **Copy report** button, and a switch for a corner readout over
   the window ([PERFORMANCE](PERFORMANCE.md#measuring-in-the-app)).
@@ -259,8 +259,8 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   hidden session needs you and opens a side menu listing every session of the project. Clicking a
   session focuses its pane where it is open, else opens it in a **new tab**; it never replaces
   another pane. When the lead changes the new main row fades in. ⌘B folds
-  it to a 60px rail. Every folder has its own colour, chosen from its path, in the sidebar and the rail.
-  In the rail each project is a 48px group (radius 14, square in Tiled) tinted in its colour (6% collapsed,
+  it to a 60px rail. Every project tile is the same neutral (`--raise` with the glyph in `--fg2`); a project has no colour of its own.
+  In the rail each project is a 48px group (radius 14, square in Tiled) tinted in `--fg2` (6% collapsed,
   9% open, 4% more when it holds the focused session) with an inset ring (20%, 34% focused); the focused
   project also has a 3px bar at the rail's left edge. Its tile is an outlined folder filled 14% (26%
   focused) with two letters inside: the initials of hyphenated parts (`maitty-docs` is `MD`), else the first
@@ -287,6 +287,15 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   `--tab-fs`, `--icon-scale`), so every size rule that reads one follows it. The docked sidebar's right edge is a
   drag handle (`role=separator`, 200–420 px, default 264): the width follows the pointer and is saved
   on release; arrow keys step 16 px, Home or a double-click resets. The collapsed rail is fixed at 60px.
+- **Terminal text.** Settings › Text & cursor sets the size (12 to 16), the font family, the normal weight
+  (Light 300, Regular 400, Medium 500, Semibold 600) and the bold weight (Semibold, Bold 700, Extra bold 800).
+  The family is one font name typed or picked from the monospace fonts this computer has (the
+  webview cannot list fonts, so a short list of well-known ones is measured against generic families); empty is
+  the bundled Geist Mono, which also stands behind a missing font. Names are limited to letters, numbers,
+  spaces and `. _ + -`, and a stored value outside that, or a weight outside the lists, reads as the default.
+  The settings are `look` fields on the terminal (`fontFamily`, `fontWeight`, `fontWeightBold`, `lib/terminalFont.ts`)
+  and are applied to open terminals in place, followed by a refit, never by recreating them. Regular is 400 by
+  default; Medium is the fix when Geist Mono looks thin in WebKitGTK on Linux.
 - **What a session is using.** The agent the daemon detects (claude, codex, deepseek, ...), else the
   program running in it, else `shell` for a bare shell. Claude, Codex, DeepSeek, Gemini and opencode
   show their own mark on a tile in their own colours, the same in every theme; cargo and rustc have
@@ -340,8 +349,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Drag a session into a pane.** Any sidebar row or tray item drags onto a pane: in the same tab it
   swaps, in another tab it moves here, otherwise it replaces the pane's session. The session that
   leaves keeps running.
-- **Project colours and menu.** Settings › Appearance › Sidebar lets each project take a colour from
-  teal, violet, blue, green, pink or orange (never amber or red). Right-clicking a project, in the
+- **Project menu.** Right-clicking a project, in the
   sidebar or the rail, offers New session here, Collapse or Expand, and Copy path.
 - **Inspect (⌘I).** A card docked at the right of the window (over the panes under 900px) that
   reads the focused pane's repository and never changes it: **Files** (folders and a text
@@ -407,7 +415,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   the chip opens a popover that says what the state means. An idle pane has no chip, and an idle
   session's sidebar row has no state line: idle is the default and says nothing. Amber still means needs you and only
   that, in every theme.
-- **Colours follow the theme.** Folder colours, agent tiles, badges and the folder text are
+- **Colours follow the theme.** Agent tiles, badges and the folder text are
   expressions over the active theme's tokens (`--accent`, `--ansi-*`, `--warn`, `--danger`,
   `--on-accent`), never fixed hex values, so switching theme recolours all of them.
 - **Status effects.** Working rows and tabs show one slow teal sweep as work starts, Needs you an

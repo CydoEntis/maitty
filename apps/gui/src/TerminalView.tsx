@@ -13,12 +13,12 @@ import { isWindowActive, useWindowActive } from '@/lib/window-activity'
 import { hasWebgl2 } from '@/lib/gpu'
 import { oscColor } from '@/lib/osc-color'
 import { beginFlush, forgetRenderer, reportRenderer } from '@/lib/perf-meter'
+import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, fontStackFor, type TerminalFontWeight } from '@/lib/terminalFont'
 import '@xterm/xterm/css/xterm.css'
 
 const DEFAULT_SCROLLBACK_LINES = 10000
 const DEFAULT_SCROLL_SPEED = 1
 const LINE_HEIGHT = 1.6
-const FONT_FAMILY = '"Geist Mono Variable", "Geist Mono", ui-monospace, monospace'
 const DEFAULT_THEME: ITheme = { background: '#060d16', foreground: '#c9d6e3', cursor: '#3dd6c6' }
 const TRANSPARENT = 'rgba(0,0,0,0)'
 /**
@@ -78,6 +78,10 @@ type TerminalBinding = Pick<Conversation, 'id'> & { generation: number }
 /** How a pane renders; each one is applied to the open terminal in place, without remounting. */
 export type TerminalLook = {
   cursorStyle?: 'block' | 'bar' | 'underline'
+  /** One family name put in front of the bundled font; empty or absent is the bundled font alone. */
+  fontFamily?: string
+  fontWeight?: TerminalFontWeight
+  fontWeightBold?: TerminalFontWeight
   scrollback?: number
   /** Lines per wheel notch as a multiple of xterm's default. */
   scrollSpeed?: number
@@ -276,7 +280,9 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           cursorBlink: focusedRef.current && isWindowActive(),
           cursorStyle: lookRef.current.cursorStyle ?? 'block',
           disableStdin: inputDisabledRef.current,
-          fontFamily: FONT_FAMILY,
+          fontFamily: fontStackFor(lookRef.current.fontFamily ?? ''),
+          fontWeight: lookRef.current.fontWeight ?? DEFAULT_FONT_WEIGHT,
+          fontWeightBold: lookRef.current.fontWeightBold ?? DEFAULT_FONT_WEIGHT_BOLD,
           fontSize: fontSizeRef.current,
           lineHeight: LINE_HEIGHT,
           scrollback: lookRef.current.scrollback ?? DEFAULT_SCROLLBACK_LINES,
@@ -521,6 +527,16 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     const emulator = terminal.current
     if (!emulator) return
     if (look.cursorStyle && emulator.options.cursorStyle !== look.cursorStyle) emulator.options.cursorStyle = look.cursorStyle
+    // A new face or weight changes the cell size, so the grid is measured again.
+    const family = fontStackFor(look.fontFamily ?? '')
+    const weight = look.fontWeight ?? DEFAULT_FONT_WEIGHT
+    const weightBold = look.fontWeightBold ?? DEFAULT_FONT_WEIGHT_BOLD
+    if (emulator.options.fontFamily !== family || emulator.options.fontWeight !== weight || emulator.options.fontWeightBold !== weightBold) {
+      emulator.options.fontFamily = family
+      emulator.options.fontWeight = weight
+      emulator.options.fontWeightBold = weightBold
+      refitTerminal.current?.()
+    }
     if (look.scrollback && emulator.options.scrollback !== look.scrollback) emulator.options.scrollback = look.scrollback
     if (look.scrollSpeed && emulator.options.scrollSensitivity !== look.scrollSpeed) emulator.options.scrollSensitivity = look.scrollSpeed
     if (look.screenReader !== undefined && emulator.options.screenReaderMode !== look.screenReader) emulator.options.screenReaderMode = look.screenReader

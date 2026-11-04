@@ -14,7 +14,7 @@ function entry(machine?: { id: number; name: string }) {
   if (machine) registerMachine(machine.name, machine.id)
   const [conversation] = conversationsFromSnapshot({ terms: { '3': term }, workspaces: [], conversations: [] }, machine)
   if (conversation === undefined) throw new Error('one session expected')
-  return { session: toSessionView(conversation, '/home/me'), projectName: 'srv', projectColor: 'red' }
+  return { session: toSessionView(conversation, '/home/me'), projectName: 'srv' }
 }
 
 function show(entries: ReturnType<typeof entry>[]) {

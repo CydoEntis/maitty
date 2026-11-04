@@ -1,4 +1,5 @@
 import type { SpinnerStyle } from '@/lib/spinner-clock'
+import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
 
@@ -48,6 +49,10 @@ export type SettingsPreferences = {
   notifyError: boolean
   notificationSound: boolean
   terminalFontSize: number
+  /** One family name for the terminal text; empty uses the bundled Geist Mono. */
+  terminalFontFamily: string
+  terminalFontWeight: TerminalFontWeight
+  terminalFontWeightBold: TerminalFontWeight
   /** Where a new session starts. Empty: your home folder (ADR 0046). */
   startFolder: string
   /** How the sidebar groups sessions: by git repository, or by the folder they are in. */
@@ -90,8 +95,6 @@ export type SettingsPreferences = {
   autoDownloadUpdates: boolean
   /** Restart into a downloaded update when no session is working or waiting on you. */
   restartWhenIdle: boolean
-  /** A colour the user gave a project, by the project's key (its repo or folder path). */
-  projectColors: Record<string, string>
 }
 
 export const TERMINAL_FONT_SIZE_MIN = 12
@@ -126,6 +129,9 @@ function defaults(): SettingsPreferences {
     notifyError: true,
     notificationSound: false,
     terminalFontSize: 13,
+    terminalFontFamily: '',
+    terminalFontWeight: DEFAULT_FONT_WEIGHT,
+    terminalFontWeightBold: DEFAULT_FONT_WEIGHT_BOLD,
     startFolder: '',
     groupBy: 'repo',
     // The theme chosen before there were two slots keeps its look; otherwise follow the system.
@@ -155,7 +161,6 @@ function defaults(): SettingsPreferences {
     terminalSeeThrough: false,
     autoDownloadUpdates: true,
     restartWhenIdle: false,
-    projectColors: {},
   }
 }
 
@@ -197,6 +202,9 @@ export function readSettingsPreferences(): SettingsPreferences {
       notifyError: bool(preferences.notifyError, fallback.notifyError),
       notificationSound: bool(preferences.notificationSound, fallback.notificationSound),
       terminalFontSize: terminalFontSize(preferences.terminalFontSize, fallback.terminalFontSize),
+      terminalFontFamily: isFontFamily(preferences.terminalFontFamily) ? preferences.terminalFontFamily.trim() : fallback.terminalFontFamily,
+      terminalFontWeight: isFontWeight(preferences.terminalFontWeight) ? preferences.terminalFontWeight : fallback.terminalFontWeight,
+      terminalFontWeightBold: isFontWeight(preferences.terminalFontWeightBold) ? preferences.terminalFontWeightBold : fallback.terminalFontWeightBold,
       startFolder: typeof preferences.startFolder === 'string' ? preferences.startFolder.trim() : fallback.startFolder,
       groupBy: preferences.groupBy === 'folder' || preferences.groupBy === 'repo' ? preferences.groupBy : fallback.groupBy,
       ...themeChoice(preferences, fallback),
@@ -214,7 +222,6 @@ export function readSettingsPreferences(): SettingsPreferences {
       sidebarSide: preferences.sidebarSide === 'left' || preferences.sidebarSide === 'right' ? preferences.sidebarSide : fallback.sidebarSide,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
       trayStyle: preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
-      projectColors: stringRecord(preferences.projectColors),
       style: styleOf(preferences.style) ?? fallback.style,
       statusBar: bool(preferences.statusBar, fallback.statusBar),
       perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),
@@ -232,11 +239,6 @@ export function readSettingsPreferences(): SettingsPreferences {
 
 export function writeSettingsPreferences(preferences: SettingsPreferences): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences))
-}
-
-function stringRecord(value: unknown): Record<string, string> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
-  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
 }
 
 function isToastPosition(value: unknown): value is ToastPosition {

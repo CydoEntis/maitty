@@ -102,7 +102,6 @@ import { displayName, groupKeyOf, groupSessions, tildePath, toSessionView, type 
 import { hotkeyRows, isMacPlatform, keyLabels, matchShortcut, type ShortcutAction } from './model/shortcuts'
 import { folderExists, resolveStartFolder } from './model/startFolder'
 import { markSeen, trackSessions, tracksEqual, type SessionTrack } from './model/tracking'
-import { folderColor } from './model/folderColor'
 import type { PaletteItem } from './model/palette'
 import { activeThemeName, findTheme, themeStyle, THEMES, xtermTheme } from './theme/themes'
 import './workspace.css'
@@ -519,7 +518,7 @@ export function DesktopApp() {
       (error: unknown) => { toast.error(errorMessage(error, `Could not remove ${name}`)) },
     )
   }, [])
-  const groups = useMemo(() => groupSessions(sessions, preferences.groupBy, focusedId, home, preferences.projectColors), [sessions, preferences.groupBy, focusedId, home, preferences.projectColors])
+  const groups = useMemo(() => groupSessions(sessions, preferences.groupBy, focusedId, home), [sessions, preferences.groupBy, focusedId, home])
   // A tab belongs to the project of the session in its focused pane, so it moves when that shell cds into another repo.
   const tabGroup = useCallback((candidate: Tab): string => {
     const sessionId = candidate.panes.find((pane) => pane.id === candidate.focus)?.sessionId ?? candidate.panes[0]?.sessionId
@@ -529,7 +528,7 @@ export function DesktopApp() {
 
   const reducedMotion = preferences.reduceMotion || systemReducedMotion
   const theme = findTheme(previewTheme ?? activeThemeName(preferences, systemDark))
-  const look = useMemo(() => ({ cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, scrollSpeed: preferences.scrollSpeed, screenReader: preferences.terminalScreenReader, seeThrough: preferences.terminalSeeThrough, theme: xtermTheme(theme.tokens) }), [preferences.cursorStyle, preferences.scrollback, preferences.scrollSpeed, preferences.terminalScreenReader, preferences.terminalSeeThrough, theme])
+  const look = useMemo(() => ({ fontFamily: preferences.terminalFontFamily, fontWeight: preferences.terminalFontWeight, fontWeightBold: preferences.terminalFontWeightBold, cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, scrollSpeed: preferences.scrollSpeed, screenReader: preferences.terminalScreenReader, seeThrough: preferences.terminalSeeThrough, theme: xtermTheme(theme.tokens) }), [preferences.terminalFontFamily, preferences.terminalFontWeight, preferences.terminalFontWeightBold, preferences.cursorStyle, preferences.scrollback, preferences.scrollSpeed, preferences.terminalScreenReader, preferences.terminalSeeThrough, theme])
   const effects = useMemo(() => {
     const allowed = online && !reducedMotion
     return { working: allowed && preferences.effectWorking, needs: allowed && preferences.effectNeedsYou, done: allowed && preferences.effectDone }
@@ -907,7 +906,6 @@ export function DesktopApp() {
   const showTestNotice = useCallback(() => {
     showSessionNotice('test', {
       kind: 'done',
-      color: 'var(--accent)',
       title: 'Finished · a test',
       body: 'A card like this appears when a session you are not looking at finishes.',
       actions: [{ label: 'Open', primary: true, onClick: () => undefined }],
@@ -1113,8 +1111,8 @@ export function DesktopApp() {
 
   // The project each session sits in, for the inbox and the palette.
   const projectOf = useMemo(() => {
-    const map = new Map<string, { name: string; color: string; key: string }>()
-    for (const group of groups) for (const member of group.sessions) map.set(member.id, { name: group.name, color: folderColor(group.key, group.colorId).from, key: group.key })
+    const map = new Map<string, { name: string; key: string }>()
+    for (const group of groups) for (const member of group.sessions) map.set(member.id, { name: group.name, key: group.key })
     return map
   }, [groups])
 
@@ -1133,7 +1131,7 @@ export function DesktopApp() {
     return sessions
       .filter((item) => (item.status === 'needs' || item.status === 'error' || item.status === 'done') && cleared.get(item.id) !== item.status && !(item.status === 'error' && item.id === focusedId && windowFocused))
       .sort(byPriority(activity))
-      .map((item) => ({ session: item, projectName: projectOf.get(item.id)?.name ?? '', projectColor: projectOf.get(item.id)?.color ?? 'var(--accent)' }))
+      .map((item) => ({ session: item, projectName: projectOf.get(item.id)?.name ?? '' }))
   }, [sessions, cleared, tracks, projectOf, focusedId, windowFocused])
   const needsCount = inboxEntries.filter((entry) => entry.session.status === 'needs').length
   const needsElsewhere = sessions.filter((item) => item.status === 'needs' && item.id !== focusedId).length
@@ -1304,14 +1302,14 @@ export function DesktopApp() {
         id: `session-${member.id}`,
         label: `${displayName(member)} · ${member.process}`,
         kind: 'Session',
-        ...(project ? { detail: project.name, dot: project.color } : {}),
+        ...(project ? { detail: project.name } : {}),
         ...(member.status === 'needs' ? { badge: 'needs you' } : {}),
         run: () => { showSessionById(member.id) },
       })
     }
     for (const group of groups) {
       const target = group.sessions.find((member) => member.id === focusedId) ?? group.sessions[0]
-      if (target) items.push({ id: `project-${group.key}`, label: group.name, detail: group.path, kind: 'Project', dot: folderColor(group.key, group.colorId).from, run: () => { showSessionById(target.id) } })
+      if (target) items.push({ id: `project-${group.key}`, label: group.name, detail: group.path, kind: 'Project', run: () => { showSessionById(target.id) } })
     }
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
@@ -1640,7 +1638,6 @@ export function DesktopApp() {
                 daemon={{ online, sessionCount: sessions.length }}
                 appVersion={runningVersion}
                 machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed, onGrant: grantNamed, onCopyCommand: copyCommand, add: { windows: navigator.userAgent.includes('Windows'), loadHosts: listSshHosts, onAdd: addNamed, onCancel: cancelAdding } }}
-                projects={groups.map((group) => ({ key: group.key, name: group.name, colorId: group.colorId }))}
                 validateFolder={folderExists}
                 onChooseFolder={chooseStartFolder}
                 onClose={() => { setPreviewTheme(null); setSettingsSection(null) }}
