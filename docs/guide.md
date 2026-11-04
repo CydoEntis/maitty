@@ -462,6 +462,26 @@ is one line with the fix (log in with plain `ssh`, `maitty machine update <name>
 `kill-server --on build` stops every session on that machine, so it needs `--yes`. `--remote host`
 still works as before, and cannot be combined with `--on`.
 
+### What a machine needs
+
+A machine you add only needs the `maitty` program. There is no desktop app on it and nothing to build.
+
+- **The program.** The same `maitty` you run here, for Linux or macOS (x86_64 or aarch64). The Linux downloads
+  are static, so they run on any Linux. Installing it puts one file at `~/.local/bin/maitty` for your user.
+  `maitty machine update <name> --install` does this over ssh for you, so you do not need to log in and
+  install it by hand. A Windows machine cannot be the remote yet.
+- **A way in.** ssh must get in without asking you anything: a key (or your ssh agent) for that user. Run plain
+  `ssh <target>` once first, so its host key is known and you can see that it works.
+- **maitty on the PATH ssh uses.** A program in `~/.local/bin` is on the PATH of most logins. If ssh cannot find
+  it, set `remote_cmd` on the machine to its full path.
+- **The same version.** This computer, the machine and any desktop app must speak the same protocol. A machine
+  on another version shows `needs update`; run `maitty machine update <name>`.
+
+Nothing else needs installing. Agents such as Claude Code or Codex run there as they do anywhere, so install
+the ones you want to use on that machine yourself.
+
+`maitty doctor` checks the way in, the program, its version and the protocol for every machine you added (see "Check a machine with doctor" below).
+
 ### Install or update maitty on a machine
 
 `maitty machine update <name>` installs or updates maitty on a machine you added, over ssh. It looks first,

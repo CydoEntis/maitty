@@ -579,7 +579,7 @@ pub struct Dial {
 }
 
 /// The Hello for `machine`. The only place a pane claim is made, so no caller can send a pane's
-/// id or secret to another machine.
+/// id or secret, or a conversation's secret, to another machine.
 pub fn hello(machine: &Machine, dial: Dial) -> ClientMsg {
     let Dial {
         attach,
@@ -589,6 +589,8 @@ pub fn hello(machine: &Machine, dial: Dial) -> ClientMsg {
         token,
         structured,
     } = dial;
+    // A conversation's secret is this computer's daemon's to check, like a pane's.
+    let structured = structured.filter(|_| !machine.is_remote());
     let from = (!attach && structured.is_none())
         .then(|| pane_claim(machine, term, token))
         .flatten();
@@ -949,6 +951,34 @@ mod tests {
             super::pane_claim(&super::Machine::local(), None, None),
             None
         );
+    }
+
+    #[test]
+    fn a_hello_for_another_machine_never_carries_a_conversations_secret() {
+        let identity = || super::protocol::StructuredIdentity {
+            conversation: maitty_shared::conversation::ConversationId(1),
+            generation: 2,
+            connection: 3,
+            token: "conversation-secret".into(),
+        };
+        let structured = |m: &super::Machine| {
+            let dial = super::Dial {
+                attach: true,
+                surface: super::protocol::Surface::Terminal,
+                replays: true,
+                term: None,
+                token: None,
+                structured: Some(identity()),
+            };
+            match super::hello(m, dial) {
+                super::ClientMsg::Hello { structured, .. } => structured,
+                other => panic!("not a Hello: {other:?}"),
+            }
+        };
+        assert!(structured(&super::Machine::local()).is_some());
+        assert!(structured(&configured_machine()).is_none());
+        assert!(structured(&through(&["relay", "{command}"])).is_none());
+        assert!(structured(&super::Machine::ssh("box", vec!["ssh".into()], "maitty")).is_none());
     }
 
     #[test]
