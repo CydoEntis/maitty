@@ -191,7 +191,15 @@ config keys for them are read and ignored. Sessions, ordinary agent launches, he
 MCP session controls remain supported. The wire protocol is version 66.
 Conversation tool-history entries carry a bounded provider-supplied `label` for
 display; `#[serde(default)]` keeps older cached entries readable without a
-protocol bump.
+protocol bump. A tool entry may also carry `input` (the tool's own input JSON,
+bounded: strings cut with a `[truncated]` marker, a value too deep or too big left
+out whole), `exit_code` and `duration_ms` (Codex only), and every entry may carry
+`started_at_ms` / `completed_at_ms` (Unix milliseconds). All are optional and skipped
+when absent, so old shapes decode and no bump is needed. `ConversationRead` also
+returns `answered_approvals`, the last 64 approvals a person answered (request,
+decision, time), in daemon memory only. A Claude approval's `item_id` is the
+tool-use id when Claude names it, so it links to the tool step; an edit tool is a
+`FileChange` request with its diff in `changes`.
 
 `SwapPanes { a, b }` trades the places of two panes of one tab (the split ratios stay with
 their slots). Panes in different tabs, or one that isn't there, are an error.

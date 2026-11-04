@@ -13,6 +13,8 @@ struct ProjectedTool {
     id: String,
     name: String,
     initial_input: Value,
+    /// The complete input, known once the tool block ends; kept for the completion event.
+    input: Value,
     partial_input: String,
     command: String,
 }
@@ -22,6 +24,8 @@ pub struct TurnProjector {
     turn_id: String,
     submitted_text: String,
     user_item_id: String,
+    /// When this turn began (Unix ms). Claude reports no times, so the daemon-side clock stands in.
+    started_at_ms: u64,
     acknowledged: bool,
     active_message_id: Option<String>,
     assistant_text: BTreeMap<String, String>,
@@ -42,6 +46,7 @@ impl TurnProjector {
             turn_id,
             submitted_text,
             user_item_id,
+            started_at_ms: now_ms(),
             acknowledged: false,
             active_message_id: None,
             assistant_text: BTreeMap::new(),
@@ -119,6 +124,7 @@ impl TurnProjector {
                         id,
                         name,
                         initial_input: input,
+                        input: Value::Null,
                         partial_input: String::new(),
                         command: String::new(),
                     },
@@ -149,6 +155,7 @@ impl TurnProjector {
                         serde_json::from_str(&tool.partial_input)
                             .context("Claude tool input is invalid JSON")?
                     };
+                    tool.input = input.clone();
                     tool.command = input
                         .get("command")
                         .and_then(Value::as_str)
@@ -160,6 +167,7 @@ impl TurnProjector {
                         "id":tool.id,
                         "type":"commandExecution",
                         "command":tool.command,
+                        "input":tool.input,
                         "status":"inProgress",
                         "aggregatedOutput":""
                     });
@@ -178,6 +186,7 @@ impl TurnProjector {
                         "id":result.id,
                         "type":"commandExecution",
                         "command":tool.command,
+                        "input":tool.input,
                         "status":if result.is_error {"failed"} else {"completed"},
                         "aggregatedOutput":result.output
                     });
@@ -229,14 +238,37 @@ impl TurnProjector {
 
     fn notification(&self, method: &str, mut params: Value) -> ProjectedEvent {
         params["threadId"] = Value::String(self.thread_id.clone());
-        if method != "turn/started" && method != "turn/completed" {
-            params["turnId"] = Value::String(self.turn_id.clone());
+        match method {
+            "turn/started" | "turn/completed" => {
+                // Codex reports a turn's times in whole seconds; keep the same shape.
+                params["turn"]["startedAt"] = (self.started_at_ms / 1000).into();
+                if method == "turn/completed" {
+                    params["turn"]["completedAt"] = (now_ms() / 1000).into();
+                }
+            }
+            "item/started" => {
+                params["turnId"] = Value::String(self.turn_id.clone());
+                params["startedAtMs"] = now_ms().into();
+            }
+            "item/completed" => {
+                params["turnId"] = Value::String(self.turn_id.clone());
+                params["completedAtMs"] = now_ms().into();
+            }
+            _ => params["turnId"] = Value::String(self.turn_id.clone()),
         }
         ProjectedEvent::Notification {
             method: method.into(),
             params,
         }
     }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|elapsed| u64::try_from(elapsed.as_millis()).ok())
+        .unwrap_or_default()
 }
 
 pub const MAX_PENDING_TOOLS: usize = 64;
@@ -364,5 +396,70 @@ mod tests {
         assert!(
             matches!(completed.as_slice(), [ProjectedEvent::Notification { method, params }] if method == "item/completed" && params["item"]["aggregatedOutput"] == "done")
         );
+    }
+
+    #[test]
+    fn a_tool_step_carries_its_full_input_and_times_through_start_and_completion() {
+        let mut projector = projector();
+        projector
+            .project(OutputFrame::ToolUse {
+                block_index: 0,
+                id: "tool-1".into(),
+                name: "TodoWrite".into(),
+                input: json!({}),
+            })
+            .unwrap();
+        projector
+            .project(OutputFrame::ToolInputDelta {
+                block_index: 0,
+                partial_json: r#"{"todos":[{"content":"ship","status":"pending"}]}"#.into(),
+            })
+            .unwrap();
+        let todos = json!({"todos":[{"content":"ship","status":"pending"}]});
+        let started = projector
+            .project(OutputFrame::ContentBlockEnded { block_index: 0 })
+            .unwrap();
+        let completed = projector
+            .project(OutputFrame::ToolResults(vec![crate::ToolResult {
+                id: "tool-1".into(),
+                output: "ok".into(),
+                is_error: false,
+            }]))
+            .unwrap();
+        let [ProjectedEvent::Notification { params: begin, .. }] = started.as_slice() else {
+            panic!("one start event");
+        };
+        let [ProjectedEvent::Notification { params: end, .. }] = completed.as_slice() else {
+            panic!("one completion event");
+        };
+        assert_eq!(begin["item"]["input"], todos);
+        assert_eq!(end["item"]["input"], todos);
+        assert!(begin["startedAtMs"].as_u64().unwrap() > 0);
+        assert!(end["completedAtMs"].as_u64().unwrap() >= begin["startedAtMs"].as_u64().unwrap());
+    }
+
+    #[test]
+    fn turn_events_carry_the_turn_times_in_seconds() {
+        let mut projector = projector();
+        let started = projector
+            .project(OutputFrame::UserReplay {
+                text: "show status".into(),
+            })
+            .unwrap();
+        let ProjectedEvent::Notification { params, .. } = &started[0] else {
+            panic!("turn start");
+        };
+        assert!(params["turn"]["startedAt"].as_u64().unwrap() > 0);
+        let finished = projector
+            .project(OutputFrame::Result {
+                session_id: "session-1".into(),
+                is_error: false,
+                result: None,
+            })
+            .unwrap();
+        let Some(ProjectedEvent::Notification { params, .. }) = finished.last() else {
+            panic!("turn completion");
+        };
+        assert!(params["turn"]["completedAt"].as_u64().unwrap() >= params["turn"]["startedAt"].as_u64().unwrap());
     }
 }

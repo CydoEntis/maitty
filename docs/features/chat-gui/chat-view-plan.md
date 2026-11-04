@@ -35,20 +35,15 @@ check for the view). Acceptance criteria are the bullets.
    adapter output. Every later ticket renders from this and nothing else.
    **Done:** `apps/gui/src/features/chat/` (reducer `applyHistoryEntries` /
    `applyApprovals`, flatten with `selectChatEvents`; event types in `chatEvents.ts`).
-   What the daemon's history carries today limits the cards, and later tickets must
-   not assume more:
-   - A Claude tool other than `Bash` reaches the history as its name only (the
-     adapter keeps just the text blocks of the input), so `Edit`, `MultiEdit`,
-     `Write`, `TodoWrite` and `Task` project to cards with the file, diff, items or
-     title marked unavailable. The projection already reads an optional `Tool.input`
-     and builds full cards from it; the daemon has to start sending it (CV-13).
-   - Codex `fileChange` carries every file's diff, so edits are complete. Codex
-     `plan` and helper-agent items are kept by kind only, so they project to a card
-     without items or title.
-   - There are no timestamps and no exit codes. Elapsed times are measured from when
-     the GUI first saw an item, so an already-finished item has none.
-   - A Claude approval names the command, or only "Edit: " for a file tool, with no
-     path. A Codex command label is cut at 256 characters.
+   What the daemon's history carries limits the cards, and later tickets must
+   not assume more (CV-13 below describes what it carries now):
+   - A history cached by an older daemon has no `Tool.input`, so a Claude `Edit`,
+     `MultiEdit`, `Write`, `TodoWrite` or `Task` from it still projects to a card with
+     the file, diff, items or title marked unavailable.
+   - Codex `fileChange` carries every file's diff, so edits are complete.
+   - Timestamps exist only on live items (see CV-13); an item read back from a
+     provider's saved history has none, and the GUI measures its elapsed time from
+     when it first saw it.
 
 1. **CV-1 Switch and empty chat card.** The floating two-button switch (§B.3),
    the slide-and-fade transition (off under reduce motion), a `Settings → Claude /
@@ -102,6 +97,32 @@ check for the view). Acceptance criteria are the bullets.
 13. **CV-13 Claude parity check.** Confirm the Claude adapter delivers approvals
     with ids and turn boundaries the way Codex's does (the roadmap did Codex
     first). Fill any gap in the adapter, with fake-provider tests.
+    **Done (daemon side, ticket G22):** what `read_conversation` now carries, with no
+    `PROTOCOL_VERSION` bump (every new field is optional or defaults when absent):
+    - `Tool.input`: the tool's own input JSON for a Claude call (edit file and text,
+      `TodoWrite` items, `Task` title and prompt), and for a Codex helper-agent call the
+      same `Task` shape (`description`, `prompt`, `tool`, `model`). Strings are cleaned of
+      terminal escapes and cut with a `[truncated]` marker; an input too deep, too wide or
+      too big is left out whole. The label is unchanged (`"Edit "` for Claude), so the tool
+      name is still read from it.
+    - `Tool.exit_code` and `Tool.duration_ms` for Codex commands. Claude reports neither,
+      so they are absent for it.
+    - `Entry.started_at_ms` and `completed_at_ms`: Codex's own times for a live item, the
+      daemon's clock for Claude, turn times in whole seconds converted to milliseconds. An
+      item hydrated from Codex's saved history has none (Codex reports none there).
+    - Claude approvals: `item_id` is the tool-use id when Claude's request names it (the
+      same id the tool step has), else the request id. An edit tool (`Edit`, `MultiEdit`,
+      `Write`) is `kind: FileChange` with the diff in `changes`; any other tool is `Command`
+      with `"Tool: target"` as its text.
+    - `answered_approvals`: the last 64 approvals a person answered, with the decision and
+      time, held in memory (they last as long as the daemon). User-input answers are never
+      recorded.
+    - Codex `plan` items keep their text (`Tool` of kind `plan`, label `Plan`); helper-agent
+      items keep their title (`Tool` of kind `collabAgentToolCall`). Neither marks the history
+      unsupported any more. A command label is cut at 2048 characters instead of 256.
+    Not verified against a live Claude CLI: that its `can_use_tool` request carries
+    `tool_use_id` (the code falls back to the request id when it does not).
+    GUI follow-up: render `answered_approvals` and the timestamps (G17, G18).
 
 ## Out of scope
 

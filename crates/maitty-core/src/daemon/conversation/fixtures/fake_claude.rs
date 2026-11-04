@@ -72,6 +72,37 @@ fn main() {
         return;
     }
 
+    // An Edit call as Claude streams it: the tool block with its input, then the permission
+    // request naming the same tool use, then the result.
+    if scenario == "tool-edit" {
+        for frame in [
+            r#"{"isReplay":true,"message":{"content":[{"text":"hello fake Claude","type":"text"}]},"type":"user"}"#,
+            r#"{"event":{"message":{"id":"edit-message","model":"fake-model"},"type":"message_start"},"type":"stream_event"}"#,
+            r#"{"event":{"content_block":{"id":"toolu_edit","input":{},"name":"Edit","type":"tool_use"},"index":1,"type":"content_block_start"},"type":"stream_event"}"#,
+            r#"{"event":{"delta":{"partial_json":"{\"file_path\":\"src/a.rs\",\"old_string\":\"old\",\"new_string\":\"new\"}","type":"input_json_delta"},"index":1,"type":"content_block_delta"},"type":"stream_event"}"#,
+            r#"{"event":{"index":1,"type":"content_block_stop"},"type":"stream_event"}"#,
+            r#"{"request_id":"edit-request","request":{"input":{"file_path":"src/a.rs","new_string":"new","old_string":"old"},"subtype":"can_use_tool","tool_name":"Edit","tool_use_id":"toolu_edit"},"type":"control_request"}"#,
+        ] {
+            writeln!(output, "{frame}").unwrap();
+        }
+        output.flush().unwrap();
+
+        line.clear();
+        input.read_line(&mut line).unwrap();
+        assert_eq!(
+            line.trim_end(),
+            r#"{"response":{"request_id":"edit-request","response":{"behavior":"allow","updatedInput":{"file_path":"src/a.rs","new_string":"new","old_string":"old"}},"subtype":"success"},"type":"control_response"}"#
+        );
+        for frame in [
+            r#"{"message":{"content":[{"content":"edited","tool_use_id":"toolu_edit","type":"tool_result"}]},"type":"user"}"#,
+            r#"{"is_error":false,"result":"done","session_id":"fixture-session","type":"result"}"#,
+        ] {
+            writeln!(output, "{frame}").unwrap();
+        }
+        output.flush().unwrap();
+        return;
+    }
+
     if scenario == "interrupt" {
         writeln!(output, "{}", r#"{"isReplay":true,"message":{"content":[{"text":"hello fake Claude","type":"text"}]},"type":"user"}"#).unwrap();
         output.flush().unwrap();

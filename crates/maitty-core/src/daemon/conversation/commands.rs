@@ -683,7 +683,9 @@ impl Daemon {
             },
         )?;
         if let Some(state) = self.conversation_states.get_mut(&id) {
-            state.approvals.remove(&request_id);
+            if let Some(answered) = state.approvals.remove(&request_id) {
+                state.record_answer(answered, decision);
+            }
             state.blocked = !state.approvals.is_empty() || !state.unsupported_requests.is_empty();
             state.status = if state.blocked {
                 Status::Blocked
@@ -2013,6 +2015,9 @@ impl Daemon {
                 error: state.and_then(|s| s.error.clone()),
                 checks: state.map_or_else(Vec::new, |s| s.checks.infos()),
                 approvals: state.map_or_else(Vec::new, |s| s.approvals.values().cloned().collect()),
+                answered_approvals: state.map_or_else(Vec::new, |s| {
+                    s.answered_approvals.iter().cloned().collect()
+                }),
                 cancelling: state.is_some_and(|s| s.cancelling.is_some())
                     || self.conversation_requests.values().any(
                         |pending| matches!(pending, Pending::Cancelling { id: pending_id, .. } if *pending_id == id),
@@ -2136,6 +2141,8 @@ mod native_resume_tests {
                 text: "keep this message".into(),
             },
             state: history::ItemState::Completed,
+            started_at_ms: None,
+            completed_at_ms: None,
         });
 
         let (history, is_complete) = cached_claude_history(id, Some(&cached), false).unwrap();

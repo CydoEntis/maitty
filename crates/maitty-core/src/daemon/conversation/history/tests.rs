@@ -13,6 +13,8 @@ pub(in crate::daemon::conversation) fn entry(index: usize) -> Entry {
             text: format!("synthetic {index}"),
         },
         state: ItemState::Completed,
+        started_at_ms: None,
+        completed_at_ms: None,
     }
 }
 #[test]
@@ -68,12 +70,16 @@ fn turn_status_has_an_independent_stable_row_even_without_items() {
     h.apply(Update::SetTurnStatus {
         turn: "turn".into(),
         state: ItemState::Running,
+        started_at_ms: None,
+        completed_at_ms: None,
     })
     .unwrap();
     h.apply(Update::UpsertItem(entry(1))).unwrap();
     h.apply(Update::SetTurnStatus {
         turn: "turn".into(),
         state: ItemState::Failed,
+        started_at_ms: None,
+        completed_at_ms: None,
     })
     .unwrap();
     assert_eq!(h.entries.len(), 2);
@@ -94,8 +100,13 @@ fn interrupting_a_turn_marks_its_running_tools_interrupted() {
             kind: "commandExecution".into(),
             output: String::new(),
             label: "Run command".into(),
+            input: None,
+            exit_code: None,
+            duration_ms: None,
         },
         state: ItemState::Running,
+        started_at_ms: None,
+        completed_at_ms: None,
     };
     history
         .apply(Update::UpsertItem(tool("interrupted")))
@@ -106,6 +117,8 @@ fn interrupting_a_turn_marks_its_running_tools_interrupted() {
         .apply(Update::SetTurnStatus {
             turn: "interrupted".into(),
             state: ItemState::Interrupted,
+            started_at_ms: None,
+            completed_at_ms: None,
         })
         .unwrap();
 
@@ -225,7 +238,7 @@ fn a_codex_file_edit_keeps_its_files_and_diff_for_review() {
         Completeness::Incomplete(IncompleteReason::UnsupportedItem)
     );
     assert_eq!(history.entries[0].state, ItemState::Completed);
-    let Content::Tool { kind, output, label } = &history.entries[0].content else {
+    let Content::Tool { kind, output, label, .. } = &history.entries[0].content else {
         panic!("a file edit is shown as a tool row");
     };
     assert_eq!(kind, "fileChange");

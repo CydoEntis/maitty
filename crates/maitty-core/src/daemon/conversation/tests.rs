@@ -356,6 +356,132 @@ async fn claude_adapter_allows_a_host_approved_tool() {
     exercise_claude_approval("approval", "accept").await;
 }
 
+#[test]
+fn only_the_most_recent_answered_approvals_are_kept() {
+    use crate::conversation::{
+        ApprovalDecision, ApprovalRequest, ApprovalRequestKind, ProviderRequestId,
+    };
+    let request = |n: i64| ApprovalRequest {
+        request_id: ProviderRequestId::Integer(n),
+        kind: ApprovalRequestKind::Command,
+        item_id: None,
+        turn_id: None,
+        command: Some("ls".into()),
+        reason: None,
+        cwd: None,
+        changes: Vec::new(),
+        questions: Vec::new(),
+        permissions: None,
+        choices: vec![ApprovalDecision::Accept, ApprovalDecision::Decline],
+    };
+    let mut state = super::State::default();
+    for n in 0..70 {
+        state.record_answer(request(n), ApprovalDecision::Decline);
+    }
+    assert_eq!(state.answered_approvals.len(), 64);
+    assert_eq!(
+        state.answered_approvals[0].request.request_id,
+        ProviderRequestId::Integer(6)
+    );
+    assert_eq!(
+        state.answered_approvals[63].request.request_id,
+        ProviderRequestId::Integer(69)
+    );
+}
+
+/// A Claude `Edit` call reaches the history with its input and times, and its approval names
+/// the file, carries the diff and points at the tool's own step.
+#[tokio::test]
+async fn claude_edit_call_and_approval_carry_input_diff_and_a_link_to_the_tool_step() {
+    use super::history::{Attachments, Content, ItemState};
+    use crate::conversation::ConversationId;
+
+    let directory = crate::daemon::persist::scratch_dir();
+    let (launch, owner) = claude_launch(directory.path(), Some("tool-edit"));
+    let (task, stop, requests, mut received) = start_claude_adapter(launch, owner).await;
+    start_claude_thread(&requests, &mut received, owner).await;
+    requests
+        .send(super::runtime::Command {
+            token: 3,
+            request: super::runtime::Rpc::Send {
+                params: json!({
+                    "threadId":"fixture-session",
+                    "input":[{"type":"text","text":"hello fake Claude"}]
+                }),
+            },
+        })
+        .await
+        .unwrap();
+
+    let mut histories = Attachments::default();
+    histories.attach(1, ConversationId(1));
+    let mut approval = None;
+    loop {
+        match receive_claude_payload(&mut received, owner).await {
+            Payload::Notification { method, params } => {
+                histories
+                    .notification(ConversationId(1), "fixture-session", &method, &params)
+                    .unwrap();
+                if method == "turn/completed" {
+                    break;
+                }
+            }
+            Payload::Request { id, method, params } => {
+                approval = Some((method, params));
+                requests
+                    .send(super::runtime::Command {
+                        token: 4,
+                        request: super::runtime::Rpc::Answer {
+                            request_id: id,
+                            response: json!({"decision":"accept"}),
+                        },
+                    })
+                    .await
+                    .unwrap();
+            }
+            Payload::Response { .. } => {}
+            _ => panic!("unexpected Claude edit payload"),
+        }
+    }
+
+    let (method, params) = approval.expect("the edit asks for approval");
+    assert_eq!(method, "item/fileChange/requestApproval");
+    assert_eq!(params["itemId"], "toolu_edit");
+    assert_eq!(params["command"], "Edit: src/a.rs");
+    assert_eq!(
+        params["changes"],
+        json!([{"path":"src/a.rs","kind":"update","diff":"-old\n+new"}])
+    );
+
+    let history = histories.get(1).unwrap();
+    let tool = history
+        .entries
+        .iter()
+        .find(|entry| entry.source.item == "toolu_edit")
+        .expect("the edit step is in the history under the id the approval names");
+    assert_eq!(tool.state, ItemState::Completed);
+    let Content::Tool { label, output, input, .. } = &tool.content else {
+        panic!("an edit is a tool row");
+    };
+    assert_eq!(label, "Edit ");
+    assert_eq!(output, "edited");
+    assert_eq!(
+        input,
+        &Some(json!({"file_path":"src/a.rs","old_string":"old","new_string":"new"}))
+    );
+    let (started, completed) = (tool.started_at_ms.unwrap(), tool.completed_at_ms.unwrap());
+    assert!(completed >= started);
+    let turn = history
+        .entries
+        .iter()
+        .find(|entry| entry.content == Content::TurnStatus)
+        .expect("the turn has a row");
+    assert!(turn.started_at_ms.is_some() && turn.completed_at_ms.is_some());
+
+    stop_claude_adapter(task, stop, &mut received, owner).await;
+    drop(directory);
+}
+
 #[tokio::test]
 async fn claude_adapter_denies_a_host_declined_tool() {
     exercise_claude_approval("approval-decline", "decline").await;
@@ -1424,7 +1550,7 @@ async fn command_approval_is_human_only_generation_bound_and_uses_exact_provider
         assert!(matches!(
             read,
             ServerMsg::Reply(crate::protocol::Reply::ConversationRead(ref result))
-                if result.approvals == [approval]
+                if result.approvals == [approval.clone()]
         ));
 
         let unauthorized_from = authenticated_pane(&mut session);
@@ -1523,6 +1649,29 @@ async fn command_approval_is_human_only_generation_bound_and_uses_exact_provider
         assert_eq!(response["id"], "approval-private");
         assert_eq!(response["result"]["decision"], "accept");
         assert!(session.daemon.conversation_states[&id].approvals.is_empty());
+
+        // The answer outlives the request: a viewer that restarts still reads what was decided.
+        let reread = exchange(
+            &mut session,
+            307,
+            crate::protocol::ClientMsg::Query(crate::protocol::Query::ConversationRead {
+                id,
+                cursor: None,
+                limit: 128,
+            }),
+            None,
+        )
+        .await;
+        let ServerMsg::Reply(crate::protocol::Reply::ConversationRead(result)) = reread else {
+            panic!("expected a conversation read");
+        };
+        assert!(result.approvals.is_empty());
+        let [answered] = result.answered_approvals.as_slice() else {
+            panic!("exactly one answered approval is kept");
+        };
+        assert_eq!(answered.request, approval);
+        assert_eq!(answered.decision, crate::conversation::ApprovalDecision::Accept);
+        assert!(answered.answered_at_ms.is_some());
     })
     .catch_unwind()
     .await;
