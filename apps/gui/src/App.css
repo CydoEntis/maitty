@@ -1117,10 +1117,6 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 .title-bar { align-items: center; background: var(--bg); color: var(--muted-text); display: flex; flex: 0 0 32px; gap: 8px; height: 32px; padding-left: 12px; user-select: none; }
 .title-bar-logo { height: 18px; pointer-events: none; width: 18px; }
 .title-bar-name { font-size: 12px; pointer-events: none; }
-.title-bar-controls { align-items: stretch; display: flex; height: 100%; margin-left: auto; }
-.title-bar-controls button { align-items: center; background: transparent; border: 0; color: var(--muted-text); display: flex; justify-content: center; transition: background-color .14s ease, color .14s ease; width: 46px; }
-.title-bar-controls button:hover { background: var(--hover); color: var(--fg); }
-.title-bar-controls button.is-close:hover { background: #c42b1c; color: #fff; }
 .sidebar-heading { justify-content: flex-end; }
 .sidebar-rail-toggle, .sidebar-collapse-toggle { margin-right: auto; }
 
