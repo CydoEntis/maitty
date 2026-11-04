@@ -12,9 +12,11 @@ const ToolContentSchema = z.object({
   kind: z.string(),
   output: z.string(),
   label: z.string().optional(),
-  // The daemon does not send a tool's input today. The field is read when it appears so that
-  // Claude's Edit, TodoWrite and Task calls can become full cards.
+  // The tool's own input (bounded by the daemon): Claude's Edit, TodoWrite and Task calls become
+  // full cards from it. Absent for Codex commands and for history cached by an older daemon.
   input: z.unknown().optional(),
+  exit_code: z.number().int().optional(),
+  duration_ms: z.number().int().nonnegative().optional(),
 })
 
 export const HistoryEntrySchema = z.object({
@@ -26,6 +28,9 @@ export const HistoryEntrySchema = z.object({
     z.object({ Unsupported: z.object({ kind: z.string() }) }),
   ]),
   state: ItemStateSchema,
+  // Unix milliseconds; absent for items read back from a provider's saved history.
+  started_at_ms: z.number().int().nonnegative().optional(),
+  completed_at_ms: z.number().int().nonnegative().optional(),
 })
 export type HistoryEntry = z.infer<typeof HistoryEntrySchema>
 

@@ -4,7 +4,7 @@ import { diffFromHunks, replacementHunk, wholeFileDiff } from './unifiedDiff'
 
 // The Claude adapter reports every tool call as a `commandExecution` item whose label is the
 // Bash command itself, or "<ToolName> " (the name and a space) for any other tool, because it
-// keeps only the text blocks of a tool's input (projection.rs). A label that is a bare tool name
+// builds the label from the text blocks of a tool's input, which is empty for an object. A label that is a bare tool name
 // followed by one space is therefore a non-Bash tool. A Bash command that is exactly a
 // capitalised word and a space would be misread; real commands start with a program name.
 const NAMED_TOOL_LABEL = /^(mcp__[\w-]+|[A-Z][A-Za-z0-9_]*) $/
@@ -74,9 +74,9 @@ function mapEdit(tool: string, input: unknown): ClaudeToolMapping {
 }
 
 /**
- * Chooses the event for one Claude tool call. `input` is the tool's input JSON when the history
- * carries it; today it does not, so Edit, TodoWrite and Task map to cards with the detail
- * marked unavailable. An unknown tool name is a generic `tool`, never an error.
+ * Chooses the event for one Claude tool call. `input` is the tool's input JSON, which the daemon
+ * sends bounded (a history cached by an older daemon has none, so Edit, TodoWrite and Task map to cards with the detail
+ * marked unavailable). An unknown tool name is a generic `tool`, never an error.
  */
 export function mapClaudeTool(name: string, input: unknown): ClaudeToolMapping {
   if (name === EDIT_TOOL || name === MULTI_EDIT_TOOL || name === WRITE_TOOL) return mapEdit(name, input)

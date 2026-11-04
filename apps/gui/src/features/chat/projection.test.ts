@@ -144,7 +144,7 @@ describe('edits', () => {
     expect(event).toMatchObject({ kind: 'edit', tool: name, file: null, diff: { status: 'unavailable' } })
   })
 
-  // Synthetic: Claude Code's documented tool inputs, carried in `Tool.input` once the daemon sends it.
+  // The daemon keeps these inputs as Claude sent them (tool_input/tests.rs `each_tool_keeps_the_input_fields_the_chat_view_reads`).
   it('builds Claude Edit, MultiEdit and Write diffs from the tool input', () => {
     const events = project('claude', [
       tool('e', 'Edit ', 'ok', 'Completed', { input: { file_path: '/p/a.ts', old_string: 'one\ntwo', new_string: 'three' } }),
@@ -167,7 +167,7 @@ describe('todo lists', () => {
     expect(event).toMatchObject({ kind: 'todo', items: null })
   })
 
-  // Synthetic input, Claude Code's TodoWrite schema.
+  // Input as the daemon keeps it (same test as above).
   it('reads the checklist from TodoWrite input when present', () => {
     const input = {
       todos: [
@@ -192,10 +192,23 @@ describe('todo lists', () => {
     expect(event).toMatchObject({ kind: 'todo', items: null })
   })
 
-  // Synthetic kind name: Codex's `plan` item; the daemon keeps unmodelled items by kind only.
-  it('shows a Codex plan item as a checklist whose items are unavailable', () => {
+  // History cached before the daemon kept plan text holds the item by kind only.
+  it('shows a Codex plan item an older daemon cached as a checklist whose items are unavailable', () => {
     const event = only(project('codex', [item(TURN, 'p', { Unsupported: { kind: 'plan' } })]))
     expect(event).toMatchObject({ kind: 'todo', items: null })
+  })
+
+  // Recorded: history_provider/tests.rs `codex_plan_and_helper_items_keep_their_text_and_title`.
+  it.each([
+    ['1. Read\n2. Fix', ['Read', 'Fix']],
+    ['Plan:\n- one\n* two\n3) three\nclosing remarks', ['one', 'two', 'three']],
+    ['Just prose, no list.', null],
+  ] as const)('reads the list entries of a Codex plan text %j', (output, expected) => {
+    const event = only(project('codex', [item(TURN, 'p', { Tool: { kind: 'plan', label: 'Plan', output } })]))
+    expect(event).toMatchObject({ kind: 'todo' })
+    const items = event.kind === 'todo' ? event.items : undefined
+    expect(items === null ? null : items?.map((entry) => entry.text)).toEqual(expected)
+    if (items) expect(items.every((entry) => entry.state === 'pending')).toBe(true)
   })
 })
 
@@ -205,17 +218,23 @@ describe('helper agents', () => {
     expect(event).toMatchObject({ kind: 'subagent', title: null, agentType: null, report: 'Found 3 call sites.' })
   })
 
-  // Synthetic input, Claude Code's Task schema.
+  // Input as the daemon keeps it (same test as above).
   it('reads the title and type from Task input when present', () => {
     const input = { description: 'Find call sites', prompt: 'long prompt', subagent_type: 'Explore' }
     const event = only(project('claude', [tool('t', 'Task ', 'done', 'Running', { input })]))
     expect(event).toMatchObject({ kind: 'subagent', title: 'Find call sites', agentType: 'Explore', status: 'running' })
   })
 
-  // Synthetic kind name: Codex's helper-agent item.
-  it('shows a Codex collabAgentToolCall as a helper', () => {
+  // History cached before the daemon kept helper titles holds the item by kind only.
+  it('shows a Codex collabAgentToolCall an older daemon cached as a helper without a title', () => {
     const event = only(project('codex', [item(TURN, 'h', { Unsupported: { kind: 'collabAgentToolCall' } })]))
     expect(event).toMatchObject({ kind: 'subagent', title: null })
+  })
+
+  // Recorded: history_provider/tests.rs `codex_plan_and_helper_items_keep_their_text_and_title`.
+  it('shows a Codex helper with the title the daemon kept', () => {
+    const entry = item(TURN, 'h', { Tool: { kind: 'collabAgentToolCall', label: 'Audit the parser', output: '' } }, 'Running')
+    expect(only(project('codex', [entry]))).toMatchObject({ kind: 'subagent', title: 'Audit the parser', status: 'running' })
   })
 })
 

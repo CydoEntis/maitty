@@ -1,4 +1,4 @@
-import type { ChatEvent, ChatProvider, ItemFields, ItemStatus } from './chatEvents'
+import type { ChatEvent, ChatProvider, ItemFields, ItemStatus, TodoItem } from './chatEvents'
 import { claudeToolName, mapClaudeTool } from './claudeTools'
 import { fileNamedByLabel, parseCodexFileChanges } from './codexFileChange'
 import type { HistoryEntry } from './historyInput'
@@ -8,8 +8,8 @@ type ToolContent = Extract<ItemContent, { Tool: unknown }>['Tool']
 
 const COMMAND_ITEM = 'commandExecution'
 const FILE_CHANGE_ITEM = 'fileChange'
-// Codex item types the daemon keeps only by name (it drops the rest of an item it does not
-// model). They still tell the view which card the item would have been.
+// Codex item types. The daemon now sends them as tool rows (the plan text, the helper's title);
+// a history cached by an older daemon holds them by name only, so the fallback below stays.
 const CODEX_PLAN_ITEM = 'plan'
 const CODEX_HELPER_ITEM = 'collabAgentToolCall'
 
@@ -24,9 +24,25 @@ export function statusOf(state: HistoryEntry['state']): ItemStatus {
   return STATUS_BY_STATE[state]
 }
 
+// A line of a plan that is a list entry: "- text", "* text", "1. text" or "1) text".
+const PLAN_LIST_LINE = /^\s*(?:[-*]|\d+[.)])\s+(\S.*)$/
+
+/** The list entries of a Codex plan's text; `null` when the plan has none (it is prose). */
+function planItems(text: string): readonly TodoItem[] | null {
+  const items = text.split('\n').flatMap((line): TodoItem[] => {
+    const entry = PLAN_LIST_LINE.exec(line)?.[1]
+    return entry === undefined ? [] : [{ text: entry.trim(), state: 'pending' }]
+  })
+  return items.length > 0 ? items : null
+}
+
 function codexTool(tool: ToolContent, base: ItemFields): ChatEvent[] {
   const label = tool.label ?? ''
   if (tool.kind === COMMAND_ITEM) return [{ ...base, kind: 'command', command: label, output: tool.output }]
+  if (tool.kind === CODEX_PLAN_ITEM) return [{ ...base, kind: 'todo', items: planItems(tool.output) }]
+  if (tool.kind === CODEX_HELPER_ITEM) {
+    return [{ ...base, kind: 'subagent', title: label === '' ? null : label, agentType: null, report: tool.output }]
+  }
   if (tool.kind !== FILE_CHANGE_ITEM) return [{ ...base, kind: 'tool', name: tool.kind, detail: tool.output }]
 
   const files = parseCodexFileChanges(label, tool.output)

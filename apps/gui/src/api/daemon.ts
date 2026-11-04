@@ -76,10 +76,21 @@ const HistoryEntrySchema = z.object({
   content: z.union([
     z.literal('TurnStatus'),
     z.object({ Message: z.object({ role: z.enum(['User', 'Assistant']), text: z.string() }) }),
-    z.object({ Tool: z.object({ kind: z.string(), output: z.string(), label: z.string().optional() }) }),
+    z.object({
+      Tool: z.object({
+        kind: z.string(),
+        output: z.string(),
+        label: z.string().optional(),
+        input: z.unknown().optional(),
+        exit_code: z.number().int().optional(),
+        duration_ms: z.number().int().nonnegative().optional(),
+      }),
+    }),
     z.object({ Unsupported: z.object({ kind: z.string() }) }),
   ]),
   state: z.enum(['Running', 'Completed', 'Failed', 'Interrupted']),
+  started_at_ms: z.number().int().nonnegative().optional(),
+  completed_at_ms: z.number().int().nonnegative().optional(),
 })
 const HistoryPageSchema = z.object({
   entries: z.array(HistoryEntrySchema),
@@ -107,6 +118,9 @@ const UserInputQuestionSchema = z.object({
 const ApprovalRequestSchema = z.object({
   request_id: z.union([z.number().int(), z.string()]),
   kind: z.enum(['Command', 'FileChange', 'Permission', 'UserInput']),
+  // Names the tool step the request is about (Claude: the tool-use id; Codex: the item id).
+  item_id: z.string().nullable().optional(),
+  turn_id: z.string().nullable().optional(),
   command: z.string().nullable(),
   reason: z.string().nullable(),
   cwd: z.string().nullable(),
@@ -125,6 +139,16 @@ const ReadResultSchema = z.object({
   history: HistoryPageSchema,
   checks: z.array(z.unknown()),
   approvals: z.array(ApprovalRequestSchema),
+  // Approvals a person already answered (most recent last); absent from a daemon that predates it.
+  answered_approvals: z
+    .array(
+      z.object({
+        request: ApprovalRequestSchema,
+        decision: z.enum(['Accept', 'AcceptForSession', 'Decline', 'Cancel']),
+        answered_at_ms: z.number().int().nonnegative().nullable().optional(),
+      }),
+    )
+    .default([]),
 })
 const ConversationDiffSchema = z.object({
   files: z.array(z.object({ path: z.string(), additions: z.number().int().nonnegative(), deletions: z.number().int().nonnegative(), patch: z.string(), binary: z.boolean() })),
