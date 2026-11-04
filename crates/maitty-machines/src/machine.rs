@@ -231,6 +231,18 @@ impl Machine {
         )?)
     }
 
+    /// The line that runs the paste script on this machine, the image on its stdin: the far
+    /// side keeps it as `name` and prints where.
+    pub fn paste_argv(&self, name: &str, bytes: u64) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_paste(
+            &route.ssh,
+            &route.target,
+            name,
+            bytes,
+        )?)
+    }
+
     /// The line that has the app installed at `program` there restart its daemon if idle.
     pub fn restart_if_idle_argv(&self, program: &str) -> Result<Vec<String>> {
         let route = self.ssh_route()?;
@@ -460,16 +472,27 @@ impl std::error::Error for LoginText {}
 
 /// Sends the Hello, then skips the login text ahead of the remote's first frame. The Hello
 /// goes first because a remote from before the marker only speaks once it has one.
-async fn greet_ssh(
-    stdout: tokio::process::ChildStdout,
+///
+/// A remote that has already ended (its login printed text and its shell exited) closes its end
+/// before the Hello is written, and writing to it fails with a broken pipe. That failure is not
+/// what went wrong: what the remote said is. So the text is read even when the Hello could not
+/// be sent, and only a stream that says nothing useful is reported as the failed write.
+async fn greet_ssh<R: tokio::io::AsyncRead + Send + Unpin + 'static>(
+    stdout: R,
     w: &mut Writer,
     hello: &ClientMsg,
 ) -> Result<Reader> {
-    send(w, hello).await?;
+    let sent = send(w, hello).await;
     match skip_login_noise(stdout, LIMITS).await {
-        Ok(resynced) => Ok(reader(resynced)),
+        Ok(resynced) => {
+            sent?;
+            Ok(reader(resynced))
+        }
         Err(NoMarker::Text) => Err(LoginText.into()),
-        Err(e) => Err(e.into()),
+        Err(e) => {
+            sent?;
+            Err(e.into())
+        }
     }
 }
 
@@ -1001,6 +1024,71 @@ mod tests {
         assert_eq!(
             from(&super::Machine::ssh("box", vec!["ssh".into()], "maitty")),
             None
+        );
+    }
+
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+    use tokio::io::AsyncWrite;
+
+    /// A stand-in for ssh's stdin once ssh has ended.
+    struct Ended;
+
+    impl AsyncWrite for Ended {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+            _: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()))
+        }
+        fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()))
+        }
+        fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    fn ended_writer() -> super::Writer {
+        tokio_util::codec::FramedWrite::new(
+            Box::new(Ended),
+            tokio_util::codec::LengthDelimitedCodec::new(),
+        )
+    }
+
+    fn hello_msg() -> super::ClientMsg {
+        super::ClientMsg::Hello {
+            version: super::protocol::PROTOCOL_VERSION,
+            attach: true,
+            from: None,
+            structured: None,
+            surface: super::protocol::Surface::Desktop,
+            replays: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_remote_that_ended_after_printing_text_is_reported_by_what_it_printed() {
+        let text: &'static [u8] = b"Last login: Mon\nthis account is currently not available\n";
+        let error = super::greet_ssh(text, &mut ended_writer(), &hello_msg())
+            .await
+            .err()
+            .expect("it fails");
+        assert!(error.is::<super::LoginText>(), "{error:#}");
+    }
+
+    #[tokio::test]
+    async fn a_remote_that_ended_saying_nothing_is_reported_as_the_failed_write() {
+        let nothing: &'static [u8] = b"";
+        let error = super::greet_ssh(nothing, &mut ended_writer(), &hello_msg())
+            .await
+            .err()
+            .expect("it fails");
+        assert!(!error.is::<super::LoginText>());
+        assert!(
+            format!("{error:#}").to_lowercase().contains("pipe"),
+            "{error:#}"
         );
     }
 }

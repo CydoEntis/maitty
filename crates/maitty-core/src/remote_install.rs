@@ -15,7 +15,8 @@ use maitty_shared::hidden::sanitize;
 /// The line the platform probe prints before `uname`, so login text ahead of it is skipped.
 pub const PLATFORM_MARKER: &str = "maitty-platform";
 
-pub use maitty_machines::{INSTALL_SCRIPT, PLATFORM_SCRIPT, WHERE_SCRIPT};
+pub use maitty_machines::{INSTALL_SCRIPT, PASTE_MARKER, PASTE_SCRIPT, PLATFORM_SCRIPT, WHERE_SCRIPT};
+
 
 /// Most bytes ever streamed to a machine (the binary is some 15 MB).
 pub const MOST_BINARY_BYTES: u64 = 200 * 1024 * 1024;

@@ -30,7 +30,7 @@ pub use machine::{
     CONNECT_BUDGET, Dial, Machine, NO_DAEMON_EXIT, OtherVersion, PROXY_ATTACH_ONLY_FLAG,
     SSH_PROGRAM, hello, open_remote, other_version,
 };
-pub use remote_scripts::{INSTALL_SCRIPT, PLATFORM_SCRIPT, WHERE_SCRIPT};
+pub use remote_scripts::{INSTALL_SCRIPT, PASTE_MARKER, PASTE_SCRIPT, PLATFORM_SCRIPT, WHERE_SCRIPT};
 
 /// Windows: start a console program without opening a console window.
 #[cfg(windows)]

@@ -6,7 +6,7 @@
 //! daemon is never signalled: it keeps its sessions and is asked to restart only if none is open.
 
 pub(crate) mod binary;
-mod ssh_run;
+pub(crate) mod ssh_run;
 
 use crate::brand::{APP_COMMAND, APP_VERSION};
 use crate::cli::target::resolve_machine;
