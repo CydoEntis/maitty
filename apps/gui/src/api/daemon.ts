@@ -207,6 +207,18 @@ export async function restartMismatchedDaemon(expectedProtocol: number): Promise
   await invoke('restart_mismatched_daemon', { expectedProtocol })
 }
 
+const MachineListSchema = z.object({ names: z.array(z.string()), error: z.string().nullable() })
+export type MachineList = z.infer<typeof MachineListSchema>
+
+/**
+ * The machines in this computer's `config.local.toml`, by name, and what is wrong with the file
+ * when it is bad. The host reads it once at start, so a hand edit applies on the next start.
+ */
+export async function loadMachines(): Promise<MachineList> {
+  if (!isDesktop()) return { names: [], error: null }
+  return invokeParsed('list_machines', MachineListSchema)
+}
+
 async function invokeParsed<T>(command: string, schema: z.ZodType<T>, args?: Record<string, unknown>): Promise<T> {
   const result = await invoke<unknown>(command, args)
   return schema.parse(result)

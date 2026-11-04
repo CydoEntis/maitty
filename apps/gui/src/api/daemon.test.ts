@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke, isTauri } from '@tauri-apps/api/core'
-import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, loadDaemonRestartStatus, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
+import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, loadDaemonRestartStatus, loadMachines, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -500,5 +500,27 @@ describe('terminal sessions shown beside chats', () => {
       ['close_terminal_session', { term: 5 }],
       ['start_terminal_session', { cwd: '/home/casey/sample', provider: 'Claude' }],
     ])
+  })
+})
+
+describe('machines', () => {
+  it('lists the machine names the host read, and nothing about where they point', async () => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(invoke).mockReset().mockResolvedValue({ names: ['build', 'box'], error: null })
+    expect(await loadMachines()).toEqual({ names: ['build', 'box'], error: null })
+    expect(invoke).toHaveBeenCalledWith('list_machines', undefined)
+  })
+
+  it('carries the host\'s error for a bad machine file', async () => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(invoke).mockReset().mockResolvedValue({ names: [], error: '[[machines]] #1: bad name' })
+    expect((await loadMachines()).error).toBe('[[machines]] #1: bad name')
+  })
+
+  it('has no machines in a plain browser', async () => {
+    vi.mocked(isTauri).mockReturnValue(false)
+    vi.mocked(invoke).mockReset()
+    expect(await loadMachines()).toEqual({ names: [], error: null })
+    expect(invoke).not.toHaveBeenCalled()
   })
 })

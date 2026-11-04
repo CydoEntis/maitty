@@ -2766,6 +2766,7 @@ name = "maitty-gui"
 version = "0.1.0"
 dependencies = [
  "maitty-desktop-client",
+ "maitty-machines",
  "maitty-shared",
  "serde",
  "serde_json",

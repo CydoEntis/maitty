@@ -80,3 +80,10 @@ stopping it, then reconnect through the bundled daemon. Never downgrade a newer
 daemon or restart a remote service from the GUI.
 The target OS floor is the existing project support floor; do not raise it
 without updating this section and the release workflow.
+
+Machines (ADR 0048): the host reads the `[[machines]]` list of `config.local.toml` once at start
+through `maitty-machines` (`machines.rs`, command `list_machines`); a hand edit applies on the next
+start. The window is told names only, plus the error when the file is bad, and shows it as a toast
+without stopping the app. The host may link `maitty-machines`, `maitty-desktop-client`,
+`maitty-shared` and `maitty-ipc-transport`, never `maitty-core`, `maitty-settings` or
+`maitty-terminal-client` (`scripts/check-gui-deps.sh` checks it).

@@ -19,6 +19,7 @@ const daemon = vi.hoisted(() => ({
   restartMismatchedDaemon: vi.fn<(protocol: number) => Promise<void>>(),
   suggestProjectFolders: vi.fn<(typed: string) => Promise<string[]>>(),
   sendTerminalInput: vi.fn<(conversation: { id: string; generation: number }, input: string | Uint8Array) => Promise<void>>(),
+  loadMachines: vi.fn(() => Promise.resolve({ names: [], error: null })),
 }))
 
 vi.mock('@/api/daemon', () => ({

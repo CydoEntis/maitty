@@ -2270,6 +2270,11 @@ ssh_args = ['-p', '2222']
     }
 
     #[test]
+    fn the_machines_crate_finds_the_same_config_file() {
+        assert_eq!(maitty_machines::local_machines::config_path(), config_path());
+    }
+
+    #[test]
     fn machines_in_the_local_config_load() {
         let dir = config_dir("local");
         std::fs::write(

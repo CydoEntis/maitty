@@ -9,6 +9,7 @@ mod files;
 mod ids;
 pub mod link;
 pub mod link_failure;
+pub mod local_machines;
 mod machine;
 pub mod machine_config;
 pub mod machine_ids;

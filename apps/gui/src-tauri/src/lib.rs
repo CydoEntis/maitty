@@ -1,3 +1,4 @@
+mod machines;
 mod project_files;
 
 use std::path::PathBuf;
@@ -473,6 +474,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .manage(machines::Machines(maitty_machines::local_machines::local_machines()))
         .manage(terminal_stream::TerminalHistory::default())
         .manage(terminal_stream::TerminalKeys::default())
         .manage(terminal_stream::TerminalOutput::default())
@@ -483,6 +485,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_sessions,
+            machines::list_machines,
             read_conversation,
             conversation_diff,
             conversation_files,
