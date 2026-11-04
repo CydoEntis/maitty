@@ -1,6 +1,8 @@
 //! What keys, clicks and actions do in this layout.
 
 use super::*;
+use crate::client::ids::ClientSession;
+use crate::client::ids::ClientTerm;
 
 // ---- behaviour -----------------------------------------------------------------------------
 
@@ -13,16 +15,13 @@ const NEW_TAB_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 impl App {
     /// Where a session that just got the focus shows: beside the one it was opened from, in
     /// a new tab, in the tab that already shows it, or in place of the one you were on.
-    pub(in crate::client) fn screen_place(&mut self, f: TermId, prev: Option<TermId>) {
+    pub(in crate::client) fn screen_place(&mut self, f: ClientTerm, prev: Option<ClientTerm>) {
         use crate::layout::{Dir, Node};
         let beside = match self.screen.pending_split {
             Some((p, _)) if p == f => None,
             Some((p, at)) => {
                 self.screen.pending_split = None;
-                if prev == Some(p)
-                    && at.elapsed().as_secs() < 20
-                    && self.snap.terms.contains_key(&p)
-                {
+                if prev == Some(p) && at.elapsed().as_secs() < 20 && self.term_info(p).is_some() {
                     Some(p)
                 } else {
                     self.screen.split_dir = None;
@@ -35,47 +34,38 @@ impl App {
             }
         };
         let new_tab = self.answered_new_tab(f);
-        let take_out = |tabs: &mut Vec<ScreenTab>, f: TermId| {
+        let take_out = |tabs: &mut Vec<ScreenTab>, f: ClientTerm| {
             for tab in tabs.iter_mut() {
-                if tab.layout.contains(f)
+                if tab.contains(f)
                     && tab.layout.leaves().len() > 1
-                    && let Some(l) = tab.layout.clone().remove(f)
+                    && let Some(l) = tab.layout.clone().remove(f.term)
                 {
                     tab.layout = l;
-                    tab.focus = tab.layout.first_leaf();
+                    tab.focus = ClientTerm::on(f.machine, tab.layout.first_leaf());
                 }
             }
-            tabs.retain(|t| !(t.layout == Node::Leaf(f)));
+            tabs.retain(|t| !(t.owner.machine == f.machine && t.layout == Node::Leaf(f.term)));
         };
         if let Some(owner) = new_tab.filter(|o| *o != f) {
             take_out(&mut self.screen.tabs, f);
-            self.screen.tabs.push(ScreenTab {
-                layout: Node::Leaf(f),
-                focus: f,
-                owner,
-                used: 0,
-                name: String::new(),
-            });
+            self.screen.tabs.push(ScreenTab::single(f, owner));
             self.screen.tab = self.screen.tabs.len() - 1;
             // The daemon keeps whose tab it is, so a restart brings it back as that session's.
-            self.cmd(Command::SetTabOf {
-                term: f,
-                owner: Some(owner),
-            });
+            self.cmd_on(
+                f.machine,
+                Command::SetTabOf {
+                    term: f.term,
+                    owner: Some(owner.term),
+                },
+            );
             return;
         }
         if let Some(p) = beside {
             take_out(&mut self.screen.tabs, f);
-            let i = match self.screen.tabs.iter().position(|t| t.layout.contains(p)) {
+            let i = match self.screen.tabs.iter().position(|t| t.contains(p)) {
                 Some(i) => i,
                 None => {
-                    self.screen.tabs.push(ScreenTab {
-                        layout: Node::Leaf(p),
-                        focus: p,
-                        owner: p,
-                        used: 0,
-                        name: String::new(),
-                    });
+                    self.screen.tabs.push(ScreenTab::single(p, p));
                     self.screen.tabs.len() - 1
                 }
             };
@@ -92,21 +82,24 @@ impl App {
                     .take()
                     .unwrap_or(if wide { Dir::Right } else { Dir::Down });
             let tab = &mut self.screen.tabs[i];
-            tab.layout.split(p, dir, f);
+            tab.layout.split(p.term, dir, f.term);
             tab.focus = f;
             let owner = tab.owner;
             self.screen.tab = i;
             if owner != f {
-                self.cmd(Command::SetTabOf {
-                    term: f,
-                    owner: Some(owner),
-                });
+                self.cmd_on(
+                    f.machine,
+                    Command::SetTabOf {
+                        term: f.term,
+                        owner: Some(owner.term),
+                    },
+                );
             }
             return;
         }
         // You picked this session: its own tab, not the shell tab you were last on in it.
         if self.screen.show_own.take() == Some(f)
-            && let Some(i) = self.screen.tabs.iter().position(|t| t.layout.contains(f))
+            && let Some(i) = self.screen.tabs.iter().position(|t| t.contains(f))
         {
             self.screen.tab = i;
             self.screen.tabs[i].focus = f;
@@ -117,7 +110,7 @@ impl App {
             .screen
             .tabs
             .get(self.screen.tab)
-            .is_some_and(|t| t.owner == f && t.layout.contains(f));
+            .is_some_and(|t| t.owner == f && t.contains(f));
         if !here
             && let Some(i) = (0..self.screen.tabs.len())
                 .filter(|i| self.screen.tabs[*i].owner == f)
@@ -126,38 +119,32 @@ impl App {
             self.screen.tab = i;
             let to = self.screen.tabs[i].focus;
             if to != f {
-                self.cmd(Command::FocusPane { term: to });
+                self.cmd_on(to.machine, Command::FocusPane { term: to.term });
             }
             return;
         }
-        if let Some(i) = self.screen.tabs.iter().position(|t| t.layout.contains(f)) {
+        if let Some(i) = self.screen.tabs.iter().position(|t| t.contains(f)) {
             self.screen.tab = i;
             self.screen.tabs[i].focus = f;
             return;
         }
         if self.screen.tabs.is_empty() {
-            self.screen.tabs.push(ScreenTab {
-                layout: Node::Leaf(f),
-                focus: f,
-                owner: f,
-                used: 0,
-                name: String::new(),
-            });
+            self.screen.tabs.push(ScreenTab::single(f, f));
             self.screen.tab = 0;
             return;
         }
         // The one you were on was closed: the rest of its split stays as it is, and the focus
         // goes to what's left there (not to whatever the server picked).
+        let ended = prev.filter(|o| self.term_info(*o).is_none());
         let tab = &mut self.screen.tabs[self.screen.tab];
-        if let Some(gone) =
-            prev.filter(|o| tab.layout.contains(*o) && !self.snap.terms.contains_key(o))
+        if let Some(gone) = ended.filter(|o| tab.contains(*o))
             && tab.layout.leaves().len() > 1
-            && let Some(rest) = tab.layout.clone().remove(gone)
+            && let Some(rest) = tab.layout.clone().remove(gone.term)
         {
             tab.layout = rest;
-            tab.focus = tab.layout.first_leaf();
+            tab.focus = ClientTerm::on(gone.machine, tab.layout.first_leaf());
             let to = tab.focus;
-            self.cmd(Command::FocusPane { term: to });
+            self.cmd_on(to.machine, Command::FocusPane { term: to.term });
             return;
         }
         // Not shown anywhere: it shows on its own, full size. A view that's one session's only
@@ -167,13 +154,7 @@ impl App {
             tabs[i].layout.leaves().len() == 1
                 && tabs.iter().filter(|u| u.owner == tabs[i].owner).count() == 1
         };
-        let fresh = ScreenTab {
-            layout: Node::Leaf(f),
-            focus: f,
-            owner: f,
-            used: 0,
-            name: String::new(),
-        };
+        let fresh = ScreenTab::single(f, f);
         let reuse = if lone(&self.screen.tabs, self.screen.tab) {
             Some(self.screen.tab)
         } else {
@@ -194,19 +175,15 @@ impl App {
     /// The session `f` is the new tab of, if a tab was asked for and `f` is its shell: a pane
     /// that did not exist then and no agent started. Any other pane that takes the focus
     /// leaves the request waiting; once its time is up it is dropped.
-    fn answered_new_tab(&mut self, f: TermId) -> Option<TermId> {
+    fn answered_new_tab(&mut self, f: ClientTerm) -> Option<ClientTerm> {
         let mut pending = self.screen.new_tab.borrow_mut();
         let asked = pending.as_ref()?;
         if asked.at.elapsed() >= NEW_TAB_WAIT {
             *pending = None;
             return None;
         }
-        let is_its_shell = !asked.known.contains(&f)
-            && self
-                .snap
-                .terms
-                .get(&f)
-                .is_some_and(|t| t.started_by.is_none());
+        let is_its_shell =
+            !asked.known.contains(&f) && self.term_info(f).is_some_and(|t| t.started_by.is_none());
         if !is_its_shell {
             return None;
         }
@@ -231,7 +208,7 @@ impl App {
             return;
         };
         // Asked first, as closing a pane is.
-        self.menu_act(crate::client::menu::Act::End(tab.layout.leaves()));
+        self.menu_act(crate::client::menu::Act::End(tab.leaves()));
     }
 
     /// Move tab `from` to where tab `to` is (both of the same session); returns where it is
@@ -264,62 +241,63 @@ impl App {
     /// Trade the places of two panes shown in one tab; each takes the other's size. The
     /// server's tab follows when it holds both, so a restart keeps the new order. False when
     /// no tab here shows both.
-    pub(in crate::client) fn swap_panes(&mut self, a: TermId, b: TermId) -> bool {
+    pub(in crate::client) fn swap_panes(&mut self, a: ClientTerm, b: ClientTerm) -> bool {
         let Some(tab) = self
             .screen
             .tabs
             .iter_mut()
-            .find(|t| t.layout.contains(a) && t.layout.contains(b))
+            .find(|t| t.contains(a) && t.contains(b))
         else {
             return false;
         };
-        if !tab.layout.swap(a, b) {
+        if !tab.layout.swap(a.term, b.term) {
             return false;
         }
         if self
-            .snap
-            .workspaces
-            .iter()
+            .snap_of(a.machine)
+            .into_iter()
+            .flat_map(|snap| &snap.workspaces)
             .flat_map(|w| &w.tabs)
-            .any(|t| t.layout.contains(a) && t.layout.contains(b))
+            .any(|t| t.layout.contains(a.term) && t.layout.contains(b.term))
         {
-            self.cmd(Command::SwapPanes { a, b });
+            self.cmd_on(
+                a.machine,
+                Command::SwapPanes {
+                    a: a.term,
+                    b: b.term,
+                },
+            );
         }
         self.dirty = true;
         true
     }
 
     /// Stop showing `t` beside the others (it keeps running). False when it's on its own.
-    pub(in crate::client) fn screen_unshow(&mut self, t: TermId) -> bool {
-        let Some(i) = self
-            .screen
-            .tabs
-            .iter()
-            .position(|tab| tab.layout.contains(t))
-        else {
+    pub(in crate::client) fn screen_unshow(&mut self, t: ClientTerm) -> bool {
+        let Some(i) = self.screen.tabs.iter().position(|tab| tab.contains(t)) else {
             return false;
         };
         let tab = &mut self.screen.tabs[i];
         if tab.layout.leaves().len() < 2 {
             return false;
         }
-        if let Some(l) = tab.layout.clone().remove(t) {
+        if let Some(l) = tab.layout.clone().remove(t.term) {
             tab.layout = l;
-            tab.focus = tab.layout.first_leaf();
+            tab.focus = ClientTerm::on(t.machine, tab.layout.first_leaf());
             let to = tab.focus;
             if self.focused() == Some(t) {
-                self.cmd(Command::FocusPane { term: to });
+                self.cmd_on(to.machine, Command::FocusPane { term: to.term });
             }
         }
         true
     }
 
     /// Show a session: it becomes the focused one.
-    pub(in crate::client) fn screen_focus(&mut self, term: TermId) {
+    pub(in crate::client) fn screen_focus(&mut self, term: ClientTerm) {
         self.screen.show_own = Some(term);
         self.screen.cursor = None;
         self.mode = Mode::Normal;
-        self.cmd(Command::FocusPane { term });
+        self.cmd_on(term.machine, Command::FocusPane { term: term.term });
     }
 
     /// Start a session in `cwd` running `cmd` (None: a shell), beside the focused one or
@@ -330,14 +308,26 @@ impl App {
         cmd: Option<String>,
         beside: bool,
     ) {
+        self.screen_new_session_on(self.target_machine(), cwd, cmd, beside);
+    }
+
+    /// The same on a named machine, for a folder that belongs to it.
+    pub(in crate::client) fn screen_new_session_on(
+        &mut self,
+        machine: MachineId,
+        cwd: PathBuf,
+        cmd: Option<String>,
+        beside: bool,
+    ) {
         self.leave_shortcut_mode();
-        self.screen_start_pane(cwd, cmd, beside);
+        self.screen_start_pane_on(machine, cwd, cmd, beside);
     }
 
     /// Start a pane without touching shortcut mode: for one nobody asked for (the shell that
     /// replaces the last session closed), which must not end a mode the user is in.
-    pub(in crate::client) fn screen_start_pane(
+    pub(in crate::client) fn screen_start_pane_on(
         &mut self,
+        machine: MachineId,
         cwd: PathBuf,
         cmd: Option<String>,
         beside: bool,
@@ -347,11 +337,14 @@ impl App {
         }
         self.screen.cursor = None;
         self.mode = Mode::Normal;
-        self.cmd(Command::NewWorkspace {
-            cwd: Some(cwd),
-            name: None,
-            cmd,
-        });
+        self.cmd_on(
+            machine,
+            Command::NewWorkspace {
+                cwd: Some(cwd),
+                name: None,
+                cmd,
+            },
+        );
     }
 
     /// A new worktree of a project running `cmd`: on `branch` if given (an existing one),
@@ -382,6 +375,9 @@ impl App {
                 .find(|b| !taken.contains(b))
                 .unwrap_or_else(|| format!("{}-{}", WT_NAMES[n % WT_NAMES.len()], n % 1000))
         });
+        if !self.guard_local(proj.machine, super::super::routing::Feature::Worktrees) {
+            return;
+        }
         let Some(ws) = self
             .active_ws()
             .map(|w| w.id)
@@ -446,7 +442,7 @@ impl App {
                 if is_new {
                     self.screen.fresh.insert(key);
                 }
-                self.screen_new_session(root.clone(), None, false);
+                self.screen_new_session_on(MachineId::LOCAL, root.clone(), None, false);
                 self.notify(
                     format!(
                         "Opened {} with a shell; + New starts an agent",
@@ -584,12 +580,10 @@ impl App {
                 // Resting on a finished agent counts as seeing it.
                 if let Some(term) = self.session_term(t)
                     && self
-                        .snap
-                        .terms
-                        .get(&term)
+                        .term_info(term)
                         .is_some_and(|i| i.status == Status::Done)
                 {
-                    self.cmd(Command::MarkSeen { term });
+                    self.cmd_on(term.machine, Command::MarkSeen { term: term.term });
                 }
             }
         }
@@ -646,7 +640,7 @@ impl App {
             Action::ShellHere => {
                 let dir = self
                     .selected_term()
-                    .and_then(|t| self.snap.terms.get(&t))
+                    .and_then(|t| self.term_info(t))
                     .map(|t| t.root.clone().unwrap_or_else(|| t.cwd.clone()))
                     .or_else(|| {
                         self.screen_model()
@@ -678,7 +672,7 @@ impl App {
             Action::Focus(d) => match focused
                 .and_then(|f| crate::layout::neighbor(&self.screen.leaf_rects, f, *d))
             {
-                Some(to) => self.cmd(Command::FocusPane { term: to }),
+                Some(to) => self.cmd_on(to.machine, Command::FocusPane { term: to.term }),
                 // Past the left edge: the sidebar.
                 None if *d == crate::layout::Dir::Left && !self.side_hidden => {
                     self.screen_side_move(0)
@@ -693,7 +687,8 @@ impl App {
                 }
             }
             Action::FocusNext | Action::FocusPrev => {
-                let shown: Vec<TermId> = self.screen.leaf_rects.iter().map(|(id, _)| *id).collect();
+                let shown: Vec<ClientTerm> =
+                    self.screen.leaf_rects.iter().map(|(id, _)| *id).collect();
                 if let Some(f) = focused
                     && shown.len() > 1
                 {
@@ -704,7 +699,7 @@ impl App {
                     } else {
                         shown[(i + n - 1) % n]
                     };
-                    self.cmd(Command::FocusPane { term: to });
+                    self.cmd_on(to.machine, Command::FocusPane { term: to.term });
                 }
             }
             // A new tab in this session: a shell where you are, straight away.
@@ -727,7 +722,7 @@ impl App {
                     };
                     self.screen.tab = next;
                     let to = self.screen.tabs[next].focus;
-                    self.cmd(Command::FocusPane { term: to });
+                    self.cmd_on(to.machine, Command::FocusPane { term: to.term });
                 }
             }
             Action::SelectTab(n) => {
@@ -737,7 +732,7 @@ impl App {
                 {
                     let to = tab.focus;
                     self.screen.tab = i;
-                    self.cmd(Command::FocusPane { term: to });
+                    self.cmd_on(to.machine, Command::FocusPane { term: to.term });
                 }
             }
             Action::CloseTab => self.close_tab(self.screen.tab),
@@ -757,7 +752,11 @@ impl App {
                 }
             }
             Action::RenameWorkspace => {
-                if let Some(SessionKey::Conversation(id)) = self.screen.cursor {
+                if let Some(ClientSession {
+                    key: SessionKey::Conversation(id),
+                    ..
+                }) = self.screen.cursor
+                {
                     self.menu_do(crate::client::menu::Act::RenameConversation(id));
                 } else if let Some(t) = self.selected_term() {
                     self.menu_do(crate::client::menu::Act::RenamePane(t));
@@ -774,7 +773,7 @@ impl App {
                     _ => crate::layout::Dir::Right,
                 });
                 let cwd = focused
-                    .and_then(|f| self.snap.terms.get(&f))
+                    .and_then(|f| self.term_info(f))
                     .map(|t| t.cwd.clone())
                     .unwrap_or_else(|| self.here_dir());
                 let cmd = match a {
@@ -802,7 +801,7 @@ impl App {
                     .is_some_and(|tab| tab.layout.leaves().len() > 1);
                 if let (true, Some(f)) = (many, focused) {
                     let tab = self.screen.tab;
-                    self.screen.tabs[tab].layout.resize(f, *d, 0.05);
+                    self.screen.tabs[tab].layout.resize(f.term, *d, 0.05);
                 } else {
                     let w = self
                         .screen
@@ -981,7 +980,7 @@ impl App {
                             .is_some_and(|p| p.screen().application_cursor()),
                     );
                     if !data.is_empty() {
-                        self.send(crate::protocol::ClientMsg::Input { term, data });
+                        self.send_input(term, data);
                     }
                 }
             }
@@ -991,7 +990,7 @@ impl App {
     /// A key on the collapsed strip: ← → step to the neighbouring session, 1–9 jump to that one.
     /// The session opens in the pane, and the keys stay on the strip.
     fn strip_switch(&mut self, code: KeyCode) {
-        let sessions: Vec<SessionKey> = self
+        let sessions: Vec<ClientSession> = self
             .screen
             .side_items
             .iter()
@@ -1021,7 +1020,7 @@ impl App {
         if let Some(&term) = sessions.get(to) {
             self.screen_side_set(SideItem::Sess(term));
             if let Some(term) = self.session_term(term) {
-                self.cmd(Command::FocusPane { term });
+                self.cmd_on(term.machine, Command::FocusPane { term: term.term });
             }
         }
     }
@@ -1037,7 +1036,7 @@ impl App {
     }
 
     /// Answer an agent's numbered question from the Inbox: its option `key`, as if typed there.
-    pub(in crate::client) fn inbox_answer(&mut self, term: TermId, key: char, name: &str) {
+    pub(in crate::client) fn inbox_answer(&mut self, term: ClientTerm, key: char, name: &str) {
         let label = self
             .answer_options(term)
             .get((key as u8 - b'1') as usize)
@@ -1050,14 +1049,17 @@ impl App {
     /// A question an agent asked you with `<app> ask-human`, waiting in this pane.
     pub(in crate::client) fn pending_question(
         &self,
-        term: TermId,
+        term: ClientTerm,
     ) -> Option<&crate::protocol::HumanQuestion> {
-        self.snap.questions.iter().find(|q| q.term == term)
+        self.snap_of(term.machine)?
+            .questions
+            .iter()
+            .find(|q| q.term == term.term)
     }
 
     /// The answers a waiting agent offers: its ask-human question's, else the numbered
     /// choices on its screen.
-    pub(in crate::client) fn answer_options(&self, term: TermId) -> Vec<String> {
+    pub(in crate::client) fn answer_options(&self, term: ClientTerm) -> Vec<String> {
         match self.pending_question(term) {
             Some(q) => q.options.clone(),
             None => options(self.parsers.get(&term)),
@@ -1066,27 +1068,30 @@ impl App {
 
     /// Answer with choice `key` ('1' is the first): to its ask-human question, or typed into
     /// the agent as its own numbered prompt expects.
-    pub(in crate::client) fn answer(&mut self, term: TermId, key: char) {
+    pub(in crate::client) fn answer(&mut self, term: ClientTerm, key: char) {
         match self.pending_question(term).map(|q| q.id) {
-            Some(id) => self.cmd(Command::AnswerHuman {
-                id,
-                choice: (key as u8).saturating_sub(b'1') as usize,
-            }),
-            None => self.send(crate::protocol::ClientMsg::Input {
-                term,
-                data: key.to_string().into_bytes(),
-            }),
+            Some(id) => self.cmd_on(
+                term.machine,
+                Command::AnswerHuman {
+                    id,
+                    choice: (key as u8).saturating_sub(b'1') as usize,
+                },
+            ),
+            None => self.send_input(term, key.to_string().into_bytes()),
         }
     }
 
     /// The folder Files / Changes / PR act on: the sidebar cursor's, else the focused one's.
     pub(in crate::client) fn screen_target_dir(&self) -> PathBuf {
         self.selected_term()
-            .and_then(|t| self.snap.terms.get(&t))
+            .and_then(|t| self.term_info(t))
             .map(|t| t.top.clone().unwrap_or_else(|| t.cwd.clone()))
             .or_else(|| match self.screen.cursor {
-                Some(SessionKey::Conversation(id)) => self
-                    .snap
+                Some(ClientSession {
+                    machine,
+                    key: SessionKey::Conversation(id),
+                }) => self
+                    .snap_of(machine)?
                     .conversations
                     .iter()
                     .find(|c| c.id == id)
@@ -1224,9 +1229,17 @@ impl App {
             return;
         }
         if !p.git {
-            return self.screen_new_session(main, cmd, np.beside);
+            return self.screen_new_session_on(p.machine, main, cmd, np.beside);
         }
-        match np.place_for(&agent, self.cfg.worktree.per_agent) {
+        let place = np.place_for(&agent, self.cfg.worktree.per_agent);
+        if place == 1 && !self.guard_local(p.machine, super::super::routing::Feature::Worktrees) {
+            return;
+        }
+        match place {
+            // Another machine's worktrees wait for a later version: its folder it is.
+            0 if p.machine != MachineId::LOCAL => {
+                self.screen_new_session_on(p.machine, main, cmd, np.beside)
+            }
             0 => self.screen_new_worktree(&p, cmd, np.beside, None),
             1 => {
                 // A new branch right in the repo folder (no worktree).
@@ -1239,7 +1252,7 @@ impl App {
                     .map(|i| WT_NAMES[(n + i) % WT_NAMES.len()].to_string())
                     .find(|b| !taken.contains(b))
                     .unwrap_or_else(|| format!("branch-{}", n % 10_000));
-                let (pname, beside) = (p.name.clone(), np.beside);
+                let (pname, beside, machine) = (p.name.clone(), np.beside, p.machine);
                 self.spawn_bg(move || {
                     let mut git = std::process::Command::new("git");
                     git.arg("-C").arg(&main).args(["switch", "-c", &name]);
@@ -1248,7 +1261,7 @@ impl App {
                     crate::client::Bg::Then(Box::new(move |app: &mut App| match out {
                         Ok(o) if o.status.success() => {
                             app.notify(format!("{pname} is on a new branch, {name}"), false);
-                            app.screen_new_session(main, cmd, beside);
+                            app.screen_new_session_on(machine, main, cmd, beside);
                         }
                         Ok(o) => app.notify(
                             format!(
@@ -1265,7 +1278,7 @@ impl App {
                 });
             }
             n @ 3.. => match p.wts.iter().filter(|w| !w.main).nth(n as usize - 3) {
-                Some(w) => self.screen_new_session(w.path.clone(), cmd, np.beside),
+                Some(w) => self.screen_new_session_on(p.machine, w.path.clone(), cmd, np.beside),
                 None => {
                     self.mode = Mode::ScreenPane(np.clone());
                     self.notify(
@@ -1274,7 +1287,7 @@ impl App {
                     );
                 }
             },
-            _ => self.screen_new_session(main, cmd, np.beside),
+            _ => self.screen_new_session_on(p.machine, main, cmd, np.beside),
         }
     }
 
@@ -1399,6 +1412,9 @@ impl App {
                 let Some(GoRow::Done(term)) = sel_row else {
                     return;
                 };
+                if !self.guard_local(term.machine, super::super::routing::Feature::Changes) {
+                    return;
+                }
                 let Some((_, wt, _)) = find(&model, term) else {
                     return;
                 };
@@ -1424,9 +1440,7 @@ impl App {
                     && let Some(GoRow::Failed(term)) = sel_row =>
             {
                 let name = self
-                    .snap
-                    .terms
-                    .get(&term)
+                    .term_info(term)
                     .and_then(|t| t.check())
                     .map(|c| c.name.clone())
                     .unwrap_or_default();
@@ -1469,11 +1483,11 @@ impl App {
             }
             KeyCode::Delete if matches!(sel_row, Some(GoRow::Done(_) | GoRow::NotRun(_))) => {
                 if let Some(GoRow::Done(term) | GoRow::NotRun(term)) = sel_row {
-                    self.cmd(Command::MarkSeen { term });
+                    self.cmd_on(term.machine, Command::MarkSeen { term: term.term });
                 }
             }
             KeyCode::Delete if let Some(GoRow::Quiet(term)) = sel_row => {
-                if let Some(at) = self.snap.terms.get(&term).and_then(|i| i.quiet_since) {
+                if let Some(at) = self.term_info(term).and_then(|i| i.quiet_since) {
                     self.screen.quiet_seen.insert(term, at);
                     self.screen_fresh();
                 }
@@ -1567,7 +1581,7 @@ impl App {
             }
             KeyCode::Enter => {
                 let term = self.history.iter().rev().nth(sel).and_then(|h| h.1);
-                match term.filter(|t| self.snap.terms.contains_key(t)) {
+                match term.filter(|t| self.term_info(*t).is_some()) {
                     Some(t) => {
                         self.mode = Mode::Normal;
                         self.screen_focus(t);
@@ -1779,7 +1793,7 @@ impl App {
                         .find(|w| w.main)
                         .map(|w| w.path.clone())
                         .unwrap_or_else(|| p.path.clone());
-                    self.screen_new_session(dir, None, false);
+                    self.screen_new_session_on(p.machine, dir, None, false);
                 }
             }
             ScreenHit::RowMenuSess(t) => {
@@ -1813,7 +1827,7 @@ impl App {
                 if let Some(tab) = self.screen.tabs.get(i) {
                     let to = tab.focus;
                     self.screen.tab = i;
-                    self.cmd(Command::FocusPane { term: to });
+                    self.cmd_on(to.machine, Command::FocusPane { term: to.term });
                     // Double-click: rename it in its pill.
                     if double {
                         self.rename_tab_start();

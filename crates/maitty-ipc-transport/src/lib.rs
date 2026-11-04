@@ -6,6 +6,9 @@ use serde::{Serialize, de::DeserializeOwned};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
+mod stream_marker;
+pub use stream_marker::{LIMITS, Limits, NoMarker, STREAM_MARKER, skip_login_noise};
+
 pub const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 
 pub fn socket_id(

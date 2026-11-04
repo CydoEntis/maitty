@@ -5,7 +5,7 @@
 //! full) and looks nearby if it moved.
 
 use super::App;
-use crate::protocol::TermId;
+use super::ids::ClientTerm;
 
 /// The prompt mark (OSC 133;A).
 const MARK: &[u8] = b"\x1b]133;A";
@@ -22,7 +22,7 @@ pub(super) struct Marks {
 
 impl App {
     /// Feed a pane's output to its screen copy, noting where prompts start.
-    pub(super) fn feed(&mut self, term: TermId, data: &[u8]) {
+    pub(super) fn feed(&mut self, term: ClientTerm, data: &[u8]) {
         let Some(p) = self.parsers.get_mut(&term) else {
             return;
         };
@@ -67,7 +67,7 @@ impl App {
     }
 
     /// Scroll `term` to the previous (`back`) or next command from what's on screen.
-    pub(super) fn jump_prompt(&mut self, term: TermId, back: bool) {
+    pub(super) fn jump_prompt(&mut self, term: ClientTerm, back: bool) {
         let (cur, total) = self.history(term);
         let Some(marks) = self.marks.get(&term) else {
             self.notify(
@@ -99,7 +99,7 @@ impl App {
     }
 
     /// The scroll offset whose top line says `text`: `want`, or the nearest that does.
-    fn verify(&mut self, term: TermId, want: usize, text: &str, total: usize) -> Option<usize> {
+    fn verify(&mut self, term: ClientTerm, want: usize, text: &str, total: usize) -> Option<usize> {
         if text.trim().is_empty() {
             return None;
         }

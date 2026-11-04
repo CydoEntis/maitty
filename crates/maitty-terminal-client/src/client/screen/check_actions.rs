@@ -16,7 +16,10 @@ const STAYS: &str = "on the row, in the Inbox history and in the evidence";
 const SCOPE: &str = "for this result only; the next run replaces it";
 
 /// The row menu's items for a session whose check has a result, in menu order.
-pub(in crate::client) fn check_menu_items(term: TermId, info: &CheckInfo) -> Vec<(String, Act)> {
+pub(in crate::client) fn check_menu_items(
+    term: ClientTerm,
+    info: &CheckInfo,
+) -> Vec<(String, Act)> {
     let mut items = vec![("Check output".to_string(), Act::CheckOutput(term))];
     if check::settled(info) {
         items.push(("Re-run check".into(), Act::RerunCheck(term)));
@@ -75,20 +78,26 @@ pub(in crate::client) fn append_reason(reason: &mut String, text: &str) {
 }
 
 impl App {
-    pub(in crate::client) fn rerun_check(&mut self, term: TermId) {
+    pub(in crate::client) fn rerun_check(&mut self, term: ClientTerm) {
         self.rerun_checkpoint(term, None);
     }
 
     /// Run `term`'s checkpoint `name` again (None: all of them).
-    pub(in crate::client) fn rerun_checkpoint(&mut self, term: TermId, name: Option<String>) {
+    pub(in crate::client) fn rerun_checkpoint(&mut self, term: ClientTerm, name: Option<String>) {
         let who = self.session_name(term);
-        let Some(t) = self.snap.terms.get(&term) else {
+        let Some(t) = self.term_info(term) else {
             return;
         };
         match rerun_words(t, &who, checkpoint(t, name.as_deref())) {
             Err(why) => self.notify(why.into(), false),
             Ok(said) => {
-                self.cmd(Command::RerunCheck { term, name });
+                self.cmd_on(
+                    term.machine,
+                    Command::RerunCheck {
+                        term: term.term,
+                        name,
+                    },
+                );
                 if let Some(said) = said {
                     self.notify(said, false);
                 }
@@ -98,11 +107,18 @@ impl App {
 
     pub(in crate::client) fn override_check(
         &mut self,
-        term: TermId,
+        term: ClientTerm,
         name: Option<String>,
         reason: String,
     ) {
-        self.cmd(Command::OverrideCheck { term, name, reason });
+        self.cmd_on(
+            term.machine,
+            Command::OverrideCheck {
+                term: term.term,
+                name,
+                reason,
+            },
+        );
         // After an override the evidence it now stands on is shown.
         if !matches!(&self.view, Some(crate::client::View::Check(v)) if v.term == term) {
             self.open_check_sheet(term);
@@ -116,8 +132,14 @@ impl App {
         );
     }
 
-    pub(in crate::client) fn undo_override(&mut self, term: TermId, name: Option<String>) {
-        self.cmd(Command::UndoOverride { term, name });
+    pub(in crate::client) fn undo_override(&mut self, term: ClientTerm, name: Option<String>) {
+        self.cmd_on(
+            term.machine,
+            Command::UndoOverride {
+                term: term.term,
+                name,
+            },
+        );
         self.notify(
             "override undone: the check reads as failed again".into(),
             false,
@@ -128,13 +150,11 @@ impl App {
     /// a toast) when it is not failed.
     pub(in crate::client) fn override_confirm(
         &mut self,
-        term: TermId,
+        term: ClientTerm,
         name: Option<String>,
     ) -> Option<Confirm> {
         let Some(info) = self
-            .snap
-            .terms
-            .get(&term)
+            .term_info(term)
             .and_then(|t| checkpoint(t, name.as_deref()).cloned())
             .filter(check::failed)
         else {
@@ -155,7 +175,7 @@ impl App {
         })
     }
 
-    pub(in crate::client) fn ask_override(&mut self, term: TermId, name: Option<String>) {
+    pub(in crate::client) fn ask_override(&mut self, term: ClientTerm, name: Option<String>) {
         self.screen.inbox_return = None;
         if let Some(c) = self.override_confirm(term, name) {
             self.mode = Mode::Confirm(Box::new(c));
@@ -167,14 +187,12 @@ impl App {
     /// says so with false, when the result does not allow it.
     pub(in crate::client) fn do_check_key(
         &mut self,
-        term: TermId,
+        term: ClientTerm,
         name: Option<String>,
         key: char,
     ) -> bool {
         let Some(info) = self
-            .snap
-            .terms
-            .get(&term)
+            .term_info(term)
             .and_then(|t| checkpoint(t, name.as_deref()).cloned())
         else {
             return false;
@@ -239,9 +257,7 @@ pub(in crate::client) fn draw_override(
         return;
     };
     let info = app
-        .snap
-        .terms
-        .get(term)
+        .term_info(*term)
         .and_then(|x| checkpoint(x, name.as_deref()).cloned())
         .unwrap_or_default();
     let mark = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).over;

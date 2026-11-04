@@ -64,6 +64,7 @@ one thing (ADR 0017, 0022).
 | `,` | Settings |
 | `?` | All keys |
 | `l` | What happened (history) |
+| `w` | Machines: the computers reached over ssh; add, retry or remove one |
 | `Ctrl+V` | Paste the clipboard's image |
 | `q` | Step away (agents keep running) |
 | `Ctrl+R` | Reload the config |
@@ -130,7 +131,7 @@ Every key is a leader key: there is no letter that acts by itself in the sidebar
 The defaults are one key each, none but `?` needing Shift, chosen from what other apps use
 (ADR 0017, 0022): `v` / `h` split stacked / side by side, `c` Changes, `i` Inbox, `y` why, `k` stop
 the agent, `Enter` message it, `p` find a file, `g` worktrees, `b`
-Branch, `a` references, `l` what happened, `?` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
+Branch, `a` references, `l` what happened, `w` machines, `?` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
 `Ctrl`+arrows resize, `Alt`+arrows swap panes, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
 
 ## Menu

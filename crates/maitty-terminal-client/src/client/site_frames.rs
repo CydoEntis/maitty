@@ -179,10 +179,11 @@ fn draw(app: &mut App, w: u16, h: u16) -> Buffer {
     app.sync_sizes();
     let ids: Vec<TermId> = app.snap.terms.keys().copied().collect();
     for id in ids {
-        let (rows, cols) = app.parsers[&id].screen().size();
-        app.parsers.insert(id, vt100::Parser::new(rows, cols, 0));
+        let (rows, cols) = app.parsers[&ClientTerm::local(id)].screen().size();
+        app.parsers
+            .insert(ClientTerm::local(id), vt100::Parser::new(rows, cols, 0));
         let out = pane_output(id, app.snap.terms[&id].status, cols);
-        app.feed(id, out.as_bytes());
+        app.feed(ClientTerm::local(id), out.as_bytes());
     }
     app.screen_fresh();
     term.draw(|f| render::draw(app, f)).expect("a frame");
@@ -394,7 +395,8 @@ fn under(dir: &Path, rel: &str) -> PathBuf {
 }
 
 fn add(app: &mut App, t: TermInfo) {
-    app.parsers.insert(t.id, vt100::Parser::new(20, 80, 0));
+    app.parsers
+        .insert(ClientTerm::local(t.id), vt100::Parser::new(20, 80, 0));
     app.snap.terms.insert(t.id, t);
 }
 
@@ -502,7 +504,7 @@ fn changes(app: &mut App) {
             summary: String::new(),
             dirty: 3,
             ahead: 0,
-            agent: Some(CHECKOUT),
+            agent: Some(ClientTerm::local(CHECKOUT)),
             dir: dir.clone(),
             root,
         },
@@ -525,7 +527,7 @@ fn changes(app: &mut App) {
         agent: "claude".into(),
         said: "Discount codes now come off the subtotal before shipping. Two new tests cover it."
             .into(),
-        term: Some(CHECKOUT),
+        term: Some(ClientTerm::local(CHECKOUT)),
         ws: Some(STORE_WS),
         reviewed: Default::default(),
         linked: true,

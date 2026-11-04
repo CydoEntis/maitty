@@ -212,6 +212,10 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let v = (**v).clone();
             super::screen::draw_tidy(app, f, area, &t, &v);
         }
+        Mode::Machines(v) => {
+            let v = (**v).clone();
+            super::screen::machines::draw_machines(app, f, area, &t, &v);
+        }
         Mode::Branch(v) => {
             let v = (**v).clone();
             super::branch::draw_branches(app, f, area, &t, &v);

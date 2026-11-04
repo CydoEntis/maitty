@@ -3,8 +3,10 @@
 
 use super::check;
 use super::glyphs::Kind as State;
+use super::machine_group;
 use super::side_tabs::{draw_tab_line, shown_tab_indexes, tab_line, tab_segs};
 use super::*;
+use crate::client::ids::ClientSession;
 
 /// A line of the sidebar tree.
 #[derive(Debug, Clone)]
@@ -13,17 +15,21 @@ pub(in crate::client) enum Line {
     /// An agent or shell (pi, wi, si), and how deep it sits under the session that started it (0: not under anyone).
     Sess(usize, usize, usize, u8),
     /// A session's second line: its check result, its question, or what it is doing.
-    Detail(SessionKey),
+    Detail(ClientSession),
     /// A session's third line, from `NARROW` columns: a failed check's first failing line, or
     /// its checkpoints by name.
-    Third(SessionKey),
+    Third(ClientSession),
     /// A dim line under an agent: a queued follow-up. Shares the agent's highlight.
-    Note(String, Color, SessionKey),
+    Note(String, Color, ClientSession),
     /// One of a session's tabs (its owner, and where the tab is in `screen.tabs`), under its
     /// row while it has two or more (`side_tabs`).
-    Tab(TermId, usize),
+    Tab(ClientTerm, usize),
     /// Nothing running in a folder project.
     Empty(usize),
+    /// A machine's header, drawn only while there is more than one machine.
+    Machine(MachineId),
+    /// A line under a machine's header: why it is down, or what its daemon reports.
+    MachineNote(Vec<String>, Color),
     Gap,
 }
 
@@ -129,9 +135,25 @@ const HELPER_DEPTH: u8 = 2;
 /// Sessions of a project, each by (worktree, session) index.
 type Rows = Vec<(usize, usize)>;
 
+/// The machines to head, this computer first: none until the window knows another one.
+fn machines_headed(app: &App) -> impl Iterator<Item = MachineId> {
+    let others = app.remotes.keys().copied().collect::<Vec<_>>();
+    (!others.is_empty())
+        .then_some(MachineId::LOCAL)
+        .into_iter()
+        .chain(others)
+}
+
 pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec<Line> {
     let mut out = Vec::new();
+    let mut headed = machines_headed(app).peekable();
     for (pi, p) in model.iter().enumerate() {
+        while let Some(machine) = headed.next_if(|m| *m <= p.machine) {
+            out.extend(machine_group::lines(app, machine, t));
+            if machine != p.machine {
+                out.push(Line::Gap);
+            }
+        }
         out.push(Line::Proj(pi));
         if app.screen.saved.closed.contains(&format!("p:{}", p.key)) {
             out.push(Line::Gap);
@@ -143,11 +165,12 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             .collect();
         let mut rows = every;
         // Your order (dragged) otherwise.
-        let order = &app.screen.saved.session_order;
-        let at = |key: SessionKey| {
-            order
+        let at = |key: ClientSession| {
+            app.screen
+                .saved
+                .session_order_of(app.machine_name(key.machine))
                 .iter()
-                .position(|saved| *saved == key)
+                .position(|saved| *saved == key.key)
                 .unwrap_or(usize::MAX)
         };
         rows.sort_by_key(|&(wi, si)| {
@@ -211,6 +234,10 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
         }
         out.push(Line::Gap);
     }
+    for machine in headed {
+        out.extend(machine_group::lines(app, machine, t));
+        out.push(Line::Gap);
+    }
     out
 }
 
@@ -233,7 +260,7 @@ fn fitted_lines(app: &App, model: &[Proj], t: &Theme, screen_w: u16) -> Vec<Line
 }
 
 /// The session a sidebar line stands for, if any.
-pub(in crate::client) fn line_term(model: &[Proj], l: &Line) -> Option<SessionKey> {
+pub(in crate::client) fn line_term(model: &[Proj], l: &Line) -> Option<ClientSession> {
     match l {
         Line::Sess(pi, wi, si, _) => Some(model[*pi].wts[*wi].sessions[*si].key),
         _ => None,
@@ -241,7 +268,7 @@ pub(in crate::client) fn line_term(model: &[Proj], l: &Line) -> Option<SessionKe
 }
 
 /// The session a line belongs to as part of its row (its first, second or third line).
-fn row_term(model: &[Proj], l: &Line) -> Option<SessionKey> {
+fn row_term(model: &[Proj], l: &Line) -> Option<ClientSession> {
     match l {
         Line::Detail(term) | Line::Third(term) => Some(*term),
         _ => line_term(model, l),
@@ -393,7 +420,7 @@ pub(in crate::client) fn draw_side(
             ..cols.row(y)
         }
     };
-    let mut looks: std::collections::BTreeMap<SessionKey, RowLook> = Default::default();
+    let mut looks: std::collections::BTreeMap<ClientSession, RowLook> = Default::default();
     for (i, line) in lines.iter().enumerate().skip(scroll).take(list_h) {
         let y = top + (i - scroll) as u16;
         let indent = indents[i];
@@ -443,10 +470,11 @@ pub(in crate::client) fn draw_side(
                         && Some(term) != focus
                         && let Some(gy) = app.motion.glide(
                             "side",
-                            match term {
-                                SessionKey::Pane(id) => u64::from(id),
-                                SessionKey::Conversation(id) => id.0,
-                            },
+                            term.machine.motion_key()
+                                | match term.key {
+                                    SessionKey::Pane(id) => u64::from(id),
+                                    SessionKey::Conversation(id) => id.0,
+                                },
                             y,
                             on,
                         )
@@ -495,6 +523,9 @@ pub(in crate::client) fn draw_side(
                         cols.end(),
                     );
                 }
+            }
+            if s.down {
+                machine_group::grey(buf, row, t);
             }
             continue;
         }
@@ -555,12 +586,12 @@ pub(in crate::client) fn draw_side(
 
 /// The session row that is open: the focused pane's, or in a split the split's (its first
 /// pane's), whichever side of it has the keys.
-pub(super) fn open_row(app: &App) -> Option<TermId> {
-    let shown: Vec<TermId> = app
+pub(super) fn open_row(app: &App) -> Option<ClientTerm> {
+    let shown: Vec<ClientTerm> = app
         .screen
         .tabs
         .get(app.screen.tab)
-        .map(|t| t.layout.leaves())
+        .map(|t| t.leaves())
         .unwrap_or_default();
     app.focused().map(|f| {
         if shown.len() > 1 && shown.contains(&f) {
@@ -609,7 +640,7 @@ pub(super) fn side_scroll(
     app: &mut App,
     model: &[Proj],
     lines: &[Line],
-    focus: Option<SessionKey>,
+    focus: Option<ClientSession>,
     list_h: usize,
 ) -> usize {
     let mut scroll = app.screen.side_scroll as usize;
@@ -645,10 +676,14 @@ fn row_look(picked: bool, ground: Color, t: &Theme) -> RowLook {
 /// to be approved) and ✕n failed checks, each only when there are any.
 fn draw_head(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme, lit: bool) {
     let all: Vec<&Session> = model.iter().flat_map(|p| p.sessions()).collect();
-    let needs = all.iter().filter(|s| check::needs_you(s)).count();
+    // What a machine said before its line dropped cannot be answered now: it is not counted.
+    let needs = all
+        .iter()
+        .filter(|s| !s.down && check::needs_you(s))
+        .count();
     let failed = all
         .iter()
-        .filter(|s| check::shown(s).is_some_and(check::failed))
+        .filter(|s| !s.down && check::shown(s).is_some_and(check::failed))
         .count();
     let marks = check::marks(app);
     let ground = Style::default();
@@ -675,7 +710,9 @@ fn draw_head(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme
         (t.btn, t.strong, t.text)
     };
     let chip = Style::default().bg(chip_bg);
-    let host = crate::ipc::remote()
+    let host = app
+        .machine
+        .host()
         .map(|h| format!(" ⇄ {h}"))
         .unwrap_or_default();
     let mut title = vec![
@@ -820,7 +857,7 @@ fn draw_session(
     t: &Theme,
     ages: bool,
 ) {
-    let spinner = glyph(app, Status::Working);
+    let spinner = machine_group::working_mark(app, s.down);
     let mark = check::mark(app, s, t, &spinner);
     let state = check::kind(s);
     let st = Style::default().bg(rl.bg);
@@ -857,7 +894,7 @@ fn draw_session(
         );
     }
     let menu = hovered(app, cols.row(y)) && !rl.picked;
-    let when = if ages && s.is_agent && matches!(s.key, SessionKey::Pane(_)) {
+    let when = if ages && s.is_agent && matches!(s.key.key, SessionKey::Pane(_)) {
         age(s.since)
     } else {
         String::new()
@@ -904,7 +941,7 @@ fn draw_session(
     } else {
         st
     };
-    let anim = if coloured && app.motion_on() {
+    let anim = if coloured && app.motion_on() && !s.down {
         NameMotion::of(s, state)
     } else {
         NameMotion::Still
@@ -1183,6 +1220,12 @@ fn draw_line(
                 t.muted,
             );
             draw_tab_line(app, buf, row, x, end, segs, *tab);
+        }
+        Line::Machine(machine) => {
+            machine_group::draw_header(app, buf, (cols.x, cols.rx + 1), y, *machine, pb, t)
+        }
+        Line::MachineNote(forms, color) => {
+            machine_group::draw_note(buf, (cols.x, cols.rx + 1), y, (forms, *color), pb)
         }
         Line::Sess(..) | Line::Detail(_) | Line::Third(_) | Line::Gap => {}
     }
@@ -1953,7 +1996,11 @@ mod v8_tests {
             .screen_model()
             .iter()
             .flat_map(|p| p.wts.iter())
-            .find(|w| w.sessions.iter().any(|s| s.native_term.unwrap() == 2))
+            .find(|w| {
+                w.sessions
+                    .iter()
+                    .any(|s| s.native_term.unwrap() == ClientTerm::local(2))
+            })
             .expect("add-payments' checkout")
             .path
             .clone();
@@ -1985,7 +2032,11 @@ mod v8_tests {
             .screen_model()
             .iter()
             .flat_map(|p| p.wts.iter())
-            .find(|w| w.sessions.iter().any(|s| s.native_term.unwrap() == 2))
+            .find(|w| {
+                w.sessions
+                    .iter()
+                    .any(|s| s.native_term.unwrap() == ClientTerm::local(2))
+            })
             .expect("add-payments' checkout")
             .path
             .clone();
@@ -2074,7 +2125,7 @@ mod v8_tests {
             .screen_model()
             .iter()
             .flat_map(Proj::sessions)
-            .find(|s| s.native_term.unwrap() == 2)
+            .find(|s| s.native_term.unwrap() == ClientTerm::local(2))
             .cloned()
             .expect("add-payments");
         let t = app.theme.clone();
@@ -2200,7 +2251,7 @@ mod v8_tests {
         );
         let clicked = app.mode.clone();
         let mut by_key = payments_with_changes().0;
-        by_key.screen.cursor = Some(SessionKey::Pane(2));
+        by_key.screen.cursor = Some(ClientSession::local(SessionKey::Pane(2)));
         by_key.act(Action::Changes);
         assert_eq!(by_key.mode, clicked, "the same as d on that session");
     }
@@ -2220,7 +2271,7 @@ mod v8_tests {
             "no Changes"
         );
         assert!(
-            std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(
+            std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(|m| matches!(
                 m,
                 crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane {
                     term: 2
@@ -2523,10 +2574,12 @@ mod v8_tests {
         // The pane has the keys: a digit is typed into it, nothing switches.
         app.mode = Mode::Normal;
         app.on_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
-        assert!(!std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(
-            m,
-            crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { .. })
-        )));
+        assert!(
+            !std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(|m| matches!(
+                m,
+                crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { .. })
+            ))
+        );
         // The column has them: 1–9 jump, ↑ ↓ and ← → step.
         app.act(Action::BrowseTree);
         let _ = raw_text(&mut app, Layout::Floating, w, h, "unicode");
@@ -2554,7 +2607,7 @@ mod v8_tests {
         app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
         assert_eq!(app.screen.cursor, third, "up steps back");
         assert!(
-            std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(
+            std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(|m| matches!(
                 m,
                 crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { .. })
             )),

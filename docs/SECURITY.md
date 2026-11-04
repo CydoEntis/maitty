@@ -19,6 +19,9 @@ it out in the handoff.
 - Does it render user-controlled content, or open or redirect to a URL?
 - Does it run a command, build a file path, or build a query from input?
 - Does it add a dependency or a build step that runs code?
+- Does it read or act on something another machine's daemon sent (a `ServerMsg` from a
+  `[[machines]]` entry)? Decide it in the remote-daemon table under *Project-specific: threat
+  model*, clean what it carries, and test the ignored path.
 
 ## Input and output
 
@@ -136,6 +139,16 @@ like status reports, are trusted only from the pane itself). A launcher passes t
 arguments on as an argument vector, never through a shell, and the paths it embeds are
 single-quoted.
 
+The daemon runs the user's own `$SHELL -ilc` once at start to learn the login PATH
+(`crates/maitty-core/src/login_path.rs`; unix only). It is as safe as the user's shell
+startup files already are, and bounded further: the shell is started by path as an argument
+vector, never through a shell, and only when `$SHELL` is an absolute path to an existing file
+(else `/bin/sh`); it has no terminal (its own session) and null stdin, its error output is
+discarded, and the `MAITTY_*` variables (pane id and token, socket, routing) are removed from its
+environment; a timeout kills its whole process group; its output is read only between two
+marker words, capped in size, and used as PATH entries, never executed or logged. It runs in
+the daemon, on the machine the daemon serves, never on a client.
+
 A project's check is a command the daemon runs as the user when an agent's turn ends. It
 comes from the user's own `config.toml` (`[[check]]`) or, for a project with none there, from
 the repo's `.maitty/checks.toml` under the approval rules below. It runs through the user's shell in the
@@ -240,6 +253,123 @@ Saved pane output and check tails can hold secrets that were on screen. On unix 
 are 0700 and their files 0600 (`persist::private_dir`, `create_private`); on Windows they sit
 in your own profile. `[restore] output = false` stops saving pane output and deletes it.
 
+A `[[machines]]` entry's `target` and `ssh_args` are user input that reaches `ssh`, so an option
+smuggled into either runs code on this computer (`-oProxyCommand=...`). The config load refuses
+a `target` that starts with `-` or holds whitespace or control characters, an empty or
+control-character `ssh_args` entry, and a bad `remote_cmd`; `ssh_args` is a list and is never
+split on spaces. The ssh command itself is built in one place (`ssh_command.rs`): ssh runs with
+`-o BatchMode=yes` (no prompts) and `-o ForwardAgent=no` and `-a` (no agent forwarding), plus
+`ConnectTimeout` and `ServerAlive*` defaults that `ssh_args` may override; `BatchMode` and
+`ForwardAgent` come before `ssh_args` so ssh's first-value-wins rule keeps them. The host follows
+`--`, and a host that starts with `-` is refused there too, since `--remote host` never passes
+the config load. The remote command is one string for the remote user's login shell, so each
+word is POSIX single-quoted whatever the client runs (a Windows client to a Linux remote
+included); `remote_cmd` is one program path, a control character or newline in it is refused,
+and only a leading `~/` stays unquoted. A remote machine is untrusted, so the pane id and token
+a command carries (`Hello.from`) are sent only to this computer's daemon, and `MAITTY_REMOTE`,
+`MAITTY_SSH` and `MAITTY_REMOTE_CMD` are removed from every pane's environment. The table is
+read only from `config.local.toml` and refused in the synced
+`config.toml`, so a shared config cannot point this computer at a host.
+
+A machine's `via` is a program this app runs, so it is code: it is read only from
+`config.local.toml` and a `via` in the synced `config.toml` is refused with the rest of the table, naming the
+reason. It is an argv list and never a shell line: the program is `Command::new(via[0])` with the other
+entries as arguments, no shell reads it, and the remote command (`remote_command`, the same quoting as for
+ssh) is one argument, so a hostile `remote_cmd` stays inside it. The load refuses an empty list, a program
+that is empty, starts with `-` or is `{command}`, a control character anywhere, and a `{command}` that is not
+an entry of its own or appears twice. Nothing of ssh is added (no `-o`, `-a`, `--`): the transport is
+trusted exactly as far as the user who wrote it. Its stdin and stdout are plain pipes (never a pty), stderr
+is collected and cleaned before it is shown, and on unix it runs in its own session so it cannot read the
+controlling terminal. It is refused on Windows, at load and at connect. Its arguments can hold tokens, so
+only the program's name is shown (in `doctor`) and nothing of it is logged. Its failures are never read for
+ssh's login words.
+
+The Machines dialog adds two more ssh command lines, built beside the first in `ssh_command.rs` with the same
+target check, hardening and `--`: a probe (`BatchMode`, `ConnectTimeout=8`, stdin closed, output read to
+64 KiB and cleaned) and a first login (no `BatchMode`, so ssh can ask) that runs in a popup pane on this
+computer. A person types or picks the host, so it is checked before anything runs: a target that starts with `-` or
+holds whitespace or a control character is refused with the loader's message, and nothing is spawned or
+written. A pane's shell reads the first-login line, so each word is a plain word (letters, digits and
+`_./-~:=,+@`, with a Windows path's backslashes on Windows) or one single-quoted word; a word with a quote or a
+control character, an unplain `remote_cmd` and a quoted program are refused rather than escaped, since each
+shell escapes differently. The remote half of that line is never quoted for the remote shell. A target is a host name, so it
+cannot become an option or a second command whichever shell reads the line. The dialog writes only to
+`config.local.toml` (never the synced file), validates the entry with `validate_machines` first, and
+changes nothing else; removing a machine does not touch the machine, only this computer's records of it.
+
+`maitty machine update <name>` (`cli/machine_update.rs`) runs one fixed script on a machine and writes a
+binary there, so it follows the same rules as every other ssh line, plus these. The script is a constant
+in the app (`remote_install::INSTALL_SCRIPT`, passed to the remote shell as `sh -c '<script>' sh <args>`);
+the destination and the byte count are positional arguments, each quoted once by `ssh_command`, and never
+part of the script's text, so nothing a person or a machine supplies can become shell code (tests assert
+the argv, and the script has no `{`/`}` and no process-signalling command). The binary travels on stdin,
+not in a command. The script writes beside the destination with `umask 077`, checks the byte count, runs
+`--version` (owner-only mode until it has run), makes it 755, and renames it over the old file; on any
+failure it removes the temp file and leaves the destination as it was. It never signals a process: a
+running daemon keeps its sessions. A release fetched for another platform is verified against
+`sha256sums.txt` (exact full sha256) before it is unpacked, the archive listing is checked before
+extraction (no absolute path, no `..`, no link, only the release folder; only the one binary is taken),
+and the archive and the binary are capped at 200 MB. Nothing fetched is ever run on this computer. The
+machine never needs network access to GitHub. The platform answer (`uname -sm`) and the version line are
+read as data and cleaned before they are shown. Asking is never silent: a first install needs `--install`
+or a `y`, a replacement `--yes` or a `y`, a downgrade `--force`. A Windows machine is refused as a remote
+in v1.
+
+Reconnecting never starts a daemon: after an established line ended, a configured machine's proxy
+runs `proxy --attach-only` and exits when none is running, so a dead link cannot make this
+computer launch processes on a server the user stopped. The first connection, and a retry a
+person asks for, run plain `proxy`, which starts the daemon: it is the same command `--remote
+host` already runs, and the person added that machine to use it. The CLI's `--on`, MCP and
+`doctor` stay attach-only. What ssh
+or the far side prints (its last stderr line) is untrusted: it is stripped of control characters,
+so no escape sequence reaches the terminal, and cut to 200 characters before it is shown. The
+failure is classified from ssh's exit status and the stream, not its wording, apart from three
+fixed tokens that mark a login ssh could not do without a person (`link_failure::classify`). Typing
+for a machine that is down is dropped, never queued and replayed.
+
+A remote daemon is someone else's computer, so everything it sends is untrusted: it can forge
+status, clipboard writes, toasts and prompts. Two rules hold for every message from a machine
+that is not this one (`client/remote_policy.rs`, `client/remote_snapshot.rs`):
+
+- **Clean on ingest.** A `State`, and the panes of a `TermsChanged`, are made safe before they are kept: every string loses control
+  characters (escape sequences included), hidden and direction-changing characters and line
+  breaks (`hidden::sanitize`; only text blocks such as `said` and `asking` keep `\n`) and is
+  cut (one-line fields 512 characters, paths 4096, text blocks 8192); every list and map is
+  capped at 10,000 entries and a snapshot of more than 250,000 values in all, or with a number
+  that is not finite, is refused whole and the last good one stays; pane sizes are held to
+  1-1000 columns and rows, `cpu` to 0-100. The walk is over the serialized snapshot, so a string
+  field added to the protocol is cleaned without being listed. A `TermsChanged` is cleaned with the
+  same walk, refused whole when it names more than 10,000 panes to change or drop, and then
+  merged into that machine's held snapshot, which goes through the same checks as a `State`
+  (daemon id, caps) before it is kept. A path in a remote snapshot is a
+  label: it is never used to touch this computer's disk (`App::local_cwd` is `None` for a pane on
+  another machine, and `guard_local` refuses every feature that reads files or runs git there;
+  see API_PATTERNS "client routing"). A toast it causes leads with
+  `[machine]` and is one clean line of at most 300 characters. Nothing from a remote is logged
+  above debug, and then only a fixed reason, never its text.
+- **Decide every message.** `remote_policy::allow` names every `ServerMsg` variant (no
+  wildcard; verdicts are apply, answer, or ignore), so a new one cannot compile until someone
+  decides it, and its test table fails if the decision changes unnoticed. The default for a variant nobody can justify is ignore. This
+  computer's own daemon is not subject to it.
+
+| Message from another machine | Verdict | Why |
+| --- | --- | --- |
+| `Welcome`, `Bye` | apply | no effect beyond that machine's own connection |
+| `State` | apply, cleaned | updates only that machine's snapshot; first-state work, restart handling and saved-change alerts are this computer's own and never run for it |
+| `TermsChanged` | apply, cleaned | the panes that changed, cleaned like a `State`'s, merged into only that machine's snapshot and then judged as a whole `State` (daemon-id check, caps); an unclean or oversized delta is dropped and the last good snapshot stays |
+| `Replay`, `Output` | apply | feed that machine's own pane screens; a screen's size is held to 1-1000 |
+| `Attention` | apply | queues that machine's alert; the sound plays only with `sounds`, the toast shows only with `notices` |
+| `Clipboard` | gated by `clipboard` | writes this computer's clipboard; cut to 64 KiB; the toast says which machine |
+| `Notice` | gated by `notices` | a toast, cleaned and led by `[machine]`; it does not touch this computer's undo hint |
+| `Raise` | gated by `notices` | brings the window to the front, the same "may get my attention" grant as a toast (there is no separate `raise` setting) |
+| `Error`, `Reply` | answer, cleaned | applied only while this window has a command or query out to that machine that nothing has answered yet (client-side bookkeeping, see API_PATTERNS "client routing"; the wire is unchanged); otherwise ignored. An error's toast leads with `[machine]`; reply text is cleaned and cut to 256 KiB. A `Worktrees` reply never fills this computer's picker, and a check's output is taken only when the open sheet or the failure waiting for it is on that machine |
+| `AskRemoveWorktree` | ignore | names a folder on this computer's disk to delete; remote worktree management is out of scope (ADR 0047) |
+| `AutoWorkspace` | ignore | announces a workspace and arms this computer's undo |
+
+The opt-ins are read from the machine's `[[machines]]` entry by name; a machine no entry names
+has all of them off. `AskRemoveWorktree` from this computer's own daemon still shows its path
+as the daemon sent it; the folder is removed by that daemon when you answer.
+
 ## Project-specific: auth and permissions
 
 No user accounts. Access to the daemon is access to its local socket: a named
@@ -249,6 +379,51 @@ started the daemon. Status reports (`maitty hook`) are accepted only from a
 process inside the pane (traced through its process tree) or carrying that
 pane's `MAITTY_PANE_TOKEN`, a random secret set only in that pane's environment.
 Remote work goes over the user's own `ssh`, so SSH's authentication applies.
+The one-shot commands (`--on build ...`, `--pane build/4`) treat the machine they reach the same way.
+What it answers is untrusted: a list (`ls`, `wait`) is cleaned like a window's snapshot
+(`remote_snapshot::sanitize_snapshot`), an error or notice and a line a `wait --regex` matched lose
+control characters and hidden characters (`hidden::sanitize`), and a failure to connect is shown as
+one cleaned line with its fix (`link_failure::classify`). `read` prints another machine's screen
+without escape sequences or other control characters (newlines stay); `read --raw` prints it exactly
+as sent, which is the person's choice to make and can move the cursor or retitle the terminal. The
+pane a command runs in belongs to this computer's daemon, so `$MAITTY_TERM_ID` is never the default
+pane on another machine and the Hello to it carries no pane id or token. `kill-server --on` stops all
+of that machine's sessions and needs `--yes`.
+
+**MCP across machines.** An MCP tool call is made by an agent, a model in a pane here, and the
+machine it names never learns which pane that is (the Hello to it carries no pane id), so that
+machine's daemon would take the caller for you and enforce no grant. The rules that close this,
+in `cli/mcp/machines.rs`: (1) a machine is reachable from MCP only if its `[[machines]]` entry says
+`mcp = true`; any other call naming it (a `machine` argument or a `machine/id` id) returns
+`machine_not_enabled` and is never dialled, and one naming no entry returns `unknown_machine`;
+(2) before dialling, this computer's daemon decides whether the calling pane may do it, with the
+table it uses for the same tool here: `read` to list, read and wait, `write` to send (and `read` too
+with `wait`). The server asks by reading, and writing to, a pane that does not exist
+(`Reach::caller_may`; the daemon test `the_grant_probes_the_mcp_server_uses_are_decided_by_the_panes_grants`
+pins the answers) and takes anything but the expected answer, a daemon that does not answer included,
+as a refusal. A refusal is `permission_denied` with the daemon's own message and the machine's name;
+(3) a call to a machine never carries the pane's id or token; (4) whatever the machine returns is
+untrusted text that can try to steer the model: a list is cleaned like a window's snapshot, a screen,
+a reply and an error lose control and hidden characters (`hidden::sanitize`), a reply is cut at 32,768
+characters, and every reply and error from a machine begins `[machine: name]` so the model can tell
+where text came from; (5) answering a prompt, interrupting and starting agents or worktrees are
+`unsupported_for_remote`, so a remote pane's prompt is never answered by an agent here and no
+worktree or folder is chosen from a machine's paths. `[mcp] scope` limits the sessions of this
+computer only; opening a machine opens all of its sessions to every pane here that holds the grant.
+
+`maitty doctor` checks each configured machine with the same ssh lines as everything else
+(`ssh_command.rs`: `BatchMode`, no agent forwarding, `--` before the host), plus one fixed script,
+`command -v maitty` (`remote_install::WHERE_SCRIPT`), which carries no user data. Every step has a time
+limit and the ssh it started is ended when the limit passes. What a machine answers (the version line, the
+program's path, ssh's last line) is cleaned of control and hidden characters and cut short before it is
+printed, and only the program's path is shown from the login shell, never its PATH, which can name users.
+The `ssh_args` line shows your own arguments without control characters and only the file name of a key
+given with `-i`.
+The daemon id (`Snapshot.daemon_id`) detects that a different machine now answers at a saved
+machine name, so its saved layout is not reused and the window says what happened. It is not
+authentication and not a secret: anyone who can talk to a daemon can read its id, so it never
+grants access. A daemon with no id answering at a name that has a recorded id is refused too.
+Only an 8-character prefix of an id is shown or logged.
 Machine-only settings and secrets belong in `config.local.toml`, which config sync
 never uploads.
 

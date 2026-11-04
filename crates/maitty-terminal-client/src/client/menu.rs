@@ -5,7 +5,8 @@ use super::design::{BtnKind, button, put, seg, segs_width};
 use super::render::truncate;
 use super::screen::{ScreenHit, find, hit};
 use super::{App, Mode};
-use crate::protocol::{Command, TermId};
+use crate::client::ids::{ClientTerm, MachineId};
+use crate::protocol::Command;
 use crate::theme::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
@@ -22,27 +23,27 @@ pub(super) const RESTORE_WHILE_WORKING: &str =
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
-    Beside(TermId),
+    Beside(ClientTerm),
     /// The program in this pane is an agent: the app learns it.
-    TeachAgent(TermId),
+    TeachAgent(ClientTerm),
     /// End these (stops what runs in them).
-    End(Vec<TermId>),
+    End(Vec<ClientTerm>),
     Changes(PathBuf),
-    RenamePane(TermId),
+    RenamePane(ClientTerm),
     /// A chat's name, for every client.
     RenameConversation(crate::conversation::ConversationId),
     /// Put a chat away: it keeps running, and every client stops listing it.
     ArchiveConversation(crate::conversation::ConversationId),
     /// Drop the follow-ups waiting for this agent's turn to end.
-    ClearQueue(TermId),
+    ClearQueue(ClientTerm),
     /// List a checkout's snapshots (its folder, and whose row asked).
-    Snapshots(PathBuf, TermId),
+    Snapshots(PathBuf, ClientTerm),
     /// Put a checkout's files back as a snapshot has them: (folder, commit, when, whose row).
-    Restore(PathBuf, String, String, TermId),
-    Split(TermId, crate::layout::Dir),
+    Restore(PathBuf, String, String, ClientTerm),
+    Split(ClientTerm, crate::layout::Dir),
     /// Trade the places of two panes of the tab on screen.
-    Swap(TermId, TermId),
-    RightClicks(TermId),
+    Swap(ClientTerm, ClientTerm),
+    RightClicks(ClientTerm),
     RenameProject(String, String),
     /// End everything in a project and forget it.
     CloseProject(usize),
@@ -63,13 +64,13 @@ pub enum Act {
     RestartDaemon,
     InstallStatus(String),
     /// Open a session's check output in the evidence sheet.
-    CheckOutput(TermId),
-    RerunCheck(TermId),
+    CheckOutput(ClientTerm),
+    RerunCheck(ClientTerm),
     /// Accept a failed checkpoint (None: the headline); the string is the reason typed in the
     /// confirm, possibly empty.
-    OverrideCheck(TermId, String, Option<String>),
+    OverrideCheck(ClientTerm, String, Option<String>),
     /// Take an override back: the check reads as failed again.
-    UndoOverride(TermId),
+    UndoOverride(ClientTerm),
     /// Delete a reference: (the project root, the file, its name in the references).
     RemoveReference(PathBuf, PathBuf, String),
 }
@@ -269,10 +270,8 @@ pub struct ScreenMenu {
 }
 
 impl App {
-    fn agent_working(&self, term: TermId) -> bool {
-        self.snap
-            .terms
-            .get(&term)
+    fn agent_working(&self, term: ClientTerm) -> bool {
+        self.term_info(term)
             .is_some_and(|x| x.status == crate::protocol::Status::Working)
     }
 
@@ -293,9 +292,9 @@ impl App {
     }
 
     /// Right-click on a pane's content.
-    pub(super) fn menu_for_pane(&mut self, term: TermId, at: (u16, u16)) {
+    pub(super) fn menu_for_pane(&mut self, term: ClientTerm, at: (u16, u16)) {
         if Some(term) != self.focused() {
-            self.cmd(Command::FocusPane { term });
+            self.cmd_on(term.machine, Command::FocusPane { term: term.term });
         }
         let model = self.screen_model();
         let agent = find(&model, term)
@@ -333,7 +332,7 @@ impl App {
             Act::RightClicks(term),
         ));
         // A program the app doesn't know (an agent started by an alias, say): teach it.
-        if let Some(t) = self.snap.terms.get(&term).filter(|t| {
+        if let Some(t) = self.term_info(term).filter(|t| {
             t.agent.is_none() && !t.is_shell() && !t.process.is_empty() && t.remote.is_none()
         }) {
             items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
@@ -356,7 +355,10 @@ impl App {
         id: crate::conversation::ConversationId,
         at: (u16, u16),
     ) {
-        let Some(c) = self.snap.conversations.iter().find(|c| c.id == id) else {
+        let Some(c) = self
+            .snap_of(self.conversation_machine(id))
+            .and_then(|snap| snap.conversations.iter().find(|c| c.id == id))
+        else {
             return;
         };
         let title = c.title.clone().unwrap_or_else(|| match c.provider {
@@ -371,7 +373,7 @@ impl App {
     }
 
     /// Right-click on an agent (or shell) row.
-    pub(super) fn menu_for_session(&mut self, term: TermId, at: (u16, u16)) {
+    pub(super) fn menu_for_session(&mut self, term: ClientTerm, at: (u16, u16)) {
         if let Some((title, items)) = self.session_items(term) {
             self.menu(title, items, at);
         }
@@ -379,12 +381,12 @@ impl App {
 
     /// A session's menu: its title and items, for right-click and for the sidebar's
     /// letter keys.
-    pub(super) fn session_items(&self, term: TermId) -> Option<(String, Vec<(String, Act)>)> {
+    pub(super) fn session_items(&self, term: ClientTerm) -> Option<(String, Vec<(String, Act)>)> {
         let model = self.screen_model();
         let (_, _, s) = find(&model, term)?;
         let agent = s.agent.clone();
         let dir = find(&model, term).map(|(_, w, _)| w.path.clone());
-        let info = self.snap.terms.get(&term);
+        let info = self.term_info(term);
         // A program the app doesn't know can be taught.
         let mut items = Vec::new();
         if let Some(t) = info.filter(|t| {
@@ -396,7 +398,10 @@ impl App {
             items.push(("Open beside".into(), Act::Beside(term)));
         }
         items.push(("Rename".to_string(), Act::RenamePane(term)));
-        if let Some(d) = dir.filter(|d| crate::gitfs::head(d).is_some()) {
+        if let Some(d) = dir
+            .filter(|_| self.is_local_pane(term))
+            .filter(|d| crate::gitfs::head(d).is_some())
+        {
             items.push(("Changes".to_string(), Act::Changes(d.clone())));
             if s.is_agent && self.cfg.snapshots.enabled {
                 items.push(("Snapshots…".to_string(), Act::Snapshots(d, term)));
@@ -433,7 +438,7 @@ impl App {
     pub(super) fn snapshots_menu(
         &mut self,
         dir: PathBuf,
-        term: TermId,
+        term: ClientTerm,
         kept: Vec<crate::snapshot::Snapshot>,
         at: (u16, u16),
     ) {
@@ -483,7 +488,7 @@ impl App {
             items.push(("New worktree".to_string(), Act::NewWorktree(pi)));
             items.push(("Open worktree…".to_string(), Act::OpenWorktree(pi)));
             items.push(("Clean up worktrees…".to_string(), Act::TidyOpen(pi)));
-        } else {
+        } else if self.files_are_here(p.machine) {
             items.push((
                 "Make it a git repo…".to_string(),
                 Act::GitInit(p.path.clone()),
@@ -586,8 +591,8 @@ impl App {
         let ask: Option<Confirm> = match &a {
             Act::End(ts) if ts.len() == 1 => {
                 let name = super::screen::session_name(self, &model, ts[0]);
-                let path = self.snap.terms.get(&ts[0]).map(|t| t.cwd.display().to_string()).unwrap_or_default();
-                let running = self.snap.terms.get(&ts[0]).is_some_and(|t| t.status == crate::protocol::Status::Working);
+                let path = self.term_info(ts[0]).map(|t| t.cwd.display().to_string()).unwrap_or_default();
+                let running = self.term_info(ts[0]).is_some_and(|t| t.status == crate::protocol::Status::Working);
                 Some(Confirm {
                     title: super::screen::pane_number(self, ts[0]).map_or_else(|| "Close pane".into(), |n| format!("Close pane {n}")),
                     sub: name.clone(),
@@ -695,19 +700,26 @@ impl App {
     }
 
     pub(super) fn menu_do(&mut self, a: Act) {
+        if let Act::NewWorktree(pi) | Act::OpenWorktree(pi) | Act::TidyOpen(pi) = a {
+            let machine = self
+                .screen_model()
+                .get(pi)
+                .map_or(MachineId::LOCAL, |p| p.machine);
+            if !self.guard_local(machine, super::routing::Feature::Worktrees) {
+                return;
+            }
+        }
         match a {
             // A terminal that belongs to a chat is named through the chat, so every client
             // shows the same name.
             Act::RenamePane(t)
-                if let Some(id) = self.snap.terms.get(&t).and_then(|x| x.conversation_id) =>
+                if let Some(id) = self.term_info(t).and_then(|x| x.conversation_id) =>
             {
                 self.menu_do(Act::RenameConversation(id));
             }
             Act::RenamePane(t) => {
                 let cur = self
-                    .snap
-                    .terms
-                    .get(&t)
+                    .term_info(t)
                     .map(|x| x.label.clone())
                     .unwrap_or_default();
                 self.mode = Mode::Prompt {
@@ -717,10 +729,8 @@ impl App {
             }
             Act::RenameConversation(id) => {
                 let cur = self
-                    .snap
-                    .conversations
-                    .iter()
-                    .find(|c| c.id == id)
+                    .snap_of(self.conversation_machine(id))
+                    .and_then(|snap| snap.conversations.iter().find(|c| c.id == id))
                     .and_then(|c| c.title.clone())
                     .unwrap_or_default();
                 self.mode = Mode::Prompt {
@@ -731,22 +741,23 @@ impl App {
             Act::ArchiveConversation(id) => self.archive_conversation(id),
             Act::Split(t, dir) => {
                 let cwd = self
-                    .snap
-                    .terms
-                    .get(&t)
+                    .term_info(t)
                     .map(|x| x.top.clone().unwrap_or_else(|| x.cwd.clone()))
                     .unwrap_or_else(|| self.here_dir());
                 self.screen.split_dir = Some(dir);
                 if self.focused() != Some(t) {
-                    self.cmd(Command::FocusPane { term: t });
+                    self.cmd_on(t.machine, Command::FocusPane { term: t.term });
                 }
                 self.screen.pending_split = Some((t, std::time::Instant::now()));
                 self.leave_shortcut_mode();
-                self.cmd(Command::NewWorkspace {
-                    cwd: Some(cwd),
-                    name: None,
-                    cmd: None,
-                });
+                self.cmd_on(
+                    t.machine,
+                    Command::NewWorkspace {
+                        cwd: Some(cwd),
+                        name: None,
+                        cmd: None,
+                    },
+                );
             }
             Act::Swap(a, b) => {
                 self.swap_panes(a, b);
@@ -791,9 +802,13 @@ impl App {
                     }))
                 });
             }
-            Act::TeachAgent(term) => self.cmd(Command::TeachAgent { term }),
+            Act::TeachAgent(term) => {
+                self.cmd_on(term.machine, Command::TeachAgent { term: term.term })
+            }
             Act::TidyOpen(pi) => self.tidy_open(pi),
-            Act::ClearQueue(term) => self.cmd(Command::ClearQueue { term }),
+            Act::ClearQueue(term) => {
+                self.cmd_on(term.machine, Command::ClearQueue { term: term.term })
+            }
             Act::Snapshots(dir, term) => {
                 let at = self
                     .screen
@@ -870,15 +885,22 @@ impl App {
                 let model = self.screen_model();
                 if let Some(p) = model.get(pi) {
                     for s in p.sessions() {
-                        match (s.native_term, s.key) {
-                            (Some(term), _) => {
-                                self.cmd(Command::ClosePane { term });
-                                if let crate::protocol::SessionKey::Conversation(id) = s.key {
-                                    self.cmd(Command::ConversationArchive { id, archived: true });
+                        let machine = s.key.machine;
+                        match (s.native_term, s.key.key) {
+                            (Some(term), key) => {
+                                self.cmd_on(machine, Command::ClosePane { term: term.term });
+                                if let crate::protocol::SessionKey::Conversation(id) = key {
+                                    self.cmd_on(
+                                        machine,
+                                        Command::ConversationArchive { id, archived: true },
+                                    );
                                 }
                             }
                             (None, crate::protocol::SessionKey::Conversation(id)) => {
-                                self.cmd(Command::ConversationArchive { id, archived: true });
+                                self.cmd_on(
+                                    machine,
+                                    Command::ConversationArchive { id, archived: true },
+                                );
                             }
                             (None, crate::protocol::SessionKey::Pane(_)) => {}
                         }
@@ -895,20 +917,24 @@ impl App {
                 let model = self.screen_model();
                 let Some(p) = model.get(pi) else { return };
                 let key = super::design::path_key(&p.path);
-                let ws = self.snap.workspaces.iter().find(|w| {
-                    w.tabs.iter().flat_map(|t| t.layout.leaves()).any(|id| {
-                        self.snap
-                            .terms
-                            .get(&id)
-                            .and_then(|t| t.root.as_ref())
-                            .is_some_and(|r| super::design::path_key(r) == key)
+                let ws = self.snap_of(p.machine).and_then(|snap| {
+                    snap.workspaces.iter().find(|w| {
+                        w.tabs.iter().flat_map(|t| t.layout.leaves()).any(|id| {
+                            snap.terms
+                                .get(&id)
+                                .and_then(|t| t.root.as_ref())
+                                .is_some_and(|r| super::design::path_key(r) == key)
+                        })
                     })
                 });
                 match ws.map(|w| w.id) {
                     Some(ws) => {
-                        self.send(crate::protocol::ClientMsg::Query(
-                            crate::protocol::Query::Worktrees { ws },
-                        ));
+                        self.send(
+                            p.machine,
+                            crate::protocol::ClientMsg::Query(crate::protocol::Query::Worktrees {
+                                ws,
+                            }),
+                        );
                         self.mode = Mode::Worktrees {
                             ws,
                             cmd: None,
@@ -924,7 +950,7 @@ impl App {
                 if let Some(f) = self.focused() {
                     self.screen_unshow(t);
                     self.screen.pending_split = Some((f, std::time::Instant::now()));
-                    self.cmd(Command::FocusPane { term: t });
+                    self.cmd_on(t.machine, Command::FocusPane { term: t.term });
                 }
             }
             Act::End(ts) => {
@@ -934,10 +960,13 @@ impl App {
                     self.screen_unshow(t);
                     // A chat's terminal closing puts the chat away too, so the desktop app
                     // doesn't keep listing a session you closed.
-                    if let Some(id) = self.snap.terms.get(&t).and_then(|x| x.conversation_id) {
-                        self.cmd(Command::ConversationArchive { id, archived: true });
+                    if let Some(id) = self.term_info(t).and_then(|x| x.conversation_id) {
+                        self.cmd_on(
+                            t.machine,
+                            Command::ConversationArchive { id, archived: true },
+                        );
                     }
-                    self.cmd(Command::ClosePane { term: t });
+                    self.cmd_on(t.machine, Command::ClosePane { term: t.term });
                 }
             }
             Act::Changes(p) => self.open_changes(p),

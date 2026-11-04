@@ -545,7 +545,9 @@ pub(in crate::client) fn draw_settings(
     let mismatch = known && daemon != window;
     let vy = r.y + 3;
     // Detail lines only when versions differ or something needs saying.
-    let host = crate::ipc::remote()
+    let host = app
+        .machine
+        .host()
         .map(|h| format!("Remote daemon ({h})"))
         .unwrap_or_else(|| "Running daemon".into());
     let mut lines_used = 0u16;
@@ -628,7 +630,7 @@ pub(in crate::client) fn draw_settings(
             r.right() - 3,
         );
     } else if app.restart_pending() {
-        let note = if crate::ipc::remote().is_some() {
+        let note = if app.machine.is_remote() {
             "Remote daemon differs — update it on its host after its sessions are closed."
         } else {
             "Restart pending — waiting until all sessions are closed."

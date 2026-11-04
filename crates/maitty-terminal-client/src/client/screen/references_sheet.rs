@@ -104,7 +104,7 @@ impl App {
     /// The project's root as the snapshot knows it (the session's main checkout), found without
     /// touching the disk; the background read settles it.
     fn references_root_guess(&self, dir: &Path) -> PathBuf {
-        let term = self.selected_term().and_then(|t| self.snap.terms.get(&t));
+        let term = self.selected_term().and_then(|t| self.term_info(t));
         term.and_then(|t| t.root.clone())
             .unwrap_or_else(|| dir.to_path_buf())
     }

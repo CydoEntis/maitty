@@ -3,14 +3,18 @@
 use crate::brand::APP_COMMAND;
 use crate::ipc;
 pub(crate) mod conversation;
+pub(crate) mod doctor_machines;
 pub(crate) mod handoff;
 pub(crate) mod integrations;
 mod jsonc;
+pub(crate) mod machine_update;
+pub(crate) mod machines_ls;
 pub(crate) mod mcp;
 mod mcp_config;
 pub(crate) mod restart;
 pub(crate) mod reveal;
 pub(crate) mod secret_run;
+pub(crate) mod target;
 pub(crate) mod update;
 use crate::layout::Dir;
 use crate::protocol::*;
@@ -21,6 +25,7 @@ use serde_json::{Value, json};
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
+use target::Target;
 
 pub(crate) fn block_on<T>(f: impl std::future::Future<Output = Result<T>>) -> Result<T> {
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -32,21 +37,30 @@ pub(crate) fn block_on<T>(f: impl std::future::Future<Output = Result<T>>) -> Re
     out
 }
 
-/// Send one message and wait for the reply.
+/// A one-shot command's connection to `t`'s machine, saying which when it can't be reached.
+async fn open_cli(t: &Target) -> Result<(ipc::Reader, ipc::Writer)> {
+    ipc::open_to(t.machine(), false)
+        .await
+        .map_err(|e| t.connect_error(e))
+}
+
+/// Send one message to the machine `--remote` names (else this one) and wait for the reply.
 pub(crate) async fn request(msg: ClientMsg) -> Result<Reply> {
-    let (mut r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() {
-        "over ssh"
-    } else {
-        concat!("couldn't reach the ", env!("APP_COMMAND"), " server")
-    })?;
+    request_to(&Target::current(), msg).await
+}
+
+/// Send one message to `t`'s machine and wait for the reply. What another machine says is
+/// untrusted: its snapshot is cleaned and its words lose their control characters.
+pub(crate) async fn request_to(t: &Target, msg: ClientMsg) -> Result<Reply> {
+    let (mut r, mut w) = open_cli(t).await?;
     ipc::send(&mut w, &msg).await?;
     loop {
         match ipc::recv_server(&mut r).await? {
-            Some(ServerMsg::Reply(reply)) => return Ok(reply),
-            Some(ServerMsg::Error(e)) => bail!(e),
+            Some(ServerMsg::Reply(reply)) => return t.safe_reply(reply),
+            Some(ServerMsg::Error(e)) => bail!(t.plain(&e)),
             // kill-server: the goodbye can overtake the reply.
             Some(ServerMsg::Bye) => return Ok(Reply::Ok),
-            Some(ServerMsg::Notice(n)) => eprintln!("{n}"),
+            Some(ServerMsg::Notice(n)) => eprintln!("{}", t.plain(&n)),
             Some(_) => continue,
             None => bail!("server closed the connection"),
         }
@@ -54,18 +68,26 @@ pub(crate) async fn request(msg: ClientMsg) -> Result<Reply> {
 }
 
 pub(crate) fn snapshot() -> Result<Snapshot> {
-    match block_on(request(ClientMsg::Query(Query::List)))? {
+    snapshot_to(&Target::current())
+}
+
+fn snapshot_to(t: &Target) -> Result<Snapshot> {
+    match block_on(request_to(t, ClientMsg::Query(Query::List)))? {
         Reply::List(s) => Ok(s),
         _ => bail!("unexpected reply"),
     }
 }
 
 fn command(c: Command) -> Result<()> {
-    block_on(request(ClientMsg::Command(c))).map(|_| ())
+    command_to(&Target::current(), c)
+}
+
+fn command_to(t: &Target, c: Command) -> Result<()> {
+    block_on(request_to(t, ClientMsg::Command(c))).map(|_| ())
 }
 
 pub fn pr_link(pane: Option<TermId>, url: Option<String>) -> Result<()> {
-    let term = resolve_pane(pane)?;
+    let term = resolve_pane(&Target::current(), pane)?;
     command(Command::LinkPr {
         term,
         url: url.clone(),
@@ -77,10 +99,14 @@ pub fn pr_link(pane: Option<TermId>, url: Option<String>) -> Result<()> {
     Ok(())
 }
 
-/// An explicit pane, else the pane this command runs in, else the focused one.
-fn resolve_pane(pane: Option<TermId>) -> Result<TermId> {
+/// An explicit pane, else the pane this command runs in, else the focused one. The pane a
+/// command runs in is on this computer, so another machine's pane is always named.
+fn resolve_pane(t: &Target, pane: Option<TermId>) -> Result<TermId> {
     if let Some(p) = pane {
         return Ok(p);
+    }
+    if !t.owns_env_pane() {
+        return Err(t.needs_pane().into());
     }
     if let Some(p) = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID"))
         .ok()
@@ -88,7 +114,7 @@ fn resolve_pane(pane: Option<TermId>) -> Result<TermId> {
     {
         return Ok(p);
     }
-    let snap = snapshot()?;
+    let snap = snapshot_to(t)?;
     snap.active()
         .and_then(|w| w.tab())
         .map(|t| t.focus)
@@ -307,25 +333,48 @@ pub fn agent_launch(cmd: &[String]) -> i32 {
     }
 }
 
-pub fn ls(as_json: bool) -> Result<()> {
-    let snap = snapshot()?;
+pub fn ls(t: &Target, as_json: bool) -> Result<()> {
+    let snap = snapshot_to(t)?;
     if as_json {
-        let ws: Vec<Value> = snap
-            .workspaces
-            .iter()
-            .map(|w| {
-                json!({
-                    "id": w.id, "name": w.name, "cwd": w.cwd, "active": Some(w.id) == snap.active_ws,
-                    "git": w.git, "worktree": w.worktree, "color": w.color,
-                    "tabs": w.tabs.iter().map(|t| json!({
-                        "id": t.id, "name": t.name, "active": t.id == w.active_tab, "focus": t.focus,
-                        "panes": t.layout.leaves().iter().filter_map(|id| snap.terms.get(id)).map(pane_json).collect::<Vec<_>>(),
-                    })).collect::<Vec<_>>(),
-                })
-            })
-            .collect();
-        println!("{}", serde_json::to_string_pretty(&ws)?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&workspaces_json(&snap, t.name()))?
+        );
         return Ok(());
+    }
+    for line in workspace_lines(&snap, t) {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+/// The workspaces as `ls --json` prints them; `machine` tags each when a machine was named.
+pub(crate) fn workspaces_json(snap: &Snapshot, machine: Option<&str>) -> Vec<Value> {
+    snap.workspaces
+        .iter()
+        .map(|w| {
+            let mut ws = json!({
+                "id": w.id, "name": w.name, "cwd": w.cwd, "active": Some(w.id) == snap.active_ws,
+                "git": w.git, "worktree": w.worktree, "color": w.color,
+                "tabs": w.tabs.iter().map(|t| json!({
+                    "id": t.id, "name": t.name, "active": t.id == w.active_tab, "focus": t.focus,
+                    "panes": t.layout.leaves().iter().filter_map(|id| snap.terms.get(id)).map(pane_json).collect::<Vec<_>>(),
+                })).collect::<Vec<_>>(),
+            });
+            if let Some(machine) = machine {
+                ws["machine"] = json!(machine);
+            }
+            ws
+        })
+        .collect()
+}
+
+/// The workspaces as `ls` prints them. A machine that was named heads the list and its panes
+/// are written as addresses (`build/4`), so a line can be pasted into `--pane`.
+pub(crate) fn workspace_lines(snap: &Snapshot, target: &Target) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(name) = target.name() {
+        lines.push(format!("machine {name}"));
     }
     for w in &snap.workspaces {
         let mark = if Some(w.id) == snap.active_ws {
@@ -348,10 +397,15 @@ pub fn ls(as_json: bool) -> Result<()> {
                 )
             })
             .unwrap_or_default();
-        println!("{mark} {} {}{git}  ({})", w.id, w.name, w.cwd.display());
+        lines.push(format!(
+            "{mark} {} {}{git}  ({})",
+            w.id,
+            w.name,
+            w.cwd.display()
+        ));
         for (i, t) in w.tabs.iter().enumerate() {
             let mark = if t.id == w.active_tab { "*" } else { " " };
-            println!("  {mark} tab {} {}", i + 1, t.name);
+            lines.push(format!("  {mark} tab {} {}", i + 1, t.name));
             for id in t.layout.leaves() {
                 let Some(p) = snap.terms.get(&id) else {
                     continue;
@@ -360,18 +414,24 @@ pub fn ls(as_json: bool) -> Result<()> {
                 let agent = agent_tag(p)
                     .map(|tag| format!("  [{tag}]"))
                     .unwrap_or_default();
-                println!("    {focus} pane {id}  {}{agent}", p.process);
+                lines.push(format!(
+                    "    {focus} pane {}  {}{agent}",
+                    target.address(id),
+                    p.process
+                ));
             }
         }
     }
-    Ok(())
+    lines
 }
 
-pub fn read(pane: Option<TermId>) -> Result<()> {
-    let term = resolve_pane(pane)?;
-    match block_on(request(ClientMsg::Query(Query::Read { term })))? {
-        Reply::Text(t) => {
-            println!("{}", t.trim_end());
+/// `--raw` leaves another machine's screen as it sent it, escape sequences and all.
+pub fn read(t: &Target, pane: Option<TermId>, raw: bool) -> Result<()> {
+    let term = resolve_pane(t, pane)?;
+    match block_on(request_to(t, ClientMsg::Query(Query::Read { term })))? {
+        Reply::Text(screen) => {
+            let screen = if raw { screen } else { t.plain(&screen) };
+            println!("{}", screen.trim_end());
             Ok(())
         }
         _ => bail!("unexpected reply"),
@@ -666,6 +726,7 @@ fn checkpoint_json(c: &CheckInfo) -> Value {
 /// `just_sent`: the turn hasn't started yet, so wait for it to start first. A session with a
 /// check is waited on until the check has answered, within `timeout`.
 pub fn wait_on(
+    t: &Target,
     term: TermId,
     regex: Option<&str>,
     timeout: Duration,
@@ -680,13 +741,14 @@ pub fn wait_on(
     let mut quiet = None;
     loop {
         if let Some(re) = &re {
-            if let Reply::Text(screen) = block_on(request(ClientMsg::Query(Query::Read { term })))?
+            if let Reply::Text(screen) =
+                block_on(request_to(t, ClientMsg::Query(Query::Read { term })))?
                 && let Some(l) = screen.lines().find(|l| re.is_match(l))
             {
-                return Ok(Waited::Matched(l.trim().to_string()));
+                return Ok(Waited::Matched(t.plain(l.trim())));
             }
         } else {
-            let snap = snapshot()?;
+            let snap = snapshot_to(t)?;
             let t = snap
                 .terms
                 .get(&term)
@@ -710,19 +772,32 @@ pub fn wait_on(
     }
 }
 
-pub fn send_wait(pane: Option<TermId>, text: String, enter: bool, timeout: u64) -> Result<()> {
-    let term = resolve_pane(pane)?;
-    send(Some(term), text, enter)?;
-    wait_print(term, None, timeout, true)
+pub fn send_wait(
+    t: &Target,
+    pane: Option<TermId>,
+    text: String,
+    enter: bool,
+    timeout: u64,
+) -> Result<()> {
+    let term = resolve_pane(t, pane)?;
+    send(t, Some(term), text, enter)?;
+    wait_print(t, term, None, timeout, true)
 }
 
-pub fn wait(pane: Option<TermId>, regex: Option<String>, timeout: u64) -> Result<()> {
-    wait_print(resolve_pane(pane)?, regex, timeout, false)
+pub fn wait(t: &Target, pane: Option<TermId>, regex: Option<String>, timeout: u64) -> Result<()> {
+    wait_print(t, resolve_pane(t, pane)?, regex, timeout, false)
 }
 
 /// `<app> wait` / `<app> send --wait`: wait, then print the reply (or the screen's end).
-fn wait_print(term: TermId, regex: Option<String>, timeout: u64, just_sent: bool) -> Result<()> {
+fn wait_print(
+    t: &Target,
+    term: TermId,
+    regex: Option<String>,
+    timeout: u64,
+    just_sent: bool,
+) -> Result<()> {
     match wait_on(
+        t,
         term,
         regex.as_deref(),
         Duration::from_secs(timeout),
@@ -738,8 +813,9 @@ fn wait_print(term: TermId, regex: Option<String>, timeout: u64, just_sent: bool
             }
             if said.trim().is_empty() {
                 if let Reply::Text(screen) =
-                    block_on(request(ClientMsg::Query(Query::Read { term })))?
+                    block_on(request_to(t, ClientMsg::Query(Query::Read { term })))?
                 {
+                    let screen = t.plain(&screen);
                     let lines: Vec<&str> = screen.trim_end().lines().collect();
                     println!("{}", lines[lines.len().saturating_sub(30)..].join("\n"));
                 }
@@ -764,15 +840,11 @@ fn wait_print(term: TermId, regex: Option<String>, timeout: u64, just_sent: bool
     Ok(())
 }
 
-pub fn send(pane: Option<TermId>, text: String, enter: bool) -> Result<()> {
+pub fn send(t: &Target, pane: Option<TermId>, text: String, enter: bool) -> Result<()> {
     crate::hidden::check(&text).map_err(|e| anyhow!(e))?;
-    let term = resolve_pane(pane)?;
+    let term = resolve_pane(t, pane)?;
     block_on(async move {
-        let (_r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() {
-            "over ssh"
-        } else {
-            concat!("couldn't reach the ", env!("APP_COMMAND"), " server")
-        })?;
+        let (_r, mut w) = open_cli(t).await?;
         let data = if text.contains('\n') {
             format!("\x1b[200~{text}\x1b[201~")
         } else {
@@ -804,8 +876,8 @@ pub fn send(pane: Option<TermId>, text: String, enter: bool) -> Result<()> {
 }
 
 /// Send key presses (`ctrl+space`, `%`, `enter`), encoded the way a terminal would.
-pub fn send_keys(pane: Option<TermId>, keys: Vec<String>) -> Result<()> {
-    let term = resolve_pane(pane)?;
+pub fn send_keys(t: &Target, pane: Option<TermId>, keys: Vec<String>) -> Result<()> {
+    let term = resolve_pane(t, pane)?;
     let mut chunks = Vec::new();
     for k in &keys {
         let spec: crate::keys::KeySpec = k.parse()?;
@@ -813,11 +885,7 @@ pub fn send_keys(pane: Option<TermId>, keys: Vec<String>) -> Result<()> {
         chunks.push(crate::keys::encode(&ev, false));
     }
     block_on(async move {
-        let (_r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() {
-            "over ssh"
-        } else {
-            concat!("couldn't reach the ", env!("APP_COMMAND"), " server")
-        })?;
+        let (_r, mut w) = open_cli(t).await?;
         for data in chunks {
             ipc::send(&mut w, &ClientMsg::Input { term, data }).await?;
             // One key per beat, like a person typing; lets modes change between keys.
@@ -831,32 +899,39 @@ fn join_command(parts: Vec<String>) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" "))
 }
 
-pub fn split(pane: Option<TermId>, down: bool, command: Vec<String>) -> Result<()> {
-    let term = resolve_pane(pane)?;
+pub fn split(t: &Target, pane: Option<TermId>, down: bool, command: Vec<String>) -> Result<()> {
+    let term = resolve_pane(t, pane)?;
     let dir = if down { Dir::Down } else { Dir::Right };
-    self::command(Command::Split {
-        term,
-        dir,
-        cmd: join_command(command),
-        cwd: None,
-    })
+    command_to(
+        t,
+        Command::Split {
+            term,
+            dir,
+            cmd: join_command(command),
+            cwd: None,
+        },
+    )
 }
 
 /// `<app> handoff <pane> --to <agent>`: start `to` beside `pane`, in its checkout, with a
 /// text brief of what the pane was doing as its first prompt. The old pane is left alone.
-pub fn handoff(pane: TermId, to: String) -> Result<()> {
+pub fn handoff(target: &Target, pane: TermId, to: String) -> Result<()> {
     let (cfg, _) = crate::config::Config::load_or_default();
-    let before = snapshot()?;
+    let before = snapshot_to(target)?;
     let from = handoff::check(&cfg, pane, before.terms.get(&pane), &to).map_err(|e| anyhow!(e))?;
     let t = &before.terms[&pane];
-    let screen = match block_on(request(ClientMsg::Query(Query::Read { term: pane })))? {
-        Reply::Text(s) => s,
+    let screen = match block_on(request_to(
+        target,
+        ClientMsg::Query(Query::Read { term: pane }),
+    ))? {
+        Reply::Text(s) => target.plain(&s),
         _ => bail!("unexpected reply"),
     };
     let checkout = t.top.clone().unwrap_or_else(|| t.cwd.clone());
-    let changed = match ipc::remote() {
-        Some(_) => Err("git isn't run on the remote machine".into()),
-        None => handoff::changed_files(&checkout, t.root.as_deref()),
+    let changed = if target.is_remote() {
+        Err("git isn't run on the remote machine".into())
+    } else {
+        handoff::changed_files(&checkout, t.root.as_deref())
     };
     let facts = handoff::Facts {
         pane,
@@ -872,19 +947,26 @@ pub fn handoff(pane: TermId, to: String) -> Result<()> {
         .agent_command(Some(&to), None, &handoff::brief(&facts))
         .map_err(|e| anyhow!(e))?;
     let had: Vec<TermId> = before.terms.keys().copied().collect();
-    command(Command::Split {
-        term: pane,
-        dir: Dir::Right,
-        cmd: Some(cmd),
-        cwd: Some(checkout),
-    })?;
+    command_to(
+        target,
+        Command::Split {
+            term: pane,
+            dir: Dir::Right,
+            cmd: Some(cmd),
+            cwd: Some(checkout),
+        },
+    )?;
     for _ in 0..60 {
         std::thread::sleep(Duration::from_millis(250));
-        let Ok(now) = snapshot() else { continue };
+        let Ok(now) = snapshot_to(target) else {
+            continue;
+        };
         if let Some(new) = handoff::new_pane(&had, now.terms.keys().copied()) {
             let t = &now.terms[&new];
             println!(
-                "handed pane {pane} to {to}: pane {new} in {}",
+                "handed pane {} to {to}: pane {} in {}",
+                target.address(pane),
+                target.address(new),
                 t.top.as_ref().unwrap_or(&t.cwd).display()
             );
             return Ok(());
@@ -894,19 +976,34 @@ pub fn handoff(pane: TermId, to: String) -> Result<()> {
     Ok(())
 }
 
-pub fn new_workspace(path: Option<PathBuf>, name: Option<String>, cmd: Vec<String>) -> Result<()> {
-    let cwd = path
-        .or_else(|| std::env::current_dir().ok())
-        .map(|p| p.canonicalize().unwrap_or(p));
-    command(Command::NewWorkspace {
-        cwd,
-        name,
-        cmd: join_command(cmd),
-    })
+/// The folder a command starts in. This computer's folders mean nothing on another machine,
+/// so there it is the daemon's default unless `path` is given (as it is spelled there).
+fn start_dir(t: &Target, path: Option<PathBuf>) -> Option<PathBuf> {
+    if t.is_remote() {
+        return path;
+    }
+    path.or_else(|| std::env::current_dir().ok())
+        .map(|p| p.canonicalize().unwrap_or(p))
 }
 
-pub fn focus(pane: TermId) -> Result<()> {
-    command(Command::FocusPane { term: pane })
+pub fn new_workspace(
+    t: &Target,
+    path: Option<PathBuf>,
+    name: Option<String>,
+    cmd: Vec<String>,
+) -> Result<()> {
+    command_to(
+        t,
+        Command::NewWorkspace {
+            cwd: start_dir(t, path),
+            name,
+            cmd: join_command(cmd),
+        },
+    )
+}
+
+pub fn focus(t: &Target, pane: TermId) -> Result<()> {
+    command_to(t, Command::FocusPane { term: pane })
 }
 
 /// The session you're on, if a server is running.
@@ -920,7 +1017,7 @@ pub fn focused_pane() -> Option<TermId> {
 }
 
 /// `<app> popup -- <command>`: a floating pane in the folder you're in.
-pub fn popup(cmd: Vec<String>) -> Result<()> {
+pub fn popup(t: &Target, cmd: Vec<String>) -> Result<()> {
     let cmd = join_command(cmd).ok_or_else(|| {
         anyhow!(concat!(
             "what to run: ",
@@ -928,14 +1025,17 @@ pub fn popup(cmd: Vec<String>) -> Result<()> {
             " popup -- fzf"
         ))
     })?;
-    command(Command::Popup {
-        cmd,
-        cwd: std::env::current_dir().ok(),
-    })
+    command_to(
+        t,
+        Command::Popup {
+            cmd,
+            cwd: start_dir(t, None),
+        },
+    )
 }
 
 /// `<app> grant <pane> read,write,…|default`.
-pub fn grant(term: TermId, grants: &str) -> Result<()> {
+pub fn grant(t: &Target, term: TermId, grants: &str) -> Result<()> {
     let list = (grants.trim() != "default").then(|| {
         grants
             .split(',')
@@ -943,23 +1043,27 @@ pub fn grant(term: TermId, grants: &str) -> Result<()> {
             .filter(|g| !g.is_empty())
             .collect::<Vec<_>>()
     });
-    command(Command::Grant {
-        term,
-        grants: list.clone(),
-    })?;
+    command_to(
+        t,
+        Command::Grant {
+            term,
+            grants: list.clone(),
+        },
+    )?;
+    let pane = t.address(term);
     match list {
         Some(l) if l.is_empty() => {
-            println!("pane {term} may do nothing through {APP_COMMAND} but its own work")
+            println!("pane {pane} may do nothing through {APP_COMMAND} but its own work")
         }
-        Some(l) => println!("pane {term} may: {}", l.join(", ")),
-        None => println!("pane {term} is back to the default grants ([mcp] grants in config)"),
+        Some(l) => println!("pane {pane} may: {}", l.join(", ")),
+        None => println!("pane {pane} is back to the default grants ([mcp] grants in config)"),
     }
     Ok(())
 }
 
 /// `<app> ask-human "…?" -o Yes -o No`: ask the person, wait, print the answer.
 pub fn ask_human(text: String, options: Vec<String>) -> Result<()> {
-    let term = resolve_pane(None).context(concat!(
+    let term = resolve_pane(&Target::current(), None).context(concat!(
         "run it in a ",
         env!("APP_COMMAND"),
         " pane (the question shows there)"
@@ -978,9 +1082,9 @@ pub fn ask_human(text: String, options: Vec<String>) -> Result<()> {
 }
 
 /// `<app> teach [pane]`: the program running there is an agent.
-pub fn teach(pane: Option<TermId>) -> Result<()> {
-    let term = resolve_pane(pane)?;
-    command(Command::TeachAgent { term })?;
+pub fn teach(t: &Target, pane: Option<TermId>) -> Result<()> {
+    let term = resolve_pane(t, pane)?;
+    command_to(t, Command::TeachAgent { term })?;
     println!(
         concat!(
             env!("APP_COMMAND"),
@@ -996,10 +1100,13 @@ pub fn reveal(pane: TermId) -> Result<()> {
     command(Command::Reveal { term: pane })
 }
 
-pub fn close(pane: Option<TermId>) -> Result<()> {
-    command(Command::ClosePane {
-        term: resolve_pane(pane)?,
-    })
+pub fn close(t: &Target, pane: Option<TermId>) -> Result<()> {
+    command_to(
+        t,
+        Command::ClosePane {
+            term: resolve_pane(t, pane)?,
+        },
+    )
 }
 
 /// Whether the app's server is running (for this socket).
@@ -1007,8 +1114,9 @@ pub(crate) fn server_running() -> bool {
     block_on(async { ipc::connect().await.map(|_| ()) }).is_ok()
 }
 
-pub fn kill_server(forget: bool) -> Result<()> {
-    if ipc::remote().is_none() && !server_running() {
+pub fn kill_server(t: &Target, forget: bool) -> Result<()> {
+    let remote = t.is_remote();
+    if !remote && !server_running() {
         if forget {
             maitty_core::forget_session();
         }
@@ -1019,9 +1127,9 @@ pub fn kill_server(forget: bool) -> Result<()> {
         ));
         return Ok(());
     }
-    match command(Command::KillServer { forget }) {
+    match command_to(t, Command::KillServer { forget }) {
         // Another version can't be asked to stop: stop its process instead.
-        Err(e) if ipc::other_version(&e).is_some() => {
+        Err(e) if !remote && ipc::other_version(&e).is_some() => {
             let pid = stop_server_process()?;
             if forget {
                 maitty_core::forget_session();
@@ -1031,9 +1139,33 @@ pub fn kill_server(forget: bool) -> Result<()> {
         }
         // It answers, then lets go of its socket a moment later: a server started right
         // after would find it.
-        Ok(()) if ipc::remote().is_none() => restart::wait_until_server_gone(),
+        Ok(()) if !remote => restart::wait_until_server_gone(),
         r => r,
     }
+}
+
+/// What `machine update` asks of the server it leaves running (it runs this over ssh): stop
+/// it only when no session is open, so the next start is the new version. A server with
+/// sessions, or one that cannot say, is left alone: an update never ends anyone's work.
+pub fn restart_if_idle() -> Result<()> {
+    if !server_running() {
+        println!("no server is running");
+        return Ok(());
+    }
+    let published = crate::restart::read();
+    if !crate::restart::idle_enough_to_restart(published.as_ref()) {
+        match published {
+            Some(a) => println!(
+                "left running: {} open session(s); it keeps them",
+                a.sessions
+            ),
+            None => println!("left running: it did not say whether sessions are open"),
+        }
+        return Ok(());
+    }
+    kill_server(&Target::current(), false)?;
+    println!("restarted: no session was open");
+    Ok(())
 }
 
 /// Stop this socket's server by its process, for when it's a version that can't be talked
@@ -1694,6 +1826,21 @@ pub fn doctor() -> Result<()> {
         );
     }
 
+    if !cfg.machines.is_empty() {
+        let reports = doctor_machines::check_all(
+            &cfg.machines,
+            ipc::SSH_PROGRAM,
+            crate::brand::APP_VERSION,
+            doctor_machines::MACHINE_BUDGET,
+        );
+        for row in doctor_machines::rows(&reports) {
+            match row {
+                doctor_machines::Row::Machine(name) => println!("\n machine {name}"),
+                doctor_machines::Row::Check(c) => line(c.ok, c.what, c.detail),
+            }
+        }
+    }
+
     println!();
     if bad == 0 {
         println!("All good.");
@@ -1719,11 +1866,7 @@ pub fn move_to_worktree(branch: String) -> Result<()> {
         })?;
     let branch = Some(branch.trim().to_string()).filter(|b| !b.is_empty());
     block_on(async move {
-        let (mut r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() {
-            "over ssh"
-        } else {
-            concat!("couldn't reach the ", env!("APP_COMMAND"), " server")
-        })?;
+        let (mut r, mut w) = open_cli(&Target::current()).await?;
         ipc::send(
             &mut w,
             &ClientMsg::Command(Command::MoveToWorktree { term, branch }),
@@ -3382,9 +3525,14 @@ mod tests {
     #[test]
     fn send_refuses_hidden_characters_before_reaching_any_pane() {
         // Pane 0 is never real, so reaching the server would fail with a different error.
-        let err = send(Some(0), "looks fine\u{200b}".into(), true)
-            .unwrap_err()
-            .to_string();
+        let err = send(
+            &Target::current(),
+            Some(0),
+            "looks fine\u{200b}".into(),
+            true,
+        )
+        .unwrap_err()
+        .to_string();
         assert_eq!(
             err,
             "refused: hidden characters \\u{200b} at 10; remove them and send again"

@@ -25,7 +25,7 @@ fn checkouts(model: &[Proj], repo: &Path) -> Vec<Wt> {
 }
 
 /// The agent working in checkout `name` of `repo` (the first, if several).
-pub(in crate::client) fn agent_in(model: &[Proj], repo: &Path, name: &str) -> Option<TermId> {
+pub(in crate::client) fn agent_in(model: &[Proj], repo: &Path, name: &str) -> Option<ClientTerm> {
     checkouts(model, repo)
         .into_iter()
         .filter(|w| w.name == name)

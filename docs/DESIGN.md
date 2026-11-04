@@ -87,6 +87,27 @@ word at the right; a click shows that tab. The foot holds **+ New** and **Menu**
 column (each project its first letter, each session its mark and first letter); hidden, the panes take everything. See UI › *sidebar check result* and *collapsed
 sidebar*.
 
+**Machines.** With one machine the sidebar is exactly as above. Once the window knows another
+machine, every machine's folders sit under a header, this computer first and the others in their
+stable id order (the sidebar never reorders itself, ADR 0034): `this computer` in `strong` bold,
+then `⇄ build` with its connection state at the right, a glyph and a word in a theme role
+(`connected` in `done`, `connecting` and `reconnecting #n` in `muted`, `needs login`, `needs
+update` and `unreachable` in `err`; amber stays for agents that need you). ASCII marks read
+`<> build` and `+`, `.`, `~`, `x`. The name is cut with a `…` before the word gives way to the
+glyph. A machine that dropped keeps its folders and sessions, drawn again in `muted`: no
+bold, no amber, the working mark held still. Under its header two `muted` lines say
+`disconnected since 2m ago` and why (`text`, the exact fix the link failure carries, wrapped onto
+up to three rows at the sidebar's width, the last ending in `…` only past three). Its needs-you and failed marks leave the title's counts and the Inbox
+until the line is back, and everything returns to normal on its own. A connected machine's header
+may carry up to two `muted` lines of what its own daemon reports, never added to another's: its
+plan limits (`claude 5h 23% · week 41%`) and `$9.00 today`, with `daemon 0.50.0` when that is not
+this window's version. Collapsed, a machine other than this one is a row `●B` (its state glyph,
+coloured as above, and its first letter) over its folders.
+
+The **Machines dialog** (leader `w`) is a standard modal: the same state chips and words as the header,
+the fix of a down machine written in full under it in `text`, the Add field on `card2`, and a dim line
+for Windows. Its behaviour is in [UI](UI.md#project-specific-machines-dialog).
+
 ## Pane titles and tabs
 
 The session's tabs sit on the first
@@ -137,7 +158,9 @@ One component for every notice: bottom right, above the agent's input area, a sm
 pane: a `card` boxed in the notice's colour (`err`, `blocked` for needs you, `done`, else the
 accent) with a kind chip carrying the notice's mark on the top border (`▲ Needs you`,
 `✕ Error`, `✓ Done`, `i Hint`, `✓ Notice`) and the modals' red ✕ chip at its right, then a bold
-title, a detail line and an optional preview in italics. A question waiting on you also has its
+title, a detail and an optional preview in italics. Every text row wraps at the toast's width
+instead of being cut: the title and the detail onto up to three lines, the preview (an excerpt) onto
+up to two, the last line ending in `…` only past that; the box grows with the lines. A question waiting on you also has its
 two answers as buttons on the bottom border: a green `Answer` that goes to the session and a
 red `Later esc` that dismisses it. Always round corners (ADR 0030). It slides in and fades out
 with motion on. See UI › *the frame* (Toast).

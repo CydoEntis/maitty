@@ -53,6 +53,16 @@ pub(super) fn paste_from_burst(events: &[Event], letters_are_commands: bool) -> 
     (broken_line || long_line || short_paste).then_some(text)
 }
 
+/// The keys of the sessions a machine has now: what its saved lists are pruned to.
+fn alive_on(model: &[screen::Proj], machine: MachineId) -> Vec<SessionKey> {
+    model
+        .iter()
+        .flat_map(|p| p.sessions())
+        .filter(|s| s.key.machine == machine)
+        .map(|s| s.key.key)
+        .collect()
+}
+
 impl App {
     /// Keys read together on Windows: a paste is taken whole (`paste_from_burst`), anything
     /// else is handed on one event at a time.
@@ -178,10 +188,7 @@ impl App {
                 if let Some(p) = self.parsers.get_mut(&term) {
                     p.screen_mut().set_scrollback(0);
                 }
-                self.send(ClientMsg::Input {
-                    term,
-                    data: data.into_bytes(),
-                });
+                self.send_input(term, data.into_bytes());
             }
         }
     }
@@ -286,11 +293,11 @@ impl App {
                     .is_some()
                     .then(|| c.selected_text())
                     .filter(|s| !s.trim().is_empty());
-                let panes: Vec<TermId> = self
+                let panes: Vec<ClientTerm> = self
                     .screen
                     .tabs
                     .get(self.screen.tab)
-                    .map(|t| t.layout.leaves())
+                    .map(|t| t.leaves())
                     .unwrap_or_default();
                 if panes.len() > 1
                     && let Some(i) = panes.iter().position(|p| *p == term)
@@ -359,6 +366,7 @@ impl App {
             Mode::Branch(v) => self.on_branch_key(*v, &k),
             Mode::History { sel } => self.on_history_key(sel, &k),
             Mode::Tidy(v) => self.on_tidy_key(*v, &k),
+            Mode::Machines(v) => self.on_machines_key(*v, &k),
             Mode::GoTo { query, sel } => self.on_goto_key(query, sel, &k),
             Mode::Compose(c) => self.on_compose_key(*c, &k),
             Mode::Why { term, side } => self.on_why_key(term, side, &k),
@@ -512,7 +520,7 @@ impl App {
                     let force = matches!(k.code, KeyCode::Char('f') | KeyCode::Char('F'));
                     match kind {
                         PromptKind::ConfirmCloseWorkspace(ws) if yes => {
-                            self.cmd(Command::CloseWorkspace { ws })
+                            self.cmd_on(self.focus_machine(), Command::CloseWorkspace { ws })
                         }
                         PromptKind::ConfirmKillServer if yes => {
                             self.cmd(Command::KillServer { forget: false })
@@ -563,7 +571,7 @@ impl App {
             .get(&term)
             .is_some_and(|p| p.screen().application_cursor());
         let win32 = cfg!(windows)
-            && self.snap.terms.get(&term).is_some_and(|t| t.win32_input)
+            && self.term_info(term).is_some_and(|t| t.win32_input)
             && keys::wants_win32(k);
         let data = match win32.then(|| keys::encode_win32(k)).flatten() {
             Some(d) => d,
@@ -577,7 +585,7 @@ impl App {
         }
         // Typing goes to the prompt at the bottom; the agent scrolls there itself.
         self.paged_up.remove(&term);
-        self.send(ClientMsg::Input { term, data });
+        self.send_input(term, data);
     }
 
     /// Shift+PageUp / PageDown (and Shift+Up / Down a line) scroll the history, like any
@@ -592,11 +600,7 @@ impl App {
         if p.screen().alternate_screen() {
             return false;
         }
-        let agent = self
-            .snap
-            .terms
-            .get(&term)
-            .is_some_and(|t| t.agent.is_some());
+        let agent = self.term_info(term).is_some_and(|t| t.agent.is_some());
         let has_history = self.history(term).1 > 0;
         if agent && !has_history && matches!(k.code, KeyCode::PageUp | KeyCode::PageDown) {
             return false;
@@ -638,7 +642,7 @@ impl App {
     }
 
     /// The pane under `pos` and the cell inside it.
-    pub(super) fn pane_cell(&self, pos: Position) -> Option<(TermId, u16, u16)> {
+    pub(super) fn pane_cell(&self, pos: Position) -> Option<(ClientTerm, u16, u16)> {
         let (term, r) = self.panes.iter().find(|(_, r)| r.contains(pos))?;
         Some((*term, pos.y - r.y, pos.x - r.x))
     }
@@ -742,7 +746,7 @@ impl App {
             }
             if matches!(m.kind, MouseEventKind::Down(_)) {
                 if Some(term) != self.focused() {
-                    self.cmd(Command::FocusPane { term });
+                    self.cmd_on(term.machine, Command::FocusPane { term: term.term });
                 }
                 // Clicking for the program brings its view back to the bottom.
                 if let Some(p) = self.parsers.get_mut(&term) {
@@ -750,7 +754,7 @@ impl App {
                 }
             }
             if !bytes.is_empty() {
-                self.send(ClientMsg::Input { term, data: bytes });
+                self.send_input(term, bytes);
             }
             return;
         }
@@ -834,6 +838,7 @@ impl App {
                                 && let Some(from) = self.screen.drag_key.clone()
                                 && let Some(target) = self.screen.proj_keys.get(to).cloned()
                                 && target != from
+                                && self.projects_share_machine(pi, to)
                             {
                                 // Every group in today's order, then this one moved to the
                                 // other's place.
@@ -1040,7 +1045,7 @@ impl App {
             // A session's row: it may be dragged within its group; a plain click opens it
             // (on release).
             let session_press = match hit {
-                Some(Hit::Screen(press @ screen::ScreenHit::Session(key))) => Some((key, press)),
+                Some(Hit::Screen(press @ screen::ScreenHit::Session(s))) => Some((s, press)),
                 Some(Hit::Screen(press @ screen::ScreenHit::RowChanges(term))) => {
                     Some((self.session_key(term), press))
                 }
@@ -1130,14 +1135,16 @@ impl App {
                     .find(|(r, _)| r.contains(pos))
                     .map(|(_, h)| *h);
                 match hit {
-                    Some(Hit::Pane(term)) => self.cmd(Command::FocusPane { term }),
+                    Some(Hit::Pane(term)) => {
+                        self.cmd_on(term.machine, Command::FocusPane { term: term.term })
+                    }
                     Some(Hit::Button(_) | Hit::Screen(_)) => {}
                     None => {
                         if let Some((term, _)) =
                             self.pane_frames.iter().find(|(_, r)| r.contains(pos))
                             && Some(*term) != self.focused()
                         {
-                            self.cmd(Command::FocusPane { term: *term });
+                            self.cmd_on(term.machine, Command::FocusPane { term: term.term });
                         }
                     }
                 }
@@ -1229,11 +1236,7 @@ impl App {
                     .parsers
                     .get(&term)
                     .is_some_and(|p| p.screen().alternate_screen());
-                let agent = self
-                    .snap
-                    .terms
-                    .get(&term)
-                    .is_some_and(|t| t.agent.is_some());
+                let agent = self.term_info(term).is_some_and(|t| t.agent.is_some());
                 let no_history = self.history(term).1 == 0;
                 if (alt || no_history) && agent && !m.modifiers.contains(KeyModifiers::SHIFT) {
                     // A full-screen view, or a normal-screen agent with no the app history:
@@ -1253,10 +1256,7 @@ impl App {
                             self.paged_up.remove(&term);
                         }
                         let key: &[u8] = if up { b"\x1b[5~" } else { b"\x1b[6~" };
-                        self.send(ClientMsg::Input {
-                            term,
-                            data: key.to_vec(),
-                        });
+                        self.send_input(term, key.to_vec());
                     }
                 } else if alt {
                     // Full-screen programs scroll themselves: one arrow key per notch.
@@ -1270,10 +1270,7 @@ impl App {
                         (false, true) => b"\x1bOB",
                         (false, false) => b"\x1b[B",
                     };
-                    self.send(ClientMsg::Input {
-                        term,
-                        data: key.to_vec(),
-                    });
+                    self.send_input(term, key.to_vec());
                 } else {
                     self.scroll_by(term, if up { 3 } else { -3 });
                 }
@@ -1283,7 +1280,7 @@ impl App {
     }
 
     /// The pane whose title row is at `pos`, when its tab shows it beside others.
-    fn title_of_shared_pane(&self, pos: Position) -> Option<TermId> {
+    fn title_of_shared_pane(&self, pos: Position) -> Option<ClientTerm> {
         let (term, r) = self.pane_frames.iter().find(|(_, r)| r.contains(pos))?;
         let shared = self.screen.leaf_rects.len() > 1
             && self.screen.leaf_rects.iter().any(|(id, _)| id == term);
@@ -1291,7 +1288,7 @@ impl App {
     }
 
     /// The pane of the tab on screen under `pos` that `from` would trade places with.
-    fn swap_target(&self, from: TermId, pos: Position) -> Option<TermId> {
+    fn swap_target(&self, from: ClientTerm, pos: Position) -> Option<ClientTerm> {
         let (to, _) = self.pane_frames.iter().find(|(_, r)| r.contains(pos))?;
         (*to != from && self.screen.leaf_rects.iter().any(|(id, _)| id == to)).then_some(*to)
     }
@@ -1299,7 +1296,7 @@ impl App {
     /// Put session `t` where `u` is, within their group (the order you dragged them to).
     /// False when they aren't in the same group.
     /// Put session `t` in group `pi` (by the sidebar's groups). Not onto another machine's group.
-    pub(super) fn place_session(&mut self, t: SessionKey, pi: usize) -> bool {
+    pub(super) fn place_session(&mut self, t: ClientSession, pi: usize) -> bool {
         let model = self.screen_model();
         let Some(to) = model.get(pi) else {
             return false;
@@ -1307,23 +1304,21 @@ impl App {
         let Some(from) = model.iter().find(|p| p.sessions().any(|s| s.key == t)) else {
             return false;
         };
-        if from.key == to.key {
+        if from.key == to.key || to.machine != t.machine {
             return false;
         }
-        let placed = &mut self.screen.saved.placed;
-        placed.retain(|(x, ..)| *x != t);
-        placed.push((t, to.path.clone(), to.git));
-        let alive: Vec<SessionKey> = model
-            .iter()
-            .flat_map(|p| p.sessions().map(|s| s.key))
-            .collect();
+        let machine = self.machine_name(t.machine).to_string();
+        let placed = self.screen.saved.placed_mut(&machine);
+        placed.retain(|(x, ..)| *x != t.key);
+        placed.push((t.key, to.path.clone(), to.git));
+        let alive = alive_on(&model, t.machine);
         placed.retain(|(x, ..)| alive.contains(x));
         self.screen_fresh();
         self.dirty = true;
         true
     }
 
-    pub(super) fn move_session(&mut self, t: SessionKey, u: SessionKey) -> bool {
+    pub(super) fn move_session(&mut self, t: ClientSession, u: ClientSession) -> bool {
         let model = self.screen_model();
         let Some(group) = model.iter().find(|p| p.sessions().any(|s| s.key == t)) else {
             return false;
@@ -1333,7 +1328,7 @@ impl App {
         }
         // The group's sessions as shown, then t moved to u's place.
         let lines = screen::side_lines(self, &model, &self.theme);
-        let mut ids: Vec<SessionKey> = lines
+        let mut ids: Vec<ClientSession> = lines
             .iter()
             .filter_map(|l| screen::line_term(&model, l))
             .filter(|id| group.sessions().any(|s| s.key == *id))
@@ -1347,14 +1342,12 @@ impl App {
         };
         let id = ids.remove(from);
         ids.insert(to, id);
-        let order = &mut self.screen.saved.session_order;
-        order.retain(|x| !ids.contains(x));
-        order.extend(ids);
+        let machine = self.machine_name(t.machine).to_string();
+        let order = self.screen.saved.session_order_mut(&machine);
+        order.retain(|x| !ids.iter().any(|id| id.key == *x));
+        order.extend(ids.iter().map(|id| id.key));
         // Only sessions that still exist.
-        let alive: Vec<SessionKey> = model
-            .iter()
-            .flat_map(|p| p.sessions().map(|s| s.key))
-            .collect();
+        let alive = alive_on(&model, t.machine);
         order.retain(|x| alive.contains(x));
         self.screen_fresh();
         self.dirty = true;
@@ -1535,7 +1528,7 @@ impl App {
         }
     }
 
-    pub(super) fn scroll_by(&mut self, term: TermId, delta: i32) {
+    pub(super) fn scroll_by(&mut self, term: ClientTerm, delta: i32) {
         let Some(p) = self.parsers.get_mut(&term) else {
             return;
         };

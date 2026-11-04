@@ -250,6 +250,8 @@ pub enum Action {
     NextPrompt,
     /// What happened lately: who finished, who asked, messages.
     History,
+    /// The computers reached over ssh: how each stands, and adding or removing one.
+    Machines,
     /// Move the sidebar cursor (-1 up, 1 down); bare keys then work on the sidebar.
     SideMove(i8),
     Detach,
@@ -337,6 +339,7 @@ impl Action {
             Action::PrevPrompt => "Previous command in history".into(),
             Action::NextPrompt => "Next command in history".into(),
             Action::History => "What happened".into(),
+            Action::Machines => "Machines".into(),
             Action::Find(0) => "Find a file".into(),
             Action::Find(_) => "Search the code".into(),
             Action::SideMove(d) if *d < 0 => "Sidebar up".into(),
@@ -416,6 +419,7 @@ impl Action {
             Action::PrevPrompt => "prev-prompt".into(),
             Action::NextPrompt => "next-prompt".into(),
             Action::History => "history".into(),
+            Action::Machines => "machines".into(),
             Action::Find(0) => "find-file".into(),
             Action::Find(_) => "search-code".into(),
             Action::SideMove(d) if *d < 0 => "side-up".into(),
@@ -520,6 +524,7 @@ impl FromStr for Action {
             "prev-prompt" => Action::PrevPrompt,
             "next-prompt" => Action::NextPrompt,
             "history" => Action::History,
+            "machines" => Action::Machines,
             "find-file" => Action::Find(0),
             "search-code" => Action::Find(1),
             "side-up" => Action::SideMove(-1),
@@ -609,6 +614,7 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     (",", "settings"),
     ("?", "help"),
     ("l", "history"),
+    ("w", "machines"),
     ("ctrl+v", "paste-image"),
     ("q", "detach"),
     ("ctrl+r", "reload-config"),

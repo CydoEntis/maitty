@@ -94,10 +94,11 @@ impl App {
             self.screen.save();
         }
         self.screen.cursor = None;
-        if worktree && p.git {
+        // Another machine's worktrees wait for a later version: its folder it is.
+        if worktree && p.git && p.machine == MachineId::LOCAL {
             self.screen_new_worktree(&p, cmd, false, None);
         } else {
-            self.screen_new_session(main, cmd, false);
+            self.screen_new_session_on(p.machine, main, cmd, false);
         }
     }
 }

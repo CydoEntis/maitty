@@ -4,11 +4,18 @@
 mod actions;
 mod background;
 mod branch;
+pub mod connections;
 mod copy;
 mod design;
 mod files;
 mod find;
+mod ids;
 mod input;
+pub mod link;
+mod machine_config;
+mod machine_flow;
+mod machine_ids;
+mod machine_links;
 mod markdown;
 mod marks;
 mod menu;
@@ -17,10 +24,14 @@ mod motion;
 mod overlap;
 mod pick;
 mod recipes;
+mod remote_policy;
+pub(crate) mod remote_snapshot;
 mod render;
 pub mod restart_prompt;
+mod routing;
 mod screen;
 mod spinners;
+pub mod ssh_hosts;
 mod tasks;
 mod themes;
 mod view_keys;
@@ -33,7 +44,9 @@ use crate::keys::{self, Action, KeySpec};
 use crate::protocol::*;
 use crate::theme::Theme;
 use anyhow::Result;
+use connections::{Burst, Connections, NotConnected};
 use futures_util::{FutureExt, StreamExt};
+use ids::{ClientSession, ClientTerm, MachineId, MachineSnap, Outgoing, Remote};
 use ratatui::crossterm::event::{
     self, Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind,
@@ -163,16 +176,16 @@ enum Mode {
     Compose(Box<screen::Compose>),
     /// Why a session has its status (beside its row); `side`: back to the sidebar after.
     Why {
-        term: TermId,
+        term: ClientTerm,
         side: bool,
     },
     /// A session asks to start helpers (beside its row); `side`: back to the sidebar after.
     Helpers {
-        term: TermId,
+        term: ClientTerm,
         side: bool,
     },
     Secret {
-        term: TermId,
+        term: ClientTerm,
         id: u64,
         side: bool,
     },
@@ -184,6 +197,8 @@ enum Mode {
     },
     /// A tab being renamed in its pill.
     RenameTab(Box<screen::TabName>),
+    /// The computers reached over ssh: how each stands, and adding or removing one.
+    Machines(Box<screen::machines::MachinesView>),
 }
 
 /// A view that replaces the pane area.
@@ -203,7 +218,7 @@ pub(super) enum View {
 /// Clickable chips and buttons.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum Btn {
-    Answer(TermId, char),
+    Answer(ClientTerm, char),
     /// A key inside the current view ('\n' for Enter).
     ViewKey(char),
     /// A key with its modifiers inside the current view (the editor's Ctrl+S, Esc, …).
@@ -411,7 +426,7 @@ enum WtRow {
 
 #[derive(Debug, Clone, PartialEq)]
 enum PromptKind {
-    RenamePane(TermId),
+    RenamePane(ClientTerm),
     /// A chat's name, shared with every client (empty: automatic).
     RenameConversation(crate::conversation::ConversationId),
     RenameProject(String),
@@ -450,7 +465,7 @@ impl PromptKind {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Hit {
-    Pane(TermId),
+    Pane(ClientTerm),
     Button(Btn),
     Screen(screen::ScreenHit),
 }
@@ -489,7 +504,7 @@ pub struct App {
     keymap: Keymap,
     notice: Option<(String, Instant, bool)>,
     /// The session the note is about (an agent finished or needs you): clicking it goes there.
-    notice_term: Option<TermId>,
+    notice_term: Option<ClientTerm>,
     /// The toast offers Restart now (the update just installed, the daemon still old).
     notice_restart: bool,
     /// The toast is a hint about keys, not news: it is marked `i`, not ✓.
@@ -500,32 +515,51 @@ pub struct App {
     copy_flash: Option<copy::Flash>,
     /// What happened lately, newest last: (unix secs, pane, kind, text). Kinds: '!' needs
     /// you, '✓' finished, 'i' a message, 'x' an error.
-    pub(super) history: std::collections::VecDeque<(u64, Option<TermId>, char, String)>,
+    pub(super) history: std::collections::VecDeque<(u64, Option<ClientTerm>, char, String)>,
     /// When the right button last went down (menus open on press or release, once).
     right_down: Option<Instant>,
+    /// This machine's daemon.
     snap: Snapshot,
+    /// The other machines' daemons.
+    remotes: std::collections::BTreeMap<MachineId, Remote>,
+    /// The daemon each machine name was first seen with.
+    machine_ids: machine_ids::MachineIds,
+    /// How to reach the supervisors of the configured machines.
+    links: link::LinkControl,
+    /// What the Machines dialog has under way: a look at a machine, a login in a popup.
+    machine_flow: machine_flow::Flow,
+    /// Typed input that found its machine disconnected, by machine: told once it is back.
+    /// Input is dropped, never kept for later: replaying keystrokes into a pane that moved on
+    /// could run commands the person no longer meant.
+    unsent_input: std::collections::BTreeMap<MachineId, u32>,
+    /// Which machine holds the focus, and which have a request out waiting for an answer.
+    route: routing::Routing,
+    /// Machines turned away because a different daemon answers at their name, with why.
+    refused: std::collections::BTreeMap<MachineId, String>,
+    /// The machine whose daemon this window shows.
+    pub(super) machine: crate::ipc::Machine,
     got_state: bool,
-    parsers: HashMap<TermId, vt100::Parser>,
+    parsers: HashMap<ClientTerm, vt100::Parser>,
     /// The mouse pointer shape last asked of the terminal (OSC 22).
     pointer: &'static str,
     /// The pane copy mode was on when it yanked (for joining with `copy_set`).
-    copy_term: Option<TermId>,
+    copy_term: Option<ClientTerm>,
     /// Selections kept from other panes while copying across a split (Tab in copy mode):
     /// (pane, text), copied together with the current one.
-    copy_set: Vec<(TermId, String)>,
+    copy_set: Vec<(ClientTerm, String)>,
     /// Where commands started in each pane's history (see `marks`).
-    marks: HashMap<TermId, marks::Marks>,
-    sizes: HashMap<TermId, (u16, u16)>,
+    marks: HashMap<ClientTerm, marks::Marks>,
+    sizes: HashMap<ClientTerm, (u16, u16)>,
     mode: Mode,
     sidebar: bool,
     /// With the full sidebar off: the sessions are hidden completely, not shown as the top strip.
     side_hidden: bool,
     /// The last alert per agent (its status, when) and for any agent: the same news again
     /// soon doesn't ring twice.
-    alerted: HashMap<TermId, (Status, Instant)>,
+    alerted: HashMap<ClientTerm, (Status, Instant)>,
     last_alert: Option<(crate::alert::Kind, Instant)>,
     /// Only ring if the pending status still matches the latest snapshot at its deadline.
-    settling: HashMap<TermId, (Status, Instant)>,
+    settling: HashMap<ClientTerm, (Status, Instant)>,
     /// What's moving, and how far the sidebar and the sheet are in this frame (0 to 1).
     motion: motion::Motion,
     side_frac: f32,
@@ -535,15 +569,15 @@ pub struct App {
     /// neither tints them nor takes their shape, since they are not what a look says is live.
     hits_under_overlay: usize,
     /// Inner rects of the panes drawn last frame.
-    panes: Vec<(TermId, Rect)>,
+    panes: Vec<(ClientTerm, Rect)>,
     /// Outer rects of the panes drawn last frame (for neighbour search).
-    pane_frames: Vec<(TermId, Rect)>,
+    pane_frames: Vec<(ClientTerm, Rect)>,
     /// When the wheel last paged an agent's full-screen view (see the wheel in input.rs).
     wheel_page: Option<Instant>,
     /// Pages the wheel has sent up to an agent that scrolls itself, less those sent down:
     /// The app can't see where it is, so this is how far "Back to bottom" has to page down.
-    paged_up: std::collections::HashMap<TermId, u32>,
-    out: mpsc::UnboundedSender<ClientMsg>,
+    paged_up: std::collections::HashMap<ClientTerm, u32>,
+    out: mpsc::UnboundedSender<Outgoing>,
     quit: Option<String>,
     dirty: bool,
     started: Instant,
@@ -553,7 +587,7 @@ pub struct App {
     splash_play: Option<bool>,
     open: Option<PathBuf>,
     /// Where a left-button press started, for drag-to-select.
-    drag: Option<(TermId, Position)>,
+    drag: Option<(ClientTerm, Position)>,
     bg: mpsc::UnboundedSender<Bg>,
     #[cfg(test)]
     run_background_jobs_inline: bool,
@@ -583,19 +617,19 @@ pub struct App {
     osc_bg: Option<ratatui::style::Color>,
     /// Panes in the middle of a synchronized update (mode 2026): since when. Not drawn
     /// until it ends (or 100 ms pass), so redraws don't flicker.
-    sync_hold: HashMap<TermId, Instant>,
+    sync_hold: HashMap<ClientTerm, Instant>,
     /// Panes whose program asked to hear about focus (mode 1004).
-    focus_report: HashSet<TermId>,
+    focus_report: HashSet<ClientTerm>,
     /// The focus we last told programs about: (pane, window focused).
-    focus_sent: Option<(TermId, bool)>,
+    focus_sent: Option<(ClientTerm, bool)>,
     /// The last left-click in a pane, for double-click.
     pane_click: Option<(Position, Instant)>,
     /// Recent raw output per pane, to re-wrap the screen when its width changes.
-    raw: HashMap<TermId, std::collections::VecDeque<u8>>,
+    raw: HashMap<ClientTerm, std::collections::VecDeque<u8>>,
     /// Panes whose width changed during a drag: re-wrapped from `raw` once it ends.
-    rewrap: std::collections::HashSet<TermId>,
+    rewrap: std::collections::HashSet<ClientTerm>,
     /// The cursor style each pane's program asked for (DECSCUSR 0-6), and the one we set.
-    cursor_style: HashMap<TermId, u8>,
+    cursor_style: HashMap<ClientTerm, u8>,
     cursor_sent: u8,
 }
 
@@ -609,15 +643,9 @@ pub fn run(opts: Options) -> Result<()> {
 }
 
 async fn run_async(opts: Options) -> Result<()> {
-    let (mut reader, mut writer) = ipc::open_or_spawn(true).await?;
-    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<ClientMsg>();
-    tokio::spawn(async move {
-        while let Some(msg) = out_rx.recv().await {
-            if ipc::send(&mut writer, &msg).await.is_err() {
-                break;
-            }
-        }
-    });
+    let mut connections = Connections::default();
+    connections.add(MachineId::LOCAL, ipc::open_or_spawn(true).await?);
+    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Outgoing>();
 
     let (cfg, err) = Config::load_or_default();
     let (bg_tx, mut bg_rx) = mpsc::unbounded_channel::<Bg>();
@@ -631,6 +659,11 @@ async fn run_async(opts: Options) -> Result<()> {
         app.notify(format!("config error: {e}"), true);
     }
     settle_retired_layout(&mut app);
+    let mut links = link::Links::start(
+        link::configured_machines(&app.cfg.machines, ipc::SSH_PROGRAM),
+        link::Timing::DEFAULT,
+    );
+    app.links = links.control();
 
     let mut terminal = ratatui::init();
     // A panic must leave the shell as it found it: ratatui's own hook leaves the alternate
@@ -650,7 +683,15 @@ async fn run_async(opts: Options) -> Result<()> {
     );
     enhance_keyboard();
 
-    let result = app.event_loop(&mut terminal, &mut reader, &mut bg_rx).await;
+    let result = app
+        .event_loop(
+            &mut terminal,
+            &mut connections,
+            &mut links,
+            &mut out_rx,
+            &mut bg_rx,
+        )
+        .await;
 
     restore_terminal();
     result?;
@@ -715,7 +756,7 @@ fn restore_terminal() {
 impl App {
     fn new(
         cfg: Config,
-        out: mpsc::UnboundedSender<ClientMsg>,
+        out: mpsc::UnboundedSender<Outgoing>,
         open: Option<PathBuf>,
         bg_tx: mpsc::UnboundedSender<Bg>,
     ) -> App {
@@ -757,6 +798,14 @@ impl App {
             history: Default::default(),
             right_down: None,
             snap: Snapshot::default(),
+            remotes: Default::default(),
+            machine_ids: machine_ids::MachineIds::load(),
+            links: Default::default(),
+            machine_flow: Default::default(),
+            unsent_input: Default::default(),
+            route: Default::default(),
+            refused: Default::default(),
+            machine: crate::ipc::Machine::current(),
             got_state: false,
             parsers: HashMap::new(),
             marks: HashMap::new(),
@@ -821,7 +870,9 @@ impl App {
     async fn event_loop(
         &mut self,
         terminal: &mut ratatui::DefaultTerminal,
-        reader: &mut ipc::Reader,
+        connections: &mut Connections,
+        links: &mut link::Links,
+        out_rx: &mut mpsc::UnboundedReceiver<Outgoing>,
         bg_rx: &mut mpsc::UnboundedReceiver<Bg>,
     ) -> Result<()> {
         let mut events = EventStream::new();
@@ -866,32 +917,17 @@ impl App {
                     self.on_bg(b);
                     self.dirty = true;
                 }
-                msg = ipc::recv_server(reader) => {
-                    // Take everything the server has already sent before drawing again. One
-                    // message per frame can't keep up once a frame takes longer than messages
-                    // arrive (many agents printing), and the server lets go of a window that
-                    // falls too far behind.
-                    let mut next = Some(msg);
-                    let mut taken = 0;
-                    let mut lost = false;
-                    while let Some(msg) = next.take() {
-                        match msg {
-                            Ok(Some(m)) => self.on_server(m),
-                            // One message that didn't decode: skip it rather than quit.
-                            Err(e) if ipc::is_decode_error(&e) => tracing::warn!("skipped a message from the server: {e:#}"),
-                            _ => {
-                                lost = true;
-                                break;
-                            }
-                        }
-                        taken += 1;
-                        if taken < SERVER_BURST && self.quit.is_none() {
-                            next = ipc::recv_server(reader).now_or_never();
-                        }
-                    }
-                    if lost && self.quit.is_none() && !self.reattach(reader).await {
-                        self.quit.get_or_insert_with(|| "server exited".into());
-                    }
+                Some(out) = out_rx.recv() => self.deliver(out, connections),
+                event = links.next(), if links.any() => {
+                    self.on_link_event(event, connections);
+                    self.dirty = true;
+                }
+                // Take everything a machine has already sent before drawing again. One
+                // message per frame can't keep up once a frame takes longer than messages
+                // arrive (many agents printing), and the server lets go of a window that
+                // falls too far behind.
+                burst = connections.recv_burst(SERVER_BURST) => {
+                    self.on_server_burst(burst, connections).await;
                 },
                 _ = tick.tick() => {
                     if self.update_checked.is_some_and(|at| at.elapsed() >= UPDATE_CHECK_EVERY) {
@@ -917,6 +953,7 @@ impl App {
                         self.notice = None;
                         self.dirty = true;
                     }
+                    self.expire_unseen_logins();
                     if self.copy_flash.as_ref().is_some_and(|f| !f.live()) {
                         self.copy_flash = None;
                         self.dirty = true;
@@ -925,6 +962,9 @@ impl App {
             }
             if self.quit.is_some() {
                 return Ok(());
+            }
+            for machine in self.take_dropped_machines() {
+                connections.remove(machine);
             }
             self.report_focus();
             self.sync_cursor_style();
@@ -956,10 +996,49 @@ impl App {
         }
     }
 
+    async fn on_server_burst(&mut self, burst: Burst, connections: &mut Connections) {
+        let Burst {
+            machine,
+            msgs,
+            lost,
+            stalled,
+        } = burst;
+        for msg in msgs {
+            if self.quit.is_some() {
+                break;
+            }
+            self.on_machine_server(machine, msg);
+        }
+        if self.refused.contains_key(&machine) {
+            connections.mark_lost(machine);
+        }
+        if lost && self.quit.is_none() {
+            self.on_connection_lost(machine, stalled, connections).await;
+        }
+    }
+
+    /// Only losing this machine's own daemon can end the window; another machine is just
+    /// reported as lost, by its supervisor when it has one.
+    async fn on_connection_lost(
+        &mut self,
+        machine: MachineId,
+        stalled: bool,
+        connections: &mut Connections,
+    ) {
+        if machine != MachineId::LOCAL {
+            if !self.links.line_ended(machine, stalled) {
+                let name = self.machine_name(machine).to_owned();
+                self.notify(format!("Lost the connection to {name}"), true);
+            }
+        } else if !self.reattach(connections).await {
+            self.quit.get_or_insert_with(|| "server exited".into());
+        }
+    }
+
     /// The connection to the server ended while the server is still there (it lets go of a
     /// window that falls too far behind): attach again, for a fresh copy of everything.
     /// False when it can't: the server is gone, or this keeps happening.
-    async fn reattach(&mut self, reader: &mut ipc::Reader) -> bool {
+    async fn reattach(&mut self, connections: &mut Connections) -> bool {
         if !self.daemon_restart_reconnect
             && self
                 .reattached
@@ -975,19 +1054,10 @@ impl App {
             // Connect only: an unexpectedly stopped server must not be started again by this.
             ipc::open(true).await
         };
-        let Ok((r, mut writer)) = connection else {
+        let Ok(connection) = connection else {
             return false;
         };
-        *reader = r;
-        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<ClientMsg>();
-        tokio::spawn(async move {
-            while let Some(msg) = out_rx.recv().await {
-                if ipc::send(&mut writer, &msg).await.is_err() {
-                    break;
-                }
-            }
-        });
-        self.out = out_tx;
+        connections.add(MachineId::LOCAL, connection);
         self.reattached = Some(Instant::now());
         if !restarting {
             self.notify(
@@ -1032,7 +1102,7 @@ impl App {
         self.installed_version = Some(Ok(version.clone()));
         self.update_available = None;
         self.update_notes.clear();
-        let message = if crate::ipc::remote().is_some() {
+        let message = if self.machine.is_remote() {
             format!(
                 "Installed {APP_COMMAND} {version}. Update the remote daemon on its host after its sessions are closed."
             )
@@ -1047,7 +1117,7 @@ impl App {
     }
 
     fn maybe_restart_daemon(&mut self, last_session_closed: bool) {
-        if crate::ipc::remote().is_some()
+        if self.machine.is_remote()
             || !self.got_state
             || !self.snap.terms.is_empty()
             || !self.snap.conversations.is_empty()
@@ -1100,7 +1170,7 @@ impl App {
     }
 
     /// Add to the notification history (Ctrl+Space N).
-    pub(super) fn remember(&mut self, term: Option<TermId>, kind: char, text: String) {
+    pub(super) fn remember(&mut self, term: Option<ClientTerm>, kind: char, text: String) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
@@ -1119,8 +1189,22 @@ impl App {
         }
     }
 
-    fn send(&self, msg: ClientMsg) {
-        let _ = self.out.send(msg);
+    fn send(&self, machine: MachineId, msg: ClientMsg) {
+        if machine != MachineId::LOCAL && matches!(msg, ClientMsg::Command(_) | ClientMsg::Query(_))
+        {
+            self.route.asked(machine);
+        }
+        let _ = self.out.send(Outgoing { machine, msg });
+    }
+
+    fn send_input(&self, to: ClientTerm, data: Vec<u8>) {
+        self.send(
+            to.machine,
+            ClientMsg::Input {
+                term: to.term,
+                data,
+            },
+        );
     }
 
     /// Ask (in the background) whether a newer the app is out: when the window opens, then now
@@ -1170,7 +1254,7 @@ impl App {
 
     /// A local daemon older than the installed the app, which a restart would replace.
     fn daemon_restartable(&self) -> bool {
-        crate::ipc::remote().is_none()
+        !self.machine.is_remote()
             && !self.daemon_restart_requested
             && !self.daemon_restart_reconnect
             && !self.snap.daemon_version.is_empty()
@@ -1189,7 +1273,7 @@ impl App {
     /// This window runs an older the app than the one installed here (a remote server's
     /// version is its own business).
     fn window_stale(&self) -> bool {
-        crate::ipc::remote().is_none()
+        !self.machine.is_remote()
             && self
                 .installed_version
                 .as_ref()
@@ -1362,7 +1446,7 @@ impl App {
             sub: String::new(),
             what: format!("{} → {new}", env!("APP_VERSION")),
             detail: String::new(),
-            note: if crate::ipc::remote().is_some() {
+            note: if self.machine.is_remote() {
                 "Open sessions keep running. Update the remote daemon on its host after they are closed.".into()
             } else {
                 "Open sessions keep running. Restart now (offered afterwards) switches to the new version in one step; agents resume.".into()
@@ -1376,6 +1460,14 @@ impl App {
     }
 
     fn cmd(&self, c: Command) {
+        self.cmd_on(MachineId::LOCAL, c);
+    }
+
+    /// A command for the daemon that owns the pane it names.
+    fn cmd_on(&self, machine: MachineId, c: Command) {
+        if routing::moves_focus(&c) {
+            self.route.set_focus(machine);
+        }
         if matches!(
             c,
             Command::NewWorkspace { .. }
@@ -1385,13 +1477,13 @@ impl App {
         ) {
             *self.screen.new_tab.borrow_mut() = None;
         }
-        self.send(ClientMsg::Command(c));
+        self.send(machine, ClientMsg::Command(c));
     }
 
     /// Slides and glides: on in Settings, and not over SSH (every frame goes down the link).
     /// Tests look at single frames, so there things are where they end.
     fn motion_on(&self) -> bool {
-        self.cfg.ui.motion && crate::ipc::remote().is_none() && !cfg!(test)
+        self.cfg.ui.motion && !self.machine.is_remote() && !cfg!(test)
     }
 
     /// The toast is sliding in, settling from its flash, or fading out.
@@ -1412,7 +1504,7 @@ impl App {
 
     /// A check's ring turns while it runs.
     fn any_checking(&self) -> bool {
-        self.snap.terms.values().any(|term| {
+        self.all_terms().iter().any(|(_, term)| {
             term.check()
                 .is_some_and(|c| c.state == crate::protocol::CheckState::Checking)
         })
@@ -1420,17 +1512,15 @@ impl App {
 
     /// A session that needs you or finished unseen: its name pulses or shimmers.
     fn any_calling(&self) -> bool {
-        self.snap
-            .terms
-            .values()
-            .any(|term| matches!(term.status, Status::Blocked | Status::Done))
+        self.all_terms()
+            .iter()
+            .any(|(_, term)| matches!(term.status, Status::Blocked | Status::Done))
     }
 
     fn any_working(&self) -> bool {
-        self.snap
-            .terms
-            .values()
-            .any(|term| term.status == Status::Working)
+        self.all_terms()
+            .iter()
+            .any(|(_, term)| term.status == Status::Working)
     }
 
     /// The topmost clickable region under `at` on the top layer: nothing under an overlay.
@@ -1445,30 +1535,79 @@ impl App {
 
     // ---- model helpers -------------------------------------------------------------
 
+    /// Every machine's daemon state, this machine first.
+    fn machines(&self) -> Vec<MachineSnap<'_>> {
+        let here = MachineSnap {
+            id: MachineId::LOCAL,
+            name: "",
+            snap: &self.snap,
+        };
+        let others = self.remotes.iter().map(|(id, r)| MachineSnap {
+            id: *id,
+            name: &r.name,
+            snap: &r.snap,
+        });
+        std::iter::once(here).chain(others).collect()
+    }
+
+    /// Every pane on every machine.
+    fn all_terms(&self) -> Vec<(ClientTerm, &TermInfo)> {
+        self.machines()
+            .into_iter()
+            .flat_map(|m| {
+                m.snap
+                    .terms
+                    .iter()
+                    .map(move |(id, t)| (ClientTerm::on(m.id, *id), t))
+            })
+            .collect()
+    }
+
+    fn snap_of(&self, machine: MachineId) -> Option<&Snapshot> {
+        if machine == MachineId::LOCAL {
+            return Some(&self.snap);
+        }
+        self.remotes.get(&machine).map(|r| &r.snap)
+    }
+
+    fn machine_name(&self, machine: MachineId) -> &str {
+        self.remotes.get(&machine).map_or("", |r| &r.name)
+    }
+
+    fn term_info(&self, term: ClientTerm) -> Option<&TermInfo> {
+        self.snap_of(term.machine)?.terms.get(&term.term)
+    }
+
+    /// The workspace on screen: the one on the machine that holds the focus.
     fn active_ws(&self) -> Option<&WorkspaceInfo> {
-        self.snap.active()
+        self.snap_of(self.focus_machine())?.active()
     }
 
     fn active_tab(&self) -> Option<&TabInfo> {
         self.active_ws().and_then(|w| w.tab())
     }
 
-    fn focused(&self) -> Option<TermId> {
-        self.active_tab().map(|t| t.focus)
+    fn focused(&self) -> Option<ClientTerm> {
+        self.active_tab()
+            .map(|t| ClientTerm::on(self.focus_machine(), t.focus))
     }
 
     /// A floating pane (`<app> popup`) open now: it has the keys until it closes.
-    fn popup(&self) -> Option<TermId> {
-        self.snap
+    /// Only on the machine that holds the focus: another machine's popup must not take the
+    /// keys meant for the pane you are on.
+    fn popup(&self) -> Option<ClientTerm> {
+        let machine = self.focus_machine();
+        self.snap_of(machine)?
             .terms
             .values()
             .filter(|t| t.popup)
             .map(|t| t.id)
             .max()
+            .map(|id| ClientTerm::on(machine, id))
     }
 
     /// Where typing goes: an open popup, else the pane you're on.
-    fn typing_to(&self) -> Option<TermId> {
+    fn typing_to(&self) -> Option<ClientTerm> {
         self.popup().or_else(|| {
             // An unbound sidebar selection must not fall through to an unrelated shell.
             if self.screen.cursor.is_some() && self.selected_term().is_none() {
@@ -1516,16 +1655,19 @@ impl App {
             } else if let Some(p) = self.parsers.get_mut(&term) {
                 p.screen_mut().set_size(want.1, want.0);
             }
-            self.send(ClientMsg::Resize {
-                term,
-                cols: want.0,
-                rows: want.1,
-            });
+            self.send(
+                term.machine,
+                ClientMsg::Resize {
+                    term: term.term,
+                    cols: want.0,
+                    rows: want.1,
+                },
+            );
         }
     }
 
     /// A fresh screen for `term` at `(cols, rows)`, from the output kept for it.
-    fn rewrap_pane(&mut self, term: TermId, (cols, rows): (u16, u16)) {
+    fn rewrap_pane(&mut self, term: ClientTerm, (cols, rows): (u16, u16)) {
         let mut p = self.new_parser(rows, cols);
         if let Some(raw) = self.raw.get_mut(&term) {
             p.process(raw.make_contiguous());
@@ -1537,14 +1679,12 @@ impl App {
 
     /// What the sidebar calls a session: what you renamed it to, else its worktree or folder.
     /// Notes about a session use this, so they say the name you'd look for.
-    pub(super) fn session_name(&self, term: TermId) -> String {
+    pub(super) fn session_name(&self, term: ClientTerm) -> String {
         let model = self.screen_model();
         if let Some((_, _, s)) = screen::find(&model, term) {
             return s.name.clone();
         }
-        self.snap
-            .terms
-            .get(&term)
+        self.term_info(term)
             .map(|t| {
                 if t.label.trim().is_empty() {
                     t.display_name()
@@ -1555,9 +1695,9 @@ impl App {
             .unwrap_or_default()
     }
 
-    fn describe_term(&self, term: TermId) -> String {
+    fn describe_term(&self, term: ClientTerm) -> String {
         let name = self.session_name(term);
-        if let Some(t) = self.snap.terms.get(&term) {
+        if let Some(t) = self.term_info(term) {
             let place = crate::alert::place_label(
                 t.root.as_deref(),
                 t.top.as_deref().unwrap_or(&t.cwd),
@@ -1567,7 +1707,10 @@ impl App {
                 return format!("{name} ({place})");
             }
         }
-        match self.snap.locate(term) {
+        match self
+            .snap_of(term.machine)
+            .and_then(|snap| snap.locate(term.term))
+        {
             Some((w, t)) => {
                 let idx = w.tabs.iter().position(|x| x.id == t.id).unwrap_or(0) + 1;
                 format!("{name} ({} › {idx})", w.name)
@@ -1609,11 +1752,9 @@ impl App {
                 .into_iter()
                 .map(|(t, s)| {
                     (
-                        self.snap
-                            .terms
-                            .get(&t)
+                        self.term_info(t)
                             .map(|i| i.display_name())
-                            .unwrap_or_else(|| format!("pane {t}")),
+                            .unwrap_or_else(|| format!("pane {}", t.term)),
                         s,
                     )
                 })
@@ -1655,7 +1796,7 @@ impl App {
         self.notify_card("Copied to clipboard".into(), detail, preview, false);
     }
 
-    fn enter_copy(&mut self, term: TermId) -> bool {
+    fn enter_copy(&mut self, term: ClientTerm) -> bool {
         let Some(p) = self.parsers.get_mut(&term) else {
             return false;
         };
@@ -1671,18 +1812,14 @@ impl App {
     /// Keep the last ~768 KiB a pane printed (for re-wrapping on resize).
     /// How a pane takes the wheel and how much history it has, in one line (to say what's
     /// going on when it won't scroll).
-    fn pane_info(&mut self, term: TermId) -> Option<String> {
+    fn pane_info(&mut self, term: ClientTerm) -> Option<String> {
+        let agent = self.term_info(term).is_some_and(|t| t.agent.is_some());
         let p = self.parsers.get_mut(&term)?;
         let at = p.screen().scrollback();
         p.screen_mut().set_scrollback(usize::MAX);
         let history = p.screen().scrollback();
         p.screen_mut().set_scrollback(at);
         let s = p.screen();
-        let agent = self
-            .snap
-            .terms
-            .get(&term)
-            .is_some_and(|t| t.agent.is_some());
         let wheel = if s.alternate_screen()
             || (history == 0
                 && (agent || s.mouse_protocol_mode() != vt100::MouseProtocolMode::None))
@@ -1700,7 +1837,7 @@ impl App {
         Some(format!("{full} · the wheel goes to {wheel} · {history} lines of history, {at} up · {raw} KB kept · {:?}", self.mode).chars().take(200).collect())
     }
 
-    fn keep_raw(&mut self, term: TermId, data: &[u8], replace: bool) {
+    fn keep_raw(&mut self, term: ClientTerm, data: &[u8], replace: bool) {
         // Replayed into a fresh screen when a pane's width changes (so text re-wraps): what's
         // here is all the history it has after. An agent redraws a lot while it works, so
         // this is generous.
@@ -1746,6 +1883,9 @@ impl App {
     /// (Claude Code, Codex and friends attach an image given by path).
     pub(super) fn paste_image(&mut self) {
         let Some(term) = self.typing_to() else { return };
+        if !self.guard_local(term.machine, routing::Feature::PasteImage) {
+            return;
+        }
         // Reading the clipboard and encoding the PNG can take a while for a big image.
         self.spawn_bg(move || {
             let made = clipboard_image_to_file();
@@ -1761,10 +1901,7 @@ impl App {
                     } else {
                         format!("{text} ")
                     };
-                    app.send(ClientMsg::Input {
-                        term,
-                        data: data.into_bytes(),
-                    });
+                    app.send_input(term, data.into_bytes());
                     app.notify(
                         format!("pasted the clipboard image ({w}×{h}) as a file"),
                         false,
@@ -1807,24 +1944,18 @@ impl App {
             && self.focus_report.contains(&t)
             && now != Some((t, true))
         {
-            self.send(ClientMsg::Input {
-                term: t,
-                data: b"\x1b[O".to_vec(),
-            });
+            self.send_input(t, b"\x1b[O".to_vec());
         }
         if let Some((t, true)) = now
             && self.focus_report.contains(&t)
         {
-            self.send(ClientMsg::Input {
-                term: t,
-                data: b"\x1b[I".to_vec(),
-            });
+            self.send_input(t, b"\x1b[I".to_vec());
         }
         self.focus_sent = now;
     }
 
     /// (offset from the bottom, lines of history) for a pane.
-    pub(super) fn history(&mut self, term: TermId) -> (usize, usize) {
+    pub(super) fn history(&mut self, term: ClientTerm) -> (usize, usize) {
         let Some(p) = self.parsers.get_mut(&term) else {
             return (0, 0);
         };
@@ -1837,26 +1968,33 @@ impl App {
 
     /// Back to the newest output: the app's own history to its end, and an agent that scrolls
     /// itself paged down as far as the wheel paged it up.
-    pub(super) fn back_to_bottom(&mut self, term: TermId) {
+    pub(super) fn back_to_bottom(&mut self, term: ClientTerm) {
         self.scroll_to(term, 0);
         if let Some(n) = self.paged_up.remove(&term) {
             let down: Vec<u8> = b"\x1b[6~".repeat(n as usize);
-            self.send(ClientMsg::Input { term, data: down });
+            self.send_input(term, down);
         }
     }
 
-    pub(super) fn scroll_to(&mut self, term: TermId, offset: usize) {
+    pub(super) fn scroll_to(&mut self, term: ClientTerm, offset: usize) {
         let cur = self.history(term).0 as i32;
         self.scroll_by(term, offset as i32 - cur);
     }
 
     // ---- actions -------------------------------------------------------------------
 
-    /// Where the user is: the focused pane's folder, else the workspace's.
+    /// Where the user is: the focused pane's folder, else the workspace's. On another machine
+    /// it is that machine's path, taken as it is: this computer's disk has no say in it.
     fn here_dir(&self) -> PathBuf {
+        if let Some(there) = self.focused().filter(|t| !self.is_local_pane(*t)) {
+            return self
+                .term_info(there)
+                .map(|t| t.cwd.clone())
+                .or_else(|| self.active_ws().map(|w| w.cwd.clone()))
+                .unwrap_or_default();
+        }
         self.focused()
-            .and_then(|id| self.snap.terms.get(&id))
-            .map(|t| t.cwd.clone())
+            .and_then(|id| self.local_cwd(id))
             .filter(|p| p.is_dir())
             .or_else(|| self.active_ws().map(|w| w.cwd.clone()))
             .or_else(|| std::env::current_dir().ok())
@@ -1881,3 +2019,16 @@ mod tests;
 
 #[cfg(test)]
 mod conversation_tests;
+
+#[cfg(test)]
+mod cli_machine_tests;
+#[cfg(test)]
+mod doctor_machine_tests;
+#[cfg(test)]
+mod mcp_machine_tests;
+#[cfg(test)]
+mod machine_update_tests;
+#[cfg(test)]
+mod remote_status_tests;
+#[cfg(test)]
+mod routing_tests;

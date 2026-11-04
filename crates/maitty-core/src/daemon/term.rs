@@ -579,6 +579,14 @@ fn argv(cfg: &Config, cmd: Option<&str>, once: bool) -> Vec<String> {
     shell
 }
 
+/// A pane works on this machine: `--remote` routing the daemon was started under (its host,
+/// ssh program and remote command) must not make the pane's own `maitty` reach another one.
+fn remove_remote_route(cmd: &mut CommandBuilder) {
+    for key in crate::ipc::REMOTE_ROUTE_ENV {
+        cmd.env_remove(key);
+    }
+}
+
 impl Term {
     /// The folder it works in, by name: its checkout's, else where its shell is.
     pub fn place(&self) -> String {
@@ -642,6 +650,9 @@ impl Term {
         if spec.cwd.is_dir() {
             cmd.cwd(spec.cwd);
         }
+        if let Some(path) = crate::login_path::resolved() {
+            cmd.env("PATH", path);
+        }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         for k in [
@@ -671,6 +682,7 @@ impl Term {
         cmd.env(env!("APP_ENV"), "1");
         cmd.env(concat!(env!("APP_ENV"), "_TERM_ID"), spec.id.to_string());
         cmd.env(concat!(env!("APP_ENV"), "_PANE_TOKEN"), &token);
+        remove_remote_route(&mut cmd);
         if let Ok(sock) = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")) {
             cmd.env(concat!(env!("APP_ENV"), "_SOCKET"), sock);
         }
@@ -1235,6 +1247,20 @@ fn clean_start(buf: &[u8]) -> usize {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_pane_does_not_inherit_the_remote_routing() {
+        let mut cmd = super::CommandBuilder::new("sh");
+        for key in crate::ipc::REMOTE_ROUTE_ENV {
+            cmd.env(key, "box");
+        }
+        cmd.env("KEEP", "1");
+        super::remove_remote_route(&mut cmd);
+        for key in crate::ipc::REMOTE_ROUTE_ENV {
+            assert!(cmd.get_env(key).is_none(), "{key} reached the pane");
+        }
+        assert!(cmd.get_env("KEEP").is_some());
+    }
+
     #[test]
     fn a_cut_history_starts_at_a_clean_line() {
         let cut = "ʼ".as_bytes()[1..].to_vec();

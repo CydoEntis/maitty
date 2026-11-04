@@ -14,6 +14,7 @@ mod contain;
 mod conversation;
 mod git;
 mod helpers;
+mod identity;
 mod pane_terminal;
 mod persist;
 mod pr;
@@ -347,6 +348,8 @@ struct Daemon {
     /// file counts only after a restart.
     approvals: approvals::Approvals,
     approvals_file: PathBuf,
+    /// Who this daemon is to a window; see `identity`.
+    id: String,
     /// The projects where you said sessions may always start helpers, read once at start.
     helper_projects: helpers::Projects,
     helper_projects_file: PathBuf,
@@ -448,6 +451,7 @@ pub fn run(on_start: impl FnOnce()) -> Result<()> {
             tokio::task::spawn_blocking(move || drop_spare_dir(&p));
             save_spare(None);
         }
+        crate::login_path::resolve_at_start().await;
         let (cfg, err) = Config::load_or_default();
         if let Some(e) = err {
             tracing::warn!("config: {e}");
@@ -969,6 +973,11 @@ impl Daemon {
             resolver: check_source::resolve,
             approvals: approvals::Approvals::default(),
             approvals_file: approvals::path(),
+            id: if cfg!(test) {
+                identity::generate()
+            } else {
+                identity::load_or_create(&identity::path())
+            },
             helper_projects: helpers::Projects::default(),
             helper_projects_file: helpers::path(),
             made_worktrees: Vec::new(),
@@ -2607,6 +2616,7 @@ impl Daemon {
         Snapshot {
             conversations: self.conversation_summaries(),
             daemon_version: env!("APP_VERSION").into(),
+            daemon_id: Some(self.id.clone()),
             workspaces: self.workspaces.clone(),
             active_ws: self.active_ws,
             terms,

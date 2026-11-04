@@ -144,6 +144,7 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
                 r("All keys", vec![A::Help], true),
                 r("Quit, agents keep running", vec![A::Detach], true),
                 r("What happened", vec![A::History], false),
+                r("Machines", vec![A::Machines], true),
                 r("Reload config", vec![A::ReloadConfig], false),
             ],
         ),

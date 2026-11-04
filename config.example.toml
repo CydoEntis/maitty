@@ -207,6 +207,40 @@ pattern_rows = 12
 #   command = "cargo test"
 #   timeout_s = 900
 
+# Machines: other computers reached over ssh. Put this table in config.local.toml, next to
+# this file: it is per computer and never synced, and a `[[machines]]` here is refused when
+# sync shares this file. `name` is 1-32 letters, digits, `-`, `_` or `.` (not only digits, not
+# `local`); `target` is a host, `user@host` or an ssh `Host` alias, and may not start with `-`
+# or hold spaces. `ssh_args` is a list, one argument per entry. `remote_cmd` is the app's
+# command on that machine (default `maitty`). A listed machine is only attached to: the app
+# must be installed and its daemon running there (`maitty machine update <name>` installs it).
+# A remote machine's clipboard writes, notices
+# (which include bringing the window to the front) and sounds are off unless you turn them on
+# here; a toast it causes starts with `[name]`. `mcp = true` lets an agent in a pane on this
+# computer list, read, send to and wait on that machine's panes through its MCP tools (`machine`
+# argument, or an id written `name/4`), only if the agent's own pane holds the read / write grant
+# (`maitty grant`); off, an MCP call naming the machine is refused and never dials it. Starting
+# agents there stays local-only. The Machines dialog (leader, then `w`) adds and
+# removes entries here for you, writing `name` and `target`. `via` replaces ssh with a program
+# you name (not on Windows): a list, the program then its arguments, with `{command}` where the
+# remote command goes (else it is the last argument). It must pass stdin and stdout through
+# unchanged, ask no questions and use no terminal. `via` runs a program, so it is only read from
+# config.local.toml, and `ssh_args` may not be set beside it. See the guide, "Custom transports".
+# [[machines]]
+# name = "box"
+# target = "me@10.0.0.2"
+# ssh_args = ["-p", "2222", "-i", "~/.ssh/box"]
+# remote_cmd = "~/.cargo/bin/maitty"
+# clipboard = false
+# notices = false
+# sounds = false
+# mcp = false
+#
+# [[machines]]
+# name = "fly"
+# target = "my-app"
+# via = ["fly", "ssh", "console", "-C", "{command}"]
+
 # Presets: saved launches, offered as ★ choices in the new-agent dialog. `{task}` is what
 # you type. where = send (tell the agent you're on) | beside (a new one in its folder) |
 # worktree (a new one in a new worktree).

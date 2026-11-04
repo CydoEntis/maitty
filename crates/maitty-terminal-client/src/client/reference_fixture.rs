@@ -492,7 +492,7 @@ pub(super) fn world(stage: Stage) -> App {
         .collect();
     for t in [footer, payments, finch, fox, moth] {
         app.parsers.insert(
-            t.id,
+            ClientTerm::local(t.id),
             if t.id == 1 {
                 fix_footer_screen()
             } else {
@@ -683,7 +683,7 @@ fn with_the_reference_failed_bars(rows: &mut [Vec<char>], app: &App, glyphs: &st
         .screen
         .row_y
         .iter()
-        .map(|(t, y)| (*y as usize, *t))
+        .map(|(t, y)| (*y as usize, t.term))
         .collect();
     owners.sort();
     for (y, row) in rows

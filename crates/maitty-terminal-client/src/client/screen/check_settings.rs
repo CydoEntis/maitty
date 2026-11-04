@@ -338,7 +338,7 @@ fn points(app: &App, project: &Path) -> Vec<Point> {
                     || (c.name.is_empty() && c.command == p.command)
             })
             .max_by_key(|(c, _)| c.started_at)
-            .map(|(c, t)| (c.clone(), app.session_name(t.id)));
+            .map(|(c, t)| (c.clone(), app.session_name(ClientTerm::local(t.id))));
     }
     out
 }
@@ -360,8 +360,9 @@ fn rows(points: &[Point]) -> Vec<DraftRow> {
 
 /// The session "Run now" runs the check in: the one with the latest result, else the focused
 /// agent of the project, else its first agent.
-fn run_target(app: &App, project: &Path) -> Option<TermId> {
+fn run_target(app: &App, project: &Path) -> Option<ClientTerm> {
     let agent = |t: &&TermInfo| t.agent.is_some() && in_project(t, project);
+    // Settings › Check edits a folder on this machine, so only its sessions run it.
     app.snap
         .terms
         .values()
@@ -370,11 +371,13 @@ fn run_target(app: &App, project: &Path) -> Option<TermId> {
         .map(|t| t.id)
         .or_else(|| {
             app.focused()
-                .and_then(|f| app.snap.terms.get(&f))
+                .filter(|f| f.machine == MachineId::LOCAL)
+                .and_then(|f| app.term_info(f))
                 .filter(agent)
                 .map(|t| t.id)
         })
         .or_else(|| app.snap.terms.values().filter(agent).map(|t| t.id).min())
+        .map(ClientTerm::local)
 }
 
 /// What you chose for a repo's checkpoint, as far as its last state tells.
@@ -904,8 +907,8 @@ enum Outcome {
 
 impl App {
     /// The `PROJECT · <name>` modal for `term`'s project.
-    pub(in crate::client) fn open_project_check(&mut self, term: TermId) {
-        let Some(t) = self.snap.terms.get(&term) else {
+    pub(in crate::client) fn open_project_check(&mut self, term: ClientTerm) {
+        let Some(t) = self.term_info(term) else {
             return;
         };
         self.mode = Mode::ProjectCheck(Box::new(CheckDraft::new(project_of_term(t))));

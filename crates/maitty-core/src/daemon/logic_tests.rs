@@ -4575,6 +4575,46 @@ fn a_read_only_pane_may_not_rerun_or_override_another_panes_check() {
     close(&mut d, &[a, b]);
 }
 
+/// What the MCP server asks this daemon, as the calling pane, before it reaches another machine:
+/// a read of, and a write to, a pane that is not there. The server counts only these answers
+/// as "allowed", so they are pinned here (`cli/mcp/machines.rs`, `Reach::caller_may`).
+#[test]
+fn the_grant_probes_the_mcp_server_uses_are_decided_by_the_panes_grants() {
+    let (mut d, _rx) = daemon();
+    let a = pane(&mut d);
+    let (tx, mut out) = mpsc::channel(16);
+    d.handle(Ev::Connected(
+        7,
+        tx,
+        false,
+        crate::protocol::Surface::Terminal,
+        true,
+    ));
+    let token = d.terms[&a].token.clone();
+    d.handle(Ev::From(7, a, token));
+    let absent = TermId::MAX;
+    let mut ask = |d: &mut Daemon, grants: &[&str]| {
+        d.terms.get_mut(&a).unwrap().grants = Some(grants.iter().map(|g| g.to_string()).collect());
+        d.message(7, ClientMsg::Query(Query::Read { term: absent }));
+        let read = out.try_recv();
+        d.message(7, ClientMsg::Command(Command::ClearQueue { term: absent }));
+        (read, out.try_recv())
+    };
+    let (read, write) = ask(&mut d, &["read", "write"]);
+    assert!(
+        matches!(read, Ok(ServerMsg::Error(e)) if e == format!("no pane {absent}")),
+        "read passes the grant and finds no pane"
+    );
+    assert!(matches!(write, Ok(ServerMsg::Reply(Reply::Ok))));
+    let (read, write) = ask(&mut d, &["read"]);
+    assert!(matches!(read, Ok(ServerMsg::Error(e)) if e == format!("no pane {absent}")));
+    assert!(matches!(write, Ok(ServerMsg::Error(e)) if e.contains("may not")));
+    let (read, write) = ask(&mut d, &[]);
+    assert!(matches!(read, Ok(ServerMsg::Error(e)) if e.contains("may not")));
+    assert!(matches!(write, Ok(ServerMsg::Error(e)) if e.contains("may not")));
+    close(&mut d, &[a]);
+}
+
 #[test]
 fn a_pane_may_not_override_its_own_check() {
     let (mut d, _rx) = daemon();
@@ -7122,6 +7162,30 @@ fn a_change_to_one_pane_reaches_clients_as_a_delta_and_no_change_as_nothing() {
         _ => false,
     });
     assert!(gone, "a closed pane leaves the clients' state, whole or as a delta");
+}
+
+#[test]
+fn the_daemon_id_is_in_the_state_a_client_gets_and_a_delta_leaves_it_standing() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let surface = crate::protocol::Surface::Terminal;
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(7, tx, true, surface, true));
+    while crx.try_recv().is_ok() {}
+
+    d.publish_state(surface, d.snapshot_for(surface));
+    let Ok(ServerMsg::State(held)) = crx.try_recv() else {
+        panic!("the first change after an attach is the whole state");
+    };
+    assert_eq!(held.daemon_id.as_deref(), Some(d.id.as_str()));
+
+    d.terms.get_mut(&t).unwrap().process = "vim".into();
+    d.publish_state(surface, d.snapshot_for(surface));
+    assert!(
+        matches!(crx.try_recv(), Ok(ServerMsg::TermsChanged { .. })),
+        "the id is the same, so only the pane travels and the held id stands"
+    );
+    close(&mut d, &[t]);
 }
 
 #[test]

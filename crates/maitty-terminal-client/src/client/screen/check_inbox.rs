@@ -30,6 +30,7 @@ pub(super) fn rows(model: &[Proj], want: fn(&GoRow) -> bool) -> Vec<GoRow> {
     let mut found: Vec<(u64, GoRow)> = model
         .iter()
         .flat_map(Proj::sessions)
+        .filter(|s| !s.down)
         .filter_map(|s| row(s).filter(want).map(|r| (s.since, r)))
         .collect();
     found.sort_by_key(|(since, row)| (*since, row.term()));
@@ -66,6 +67,8 @@ pub(super) struct Item {
     pub color: Color,
     pub name: String,
     pub folder: String,
+    /// The machine it is on, when not this computer.
+    pub machine: String,
     pub age: String,
     pub line: Vec<Words>,
     /// Several checkpoints: the line in full, and the glyph strip when that doesn't fit.
@@ -241,7 +244,7 @@ pub(super) fn item(app: &App, model: &[Proj], row: &GoRow, t: &Theme) -> Option<
     let mark = glyphs::Kind::of(s.status, info, false).mark(g, t, 0, "");
     let checks = s
         .native_term
-        .and_then(|id| app.snap.terms.get(&id))
+        .and_then(|id| app.term_info(id))
         .map(|i| i.checks.clone())
         .unwrap_or_default();
     let (line, strip) = match (row, info) {
@@ -279,6 +282,7 @@ pub(super) fn item(app: &App, model: &[Proj], row: &GoRow, t: &Theme) -> Option<
         color: mark.color,
         name: s.name.clone(),
         folder: p.name.clone(),
+        machine: app.machine_label_of(s.key.machine),
         age: age(s.since),
         line,
         strip,
