@@ -1,6 +1,6 @@
 # Spec: Overview, jump to next, new agent on a branch, idle updates, brain dump
 
-Intent: [intent.md](intent.md) · Status: proposed · Date: 2026-11-04
+Intent: [intent.md](intent.md) · Status: proposed · Date: 2026-11-04 · Design: [v17 handoff §C.0a, §C.3 to §C.8](../chat-gui/design-handoff/v17/README.md)
 
 ## Requirements
 
@@ -26,8 +26,8 @@ Intent: [intent.md](intent.md) · Status: proposed · Date: 2026-11-04
    starts. **Start all** runs *New agent on a branch* once per row. A task the
    split could not place shows with an empty project for you to pick. Nothing
    starts without the click.
-4. **Idle updates**: when an update is downloaded, the app is idle for 30 minutes
-   (no input, window not focused) and **no agent is working**, install and
+4. **Idle updates**: when an update is downloaded, the app is idle (§C.5: no
+   keyboard input for 5 minutes, window unfocused or minimized) and **no agent is working**, install and
    restart; sessions survive because the daemon owns them. A setting turns it
    off. The toast "Updated to 0.65.0" shows after relaunch.
 
@@ -57,7 +57,19 @@ Intent: [intent.md](intent.md) · Status: proposed · Date: 2026-11-04
   checklist item; ships with the last message's lead sentence first).
 - **OV-5** New agent on a branch dialog and command.
 - **OV-6** Idle updates with the working check and the setting.
-- **OV-7** Brain dump: the split call, the editable rows, Start all. After OV-5.
+- **OV-7** Brain dump (§C.6): the split call, the editable rows, Start all. After OV-5.
+- **OV-8** No loading screen on session switch (§C.0a): last known screen kept
+  per session, replay written in one batch, the "Catching up from <machine>"
+  strip for a remote attach past 300 ms. Daemon unchanged.
+- **OV-9** Usage and cost (§C.7): daemon stores provider-reported usage per
+  session per day (never estimated); the page with its table, sorting, budget
+  ring and the subscription note. Two tickets if the daemon part lands first.
+- **OV-10** Performance page (§C.8): the live strip, the "what's costing" list
+  with per-session switches, the renderer line, Copy report. With it, bring the
+  perf harness up to the current transport (see `docs/PERFORMANCE.md`).
+- **OV-11** Shortcuts and title bars (§C.0, §C.9): `formatShortcut`, the
+  platform title bars, the Inbox move to Shift+J, the new bindings caught
+  inside a pane.
 
 ## Verification and coverage
 

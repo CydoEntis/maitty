@@ -1,6 +1,6 @@
 # Plan: the Terminal / Chat view switch
 
-Status: proposed · Date: 2026-11-04 · Design: [v16 handoff §B.3](design-handoff/v16/README.md) · Spec: [spec.md](spec.md)
+Status: proposed · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
 
 ## What it is
 
@@ -26,6 +26,13 @@ and Codex.
 Each one is a vertical slice with its own tests (vitest for the model, a rendered
 check for the view). Acceptance criteria are the bullets.
 
+0. **CV-0 Event projection.** One GUI module that turns the daemon's history
+   (messages, tool calls with input, approvals, turn boundaries) into the v17 §C.1
+   event shapes: `message`, `edit{file, hunks}`, `command`, `approval`, `todo`,
+   `subagent`, `turn`. Claude `Edit`/`MultiEdit`/`Write` and Codex patch items
+   become `edit`; `Bash`/`exec_command` become `command`; `TodoWrite`/plan items
+   become `todo`; `Task` becomes `subagent`. Pure functions, tested with recorded
+   adapter output. Every later ticket renders from this and nothing else.
 1. **CV-1 Switch and empty chat card.** The floating two-button switch (§B.3),
    the slide-and-fade transition (off under reduce motion), a `Settings → Claude /
    Codex` default of terminal or chat, and the chat card with its header (process,
@@ -57,7 +64,9 @@ check for the view). Acceptance criteria are the bullets.
    This session (a) / No (n)**, answered through the daemon's approval id. After an
    answer the card reads "You answered: …" and the buttons are gone in every view.
    - Keys y / a / n work while the card is focused.
-8. **CV-8 Checklist.** Claude's `TodoWrite` and Codex's plan items feed a
+8. **CV-8 Checklist and session panel (§C.2).** The docked panel (right by
+   default, overlay under 1100px, `Ctrl/Cmd+\`), its header, the "Nothing to
+   track yet" state, and the checklist card. Claude's `TodoWrite` and Codex's plan items feed a
    side panel: items with done / current / pending marks, "2 of 5" with a progress
    bar, elapsed time on the current item. The sidebar row shows the current item.
 9. **CV-9 Helper agents.** Claude `Task` calls (the helpers maitty already tracks)
@@ -68,14 +77,20 @@ check for the view). Acceptance criteria are the bullets.
     with the spinner under the last item; sidebar rows in *working* get a slow
     shimmer (CSS only, off under reduce motion). Token counts come from the
     provider's usage events when present, else hidden.
-11. **CV-11 Claude parity check.** Confirm the Claude adapter delivers approvals
+11. **CV-11 Line comments (§C.2 Changes).** The panel's Changes segment for
+    this agent's worktree, the diff view, the per-line composer, the count
+    marker, the comment bubble in chat, delivered as a structured comment
+    `{file, line, text}` or queued while a step runs.
+12. **CV-12 Files and Artifacts segments (§C.2).**
+13. **CV-13 Claude parity check.** Confirm the Claude adapter delivers approvals
     with ids and turn boundaries the way Codex's does (the roadmap did Codex
     first). Fill any gap in the adapter, with fake-provider tests.
 
 ## Out of scope
 
 The Inspect panel (§5b), attachments in the composer, model switching from the
-composer (needs a provider API), history search.
+composer (needs a provider API), history search. The session-switch rule (§C.0a)
+and usage/cost (§C.7) are in the Overview spec.
 
 ## Verification
 
