@@ -521,6 +521,15 @@ conversation generation and daemon-owned connection; unknown request kinds stay
 unanswered. Invisible characters are displayed as Unicode escapes. Only the
 command and reason needed for the decision leave the daemon;
 raw provider params are not retained in the conversation history or metadata.
+A tool call's `input` is kept in history (it can hold file contents, commands and
+environment), so it is held to the same boundary as the rest of the history: it
+leaves only in an explicit authorized read and in the private cache. It is cleaned
+of escape and control characters, invisible characters are spelled out as Unicode
+escapes, every string is cut and the whole value is capped at 64 KiB, and an input
+that cannot be bounded in shape is dropped (`tool_input.rs`). There is no secret
+redaction of history text, input included; do not assume one. Answered approvals
+keep the request's command and diff in daemon memory only, never in the cache, and
+the answers to user-input requests are not kept at all.
 Prompts are checked for invisible characters at daemon admission. Launch inputs
 are validated in background and explicit sandbox/approval posture is checked in
 the provider response. Native profile-v2 and ambiguous identity are refused.
