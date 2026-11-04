@@ -233,3 +233,22 @@ ESLint or script check that fails on a hard-coded colour in `apps/gui/src` outsi
 (with a small allowlist for the terminal palette), and move the existing offenders or list them as
 the allowlist's baseline. Acceptance: the check runs in `pnpm lint` and passes. Do after wave 1 lands
 (it edits `docs/UI.md`); tickets 7 and 8 get rule 2 in their briefs.
+
+## G22. The daemon's conversation history must carry tool input and approval detail (feature, `daemon`)
+
+Found building G15 (the chat event projection, merged). Without this, Claude chat cards are mostly
+empty. Today:
+1. A Claude tool call is recorded as a bare label ("Edit "): `bounded_content_text(&input)` returns
+   an empty string for an object, so there is no file, diff, to-do list or helper-agent title. Add a
+   bounded `input` field to `Content::Tool` (a `#[serde(default)]` field needs no protocol bump if a
+   test decodes the old shape).
+2. A Claude approval's command is only "Edit: " with no path or diff, always `kind: Command`, and its
+   `item_id` is the request id, so it cannot be linked to its tool step. Codex links through
+   `item_id`.
+3. An answered approval vanishes from `read_conversation` and the answer is not recorded, so the
+   answer is lost after a GUI restart.
+4. No timestamps or exit codes, so "Cooked for 7s" and "exit N" cannot be shown from history.
+5. Codex command labels are cut at 256 characters; Codex plan and helper items keep only their kind.
+
+Blocks the real content of G17 (edit blocks, command cards, approvals) and G18. This is chat-view
+plan CV-13. Daemon work, so it follows ADR 0036 for status trust. Blocks G17 for Claude.
