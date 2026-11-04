@@ -95,7 +95,7 @@ impl Harness {
         let started = ipc::open_to(&h.sandbox.machine(), true).await;
         assert!(started.is_ok(), "starting the daemon: {:?}", started.err());
         drop(started);
-        let links = Links::start(Vec::new(), quick());
+        let links = Links::start(Vec::new(), quick(), || ipc::terminal_dial(true));
         h.app.links = links.control();
         h.links = Some(links);
         h

@@ -2687,6 +2687,7 @@ version = "0.64.0"
 dependencies = [
  "maitty-shared",
  "maitty-terminal-client",
+ "maitty-test-support",
  "tokio",
 ]
 
@@ -2719,6 +2720,7 @@ dependencies = [
  "maitty-agent-detection",
  "maitty-agent-integrations",
  "maitty-ipc-transport",
+ "maitty-machines",
  "maitty-provider-claude",
  "maitty-provider-codex",
  "maitty-settings",
@@ -2763,8 +2765,12 @@ dependencies = [
 name = "maitty-gui"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "maitty-desktop-client",
+ "maitty-ipc-transport",
+ "maitty-machines",
  "maitty-shared",
+ "maitty-test-support",
  "serde",
  "serde_json",
  "sysinfo",
@@ -2775,6 +2781,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -2790,6 +2797,24 @@ dependencies = [
  "serde",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "maitty-machines"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "directories",
+ "libc",
+ "maitty-ipc-transport",
+ "maitty-shared",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "toml 0.9.12+spec-1.1.0",
+ "toml_edit 0.23.10+spec-1.0.0",
+ "tracing",
 ]
 
 [[package]]
@@ -2819,6 +2844,7 @@ name = "maitty-settings"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "maitty-machines",
  "maitty-shared",
  "ratatui",
  "serde",
@@ -2861,6 +2887,7 @@ dependencies = [
  "maitty-agent-integrations",
  "maitty-core",
  "maitty-ipc-transport",
+ "maitty-machines",
  "maitty-provider-claude",
  "maitty-provider-codex",
  "maitty-settings",
@@ -2887,6 +2914,10 @@ dependencies = [
  "vt100",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "maitty-test-support"
+version = "0.1.0"
 
 [[package]]
 name = "markup5ever"

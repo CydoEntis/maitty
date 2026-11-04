@@ -103,7 +103,7 @@ const conversation: Conversation = {
 
 const binding = { id: conversation.id, generation: conversation.generation }
 const bytes = (text: string) => new TextEncoder().encode(text)
-const chunk = (seq: number, text: string, replay = false): TerminalChunk => ({ term: 47, seq, replay, bytes: bytes(text) })
+const chunk = (seq: number, text: string, replay = false): TerminalChunk => ({ machine: 0, term: 47, seq, replay, bytes: bytes(text) })
 const written = () => terminalState.writes.map((part) => new TextDecoder().decode(part)).join('')
 
 describe('terminal view', () => {

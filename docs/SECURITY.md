@@ -257,7 +257,7 @@ A `[[machines]]` entry's `target` and `ssh_args` are user input that reaches `ss
 smuggled into either runs code on this computer (`-oProxyCommand=...`). The config load refuses
 a `target` that starts with `-` or holds whitespace or control characters, an empty or
 control-character `ssh_args` entry, and a bad `remote_cmd`; `ssh_args` is a list and is never
-split on spaces. The ssh command itself is built in one place (`ssh_command.rs`): ssh runs with
+split on spaces. The ssh command itself is built in one place (`ssh_command.rs` in `maitty-machines`, shared by the terminal app and the desktop app): ssh runs with
 `-o BatchMode=yes` (no prompts) and `-o ForwardAgent=no` and `-a` (no agent forwarding), plus
 `ConnectTimeout` and `ServerAlive*` defaults that `ssh_args` may override; `BatchMode` and
 `ForwardAgent` come before `ssh_args` so ssh's first-value-wins rule keeps them. The host follows
@@ -312,7 +312,7 @@ capped at 25 MB and the send at two minutes. A machine reached by a custom trans
 
 `maitty machine update <name>` (`cli/machine_update.rs`) runs one fixed script on a machine and writes a
 binary there, so it follows the same rules as every other ssh line, plus these. The script is a constant
-in the app (`remote_install::INSTALL_SCRIPT`, passed to the remote shell as `sh -c '<script>' sh <args>`);
+in the app (`maitty_machines::INSTALL_SCRIPT`, re-exported by `remote_install`, passed to the remote shell as `sh -c '<script>' sh <args>`);
 the destination and the byte count are positional arguments, each quoted once by `ssh_command`, and never
 part of the script's text, so nothing a person or a machine supplies can become shell code (tests assert
 the argv, and the script has no `{`/`}` and no process-signalling command). The binary travels on stdin,
@@ -342,7 +342,7 @@ for a machine that is down is dropped, never queued and replayed.
 
 A remote daemon is someone else's computer, so everything it sends is untrusted: it can forge
 status, clipboard writes, toasts and prompts. Two rules hold for every message from a machine
-that is not this one (`client/remote_policy.rs`, `client/remote_snapshot.rs`):
+that is not this one (`remote_policy.rs`, `remote_snapshot.rs` in `maitty-machines`):
 
 - **Clean on ingest.** A `State`, and the panes of a `TermsChanged`, are made safe before they are kept: every string loses control
   characters (escape sequences included), hidden and direction-changing characters and line
@@ -426,7 +426,7 @@ computer only; opening a machine opens all of its sessions to every pane here th
 
 `maitty doctor` checks each configured machine with the same ssh lines as everything else
 (`ssh_command.rs`: `BatchMode`, no agent forwarding, `--` before the host), plus one fixed script,
-`command -v maitty` (`remote_install::WHERE_SCRIPT`), which carries no user data. Every step has a time
+`command -v maitty` (`maitty_machines::WHERE_SCRIPT`), which carries no user data. Every step has a time
 limit and the ssh it started is ended when the limit passes. What a machine answers (the version line, the
 program's path, ssh's last line) is cleaned of control and hidden characters and cut short before it is
 printed, and only the program's path is shown from the login shell, never its PATH, which can name users.

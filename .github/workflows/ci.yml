@@ -49,9 +49,15 @@ jobs:
       - name: Prepare GUI daemon sidecar
         working-directory: apps/gui
         run: pnpm bundle:daemon:dev
+      - name: The desktop app stays off the daemon, the terminal client and settings (ADR 0048)
+        shell: bash
+        run: scripts/check-gui-deps.sh
       # One test at a time: CI's Windows machines stall when several tests start real
       # shells (ConPTY) at once. It also names a stuck test in the log.
+      # A test that still stalls would hold the job for its whole 45 minute limit, so the
+      # step has its own, well above the 5 to 10 minutes a passing run takes.
       - run: cargo test --locked -- --test-threads=1
+        timeout-minutes: 15
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: node --experimental-vm-modules --test crates/maitty-terminal-client/src/cli/integrations.test.mjs
 

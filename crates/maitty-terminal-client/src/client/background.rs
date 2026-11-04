@@ -36,7 +36,7 @@ impl App {
         match machine_ids::check_daemon_id(&mut self.machine_ids, &name, snap.daemon_id.as_deref())
         {
             Ok(machine_ids::IdCheck::Recorded) => {
-                self.machine_ids.save();
+                machine_ids::save(&self.machine_ids);
                 true
             }
             Ok(_) => true,

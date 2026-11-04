@@ -223,3 +223,21 @@ Two things seen on the user's Linux machine that look like app bugs and are not:
 - The daemon and Tauri's real IPC were mocked (IPC cost emulated with `JSON.stringify`/`parse`). Keyboard focus, real resize and DPI scaling were not exercised in WebKit.
 - Output rate (20 KB/s) is a guess at what Claude Code produces; cost scales roughly linearly with it.
 - Single 15-20 s samples; WebKit numbers are ±4 points, Chromium ±3.
+
+## Linux measurement, 2026-11-04 (after the plan, on v0.64.0 + plumbing)
+
+WebKitGTK 2.52.6, software compositing (`WEBKIT_DISABLE_COMPOSITING_MODE=1`), the
+harness's scenarios `a` and `b`, 20 s measured after 5 s warm:
+
+| Scenario | 2026-11-03 | 2026-11-04 |
+| --- | --- | --- |
+| `a` one idle shell | 1.5% | 1.1% |
+| `b` one working session, silent | 58% | 1.6% |
+
+The sweep plays once and finishes (`v14sweep:finished`); no 80 ms timer fires;
+the only intervals are the 15 s and 30 s ones. The silent-working target (under 5%)
+is met.
+
+**The streaming number** is in *Measured again on Linux* above: the mock now feeds the
+`watch_terminal_output` channel with the host's frame header (machine, pane, sequence, replay).
+Still owed: the hub's state messages, so that scenario `e` lists its four panes instead of one.

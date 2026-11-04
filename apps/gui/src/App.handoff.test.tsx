@@ -19,6 +19,7 @@ const daemon = vi.hoisted(() => ({
   restartMismatchedDaemon: vi.fn<(protocol: number) => Promise<void>>(),
   suggestProjectFolders: vi.fn<(typed: string) => Promise<string[]>>(),
   sendTerminalInput: vi.fn<(conversation: { id: string; generation: number }, input: string | Uint8Array) => Promise<void>>(),
+  loadMachines: vi.fn(() => Promise.resolve({ names: [], error: null })),
 }))
 
 vi.mock('@/api/daemon', () => ({
@@ -33,6 +34,14 @@ vi.mock('@/api/daemon', () => ({
 const terminal = vi.hoisted(() => ({
   pasted: [] as Array<[string, string]>,
   drop: { current: null as null | ((paths: string[], at: { x: number; y: number }) => void) },
+}))
+
+// The window follows other machines through the host; there are none here.
+vi.mock('@/api/machines', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/machines')>()),
+  loadMachinesOverview: () => Promise.resolve([]),
+  listenMachineState: () => Promise.resolve(() => undefined),
+  listenMachineSessions: () => Promise.resolve(() => undefined),
 }))
 
 vi.mock('@/features/terminal/useFileDrop', () => ({

@@ -7,6 +7,7 @@ build = "build.rs"
 
 [dependencies]
 anyhow = "1"
+maitty-machines = { path = "../maitty-machines" }
 maitty-shared = { path = "../maitty-shared" }
 ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }

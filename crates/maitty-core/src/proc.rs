@@ -22,7 +22,7 @@ pub fn system_tool(name: &str) -> Command {
 
 /// Windows: start a console program without opening a console window.
 #[cfg(windows)]
-pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+pub use maitty_machines::CREATE_NO_WINDOW;
 
 /// Whether a program is on PATH (with Windows' own extensions).
 pub fn on_path(tool: &str) -> bool {

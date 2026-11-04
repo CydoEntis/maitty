@@ -353,15 +353,18 @@
     while (out.length < budgetPerTick) out += codeLine()
     return out
   }
-  // One frame per pane per tick over the channel the view opened: the pane as 4 big-endian bytes,
-  // the sequence number as 8, one replay byte, then the output (apps/gui/src/api/terminalStream.ts).
+  // One frame per pane per tick over the channel the view opened: the machine as 2 big-endian
+  // bytes (0 is this computer), the pane as 4, the sequence number as 8, one replay byte, then the
+  // output (apps/gui/src/api/terminalStream.ts).
+  const FRAME_HEADER_BYTES = 15
   function frameOf(term, seq, data) {
-    const frame = new Uint8Array(13 + data.length)
+    const frame = new Uint8Array(FRAME_HEADER_BYTES + data.length)
     const view = new DataView(frame.buffer)
-    view.setUint32(0, term)
-    view.setBigUint64(4, BigInt(seq))
-    frame[12] = 0
-    frame.set(data, 13)
+    view.setUint16(0, 0)
+    view.setUint32(2, term)
+    view.setBigUint64(6, BigInt(seq))
+    frame[14] = 0
+    frame.set(data, FRAME_HEADER_BYTES)
     return frame.buffer
   }
   const streaming = sessions.filter((s) => s.stream)

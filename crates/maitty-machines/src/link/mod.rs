@@ -9,14 +9,18 @@ mod supervisor;
 pub use state::{Backoff, ConnectionState, Event, RECONNECT_DIALS, next};
 pub use supervisor::Timing;
 
-use crate::connections::MachineId;
-use crate::ipc::{Machine, Reader, Writer};
-use maitty_settings::config::MachineDef;
+use crate::{Dial, Machine, MachineDef, MachineId};
+use maitty_ipc_transport::{Reader, Writer};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+
+/// How a supervisor learns what to say about this process in each Hello. The terminal app
+/// reads its pane and conversation identity from its environment, the desktop app has none;
+/// either way it is the caller's to say, never read here.
+type Opener = Arc<dyn Fn() -> anyhow::Result<Dial> + Send + Sync>;
 
 /// What a supervisor tells the window.
 pub enum LinkEvent {
@@ -53,6 +57,7 @@ struct Shared {
     runtime: Handle,
     events: mpsc::UnboundedSender<LinkEvent>,
     timing: Timing,
+    dial: Opener,
 }
 
 #[derive(Default)]
@@ -149,6 +154,7 @@ impl Shared {
             machine.name().to_owned(),
             machine,
             self.timing,
+            self.dial.clone(),
             self.events.clone(),
             commands_rx,
         ));
@@ -174,13 +180,18 @@ pub struct Links {
 
 impl Links {
     /// Start a supervisor for each machine. Must run inside the runtime.
-    pub fn start(machines: Vec<(MachineId, Machine)>, timing: Timing) -> Links {
+    pub fn start(
+        machines: Vec<(MachineId, Machine)>,
+        timing: Timing,
+        dial: impl Fn() -> anyhow::Result<Dial> + Send + Sync + 'static,
+    ) -> Links {
         let (events_tx, events) = mpsc::unbounded_channel();
         let shared = Shared {
             supervisors: Mutex::default(),
             runtime: Handle::current(),
             events: events_tx,
             timing,
+            dial: Arc::new(dial),
         };
         let mut supervisors = Supervisors::default();
         for (id, machine) in machines {
@@ -282,11 +293,22 @@ mod tests {
             .build()
             .unwrap();
         runtime.block_on(async {
-            let links = Links::start(Vec::new(), Timing::DEFAULT);
+            let links = Links::start(Vec::new(), Timing::DEFAULT, dial);
             assert!(!links.any());
             assert!(!links.control().supervises(MachineId(1)));
         });
     }
+    fn dial() -> anyhow::Result<Dial> {
+        Ok(Dial {
+            attach: true,
+            surface: maitty_shared::protocol::Surface::Terminal,
+            replays: true,
+            term: None,
+            token: None,
+            structured: None,
+        })
+    }
+
     fn nowhere(name: &str) -> Machine {
         Machine::ssh(name, vec!["no-such-ssh-program".into()], "maitty")
     }
@@ -298,7 +320,11 @@ mod tests {
             .build()
             .unwrap();
         runtime.block_on(async {
-            let mut links = Links::start(vec![(MachineId(1), nowhere("Build"))], Timing::DEFAULT);
+            let mut links = Links::start(
+                vec![(MachineId(1), nowhere("Build"))],
+                Timing::DEFAULT,
+                dial,
+            );
             let control = links.control();
             assert_eq!(control.id_of("build"), Some(MachineId(1)));
 
