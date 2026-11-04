@@ -105,3 +105,6 @@ In the web view (`api/machines.ts`, `features/workspace/model/machines.ts`): a s
 has an id `<name>/t<pane>`, is listed after this computer's, is led by the machine's name in the
 sidebar and tabs, and forms projects of its own. The saved layout is `maitty.gui.layout.v2` (v1 is read
 as it is and left in place). Until the machine has listed its sessions, a layout's panes for it are kept.
+
+The glue's per-update logic is `terminal_stream::react` (no window involved), so the host's behaviour
+is tested end to end against real daemons (`hub/tests/end_to_end.rs`).

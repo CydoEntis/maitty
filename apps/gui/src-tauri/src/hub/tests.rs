@@ -338,6 +338,7 @@ fn the_window_is_told_the_kind_and_what_a_person_must_do() {
 }
 
 mod commands;
+mod end_to_end;
 
 mod vetting {
     use super::*;

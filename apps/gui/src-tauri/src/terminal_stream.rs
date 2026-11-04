@@ -228,8 +228,9 @@ pub fn start(app: AppHandle, defs: Vec<MachineDef>) {
                     {
                         Ok(update) => update,
                         Err(_elapsed) => {
-                            let out = streams(&app, |streams| streams.flush(Instant::now()));
-                            perform(&app, &handle, out);
+                            let now = Instant::now();
+                            let done = streams(&app, |streams| flush(streams, &handle, now));
+                            perform(&app, done.unwrap_or_default());
                             continue;
                         }
                     }
@@ -248,8 +249,29 @@ fn streams<T>(app: &AppHandle, f: impl FnOnce(&mut Streams) -> T) -> Option<T> {
         .map(|mut s| f(&mut s))
 }
 
-fn apply(app: &AppHandle, handle: &HubHandle, update: Update) {
-    match update {
+/// What the window is to be given because of one thing the hub reported.
+pub enum Reaction {
+    /// A machine's connection changed state.
+    State(MachineState),
+    /// A frame of output for the window's channel.
+    Frame(Vec<u8>),
+    /// A machine's whole snapshot, or none when this computer's line ended.
+    Sessions {
+        machine: MachineId,
+        snapshot: Option<Box<Snapshot>>,
+    },
+}
+
+/// What one update from the hub does: to the history and snapshots held for the window, to the
+/// machines (a replay asked for again), and what the window is to be told. No window is involved,
+/// so all of it is tested without one.
+pub fn react(
+    streams: &mut Streams,
+    handle: &HubHandle,
+    update: Update,
+    now: Instant,
+) -> Vec<Reaction> {
+    let outs = match update {
         Update::State {
             machine,
             name,
@@ -260,35 +282,54 @@ fn apply(app: &AppHandle, handle: &HubHandle, update: Update) {
                 // Typing the machine could not take while it was down, now it can be said.
                 told.unsent = Some(handle.take_unsent(machine)).filter(|n| *n > 0);
             }
-            if let Ok(mut states) = app.state::<MachineStates>().0.lock() {
-                states.insert(told.machine, told.clone());
-            }
-            let _ = app.emit(MACHINE_STATE_EVENT, told);
+            return vec![Reaction::State(told)];
         }
         Update::LineUp { machine } => {
             // Panes a view was watching are asked for again; the replay that comes puts each
             // view back in step.
-            let watched = streams(app, |streams| streams.line_up(machine)).unwrap_or_default();
-            for term in watched {
+            for term in streams.line_up(machine) {
                 // A write that fails here shows up as the line ending.
                 let _ = handle.send(Outgoing {
                     machine,
                     msg: ClientMsg::WantReplay { term },
                 });
             }
+            Vec::new()
         }
-        Update::Messages { machine, msgs } => {
-            for msg in msgs {
-                let now = Instant::now();
-                let out = streams(app, |streams| streams.on_message(machine, msg, now));
-                perform(app, handle, out);
+        Update::Messages { machine, msgs } => msgs
+            .into_iter()
+            .flat_map(|msg| streams.on_message(machine, msg, now))
+            .collect(),
+        Update::LineEnded { machine } => streams.line_ended(machine, now),
+    };
+    reactions(handle, outs)
+}
+
+/// Give the window what has waited long enough.
+pub fn flush(streams: &mut Streams, handle: &HubHandle, now: Instant) -> Vec<Reaction> {
+    reactions(handle, streams.flush(now))
+}
+
+fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
+    outs.into_iter()
+        .filter_map(|out| match out {
+            Out::Frame(frame) => Some(Reaction::Frame(frame)),
+            Out::Sessions { machine, snapshot } => Some(Reaction::Sessions { machine, snapshot }),
+            Out::WantReplay { machine, term } => {
+                let _ = handle.send(Outgoing {
+                    machine,
+                    msg: ClientMsg::WantReplay { term },
+                });
+                None
             }
-        }
-        Update::LineEnded { machine } => {
-            let out = streams(app, |streams| streams.line_ended(machine, Instant::now()));
-            perform(app, handle, out);
-        }
-    }
+        })
+        .collect()
+}
+
+fn apply(app: &AppHandle, handle: &HubHandle, update: Update) {
+    let now = Instant::now();
+    let done = streams(app, |streams| react(streams, handle, update, now));
+    perform(app, done.unwrap_or_default());
 }
 
 #[derive(Clone, Serialize)]
@@ -297,10 +338,16 @@ struct MachineSessions {
     snapshot: Option<Box<Snapshot>>,
 }
 
-fn perform(app: &AppHandle, handle: &HubHandle, out: Option<Vec<Out>>) {
-    for out in out.unwrap_or_default() {
-        match out {
-            Out::Frame(frame) => {
+fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
+    for reaction in reactions {
+        match reaction {
+            Reaction::State(told) => {
+                if let Ok(mut states) = app.state::<MachineStates>().0.lock() {
+                    states.insert(told.machine, told.clone());
+                }
+                let _ = app.emit(MACHINE_STATE_EVENT, told);
+            }
+            Reaction::Frame(frame) => {
                 let channel = app
                     .state::<TerminalOutput>()
                     .0
@@ -313,10 +360,10 @@ fn perform(app: &AppHandle, handle: &HubHandle, out: Option<Vec<Out>>) {
                     let _ = channel.send(Response::new(frame));
                 }
             }
-            Out::Sessions { machine, snapshot } if machine == MachineId::LOCAL => {
+            Reaction::Sessions { machine, snapshot } if machine == MachineId::LOCAL => {
                 let _ = app.emit(SESSIONS_EVENT, snapshot);
             }
-            Out::Sessions { machine, snapshot } => {
+            Reaction::Sessions { machine, snapshot } => {
                 let _ = app.emit(
                     MACHINE_SESSIONS_EVENT,
                     MachineSessions {
@@ -324,12 +371,6 @@ fn perform(app: &AppHandle, handle: &HubHandle, out: Option<Vec<Out>>) {
                         snapshot,
                     },
                 );
-            }
-            Out::WantReplay { machine, term } => {
-                let _ = handle.send(Outgoing {
-                    machine,
-                    msg: ClientMsg::WantReplay { term },
-                });
             }
         }
     }

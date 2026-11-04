@@ -133,6 +133,10 @@ is in `crates/maitty-test-support`, a dev-dependency any crate's tests can use, 
 private daemon's environment, the shim's per-machine arguments (`--mode`, `--maitty`, `--env`,
 `--calls`, which let one process hold several machines), and killing the last connection. The
 desktop host's `hub` tests use it.
+The host also has an end-to-end test without a window (`hub/tests/end_to_end.rs`): a real daemon for
+this computer and two behind the shim, the hub and the same `react` the window's glue runs; it checks
+snapshots per machine, typing, a pane's replay, and a pane replayed again after one machine's link is
+killed while the others are never touched.
 
 | `MAITTY_FAKE_SSH_MODE` | The shim |
 | --- | --- |
