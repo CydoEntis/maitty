@@ -1,14 +1,20 @@
-//! Sending a pasted image to another machine (ADR 0047, MAITTY-140). The window cannot put a
-//! picture on a remote machine's clipboard or into its files, so the image goes over the same
-//! hardened ssh line the installer uses, as a file the far side keeps, and the path it prints is
-//! typed into the pane. Nothing here runs ssh; `Machine::paste_argv` builds the line and the
-//! caller runs it with the image on stdin.
+//! Sending a pasted image, or any file, to another machine (ADR 0049, 0050). The window cannot
+//! put a picture or a file on a remote machine, so it goes over the same hardened ssh line the
+//! installer uses, as a file the far side keeps, and the path it prints is typed into the pane.
+//! Nothing here runs ssh; `Machine::paste_argv` builds the line and the caller runs it with the
+//! file on stdin.
 
 use crate::remote_install::PASTE_MARKER;
 use maitty_shared::hidden::{is_invisible, sanitize};
 
 /// The most bytes of one pasted image that are sent. A screenshot is a few megabytes.
 pub const MAX_PASTE_BYTES: u64 = 25 * 1024 * 1024;
+
+/// The most bytes of one file that is sent (ADR 0050).
+pub const MAX_SEND_BYTES: u64 = 100 * 1024 * 1024;
+
+/// The most characters of the original name kept in a sent file's name.
+const ORIGINAL_MAX: usize = 48;
 
 /// The longest path the far side may name for the file.
 const PATH_MAX: usize = 4096;
@@ -22,6 +28,43 @@ pub fn paste_file_name(stamp: u128, salt: u32) -> String {
     format!("paste-{stamp}-{salt:08x}.png")
 }
 
+/// The name a sent file gets on the far side: the paste name's stamp and salt, then the original
+/// name reduced to what the paste script accepts, so two files called `a.log` are two files and
+/// nothing the person's file is called can become a path or an option.
+pub fn sent_file_name(stamp: u128, salt: u32, original: &str) -> String {
+    format!("paste-{stamp}-{salt:08x}-{}", clean_original(original))
+}
+
+/// `original` with every character the script would refuse replaced by `_`, leading dots
+/// dropped, cut to `ORIGINAL_MAX` keeping the extension; `file` when nothing is left.
+fn clean_original(original: &str) -> String {
+    let plain: String = original
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let plain = plain.trim_start_matches('.');
+    if plain.is_empty() {
+        return "file".into();
+    }
+    if plain.len() <= ORIGINAL_MAX {
+        return plain.to_owned();
+    }
+    // An extension longer than a few characters is not one; cut the whole name then.
+    let ext = plain
+        .rsplit_once('.')
+        .map(|(_, ext)| ext)
+        .filter(|ext| ext.len() <= 8)
+        .map_or(String::new(), |ext| format!(".{ext}"));
+    let stem: String = plain.chars().take(ORIGINAL_MAX - ext.len()).collect();
+    format!("{stem}{ext}")
+}
+
 /// The path the paste script printed: the line after its marker. The far side is someone else's
 /// computer, so it must be an absolute path with nothing in it that is not text.
 pub fn pasted_path(stdout: &str) -> Result<String, String> {
@@ -29,10 +72,10 @@ pub fn pasted_path(stdout: &str) -> Result<String, String> {
     lines
         .by_ref()
         .find(|line| *line == PASTE_MARKER)
-        .ok_or("the machine did not say where it kept the image")?;
+        .ok_or("the machine did not say where it kept the file")?;
     let path = lines
         .next()
-        .ok_or("the machine did not say where it kept the image")?;
+        .ok_or("the machine did not say where it kept the file")?;
     if !path.starts_with('/') {
         return Err(format!(
             "the machine named {path:?}, which is not a full path"
@@ -57,16 +100,16 @@ fn said_by(stderr: &str) -> String {
 }
 
 /// What went wrong, in words, from how the paste script ended (`None` when the line itself was
-/// ended by a signal or its time limit) and what ssh said.
-pub fn paste_failure(machine: &str, code: Option<i32>, stderr: &str) -> String {
+/// ended by a signal or its time limit) and what ssh said. `what` is "the image" or "the file".
+pub fn paste_failure(what: &str, machine: &str, code: Option<i32>, stderr: &str) -> String {
     let said = said_by(stderr);
     let said = said.as_str();
     match code {
-        Some(70) => format!("the image reached {machine} incomplete; try again"),
-        Some(72) => format!("{machine} could not keep the image (no writable cache folder there)"),
-        None => format!("{machine} did not take the image in time"),
-        _ if said.is_empty() => format!("could not send the image to {machine}"),
-        _ => format!("could not send the image to {machine}: {said}"),
+        Some(70) => format!("{what} reached {machine} incomplete; try again"),
+        Some(72) => format!("{machine} could not keep {what} (no writable cache folder there)"),
+        None => format!("{machine} did not take {what} in time"),
+        _ if said.is_empty() => format!("could not send {what} to {machine}"),
+        _ => format!("could not send {what} to {machine}: {said}"),
     }
 }
 
@@ -81,6 +124,53 @@ mod tests {
         assert!(
             name.chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        );
+    }
+
+    #[test]
+    fn a_sent_file_keeps_a_plain_version_of_its_name_after_a_unique_prefix() {
+        let name = |original: &str| sent_file_name(1_762_000_000_000, 0xAB, original);
+        assert_eq!(
+            name("report.pdf"),
+            "paste-1762000000000-000000ab-report.pdf"
+        );
+        assert_eq!(
+            name("my report (final).pdf"),
+            "paste-1762000000000-000000ab-my_report__final_.pdf"
+        );
+        assert_eq!(name(".bashrc"), "paste-1762000000000-000000ab-bashrc");
+        assert_eq!(
+            name("../../etc/passwd"),
+            "paste-1762000000000-000000ab-_.._etc_passwd"
+        );
+        assert_eq!(name(""), "paste-1762000000000-000000ab-file");
+        assert_eq!(name("..."), "paste-1762000000000-000000ab-file");
+        assert_eq!(name("día.txt"), "paste-1762000000000-000000ab-d_a.txt");
+    }
+
+    #[test]
+    fn every_sent_name_is_one_the_script_and_the_line_accept() {
+        for original in [
+            "a b;c\"'`$(x)",
+            "\u{202e}rtl.txt",
+            &"long".repeat(100),
+            &format!("{}.tar.gz", "x".repeat(200)),
+            "-rf",
+            "\n",
+        ] {
+            let name = sent_file_name(1_762_000_000_000, 0xAB, original);
+            assert!(name.len() <= 96, "{name}");
+            assert!(
+                name.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')),
+                "{name}"
+            );
+            assert!(!name.starts_with('.'));
+        }
+        let long = sent_file_name(1, 1, &format!("{}.tar.gz", "x".repeat(200)));
+        assert!(
+            long.ends_with(".gz"),
+            "the extension survives a cut: {long}"
         );
     }
 
@@ -111,15 +201,20 @@ mod tests {
 
     #[test]
     fn a_failure_says_what_to_do() {
-        assert!(paste_failure("box", Some(70), "").contains("incomplete"));
-        assert!(paste_failure("box", Some(72), "").contains("could not keep"));
-        assert!(paste_failure("box", None, "").contains("in time"));
+        assert!(paste_failure("the image", "box", Some(70), "").contains("incomplete"));
+        assert!(paste_failure("the image", "box", Some(72), "").contains("could not keep"));
+        assert!(paste_failure("the image", "box", None, "").contains("in time"));
         assert_eq!(
-            paste_failure("box", Some(255), "x\nPermission denied (publickey).\n"),
+            paste_failure(
+                "the image",
+                "box",
+                Some(255),
+                "x\nPermission denied (publickey).\n"
+            ),
             "could not send the image to box: Permission denied (publickey)."
         );
         assert_eq!(
-            paste_failure("box", Some(1), ""),
+            paste_failure("the image", "box", Some(1), ""),
             "could not send the image to box"
         );
     }
@@ -127,7 +222,7 @@ mod tests {
     #[test]
     fn what_ssh_said_is_shown_as_one_clean_short_line() {
         let hostile = "x\n\u{1b}[2J\u{202e}Permission\u{200b} denied\u{7}\u{0}";
-        let said = paste_failure("box", Some(255), hostile);
+        let said = paste_failure("the image", "box", Some(255), hostile);
         assert_eq!(
             said,
             "could not send the image to box: [2JPermission denied"
@@ -138,14 +233,14 @@ mod tests {
                 .any(|c| c.is_control() || maitty_shared::hidden::is_invisible(c))
         );
         let long = format!("{}\n", "e".repeat(5000));
-        let said = paste_failure("box", Some(255), &long);
+        let said = paste_failure("the image", "box", Some(255), &long);
         assert_eq!(
             said.chars().count(),
             "could not send the image to box: ".len() + SAID_MAX
         );
         // A line of nothing but hidden characters says nothing at all.
         assert_eq!(
-            paste_failure("box", Some(255), "\u{1b}\u{200b}\u{202e}\n"),
+            paste_failure("the image", "box", Some(255), "\u{1b}\u{200b}\u{202e}\n"),
             "could not send the image to box"
         );
     }

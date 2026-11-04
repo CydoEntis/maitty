@@ -19,8 +19,8 @@ One mechanism, widened. No daemon message, so **no `PROTOCOL_VERSION` bump** (as
 
 - **What may be sent.** A regular file the person names (drops it, or types or pastes its path).
   Directories, devices, pipes and missing paths are refused with a plain message; a symlink is
-  followed because the person named it. Several files in one drop are sent one after another, at
-  most 10. Nothing is sent without that act: a paste of text never uploads a file, even when the
+  followed because the person named it. The terminal app sends one file per request; the desktop
+  app, which gets a drop as a list, sends them one after another, at most 10. Nothing is sent without that act: a paste of text never uploads a file, even when the
   text happens to be a path.
 - **Size.** 100 MB per file for files, 25 MB for images (0049, unchanged). Checked before ssh starts
   and again by the script's byte count. A file over the cap is refused, never truncated.
