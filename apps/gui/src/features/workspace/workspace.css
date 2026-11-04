@@ -3,13 +3,11 @@
 
 @keyframes v7fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes v7scrim { from { opacity: 0; } to { opacity: 1; } }
-@keyframes v7caret { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
 @keyframes v7pulse { 0% { opacity: .9; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.7); } }
-@keyframes v14focus { from { box-shadow: 0 0 0 0 var(--accent-line); } to { box-shadow: 0 0 0 8px transparent; } }
+@keyframes v14focus { from { opacity: 1; } to { opacity: 0; } }
 @keyframes v7moved { 0% { background-color: rgba(95, 212, 191, .16); } 100% { background-color: transparent; } }
 @keyframes v14sweep { from { transform: translateX(-90%); } to { transform: translateX(30%); } }
 @keyframes v14sweepdone { from { transform: translateX(-90%); } to { transform: translateX(36%); } }
-@keyframes v14breathe { 0%, 100% { opacity: .55; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.15); } }
 @keyframes v8tabin { from { opacity: 0; transform: translateY(-3px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes v8pane { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes v8swap { from { opacity: .35; transform: translateY(5px) scale(.985); } to { opacity: 1; transform: none; } }
@@ -60,19 +58,27 @@
 .mx-icon-button:not(:disabled):hover { background: rgba(255, 255, 255, .06); color: var(--fg); }
 .mx-icon-button:not(:disabled):active { transform: scale(.9); }
 
-/* The window: two soft glows over the ground; cards float on top. */
+/* The window ground is the theme's --bg. Cards on it are opaque, so nothing that changes inside a card
+   repaints the ground. With Background glow on, two faint tints of the theme are painted once behind them. */
 .mx-window {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   overflow: hidden;
-  background: radial-gradient(1100px 620px at 8% -10%, var(--accent-soft), transparent 60%), radial-gradient(900px 520px at 100% 110%, rgba(195, 166, 242, .07), transparent 60%), var(--bg);
+  background: var(--bg);
+}
+:root[data-glow="on"]:not([data-gpu="software"]):not([data-finish="flat"]) .mx-window {
+  background:
+    radial-gradient(1000px 600px at 15% 0%, color-mix(in oklab, var(--accent) var(--glow-accent), transparent), transparent 70%),
+    radial-gradient(900px 560px at 100% 100%, color-mix(in oklab, var(--ansi-mag) var(--glow-mag), transparent), transparent 70%),
+    var(--bg);
 }
 .mx-card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane);
+  background: var(--card);
   border: 1px solid var(--pane-line);
   border-radius: var(--r14);
+  box-shadow: var(--sh);
 }
 
 
@@ -87,7 +93,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, .3);
+  box-shadow: var(--sh);
   transition: width .32s var(--ease-out), background-color .35s ease;
 }
 .mx-drawer-scrim { position: absolute; inset: 0; z-index: 54; background: rgba(0, 0, 0, .45); animation: v7scrim .2s ease-out; }
@@ -209,11 +215,11 @@
 .mx-rail-folder.is-focused .mx-rail-folder-text { color: var(--fg); }
 .mx-rail-needs { position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 2px; background: var(--warn); }
 .mx-rail-count { position: absolute; right: -2px; bottom: -2px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg); background: var(--raise); box-shadow: 0 0 0 2px var(--card-ring); }
-.mx-rail-spin { position: absolute; left: -2px; bottom: -2px; width: 15px; height: 15px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; line-height: 1; color: var(--accent); background: var(--well); box-shadow: 0 0 0 2px var(--card-ring); }
+.mx-rail-spin { position: absolute; left: -2px; bottom: -2px; width: 15px; height: 15px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; line-height: 1; color: var(--accent); background: var(--well); box-shadow: 0 0 0 2px var(--card-ring); contain: layout style paint; will-change: transform; }
 .mx-rail-hairline { flex: none; width: 20px; height: 1px; background: color-mix(in srgb, var(--fg2) 30%, transparent); }
 .mx-rail-folder { position: relative; display: flex; align-items: center; justify-content: center; }
 /* What a collapsed folder is, beside it: fixed to the window so the rail's scrolling cannot clip it. */
-.mx-rail-popover { position: fixed; z-index: 50; transform: translateY(-50%); min-width: 200px; max-width: 300px; padding: 10px 12px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 14px 34px rgba(0, 0, 0, .35); backdrop-filter: blur(18px); pointer-events: none; animation: v7fade .14s ease-out; }
+.mx-rail-popover { position: fixed; z-index: 50; transform: translateY(-50%); min-width: 200px; max-width: 300px; padding: 10px 12px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); pointer-events: none; animation: v7fade .14s ease-out; }
 .mx-pop-head { display: flex; align-items: center; gap: 8px; }
 .mx-pop-head strong { font-size: 13.5px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-pop-path { margin-top: 4px; font-family: var(--mono); font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -253,11 +259,12 @@
 .mx-rail-row .mx-badge { right: 1px; bottom: 1px; width: 15px; height: 15px; border-radius: 4px; }
 .mx-badge { animation: v9pop .26s var(--ease-out); }
 .mx-badge.is-needs { gap: 1.5px; background: var(--warn); }
-/* A pulse is a ring on a pseudo-element that scales out and fades a few times, then rests. An animated
+/* A pulse is a ring on a pseudo-element that scales out and fades once, then rests. An animated
    box-shadow, or any endless animation, repaints the card on every frame for as long as the state lasts
    (docs/PERFORMANCE.md). */
 .mx-inbox-count.is-needs, .mx-upd-dot { position: relative; }
-.mx-badge.is-needs::after, .mx-inbox-count.is-needs::after, .mx-upd-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px rgba(242, 182, 90, .45); opacity: 0; pointer-events: none; animation: v7pulse 2.4s ease-out 3; }
+.mx-badge.is-needs::after, .mx-inbox-count.is-needs::after, .mx-upd-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px rgba(242, 182, 90, .45); opacity: 0; pointer-events: none; animation: v7pulse .6s ease-out 1; }
+.mx-upd-dot::after { animation-duration: .7s; }
 .mx-badge.is-done { background: color-mix(in oklab, var(--ok) 24%, var(--bg)); }
 .mx-badge.is-error { background: color-mix(in oklab, var(--danger) 24%, var(--bg)); }
 .mx-row-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
@@ -354,20 +361,20 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--r14);
-  background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 120px), var(--pane);
+  background: var(--pane);
   border: 1px solid var(--pane-line);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, .3);
+  box-shadow: var(--sh);
   outline-offset: -1px;
   overflow: hidden;
   /* Repaints inside a pane stay inside it. */
   contain: paint;
   animation: v8pane .3s var(--ease-out);
-  transition: border-color .2s ease, box-shadow .2s ease, background-color .35s ease;
+  transition: border-color .2s ease, background-color .35s ease;
 }
-.mx-pane:hover { border-color: rgba(255, 255, 255, .14); }
-.mx-pane.is-focused, .mx-pane.is-focused:hover { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft), 0 18px 40px rgba(0, 0, 0, .35); }
-.mx-pane.is-focused .mx-pane-head { box-shadow: inset 0 2px 0 var(--accent); }
-.mx-pane.is-focused::after { content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none; animation: v14focus .45s ease-out; }
+.mx-pane:hover { border-color: var(--line2); }
+.mx-pane.is-focused, .mx-pane.is-focused:hover { border-color: var(--accent-line); box-shadow: 0 0 0 1px var(--accent-line), var(--sh); }
+/* The focus ring flashes once, as opacity on a pseudo-element; animating its box-shadow would repaint the pane. */
+.mx-pane.is-focused::after { content: ''; position: absolute; inset: -1px; border: 2px solid var(--accent); border-radius: inherit; pointer-events: none; animation: v14focus .45s ease-out forwards; }
 .mx-pane.is-drop-target { outline: 2px dashed var(--accent); }
 .mx-pane-head { flex: none; height: calc(44px * var(--pad, 1)); display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px; cursor: default; }
 .mx-pane-head.is-draggable { cursor: grab; }
@@ -406,8 +413,8 @@
 .mx-toast { position: absolute; left: 50%; top: 58px; transform: translateX(-50%); z-index: 45; padding: 8px 14px; border-radius: 999px; background: var(--raise); border: 1px solid var(--line2); font-size: 12.5px; color: var(--fg); box-shadow: 0 12px 40px rgba(0, 0, 0, .45); white-space: nowrap; animation: v7fade .22s ease-out; }
 
 /* Settings */
-.mx-settings-scrim { position: absolute; inset: 0; z-index: 40; background: rgba(3, 5, 8, .62); display: flex; align-items: center; justify-content: center; padding: 24px; animation: v7scrim .2s ease-out; }
-.mx-settings { width: 100%; max-width: 880px; height: 100%; max-height: 620px; display: flex; border-radius: var(--r16); background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); overflow: hidden; backdrop-filter: blur(24px); animation: v8pane .26s var(--ease-out); }
+.mx-settings-scrim { position: absolute; inset: 0; z-index: 40; background: rgba(3, 5, 8, .62); backdrop-filter: var(--blur-pop); display: flex; align-items: center; justify-content: center; padding: 24px; animation: v7scrim .2s ease-out; }
+.mx-settings { width: 100%; max-width: 880px; height: 100%; max-height: 620px; display: flex; border-radius: var(--r16); background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); overflow: hidden; backdrop-filter: var(--blur-pop); animation: v8pane .26s var(--ease-out); }
 .mx-settings-nav { width: 212px; flex: none; display: flex; flex-direction: column; padding: 18px 10px; background: rgba(0, 0, 0, .18); border-right: 1px solid var(--pane-line); overflow-y: auto; }
 .mx-app.is-narrow .mx-settings-nav { width: 176px; }
 .mx-settings-nav-title { font-size: 14px; font-weight: 600; padding: 0 10px 14px; }
@@ -458,7 +465,7 @@
 .mx-folder-field input:focus-visible, .mx-search-field input:focus-visible { outline: none; }
 .mx-folder-field:focus-within, .mx-search-field:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mx-preview { padding: 12px 14px; border-radius: 10px; background: var(--term); box-shadow: inset 0 0 0 1px var(--pane-line); font-family: var(--mono); line-height: 1.6; }
-.mx-caret { display: inline-block; background: var(--accent); animation: v7caret 1s steps(1) infinite; }
+.mx-caret { display: inline-block; background: var(--accent); }
 .mx-search-field { flex: 1; min-width: 0; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 8px; background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); color: var(--dim); }
 .mx-search-field input { font-size: 12.5px; }
 .mx-picker { position: relative; flex: none; transition: opacity .16s ease; }
@@ -597,7 +604,7 @@
 .mx-tablist.has-left.has-right { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%); mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%); }
 
 /* Naming a session. */
-.mx-rename { width: 100%; max-width: 420px; padding: 20px; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); backdrop-filter: blur(18px); display: flex; flex-direction: column; gap: 10px; animation: v8pane .3s var(--ease-out); }
+.mx-rename { width: 100%; max-width: 420px; padding: 20px; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); display: flex; flex-direction: column; gap: 10px; animation: v8pane .3s var(--ease-out); }
 .mx-rename h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); }
 .mx-rename p { margin: 0; font-size: 12.5px; color: var(--muted); }
 .mx-rename input { height: 38px; padding: 0 12px; border-radius: 10px; background: var(--well); border: 1px solid var(--pane-line); color: var(--fg); font-size: 14px; outline: none; }
@@ -641,7 +648,7 @@
 
 /* Every session of a project, beside the sidebar */
 .mx-menu-scrim { position: fixed; inset: 0; z-index: 34; }
-.mx-stack-menu { position: fixed; z-index: 35; width: 300px; max-height: 420px; display: flex; flex-direction: column; border-radius: 14px; background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, 0) 120px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 22px 60px rgba(0, 0, 0, .5); backdrop-filter: blur(18px); overflow: hidden; animation: v8insp .26s var(--ease-out); transform-origin: left top; }
+.mx-stack-menu { position: fixed; z-index: 35; width: 300px; max-height: 420px; display: flex; flex-direction: column; border-radius: 14px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); overflow: hidden; animation: v8insp .26s var(--ease-out); transform-origin: left top; }
 .mx-stack-menu-head { flex: none; height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--pane-line); }
 .mx-stack-menu-head .mx-icon-button { width: 26px; height: 26px; border-radius: 7px; color: var(--muted); }
 .mx-stack-menu-title { font-size: 13.5px; font-weight: 600; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -670,7 +677,7 @@
 .mx-alltabs-button:active { transform: scale(.94); }
 .mx-alltabs-button span:first-child { font-variant-numeric: tabular-nums; }
 .mx-alltabs-needs { position: absolute; right: 4px; top: 4px; width: 7px; height: 7px; border-radius: 2px; transform: rotate(45deg); background: var(--warn); }
-.mx-alltabs-menu { position: absolute; z-index: 40; top: 42px; right: 0; width: 280px; max-height: 360px; overflow-y: auto; overflow-x: hidden; padding: 5px; border-radius: 12px; background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, 0) 100px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 18px 50px rgba(0, 0, 0, .5); backdrop-filter: blur(18px); display: flex; flex-direction: column; gap: 1px; animation: v7fade .18s ease-out; }
+.mx-alltabs-menu { position: absolute; z-index: 40; top: 42px; right: 0; width: 280px; max-height: 360px; overflow-y: auto; overflow-x: hidden; padding: 5px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); display: flex; flex-direction: column; gap: 1px; animation: v7fade .18s ease-out; }
 .mx-alltabs-row { height: 34px; flex: none; display: flex; align-items: center; gap: 9px; padding: 0 10px 0 7px; border-radius: 8px; font-size: 12.5px; color: var(--fg); text-align: left; cursor: pointer; transition: background-color .12s ease; }
 .mx-alltabs-row:hover { background: rgba(255, 255, 255, .06); }
 .mx-alltabs-row.is-active { background: var(--raise); }
@@ -698,7 +705,7 @@
 
 /* Command palette */
 .mx-palette-scrim { position: absolute; inset: 0; z-index: 60; background: rgba(0, 0, 0, .58); animation: v7scrim .2s ease-out; }
-.mx-palette { position: absolute; top: 12%; left: 50%; width: min(600px, calc(100% - 24px)); transform: translateX(-50%); display: flex; flex-direction: column; border-radius: 16px; background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, 0) 120px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 30px 80px rgba(0, 0, 0, .55); backdrop-filter: blur(18px); overflow: hidden; animation: v8pane .22s var(--ease-out); }
+.mx-palette { position: absolute; top: 12%; left: 50%; width: min(600px, calc(100% - 24px)); transform: translateX(-50%); display: flex; flex-direction: column; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); overflow: hidden; animation: v8pane .22s var(--ease-out); }
 .mx-palette-input { flex: none; height: 54px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--pane-line); color: var(--dim); }
 .mx-palette-input input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; font: inherit; font-size: 15px; color: var(--fg); }
 .mx-palette-list { max-height: 380px; overflow-y: auto; overflow-x: hidden; padding: 6px; display: flex; flex-direction: column; gap: 1px; }
@@ -714,7 +721,7 @@
 
 /* Inbox */
 .mx-inbox-scrim { position: absolute; inset: 0; z-index: 55; background: rgba(0, 0, 0, .45); animation: v7scrim .2s ease-out; }
-.mx-inbox { position: absolute; top: 44px; right: 12px; bottom: 12px; width: min(440px, calc(100% - 24px)); display: flex; flex-direction: column; border-radius: 14px; background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 22px 60px rgba(0, 0, 0, .5); overflow: hidden; animation: v8insp .32s var(--ease-out); }
+.mx-inbox { position: absolute; top: 44px; right: 12px; bottom: 12px; width: min(440px, calc(100% - 24px)); display: flex; flex-direction: column; border-radius: 14px; background: var(--card); border: 1px solid var(--pane-line); box-shadow: var(--sh); overflow: hidden; animation: v8insp .32s var(--ease-out); }
 .mx-inbox-head { flex: none; height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--pane-line); }
 .mx-inbox-head strong { font-size: 15px; font-weight: 600; }
 .mx-inbox-sub { font-size: 12px; color: var(--dim); }
@@ -809,7 +816,7 @@
 /* First-run welcome. */
 @keyframes v9stepin { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
 .mx-wel-scrim { position: fixed; inset: 0; z-index: 80; background: rgba(3, 5, 8, .66); animation: v7scrim .2s ease-out; }
-.mx-welcome { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(560px, calc(100% - 32px)); transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 18px; padding: 22px 24px 20px; border-radius: 16px; background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 140px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); animation: v9dialog .26s var(--ease-out); }
+.mx-welcome { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(560px, calc(100% - 32px)); transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 18px; padding: 22px 24px 20px; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); animation: v9dialog .26s var(--ease-out); }
 .mx-wel-bars { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
 .mx-wel-bars span { height: 3px; border-radius: 2px; background: var(--line2); transition: background-color .3s ease; }
 .mx-wel-bars span.is-done { background: var(--accent); }
@@ -847,7 +854,7 @@
 .mx-scard-button:hover { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-line); }
 
 /* Keyboard shortcut overlay. */
-.mx-shortcuts { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(820px, calc(100% - 32px)); max-height: calc(100% - 48px); transform: translate(-50%, -50%); display: flex; flex-direction: column; border-radius: var(--r16); background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 140px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); overflow: hidden; animation: v9dialog .26s var(--ease-out); }
+.mx-shortcuts { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(820px, calc(100% - 32px)); max-height: calc(100% - 48px); transform: translate(-50%, -50%); display: flex; flex-direction: column; border-radius: var(--r16); background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); overflow: hidden; animation: v9dialog .26s var(--ease-out); }
 .mx-shortcuts-head { flex: none; display: flex; align-items: center; gap: 16px; padding: 14px 14px 14px 24px; border-bottom: 1px solid var(--pane-line); }
 .mx-shortcuts-title { flex: 1; margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em; color: var(--fg); }
 .mx-shortcuts-grid { min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 22px 28px; padding: 18px 24px 24px; align-items: start; }
@@ -866,7 +873,7 @@
 .mx-row-pin { flex: none; display: inline-flex; align-items: center; color: var(--accent); }
 
 /* Notification card (design 10.3): the app, the project, what happened, and what you can do about it. */
-.mx-notice { position: relative; width: 356px; max-width: calc(100vw - 32px); display: flex; gap: 12px; padding: 12px 14px 12px 12px; border-radius: 16px; overflow: hidden; color: var(--fg); background: color-mix(in oklab, var(--raise) 82%, transparent); backdrop-filter: blur(18px) saturate(1.2); border: 1px solid var(--pane-line); box-shadow: 0 16px 44px rgba(0, 0, 0, .5); animation: v7fade .18s ease-out; }
+.mx-notice { position: relative; width: 356px; max-width: calc(100vw - 32px); display: flex; gap: 12px; padding: 12px 14px 12px 12px; border-radius: 16px; overflow: hidden; color: var(--fg); background: color-mix(in oklab, var(--raise) 82%, transparent); backdrop-filter: var(--blur-pop); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); animation: v7fade .18s ease-out; }
 .mx-notice { --notice: var(--ok); --notice-ink: var(--on-accent); }
 .mx-notice.is-needs { --notice: var(--warn); --notice-ink: var(--on-warn); }
 .mx-notice.is-error { --notice: var(--danger); --notice-ink: var(--on-accent); }
@@ -924,7 +931,7 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 
 /* Confirm before ending sessions. */
 .mx-confirm-scrim { position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, .5); animation: v7scrim .2s ease-out; }
-.mx-confirm { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(400px, calc(100% - 32px)); transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 14px; background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 120px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 22px 60px rgba(0, 0, 0, .5); animation: v9dialog .22s var(--ease-out); }
+.mx-confirm { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(400px, calc(100% - 32px)); transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 14px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); animation: v9dialog .22s var(--ease-out); }
 .mx-confirm-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
 .mx-confirm-text { margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg2); }
 .mx-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
@@ -940,7 +947,9 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 :root[data-finish="flat"] .mx-window { background: var(--bg); }
 :root[data-finish="flat"] .mx-card,
 :root[data-finish="flat"] .mx-pane { background: var(--main); backdrop-filter: none; }
-:root[data-finish="flat"] .mx-pane { box-shadow: none; }
+:root[data-finish="flat"] .mx-pane,
+:root[data-finish="flat"] .mx-card { box-shadow: none; }
+:root[data-finish="flat"] .mx-inbox { box-shadow: 0 22px 60px rgba(0, 0, 0, .5); }
 :root[data-finish="flat"] .mx-pane.is-focused,
 :root[data-finish="flat"] .mx-pane.is-focused:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
 :root[data-finish="flat"] .mx-sidebar { box-shadow: none; }
@@ -974,26 +983,26 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 :root[data-finish="flat"] .mx-badge:not(.is-needs) { animation: none; }
 :root[data-finish="flat"] .mx-inspect { background: var(--main); backdrop-filter: none;  }
 
-/* A web view without GPU access (no WebGL 2) rasterises in software, where every resting shadow,
-   gradient and blur is paid again on each repaint (docs/PERFORMANCE.md). Glass keeps its colours,
-   radii and layout there and gives up only those three; the focus ring and status colours stay. */
-:root[data-gpu="software"] .mx-card,
-:root[data-gpu="software"] .mx-pane { background: var(--pane); box-shadow: none; }
-:root[data-gpu="software"] .mx-sidebar { box-shadow: none; }
-:root[data-gpu="software"] .mx-pane.is-focused,
-:root[data-gpu="software"] .mx-pane.is-focused:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
-:root[data-gpu="software"] :is(.mx-rail-popover, .mx-settings, .mx-settings-scrim, .mx-rename, .mx-stack-menu, .mx-alltabs-menu, .mx-palette, .mx-inbox, .mx-notice, .mx-inspect, .mx-pane-status) { backdrop-filter: none; }
-:root[data-gpu="software"] :is(.mx-stack-menu, .mx-alltabs-menu, .mx-palette, .mx-inbox, .mx-welcome, .mx-shortcuts, .mx-confirm) { background: var(--pane); }
+/* A web view without GPU access (no WebGL 2) rasterises in software, where every blur and shadow is paid
+   again on each repaint (docs/PERFORMANCE.md). It takes the same rules with cheaper token values: no blur,
+   a hairline ring instead of a soft popover shadow, and a flat ground (see .mx-window above). */
+:root[data-gpu="software"] .mx-app { --blur-pop: none; --sh-pop: 0 0 0 1px var(--line2); }
+:root[data-gpu="software"] .mx-app[data-theme-kind="light"] { --sh-pop: 0 0 0 1px rgba(17, 22, 27, .14); }
 
 /* Window style variables, set on the app root so they can use the theme's colours. Glass is the default; Flat softens the radii and shadow; Tiled pulls the layout edge to
    edge (square corners, 4px gaps, a flush 40px tab strip with hairlines). The layout rules above read these.
    --rk multiplies the radii that Tiled squares off. --strip-* are the tab bar's buttons: Tiled drops their fill and ring. */
 .mx-app {
   --rk: 1; --r14: 14px; --r16: 16px; --pg: 12px; --ptop: 0px; --tbh: 56px; --tbp: 0 10px; --tbg: 6px; --tbb: 0;
-  --tabh: 36px; --tabbr: 0; --sh: 0 22px 60px rgba(0, 0, 0, .5);
+  --tabh: 36px; --tabbr: 0;
+  /* Glass surfaces: opaque cards with a hairline and, on dark themes, a 1px top highlight; blur and a soft
+     shadow only on short-lived popovers. */
+  --card: var(--main); --sh: inset 0 1px 0 rgba(255, 255, 255, .045); --blur-pop: blur(14px) saturate(1.2); --sh-pop: 0 16px 40px rgba(0, 0, 0, .45);
+  --glow-accent: 10%; --glow-mag: 7%;
   --sbm: 8px 0 8px 8px; --sbw: 1px; --tba: center; --tl: 4px; --edge: 8px; --tsh: 32px; --tsw: 26px; --ibh: 30px;
 }
-:root[data-style="flat"] .mx-app { --r14: 8px; --r16: 10px; --sh: 0 8px 24px rgba(0, 0, 0, .3); }
+.mx-app[data-theme-kind="light"] { --sh: none; --sh-pop: 0 12px 32px rgba(17, 24, 32, .14), 0 0 0 1px rgba(17, 22, 27, .08); --glow-accent: 9%; --glow-mag: 6%; }
+:root[data-style="flat"] .mx-app { --r14: 8px; --r16: 10px; }
 :root[data-style="tiled"] .mx-app {
   --rk: 0; --r14: 0px; --r16: 0px; --pg: 4px; --ptop: 4px; --tbh: 40px; --tbp: 0; --tbg: 0px; --tbb: 1px solid var(--pane-line);
   --tabh: 40px; --tabbr: 1px solid var(--pane-line); --sh: 0 6px 18px rgba(0, 0, 0, .35);
@@ -1015,7 +1024,7 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-sp-pane b:nth-child(3) { width: 66%; }
 .mx-style-preview.is-tiled { --g: 0; --r: 0; overflow: hidden; }
 .mx-style-preview.is-glass { --r: 8px; background: radial-gradient(90px 50px at 8% 0, var(--accent-soft), transparent), var(--well); }
-.mx-style-preview.is-glass .mx-sp-side, .mx-style-preview.is-glass .mx-sp-pane { background: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, 0)), var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line), 0 5px 12px rgba(0, 0, 0, .4); }
+.mx-style-preview.is-glass .mx-sp-side, .mx-style-preview.is-glass .mx-sp-pane { background: var(--main); box-shadow: inset 0 0 0 1px var(--pane-line); }
 .mx-style-name { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 600; color: var(--fg); }
 .mx-style-card.is-selected .mx-style-name { color: var(--accent); }
 .mx-style-blurb { font-size: 11.5px; line-height: 1.4; color: var(--dim); }

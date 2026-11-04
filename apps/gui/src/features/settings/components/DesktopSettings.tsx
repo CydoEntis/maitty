@@ -461,6 +461,10 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
             <span className="mx-field-label">Cursor</span>
             <Segmented label="Cursor" value={preferences.cursorStyle} options={CURSORS} onChange={(value) => { update('cursorStyle', value) }} />
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span className="mx-field-label">Blink</span>
+            <Switch label="Blinking cursor" checked={preferences.cursorBlink} onChange={(value) => { update('cursorBlink', value) }} />
+          </div>
           <div className="mx-preview" style={{ fontSize: preferences.terminalFontSize, fontFamily: fontStackFor(preferences.terminalFontFamily), fontWeight: preferences.terminalFontWeight }} aria-label="Terminal preview" role="img">
             <div><PromptPrefix /><span style={{ fontWeight: preferences.terminalFontWeightBold }}>cargo</span> test <span style={{ color: 'var(--ansi-blue)' }}>-p</span> maitty-core</div>
             <div style={{ color: 'var(--fg2)' }}>test pane_terminal::replay_then_stream ... <span style={{ color: 'var(--ok)' }}>ok</span></div>
@@ -519,6 +523,9 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         </div>
         <Row label="Icons" detail="Agent and folder icons in their own colours, or neutral gray tiles.">
           <Segmented label="Icons" value={preferences.iconColor} options={ICON_COLOR_OPTIONS} onChange={(value) => { update('iconColor', value) }} />
+        </Row>
+        <Row label="Background glow" detail="Two faint tints of the theme behind the cards. Off is a flat ground; a web view without WebGL always uses the flat one.">
+          <Switch label="Background glow" checked={preferences.backgroundGlow} onChange={(value) => { update('backgroundGlow', value) }} />
         </Row>
         <Row label="See-through terminal" detail="Lets the card show behind a pane's text when WebGL draws it. Programs that paint their own backgrounds, like Claude Code under its prompt, then show as boxes.">
           <Switch label="See-through terminal" checked={preferences.terminalSeeThrough} onChange={(value) => { update('terminalSeeThrough', value) }} />

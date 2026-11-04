@@ -87,6 +87,8 @@ export type TerminalLook = {
   scrollSpeed?: number
   /** The card shows behind the text (WebGL only); programs' own backgrounds then show as boxes. */
   seeThrough?: boolean
+  /** xterm's own cursor blink, for the focused pane only. Off unless asked for. */
+  cursorBlink?: boolean
   screenReader?: boolean
   theme?: ITheme
 }
@@ -277,7 +279,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         const startSeeThrough = seeThroughOf(lookRef.current, startRenderer)
         emulator = new TerminalEmulator({
           allowTransparency: startSeeThrough,
-          cursorBlink: focusedRef.current && isWindowActive(),
+          cursorBlink: (lookRef.current.cursorBlink ?? false) && focusedRef.current && isWindowActive(),
           cursorStyle: lookRef.current.cursorStyle ?? 'block',
           disableStdin: inputDisabledRef.current,
           fontFamily: fontStackFor(lookRef.current.fontFamily ?? ''),
@@ -558,10 +560,10 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   }, [focused, connecting])
 
   useEffect(() => {
-    // A blinking cursor repaints its pane twice a second, so only the pane you are in blinks, and
-    // only while the window is in front.
-    if (terminal.current) terminal.current.options.cursorBlink = focused && windowActive
-  }, [focused, windowActive, connecting])
+    // A blinking cursor repaints its pane twice a second, so it is opt-in, only the pane you are in
+    // blinks, and only while the window is in front.
+    if (terminal.current) terminal.current.options.cursorBlink = (look.cursorBlink ?? false) && focused && windowActive
+  }, [focused, windowActive, connecting, look.cursorBlink])
 
   return <div className={`terminal-view${transparent ? ' is-transparent' : ''}`}>
     {connecting && !loadError && <div className="terminal-load-status" role="status"><LoaderCircle size={14} />Connecting to terminal</div>}
