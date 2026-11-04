@@ -11,6 +11,7 @@ members = [
     "crates/maitty-settings",
     "crates/maitty-machines",
     "crates/maitty-desktop-client",
+    "crates/maitty-test-support",
     "crates/adapters/maitty-provider-codex",
     "crates/adapters/maitty-provider-claude",
 ]

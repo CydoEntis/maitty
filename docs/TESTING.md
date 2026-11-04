@@ -127,7 +127,9 @@ Anything that reaches another machine is tested through a stand-in for `ssh`, ne
 server. `apps/tui/examples/fake-ssh.rs` is a small program (no `sh`, except in `remote-sh` mode, so it runs the same on
 Windows, Linux and macOS): point `MAITTY_SSH` at it and it ignores the host and every option,
 then runs the real `maitty proxy` against the socket the test chose. `cargo test` builds it
-with the tests (`apps/tui/tests/fake_ssh.rs` builds it itself when run with `--test`).
+with the tests (`apps/tui/tests/fake_ssh.rs` builds it itself when run with `--test`). The code that
+builds and locates the shim (`fake_ssh()`) and runs a command with a time limit (`output_within()`)
+is in `crates/maitty-test-support`, a dev-dependency any crate's tests can use.
 
 | `MAITTY_FAKE_SSH_MODE` | The shim |
 | --- | --- |
