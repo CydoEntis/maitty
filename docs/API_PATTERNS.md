@@ -435,6 +435,15 @@ background storage lock. Attachments never submit independent cache revisions.
 See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 process boundary and event/approval handling rules.
 
+Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
+ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
+([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)): totals, one entry per
+session and one per day with usage, as `UsageReport` in `crates/maitty-shared/src/usage_report.rs`
+(camelCase when it reaches the desktop app as JSON). Human clients only. A figure no provider
+reported is `null`, never zero. `Usage` also gains the defaulted `tokens_in` and `tokens_out`
+(the halves of `tokens`), so older peers still decode it. The desktop app calls it through the
+`usage_report` command.
+
 Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links and worktrees:
 
 - `Query::Repo { term, tag, request }` and `Reply::Repo { tag, reply }`: read-only looks at the

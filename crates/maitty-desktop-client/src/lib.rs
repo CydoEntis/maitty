@@ -690,6 +690,22 @@ pub async fn search_panes(query: String, daemon_executable: PathBuf) -> Result<V
     }
 }
 
+/// What agents reported using over `period`: totals, per session and per day.
+pub async fn usage_report(
+    period: maitty_shared::usage_report::UsagePeriod,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Query(Query::UsageReport { period }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::UsageReport(report) => Ok(serde_json::to_value(report)?),
+        _ => bail!("daemon returned an unexpected usage reply"),
+    }
+}
+
 /// Put a pane's checkout back as it was in one of the daemon's snapshots. Returns how many
 /// files changed.
 pub async fn restore_snapshot(

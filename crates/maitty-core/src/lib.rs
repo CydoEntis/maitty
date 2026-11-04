@@ -26,7 +26,7 @@ pub use daemon::run as run_daemon;
 pub use daemon::{first_failing_line, forget_session};
 pub use maitty_machines::link_failure;
 pub use maitty_settings::{keys, theme};
-pub use maitty_shared::{clock, conversation, hidden, layout, output_line, protocol, repo};
+pub use maitty_shared::{clock, conversation, hidden, layout, output_line, protocol, repo, usage_report};
 
 #[cfg(test)]
 mod test_support;

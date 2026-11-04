@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 69;
+pub const PROTOCOL_VERSION: u32 = 70;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -159,6 +159,11 @@ pub struct Usage {
     /// Tokens the provider says the session has used (what it reports, never an estimate).
     #[serde(default)]
     pub tokens: Option<u64>,
+    /// The input and output halves of `tokens`, as the provider reports them.
+    #[serde(default)]
+    pub tokens_in: Option<u64>,
+    #[serde(default)]
+    pub tokens_out: Option<u64>,
 }
 
 /// One of an agent's plan limits: how much is used and when it starts over.
@@ -546,6 +551,10 @@ pub enum Query {
     PaneSearch {
         query: String,
     },
+    /// Provider-reported usage over a period, per session and per day (human clients only).
+    UsageReport {
+        period: crate::usage_report::UsagePeriod,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
@@ -729,6 +738,7 @@ pub enum Reply {
         reply: crate::repo::RepoReply,
     },
     Search(Vec<SearchHit>),
+    UsageReport(crate::usage_report::UsageReport),
 }
 
 /// One line of a pane's output that matched a search.
@@ -1691,7 +1701,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 69);
+        assert_eq!(PROTOCOL_VERSION, 70);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
