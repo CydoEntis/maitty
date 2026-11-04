@@ -69,7 +69,22 @@ export function machineChip(state: MachineState): MachineChip {
 }
 
 /** One machine's header in the sidebar. `name` is null for this computer. */
-export type MachineHead = { key: string; name: string | null; label: string; chip: MachineChip | null; why: string | null }
+export type MachineHead = {
+  key: string
+  name: string | null
+  label: string
+  chip: MachineChip | null
+  why: string | null
+  /** True once a line that was wanted is not up (not while it is still the first dial). */
+  down: boolean
+  /** Since when, in ms since the epoch; null when the host did not say. */
+  downSince: number | null
+}
+
+/** Whether a machine's sessions are shown as last seen: its line is not up and not on its first dial. */
+export function isDown(state: MachineState): boolean {
+  return state.state !== 'connected' && state.state !== 'connecting'
+}
 
 export const THIS_COMPUTER = 'this computer'
 
@@ -82,6 +97,6 @@ export function machineHeads(machines: ReadonlyMap<number, RemoteMachine>): Mach
   if (machines.size === 0) return []
   const others = [...machines.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why }))
-  return [{ key: 'machine-0', name: null, label: THIS_COMPUTER, chip: null, why: null }, ...others]
+    .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null }))
+  return [{ key: 'machine-0', name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null }, ...others]
 }

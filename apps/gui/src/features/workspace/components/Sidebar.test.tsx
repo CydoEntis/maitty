@@ -49,6 +49,14 @@ describe('the sidebar with machines', () => {
     expect(screen.getByText('run ssh build once')).toBeTruthy()
   })
 
+  it('dates the outage of a machine that is down, and says nothing of one that is up or still dialling', () => {
+    const down = machine(1, 'build', 'unreachable', 'fix it')
+    down[1].state.since = Date.now() - 120_000
+    show(machineHeads(new Map([down, machine(2, 'up', 'connected'), machine(3, 'new', 'connecting')])), [])
+    expect(screen.getAllByText(/^disconnected/)).toHaveLength(1)
+    expect(screen.getByText('disconnected since 2m ago')).toBeTruthy()
+  })
+
   it('does not print a fix for a machine that is only reconnecting', () => {
     show(machineHeads(new Map([machine(1, 'build', 'reconnecting', 'leftover', 2)])), [])
     expect(screen.getByText(/reconnecting #2/)).toBeTruthy()

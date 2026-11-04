@@ -266,6 +266,12 @@ pub enum Reaction {
     },
 }
 
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
+}
+
 /// What one update from the hub does: to the history and snapshots held for the window, to the
 /// machines (a replay asked for again), and what the window is to be told. No window is involved,
 /// so all of it is tested without one.
@@ -286,6 +292,7 @@ pub fn react(
             if handle.is_refused(machine) {
                 told.state = "refused";
             }
+            told.since = handle.down_since(machine, state.is_connected(), now_ms());
             if state.is_connected() {
                 // Typing the machine could not take while it was down, now it can be said.
                 told.unsent = Some(handle.take_unsent(machine)).filter(|n| *n > 0);
@@ -413,6 +420,7 @@ mod tests {
             why: None,
             attempt: None,
             unsent: None,
+            since: None,
         }
     }
 

@@ -53,6 +53,17 @@ describe('merging the snapshots of several machines', () => {
     expect(remoteTerminals(new Map([[1, up]]))[0]?.status).toBe('working')
   })
 
+  it('takes the needs-you and done marks of a machine that is down out of the counts and the Inbox', () => {
+    const asking = { ...term(3, '/srv'), status: 'Blocked' }
+    const finished = { ...term(4, '/srv'), status: 'Done' }
+    const inboxStatuses = new Set(['needs', 'error', 'done'])
+    const views = (kind: MachineKind) => remoteTerminals(new Map([[1, machineOf(1, 'box', [asking, finished], kind)]])).map((item) => toSessionView(item, '/home/me'))
+    expect(views('connected').map((view) => view.status)).toEqual(['needs', 'done'])
+    const down = views('unreachable')
+    expect(down.some((view) => inboxStatuses.has(view.status))).toBe(false)
+    expect(groupSessions(down, 'folder', null, '/home/me').map((group) => group.needsCount)).toEqual([0])
+  })
+
   it('says a session of this computer is exactly what it was, with one machine', () => {
     const [session] = conversationsFromSnapshot(snapshot([term(12, '/home/me/app')]))
     expect(session?.id).toBe('t12')
@@ -170,6 +181,14 @@ describe('machine headers', () => {
     expect(heads.map((head) => head.label)).toEqual(['this computer', 'zeta', 'alpha'])
     expect(heads[0]).toMatchObject({ name: null, chip: null })
     expect(heads[1]?.chip?.word).toBe('needs login')
+  })
+
+  it('say a machine is down only after its first dial, and since when', () => {
+    const first = machineOf(1, 'a', [], 'connecting')
+    const lost = machineOf(2, 'b', [], 'reconnecting')
+    const heads = machineHeads(new Map([[1, first], [2, { ...lost, state: { ...lost.state, since: 5_000 } }], [3, machineOf(3, 'c', [])]]))
+    expect(heads.map((head) => head.down)).toEqual([false, false, true, false])
+    expect(heads[2]?.downSince).toBe(5_000)
   })
 
   it('carry the fix a person has to act on', () => {

@@ -273,6 +273,25 @@ async fn a_different_daemon_at_a_known_name_is_turned_away_and_says_nothing_that
 }
 
 #[tokio::test]
+async fn an_outage_is_dated_from_its_first_state_and_ends_when_the_machine_is_connected() {
+    let sandbox = Sandbox::new();
+    let hub = Hub::start(&[], &shim(), ids_file(&sandbox), quick(WAIT), None);
+    let handle = hub.handle();
+    assert_eq!(handle.down_since(BOX, false, 1_000), Some(1_000));
+    assert_eq!(
+        handle.down_since(BOX, false, 9_000),
+        Some(1_000),
+        "a later state of the same outage keeps its start"
+    );
+    assert_eq!(handle.down_since(BOX, true, 10_000), None);
+    assert_eq!(
+        handle.down_since(BOX, false, 20_000),
+        Some(20_000),
+        "a new outage starts afresh"
+    );
+}
+
+#[tokio::test]
 async fn with_no_machine_nothing_starts() {
     let sandbox = Sandbox::new();
     let hub = Hub::start(&[], &shim(), ids_file(&sandbox), quick(WAIT), None);
@@ -302,7 +321,8 @@ fn the_window_is_told_the_kind_and_what_a_person_must_do() {
             state: "connected",
             why: None,
             attempt: None,
-            unsent: None
+            unsent: None,
+            since: None
         }
     );
     assert_eq!(

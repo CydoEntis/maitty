@@ -43,7 +43,7 @@ export function InboxPanel({ entries, tracks, online, onAnswer, onClear, onClear
                   <span className="mx-inbox-dot" style={{ background: projectColor }} aria-hidden="true" />
                   <span className="mx-inbox-text">
                     <span className="mx-inbox-title"><strong>{projectName}</strong> {displayName(session)}</span>
-                    <span className="mx-inbox-meta">{session.process}{track?.changedAt ? <Ago at={track.changedAt} prefix=" · " /> : ''}</span>
+                    <span className="mx-inbox-meta">{session.process}{session.machineName ? ` · on ${session.machineName}` : ''}{track?.changedAt ? <Ago at={track.changedAt} prefix=" · " /> : ''}</span>
                   </span>
                   <span className={`mx-inbox-word is-${session.status}`}>{needs ? 'Needs you' : session.status === 'error' ? 'Exited' : 'Done'}</span>
                 </div>

@@ -92,6 +92,8 @@ struct Shared {
     allowance: Mutex<BTreeMap<MachineId, ReplyAllowance>>,
     /// Keystrokes a machine without a line could not take, counted until it is back.
     unsent: Mutex<BTreeMap<MachineId, u32>>,
+    /// When each machine that is not connected stopped being, in milliseconds since the epoch.
+    down_since: Mutex<BTreeMap<MachineId, u64>>,
 }
 
 impl HubHandle {
@@ -132,6 +134,18 @@ impl HubHandle {
     /// The machine's name, as it is configured.
     pub fn name_of(&self, machine: MachineId) -> Option<String> {
         lock(&self.shared.names).get(&machine).cloned()
+    }
+
+    /// When the machine's present outage began: the first state that was not connected since it
+    /// last was. `None` while it is connected.
+    pub fn down_since(&self, machine: MachineId, connected: bool, now_ms: u64) -> Option<u64> {
+        let mut down = lock(&self.shared.down_since);
+        if connected {
+            down.remove(&machine);
+            None
+        } else {
+            Some(*down.entry(machine).or_insert(now_ms))
+        }
     }
 
     /// How many keystrokes the machine could not take while it was down, and start counting again.
@@ -424,6 +438,8 @@ pub struct MachineState {
     pub attempt: Option<u32>,
     /// On connecting: how many keystrokes the machine could not take while it was down.
     pub unsent: Option<u32>,
+    /// Since when the machine has not been connected, in milliseconds since the epoch.
+    pub since: Option<u64>,
 }
 
 pub fn describe(machine: MachineId, name: &str, state: &ConnectionState) -> MachineState {
@@ -441,6 +457,7 @@ pub fn describe(machine: MachineId, name: &str, state: &ConnectionState) -> Mach
         why,
         attempt,
         unsent: None,
+        since: None,
     }
 }
 

@@ -9,6 +9,7 @@ import { SidebarResizer } from './SidebarResizer'
 import { folderStyle } from './folderStyle'
 import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
 import { SessionStack } from './SessionStack'
+import { DisconnectedSince } from './times'
 import { useSessionMenu, type SessionMenuActions } from './SessionMenu'
 import { RailPopoverLayer } from './RailPopovers'
 import { hoverHandlers, useRailHover, type RailHover } from './railHover'
@@ -184,12 +185,13 @@ function Expanded(props: GroupProps) {
 function MachineSection(props: { head: MachineHead; groups: SessionGroup[]; renderGroup: (group: SessionGroup) => ReactNode }) {
   const { head, groups, renderGroup } = props
   return (
-    <section className="mx-machine" aria-label={head.label}>
+    <section className={`mx-machine${head.down ? ' is-down' : ''}`} aria-label={head.label}>
       <div className="mx-machine-head">
         <span className="mx-machine-name">{head.label}</span>
         <span className="mx-spacer" />
         {head.chip && <span className={`mx-machine-chip is-${head.chip.tone}`}><span aria-hidden="true">{head.chip.glyph}</span> {head.chip.word}</span>}
       </div>
+      {head.down && <p className="mx-machine-why"><DisconnectedSince at={head.downSince} /></p>}
       {head.why !== null && head.chip?.tone === 'bad' && <p className="mx-machine-why">{head.why}</p>}
       {groups.map(renderGroup)}
     </section>

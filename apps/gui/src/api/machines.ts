@@ -90,6 +90,8 @@ const MachineStateSchema = z.object({
   attempt: z.number().nullable(),
   /** On connecting: how many keystrokes the machine could not take while it was down. */
   unsent: z.number().nullable().optional(),
+  /** Since when the machine has not been connected, in ms since the epoch. */
+  since: z.number().nullable().optional(),
 })
 export type MachineState = z.infer<typeof MachineStateSchema>
 
