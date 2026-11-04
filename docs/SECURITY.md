@@ -501,6 +501,13 @@ warns and leaves the install in place. `MAITTY_NO_INTEGRATE=1` skips the step.
 `cargo audit` (install with `cargo install cargo-audit`) before releases; GitHub
 push protection for secrets. Not yet in CI (there is no CI yet).
 
+## Project-specific: usage store
+
+The usage store holds token counts, cost, turn counts and working seconds, with the agent name,
+the folder's name and the agent's session id. It holds no prompts, output, paths or secrets. The
+file is private to the user (0600 in a 0700 folder on Unix). `Query::UsageReport` is for human
+clients only: an agent pane or a structured runtime cannot read what other sessions cost.
+
 ## Project-specific: structured history cache boundary
 
 The structured-history cache reuses private-directory/file helpers:
