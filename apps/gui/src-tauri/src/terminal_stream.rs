@@ -35,6 +35,8 @@ use tauri::{AppHandle, Emitter, Manager};
 const SESSIONS_EVENT: &str = "sessions-changed";
 /// Carries another machine's whole snapshot as it changes: `{machine, snapshot}`.
 const MACHINE_SESSIONS_EVENT: &str = "machine-sessions-changed";
+/// Carries what another machine said went wrong with a request: `{machine, text}`.
+const MACHINE_ERROR_EVENT: &str = "machine-error";
 
 const NOT_CONNECTED: &str = "The terminal is not connected to the daemon";
 
@@ -255,6 +257,8 @@ pub enum Reaction {
     State(MachineState),
     /// A frame of output for the window's channel.
     Frame(Vec<u8>),
+    /// What another machine said went wrong with a request.
+    Error { machine: MachineId, text: String },
     /// A machine's whole snapshot, or none when this computer's line ended.
     Sessions {
         machine: MachineId,
@@ -314,6 +318,7 @@ fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
     outs.into_iter()
         .filter_map(|out| match out {
             Out::Frame(frame) => Some(Reaction::Frame(frame)),
+            Out::Error { machine, text } => Some(Reaction::Error { machine, text }),
             Out::Sessions { machine, snapshot } => Some(Reaction::Sessions { machine, snapshot }),
             Out::WantReplay { machine, term } => {
                 let _ = handle.send(Outgoing {
@@ -333,6 +338,12 @@ fn apply(app: &AppHandle, handle: &HubHandle, update: Update) {
 }
 
 #[derive(Clone, Serialize)]
+struct MachineError {
+    machine: u16,
+    text: String,
+}
+
+#[derive(Clone, Serialize)]
 struct MachineSessions {
     machine: u16,
     snapshot: Option<Box<Snapshot>>,
@@ -346,6 +357,15 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                     states.insert(told.machine, told.clone());
                 }
                 let _ = app.emit(MACHINE_STATE_EVENT, told);
+            }
+            Reaction::Error { machine, text } => {
+                let _ = app.emit(
+                    MACHINE_ERROR_EVENT,
+                    MachineError {
+                        machine: machine.0,
+                        text,
+                    },
+                );
             }
             Reaction::Frame(frame) => {
                 let channel = app

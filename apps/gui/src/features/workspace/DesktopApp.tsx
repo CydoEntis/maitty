@@ -17,7 +17,7 @@ import {
   sendTerminalInput,
   startShellSession,
 } from '@/api/daemon'
-import { LOCAL_MACHINE, listenMachineSessions, machineNameOf, listenMachineState, loadMachinesOverview, type MachineState } from '@/api/machines'
+import { LOCAL_MACHINE, listenMachineError, listenMachineSessions, machineNameOf, listenMachineState, loadMachinesOverview, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -320,6 +320,7 @@ export function DesktopApp() {
     }, (error: unknown) => { console.warn('Could not read the state of the machines', error) })
     for (const listening of [
       listenMachineState(settle),
+      listenMachineError((text) => { toast.error(text) }),
       listenMachineSessions((id, snapshot) => {
         const name = names.get(id)
         if (snapshot !== null && name !== undefined) list(id, name, snapshot)

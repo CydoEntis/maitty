@@ -58,6 +58,9 @@ pub enum Out {
         machine: MachineId,
         snapshot: Option<Box<Snapshot>>,
     },
+    /// What another machine's daemon said went wrong with a request of ours, already cleaned and
+    /// led by the machine's name.
+    Error { machine: MachineId, text: String },
     /// Ask the machine's daemon for the pane's replay.
     WantReplay { machine: MachineId, term: TermId },
 }
@@ -92,6 +95,10 @@ impl Streams {
                 self.emit(machine, term, data, true, &mut out);
             }
             ServerMsg::Output { term, data } => self.output(machine, term, data, now, &mut out),
+            // Only another machine's: this computer's requests are answered on their own connection.
+            ServerMsg::Error(text) if machine != MachineId::LOCAL => {
+                out.push(Out::Error { machine, text });
+            }
             ServerMsg::State(snapshot) => self.publish(machine, snapshot, &mut out),
             ServerMsg::TermsChanged { changed, removed } => {
                 let merged = self.last.get(&machine).cloned().map(|mut merged| {

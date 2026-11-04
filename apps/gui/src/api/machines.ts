@@ -130,3 +130,14 @@ export function listenMachineSessions(onChange: (machine: number, snapshot: unkn
     onChange(sessions.data.machine, sessions.data.snapshot)
   })
 }
+
+const MachineErrorSchema = z.object({ machine: z.number().int().positive(), text: z.string() })
+
+/** Calls back with what another machine's daemon said went wrong with a request (already cleaned, led by its name). */
+export function listenMachineError(onError: (text: string) => void): Promise<() => void> {
+  return listen<unknown>('machine-error', (event) => {
+    const error = MachineErrorSchema.safeParse(event.payload)
+    if (error.success) onError(error.data.text)
+  })
+}
+
