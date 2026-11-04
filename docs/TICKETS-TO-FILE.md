@@ -216,3 +216,20 @@ Appearance > Animations: Auto (default), Full, Light, Off. The performance page 
 and why ("Software rendering detected, using Sweep"). Reduce motion and the existing hidden/unfocused
 rules still win. Acceptance: unit tests with a fake clock for the step-down; harness scenarios `a`
 and `b` within budget. Blocked by: 7 (status effects).
+
+## 14. Design system rules and a hard-coded colour lint (chore, `client`, `docs`)
+
+Approved by the owner 2026-11-04. Unify the foundation, not the whole UI:
+1. Every colour, radius and shadow comes from a theme token (CSS variable), mapped into Tailwind by
+   the `@theme inline` block in `index.css`; no raw hex or `rgb()` in components.
+2. Every popup (menu, dropdown, dialog, tooltip, popover, listbox) is a shadcn/Radix primitive from
+   `src/components/ui/`; no hand-rolled focus, Esc or arrow-key handling.
+3. New components use Tailwind utilities on those tokens; heavy animation and per-style rules
+   (Flat, Tiled, Glass, `data-gpu`) stay in `workspace.css`.
+4. Old CSS moves to the rules above only when a ticket touches that area; no big-bang rewrite.
+
+Work: put the four rules in `docs/UI.md` (and point `docs/stack/shadcn-tailwind.md` at them), add an
+ESLint or script check that fails on a hard-coded colour in `apps/gui/src` outside the theme files
+(with a small allowlist for the terminal palette), and move the existing offenders or list them as
+the allowlist's baseline. Acceptance: the check runs in `pnpm lint` and passes. Do after wave 1 lands
+(it edits `docs/UI.md`); tickets 7 and 8 get rule 2 in their briefs.
