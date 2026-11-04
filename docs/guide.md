@@ -197,6 +197,14 @@ still has them loads, and they are ignored.
   another machine the image is sent to that machine over ssh (up to 25 MB), kept there in
   `~/.cache/maitty/pastes` (private, cleared after a week), and its path there is pasted. It needs
   ssh to that machine (not a custom transport) and a login that works without a prompt.
+- **Files to another machine:** in a pane on another machine, `Ctrl+Space`, then `d`, asks for a
+  file's path (type it, or drop the file on the terminal: the path is pasted into the box). The
+  file (up to 100 MB; one file, not a folder) goes to that machine over ssh the same way as an image,
+  into the same private folder (`~/.cache/maitty/pastes`), and its path there is typed into the pane.
+  The name there is `paste-<time>-<id>-<your file's name>`, so two files never overwrite each other.
+  A toast shows the percentage; `Ctrl+Space`, `d` again (or the toast's close mark) stops it.
+  A sent file stays on that machine for a week, readable by you only, so do not send a secret you
+  would not leave there. A paste of text never sends a file, even when the text is a path.
 - **Keys:** on Windows, combos plain terminals can't send (Ctrl+Shift+letter, Ctrl+Enter, Ctrl+Tab)
   reach programs exactly, as native key records. Shift+Enter is still a newline for agents.
 - **Resize:** text re-wraps to the new width (history included). Programs' cursor shape (bar,

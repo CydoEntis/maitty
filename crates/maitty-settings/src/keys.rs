@@ -236,6 +236,9 @@ pub enum Action {
     CloseSplit,
     /// Save the clipboard's image to a file and paste its path (agents attach it).
     PasteImage,
+    /// Send a file from this computer to the machine the pane is on, and paste its path there;
+    /// pressed again while a file is being sent, stop it (ADR 0050).
+    SendFile,
     /// Find a file (0) or search the code (1).
     Find(u8),
     AgentStatusSetup,
@@ -332,6 +335,7 @@ impl Action {
             Action::NewSession => "New session beside this one".into(),
             Action::CloseSplit => "Close the split".into(),
             Action::PasteImage => "Paste the clipboard image".into(),
+            Action::SendFile => "Send a file to the pane's machine".into(),
             Action::AgentStatusSetup => "Connect agents".into(),
             Action::Branches => "Branch".into(),
             Action::References => "References".into(),
@@ -412,6 +416,7 @@ impl Action {
             Action::NewSession => "new-beside".into(),
             Action::CloseSplit => "close-split".into(),
             Action::PasteImage => "paste-image".into(),
+            Action::SendFile => "send-file".into(),
             Action::AgentStatusSetup => "agent-status-setup".into(),
             Action::Branches => "branch".into(),
             Action::References => "references".into(),
@@ -514,6 +519,7 @@ impl FromStr for Action {
             "new-session" | "new-beside" => Action::NewSession,
             "close-split" => Action::CloseSplit,
             "paste-image" => Action::PasteImage,
+            "send-file" => Action::SendFile,
             // Keep old saved bindings loadable after the removed workflow sheets; send
             // them to the command palette so stale config never prevents startup.
             "profiles" | "workflows" | "workflow-runs" => Action::Palette,
@@ -616,6 +622,7 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("l", "history"),
     ("w", "machines"),
     ("ctrl+v", "paste-image"),
+    ("d", "send-file"),
     ("q", "detach"),
     ("ctrl+r", "reload-config"),
 ];
