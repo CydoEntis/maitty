@@ -199,11 +199,11 @@ The desktop window is terminal-only today; the chat body (G15-G18) does not exis
 1. ANSWERED 2026-11-04: yes, the chat view is wanted for the desktop (the README's "no chat UI" line is outdated). (G15-G18)
 2. ANSWERED 2026-11-04: Claude Code and Codex sessions get Chat first; other agents stay terminal-only. (G16)
 3. Keep typing y/a/n into the terminal as a fallback once approvals go by id? (G19)
-4. Windows/Linux shortcuts: bare Ctrl (code) or Ctrl+Shift for shell letters (spec)? (G1, G20)
+4. DECIDED 2026-11-04: follow the spec. On Windows and Linux, plain Ctrl+letter always goes to the terminal; the app uses Ctrl+Shift (Cmd on Mac). (G1, G20)
 5. May the worktree API gain an agent choice and a first prompt? (G9)
 6. Jump with nothing in Needs you: toast only (handoff) or next Done (older spec)? (G8)
 7. Brain-dump split: which model and account, where does the JSON get validated? (G11)
-8. May the daemon store usage per session per day? (G12)
+8. DECIDED 2026-11-04: yes, the daemon may store provider-reported usage per session per day; never estimated. (G12)
 9. Remote branch agents in v1, given UI.md says worktree features are local-only? (G4, G9)
 10. Plans link to v17; v18 is newest. Fix the links. (docs)
 
