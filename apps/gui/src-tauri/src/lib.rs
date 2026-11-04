@@ -538,6 +538,7 @@ pub fn run() {
             machines::list_machines,
             terminal_stream::list_machines_overview,
             terminal_stream::retry_machine,
+            terminal_stream::start_session_on_machine,
             terminal_stream::remove_machine,
             add_machine::list_ssh_hosts,
             add_machine::add_machine,

@@ -264,3 +264,38 @@ async fn this_computers_own_refusal_is_the_words_it_always_had() {
     }
     assert_eq!(watch.hub.handle().take_unsent(MachineId::LOCAL), 0);
 }
+
+#[tokio::test]
+async fn a_session_started_on_a_machine_is_a_pane_of_that_machine() {
+    let mut sandbox = Sandbox::new();
+    sandbox.start_daemon();
+    let mut watch = Watch::new(&[machine("box", &sandbox, "proxy")], &sandbox, quick(WAIT));
+    let wire = Wire::reaching(watch.hub.handle());
+    watch
+        .until("connected and a snapshot", |w| {
+            w.is(BOX, "connected") && w.snapshots(BOX) > 0
+        })
+        .await;
+    assert!(watch.any_pane(BOX).is_none());
+    // A folder that is not there opens in the machine's home folder, so `~` works as a default.
+    wire.new_session(1, "~").expect("the machine takes it");
+    watch
+        .until("a pane on the machine", |w| w.any_pane(BOX).is_some())
+        .await;
+    assert_eq!(watch.replies(BOX), 1, "its answer was taken once");
+}
+
+#[tokio::test]
+async fn a_session_is_not_started_on_this_computer_or_a_machine_that_is_down_or_in_a_bad_folder() {
+    let sandbox = Sandbox::new();
+    let watch = Watch::new(&[machine("box", &sandbox, "auth-fail")], &sandbox, quick(WAIT));
+    let wire = Wire::reaching(watch.hub.handle());
+    assert_eq!(
+        wire.new_session(0, "~").unwrap_err(),
+        "This computer starts its own sessions"
+    );
+    assert_eq!(wire.new_session(1, "~").unwrap_err(), "box is not connected");
+    for folder in ["", "   ", "/a\nb", &"x".repeat(5000)] {
+        assert!(wire.new_session(1, folder).unwrap_err().starts_with("Type a folder"), "{folder:?}");
+    }
+}

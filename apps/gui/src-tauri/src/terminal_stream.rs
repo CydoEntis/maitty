@@ -22,7 +22,7 @@ use maitty_desktop_client::PaneCommand;
 use maitty_machines::link::Timing;
 use maitty_machines::machine_ids::MachineIds;
 use maitty_machines::{MachineDef, MachineId, Outgoing};
-use maitty_shared::protocol::{ClientMsg, Snapshot};
+use maitty_shared::protocol::{ClientMsg, Command, Snapshot};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -39,6 +39,9 @@ const MACHINE_SESSIONS_EVENT: &str = "machine-sessions-changed";
 /// Carries the number of a machine that was removed from the list.
 const MACHINE_REMOVED_EVENT: &str = "machine-removed";
 const MACHINE_ERROR_EVENT: &str = "machine-error";
+
+/// The longest folder path sent to another machine.
+const MOST_FOLDER_BYTES: usize = 4096;
 
 const NOT_CONNECTED: &str = "The terminal is not connected to the daemon";
 
@@ -72,6 +75,16 @@ pub fn overview(states: &MachineStates, streams: &Streams) -> Vec<MachineOvervie
             state: state.clone(),
         })
         .collect()
+}
+
+/// Start a terminal session in a folder of another machine.
+#[tauri::command]
+pub fn start_session_on_machine(
+    wire: tauri::State<'_, Wire>,
+    machine: u16,
+    folder: String,
+) -> Result<(), String> {
+    wire.new_session(machine, &folder)
 }
 
 /// Dial a machine now, and let a daemon that was refused be looked at again.
@@ -149,6 +162,27 @@ impl Wire {
         handle
             .send(Outgoing { machine, msg })
             .map_err(|_| refusal(handle, machine))
+    }
+
+    /// Start a terminal session in `folder` on another machine. The folder is a path there: one
+    /// that does not exist opens in that machine's home folder, so `~` is a fair default.
+    /// Refused, naming the machine, when it has no line.
+    pub fn new_session(&self, machine: u16, folder: &str) -> Result<(), String> {
+        if !routing::is_remote(Some(machine)) {
+            return Err("This computer starts its own sessions".to_string());
+        }
+        let folder = folder.trim();
+        if folder.is_empty() || folder.len() > MOST_FOLDER_BYTES || folder.chars().any(char::is_control) {
+            return Err("Type a folder on that machine, such as ~ or /srv/app".to_string());
+        }
+        self.send(
+            MachineId(machine),
+            ClientMsg::Command(Command::NewWorkspace {
+                cwd: Some(std::path::PathBuf::from(folder)),
+                name: None,
+                cmd: None,
+            }),
+        )
     }
 
     /// Ask the daemon of `term`'s machine (this computer when none is named) to do `command`.

@@ -17,7 +17,7 @@ import {
   sendTerminalInput,
   startShellSession,
 } from '@/api/daemon'
-import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineError, listenMachineRemoved, listenMachineSessions, machineNameOf, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, terminalOf, unregisterMachine, type MachineState } from '@/api/machines'
+import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineError, listenMachineRemoved, listenMachineSessions, machineNameOf, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, startSessionOnMachine, terminalOf, unregisterMachine, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -38,7 +38,7 @@ import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
 import { runsProgram } from './components/useArmed'
 import { rememberSessions, withEnded } from './model/ended'
 import { advanceLoginWatch, LOGIN_CHECK_MS, startLoginWatch, type LoginWatch } from './model/loginWatch'
-import { idsOfMachinesNotHeard, machineHeads, remoteTerminals, type RemoteMachine } from './model/machines'
+import { idsOfMachinesNotHeard, machineHeads, remoteTargetOf, remoteTerminals, type RemoteMachine } from './model/machines'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { StatusBar } from './components/StatusBar'
@@ -63,6 +63,7 @@ import { newWorktreeSession } from '@/features/worktrees/api'
 import type { TerminalHandle } from '@/features/terminal/handle'
 import type { LookAt } from '@/features/inspect/FilesTab'
 import { PaneCard } from './components/PaneCard'
+import { RemoteSessionDialog } from './components/RemoteSessionDialog'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar } from './components/Sidebar'
 import { EmptyState, OfflineBanner, Toast, type RestartOffer } from './components/states'
@@ -107,6 +108,9 @@ import './workspace.css'
 /** The daemon pushes every change (`sessions-changed`); this slow poll only catches a stream that went quiet. */
 const SESSION_REFRESH_MS = 15_000
 const COMPACT_WIDTH_PX = 1100
+/** How long a new session on another machine is waited for, and how often its list is looked at. */
+const REMOTE_START_WAIT_MS = 8000
+const REMOTE_START_POLL_MS = 250
 const MIN_TABS_FOR_NUMBERS = 2
 /** A tab's hover card lists its panes only when it has more than one. */
 const MIN_PANES_FOR_LIST = 2
@@ -244,6 +248,8 @@ export function DesktopApp() {
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropId, setDropId] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  // A new session on another machine asks for a folder there first.
+  const [remoteStart, setRemoteStart] = useState<{ machine: number; name: string } | null>(null)
   const [failures, setFailures] = useState(0)
   const [restartPending, setRestartPending] = useState(false)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
@@ -665,8 +671,32 @@ export function DesktopApp() {
 
   const newSession = useCallback(() => {
     setSettingsSection(null)
+    // A new session goes where the focused one is: on another machine the folder is typed there,
+    // because the folder picker and the start folder are this computer's.
+    const remote = remoteTargetOf(focusedSession)
+    if (remote !== null) {
+      setRemoteStart(remote)
+      return
+    }
     runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
-  }, [runStart, preferences.startFolder, home])
+  }, [runStart, preferences.startFolder, home, focusedSession])
+
+  const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string) => {
+    const known = new Set((machinesRef.current.get(target.machine)?.conversations ?? []).map((item) => item.id))
+    await startSessionOnMachine(target.machine, folder)
+    setRemoteStart(null)
+    // The machine tells its new session in its next list; the tab opens when it does.
+    const deadline = Date.now() + REMOTE_START_WAIT_MS
+    while (Date.now() < deadline) {
+      const fresh = machinesRef.current.get(target.machine)?.conversations.find((item) => item.kind === 'terminal' && !known.has(item.id))
+      if (fresh) {
+        setLayout((current) => openInNewTab(current, fresh.id, makeId))
+        return
+      }
+      await new Promise((resolve) => { setTimeout(resolve, REMOTE_START_POLL_MS) })
+    }
+    toast.error(`${target.name} did not report the new session`)
+  }, [])
 
   // The + after the tabs starts a shell in the project you are in; ⌘T and the sidebar's New use the start folder.
   const activeGroupKey = (() => {
@@ -962,10 +992,10 @@ export function DesktopApp() {
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
-  const modalOpen = settingsSection !== null || renameId !== null || overlayOpen
+  const modalOpen = settingsSection !== null || renameId !== null || remoteStart !== null || overlayOpen
   const drawerShown = compact && drawerOpen
-  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
-  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
+  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
+  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const state = shortcutState.current
@@ -1522,6 +1552,9 @@ export function DesktopApp() {
                 onCreate={(branch, base) => createWorktree(worktreeFrom, branch, base)}
                 onCancel={() => { setWorktreeFrom(null) }}
               />
+            )}
+            {remoteStart !== null && (
+              <RemoteSessionDialog machineName={remoteStart.name} onStart={(folder) => startOnMachine(remoteStart, folder)} onCancel={() => { setRemoteStart(null) }} />
             )}
             {renameId !== null && sessionMap.get(renameId) && (
               <RenameDialog session={sessionMap.get(renameId) as SessionView} onSave={(name) => { saveName(renameId, name) }} onCancel={() => { setRenameId(null) }} />

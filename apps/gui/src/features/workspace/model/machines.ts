@@ -1,7 +1,7 @@
 import { markConversationsDisconnected } from '@/data/connection'
 import type { Conversation } from '@/data/preview'
 import type { MachineState } from '@/api/machines'
-import { machineNameOf } from '@/api/machines'
+import { LOCAL_MACHINE, machineNameOf } from '@/api/machines'
 import type { Layout } from './layout'
 
 /** What the window holds of one other machine: how its line is, and the sessions it last listed. */
@@ -99,4 +99,13 @@ export function machineHeads(machines: ReadonlyMap<number, RemoteMachine>): Mach
     .sort(([a], [b]) => a - b)
     .map(([id, machine]): MachineHead => ({ key: `machine-${String(id)}`, name: machine.state.name, label: machine.state.name, chip: machineChip(machine.state), why: machine.state.why, down: isDown(machine.state), downSince: machine.state.since ?? null }))
   return [{ key: 'machine-0', name: null, label: THIS_COMPUTER, chip: null, why: null, down: false, downSince: null }, ...others]
+}
+
+/**
+ * Where a new session goes: the machine of the focused session when it is not this computer, else
+ * nothing (this computer, its start folder and its folder picker).
+ */
+export function remoteTargetOf(focused: { machine: number; machineName: string | null } | undefined): { machine: number; name: string } | null {
+  if (focused === undefined || focused.machine === LOCAL_MACHINE || focused.machineName === null) return null
+  return { machine: focused.machine, name: focused.machineName }
 }

@@ -202,3 +202,8 @@ export async function addMachine(target: string, name?: string): Promise<Added> 
 export async function cancelAddMachine(): Promise<void> {
   if (isTauri()) await invoke('cancel_add_machine')
 }
+
+/** Start a terminal session in a folder of another machine; the host says why it could not. */
+export async function startSessionOnMachine(machine: number, folder: string): Promise<void> {
+  if (isTauri()) await invoke('start_session_on_machine', { machine, folder })
+}

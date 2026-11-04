@@ -3,7 +3,7 @@ import { conversationsFromSnapshot } from '@/api/daemon'
 import { forgetMachines, parseSessionId, registerMachine, type MachineKind, type MachineState } from '@/api/machines'
 import type { Conversation } from '@/data/preview'
 import type { Layout } from './layout'
-import { idsOfMachinesNotHeard, machineChip, machineHeads, remoteTerminals, type RemoteMachine } from './machines'
+import { idsOfMachinesNotHeard, machineChip, machineHeads, remoteTargetOf, remoteTerminals, type RemoteMachine } from './machines'
 import { groupSessions, toSessionView } from './session'
 
 afterEach(() => { forgetMachines() })
@@ -195,5 +195,13 @@ describe('machine headers', () => {
     const down = machineOf(1, 'box', [], 'needs-update')
     const heads = machineHeads(new Map([[1, { ...down, state: { ...down.state, why: 'run maitty machine update box --install' } }]]))
     expect(heads[1]?.why).toBe('run maitty machine update box --install')
+  })
+})
+
+describe('where a new session goes', () => {
+  it('is the machine of the focused session, and this computer for anything else', () => {
+    expect(remoteTargetOf({ machine: 2, machineName: 'build' })).toEqual({ machine: 2, name: 'build' })
+    expect(remoteTargetOf({ machine: 0, machineName: null })).toBeNull()
+    expect(remoteTargetOf(undefined)).toBeNull()
   })
 })
