@@ -310,6 +310,18 @@ from the line after the marker and only when it is absolute and free of control 
 what ssh says when a send fails is cut to 200 characters and cleaned the same way. The image is
 capped at 25 MB and the send at two minutes. A machine reached by a custom transport is not sent an image.
 
+Sending any file to another machine (`client/send_file.rs`, ADR 0050) is the same line and the same script;
+only the name, the cap and the trigger differ. A file is read from this computer only when the person
+names it in the send prompt (a terminal cannot tell a drop from a paste, so a paste of text never
+uploads a file, even when the text is a path); it must be a regular file, at most 100 MB, checked before ssh
+starts and again by the script's byte count. The far-side name is `paste-<ms>-<8 hex>-<original>` with the
+original reduced to letters, digits, `.`, `_` and `-` (anything else becomes `_`), leading dots dropped and
+cut to 48 characters, so it cannot be a path, an option or shell syntax and two files never overwrite each
+other; the line builder checks it again (at most 96 characters). Progress is the count of bytes written to
+ssh; stopping ends the ssh process, and the script keeps nothing that arrives short. What comes back is
+refused unless it is the checked path shape, exactly as for images. A sent file stays on the far machine
+for a week, mode 600 in a folder only its owner can use; the guide tells people so. Directories are not sent.
+
 `maitty machine update <name>` (`cli/machine_update.rs`) runs one fixed script on a machine and writes a
 binary there, so it follows the same rules as every other ssh line, plus these. The script is a constant
 in the app (`maitty_machines::INSTALL_SCRIPT`, re-exported by `remote_install`, passed to the remote shell as `sh -c '<script>' sh <args>`);
