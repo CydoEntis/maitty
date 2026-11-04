@@ -1380,6 +1380,7 @@ export function DesktopApp() {
                 {findOpen && (
                   <FindBar
                     online={online}
+                    otherMachines={heads.length > 0}
                     findInPane={(query, direction) => (focusedId ? terminalHandles.current.get(focusedId)?.find(query, direction) ?? false : false)}
                     clearPane={() => { if (focusedId) terminalHandles.current.get(focusedId)?.clearFind() }}
                     nameOf={(term, machine) => { const found = sessions.find((item) => item.machine === machine && item.pane === term); return found ? displayName(found) : null }}
