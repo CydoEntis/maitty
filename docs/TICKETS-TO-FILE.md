@@ -268,3 +268,16 @@ Batch A (parallel): G1+G20+G2 shortcuts, G22 daemon history, G12 usage store, ti
 Batch B: G16 chat switch (after G22), G8 Overview and G9 New agent on a branch (after G1), G13 usage
 page (after G12 and G1). Postponed by the owner (2026-11-04): G11 brain dump; undecided whether it will be built at all.
 Until then Ctrl+Shift+N stays 'new worktree'.
+
+## 16. Dark themes: ANSI colours below 4.5:1 (bug, `theme`)
+
+Found by the ticket 15 audit, left alone because ticket 15 was light themes only: Nord magenta 4.41,
+Solarized Dark blue 4.08 and magenta 3.30, Rosé Pine blue 3.38, Zenburn red 4.02, green 3.59 and
+magenta 4.30. Lighten within the hue family, extend the audit to every dark theme, and decide whether
+xterm's `minimumContrastRatio` should also apply on dark themes.
+
+## 17. Design handoff v18 is out of date for generated light themes (docs)
+
+The code now uses warn #8F5400 and danger #B8362C for generated light themes (the handoff says
+#9A5B00 and #C0392F) and applies xterm `minimumContrastRatio` 4.5 on light themes. Update
+`GLASS_AND_TILED.md` section 3 when the design is next revised.
