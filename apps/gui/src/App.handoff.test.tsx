@@ -482,14 +482,14 @@ describe('desktop terminal multiplexer', () => {
     }
   })
 
-  it('does not repeat the program name or "working" beside an icon and spinner that already say it', async () => {
+  it('names the program and the branch on the row, and leaves "working" to the spinner', async () => {
     daemon.loadConversations.mockResolvedValue([inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { agent: 'claude', status: 'working' })])
     renderDesktopApp()
     const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
 
     const row = await within(sidebar).findByRole('button', { name: /, claude, working/ })
 
-    expect(row).not.toHaveTextContent('claude')
+    expect(row).toHaveTextContent('claude · main')
     expect(row).not.toHaveTextContent('working')
   })
 
@@ -718,13 +718,13 @@ describe('desktop terminal multiplexer', () => {
     renderDesktopApp()
 
     const sidebar = await screen.findByRole('navigation', { name: 'Sessions by project' })
-    await within(sidebar).findByRole('button', { name: '(root), shell, idle' })
+    await within(sidebar).findByRole('button', { name: 'main, shell, idle' })
     const headers = within(sidebar).getAllByRole('button', { expanded: true }).map((button) => button.textContent)
     expect(headers[0]).toMatch(/^docs1 needs you1$/)
     expect(headers[1]).toMatch(/^Downloads1$/)
     expect(headers[2]).toMatch(/^maitty2$/)
     const rows = within(sidebar).getAllByRole('button', { name: /, (shell|codex), / }).map((row) => row.getAttribute('aria-label'))
-    expect(rows).toEqual(['(root), shell, needs you', '~/Downloads, shell, idle', '(root), shell, idle', 'crates/maitty-core, codex, working, detached'])
+    expect(rows).toEqual(['main, shell, needs you', '~/Downloads, shell, idle', 'main, shell, idle', 'crates/maitty-core, codex, working, detached'])
     expect(within(sidebar).getByText('needs you')).toHaveClass('is-needs')
     expect(sidebar).not.toHaveTextContent('maittyd ·')
   })

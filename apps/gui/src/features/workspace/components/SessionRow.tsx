@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { displayName, iconSaysProcess, MAX_SESSION_NAME_LENGTH, statusPhrase, statusText, STATUS_WORD, type SessionView } from '../model/session'
+import { displayName, MAX_SESSION_NAME_LENGTH, statusText, STATUS_WORD, type SessionView } from '../model/session'
 import { MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
 import { useRecent } from '@/lib/clock'
 import { Ago } from './times'
@@ -42,8 +42,8 @@ export function SessionRow(props: SessionRowProps) {
   const [editing, setEditing] = useState(false)
   const menu = useSessionMenu(session, { online, portalContainer: props.portalContainer, onShow: props.onShow, onRename: () => { setEditing(true) }, onPin: props.onPin, onEnd: props.onEnd })
   const rowClass = ['mx-row', selected && 'is-selected', loud && 'is-loud', props.swapped && 'is-swapped', moved ? 'is-moved' : effect].filter(Boolean).join(' ')
-  // The icon already names the program, a working row has its spinner and an idle one is the default: say only what they do not.
-  const line2 = iconSaysProcess(session.process) ? (status === 'working' || status === 'idle' ? '' : statusText(session)) : <><span className="mx-proc">{session.process}</span>{status === 'idle' ? '' : statusPhrase(session)}</>
+  // The first line names the program, a working row has its spinner and an idle one is the default: say only what they do not.
+  const line2 = status === 'working' || status === 'idle' ? '' : statusText(session)
   const line2Class = status === 'needs' ? 'is-needs' : status === 'error' ? 'is-error' : status === 'working' ? 'is-working' : ''
   const body = (
     <>
@@ -55,7 +55,7 @@ export function SessionRow(props: SessionRowProps) {
             <span className="mx-row-line1">
               {editing
                 ? <InlineName value={session.name ?? ''} placeholder={session.title} label={`Name for ${displayName(session)}`} maxLength={MAX_SESSION_NAME_LENGTH} onCommit={(name) => { setEditing(false); props.onSetName(name) }} onCancel={() => { setEditing(false) }} />
-                : <span className="mx-row-title">{displayName(session)}</span>}
+                : <span className="mx-row-title"><span className="mx-row-proc">{session.process}</span> · {displayName(session)}</span>}
               {session.pinned && <span className="mx-row-pin" role="img" aria-label="Pinned" title="Pinned to the top"><Icon name="pin" size={11} /></span>}
               {unread && <span className="mx-unread" aria-label="Unread" />}
               {status === 'working' && <Spinner />}
