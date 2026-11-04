@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { SettingsPreferences } from '../preferences'
 import { DesktopSettings, type DesktopSettingsSection } from './DesktopSettings'
 
-const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, style: 'glass', projectColors: {} }
+const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, style: 'glass', projectColors: {} }
 
 function renderSettings(section: DesktopSettingsSection, overrides: Partial<Parameters<typeof DesktopSettings>[0]> = {}) {
   const onChange = vi.fn()
@@ -259,5 +259,14 @@ describe('performance section', () => {
     expect(screen.getByRole('button', { name: 'Copy report' })).toBeInTheDocument()
     await user.click(screen.getByRole('switch', { name: 'Show the performance overlay' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ perfOverlay: true }))
+  })
+})
+
+describe('appearance section', () => {
+  it('turns the see-through terminal on', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderSettings('appearance')
+    await user.click(screen.getByRole('switch', { name: 'See-through terminal' }))
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ terminalSeeThrough: true }))
   })
 })

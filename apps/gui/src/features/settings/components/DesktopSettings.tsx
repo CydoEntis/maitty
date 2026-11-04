@@ -441,6 +441,9 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         <Row label="Icons" detail="Agent and folder icons in their own colours, or neutral gray tiles.">
           <Segmented label="Icons" value={preferences.iconColor} options={ICON_COLOR_OPTIONS} onChange={(value) => { update('iconColor', value) }} />
         </Row>
+        <Row label="See-through terminal" detail="Lets the card show behind a pane's text when WebGL draws it. Programs that paint their own backgrounds, like Claude Code under its prompt, then show as boxes.">
+          <Switch label="See-through terminal" checked={preferences.terminalSeeThrough} onChange={(value) => { update('terminalSeeThrough', value) }} />
+        </Row>
       </Card>
       <Card title="Theme" color="var(--ansi-mag)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>} meta={<span className="mx-scard-meta">{THEMES.length} installed</span>}
         foot="Amber and red keep their meaning in every theme."

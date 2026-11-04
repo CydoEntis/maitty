@@ -29,7 +29,8 @@ fallback draws on the theme's opaque terminal colour. Writes land at most every 
 renderer, since each one redraws the pane (`TerminalView.tsx`, [PERFORMANCE](../PERFORMANCE.md)). The daemon
 returns raw replay bytes when the terminal opens, then formatted ANSI screen
 snapshots. The emulator interprets control sequences and encodes keyboard, paste
-and terminal responses for the daemon. The WebGL canvas is see-through, so the
-view answers a program's OSC 10 and 11 colour queries (`?`) with the theme's opaque colours
-itself (`lib/osc-color.ts`); xterm would report the transparent black and a program would paint
-with it. Setting a colour still goes to xterm.
+and terminal responses for the daemon. When the pane is see-through (Settings › Appearance,
+WebGL only) the view answers a program's OSC 10 and 11 colour queries (`?`) with the theme's
+opaque colours itself (`lib/osc-color.ts`); xterm would report the transparent black and a
+program would paint with it. The palette's ANSI black is the terminal ground, as in a real
+terminal, so a program's black background vanishes on an opaque pane. Setting a colour still goes to xterm.

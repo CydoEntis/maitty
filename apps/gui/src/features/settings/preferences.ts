@@ -84,6 +84,8 @@ export type SettingsPreferences = {
   statusBar: boolean
   /** A small readout of frames and process load over the window, for finding what lags. */
   perfOverlay: boolean
+  /** The card shows behind a pane's text (Glass with WebGL); programs' own backgrounds show as boxes. */
+  terminalSeeThrough: boolean
   /** Fetch a new release in the background. Installing still waits for a restart. */
   autoDownloadUpdates: boolean
   /** Restart into a downloaded update when no session is working or waiting on you. */
@@ -150,6 +152,7 @@ function defaults(): SettingsPreferences {
     iconColor: 'color',
     statusBar: true,
     perfOverlay: false,
+    terminalSeeThrough: false,
     autoDownloadUpdates: true,
     restartWhenIdle: false,
     projectColors: {},
@@ -215,6 +218,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       style: styleOf(preferences.style) ?? fallback.style,
       statusBar: bool(preferences.statusBar, fallback.statusBar),
       perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),
+      terminalSeeThrough: bool(preferences.terminalSeeThrough, fallback.terminalSeeThrough),
       autoDownloadUpdates: bool(preferences.autoDownloadUpdates, fallback.autoDownloadUpdates),
       restartWhenIdle: bool(preferences.restartWhenIdle, fallback.restartWhenIdle),
       iconColor: preferences.iconColor === 'color' || preferences.iconColor === 'grayscale' ? preferences.iconColor : fallback.iconColor,
