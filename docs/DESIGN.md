@@ -218,10 +218,17 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   **Flat** makes the window `--bg` with no glow, cards flat `--main` with
   radius 8 (Settings 10), no blur or resting shadow, flat top-bar buttons and status pills (no gradient, lift or
   entrance), no outline on the selected row or open tab, and the session tray flush under its main row with no
-  box. **Tiled** is Flat's finish pulled edge to edge: square corners, 4px gaps between panes and at the
-  window's edge, the sidebar flush with a hairline, and a 40px tab bar that is a flush strip (tabs, **+**,
-  Repository and Inbox divided by hairlines, one line under the bar). Flat and Tiled share `data-finish="flat"`;
-  The styles differ only in CSS variables set on the app root (`--rk` radius multiplier, `--r14`/`--r16`, `--pg` pane gap, `--ptop`, `--tbh`/`--tbp`/`--tbg`/`--tbb` for the tab bar, `--tabh`/`--tabbr` for tabs, and a few more beside them in `workspace.css`); the layout rules read them, so a style is a block of values, not a second set of rules. The focused pane's ring and the needs-you amber
+  box. **Tiled** is Flat's finish as a hairline grid: no gap between panes or at the window's edge, every region
+  divided by a 1px `--pane-line`, radius 0 and no shadows. The sidebar is flush with a hairline; the title bar is
+  `--main` with a hairline under it; the 40px tab bar is a flush strip (tabs, **+**, Repository and Inbox divided
+  by hairlines, one line under the bar); each pane draws its own right and bottom line and a line under its
+  header; and a static 9px `+` tick (`--tick`, `--line2`) marks each of the four corners of the pane area.
+  Popovers, menus and dialogs are hairline-only (`0 0 0 1px var(--line2)`), square and with no blur. Chrome type
+  (tab titles, pane process names, project names, the status bar) is Geist Mono, uppercase, letter-spacing
+  .1em, 11 to 11.5px, through `--ch-ff`, `--ch-tt`, `--ch-ls`, `--ch-fs-sm` and `--ch-fs-md`, which only Tiled
+  sets (the rules fall back to the old values elsewhere); terminal text and session names are unchanged.
+  Flat and Tiled share `data-finish="flat"`;
+  The styles differ only in CSS variables set on the app root (`--rk` radius multiplier, `--r14`/`--r16`, `--pg` pane gap (0 in Tiled), `--ptop`, `--tbh`/`--tbp`/`--tbg`/`--tbb` for the tab bar, `--tabh`/`--tabbr` for tabs, and a few more beside them in `workspace.css`); the layout rules read them, so a style is a block of values, not a second set of rules. The focused pane's ring and the needs-you amber
   stay in all three. Glass starts with the three status sweeps on and Flat and Tiled with them off; a choice made
   in Settings wins. Settings saved as `minimal` read as Flat and `expressive` as Glass. **Icons** (Settings › Appearance › Icons, `iconColor`, set on the root as
   `data-icons`) is separate from the style: `color` keeps app icons in their own colours in every

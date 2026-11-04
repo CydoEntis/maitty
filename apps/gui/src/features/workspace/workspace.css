@@ -124,7 +124,7 @@
 .mx-folder-tile svg path { fill: color-mix(in srgb, var(--fg2) 22%, transparent); }
 /* The folder that holds the focused session carries a ring, since every tile is the same neutral. */
 .mx-folder-tile.is-focused { box-shadow: 0 0 0 2px var(--accent-soft); }
-.mx-group-name { font-size: var(--sidebar-fs, 13.5px); font-weight: 600; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-group-name { font-size: var(--ch-fs-md, var(--sidebar-fs, 13.5px)); font-weight: 600; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-group.has-focused .mx-group-name { color: var(--fg); }
 /* A fixed width and layout containment keep a frame change inside the glyph: the row is not laid out
    again 6 times a second. The clock writes the frame straight into the element (lib/spinner-clock.ts). */
@@ -290,7 +290,7 @@
   border-right: var(--tabbr);
   cursor: pointer;
   color: var(--muted);
-  font-size: var(--tab-fs, 13.5px);
+  font-size: var(--ch-fs-md, var(--tab-fs, 13.5px));
   font-weight: 400;
   background-color: transparent;
   background-repeat: no-repeat;
@@ -350,6 +350,9 @@
 .mx-empty-note-small { font-size: 12px; color: var(--dim); }
 
 /* Panes */
+/* Chrome type: the hooks are set by Tiled (uppercase Geist Mono) and unset elsewhere, where these fall back
+   to what the elements already were. Terminal text and session names never read them. */
+.mx-tab-label, .mx-pane-proc, .mx-group-name, .mx-statusbar { font-family: var(--ch-ff, inherit); text-transform: var(--ch-tt, inherit); letter-spacing: var(--ch-ls, inherit); }
 .mx-panes { flex: 1; min-height: 0; padding: calc(var(--ptop) * var(--pad, 1)) calc(var(--pg) * var(--pad, 1)) calc(var(--pg) * var(--pad, 1)); display: flex; flex-direction: row; gap: calc(var(--pg) * var(--pad, 1)); }
 .mx-app.is-narrow .mx-panes { flex-direction: column; }
 .mx-pane-column { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: calc(var(--pg) * var(--pad, 1)); }
@@ -379,7 +382,7 @@
 .mx-pane-head { flex: none; height: calc(44px * var(--pad, 1)); display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px; cursor: default; }
 .mx-pane-head.is-draggable { cursor: grab; }
 .mx-pane-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; }
-.mx-pane-proc { font-size: 14px; font-weight: 600; color: var(--fg); }
+.mx-pane-proc { font-size: var(--ch-fs-md, 14px); font-weight: 600; color: var(--fg); }
 .mx-pane-cwd { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .mx-pill { height: 22px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; white-space: nowrap; flex: none; }
 .mx-status-pill { font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -694,9 +697,10 @@
 .mx-keycap { min-width: 24px; height: 24px; box-sizing: border-box; padding: 0 7px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: linear-gradient(180deg, color-mix(in oklab, var(--raise) 94%, white), var(--raise)); border: 1px solid var(--line2); border-bottom-width: 2.5px; box-shadow: 0 1px 0 rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .07); font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--fg); line-height: 1; }
 .mx-keycap.is-symbol { font-family: inherit; font-size: 13px; font-weight: 400; }
 
-/* Resizing columns: the 10px gap between them is the handle */
+/* Resizing columns: the 10px gap between them is the handle. The negative margin cancels the two flex gaps
+   around it, so the handle takes the gap's width whatever --pg is (0 under Tiled). */
 .mx-pane-column { flex-basis: 0; }
-.mx-col-handle { flex: none; width: 10px; margin: 0 calc(-6px * var(--pad, 1) - 5px); position: relative; z-index: 3; cursor: col-resize; touch-action: none; }
+.mx-col-handle { flex: none; width: 10px; margin: 0 calc(-5px - var(--pg) * var(--pad, 1) / 2); position: relative; z-index: 3; cursor: col-resize; touch-action: none; }
 .mx-col-handle:hover, .mx-col-handle.is-dragging { background: linear-gradient(90deg, transparent 4px, var(--accent) 4px 6px, transparent 6px); }
 .mx-app.is-narrow .mx-col-handle { display: none; }
 
@@ -902,7 +906,7 @@
 .mx-update-notes { margin: 0; padding: 0 0 0 18px; font-size: 12px; color: var(--muted); }
 
 /* Status bar. */
-.mx-statusbar { flex: none; height: 28px; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-top: 1px solid var(--pane-line); font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.mx-statusbar { flex: none; height: 28px; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-top: 1px solid var(--pane-line); font-size: var(--ch-fs-sm, 11.5px); color: var(--muted); white-space: nowrap; overflow: hidden; }
 .mx-sb-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mx-sb-item.mono { font-family: var(--mono); }
 .mx-sb-item.is-offline { color: var(--warn); }
@@ -994,7 +998,7 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
    --rk multiplies the radii that Tiled squares off. --strip-* are the tab bar's buttons: Tiled drops their fill and ring. */
 .mx-app {
   --rk: 1; --r14: 14px; --r16: 16px; --pg: 12px; --ptop: 0px; --tbh: 56px; --tbp: 0 10px; --tbg: 6px; --tbb: 0;
-  --tabh: 36px; --tabbr: 0;
+  --tabh: 36px; --tabbr: 0; --tick: transparent;
   /* Glass surfaces: opaque cards with a hairline and, on dark themes, a 1px top highlight; blur and a soft
      shadow only on short-lived popovers. */
   --card: var(--main); --sh: inset 0 1px 0 rgba(255, 255, 255, .045); --blur-pop: blur(14px) saturate(1.2); --sh-pop: 0 16px 40px rgba(0, 0, 0, .45);
@@ -1004,10 +1008,40 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-app[data-theme-kind="light"] { --sh: none; --sh-pop: 0 12px 32px rgba(17, 24, 32, .14), 0 0 0 1px rgba(17, 22, 27, .08); --glow-accent: 9%; --glow-mag: 6%; }
 :root[data-style="flat"] .mx-app { --r14: 8px; --r16: 10px; }
 :root[data-style="tiled"] .mx-app {
-  --rk: 0; --r14: 0px; --r16: 0px; --pg: 4px; --ptop: 4px; --tbh: 40px; --tbp: 0; --tbg: 0px; --tbb: 1px solid var(--pane-line);
-  --tabh: 40px; --tabbr: 1px solid var(--pane-line); --sh: 0 6px 18px rgba(0, 0, 0, .35);
-  --sbm: 0; --sbw: 0 1px 0 0; --tba: stretch; --tl: 0px; --edge: 4px; --tsh: 40px; --tsw: 40px; --ibh: 40px;
+  --rk: 0; --r14: 0px; --r16: 0px; --pg: 0px; --ptop: 0px; --tbh: 40px; --tbp: 0; --tbg: 0px; --tbb: 1px solid var(--pane-line);
+  --tabh: 40px; --tabbr: 1px solid var(--pane-line); --sh: none; --sh-pop: 0 0 0 1px var(--line2); --blur-pop: none;
+  --sbm: 0; --sbw: 0 1px 0 0; --tba: stretch; --tl: 0px; --edge: 0px; --tsh: 40px; --tsw: 40px; --ibh: 40px;
   --strip-bg: transparent; --strip-ring: none; --strip-hover: rgba(255, 255, 255, .06);
+  --tick: var(--line2); --ch-ff: var(--mono); --ch-tt: uppercase; --ch-ls: .1em; --ch-fs-sm: 11px; --ch-fs-md: 11.5px;
+}
+
+/* Tiled: a hairline grid. The variables above zero the gaps and radii; these rules draw the lines between
+   regions and take away what the flat finish still shadows. Each pane owns its right and bottom hairline, and
+   the tab bar, sidebar and title bar own the top and left, so no line is drawn twice. */
+:root[data-style="tiled"] .title-bar { background: var(--main); border-bottom: 1px solid var(--pane-line); }
+:root[data-style="tiled"] .mx-pane { border-width: 0 1px 1px 0; }
+:root[data-style="tiled"] .mx-pane-head { border-bottom: 1px solid var(--pane-line); }
+:root[data-style="tiled"] .mx-pane.is-focused,
+:root[data-style="tiled"] .mx-pane.is-focused:hover { box-shadow: inset 0 0 0 1px var(--accent-line); }
+:root[data-style="tiled"] .mx-inspect { border-width: 0 0 0 1px; box-shadow: none; }
+/* Popovers carry a hairline and no blur, and sit square. */
+:root[data-style="tiled"] :is(.mx-menu, .mx-tip, .mx-rail-popover, .mx-status-pop, .mx-stack-menu, .mx-alltabs-menu, .mx-palette, .mx-sessionmenu, .mx-picker-menu, .mx-notice, .mx-toast, .mx-upd-card, .mx-rename, .mx-settings, .mx-inbox) {
+  border-radius: 0; box-shadow: var(--sh-pop); backdrop-filter: none;
+}
+:root[data-style="tiled"] :is(.mx-menu-item, .mx-alltabs-row, .mx-stack-menu-row, .mx-palette-row, .mx-keycap, .mx-tab-close, .mx-pane-control, .mx-group-head, .mx-new-button, .mx-sb-modes, .mx-sb-mode) { border-radius: 0; }
+/* The four corners of the pane area carry a static 9px "+", drawn as two 1px bars each in one pseudo-element. */
+:root[data-style="tiled"] .mx-panes { position: relative; }
+:root[data-style="tiled"] .mx-panes::after {
+  content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  background:
+    linear-gradient(var(--tick), var(--tick)) left 0 top 4px / 9px 1px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) left 4px top 0 / 1px 9px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) right 0 top 4px / 9px 1px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) right 4px top 0 / 1px 9px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) left 0 bottom 4px / 9px 1px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) left 4px bottom 0 / 1px 9px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) right 0 bottom 4px / 9px 1px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) right 4px bottom 0 / 1px 9px no-repeat;
 }
 
 /* Settings › Appearance › Window style cards. */
