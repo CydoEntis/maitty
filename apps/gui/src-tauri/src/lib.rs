@@ -1,4 +1,5 @@
 pub mod hub;
+pub mod streams;
 mod machines;
 mod project_files;
 
@@ -476,13 +477,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(machines::Machines(maitty_machines::local_machines::local_machines()))
-        .manage(terminal_stream::TerminalHistory::default())
-        .manage(terminal_stream::TerminalKeys::default())
+        .manage(terminal_stream::StreamState::default())
         .manage(terminal_stream::TerminalOutput::default())
-        .manage(terminal_stream::LastSnapshot::default())
+        .manage(terminal_stream::Wire::default())
         .setup(|app| {
-            terminal_stream::start(app.handle().clone());
-            hub::start(
+            terminal_stream::start(
                 app.handle().clone(),
                 app.state::<machines::Machines>().0.machines.clone(),
             );

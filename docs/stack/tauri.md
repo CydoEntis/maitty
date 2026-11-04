@@ -91,7 +91,8 @@ without stopping the app. The host may link `maitty-machines`, `maitty-desktop-c
 Connections (ADR 0048): `hub.rs` holds one supervised connection per configured machine through
 `maitty-machines` (`Links`, `Connections`), dials with the desktop surface and no pane claim, and
 tells the window each machine's state as `machine-state` (`{machine, name, state, why, attempt}`;
-this computer's own line is machine 0, named `local`). Every message from a machine is vetted by
+this computer's own line is machine 0, named `local`, and is held by the same hub). All output
+reaches the window on one raw channel with the machine in the frame header (`streams.rs`). Every message from a machine is vetted by
 `remote_policy` and a different daemon answering at a known name is turned away (`machine_ids`,
 shared with the terminal app); the web view never connects. Its tests run against the fake `ssh`
 shim (`crates/maitty-test-support`).

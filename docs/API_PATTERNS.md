@@ -137,10 +137,16 @@ whose login also prints text can't be told from noise, and gets the error above,
 The optional Tauri GUI invokes only fixed desktop commands from
 `crates/maitty-desktop-client/`; validate webview input in both the TypeScript boundary and
 the Rust host. Never expose a generic process or shell command. Between the Tauri host and the
-webview (`apps/gui/src-tauri/src/terminal_stream.rs`, `apps/gui/src/api/`): pane output arrives as
-raw frames over the channel the webview opens once with `watch_terminal_output` (the pane as 4
-big-endian bytes, the sequence number as 8, one replay byte, then the output), one frame per pane
-per flush (the host gathers reads for up to 12 ms or 64 KiB; a replay flushes what came before it);
+webview (`apps/gui/src-tauri/src/terminal_stream.rs`, `streams.rs`, `apps/gui/src/api/`): pane output
+arrives, from every machine, as raw frames over the one channel the webview opens once with
+`watch_terminal_output` (the machine as 2 big-endian bytes, 0 for this computer, the pane as 4, the
+sequence number as 8, one replay byte, then the output; this header is the host-to-webview format
+only and the daemon protocol is unchanged), one frame per pane per flush (the host gathers reads for
+up to 12 ms or, for this computer, 64 KiB; a replay flushes what came before it; another machine gets
+at most 256 KiB into a flush, and if 4 MiB of its output waits, that pane's waiting output is dropped
+and its daemon is asked for a fresh replay, so one machine cannot slow this computer's panes);
+history, sequence numbers and the last snapshot are kept per machine, and `terminal_history` and
+`terminal_input` take an optional `machine` (this computer when left out);
 the view uses the sequence number to catch up from `terminal_history`; `terminal_history` and the
 replay commands answer with raw bytes
 (`tauri::ipc::Response`), the history prefixed with its sequence number as 8 big-endian bytes and
@@ -148,7 +154,9 @@ empty once the host has asked the daemon for the pane's replay over the stream (
 pane's next frame) and an error when there is no stream, so the view fetches a replay itself; the
 daemon's `Snapshot` goes out as a `sessions-changed` event
 whenever it changes, with `null` when the stream dropped, and the webview sets its session query
-from it instead of polling (a 15 s poll remains as a safety net). A desktop
+from it instead of polling (a 15 s poll remains as a safety net); another machine's goes out as
+`machine-sessions-changed` (`{machine, snapshot}`), after the host has cleaned it, and its connection
+state as `machine-state`. A desktop
 protocol-mismatch restart must recheck the exact local protocol before stopping
 an older daemon and must refuse to downgrade a newer one. It stops an older daemon that
 owns sessions only after the user confirms, and only when those sessions are saved on disk

@@ -7,6 +7,7 @@
 //! (`machine_ids`). Nothing here knows about Tauri, so the whole of it is tested without a
 //! window, against the fake `ssh` shim.
 
+use maitty_ipc_transport::{Reader, Writer};
 use maitty_machines::connections::{Burst, Connections, NotConnected, SERVER_BURST};
 use maitty_machines::link::{
     ConnectionState, LinkControl, LinkEvent, Links, Timing, configured_machines,
@@ -16,8 +17,24 @@ use maitty_machines::remote_policy::{MachineOpts, vet};
 use maitty_machines::{Dial, MachineDef, MachineId, Outgoing};
 use maitty_shared::protocol::{ServerMsg, Surface};
 use serde::Serialize;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::sync::mpsc;
+
+/// How this computer's own line is made: a connection to its daemon, starting the daemon when
+/// none answers.
+pub type LocalDial = Arc<
+    dyn Fn() -> Pin<Box<dyn Future<Output = anyhow::Result<(Reader, Writer)>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// How long to wait before this computer's line is made again.
+const LOCAL_REDIAL: Duration = Duration::from_secs(1);
 
 /// What a connection says about the host in its Hello: it attaches to the panes this app owns
 /// (ADR 0045) and asks for a pane's replay when a view opens on it. A desktop has no pane of
@@ -47,8 +64,80 @@ pub enum Update {
         machine: MachineId,
         msgs: Vec<ServerMsg>,
     },
+    /// A machine's line came up, before anything it says.
+    LineUp { machine: MachineId },
     /// A machine's line ended; its messages came first.
     LineEnded { machine: MachineId },
+}
+
+/// Where the host sends what it has for a machine. Cheap to clone; it reaches the hub's lines
+/// without waiting for the hub's loop.
+#[derive(Clone)]
+pub struct HubHandle {
+    outbox: mpsc::UnboundedSender<Outgoing>,
+    up: Arc<Mutex<BTreeSet<MachineId>>>,
+}
+
+impl HubHandle {
+    /// Hand a message to its machine's line. Never waits. Refused when the machine has no line.
+    pub fn send(&self, outgoing: Outgoing) -> Result<(), NotConnected> {
+        let machine = outgoing.machine;
+        if !self.is_up(machine) {
+            return Err(NotConnected(machine));
+        }
+        self.outbox
+            .send(outgoing)
+            .map_err(|_| NotConnected(machine))
+    }
+
+    pub fn is_up(&self, machine: MachineId) -> bool {
+        lock(&self.up).contains(&machine)
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Keep this computer's line up: dial, hand the line over, and dial again when it ends.
+async fn supervise_local(
+    dial: LocalDial,
+    events: mpsc::UnboundedSender<LinkEvent>,
+    mut ended: mpsc::UnboundedReceiver<()>,
+) {
+    let name = maitty_machines::LOCAL_MACHINE.to_owned();
+    let state = |state| LinkEvent::State {
+        machine: MachineId::LOCAL,
+        name: name.clone(),
+        state,
+    };
+    if events.send(state(ConnectionState::Connecting)).is_err() {
+        return;
+    }
+    loop {
+        if let Ok(halves) = dial().await {
+            if events
+                .send(LinkEvent::Line(MachineId::LOCAL, halves))
+                .is_err()
+                || events.send(state(ConnectionState::Connected)).is_err()
+            {
+                return;
+            }
+            if ended.recv().await.is_none() {
+                return;
+            }
+            let lost = ConnectionState::Reconnecting {
+                attempt: 1,
+                since: std::time::Instant::now(),
+            };
+            if events.send(state(lost)).is_err() {
+                return;
+            }
+        }
+        tokio::time::sleep(LOCAL_REDIAL).await;
+    }
 }
 
 pub struct Hub {
@@ -62,22 +151,47 @@ pub struct Hub {
     /// Machines a different daemon answered for, with the reason. Cleared by a fresh line.
     refused: BTreeMap<MachineId, String>,
     queue: VecDeque<Update>,
+    handle: HubHandle,
+    outbox: mpsc::UnboundedReceiver<Outgoing>,
+    /// This computer's line, when the hub keeps it: what it says, and telling it a line ended.
+    local_events: mpsc::UnboundedReceiver<LinkEvent>,
+    local_ended: Option<mpsc::UnboundedSender<()>>,
+    local_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Hub {
-    /// Start a supervisor for each of `defs`, reached through `ssh`. Must run inside the
-    /// runtime. With no machine nothing starts.
-    pub fn start(defs: &[MachineDef], ssh: &str, ids_file: PathBuf, timing: Timing) -> Hub {
+    /// Start a supervisor for each of `defs`, reached through `ssh`, and for this computer's own
+    /// line when `local` says how to make it. Must run inside the runtime. With no machine and
+    /// no local line nothing starts.
+    pub fn start(
+        defs: &[MachineDef],
+        ssh: &str,
+        ids_file: PathBuf,
+        timing: Timing,
+        local: Option<LocalDial>,
+    ) -> Hub {
         let machines = configured_machines(defs, ssh);
-        let names = machines
+        let mut names = machines
             .iter()
             .map(|(id, machine)| (*id, machine.name().to_owned()))
             .collect::<BTreeMap<_, _>>();
-        let opts = names
+        let mut opts: BTreeMap<MachineId, MachineOpts> = names
             .iter()
             .map(|(id, name)| (*id, MachineOpts::named(defs, name)))
             .collect();
+        names.insert(MachineId::LOCAL, maitty_machines::LOCAL_MACHINE.to_owned());
+        opts.insert(MachineId::LOCAL, MachineOpts::LOCAL);
         let links = Links::start(machines, timing, dial);
+        let (outbox_tx, outbox) = mpsc::unbounded_channel();
+        let (local_tx, local_events) = mpsc::unbounded_channel();
+        let (ended_tx, ended_rx) = mpsc::unbounded_channel();
+        let (local_ended, local_task) = match local {
+            Some(dial) => (
+                Some(ended_tx),
+                Some(tokio::spawn(supervise_local(dial, local_tx, ended_rx))),
+            ),
+            None => (None, None),
+        };
         Hub {
             control: links.control(),
             links,
@@ -88,12 +202,24 @@ impl Hub {
             opts,
             refused: BTreeMap::new(),
             queue: VecDeque::new(),
+            handle: HubHandle {
+                outbox: outbox_tx,
+                up: Arc::default(),
+            },
+            outbox,
+            local_events,
+            local_ended,
+            local_task,
         }
     }
 
-    /// Whether any machine is supervised: with none there is nothing to wait for.
+    /// Whether anything is supervised: with nothing there is nothing to wait for.
     pub fn any(&self) -> bool {
-        self.links.any()
+        self.links.any() || self.local_task.is_some()
+    }
+
+    pub fn handle(&self) -> HubHandle {
+        self.handle.clone()
     }
 
     pub fn name_of(&self, machine: MachineId) -> Option<&str> {
@@ -110,7 +236,8 @@ impl Hub {
         self.connections.send(outgoing)
     }
 
-    /// The next thing to tell the host. Waits for ever with no machine.
+    /// The next thing to tell the host. Waits for ever with nothing to wait for. Safe to cut
+    /// short: whatever it had taken is kept for the next call.
     pub async fn next(&mut self) -> Update {
         loop {
             if let Some(update) = self.queue.pop_front() {
@@ -118,6 +245,11 @@ impl Hub {
             }
             tokio::select! {
                 event = self.links.next() => self.on_link_event(event),
+                Some(event) = self.local_events.recv() => self.on_link_event(event),
+                Some(outgoing) = self.outbox.recv() => {
+                    // A line that went since the handle looked has nowhere to take it.
+                    let _ = self.connections.send(outgoing);
+                }
                 burst = self.connections.recv_burst(SERVER_BURST) => self.on_burst(burst),
             }
         }
@@ -130,6 +262,8 @@ impl Hub {
                 // refused again on its first State, a fixed one is let in.
                 self.refused.remove(&machine);
                 self.connections.add(machine, halves);
+                lock(&self.handle.up).insert(machine);
+                self.queue.push_back(Update::LineUp { machine });
             }
             LinkEvent::State {
                 machine,
@@ -162,10 +296,18 @@ impl Hub {
         }
         if self.refused.contains_key(&machine) {
             self.connections.mark_lost(machine);
+            lock(&self.handle.up).remove(&machine);
         }
         if lost {
-            // Another machine is reported lost by its supervisor, which dials again.
-            self.control.line_ended(machine, stalled);
+            lock(&self.handle.up).remove(&machine);
+            // A supervisor dials its machine again once told the line ended.
+            if machine == MachineId::LOCAL {
+                if let Some(ended) = &self.local_ended {
+                    let _ = ended.send(());
+                }
+            } else {
+                self.control.line_ended(machine, stalled);
+            }
             self.queue.push_back(Update::LineEnded { machine });
         }
     }
@@ -173,6 +315,10 @@ impl Hub {
     /// The message to act on, or `None` when `machine` may not send it. A machine a different
     /// daemon answers for says nothing that counts, and what the others say is vetted.
     fn admit(&mut self, machine: MachineId, msg: ServerMsg) -> Option<ServerMsg> {
+        // This computer's own daemon is trusted as it always was.
+        if machine == MachineId::LOCAL {
+            return Some(msg);
+        }
         if self.refused.contains_key(&machine) {
             return None;
         }
@@ -194,6 +340,14 @@ impl Hub {
         // No request of the host's is waiting for an answer yet, so a reply or an error that
         // nobody asked for is ignored.
         vet(&opts, false, &name, msg)
+    }
+}
+
+impl Drop for Hub {
+    fn drop(&mut self) {
+        if let Some(task) = &self.local_task {
+            task.abort();
+        }
     }
 }
 
@@ -228,34 +382,6 @@ pub fn describe(machine: MachineId, name: &str, state: &ConnectionState) -> Mach
 
 /// The event the window listens to for each machine's state.
 pub const MACHINE_STATE_EVENT: &str = "machine-state";
-
-/// Keep every configured machine connected for as long as the app runs, telling the window of
-/// each change of state.
-pub fn start(app: tauri::AppHandle, defs: Vec<MachineDef>) {
-    use tauri::Emitter;
-    if defs.is_empty() {
-        return;
-    }
-    tauri::async_runtime::spawn(async move {
-        let ids_file = MachineIds::file_in(&maitty_desktop_client::data_dir());
-        let mut hub = Hub::start(
-            &defs,
-            maitty_machines::SSH_PROGRAM,
-            ids_file,
-            Timing::DEFAULT,
-        );
-        loop {
-            if let Update::State {
-                machine,
-                name,
-                state,
-            } = hub.next().await
-            {
-                let _ = app.emit(MACHINE_STATE_EVENT, describe(machine, &name, &state));
-            }
-        }
-    });
-}
 
 #[cfg(test)]
 mod tests;

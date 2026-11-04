@@ -43,15 +43,17 @@ struct Watch {
     hub: Hub,
     states: Vec<(MachineId, ConnectionState)>,
     msgs: Vec<(MachineId, ServerMsg)>,
+    up: Vec<MachineId>,
     ended: Vec<MachineId>,
 }
 
 impl Watch {
     fn new(defs: &[MachineDef], sandbox: &Sandbox, timing: Timing) -> Watch {
         Watch {
-            hub: Hub::start(defs, &shim(), ids_file(sandbox), timing),
+            hub: Hub::start(defs, &shim(), ids_file(sandbox), timing, None),
             states: Vec::new(),
             msgs: Vec::new(),
+            up: Vec::new(),
             ended: Vec::new(),
         }
     }
@@ -62,6 +64,7 @@ impl Watch {
             Update::Messages { machine, msgs } => {
                 self.msgs.extend(msgs.into_iter().map(|msg| (machine, msg)));
             }
+            Update::LineUp { machine } => self.up.push(machine),
             Update::LineEnded { machine } => self.ended.push(machine),
         }
     }
@@ -268,14 +271,14 @@ async fn a_different_daemon_at_a_known_name_is_turned_away_and_says_nothing_that
 #[tokio::test]
 async fn with_no_machine_nothing_starts() {
     let sandbox = Sandbox::new();
-    let hub = Hub::start(&[], &shim(), ids_file(&sandbox), quick(WAIT));
+    let hub = Hub::start(&[], &shim(), ids_file(&sandbox), quick(WAIT), None);
     assert!(!hub.any());
 }
 
 #[tokio::test]
 async fn a_machine_that_is_not_one_of_ours_is_not_sent_to() {
     let sandbox = Sandbox::new();
-    let hub = Hub::start(&[], &shim(), ids_file(&sandbox), quick(WAIT));
+    let hub = Hub::start(&[], &shim(), ids_file(&sandbox), quick(WAIT), None);
     let sent = hub.send(Outgoing {
         machine: MachineId(7),
         msg: maitty_shared::protocol::ClientMsg::WantReplay { term: 1 },
@@ -352,7 +355,7 @@ mod vetting {
     async fn hub_with_box(sandbox: &Sandbox, opted_in: bool) -> Hub {
         let mut def = machine("box", sandbox, "hang");
         def.clipboard = opted_in;
-        Hub::start(&[def], &shim(), ids_file(sandbox), quick(WAIT))
+        Hub::start(&[def], &shim(), ids_file(sandbox), quick(WAIT), None)
     }
 
     #[tokio::test]
@@ -414,5 +417,128 @@ mod vetting {
         let sandbox = Sandbox::new();
         let mut hub = hub_with_box(&sandbox, false).await;
         assert!(hub.admit(MachineId(9), ServerMsg::Bye).is_none());
+    }
+}
+
+mod local_line {
+    use super::*;
+    use maitty_machines::Machine;
+    use maitty_shared::protocol::{ClientMsg, Command};
+    use std::sync::Arc;
+
+    /// This computer's line, made through the shim to the sandbox's daemon: the hub is given
+    /// halves and does not care how they were made.
+    fn through_the_shim(sandbox: &Sandbox) -> LocalDial {
+        let machine = Machine::from_def(&machine("here", sandbox, "proxy"), &shim());
+        Arc::new(move || {
+            let machine = machine.clone();
+            Box::pin(async move { maitty_machines::open_remote(&machine, dial()?).await })
+        })
+    }
+
+    fn here(sandbox: &Sandbox) -> Watch {
+        Watch {
+            hub: Hub::start(
+                &[],
+                &shim(),
+                ids_file(sandbox),
+                quick(WAIT),
+                Some(through_the_shim(sandbox)),
+            ),
+            states: Vec::new(),
+            msgs: Vec::new(),
+            up: Vec::new(),
+            ended: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn this_computers_line_is_machine_zero_and_comes_up_before_anything_it_says() {
+        let mut sandbox = Sandbox::new();
+        sandbox.start_daemon();
+        let mut watch = here(&sandbox);
+        assert!(watch.hub.any());
+        watch
+            .until("this computer's snapshot", |w| {
+                w.is(MachineId::LOCAL, "connected") && w.snapshots(MachineId::LOCAL) > 0
+            })
+            .await;
+        assert_eq!(
+            watch.kinds(MachineId::LOCAL),
+            ["connecting", "connected"],
+            "named local, id 0"
+        );
+        assert_eq!(watch.up, [MachineId::LOCAL]);
+        assert_eq!(watch.hub.name_of(MachineId::LOCAL), Some("local"));
+        assert!(watch.hub.handle().is_up(MachineId::LOCAL));
+        assert!(
+            !ids_file(&sandbox).exists(),
+            "this computer's daemon is not checked against a recorded id"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_handle_reaches_a_line_that_is_up_and_refuses_one_that_is_not() {
+        let mut sandbox = Sandbox::new();
+        sandbox.start_daemon();
+        let mut watch = here(&sandbox);
+        let handle = watch.hub.handle();
+        let early = handle.send(Outgoing {
+            machine: MachineId::LOCAL,
+            msg: ClientMsg::WantReplay { term: 1 },
+        });
+        assert!(early.is_err(), "no line yet, so nothing is sent");
+        watch
+            .until("this computer's snapshot", |w| {
+                w.is(MachineId::LOCAL, "connected") && w.snapshots(MachineId::LOCAL) > 0
+            })
+            .await;
+        let sent = handle.send(Outgoing {
+            machine: MachineId::LOCAL,
+            msg: ClientMsg::Command(Command::NewWorkspace {
+                cwd: None,
+                name: None,
+                cmd: None,
+            }),
+        });
+        assert!(sent.is_ok());
+        watch
+            .until("a pane made through the handle", |w| {
+                w.msgs.iter().any(|(m, msg)| {
+                    *m == MachineId::LOCAL
+                        && (matches!(msg, ServerMsg::State(s) if !s.terms.is_empty())
+                            || matches!(msg, ServerMsg::TermsChanged { changed, .. } if !changed.is_empty()))
+                })
+            })
+            .await;
+        assert!(
+            handle
+                .send(Outgoing {
+                    machine: MachineId(5),
+                    msg: ClientMsg::WantReplay { term: 1 },
+                })
+                .is_err(),
+            "a machine with no line takes nothing"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dropped_line_of_this_computer_is_made_again() {
+        let mut sandbox = Sandbox::new();
+        sandbox.start_daemon();
+        let mut watch = here(&sandbox);
+        watch
+            .until("connected", |w| w.is(MachineId::LOCAL, "connected"))
+            .await;
+        sandbox.kill_last_connection();
+        watch
+            .until("reconnecting and connected again", |w| {
+                w.kinds(MachineId::LOCAL)
+                    .ends_with(&["reconnecting", "connected"])
+            })
+            .await;
+        assert_eq!(watch.ended, [MachineId::LOCAL]);
+        assert_eq!(watch.up, [MachineId::LOCAL, MachineId::LOCAL]);
+        assert!(!watch.hub.handle().is_up(MachineId(3)));
     }
 }

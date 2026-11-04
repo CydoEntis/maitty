@@ -10,7 +10,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }))
 
 const SEQ_BYTES = 8
-const HEADER_BYTES = 4 + SEQ_BYTES + 1
+const HEADER_BYTES = 2 + 4 + SEQ_BYTES + 1
 
 function historyReply(seq: number, text: string): ArrayBuffer {
   const output = new TextEncoder().encode(text)
@@ -20,23 +20,28 @@ function historyReply(seq: number, text: string): ArrayBuffer {
   return body.buffer
 }
 
-function frame(term: number, seq: number, replay: boolean, text: string): ArrayBuffer {
+function frame(term: number, seq: number, replay: boolean, text: string, machine = 0): ArrayBuffer {
   const output = new TextEncoder().encode(text)
   const body = new Uint8Array(HEADER_BYTES + output.length)
   const view = new DataView(body.buffer)
-  view.setUint32(0, term)
-  view.setBigUint64(4, BigInt(seq))
+  view.setUint16(0, machine)
+  view.setUint32(2, term)
+  view.setBigUint64(6, BigInt(seq))
   body[HEADER_BYTES - 1] = replay ? 1 : 0
   body.set(output, HEADER_BYTES)
   return body.buffer
 }
 
 /** The channel the module handed to the host, so a test can push frames through it. */
+let opened: Channel<ArrayBuffer> | undefined
+
 function hostChannel(): Channel<ArrayBuffer> {
   const call = vi.mocked(invoke).mock.calls.find(([command]) => command === 'watch_terminal_output')
   const args = call?.[1] as { onChunk: Channel<ArrayBuffer> } | undefined
-  if (!args) throw new Error('the output channel was not opened')
-  return args.onChunk
+  // The module opens the channel once, in the first test that listens; later tests reuse it.
+  opened ??= args?.onChunk
+  if (!opened) throw new Error('the output channel was not opened')
+  return opened
 }
 
 describe('terminal stream', () => {
@@ -78,5 +83,38 @@ describe('terminal stream', () => {
     expect(mine[0]?.replay).toBe(true)
     expect(new TextDecoder().decode(mine[0]?.bytes)).toBe('mine')
     expect(other.map((chunk) => new TextDecoder().decode(chunk.bytes))).toEqual(['other'])
+  })
+
+  it('hands a pane of another machine only to the views of that machine, whatever the pane number', async () => {
+    const here: TerminalChunk[] = []
+    const there: TerminalChunk[] = []
+    const stopHere = await listenTerminalChunks(5, (chunk) => { here.push(chunk) })
+    const stopThere = await listenTerminalChunks(5, (chunk) => { there.push(chunk) }, 3)
+    const channel = hostChannel()
+
+    channel.onmessage(frame(5, 1, true, 'local', 0))
+    channel.onmessage(frame(5, 1, true, 'remote', 3))
+    channel.onmessage(frame(5, 1, true, 'unwatched', 4))
+    stopHere()
+    stopThere()
+
+    expect(here.map((chunk) => [chunk.machine, new TextDecoder().decode(chunk.bytes)])).toEqual([[0, 'local']])
+    expect(there.map((chunk) => [chunk.machine, new TextDecoder().decode(chunk.bytes)])).toEqual([[3, 'remote']])
+  })
+
+  it('decodes the machine, pane, sequence number and replay flag of a frame', async () => {
+    const seen: TerminalChunk[] = []
+    const stop = await listenTerminalChunks(9, (chunk) => { seen.push(chunk) }, 258)
+    hostChannel().onmessage(frame(9, 70000, true, 'x', 258))
+    stop()
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ machine: 258, term: 9, seq: 70000, replay: true })
+  })
+
+  it('asks for the history of a pane on another machine by naming the machine', async () => {
+    vi.mocked(invoke).mockResolvedValue(historyReply(3, 'there'))
+    const history = await loadTerminalHistory(7, 2)
+    expect(invoke).toHaveBeenCalledWith('terminal_history', { term: 7, machine: 2 })
+    expect(history?.seq).toBe(3)
   })
 })

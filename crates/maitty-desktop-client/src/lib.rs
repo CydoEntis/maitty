@@ -7,7 +7,8 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::time::Duration;
 
-const MAX_TERMINAL_INPUT_BYTES: usize = 16 * 1024;
+/// The most one keystroke message may carry.
+pub const MAX_TERMINAL_INPUT_BYTES: usize = 16 * 1024;
 const APP_COMMAND: &str = env!("MAITTY_APP_COMMAND");
 const APP_NAME: &str = env!("MAITTY_APP_NAME");
 const APP_ENV: &str = env!("MAITTY_APP_ENV");
@@ -475,6 +476,14 @@ impl TerminalInput {
     pub async fn want_replay(&mut self, term: u32) -> Result<()> {
         ipc::send_message(&mut self.writer, &ClientMsg::WantReplay { term }).await
     }
+}
+
+/// This computer's daemon as a live line for the panes this app owns (replays, then output),
+/// started when none answers. The caller reads and writes it.
+pub async fn open_terminal_line(daemon_executable: PathBuf) -> Result<(ipc::Reader, ipc::Writer)> {
+    ipc::open_stream_for_user(&daemon_executable)
+        .await
+        .context("connecting to the local daemon")
 }
 
 pub async fn open_terminal_stream(
