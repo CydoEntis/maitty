@@ -74,16 +74,38 @@ impl Sandbox {
     }
 }
 
+/// How long the cleanup waits for `kill-server`. A daemon that will not answer must not stall
+/// the whole suite: the CI job has a fixed time limit and gives no output when it hits it.
+const CLEANUP_WAIT: Duration = Duration::from_secs(10);
+
 impl Drop for Sandbox {
     fn drop(&mut self) {
         // Must not panic: a test that failed is already unwinding, and a second panic aborts.
-        let _ = self
+        let stopping = self
             .local(MAITTY)
             .arg("kill-server")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status();
+            .spawn();
+        if let Ok(mut child) = stopping {
+            let start = Instant::now();
+            while matches!(child.try_wait(), Ok(None)) {
+                if start.elapsed() > CLEANUP_WAIT {
+                    // Straight to stderr: the test harness hides what a passing test prints,
+                    // and this is the line that says why a run was slow.
+                    use std::io::Write as _;
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "fake_ssh: kill-server did not finish within {CLEANUP_WAIT:?}; gave up on it"
+                    );
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        }
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
