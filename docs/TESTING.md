@@ -222,7 +222,7 @@ and the pane replays with the same pane id; one machine dying leaves another ans
 machine that is dialled again with its hung ssh killed; no daemon means unreachable and no daemon
 started; a refused machine stays parked until a retry. They use tiny backoff and no sleeps for
 correctness; a timeout only turns a hang into a failure. The watchdog and the state machine are
-unit tests (`client/connections.rs`, `client/link/state.rs`) with durations of tens of
+unit tests (`connections.rs`, `link/state.rs` in `maitty-machines`) with durations of tens of
 milliseconds and no clock.
 
 `client/remote_status_tests.rs` is the same pattern from inside the client: a real daemon behind the

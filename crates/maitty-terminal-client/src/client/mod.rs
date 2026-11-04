@@ -4,14 +4,14 @@
 mod actions;
 mod background;
 mod branch;
-pub mod connections;
+pub use maitty_machines::connections;
 mod copy;
 mod design;
 mod files;
 mod find;
 mod ids;
 mod input;
-pub mod link;
+pub use maitty_machines::link;
 mod machine_config;
 mod machine_flow;
 mod machine_ids;
@@ -44,7 +44,7 @@ use crate::keys::{self, Action, KeySpec};
 use crate::protocol::*;
 use crate::theme::Theme;
 use anyhow::Result;
-use connections::{Burst, Connections, NotConnected};
+use connections::{Burst, Connections, NotConnected, SERVER_BURST};
 use futures_util::{FutureExt, StreamExt};
 use ids::{ClientSession, ClientTerm, MachineId, MachineSnap, Outgoing, Remote};
 use ratatui::crossterm::event::{
@@ -99,8 +99,6 @@ struct NoticeCard {
     preview: Option<String>,
 }
 
-/// Server messages taken in one go before the next frame.
-const SERVER_BURST: usize = 512;
 /// Losing the server twice within this long is the server going, not a hiccup: stop.
 const REATTACH_AT_MOST_EVERY: Duration = Duration::from_secs(10);
 /// The daemon sends Bye before exiting; wait past its graceful shutdown window before spawning it again.
@@ -662,6 +660,7 @@ async fn run_async(opts: Options) -> Result<()> {
     let mut links = link::Links::start(
         link::configured_machines(&app.cfg.machines, ipc::SSH_PROGRAM),
         link::Timing::DEFAULT,
+        || ipc::terminal_dial(true),
     );
     app.links = links.control();
 

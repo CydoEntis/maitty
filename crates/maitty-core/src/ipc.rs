@@ -228,17 +228,23 @@ pub async fn open(attach: bool) -> Result<(Reader, Writer)> {
     open_to(&Machine::current(), attach).await
 }
 
-/// Connect to `machine` and complete the handshake.
-pub async fn open_to(machine: &Machine, attach: bool) -> Result<(Reader, Writer)> {
+/// What the terminal app says about itself in a Hello: the pane and the conversation it runs in,
+/// from the environment.
+pub fn terminal_dial(attach: bool) -> Result<maitty_machines::Dial> {
     let structured = structured_identity(STRUCTURED_ENV.map(std::env::var_os))?;
-    let dial = maitty_machines::Dial {
+    Ok(maitty_machines::Dial {
         attach,
         surface: protocol::Surface::Terminal,
         replays: true,
         term: std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok(),
         token: std::env::var(concat!(env!("APP_ENV"), "_PANE_TOKEN")).ok(),
         structured,
-    };
+    })
+}
+
+/// Connect to `machine` and complete the handshake.
+pub async fn open_to(machine: &Machine, attach: bool) -> Result<(Reader, Writer)> {
+    let dial = terminal_dial(attach)?;
     if machine.is_remote() {
         return maitty_machines::open_remote(machine, dial).await;
     }

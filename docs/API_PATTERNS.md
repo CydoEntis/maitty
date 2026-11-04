@@ -577,7 +577,7 @@ are checked before replacing the existing view. Revisions never wrap or saturate
 
 ## Project-specific: connections to other machines
 
-One supervisor task per `[[machines]]` entry (`client/link/`) keeps that machine's line up.
+One supervisor task per `[[machines]]` entry (`link/` in `maitty-machines`) keeps that machine's line up.
 It talks to the window only through `LinkEvent`s (a new line; a new state) and `LinkControl`
 commands (line ended, refuse, retry), so a dead machine cannot hold a lock or block drawing.
 With no `[[machines]]` entry nothing starts. `--remote host` is unchanged: the window's one
@@ -627,7 +627,7 @@ Windows connecting fails with `a custom transport (via) is not supported on Wind
 
 **Attach only, and when the daemon may start.** A daemon exits ~30 s after it has no session and
 no attached window, so a fresh machine has nothing to attach to. The supervisor therefore decides
-per dial (`MayStart` in `link/supervisor.rs`): the dial runs `<remote_cmd> proxy` (the daemon is
+per dial (`MayStart` in `maitty-machines`' `link/supervisor.rs`): the dial runs `<remote_cmd> proxy` (the daemon is
 started if none runs, as `--remote host` does; `Machine::starting`) on the machine's first dial,
 on every retry of a failed first dial, and after an explicit `Command::Retry` (the Machines
 dialog's retry, also after a refusal). The redials after an established line ended (stalled or

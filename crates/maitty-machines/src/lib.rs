@@ -3,7 +3,10 @@
 //! the desktop app.
 
 mod brand;
+pub mod connections;
 mod def;
+mod ids;
+pub mod link;
 pub mod link_failure;
 mod machine;
 mod remote_scripts;
@@ -13,6 +16,7 @@ pub use def::{
     LOCAL_MACHINE, MACHINE_NAME_MAX, MachineDef, VIA_NOT_ON_WINDOWS, VIA_PLACEHOLDER,
     validate_machines, validate_machines_on,
 };
+pub use ids::{ClientTerm, MachineId, Outgoing};
 pub use machine::{
     CONNECT_BUDGET, Dial, Machine, NO_DAEMON_EXIT, OtherVersion, PROXY_ATTACH_ONLY_FLAG,
     SSH_PROGRAM, hello, open_remote, other_version,

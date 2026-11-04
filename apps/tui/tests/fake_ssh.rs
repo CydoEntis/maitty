@@ -896,7 +896,7 @@ mod supervised {
 
     impl Window {
         fn new(machines: Vec<(MachineId, Machine)>, timing: Timing) -> Window {
-            let links = Links::start(machines, timing);
+            let links = Links::start(machines, timing, || runtime::ipc::terminal_dial(true));
             Window {
                 control: links.control(),
                 links,

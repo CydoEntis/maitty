@@ -95,9 +95,7 @@ src/
     input.rs     keys, pastes, the mouse
     actions.rs   what each action does
     background.rs server messages and background results
-    connections.rs the registry of daemon connections, one per machine: a reader and a writer task each, one fair intake for the event loop, sends routed by machine; a connection that ends is marked lost and never ends the window
-    ids.rs       client-only ids: MachineId, ClientTerm (a pane on a machine), ClientSession, the machine-addressed Outgoing message, and MachineSnap / Remote (each machine's name, last snapshot and connection state, and when its line went down, so limits, spend, version and the active workspace stay per machine); never on the wire
-    link/        keeping each configured machine connected: mod.rs (`Links`, `LinkControl` with live `start`/`stop`/`retry`, ids for configured machines), state.rs (the pure state machine and backoff), supervisor.rs (the dial / hand over / redial task)
+    ids.rs       client-only ids: ClientSession, and MachineSnap / Remote (each machine's name, last snapshot and connection state, and when its line went down, so limits, spend, version and the active workspace stay per machine); never on the wire (`MachineId`, `ClientTerm` and the machine-addressed `Outgoing` are in `maitty-machines`, and re-exported here)
     machine_config.rs the `[[machines]]` entry in `config.local.toml`: append, remove, and the name suggested for a target
     machine_flow.rs what the Machines dialog does with a choice: probe, popup login, start/stop a supervisor, retry, remove (tests in `machine_flow/tests.rs`)
     machine_links.rs what the window does with the supervisors' events: register lines, the toasts, counting typing a down machine dropped
@@ -228,7 +226,10 @@ encoding stays in the terminal client. Config loading and filesystem migrations
 are core-owned. `maitty-machines` owns the machine definition (`[[machines]]`) and its
 validation (`maitty-settings` re-exports them from `config`), the ssh line and its hardening
 (`ssh_command.rs`), the failure classes and their fix texts (`link_failure.rs`), the fixed remote
-scripts and the dial to another machine (`machine.rs`), for both apps; `maitty-core` re-exports
+scripts and the dial to another machine (`machine.rs`), the connection registry (`connections.rs`: one
+bounded reader and writer task per machine, one fair intake, sends routed by machine, a lost connection
+marked and never ending the window), the connection state machine and its supervisors (`link/`: `Links`,
+`LinkControl`, the pure state table and backoff) and the ids `MachineId`, `ClientTerm` and `Outgoing`, for both apps; `maitty-core` re-exports
 them as `ipc::Machine` and `link_failure`.
 `maitty-ipc-transport` owns bounded,
 length-delimited protocol framing, Welcome handshake, the stream marker and login-noise
@@ -303,7 +304,7 @@ crates/
   maitty-shared/                  wire protocol and shared contracts
   maitty-settings/                preference schemas, key actions and themes
   maitty-ipc-transport/           shared IPC framing and handshake
-  maitty-machines/                the `[[machines]]` definition and its checks, the ssh line, failure classes and dial to another machine, shared by both apps
+  maitty-machines/                the `[[machines]]` definition and its checks, the ssh line, failure classes, dial, connection registry and link supervisors, shared by both apps
   adapters/                       Codex, Claude and future provider adapters
 docs/                             architecture, roadmap and design specs
 ```
