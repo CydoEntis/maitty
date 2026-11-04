@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { Icon } from '@/features/workspace/components/glyphs'
-import { hotkeyRows, isModifierSymbol } from '@/features/workspace/model/shortcuts'
+import { hotkeyRows, type Platform } from '@/features/workspace/model/shortcuts'
+import { Keycaps } from '@/features/shortcuts/Keycaps'
 
 /** The shortcuts worth knowing on day one, as the keymap names them, with a shorter label for the long ones. */
 const FIRST_KEYS: ReadonlyArray<readonly [action: string, label: string]> = [
@@ -16,7 +17,7 @@ const FIRST_KEYS: ReadonlyArray<readonly [action: string, label: string]> = [
 const STEPS = ['welcome', 'set'] as const
 
 type Props = {
-  mac: boolean
+  platform: Platform
   startFolder: string
   portalContainer: HTMLElement | null
   validateFolder: (path: string) => Promise<boolean>
@@ -27,13 +28,13 @@ type Props = {
 }
 
 /** The first-run welcome: where sessions start, then the keys to know. */
-export function WelcomeDialog({ mac, startFolder, portalContainer, validateFolder, onStartFolder, onClose, onStartSession }: Props) {
+export function WelcomeDialog({ platform, startFolder, portalContainer, validateFolder, onStartFolder, onClose, onStartSession }: Props) {
   const [step, setStep] = useState(0)
   const [draft, setDraft] = useState(startFolder)
   const [missing, setMissing] = useState(false)
   const [checking, setChecking] = useState(false)
   const last = step === STEPS.length - 1
-  const rows = hotkeyRows(mac)
+  const rows = hotkeyRows(platform)
 
   const next = async () => {
     const typed = draft.trim()
@@ -95,7 +96,7 @@ export function WelcomeDialog({ mac, startFolder, portalContainer, validateFolde
                     return (
                       <li key={action}>
                         <span>{label}</span>
-                        <span className="mx-wel-chord">{chord.map((key) => <kbd key={key} className={`mx-keycap${isModifierSymbol(key) ? ' is-symbol' : ''}`}>{key}</kbd>)}</span>
+                        <Keycaps chord={chord} className="mx-wel-chord" />
                       </li>
                     )
                   })}

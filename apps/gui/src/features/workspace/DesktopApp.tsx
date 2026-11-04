@@ -106,7 +106,9 @@ import {
 import { readLayout, writeLayout } from './model/layoutStorage'
 import { byPriority } from './model/stack'
 import { displayName, groupKeyOf, groupSessions, tildePath, toSessionView, type SessionView } from './model/session'
-import { hotkeyRows, isMacPlatform, keyLabels, matchShortcut, type ShortcutAction } from './model/shortcuts'
+import { Keycaps } from '@/features/shortcuts/Keycaps'
+import { topmostOpen, type EscLayer } from './model/escLadder'
+import { bindingFor, detectPlatform, matchShortcut, shortcutChords, shortcutText, type ShortcutAction } from './model/shortcuts'
 import { folderExists, resolveStartFolder } from './model/startFolder'
 import { markSeen, trackSessions, tracksEqual, type SessionTrack } from './model/tracking'
 import type { PaletteItem } from './model/palette'
@@ -199,8 +201,7 @@ function olderServiceNote(status: { canRestart: boolean; sessionCount: number; a
 
 export function DesktopApp() {
   const queryClient = useQueryClient()
-  const mac = isMacPlatform(navigator.userAgent)
-  const labels = keyLabels(mac)
+  const platform = detectPlatform(navigator.userAgent)
   const width = useWindowWidth()
   const compact = width < COMPACT_WIDTH_PX
   const narrow = width < NARROW_WIDTH_PX
@@ -1007,9 +1008,10 @@ export function DesktopApp() {
   const setStyle = useCallback((style: SettingsPreferences['style']) => { setPreferences((current) => ({ ...current, style })) }, [])
   const resetTextSize = useCallback(() => { setTextSize(DEFAULT_TEXT_SIZE) }, [setTextSize])
   const openShortcuts = useCallback(() => { setShortcutsOpen(true) }, [])
-  const shortcutChord = useMemo(() => hotkeyRows(mac).find((row) => row.action === 'Keyboard shortcuts')?.chords[0] ?? [], [mac])
+  const shortcutChord = useMemo(() => shortcutChords(bindingFor('shortcuts'), platform)[0] ?? [], [platform])
+  const focusModeChord = useMemo(() => shortcutChords(bindingFor('focus-mode'), platform)[0] ?? [], [platform])
 
-  const runShortcut = useCallback((action: ShortcutAction) => {
+  const runShortcut = useCallback((action: ShortcutAction, tab?: number) => {
     switch (action) {
       case 'new-session':
         newSession()
@@ -1039,7 +1041,7 @@ export function DesktopApp() {
         const confirmed = armedClose !== null && armedClose.key === key && Date.now() - armedClose.at <= CLOSE_ARM_MS
         if (shown.some((session) => !session.ended) && !confirmed) {
           setArmedClose({ key, at: Date.now() })
-          const chord = mac ? '⌘W' : 'Ctrl+W'
+          const chord = shortcutText('close', platform)
           flash(agent ? `Press ${chord} again to close and stop ${agent.process}` : `Press ${chord} again to close this ${single ? 'pane' : 'tab'}`)
           return
         }
@@ -1064,6 +1066,31 @@ export function DesktopApp() {
         return
       case 'inbox':
         setInboxOpen((open) => !open)
+        return
+      case 'jump-needs': {
+        // Creation order, starting after the pane you are in, so repeated presses walk through every session that is asking.
+        const asking = sessions.filter((member) => member.status === 'needs')
+        const after = asking.findIndex((member) => member.id === focusedSession?.id)
+        const next = asking[(after + 1) % asking.length]
+        if (next) showSessionById(next.id)
+        else flash('Nothing needs you')
+        return
+      }
+      case 'go-to-tab': {
+        const inProject = layout.tabs.filter((candidate) => tabGroup(candidate) === activeGroupKey)
+        const target = inProject[(tab ?? 0) - 1]
+        if (target) selectTabById(target.id)
+        return
+      }
+      case 'performance':
+        setSettingsSection('performance')
+        return
+      // Registered in the table but not built (or not undoable): the key does nothing until the feature ships.
+      case 'undo-close':
+      case 'overview':
+      case 'session-panel':
+      case 'usage':
+      case 'chat-toggle':
         return
       case 'focus-mode':
         setFocusMode((on) => !on)
@@ -1097,21 +1124,30 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, paneSessions, armedClose, toggleInspect])
+  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, platform, paneSessions, armedClose, toggleInspect, sessions, showSessionById, activeGroupKey, selectTabById])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
   const modalOpen = settingsSection !== null || renameId !== null || remoteStart !== null || overlayOpen
   const drawerShown = compact && drawerOpen
-  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
-  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
+  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
+  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
   useEffect(() => {
+    // How each layer of the Esc ladder closes. A new dialog adds its closer here and its id to ESC_LADDER.
+    const closers: Partial<Record<EscLayer, () => void>> = {
+      palette: () => { setPaletteOpen(false) },
+      inbox: () => { setInboxOpen(false) },
+      settings: () => { setSettingsSection(null) },
+      drawer: () => { setDrawerOpen(false) },
+      'focus-mode': () => { setFocusMode(false) },
+    }
     const onKeyDown = (event: KeyboardEvent) => {
       const state = shortcutState.current
       if (state.welcomeOpen) return
+      const match = matchShortcut(event, platform)
       if (state.shortcutsOpen) {
         // Only its own key closes it; Esc is the dialog's.
-        if (matchShortcut(event, mac) === 'shortcuts') {
+        if (match?.action === 'shortcuts') {
           event.preventDefault()
           event.stopPropagation()
           state.runShortcut('shortcuts')
@@ -1121,50 +1157,31 @@ export function DesktopApp() {
       if (event.key === 'Escape') {
         // A menu or list that is open (the spinner picker in Settings) takes Esc itself.
         if (event.target instanceof Element && event.target.closest('[role="menu"]')) return
-        // Innermost first: the palette or inbox, then focus mode, then Settings.
+        const top = topmostOpen({ palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, drawer: state.drawerShown, 'focus-mode': state.focusMode })
+        if (top === null) return
         // What Esc closes is not also sent on to the terminal, where it would interrupt an agent.
-        const consume = () => { event.preventDefault(); event.stopPropagation() }
-        if (state.overlayOpen) {
-          consume()
-          setPaletteOpen(false)
-          setInboxOpen(false)
-          return
-        }
-        if (state.settingsOpen) {
-          consume()
-          setSettingsSection(null)
-          return
-        }
-        if (state.drawerShown) {
-          consume()
-          setDrawerOpen(false)
-          return
-        }
-        if (state.focusMode) {
-          consume()
-          setFocusMode(false)
-        }
+        event.preventDefault()
+        event.stopPropagation()
+        closers[top]?.()
         return
       }
       if (state.overlayOpen) {
-        const toggle = matchShortcut(event, mac)
-        if (toggle === 'palette' || toggle === 'inbox') {
+        if (match?.action === 'palette' || match?.action === 'inbox') {
           event.preventDefault()
           event.stopPropagation()
-          state.runShortcut(toggle)
+          state.runShortcut(match.action)
         }
         return
       }
       if (state.settingsOpen) return
-      const action = matchShortcut(event, mac)
-      if (!action) return
+      if (!match) return
       event.preventDefault()
       event.stopPropagation()
-      state.runShortcut(action)
+      state.runShortcut(match.action, match.tab)
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => { window.removeEventListener('keydown', onKeyDown, true) }
-  }, [mac])
+  }, [platform])
 
   // The project each session sits in, for the inbox and the palette.
   const projectOf = useMemo(() => {
@@ -1332,24 +1349,26 @@ export function DesktopApp() {
   const paletteItems: PaletteItem[] = useMemo(() => {
     // Thirty-odd items with closures, built only while the palette can show them.
     if (!paletteOpen) return []
-    const keys = (letter: string, shifted = false) => `${labels.primary}${shifted ? labels.shift : ''}${letter}`
+    const keys = (shortcut: ShortcutAction) => shortcutText(shortcut, platform)
     const action = (id: string, label: string, run: () => void, shortcut?: string): PaletteItem => ({ id, label, kind: 'Action', run, ...(shortcut ? { shortcut } : {}) })
     const showing = activeTab(layout)
     const items: PaletteItem[] = [
-      action('new-here', activeGroupKey ? `New session in ${projectName ?? 'this project'}` : 'New session', newProjectSession, keys('T')),
+      action('new-here', activeGroupKey ? `New session in ${projectName ?? 'this project'}` : 'New session', newProjectSession, keys('new-session')),
       action('new-start', 'New session in the start folder', newSession),
       action('sidebar-side', preferences.sidebarSide === 'left' ? 'Move sidebar to the right' : 'Move sidebar to the left', () => { setPreferences((current) => ({ ...current, sidebarSide: current.sidebarSide === 'left' ? 'right' : 'left' })) }),
-      action('split-right', 'Split right', () => { split(null, 'right') }, keys('D')),
-      action('split-down', 'Split down', () => { split(null, 'down') }, keys('D', true)),
-      action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('J')),
-      action('inspect', 'Inspect the repository', () => { if (inspectRefusal !== null) toast.message(inspectRefusal); else setInspectOpen(true) }, keys('I')),
-      ...(focusedSession ? [action('new-worktree', 'New worktree', () => { runShortcut('new-worktree') }, keys('N', true))] : []),
-      action('find', 'Find in the pane or every session', () => { setFindOpen(true) }, keys('F')),
-      action('broadcast', showing?.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab', () => { runShortcut('broadcast') }, keys('B', true)),
-      action('focus', 'Focus mode', () => { setFocusMode(true) }, keys('.')),
-      action('settings', 'Open settings', () => { setSettingsSection('general') }, keys(',')),
+      action('split-right', 'Split right', () => { split(null, 'right') }, keys('split-right')),
+      action('split-down', 'Split down', () => { split(null, 'down') }, keys('split-down')),
+      action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('inbox')),
+      action('jump-needs', 'Jump to the next session that needs you', () => { runShortcut('jump-needs') }, keys('jump-needs')),
+      action('inspect', 'Inspect the repository', () => { if (inspectRefusal !== null) toast.message(inspectRefusal); else setInspectOpen(true) }, keys('inspect')),
+      ...(focusedSession ? [action('new-worktree', 'New worktree', () => { runShortcut('new-worktree') }, keys('new-worktree'))] : []),
+      action('find', 'Find in the pane or every session', () => { setFindOpen(true) }, keys('find')),
+      action('broadcast', showing?.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab', () => { runShortcut('broadcast') }, keys('broadcast')),
+      action('focus', 'Focus mode', () => { setFocusMode(true) }, keys('focus-mode')),
+      action('settings', 'Open settings', () => { setSettingsSection('general') }, keys('settings')),
+      action('performance', 'Open performance', () => { setSettingsSection('performance') }, keys('performance')),
       action('machines', 'Machines', () => { setSettingsSection('machines') }),
-      action('shortcuts', 'Keyboard shortcuts', () => { setShortcutsOpen(true) }, keys('/')),
+      action('shortcuts', 'Keyboard shortcuts', () => { setShortcutsOpen(true) }, keys('shortcuts')),
       ...(showing?.widths ? [action('reset-widths', 'Reset pane widths', () => { setLayout((current) => setColumnWidths(current, showing.id, null)) })] : []),
       action('start-codex', 'Start codex', () => { startAgent('codex') }),
     ]
@@ -1370,7 +1389,7 @@ export function DesktopApp() {
     }
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [paletteOpen, labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal])
+  }, [paletteOpen, platform, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal])
 
   const restartOffer: RestartOffer | null = mismatch
     ? {
@@ -1406,7 +1425,6 @@ export function DesktopApp() {
       mode={mode}
       online={online}
       sessionCount={sessions.length}
-      primary={labels.primary}
       startFolderLabel={startFolderLabel}
       canStart={canStart}
       portalContainer={root}
@@ -1467,8 +1485,7 @@ export function DesktopApp() {
                   tabs={visibleTabs}
                   activeTabId={layout.activeTabId}
                   sessions={paneSessions}
-                  primary={labels.primary}
-                  canStart={canStart}
+                              canStart={canStart}
                   portalContainer={root}
                   onSelect={selectTabById}
                   onClose={closeTabById}
@@ -1530,8 +1547,6 @@ export function DesktopApp() {
                               maximized={tab.max === pane.id}
                               dropTarget={dropId === pane.id && dragId !== pane.id}
                               workingSince={tracks.get(session.id)?.workingSince ?? null}
-                              primary={labels.primary}
-                              shift={labels.shift}
                               online={online}
                               portalContainer={root}
                               terminal={
@@ -1588,8 +1603,7 @@ export function DesktopApp() {
                   <EmptyState
                     hasSessions={sessions.length > 0}
                     startFolderLabel={startFolderLabel}
-                    primary={labels.primary}
-                    canStart={canStart}
+                                  canStart={canStart}
                     onNewSession={newSession}
                     onChangeStartFolder={() => { setSettingsSection('general') }}
                   />
@@ -1632,10 +1646,10 @@ export function DesktopApp() {
               />
             )}
             <HoverTips />
-            {shortcutsOpen && <ShortcutOverlay mac={mac} portalContainer={root} onClose={() => { setShortcutsOpen(false) }} />}
+            {shortcutsOpen && <ShortcutOverlay platform={platform} portalContainer={root} onClose={() => { setShortcutsOpen(false) }} />}
             {welcomeOpen && (
               <WelcomeDialog
-                mac={mac}
+                platform={platform}
                 startFolder={preferences.startFolder}
                 portalContainer={root}
                 validateFolder={folderExists}
@@ -1662,7 +1676,7 @@ export function DesktopApp() {
                 <span className="mx-focus-tag">Focus</span>
                 {focusedId && sessionMap.get(focusedId) && <span>{projectOf.get(focusedId)?.name} · {sessionMap.get(focusedId)?.cwdLabel} · {sessionMap.get(focusedId)?.process}</span>}
                 <span className={needsElsewhere > 0 ? 'mx-focus-needs' : undefined}>{needsElsewhere > 0 ? `${String(needsElsewhere)} need you elsewhere` : 'Nothing else needs you'}</span>
-                <button type="button" className="mx-focus-exit" onClick={() => { setFocusMode(false) }}>Exit <kbd className="mx-keycap">{labels.primary}.</kbd></button>
+                <button type="button" className="mx-focus-exit" onClick={() => { setFocusMode(false) }}>Exit <Keycaps chord={focusModeChord} /></button>
               </div>
             )}
             {worktreeFrom && (
@@ -1691,7 +1705,7 @@ export function DesktopApp() {
                 onTestNotice={showTestNotice}
                 updates={{ summary: updaterSummary(updater.state), status: updater.state.status, onCheck: updater.check, onDownload: updater.download, onRestart: restartNow }}
                 onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}
-                mac={mac}
+                platform={platform}
                 daemon={{ online, sessionCount: sessions.length }}
                 appVersion={runningVersion}
                 machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed, onGrant: grantNamed, onCopyCommand: copyCommand, add: { windows: navigator.userAgent.includes('Windows'), loadHosts: listSshHosts, onAdd: addNamed, onCancel: cancelAdding } }}
