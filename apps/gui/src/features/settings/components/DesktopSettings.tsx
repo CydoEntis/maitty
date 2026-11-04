@@ -324,8 +324,8 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
           <Row label="Download updates automatically" detail="A new release is fetched in the background. Installing waits until you restart.">
             <Switch label="Download updates automatically" checked={preferences.autoDownloadUpdates} onChange={(value) => { update('autoDownloadUpdates', value) }} />
           </Row>
-          <Row label="Restart when nothing is running" detail="Restart into a downloaded update once no session is working or waiting on you. Sessions keep running either way.">
-            <Switch label="Restart when nothing is running" checked={preferences.restartWhenIdle} onChange={(value) => { update('restartWhenIdle', value) }} />
+          <Row label="Install updates when idle" detail="Never while an agent is working.">
+            <Switch label="Install updates when idle" checked={preferences.restartWhenIdle} onChange={(value) => { update('restartWhenIdle', value) }} />
           </Row>
         </Card>
       )}

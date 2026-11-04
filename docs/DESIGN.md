@@ -396,8 +396,12 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Sidebar footer and updates.** The footer's left slot shows the version, or what an update needs
   from you: a pill (**Update to x**, the download's percent, **Restart to update**, **Update failed**) that
   opens a card upward with the matching actions. The updater downloads first and installs only on
-  **Restart now**, so sessions keep running either way. Settings › General › Updates shows the state with
-  one fitting button and two switches: download automatically (on) and restart when nothing is running (off).
+  **Restart now**, or by itself when the app is idle, so sessions keep running either way. Settings › General › Updates shows the state with
+  one fitting button and two switches: download automatically (on) and **Install updates when idle** (on, helper
+  "Never while an agent is working"). Idle means no agent working or waiting on an answer, no keyboard input
+  for 5 minutes, and the window unfocused or minimized. After the relaunch a pill toast at bottom centre reads
+  "Updated to X · What's new" for 9 s (dismissable), and What's new opens a 460 px dialog with the release's
+  notes and "No session was interrupted."
 - **Sidebar position.** Settings › Appearance › Sidebar › Sidebar position, or the palette, puts the sidebar
   on the left or right. On the right the window mirrors: the resize edge is on its left, the narrow-window
   drawer slides from the right, Inspect and the Inbox open from the left, and popovers open toward the middle.

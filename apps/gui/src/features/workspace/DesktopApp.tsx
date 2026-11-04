@@ -51,7 +51,9 @@ import { FindBar } from '@/features/find/FindBar'
 import { RestoreBanner } from './components/RestoreBanner'
 import { UpdateSlot } from '@/features/updates/UpdateSlot'
 import { appVersion } from '@/features/updates/appVersion'
-import { markRestarting, skippedUpdate, skipUpdate, takeRestarted } from '@/features/updates/updateMemory'
+import { UpdatedNotice } from '@/features/updates/UpdatedNotice'
+import { markRestarting, skippedUpdate, skipUpdate, takeRestarted, type RestartedUpdate } from '@/features/updates/updateMemory'
+import { useIdleUpdate } from '@/features/updates/useIdleUpdate'
 import { formatDroppedPaths } from '@/features/terminal/droppedPaths'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
@@ -240,11 +242,9 @@ export function DesktopApp() {
   const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
   // Inbox entries the user cleared, by the status they had; an entry comes back if the session changes state.
   const [cleared, setCleared] = useState<ReadonlyMap<string, SessionView['status']>>(new Map())
-  // After a restart into an update, the first thing said is what happened to the sessions.
-  const [toastMessage, setToastMessage] = useState<{ text: string; key: number } | null>(() => {
-    const version = takeRestarted()
-    return version ? { text: `Maitty ${version} · every session kept running`, key: Date.now() } : null
-  })
+  const [toastMessage, setToastMessage] = useState<{ text: string; key: number } | null>(null)
+  // After a restart into an update, the first thing said is which version this is and what changed.
+  const [updatedTo, setUpdatedTo] = useState<RestartedUpdate | null>(takeRestarted)
   const [tracks, setTracks] = useState<ReadonlyMap<string, SessionTrack>>(new Map())
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropId, setDropId] = useState<string | null>(null)
@@ -871,13 +871,15 @@ export function DesktopApp() {
     return () => { active = false }
   }, [])
 
-  const restartNow = useCallback(() => {
+  const restartInto = useCallback((automatic: boolean) => {
     if (updater.state.status !== 'ready') return
-    markRestarting(updater.state.version)
+    markRestarting({ version: updater.state.version, previous: runningVersion, notes: updater.releaseNotes(), automatic })
     setRestarting(true)
     // If the install fails, the screen must not stay up: it goes, and so does the "kept running" note for the next launch.
     window.setTimeout(() => { updater.restart(() => { setRestarting(false); takeRestarted() }) }, RESTART_SCREEN_MS)
-  }, [updater])
+  }, [updater, runningVersion])
+  const restartNow = useCallback(() => { restartInto(false) }, [restartInto])
+  const installWhenIdle = useCallback(() => { restartInto(true) }, [restartInto])
 
   // With the setting on, a new release is fetched as soon as it is found. Installing still waits for a restart.
   const updateStatus = updater.state.status
@@ -889,13 +891,16 @@ export function DesktopApp() {
     return () => { window.clearTimeout(timer) }
   }, [preferences.autoDownloadUpdates, updateStatus, updateOffered, skippedVersion, downloadUpdate])
 
-  // Optionally, a downloaded update restarts the window once nothing is working or waiting on you.
+  // With the setting on, an idle app fetches and installs an update by itself (docs/stack/tauri-updater.md).
   const busyCount = sessions.filter((session) => session.status === 'working' || session.status === 'needs').length
-  useEffect(() => {
-    if (!preferences.restartWhenIdle || updateStatus !== 'ready' || !online || busyCount > 0 || restarting) return
-    const timer = window.setTimeout(restartNow, 0)
-    return () => { window.clearTimeout(timer) }
-  }, [preferences.restartWhenIdle, updateStatus, online, busyCount, restarting, restartNow])
+  useIdleUpdate({
+    enabled: preferences.restartWhenIdle && online && !restarting,
+    agentBusy: busyCount > 0,
+    status: updateStatus,
+    offeredIsSkipped: updateOffered !== null && updateOffered === skippedVersion,
+    onDownload: downloadUpdate,
+    onInstall: installWhenIdle,
+  })
 
   const chooseStartFolder = useCallback(async (current: string): Promise<string | null> => {
     try {
@@ -1648,6 +1653,7 @@ export function DesktopApp() {
               />
             )}
             {toastMessage && <Toast key={toastMessage.key} message={toastMessage.text} />}
+            {updatedTo && <UpdatedNotice update={updatedTo} onDone={() => { setUpdatedTo(null) }} />}
             {preferences.perfOverlay && <PerfOverlay />}
             {restarting && (
               <div className="mx-restarting" role="status">

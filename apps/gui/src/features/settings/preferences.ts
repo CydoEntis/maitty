@@ -98,6 +98,7 @@ export type SettingsPreferences = {
   /** Fetch a new release in the background. Installing still waits for a restart. */
   autoDownloadUpdates: boolean
   /** Restart into a downloaded update when no session is working or waiting on you. */
+  /** Install a downloaded update while the app is idle. Kept under its old key so a stored choice carries over. */
   restartWhenIdle: boolean
 }
 
@@ -166,7 +167,7 @@ function defaults(): SettingsPreferences {
     backgroundGlow: false,
     cursorBlink: false,
     autoDownloadUpdates: true,
-    restartWhenIdle: false,
+    restartWhenIdle: true,
   }
 }
 
