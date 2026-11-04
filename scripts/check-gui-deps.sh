@@ -5,7 +5,14 @@
 set -euo pipefail
 
 forbidden='^(maitty-core|maitty-terminal-client|maitty-settings) '
-found=$(cargo tree -p maitty-gui --target all --prefix none | sort -u | grep -E "$forbidden" || true)
+# A failing `cargo tree` stops the script here (set -e) and an empty tree is not a pass: a check that
+# read nothing would find nothing.
+tree=$(cargo tree -p maitty-gui --target all --prefix none)
+if ! grep -q '^maitty-gui ' <<<"$tree"; then
+  echo "cargo tree did not list maitty-gui, so nothing was checked" >&2
+  exit 1
+fi
+found=$(sort -u <<<"$tree" | grep -E "$forbidden" || true)
 if [ -n "$found" ]; then
   echo "maitty-gui must not depend on these crates (ADR 0042, 0048):" >&2
   echo "$found" >&2
