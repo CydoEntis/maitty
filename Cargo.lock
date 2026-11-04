@@ -2792,6 +2792,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "maitty-machines"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
 name = "maitty-provider-claude"
 version = "0.1.0"
 dependencies = [
@@ -2818,6 +2827,7 @@ name = "maitty-settings"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "maitty-machines",
  "maitty-shared",
  "ratatui",
  "serde",

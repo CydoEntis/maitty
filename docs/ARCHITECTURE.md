@@ -227,7 +227,9 @@ icon, key, detection, snapshot and notification preference schemas and
 defaults, pure validation and appearance compatibility rules, terminal key actions,
 default bindings, key parsing and built-in themes; terminal-specific mouse
 encoding stays in the terminal client. Config loading and filesystem migrations
-are core-owned. `maitty-ipc-transport` owns bounded,
+are core-owned. `maitty-machines` owns the machine definition (`[[machines]]`) and its
+validation, for both apps; `maitty-settings` re-exports them from `config`.
+`maitty-ipc-transport` owns bounded,
 length-delimited protocol framing, Welcome handshake, the stream marker and login-noise
 skipping for ssh (`stream_marker.rs`), socket identity formatting,
 private Unix socket-directory checks and platform socket-name conversion shared
@@ -279,7 +281,7 @@ and Tailwind; its rules live in `docs/stack/tauri.md`, `typescript.md`,
 - **Desktop client:** `maitty-desktop-client` owns desktop IPC and GUI operations.
   The Tauri host consumes it and does not link `maitty-core` or the terminal
   client.
-- **Shared packages:** `maitty-shared`, `maitty-settings`, and
+- **Shared packages:** `maitty-shared`, `maitty-settings`, `maitty-machines`, and
   `maitty-ipc-transport` hold the wire types, preferences, and transport framing
   used across those boundaries. Provider packages own provider-specific
   protocol mapping; core owns their daemon-managed processes and sessions.
@@ -300,6 +302,7 @@ crates/
   maitty-shared/                  wire protocol and shared contracts
   maitty-settings/                preference schemas, key actions and themes
   maitty-ipc-transport/           shared IPC framing and handshake
+  maitty-machines/                the `[[machines]]` definition and its checks, shared by both apps
   adapters/                       Codex, Claude and future provider adapters
 docs/                             architecture, roadmap and design specs
 ```

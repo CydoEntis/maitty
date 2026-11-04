@@ -9,6 +9,7 @@ members = [
     "crates/maitty-core",
     "crates/maitty-terminal-client",
     "crates/maitty-settings",
+    "crates/maitty-machines",
     "crates/maitty-desktop-client",
     "crates/adapters/maitty-provider-codex",
     "crates/adapters/maitty-provider-claude",
