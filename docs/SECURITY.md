@@ -370,6 +370,33 @@ The opt-ins are read from the machine's `[[machines]]` entry by name; a machine 
 has all of them off. `AskRemoveWorktree` from this computer's own daemon still shows its path
 as the daemon sent it; the folder is removed by that daemon when you answer.
 
+**The desktop app and other machines** ([ADR 0048](adr/0048-machines-in-the-desktop-app.md)). The web view
+never connects to a machine and never starts `ssh`: the Rust host holds every connection, runs the same
+`remote_policy` and `remote_snapshot` checks as the terminal app on everything that arrives (`hub.rs`,
+before anything is kept or shown), and hands the web view cleaned data only. The Tauri capabilities did not
+grow for machines (`capabilities/default.json` still holds window controls, the folder dialog, notifications,
+the updater and restart; no shell, file system or network plugin). What the web view can ask of a machine
+is a fixed set of host commands that take a machine's name or number, never a program or a path to run:
+
+- **Names only.** The window knows a machine by name; where it points (`target`, `ssh_args`, `remote_cmd`,
+  `via`) stays in the host.
+- **Adding** a machine runs the loader's checks on the target and name first (an option-like or
+  whitespace target is refused before anything runs), then looks at it with the shared probe: no prompt
+  (`BatchMode`, stdin closed), ended by a 12 s limit or Cancel, and the entry is written only when that held
+  up. The one time ssh may ask a person is the first login, which runs as a session on this computer, with
+  the probe's hardening and a command line that refuses a word it cannot quote.
+- **Opt-ins** (`clipboard`, `notices`) are off for every machine until its entry in `config.local.toml` says
+  `true`, which the Machines page writes through the shared editor before the host changes what it lets
+  through. A notice is one clean line led by `[machine]` and a copy is cut to 64 KiB. `sounds` is read but
+  never acted on: the desktop app plays none.
+- **Files stay on their machine.** Features that read a pane's files or repository are refused for another
+  machine's pane by the window and again by the host's commands, in the terminal app's words, so a pane
+  number from another machine can never reach a pane of this computer.
+- **No install or restart.** A machine that needs the app shows the command to run; the desktop app never
+  installs, updates or restarts anything on it.
+- **A different daemon at a known name** is refused (the shared daemon-id store) and says so; Remove then
+  adding the machine again is the way out.
+
 ## Project-specific: auth and permissions
 
 No user accounts. Access to the daemon is access to its local socket: a named
