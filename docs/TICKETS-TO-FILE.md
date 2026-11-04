@@ -150,3 +150,59 @@ Reuses `crates/maitty-core/src/remote_paste.rs`.
 v17 describes the chat body, session panel, overview, branch agents, idle update, brain dump, usage
 and cost. Nobody has compared it with `apps/gui/src`. Produce a gap list, then file one ticket per
 gap.
+
+## v17/v18 gap tickets (G1-G21), from the ticket 12 check, 2026-11-04
+
+Found by reading `apps/gui`; a "partial" may hide a feature under another name. Labels: type / area.
+The desktop window is terminal-only today; the chat body (G15-G18) does not exist.
+
+- **G1 `formatShortcut(binding, platform)` and the v18 shortcut map** (chore / client). Route tooltips,
+  keycaps, menus, palette and `hotkeyRows` through it; Inbox moves to Ctrl+Shift+J, Ctrl+J jumps, add
+  Ctrl+0, Ctrl+\, Ctrl+Shift+N/U/P/E as stubs. Needs question 4.
+- **G2 Tooltip parity (B.4)** (bug / client). `HoverTips` also reads icon-only `aria-label`; 420 ms
+  delay, 40 ms follow-on, keycap parsing, placement rules. Blocked by G1.
+- **G3 Session switch with no loading screen (C.0a)** (feature / client). Remove "Connecting to
+  terminal" for local panes, per-session last-screen cache, one `term.write` per frame on replay,
+  the 300 ms "Catching up from <machine>" strip for remote.
+- **G4 Machine surfaces (B.1)** (feature / client). Status-bar machine item, pane and tab machine chip,
+  per-pane "Lost connection ... Retrying in Ns" strip, sidebar machine filter. Needs question 9.
+- **G5 Floating status bar (B.5)** (chore / client). 32 px floating card; left holds G4's machine.
+- **G6 Idle self-update (C.5)** (feature / client). 5-minute idle timer, never while an agent works,
+  default on, relabel, post-relaunch toast and What's new dialog.
+- **G7 Platform title bars (C.0)** (chore / client). macOS traffic lights, Windows 46x32 captions,
+  Linux round buttons.
+- **G8 Overview (C.3)** (feature / client). Ordering model, screen, Ctrl+J / Ctrl+Shift+J / Ctrl+0,
+  "Nothing needs you" toast. Blocked by G1.
+- **G9 New agent on a branch (C.4)** (feature / daemon, client). Agent choice and first prompt on the
+  worktree API, new dialog, pinned button, Ctrl+K entry. Needs question 5. Blocked by G1.
+- **G10 Status shimmer to spec (C.4)** (chore / client). Overlay span, amber needs-you, 1.4 s once,
+  software-GPU and unfocused gating. Overlaps ticket 7 (v18 status effects): do together.
+- **G11 Brain dump (C.6)** (feature / client, daemon). Needs question 7. Blocked by G1, G9.
+- **G12 Usage store and API (C.7 daemon)** (feature / daemon). Per-session per-day provider-reported
+  usage, never estimated. Needs question 8.
+- **G13 Usage and cost page (C.7)** (feature / client). Blocked by G12, G1.
+- **G14 Performance page to spec (C.8)** (feature / client). Four tiles with sparklines, daemon ping,
+  ranked "What's costing" with session-only switches, Ctrl+Shift+P, harness brought up to date.
+- **G15 Event projection (CV-0)** (feature / client). Needs question 1.
+- **G16 Chat switch, history, composer (CV-1..3)** (feature / client, daemon). Blocked by G15, G1.
+- **G17 Chat items (CV-4..7, 9, 10)** (feature / client). Blocked by G16.
+- **G18 Session panel (C.2)** (feature / client, daemon). Split: shell, Changes and comments, Files and
+  Artifacts. Blocked by G17.
+- **G19 Notification and Inbox action parity (B.6)** (chore / client). Dismiss everywhere now; approval
+  by id after G17.
+- **G20 Pane shortcut contract (B.8)** (bug / client). Non-mac code takes bare Ctrl+T/W/D/F/K, the spec
+  says Ctrl+Shift. Needs question 4. Blocked by G1.
+- **G21 Activity bar and Panels button (B.7)** (spike / client). Decide if v15 section A is in scope.
+
+### Questions for the owner (they block the tickets named)
+
+1. Is chat in scope for the desktop? The README opens with "no chat UI" but specs a chat body. (G15-G18)
+2. Which providers get Chat at launch? (G16)
+3. Keep typing y/a/n into the terminal as a fallback once approvals go by id? (G19)
+4. Windows/Linux shortcuts: bare Ctrl (code) or Ctrl+Shift for shell letters (spec)? (G1, G20)
+5. May the worktree API gain an agent choice and a first prompt? (G9)
+6. Jump with nothing in Needs you: toast only (handoff) or next Done (older spec)? (G8)
+7. Brain-dump split: which model and account, where does the JSON get validated? (G11)
+8. May the daemon store usage per session per day? (G12)
+9. Remote branch agents in v1, given UI.md says worktree features are local-only? (G4, G9)
+10. Plans link to v17; v18 is newest. Fix the links. (docs)
