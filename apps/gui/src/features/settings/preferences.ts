@@ -1,5 +1,6 @@
 import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
 import type { EffectStyle } from '@/lib/animation-level'
+import type { AnimationMode } from '@/lib/animation-auto'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
@@ -80,6 +81,8 @@ export type SettingsPreferences = {
   effectStyleNeedsYou: EffectStyle
   effectStyleDone: EffectStyle
   workingScope: WorkingScope
+  /** How much the status effects may move: Auto measures, the others fix the level. Reduce motion wins over all of them. */
+  animations: AnimationMode
   density: Density
   /** Text size of the sidebar's folder names and session rows, in px. */
   sidebarTextSize: number
@@ -163,6 +166,7 @@ function defaults(): SettingsPreferences {
     effectStyleNeedsYou: 'sweep',
     effectStyleDone: 'sweep',
     workingScope: 'all',
+    animations: 'auto',
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
@@ -237,6 +241,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       effectStyleNeedsYou: effectStyle(preferences.effectStyleNeedsYou, fallback.effectStyleNeedsYou),
       effectStyleDone: effectStyle(preferences.effectStyleDone, fallback.effectStyleDone),
       workingScope: preferences.workingScope === 'all' || preferences.workingScope === 'selected' || preferences.workingScope === 'off' ? preferences.workingScope : fallback.workingScope,
+      animations: isAnimationMode(preferences.animations) ? preferences.animations : fallback.animations,
       density: isDensity(preferences.density) ? preferences.density : fallback.density,
       sidebarTextSize: clampNumber(preferences.sidebarTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.sidebarTextSize),
       tabTextSize: clampNumber(preferences.tabTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.tabTextSize),
@@ -282,6 +287,10 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 
 function effectStyle(value: unknown, fallback: EffectStyle): EffectStyle {
   return value === 'waves' || value === 'sweep' ? value : fallback
+}
+
+function isAnimationMode(value: unknown): value is AnimationMode {
+  return value === 'auto' || value === 'full' || value === 'light' || value === 'off'
 }
 
 function isDensity(value: unknown): value is Density {

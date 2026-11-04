@@ -28,9 +28,11 @@ import { sizeVariables } from './model/layoutSize'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import { errorMessage } from '@/lib/error-message'
 import { guardLocal, guardLocalSession } from '@/lib/localOnly'
-import { gpuKind, markGpu } from '@/lib/gpu'
+import { markGpu } from '@/lib/gpu'
 import { isWindowActive, subscribeWindowActivity } from '@/lib/window-activity'
-import { levelForGpu, styleUnderCap, type EffectStyle } from '@/lib/animation-level'
+import { styleUnderCap, type EffectStyle } from '@/lib/animation-level'
+import { levelFor, useAutoState } from '@/lib/animation-auto'
+import { useAdaptiveAnimations } from './useAdaptiveAnimations'
 import { PerfOverlay } from './components/PerfOverlay'
 import { setSpinnerStyle } from '@/lib/spinner-clock'
 import { TerminalView } from '@/TerminalView'
@@ -531,8 +533,9 @@ export function DesktopApp() {
   const reducedMotion = preferences.reduceMotion || systemReducedMotion
   const theme = findTheme(previewTheme ?? activeThemeName(preferences, systemDark))
   const look = useMemo(() => ({ fontFamily: preferences.terminalFontFamily, fontWeight: preferences.terminalFontWeight, fontWeightBold: preferences.terminalFontWeightBold, cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, scrollSpeed: preferences.scrollSpeed, screenReader: preferences.terminalScreenReader, seeThrough: preferences.terminalSeeThrough, cursorBlink: preferences.cursorBlink, theme: xtermTheme(theme.tokens) }), [preferences.terminalFontFamily, preferences.terminalFontWeight, preferences.terminalFontWeightBold, preferences.cursorStyle, preferences.cursorBlink, preferences.scrollback, preferences.scrollSpeed, preferences.terminalScreenReader, preferences.terminalSeeThrough, theme])
+  const auto = useAutoState()
+  const cap = levelFor(preferences.animations, auto)
   const effects = useMemo(() => {
-    const cap = levelForGpu(gpuKind())
     const allowed = online && !reducedMotion
     const styled = (on: boolean, style: EffectStyle) => (allowed && on ? styleUnderCap(style, cap) : null)
     return {
@@ -542,7 +545,10 @@ export function DesktopApp() {
       workingScope: preferences.workingScope,
       cap,
     }
-  }, [online, reducedMotion, preferences.effectWorking, preferences.effectNeedsYou, preferences.effectDone, preferences.effectStyleWorking, preferences.effectStyleNeedsYou, preferences.effectStyleDone, preferences.workingScope])
+  }, [online, reducedMotion, cap, preferences.effectWorking, preferences.effectNeedsYou, preferences.effectDone, preferences.effectStyleWorking, preferences.effectStyleNeedsYou, preferences.effectStyleDone, preferences.workingScope])
+  // Waves are running when a session in a status that has a Waves effect is listed.
+  const wavesRunning = useMemo(() => sessions.some((session) => (session.status === 'working' || session.status === 'needs' || session.status === 'done') && effects[session.status] === 'waves'), [sessions, effects])
+  useAdaptiveAnimations(preferences.animations === 'auto' && !reducedMotion && cap !== 'none', wavesRunning)
 
   const flash = useCallback((text: string) => { setToastMessage({ text, key: Date.now() }) }, [])
   useEffect(() => {

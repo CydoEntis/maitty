@@ -27,7 +27,7 @@ const DEFAULTS: SettingsPreferences = {
   effectWorking: true,
   effectNeedsYou: true,
   effectDone: true,
-  effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all',
+  effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto',
   density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
@@ -87,6 +87,14 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences()).toMatchObject({ effectStyleWorking: 'sweep', effectStyleDone: 'waves', effectStyleNeedsYou: 'sweep', workingScope: 'selected' })
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ workingScope: 'some' }))
     expect(readSettingsPreferences().workingScope).toBe('all')
+  })
+
+  it('defaults Animations to Auto and ignores a value it does not know', () => {
+    expect(readSettingsPreferences().animations).toBe('auto')
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ animations: 'light' }))
+    expect(readSettingsPreferences().animations).toBe('light')
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ animations: 'turbo' }))
+    expect(readSettingsPreferences().animations).toBe('auto')
   })
 
   it('reads the old style names as Flat and Glass, keeps Tiled, and falls back from nonsense', () => {

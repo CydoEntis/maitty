@@ -6,7 +6,7 @@ import type { SettingsPreferences } from '../preferences'
 import { machineHeads, type RemoteMachine } from '@/features/workspace/model/machines'
 import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from './DesktopSettings'
 
-const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
+const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
   return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
@@ -178,6 +178,24 @@ describe('desktop settings', () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, effectStyleNeedsYou: 'waves' })
     await user.click(within(screen.getByRole('radiogroup', { name: 'Working effect' })).getByRole('radio', { name: 'Selected' }))
     expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, workingScope: 'selected' })
+  })
+
+  it('picks how much the animations may move, with Auto as the default', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderSettings('appearance')
+    const animations = screen.getByRole('radiogroup', { name: 'Animations' })
+    expect(within(animations).getAllByRole('radio').map((radio) => radio.textContent)).toEqual(['Auto', 'Full', 'Light', 'Off'])
+    expect(within(animations).getByRole('radio', { name: 'Auto' })).toHaveAttribute('aria-checked', 'true')
+
+    await user.click(within(animations).getByRole('radio', { name: 'Light' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, animations: 'light' })
+  })
+
+  it('says on the Performance page what Auto chose and why', () => {
+    renderSettings('performance')
+
+    // jsdom has no WebGL 2, so the web view counts as software rendering.
+    expect(screen.getByText('Auto: Software rendering detected, using Sweep')).toBeInTheDocument()
   })
 
   it('clips a live preview to each status chip', () => {

@@ -433,9 +433,14 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   (`StatusEffect`), `overflow: hidden; contain: paint`, with `will-change: transform` on the moving layers; only
   `transform` (`translate3d`) animates, never `box-shadow`, `filter` or `background-position`. A **Working
   effect** setting (All / Selected / Off) limits which working rows and tabs animate; Selected means only the
-  one you are in. A style is capped by the animation level (`lib/animation-level.ts`): on a web view without
-  WebGL 2 (`data-gpu="software"`) Waves become Sweep. Reduce motion (the setting or the system's) and a
-  disconnected daemon remove every layer. The needs-you badge and the Inbox count pop once with a ring (.6s) and
+  one you are in. A style is capped by the animation level (`lib/animation-level.ts`), set by **Animations**
+  (Settings › Appearance › Motion, `animations`): **Auto** (default) starts at Waves with WebGL 2 and at Sweep
+  without it (`data-gpu="software"`), then samples animation-frame times for 3 s starting 2 s after launch and
+  again each time Waves begin to run (`lib/frame-monitor.ts`, `useAdaptiveAnimations`); if a quarter of the
+  frames take over 40 ms it steps down one level (Waves, Sweep, none) and never steps up within a run, and the
+  monitor stops itself after each verdict. **Full** always allows Waves, **Light** only Sweep, **Off** none.
+  Settings › Performance says what Auto chose and why (`describeAnimations`). Reduce motion (the setting or the
+  system's) and a disconnected daemon remove every layer, and a fixed choice is never measured. The needs-you badge and the Inbox count pop once with a ring (.6s) and
   the update dot once (.7s), as `transform` and `opacity` on a pseudo-element. The terminal caret is steady
   (blinking is Settings › Text › Blink, xterm's own option, off by default), and nothing animates `box-shadow`,
   `filter` or `backdrop-filter` ([PERFORMANCE](PERFORMANCE.md)). The working spinner steps every 160 ms and

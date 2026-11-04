@@ -491,13 +491,14 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
 
 
 const EFFECT_STYLE_OPTIONS = [['waves', 'Waves'], ['sweep', 'Sweep']] as const
+const ANIMATION_OPTIONS = [['auto', 'Auto'], ['full', 'Full'], ['light', 'Light'], ['off', 'Off']] as const
 const WORKING_SCOPE_OPTIONS = [['all', 'All'], ['selected', 'Selected'], ['off', 'Off']] as const
 
 /** What the preview says: the chosen style, or why a cheaper one (or none) is showing. */
 function effectNote(wanted: EffectStyle, shown: EffectStyle | null, on: boolean): string {
   if (!on) return 'Off'
   if (shown === null) return 'Off: animations are turned down'
-  if (shown !== wanted) return 'Sweep: this web view is too slow for Waves'
+  if (shown !== wanted) return 'Shown as Sweep: the Animations level does not allow Waves'
   return shown === 'waves' ? 'Soft bands drift while it lasts' : 'One band crosses as it starts, then rests'
 }
 
@@ -590,6 +591,9 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
       <Card title="Motion" color="var(--ansi-blue)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>}>
         <Row label="Reduce motion" detail="Turns off the shimmer, pulses and slide-ins. Your system setting is always respected.">
           <Switch label="Reduce motion" checked={preferences.reduceMotion} onChange={(value) => { update('reduceMotion', value) }} />
+        </Row>
+        <Row label="Animations" detail="Auto starts with what this window can draw, and steps down if frames run slow. Full always allows Waves, Light only Sweep, Off no status effects. Reduce motion wins over all of them.">
+          <Segmented label="Animations" value={preferences.animations} options={ANIMATION_OPTIONS} onChange={(value) => { update('animations', value) }} />
         </Row>
         <div className={`mx-effects${reduced ? ' is-locked' : ''}`}>
           <div className="mx-scard-text"><span>Status effects</span><span>{reduced ? 'Off while Reduce motion is on.' : 'Choose which states animate on sidebar rows and tabs, and how. Icons and words always show.'}</span></div>
