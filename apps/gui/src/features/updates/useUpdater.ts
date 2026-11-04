@@ -62,7 +62,10 @@ export function useUpdater() {
       })
   }, [])
 
-  return { state, check, download, restart }
+  /** The release notes of the update that was found, for the dialog shown after it is installed. */
+  const releaseNotes = useCallback(() => handle.current?.info.notes ?? '', [])
+
+  return { state, check, download, restart, releaseNotes }
 }
 
 /** One line for Settings. */

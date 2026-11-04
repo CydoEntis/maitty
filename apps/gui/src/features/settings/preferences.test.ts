@@ -26,7 +26,7 @@ const DEFAULTS: SettingsPreferences = {
   scrollback: 10000, scrollSpeed: 1,
   effectWorking: true,
   effectNeedsYou: true,
-  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
+  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
@@ -36,6 +36,14 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences()).toMatchObject({ backgroundGlow: false, cursorBlink: false })
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass', backgroundGlow: true, cursorBlink: true }))
     expect(readSettingsPreferences()).toMatchObject({ backgroundGlow: true, cursorBlink: true })
+  })
+
+  it('installs updates when idle by default, and a stored off stays off', () => {
+    expect(readSettingsPreferences().restartWhenIdle).toBe(true)
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass' }))
+    expect(readSettingsPreferences().restartWhenIdle).toBe(true)
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass', restartWhenIdle: false }))
+    expect(readSettingsPreferences().restartWhenIdle).toBe(false)
   })
 
   it('uses the defaults until preferences are saved', () => {

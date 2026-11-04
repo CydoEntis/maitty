@@ -9,6 +9,7 @@ import { listenTerminalChunks, loadTerminalHistory, type TerminalChunk, type Ter
 import type { Conversation } from '@/data/preview'
 import type { TerminalHandle } from '@/features/terminal/handle'
 import { findPathLinks } from '@/features/terminal/pathLinks'
+import { appendToScreen, cachedScreen, replaceScreen, screenKey } from '@/features/terminal/screenCache'
 import { isWindowActive, useWindowActive } from '@/lib/window-activity'
 import { hasWebgl2 } from '@/lib/gpu'
 import { oscColor } from '@/lib/osc-color'
@@ -122,6 +123,17 @@ const INPUT_RETRY_MS = 1500
 /** How long a view waits for the replay the host asked the daemon for before it fetches one itself. */
 const REPLAY_WAIT_MS = 3000
 
+/** A remote attach slower than this shows the "Catching up" strip; a local one never shows anything. */
+const CATCH_UP_DELAY_MS = 300
+/** How often the strip's milliseconds update while it shows. */
+const CATCH_UP_TICK_MS = 100
+
+/**
+ * Full reset (RIS) sent in the output itself. xterm's `reset()` takes effect at once, ahead of
+ * output still waiting to be parsed, so a screen that replaces another goes through the same write.
+ */
+const RESET_SCREEN = new TextEncoder().encode('\x1bc')
+
 /** What Shift+Enter sends: Alt+Enter, which Claude Code and Codex take as a new line in their prompt. */
 const NEW_LINE_KEYS = '\x1b\r'
 
@@ -179,6 +191,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   })
   const refitTerminal = useRef<(() => void) | null>(null)
   const [connecting, setConnecting] = useState(true)
+  const [catchUpMs, setCatchUpMs] = useState<number | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [inputFailed, setInputFailed] = useState(false)
   const [resizeError, setResizeError] = useState('')
@@ -223,6 +236,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     let queued: Uint8Array[] = []
     let replayWait = 0
     let lastFlushAt = 0
+    const screen = screenKey(machine, term, binding.generation)
 
     const writeQueued = () => {
       if (frame !== 0) cancelAnimationFrame(frame)
@@ -255,8 +269,8 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       }
       writeQueued()
     }
-    const enqueue = (bytes: Uint8Array) => {
-      queued.push(bytes)
+    const enqueue = (...parts: Uint8Array[]) => {
+      queued.push(...parts)
       // A hidden window gets no animation frames, so output would pile up and then land in one freeze.
       if (document.hidden) {
         writeQueued()
@@ -403,9 +417,18 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           fitAndResize()
         }
 
+        // Show the last screen this pane had at once; the daemon's history confirms or replaces it.
+        let lastSeq = 0
+        let shown: number | null = null
+        const kept = cachedScreen(screen)
+        if (kept) {
+          fit.fit()
+          enqueue(kept.bytes)
+          lastSeq = kept.seq
+          shown = kept.seq
+        }
         // Follow the live stream first, hold what arrives while the history loads, then write
         // the history and continue from the next chunk: no gap and no repeat.
-        let lastSeq = 0
         let caughtUp = false
         const pending: TerminalChunk[] = []
         const apply = (chunk: TerminalChunk) => {
@@ -413,9 +436,15 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           lastSeq = chunk.seq
           if (chunk.replay) {
             window.clearTimeout(replayWait)
-            writeQueued()
-            terminalInstance.reset()
+            // The replay replaces the screen, so older output still waiting is dropped and the
+            // reset travels with the replay: one write for the frame.
+            queued = []
+            replaceScreen(screen, chunk.seq, chunk.bytes)
+            enqueue(RESET_SCREEN, chunk.bytes)
+            setConnecting(false)
+            return
           }
+          appendToScreen(screen, chunk.seq, chunk.bytes)
           enqueue(chunk.bytes)
         }
         // This computer's panes are asked for exactly as before machines: a machine is named only when it is another.
@@ -432,30 +461,45 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         // the pane's replay over the stream (it arrives as the next chunk). Without a stream it
         // refuses, and the replay is fetched from the daemon directly.
         let history: TerminalHistory | null
+        let fetched = false
         try {
           history = await loadTerminalHistory(term, ...machineArg)
         } catch {
           history = null
           if (!stillMounted()) return
-          enqueue(await loadTerminalReplay(binding))
+          const replay = await loadTerminalReplay(binding)
+          if (!stillMounted()) return
+          fetched = true
+          // A fetched replay has no sequence number: it is only a screen to start from.
+          replaceScreen(screen, lastSeq, replay)
+          enqueue(...(shown === null ? [replay] : [RESET_SCREEN, replay]))
         }
         if (!stillMounted()) return
         if (history) {
+          // History that ends where the kept screen did changes nothing on screen.
+          if (history.seq !== shown) {
+            // Drop an older screen still waiting; the history replaces it in the same write.
+            if (shown !== null) queued = []
+            enqueue(...(shown === null ? [history.bytes] : [RESET_SCREEN, history.bytes]))
+          }
           lastSeq = history.seq
-          enqueue(history.bytes)
-        } else {
+          replaceScreen(screen, history.seq, history.bytes)
+        } else if (!fetched) {
+          // The replay that is coming is not bound by the kept screen's numbering.
+          lastSeq = 0
           // The stream may drop between the host's request and the daemon's answer; then the
           // pane would stay blank, so after a while the replay is fetched directly.
           replayWait = window.setTimeout(() => {
             loadTerminalReplay(binding).then(
-              (bytes) => { if (stillMounted()) enqueue(bytes) },
-              () => { if (stillMounted()) setLoadError(true) },
+              (bytes) => { if (stillMounted()) { replaceScreen(screen, lastSeq, bytes); enqueue(RESET_SCREEN, bytes); setConnecting(false) } },
+              () => { if (stillMounted()) { setLoadError(true); setConnecting(false) } },
             )
           }, REPLAY_WAIT_MS)
         }
         caughtUp = true
         for (const chunk of pending) apply(chunk)
-        setConnecting(false)
+        // Without history, the replay is still on its way over the stream: attaching has not finished.
+        if (history || fetched) setConnecting(false)
 
         resizeObserver = new ResizeObserver(fitAndResize)
         resizeObserver.observe(hostElement)
@@ -554,6 +598,21 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     if (emulator) emulator.options.disableStdin = inputDisabled
   }, [inputDisabled])
 
+  // Only another machine can be slow to attach; this computer's panes show nothing while they connect.
+  useEffect(() => {
+    if (machine === 0 || !connecting) return
+    const started = performance.now()
+    let tick = 0
+    const show = window.setTimeout(() => {
+      setCatchUpMs(Math.round(performance.now() - started))
+      tick = window.setInterval(() => { setCatchUpMs(Math.round(performance.now() - started)) }, CATCH_UP_TICK_MS)
+    }, CATCH_UP_DELAY_MS)
+    return () => {
+      window.clearTimeout(show)
+      window.clearInterval(tick)
+    }
+  }, [machine, connecting])
+
   useEffect(() => {
     focusedRef.current = focused
     if (focused && !connecting) terminal.current?.focus()
@@ -566,7 +625,12 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   }, [focused, windowActive, connecting, look.cursorBlink])
 
   return <div className={`terminal-view${transparent ? ' is-transparent' : ''}`}>
-    {connecting && !loadError && <div className="terminal-load-status" role="status"><LoaderCircle size={14} />Connecting to terminal</div>}
+    {machine !== 0 && connecting && catchUpMs !== null && !loadError && (
+      <div className="terminal-catch-up" role="status">
+        <LoaderCircle size={13} aria-hidden="true" />
+        <span>Catching up from {conversation.machineName ?? 'the machine'} · {catchUpMs} ms</span>
+      </div>
+    )}
     {loadError && <div className="terminal-input-error" role="status"><p>Could not load the terminal. Check the daemon connection and reopen this session.</p></div>}
     <div className="terminal-screen" ref={terminalHost} role="region" aria-label={label} />
     {inputFailed && <div className="terminal-input-error" role="status"><p>Input stopped because the daemon could not be reached.</p><Button variant="outline" size="sm" onClick={() => { inputFailedRef.current = false; setInputFailed(false) }}>Try typing again</Button></div>}

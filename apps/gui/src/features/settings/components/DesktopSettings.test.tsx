@@ -86,8 +86,8 @@ describe('desktop settings', () => {
     await user.click(screen.getByRole('button', { name: 'Download' }))
     expect(updates.onDownload).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('switch', { name: 'Download updates automatically' })).toBeChecked()
-    expect(screen.getByRole('switch', { name: 'Restart when nothing is running' })).not.toBeChecked()
-    await user.click(screen.getByRole('switch', { name: 'Restart when nothing is running' }))
+    expect(screen.getByRole('switch', { name: 'Install updates when idle' })).not.toBeChecked()
+    await user.click(screen.getByRole('switch', { name: 'Install updates when idle' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ restartWhenIdle: true }))
   })
 
