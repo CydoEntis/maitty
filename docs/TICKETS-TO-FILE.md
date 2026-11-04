@@ -206,3 +206,13 @@ The desktop window is terminal-only today; the chat body (G15-G18) does not exis
 8. May the daemon store usage per session per day? (G12)
 9. Remote branch agents in v1, given UI.md says worktree features are local-only? (G4, G9)
 10. Plans link to v17; v18 is newest. Fix the links. (docs)
+
+## 13. Adaptive animations: measure, then pick the effect level (feature, `client`)
+
+Today `data-gpu` is set once from whether WebGL 2 works, which is a guess at "rendering is fast".
+Measure frame times for a few seconds after start and again after Waves turns on; if frames run
+slow, step down one level (Waves, Sweep, none) and never step back up on its own. Add Settings >
+Appearance > Animations: Auto (default), Full, Light, Off. The performance page says what Auto chose
+and why ("Software rendering detected, using Sweep"). Reduce motion and the existing hidden/unfocused
+rules still win. Acceptance: unit tests with a fake clock for the step-down; harness scenarios `a`
+and `b` within budget. Blocked by: 7 (status effects).
