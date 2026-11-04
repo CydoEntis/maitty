@@ -139,6 +139,18 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  /* The window's own theme tokens, set per theme on .mx-app. The shadcn names above resolve on :root
+     (and --accent is the hover surface there but the brand teal in the app), so feature components use these. */
+  --color-raise: var(--raise);
+  --color-hover: var(--hover);
+  --color-term: var(--term);
+  --color-fg: var(--fg);
+  --color-fg2: var(--fg2);
+  --color-dim: var(--dim);
+  --color-pane-line: var(--pane-line);
+  --color-line2: var(--line2);
+  --color-brand: var(--accent);
+  --shadow-pop: var(--sh-pop);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);

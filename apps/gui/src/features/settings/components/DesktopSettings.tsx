@@ -1,12 +1,11 @@
 import type { UpdaterState } from '@/features/updates/useUpdater'
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
-import { spinnerDefinition, SPINNER_TICK_MS, type SpinnerStyle } from '@/lib/spinner-clock'
-import { useNow } from '@/lib/clock'
 import { styleUnderCap, type EffectStyle } from '@/lib/animation-level'
 import { EffectsContext, type AppliedEffect, type StatusEffectKey } from '@/features/workspace/components/motion'
 import { StatusEffect } from '@/features/workspace/components/StatusEffect'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
+import { SpinnerPicker, SpinnerPreview } from './SpinnerPicker'
 import { PerformanceSection } from './PerformanceSection'
 import { hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/model/shortcuts'
 import { Icon } from '@/features/workspace/components/glyphs'
@@ -490,9 +489,6 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
   )
 }
 
-const SPINNERS: ReadonlyArray<readonly [SpinnerStyle, string]> = [['braille', 'Braille'], ['snake', 'Snake'], ['bars', 'Bars']]
-const SECONDS_PER_MINUTE = 60
-const SECONDS_DIGITS = 2
 
 const EFFECT_STYLE_OPTIONS = [['waves', 'Waves'], ['sweep', 'Sweep']] as const
 const WORKING_SCOPE_OPTIONS = [['all', 'All'], ['selected', 'Selected'], ['off', 'Off']] as const
@@ -509,13 +505,11 @@ const MODE_OPTIONS = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']
 
 function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void }) {
   const reduced = preferences.reduceMotion || systemReducedMotion
-  const now = useNow()
   const darkInUse = preferences.themeMode === 'dark' || (preferences.themeMode === 'system' && systemDark)
   const modeNote = preferences.themeMode === 'system' ? `Follows your OS. Right now: ${systemDark ? 'dark' : 'light'}.` : `Always uses your ${preferences.themeMode} theme.`
-  const seconds = String(Math.floor(now / THOUSAND) % SECONDS_PER_MINUTE).padStart(SECONDS_DIGITS, '0')
   const { cap } = useContext(EffectsContext)
   const effects: Array<{ key: 'effectWorking' | 'effectNeedsYou' | 'effectDone'; styleKey: 'effectStyleWorking' | 'effectStyleNeedsYou' | 'effectStyleDone'; status: StatusEffectKey; label: string; color: string; glyph: ReactNode; short: string }> = [
-    { key: 'effectWorking', styleKey: 'effectStyleWorking', status: 'working', label: 'Working', color: 'var(--accent)', glyph: <PreviewSpinner spinner={preferences.spinner} reduced={reduced} />, short: '0:42' },
+    { key: 'effectWorking', styleKey: 'effectStyleWorking', status: 'working', label: 'Working', color: 'var(--accent)', glyph: <SpinnerPreview spinner={preferences.spinner} reduced={reduced} />, short: '0:42' },
     { key: 'effectNeedsYou', styleKey: 'effectStyleNeedsYou', status: 'needs', label: 'Needs you', color: 'var(--warn)', glyph: '◆', short: 'Allow?' },
     { key: 'effectDone', styleKey: 'effectStyleDone', status: 'done', label: 'Done', color: 'var(--ok)', glyph: '✓', short: 'Done' },
   ]
@@ -558,27 +552,9 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         <Row label="Light theme" detail="Used when the window is light.">
           <ThemePicker kind="light" value={preferences.lightTheme} inUse={!darkInUse} dimmed={darkInUse && preferences.themeMode !== 'system'} onPick={(name) => { update('lightTheme', name) }} onPreview={onPreviewTheme} />
         </Row>
-      </Card>
-      <Card title="Working spinner" color="var(--accent)" iconPath={<path d="M12 3a9 9 0 1 0 9 9" />} meta={<span className="mx-scard-meta">Live preview</span>} foot="Same frames as the Maitty TUI. Shown on tabs, pane headers and sidebar rows while something runs.">
-        <div role="radiogroup" aria-label="Working spinner" className="mx-spinner-grid">
-          {SPINNERS.map(([id, name]) => {
-            const definition = spinnerDefinition(id)
-            const selected = preferences.spinner === id
-            return (
-              <button key={id} type="button" role="radio" aria-checked={selected} aria-label={name} className="mx-spinner-card" onClick={() => { update('spinner', id) }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span className="mx-spinner-glyph"><PreviewSpinner spinner={id} reduced={reduced} /></span>
-                  <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>{name}</span>
-                    <span style={{ fontSize: 11.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{definition.frames.length} frames · {definition.intervalMs} ms</span>
-                  </span>
-                  {selected && <Icon name="check" size={15} stroke="var(--accent)" strokeWidth={2.5} />}
-                </span>
-                <span className="mx-spinner-sample"><span style={{ color: 'var(--accent)' }}><PreviewSpinner spinner={id} reduced={reduced} /></span>cargo test<span style={{ flex: 1 }} /><span style={{ color: 'var(--dim)' }}>0:{seconds}</span></span>
-              </button>
-            )
-          })}
-        </div>
+        <Row label="Working spinner" detail="Shown on tabs, pane headers and sidebar rows while something runs. The TUI ones use its exact frames.">
+          <SpinnerPicker value={preferences.spinner} reduced={reduced} onPick={(spinner) => { update('spinner', spinner) }} />
+        </Row>
       </Card>
       <Card title="Sidebar" color="var(--accent)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></>}
         foot={<>{preferences.trayStyle === 'stacked' ? 'One per line under the main row, with folder and status.' : preferences.trayStyle === 'icons' ? 'Small icon tabs under the main row.' : 'Small named tabs under the main row.'} {preferences.leadMode === 'attention' ? 'The session that most needs you leads: needs you, error, done, working.' : 'The session you are in leads; the others are sorted by attention.'}</>}
@@ -643,24 +619,6 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
   )
 }
 
-/** One style's spinner, stepping on its own clock written straight into the element, so the page never re-renders for a frame. */
-function PreviewSpinner({ spinner, reduced }: { spinner: SpinnerStyle; reduced: boolean }) {
-  const { frames } = spinnerDefinition(spinner)
-  const element = useRef<HTMLSpanElement>(null)
-  useEffect(() => {
-    const target = element.current
-    if (reduced || !target) return
-    let frame = 0
-    const timer = window.setInterval(() => {
-      frame = (frame + 1) % frames.length
-      target.textContent = frames[frame] ?? ''
-    }, SPINNER_TICK_MS)
-    return () => { window.clearInterval(timer) }
-  }, [frames, reduced])
-  return <span ref={element}>{frames[0]}</span>
-}
-
-/** A key combination as a row of key-shaped caps; the modifier symbols are set in the interface font. */
 function Keycaps({ chord }: { chord: Chord }) {
   return (
     <span className="mx-chord" role="group" aria-label={chord.join(' ')}>

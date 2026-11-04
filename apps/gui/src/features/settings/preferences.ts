@@ -1,4 +1,4 @@
-import type { SpinnerStyle } from '@/lib/spinner-clock'
+import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
 import type { EffectStyle } from '@/lib/animation-level'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
@@ -209,7 +209,7 @@ export function readSettingsPreferences(): SettingsPreferences {
     const fallback = fresh
     return {
       accent: isAccent(preferences.accent) ? preferences.accent : fallback.accent,
-      spinner: isSpinner(preferences.spinner) ? preferences.spinner : fallback.spinner,
+      spinner: isSpinnerStyle(preferences.spinner) ? preferences.spinner : fallback.spinner,
       restoreTabs: bool(preferences.restoreTabs, fallback.restoreTabs),
       reduceMotion: bool(preferences.reduceMotion, fallback.reduceMotion),
       animateSidebarActivity: bool(preferences.animateSidebarActivity, fallback.animateSidebarActivity),
@@ -315,10 +315,6 @@ function themeChoice(saved: Partial<Record<string, unknown>>, fallback: Settings
     darkTheme: themeOfKind(saved.darkTheme, false) ?? (migrating && !old.light ? old.name : fallback.darkTheme),
     lightTheme: themeOfKind(saved.lightTheme, true) ?? (migrating && old.light ? old.name : fallback.lightTheme),
   }
-}
-
-function isSpinner(value: unknown): value is SpinnerStyle {
-  return value === 'braille' || value === 'snake' || value === 'bars'
 }
 
 function isCursorStyle(value: unknown): value is CursorStyle {

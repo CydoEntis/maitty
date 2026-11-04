@@ -127,15 +127,42 @@ describe('desktop settings', () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, scrollback: 50000 })
   })
 
-  it('picks a working spinner from cards showing the TUI frames', async () => {
+  it('picks a working spinner from a dropdown of TUI and web spinners', async () => {
     const user = userEvent.setup()
     const { onChange } = renderSettings('appearance')
-    const spinners = screen.getByRole('radiogroup', { name: 'Working spinner' })
-    expect(within(spinners).getByRole('radio', { name: 'Braille' })).toHaveAttribute('aria-checked', 'true')
-    expect(spinners).toHaveTextContent('10 frames · 160 ms')
-    expect(spinners).toHaveTextContent('8 frames · 160 ms')
-    await user.click(within(spinners).getByRole('radio', { name: 'Snake' }))
-    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, spinner: 'snake' })
+    const button = screen.getByRole('button', { name: 'Working spinner' })
+    expect(button).toHaveTextContent('Braille')
+    expect(button).toHaveTextContent('From the Maitty TUI')
+
+    await user.click(button)
+    const list = await screen.findByRole('menu', { name: 'Working spinner' })
+    const choices = within(list).getAllByRole('menuitemradio')
+    // The preview glyph is Braille text inside the item; the name is what is left.
+    expect(choices.map((choice) => choice.textContent.replace(/[\u2800-\u28FF]/g, ''))).toEqual(['Braille', 'Snake', 'Bars', 'Circle', 'Dots', 'Equalizer', 'Spokes', 'Ping'])
+    expect(list).toHaveTextContent('Maitty TUI')
+    expect(list).toHaveTextContent('Web')
+    expect(within(list).getByRole('menuitemradio', { name: 'Braille' })).toHaveAttribute('aria-checked', 'true')
+    expect(list.querySelectorAll('.mx-wspin')).toHaveLength(5)
+
+    await user.click(within(list).getByRole('menuitemradio', { name: 'Circle' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, spinner: 'circle' })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('names a web spinner as a web icon, and closes the list with Esc without closing Settings', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    renderSettings('appearance', { preferences: { ...PREFS, spinner: 'ping' }, onClose })
+    const button = screen.getByRole('button', { name: 'Working spinner' })
+    expect(button).toHaveTextContent('Ping')
+    expect(button).toHaveTextContent('Web icon')
+
+    await user.click(button)
+    await screen.findByRole('menu', { name: 'Working spinner' })
+    await user.keyboard('{Escape}')
+
+    await waitFor(() => { expect(screen.queryByRole('menu')).toBeNull() })
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('picks Waves or Sweep for each status and a scope for the working effect', async () => {

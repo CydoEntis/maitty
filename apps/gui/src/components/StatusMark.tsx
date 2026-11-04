@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
-import { attachSpinner, currentGlyph, spinnerFrames } from '@/lib/spinner-clock'
+import { attachSpinner, currentGlyph, isWebSpinner, spinnerFrames, useSpinnerStyle } from '@/lib/spinner-clock'
+import { WebSpinner } from './WebSpinner'
 
 export type StatusMarkState =
   'working' | 'needs-you' | 'done' | 'idle' | 'recovery' | 'unknown'
@@ -16,6 +17,11 @@ function prefersReducedMotion() {
 function Spinner() {
   // Reduced motion shows one static frame instead of animating.
   const still = prefersReducedMotion()
+  const style = useSpinnerStyle()
+  return isWebSpinner(style) ? <WebSpinner kind={style} className="" still={still} /> : <TextSpinner still={still} />
+}
+
+function TextSpinner({ still }: { still: boolean }) {
   const element = useRef<HTMLSpanElement>(null)
   useEffect(() => {
     if (still || !element.current) return

@@ -440,6 +440,17 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   (blinking is Settings › Text › Blink, xterm's own option, off by default), and nothing animates `box-shadow`,
   `filter` or `backdrop-filter` ([PERFORMANCE](PERFORMANCE.md)). The working spinner steps every 160 ms and
   holds while the window is in the background.
+- **Working spinner** (Settings › Appearance › Theme, `spinner`) is a dropdown row under the dark and light theme:
+  a 220x40 button with a live preview tile, the name, its source ("From the Maitty TUI" or "Web icon") and a
+  chevron. The list is the Radix dropdown menu (`SpinnerPicker`, 260px wide, at most 340px tall, flipping upward
+  when there is no room) in two groups, **Maitty TUI** (Braille, Snake, Bars) and **Web** (Circle, Dots,
+  Equalizer, Spokes, Ping), each with a live preview and the picked one ticked. TUI spinners keep the TUI's exact
+  frame strings, stepped by the shared clock. Web spinners are inline SVG in the text colour, 1em square
+  (`WebSpinner`), each in its own `display: inline-block; contain: paint; will-change: transform` span, moved by
+  CSS with `transform` and `opacity` only: Circle rotates .8s, Dots scale and fade 1s staggered .16s, Equalizer
+  scales 3 bars .9s staggered .15s, Spokes step eight times in .9s, Ping scales a ring and fades it 1.3s. They
+  hold still under Reduce motion and pause while the window is in the background. Text-only places (a hover
+  card) show the Braille frames while a web spinner is picked.
 - **Process icons** are generic tiles, never a product's mark: `>_` shell, `✻` codex, `rs` cargo.
 - **Themes** are Midnight (default), Abyss, Paper and Day (a cool light theme), themes generated from six
   inputs (`bg fg accent mag blue green` and a light flag) by Oklab mixing, and **High Contrast** (pure

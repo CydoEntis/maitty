@@ -1086,6 +1086,8 @@ export function DesktopApp() {
         return
       }
       if (event.key === 'Escape') {
+        // A menu or list that is open (the spinner picker in Settings) takes Esc itself.
+        if (event.target instanceof Element && event.target.closest('[role="menu"]')) return
         // Innermost first: the palette or inbox, then focus mode, then Settings.
         // What Esc closes is not also sent on to the terminal, where it would interrupt an agent.
         const consume = () => { event.preventDefault(); event.stopPropagation() }
