@@ -6,7 +6,6 @@ import { MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
 import { useRecent } from '@/lib/clock'
 import { RailFolder } from './FolderTile'
 import { SidebarResizer } from './SidebarResizer'
-import { folderStyle } from './folderStyle'
 import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
 import { SessionStack } from './SessionStack'
 import { DisconnectedSince } from './times'
@@ -121,7 +120,7 @@ function Expanded(props: GroupProps) {
         <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
         <button type="button" className="mx-group-head" aria-expanded={open} {...hoverHandlers(hover, { kind: 'folder', key: group.key })} onClick={() => { hover.close(); onToggleGroup(group.key) }}>
           <Icon name="chevron" />
-          <span className={`mx-folder-tile${group.containsFocused ? ' is-focused' : ''}`} style={folderStyle(group.key, group.colorId)}><Icon name="folder" /></span>
+          <span className={`mx-folder-tile${group.containsFocused ? ' is-focused' : ''}`}><Icon name="folder" /></span>
           <span className="mx-group-name">{group.name}</span>
           <span className="mx-spacer" />
           {!open && online && group.workingCount > 0 && <Spinner />}
@@ -244,7 +243,7 @@ function RailFolderButton(props: { group: SessionGroup; open: boolean; online: b
       onBlur={hover.leave}
       onClick={props.onToggle}
     >
-      <RailFolder colorKey={group.key} colorId={group.colorId} initials={groupInitials(group)} focused={group.containsFocused} />
+      <RailFolder initials={groupInitials(group)} focused={group.containsFocused} />
       {online && group.needsCount > 0 && <span className="mx-rail-needs" />}
       {!open && <span className="mx-rail-count">{group.sessions.length}</span>}
       {!open && online && group.workingCount > 0 && <span className="mx-rail-spin"><Spinner /></span>}
@@ -290,7 +289,7 @@ function Rail(props: GroupProps) {
           const open = isOpen(group)
           const label = `${group.name} · ${String(group.sessions.length)} session${group.sessions.length === 1 ? '' : 's'} · click to ${open ? 'collapse' : 'expand'}`
           return (
-            <div key={group.key} className={`mx-rail-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`} style={folderStyle(group.key, group.colorId)}>
+            <div key={group.key} className={`mx-rail-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`}>
               <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
                 <RailFolderButton group={group} open={open} online={online} label={label} hover={hover} onToggle={() => { onToggleGroup(group.key) }} />
               </ProjectMenu>

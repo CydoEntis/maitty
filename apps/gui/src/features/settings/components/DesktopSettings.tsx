@@ -6,7 +6,6 @@ import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
 import { PerformanceSection } from './PerformanceSection'
 import { hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/model/shortcuts'
-import { PROJECT_COLORS } from '@/features/workspace/model/folderColor'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { errorMessage } from '@/lib/error-message'
 import type { Added, Grant, HostChoice } from '@/api/machines'
@@ -70,8 +69,6 @@ type DesktopSettingsProps = {
   /** The running app's version, for the performance report; null until known. */
   appVersion: string | null
   machines: MachinesInfo
-  /** The projects in the sidebar, so each can be given a colour. */
-  projects: ReadonlyArray<{ key: string; name: string; colorId: string | undefined }>
   /** Resolves whether a typed folder exists. */
   validateFolder: (path: string) => Promise<boolean>
   /** Opens the system's folder picker at the folder given; the path picked, or null when it is cancelled. */
@@ -195,13 +192,13 @@ export function DesktopSettings(props: DesktopSettingsProps) {
               <h2>{title}</h2>
               <p>{subtitle}</p>
             </div>
-            <button type="button" className="mx-settings-close" aria-label="Close settings" onClick={props.onClose}>Close<kbd>esc</kbd></button>
+            <button type="button" className="mx-icon-button mx-settings-close" aria-label="Close settings" title="Close (Esc)" onClick={props.onClose}><Icon name="close" size={14} /></button>
           </header>
           <div className="mx-settings-scroll">
             <div className="mx-settings-sections" key={section}>
               {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} onChooseFolder={props.onChooseFolder} onShowWelcome={props.onShowWelcome} updates={props.updates} />}
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
-              {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} projects={props.projects} />}
+              {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} />}
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} onTestNotice={props.onTestNotice} />}
               {section === 'machines' && <MachinesSection machines={props.machines} />}
               {section === 'keys' && <HotkeysSection mac={props.mac} />}
@@ -349,12 +346,6 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
   )
 }
 
-/** The colours with one project's choice set, or cleared when `id` is null. */
-function setColor(colors: Record<string, string>, key: string, id: string | null): Record<string, string> {
-  const rest = Object.fromEntries(Object.entries(colors).filter(([project]) => project !== key))
-  return id === null ? rest : { ...rest, [key]: id }
-}
-
 const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string; foot: string }> = [
   { id: 'flat', name: 'Flat', blurb: 'Solid panels, soft corners, quiet', foot: 'Solid panels, no glow. Status sweeps start off.' },
   { id: 'tiled', name: 'Tiled', blurb: 'Edge-to-edge panes, square corners, hairline dividers', foot: 'Edge-to-edge panes with square corners. Status sweeps start off.' },
@@ -441,7 +432,7 @@ const SECONDS_DIGITS = 2
 
 const MODE_OPTIONS = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as const
 
-function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme, projects }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void; projects: DesktopSettingsProps['projects'] }) {
+function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void }) {
   const reduced = preferences.reduceMotion || systemReducedMotion
   const now = useNow()
   const darkInUse = preferences.themeMode === 'dark' || (preferences.themeMode === 'system' && systemDark)
@@ -522,21 +513,6 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         <Row label="Main row shows" detail="Which session leads each project.">
           <Segmented label="Main row shows" value={preferences.leadMode} options={LEAD_OPTIONS} onChange={(value) => { update('leadMode', value) }} />
         </Row>
-        {projects.length > 0 && (
-          <div className="mx-scard-row is-stacked">
-            <div className="mx-scard-text"><span>Project colors</span><span>Amber and red are left out: they only ever mean needs you and error.</span></div>
-            {projects.map((project) => (
-              <div key={project.key} className="mx-project-color">
-                <span className="mx-project-color-name">{project.name}</span>
-                <div role="radiogroup" aria-label={`Color for ${project.name}`} className="mx-swatches">
-                  {PROJECT_COLORS.map((color) => (
-                    <button key={color.id} type="button" role="radio" aria-checked={project.colorId === color.id} aria-label={color.label} title={color.label} className="mx-swatch-dot" style={{ background: color.color }} onClick={() => { update('projectColors', setColor(preferences.projectColors, project.key, project.colorId === color.id ? null : color.id)) }} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </Card>
       <Card title="Interface size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>
         <Row label="Density" detail="How much room the sidebar rows, tabs and panes get.">

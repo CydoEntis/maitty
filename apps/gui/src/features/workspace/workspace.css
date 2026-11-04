@@ -114,10 +114,10 @@
 .mx-group-head:active { transform: scale(.985); }
 .mx-chevron { flex: none; transition: transform .2s var(--ease-out); }
 .mx-group.is-open .mx-group-head .mx-chevron { transform: rotate(90deg); }
-.mx-folder-tile { width: calc(22px * var(--icon-scale, 1)); height: calc(22px * var(--icon-scale, 1)); flex: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: linear-gradient(140deg, var(--folder-from, #6FE0CB), var(--folder-to, #2E9C88)); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18), 0 1px 2px rgba(0, 0, 0, .3); color: var(--on-accent); }
-.mx-folder-tile svg path { fill: color-mix(in srgb, var(--on-accent) 22%, transparent); }
-/* The folder that holds the focused session carries a ring, since every folder has its own colour. */
-.mx-folder-tile.is-focused { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .4), 0 0 0 2px var(--accent-soft), 0 1px 2px rgba(0, 0, 0, .3); }
+.mx-folder-tile { width: calc(22px * var(--icon-scale, 1)); height: calc(22px * var(--icon-scale, 1)); flex: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: var(--raise); color: var(--fg2); }
+.mx-folder-tile svg path { fill: color-mix(in srgb, var(--fg2) 22%, transparent); }
+/* The folder that holds the focused session carries a ring, since every tile is the same neutral. */
+.mx-folder-tile.is-focused { box-shadow: 0 0 0 2px var(--accent-soft); }
 .mx-group-name { font-size: var(--sidebar-fs, 13.5px); font-weight: 600; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-group.has-focused .mx-group-name { color: var(--fg); }
 /* A fixed width and layout containment keep a frame change inside the glyph: the row is not laid out
@@ -195,23 +195,22 @@
 .mx-rail-divider { width: calc(28px * var(--icon-scale, 1)); height: 1px; background: var(--pane-line); flex: none; }
 .mx-rail-list { flex: 1; min-height: 0; width: 100%; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0 12px; }
 /* A folder and its sessions sit on one strip in the folder's colour, so the rail shows which belong together. */
-.mx-rail-group { --tint: 6%; --ring: 20%; position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: calc(48px * var(--icon-scale, 1)); padding: 4px 0; border-radius: calc(14px * var(--rk)); background: color-mix(in srgb, var(--folder-from, #6FE0CB) var(--tint), transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--folder-from, #6FE0CB) var(--ring), transparent); transition: background-color .2s ease, box-shadow .2s ease; }
+.mx-rail-group { --tint: 6%; --ring: 20%; position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: calc(48px * var(--icon-scale, 1)); padding: 4px 0; border-radius: calc(14px * var(--rk)); background: color-mix(in srgb, var(--fg2) var(--tint), transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg2) var(--ring), transparent); transition: background-color .2s ease, box-shadow .2s ease; }
 .mx-rail-group.is-open { --tint: 9%; }
 .mx-rail-group.has-focused { --tint: 10%; --ring: 34%; }
 .mx-rail-group.is-open.has-focused { --tint: 13%; }
-.mx-rail-group.has-focused::before { content: ""; position: absolute; left: -6px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--folder-from, #6FE0CB); }
+.mx-rail-group.has-focused::before { content: ""; position: absolute; left: -6px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--fg2); }
 .mx-rail-label { position: relative; width: calc(40px * var(--icon-scale, 1)); height: calc(36px * var(--icon-scale, 1)); display: flex; align-items: center; justify-content: center; border-radius: calc(9px * var(--rk)); transition: background-color .14s ease, transform .2s var(--ease-out); }
 .mx-rail-label:hover { background: rgba(255, 255, 255, .06); transform: scale(1.06); }
-.mx-rail-folder-shape { fill: color-mix(in srgb, var(--folder-from, #6FE0CB) 14%, transparent); stroke: color-mix(in srgb, var(--folder-from, #6FE0CB) 55%, transparent); stroke-width: 1.4; transition: fill .2s ease; }
-.mx-rail-folder.is-focused .mx-rail-folder-shape { fill: color-mix(in srgb, var(--folder-from, #6FE0CB) 26%, transparent); }
+.mx-rail-folder-shape { fill: color-mix(in srgb, var(--fg2) 14%, transparent); stroke: color-mix(in srgb, var(--fg2) 55%, transparent); stroke-width: 1.4; transition: fill .2s ease; }
+.mx-rail-folder.is-focused .mx-rail-folder-shape { fill: color-mix(in srgb, var(--fg2) 26%, transparent); }
 .mx-rail-folder svg { display: block; width: calc(30px * var(--icon-scale, 1)); height: calc(26px * var(--icon-scale, 1)); overflow: visible; }
-.mx-rail-folder-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-top: 3px; font-size: 10.5px; font-weight: 700; line-height: 1; color: color-mix(in srgb, var(--folder-from, #6FE0CB) 70%, var(--fg)); }
+.mx-rail-folder-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-top: 3px; font-size: 10.5px; font-weight: 700; line-height: 1; color: color-mix(in srgb, var(--fg2) 70%, var(--fg)); }
 .mx-rail-folder.is-focused .mx-rail-folder-text { color: var(--fg); }
 .mx-rail-needs { position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 2px; background: var(--warn); }
 .mx-rail-count { position: absolute; right: -2px; bottom: -2px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg); background: var(--raise); box-shadow: 0 0 0 2px var(--card-ring); }
 .mx-rail-spin { position: absolute; left: -2px; bottom: -2px; width: 15px; height: 15px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; line-height: 1; color: var(--accent); background: var(--well); box-shadow: 0 0 0 2px var(--card-ring); }
-.mx-rail-hairline { flex: none; width: 20px; height: 1px; background: color-mix(in srgb, var(--folder-from, #6FE0CB) 30%, transparent); }
-:root[data-icons="grayscale"] .mx-rail-group { --folder-from: var(--fg2) !important; --folder-to: var(--fg2) !important; }
+.mx-rail-hairline { flex: none; width: 20px; height: 1px; background: color-mix(in srgb, var(--fg2) 30%, transparent); }
 .mx-rail-folder { position: relative; display: flex; align-items: center; justify-content: center; }
 /* What a collapsed folder is, beside it: fixed to the window so the rail's scrolling cannot clip it. */
 .mx-rail-popover { position: fixed; z-index: 50; transform: translateY(-50%); min-width: 200px; max-width: 300px; padding: 10px 12px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 14px 34px rgba(0, 0, 0, .35); backdrop-filter: blur(18px); pointer-events: none; animation: v7fade .14s ease-out; }
@@ -247,7 +246,7 @@
 .mx-app-icon.is-rust { background: linear-gradient(140deg, color-mix(in oklab, var(--warn) 80%, var(--fg) 20%), color-mix(in oklab, var(--warn) 55%, var(--danger) 45%)); color: var(--on-warn); }
 .mx-app-icon.is-claude { background: linear-gradient(140deg, #E8926F, #C4623F); color: #FFF6F0; }
 /* Any other agent or program: a letter on a colour taken from its name. */
-.mx-app-icon.is-tinted { background: linear-gradient(140deg, var(--folder-from), var(--folder-to)); color: var(--on-accent); }
+.mx-app-icon.is-tinted { background: linear-gradient(140deg, var(--program-from), var(--program-to)); color: var(--on-accent); }
 
 .mx-badge { position: absolute; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--card-ring); }
 .mx-row-icon .mx-badge { right: -4px; bottom: -4px; width: 14px; height: 14px; border-radius: 4px; }
@@ -422,10 +421,7 @@
 .mx-settings-nav-text { flex: 1; white-space: nowrap; }
 .mx-settings-nav-key { font-family: var(--mono); font-size: 11px; color: var(--dim); }
 .mx-settings-body { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
-.mx-settings-close { flex: none; height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 8px 0 12px; border-radius: 9px; font-size: 13px; color: var(--fg2); transition: background-color .14s ease, color .14s ease, transform .12s ease; }
-.mx-settings-close:hover { background: rgba(255, 255, 255, .07); color: var(--fg); }
-.mx-settings-close:active { transform: scale(.96); }
-.mx-settings-close kbd { font-family: var(--mono); font-size: 10.5px; padding: 2px 6px; border-radius: 5px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line); color: var(--muted); }
+.mx-settings-close { width: 30px; height: 30px; border-radius: 8px; color: var(--muted); }
 .mx-settings-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 28px 28px; scroll-behavior: smooth; }
 .mx-settings-header { flex: none; min-height: 68px; display: flex; align-items: center; gap: 16px; padding: 14px 14px 14px 28px; border-bottom: 1px solid var(--pane-line); background: var(--pane); }
 .mx-settings-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; animation: v7fade .22s ease-out; }
@@ -699,12 +695,6 @@
 
 /* Project colours in Settings */
 .mx-scard-row.is-stacked { flex-direction: column; align-items: stretch; gap: 8px; }
-.mx-project-color { display: flex; align-items: center; gap: 12px; min-height: 28px; }
-.mx-project-color-name { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-swatches { display: flex; gap: 8px; }
-.mx-swatch-dot { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2); transition: transform .14s ease; }
-.mx-swatch-dot:hover { transform: scale(1.15); }
-.mx-swatch-dot[aria-checked="true"] { box-shadow: 0 0 0 2px var(--pane), 0 0 0 4px var(--fg2); }
 
 /* Command palette */
 .mx-palette-scrim { position: absolute; inset: 0; z-index: 60; background: rgba(0, 0, 0, .58); animation: v7scrim .2s ease-out; }
@@ -714,7 +704,6 @@
 .mx-palette-list { max-height: 380px; overflow-y: auto; overflow-x: hidden; padding: 6px; display: flex; flex-direction: column; gap: 1px; }
 .mx-palette-row { flex: none; height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-radius: 9px; font-size: 13.5px; color: var(--fg); cursor: pointer; }
 .mx-palette-row.is-selected { background: var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line); }
-.mx-palette-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .mx-palette-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-palette-detail { color: var(--dim); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-palette-shortcut { font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
@@ -734,7 +723,6 @@
 .mx-inbox-card { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px; background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1px var(--pane-line); }
 .mx-inbox-card.is-needs { box-shadow: inset 0 0 0 1px var(--warn-line); }
 .mx-inbox-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.mx-inbox-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .mx-inbox-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .mx-inbox-title { font-size: 13px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-inbox-title strong { color: var(--fg); font-weight: 600; }
@@ -802,7 +790,6 @@
 .mx-rp-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .mx-rp-title strong { font-size: 13.5px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-rp-path { font-family: var(--mono); font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-rp-dot { width: 10px; height: 10px; flex: none; border-radius: 3px; background: linear-gradient(140deg, var(--folder-from), var(--folder-to)); }
 .mx-rp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
 .mx-rp-row { width: 100%; display: flex; align-items: center; gap: 9px; padding: 5px 6px; border-radius: 8px; text-align: left; transition: background-color .14s ease; }
 .mx-rp-row:hover { background: rgba(255, 255, 255, .06); }
@@ -888,7 +875,6 @@
 .mx-notice-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .mx-notice-head { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); }
 .mx-notice-app { font-weight: 600; letter-spacing: .08em; }
-.mx-notice-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
 .mx-notice-age { margin-left: auto; }
 .mx-notice-title { font-size: 13.5px; font-weight: 600; }
 .mx-notice-body { font-size: 12.5px; line-height: 1.4; color: var(--fg2); overflow-wrap: anywhere; }
@@ -958,11 +944,8 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 :root[data-finish="flat"] .mx-settings { background: var(--main); box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 :root[data-finish="flat"] .mx-settings-scrim { backdrop-filter: none; }
 :root[data-finish="flat"] .mx-rail-popover { box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
-/* Settings › Appearance › Icons: Grayscale. Neutral tiles in either style; status badges on them keep their colours. */
-:root[data-icons="grayscale"] .mx-folder-tile,
-:root[data-icons="grayscale"] .mx-folder-tile.is-focused,
+/* Settings › Appearance › Icons: Grayscale. Neutral app icons in either style; status badges on them keep their colours. */
 :root[data-icons="grayscale"] .mx-app-icon { background: var(--raise); box-shadow: none; color: var(--fg2); }
-:root[data-icons="grayscale"] .mx-folder-tile svg path { fill: color-mix(in srgb, var(--fg2) 22%, transparent); }
 /* No outlines on the selected row, hovered rows or the open tab: the fill says it. */
 :root[data-finish="flat"] .mx-row.is-selected,
 :root[data-finish="flat"] .mx-rail-row.is-selected,

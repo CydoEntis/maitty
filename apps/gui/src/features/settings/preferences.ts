@@ -90,8 +90,6 @@ export type SettingsPreferences = {
   autoDownloadUpdates: boolean
   /** Restart into a downloaded update when no session is working or waiting on you. */
   restartWhenIdle: boolean
-  /** A colour the user gave a project, by the project's key (its repo or folder path). */
-  projectColors: Record<string, string>
 }
 
 export const TERMINAL_FONT_SIZE_MIN = 12
@@ -155,7 +153,6 @@ function defaults(): SettingsPreferences {
     terminalSeeThrough: false,
     autoDownloadUpdates: true,
     restartWhenIdle: false,
-    projectColors: {},
   }
 }
 
@@ -214,7 +211,6 @@ export function readSettingsPreferences(): SettingsPreferences {
       sidebarSide: preferences.sidebarSide === 'left' || preferences.sidebarSide === 'right' ? preferences.sidebarSide : fallback.sidebarSide,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
       trayStyle: preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
-      projectColors: stringRecord(preferences.projectColors),
       style: styleOf(preferences.style) ?? fallback.style,
       statusBar: bool(preferences.statusBar, fallback.statusBar),
       perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),
@@ -232,11 +228,6 @@ export function readSettingsPreferences(): SettingsPreferences {
 
 export function writeSettingsPreferences(preferences: SettingsPreferences): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences))
-}
-
-function stringRecord(value: unknown): Record<string, string> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
-  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
 }
 
 function isToastPosition(value: unknown): value is ToastPosition {

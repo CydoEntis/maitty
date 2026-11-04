@@ -9,7 +9,7 @@ function machine(id: number, name: string, kind: RemoteMachine['state']['state']
 }
 
 function group(key: string, name: string, machineName: string | null): SessionGroup {
-  return { key, name, kind: 'folder', path: `/${name}`, machineName, sessions: [], containsFocused: false, colorId: undefined, needsCount: 0, workingCount: 0 }
+  return { key, name, kind: 'folder', path: `/${name}`, machineName, sessions: [], containsFocused: false, needsCount: 0, workingCount: 0 }
 }
 
 function show(heads: SidebarProps['machineHeads'], groups: SessionGroup[]) {

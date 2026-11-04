@@ -1,7 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { displayName, STATUS_WORD, truncatePrompt, type SessionGroup, type SessionView } from '../model/session'
-import { folderStyle } from './folderStyle'
 import type { SessionTrack } from '../model/tracking'
 import { Ago } from './times'
 import { AppIcon, Icon, Spinner } from './glyphs'
@@ -37,7 +36,7 @@ function ProjectPopover({ group, hover, onShowSession }: { group: SessionGroup; 
   return (
     <>
       <header className="mx-rp-head">
-        <span className="mx-folder-tile" style={folderStyle(group.key, group.colorId)}><Icon name="folder" /></span>
+        <span className="mx-folder-tile"><Icon name="folder" /></span>
         <span className="mx-rp-title">
           <strong>{group.name}</strong>
           <span className="mx-rp-path">{group.path}</span>

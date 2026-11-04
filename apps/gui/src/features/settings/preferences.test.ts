@@ -23,7 +23,7 @@ const DEFAULTS: SettingsPreferences = {
   scrollback: 10000, scrollSpeed: 1,
   effectWorking: true,
   effectNeedsYou: true,
-  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, style: 'glass', projectColors: {},
+  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
@@ -104,7 +104,16 @@ describe('settings preferences', () => {
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ trayStyle: 'stacked', leadMode: 'attention' }))
     expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'stacked', leadMode: 'attention' })
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ trayStyle: 'wide', leadMode: 'random' }))
-    expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', projectColors: {} })
+    expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color' })
+  })
+
+  it('ignores per-project colours saved by an older version, without an error', () => {
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ density: 'spacious', projectColors: { '/code/maitty': 'violet' } }))
+
+    const read = readSettingsPreferences()
+
+    expect(read.density).toBe('spacious')
+    expect(read).not.toHaveProperty('projectColors')
   })
 
   it('carries over the theme chosen before the theme browser', () => {
