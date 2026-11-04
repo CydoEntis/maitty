@@ -7,7 +7,8 @@ import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
 import { SpinnerPicker, SpinnerPreview } from './SpinnerPicker'
 import { PerformanceSection } from './PerformanceSection'
-import { hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/model/shortcuts'
+import { hotkeyRows, type Platform } from '@/features/workspace/model/shortcuts'
+import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { errorMessage } from '@/lib/error-message'
 import { BUNDLED_FONT_NAME, fontStackFor, installedMonospaceFamilies, isFontFamily, WEIGHT_BOLD, WEIGHT_EXTRA_BOLD, WEIGHT_LIGHT, WEIGHT_MEDIUM, WEIGHT_REGULAR, WEIGHT_SEMIBOLD, type TerminalFontWeight } from '@/lib/terminalFont'
@@ -67,7 +68,7 @@ type DesktopSettingsProps = {
   onPreviewTheme: (name: string | null) => void
   /** Closes Settings and plays the first-run welcome again. */
   onShowWelcome: () => void
-  mac: boolean
+  platform: Platform
   daemon: DaemonInfo
   /** The running app's version, for the performance report; null until known. */
   appVersion: string | null
@@ -204,7 +205,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
               {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} />}
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} onTestNotice={props.onTestNotice} />}
               {section === 'machines' && <MachinesSection machines={props.machines} />}
-              {section === 'keys' && <HotkeysSection mac={props.mac} />}
+              {section === 'keys' && <HotkeysSection platform={props.platform} />}
               {section === 'daemon' && <DaemonSection daemon={props.daemon} />}
               {section === 'performance' && <PerformanceSection preferences={preferences} update={update} appVersion={props.appVersion} />}
             </div>
@@ -623,26 +624,18 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
   )
 }
 
-function Keycaps({ chord }: { chord: Chord }) {
+function HotkeysSection({ platform }: { platform: Platform }) {
   return (
-    <span className="mx-chord" role="group" aria-label={chord.join(' ')}>
-      {chord.map((key) => <kbd key={key} className={`mx-keycap${isModifierSymbol(key) ? ' is-symbol' : ''}`}>{key}</kbd>)}
-    </span>
-  )
-}
-
-function HotkeysSection({ mac }: { mac: boolean }) {
-  return (
-    <Card title="Hotkeys" color="var(--ansi-blue)" iconPath={<><rect x="3" y="7" width="18" height="10" rx="2" /><path d="M7 11h.01M11 11h.01M15 11h.01M8 14h8" /></>} meta={<span className="mx-scard-meta">{mac ? '⌘ is Ctrl on Windows and Linux' : 'Ctrl is ⌘ on macOS'}</span>} foot="In a focused pane, every other key goes straight to the shell.">
+    <Card title="Hotkeys" color="var(--ansi-blue)" iconPath={<><rect x="3" y="7" width="18" height="10" rx="2" /><path d="M7 11h.01M11 11h.01M15 11h.01M8 14h8" /></>} meta={<span className="mx-scard-meta">{platform === 'mac' ? '⌘ here, Ctrl+Shift on Windows and Linux' : 'Ctrl+Shift here, ⌘ on macOS'}</span>} foot="In a focused pane, every other key goes straight to the shell.">
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {hotkeyRows(mac).map((row) => (
+        {hotkeyRows(platform).map((row) => (
           <div key={row.action} className="mx-hotkey-row">
             <span>{row.action}</span>
             <span className="mx-keys">
               {row.chords.map((chord, index) => (
                 <Fragment key={chord.join('+')}>
                   {index > 0 && <span className="mx-or">or</span>}
-                  <Keycaps chord={chord} />
+                  <Keycaps chord={chord} className="mx-chord" labelled />
                 </Fragment>
               ))}
             </span>

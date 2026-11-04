@@ -17,7 +17,7 @@ function renderSettings(section: DesktopSettingsSection, overrides: Partial<Para
   const onSection = vi.fn()
   const onPreviewTheme = vi.fn()
   const onShowWelcome = vi.fn()
-  render(<QueryClientProvider client={new QueryClient()}><DesktopSettings section={section} onSection={onSection} preferences={PREFS} onChange={onChange} systemReducedMotion={false} systemDark onPreviewTheme={onPreviewTheme} onShowWelcome={onShowWelcome} mac={false} daemon={{ online: true, sessionCount: 3 }} machines={info()} appVersion="0.64.0" validateFolder={() => Promise.resolve(true)} onClose={vi.fn()} {...overrides} /></QueryClientProvider>)
+  render(<QueryClientProvider client={new QueryClient()}><DesktopSettings section={section} onSection={onSection} preferences={PREFS} onChange={onChange} systemReducedMotion={false} systemDark onPreviewTheme={onPreviewTheme} onShowWelcome={onShowWelcome} platform="linux" daemon={{ online: true, sessionCount: 3 }} machines={info()} appVersion="0.64.0" validateFolder={() => Promise.resolve(true)} onClose={vi.fn()} {...overrides} /></QueryClientProvider>)
   return { onChange, onSection, onPreviewTheme, onShowWelcome }
 }
 

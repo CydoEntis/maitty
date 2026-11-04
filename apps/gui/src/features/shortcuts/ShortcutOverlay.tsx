@@ -1,13 +1,10 @@
 import { Dialog as DialogPrimitive } from 'radix-ui'
-import { HOTKEY_GROUPS, hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/model/shortcuts'
-
-function Keycaps({ chord }: { chord: Chord }) {
-  return <span className="mx-wel-chord">{chord.map((key) => <kbd key={key} className={`mx-keycap${isModifierSymbol(key) ? ' is-symbol' : ''}`}>{key}</kbd>)}</span>
-}
+import { HOTKEY_GROUPS, hotkeyRows, type Platform } from '@/features/workspace/model/shortcuts'
+import { Keycaps } from './Keycaps'
 
 /** Every shortcut the window handles, grouped, from the same table Settings > Hotkeys reads. */
-export function ShortcutOverlay({ mac, portalContainer, onClose }: { mac: boolean; portalContainer: HTMLElement | null; onClose: () => void }) {
-  const rows = hotkeyRows(mac)
+export function ShortcutOverlay({ platform, portalContainer, onClose }: { platform: Platform; portalContainer: HTMLElement | null; onClose: () => void }) {
+  const rows = hotkeyRows(platform)
   return (
     <DialogPrimitive.Root open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogPrimitive.Portal container={portalContainer}>
@@ -26,7 +23,7 @@ export function ShortcutOverlay({ mac, portalContainer, onClose }: { mac: boolea
                     <li key={row.action}>
                       <span>{row.action}</span>
                       <span className="mx-shortcuts-chords">
-                        {row.chords.map((chord) => <Keycaps key={chord.join('+')} chord={chord} />)}
+                        {row.chords.map((chord) => <Keycaps key={chord.join('+')} chord={chord} className="mx-wel-chord" />)}
                       </span>
                     </li>
                   ))}

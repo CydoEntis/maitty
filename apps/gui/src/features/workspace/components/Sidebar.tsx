@@ -15,6 +15,7 @@ import { hoverHandlers, useRailHover, type RailHover } from './railHover'
 import { LOCAL_MACHINE } from '@/api/machines'
 import type { MachineHead } from '../model/machines'
 import { WorktreeMenu } from '@/features/worktrees/WorktreeMenu'
+import { useTipWithKeys } from '@/features/shortcuts/platform'
 
 export type SidebarProps = {
   groups: SessionGroup[]
@@ -25,7 +26,6 @@ export type SidebarProps = {
   mode: 'docked' | 'rail'
   online: boolean
   sessionCount: number
-  primary: string
   startFolderLabel: string
   canStart: boolean
   /** Where portalled menus mount, so they read the theme's colours. */
@@ -110,7 +110,8 @@ export function Sidebar(props: SidebarProps) {
 type GroupProps = SidebarProps & { isOpen: (group: SessionGroup) => boolean; onToggleGroup: (key: string) => void; remembered: ReadonlyMap<string, string> }
 
 function Expanded(props: GroupProps) {
-  const { groups, mode, primary, online, isOpen, onToggleGroup } = props
+  const { groups, mode, online, isOpen, onToggleGroup } = props
+  const tip = useTipWithKeys()
   const hover = useRailHover()
   const heads = props.machineHeads
   const renderGroup = (group: SessionGroup) => {
@@ -159,9 +160,9 @@ function Expanded(props: GroupProps) {
       <div className="mx-sidebar-head">
         <span className="mx-sidebar-title">Projects</span>
         <span className="mx-spacer" />
-        <button type="button" className="mx-new-button" aria-label="New session" title={`New session in ${props.startFolderLabel} (${primary}T)`} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" size={15} /></button>
+        <button type="button" className="mx-new-button" aria-label="New session" title={tip(`New session in ${props.startFolderLabel}`, 'new-session')} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" size={15} /></button>
         {mode === 'docked' && (
-          <button type="button" className="mx-icon-button mx-collapse" aria-label="Collapse sidebar" title={`Collapse sidebar (${primary}B)`} onClick={props.onToggleRail}><Icon name="collapse" /></button>
+          <button type="button" className="mx-icon-button mx-collapse" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
         )}
       </div>
       <div className="mx-sidebar-list">
@@ -174,7 +175,7 @@ function Expanded(props: GroupProps) {
         {online
           ? <span className="mx-foot-slot">{props.updateSlot}</span>
           : <><span className="mx-daemon-dot is-offline" aria-hidden="true" /><span className="mx-daemon-text is-offline" role="status">Reconnecting to maittyd…</span></>}
-        <button type="button" className="mx-settings-button" title={`Settings (${primary},)`} onClick={props.onOpenSettings}><Icon name="gear" />Settings</button>
+        <button type="button" className="mx-settings-button" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" />Settings</button>
       </div>
     </div>
   )
@@ -210,6 +211,7 @@ function RailSessionButton(props: { session: SessionView; track: SessionTrack | 
         type="button"
         className={`mx-rail-row${selected ? ' is-selected' : ''}`}
         aria-label={words}
+        data-hovercard=""
         aria-current={selected ? 'page' : undefined}
         onMouseEnter={(event) => { hover.enter(target, event.currentTarget) }}
         onMouseLeave={hover.leave}
@@ -236,6 +238,7 @@ function RailFolderButton(props: { group: SessionGroup; open: boolean; online: b
       type="button"
       className={`mx-rail-label${group.containsFocused ? ' has-focused' : ''}`}
       aria-label={props.label}
+      data-hovercard=""
       aria-expanded={open}
       onMouseEnter={(event) => { hover.enter(target, event.currentTarget) }}
       onMouseLeave={hover.leave}
@@ -274,14 +277,15 @@ function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle,
 }
 
 function Rail(props: GroupProps) {
-  const { groups, focusedId, tracks, primary, online, sessionCount, isOpen, onToggleGroup } = props
+  const { groups, focusedId, tracks, online, sessionCount, isOpen, onToggleGroup } = props
+  const tip = useTipWithKeys()
   const hover = useRailHover()
   return (
     <div className="mx-rail">
       <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} openIds={props.openIds} tracks={props.tracks} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
       <div className="mx-rail-top">
-        {props.canExpand && <button type="button" className="mx-icon-button mx-rail-button" aria-label="Expand sidebar" title={`Expand sidebar (${primary}B)`} onClick={props.onToggleRail}><Icon name="expand" /></button>}
-        <button type="button" className="mx-icon-button mx-rail-button mx-rail-new" aria-label="New session" title={`New session (${primary}T)`} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" /></button>
+        {props.canExpand && <button type="button" className="mx-icon-button mx-rail-button" aria-label="Expand sidebar" title={tip('Expand sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="expand" /></button>}
+        <button type="button" className="mx-icon-button mx-rail-button mx-rail-new" aria-label="New session" title={tip('New session', 'new-session')} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" /></button>
       </div>
       <div className="mx-rail-divider" />
       <div className="mx-rail-list mx-no-scrollbar">
@@ -322,7 +326,7 @@ function Rail(props: GroupProps) {
       <div className="mx-rail-bottom">
         {props.railUpdateSlot}
         <span className={`mx-daemon-dot${online ? '' : ' is-offline'}`} role="img" aria-label={online ? `maittyd · ${String(sessionCount)} sessions` : 'Reconnecting to maittyd…'} title={online ? `maittyd · ${String(sessionCount)} sessions` : 'Reconnecting to maittyd…'} />
-        <button type="button" className="mx-icon-button mx-rail-button" aria-label="Settings" title={`Settings (${primary},)`} onClick={props.onOpenSettings}><Icon name="gear" /></button>
+        <button type="button" className="mx-icon-button mx-rail-button" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" /></button>
       </div>
     </div>
   )

@@ -19,7 +19,7 @@ type InboxProps = {
   onClose: () => void
 }
 
-/** ⌘J: every session that needs you, failed or finished, across all projects. The GUI only types your answer into the session. */
+/** ⌘⇧J: every session that needs you, failed or finished, across all projects. The GUI only types your answer into the session. */
 export function InboxPanel({ entries, tracks, online, onAnswer, onClear, onClearDone, onOpen, onClose }: InboxProps) {
   const settled = entries.some((entry) => entry.session.status !== 'needs')
   return (

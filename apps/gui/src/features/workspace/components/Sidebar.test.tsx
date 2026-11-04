@@ -16,7 +16,7 @@ function show(heads: SidebarProps['machineHeads'], groups: SessionGroup[]) {
   const none = vi.fn()
   render(
     <Sidebar
-      groups={groups} machineHeads={heads} focusedId={null} tracks={new Map()} mode="docked" online sessionCount={0} primary="Ctrl+"
+      groups={groups} machineHeads={heads} focusedId={null} tracks={new Map()} mode="docked" online sessionCount={0}
       startFolderLabel="~" canStart portalContainer={null} onToggleRail={none} canExpand tabOf={new Map()} tabPanes={new Map()}
       openIds={new Set()} paneOf={new Map()} trayStyle="stacked" leadMode="focused" side="left" width={280} onResize={none}
       onResizeEnd={none} onNewSession={none} onNewSessionIn={none} onNewWorktree={none} onShowSession={none} onEndSession={none}

@@ -238,7 +238,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   itself never scrolls. The title and description slide with the page. Under Advanced, **Performance** shows live
   frame, drawing, output and process figures with a **Copy report** button, and a switch for a corner readout over
   the window ([PERFORMANCE](PERFORMANCE.md#measuring-in-the-app)).
-- **Shortcut overlay** (⌘/ or Ctrl+/, also in the palette). An 820px dialog over a blurred scrim, titled
+- **Shortcut overlay** (⌘/ or Ctrl+/, also in the palette; the table above lists the keys). An 820px dialog over a blurred scrim, titled
   "Keyboard shortcuts" with a Close `esc` button, holding an auto-fill grid (230px minimum) of Sessions,
   Panes, Find & jump and Window with each action and its keycaps (several chords stack). It is generated
   from the same table (`hotkeyRows`, each row has a group) that Settings › Hotkeys reads, so the two never
@@ -330,8 +330,13 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   overlapped) and `+N` for the panes beyond the first; hovering it opens a list of every pane with
   its agent, folder and state. A collapsed session's popover says "Open in tab N"; the expanded rows
   carry no tab number. A working row shows its spinner and no run time, because the window only
-  knows when it first saw the change. Anything with a `title` shows a themed tooltip after a short
-  hover (`HoverTips`), not the browser's.
+  knows when it first saw the change. Anything with a `title`, and every icon-only button, radio or switch
+  (by its `aria-label`), shows a themed tooltip (`HoverTips`), not the browser's: 420 ms after the
+  pointer rests, 40 ms when another tip was on screen in the last 400 ms; hidden on a press, a key
+  or the wheel; held back while a menu or a rich hover card is open. A trailing `(keys)` becomes
+  keycaps and text after ` · ` a muted second line. It sits above the control, below it within 56px
+  of the top, and beside it for a control marked `data-tip-side`. A control that opens its own hover
+  card carries `data-hovercard` and gets no tip.
 - **Tabs hold layouts, panes hold sessions.** A tab is one to four panes in columns; closing a
   pane or tab detaches and the session stays in the sidebar. Ending a session is its own action
   on the sidebar row, a pane's menu or a row's menu. Right-click opens a menu on a pane (split,
@@ -342,11 +347,24 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Hotkeys are keycaps.** Settings › Hotkeys draws each key as its own key-shaped cap (a thicker
   bottom edge, symbols ⌘⇧⌃⌥ in the interface font, other keys in Geist Mono), with a dim "or"
   between alternatives. Windows and Linux show Ctrl, Shift and Alt as words.
+- **One key table.** `features/workspace/model/shortcuts.ts` holds every window shortcut once
+  (`BINDINGS`); the key handler, tooltips, menu hints, palette, keycaps, Settings › Hotkeys and the
+  overlay all read it through `formatShortcut(binding, platform)`. The glyphs are never rewritten in
+  the DOM. On macOS the window uses ⌘ and leaves Ctrl to the terminal. On Windows and Linux a plain
+  Ctrl+letter always goes to the terminal, so the window uses Ctrl+Shift (T, W, D, F, K, I, B, N,
+  J ...); where two actions want the same Ctrl+Shift letter the second takes Ctrl+Alt+Shift (split
+  down, broadcast). Ctrl with a non-letter (`,` `.` `/` `[` `]` `=` `1`-`9` Tab) is the window's
+  too. A binding with `available: false` (Overview, Session panel, Usage, Terminal/Chat, Undo
+  close) is registered but its key does nothing and the overlay hides it until the feature lands.
+  Jump to the next session that needs you is ⌘J on macOS only: Ctrl+J is a terminal key.
+- **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
+  open (`model/escLadder.ts`): comment composer, New agent and What's new, Overview, palette,
+  inbox, Settings, the sidebar drawer, Focus mode. A new dialog adds its id there.
 - **Command palette (⌘K).** A 600px card over a dimmed scrim: type a few letters to jump to a
   session, project, action or theme (themes only once something is typed). A run of the typed text
   ranks above letters that merely appear in order; ↑ ↓ move, ↵ runs, Esc closes. Sessions that need
   you say so on their row.
-- **Inbox (⌘J).** The tab bar's **Inbox** button (a count, amber when something needs you) opens a
+- **Inbox (⌘⇧J).** The tab bar's **Inbox** button (a count, amber when something needs you) opens a
   panel listing every session that needs you, failed or finished, across all projects, in that
   order. A needs-you card has **Yes, once**, **This session** and **No**, which type `y`, `a` or `n`
   into that session; the window never decides for it. Done and error cards have **Clear** (hides it
