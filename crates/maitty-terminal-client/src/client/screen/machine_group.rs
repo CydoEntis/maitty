@@ -18,6 +18,9 @@ pub(super) const THIS_COMPUTER: &str = "this computer";
 /// A name keeps at least this many cells before the state's word gives way to its glyph.
 const NAME_KEPT: usize = 8;
 
+/// The most lines a down machine's reason takes before its end is cut with an ellipsis.
+const REASON_LINES: usize = 3;
+
 /// The mark that leads a remote machine's name.
 const LEAD: &str = "⇄ ";
 const LEAD_ASCII: &str = "<> ";
@@ -90,7 +93,7 @@ impl App {
 pub(super) fn lines(app: &App, machine: MachineId, t: &Theme) -> Vec<Line> {
     let mut out = vec![Line::Machine(machine)];
     match app.remotes.get(&machine) {
-        Some(remote) if remote.state.is_down() => out.extend(down_notes(remote, t)),
+        Some(remote) if remote.state.is_down() => out.extend(down_notes(remote, note_room(app), t)),
         _ => out.extend(
             usage_notes(app, machine)
                 .into_iter()
@@ -100,7 +103,18 @@ pub(super) fn lines(app: &App, machine: MachineId, t: &Theme) -> Vec<Line> {
     out
 }
 
-fn down_notes(remote: &crate::client::ids::Remote, t: &Theme) -> Vec<Line> {
+/// The cells a note has in the sidebar the last frame drew (the narrowest one before the first),
+/// as `draw_note` is given them: the Floating card keeps two columns each side, Hairline one.
+fn note_room(app: &App) -> usize {
+    let width = match app.screen.side_rect.width {
+        0 => SIDE_MIN,
+        drawn => drawn,
+    };
+    let margin = if Look::of(&app.cfg.ui).hairline { 2 } else { 4 };
+    usize::from(width.saturating_sub(margin)).max(1)
+}
+
+fn down_notes(remote: &crate::client::ids::Remote, room: usize, t: &Theme) -> Vec<Line> {
     let down_for = remote.down_since.map_or(Duration::ZERO, |at| at.elapsed());
     let when = age(now_secs().saturating_sub(down_for.as_secs()));
     let why = match &remote.state {
@@ -114,10 +128,13 @@ fn down_notes(remote: &crate::client::ids::Remote, t: &Theme) -> Vec<Line> {
         format!("disconnected {when} ago"),
         format!("down {when}"),
     ];
-    vec![
-        Line::MachineNote(since, t.muted),
-        Line::MachineNote(vec![why], t.text),
-    ]
+    // One row per line, since the rows of the sidebar are what scrolling and clicks go by.
+    let reason = popover::wrap_capped(&why, room, REASON_LINES)
+        .into_iter()
+        .map(|line| Line::MachineNote(vec![line], t.text));
+    std::iter::once(Line::MachineNote(since, t.muted))
+        .chain(reason)
+        .collect()
 }
 
 /// What the machine's own daemon reports, never added to another's: a line of plan limits, and

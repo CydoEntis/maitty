@@ -5964,6 +5964,113 @@ mod screen_tests {
         assert_eq!(rows.join(" "), SENTENCE, "every word shows, in order, none cut: {rows:?}");
     }
 
+    const DETAIL: &str = "A connection to kingdom was lost while the task was running, so nothing it \
+                          wrote since the last save could be kept on this computer";
+    const PREVIEW: &str = "error: the remote end hung up unexpectedly while receiving the last of \
+                           the pack data from kingdom";
+
+    /// The text of each row inside a toast's box, below its title row, blank rows left out.
+    fn below_title(buf: &ratatui::buffer::Buffer, r: Rect, from_x: u16) -> Vec<String> {
+        (r.y + 2..r.bottom() - 1)
+            .map(|y| {
+                (from_x..r.right() - 1)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+                    .trim()
+                    .to_string()
+            })
+            .filter(|row| !row.is_empty())
+            .collect()
+    }
+
+    #[test]
+    fn a_long_detail_and_preview_wrap_inside_a_taller_box_and_draw_nothing_outside_it() {
+        for (w, h) in [(70, 30), (160, 45)] {
+            let (_, mut app) = super::design_tests::render_with(w, h);
+            let bare = frame(&mut app, w, h);
+            app.notify_card(
+                "Copied to clipboard".into(),
+                DETAIL.into(),
+                Some(PREVIEW.into()),
+                false,
+            );
+            let buf = frame(&mut app, w, h);
+            let r = app.screen.toast_rect;
+            let rows = below_title(&buf, r, r.x + 2);
+            assert!(
+                r.height >= if w == 70 { 7 } else { 5 },
+                "{w}x{h}: the box grew with its text: {r:?}"
+            );
+            assert_eq!(
+                rows.join(" "),
+                format!("{DETAIL} {PREVIEW}"),
+                "{w}x{h}: every word shows, in order: {rows:?}"
+            );
+            assert!(r.right() <= w && r.bottom() <= h);
+            for y in 0..h {
+                for x in 0..w {
+                    let inside = x >= r.x && x < r.right() && y >= r.y && y < r.bottom();
+                    assert!(
+                        inside || buf[(x, y)] == bare[(x, y)],
+                        "{w}x{h}: ({x},{y}) outside the box changed"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_detail_past_three_lines_and_a_preview_past_two_end_with_an_ellipsis() {
+        let (_, mut app) = super::design_tests::render_with(70, 30);
+        let long = format!("{DETAIL} {DETAIL}");
+        app.notify_card(
+            "Copied".into(),
+            long.clone(),
+            Some(format!("{PREVIEW} {PREVIEW}")),
+            false,
+        );
+        let buf = frame(&mut app, 70, 30);
+        let rows = below_title(&buf, app.screen.toast_rect, app.screen.toast_rect.x + 2);
+        assert_eq!(rows.len(), 5, "three detail lines and two preview lines: {rows:?}");
+        assert!(rows[2].ends_with('…') && rows[4].ends_with('…'), "{rows:?}");
+    }
+
+    #[test]
+    fn a_needs_you_toast_with_a_long_detail_keeps_its_answers_on_the_bottom_border() {
+        let (_, mut app) = super::design_tests::render_with(70, 30);
+        app.notify_card("pane-one needs you".into(), DETAIL.into(), None, false);
+        app.notice_term = Some(ClientTerm::local(1));
+        let buf = frame(&mut app, 70, 30);
+        let r = app.screen.toast_rect;
+        let bottom: String = (r.x..r.right())
+            .map(|x| buf[(x, r.bottom() - 1)].symbol())
+            .collect();
+        assert!(
+            bottom.contains(" Answer ") && bottom.contains(" Later esc "),
+            "{bottom}"
+        );
+        let rows = below_title(&buf, r, r.x + 2);
+        let own = rows.iter().take_while(|row| !row.contains("Answer")).cloned();
+        assert_eq!(own.collect::<Vec<_>>().join(" "), DETAIL, "{rows:?}");
+    }
+
+    #[test]
+    fn the_hairline_look_wraps_a_toasts_detail_and_preview_too() {
+        let (_, mut app) = super::design_tests::render_with(70, 30);
+        app.cfg.ui.layout = "hairline".into();
+        app.notify_card(
+            "Copied to clipboard".into(),
+            DETAIL.into(),
+            Some(PREVIEW.into()),
+            false,
+        );
+        let buf = frame(&mut app, 70, 30);
+        let r = app.screen.toast_rect;
+        let rows = below_title(&buf, r, r.x + 4);
+        assert!(r.height >= 7, "{r:?}");
+        assert_eq!(rows.join(" "), format!("{DETAIL} {PREVIEW}"), "{rows:?}");
+    }
+
     #[test]
     fn a_two_row_toast_sits_above_the_input_area_boxed_with_its_side_and_close() {
         let (_, mut app) = super::design_tests::render_with(160, 45);

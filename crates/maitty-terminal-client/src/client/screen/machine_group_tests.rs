@@ -158,6 +158,30 @@ fn group_after(rows: &[String], head: &str) -> Vec<String> {
         .collect()
 }
 
+/// The reason a down machine gives, a string per sidebar row.
+fn reason_lines(lines: &[side::Line], t: &Theme) -> Vec<String> {
+    lines
+        .iter()
+        .filter_map(|l| match l {
+            side::Line::MachineNote(forms, color) if *color == t.text => forms.first().cloned(),
+            _ => None,
+        })
+        .collect()
+}
+
+/// What a floating sidebar shows on each of its rows, between its border and the margin.
+fn inside_rows(buf: &ratatui::buffer::Buffer, side: Rect) -> Vec<String> {
+    (side.top()..side.bottom())
+        .map(|y| {
+            (side.x + 2..side.right() - 2)
+                .map(|x| buf[(x, y)].symbol())
+                .collect::<String>()
+                .trim_end()
+                .to_string()
+        })
+        .collect()
+}
+
 /// The style of the cell where `name`'s mark is drawn, two cells before it on its row.
 fn mark_style(app: &mut App, name: &str) -> ratatui::style::Style {
     let buf = cells(app, Layout::Floating, 160, 45, "unicode");
@@ -372,13 +396,13 @@ fn a_dropped_line_keeps_the_agents_greyed_with_since_and_why_and_the_line_back_u
         assert!(text.contains(&shown), "{word}: {shown}\n{text}");
         let model = app.screen_model();
         let lines = side::side_lines(&app, &model, &t);
-        assert!(
-            lines.iter().any(|l| matches!(
-                l,
-                side::Line::MachineNote(forms, _) if forms.iter().any(|f| f == why)
-            )),
-            "{word}: the line holds the whole reason, cut only when drawn"
-        );
+        let reason = reason_lines(&lines, &t);
+        assert!(reason.len() <= 3, "{word}: {reason:?}");
+        let joined = reason.join(" ");
+        match joined.strip_suffix('…') {
+            Some(head) => assert!(why.starts_with(head), "{word}: {joined:?}"),
+            None => assert_eq!(joined, why, "{word}: the reason is whole, wrapped"),
+        }
         assert!(
             model
                 .iter()
@@ -797,4 +821,183 @@ fn the_hairline_look_heads_a_machine_and_greys_its_rows() {
     let x = rows[y].find("fix-auth").unwrap();
     let x = rows[y][..x].chars().count() as u16;
     assert_eq!(buf[(x, y as u16)].fg, app.theme.muted);
+}
+
+fn down_for_login() -> App {
+    two_machines(ConnectionState::NeedsLogin {
+        why: FIX_LOGIN.into(),
+    })
+}
+
+#[test]
+fn a_long_reason_wraps_onto_up_to_three_rows_at_every_sidebar_width() {
+    for (w, h) in [(80, 24), (100, 30), (160, 45)] {
+        let mut app = down_for_login();
+        let buf = cells(&mut app, Layout::Floating, w, h, "unicode");
+        let side = app.screen.side_rect;
+        let shown = inside_rows(&buf, side);
+        let since = shown
+            .iter()
+            .position(|r| r.starts_with("disconnected"))
+            .unwrap_or_else(|| panic!("{w}x{h}: no since row in {shown:#?}"));
+        let model = app.screen_model();
+        let reason = reason_lines(&side::side_lines(&app, &model, &app.theme), &app.theme);
+        assert!(
+            (2..=3).contains(&reason.len()),
+            "{w}x{h} (sidebar {} wide): {reason:?}",
+            side.width
+        );
+        assert_eq!(
+            shown[since + 1..since + 1 + reason.len()],
+            reason[..],
+            "{w}x{h}: each wrapped line is its own row, right under the since line"
+        );
+        let joined = reason.join(" ");
+        match joined.strip_suffix('…') {
+            Some(head) => assert!(FIX_LOGIN.starts_with(head), "{w}x{h}: {joined:?}"),
+            None => assert_eq!(joined, FIX_LOGIN, "{w}x{h}: nothing is lost"),
+        }
+        for y in side.top()..side.bottom() {
+            let edge = buf[(side.right() - 1, y)].symbol();
+            assert!(
+                "│┐┘╮╯".contains(edge),
+                "{w}x{h} row {y}: {edge:?} on the border"
+            );
+        }
+        frame(&mut app, w, h);
+    }
+}
+
+#[test]
+fn the_rows_under_a_wrapped_reason_shift_down_and_still_take_the_click() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let mut app = down_for_login();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.out = tx;
+    let buf = cells(&mut app, Layout::Floating, 100, 30, "unicode");
+    let shown = inside_rows(&buf, app.screen.side_rect);
+    let side_top = app.screen.side_rect.top();
+    let last_reason = shown
+        .iter()
+        .rposition(|r| r.ends_with("retry") || r.ends_with('…'))
+        .expect("the reason's last row");
+    let target = ClientSession::on(THERE, SessionKey::Pane(3));
+    let at = app
+        .hits
+        .iter()
+        .find(|(_, h)| *h == Hit::Screen(ScreenHit::Session(target)))
+        .map(|(r, _)| *r)
+        .expect("the remote row is a hit");
+    assert!(
+        at.y > side_top + last_reason as u16,
+        "{at:?} is under the reason's last row {last_reason}"
+    );
+    let row_text = &shown[(at.y - side_top) as usize];
+    assert!(
+        row_text.contains("ship-ui"),
+        "the hit is on its own row: {row_text:?}"
+    );
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.on_mouse(MouseEvent {
+            kind,
+            column: at.x + 4,
+            row: at.y,
+            modifiers: KeyModifiers::NONE,
+        });
+    }
+    let sent: Vec<Outgoing> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(
+        sent.iter().any(|o| o.machine == THERE
+            && matches!(o.msg, ClientMsg::Command(Command::FocusPane { term: 3 }))),
+        "the click lands on that session: {sent:?}"
+    );
+}
+
+#[test]
+fn a_resize_that_changes_the_sidebar_width_wraps_the_reason_again() {
+    let mut app = down_for_login();
+    let wide = {
+        let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+        let side = app.screen.side_rect;
+        (side.width, inside_rows(&buf, side))
+    };
+    let narrow = {
+        let buf = cells(&mut app, Layout::Floating, 80, 24, "unicode");
+        let side = app.screen.side_rect;
+        (side.width, inside_rows(&buf, side))
+    };
+    assert!(narrow.0 < wide.0, "{} vs {}", narrow.0, wide.0);
+    let reason = |rows: &[String]| -> Vec<String> {
+        let since = rows
+            .iter()
+            .position(|r| r.starts_with("disconnected"))
+            .unwrap();
+        rows[since + 1..since + 4].to_vec()
+    };
+    let (wide_rows, narrow_rows) = (reason(&wide.1), reason(&narrow.1));
+    assert_ne!(
+        wide_rows, narrow_rows,
+        "wrapped for the new width, not the old"
+    );
+    let longest = |rows: &[String]| rows.iter().map(|r| r.width()).max().unwrap();
+    assert!(longest(&narrow_rows) < longest(&wide_rows));
+    let back = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+    assert_eq!(reason(&inside_rows(&back, app.screen.side_rect)), wide_rows);
+}
+
+#[test]
+fn a_dragged_sidebar_width_decides_where_the_reason_wraps() {
+    let mut app = down_for_login();
+    let mut longest = Vec::new();
+    for side_w in [24, 30, 40] {
+        app.screen.saved.side_w = Some(side_w);
+        let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+        let side = app.screen.side_rect;
+        assert_eq!(side.width, side_w);
+        let model = app.screen_model();
+        let reason = reason_lines(&side::side_lines(&app, &model, &app.theme), &app.theme);
+        assert!(reason.len() <= 3 && reason.iter().all(|r| r.width() <= usize::from(side_w) - 4));
+        let shown = inside_rows(&buf, side);
+        assert!(
+            reason.iter().all(|r| shown.contains(r)),
+            "{side_w}: {reason:?} in {shown:#?}"
+        );
+        longest.push(reason.iter().map(|r| r.width()).max().unwrap());
+    }
+    assert!(
+        longest[0] < longest[1] && longest[1] < longest[2],
+        "{longest:?}"
+    );
+}
+
+#[test]
+fn the_hairline_look_wraps_the_reason_too() {
+    let mut app = down_for_login();
+    app.cfg.ui.layout = "hairline".into();
+    let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+    terminal
+        .draw(|f| crate::client::render::draw(&mut app, f))
+        .unwrap();
+    let buf = terminal.backend().buffer().clone();
+    let side = app.screen.side_rect;
+    let rows: Vec<String> = (side.top()..side.bottom())
+        .map(|y| {
+            (side.x + 1..side.right() - 1)
+                .map(|x| buf[(x, y)].symbol())
+                .collect::<String>()
+                .trim_end()
+                .to_string()
+        })
+        .collect();
+    let model = app.screen_model();
+    let reason = reason_lines(&side::side_lines(&app, &model, &app.theme), &app.theme);
+    assert!(reason.len() >= 2, "it wraps: {reason:?}");
+    let since = rows
+        .iter()
+        .position(|r| r.starts_with("disconnected"))
+        .unwrap();
+    assert_eq!(rows[since + 1..since + 1 + reason.len()], reason[..]);
 }

@@ -52,6 +52,24 @@ pub(super) fn wrap(text: &str, width: usize) -> Vec<String> {
     out
 }
 
+/// `text` word-wrapped to `width` cells on at most `max` lines, so a long sentence drops to the
+/// next line instead of being cut. What still does not fit ends the last line with `…`.
+pub(super) fn wrap_capped(text: &str, width: usize, max: usize) -> Vec<String> {
+    let max = max.max(1);
+    let mut lines = wrap(text, width);
+    if lines.len() > max {
+        lines.truncate(max);
+        if let Some(mut last) = lines.pop() {
+            while last.width() + 1 > width && !last.is_empty() {
+                last.pop();
+            }
+            last.push('…');
+            lines.push(last);
+        }
+    }
+    lines
+}
+
 /// The rows a text area `w` wide takes (its box and the keys under it).
 pub(in crate::client) fn compose_rows(c: &Compose, w: u16, max: u16) -> u16 {
     (wrap(&c.text, w.saturating_sub(6) as usize).len() as u16).clamp(3, max) + 3
@@ -1060,7 +1078,49 @@ const ENTER_AFTER: std::time::Duration = std::time::Duration::from_millis(60);
 
 #[cfg(test)]
 mod tests {
-    use super::wrap;
+    use super::{wrap, wrap_capped};
+
+    const LONG: &str = "Files is local-only in v1: the files are on kingdom, not on this computer.";
+
+    #[test]
+    fn text_that_fits_stays_on_one_line() {
+        assert_eq!(
+            wrap_capped("Connected to kingdom", 40, 3),
+            ["Connected to kingdom"]
+        );
+    }
+
+    #[test]
+    fn long_text_drops_to_the_next_line_and_loses_nothing() {
+        let lines = wrap_capped(LONG, 44, 3);
+        assert!(lines.len() >= 2, "it wraps: {lines:?}");
+        assert!(
+            lines.iter().all(|l| l.chars().count() <= 44),
+            "each line fits: {lines:?}"
+        );
+        assert_eq!(lines.join(" "), LONG, "every word is kept, in order");
+    }
+
+    #[test]
+    fn text_past_the_line_limit_ends_the_last_line_with_an_ellipsis() {
+        let lines = wrap_capped(LONG, 14, 2);
+        assert_eq!(lines.len(), 2);
+        assert!(lines[1].ends_with('…'), "{lines:?}");
+        assert!(lines.iter().all(|l| l.chars().count() <= 14), "{lines:?}");
+    }
+
+    #[test]
+    fn a_narrower_width_takes_more_lines_for_the_same_words() {
+        let wide = wrap_capped(LONG, 60, 9).len();
+        let narrow = wrap_capped(LONG, 20, 9).len();
+        assert!(narrow > wide, "{narrow} lines at 20 vs {wide} at 60");
+    }
+
+    #[test]
+    fn wide_characters_count_by_their_cells() {
+        let lines = wrap_capped("キーボード キーボード", 10, 3);
+        assert_eq!(lines, ["キーボード", "キーボード"]);
+    }
 
     #[test]
     fn the_text_area_wraps_on_words_and_keeps_blank_lines() {

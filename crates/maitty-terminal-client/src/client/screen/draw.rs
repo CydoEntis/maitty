@@ -1399,24 +1399,22 @@ const TOAST_MIN_W: usize = 40;
 const TOAST_TEXT_PAD: usize = 8;
 /// Rows between the card's bottom edge and the screen's: the agent's input area sits there.
 const TOAST_ABOVE_INPUT: u16 = 5;
-/// The most lines a toast's title takes before its end is cut with an ellipsis.
+/// The most lines a toast's title and detail take, and its preview (an excerpt), before the end
+/// is cut with an ellipsis.
 const TOAST_TITLE_LINES: usize = 3;
+const TOAST_DETAIL_LINES: usize = 3;
+const TOAST_PREVIEW_LINES: usize = 2;
+/// Where a toast's rows after the title start, from its left edge, per look; the close and the
+/// bar leave two cells on the right.
+const TOAST_TEXT_X_FLOATING: usize = 2;
+const TOAST_TEXT_X_HAIRLINE: usize = 4;
 
-/// The title word-wrapped to `width` cells on at most `max` lines, so a long sentence drops to
-/// the next line instead of being cut. What still does not fit ends the last line with `…`.
-fn toast_title_lines(title: &str, width: usize, max: usize) -> Vec<String> {
-    let mut lines = popover::wrap(title, width);
-    if lines.len() > max.max(1) {
-        lines.truncate(max.max(1));
-        if let Some(mut last) = lines.pop() {
-            while last.width() + 1 > width && !last.is_empty() {
-                last.pop();
-            }
-            last.push('…');
-            lines.push(last);
-        }
+/// `text` wrapped on at most `max` lines of `width` cells, none when there is no text.
+fn toast_lines(text: Option<&str>, width: usize, max: usize) -> Vec<String> {
+    match text {
+        Some(t) if max > 0 => popover::wrap_capped(t, width, max),
+        _ => Vec::new(),
     }
-    lines
 }
 
 /// One toast for every notice, bottom right above the agent's input area: a `card` boxed in
@@ -1497,18 +1495,39 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         .max(TOAST_MIN_W)
         .min((area.width as usize).saturating_sub(4)) as u16;
     // Wrapped against the settled width, not the sliding one, so the text does not reflow while
-    // the toast slides in.
-    let max_lines = TOAST_TITLE_LINES.min(
-        area.height
-            .saturating_sub(TOAST_ABOVE_INPUT + 3)
-            .max(1) as usize,
-    );
+    // the toast slides in. What the window cannot hold is left out, the title first kept.
+    let text_x = if look.hairline {
+        TOAST_TEXT_X_HAIRLINE
+    } else {
+        TOAST_TEXT_X_FLOATING
+    };
+    let text_room = (w as usize).saturating_sub(text_x + 2);
+    let mut rows_left = area.height.saturating_sub(TOAST_ABOVE_INPUT + 2) as usize;
     let title_w = (w as usize).saturating_sub(TOAST_TEXT_PAD + 1);
-    let title_lines = toast_title_lines(&title, title_w, max_lines);
+    let title_lines = toast_lines(
+        Some(&title),
+        title_w,
+        TOAST_TITLE_LINES.min(rows_left.saturating_sub(1).max(1)),
+    );
+    rows_left = rows_left.saturating_sub(title_lines.len());
+    let detail_lines = match button {
+        Some(_) => Vec::new(),
+        None => toast_lines(
+            detail.as_deref(),
+            text_room,
+            TOAST_DETAIL_LINES.min(rows_left),
+        ),
+    };
+    rows_left = rows_left.saturating_sub(detail_lines.len().max(usize::from(button.is_some())));
+    let preview_lines = toast_lines(
+        preview.as_deref(),
+        text_room,
+        TOAST_PREVIEW_LINES.min(rows_left),
+    );
     let h = 2
         + title_lines.len() as u16
-        + u16::from(detail.is_some() || button.is_some())
-        + u16::from(preview.is_some());
+        + (detail_lines.len() as u16).max(u16::from(button.is_some()))
+        + preview_lines.len() as u16;
     if area.height < h + TOAST_ABOVE_INPUT || w < 12 {
         return;
     }
@@ -1555,7 +1574,6 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     // Floating: every row starts under the chip; Hairline puts the mark in front of the title and
     // indents what follows it. The title also leaves room for the close.
     let tx = if look.hairline { r.x + 4 } else { r.x + 2 };
-    let text_w = r.width.saturating_sub(tx - r.x + 2) as usize;
     let title_style = Style::default()
         .fg(ink(t.strong, bg))
         .bg(bg)
@@ -1614,33 +1632,19 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     if let Some(b) = &button {
         put(buf, tx, row, b, r.right() - 1);
         row += 1;
-    } else if let Some(d) = &detail {
-        put(
-            buf,
-            tx,
-            row,
-            &[seg(
-                truncate(d, text_w),
-                Style::default().fg(ink(t.text, bg)).bg(bg),
-            )],
-            r.right() - 1,
-        );
-        row += 1;
     }
-    if let Some(p) = &preview {
-        put(
-            buf,
-            tx,
-            row,
-            &[seg(
-                truncate(p, text_w),
-                Style::default()
-                    .fg(ink(t.muted, bg))
-                    .bg(bg)
-                    .add_modifier(Modifier::ITALIC),
-            )],
-            r.right() - 1,
-        );
+    let detail_style = Style::default().fg(ink(t.text, bg)).bg(bg);
+    let preview_style = Style::default()
+        .fg(ink(t.muted, bg))
+        .bg(bg)
+        .add_modifier(Modifier::ITALIC);
+    let wrapped = detail_lines
+        .into_iter()
+        .map(|l| (l, detail_style))
+        .chain(preview_lines.into_iter().map(|l| (l, preview_style)));
+    for (line, style) in wrapped {
+        put(buf, tx, row, &[seg(line, style)], r.right() - 1);
+        row += 1;
     }
     if let Some(term) = about {
         hit(app, r, ScreenHit::Session(app.session_key(term)));
@@ -1708,31 +1712,8 @@ fn toast_rect(area: Rect, width: u16, height: u16, slide: f32) -> Option<Rect> {
 
 #[cfg(test)]
 mod tests {
-    use super::{toast_rect, toast_title_lines};
+    use super::toast_rect;
     use ratatui::layout::Rect;
-
-    const LONG: &str = "Files is local-only in v1: the files are on kingdom, not on this computer.";
-
-    #[test]
-    fn a_short_title_stays_on_one_line() {
-        assert_eq!(toast_title_lines("Connected to kingdom", 40, 3), ["Connected to kingdom"]);
-    }
-
-    #[test]
-    fn a_long_title_drops_to_the_next_line_and_loses_nothing() {
-        let lines = toast_title_lines(LONG, 44, 3);
-        assert!(lines.len() >= 2, "it wraps: {lines:?}");
-        assert!(lines.iter().all(|l| l.chars().count() <= 44), "each line fits: {lines:?}");
-        assert_eq!(lines.join(" "), LONG, "every word is kept, in order");
-    }
-
-    #[test]
-    fn a_title_past_the_line_limit_ends_the_last_line_with_an_ellipsis() {
-        let lines = toast_title_lines(LONG, 14, 2);
-        assert_eq!(lines.len(), 2);
-        assert!(lines[1].ends_with('…'), "{lines:?}");
-        assert!(lines.iter().all(|l| l.chars().count() <= 14), "{lines:?}");
-    }
 
     #[test]
     fn toast_has_no_drawable_rectangle_while_sliding_in_from_beyond_the_right_edge() {
