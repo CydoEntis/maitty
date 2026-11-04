@@ -1,4 +1,5 @@
 import type { SpinnerStyle } from '@/lib/spinner-clock'
+import type { EffectStyle } from '@/lib/animation-level'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
@@ -10,6 +11,8 @@ export type Density = 'compact' | 'comfortable' | 'spacious'
 export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spacious']
 /** How big the sidebar's and the rail's icons and tiles are. */
 export type IconSize = 'small' | 'medium' | 'large'
+/** Which working rows and tabs show the working effect: every one, only the one you are in, or none. */
+export type WorkingScope = 'all' | 'selected' | 'off'
 /** How a project's other sessions sit under its main row in the sidebar. */
 export type TrayStyle = 'names' | 'icons' | 'stacked'
 /** Which side of the window the sidebar sits on. */
@@ -72,6 +75,11 @@ export type SettingsPreferences = {
   effectWorking: boolean
   effectNeedsYou: boolean
   effectDone: boolean
+  /** Waves or Sweep for each status; the animation level can only make it cheaper. */
+  effectStyleWorking: EffectStyle
+  effectStyleNeedsYou: EffectStyle
+  effectStyleDone: EffectStyle
+  workingScope: WorkingScope
   density: Density
   /** Text size of the sidebar's folder names and session rows, in px. */
   sidebarTextSize: number
@@ -151,6 +159,10 @@ function defaults(): SettingsPreferences {
     effectWorking: true,
     effectNeedsYou: true,
     effectDone: true,
+    effectStyleWorking: 'waves',
+    effectStyleNeedsYou: 'sweep',
+    effectStyleDone: 'sweep',
+    workingScope: 'all',
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
@@ -221,6 +233,10 @@ export function readSettingsPreferences(): SettingsPreferences {
       effectWorking: bool(preferences.effectWorking, fallback.effectWorking),
       effectNeedsYou: bool(preferences.effectNeedsYou, fallback.effectNeedsYou),
       effectDone: bool(preferences.effectDone, fallback.effectDone),
+      effectStyleWorking: effectStyle(preferences.effectStyleWorking, fallback.effectStyleWorking),
+      effectStyleNeedsYou: effectStyle(preferences.effectStyleNeedsYou, fallback.effectStyleNeedsYou),
+      effectStyleDone: effectStyle(preferences.effectStyleDone, fallback.effectStyleDone),
+      workingScope: preferences.workingScope === 'all' || preferences.workingScope === 'selected' || preferences.workingScope === 'off' ? preferences.workingScope : fallback.workingScope,
       density: isDensity(preferences.density) ? preferences.density : fallback.density,
       sidebarTextSize: clampNumber(preferences.sidebarTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.sidebarTextSize),
       tabTextSize: clampNumber(preferences.tabTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.tabTextSize),
@@ -262,6 +278,10 @@ function terminalFontSize(value: unknown, fallback: number): number {
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.min(max, Math.max(min, value))
+}
+
+function effectStyle(value: unknown, fallback: EffectStyle): EffectStyle {
+  return value === 'waves' || value === 'sweep' ? value : fallback
 }
 
 function isDensity(value: unknown): value is Density {

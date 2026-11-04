@@ -6,7 +6,7 @@ import type { SettingsPreferences } from '../preferences'
 import { machineHeads, type RemoteMachine } from '@/features/workspace/model/machines'
 import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from './DesktopSettings'
 
-const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
+const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, scrollSpeed: 1, effectWorking: true, effectNeedsYou: true, effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass' }
 
 function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
   return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), onGrant: vi.fn(), onCopyCommand: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
@@ -136,6 +136,30 @@ describe('desktop settings', () => {
     expect(spinners).toHaveTextContent('8 frames · 160 ms')
     await user.click(within(spinners).getByRole('radio', { name: 'Snake' }))
     expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, spinner: 'snake' })
+  })
+
+  it('picks Waves or Sweep for each status and a scope for the working effect', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderSettings('appearance')
+    const working = screen.getByRole('radiogroup', { name: 'Working style' })
+    expect(within(working).getByRole('radio', { name: 'Waves' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(screen.getByRole('radiogroup', { name: 'Done style' })).getByRole('radio', { name: 'Sweep' })).toHaveAttribute('aria-checked', 'true')
+
+    await user.click(within(working).getByRole('radio', { name: 'Sweep' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, effectStyleWorking: 'sweep' })
+    await user.click(within(screen.getByRole('radiogroup', { name: 'Needs you style' })).getByRole('radio', { name: 'Waves' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, effectStyleNeedsYou: 'waves' })
+    await user.click(within(screen.getByRole('radiogroup', { name: 'Working effect' })).getByRole('radio', { name: 'Selected' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...PREFS, workingScope: 'selected' })
+  })
+
+  it('clips a live preview to each status chip', () => {
+    renderSettings('appearance')
+    const chips = document.querySelectorAll('.mx-effect-chip')
+
+    expect(chips).toHaveLength(3)
+    expect(chips[0]?.querySelectorAll('.mx-fx-wave')).toHaveLength(2)
+    expect(chips[1]?.querySelector('.mx-fx-band')).not.toBeNull()
   })
 
   it('picks a dark and a light theme separately, from searchable dropdowns that list the one in use first', async () => {

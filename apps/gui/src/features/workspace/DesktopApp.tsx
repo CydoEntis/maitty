@@ -28,7 +28,9 @@ import { sizeVariables } from './model/layoutSize'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import { errorMessage } from '@/lib/error-message'
 import { guardLocal, guardLocalSession } from '@/lib/localOnly'
-import { markGpu } from '@/lib/gpu'
+import { gpuKind, markGpu } from '@/lib/gpu'
+import { isWindowActive, subscribeWindowActivity } from '@/lib/window-activity'
+import { levelForGpu, styleUnderCap, type EffectStyle } from '@/lib/animation-level'
 import { PerfOverlay } from './components/PerfOverlay'
 import { setSpinnerStyle } from '@/lib/spinner-clock'
 import { TerminalView } from '@/TerminalView'
@@ -530,9 +532,17 @@ export function DesktopApp() {
   const theme = findTheme(previewTheme ?? activeThemeName(preferences, systemDark))
   const look = useMemo(() => ({ fontFamily: preferences.terminalFontFamily, fontWeight: preferences.terminalFontWeight, fontWeightBold: preferences.terminalFontWeightBold, cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, scrollSpeed: preferences.scrollSpeed, screenReader: preferences.terminalScreenReader, seeThrough: preferences.terminalSeeThrough, cursorBlink: preferences.cursorBlink, theme: xtermTheme(theme.tokens) }), [preferences.terminalFontFamily, preferences.terminalFontWeight, preferences.terminalFontWeightBold, preferences.cursorStyle, preferences.cursorBlink, preferences.scrollback, preferences.scrollSpeed, preferences.terminalScreenReader, preferences.terminalSeeThrough, theme])
   const effects = useMemo(() => {
+    const cap = levelForGpu(gpuKind())
     const allowed = online && !reducedMotion
-    return { working: allowed && preferences.effectWorking, needs: allowed && preferences.effectNeedsYou, done: allowed && preferences.effectDone }
-  }, [online, reducedMotion, preferences.effectWorking, preferences.effectNeedsYou, preferences.effectDone])
+    const styled = (on: boolean, style: EffectStyle) => (allowed && on ? styleUnderCap(style, cap) : null)
+    return {
+      working: styled(preferences.effectWorking, preferences.effectStyleWorking),
+      needs: styled(preferences.effectNeedsYou, preferences.effectStyleNeedsYou),
+      done: styled(preferences.effectDone, preferences.effectStyleDone),
+      workingScope: preferences.workingScope,
+      cap,
+    }
+  }, [online, reducedMotion, preferences.effectWorking, preferences.effectNeedsYou, preferences.effectDone, preferences.effectStyleWorking, preferences.effectStyleNeedsYou, preferences.effectStyleDone, preferences.workingScope])
 
   const flash = useCallback((text: string) => { setToastMessage({ text, key: Date.now() }) }, [])
   useEffect(() => {
@@ -555,6 +565,14 @@ export function DesktopApp() {
   }, [reducedMotion])
 
   useEffect(() => { markGpu() }, [])
+
+  // Looping effects pause in the stylesheet while the window is hidden or in the background. It is an
+  // attribute on <html>, not React state, so a focus change repaints nothing and re-renders nothing.
+  useEffect(() => {
+    const mark = () => { document.documentElement.dataset.window = isWindowActive() ? 'active' : 'inactive' }
+    mark()
+    return subscribeWindowActivity(mark)
+  }, [])
 
   useEffect(() => {
     // Flat and Tiled share one finish (neutral, no glow); Tiled changes the layout on top of it.

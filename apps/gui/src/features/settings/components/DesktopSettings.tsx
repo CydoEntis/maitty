@@ -1,7 +1,10 @@
 import type { UpdaterState } from '@/features/updates/useUpdater'
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { spinnerDefinition, SPINNER_TICK_MS, type SpinnerStyle } from '@/lib/spinner-clock'
 import { useNow } from '@/lib/clock'
+import { styleUnderCap, type EffectStyle } from '@/lib/animation-level'
+import { EffectsContext, type AppliedEffect, type StatusEffectKey } from '@/features/workspace/components/motion'
+import { StatusEffect } from '@/features/workspace/components/StatusEffect'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
 import { PerformanceSection } from './PerformanceSection'
@@ -491,6 +494,17 @@ const SPINNERS: ReadonlyArray<readonly [SpinnerStyle, string]> = [['braille', 'B
 const SECONDS_PER_MINUTE = 60
 const SECONDS_DIGITS = 2
 
+const EFFECT_STYLE_OPTIONS = [['waves', 'Waves'], ['sweep', 'Sweep']] as const
+const WORKING_SCOPE_OPTIONS = [['all', 'All'], ['selected', 'Selected'], ['off', 'Off']] as const
+
+/** What the preview says: the chosen style, or why a cheaper one (or none) is showing. */
+function effectNote(wanted: EffectStyle, shown: EffectStyle | null, on: boolean): string {
+  if (!on) return 'Off'
+  if (shown === null) return 'Off: animations are turned down'
+  if (shown !== wanted) return 'Sweep: this web view is too slow for Waves'
+  return shown === 'waves' ? 'Soft bands drift while it lasts' : 'One band crosses as it starts, then rests'
+}
+
 const MODE_OPTIONS = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as const
 
 function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void }) {
@@ -499,10 +513,11 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
   const darkInUse = preferences.themeMode === 'dark' || (preferences.themeMode === 'system' && systemDark)
   const modeNote = preferences.themeMode === 'system' ? `Follows your OS. Right now: ${systemDark ? 'dark' : 'light'}.` : `Always uses your ${preferences.themeMode} theme.`
   const seconds = String(Math.floor(now / THOUSAND) % SECONDS_PER_MINUTE).padStart(SECONDS_DIGITS, '0')
-  const effects: Array<{ key: 'effectWorking' | 'effectNeedsYou' | 'effectDone'; label: string; detail: string; color: string; glyph: ReactNode; short: string; fx: string }> = [
-    { key: 'effectWorking', label: 'Working', detail: 'One teal sweep as work starts', color: 'var(--accent)', glyph: <PreviewSpinner spinner={preferences.spinner} reduced={reduced} />, short: '0:42', fx: 'mx-fx-working mx-fx-strong' },
-    { key: 'effectNeedsYou', label: 'Needs you', detail: 'Amber glow that breathes, then rests', color: 'var(--warn)', glyph: '◆', short: 'Allow?', fx: 'mx-fx-needs mx-fx-strong' },
-    { key: 'effectDone', label: 'Done', detail: 'One green sweep, then still', color: 'var(--ok)', glyph: '✓', short: 'Done', fx: 'mx-fx-done mx-fx-strong' },
+  const { cap } = useContext(EffectsContext)
+  const effects: Array<{ key: 'effectWorking' | 'effectNeedsYou' | 'effectDone'; styleKey: 'effectStyleWorking' | 'effectStyleNeedsYou' | 'effectStyleDone'; status: StatusEffectKey; label: string; color: string; glyph: ReactNode; short: string }> = [
+    { key: 'effectWorking', styleKey: 'effectStyleWorking', status: 'working', label: 'Working', color: 'var(--accent)', glyph: <PreviewSpinner spinner={preferences.spinner} reduced={reduced} />, short: '0:42' },
+    { key: 'effectNeedsYou', styleKey: 'effectStyleNeedsYou', status: 'needs', label: 'Needs you', color: 'var(--warn)', glyph: '◆', short: 'Allow?' },
+    { key: 'effectDone', styleKey: 'effectStyleDone', status: 'done', label: 'Done', color: 'var(--ok)', glyph: '✓', short: 'Done' },
   ]
   return (
     <>
@@ -601,21 +616,28 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
           <Switch label="Reduce motion" checked={preferences.reduceMotion} onChange={(value) => { update('reduceMotion', value) }} />
         </Row>
         <div className={`mx-effects${reduced ? ' is-locked' : ''}`}>
-          <div className="mx-scard-text"><span>Status effects</span><span>{reduced ? 'Off while Reduce motion is on.' : 'Choose which states animate on sidebar rows and tabs. Icons and words always show.'}</span></div>
+          <div className="mx-scard-text"><span>Status effects</span><span>{reduced ? 'Off while Reduce motion is on.' : 'Choose which states animate on sidebar rows and tabs, and how. Icons and words always show.'}</span></div>
           {effects.map((effect) => {
-            const on = preferences[effect.key]
+            const on = preferences[effect.key] && !reduced
+            const wanted = preferences[effect.styleKey]
+            const shown = on ? styleUnderCap(wanted, cap) : null
+            const applied: AppliedEffect = { className: `mx-fx-${effect.status} mx-fx-strong`, status: effect.status, style: shown }
             return (
               <div key={effect.key} className="mx-effect-row">
-                <span className={`mx-effect-chip${on && !reduced ? ` ${effect.fx}` : ''}`} style={{ color: effect.color }} aria-hidden="true">{effect.glyph}<span>{effect.short}</span></span>
+                <span className={`mx-effect-chip${shown ? ` ${applied.className}` : ''}`} style={{ color: effect.color }} aria-hidden="true"><StatusEffect effect={applied} />{effect.glyph}<span>{effect.short}</span></span>
                 <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <span style={{ fontSize: 12.5, color: 'var(--fg)' }}>{effect.label}</span>
-                  <span style={{ fontSize: 11.5, color: 'var(--dim)' }}>{effect.detail}</span>
+                  <span style={{ fontSize: 11.5, color: 'var(--dim)' }}>{effectNote(wanted, shown, on)}</span>
                 </span>
-                <Switch label={effect.label} checked={on && !reduced} disabled={reduced} onChange={(value) => { update(effect.key, value) }} />
+                <Segmented label={`${effect.label} style`} value={wanted} options={EFFECT_STYLE_OPTIONS} onChange={(value) => { update(effect.styleKey, value) }} />
+                <Switch label={effect.label} checked={on} disabled={reduced} onChange={(value) => { update(effect.key, value) }} />
               </div>
             )
           })}
         </div>
+        <Row label="Working effect" detail="Which working rows and tabs animate: all of them, only the one you are in, or none.">
+          <Segmented label="Working effect" value={preferences.workingScope} options={WORKING_SCOPE_OPTIONS} onChange={(value) => { update('workingScope', value) }} />
+        </Row>
       </Card>
     </>
   )
