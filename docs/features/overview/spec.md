@@ -1,4 +1,4 @@
-# Spec: Overview, jump to next, new agent on a branch, idle updates
+# Spec: Overview, jump to next, new agent on a branch, idle updates, brain dump
 
 Intent: [intent.md](intent.md) · Status: proposed · Date: 2026-11-04
 
@@ -20,6 +20,12 @@ Intent: [intent.md](intent.md) · Status: proposed · Date: 2026-11-04
    codex), optional first prompt. It creates the worktree through the daemon's
    existing worktree API (hooks run), opens a session there, starts the agent,
    and sends the prompt. The sidebar shows the branch name on the row.
+5. **Brain dump** (`Ctrl/Cmd+Shift+N`): one text box for everything on your mind.
+   An agent call splits it into proposed tasks, one row each: project, branch
+   name, agent, prompt. Every row is editable or deletable before anything
+   starts. **Start all** runs *New agent on a branch* once per row. A task the
+   split could not place shows with an empty project for you to pick. Nothing
+   starts without the click.
 4. **Idle updates**: when an update is downloaded, the app is idle for 30 minutes
    (no input, window not focused) and **no agent is working**, install and
    restart; sessions survive because the daemon owns them. A setting turns it
@@ -36,6 +42,9 @@ Intent: [intent.md](intent.md) · Status: proposed · Date: 2026-11-04
   v16 §B.8 (a terminal pane passes `⌘J` to the app).
 - New agent on a branch reuses the daemon calls the TUI's new-agent box uses; no
   new daemon API. The dialog's validation of the branch name matches git's.
+- Brain dump is a dialog over the new-agent dialog's model: the split is one
+  request to the daemon's conversation API with a fixed prompt and a typed JSON
+  answer, validated at the boundary; the rows are the dialog's inputs.
 - Idle updates extend `features/updates/updater.ts`: the download already runs
   in the background; this adds the idle timer and the working check.
 
@@ -48,6 +57,7 @@ Intent: [intent.md](intent.md) · Status: proposed · Date: 2026-11-04
   checklist item; ships with the last message's lead sentence first).
 - **OV-5** New agent on a branch dialog and command.
 - **OV-6** Idle updates with the working check and the setting.
+- **OV-7** Brain dump: the split call, the editable rows, Start all. After OV-5.
 
 ## Verification and coverage
 
