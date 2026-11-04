@@ -19,7 +19,8 @@
 //! `remote-sh` stands in for a real machine's shell: it runs the remote command (the last
 //! argument) through the host's POSIX `sh -c`, with `HOME` set to the folder `--home=<dir>`
 //! names (a fake remote home, whose `bin` comes first on `PATH`) and stdin passed through, so
-//! the install script runs against a temporary filesystem. `--argv-log=<path>` appends each
+//! the install and paste scripts run against a temporary filesystem. The host's `XDG_*` folders
+//! are removed from its environment, so a fake remote never writes to the real ones. `--argv-log=<path>` appends each
 //! remote command, newlines written as a backslash and `n`, so a test can see what was (not) sent.
 //! `capture-hello` writes the client's first frame (its Hello) to the file `MAITTY_FAKE_SSH_HELLO`
 //! names, answers it with a Welcome, and exits.
@@ -285,6 +286,11 @@ fn run_remote_sh(own: &Own, args: &[String]) -> i32 {
         .arg(script)
         .env("HOME", home)
         .env("PATH", path)
+        // A fake remote has no folders but its own: the host's cache and data folders would
+        // otherwise be written to by whatever a test runs there.
+        .env_remove("XDG_CACHE_HOME")
+        .env_remove("XDG_DATA_HOME")
+        .env_remove("XDG_CONFIG_HOME")
         .envs(own.env.iter().map(|(key, value)| (key, value)))
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())

@@ -376,6 +376,18 @@ impl Machine {
         )?)
     }
 
+    /// The line that runs the paste script on this machine, the image on its stdin: the far
+    /// side keeps it as `name` and prints where.
+    pub fn paste_argv(&self, name: &str, bytes: u64) -> Result<Vec<String>> {
+        let route = self.ssh_route()?;
+        Ok(ssh_command::ssh_argv_paste(
+            &route.ssh,
+            &route.target,
+            name,
+            bytes,
+        )?)
+    }
+
     /// The line that has the app installed at `program` there restart its daemon if idle.
     pub fn restart_if_idle_argv(&self, program: &str) -> Result<Vec<String>> {
         let route = self.ssh_route()?;

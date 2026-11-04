@@ -193,7 +193,10 @@ still has them loads, and they are ignored.
 - **Copy:** drag to select; double-click copies a word, path or link. Programs that copy (OSC 52,
   e.g. Claude's `/copy`, nvim) put it on your clipboard. Ctrl+click opens a link.
 - **Images:** `Ctrl+Space`, then `Ctrl+V` (or a paste while an image is on the
-  clipboard) saves the image and pastes its path; Claude Code and Codex attach it.
+  clipboard) saves the image and pastes its path; Claude Code and Codex attach it. In a pane on
+  another machine the image is sent to that machine over ssh (up to 25 MB), kept there in
+  `~/.cache/maitty/pastes` (private, cleared after a week), and its path there is pasted. It needs
+  ssh to that machine (not a custom transport) and a login that works without a prompt.
 - **Keys:** on Windows, combos plain terminals can't send (Ctrl+Shift+letter, Ctrl+Enter, Ctrl+Tab)
   reach programs exactly, as native key records. Shift+Enter is still a newline for agents.
 - **Resize:** text re-wraps to the new width (history included). Programs' cursor shape (bar,
@@ -586,7 +589,7 @@ answers does not hold up the rest. The section is not printed when there are no 
 - The machine you reach must run Linux or macOS (x86_64 or aarch64). A Windows machine as the remote is not
   supported. A Windows computer can reach those machines, but it has no ssh agent to remember a password, so use
   keys or an agent there.
-- Files, Changes, Find, Branches, References, pasting an image, connecting an agent and worktrees read this
+- Files, Changes, Find, Branches, References, connecting an agent and worktrees read this
   computer's disk, so for a pane on another machine they do nothing but say so: "Files is local-only in v1: the
   files are on build, not on this computer."
 - `maitty --remote host` still works as before: one ad-hoc machine named after the host, not in your list. Unlike
