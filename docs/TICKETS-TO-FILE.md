@@ -84,3 +84,69 @@ Deliverables:
   running, one idle shell and the Settings dialog open.
 - Update docs/DESIGN.md to describe the result; do not add history to it.
 ```
+
+## Added 2026-11-04 (evening): v18 handoff, Machines GUI, send files
+
+The v18 handoff is in `docs/features/chat-gui/design-handoff/v18/` (README §D and
+`GLASS_AND_TILED.md`). It is the design for tickets 1 and 2 above: build them from it, not from the
+brief. Every v18 ticket carries the same gate: harness scenarios `a` and `b` before and after (quiet
+under 5% of a core, streaming under 30%), screenshots in Midnight, Monokai, Paper and Day, and
+`docs/DESIGN.md` updated.
+
+## 4. Land the Machines GUI (feature, `client`, `ssh`)
+
+Branch `refactor/maitty-machines-move` (19 commits, not in `dev`): sidebar machine groups and status
+chips, the Machines dialog and Settings page, add a machine, start a session on one, per-machine
+opt-ins, accessibility pass. Merge with `dev` (conflicts in `lib.rs`, `DesktopApp.tsx`,
+`DesktopSettings.tsx` and its test), then the full gate. The macOS cross-check needs a Mac or CI.
+
+## 5. v18 Glass and light themes (feature, `client`; replaces tickets 1 and 2)
+
+Glass tokens, opaque cards with a hairline, blur only on short-lived surfaces, the retuned Paper and
+a new Day theme, the Background glow switch, one-shot needs-you and update-dot effects, steady
+caret, isolated spinners. All text tokens pass WCAG AA on `--term` and `--bg`; the contrast audit in
+`themes.test.ts` covers the terminal foreground and dim text. Still to check: Monokai `--dim`, the
+generated light themes.
+
+## 6. v18 Tiled hairline grid (feature, `client`)
+
+Zero gap and radius, 1px hairlines, hairline-only popovers, uppercase Geist Mono chrome type, corner
+ticks, 40px flush tab bar. Blocked by 5 (shared tokens).
+
+## 7. v18 status effects: Waves and Sweep (feature, `client`)
+
+Per-status (Working, Needs you, Done) on/off and style, a Working scope (All / Selected / Off),
+previews clipped to their chip, automatic Sweep on `data-gpu="software"`. Waves loops while a
+session works, which breaks the "nothing loops" rule; the README keeps it by request, so measure
+scenario b with several working rows, and if over budget default to Selected or Sweep. Raise this
+conflict with the user before building.
+
+## 8. v18 spinner dropdown and web spinners (feature, `client`)
+
+Replace the spinner card with a dropdown in the Theme card: three TUI spinners and five web SVG
+spinners (Circle, Dots, Equalizer, Spokes, Ping), live previews, Esc and outside click close it.
+
+## 9. v18 Settings cleanups (chore, `client`)
+
+Close becomes a 30x30 × icon button (tooltip "Close (Esc)"). Remove per-project colours: the
+setting, the swatch row and the dots that depend on it.
+
+## 10. Terminal font settings (feature, `client`)
+
+Ticket 3 above, unchanged. Not in v18; GLASS_AND_TILED.md §3 says the weight fix belongs here.
+
+## 11. Send files to a machine (feature, `ssh`, `client`, `daemon`)
+
+Today only a clipboard image goes to a remote pane (ADR 0049: over the machine's own hardened ssh
+line, into a private cache folder, the path typed into the pane). Extend that to any file and to
+pasted text: drop or paste a file on a remote pane, it lands in that machine's cache folder, its
+path is typed into the pane. ADR 0047 listed a remote file API as out of scope, so this needs a new
+ADR that widens what a remote machine can receive: size cap, private folder, cleanup, refusal on a
+custom transport, and a progress and cancel state for large files. Windows is in scope.
+Reuses `crates/maitty-core/src/remote_paste.rs`.
+
+## 12. Check v17 against what is built (spike, `docs`)
+
+v17 describes the chat body, session panel, overview, branch agents, idle update, brain dump, usage
+and cost. Nobody has compared it with `apps/gui/src`. Produce a gap list, then file one ticket per
+gap.
