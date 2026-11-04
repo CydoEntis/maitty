@@ -278,6 +278,14 @@ describe('the Machines page', () => {
     expect(screen.getByText('run ssh box once to log in')).toBeInTheDocument()
   })
 
+  it('shows a refused machine with the reason, the fix, and Remove to act on it', () => {
+    const why = 'a different machine answers at box (id bbbbbbbb instead of aaaaaaaa). If you replaced that machine, open Machines, remove it and add it again; otherwise check the host name and DNS.'
+    renderSettings('machines', { machines: info({ list: others('refused', why) }) })
+    expect(screen.getByText(/refused/)).toBeInTheDocument()
+    expect(screen.getByText(why)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove box' })).toBeEnabled()
+  })
+
   it('retries a machine that is down, and has nothing to retry on one that is up', async () => {
     const user = userEvent.setup()
     const onRetry = vi.fn()

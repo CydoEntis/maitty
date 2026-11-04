@@ -401,6 +401,42 @@ async fn an_outage_is_dated_from_its_first_state_and_ends_when_the_machine_is_co
 }
 
 #[tokio::test]
+async fn a_refused_machine_is_let_in_once_it_is_removed_and_added_again() {
+    let mut sandbox = Sandbox::new();
+    sandbox.start_daemon();
+    let mut known = MachineIds::default();
+    check_daemon_id(&mut known, "box", Some("aaaaaaaa11111111aaaaaaaa11111111")).unwrap();
+    known.save(&ids_file(&sandbox));
+
+    let mut watch = Watch::new(&[machine("box", &sandbox, "proxy")], &sandbox, quick(WAIT));
+    watch
+        .until("turned away", |w| w.is(BOX, "unreachable"))
+        .await;
+    let handle = watch.hub.handle();
+    assert!(handle.is_refused(BOX), "told to the window as refused");
+
+    // The person removes it and adds it again, as the refusal says.
+    handle.remove("box");
+    watch
+        .until("removed", |w| w.removed == [BOX])
+        .await;
+    assert!(!handle.is_refused(BOX), "the refusal went with the machine");
+    handle.add(machine("box", &sandbox, "proxy"));
+    let again = MachineId(2);
+    watch
+        .until("connected and a snapshot", |w| {
+            w.is(again, "connected") && w.snapshots(again) > 0
+        })
+        .await;
+    assert!(!handle.is_refused(again));
+    let mut recorded = MachineIds::load(&ids_file(&sandbox));
+    assert!(
+        check_daemon_id(&mut recorded, "box", Some("aaaaaaaa11111111aaaaaaaa11111111")).is_err(),
+        "the daemon that answers now is the one recorded, not the one from before"
+    );
+}
+
+#[tokio::test]
 async fn with_no_machine_nothing_starts() {
     let sandbox = Sandbox::new();
     let hub = Hub::start(&[], &shim(), ids_file(&sandbox), quick(WAIT), None);
