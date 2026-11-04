@@ -30,6 +30,7 @@
 //! `--maitty=<path>`, and `--env=<KEY>=<value>` (repeatable) for the proxy's environment.
 //! `--calls=<path>` appends a line `<shim pid> <proxy pid>` per call (the proxy's is 0 when none
 //! was started), so a test can count the dials and kill the connection the way a dead link does.
+//! `--argv-log=<path>` also records each `proxy` call's arguments (see `capture-argv`).
 //! Like ssh, it passes `--attach-only` on to `maitty proxy` when the remote command asks for it.
 
 use std::io::{IsTerminal, Read, Write};
@@ -118,7 +119,12 @@ fn main() {
         return;
     }
     match own.mode.as_str() {
-        "proxy" => std::process::exit(run_proxy(&own)),
+        "proxy" => {
+            if own.argv_log.is_some() {
+                log_argv(&own, &args);
+            }
+            std::process::exit(run_proxy(&own));
+        }
         "noise" => {
             print_stdout(NOISE.as_bytes());
             std::process::exit(run_proxy(&own));

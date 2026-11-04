@@ -34,6 +34,32 @@ enum Pause {
     Closed,
 }
 
+/// Whether a dial may start the daemon on the far side. It exits when nothing is attached, so
+/// a machine that never connected has none to attach to; but after a line was lost the daemon
+/// is gone only if a person stopped it, and a redial must not bring it back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MayStart(bool);
+
+impl MayStart {
+    const FIRST: MayStart = MayStart(true);
+
+    fn line_ended(&mut self) {
+        self.0 = false;
+    }
+
+    fn retried(&mut self) {
+        self.0 = true;
+    }
+
+    fn machine_for_dial(self, machine: &Machine) -> Machine {
+        if self.0 {
+            machine.starting()
+        } else {
+            machine.clone()
+        }
+    }
+}
+
 pub(super) async fn supervise(
     id: MachineId,
     name: String,
@@ -50,16 +76,18 @@ pub(super) async fn supervise(
     };
     link.report();
     let mut failures = 0u32;
+    let mut may_start = MayStart::FIRST;
     loop {
         match pause(timing.backoff.delay(failures), &mut commands).await {
             Pause::Elapsed => {}
             Pause::Retry => {
                 failures = 0;
+                may_start.retried();
                 link.apply(Event::Retry);
             }
             Pause::Closed => return,
         }
-        match dial(&machine, timing.connect).await {
+        match dial(&may_start.machine_for_dial(&machine), timing.connect).await {
             Ok(halves) => {
                 failures = 0;
                 if link.events.send(LinkEvent::Line(id, halves)).is_err() {
@@ -67,14 +95,21 @@ pub(super) async fn supervise(
                 }
                 link.apply(Event::ConnectOk);
                 match line_end(&mut commands).await {
-                    Some(End::Stalled) => link.apply(Event::WatchdogFired),
-                    Some(End::Closed) => link.apply(Event::LineDropped),
+                    Some(End::Stalled) => {
+                        may_start.line_ended();
+                        link.apply(Event::WatchdogFired);
+                    }
+                    Some(End::Closed) => {
+                        may_start.line_ended();
+                        link.apply(Event::LineDropped);
+                    }
                     Some(End::Refused(why)) => {
                         link.apply(Event::Refused(why));
                         if !held_until_retry(&mut commands).await {
                             return;
                         }
                         failures = 0;
+                        may_start.retried();
                         link.apply(Event::Retry);
                     }
                     None => return,
@@ -170,5 +205,37 @@ async fn held_until_retry(commands: &mut mpsc::UnboundedReceiver<Command>) -> bo
             Some(_) => {}
             None => return false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn attached() -> Machine {
+        Machine::ssh("box", vec!["ssh".into()], "maitty").attach_only()
+    }
+
+    #[test]
+    fn the_first_dial_may_start_the_daemon() {
+        let base = attached();
+        assert_eq!(MayStart::FIRST.machine_for_dial(&base), base.starting());
+    }
+
+    #[test]
+    fn a_redial_after_a_lost_line_only_attaches() {
+        let base = attached();
+        let mut may_start = MayStart::FIRST;
+        may_start.line_ended();
+        assert_eq!(may_start.machine_for_dial(&base), base);
+    }
+
+    #[test]
+    fn a_retry_may_start_the_daemon_again() {
+        let base = attached();
+        let mut may_start = MayStart::FIRST;
+        may_start.line_ended();
+        may_start.retried();
+        assert_eq!(may_start.machine_for_dial(&base), base.starting());
     }
 }

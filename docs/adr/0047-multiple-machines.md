@@ -25,7 +25,7 @@ daemon needs no change to be a source of sessions; only the client has to hold m
 3. **The local daemon stays mandatory.** The window always has a local machine.
 4. **A dropped machine's agents stay in the sidebar**, greyed, with "disconnected since" and
    the reason. They come back when the link does. Reconnecting only attaches; it never starts
-   a remote daemon the user did not start.
+   a remote daemon the user stopped (the first connection and a retry may; see the update).
 5. **`[[machines]]` is the primary setting.** `--remote host` remains, as an ad-hoc machine
    named after the host.
 6. **A Windows client reaching Linux or macOS remotes is in v1.** A Windows machine as the
@@ -90,10 +90,14 @@ flags), [UI](../UI.md) and [guide](../guide.md).
 
 ### Decisions refined while building
 
-- **A configured machine is attached to, never started (refines 4).** Its connection runs `proxy
-  --attach-only`; with no daemon there the proxy exits 74 before writing anything and the
-  machine shows `unreachable` with the fix. This holds for the first connection and every redial.
-  An ad-hoc `--remote host` still starts the daemon, as it always did.
+- **Reconnects attach, the first connection and a retry may start (refines 4).** A redial after
+  an established line ended runs `proxy --attach-only`; with no daemon there the proxy exits 74
+  before writing anything and the machine shows `unreachable` ("retry to start it there"). The
+  first connection (and each retry of a failed first dial) and an explicit retry run plain
+  `proxy`, which starts the daemon like an ad-hoc `--remote host`. The first version made every
+  connection attach-only; a real-host test showed that the daemon exits ~30 s after nothing is
+  attached, so on a fresh machine there was never anything to attach to and the first session
+  could not be created from this computer. The CLI's `--on`, MCP and `doctor` stay attach-only.
 - **One bounded reader channel per machine (512 messages), not the shared channel.** A machine
   that floods or stalls cannot starve another's, and a lost line is marked lost without
   ending the window.

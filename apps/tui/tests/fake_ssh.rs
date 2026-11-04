@@ -851,7 +851,12 @@ mod supervised {
         }
     }
 
-    /// A configured machine (attach only) behind the shim in `mode`, recording its calls.
+    fn argv_log(sandbox: &Sandbox) -> PathBuf {
+        sandbox.dir.join("ssh-argv.txt")
+    }
+
+    /// A configured machine (attach only) behind the shim in `mode`, recording its calls and
+    /// the remote command of each.
     fn configured(sandbox: &Sandbox, mode: &str) -> Machine {
         let calls = format!("--calls={}", sandbox.calls().display());
         let ssh = vec![
@@ -859,6 +864,7 @@ mod supervised {
             format!("--mode={mode}"),
             format!("--maitty={MAITTY}"),
             calls,
+            format!("--argv-log={}", argv_log(sandbox).display()),
             format!("--env=MAITTY_SOCKET={}", sandbox.socket),
             format!("--env=MAITTY_DATA_DIR={}", sandbox.data().display()),
             format!(
@@ -1200,24 +1206,110 @@ mod supervised {
         runtime.shutdown_background();
     }
 
+    /// Every remote command the shim was called with, in order.
+    fn remote_commands(sandbox: &Sandbox) -> Vec<String> {
+        let text = std::fs::read_to_string(argv_log(sandbox)).unwrap_or_default();
+        text.lines()
+            .filter(|line| line.ends_with(" proxy") || line.ends_with(" proxy --attach-only"))
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn has_daemon(sandbox: &Sandbox) -> bool {
+        std::fs::read_dir(sandbox.data())
+            .expect("the data folder")
+            .flatten()
+            .any(|e| e.path().extension().is_some_and(|x| x == "pid"))
+    }
+
+    fn stop_daemon(sandbox: &Sandbox) {
+        let mut kill = sandbox.local(MAITTY);
+        kill.arg("kill-server");
+        let stopped = output_within(kill, WAIT);
+        assert!(stopped.status.success(), "{}", text(&stopped.stderr));
+    }
+
     #[test]
-    fn a_machine_with_no_daemon_is_unreachable_and_no_daemon_is_started() {
+    fn a_machine_with_no_daemon_starts_it_on_the_first_dial() {
+        let sandbox = Sandbox::new();
+        assert!(!has_daemon(&sandbox));
+        let runtime = runtime();
+        let _enter = runtime.enter();
+        let mut window = Window::new(vec![(BOX, configured(&sandbox, "proxy"))], quick(WAIT));
+        runtime.block_on(window.until("connected", |w| w.is(BOX, "connected")));
+        assert_eq!(window.kinds(BOX), ["connecting", "connected"]);
+        assert!(has_daemon(&sandbox), "the proxy started the daemon");
+        let commands = remote_commands(&sandbox);
+        assert_eq!(commands.len(), 1);
+        assert!(!commands[0].contains("--attach-only"), "{commands:?}");
+        drop(window);
+        runtime.shutdown_background();
+    }
+
+    #[test]
+    fn a_lost_line_is_redialled_attach_only() {
+        let sandbox = Sandbox::new();
+        // Started apart: on Windows the daemon a proxy starts holds the shim's pipe, so the
+        // line would not end until the daemon did.
+        start_daemon(&sandbox);
+        let runtime = runtime();
+        let _enter = runtime.enter();
+        let mut window = Window::new(vec![(BOX, configured(&sandbox, "proxy"))], quick(WAIT));
+        runtime.block_on(window.until("connected", |w| w.is(BOX, "connected")));
+
+        kill_connection(&sandbox.calls());
+        runtime.block_on(window.until("reconnecting and connected again", |w| {
+            w.kinds(BOX).ends_with(&["reconnecting", "connected"])
+        }));
+        let commands = remote_commands(&sandbox);
+        assert_eq!(commands.len(), 2, "{commands:?}");
+        assert!(!commands[0].contains("--attach-only"), "{commands:?}");
+        assert!(
+            commands[1].ends_with(" proxy --attach-only"),
+            "{commands:?}"
+        );
+        drop(window);
+        runtime.shutdown_background();
+    }
+
+    #[test]
+    fn a_stopped_daemon_is_not_restarted_by_a_redial_but_by_an_asked_for_retry() {
         let sandbox = Sandbox::new();
         let runtime = runtime();
         let _enter = runtime.enter();
         let mut window = Window::new(vec![(BOX, configured(&sandbox, "proxy"))], quick(WAIT));
+        runtime.block_on(window.until("connected", |w| w.is(BOX, "connected")));
+
+        stop_daemon(&sandbox);
+        kill_connection(&sandbox.calls());
         runtime.block_on(window.until("unreachable", |w| w.is(BOX, "unreachable")));
         let Some(ConnectionState::Unreachable { why, .. }) = window.state_of(BOX) else {
             panic!("{:?}", window.state_of(BOX))
         };
         assert_eq!(why, FIX_NO_DAEMON);
-        runtime.block_on(window.until("another dial", |_| calls_made(&sandbox) >= 3));
-        let started = std::fs::read_dir(sandbox.data())
-            .expect("the data folder")
-            .flatten()
-            .any(|e| e.path().extension().is_some_and(|x| x == "pid"));
-        assert!(!started, "attaching never starts the daemon");
+        let dialled = calls_made(&sandbox);
+        runtime.block_on(window.until("two more dials", |_| calls_made(&sandbox) >= dialled + 2));
+        assert!(!has_daemon(&sandbox), "a redial never starts the daemon");
         assert!(!window.connections.is_connected(BOX));
+        let commands = remote_commands(&sandbox);
+        assert!(
+            commands[1..]
+                .iter()
+                .all(|c| c.ends_with(" proxy --attach-only")),
+            "{commands:?}"
+        );
+
+        window.control.retry(BOX);
+        runtime.block_on(window.until("connected after the retry", |w| w.is(BOX, "connected")));
+        assert!(
+            has_daemon(&sandbox),
+            "the asked-for retry started the daemon"
+        );
+        let commands = remote_commands(&sandbox);
+        assert!(
+            !commands.last().unwrap().contains("--attach-only"),
+            "{commands:?}"
+        );
         drop(window);
         runtime.shutdown_background();
     }

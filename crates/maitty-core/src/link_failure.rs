@@ -23,7 +23,7 @@ pub const FIX_LOGIN: &str = "ssh needs a login it cannot do without you; make pl
 pub const FIX_UPDATE: &str = "run `maitty machine update <name>`, then retry";
 pub const FIX_INSTALL: &str =
     "run `maitty machine update <name> --install` (or set `remote_cmd` to its path), then retry";
-pub const FIX_NO_DAEMON: &str = "maitty is not running on that machine; start it there, then retry";
+pub const FIX_NO_DAEMON: &str = "maitty is not running on that machine; retry to start it there";
 
 /// Longest reason kept: ssh's last line is shown on screen.
 const MOST_WHY_CHARS: usize = 200;

@@ -625,11 +625,17 @@ error. Its failures classify without ssh's words: exit 127 is `NeedsInstall`, `N
 `NoDaemon`, anything else is `Unreachable` with the program's last stderr line, never `NeedsLogin`. On
 Windows connecting fails with `a custom transport (via) is not supported on Windows in v1; use ssh`.
 
-**Attach only.** A configured machine's connection runs `<remote_cmd> proxy --attach-only`
-(built in `ssh_command.rs`). If no daemon runs there, the proxy exits `NO_DAEMON_EXIT` before
-writing anything, and the machine is `Unreachable` with `FIX_NO_DAEMON`. This holds for the
-first connection and every reconnect: the daemon on a machine is the user's to start. `--remote
-host` keeps starting the remote daemon, as it always has.
+**Attach only, and when the daemon may start.** A daemon exits ~30 s after it has no session and
+no attached window, so a fresh machine has nothing to attach to. The supervisor therefore decides
+per dial (`MayStart` in `link/supervisor.rs`): the dial runs `<remote_cmd> proxy` (the daemon is
+started if none runs, as `--remote host` does; `Machine::starting`) on the machine's first dial,
+on every retry of a failed first dial, and after an explicit `Command::Retry` (the Machines
+dialog's retry, also after a refusal). The redials after an established line ended (stalled or
+closed) run `<remote_cmd> proxy --attach-only` (built in `ssh_command.rs`): if no daemon runs
+there, the proxy exits `NO_DAEMON_EXIT` before writing anything, and the machine is `Unreachable`
+with `FIX_NO_DAEMON` ("retry to start it there") until a person retries, so a dropped link never
+brings back a daemon the user stopped. `Machine::from_def` is attach-only by default, which is
+what the CLI's `--on`, MCP and `doctor` use: none of them starts a remote daemon.
 
 **Liveness.** An idle line is kept honest by ssh itself (`ServerAliveInterval=15`,
 `ServerAliveCountMax=3`: ssh exits after 45 s of silence, which closes the line). The client's

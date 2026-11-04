@@ -315,9 +315,12 @@ read as data and cleaned before they are shown. Asking is never silent: a first 
 or a `y`, a replacement `--yes` or a `y`, a downgrade `--force`. A Windows machine is refused as a remote
 in v1.
 
-Reconnecting never starts a daemon: a configured machine's proxy runs `proxy --attach-only` and
-exits when none is running, for the first connection and every redial alike, so a dead link
-cannot make this computer launch processes on a server the user did not start them on. What ssh
+Reconnecting never starts a daemon: after an established line ended, a configured machine's proxy
+runs `proxy --attach-only` and exits when none is running, so a dead link cannot make this
+computer launch processes on a server the user stopped. The first connection, and a retry a
+person asks for, run plain `proxy`, which starts the daemon: it is the same command `--remote
+host` already runs, and the person added that machine to use it. The CLI's `--on`, MCP and
+`doctor` stay attach-only. What ssh
 or the far side prints (its last stderr line) is untrusted: it is stripped of control characters,
 so no escape sequence reaches the terminal, and cut to 200 characters before it is shown. The
 failure is classified from ssh's exit status and the stream, not its wording, apart from three

@@ -150,8 +150,9 @@ never `NeedsLogin` (that reads ssh's words).
 Each `[[machines]]` entry is connected when the app starts, and kept connected: a line that
 drops is redialled at once and then at growing intervals (states and timings:
 [API_PATTERNS](API_PATTERNS.md#project-specific-connections-to-other-machines)). The machine's daemon must
-already be running: a configured machine's connection only attaches and never starts it (start it
-there, once; `--remote host` still starts the daemon). The window says, in a toast, when a machine
+already be running only after the first connection: maitty starts it there on a machine's first
+connection and when you retry, because it exits when nothing is attached; a redial after a lost
+connection only attaches and never starts it (`--remote host` always starts it). The window says, in a toast, when a machine
 is reconnecting, connected again, unreachable (with why), needs a login (make plain `ssh` to it
 work without a prompt) or needs maitty updated or installed there. Typing sent to a machine while
 it was down is dropped, and the toast on reconnect says how much. A machine added or removed in the
@@ -171,7 +172,7 @@ case, is this computer. Names compare ignoring case, as the config check does. `
 address's, else `--on`, else `--remote` (and `MAITTY_REMOTE`), else this computer. `--on X` with
 `--pane Y/4` for another machine, `--on` with `--remote`, and an address with `--remote` are usage
 errors (exit 2), as are `ls --all` beside `--on`, `--remote` or a pane address, and an unknown name, which lists the names that work. `--remote host` is the ad-hoc
-route and behaves as it always did; a configured machine is never started, only attached to.
+route and behaves as it always did; a configured machine is only attached to by `--on` (it never starts a remote daemon).
 
 `$MAITTY_TERM_ID` and `$MAITTY_PANE_TOKEN` name a pane of the daemon on this computer. They stay the
 default pane and the identity of a command that talks to this computer (`--on local` included). A

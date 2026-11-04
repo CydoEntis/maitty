@@ -168,6 +168,9 @@ over the environment: `--mode=`, `--maitty=`, `--env=KEY=value` (repeatable), an
 which appends a line `<shim pid> <proxy pid>` per call (the proxy's is 0 when none ran). A test
 counts dials from it, and kills both pids to cut a live line the way a dead link does. Like ssh,
 the shim passes `--attach-only` on to `maitty proxy` when the remote command ends with it.
+`--argv-log=<file>` also records the arguments of each `proxy` call, so a test can tell a dial that
+may start the daemon from an attach-only one. On Windows a daemon that a proxy starts keeps the shim's
+pipe open, so a test that cuts the line starts the daemon apart first.
 
 `remote-sh` is for the install script: the shim runs the remote command (the last argument) through the
 host's POSIX `sh -c` with `HOME` set to the folder `--home=<dir>` names (its `bin` first on `PATH`, where a

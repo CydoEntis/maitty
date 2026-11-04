@@ -406,8 +406,10 @@ write your clipboard, `notices` lets it raise notices (which include bringing th
 `sounds` lets it play sounds; what it raises starts with `[build]`. `mcp` opens it to agents (see *Agents on a
 machine*). `config.example.toml` lists every key.
 
-maitty never starts the daemon on a machine you added. Start it there once and the machine connects; if maitty
-is not installed there, see *Install or update maitty on a machine*.
+Adding a machine starts maitty there if it is not running, so you can create the first session from this
+computer. If the connection drops later, maitty only reconnects to a maitty that is still running there; it
+never starts one you stopped. Press retry on the machine to start it there again. If maitty is not
+installed there, see *Install or update maitty on a machine*.
 
 ### What you see
 
@@ -422,7 +424,7 @@ is the one its own maitty reports, and what its agents need shows in the Inbox w
 | `reconnecting #2` | A line that was up dropped. maitty tries again at once, then after 250 ms, doubling up to 30 s; three tries in a row without an answer make it `unreachable`. |
 | `needs login` | ssh cannot log in without asking you. Make plain `ssh` to that machine work in a terminal (load your key, accept its host key), then press `r`. |
 | `needs update` | The machine runs another version of maitty, or has none on its PATH. Run `maitty machine update <name>` (add `--install` when there is none, or set `remote_cmd` to its path), then press `r`. |
-| `unreachable` | No answer, or maitty is not running there. The reason is written under it (ssh's last line, or "maitty is not running on that machine; start it there, then retry"); maitty keeps trying in the background. |
+| `unreachable` | No answer, or maitty is not running there. The reason is written under it (ssh's last line, or "maitty is not running on that machine; retry to start it there"); maitty keeps trying in the background. |
 | `refused` | A different computer now answers at that name. If you replaced the machine, remove it and add it again; otherwise check the host name and DNS. |
 
 When a machine drops, its sessions stay in the sidebar, greyed, with `disconnected since 2m ago` and what to do
@@ -456,7 +458,7 @@ The pane a command runs in is on this computer, so on another machine you always
 `maitty send --on build "hi"` is refused until you add `--pane build/4`. The other machine is never
 told which pane here you are in. What a machine prints is cleaned before it reaches your terminal;
 `read --raw` prints a machine's screen exactly as it sent it. If a machine cannot be reached the error
-is one line with the fix (log in with plain `ssh`, `maitty machine update <name>` to install or update maitty there, start it there).
+is one line with the fix (log in with plain `ssh`, `maitty machine update <name>` to install or update maitty there, retry the machine to start maitty there).
 `kill-server --on build` stops every session on that machine, so it needs `--yes`. `--remote host`
 still works as before, and cannot be combined with `--on`.
 

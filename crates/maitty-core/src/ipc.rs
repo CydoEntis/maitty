@@ -245,9 +245,22 @@ impl Machine {
         self
     }
 
+    /// This machine with a proxy that starts the daemon when none runs there. The daemon
+    /// exits when nothing is attached, so a first connection or an asked-for retry has to be
+    /// able to start it; a redial after a lost line must not (`attach_only`).
+    pub fn starting(&self) -> Machine {
+        let mut machine = self.clone();
+        match &mut machine.route {
+            Route::Ssh(route) => route.proxy = ProxyMode::StartsDaemon,
+            Route::Command(route) => route.proxy = ProxyMode::StartsDaemon,
+            Route::Local => {}
+        }
+        machine
+    }
+
     /// A configured machine: `program` (ssh), the def's `ssh_args`, then its target. The
-    /// def must have passed `validate_machines`. Its daemon is the user's to start, so its
-    /// connections only attach.
+    /// def must have passed `validate_machines`. It only attaches; the link supervisor asks
+    /// for `starting` on a first connection and on a retry.
     pub fn from_def(def: &MachineDef, program: &str) -> Machine {
         Machine::from_def_via(def, &[program.to_string()])
     }
@@ -261,8 +274,7 @@ impl Machine {
         }
     }
 
-    /// A configured machine reached by its own `via` program; its daemon is the user's to
-    /// start, so it only attaches.
+    /// A configured machine reached by its own `via` program; it only attaches by default.
     fn through_command(def: &MachineDef, via: &[String]) -> Machine {
         Machine {
             name: def.name.clone(),
@@ -1052,6 +1064,51 @@ mod tests {
             format!("{other:#}").contains("Permission denied"),
             "{other:#}"
         );
+    }
+
+    #[test]
+    fn starting_flips_the_proxy_of_both_routes_and_nothing_else() {
+        let proxy = |m: &super::Machine| match &m.route {
+            super::Route::Ssh(route) => route.proxy,
+            super::Route::Command(route) => route.proxy,
+            super::Route::Local => panic!("a local machine has no proxy"),
+        };
+        for attached in [configured_machine(), through(&["relay", "{command}"])] {
+            let starting = attached.starting();
+            assert_eq!(proxy(&attached), super::ProxyMode::AttachOnly);
+            assert_eq!(proxy(&starting), super::ProxyMode::StartsDaemon);
+            assert_eq!(starting.name(), attached.name());
+            assert_eq!(starting.host(), attached.host());
+            assert_eq!(starting.transport_program(), attached.transport_program());
+            let mut back = starting.clone();
+            match &mut back.route {
+                super::Route::Ssh(r) => r.proxy = super::ProxyMode::AttachOnly,
+                super::Route::Command(r) => r.proxy = super::ProxyMode::AttachOnly,
+                super::Route::Local => {}
+            }
+            assert_eq!(back, attached);
+        }
+        assert_eq!(super::Machine::local().starting(), super::Machine::local());
+    }
+
+    #[test]
+    fn the_remote_command_asks_not_to_start_the_daemon_only_when_attaching() {
+        let remote_command = |m: &super::Machine| match &m.route {
+            super::Route::Ssh(r) => {
+                super::ssh_command::ssh_argv(&r.ssh, &r.target, &r.remote_cmd, r.proxy)
+            }
+            super::Route::Command(r) => {
+                super::ssh_command::command_argv(&r.via, &r.remote_cmd, r.proxy)
+            }
+            super::Route::Local => panic!("a local machine has no proxy"),
+        }
+        .unwrap()
+        .pop()
+        .unwrap();
+        for attached in [configured_machine(), through(&["relay", "{command}"])] {
+            assert!(remote_command(&attached).ends_with(" proxy --attach-only"));
+            assert!(remote_command(&attached.starting()).ends_with(" proxy"));
+        }
     }
 
     #[test]
