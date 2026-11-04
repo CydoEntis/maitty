@@ -5,7 +5,7 @@
 //!
 //! The fix text of each class is one constant, so the screen, the tests and the docs agree.
 
-use crate::ipc::{NO_DAEMON_EXIT, other_version};
+use crate::{NO_DAEMON_EXIT, other_version};
 
 /// Exit status ssh gives when it could not connect or log in, and its own errors.
 const SSH_ERROR: i32 = 255;
@@ -38,7 +38,7 @@ pub struct SshEnd {
     /// The far side sent its stream marker or a frame before the end.
     pub streamed: bool,
     /// The text shown for the failure.
-    pub(crate) message: String,
+    pub message: String,
     /// The machine is reached through its own `via` program, not ssh: ssh's words and its
     /// exit status 255 mean nothing from it.
     pub custom: bool,
@@ -107,7 +107,7 @@ pub(crate) fn clean(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ipc::OtherVersion;
+    use crate::OtherVersion;
 
     fn ssh_ended(code: Option<i32>, said: &str, streamed: bool) -> anyhow::Error {
         anyhow::anyhow!("closed").context(SshEnd {

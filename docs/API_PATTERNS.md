@@ -614,12 +614,12 @@ its stream marker or a frame. Exit 127 is `NeedsUpdate` with the install text. E
 and one of three fixed tokens in stderr (`Permission denied`, `Host key verification failed`,
 `Too many authentication failures`) is `NeedsLogin`: the only place ssh's words are read.
 Everything else is `Unreachable` with ssh's last stderr line, control characters removed and
-cut to 200 characters. The fix text of each class is one constant in `link_failure.rs`
+cut to 200 characters. The fix text of each class is one constant in `maitty-machines` (`link_failure.rs`)
 (`FIX_LOGIN`, `FIX_UPDATE`, `FIX_INSTALL`, `FIX_NO_DAEMON`); `FIX_UPDATE` and `FIX_INSTALL` name
 `maitty machine update <name>` (and `--install`), with `<name>` as written, one text for every machine.
 
 **Custom transport.** A machine with `via` is reached by running the user's program
-(`Route::Command`, `ssh_command::command_argv`) in place of ssh: the same pipes, stream marker skipping,
+(`Route::Command`, `ssh_command::command_argv`, both in `maitty-machines`) in place of ssh: the same pipes, stream marker skipping,
 handshake and `SshEnd` (with `custom` set) as ssh. Text before the marker with no marker is the same login
 error. Its failures classify without ssh's words: exit 127 is `NeedsInstall`, `NO_DAEMON_EXIT` is
 `NoDaemon`, anything else is `Unreachable` with the program's last stderr line, never `NeedsLogin`. On
@@ -631,7 +631,7 @@ per dial (`MayStart` in `link/supervisor.rs`): the dial runs `<remote_cmd> proxy
 started if none runs, as `--remote host` does; `Machine::starting`) on the machine's first dial,
 on every retry of a failed first dial, and after an explicit `Command::Retry` (the Machines
 dialog's retry, also after a refusal). The redials after an established line ended (stalled or
-closed) run `<remote_cmd> proxy --attach-only` (built in `ssh_command.rs`): if no daemon runs
+closed) run `<remote_cmd> proxy --attach-only` (built in `maitty-machines`' `ssh_command.rs`): if no daemon runs
 there, the proxy exits `NO_DAEMON_EXIT` before writing anything, and the machine is `Unreachable`
 with `FIX_NO_DAEMON` ("retry to start it there") until a person retries, so a dropped link never
 brings back a daemon the user stopped. `Machine::from_def` is attach-only by default, which is
@@ -730,7 +730,7 @@ the rest are dropped silently. Nothing blocks and nothing is queued.
 **One-shot commands.** `cli/target.rs` picks the machine of a command once, before it runs: a
 pane address `machine/id`, else `--on`, else the `--remote` adapter (`ipc::Machine::current()`),
 else this computer. Each command is handed that `Target` and opens its connection with
-`ipc::open_to`; nothing reads the environment for the machine after that. A configured machine only
+`ipc::open_to` (for another machine, `maitty_machines::open_remote`); nothing reads the environment for the machine after that. A configured machine only
 attaches. The pane a command runs in (`$MAITTY_TERM_ID`) is a pane of this computer's daemon, so it is
 the default pane only when the target is this computer or the ad-hoc `--remote` route; a command
 aimed at a named machine needs an explicit `--pane machine/id`. `ls` is unchanged for this computer;

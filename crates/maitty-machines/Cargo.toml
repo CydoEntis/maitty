@@ -3,10 +3,18 @@ name = "maitty-machines"
 version = "0.1.0"
 edition = "2024"
 publish = false
+build = "build.rs"
 
 [dependencies]
 anyhow = "1"
+maitty-ipc-transport = { path = "../maitty-ipc-transport" }
+maitty-shared = { path = "../maitty-shared" }
 serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["io-util", "macros", "process", "rt", "sync", "time"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 toml = "0.9"
+tokio = { version = "1", features = ["macros", "rt"] }

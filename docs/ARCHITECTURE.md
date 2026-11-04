@@ -63,11 +63,9 @@ src/
   references.rs  a project's reference files (`.maitty/references/`): listed, added and removed (the terminal app edits them, the server lists them for the desktop app)
   prompt.rs      the question and numbered choices an agent is stopped on, read off its screen (the MCP answer tool and the inbox card share it)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
-  ipc.rs         local sockets and the SSH proxy; a machine's route is local, ssh or a custom transport (`via`, `Route::Command`, unix only)
-  ssh_command.rs the ssh argv for `<app> proxy` on another machine: hardening options, `--`, and the remote command quoted for the remote shell (`--attach-only` for a redial, not for a first dial or a retry); also `command_argv` (a machine's custom transport: its own program, the remote command as `{command}` or last), the probe line, the interactive first-login line and `popup_command`, which makes that line safe for a pane's shell
-  remote_install.rs installing the app on another machine, as pure rules: the `uname -sm` parser, the installed-version check, the decision table (nothing is installed without a yes), the destination, the constant install script and its exit-code table
+  ipc.rs         local sockets and the `proxy` command; opening a connection to another machine (ssh or a custom transport) is `maitty-machines`, which this module re-exports
+  remote_install.rs installing the app on another machine, as pure rules: the `uname -sm` parser, the installed-version check, the decision table (nothing is installed without a yes), the destination, the install script's exit-code table (the script itself is in `maitty-machines`)
   machine_probe.rs a look at a machine before it is added: `ssh ... maitty --version` with no prompt, ended by a limit or a cancel flag, and its result classified (ready, a failure class, cancelled); `locate` asks the same way where the login shell finds the app (`command -v`)
-  link_failure.rs why a connection to another machine failed, from ssh's exit status and what the far side sent: `classify`, the failure classes and their fix texts
   config.rs      config.toml (+ config.local.toml) loading, atomic state files
   keys.rs        actions, default bindings, key parsing
   theme.rs       built-in themes and contrast audit
@@ -228,7 +226,10 @@ defaults, pure validation and appearance compatibility rules, terminal key actio
 default bindings, key parsing and built-in themes; terminal-specific mouse
 encoding stays in the terminal client. Config loading and filesystem migrations
 are core-owned. `maitty-machines` owns the machine definition (`[[machines]]`) and its
-validation, for both apps; `maitty-settings` re-exports them from `config`.
+validation (`maitty-settings` re-exports them from `config`), the ssh line and its hardening
+(`ssh_command.rs`), the failure classes and their fix texts (`link_failure.rs`), the fixed remote
+scripts and the dial to another machine (`machine.rs`), for both apps; `maitty-core` re-exports
+them as `ipc::Machine` and `link_failure`.
 `maitty-ipc-transport` owns bounded,
 length-delimited protocol framing, Welcome handshake, the stream marker and login-noise
 skipping for ssh (`stream_marker.rs`), socket identity formatting,
@@ -302,7 +303,7 @@ crates/
   maitty-shared/                  wire protocol and shared contracts
   maitty-settings/                preference schemas, key actions and themes
   maitty-ipc-transport/           shared IPC framing and handshake
-  maitty-machines/                the `[[machines]]` definition and its checks, shared by both apps
+  maitty-machines/                the `[[machines]]` definition and its checks, the ssh line, failure classes and dial to another machine, shared by both apps
   adapters/                       Codex, Claude and future provider adapters
 docs/                             architecture, roadmap and design specs
 ```

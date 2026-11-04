@@ -2719,6 +2719,7 @@ dependencies = [
  "maitty-agent-detection",
  "maitty-agent-integrations",
  "maitty-ipc-transport",
+ "maitty-machines",
  "maitty-provider-claude",
  "maitty-provider-codex",
  "maitty-settings",
@@ -2796,7 +2797,11 @@ name = "maitty-machines"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "libc",
+ "maitty-ipc-transport",
+ "maitty-shared",
  "serde",
+ "tokio",
  "toml 0.9.12+spec-1.1.0",
 ]
 
