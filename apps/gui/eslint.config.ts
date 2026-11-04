@@ -4,6 +4,13 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
+// Hard-coded colours (hex, rgb(), hsl()) bypass the theme tokens (docs/UI.md, "Design system rules").
+const COLOR_LITERAL = String.raw`/(#[0-9a-f]{3,8}\b|\b(rgb|hsl)a?\()/i`
+const HARD_CODED_COLOR = [
+  { selector: `Literal[value=${COLOR_LITERAL}]`, message: 'Use a theme token (CSS variable), not a hard-coded colour.' },
+  { selector: `TemplateElement[value.raw=${COLOR_LITERAL}]`, message: 'Use a theme token (CSS variable), not a hard-coded colour.' },
+]
+
 export default tseslint.config(
   { ignores: ['dist/**', 'node_modules/**', 'target/**', 'src-tauri/target/**', 'gui/**', 'eslint.config.ts', 'scripts/perf/**'] },
   eslint.configs.recommended,
@@ -46,6 +53,17 @@ export default tseslint.config(
         ignoreTypeIndexes: true,
       }],
     },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      // The theme files own the palettes and colour maths.
+      'src/features/workspace/theme/**',
+      // The terminal palette is not a theme token: xterm.js takes literal colours.
+      'src/TerminalView.tsx',
+    ],
+    rules: { 'no-restricted-syntax': ['error', ...HARD_CODED_COLOR] },
   },
   {
     files: ['src/**/*.{test,spec}.{ts,tsx}'],

@@ -127,6 +127,26 @@ Every built-in theme passes a WCAG contrast audit test. Shared primitives in
 (text runs), `keycap`/`keycaps`, `hints`, `button`, `dim_all`. Icons come from
 config (`[icons]`), with Nerd Font glyphs where present.
 
+## Project-specific: GUI design system rules
+
+Rules for `apps/gui/`. Owner-approved 2026-11-04.
+
+1. Every colour, radius and shadow comes from a theme token (a CSS variable),
+   mapped into Tailwind by the `@theme inline` block in `apps/gui/src/index.css`.
+   No raw hex, `rgb()` or `hsl()` in components.
+2. Every popup (menu, dropdown, dialog, tooltip, popover, listbox) is a
+   shadcn/Radix primitive from `src/components/ui/`. No hand-rolled focus, Esc
+   or arrow-key handling.
+3. New components use Tailwind utilities on those tokens. Heavy animation and
+   per-style rules (Flat, Tiled, Glass, `data-gpu`) stay in `workspace.css`.
+4. Old CSS moves to these rules only when a ticket touches that area. There is
+   no big-bang rewrite.
+
+`pnpm lint` enforces rule 1 in TS and TSX: `eslint.config.ts` rejects a hex,
+`rgb()` or `hsl()` literal in `apps/gui/src`. Exempt: test files, the theme
+files in `features/workspace/theme/`, and `TerminalView.tsx` (the xterm.js
+palette takes literal colours). Don't widen the exemptions to pass a change.
+
 ## Project-specific: layout and navigation
 
 <!-- local: user requested sidebar-bottom controls and no global footer; on 2026-10-24 they chose one exception, the mode bar along the bottom (ADR 0024). -->
