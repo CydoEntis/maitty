@@ -550,6 +550,28 @@ pub async fn start_shell_session(cwd: PathBuf, daemon_executable: PathBuf) -> Re
     }
 }
 
+/// Run a command line in a new terminal session on this computer, named `name`. For a login that
+/// needs a person (ssh asking for a password or a host key): the person answers in the pane.
+pub async fn start_command_session(
+    command: String,
+    name: String,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::NewWorkspace {
+            cwd: None,
+            name: Some(name),
+            cmd: Some(command),
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected reply to a command session"),
+    }
+}
+
 /// Start an agent in a terminal session (a pane the daemon owns) in a project folder.
 pub async fn start_terminal_session(
     cwd: PathBuf,

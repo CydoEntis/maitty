@@ -139,6 +139,11 @@ impl Wire {
         wire
     }
 
+    /// The hub's handle, or why there is none yet.
+    pub fn handle(&self) -> Result<&HubHandle, String> {
+        self.0.get().ok_or_else(|| NOT_CONNECTED.to_string())
+    }
+
     fn send(&self, machine: MachineId, msg: ClientMsg) -> Result<(), String> {
         let handle = self.0.get().ok_or_else(|| NOT_CONNECTED.to_string())?;
         handle

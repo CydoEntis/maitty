@@ -17,7 +17,7 @@ import {
   sendTerminalInput,
   startShellSession,
 } from '@/api/daemon'
-import { LOCAL_MACHINE, listenMachineError, listenMachineRemoved, listenMachineSessions, machineNameOf, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, unregisterMachine, type MachineState } from '@/api/machines'
+import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineError, listenMachineRemoved, listenMachineSessions, machineNameOf, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, terminalOf, unregisterMachine, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -37,6 +37,7 @@ import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPane
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
 import { runsProgram } from './components/useArmed'
 import { rememberSessions, withEnded } from './model/ended'
+import { advanceLoginWatch, LOGIN_CHECK_MS, startLoginWatch, type LoginWatch } from './model/loginWatch'
 import { idsOfMachinesNotHeard, machineHeads, remoteTerminals, type RemoteMachine } from './model/machines'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
@@ -441,6 +442,40 @@ export function DesktopApp() {
   const heads = useMemo(() => machineHeads(machines), [machines])
   const retryNamed = useCallback((name: string) => {
     retryMachine(name).catch((error: unknown) => { toast.error(errorMessage(error, `Could not retry ${name}`)) })
+  }, [])
+  // A first login runs in a session on this computer; the machine is dialled again when it closes.
+  const localTermsRef = useRef<ReadonlySet<number>>(new Set())
+  const loginsRef = useRef<LoginWatch[]>([])
+  const [watchingLogins, setWatchingLogins] = useState(false)
+  const checkLogins = useCallback(() => {
+    const next: LoginWatch[] = []
+    for (const watch of loginsRef.current) {
+      const step = advanceLoginWatch(watch, localTermsRef.current, Date.now())
+      if (step.dial) retryNamed(watch.machine)
+      if (step.watch) next.push(step.watch)
+    }
+    loginsRef.current = next
+    setWatchingLogins(next.length > 0)
+  }, [retryNamed])
+  useEffect(() => {
+    const terms = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal').map((item) => terminalOf(item.id))
+    localTermsRef.current = new Set(terms.filter((term): term is number => term !== null))
+  }, [sessionsQuery.data])
+  useEffect(() => {
+    if (!watchingLogins) return
+    const timer = setInterval(checkLogins, LOGIN_CHECK_MS)
+    return () => { clearInterval(timer) }
+  }, [watchingLogins, checkLogins])
+  const addNamed = useCallback(async (target: string, name?: string) => {
+    const added = await addMachine(target, name)
+    if (added.outcome === 'login') {
+      loginsRef.current = [...loginsRef.current, startLoginWatch(added.name, localTermsRef.current, Date.now())]
+      setWatchingLogins(true)
+    }
+    return added
+  }, [])
+  const cancelAdding = useCallback(() => {
+    cancelAddMachine().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not cancel')) })
   }, [])
   const removeNamed = useCallback((name: string) => {
     removeMachine(name).then(
@@ -1505,7 +1540,7 @@ export function DesktopApp() {
                 onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}
                 mac={mac}
                 daemon={{ online, sessionCount: sessions.length }}
-                machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed }}
+                machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed, add: { windows: navigator.userAgent.includes('Windows'), loadHosts: listSshHosts, onAdd: addNamed, onCancel: cancelAdding } }}
                 projects={groups.map((group) => ({ key: group.key, name: group.name, colorId: group.colorId }))}
                 validateFolder={folderExists}
                 onChooseFolder={chooseStartFolder}

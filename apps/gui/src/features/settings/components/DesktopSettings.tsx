@@ -7,6 +7,8 @@ import { ThemePicker } from './ThemePicker'
 import { hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/model/shortcuts'
 import { PROJECT_COLORS } from '@/features/workspace/model/folderColor'
 import { Icon } from '@/features/workspace/components/glyphs'
+import { errorMessage } from '@/lib/error-message'
+import type { Added, HostChoice } from '@/api/machines'
 import { DisconnectedSince } from '@/features/workspace/components/times'
 import type { MachineHead } from '@/features/workspace/model/machines'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
@@ -21,6 +23,16 @@ export type MachinesInfo = {
   list: readonly MachineHead[]
   onRetry: (name: string) => void
   onRemove: (name: string) => void
+  add: {
+    /** Windows has no ssh agent by default: the page says to use keys. */
+    windows: boolean
+    /** The hosts of ~/.ssh/config that are not machines yet. Stable between renders. */
+    loadHosts: () => Promise<HostChoice[]>
+    /** Looks at the target and adds it. Rejects with the words to show when it cannot be added. */
+    onAdd: (target: string, name?: string) => Promise<Added>
+    /** Ends the look that is running. */
+    onCancel: () => void
+  }
 }
 
 export type DaemonInfo = {
@@ -640,6 +652,123 @@ function DaemonSection({ daemon }: { daemon: DaemonInfo }) {
 
 
 function MachinesSection({ machines }: { machines: MachinesInfo }) {
+  return (
+    <>
+      <MachineList machines={machines} />
+      {machines.known && <AddMachineCard add={machines.add} />}
+    </>
+  )
+}
+
+type HostsState = { status: 'loading' } | { status: 'ready'; hosts: readonly HostChoice[] } | { status: 'failed'; message: string }
+
+function AddMachineCard({ add }: { add: MachinesInfo['add'] }) {
+  const [hosts, setHosts] = useState<HostsState>({ status: 'loading' })
+  const [text, setText] = useState('')
+  const [checking, setChecking] = useState<string | null>(null)
+  const [naming, setNaming] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  const [note, setNote] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const { loadHosts } = add
+  useEffect(() => {
+    let gone = false
+    loadHosts().then(
+      (list) => { if (!gone) setHosts({ status: 'ready', hosts: list }) },
+      (error: unknown) => { if (!gone) setHosts({ status: 'failed', message: errorMessage(error, 'Could not read ~/.ssh/config') }) },
+    )
+    return () => { gone = true }
+  }, [loadHosts])
+
+  const submit = (target: string, chosenName?: string) => {
+    setChecking(target)
+    setNote(null)
+    add.onAdd(target, chosenName).then(
+      (result) => {
+        setChecking(null)
+        switch (result.outcome) {
+          case 'needs-name':
+            setNaming(target)
+            setName('')
+            return
+          case 'cancelled':
+            setNote({ kind: 'ok', text: 'Cancelled. Nothing was added.' })
+            return
+          case 'added':
+            setNote({ kind: 'ok', text: `Added ${result.name}.${result.version ? ` ${result.version} answered there.` : ''} Connecting.` })
+            break
+          case 'login':
+            setNote({ kind: 'ok', text: `Added ${result.name}. ssh needs you to log in: use the session named “ssh ${result.name}”.` })
+            break
+          case 'login-manual':
+            setNote({ kind: 'error', text: `Added ${result.name}. Run “ssh ${result.target}” once in a terminal to log in, then retry (${result.why}).` })
+            break
+        }
+        setText('')
+        setNaming(null)
+        setHosts((current) => current.status === 'ready' ? { status: 'ready', hosts: current.hosts.filter((host) => host.alias !== target) } : current)
+      },
+      (error: unknown) => {
+        setChecking(null)
+        setNote({ kind: 'error', text: errorMessage(error, 'Could not add the machine') })
+      },
+    )
+  }
+
+  const typed = text.trim()
+  const shown = hosts.status === 'ready' ? hosts.hosts.filter((host) => `${host.alias} ${host.detail}`.toLowerCase().includes(typed.toLowerCase())) : []
+  const icon = <><circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" /></>
+  return (
+    <Card title="Add a machine" color="var(--accent)" iconPath={icon}>
+      {add.windows && <p className="mx-scard-note">Windows: use ssh keys or an agent. Password prompts work in the session but are not remembered.</p>}
+      {checking !== null
+        ? (
+          <div className="mx-scard-row" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); add.onCancel() } }}>
+            <div className="mx-scard-text"><span role="status">Checking {checking}…</span><span>Esc ends ssh and adds nothing.</span></div>
+            <button type="button" className="mx-scard-button" onClick={add.onCancel}>Cancel</button>
+          </div>
+        )
+        : naming !== null
+          ? (
+            <form className="mx-scard-row" onSubmit={(event) => { event.preventDefault(); if (name.trim() !== '') submit(naming, name.trim()) }}>
+              <div className="mx-scard-text"><span>Name for {naming}</span><span>A short name for the sidebar, such as build.</span></div>
+              <input className="mx-scard-input" aria-label="Machine name" value={name} autoFocus onChange={(event) => { setName(event.target.value) }} />
+              <button type="submit" className="mx-scard-button" disabled={name.trim() === ''}>Add</button>
+              <button type="button" className="mx-scard-button" onClick={() => { setNaming(null) }}>Back</button>
+            </form>
+          )
+          : (
+            <form className="mx-scard-row" onSubmit={(event) => { event.preventDefault(); if (typed !== '') submit(typed) }}>
+              <div className="mx-scard-text"><span>Host</span><span>Pick one below, or type user@host.</span></div>
+              <input className="mx-scard-input" aria-label="Host or user@host" value={text} placeholder="user@host" onChange={(event) => { setText(event.target.value) }} />
+              <button type="submit" className="mx-scard-button" disabled={typed === ''}>Add</button>
+            </form>
+          )}
+      {note && <p className="mx-scard-note" role={note.kind === 'error' ? 'alert' : 'status'}>{note.text}</p>}
+      {checking === null && naming === null && (
+        hosts.status === 'loading'
+          ? <p className="mx-scard-note" role="status">Loading hosts from ~/.ssh/config…</p>
+          : hosts.status === 'failed'
+            ? <p className="mx-scard-note" role="alert">{hosts.message}</p>
+            : hosts.hosts.length === 0
+              ? <p className="mx-scard-note">No hosts in ~/.ssh/config. Type user@host above.</p>
+              : (
+                <ul className="mx-host-list" aria-label="Hosts in ~/.ssh/config">
+                  {shown.map((host) => (
+                    <li key={host.alias}>
+                      <button type="button" className="mx-host-row" onClick={() => { submit(host.alias) }}>
+                        <span>{host.alias}</span><span className="mx-host-detail">{host.detail}</span>
+                      </button>
+                    </li>
+                  ))}
+                  {shown.length === 0 && <li className="mx-scard-note">No host matches “{typed}”. Add presses Enter for it as typed.</li>}
+                </ul>
+              )
+      )}
+    </Card>
+  )
+}
+
+function MachineList({ machines }: { machines: MachinesInfo }) {
   const [confirming, setConfirming] = useState<string | null>(null)
   const icon = <><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>
   if (!machines.known) {

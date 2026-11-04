@@ -313,6 +313,29 @@ async fn removing_a_machine_stops_it_and_forgets_it_and_its_daemon_id() {
 }
 
 #[tokio::test]
+async fn a_machine_added_while_the_app_runs_connects_under_a_new_number() {
+    let mut sandbox = Sandbox::new();
+    sandbox.start_daemon();
+    let mut watch = Watch::new(&[], &sandbox, quick(WAIT));
+    assert!(!watch.hub.any());
+
+    watch.hub.handle().add(machine("late", &sandbox, "proxy"));
+    watch
+        .until("connected and a snapshot", |w| {
+            w.is(MachineId(1), "connected") && w.snapshots(MachineId(1)) > 0
+        })
+        .await;
+    assert_eq!(watch.hub.name_of(MachineId(1)), Some("late"));
+    assert_eq!(watch.hub.handle().name_of(MachineId(1)).as_deref(), Some("late"));
+    assert_eq!(watch.kinds(MachineId(1)), ["connecting", "connected"]);
+
+    // Adding the same name again changes nothing.
+    watch.hub.handle().add(machine("LATE", &sandbox, "proxy"));
+    let quiet = tokio::time::timeout(Duration::from_millis(300), watch.step()).await;
+    assert!(quiet.is_err());
+}
+
+#[tokio::test]
 async fn removing_a_machine_that_is_not_there_says_nothing() {
     let sandbox = Sandbox::new();
     let mut watch = Watch::new(&[], &sandbox, quick(WAIT));

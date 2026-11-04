@@ -3,16 +3,20 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { SettingsPreferences } from '../preferences'
 import { machineHeads, type RemoteMachine } from '@/features/workspace/model/machines'
-import { DesktopSettings, type DesktopSettingsSection } from './DesktopSettings'
+import { DesktopSettings, type DesktopSettingsSection, type MachinesInfo } from './DesktopSettings'
 
 const PREFS: SettingsPreferences = { accent: 'teal', spinner: 'braille', restoreTabs: true, reduceMotion: false, animateSidebarActivity: true, compactSidebar: false, toastPosition: 'bottom-right', notifyNeedsYou: true, notifyFinished: true, notifyError: true, notificationSound: false, terminalFontSize: 13, startFolder: '', groupBy: 'repo', themeMode: 'dark', darkTheme: 'Midnight', lightTheme: 'Paper', cursorStyle: 'block', scrollback: 10000, effectWorking: true, effectNeedsYou: true, effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'names', leadMode: 'focused', iconColor: 'color', statusBar: true, style: 'glass', projectColors: {} }
+
+function info(overrides: Partial<MachinesInfo> = {}): MachinesInfo {
+  return { known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn(), add: { windows: false, loadHosts: () => Promise.resolve([]), onAdd: vi.fn(), onCancel: vi.fn() }, ...overrides }
+}
 
 function renderSettings(section: DesktopSettingsSection, overrides: Partial<Parameters<typeof DesktopSettings>[0]> = {}) {
   const onChange = vi.fn()
   const onSection = vi.fn()
   const onPreviewTheme = vi.fn()
   const onShowWelcome = vi.fn()
-  render(<DesktopSettings section={section} onSection={onSection} preferences={PREFS} onChange={onChange} systemReducedMotion={false} systemDark onPreviewTheme={onPreviewTheme} onShowWelcome={onShowWelcome} mac={false} daemon={{ online: true, sessionCount: 3 }} machines={{ known: true, list: [], onRetry: vi.fn(), onRemove: vi.fn() }} projects={[{ key: '/code/maitty', name: 'maitty', colorId: undefined }]} validateFolder={() => Promise.resolve(true)} onClose={vi.fn()} {...overrides} />)
+  render(<DesktopSettings section={section} onSection={onSection} preferences={PREFS} onChange={onChange} systemReducedMotion={false} systemDark onPreviewTheme={onPreviewTheme} onShowWelcome={onShowWelcome} mac={false} daemon={{ online: true, sessionCount: 3 }} machines={info()} projects={[{ key: '/code/maitty', name: 'maitty', colorId: undefined }]} validateFolder={() => Promise.resolve(true)} onClose={vi.fn()} {...overrides} />)
   return { onChange, onSection, onPreviewTheme, onShowWelcome }
 }
 
@@ -258,7 +262,7 @@ describe('the Machines page', () => {
   const others = (kind: RemoteMachine['state']['state'], why: string | null = null) => machineHeads(new Map([[1, box(kind, why)]])).filter((head) => head.name !== null)
 
   it('says it is loading until the host has answered', () => {
-    renderSettings('machines', { machines: { known: false, list: [], onRetry: vi.fn(), onRemove: vi.fn() } })
+    renderSettings('machines', { machines: info({ known: false }) })
     expect(screen.getByRole('status')).toHaveTextContent('Loading machines')
   })
 
@@ -268,7 +272,7 @@ describe('the Machines page', () => {
   })
 
   it('shows a machine that is down with its word, how long, and its fix in full', () => {
-    renderSettings('machines', { machines: { known: true, list: others('needs-login', 'run ssh box once to log in'), onRetry: vi.fn(), onRemove: vi.fn() } })
+    renderSettings('machines', { machines: info({ list: others('needs-login', 'run ssh box once to log in') }) })
     expect(screen.getByText(/needs login/)).toBeInTheDocument()
     expect(screen.getByText('disconnected since 3m ago')).toBeInTheDocument()
     expect(screen.getByText('run ssh box once to log in')).toBeInTheDocument()
@@ -277,21 +281,21 @@ describe('the Machines page', () => {
   it('retries a machine that is down, and has nothing to retry on one that is up', async () => {
     const user = userEvent.setup()
     const onRetry = vi.fn()
-    const down = renderSettings('machines', { machines: { known: true, list: others('unreachable', 'no answer'), onRetry, onRemove: vi.fn() } })
+    const down = renderSettings('machines', { machines: info({ list: others('unreachable', 'no answer'), onRetry }) })
     await user.click(screen.getByRole('button', { name: 'Retry box' }))
     expect(onRetry).toHaveBeenCalledWith('box')
     expect(down.onChange).not.toHaveBeenCalled()
   })
 
   it('does not offer a retry for a machine that is connected', () => {
-    renderSettings('machines', { machines: { known: true, list: others('connected'), onRetry: vi.fn(), onRemove: vi.fn() } })
+    renderSettings('machines', { machines: info({ list: others('connected') }) })
     expect(screen.getByRole('button', { name: 'Retry box' })).toBeDisabled()
   })
 
   it('asks before removing, and says what stays', async () => {
     const user = userEvent.setup()
     const onRemove = vi.fn()
-    renderSettings('machines', { machines: { known: true, list: others('connected'), onRetry: vi.fn(), onRemove } })
+    renderSettings('machines', { machines: info({ list: others('connected'), onRemove }) })
     await user.click(screen.getByRole('button', { name: 'Remove box' }))
     expect(onRemove).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent('Removes box from this list. Its sessions keep running on box.')
@@ -300,5 +304,86 @@ describe('the Machines page', () => {
     await user.click(screen.getByRole('button', { name: 'Remove box' }))
     await user.click(screen.getByRole('button', { name: 'Remove box' }))
     expect(onRemove).toHaveBeenCalledWith('box')
+  })
+})
+
+describe('adding a machine', () => {
+  const hosts = [{ alias: 'build', detail: 'me@build.example' }, { alias: 'lab', detail: 'lab.example' }]
+  const added = (name: string) => ({ outcome: 'added' as const, name, version: 'maitty 1.2.3' })
+
+  it('says it is loading the hosts, then lists them', async () => {
+    renderSettings('machines', { machines: info({ add: { ...info().add, loadHosts: () => Promise.resolve(hosts) } }) })
+    expect(screen.getByText(/Loading hosts/)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /build/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /lab/ })).toBeInTheDocument()
+  })
+
+  it('says so when there are no hosts, and when they cannot be read', async () => {
+    renderSettings('machines')
+    expect(await screen.findByText(/No hosts in ~\/\.ssh\/config/)).toBeInTheDocument()
+  })
+
+  it('shows why the hosts could not be read', async () => {
+    renderSettings('machines', { machines: info({ add: { ...info().add, loadHosts: () => Promise.reject(new Error('config unreadable')) } }) })
+    expect(await screen.findByRole('alert')).toHaveTextContent('config unreadable')
+  })
+
+  it('adds a picked host and says what answered', async () => {
+    const user = userEvent.setup()
+    const onAdd = vi.fn().mockResolvedValue(added('build'))
+    renderSettings('machines', { machines: info({ add: { ...info().add, loadHosts: () => Promise.resolve(hosts), onAdd } }) })
+    await user.click(await screen.findByRole('button', { name: /build/ }))
+    expect(onAdd).toHaveBeenCalledWith('build', undefined)
+    expect(await screen.findByText('Added build. maitty 1.2.3 answered there. Connecting.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /me@build\.example/ })).toBeNull()
+  })
+
+  it('adds the text as typed when Enter is pressed', async () => {
+    const user = userEvent.setup()
+    const onAdd = vi.fn().mockResolvedValue(added('box'))
+    renderSettings('machines', { machines: info({ add: { ...info().add, onAdd } }) })
+    await user.type(screen.getByRole('textbox', { name: 'Host or user@host' }), 'me@box.example{Enter}')
+    expect(onAdd).toHaveBeenCalledWith('me@box.example', undefined)
+  })
+
+  it('shows the words of a machine that cannot be added, and adds nothing', async () => {
+    const user = userEvent.setup()
+    const onAdd = vi.fn().mockRejectedValue(new Error('nope.example: could not resolve'))
+    renderSettings('machines', { machines: info({ add: { ...info().add, onAdd } }) })
+    await user.type(screen.getByRole('textbox', { name: 'Host or user@host' }), 'nope.example{Enter}')
+    expect(await screen.findByRole('alert')).toHaveTextContent('nope.example: could not resolve')
+  })
+
+  it('asks for a name when none can be made, then adds with it', async () => {
+    const user = userEvent.setup()
+    const onAdd = vi.fn().mockResolvedValueOnce({ outcome: 'needs-name' }).mockResolvedValueOnce(added('lab'))
+    renderSettings('machines', { machines: info({ add: { ...info().add, onAdd } }) })
+    await user.type(screen.getByRole('textbox', { name: 'Host or user@host' }), 'me@{Enter}')
+    await user.type(await screen.findByRole('textbox', { name: 'Machine name' }), 'lab{Enter}')
+    expect(onAdd).toHaveBeenLastCalledWith('me@', 'lab')
+  })
+
+  it('shows checking with a way to cancel while ssh is looked at', async () => {
+    const user = userEvent.setup()
+    const onCancel = vi.fn()
+    const onAdd = vi.fn().mockReturnValue(new Promise(() => undefined))
+    renderSettings('machines', { machines: info({ add: { ...info().add, onAdd, onCancel } }) })
+    await user.type(screen.getByRole('textbox', { name: 'Host or user@host' }), 'slow.example{Enter}')
+    expect(screen.getByRole('status')).toHaveTextContent('Checking slow.example')
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onCancel).toHaveBeenCalled()
+  })
+
+  it('points at the session to log in with when ssh needs a person', async () => {
+    const user = userEvent.setup()
+    const onAdd = vi.fn().mockResolvedValue({ outcome: 'login', name: 'box' })
+    renderSettings('machines', { machines: info({ add: { ...info().add, onAdd } }) })
+    await user.type(screen.getByRole('textbox', { name: 'Host or user@host' }), 'box{Enter}')
+    expect(await screen.findByText(/ssh needs you to log in: use the session named “ssh box”/)).toBeInTheDocument()
+  })
+
+  it('says that Windows wants keys or an agent, on Windows only', () => {
+    renderSettings('machines', { machines: info({ add: { ...info().add, windows: true } }) })
+    expect(screen.getByText(/Windows: use ssh keys or an agent/)).toBeInTheDocument()
   })
 })

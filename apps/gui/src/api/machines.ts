@@ -169,3 +169,36 @@ export function listenMachineRemoved(onRemoved: (machine: number) => void): Prom
     if (machine.success) onRemoved(machine.data)
   })
 }
+
+const HostChoiceSchema = z.object({ alias: z.string(), detail: z.string() })
+export type HostChoice = z.infer<typeof HostChoiceSchema>
+
+/** The hosts of ~/.ssh/config that are not machines yet. */
+export async function listSshHosts(): Promise<HostChoice[]> {
+  if (!isTauri()) return []
+  return z.array(HostChoiceSchema).parse(await invoke<unknown>('list_ssh_hosts'))
+}
+
+const AddedSchema = z.discriminatedUnion('outcome', [
+  z.object({ outcome: z.literal('added'), name: z.string(), version: z.string().nullable() }),
+  z.object({ outcome: z.literal('login'), name: z.string() }),
+  z.object({ outcome: z.literal('login-manual'), name: z.string(), target: z.string(), why: z.string() }),
+  z.object({ outcome: z.literal('needs-name') }),
+  z.object({ outcome: z.literal('cancelled') }),
+])
+/** What adding a machine came to. A machine that could not be added rejects with the words to show. */
+export type Added = z.infer<typeof AddedSchema>
+
+/**
+ * Look at `target` over ssh without asking anyone anything and, when it holds up, add it and start
+ * dialling it. `name` is only needed when none can be made from the target.
+ */
+export async function addMachine(target: string, name?: string): Promise<Added> {
+  if (!isTauri()) throw new Error('Machines can only be added in the desktop app')
+  return AddedSchema.parse(await invoke<unknown>('add_machine', { target, name: name ?? null }))
+}
+
+/** End the look that is running. */
+export async function cancelAddMachine(): Promise<void> {
+  if (isTauri()) await invoke('cancel_add_machine')
+}

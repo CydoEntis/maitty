@@ -15,7 +15,7 @@ use maitty_machines::link::{
 };
 use maitty_machines::machine_ids::{IdCheck, MachineIds, check_daemon_id};
 use maitty_machines::remote_policy::{MachineOpts, vet};
-use maitty_machines::{Dial, MachineDef, MachineId, Outgoing};
+use maitty_machines::{Dial, Machine, MachineDef, MachineId, Outgoing};
 use maitty_shared::protocol::{ClientMsg, ServerMsg, Surface};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -54,6 +54,7 @@ fn dial() -> anyhow::Result<Dial> {
 /// What the host asks of the hub about a machine, by name.
 #[derive(Debug)]
 enum Command {
+    Add(Box<MachineDef>),
     Retry(String),
     Remove(String),
 }
@@ -135,6 +136,12 @@ impl HubHandle {
     /// Whether a different daemon answered at the machine's name, so its line was turned away.
     pub fn is_refused(&self, machine: MachineId) -> bool {
         lock(&self.shared.refused).contains(&machine)
+    }
+
+    /// Ask the hub to start dialling a machine added while the app runs. It shows as connecting
+    /// at once; its entry is already in the config file.
+    pub fn add(&self, def: MachineDef) {
+        let _ = self.commands.send(Command::Add(Box::new(def)));
     }
 
     /// Ask the hub to dial the machine named `name` now, letting a refused daemon be looked at again.
@@ -226,6 +233,8 @@ pub struct Hub {
     connections: Connections,
     ids: MachineIds,
     ids_file: PathBuf,
+    /// The ssh program (and shim, in tests) machines added later are reached through.
+    ssh: String,
     names: BTreeMap<MachineId, String>,
     opts: BTreeMap<MachineId, MachineOpts>,
     /// Machines a different daemon answered for, with the reason. Cleared by a fresh line.
@@ -281,6 +290,7 @@ impl Hub {
             connections: Connections::default(),
             ids: MachineIds::load(&ids_file),
             ids_file,
+            ssh: ssh.to_owned(),
             names: names_for_hub,
             opts,
             refused: BTreeMap::new(),
@@ -346,6 +356,20 @@ impl Hub {
 
     fn on_command(&mut self, command: Command) {
         match command {
+            Command::Add(def) => {
+                if self.control.id_of(&def.name).is_some() {
+                    return;
+                }
+                let machine = Machine::from_def(&def, &self.ssh);
+                // Named before the supervisor starts, so nothing it says is dropped as unnamed.
+                let Some(id) = self.control.start(machine) else {
+                    return;
+                };
+                self.names.insert(id, def.name.clone());
+                self.opts
+                    .insert(id, MachineOpts::named(std::slice::from_ref(&def), &def.name));
+                lock(&self.handle.shared.names).insert(id, def.name.clone());
+            }
             Command::Retry(name) => {
                 let Some(machine) = self.control.id_of(&name) else {
                     return;

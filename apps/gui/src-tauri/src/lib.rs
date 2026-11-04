@@ -1,3 +1,4 @@
+mod add_machine;
 pub mod hub;
 mod machines;
 mod project_files;
@@ -524,6 +525,7 @@ pub fn run() {
         .manage(terminal_stream::MachineStates::default())
         .manage(terminal_stream::TerminalOutput::default())
         .manage(terminal_stream::Wire::default())
+        .manage(add_machine::AddProbe::default())
         .setup(|app| {
             terminal_stream::start(
                 app.handle().clone(),
@@ -537,6 +539,9 @@ pub fn run() {
             terminal_stream::list_machines_overview,
             terminal_stream::retry_machine,
             terminal_stream::remove_machine,
+            add_machine::list_ssh_hosts,
+            add_machine::add_machine,
+            add_machine::cancel_add_machine,
             read_conversation,
             conversation_diff,
             conversation_files,
