@@ -129,7 +129,10 @@ Windows, Linux and macOS): point `MAITTY_SSH` at it and it ignores the host and 
 then runs the real `maitty proxy` against the socket the test chose. `cargo test` builds it
 with the tests (`apps/tui/tests/fake_ssh.rs` builds it itself when run with `--test`). The code that
 builds and locates the shim (`fake_ssh()`) and runs a command with a time limit (`output_within()`)
-is in `crates/maitty-test-support`, a dev-dependency any crate's tests can use.
+is in `crates/maitty-test-support`, a dev-dependency any crate's tests can use, with `Sandbox`: a
+private daemon's environment, the shim's per-machine arguments (`--mode`, `--maitty`, `--env`,
+`--calls`, which let one process hold several machines), and killing the last connection. The
+desktop host's `hub` tests use it.
 
 | `MAITTY_FAKE_SSH_MODE` | The shim |
 | --- | --- |

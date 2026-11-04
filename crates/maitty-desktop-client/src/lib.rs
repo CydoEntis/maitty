@@ -1,5 +1,6 @@
 use maitty_shared::conversation::{ApprovalPolicy, LaunchSettings, Provider, Sandbox, StartTarget};
 mod ipc;
+pub use ipc::data_dir;
 use anyhow::{Context, Result, bail};
 use maitty_shared::protocol::{ClientMsg, Command, Query, Reply, ServerMsg};
 use serde_json::{Value, json};

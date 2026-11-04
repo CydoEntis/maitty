@@ -25,10 +25,15 @@ maitty-desktop-client = { path = "../../../crates/maitty-desktop-client" }
 maitty-machines = { path = "../../../crates/maitty-machines" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["sync", "time"] }
+anyhow = "1"
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+tracing = "0.1"
 tauri-plugin-notification = "2.8.0"
 
 # Desktop only: the updater and the restart after it have no mobile build.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+
+[dev-dependencies]
+maitty-test-support = { path = "../../../crates/maitty-test-support" }

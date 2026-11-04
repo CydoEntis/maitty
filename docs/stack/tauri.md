@@ -87,3 +87,12 @@ start. The window is told names only, plus the error when the file is bad, and s
 without stopping the app. The host may link `maitty-machines`, `maitty-desktop-client`,
 `maitty-shared` and `maitty-ipc-transport`, never `maitty-core`, `maitty-settings` or
 `maitty-terminal-client` (`scripts/check-gui-deps.sh` checks it).
+
+Connections (ADR 0048): `hub.rs` holds one supervised connection per configured machine through
+`maitty-machines` (`Links`, `Connections`), dials with the desktop surface and no pane claim, and
+tells the window each machine's state as `machine-state` (`{machine, name, state, why, attempt}`;
+this computer's own line is machine 0, named `local`). Every message from a machine is vetted by
+`remote_policy` and a different daemon answering at a known name is turned away (`machine_ids`,
+shared with the terminal app); the web view never connects. Its tests run against the fake `ssh`
+shim (`crates/maitty-test-support`).
+

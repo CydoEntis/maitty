@@ -12,7 +12,10 @@
 //! The stream attaches without replays: a pane's replay is asked for over the stream when a view
 //! opens on it (`terminal_history`), so panes nobody looks at cost nothing to carry.
 
+use crate::hub::{MACHINE_STATE_EVENT, MachineState, describe};
 use maitty_desktop_client::TerminalInput;
+use maitty_machines::MachineId;
+use maitty_machines::link::ConnectionState;
 use maitty_shared::protocol::{ServerMsg, Snapshot};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
@@ -65,7 +68,10 @@ pub struct LastSnapshot(Mutex<Option<Snapshot>>);
 /// Each frame: the pane as 4 big-endian bytes, the sequence number as 8, one byte that is 1 for a
 /// replay, then the output. The view decodes it in `apps/gui/src/api/terminalStream.ts`.
 #[tauri::command]
-pub fn watch_terminal_output(output: tauri::State<'_, TerminalOutput>, on_chunk: Channel<Response>) {
+pub fn watch_terminal_output(
+    output: tauri::State<'_, TerminalOutput>,
+    on_chunk: Channel<Response>,
+) {
     if let Ok(mut channel) = output.0.lock() {
         *channel = Some(on_chunk);
     }
@@ -133,14 +139,50 @@ pub async fn terminal_history(
     Ok(Response::new(Vec::new()))
 }
 
+/// This computer's own line is machine 0. Its state goes to the window the way another
+/// machine's does (`machine-state`), once for each change of kind.
+fn tell_local(app: &AppHandle, state: ConnectionState) {
+    static LAST: Mutex<&str> = Mutex::new("");
+    let mut last = LAST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(told) = local_state(&mut last, state) {
+        let _ = app.emit(MACHINE_STATE_EVENT, told);
+    }
+}
+
+/// What to tell for a change of this computer's line, or nothing when its kind is the same
+/// news as the last.
+fn local_state(last: &mut &'static str, state: ConnectionState) -> Option<MachineState> {
+    let kind = state.kind();
+    if *last == kind {
+        return None;
+    }
+    *last = kind;
+    Some(describe(
+        MachineId::LOCAL,
+        maitty_machines::LOCAL_MACHINE,
+        &state,
+    ))
+}
+
 /// Read the daemon's stream for as long as the app runs, reconnecting when it drops.
 pub fn start(app: AppHandle) {
+    tell_local(&app, ConnectionState::Connecting);
     tauri::async_runtime::spawn(async move {
         loop {
             read_stream(&app).await;
+            tell_local(&app, lost_line());
             tokio::time::sleep(RECONNECT_DELAY).await;
         }
     });
+}
+
+fn lost_line() -> ConnectionState {
+    ConnectionState::Reconnecting {
+        attempt: 1,
+        since: std::time::Instant::now(),
+    }
 }
 
 async fn read_stream(app: &AppHandle) {
@@ -171,6 +213,7 @@ async fn read_stream(app: &AppHandle) {
         let _ = input.want_replay(term).await;
     }
     *app.state::<TerminalKeys>().0.lock().await = Some(input);
+    tell_local(app, ConnectionState::Connected);
     if let Ok(mut last) = app.state::<LastSnapshot>().0.lock() {
         *last = None;
     }
@@ -179,14 +222,15 @@ async fn read_stream(app: &AppHandle) {
         // Waiting for the next frame is safe to cut short: the framed reader keeps a partial frame.
         let next = match pending.since {
             None => stream.next().await,
-            Some(since) => match tokio::time::timeout_at(since + FLUSH_EVERY, stream.next()).await
-            {
-                Ok(next) => next,
-                Err(_elapsed) => {
-                    flush(app, &mut pending);
-                    continue;
+            Some(since) => {
+                match tokio::time::timeout_at(since + FLUSH_EVERY, stream.next()).await {
+                    Ok(next) => next,
+                    Err(_elapsed) => {
+                        flush(app, &mut pending);
+                        continue;
+                    }
                 }
-            },
+            }
         };
         let Ok(Some(message)) = next else {
             break;
@@ -295,4 +339,32 @@ fn record(history: &TerminalHistory, term: u32, data: Vec<u8>, replay: bool) -> 
     frame.push(u8::from(replay));
     frame.extend_from_slice(&data);
     Some(frame)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn this_computers_line_is_machine_zero_and_only_a_change_of_kind_is_news() {
+        let mut last = "";
+        let told = local_state(&mut last, ConnectionState::Connecting).expect("the first news");
+        assert_eq!(
+            (told.machine, told.name.as_str(), told.state),
+            (0, "local", "connecting")
+        );
+        assert!(local_state(&mut last, ConnectionState::Connecting).is_none());
+        assert_eq!(
+            local_state(&mut last, ConnectionState::Connected).map(|t| t.state),
+            Some("connected")
+        );
+        assert_eq!(
+            local_state(&mut last, lost_line()).map(|t| (t.state, t.attempt)),
+            Some(("reconnecting", Some(1)))
+        );
+        assert!(
+            local_state(&mut last, lost_line()).is_none(),
+            "a second drop is the same news"
+        );
+    }
 }

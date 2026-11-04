@@ -1,3 +1,4 @@
+pub mod hub;
 mod machines;
 mod project_files;
 
@@ -481,6 +482,10 @@ pub fn run() {
         .manage(terminal_stream::LastSnapshot::default())
         .setup(|app| {
             terminal_stream::start(app.handle().clone());
+            hub::start(
+                app.handle().clone(),
+                app.state::<machines::Machines>().0.machines.clone(),
+            );
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
