@@ -14,6 +14,9 @@ const DEFAULTS: SettingsPreferences = {
   notifyError: true,
   notificationSound: false,
   terminalFontSize: 13,
+  terminalFontFamily: '',
+  terminalFontWeight: 400,
+  terminalFontWeightBold: 700,
   startFolder: '',
   groupBy: 'repo',
   themeMode: 'system',
@@ -105,6 +108,15 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'stacked', leadMode: 'attention' })
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ trayStyle: 'wide', leadMode: 'random' }))
     expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color' })
+  })
+
+  it('keeps a valid terminal font and falls back to the defaults for nonsense', () => {
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ terminalFontFamily: ' Fira Code ', terminalFontWeight: 500, terminalFontWeightBold: 800 }))
+    expect(readSettingsPreferences()).toMatchObject({ terminalFontFamily: 'Fira Code', terminalFontWeight: 500, terminalFontWeightBold: 800 })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ terminalFontFamily: 'x"; background: red', terminalFontWeight: 450, terminalFontWeightBold: 'bold' }))
+    expect(readSettingsPreferences()).toMatchObject({ terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700 })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ terminalFontFamily: 7, terminalFontWeight: null }))
+    expect(readSettingsPreferences()).toMatchObject({ terminalFontFamily: '', terminalFontWeight: 400 })
   })
 
   it('ignores per-project colours saved by an older version, without an error', () => {

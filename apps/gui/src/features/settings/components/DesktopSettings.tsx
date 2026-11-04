@@ -8,6 +8,7 @@ import { PerformanceSection } from './PerformanceSection'
 import { hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/model/shortcuts'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { errorMessage } from '@/lib/error-message'
+import { BUNDLED_FONT_NAME, fontStackFor, installedMonospaceFamilies, isFontFamily, WEIGHT_BOLD, WEIGHT_EXTRA_BOLD, WEIGHT_LIGHT, WEIGHT_MEDIUM, WEIGHT_REGULAR, WEIGHT_SEMIBOLD, type TerminalFontWeight } from '@/lib/terminalFont'
 import type { Added, Grant, HostChoice } from '@/api/machines'
 import { DisconnectedSince } from '@/features/workspace/components/times'
 import type { MachineHead } from '@/features/workspace/model/machines'
@@ -378,6 +379,10 @@ const FONT_SIZES = Array.from({ length: TERMINAL_FONT_SIZE_MAX - TERMINAL_FONT_S
   const size = TERMINAL_FONT_SIZE_MIN + index
   return [size, String(size)] as const
 })
+const WEIGHT_NAMES: Readonly<Record<TerminalFontWeight, string>> = { [WEIGHT_LIGHT]: 'Light', [WEIGHT_REGULAR]: 'Regular', [WEIGHT_MEDIUM]: 'Medium', [WEIGHT_SEMIBOLD]: 'Semibold', [WEIGHT_BOLD]: 'Bold', [WEIGHT_EXTRA_BOLD]: 'Extra bold' }
+const weightOptions = (weights: readonly TerminalFontWeight[]) => weights.map((weight) => [weight, WEIGHT_NAMES[weight]] as const)
+const NORMAL_WEIGHTS = weightOptions([WEIGHT_LIGHT, WEIGHT_REGULAR, WEIGHT_MEDIUM, WEIGHT_SEMIBOLD])
+const BOLD_WEIGHTS = weightOptions([WEIGHT_SEMIBOLD, WEIGHT_BOLD, WEIGHT_EXTRA_BOLD])
 const CURSORS: ReadonlyArray<readonly [CursorStyle, string]> = [['block', 'Block'], ['bar', 'Bar'], ['underline', 'Underline']]
 const THOUSAND = 1000
 const SCROLLBACKS: ReadonlyArray<readonly [ScrollbackLines, string]> = SCROLLBACK_CHOICES.map((lines) => [lines, `${String(lines / THOUSAND)}k`] as const)
@@ -391,21 +396,73 @@ function PromptPrefix() {
   return <><span style={{ color: 'var(--accent)', fontWeight: 600 }}>maitty</span><span style={{ color: 'var(--ansi-mag)' }}> (main)</span><span style={{ color: 'var(--dim)' }}> ❯ </span></>
 }
 
+/** The family field: a draft saved on Enter or leaving the field, so half-typed names never reach the terminals. */
+function FontFamilyField({ value, onCommit }: { value: string; onCommit: (family: string) => void }) {
+  // null while the field shows the saved value; text only while it is being edited.
+  const [edit, setEdit] = useState<string | null>(null)
+  const draft = edit ?? value
+  const [installed, setInstalled] = useState<string[]>([])
+  // Measured after the first paint so opening the page is not held up by it.
+  useEffect(() => {
+    const timer = window.setTimeout(() => { setInstalled(installedMonospaceFamilies()) }, 0)
+    return () => { window.clearTimeout(timer) }
+  }, [])
+  const invalid = !isFontFamily(draft)
+  const commit = () => {
+    if (!invalid && draft.trim() !== value) onCommit(draft.trim())
+    if (!invalid) setEdit(null)
+  }
+  return (
+    <div className="mx-font-field">
+      <input
+        className={`mx-scard-input${invalid ? ' is-invalid' : ''}`}
+        aria-label="Terminal font family"
+        aria-invalid={invalid}
+        list="mx-font-families"
+        value={draft}
+        placeholder={BUNDLED_FONT_NAME}
+        spellCheck={false}
+        onChange={(event) => { setEdit(event.target.value) }}
+        onBlur={commit}
+        onKeyDown={(event) => { if (event.key === 'Enter') commit() }}
+      />
+      <datalist id="mx-font-families">
+        {installed.map((name) => <option key={name} value={name} />)}
+      </datalist>
+      {invalid && <span className="mx-font-error" role="alert">Use one font name: letters, numbers, spaces and . _ + - only.</span>}
+    </div>
+  )
+}
+
 function TerminalSection({ preferences, update }: { preferences: SettingsPreferences; update: Update }) {
+  const family = preferences.terminalFontFamily === '' ? BUNDLED_FONT_NAME : preferences.terminalFontFamily
   return (
     <>
-      <Card title="Text" color="var(--ansi-blue)" iconPath={<path d="M5 6h14M12 6v12" />} meta={<span className="mono" style={{ fontSize: 12, color: 'var(--fg2)' }}>Geist Mono · {preferences.terminalFontSize}px</span>}>
+      <Card title="Text" color="var(--ansi-blue)" iconPath={<path d="M5 6h14M12 6v12" />} meta={<span className="mono" style={{ fontSize: 12, color: 'var(--fg2)' }}>{family} · {preferences.terminalFontSize}px</span>}
+        foot="Leave the font empty for Geist Mono, or name any monospace font installed on this computer; if it is missing, Geist Mono is used. Regular at 400 can look thin on Linux: try Medium.">
         <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span className="mx-field-label">Size</span>
             <Segmented label="Terminal text size" value={preferences.terminalFontSize} options={FONT_SIZES} onChange={(value) => { update('terminalFontSize', value) }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span className="mx-field-label">Font</span>
+            <FontFamilyField value={preferences.terminalFontFamily} onCommit={(next) => { update('terminalFontFamily', next) }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span className="mx-field-label">Weight</span>
+            <Segmented label="Terminal text weight" value={preferences.terminalFontWeight} options={NORMAL_WEIGHTS} onChange={(value) => { update('terminalFontWeight', value) }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span className="mx-field-label">Bold</span>
+            <Segmented label="Terminal bold weight" value={preferences.terminalFontWeightBold} options={BOLD_WEIGHTS} onChange={(value) => { update('terminalFontWeightBold', value) }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span className="mx-field-label">Cursor</span>
             <Segmented label="Cursor" value={preferences.cursorStyle} options={CURSORS} onChange={(value) => { update('cursorStyle', value) }} />
           </div>
-          <div className="mx-preview" style={{ fontSize: preferences.terminalFontSize }} aria-label="Terminal preview" role="img">
-            <div><PromptPrefix /><span style={{ fontWeight: 600 }}>cargo</span> test <span style={{ color: 'var(--ansi-blue)' }}>-p</span> maitty-core</div>
+          <div className="mx-preview" style={{ fontSize: preferences.terminalFontSize, fontFamily: fontStackFor(preferences.terminalFontFamily), fontWeight: preferences.terminalFontWeight }} aria-label="Terminal preview" role="img">
+            <div><PromptPrefix /><span style={{ fontWeight: preferences.terminalFontWeightBold }}>cargo</span> test <span style={{ color: 'var(--ansi-blue)' }}>-p</span> maitty-core</div>
             <div style={{ color: 'var(--fg2)' }}>test pane_terminal::replay_then_stream ... <span style={{ color: 'var(--ok)' }}>ok</span></div>
             <div style={{ display: 'flex', alignItems: 'center' }}><PromptPrefix /><span className="mx-caret" style={caretStyle(preferences.cursorStyle)} /></div>
           </div>

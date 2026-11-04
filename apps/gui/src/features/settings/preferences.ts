@@ -1,4 +1,5 @@
 import type { SpinnerStyle } from '@/lib/spinner-clock'
+import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
 
@@ -48,6 +49,10 @@ export type SettingsPreferences = {
   notifyError: boolean
   notificationSound: boolean
   terminalFontSize: number
+  /** One family name for the terminal text; empty uses the bundled Geist Mono. */
+  terminalFontFamily: string
+  terminalFontWeight: TerminalFontWeight
+  terminalFontWeightBold: TerminalFontWeight
   /** Where a new session starts. Empty: your home folder (ADR 0046). */
   startFolder: string
   /** How the sidebar groups sessions: by git repository, or by the folder they are in. */
@@ -124,6 +129,9 @@ function defaults(): SettingsPreferences {
     notifyError: true,
     notificationSound: false,
     terminalFontSize: 13,
+    terminalFontFamily: '',
+    terminalFontWeight: DEFAULT_FONT_WEIGHT,
+    terminalFontWeightBold: DEFAULT_FONT_WEIGHT_BOLD,
     startFolder: '',
     groupBy: 'repo',
     // The theme chosen before there were two slots keeps its look; otherwise follow the system.
@@ -194,6 +202,9 @@ export function readSettingsPreferences(): SettingsPreferences {
       notifyError: bool(preferences.notifyError, fallback.notifyError),
       notificationSound: bool(preferences.notificationSound, fallback.notificationSound),
       terminalFontSize: terminalFontSize(preferences.terminalFontSize, fallback.terminalFontSize),
+      terminalFontFamily: isFontFamily(preferences.terminalFontFamily) ? preferences.terminalFontFamily.trim() : fallback.terminalFontFamily,
+      terminalFontWeight: isFontWeight(preferences.terminalFontWeight) ? preferences.terminalFontWeight : fallback.terminalFontWeight,
+      terminalFontWeightBold: isFontWeight(preferences.terminalFontWeightBold) ? preferences.terminalFontWeightBold : fallback.terminalFontWeightBold,
       startFolder: typeof preferences.startFolder === 'string' ? preferences.startFolder.trim() : fallback.startFolder,
       groupBy: preferences.groupBy === 'folder' || preferences.groupBy === 'repo' ? preferences.groupBy : fallback.groupBy,
       ...themeChoice(preferences, fallback),

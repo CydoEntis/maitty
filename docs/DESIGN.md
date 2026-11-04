@@ -287,6 +287,15 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   `--tab-fs`, `--icon-scale`), so every size rule that reads one follows it. The docked sidebar's right edge is a
   drag handle (`role=separator`, 200–420 px, default 264): the width follows the pointer and is saved
   on release; arrow keys step 16 px, Home or a double-click resets. The collapsed rail is fixed at 60px.
+- **Terminal text.** Settings › Text & cursor sets the size (12 to 16), the font family, the normal weight
+  (Light 300, Regular 400, Medium 500, Semibold 600) and the bold weight (Semibold, Bold 700, Extra bold 800).
+  The family is one font name typed or picked from the monospace fonts this computer has (the
+  webview cannot list fonts, so a short list of well-known ones is measured against generic families); empty is
+  the bundled Geist Mono, which also stands behind a missing font. Names are limited to letters, numbers,
+  spaces and `. _ + -`, and a stored value outside that, or a weight outside the lists, reads as the default.
+  The settings are `look` fields on the terminal (`fontFamily`, `fontWeight`, `fontWeightBold`, `lib/terminalFont.ts`)
+  and are applied to open terminals in place, followed by a refit, never by recreating them. Regular is 400 by
+  default; Medium is the fix when Geist Mono looks thin in WebKitGTK on Linux.
 - **What a session is using.** The agent the daemon detects (claude, codex, deepseek, ...), else the
   program running in it, else `shell` for a bare shell. Claude, Codex, DeepSeek, Gemini and opencode
   show their own mark on a tile in their own colours, the same in every theme; cargo and rustc have
