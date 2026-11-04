@@ -198,13 +198,13 @@ The desktop window is terminal-only today; the chat body (G15-G18) does not exis
 
 1. ANSWERED 2026-11-04: yes, the chat view is wanted for the desktop (the README's "no chat UI" line is outdated). (G15-G18)
 2. ANSWERED 2026-11-04: Claude Code and Codex sessions get Chat first; other agents stay terminal-only. (G16)
-3. Keep typing y/a/n into the terminal as a fallback once approvals go by id? (G19)
+3. DECIDED (owner delegated, 2026-11-04): yes, keep typing y/a/n into the terminal as a fallback. (G19)
 4. DECIDED 2026-11-04: follow the spec. On Windows and Linux, plain Ctrl+letter always goes to the terminal; the app uses Ctrl+Shift (Cmd on Mac). (G1, G20)
-5. May the worktree API gain an agent choice and a first prompt? (G9)
-6. Jump with nothing in Needs you: toast only (handoff) or next Done (older spec)? (G8)
+5. DECIDED (owner delegated): yes, a small addition to the worktree API. (G9)
+6. DECIDED (owner delegated): toast only, per the handoff. (G8)
 7. Brain-dump split: which model and account, where does the JSON get validated? (G11)
 8. DECIDED 2026-11-04: yes, the daemon may store provider-reported usage per session per day; never estimated. (G12)
-9. Remote branch agents in v1, given UI.md says worktree features are local-only? (G4, G9)
+9. DECIDED (owner delegated): local only in v1; remote branch agents come later. (G4, G9)
 10. Plans link to v17; v18 is newest. Fix the links. (docs)
 
 ## 13. Adaptive animations: measure, then pick the effect level (feature, `client`)
@@ -252,3 +252,19 @@ empty. Today:
 
 Blocks the real content of G17 (edit blocks, command cards, approvals) and G18. This is chat-view
 plan CV-13. Daemon work, so it follows ADR 0036 for status trust. Blocks G17 for Claude.
+
+## 15. Light themes: bright ANSI colours and the pane's bottom edge (bug, `client`, `theme`)
+
+Seen in the Tiled Paper screenshot: some terminal words (ANSI cyan and the bright colours) are a very
+pale blue on the white ground, and a heavy black bar runs along the bottom of the pane over the
+"Working" chip. Extend the contrast audit in `themes.test.ts` to all 16 ANSI colours on `--term` for
+Paper, Day and the generated light themes, retune what fails, and find out whether the black bar is
+the mock's cursor line or a real style bug. Also: a Paper streaming run sometimes reads about 37%
+instead of about 14% of a core; find what flips (animation or compositing mode) and fix or document it.
+
+## Order of the next batch
+
+Batch A (parallel): G1+G20+G2 shortcuts, G22 daemon history, G12 usage store, ticket 15.
+Batch B: G16 chat switch (after G22), G8 Overview and G9 New agent on a branch (after G1), G13 usage
+page (after G12 and G1). Held: G11 brain dump, which needs the owner to choose which model and
+account the split uses.
