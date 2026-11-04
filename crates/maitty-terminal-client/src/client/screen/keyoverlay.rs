@@ -111,6 +111,7 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
                     false,
                 ),
                 r("Paste image", vec![A::PasteImage], false),
+                r("Send a file to the machine", vec![A::SendFile], false),
             ],
         ),
         (
