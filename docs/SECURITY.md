@@ -297,6 +297,19 @@ cannot become an option or a second command whichever shell reads the line. The 
 `config.local.toml` (never the synced file), validates the entry with `validate_machines` first, and
 changes nothing else; removing a machine does not touch the machine, only this computer's records of it.
 
+Pasting an image into a pane of another machine (`client/remote_image.rs`, ADR 0049) is the same kind of
+line: a fixed script (`maitty_core::remote_install::PASTE_SCRIPT`) run as `sh -c '<script>' sh <name> <bytes>`, the image
+on stdin, over the hardened ssh line (`BatchMode`, no agent forwarding, the host after `--`). The file's name
+is chosen by this computer from letters, digits, `.`, `_` and `-` and checked twice (before the line is
+built and by the script); the byte count is checked by the script, which keeps nothing that arrives short.
+The file is written under the app's folder in the far side's cache with `umask 077` and renamed into place,
+and the script reads nothing of the far side's but its `HOME` and `XDG_CACHE_HOME` (to find the cache
+folder, which it refuses unless the user running it owns it) and removes only its own stale files (pastes
+older than a week, half-sent files older than a day). What comes back is untrusted: the path is taken only
+from the line after the marker and only when it is absolute and free of control and invisible characters;
+what ssh says when a send fails is cut to 200 characters and cleaned the same way. The image is
+capped at 25 MB and the send at two minutes. A machine reached by a custom transport is not sent an image.
+
 `maitty machine update <name>` (`cli/machine_update.rs`) runs one fixed script on a machine and writes a
 binary there, so it follows the same rules as every other ssh line, plus these. The script is a constant
 in the app (`remote_install::INSTALL_SCRIPT`, passed to the remote shell as `sh -c '<script>' sh <args>`);

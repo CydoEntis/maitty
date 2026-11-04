@@ -12,11 +12,11 @@ const POLL: Duration = Duration::from_millis(25);
 const MOST_OUTPUT_BYTES: u64 = 64 * 1024;
 
 /// How long a short question (a platform, a version, a restart) may take, connecting included.
-pub(super) const ASK_LIMIT: Duration = Duration::from_secs(30);
+pub(crate) const ASK_LIMIT: Duration = Duration::from_secs(30);
 /// How long streaming a binary may take.
-pub(super) const UPLOAD_LIMIT: Duration = Duration::from_secs(15 * 60);
+pub(crate) const UPLOAD_LIMIT: Duration = Duration::from_secs(15 * 60);
 
-pub(super) struct Ran {
+pub(crate) struct Ran {
     /// `None` when a signal ended it, or the limit did.
     pub code: Option<i32>,
     pub stdout: String,
@@ -24,7 +24,7 @@ pub(super) struct Ran {
 }
 
 /// Run `argv`; its stdin is `stdin`'s bytes, or nothing. Ended (killed) when `limit` passes.
-pub(super) fn run(argv: &[String], stdin: Option<&Path>, limit: Duration) -> Result<Ran, String> {
+pub(crate) fn run(argv: &[String], stdin: Option<&Path>, limit: Duration) -> Result<Ran, String> {
     let mut command = Command::new(&argv[0]);
     command
         .args(&argv[1..])
