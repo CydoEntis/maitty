@@ -27,7 +27,7 @@ import type { Conversation } from '@/data/preview'
 import { sizeVariables } from './model/layoutSize'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import { errorMessage } from '@/lib/error-message'
-import { guardLocal, guardLocalSession } from '@/lib/localOnly'
+import { guardLocal } from '@/lib/localOnly'
 import { markGpu } from '@/lib/gpu'
 import { isWindowActive, subscribeWindowActivity } from '@/lib/window-activity'
 import { styleUnderCap, type EffectStyle } from '@/lib/animation-level'
@@ -58,8 +58,9 @@ import { appVersion } from '@/features/updates/appVersion'
 import { UpdatedNotice } from '@/features/updates/UpdatedNotice'
 import { markRestarting, skippedUpdate, skipUpdate, takeRestarted, type RestartedUpdate } from '@/features/updates/updateMemory'
 import { useIdleUpdate } from '@/features/updates/useIdleUpdate'
-import { formatDroppedPaths } from '@/features/terminal/droppedPaths'
+import { routeDrop } from '@/features/terminal/dropRoute'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
+import { useFileSends } from '@/features/terminal/useFileSends'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
 import { sendNativeNotice } from '@/features/notifications/native'
 import { chooseProjectFolder } from '@/api/folderPicker'
@@ -422,22 +423,43 @@ export function DesktopApp() {
     return () => { document.removeEventListener('mousedown', onMouseDown, true) }
   }, [])
   const focusedSession = focusedId ? sessionMap.get(focusedId) : undefined
+  // A path the machine kept a sent file at is typed into the pane the drop was for, if that pane is still open.
+  const sendFiles = useFileSends({
+    typeInto: (sessionId, text) => {
+      const handle = terminalHandles.current.get(sessionId)
+      if (!handle) return false
+      handle.paste(text)
+      return true
+    },
+  })
   // Files dropped on a pane type their paths into it; the pane under the pointer, else the focused one.
+  // On another machine's pane a path here names nothing there, so the files are sent to it and the
+  // paths they land at are typed instead (ADR 0050).
   useFileDrop((paths, at) => {
     const target = document.elementFromPoint(at.x, at.y)?.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ?? focusedId
     const handle = target ? terminalHandles.current.get(target) : undefined
-    if (!handle) return
-    // A dropped file is a path on this computer; typed into another machine's shell it would name nothing there.
-    const refusal = target ? guardLocalSession(target, 'file-drops') : null
-    if (refusal !== null) {
-      toast.error(refusal)
+    if (!target || !handle) return
+    const route = routeDrop(target, paths, /Windows/i.test(navigator.userAgent))
+    if (route === null) return
+    if (route.kind === 'refuse') {
+      toast.error(route.message)
+      return
+    }
+    if (route.kind === 'send') {
+      const machine = [...machinesRef.current.values()].find((candidate) => candidate.state.name.toLowerCase() === route.machine.toLowerCase())
+      if (machine === undefined || machine.state.state !== 'connected') {
+        toast.error(`${route.machine} is not connected; reconnect before sending files to it`)
+        return
+      }
+      sendFiles(target, route.machine, route.paths)
+      handle.focus()
       return
     }
     if (!online) {
       toast.error('Reconnect to the Maitty service before dropping files on a pane')
       return
     }
-    handle.paste(formatDroppedPaths(paths, /Windows/i.test(navigator.userAgent)))
+    handle.paste(route.text)
     handle.focus()
   })
   // With the window in the background nothing is being looked at, so a session that finishes then keeps its unread dot.

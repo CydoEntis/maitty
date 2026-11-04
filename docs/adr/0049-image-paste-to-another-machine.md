@@ -22,7 +22,7 @@ have to update before it worked.
 The image is sent over the same hardened ssh line the installer uses (`ssh_command`: no prompts,
 no agent forwarding, the host after `--`), as a separate short command, not through the daemon:
 
-- A fixed script (`PASTE_SCRIPT`, one of the fixed remote scripts in `maitty-machines`, with the checks in `remote_paste` in `maitty-core`) runs as `sh -c <script> sh <name> <bytes>`
+- A fixed script (`PASTE_SCRIPT`, one of the fixed remote scripts in `maitty-machines`, with the checks in `remote_paste` in `maitty-machines`) runs as `sh -c <script> sh <name> <bytes>`
   with the image on stdin. It is a constant of the app. What varies is the file's name and its size,
   each passed as a quoted word, never as part of the script. The name is checked twice (letters,
   digits, `.`, `_`, `-`; not starting with a dot; at most 64) before the line is built.

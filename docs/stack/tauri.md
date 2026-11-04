@@ -108,3 +108,10 @@ as it is and left in place). Until the machine has listed its sessions, a layout
 
 The glue's per-update logic is `terminal_stream::react` (no window involved), so the host's behaviour
 is tested end to end against real daemons (`hub/tests/end_to_end.rs`).
+
+File sends (ADR 0050): `file_send.rs` takes the paths of files dropped on a pane of another machine and
+that machine's name (`send_files_to_machine`), checks them in Rust (a known ssh machine; each path absolute, an
+existing regular file of at most 100 MB; at most 10; one send at a time), and sends them in turn on a blocking
+worker through `maitty-machines`' `remote_send` and `ssh_run`, the runner the terminal app uses. It reports
+`file-send` events (`progress`, `sent`, `failed`, `cancelled`, `done`) and `cancel_file_send` ends the one named by
+the id the window chose. The window, not the host, types the far-side paths into the pane.

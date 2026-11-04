@@ -6,7 +6,6 @@
 //! daemon is never signalled: it keeps its sessions and is asked to restart only if none is open.
 
 pub(crate) mod binary;
-pub(crate) mod ssh_run;
 
 use crate::brand::{APP_COMMAND, APP_VERSION};
 use crate::cli::target::resolve_machine;
@@ -17,8 +16,8 @@ use crate::remote_install::{
     destination, names_destination, parse_platform, state_of, upload_result,
 };
 use binary::{Github, ReleaseSources, Sources};
+use maitty_machines::ssh_run::{self, ASK_LIMIT, Ran, UPLOAD_LIMIT};
 use maitty_shared::hidden::sanitize;
-use ssh_run::{ASK_LIMIT, Ran, UPLOAD_LIMIT};
 
 /// What the person asked with.
 #[derive(Debug, Clone, Copy, Default)]

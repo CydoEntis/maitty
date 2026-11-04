@@ -6,8 +6,8 @@
 
 use super::screen::typed_path;
 use super::{App, Bg, ClientTerm, Mode, PromptKind, files, remote_image};
-use crate::cli::machine_update::ssh_run::Watch;
 use crate::ipc;
+use maitty_machines::ssh_run::Watch;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 

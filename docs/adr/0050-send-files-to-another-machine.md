@@ -89,3 +89,17 @@ One mechanism, widened. No daemon message, so **no `PROTOCOL_VERSION` bump** (as
   update is needed.
 - The terminal app needs a progress and cancel state; the desktop app needs the ssh runner, which
   today lives in the terminal client, moved into `maitty-machines`.
+
+## Amendment: the desktop app
+
+The desktop app sends a drop of up to 10 files in turn, over the runner that now lives in
+`maitty-machines` (`remote_send`, `ssh_run`). Decisions that follow from the rest of this ADR:
+
+- Everything is checked before the first byte is sent (each path absolute, a regular file, within
+  100 MB; the machine a known ssh machine), so a bad third file does not leave two sent. More than 10
+  files are refused whole, never cut.
+- One send runs at a time. It stops at the first file that fails, and the files after it are not tried;
+  the ones already kept stay typed into the pane.
+- The machine must be `connected`, since the path is typed through its line.
+- The window types a far-side path only if it is absolute, at most 4096 characters and free of control
+  and invisible characters, on top of the host's own check of the same shape.

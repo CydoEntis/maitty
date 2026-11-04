@@ -1,4 +1,5 @@
 mod add_machine;
+mod file_send;
 pub mod hub;
 mod machines;
 mod performance;
@@ -547,6 +548,7 @@ pub fn run() {
         .manage(terminal_stream::Wire::default())
         .manage(performance::ProcessStats::default())
         .manage(add_machine::AddProbe::default())
+        .manage(file_send::Transfers::default())
         .setup(|app| {
             terminal_stream::start(
                 app.handle().clone(),
@@ -565,6 +567,8 @@ pub fn run() {
             add_machine::list_ssh_hosts,
             add_machine::add_machine,
             add_machine::cancel_add_machine,
+            file_send::send_files_to_machine,
+            file_send::cancel_file_send,
             read_conversation,
             conversation_diff,
             conversation_files,
