@@ -5942,6 +5942,29 @@ mod screen_tests {
     }
 
     #[test]
+    fn a_long_toast_title_drops_to_a_second_line_instead_of_being_cut() {
+        const SENTENCE: &str =
+            "Files is local-only in v1: the files are on kingdom, not on this computer.";
+        let (_, mut app) = super::design_tests::render_with(70, 30);
+        app.notify(SENTENCE.into(), true);
+        let buf = frame(&mut app, 70, 30);
+        let r = app.screen.toast_rect;
+        assert!(r.height >= 4, "the box grew a row for the second line: {r:?}");
+        let rows: Vec<String> = (r.y + 1..r.bottom() - 1)
+            .map(|y| {
+                (r.x + 2..r.right() - 1)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+                    .trim()
+                    .to_string()
+            })
+            .filter(|row| !row.is_empty())
+            .collect();
+        assert!(rows.len() >= 2, "the sentence is on more than one line: {rows:?}");
+        assert_eq!(rows.join(" "), SENTENCE, "every word shows, in order, none cut: {rows:?}");
+    }
+
+    #[test]
     fn a_two_row_toast_sits_above_the_input_area_boxed_with_its_side_and_close() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.notify_card(
