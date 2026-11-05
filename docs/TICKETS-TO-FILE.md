@@ -664,7 +664,35 @@ has not been run on it.
 The Daemons row read `0 · none` with seven daemons running on the machine, the app's own among
 them. Likely the same name test as ticket 30. Confirm and fix with it.
 
+## 32. Desktop UI review against the design, screen by screen (chore, `client`, `docs`)
+
+The owner's verdict on the v0.65.0 desktop app: the design is wrong in places, it does not work on
+smaller screens, the remote machines section is not the design, and there are elements that should
+not be there. Fixing these one complaint at a time is how it drifted, so review it whole first.
+
+**What**
+1. Agree the source of truth with the owner before anything else. `.maitty/references/` is empty,
+   so the candidates are `docs/DESIGN.md`, the v17 and v18 handoffs under `docs/features/`, and for
+   the machines section the terminal app's Local and Remote sidebar (ADR 0050). Ask which; put the
+   reference images in `.maitty/references/` so every agent opens the same ones.
+2. Walk every screen and panel with the owner and mark each element **keep**, **change** or
+   **cut**. Start with the list under *Design changes the owner asked for* below.
+3. Decide the smallest window the app supports and what gives way below each width (sidebar to
+   rail, pane header buttons into a menu, two panes to one). Record the widths in `docs/UI.md`.
+4. Turn the marks into tickets, cuts first: removing what is not wanted is the cheapest way to
+   make the rest fit.
+
+**Acceptance**
+- One table in `docs/DESIGN.md` or a linked doc: screen, element, verdict, ticket.
+- The references are in `.maitty/references/`.
+- No UI ticket is started before the owner has marked its screen.
+
+**Notes**
+- Do this after ticket 28. A layout cannot be judged in a window that runs a step behind.
+
 ## Design changes the owner asked for on 2026-11-05 (to ticket)
+
+- **Small screens.** The app does not work at smaller window sizes.
 
 - **Chat on any session.** Switching a pane to chat should give an empty chat that can be typed
   into, for a `claude` typed into a shell too. ADR 0052 makes those read-only, and the pane showed

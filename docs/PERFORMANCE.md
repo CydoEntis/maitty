@@ -293,3 +293,86 @@ the good runs, so extra work sat outside the page's script. It was the first run
 might point at the harness (a cold web process, cage's Xwayland starting lazily) rather than the app,
 but one sample cannot show that. If it appears in the app, compare `webProcessCpuPct` against
 `webProcessMainThreadCpuPct` first.
+
+## Input latency: v0.65.0 runs one step behind (2026-11-05)
+
+The v0.65.0 desktop app is withdrawn (the update manifest on the release names v0.64.0 and the
+release page warns against its desktop installers) until this is fixed. Ticket 28 in
+[TICKETS-TO-FILE](TICKETS-TO-FILE.md) holds the bug; this section holds how it is to be found.
+
+### What was seen
+
+On the owner's Linux machine (Hyprland, NVIDIA RTX 4060, WebKitGTK), in every pane:
+
+- A typed letter shows after a pause, or when the next key is pressed.
+- A menu in Claude Code shows the row from before the last arrow key, so Enter acts on a row the
+  screen did not show.
+- Clicking away from the window and back brings the pane up to date.
+- Meanwhile the overlay reads 63 fps, 0% CPU, WebGL on every pane, and output arriving (121 B/s).
+
+### What that rules out
+
+- **The causes above.** They were CPU and paint cost; here the main thread is idle and frames are on
+  time.
+- **How frames reach the driver.** `WEBKIT_DISABLE_DMABUF_RENDERER=1` changed nothing.
+- **A library.** `Cargo.lock` and `apps/gui/package.json` are the same in v0.64.0 and v0.65.0 apart
+  from the new workspace crates.
+
+What is left is the path a pane's bytes take, which v0.65.0 rewrote for several machines:
+`hub.rs` and `streams.rs` are new, and `terminal_stream.rs`, `TerminalView.tsx` and `api/daemon.ts`
+were rebuilt around them.
+
+### The gap in what we measure
+
+Everything in *Measuring in the app* is about drawing: frames, slow frames, animations, CPU. None
+of it times a key. A pane can be one step behind with every one of those figures perfect, which is
+what happened. **The time from a key to its echo on screen has to be a measured figure**, in the
+app and in the harness, before anything is fixed.
+
+### How it will be found
+
+Measure first, change second. No fix goes in on a theory.
+
+1. **Reproduce away from the owner's window.** A dev build on a nested socket
+   (`MAITTY_SOCKET=<name>`), on the same machine. Also start the v0.64.0 AppImage on that machine
+   and note whether it is one step behind: that says whether the cause arrived in v0.65.0.
+2. **Add the probe.** Stamp one key at each hop and log the six times:
+   xterm `onData` → the `terminal_input` command received by the host → `Output` from the daemon
+   received by the hub → `Streams::flush` → the channel message received in the window →
+   `emulator.write` done. Keep it behind Settings › Performance as **Key to echo** (median, 95th
+   percentile, worst), so the next report has it.
+3. **Read the six times.** The hop where the time goes is the bug. If the times are all small and
+   the screen is still late, the wait is after `emulator.write`: xterm's own render, or the web
+   view presenting the canvas.
+4. **If the hop is not obvious, bisect.** v0.64.0 to v0.65.0 is the stack `pr/01` to `pr/35`; each
+   `pr/NN` branch is a point to build and try, so the search is about five builds.
+5. **Things to check first**, cheapest first, each by the probe and not by reading:
+   - A frame of 1,024 bytes or more goes to the window through Tauri's channel fetch and smaller ones
+     by direct eval, and the window hands channel messages over in order: one slow fetch holds every
+     later frame.
+   - `flushOnFrame` waits out `FLUSH_GAP_MS` with a timer and then an animation frame; a frame that
+     does not come leaves the write queued.
+   - The host loop's `timeout_at` around `hub.next()`: output held in `Streams` is sent only when
+     the wait ends.
+   - The input queue in `TerminalView.tsx` sends a key only after the key before it was answered.
+6. **Fix at that hop, with a test that fails without the fix.**
+
+### Budgets
+
+A change to this area passes when all of these hold on Linux with WebKitGTK:
+
+| Figure | Budget |
+| --- | --- |
+| Key to echo in an idle shell, 95th percentile | under 30 ms |
+| A menu redraw after an arrow key | shows without another key or a refocus |
+| One working session, silent | under 5% of a core (unchanged) |
+| One session streaming about 20 KB/s | under 40% of a core (unchanged) |
+
+### Keeping it fixed
+
+- A host test with a real daemon: send a key through `terminal_input`, and fail if no frame for it
+  reaches the channel within the budget with nothing else happening.
+- A harness scenario that types twenty keys a second apart and fails if any echo waits for the
+  next key.
+- CI cannot feel lag, and it passed v0.65.0. Until the harness scenario runs in CI, a release of
+  the desktop app needs the **Key to echo** figure from a real Linux window in its pull request.
