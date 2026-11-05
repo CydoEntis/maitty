@@ -1321,29 +1321,6 @@ fn draw_files_tree(
             body.x + fw,
         );
     }
-    if !v.recent {
-        let legend = vec![
-            seg(
-                "M",
-                Style::default().fg(yellow).add_modifier(Modifier::BOLD),
-            ),
-            seg(" changed   ", Style::default().fg(t.muted)),
-            seg("A", Style::default().fg(green).add_modifier(Modifier::BOLD)),
-            seg(" new   ", Style::default().fg(t.muted)),
-            seg(
-                app.cfg.icons.blocked.clone(),
-                Style::default().fg(t.blocked),
-            ),
-            seg(" an agent is editing", Style::default().fg(t.muted)),
-        ];
-        put(
-            buf,
-            body.x + 2,
-            body.bottom().saturating_sub(2),
-            &legend,
-            body.x + fw,
-        );
-    }
 }
 
 // ---- modals: talk, + Pane -----------------------------------------------------------------

@@ -296,8 +296,8 @@ pub(in crate::client) fn draw_sheet(
     kind: SheetKind,
     t: &Theme,
 ) {
-    // Files, Changes, Branch and References are named by the lit tab in their strip, so the
-    // title says only what the strip doesn't.
+    // Files, Changes, Branch and References are named by their title; the rail on the right
+    // edge is where the others are.
     let (title, sub, close) = match kind {
         SheetKind::Inbox => (
             "INBOX".to_string(),
@@ -306,30 +306,27 @@ pub(in crate::client) fn draw_sheet(
         ),
         SheetKind::Both => ("Changes".to_string(), String::new(), ScreenHit::ViewClose),
         SheetKind::Changes | SheetKind::Files | SheetKind::Branch | SheetKind::References => {
-            (String::new(), String::new(), ScreenHit::ViewClose)
+            let name = DRAWER_TABS
+                .iter()
+                .find(|(k, ..)| *k == kind)
+                .map_or("", |(_, name, ..)| *name);
+            (name.to_string(), String::new(), ScreenHit::ViewClose)
         }
         SheetKind::Check => ("CHECK".to_string(), check_title(app), ScreenHit::ViewClose),
     };
     // Hairline puts the tab strip on the title row, over the rule; what the title said goes
     // to the right, dim.
     let tabs_on_title = Look::of(&app.cfg.ui).hairline && drawer_tab(kind).is_some();
-    let chips_on_border = !Look::of(&app.cfg.ui).hairline && drawer_tab(kind).is_some();
     // Lit while it has the keys; a click into a pane sets it aside, unlit, still open.
     let mut c = Card::new(
         t,
-        if tabs_on_title || chips_on_border {
-            ""
-        } else {
-            &title
-        },
+        if tabs_on_title { "" } else { &title },
     );
     if sheet_has_keys(app) {
         c = c.lit(t.accent);
     }
     c.sub = &sub;
-    let room_for_title =
-        !chips_on_border || r.width >= 2 + drawer_names_w() + title.width() as u16 + 12;
-    if (tabs_on_title || chips_on_border) && !title.is_empty() && room_for_title {
+    if tabs_on_title && !title.is_empty() {
         c.right = vec![seg(format!("{title}  "), Style::default().fg(t.muted))];
     }
     // The read-while-working sheets and Changes sit on the desk's ground, like the panes.
@@ -364,45 +361,6 @@ pub(in crate::client) fn draw_sheet(
                 }
             }
             inside
-        }
-        Some(cur) if chips_on_border => {
-            let taken =
-                segs_width(&c.right) + close_width(Look::of(&app.cfg.ui), !c.right.is_empty()) + 4;
-            draw_drawer_chips(
-                app,
-                buf,
-                Rect {
-                    x: title_x(r),
-                    y: r.y,
-                    width: r.width.saturating_sub(2 + taken),
-                    height: 1,
-                },
-                cur,
-                t,
-            );
-            Rect {
-                y: inside.y + 1,
-                height: inside.height.saturating_sub(1),
-                ..inside
-            }
-        }
-        Some(cur) if inside.height > 1 => {
-            draw_drawer_tabs(
-                app,
-                buf,
-                Rect {
-                    height: 1,
-                    ..inside
-                },
-                cur,
-                c.bg,
-                t,
-            );
-            Rect {
-                y: inside.y + 1,
-                height: inside.height - 1,
-                ..inside
-            }
         }
         _ => inside,
     };
@@ -564,84 +522,6 @@ fn draw_drawer_tabs(
         x += w + 1;
     }
     open
-}
-
-fn drawer_names_w() -> u16 {
-    DRAWER_TABS
-        .iter()
-        .map(|(_, name, ..)| name.width() as u16 + 4)
-        .sum::<u16>()
-        + DRAWER_TABS.len() as u16
-}
-
-fn draw_drawer_chips(app: &mut App, buf: &mut Buffer, row: Rect, cur: usize, t: &Theme) {
-    if row.width == 0 || row.height == 0 {
-        return;
-    }
-    let border = buf[(row.x, row.y)].fg;
-    let lit = sheet_has_keys(app);
-    let look = Look::of(&app.cfg.ui);
-    let ends = 2 * u16::from(look.caps);
-    let mut gap = u16::from(look.tab_gap);
-    let labels = drawer_tab_labels(app, row.width);
-    let width = |(name, key): &(String, String)| (name.width() + key.width()) as u16 + 2 + ends;
-    let total =
-        |gap| labels.iter().map(width).sum::<u16>() + gap * labels.len().saturating_sub(1) as u16;
-    if total(gap) > row.width {
-        gap = 0;
-    }
-    if total(gap) > row.width {
-        return;
-    }
-    let mut x = row.x;
-    for (i, (name, key)) in labels.iter().enumerate() {
-        let w = width(&(name.clone(), key.clone()));
-        let rect = Rect {
-            x,
-            y: row.y,
-            width: w,
-            height: 1,
-        };
-        let on = i == cur;
-        let (ink, fill) = if on {
-            if lit {
-                (t.acc_ink, t.accent)
-            } else {
-                (t.strong, t.btn)
-            }
-        } else {
-            (t.text, t.btn)
-        };
-        let bg = if !on && hovered(app, rect) {
-            t.hov
-        } else {
-            fill
-        };
-        let mut segs = vec![seg(
-            format!(" {key}{name} "),
-            Style::default().fg(ink).bg(bg).add_modifier(if on {
-                Modifier::BOLD
-            } else {
-                Modifier::empty()
-            }),
-        )];
-        if look.caps {
-            segs = round_ends(segs, t.bg);
-        }
-        put(buf, x, row.y, &segs, row.right());
-        hit(app, rect, ScreenHit::DrawerTab(i));
-        x += w;
-        if gap == 1 && i + 1 < labels.len() {
-            put(
-                buf,
-                x,
-                row.y,
-                &[seg("─", Style::default().fg(border))],
-                row.right(),
-            );
-            x += 1;
-        }
-    }
 }
 
 /// Settings is a modal so it does not take width away from the workspace.

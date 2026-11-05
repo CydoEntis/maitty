@@ -1606,8 +1606,6 @@ pub(super) enum ScreenHit {
     SplashCard(usize),
     /// A chip on the tool rail: the drawer's tab at that place in `DRAWER_TABS`.
     Tool(usize),
-    /// The drawer's overlay / docked chip: pin it into a column or let it float again.
-    DrawerPin,
     /// A remote machine's line in the sidebar: a right-click offers to reconnect or remove it.
     MachineRow(MachineId),
     /// A recent project on the wide splash (its index among them).

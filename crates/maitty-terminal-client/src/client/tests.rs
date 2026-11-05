@@ -7709,13 +7709,10 @@ second line
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("c Changes") && o.contains("fix the flaky checkout test"),
+            o.contains("Changes") && o.contains("fix the flaky checkout test"),
             "Changes docks beside the panes"
         );
-        assert!(
-            !o.contains("─ Changes "),
-            "its lit tab names it; the title doesn't repeat it"
-        );
+        assert!(o.contains("─ Changes "), "the drawer's title names it");
         let _ = std::fs::remove_dir_all(&repo);
     }
 
@@ -16232,8 +16229,8 @@ mod files_panel_tests {
             .find(|l| l.contains('‹'))
             .expect("the file's header");
         assert!(
-            header.contains("i edit") && header.contains("1–15 of 60 "),
-            "the tab strip and the mode bar take a row each: {header}"
+            header.contains("i edit") && header.contains("1–16 of 60 "),
+            "the title and the mode bar take a row each: {header}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -17754,36 +17751,6 @@ mod tool_rail_tests {
         assert!(pane_right(&app) < closed, "the terminal shrank");
     }
 
-    #[test]
-    fn the_drawer_says_its_width_and_where_it_sits_and_a_click_pins_it() {
-        let mut app = app();
-        draw(&mut app);
-        click_tool(&mut app, 0);
-        let buf = draw(&mut app);
-        if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
-            for y in 0..H {
-                println!("{}", (0..W).map(|x| buf[(x, y)].symbol()).collect::<String>());
-            }
-        }
-        let r = app.screen.sheet_rect;
-        let foot: String = (r.x..r.right()).map(|x| buf[(x, r.bottom() - 1)].symbol()).collect();
-        assert!(
-            foot.contains(&format!("< > {} cols", r.width)) && foot.contains("overlay · terminal untouched"),
-            "{foot}"
-        );
-        let pin = app
-            .hits
-            .iter()
-            .find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::DrawerPin)).then_some(*r))
-            .expect("the state chip");
-        click(&mut app, pin);
-        assert!(app.screen.saved.drawer_pinned);
-        let buf = draw(&mut app);
-        let r = app.screen.sheet_rect;
-        let foot: String = (r.x..r.right()).map(|x| buf[(x, r.bottom() - 1)].symbol()).collect();
-        assert!(foot.contains("docked · terminal resized"), "{foot}");
-    }
-
     fn hit_rect(app: &App, h: screen::ScreenHit) -> Rect {
         app.hits
             .iter()
@@ -17890,59 +17857,6 @@ mod drawer_tab_tests {
 
     fn key(app: &mut App, code: KeyCode, mods: KeyModifiers) {
         app.on_key(KeyEvent::new(code, mods));
-    }
-
-    fn click_tab(app: &mut App, i: usize) {
-        let r = app
-            .hits
-            .iter()
-            .find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::DrawerTab(i))).then_some(*r))
-            .expect("the tab is clickable");
-        for kind in [
-            MouseEventKind::Down(MouseButton::Left),
-            MouseEventKind::Up(MouseButton::Left),
-        ] {
-            app.on_mouse(MouseEvent {
-                kind,
-                column: r.x + 1,
-                row: r.y,
-                modifiers: KeyModifiers::NONE,
-            });
-        }
-    }
-
-    #[test]
-    fn the_strip_names_each_view_with_its_key_and_lights_the_open_one() {
-        let (mut app, dir) = in_repo("strip");
-        app.act(Action::Files);
-        let buf = draw(&mut app);
-        let o = text(&buf);
-        super::check_settings_tests::show(&o);
-        let row = o
-            .lines()
-            .find(|l| l.contains("f Files"))
-            .unwrap_or_else(|| panic!("a tab strip:\n{o}"));
-        let (files, changes, branch) = (
-            row.find("f Files").unwrap(),
-            row.find("c Changes").unwrap(),
-            row.find("b Branch").unwrap(),
-        );
-        assert!(
-            files < changes && changes < branch && row.contains('─'),
-            "in order, with border between chips: {row}"
-        );
-        let (fx, fy) = find(&buf, "f Files").unwrap();
-        let (cx, cy) = find(&buf, "c Changes").unwrap();
-        assert_eq!(buf[(fx, fy)].bg, app.theme.accent, "the open tab is lit");
-        assert_ne!(buf[(cx, cy)].bg, app.theme.accent, "the others are not");
-        app.cfg.keys.prefix.insert("c".into(), "none".into());
-        app.cfg.keys.prefix.insert("d".into(), "changes".into());
-        app.keymap = app.cfg.keymap();
-        assert!(
-            find(&draw(&mut app), "d Changes").is_some(),
-            "the keys come from the keymap"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -18096,19 +18010,6 @@ mod drawer_tab_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    #[test]
-    fn a_click_on_a_tab_switches_to_it() {
-        let (mut app, dir) = in_repo("click");
-        app.act(Action::Files);
-        draw(&mut app);
-        click_tab(&mut app, 2);
-        assert_eq!(open(&app), Some(screen::SheetKind::Branch));
-        draw(&mut app);
-        click_tab(&mut app, 1);
-        assert_eq!(open(&app), Some(screen::SheetKind::Changes));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
     /// The next background result, once its thread is done.
     fn next_bg(rx: &mut mpsc::UnboundedReceiver<Bg>) -> Bg {
         let until = Instant::now() + std::time::Duration::from_secs(20);
@@ -18191,50 +18092,6 @@ mod drawer_tab_tests {
             open(&app),
             Some(screen::SheetKind::Branch),
             "with no question, Tab switches"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn at_its_narrowest_the_strip_keeps_every_tab_whole_and_clickable() {
-        let (mut app, dir) = in_repo("narrow");
-        app.screen
-            .saved
-            .sheet_w
-            .insert("files".into(), screen::SHEET_MIN);
-        app.act(Action::Files);
-        let buf = draw(&mut app);
-        let sheet = app.screen.sheet_rect;
-        assert_eq!(sheet.width, screen::SHEET_MIN);
-        let o = text(&buf);
-        super::check_settings_tests::show(&o);
-        for i in 0..3 {
-            let r = app
-                .hits
-                .iter()
-                .rev()
-                .find_map(|(r, h)| {
-                    (*h == Hit::Screen(screen::ScreenHit::DrawerTab(i))).then_some(*r)
-                })
-                .expect("each tab has a target");
-            assert!(
-                r.width >= 4 && r.right() < sheet.right(),
-                "tab {i} is whole inside the panel: {r:?} in {sheet:?}"
-            );
-        }
-        let row = o
-            .lines()
-            .find(|l| l.contains("Chg"))
-            .unwrap_or_else(|| panic!("short names:\n{o}"));
-        assert!(
-            row.contains("Files") && row.contains("Br"),
-            "short names: {row}"
-        );
-        click_tab(&mut app, 2);
-        assert_eq!(
-            open(&app),
-            Some(screen::SheetKind::Branch),
-            "the last tab still switches"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -18337,7 +18194,7 @@ mod references_view_tests {
             let o = draw(&mut app, w, h);
             show(&o);
             assert!(
-                o.contains("REFERENCES"),
+                o.contains("References"),
                 "in the side panel at {w}✕{h}:\n{o}"
             );
             assert!(
@@ -18348,12 +18205,6 @@ mod references_view_tests {
                 o.contains("Refs") || o.contains("References"),
                 "its tab in the strip at {w}✕{h}"
             );
-            if w >= 160 {
-                assert!(
-                    o.contains("f Files") && o.contains("a References"),
-                    "the strip names its key:\n{o}"
-                );
-            }
             key(&mut app, KeyCode::Char('a'));
             assert!(sheet(&app).is_none(), "a closes it again");
         }

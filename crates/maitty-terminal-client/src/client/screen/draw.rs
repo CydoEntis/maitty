@@ -415,7 +415,6 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         }
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
         draw_sheet_edge(app, f.buffer_mut(), &g, t);
-        tools::draw_drawer_foot(app, f.buffer_mut(), g.sheet, kind, t);
     }
     tools::draw_tools(app, f.buffer_mut(), g.tools, t);
     draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), t);

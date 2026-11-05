@@ -2142,10 +2142,6 @@ impl App {
                     self.act(action.clone());
                 }
             }
-            ScreenHit::DrawerPin => {
-                self.screen.saved.drawer_pinned = !self.screen.saved.drawer_pinned;
-                self.screen.save();
-            }
             ScreenHit::SplashFocus(away) => self.screen.splash_away = away,
             ScreenHit::MenuPick(i) => self.menu_pick(i),
             ScreenHit::HistRow(i) => {

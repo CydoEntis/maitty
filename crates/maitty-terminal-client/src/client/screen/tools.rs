@@ -1,8 +1,7 @@
-//! The tool rail on the right edge and the foot of the drawer it opens: the rail's chips open
-//! Files, Changes, Branch and References (a second click closes), and the drawer's bottom
-//! border says its width and whether it floats over the terminal or is pinned beside it.
+//! The tool rail on the right edge: its chips open Files, Changes, Branch and References in the
+//! drawer (a second click closes).
 
-use super::sheet::{DRAWER_TABS, SheetKind, overlaid};
+use super::sheet::{DRAWER_TABS, SheetKind};
 use super::*;
 
 /// Rows between one chip of the rail and the next.
@@ -64,48 +63,5 @@ fn tool_key(kind: SheetKind) -> char {
         SheetKind::Changes => 'c',
         SheetKind::Branch => 'b',
         _ => 'a',
-    }
-}
-
-/// The drawer's bottom border: its width, and a chip that says where it sits (a click pins it
-/// beside the terminal, or lets it float again).
-pub(in crate::client) fn draw_drawer_foot(
-    app: &mut App,
-    buf: &mut Buffer,
-    r: Rect,
-    kind: SheetKind,
-    t: &Theme,
-) {
-    if sheet::drawer_tab(kind).is_none() || r.width < 30 || r.height < 3 {
-        return;
-    }
-    let y = r.bottom() - 1;
-    let chip = Style::default().bg(t.btn);
-    let width = vec![seg(
-        format!(" < > {} cols ", r.width),
-        chip.fg(t.text),
-    )];
-    let ww = segs_width(&width);
-    put(buf, r.x + 2, y, &width, r.right().saturating_sub(2));
-    let words = if overlaid(app, kind) {
-        " overlay · terminal untouched "
-    } else {
-        " docked · terminal resized "
-    };
-    let state = vec![seg(words, chip.fg(t.muted))];
-    let sw = segs_width(&state);
-    let x = r.x + 2 + ww + 1;
-    if x + sw + 1 < r.right() {
-        put(buf, x, y, &state, r.right() - 1);
-        hit(
-            app,
-            Rect {
-                x,
-                y,
-                width: sw,
-                height: 1,
-            },
-            ScreenHit::DrawerPin,
-        );
     }
 }

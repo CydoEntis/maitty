@@ -164,11 +164,7 @@ always drawn from 100 columns (`ui.tool_rail`, on by default; a left sidebar onl
 tool in the drawer, switches to another, or closes the one open. The drawer **floats** over the right of the
 terminal by default: the panes keep the whole column, so the terminal is never resized by opening, closing or
 sizing it. One width (`60` columns, kept as `drawer` in the saved sheet widths) serves all four tools: drag its
-left edge, or `[` `]` or `<` `>` (4 at a time) while it has the keys. Its bottom border says ` < > 60 cols ` and
-` overlay · terminal untouched `; a click on that chip pins the drawer (`drawer_pinned` in the saved UI state): it
-is then a column beside the terminal, as before, each tool keeping its own width, and the chip reads ` docked ·
-terminal resized `. Files shows the tree and the open file by turns while a floating drawer is under 90 columns
-wide. The Inbox and the check sheets stay docked. A draggable edge (the sidebar's, the drawer's) wears a quiet
+left edge, or `[` `]` or `<` `>` (4 at a time) while it has the keys. Its top border is its title (` Files `, ` Changes `, ` Branch ` or ` References `) and the `×`; the rail is where the others are, and Tab and Shift+Tab still step along them while it has the keys. It has no tab strip, no legend row and no width chip. `drawer_pinned` in the saved UI state makes it a column beside the terminal, as before, each tool keeping its own width; there is no button for it yet. Files shows the tree and the open file side by side from 60 columns, and by turns under that. The Inbox and the check sheets stay docked. A draggable edge (the sidebar's, the drawer's) wears a quiet
 three-row `┃` grip, in the accent while pointed at or dragged.
 
 **Cursor.** The focused pane shows the cursor its program asked for (DECSCUSR, read from its output); where it asks for none, or for the default, Settings › Appearance › Cursor (`ui.cursor`: `block` by default, `underline` or `line`; an older `terminal` reads as `block` and `bar` as `line`) and Cursor blink (`ui.cursor_blink`) decide (`client/mod.rs` `cursor_code`). An unknown `ui.cursor` is refused when the config loads.
