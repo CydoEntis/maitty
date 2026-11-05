@@ -292,3 +292,22 @@ private history cache when it is on. `docs/SECURITY.md` says so plainly. Decide:
 (keys, tokens, `.env` content), omit input for sensitive paths, or accept and document. Also confirm
 against a live Claude CLI that `can_use_tool` carries `tool_use_id` (the fake CLI does; the code falls
 back to the request id). Blocks nothing, but decide before the chat view ships widely.
+
+## 19. Paste an image into a remote pane in the desktop app (feature, `ssh`, `client`)
+
+The terminal app sends a pasted clipboard image to a pane on another machine (ADR 0049); the desktop
+app still says local-only for it. Reuse the transfer code that now lives in `maitty-machines` (moved
+for ticket 11) behind a Tauri command, with the same limits (25 MB for an image, private cache folder
+on the far side, path typed into the pane), progress and error states, and tests. Windows is in scope.
+
+## 20. Attachments in the chat: files and images, local and remote (feature, `client`, `ssh`, `daemon`)
+
+Owner idea, 2026-11-04. When the chat view is open (especially on a remote machine) the user must be
+able to attach screenshots, images, design zips and other files to a message, as in Claude's own chat:
+a paperclip and drag-and-drop on the composer, paste an image, a thumbnail or file chip in the draft
+and in the sent message, remove before sending. Remote sessions reuse ticket 11 and 19 (the file lands
+in the far side's private cache, the path goes into the message); local sessions reference the local
+path. Open questions to settle in an ADR: how each provider receives attachments (Claude Code and
+Codex accept image paths or inline images differently), size caps, whether archives are unpacked or
+passed as a path, what the history stores (the path or the bytes; see ticket 18 on secrets), and
+cleanup. Blocked by the chat composer (G16) and tickets 11 and 19.
