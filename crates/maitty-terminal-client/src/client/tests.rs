@@ -2615,13 +2615,13 @@ mod screen_tests {
         for row in [two, three] {
             assert_eq!(
                 buf[(side.x + 4, y(row))].symbol(),
-                "│",
+                "▏",
                 "a line beside the session's tabs: {}",
                 rows[row]
             );
             assert_eq!(
                 buf[(side.x + 2, y(row))].symbol(),
-                "│",
+                "▏",
                 "and the project's line outside it: {}",
                 rows[row]
             );
@@ -2632,7 +2632,7 @@ mod screen_tests {
             .expect("the project's row");
         assert_ne!(
             buf[(side.x + 2, y(project))].symbol(),
-            "│",
+            "▏",
             "the lines start under the project row"
         );
     }

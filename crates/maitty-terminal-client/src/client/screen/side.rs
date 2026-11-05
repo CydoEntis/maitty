@@ -569,8 +569,11 @@ fn draw_rails(
     model: &[Proj],
     lines: &[Line],
     (x, rx, top, scroll, rows): (u16, u16, u16, usize, usize),
-    (ground, t): (Color, &Theme),
+    (ground, t, ascii): (Color, &Theme, bool),
 ) {
+    // The line hugs the left of its cell, as the selection's `▎` bar does, so a selected card's
+    // bar sits where the line was instead of beside it.
+    let (vertical, horizontal) = if ascii { ("|", "-") } else { ("▏", "─") };
     // Rows `from..to` of `lines` that are on screen, drawn at column `x` as `symbol` in `colour`.
     let mut draw = |from: usize, to: usize, (x0, x1): (u16, u16), symbol: &str, colour: Color| {
         for j in from.max(scroll)..to.min(scroll + rows) {
@@ -604,9 +607,15 @@ fn draw_rails(
                     end -= 1;
                 }
                 let colour = model[*pi].color;
-                draw(from, end, (x, x), "│", colour);
+                draw(from, end, (x, x), vertical, colour);
                 if end > from && end < to && matches!(lines.get(to), Some(Line::Proj(_))) {
-                    draw(end, end + 1, (x, rx), "─", blend(colour, ground, 0.6));
+                    draw(
+                        end,
+                        end + 1,
+                        (x, rx),
+                        horizontal,
+                        blend(colour, ground, 0.6),
+                    );
                 }
                 i = from;
             }
@@ -615,7 +624,7 @@ fn draw_rails(
                 while i < lines.len() && matches!(lines[i], Line::Tab(..)) {
                     i += 1;
                 }
-                draw(from, i, (x + 2, x + 2), "│", t.muted);
+                draw(from, i, (x + 2, x + 2), vertical, t.muted);
             }
             _ => i += 1,
         }
@@ -739,12 +748,15 @@ fn draw_rows(app: &mut App, buf: &mut Buffer, pass: &Pass, t: &Theme, lines: &[L
         }
         draw_line(app, buf, model, line, cols, y, pb, t, screen_w < NARROW);
     }
+    let ascii = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons)
+        .needs
+        .is_ascii();
     draw_rails(
         buf,
         model,
         lines,
         (cols.x, cols.rx, top, scroll, list_h),
-        (pb, t),
+        (pb, t, ascii),
     );
     scroll_marks(
         buf,
@@ -1427,16 +1439,9 @@ fn draw_machine_row(
         hit(app, row, ScreenHit::NewShell);
         return;
     }
-    let mark = app.machine_mark(machine, t);
-    let dim = mark.as_ref().is_none_or(|m| m.color != t.done);
-    let right = mark
-        .map(|m| {
-            vec![
-                seg(format!("{} ", m.glyph), st.fg(m.color)),
-                seg(m.word, st.fg(m.color)),
-            ]
-        })
-        .unwrap_or_default();
+    let (dot, dot_colour) = app.machine_dot(machine, t);
+    let dim = dot_colour != t.done;
+    let right = vec![seg(dot, st.fg(dot_colour))];
     let rw = segs_width(&right);
     let badge_style = if dim {
         Style::default().fg(t.muted).bg(t.card2)
@@ -1448,11 +1453,20 @@ fn draw_machine_row(
     };
     let room = (cols.end().saturating_sub(cols.x) as usize).saturating_sub(rw as usize + 1);
     let badge = seg(
-        truncate(&format!(" ⇄ {} ", app.machine_label_of(machine)), room),
+        truncate(
+            &format!(" {} {} ", app.machine_icon(), app.machine_label_of(machine)),
+            room,
+        ),
         badge_style,
     );
     put(buf, cols.x, y, &[badge], cols.end());
-    put(buf, cols.end().saturating_sub(rw), y, &right, cols.end());
+    put(
+        buf,
+        cols.end().saturating_sub(rw + 1),
+        y,
+        &right,
+        cols.end(),
+    );
     hit(app, row, ScreenHit::AddMachine);
 }
 
@@ -1846,7 +1860,7 @@ mod frame_tests {
         (
             rows[at]
                 .trim()
-                .trim_start_matches(['▎', '│'])
+                .trim_start_matches(['▎', '│', '▏', '|'])
                 .trim()
                 .to_string(),
             rows[at + 1].trim().to_string(),

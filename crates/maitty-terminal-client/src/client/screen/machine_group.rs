@@ -77,6 +77,30 @@ impl App {
         }
     }
 
+    /// The mark that stands for another computer: a laptop with the Nerd glyph set, a plain
+    /// screen otherwise, `[]` in ASCII.
+    pub(super) fn machine_icon(&self) -> &'static str {
+        let set = glyphs::chosen(&self.cfg.ui.glyphs, &self.cfg.icons);
+        if set.close == "\u{f00d}" {
+            "\u{f0322}"
+        } else if self.ascii_marks() {
+            "[]"
+        } else {
+            "▭"
+        }
+    }
+
+    /// The machine's connection as one dot: `done` when it is up, amber while it connects or
+    /// reconnects, `err` when it cannot be reached (it needs a login or an update, or is down).
+    pub(super) fn machine_dot(&self, machine: MachineId, t: &Theme) -> (&'static str, Color) {
+        let colour = match self.remotes.get(&machine).map(|r| &r.state) {
+            Some(ConnectionState::Connected) => t.done,
+            Some(ConnectionState::Connecting | ConnectionState::Reconnecting { .. }) => t.blocked,
+            _ => t.err,
+        };
+        (if self.ascii_marks() { "*" } else { "●" }, colour)
+    }
+
     fn ascii_marks(&self) -> bool {
         glyphs::chosen(&self.cfg.ui.glyphs, &self.cfg.icons)
             .needs

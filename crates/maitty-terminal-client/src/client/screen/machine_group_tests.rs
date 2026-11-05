@@ -536,7 +536,7 @@ fn a_connected_machine_is_a_header_with_its_projects_under_remote() {
         .collect::<Vec<_>>()
         .join("\n");
     let remote = side.find("REMOTE 1").expect("REMOTE 1");
-    let header = side.find("⇄ build").expect("build's header");
+    let header = side.find("▭ build").expect("build's header");
     assert!(header > remote, "build is below the Remote rule: {side}");
     assert!(
         side[header..].contains('▾') && side[header..].contains("api"),
@@ -553,7 +553,7 @@ fn a_machine_whose_line_is_down_is_one_item_that_opens_the_machines_dialog() {
         .map(|l| l.chars().take(34).collect::<String>())
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(side.contains("⇄ build"), "{side}");
+    assert!(side.contains("▭ build"), "{side}");
     assert!(side.contains("disconnected"), "{side}");
     assert!(
         !side.contains("fix-auth"),
@@ -577,7 +577,7 @@ fn a_project_has_a_line_down_its_contents_and_a_rule_divides_it_from_the_next() 
         .position(|r| r.contains('▾'))
         .expect("a project");
     assert!(
-        rows[first + 1].chars().nth(2) == Some('│'),
+        rows[first + 1].chars().nth(2) == Some('▏'),
         "a line starts under the project row: {side}"
     );
     let divider = rows
