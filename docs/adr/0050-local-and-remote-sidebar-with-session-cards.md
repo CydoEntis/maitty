@@ -22,7 +22,7 @@ notifications without a fill, and for pills to stay an option beside plain round
   that fold: `▾ maitty` with `⎇ branch` and a check mark (`✓`, or `✕` if a check failed) at the
   right. A folded project says how many sessions it hides, with an amber `●` when one needs you.
 - **Two-row cards.** A session is its mark, name and age (`● you` when it needs you), then what it
-  is doing. Its other tabs follow it under a `tabs` heading as `○ shell  2`.
+  is doing. Its other tabs follow it as `○ shell  2`, grouped by a thin line.
 - **Machines.** Local has no header. Each Remote machine has a header, a ` ⇄ build ` badge with its
   connection at the right. A machine that is not connected, or has no sessions, is that header and
   one line of state instead of its projects.

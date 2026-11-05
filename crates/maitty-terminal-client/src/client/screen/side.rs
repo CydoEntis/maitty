@@ -18,8 +18,6 @@ pub(in crate::client) enum Line {
     Sess(usize, usize, usize, u8),
     /// A session's last line: its check result, its question, or what it is doing.
     Detail(ClientSession),
-    /// The `tabs` heading over a session's other tabs.
-    TabsHead,
     /// One of a session's tabs (its owner, and where the tab is in `screen.tabs`), under its
     /// row while it has two or more (`side_tabs`).
     Tab(ClientTerm, usize),
@@ -71,11 +69,11 @@ pub(in crate::client) fn session_lines(app: &App, s: &Session, out: &mut Vec<Lin
         out.push(Line::Detail(s.key));
     }
     if let Some(term) = s.native_term {
-        let tabs = shown_tab_indexes(app, term);
-        if !tabs.is_empty() {
-            out.push(Line::TabsHead);
-        }
-        out.extend(tabs.into_iter().map(|i| Line::Tab(term, i)));
+        out.extend(
+            shown_tab_indexes(app, term)
+                .into_iter()
+                .map(|i| Line::Tab(term, i)),
+        );
     }
 }
 
@@ -205,7 +203,7 @@ fn card_lines(app: &App, model: &[Proj], t: &Theme) -> (Vec<Line>, Vec<Line>) {
                 at = model[*pi].machine;
                 by_machine.entry(at).or_default().push(l);
             }
-            Line::Sess(..) | Line::Detail(_) | Line::TabsHead | Line::Tab(..) | Line::Gap => {
+            Line::Sess(..) | Line::Detail(_) | Line::Tab(..) | Line::Gap => {
                 by_machine.entry(at).or_default().push(l);
             }
             // Headers and their notes are drawn from the connection, not from these.
@@ -562,6 +560,68 @@ fn draw_no_machines(
     }
 }
 
+/// Thin lines that show what belongs to what: a project's, in the project's own colour, down the
+/// column of its fold arrow along everything inside it; a session's, in `muted`, one column in,
+/// along its other tabs; and between two projects a faint rule across the blank row. A cell that
+/// already holds something (a selection bar) is left alone.
+fn draw_rails(
+    buf: &mut Buffer,
+    model: &[Proj],
+    lines: &[Line],
+    (x, rx, top, scroll, rows): (u16, u16, u16, usize, usize),
+    (ground, t): (Color, &Theme),
+) {
+    // Rows `from..to` of `lines` that are on screen, drawn at column `x` as `symbol` in `colour`.
+    let mut draw = |from: usize, to: usize, (x0, x1): (u16, u16), symbol: &str, colour: Color| {
+        for j in from.max(scroll)..to.min(scroll + rows) {
+            let y = top + (j - scroll) as u16;
+            for xx in x0..=x1 {
+                let cell = &mut buf[(xx, y)];
+                if cell.symbol() == " " {
+                    cell.set_symbol(symbol).set_fg(colour);
+                }
+            }
+        }
+    };
+    let mut i = 0;
+    while i < lines.len() {
+        match &lines[i] {
+            Line::Proj(pi) => {
+                let from = i + 1;
+                let mut to = from;
+                while to < lines.len()
+                    && !matches!(
+                        lines[to],
+                        Line::Proj(_) | Line::Machine(_) | Line::MachineState(_)
+                    )
+                {
+                    to += 1;
+                }
+                // The blank rows after its contents; a rule across the first of them divides it
+                // from the next project.
+                let mut end = to;
+                while end > from && matches!(lines[end - 1], Line::Gap) {
+                    end -= 1;
+                }
+                let colour = model[*pi].color;
+                draw(from, end, (x, x), "│", colour);
+                if end > from && end < to && matches!(lines.get(to), Some(Line::Proj(_))) {
+                    draw(end, end + 1, (x, rx), "─", blend(colour, ground, 0.6));
+                }
+                i = from;
+            }
+            Line::Tab(..) => {
+                let from = i;
+                while i < lines.len() && matches!(lines[i], Line::Tab(..)) {
+                    i += 1;
+                }
+                draw(from, i, (x + 2, x + 2), "│", t.muted);
+            }
+            _ => i += 1,
+        }
+    }
+}
+
 /// One half of the sidebar's list: `lines` from `win.scroll`, `win.rows` of them, from `win.top`.
 fn draw_rows(app: &mut App, buf: &mut Buffer, pass: &Pass, t: &Theme, lines: &[Line], win: Window) {
     let Pass {
@@ -679,6 +739,13 @@ fn draw_rows(app: &mut App, buf: &mut Buffer, pass: &Pass, t: &Theme, lines: &[L
         }
         draw_line(app, buf, model, line, cols, y, pb, t, screen_w < NARROW);
     }
+    draw_rails(
+        buf,
+        model,
+        lines,
+        (cols.x, cols.rx, top, scroll, list_h),
+        (pb, t),
+    );
     scroll_marks(
         buf,
         cols.rx + 1,
@@ -1243,15 +1310,6 @@ fn draw_line(
         }
         Line::Machine(machine) => draw_machine_row(app, buf, *machine, cols, y, pb, t),
         Line::MachineState(machine) => draw_machine_state(app, buf, *machine, cols, y, pb, t),
-        Line::TabsHead => {
-            put(
-                buf,
-                cols.x + 2,
-                y,
-                &[seg("tabs", Style::default().fg(t.muted).bg(pb))],
-                cols.end(),
-            );
-        }
         Line::Tab(..) | Line::MachineNote(..) | Line::Sess(..) | Line::Detail(_) | Line::Gap => {}
     }
 }
@@ -1786,7 +1844,11 @@ mod frame_tests {
             .position(|r| r.contains("add-payments"))
             .expect("the working row");
         (
-            rows[at].trim().trim_start_matches('▎').trim().to_string(),
+            rows[at]
+                .trim()
+                .trim_start_matches(['▎', '│'])
+                .trim()
+                .to_string(),
             rows[at + 1].trim().to_string(),
         )
     }

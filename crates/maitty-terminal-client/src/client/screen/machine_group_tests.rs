@@ -566,3 +566,29 @@ fn a_machine_whose_line_is_down_is_one_item_that_opens_the_machines_dialog() {
         .count();
     assert!(add >= 2, "both rows of the item take the click");
 }
+
+#[test]
+fn a_project_has_a_line_down_its_contents_and_a_rule_divides_it_from_the_next() {
+    let mut app = world(Stage::None);
+    let side = sidebar_text(&mut app);
+    let rows: Vec<&str> = side.lines().collect();
+    let first = rows
+        .iter()
+        .position(|r| r.contains('▾'))
+        .expect("a project");
+    assert!(
+        rows[first + 1].chars().nth(2) == Some('│'),
+        "a line starts under the project row: {side}"
+    );
+    let divider = rows
+        .iter()
+        .skip(first + 1)
+        .position(|r| r.chars().filter(|c| *c == '─').count() > 8 && !r.contains("REMOTE"))
+        .expect("a rule between two projects");
+    assert!(
+        rows.iter()
+            .skip(first + 1 + divider + 1)
+            .any(|r| r.contains('▾')),
+        "the rule has a project after it: {side}"
+    );
+}

@@ -95,7 +95,7 @@ and your configured custom ones; rows click and the wheel scrolls.
   or what it asks (`asks: …`, in amber), a check result (`failed: test · exit 1`), helpers asked
   for, a quiet spell or a message waiting. Every new claude / codex gets its own worktree (named
   for you), so agents never edit the same files.
-- A session with other tabs lists them under a `tabs` heading (`○ shell  2`); click one to show it. Each tab shows its own state; the session's row shows only its own tab's.
+- A session with other tabs lists them with a thin line beside them (`○ shell  2`); click one to show it. Each tab shows its own state; the session's row shows only its own tab's.
 - One card is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar
   has the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
   keyboard. Hover is a separate, quieter tint.

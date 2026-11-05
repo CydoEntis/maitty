@@ -2600,14 +2600,40 @@ mod screen_tests {
         );
         let buf = drawn(&mut app, 160, 45);
         let rows = side_text(&app, &buf);
-        let heading = rows
-            .iter()
-            .position(|r| r.trim_matches(|c: char| c == '│' || c == ' ') == "tabs")
-            .unwrap_or_else(|| panic!("a tabs heading\n{}", rows.join("\n")));
         assert!(
-            rows[heading + 1].contains("codex") && rows[heading + 2].contains("gemini"),
-            "the other tabs follow it: {:?}",
-            &rows[heading..heading + 3]
+            rows.iter()
+                .all(|r| r.trim_matches(|c: char| c == '│' || c == ' ') != "tabs"),
+            "there is no tabs heading"
+        );
+        let (two, three) = (
+            row_with(&rows, "codex").expect("codex tab"),
+            row_with(&rows, "gemini").expect("gemini tab"),
+        );
+        assert_eq!(three, two + 1, "the other tabs follow in order");
+        let side = app.screen.side_rect;
+        let y = |row: usize| side.y + row as u16;
+        for row in [two, three] {
+            assert_eq!(
+                buf[(side.x + 4, y(row))].symbol(),
+                "│",
+                "a line beside the session's tabs: {}",
+                rows[row]
+            );
+            assert_eq!(
+                buf[(side.x + 2, y(row))].symbol(),
+                "│",
+                "and the project's line outside it: {}",
+                rows[row]
+            );
+        }
+        let project = rows
+            .iter()
+            .position(|r| r.contains('▾'))
+            .expect("the project's row");
+        assert_ne!(
+            buf[(side.x + 2, y(project))].symbol(),
+            "│",
+            "the lines start under the project row"
         );
     }
 
