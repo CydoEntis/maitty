@@ -476,8 +476,20 @@ while queued answers `ConversationQueued` again without a second copy, once deli
 `Receipt`, and the same number with other text is `stale or reused`. `Command::ConversationDequeue
 { id, generation, operation }` takes a waiting message back out (human clients only, write grant;
 `Ok`, or an error that it is no longer waiting). A new command and a new reply variant, so
-`PROTOCOL_VERSION` is 71; tests assert an older peer cannot read them and that an older read reply
+the version was raised to 71; tests assert an older peer cannot read them and that an older read reply
 still decodes.
+
+Protocol 72 adds `branch: Option<String>` (`#[serde(default)]`) to `Command::ConversationStart`, for a
+chat session on a branch ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).
+The daemon, before anything is made, refuses a `branch` beside anything but a new conversation
+(`StartTarget::Create`), checks the name with the branch agent's rules (`branch_agent::branch_problem`),
+and requires the target's folder to be a project the app shows and a git repository
+(`conversation/branch_start.rs`). It then makes the worktree with `create_trusted_worktree`, runs the
+repo's setup hook, notes it in `made_worktrees`, and starts the conversation in the new folder; the reply
+is the usual `ConversationStarted`. The field is defaulted, so the old shape decodes (a test), but a
+peer that predates it would drop the field and start in the main checkout, so the version was raised
+to 72 and the two refuse to talk. The window's Tauri command `start_chat_session` always asks for
+workspace write with approval on request (no argument for a broader posture) and is local-only.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store

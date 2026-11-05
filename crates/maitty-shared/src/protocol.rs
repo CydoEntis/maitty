@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 71;
+pub const PROTOCOL_VERSION: u32 = 72;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -181,6 +181,12 @@ pub struct Limit {
 pub enum Command {
     ConversationStart {
         target: crate::conversation::StartTarget,
+        /// Start in a new checkout of the project at the target's folder, on this branch (a chat
+        /// session on a branch, ADR 0054). Only a new conversation takes one. A peer that
+        /// predates it would start in the main checkout instead, which is why the protocol
+        /// version was raised with it.
+        #[serde(default)]
+        branch: Option<String>,
     },
     ConversationSend {
         id: crate::conversation::ConversationId,
@@ -1772,6 +1778,42 @@ mod tests {
         assert_eq!((agent, prompt), (None, None));
     }
 
+    /// `branch` was added to `ConversationStart` as a defaulted field (protocol 72, chat sessions
+    /// on a branch): the shape from before it still decodes, as "no branch", and a start that
+    /// names one round-trips. The version was raised too, because a peer that predates the field
+    /// would drop it and start in the main checkout.
+    #[test]
+    fn a_conversation_start_from_before_branch_still_decodes() {
+        #[derive(Serialize)]
+        enum OldCommand {
+            ConversationStart {
+                target: crate::conversation::StartTarget,
+            },
+        }
+        let target = crate::conversation::StartTarget::Conversation {
+            id: crate::conversation::ConversationId(5),
+            generation: 2,
+        };
+        let bytes = encode(&OldCommand::ConversationStart {
+            target: target.clone(),
+        })
+        .unwrap();
+        let Command::ConversationStart { target: read, branch } = decode(&bytes).unwrap() else {
+            panic!("expected a conversation start")
+        };
+        assert_eq!((read, branch), (target.clone(), None));
+
+        let bytes = encode(&Command::ConversationStart {
+            target,
+            branch: Some("chat/one".into()),
+        })
+        .unwrap();
+        assert!(matches!(
+            decode::<Command>(&bytes).unwrap(),
+            Command::ConversationStart { branch: Some(ref b), .. } if b == "chat/one"
+        ));
+    }
+
     /// A `Snapshot` as a daemon built before `daemon_id` encoded it.
     #[derive(Serialize)]
     struct SnapshotWithoutId {
@@ -1798,7 +1840,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 71);
+        assert_eq!(PROTOCOL_VERSION, 72);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()

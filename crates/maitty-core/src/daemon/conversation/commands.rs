@@ -1325,7 +1325,7 @@ impl Daemon {
             ConversationSummary {
                 id: p.id,
                 generation: p.generation,
-                provider: Provider::Codex,
+                provider: p.settings.provider,
                 execution: ExecutionKind::Structured,
                 cwd: p.settings.cwd.clone(),
                 worktree: None,

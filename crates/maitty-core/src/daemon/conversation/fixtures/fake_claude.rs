@@ -119,11 +119,16 @@ fn main() {
         return;
     }
 
+    // The result names the session the daemon asked for, so a conversation it created itself (with its
+    // own session id) reads back as well as the fixed one.
+    let result = format!(
+        r#"{{"is_error":false,"result":"fake reply","session_id":"{session_id}","type":"result"}}"#
+    );
     for frame in [
         r#"{"isReplay":true,"message":{"content":[{"text":"hello fake Claude","type":"text"}]},"type":"user"}"#,
         r#"{"event":{"message":{"id":"fake-message","model":"fake-model"},"type":"message_start"},"type":"stream_event"}"#,
         r#"{"event":{"delta":{"text":"fake reply","type":"text_delta"},"index":0,"type":"content_block_delta"},"type":"stream_event"}"#,
-        r#"{"is_error":false,"result":"fake reply","session_id":"fixture-session","type":"result"}"#,
+        result.as_str(),
     ] {
         writeln!(output, "{frame}").unwrap();
     }

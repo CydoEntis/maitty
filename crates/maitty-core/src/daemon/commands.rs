@@ -7,8 +7,11 @@ impl Daemon {
     /// Apply a command. `Ok(false)` means the reply is sent later (background git work).
     pub(super) fn command(&mut self, client: ClientId, cmd: Command) -> Result<bool> {
         match cmd {
-            Command::ConversationStart { target } => {
-                self.conversation_start(client, target)?;
+            Command::ConversationStart { target, branch } => {
+                match branch {
+                    Some(branch) => self.conversation_start_on_branch(client, target, branch)?,
+                    None => self.conversation_start(client, target)?,
+                }
                 return Ok(false);
             }
             Command::ConversationSend {

@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn machines_do_not_change_what_goes_over_the_wire() {
-        assert_eq!(PROTOCOL_VERSION, 71);
+        assert_eq!(PROTOCOL_VERSION, 72);
         let hello = ClientMsg::Hello {
             version: PROTOCOL_VERSION,
             attach: true,
