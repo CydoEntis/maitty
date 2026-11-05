@@ -386,6 +386,7 @@ impl Daemon {
                     approvals: Vec::new(),
                     answered_approvals: Vec::new(),
                     cancelling: false,
+                    queued: Vec::new(),
                 },
             )),
         );

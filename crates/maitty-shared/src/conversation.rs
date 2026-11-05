@@ -91,6 +91,26 @@ pub struct ReadResult {
     pub answered_approvals: Vec<AnsweredApproval>,
     #[serde(default)]
     pub cancelling: bool,
+    /// Messages sent while a turn was running, held by the daemon in order and delivered once
+    /// each when the turn ends; the window may close and they are still delivered.
+    #[serde(default)]
+    pub queued: Vec<QueuedMessage>,
+}
+
+/// A message waiting for the running turn to end.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueuedMessage {
+    /// The sender's operation number, which names the message for `ConversationDequeue`.
+    pub operation: u64,
+    pub text: String,
+}
+
+/// The answer to a send that was queued instead of delivered.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueuedReceipt {
+    pub conversation: ConversationId,
+    pub generation: u64,
+    pub operation: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

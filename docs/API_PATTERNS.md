@@ -462,6 +462,23 @@ closed as a pane). A client the pane does not belong to (ADR 0045) gets "No such
 history is the provider's own transcript projected through the same entries a structured runtime
 produces (`conversation/follow_transcript.rs`); nothing read from the file sets any status.
 
+Protocol 71 adds the daemon-held send queue. A `ConversationSend` for a conversation that is
+mid-turn (or whose earlier messages are still waiting, or with a send in flight) is not refused: the
+daemon holds it and answers `Reply::ConversationQueued { conversation, generation, operation }`.
+`ReadResult.queued` (`#[serde(default)]`) lists what it holds, oldest first (`operation`, `text`).
+On its tick the daemon delivers the oldest message of each conversation whose turn has ended and
+that has no unanswered request, no cancel in flight and no uncertain earlier send, through the same
+receipt and durable-barrier path as a direct send, so a delivered message is one `Receipt` with its
+own operation number. The queue is per conversation, in order (an operation number must exceed the
+last one held), bounded (32 messages, 1 MiB), in memory only, and dropped when the conversation is
+ended or has started over (a new generation). Retries keep their meaning: the same operation and text
+while queued answers `ConversationQueued` again without a second copy, once delivered it answers the
+`Receipt`, and the same number with other text is `stale or reused`. `Command::ConversationDequeue
+{ id, generation, operation }` takes a waiting message back out (human clients only, write grant;
+`Ok`, or an error that it is no longer waiting). A new command and a new reply variant, so
+`PROTOCOL_VERSION` is 71; tests assert an older peer cannot read them and that an older read reply
+still decodes.
+
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
 ([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)): totals, one entry per

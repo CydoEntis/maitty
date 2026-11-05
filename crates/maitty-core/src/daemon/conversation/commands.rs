@@ -18,6 +18,19 @@ use std::collections::BTreeSet;
 use std::ffi::OsStr;
 
 const MAX_PROMPT_BYTES: usize = 256 * 1024;
+/// Messages the daemon holds for one busy conversation, and their total text.
+const MAX_QUEUED_MESSAGES: usize = 32;
+const MAX_QUEUED_BYTES: usize = 1024 * 1024;
+/// A queued message was sent by a request that is long over; its replies have nowhere to go.
+const NO_CLIENT: ClientId = ClientId::MAX;
+
+/// A message waiting for the running turn to end.
+pub(in crate::daemon) struct QueuedSend {
+    generation: u64,
+    operation: u64,
+    text: String,
+    digest: String,
+}
 const MAX_HYDRATION_ENTRIES: usize = 100_000;
 const MAX_HYDRATION_BYTES: usize = 32 * 1024 * 1024;
 const MAX_USER_INPUT_ANSWER_CHARS: usize = 10_000;
@@ -933,6 +946,8 @@ impl Daemon {
                 return Err(error);
             }
         }
+        // Ending the agent is the person's answer to what was waiting for it.
+        self.conversation_queues.remove(&id);
         self.send(client, ServerMsg::Reply(Reply::Ok));
         self.dirty = true;
         Ok(())
@@ -992,23 +1007,70 @@ impl Daemon {
                 bail!("Previous submission delivery remains uncertain");
             }
         }
+        // A message already waiting is the same send again (a retry), or a reused number.
+        if let Some(waiting) = self
+            .conversation_queues
+            .get(&id)
+            .and_then(|queue| queue.iter().find(|m| m.operation == operation))
+        {
+            if waiting.generation == generation && waiting.digest == digest {
+                self.send(
+                    client,
+                    ServerMsg::Reply(Reply::ConversationQueued(QueuedReceipt {
+                        conversation: id,
+                        generation,
+                        operation,
+                    })),
+                );
+                return Ok(());
+            }
+            bail!("Operation ID is stale or reused with changed content");
+        }
+        if self
+            .conversation_queues
+            .get(&id)
+            .and_then(|queue| queue.last())
+            .is_some_and(|last| operation <= last.operation)
+        {
+            bail!("Operation ID is stale or reused with changed content");
+        }
         let state = self
             .conversation_states
             .get(&id)
             .ok_or_else(|| anyhow::anyhow!("Conversation runtime is not ready"))?;
-        if c.state != RecoveryState::Running
-            || state.blocked
-            || state.status == Status::Working
-            || self
-                .conversation_requests
-                .values()
-                .any(|p| p.conversation() == id)
-        {
+        if c.state != RecoveryState::Running || state.blocked {
             bail!("Conversation is busy, blocked or not ready");
         }
         if !state.history_ready {
             bail!("Native history is incomplete; read it before submitting");
         }
+        // The agent is mid-turn (or a send is in flight, or earlier messages are waiting): the
+        // daemon holds the message, so it survives the window and goes out in order.
+        let busy = state.status == Status::Working
+            || self
+                .conversation_requests
+                .values()
+                .any(|p| p.conversation() == id)
+            || self
+                .conversation_queues
+                .get(&id)
+                .is_some_and(|queue| !queue.is_empty());
+        if busy {
+            return self.conversation_enqueue(client, id, generation, operation, text, digest);
+        }
+        self.conversation_submit(client, id, generation, operation, text, digest)
+    }
+
+    /// Hands a message to the runtime now: records its receipt, then submits once that is durable.
+    fn conversation_submit(
+        &mut self,
+        client: ClientId,
+        id: ConversationId,
+        generation: u64,
+        operation: u64,
+        text: String,
+        digest: String,
+    ) -> Result<()> {
         let receipt = Receipt {
             conversation: id,
             generation,
@@ -1028,6 +1090,138 @@ impl Daemon {
         })?;
         self.conversation_persist(token)?;
         Ok(())
+    }
+
+    fn conversation_enqueue(
+        &mut self,
+        client: ClientId,
+        id: ConversationId,
+        generation: u64,
+        operation: u64,
+        text: String,
+        digest: String,
+    ) -> Result<()> {
+        let queue = self.conversation_queues.entry(id).or_default();
+        if queue.len() >= MAX_QUEUED_MESSAGES
+            || queue.iter().map(|m| m.text.len()).sum::<usize>() + text.len() > MAX_QUEUED_BYTES
+        {
+            bail!("Too many messages are waiting; wait for the agent to catch up");
+        }
+        queue.push(QueuedSend {
+            generation,
+            operation,
+            text,
+            digest,
+        });
+        self.send(
+            client,
+            ServerMsg::Reply(Reply::ConversationQueued(QueuedReceipt {
+                conversation: id,
+                generation,
+                operation,
+            })),
+        );
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// Takes a waiting message back out of the queue.
+    pub(in crate::daemon) fn conversation_dequeue(
+        &mut self,
+        client: ClientId,
+        id: ConversationId,
+        generation: u64,
+        operation: u64,
+    ) -> Result<()> {
+        self.refuse_if_followed(id)?;
+        self.may(client, Grant::Write, None)?;
+        let found = self.conversation_queues.get_mut(&id).and_then(|queue| {
+            let position = queue
+                .iter()
+                .position(|m| m.operation == operation && m.generation == generation)?;
+            queue.remove(position);
+            Some(())
+        });
+        if found.is_none() {
+            bail!("That message is no longer waiting; it may already have been sent");
+        }
+        self.send(client, ServerMsg::Reply(Reply::Ok));
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// Delivers the oldest waiting message of every conversation whose turn has ended: once, in
+    /// order, and never into a turn that is running, an unanswered request or a send in flight.
+    /// Called on the daemon's tick, so the window need not be open.
+    pub(in crate::daemon) fn deliver_queued(&mut self) {
+        let waiting: Vec<ConversationId> = self
+            .conversation_queues
+            .iter()
+            .filter(|(_, queue)| !queue.is_empty())
+            .map(|(id, _)| *id)
+            .collect();
+        for id in waiting {
+            let current = self
+                .conversations
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| (c.generation, c.state));
+            let Some((generation, record_state)) = current else {
+                self.conversation_queues.remove(&id);
+                continue;
+            };
+            // A message belongs to the runtime it was sent to; after a restart of the
+            // conversation it is not delivered into the new one.
+            if let Some(queue) = self.conversation_queues.get_mut(&id) {
+                let before = queue.len();
+                queue.retain(|m| m.generation == generation);
+                if queue.len() != before {
+                    tracing::info!("dropped queued messages of a conversation that started over");
+                    self.dirty = true;
+                }
+            }
+            let Some(state) = self.conversation_states.get(&id) else {
+                continue;
+            };
+            let ready = record_state == RecoveryState::Running
+                && !state.blocked
+                && state.history_ready
+                && state.status != Status::Working
+                && state.approvals.is_empty()
+                && state.unsupported_requests.is_empty()
+                && state.cancelling.is_none()
+                && !self
+                    .conversation_requests
+                    .values()
+                    .any(|p| p.conversation() == id)
+                && !self.conversation_operations.iter().any(|o| {
+                    o.receipt.conversation == id
+                        && o.receipt.delivery == Delivery::SubmissionUncertain
+                });
+            if !ready {
+                continue;
+            }
+            let Some(queue) = self.conversation_queues.get_mut(&id) else {
+                continue;
+            };
+            if queue.is_empty() {
+                continue;
+            }
+            // Out of the queue first: a message is handed over once, never twice.
+            let next = queue.remove(0);
+            self.dirty = true;
+            if let Err(error) = self.conversation_submit(
+                NO_CLIENT,
+                id,
+                next.generation,
+                next.operation,
+                next.text,
+                next.digest,
+            ) {
+                let state = self.conversation_states.entry(id).or_default();
+                state.error = Some(format!("A queued message could not be sent: {error}"));
+            }
+        }
     }
     /// Name a conversation (empty: back to automatic), for every client at once.
     pub(in crate::daemon) fn conversation_rename(
@@ -2041,6 +2235,15 @@ impl Daemon {
                 approvals: state.map_or_else(Vec::new, |s| s.approvals.values().cloned().collect()),
                 answered_approvals: state.map_or_else(Vec::new, |s| {
                     s.answered_approvals.iter().cloned().collect()
+                }),
+                queued: self.conversation_queues.get(&id).map_or_else(Vec::new, |queue| {
+                    queue
+                        .iter()
+                        .map(|m| QueuedMessage {
+                            operation: m.operation,
+                            text: m.text.clone(),
+                        })
+                        .collect()
                 }),
                 cancelling: state.is_some_and(|s| s.cancelling.is_some())
                     || self.conversation_requests.values().any(

@@ -165,6 +165,7 @@ pub(crate) fn run(cmd: Cmd) -> Result<()> {
             serde_json::to_string(&serde_json::json!({"conversation":id,"generation":generation}))?
         }
         Reply::ConversationSent(receipt) => serde_json::to_string(&receipt)?,
+        Reply::ConversationQueued(queued) => serde_json::to_string(&queued)?,
         Reply::ConversationRead(history) => serde_json::to_string(&history)?,
         _ => bail!("Unexpected structured conversation reply"),
     };

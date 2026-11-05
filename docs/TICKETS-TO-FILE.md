@@ -190,8 +190,9 @@ The desktop window is terminal-only today; the chat body (G15-G18) does not exis
   **G23** (daemon part DONE, see ADR 0052; GUI link in the next commit) a Claude/Codex agent running in a terminal
   pane had no daemon conversation, so no pane had a chat: the daemon now follows the agent's own transcript as a
   read-only `Native` conversation whose `native_term` is the pane. Open: a composer for these panes (owner decision);
-  **G24** a daemon-held send queue delivered at step boundaries, and a pushed or cheaper-to-follow history (a cursor
-  goes stale on every change, so the client polls and re-reads).
+  **G24** (DONE, protocol 71) a daemon-held send queue, delivered when the turn ends, and a cheaper-to-follow history
+  (every page carries a `resume` cursor that returns only what changed). Not built: delivery in the middle of a
+  turn (steer), a queue that survives a daemon restart, and a pushed history (the client still polls, one small read).
 - **G17 Chat items (CV-4..7, 9, 10)** (feature / client). Blocked by G16.
 - **G18 Session panel (C.2)** (feature / client, daemon). Split: shell, Changes and comments, Files and
   Artifacts. Blocked by G17.

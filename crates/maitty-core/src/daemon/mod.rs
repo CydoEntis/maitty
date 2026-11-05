@@ -372,6 +372,9 @@ struct Daemon {
         BTreeMap<crate::conversation::ConversationId, conversation::history::History>,
     /// Agents running in desktop panes, followed read-only through their own transcripts.
     followed: Vec<conversation::follow::Followed>,
+    /// Messages sent while a turn ran, per conversation, delivered in order as turns end.
+    conversation_queues:
+        BTreeMap<crate::conversation::ConversationId, Vec<conversation::commands::QueuedSend>>,
     /// The highest id given to a followed pane, so an id is not reused while the daemon lives.
     followed_high_water: u64,
     /// Tests read transcripts from a scratch "home" instead of the real one.
@@ -762,6 +765,16 @@ impl Daemon {
                 anyhow::bail!("Only a human client can end a conversation")
             }
             Command::ConversationEnd { .. } => self.may(client, Grant::Write, None),
+            Command::ConversationDequeue { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can remove a queued message")
+            }
+            Command::ConversationDequeue { .. } => self.may(client, Grant::Write, None),
             Command::ConversationRename { .. } | Command::ConversationArchive { .. }
                 if structured
                     || self
@@ -1004,6 +1017,7 @@ impl Daemon {
             conversation_barriers: BTreeMap::new(),
             conversation_histories: BTreeMap::new(),
             followed: Vec::new(),
+            conversation_queues: BTreeMap::new(),
             followed_high_water: 0,
             #[cfg(test)]
             followed_home: None,
@@ -1063,6 +1077,7 @@ impl Daemon {
                     self.auto_continue();
                     self.poll_codex();
                     self.follow_tick();
+                    self.deliver_queued();
                     self.usage_store.save_if_due(term::unix_now());
                     self.poll_git();
                     self.sweep_secrets();
