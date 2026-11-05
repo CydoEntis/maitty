@@ -3,6 +3,70 @@
 Follow-ups from 2026-11-04 that need tickets in the `MAITTY` project. Plane is only reachable
 from the home network, so they are parked here. **Delete this file once they are filed.**
 
+## Game plan: the order to work through everything (proposed 2026-11-05)
+
+Read this first. It orders every open fix in this file. The order is a proposal: the owner can
+change it, and an agent does not.
+
+**How to work**
+- One ticket, one branch from `dev`, one pull request into `dev`. Read `AGENTS.md` and the docs the
+  ticket touches before planning it.
+- Do the tickets in the order below. Do not start the next one because it looks close.
+- Run the verification gate before every push and quote the results in the pull request.
+- A ticket marked **owner** needs a decision first: stop, ask, and record the answer in the doc
+  that owns the topic.
+- When a ticket is merged, mark it done here with the pull request number.
+
+**Step 0. Before any code (ten minutes)**
+- `git pull` on `dev`. Check that pull request #271 is closed (it is redundant) and that the
+  v0.65.0 release page still carries its warning.
+- Tickets 1 to 22 and G1 to G25 are older than v0.65.0. Most of them shipped in #268 and are not
+  marked. They are **not** part of this plan. Do not start one from here.
+
+**Phase 1. Make the desktop app usable.** Nothing else about the desktop app matters until this is done.
+
+| Order | Ticket | What | Needs |
+| --- | --- | --- | --- |
+| 1 | 35 | The terminal runs one action behind. Follow *The fix, in order* in [PERFORMANCE](PERFORMANCE.md), *Input latency* | **owner** for the ADR in its step 2 (a local socket for terminal output) |
+| 2 | 40 | Opening a pane types old terminal replies into it | nothing |
+| 3 | 36 | Agent hooks point into the AppImage's temporary folder | **owner**: where the daemon is kept so its path does not change |
+| 4 | 37 | Restart and restore cannot stop the desktop app's own daemon. The fix is on `fix/desktop-upgrade-path`: rebase, gate, pull request | nothing |
+| 5 | 38 | Settings › Performance lists no daemons | nothing |
+| 6 | release | v0.65.1 with the desktop app back. The pull request carries the **Key to echo** figure from a real Linux window; put the real `latest.json` back on the release | **owner** says go |
+
+**Phase 2. Stop a release costing a day.** Small, independent, no owner decision except the last.
+
+| Order | Ticket | What |
+| --- | --- | --- |
+| 7 | 24 | Pull requests stop waiting on macOS runners |
+| 8 | 25 | Linux package install gets a limit and a retry |
+| 9 | 23 | One command for a release |
+| 10 | 26, 28, 29 | The three intermittent Windows test failures, one pull request each. Name the cause from a Windows run; no retries |
+| 11 | 27 | A build cache for the release workflow. **owner**: a decision first, and it may not be worth doing |
+
+**Phase 3. The terminal app.**
+
+| Order | Ticket | What | Needs |
+| --- | --- | --- | --- |
+| 12 | 31 | A needs-you alert rings for a prompt that settles itself. Status has to be right, so this is first here | nothing |
+| 13 | 33 | A click on a project row moves the keys into the sidebar | nothing |
+| 14 | 30 | What Codex, Gemini and OpenCode send as their last message (spike) | nothing |
+| 15 | 32, 34 | Rename a machine; choose the alert sounds | **owner**: these are features, built when the owner asks |
+
+**Phase 4. The desktop app's design.** Only after phase 1: a layout cannot be judged in a window that lags.
+
+| Order | Ticket | What | Needs |
+| --- | --- | --- | --- |
+| 16 | 39 | Review every screen with the owner: keep, change or cut. Agree the smallest window. Put the reference designs in `.maitty/references/` | **owner**, throughout |
+| 17 | from 39 | The cuts and changes it produces, cuts first. The list so far is under *Design changes the owner asked for* | **owner** marks each screen first |
+| 18 | ADR | Chat on any session reverses ADR 0052 | **owner** |
+
+**When to stop and ask instead of pressing on**
+- The lag in ticket 35 does not show on the machine in use. It was measured on Hyprland, NVIDIA
+  and WebKitGTK; a machine without it changes the fix.
+- A fix would change what a person sees or does in the app beyond what its ticket says.
+- A check in the gate fails for a reason the ticket does not cover.
+
 ## 1. Glass on light themes (feature, `client`)
 
 On Paper and Day the Glass finish reads badly: the ambient glow and the cards' resting drop
@@ -667,3 +731,191 @@ does. A click on a project row still folds it and gives the sidebar the keys
 #275 added a switch for each sound and a volume. The two sounds are still generated and fixed; a
 config that set `notify.sound_needs` or `notify.sound_done` to a sound's name, from before they
 were removed, still loads and is ignored.
+
+
+## Added 2026-11-05 (afternoon): found testing the v0.65.0 desktop app on Linux
+
+**Start here.** Where things stand. The order to work in is the *Game plan* at the top of this file.
+
+**State when the owner left work (2:55 PM ET, 2026-11-05)**
+- v0.65.0 is released. The terminal app in it is fine. The desktop app is not usable (ticket 35).
+- The desktop updater no longer offers 0.65.0: `latest.json` on the v0.65.0 release is the v0.64.0
+  manifest, and the release page opens with a warning. The 0.65.0 desktop installers are still
+  attached to the release. To remove them:
+  `for f in $(gh release view v0.65.0 --json assets --jq '.assets[].name' | grep '^Maitty'); do gh release delete-asset v0.65.0 "$f" -y; done`
+- `~/.claude/settings.json` on the work machine holds dead Maitty hooks (ticket 36). A script that
+  repairs it was written but not run (`fix-maitty-hooks.py`, in that Claude session's scratchpad
+  on the work machine): it keeps one Maitty hook an event and points it at `~/.local/bin/maitty`.
+  Until then every Claude session there prints hook errors.
+- A v0.65.0 desktop window was left open on the work machine's second monitor. Closing it makes
+  the hook path it wrote dead as well.
+- Pull request #271 is open and redundant (see *Housekeeping* above).
+
+**The bugs, worst first**
+
+| Ticket | Bug | Proposed fix | State |
+| --- | --- | --- | --- |
+| 35 | The desktop terminal runs one action behind; output does not reach the window until it gets an event | Find which side drops the frame, then carry output on a local socket instead of a Tauri channel | measured, not fixed |
+| 40 | Opening a pane types old terminal replies into it as input | Drop what xterm sends while a view writes history or a replay | found, not fixed |
+| 36 | Agent hooks point into the AppImage's temporary folder and break every Claude session | Keep the daemon at a fixed path and name that; replace old entries | cause known, not fixed |
+| 37 | Restart and restore cannot stop a daemon the desktop app started | Accept the bundled daemon's name | fixed on a branch, not merged |
+| 38 | Settings › Performance lists no daemons | Likely the same name test as 37 | not looked at |
+| 39 | The desktop UI differs from the design, breaks on small windows, and has elements the owner does not want | Review every screen with the owner: keep, change or cut | not started |
+
+**What to do next, in order**
+1. Ticket 35. Open [PERFORMANCE](PERFORMANCE.md), *Input latency*, and follow *The fix, in order*.
+   The measurement that shows the bug needs no one at the keyboard and is written out there.
+2. Ticket 40, in the same pull request as 35 or right after: it is in the same file.
+3. Ticket 37: finish the branch.
+4. Ticket 36, then 38.
+5. Ticket 39 with the owner, only after 35.
+6. Release the desktop app again only with the **Key to echo** figure from a real Linux window in
+   the pull request (*Budgets* in PERFORMANCE).
+
+**If the lag does not show on another machine**, say so before changing anything: it was measured
+on Hyprland with an NVIDIA RTX 4060 and WebKitGTK, and a machine without it points at that setup.
+
+Found by the owner on the first run of the v0.65.0 AppImage (Arch Linux, Hyprland, NVIDIA RTX 4060,
+WebKitGTK). The tickets follow, in number order.
+
+## 35. The desktop terminal runs one action behind (bug, `client`)
+
+Typing in a pane shows late, and a menu in Claude Code shows the choice before the last key: Enter
+then acts on a row the screen did not show. Clicking away and back brings the pane up to date.
+
+**Evidence**
+- The overlay read 63 fps, 0% CPU and 121 B/s of output arriving while the pane still showed the old
+  screen. Settings › Performance at rest: 63 frames/s, 0 slow, WebGL 2 on both panes, 1 animation.
+- Starting with `WEBKIT_DISABLE_DMABUF_RENDERER=1` changed nothing, so it is not how frames reach
+  the driver.
+- `Cargo.lock` and `apps/gui/package.json` did not change between v0.64.0 and v0.65.0 apart from the
+  new workspace crates, so no library moved.
+- The path a pane's bytes take is new in v0.65.0: `apps/gui/src-tauri/src/hub.rs` and `streams.rs`
+  are new, `terminal_stream.rs` and `TerminalView.tsx` were rewritten around them (about 2,700 lines
+  across those and `api/daemon.ts`, `maitty-machines/src/connections.rs`).
+
+**Not yet known.** Whether the wait is on the way in (the key reaching the daemon) or on the way
+out (the output reaching xterm). Read so far without finding it: the host loop in
+`terminal_stream.rs` (`due` and `timeout_at` around `hub.next()`), `Streams::output` and
+`flush_into`, `Hub::next`, `Connections::recv_burst`, and `enqueue` / `flushOnFrame` / `apply` in
+`TerminalView.tsx`.
+
+**What**
+1. Reproduce outside the owner's window: a dev build on a nested socket (`MAITTY_SOCKET=<name>`).
+2. Time one key at each hop: xterm `onData`, the `terminal_input` command, the daemon's `Output`,
+   `Streams::flush`, the channel message in the window, `emulator.write`. The hop where the time
+   goes is the bug.
+3. Check first: a frame of 1,024 bytes or more goes to the window through Tauri's channel fetch,
+   smaller ones by direct eval, and the window delivers channel messages in order, so one slow
+   fetch holds every frame behind it.
+4. Fix it there, with a test that fails before the fix.
+
+**Acceptance**
+- A key's echo shows without another key or a refocus, in a shell and in Claude Code's menus.
+- A test covers the hop that was wrong.
+
+**Update, same afternoon.** Measured: the wait is between the host's `channel.send` and the
+window's `onmessage`, and it ends when the window gets an event. The figures, the order of the fix
+and how to run the measurement again are in [PERFORMANCE](PERFORMANCE.md), *Input latency*. Start
+there, at *The fix, in order*.
+
+## 40. Replayed output makes the pane answer old queries as typed input (bug, `client`)
+
+After the desktop window opened, a shell's input line held `11;rgb:0505/0d0d/1515` and `1;2c`
+several times: the replies to an OSC 11 colour query and a device-attributes query. A view writes
+a pane's history or replay into xterm, xterm answers every query in it, and the answer leaves
+through `onData` as input to whatever is in the pane now. In a menu those are keys nobody pressed.
+
+**What**
+- While a view writes history, a replay or a kept screen, drop what xterm sends through `onData`
+  and `onBinary`; pass input again from the first live chunk.
+- The OSC 10 and 11 answers `TerminalView.tsx` writes itself follow the same rule.
+
+**Acceptance**
+- A test: a replay holding `ESC [ c` and `ESC ] 11 ; ? ESC \` sends no input; the same bytes
+  arriving live are answered once.
+- Opening and closing the window twice leaves a shell's input line as it was.
+
+## 36. Agent hooks point into the AppImage's temporary mount (bug, `agents`, `client`)
+
+The desktop app's daemon installs the Claude Code hooks and status line with its own path, which
+for an AppImage is `/tmp/.mount_Maitty<random>/usr/bin/maitty-gui-daemon`. The folder changes on
+every launch and is gone when the app exits. `~/.claude/settings.json` is global, so every Claude
+session on the machine runs those hooks, in the terminal app too.
+
+**Seen**
+- Every hook event listed twice, one path dead: `SessionStart:startup hook error … Transport
+  endpoint is not connected`, the same on `UserPromptSubmit`, `Stop` and `SessionEnd`.
+- Old entries are never replaced: `runs_our_hook` (`crates/adapters/maitty-provider-claude/src/hooks.rs`)
+  takes the program's file stem and looks for `maitty`, and the bundled daemon's is
+  `maitty-gui-daemon`. The groups in the file carry no `_maitty` tag either.
+- Once the window closes, no hook path is left that works, and no session can report its state.
+
+**What (owner to confirm the first point)**
+- Keep a copy of the bundled daemon at a fixed path under the app's data folder
+  (`~/.local/share/maitty/`), refreshed when the version changes, and name that path in the hooks
+  and the status line.
+- Treat the bundled daemon's name as this app's when replacing hook groups, so a launch replaces
+  the old groups and does not add to them. Remove groups whose program is under `/tmp/.mount_`.
+- The same for every other agent `integrate` writes to.
+
+**Acceptance**
+- After two launches and a quit, `~/.claude/settings.json` has one Maitty group per event, its
+  program exists, and a Claude session started with the app closed reports no hook error.
+
+## 37. Restart and restore cannot stop a daemon the desktop app started (bug, `client`)
+
+On Linux `is_app_daemon` (`crates/maitty-desktop-client/src/lib.rs`) accepted only a program whose
+name ends in `maitty`; the bundled daemon is `maitty-gui-daemon`, so the button answered "couldn't
+identify the local Maitty (maitty) daemon process". Windows and macOS skip the check.
+
+**State.** Fixed in one commit on the branch `fix/desktop-upgrade-path` (not on `dev`):
+`is_daemon_command_line` accepts the terminal app's program or the bundled one, started with
+`daemon`, with a test. That crate's tests and clippy pass; the full gate has not been run. To
+finish: rebase the branch on `dev`, run the gate, open the pull request.
+
+## 38. Settings › Performance lists no daemons (bug, `client`)
+
+The Daemons row read `0 · none` with seven daemons running on the machine, the app's own among
+them. Likely the same name test as ticket 37. Confirm and fix with it.
+
+## 39. Desktop UI review against the design, screen by screen (chore, `client`, `docs`)
+
+The owner's verdict on the v0.65.0 desktop app: the design is wrong in places, it does not work on
+smaller screens, the remote machines section is not the design, and there are elements that should
+not be there. Fixing these one complaint at a time is how it drifted, so review it whole first.
+
+**What**
+1. Agree the source of truth with the owner before anything else. `.maitty/references/` is empty,
+   so the candidates are `docs/DESIGN.md`, the v17 and v18 handoffs under `docs/features/`, and for
+   the machines section the terminal app's Local and Remote sidebar (ADR 0050). Ask which; put the
+   reference images in `.maitty/references/` so every agent opens the same ones.
+2. Walk every screen and panel with the owner and mark each element **keep**, **change** or
+   **cut**. Start with the list under *Design changes the owner asked for* below.
+3. Decide the smallest window the app supports and what gives way below each width (sidebar to
+   rail, pane header buttons into a menu, two panes to one). Record the widths in `docs/UI.md`.
+4. Turn the marks into tickets, cuts first: removing what is not wanted is the cheapest way to
+   make the rest fit.
+
+**Acceptance**
+- One table in `docs/DESIGN.md` or a linked doc: screen, element, verdict, ticket.
+- The references are in `.maitty/references/`.
+- No UI ticket is started before the owner has marked its screen.
+
+**Notes**
+- Do this after ticket 35. A layout cannot be judged in a window that runs a step behind.
+
+## Design changes the owner asked for on 2026-11-05 (to ticket)
+
+- **Small screens.** The app does not work at smaller window sizes.
+
+- **Chat on any session.** Switching a pane to chat should give an empty chat that can be typed
+  into, for a `claude` typed into a shell too. ADR 0052 makes those read-only, and the pane showed
+  "The daemon has no conversation for this claude session". Needs the ADR changed.
+- **Remove Overview** from the sidebar.
+- **Remove "New agent on a branch"** from the sidebar header.
+- **The remote machines section** of the sidebar is not the original design: compare with the
+  reference designs before changing it.
+- **The block cursor hides the letter under it.** May be ticket 35 (the letter not drawn yet);
+  check again once 35 is fixed.
+- **Claude Code is slow to start** in a pane. May be 35 or 36; check again once both are fixed.
