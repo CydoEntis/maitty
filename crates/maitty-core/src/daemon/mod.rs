@@ -149,6 +149,15 @@ pub enum Ev {
         set_up: bool,
         result: Result<(PathBuf, String), String>,
     },
+    /// The worktree a chat session on a branch starts in is made (or failed): start it, ADR 0054.
+    ChatWorktreeCreated {
+        client: ClientId,
+        settings: crate::conversation::LaunchSettings,
+        branch: String,
+        /// The repo's setup (its on_create hook) has run.
+        set_up: bool,
+        result: Result<(PathBuf, String), String>,
+    },
     WorktreeRemoved {
         client: ClientId,
         path: PathBuf,
@@ -1817,6 +1826,13 @@ impl Daemon {
                 }
                 self.dirty = true;
             }
+            Ev::ChatWorktreeCreated {
+                client,
+                settings,
+                branch,
+                set_up,
+                result,
+            } => self.chat_worktree_created(client, settings, branch, set_up, result),
             Ev::AgentWorktreeMade { client, result } => {
                 self.pending_ops -= 1;
                 match result {

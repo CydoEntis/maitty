@@ -128,7 +128,7 @@ pub(crate) fn run(cmd: Cmd) -> Result<()> {
                     None => StartTarget::Create(settings),
                 }
             };
-            ClientMsg::Command(Command::ConversationStart { target })
+            ClientMsg::Command(Command::ConversationStart { target, branch: None })
         }
         Cmd::Send {
             conversation,

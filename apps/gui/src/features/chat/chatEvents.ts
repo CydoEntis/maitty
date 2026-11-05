@@ -110,6 +110,17 @@ export type ToolEvent = ItemFields & {
   readonly detail: string
 }
 
+export type UserInputQuestion = {
+  readonly id: string
+  readonly header: string
+  readonly question: string
+  /** The person may write an answer of their own beside the options. */
+  readonly isOther: boolean
+  /** The answer is a secret: it is typed hidden and never shown again. */
+  readonly isSecret: boolean
+  readonly options: readonly { readonly label: string; readonly description: string }[]
+}
+
 export type ApprovalDecision = 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel'
 export type ApprovalKind = 'Command' | 'FileChange' | 'Permission' | 'UserInput'
 
@@ -138,6 +149,8 @@ export type ApprovalEvent = {
   readonly command: string | null
   readonly reason: string | null
   readonly changes: readonly ApprovalChange[]
+  /** The questions of a user-input request; empty for every other kind. */
+  readonly questions: readonly UserInputQuestion[]
   readonly choices: readonly ApprovalDecision[]
   readonly resolution: ApprovalResolution
 }

@@ -725,6 +725,18 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   The daemon gives a Claude or Codex agent started in a pane a **read-only** conversation that follows the agent's
   own transcript ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)); its link has
   `readOnly: true`, and the conversation is not listed as a session of its own (the pane is the session).
+- **A chat session is the other kind of session** ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)):
+  a structured conversation the daemon started (`Conversation.execution` is `Structured`, `chat` is set without
+  `readOnly`, `native_term` is none; `model/chatSession.ts` `isChatSession`). It is a sidebar row, tab and pane of its
+  own, grouped by its repository (`ConversationSummary.root`, `branch`). It has **no terminal**: the pane is the chat
+  always, there is no Terminal | Chat switch, `chat-toggle` does nothing, the terminal slot holds a one-line note
+  (`NoTerminalNote`), and nothing that needs a pane number (find, restart, paste, broadcast, typed answers, the
+  worktree menu, Inspect) is offered for it. Its composer is on (send, queue with Remove, Stop, attachments); an
+  approval is answered by request id (y / a / n) and a user-input request by a form (`UserInputForm`), so neither
+  points to a terminal. It starts from **New agent on a branch** with **Session: Chat** (Terminal is the
+  default) or from a shell's empty chat card (**Start a Claude chat** / **Start a Codex chat**). Closing it stops
+  the agent (`closeChatSession`: end, then put away); if the stop fails it stays open. The read-only chat that
+  follows an agent typed in a shell keeps its pane, its switch and its disabled composer.
 - **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
   mounted and its pane keeps its size, and no daemon command is sent. The shortcut is `chat-toggle`
   (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.

@@ -366,8 +366,14 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   left), `transform` and `opacity` only, no blur; Reduce motion turns both off at the window root. A shell, an
   unsupported agent, a session on another machine and a Claude/Codex session the daemon holds no conversation for
   show the chat card's empty state, "Chat view is for agent sessions", with the reason, **Start claude here** /
-  **Start codex here** (shells only) and **Back to terminal**. Settings › General › Chat view picks the view each
-  of Claude and Codex opens in (Terminal by default); a session never switched by hand follows it.
+  **Start codex here** (shells only; they type the command into the shell), **Start a Claude chat** /
+  **Start a Codex chat** (shells only; they start a chat session in the shell's folder) and **Back to terminal**.
+  Settings › General › Chat view picks the view each of Claude and Codex opens in (Terminal by default); a
+  session never switched by hand follows it.
+- **Chat session ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).**
+  A row, tab and pane like any session, with the agent's mark and its branch line. Its pane head has no
+  Terminal | Chat switch; the pane is the chat, and the chat's status strip ends with "Chat session · no
+  terminal". The composer, approvals (y / a / n), user-input form, Stop and the daemon's queue are the chat's own.
 - **Chat body.** A 760px centred column. Your messages are right-aligned bubbles (`--raise`, hairline, radius
   16/16/5/16); an agent message has a 24px agent tile, a lead sentence in `--fg` and paragraphs in `--fg2`;
   turn dividers read "Cooked for 7s · done 10:11 AM" (only with the daemon's times); tool steps are mono chips;
@@ -460,8 +466,9 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   mounted in the themed window root): **Project** chips (this computer's git repositories; it opens
   on the focused session's), an optional **First prompt**, a mono **Branch** that is `agent/<slug>`
   (the first four meaningful words of the prompt) until you edit it, then the **Agent** choice (Claude
-  or Codex) and a **Folder** preview (`<repo>-worktrees/<branch>` beside the repo, the daemon's default
-  naming). A branch outside `[\w./-]+` or git's ref rules gets a red ring and its reason; a prompt
+  or Codex), the **Session** choice (**Terminal**, the default, or **Chat**, with a line saying a chat
+  has no terminal and asks before it runs a tool) and a **Folder** preview (`<repo>-worktrees/<branch>`
+  beside the repo, the daemon's default naming). A branch outside `[\w./-]+` or git's ref rules gets a red ring and its reason; a prompt
   that starts with a dash is refused. **Start** (Ctrl+Enter, ⌘↵ on macOS) opens the session in a
   new tab. Entries: the branch button beside **+** in the sidebar head and the rail, **New agent on a
   branch…** in ⌘K, and a repository's right-click menu. It is not offered for another machine's

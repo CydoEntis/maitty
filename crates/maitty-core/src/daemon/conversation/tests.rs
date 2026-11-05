@@ -1024,7 +1024,7 @@ async fn create(session: &mut TestSession) -> (crate::conversation::Conversation
     match exchange(
         session,
         100,
-        crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart { target }),
+        crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart { target, branch: None }),
         None,
     )
     .await
@@ -1437,6 +1437,7 @@ async fn structured_start_honors_authenticated_pane_never_helper_policy() {
             200,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target,
+                branch: None,
             }),
             Some(from),
         )
@@ -1464,6 +1465,7 @@ async fn structured_start_honors_authenticated_pane_ask_and_no_helper_answer() {
             201,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target: target.clone(),
+                branch: None,
             }),
             Some(from.clone()),
         )
@@ -1478,6 +1480,7 @@ async fn structured_start_honors_authenticated_pane_ask_and_no_helper_answer() {
             202,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target,
+                branch: None,
             }),
             Some(from),
         )
@@ -1506,6 +1509,7 @@ async fn structured_helpers_count_against_authenticated_pane_concurrency_limit()
             203,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target: target.clone(),
+                branch: None,
             }),
             Some(from.clone()),
         )
@@ -1520,6 +1524,7 @@ async fn structured_helpers_count_against_authenticated_pane_concurrency_limit()
             204,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target,
+                branch: None,
             }),
             Some(from),
         )
@@ -2579,6 +2584,7 @@ async fn structured_local_ipc_missing_exact_thread_never_creates_fallback() {
             110,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target,
+                branch: None,
             }),
             None,
         )
@@ -2890,6 +2896,7 @@ async fn structured_newer_full_commit_releases_two_matching_conversation_barrier
             190,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target,
+                branch: None,
             }),
             None,
         )
@@ -3416,3 +3423,5 @@ async fn history_projection_accepts_only_current_owned_events_and_drops_disconne
 }
 
 mod queue;
+mod branch_chat;
+mod claude_chat;

@@ -1,3 +1,4 @@
+mod branch_start;
 pub(super) mod checks;
 mod claude;
 pub(super) mod commands;

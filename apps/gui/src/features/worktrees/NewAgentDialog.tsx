@@ -6,9 +6,9 @@ import { errorMessage } from '@/lib/error-message'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { usePlatform } from '@/features/shortcuts/platform'
-import { agentBranchProblem, BRANCH_AGENTS, defaultProject, promptProblem, suggestedBranch, worktreeFolder, type AgentProject, type BranchAgent } from './newAgent'
+import { agentBranchProblem, BRANCH_AGENTS, DEFAULT_SESSION_MODE, SESSION_MODES, defaultProject, promptProblem, suggestedBranch, worktreeFolder, type AgentProject, type BranchAgent, type SessionMode } from './newAgent'
 
-export type NewAgentRequest = { project: AgentProject; agent: BranchAgent; prompt: string; branch: string }
+export type NewAgentRequest = { project: AgentProject; agent: BranchAgent; mode: SessionMode; prompt: string; branch: string }
 
 type Props = {
   projects: readonly AgentProject[]
@@ -33,6 +33,7 @@ export function NewAgentDialog({ projects, initialKey, home, container, onStart,
   const platform = usePlatform()
   const [projectKey, setProjectKey] = useState(() => defaultProject(projects, initialKey)?.key ?? '')
   const [agent, setAgent] = useState<BranchAgent>('claude')
+  const [mode, setMode] = useState<SessionMode>(DEFAULT_SESSION_MODE)
   const [prompt, setPrompt] = useState('')
   // Null while the branch is the one the prompt suggests; the user's own text once they edit it.
   const [typedBranch, setTypedBranch] = useState<string | null>(null)
@@ -49,7 +50,7 @@ export function NewAgentDialog({ projects, initialKey, home, container, onStart,
     if (!ready) return
     setBusy(true)
     setError(null)
-    onStart({ project, agent, prompt: prompt.trim(), branch })
+    onStart({ project, agent, mode, prompt: prompt.trim(), branch })
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not start the agent')) })
       .finally(() => { setBusy(false) })
   }
@@ -116,8 +117,17 @@ export function NewAgentDialog({ projects, initialKey, home, container, onStart,
               ))}
             </RadioGroup.Root>
           </div>
+          <div className="grid gap-1.5">
+            <span id="new-agent-mode" className={labelClass}>Session</span>
+            <RadioGroup.Root aria-labelledby="new-agent-mode" value={mode} onValueChange={(value) => { setMode(value as SessionMode) }} className="flex gap-1.5">
+              {SESSION_MODES.map((choice) => (
+                <RadioGroup.Item key={choice.id} value={choice.id} className={chipClass}>{choice.label}</RadioGroup.Item>
+              ))}
+            </RadioGroup.Root>
+            <span className="text-[12px] text-[var(--muted-text)]" aria-live="polite">{SESSION_MODES.find((choice) => choice.id === mode)?.note}</span>
+          </div>
           <p className="m-0 text-[12px] text-[var(--muted-text)]" aria-live="polite">
-            Folder <span className="font-mono text-[var(--fg2)]">{project && branch !== '' ? worktreeFolder(project.path, branch, home) : '—'}</span>
+            Folder<span className="font-mono text-[var(--fg2)]">{project && branch !== '' ? worktreeFolder(project.path, branch, home) : '—'}</span>
           </p>
           {error !== null && <p role="alert" className="m-0 text-[12.5px] text-[var(--danger)]">{error}</p>}
           <div className="flex items-center justify-end gap-2">

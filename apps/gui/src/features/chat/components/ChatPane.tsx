@@ -14,8 +14,12 @@ export type ChatPaneProps = {
   /** The computer is connected to the daemon; starting an agent types into the shell. */
   online: boolean
   onBackToTerminal: () => void
+  /** False for a chat session (ADR 0054): the agent has no terminal, so nothing here points to one. */
+  hasTerminal?: boolean
   /** Types the agent's command into the shell (a shell tab only). */
   onStartAgent: (agent: ChatAgent) => void
+  /** Starts a chat session (a structured conversation the daemon owns) in the shell's folder (a shell tab only). */
+  onStartChat?: (agent: ChatAgent) => void
 }
 
 /**
@@ -26,7 +30,7 @@ export function ChatPane(props: ChatPaneProps) {
   const { availability } = props
   return (
     <section className="mx-chat-layer mx-chat-in" aria-label="Chat">
-      {availability.kind === 'ready' ? <ChatSession key={availability.link.conversation} link={availability.link} agent={availability.agent} online={props.online} root={props.root ?? null} onOpenDiff={props.onOpenDiff ?? null} /> : <NoChat {...props} availability={availability} />}
+      {availability.kind === 'ready' ? <ChatSession key={availability.link.conversation} link={availability.link} agent={availability.agent} online={props.online} hasTerminal={props.hasTerminal ?? true} root={props.root ?? null} onOpenDiff={props.onOpenDiff ?? null} /> : <NoChat {...props} availability={availability} />}
     </section>
   )
 }
@@ -34,7 +38,7 @@ export function ChatPane(props: ChatPaneProps) {
 type NoChatProps = ChatPaneProps & { availability: Exclude<ChatAvailability, { kind: 'ready' }> }
 
 /** A session that has no chat: why, what runs here, and the way back (v18 B.3, shell tabs). */
-function NoChat({ availability, process, online, onBackToTerminal, onStartAgent }: NoChatProps) {
+function NoChat({ availability, process, online, onBackToTerminal, onStartAgent, onStartChat }: NoChatProps) {
   return (
     <div className="flex flex-1 items-center justify-center overflow-y-auto p-6">
       <div className="flex w-full max-w-[420px] flex-col items-center gap-3 text-center">
@@ -48,6 +52,11 @@ function NoChat({ availability, process, online, onBackToTerminal, onStartAgent 
           {availability.kind === 'shell' && CHAT_AGENTS.map((agent) => (
             <Button key={agent} type="button" variant="outline" size="sm" disabled={!online} onClick={() => { onStartAgent(agent) }}>
               Start {agent} here
+            </Button>
+          ))}
+          {availability.kind === 'shell' && onStartChat !== undefined && CHAT_AGENTS.map((agent) => (
+            <Button key={`chat-${agent}`} type="button" variant="outline" size="sm" disabled={!online} onClick={() => { onStartChat(agent) }}>
+              Start a {agent === 'claude' ? 'Claude' : 'Codex'} chat
             </Button>
           ))}
           <Button type="button" size="sm" onClick={onBackToTerminal}>Back to terminal</Button>

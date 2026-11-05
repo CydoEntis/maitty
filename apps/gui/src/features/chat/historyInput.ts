@@ -45,6 +45,15 @@ export const ApprovalRequestSchema = z.object({
   reason: z.string().nullable().optional(),
   changes: z.array(z.object({ path: z.string(), kind: z.string(), diff: z.string() })).default([]),
   choices: z.array(ApprovalChoiceSchema).default([]),
+  // What a user-input request asks (Codex); empty for every other kind.
+  questions: z.array(z.object({
+    id: z.string(),
+    header: z.string().default(''),
+    question: z.string(),
+    is_other: z.boolean().default(false),
+    is_secret: z.boolean().default(false),
+    options: z.array(z.object({ label: z.string(), description: z.string().default('') })).default([]),
+  })).default([]),
 })
 export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>
 

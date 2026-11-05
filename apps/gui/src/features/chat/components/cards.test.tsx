@@ -181,7 +181,7 @@ describe('helper agents card', () => {
 })
 
 describe('approval card', () => {
-  const actions = (busy = false) => ({ answer: vi.fn(), busy })
+  const actions = (busy = false) => ({ answer: vi.fn(), answerInput: vi.fn(), busy })
 
   it.each([
     ['y', 'Accept'],

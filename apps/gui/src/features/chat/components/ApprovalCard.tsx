@@ -3,10 +3,13 @@ import { TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { ApprovalDecision, ApprovalEvent } from '../chatEvents'
 import type { StepRef } from '../chatRows'
+import { UserInputForm } from './UserInputForm'
 
 /** What answering an approval needs from the chat; `null` while the answer cannot be sent from here. */
 export type ApprovalActions = {
   answer: (requestId: number | string, decision: ApprovalDecision) => void
+  /** Answers a user-input request's questions, one list of answers per question id. */
+  answerInput: (requestId: number | string, answers: Record<string, string[]>) => void
   /** An answer is on its way. */
   busy: boolean
 }
@@ -89,6 +92,8 @@ export function ApprovalCard({ event, actions, step, onGoToStep }: Props) {
           {event.resolution.answer === 'unknown' ? 'Answered.' : `You answered: ${ANSWER_WORD[event.resolution.answer]}`}
           {event.resolution.answeredAtMs != null && <span className="text-dim"> · {clock(event.resolution.answeredAtMs)}</span>}
         </p>
+      ) : event.approvalKind === 'UserInput' && actions !== null && event.questions.length > 0 ? (
+        <UserInputForm questions={event.questions} busy={actions.busy} onSubmit={(answers) => { actions.answerInput(event.requestId, answers) }} />
       ) : event.approvalKind === 'UserInput' || actions === null ? (
         <p className="mt-2 mb-0 text-[12.5px] text-fg2">Waiting for your answer. Answer it in the terminal.</p>
       ) : (

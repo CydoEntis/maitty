@@ -190,6 +190,11 @@ The desktop window is terminal-only today; the chat body (G15-G18) does not exis
   **G23** (daemon part DONE, see ADR 0052; GUI link in the next commit) a Claude/Codex agent running in a terminal
   pane had no daemon conversation, so no pane had a chat: the daemon now follows the agent's own transcript as a
   read-only `Native` conversation whose `native_term` is the pane. Open: a composer for these panes (owner decision);
+  **G25** (DONE for Claude and Codex, protocol 72, ADR 0054) chat sessions: the desktop starts a Claude or Codex
+  structured conversation (Session: Chat in New agent on a branch, or Start a Claude/Codex chat on a shell), listed as
+  a session of its own with the full composer, approvals, user-input form, Stop, queue and attachments. Not built:
+  resuming the agent after a daemon restart from the window; another machine's chat sessions; not tried against a live
+  Claude or Codex;
   **G24** (DONE, protocol 71) a daemon-held send queue, delivered when the turn ends, and a cheaper-to-follow history
   (every page carries a `resume` cursor that returns only what changed). Not built: delivery in the middle of a
   turn (steer), a queue that survives a daemon restart, and a pushed history (the client still polls, one small read).

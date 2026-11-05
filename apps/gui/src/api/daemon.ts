@@ -20,6 +20,8 @@ const ConversationSummarySchema = z.object({
   checks: z.array(z.unknown()),
   title: z.string().nullable().default(null),
   archived: z.boolean().default(false),
+  root: z.string().nullable().default(null),
+  branch: z.string().nullable().default(null),
 })
 const WorkspaceSummarySchema = z.object({
   cwd: z.string(),
@@ -729,7 +731,7 @@ export async function approveRequest(conversation: Pick<Conversation, 'id' | 'ge
   })
 }
 
-export async function answerUserInput(conversation: Conversation, requestId: number | string, answers: Record<string, string[]>): Promise<void> {
+export async function answerUserInput(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, answers: Record<string, string[]>): Promise<void> {
   await invokeParsed('answer_conversation_input', NullSchema, {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -795,6 +797,17 @@ export async function archiveConversationOnDaemon(conversation: Pick<Conversatio
   await invokeParsed('archive_conversation', NullSchema, { id: Number(conversation.id), archived })
 }
 
+/**
+ * Closing a chat session in the window ends it, as closing a terminal session ends its program: the
+ * agent is stopped first (its record stays, so the history can be read) and then the session is put
+ * away (ADR 0054). If the agent cannot be stopped nothing is put away, so a session the user believes
+ * ended is never left running out of sight.
+ */
+export async function closeChatSession(conversation: Conversation): Promise<void> {
+  await endConversation(conversation)
+  await archiveConversationOnDaemon(conversation, true)
+}
+
 export type SessionPermissions = 'read-only' | 'workspace-write' | 'full-access'
 
 export async function createConversation(
@@ -806,6 +819,19 @@ export async function createConversation(
     cwd: folder,
     provider,
     permissions,
+  })
+}
+
+/**
+ * Starts a chat session: a Claude or Codex conversation the daemon owns, in `folder` or, with a
+ * `branch`, in a new checkout of the project at `folder` (ADR 0054). It always asks before a tool
+ * use the provider does not allow by itself; there is no argument for a broader posture.
+ */
+export async function startChatSession(folder: string, agent: 'claude' | 'codex', branch: string | null = null): Promise<{ id: number; generation: number }> {
+  return invokeParsed('start_chat_session', CreatedConversationSchema, {
+    cwd: folder,
+    provider: agent === 'claude' ? 'Claude' : 'Codex',
+    branch,
   })
 }
 
@@ -884,6 +910,10 @@ function toConversation(summary: ConversationSummary, workspaces: WorkspaceSumma
           ? 'done'
           : 'idle'
   const project = cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Project'
+  // A chat session is a conversation the daemon started itself: it has no terminal, and the window writes to it
+  // (ADR 0054). A followed pane's conversation is read-only and belongs to that pane, so it is not one.
+  const chatSession = summary.execution === 'Structured' && summary.native_term === null
+  const root = summary.root
 
   return {
     id: String(summary.id),
@@ -893,8 +923,8 @@ function toConversation(summary: ConversationSummary, workspaces: WorkspaceSumma
     archived: summary.archived,
     named: summary.title !== null,
     project,
-    folder: cwd,
-    branch: workspace?.git?.branch ?? 'working tree',
+    folder: chatSession && root !== null ? root : cwd,
+    branch: summary.branch ?? workspace?.git?.branch ?? 'working tree',
     provider: summary.provider,
     status,
     updated: null,
@@ -904,5 +934,14 @@ function toConversation(summary: ConversationSummary, workspaces: WorkspaceSumma
     nativePane: summary.native_term,
     hasDiff: (workspace?.git?.dirty ?? 0) > 0,
     ...(workspace ? { isGitRepository: workspace.git !== null } : {}),
+    ...(chatSession
+      ? {
+          cwd,
+          repo: root === null ? null : (root.split(/[\\/]/).filter(Boolean).at(-1) ?? null),
+          agent: summary.provider.toLowerCase(),
+          process: summary.provider.toLowerCase(),
+          chat: { conversation: summary.id, generation: summary.generation },
+        }
+      : {}),
   }
 }

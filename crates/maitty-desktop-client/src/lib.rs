@@ -984,6 +984,7 @@ pub async fn resume_codex_conversation(
                 id: maitty_shared::conversation::ConversationId(id),
                 generation,
             },
+            branch: None,
         }),
         daemon_executable,
     )
@@ -1044,10 +1045,30 @@ impl Permissions {
     }
 }
 
+/// Start a chat session: a structured conversation the daemon owns (ADR 0054). It always asks before a
+/// tool use the provider does not allow by itself; the window cannot choose another posture. With a
+/// `branch` the daemon makes a worktree for it from the project at `cwd` and starts there.
+pub async fn start_chat_session(
+    cwd: PathBuf,
+    provider: Provider,
+    branch: Option<String>,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    create_conversation(
+        cwd,
+        provider,
+        Permissions::WorkspaceWrite,
+        branch,
+        daemon_executable,
+    )
+    .await
+}
+
 pub async fn create_conversation(
     cwd: PathBuf,
     provider: Provider,
     permissions: Permissions,
+    branch: Option<String>,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
     let cwd = cwd
@@ -1074,6 +1095,7 @@ pub async fn create_conversation(
     let reply = request(
         ClientMsg::Command(Command::ConversationStart {
             target: StartTarget::Create(settings),
+            branch,
         }),
         daemon_executable,
     )

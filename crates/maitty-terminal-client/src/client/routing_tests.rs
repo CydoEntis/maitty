@@ -221,6 +221,8 @@ fn a_chat_command_goes_to_the_machine_that_lists_the_chat() {
         checks: Vec::new(),
         title: None,
         archived: false,
+        root: None,
+        branch: None,
     };
     app.remotes.get_mut(&THERE).unwrap().snap.conversations = vec![chat];
     app.archive_conversation(id);
