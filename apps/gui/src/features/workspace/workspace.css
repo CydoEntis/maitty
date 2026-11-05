@@ -210,8 +210,6 @@
 .mx-daemon-text.is-offline { color: var(--danger); }
 .mx-settings-button { height: 26px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 0 8px; border-radius: 7px; }
 .mx-settings-button:hover { color: var(--fg); background: rgba(255, 255, 255, .06); }
-.mx-usage-button { width: 26px; height: 26px; border-radius: 7px; color: var(--muted); }
-.mx-usage-button:hover { color: var(--fg); background: rgba(255, 255, 255, .06); }
 
 /* Rail */
 .mx-rail { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; animation: v7fade .24s ease-out; }
@@ -739,7 +737,7 @@
 .mx-col-handle:hover, .mx-col-handle.is-dragging { background: linear-gradient(90deg, transparent 4px, var(--accent) 4px 6px, transparent 6px); }
 .mx-app.is-narrow .mx-col-handle { display: none; }
 
-/* Project colours in Settings */
+/* A Settings row whose control sits under its label */
 .mx-scard-row.is-stacked { flex-direction: column; align-items: stretch; gap: 8px; }
 
 /* Command palette */

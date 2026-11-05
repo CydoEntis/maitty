@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { MessageSquare } from 'lucide-react'
 import { CHAT_AGENTS, noChatReason, type ChatAgent, type ChatAvailability } from '@/features/workspace/model/chatView'
 import { Button } from '@/components/ui/button'
-import { FULL_ACCESS_LABEL, FULL_ACCESS_WARNING } from '@/features/worktrees/newAgent'
+import { FULL_ACCESS_LABEL, FULL_ACCESS_WARNING } from '../fullAccess'
 import { ChatSession } from './ChatSession'
 
 export type ChatPaneProps = {
   availability: ChatAvailability
   /** The session's folder, so file names read relative to it. */
   root?: string | null
-  /** Shows a file's diff in the session panel. */
+  /** Shows a file's diff in the Changes panel. */
   onOpenDiff?: ((file: string) => void) | null
   /** What runs in the pane: the agent, or the shell's own name. */
   process: string

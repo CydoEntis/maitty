@@ -34,9 +34,7 @@ const TABLE: readonly [ShortcutAction, string, string][] = [
   ['jump-needs', '⌘J', ''],
   ['inspect', '⌘I', 'Ctrl+Shift+I'],
   ['find', '⌘F', 'Ctrl+Shift+F'],
-  ['overview', '⌘0', 'Ctrl+0'],
   ['toggle-sidebar', '⌘B', 'Ctrl+Shift+B'],
-  ['session-panel', '⌘\\', 'Ctrl+\\'],
   ['chat-toggle', '⌘⇧E', 'Ctrl+Shift+E'],
   ['usage', '⌘⇧U', 'Ctrl+Shift+U'],
   ['performance', '⌘⇧P', 'Ctrl+Shift+P'],
@@ -142,7 +140,7 @@ describe('matching a key press', () => {
     const press = (key: string) => matchShortcut({ key, ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }, 'windows')
     expect(press('1')).toEqual({ action: 'go-to-tab', tab: 1 })
     expect(press('9')).toEqual({ action: 'go-to-tab', tab: 9 })
-    expect(press('0')).toEqual({ action: 'overview' })
+    expect(press('0')).toBeNull()
   })
 })
 
@@ -160,8 +158,8 @@ describe('the shortcut lists', () => {
   it('leaves out an action with no key on the platform, and one that is not built', () => {
     expect(hotkeyRows('linux').some((row) => row.action.startsWith('Jump to the next'))).toBe(false)
     expect(hotkeyRows('mac').some((row) => row.action.startsWith('Jump to the next'))).toBe(true)
-    expect(hotkeyRows('mac').some((row) => row.action === 'Overview')).toBe(true)
-    expect(hotkeyRows('mac').some((row) => row.action === 'Session panel')).toBe(true)
+    expect(hotkeyRows('mac').some((row) => row.action === 'Overview')).toBe(false)
+    expect(hotkeyRows('mac').some((row) => row.action === 'Session panel')).toBe(false)
     expect(hotkeyRows('mac').some((row) => row.action === 'Undo close')).toBe(false)
   })
 
@@ -180,12 +178,10 @@ describe('the shortcut lists', () => {
 
 describe('the Esc ladder', () => {
   it('closes the topmost layer first, in the order of v18 C.9', () => {
-    expect(ESC_LADDER.indexOf('comment-composer')).toBeLessThan(ESC_LADDER.indexOf('new-agent'))
-    expect(ESC_LADDER.indexOf('new-agent')).toBeLessThan(ESC_LADDER.indexOf('overview'))
-    expect(ESC_LADDER.indexOf('overview')).toBeLessThan(ESC_LADDER.indexOf('drawer'))
+    expect(ESC_LADDER.indexOf('palette')).toBeLessThan(ESC_LADDER.indexOf('drawer'))
     expect(topmostOpen({ settings: true, drawer: true, 'focus-mode': true })).toBe('settings')
     expect(topmostOpen({ palette: true, settings: true })).toBe('palette')
-    expect(topmostOpen({ overview: true, drawer: true })).toBe('overview')
+    expect(topmostOpen({ palette: true, drawer: true })).toBe('palette')
   })
 
   it('leaves Esc to the terminal when nothing is open', () => {

@@ -42,8 +42,6 @@ export type ShortcutAction =
   | 'shortcuts'
   | 'text-larger'
   | 'text-smaller'
-  | 'overview'
-  | 'session-panel'
   | 'usage'
   | 'performance'
   | 'chat-toggle'
@@ -108,9 +106,7 @@ export const BINDINGS: readonly Binding[] = [
   { action: 'jump-needs', label: 'Jump to the next session that needs you', group: 'Find & jump', mac: [cmd('J')], other: [], available: true },
   { action: 'inspect', label: 'Inspect the repository', group: 'Find & jump', mac: [cmd('I')], other: [ctrlShift('I')], available: true },
   { action: 'find', label: 'Find in the pane or every session', group: 'Find & jump', mac: [cmd('F')], other: [ctrlShift('F')], available: true },
-  { action: 'overview', label: 'Overview', group: 'Find & jump', mac: [cmd('0')], other: [{ mods: ['ctrl'], key: '0' }], available: true },
   { action: 'toggle-sidebar', label: 'Collapse sidebar', group: 'Window', mac: [cmd('B')], other: [ctrlShift('B')], available: true },
-  { action: 'session-panel', label: 'Session panel', group: 'Window', mac: [cmd('\\')], other: [{ mods: ['ctrl'], key: '\\' }], available: true },
   { action: 'chat-toggle', label: 'Terminal or chat', group: 'Window', mac: [cmd('E', 'shift')], other: [ctrlShift('E')], available: true },
   { action: 'usage', label: 'Usage and cost', group: 'Window', mac: [cmd('U', 'shift')], other: [ctrlShift('U')], available: true },
   { action: 'performance', label: 'Performance', group: 'Window', mac: [cmd('P', 'shift')], other: [ctrlShift('P')], available: true },

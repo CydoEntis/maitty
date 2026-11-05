@@ -116,11 +116,11 @@ describe('edit block', () => {
     expect(screen.getByText(/diff is unavailable/)).toBeInTheDocument()
   })
 
-  it('opens the file in the session panel from its header', async () => {
+  it('opens the file in the Changes panel from its header', async () => {
     const onOpen = vi.fn()
     render(<EditCard event={editEvent('e', { file: '/repo/src/a.ts' })} root="/repo" onOpen={onOpen} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open the diff of src/a.ts in the session panel' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Open the diff of src/a.ts in the Changes panel' }))
     expect(onOpen).toHaveBeenCalledWith('/repo/src/a.ts')
   })
 })

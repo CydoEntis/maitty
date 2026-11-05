@@ -93,7 +93,7 @@ check for the view). Acceptance criteria are the bullets.
    This session (a) / No (n)**, answered through the daemon's approval id. After an
    answer the card reads "You answered: …" and the buttons are gone in every view.
    - Keys y / a / n work while the card is focused.
-8. **CV-8 Checklist and session panel (§C.2).** **Done** (`features/panel/`, sidebar progress row for sessions this window has read: `Ctrl/Cmd+\` toggle, docked 320px or overlay under 1100px, checklist card, Agents card, empty states). The docked panel (right by
+8. **CV-8 Checklist and session panel (§C.2).** **Removed by the revised v18 (D.6, ticket 48); the text below is history.** Was done (`features/panel/`, sidebar progress row for sessions this window has read: `Ctrl/Cmd+\` toggle, docked 320px or overlay under 1100px, checklist card, Agents card, empty states). The docked panel (right by
    default, overlay under 1100px, `Ctrl/Cmd+\`), its header, the "Nothing to
    track yet" state, and the checklist card. Claude's `TodoWrite` and Codex's plan items feed a
    side panel: items with done / current / pending marks, "2 of 5" with a progress

@@ -26,7 +26,7 @@ const DEFAULTS: SettingsPreferences = {
   scrollback: 10000, scrollSpeed: 1,
   effectWorking: true,
   effectNeedsYou: true,
-  effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, newSessionView: 'chat', chatFullAccessDefault: false, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
+  effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, chatFullAccessDefault: false, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
@@ -121,11 +121,11 @@ describe('settings preferences', () => {
   })
 
   it('starts new agent sessions as chats with full access off, and ignores nonsense', () => {
-    expect(readSettingsPreferences()).toMatchObject({ newSessionView: 'chat', chatFullAccessDefault: false })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ newSessionView: 'terminal', chatFullAccessDefault: true }))
-    expect(readSettingsPreferences()).toMatchObject({ newSessionView: 'terminal', chatFullAccessDefault: true })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ newSessionView: 'sideways', chatFullAccessDefault: 'yes' }))
-    expect(readSettingsPreferences()).toMatchObject({ newSessionView: 'chat', chatFullAccessDefault: false })
+    expect(readSettingsPreferences()).toMatchObject({ chatFullAccessDefault: false })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatFullAccessDefault: true }))
+    expect(readSettingsPreferences()).toMatchObject({ chatFullAccessDefault: true })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatFullAccessDefault: 'yes' }))
+    expect(readSettingsPreferences()).toMatchObject({ chatFullAccessDefault: false })
   })
 
   it('opens agent sessions in the terminal unless a view was chosen, and ignores nonsense', () => {

@@ -586,8 +586,7 @@ export async function loadConversationFile(
 
 /**
  * The same three project questions for a session's chat link (the daemon conversation a pane is
- * linked to), which is what the session panel holds; `loadConversation*` above take a whole
- * `Conversation`, which the panel does not have.
+ * linked to); `loadConversation*` above take a whole `Conversation`, which a chat link is not.
  */
 export type ConversationTarget = { conversation: number; generation: number }
 

@@ -401,29 +401,11 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   kind icon or a 32 px thumbnail, name, size, a remove cross). A sent message's files are the same chips under its
   bubble, right-aligned, with "no longer available" in `--dim` when the file was cleared.
 - **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
-  open (`model/escLadder.ts`): comment composer, New agent and What's new, Overview, palette,
-  inbox, Settings, the session panel (when it is an overlay), the sidebar drawer, Usage and cost,
+  open (`model/escLadder.ts`): What's new, palette, inbox, Settings, the sidebar drawer,
   Focus mode. A new dialog adds its id there.
-- **Session panel (Ctrl/Cmd+\\).** A 320px floating card (`mx-card`, radius `--r14`) beside the panes on the side
-  opposite the sidebar: a 46px header (agent tile, session name, process in mono, Hide), the checklist card
-  (3px accent progress bar, done items struck through in `--dim`, the current item bold with the spinner and its
-  running time in the accent, pending items hollow), the Agents card and the Changes / Files / Artifacts segments
-  (the Changes diff widens the panel to 520px). A session row shows the checklist's "2 of 5 · current item" and a 2px
-  progress bar under the name once the window has read that session. Under 1100px it is an overlay from the
-  window edge over the 40% drawer scrim. A pane head carries a panel button beside the view switch.
-- **Overview (⌘0 / Ctrl+0).** The sidebar's pinned **Overview** row (a 40 by 36 icon in the
-  rail) carries an amber badge with the number of sessions that need you, hidden at 0. The screen
-  sits over the panes (they stay mounted, so no terminal is resized or replayed) under the tab bar;
-  a tab or a card leaves it, Esc closes it. One card per session across every machine, in the
-  sections Needs you (always shown, with a dashed "Nothing needs you" box when empty), Working,
-  Done (exited sessions included, keeping their red shape), Idle and Unknown; empty sections are
-  hidden. Cards keep creation order inside a section (`features/overview/model/overview.ts`), so a
-  status change moves a card between sections and never reorders the others. A card shows the
-  status shape (still, never animated) and name, the project, the branch, the machine chip when
-  remote, one context line (what a stopped agent is asking, else the process and folder) and the
-  state with the time in it. **Jump to next** (⌘J, macOS only) moves a ring and a one-shot pulse
-  to the next Needs-you card on the Overview; elsewhere it opens that session with the toast
-  "Needs you · name · 1 of 2"; with nothing needing you it only shows "Nothing needs you".
+- **Jump to next (⌘J, macOS only).** Opens the next session that needs you, in creation order across every machine
+  (`features/needs-you/model/needsYou.ts`), with the toast "Needs you · name · 1 of 2"; with nothing needing you it
+  only shows "Nothing needs you". Windows and Linux have no key for it yet.
 - **Command palette (⌘K).** A 600px card over a dimmed scrim: type a few letters to jump to a
   session, project, action or theme (themes only once something is typed). A run of the typed text
   ranks above letters that merely appear in order; ↑ ↓ move, ↵ runs, Esc closes. Sessions that need
@@ -472,20 +454,6 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   project's right-click menu has a **Worktrees** submenu that opens a shell in any of the repo's
   worktrees, and a **New worktree…** row. Worktrees group under their parent repo. A folder's row shows
   only its name: a branch belongs to a session, and a worktree's branch is not the folder's.
-- **New agent on a branch (v18 C.4).** A 500px shadcn dialog (`features/worktrees/NewAgentDialog.tsx`,
-  mounted in the themed window root): **Project** chips (this computer's git repositories; it opens
-  on the focused session's), an optional **First prompt**, a mono **Branch** that is `agent/<slug>`
-  (the first four meaningful words of the prompt) until you edit it, then the **Agent** choice (Claude
-  or Codex), the **Session** choice (**Chat**, the default from Settings, or **Terminal**, with a line saying a chat
-  has no terminal and asks before it runs a tool unless full access is on; for a chat, a **Full access
-  (skip permission prompts)** checkbox with a red warning while it is ticked) and a **Folder** preview (`<repo>-worktrees/<branch>`
-  beside the repo, the daemon's default naming). A branch outside `[\w./-]+` or git's ref rules gets a red ring and its reason; a prompt
-  that starts with a dash is refused. **Start** (Ctrl+Enter, ⌘↵ on macOS) opens the session in a
-  new tab. Entries: the branch button beside **+** in the sidebar head and the rail, **New agent on a
-  branch…** in ⌘K, and a repository's right-click menu. It is not offered for another machine's
-  project (v1). A session row that says something other than its branch gets a branch line (glyph and
-  name, mono, `--ansi-mag`) under it; the checklist, progress bar and sub-step lines of the same
-  row wait for the chat view. Esc closes it first (`new-agent` in the ladder).
 - **Close ends the session.** A pane's ×, a tab's × (and its menu's **Close tab** and **Close other
   tabs**), a session's **Close session**, **Close project tabs** and Ctrl+W all end the sessions they
   close, and a notice says so. When a program such as an agent is running, the first click only arms the
@@ -528,9 +496,9 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   a banner above the panes says which agent and shows the command that brings it back
   (`codex resume --last`). **Resume** types it into that session; **Dismiss** hides the banner. Nothing
   resumes on its own.
-- **Usage and cost (⌘⇧U / Ctrl+Shift+U).** A page that covers the pane area (the panes stay mounted
-  beneath it); opened by the shortcut, the bar-chart icon beside Settings in the sidebar footer
-  (expanded and rail, tooltip with the keycaps) or the palette, closed by Esc, its × or the same key.
+- **Usage and cost (⌘⇧U / Ctrl+Shift+U).** Settings › Workspace › **Usage & cost** (key U), above Notifications,
+  drawn as one Settings card; the shortcut and the palette open Settings on that page, and Esc closes Settings.
+  There is no usage button in the sidebar footer and no full-screen view.
   Header: a **Day / Week / Month** switch and the window it means, named honestly because the daemon
   counts rolling UTC days that end today (Today (UTC), Last 7 days, Last 30 days), then tokens (in
   and out), cost, turns and time working. A figure no provider reported is a dash; with no reported

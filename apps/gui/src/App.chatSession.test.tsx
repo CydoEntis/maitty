@@ -47,8 +47,6 @@ vi.mock('@/api/daemon', () => ({
   },
 }))
 
-const branchAgent = vi.hoisted(() => ({ newBranchAgent: vi.fn(() => Promise.resolve()) }))
-vi.mock('@/features/worktrees/api', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/features/worktrees/api')>()), ...branchAgent }))
 
 vi.mock('@/api/machines', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/machines')>()),
@@ -206,43 +204,6 @@ describe('a chat session in the desktop window', () => {
     const chats = await screen.findAllByRole('region', { name: 'Chat' })
     expect(chats.some((chat) => within(chat).queryByText(/Chat session · no terminal/) !== null)).toBe(true)
   })
-
-  it('the New agent dialog starts a chat session on a branch when Chat is chosen, and a terminal one when Terminal is chosen', async () => {
-    const user = userEvent.setup()
-    serveHistory()
-    daemon.loadConversations.mockResolvedValue([term(2)])
-    daemon.startChatSession.mockImplementation(() => {
-      daemon.loadConversations.mockResolvedValue([term(2), chatSession(44)])
-      return Promise.resolve({ id: 44, generation: 1 })
-    })
-    renderDesktopApp()
-    await screen.findByRole('region', { name: /^Terminal 1/ })
-
-    const openDialog = async () => {
-      await user.click(await screen.findByRole('button', { name: 'New agent on a branch' }))
-      return screen.findByRole('dialog', { name: /New agent on a branch/ })
-    }
-
-    // Chat is the default; Terminal is one click away.
-    let dialog = await openDialog()
-    expect(within(dialog).getByRole('radio', { name: 'Chat' })).toBeChecked()
-    await user.click(within(dialog).getByRole('radio', { name: 'Terminal' }))
-    await user.type(within(dialog).getByRole('textbox', { name: 'Branch' }), 'agent/t')
-    await user.click(within(dialog).getByRole('button', { name: /^Start/ }))
-    await waitFor(() => { expect(branchAgent.newBranchAgent).toHaveBeenCalledWith({ project: REPO, branch: 'agent/t', agent: 'claude', prompt: '' }) })
-    expect(daemon.startChatSession).not.toHaveBeenCalled()
-
-    // Chat is the default again.
-    dialog = await openDialog()
-    expect(within(dialog).getByRole('radio', { name: 'Chat' })).toBeChecked()
-    await user.type(within(dialog).getByRole('textbox', { name: 'First prompt' }), 'Fix the login bug')
-    await user.click(within(dialog).getByRole('button', { name: /^Start/ }))
-
-    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(REPO, 'claude', 'agent/fix-login-bug', false) })
-    // The first prompt is an ordinary send once the start has answered.
-    await waitFor(() => { expect(daemon.submitMessage).toHaveBeenCalledWith({ id: '44', generation: 1 }, 1, 'Fix the login bug') })
-    expect(branchAgent.newBranchAgent).toHaveBeenCalledTimes(1)
-  })
 })
 
 describe('full access in a chat session', () => {
@@ -254,22 +215,28 @@ describe('full access in a chat session', () => {
   it('starts the chat with full access when the switch is on, and shows it on the chat afterwards', async () => {
     const user = userEvent.setup()
     serveHistory()
-    daemon.loadConversations.mockResolvedValue([term(2)])
+    daemon.loadConversations.mockResolvedValue([term(3, { repo: null, folder: HOME, cwd: HOME })])
     daemon.startChatSession.mockImplementation(() => {
-      daemon.loadConversations.mockResolvedValue([term(2), chatSession(44)])
+      daemon.loadConversations.mockResolvedValue([term(3, { repo: null, folder: HOME, cwd: HOME }), chatSession(44, { cwd: HOME, folder: HOME, repo: null })])
       return Promise.resolve({ id: 44, generation: 1 })
     })
     renderDesktopApp()
-    await screen.findByRole('region', { name: /^Terminal 1/ })
+    const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
+    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
 
-    await user.click(await screen.findByRole('button', { name: 'New agent on a branch' }))
-    const dialog = await screen.findByRole('dialog', { name: /New agent on a branch/ })
-    await user.click(within(dialog).getByRole('checkbox', { name: 'Full access (skip permission prompts)' }))
-    await user.type(within(dialog).getByRole('textbox', { name: 'Branch' }), 'agent/yolo')
-    await user.click(within(dialog).getByRole('button', { name: /^Start/ }))
+    await user.click(within(pane).getByRole('checkbox', { name: 'Full access (skip permission prompts)' }))
+    await user.click(within(pane).getByRole('button', { name: 'Start a Claude chat' }))
 
-    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(REPO, 'claude', 'agent/yolo', true) })
+    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(HOME, 'claude', null, true) })
     expect(await screen.findByText('Full access')).toBeInTheDocument()
+  })
+
+  it('has no New agent on a branch button: the sidebar offers New session and chats start from a shell', async () => {
+    serveHistory()
+    daemon.loadConversations.mockResolvedValue([term(2)])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: /^Terminal 1/ })
+    expect(screen.queryByRole('button', { name: 'New agent on a branch' })).toBeNull()
   })
 })
 

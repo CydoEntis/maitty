@@ -1,5 +1,5 @@
 /**
- * A line comment from the session panel's diff, as the message the agent receives and the chat shows
+ * A line comment, as the message the agent receives and the chat shows
  * (v18 C.1 "comment bubble", C.2 line comments). The daemon's send takes text only, so the comment
  * travels as one message that holds all three fields of `{file, line, text}`, in a shape the chat can
  * read back to draw a bubble. Only a message this app composed can match: nothing is parsed from

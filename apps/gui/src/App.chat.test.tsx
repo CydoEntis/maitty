@@ -210,6 +210,22 @@ describe('the Terminal | Chat view of a pane', () => {
     expect(daemon.resizeTerminal).not.toHaveBeenCalled()
   })
 
+  it('shows a line comment as a bubble in the chat', async () => {
+    const user = userEvent.setup()
+    const history = new FakeDaemonHistory()
+    history.upsert(history.message('t1', 'c', 'User', 'Comment on src/app.ts:2\n> const count = 1\n\nWhy not a let?'))
+    daemon.readConversationPage.mockImplementation((_id: number, cursor: never) => history.read(cursor))
+    daemon.loadConversations.mockResolvedValue([claude(2)])
+    renderDesktopApp()
+    const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
+
+    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+
+    const bubble = await within(pane).findByRole('group', { name: 'Comment on src/app.ts:2' })
+    expect(bubble).toHaveTextContent('const count = 1')
+    expect(bubble).toHaveTextContent('Why not a let?')
+  })
+
   it('sends a message from the chat through the conversation, and holds the composer while an approval waits', async () => {
     const user = userEvent.setup()
     const history = new FakeDaemonHistory()

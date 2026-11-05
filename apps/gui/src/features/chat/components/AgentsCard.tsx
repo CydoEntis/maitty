@@ -46,7 +46,7 @@ export function AgentRow({ agent }: { agent: SubagentEvent }) {
   )
 }
 
-/** "3 agents, 2 working", then a row per helper (v18 C.1). Shown in the chat and in the session panel. */
+/** "3 agents, 2 working", then a row per helper (v18 C.1). Shown in the chat. */
 export function AgentsCard({ agents, panel = false }: { agents: readonly SubagentEvent[]; panel?: boolean }) {
   return (
     <div role="group" aria-label="Helper agents" className="rounded-[10px] border border-line2 bg-raise px-3 py-2">

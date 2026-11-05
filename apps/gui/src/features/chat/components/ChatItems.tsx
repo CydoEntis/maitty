@@ -33,7 +33,7 @@ export type ChatItemContext = {
   approval: ApprovalActions | null
   /** The session's folder, so file names are shown relative to it. */
   root: string | null
-  /** Opens a file's diff in the session panel; `null` when the window has no panel. */
+  /** Opens a file's diff in the Changes panel; `null` where there is none. */
   openDiff: ((file: string) => void) | null
   goToStep: ((key: string) => void) | null
 }

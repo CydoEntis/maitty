@@ -16,10 +16,12 @@ import { BUNDLED_FONT_NAME, fontStackFor, installedMonospaceFamilies, isFontFami
 import type { Added, Grant, HostChoice } from '@/api/machines'
 import { DisconnectedSince } from '@/features/workspace/components/times'
 import type { MachineHead } from '@/features/workspace/model/machines'
+import { UsagePage } from '@/features/usage/UsagePage'
+import type { OpenSession } from '@/features/usage/UsageTable'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
 import { SCROLL_SPEED_CHOICES, SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type ScrollSpeed, type SettingsPreferences, type StyleChoice } from '../preferences'
 
-export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'notifications' | 'machines' | 'keys' | 'daemon' | 'performance'
+export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'usage' | 'notifications' | 'machines' | 'keys' | 'daemon' | 'performance'
 
 /** The other machines, for the Machines page: what the window knows of each, and what it can ask of the host. */
 export type MachinesInfo = {
@@ -52,6 +54,8 @@ export type DaemonInfo = {
   socket?: string
 }
 
+export type UsageInfo = { budget: number | null; onBudget: (budget: number | null) => void; sessionForTerm: (term: number) => OpenSession | null; onOpenSession: (id: string) => void }
+
 type DesktopSettingsProps = {
   section: DesktopSettingsSection
   /** The app's update check, when there is one to ask. */
@@ -78,6 +82,8 @@ type DesktopSettingsProps = {
   validateFolder: (path: string) => Promise<boolean>
   /** Opens the system's folder picker at the folder given; the path picked, or null when it is cancelled. */
   onChooseFolder?: (current: string) => Promise<string | null>
+  /** What the Usage & cost page needs from the window. */
+  usage: UsageInfo
   onClose: () => void
 }
 
@@ -95,6 +101,7 @@ const NAV: Array<{ label: string; items: NavItem[] }> = [
   {
     label: 'WORKSPACE',
     items: [
+      { id: 'usage', label: 'Usage & cost', key: 'U', tint: 'var(--ansi-mag)', path: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
       { id: 'notifications', label: 'Notifications', key: 'N', tint: 'var(--warn)', path: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0' },
       { id: 'machines', label: 'Machines', key: 'M', tint: 'var(--ansi-green)', path: 'M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01M17 7h.01M17 17h.01' },
       { id: 'keys', label: 'Hotkeys', key: '?', tint: 'var(--ansi-blue)', path: 'M2 6h20v12H2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8' },
@@ -113,6 +120,7 @@ const PAGE: Record<DesktopSettingsSection, [string, string]> = {
   general: ['General', 'Where sessions start and what happens to them.'],
   terminal: ['Text & cursor', 'How every pane renders. Changes apply instantly.'],
   appearance: ['Appearance', 'Colours, spinner and motion for the whole window.'],
+  usage: ['Usage & cost', 'What the agents reported using, by session. Never estimated.'],
   notifications: ['Notifications', 'When the system should tell you a session needs you.'],
   machines: ['Machines', 'Other computers whose sessions show up beside this one.'],
   keys: ['Hotkeys', 'Everything the window handles before the shell does.'],
@@ -120,7 +128,7 @@ const PAGE: Record<DesktopSettingsSection, [string, string]> = {
   performance: ['Performance', 'What the window is spending its time on, measured live.'],
 }
 
-const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', n: 'notifications', m: 'machines', '?': 'keys', d: 'daemon', p: 'performance' }
+const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', u: 'usage', n: 'notifications', m: 'machines', '?': 'keys', d: 'daemon', p: 'performance' }
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -204,6 +212,7 @@ export function DesktopSettings(props: DesktopSettingsProps) {
               {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} onChooseFolder={props.onChooseFolder} onShowWelcome={props.onShowWelcome} updates={props.updates} />}
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
               {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} />}
+              {section === 'usage' && <UsageSection usage={props.usage} />}
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} onTestNotice={props.onTestNotice} />}
               {section === 'machines' && <MachinesSection machines={props.machines} />}
               {section === 'keys' && <HotkeysSection platform={props.platform} />}
@@ -348,9 +357,6 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
         </Row>
       </Card>
       <Card title="Chat view" color="var(--accent)" iconPath={<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />}>
-        <Row label="New agent sessions start as" detail="The default in New agent on a branch. A terminal session is always one choice away.">
-          <Segmented label="New agent sessions start as" value={preferences.newSessionView} options={CHAT_VIEW_OPTIONS_CHAT_FIRST} onChange={(value) => { update('newSessionView', value) }} />
-        </Row>
         <Row label="Full access in new chats" detail="Start new chats with the agent's skip-permissions mode: no sandbox and no approval prompts, so the agent can change files and run commands without asking. Each chat can still turn it off or on when it starts.">
           <Switch label="Full access in new chats" checked={preferences.chatFullAccessDefault} onChange={(value) => { update('chatFullAccessDefault', value) }} />
         </Row>
@@ -370,7 +376,6 @@ const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string;
   { id: 'glass', name: 'Glass', blurb: 'Floating frosted cards, colour icons, status sweeps', foot: 'Floating glass cards and glow.' },
 ]
 const CHAT_VIEW_OPTIONS = [['terminal', 'Terminal'], ['chat', 'Chat']] as const
-const CHAT_VIEW_OPTIONS_CHAT_FIRST = [['chat', 'Chat'], ['terminal', 'Terminal']] as const
 const ICON_COLOR_OPTIONS = [['color', 'Color'], ['grayscale', 'Grayscale']] as const
 const TRAY_OPTIONS = [['names', 'With names'], ['icons', 'Icons'], ['stacked', 'Stacked']] as const
 const UPDATE_CHIP: Record<UpdaterState['status'], string> = { idle: 'Not checked', checking: 'Checking…', current: 'Up to date', available: 'Update available', downloading: 'Downloading', ready: 'Ready to restart', failed: 'Failed' }
@@ -663,6 +668,14 @@ function HotkeysSection({ platform }: { platform: Platform }) {
 }
 
 /** Native notifications: sent only while the window is in the background, for the session you are not looking at. */
+function UsageSection({ usage }: { usage: UsageInfo }) {
+  return (
+    <Card title="Usage & cost" color="var(--ansi-mag)" iconPath={<path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />}>
+      <UsagePage {...usage} />
+    </Card>
+  )
+}
+
 function NotificationsSection({ preferences, update, onTestNotice }: { preferences: SettingsPreferences; update: Update; onTestNotice: (() => void) | undefined }) {
   return (
     <Card

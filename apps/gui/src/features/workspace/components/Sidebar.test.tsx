@@ -19,9 +19,9 @@ function show(heads: SidebarProps['machineHeads'], groups: SessionGroup[], more:
       groups={groups} machineHeads={heads} focusedId={null} tracks={new Map()} mode="docked" online sessionCount={0}
       startFolderLabel="~" canStart portalContainer={null} onToggleRail={none} canExpand tabOf={new Map()} tabPanes={new Map()}
       openIds={new Set()} paneOf={new Map()} trayStyle="stacked" leadMode="focused" side="left" width={280} onResize={none}
-      onResizeEnd={none} onNewSession={none} onNewSessionIn={none} onNewWorktree={none} onNewAgent={none} canNewAgent
+      onResizeEnd={none} onNewSession={none} onNewSessionIn={none} onNewWorktree={none}
       {...more} onShowSession={none} onEndSession={none}
-      onEndProject={none} onSetName={none} onRenameSession={none} onPinSession={none} onOpenSettings={none} onOpenUsage={none} updateSlot={null} railUpdateSlot={null} overview={{ open: false, needs: 0, onToggle: none }}
+      onEndProject={none} onSetName={none} onRenameSession={none} onPinSession={none} onOpenSettings={none} updateSlot={null} railUpdateSlot={null}
     />,
   )
 }
@@ -65,40 +65,12 @@ describe('the sidebar with machines', () => {
   })
 })
 
-describe('the sidebar entries for a new agent on a branch', () => {
-  const repo = (): SessionGroup => ({ ...group('/code/app', 'app', null), kind: 'repo' })
-
-  it('opens the dialog from the button at the top, with no project chosen', () => {
-    const onNewAgent = vi.fn()
-    show([], [repo()], { onNewAgent })
-    fireEvent.click(screen.getByRole('button', { name: 'New agent on a branch' }))
-    expect(onNewAgent).toHaveBeenCalledWith(null)
-  })
-
-  it('disables the button while no project can take one', () => {
-    show([], [group('a', 'notes', null)], { canNewAgent: false })
-    expect(screen.getByRole('button', { name: 'New agent on a branch' })).toBeDisabled()
-  })
-
-  it('opens it on a project from the project menu', async () => {
-    const onNewAgent = vi.fn()
-    show([], [repo()], { onNewAgent })
-    fireEvent.contextMenu(screen.getByRole('button', { name: /app/ }))
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'New agent on a branch…' }))
-    expect(onNewAgent).toHaveBeenCalledWith('/code/app')
-  })
-
-  it('offers nothing in the menu of a folder that is not a repository, or of another machine', async () => {
-    show([], [group('/code/notes', 'notes', null)])
-    fireEvent.contextMenu(screen.getByRole('button', { name: /notes/ }))
-    await screen.findByRole('menu')
-    expect(screen.queryByRole('menuitem', { name: 'New agent on a branch…' })).toBeNull()
-  })
-
-  it('offers nothing in the menu of a repository on another machine', async () => {
-    show(machineHeads(new Map([machine(1, 'build', 'connected')])), [{ ...repo(), machineName: 'build' }])
+describe('the sidebar after New agent on a branch was removed', () => {
+  it('has no such button at the top, in the rail, or in a project menu', async () => {
+    show([], [{ ...group('/code/app', 'app', null), kind: 'repo' }])
+    expect(screen.queryByRole('button', { name: 'New agent on a branch' })).toBeNull()
     fireEvent.contextMenu(screen.getByRole('button', { name: /app/ }))
     await screen.findByRole('menu')
-    expect(screen.queryByRole('menuitem', { name: 'New agent on a branch…' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /New agent on a branch/ })).toBeNull()
   })
 })

@@ -31,7 +31,7 @@ function report(overrides: Partial<UsageReport> = {}): UsageReport {
 type Props = Partial<React.ComponentProps<typeof UsagePage>>
 
 function renderPage(props: Props = {}) {
-  const handlers = { onBudget: vi.fn(), onOpenSession: vi.fn(), onClose: vi.fn() }
+  const handlers = { onBudget: vi.fn(), onOpenSession: vi.fn() }
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
@@ -255,13 +255,5 @@ describe('usage page budget', () => {
     await user.click(screen.getByRole('button', { name: 'Month' }))
     await screen.findByText('No cost reported to compare')
     expect(screen.queryByRole('img', { name: /monthly budget used/ })).not.toBeInTheDocument()
-  })
-})
-
-describe('usage page closing', () => {
-  it('closes from its button', async () => {
-    const { onClose } = renderPage()
-    await userEvent.setup().click(await screen.findByRole('button', { name: 'Close' }))
-    expect(onClose).toHaveBeenCalled()
   })
 })

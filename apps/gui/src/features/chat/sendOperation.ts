@@ -1,6 +1,6 @@
 /**
  * The operation number a send carries. The daemon uses it to tell a retry of one message from a new
- * message, so every sender of a conversation (the chat's composer, the session panel's comments)
+ * message, so every sender of a conversation (the chat's composer and a line comment)
  * draws from the same numbers and never reuses one.
  */
 

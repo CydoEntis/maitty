@@ -2,6 +2,8 @@
 
 Intent: [intent.md](intent.md) · Status: proposed · Date: 2026-11-04 · Design: [v17 handoff §C.0a, §C.3 to §C.8](../chat-gui/design-handoff/v17/README.md)
 
+> **Removed by the revised v18 (README D.6, ticket 48):** the Overview screen and New agent on a branch are gone from the desktop app. Jump to next (`features/needs-you/`), idle updates and the brain dump stand.
+
 ## Requirements
 
 1. **Overview screen** (`⌘0`, sidebar entry with a badge of the needs-you count).

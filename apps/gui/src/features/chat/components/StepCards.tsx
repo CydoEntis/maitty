@@ -118,7 +118,7 @@ type EditCardProps = {
   event: EditEvent
   /** The session's folder, so the file is shown relative to it. */
   root: string | null
-  /** Opens this file's diff in the session panel; absent where there is no panel. */
+  /** Opens this file's diff in the Changes panel; absent where there is no repository. */
   onOpen: ((file: string) => void) | null
 }
 
@@ -142,7 +142,7 @@ export function EditCard({ event, root, onOpen }: EditCardProps) {
   return (
     <div role="group" aria-label={`${CHANGE_WORD[event.change]} ${name}`} className="overflow-hidden rounded-[10px] border border-line2 bg-term">
       {onOpen !== null && event.file !== null ? (
-        <button type="button" aria-label={`Open the diff of ${name} in the session panel`} className="flex min-h-[34px] w-full items-center gap-2 px-3 hover:bg-hover" onClick={() => { if (event.file !== null) onOpen(event.file) }}>
+        <button type="button" aria-label={`Open the diff of ${name} in the Changes panel`} className="flex min-h-[34px] w-full items-center gap-2 px-3 hover:bg-hover" onClick={() => { if (event.file !== null) onOpen(event.file) }}>
           {headerBody}
         </button>
       ) : (
