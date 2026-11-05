@@ -367,7 +367,6 @@ pub(super) fn world(stage: Stage) -> App {
         ..Default::default()
     };
     let mut app = App::new(cfg, tx, None, bg_tx);
-    app.screen.saved.drawer_pinned = true;
     app.splash = false;
     let dev = home();
     let (site, pixls, orbit) = (

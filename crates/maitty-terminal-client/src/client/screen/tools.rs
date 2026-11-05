@@ -51,7 +51,13 @@ pub(in crate::client) fn draw_tools(app: &mut App, buf: &mut Buffer, r: Rect, t:
             height: 1,
         };
         let label = format!("{key:^w$}", w = chip.width as usize);
-        put(buf, chip.x, y, &[seg(label, style)], chip.right());
+        // With `ui.rounded = full` the chip is a pill: the key between two caps.
+        let segs = if look.caps {
+            round_ends(vec![seg(key.clone(), style)], t.bg)
+        } else {
+            vec![seg(label, style)]
+        };
+        put(buf, chip.x, y, &segs, chip.right());
         hit(app, chip, ScreenHit::Tool(i));
     }
 }

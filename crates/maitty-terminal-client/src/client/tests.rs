@@ -167,7 +167,6 @@ mod design_tests {
         // The reference has no tool rail, and its sheets sit beside the panes.
         cfg.ui.tool_rail = false;
         let mut app = App::new(cfg, tx, None, bg_tx);
-        app.screen.saved.drawer_pinned = true;
         app.splash = false;
         let layout = Node::Leaf(1);
         // A project folder in this platform's own style (tests run on Windows and Linux).
@@ -17653,7 +17652,7 @@ mod tool_rail_tests {
     fn app() -> App {
         let (_, mut app) = super::design_tests::render_with(W, H);
         app.cfg.ui.tool_rail = true;
-        app.screen.saved.drawer_pinned = false;
+        app.screen.saved.drawer_floats = true;
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-rail-{}-{n}", std::process::id()));
@@ -17746,9 +17745,22 @@ mod tool_rail_tests {
         assert!(drawer.width >= 32 && drawer.x < closed && drawer.right() <= W - 5, "{drawer:?}");
         assert_eq!(pane_right(&app), closed, "the terminal is where it was");
         // Pinned: a column of its own, and the terminal gives it room.
-        app.screen.saved.drawer_pinned = true;
+        app.screen.saved.drawer_floats = false;
         draw(&mut app);
         assert!(pane_right(&app) < closed, "the terminal shrank");
+    }
+
+    #[test]
+    fn with_full_rounding_the_rail_chips_are_pills() {
+        let mut app = app();
+        app.cfg.ui.rounded = crate::config::Rounding::Full;
+        let buf = draw(&mut app);
+        let chip = tool(&app, 0);
+        let cells: String = (chip.x..chip.right()).map(|x| buf[(x, chip.y)].symbol()).collect();
+        assert!(
+            cells.starts_with('\u{e0b6}') && cells.ends_with('\u{e0b4}') && cells.contains('f'),
+            "{cells:?}"
+        );
     }
 
     fn hit_rect(app: &App, h: screen::ScreenHit) -> Rect {

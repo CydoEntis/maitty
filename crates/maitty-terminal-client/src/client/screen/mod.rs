@@ -72,9 +72,10 @@ pub(super) struct Saved {
     pub recent: Vec<String>,
     /// The side sheet's width per kind of view (`SheetKind::key`), as you sized it.
     pub sheet_w: HashMap<String, u16>,
-    /// The tool drawer is a column of its own (the terminal shrinks) instead of an overlay.
+    /// The tool drawer floats over the terminal instead of being a column beside it (which
+    /// shrinks the terminal, so nothing is hidden under it).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub drawer_pinned: bool,
+    pub drawer_floats: bool,
     /// `session_order` and `placed` of every other machine, by its configured name. The top-level
     /// ones are this machine's, so a file from before machines reads as it always did. A machine
     /// that is no longer configured keeps its entry.

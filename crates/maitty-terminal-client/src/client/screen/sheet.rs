@@ -97,7 +97,7 @@ pub(in crate::client) fn widest(col: Rect, look: Look) -> u16 {
 /// Whether `kind` floats over the panes: a tool of the drawer that is not pinned. The terminal
 /// is then never resized by opening, closing or sizing it.
 pub(in crate::client) fn overlaid(app: &App, kind: SheetKind) -> bool {
-    drawer_tab(kind).is_some() && !app.screen.saved.drawer_pinned
+    drawer_tab(kind).is_some() && app.screen.saved.drawer_floats
 }
 
 /// The widest a floating drawer gets over `col`: the terminal keeps `OVERLAY_KEEP` columns.
