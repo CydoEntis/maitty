@@ -8,6 +8,10 @@ from the home network, so they are parked here. **Delete this file once they are
 Read this first. It orders every open fix in this file. The order is a proposal: the owner can
 change it, and an agent does not.
 
+**Order changed by the owner (2026-11-05, evening).** Phase 2 goes first, then v0.65.1 without the
+desktop app (`apps/gui/RELEASE-HOLD` holds it out), so the terminal fixes in #275 and #276 ship.
+Phase 1 follows.
+
 **How to work**
 - One ticket, one branch from `dev`, one pull request into `dev`. Read `AGENTS.md` and the docs the
   ticket touches before planning it.
@@ -32,15 +36,15 @@ change it, and an agent does not.
 | 3 | 36 | Agent hooks point into the AppImage's temporary folder | **owner**: where the daemon is kept so its path does not change |
 | 4 | 37 | Restart and restore cannot stop the desktop app's own daemon. The fix is on `fix/desktop-upgrade-path`: rebase, gate, pull request | nothing |
 | 5 | 38 | Settings › Performance lists no daemons | nothing |
-| 6 | release | v0.65.1 with the desktop app back. The pull request carries the **Key to echo** figure from a real Linux window; put the real `latest.json` back on the release | **owner** says go |
+| 6 | release | The first release with the desktop app back. Its pull request deletes `apps/gui/RELEASE-HOLD` and carries the **Key to echo** figure from a real Linux window | **owner** says go |
 
 **Phase 2. Stop a release costing a day.** Small, independent, no owner decision except the last.
 
 | Order | Ticket | What |
 | --- | --- | --- |
-| 7 | 24 | Pull requests stop waiting on macOS runners |
-| 8 | 25 | Linux package install gets a limit and a retry |
-| 9 | 23 | One command for a release |
+| 7 | 24 | Pull requests stop waiting on macOS runners. Done in #279 |
+| 8 | 25 | Linux package install gets a limit and a retry. Done in #279 |
+| 9 | 23 | One command for a release. Done in #279 |
 | 10 | 26, 28, 29 | The three intermittent Windows test failures, one pull request each. Name the cause from a Windows run; no retries |
 | 11 | 27 | A build cache for the release workflow. **owner**: a decision first, and it may not be worth doing |
 
@@ -493,6 +497,9 @@ is the test of a workflow change; say in the pull request what could not be run 
 
 ## 23. One command for a release (chore, `tooling`)
 
+**Done 2026-11-05** (#279): `scripts/release.sh`. Run against a copy of the repository with a
+stand-in remote; the first real release is its end to end proof.
+
 The bump pull request (#272) and the release pull request (#273) each waited on a full CI run to
 change three version strings. The release rule in `AGENTS.md` asks only for: set the version,
 commit, bring `main` up to `dev`, tag. Add `scripts/release.sh <X.Y.Z> [--dry-run]` that does that
@@ -543,6 +550,8 @@ that commit, tag or push.
 
 ## 24. Pull requests must not wait on macOS runners (chore, `tooling`)
 
+**Done 2026-11-05** (#279).
+
 GitHub cancelled macOS jobs that never started, with "The job was not acquired by Runner of type
 hosted even after multiple attempts": `desktop GUI (macOS)` on #272 twice (run 42060316400),
 `desktop GUI (macOS host)` on `dev` (run 42068870969), and `install on macos-15` in the v0.64.0
@@ -564,6 +573,8 @@ release (run 41875940232). Each cost a 15 minute wait and marked the run failed 
   found on `dev` after the merge, not on the pull request.
 
 ## 25. Linux package install: a limit and a retry (chore, `tooling`)
+
+**Done 2026-11-05** (#279): `scripts/ci-apt-install.sh`.
 
 On `dev` run 42068870969, `test (ubuntu-latest)` spent 30 minutes in "Install Tauri Linux
 dependencies" (16:54:14Z to 17:24:24Z). The log shows `azure.archive.ubuntu.com` going quiet for up
