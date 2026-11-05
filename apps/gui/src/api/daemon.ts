@@ -66,6 +66,10 @@ const HistoryCursorSchema = z.object({
   conversation: z.number().int().nonnegative(),
   revision: z.number().int().nonnegative(),
   next_position: z.number().int().nonnegative(),
+  // Absent from a daemon that predates them. A cursor goes back to the daemon as it came, so these are kept.
+  epoch: z.number().int().nonnegative().optional(),
+  delta: z.boolean().optional(),
+  snapshot: z.number().int().nonnegative().optional(),
 })
 const HistoryCompletenessSchema = z.union([
   z.enum(['Unknown', 'Loading', 'Complete']),
@@ -96,6 +100,9 @@ const HistoryPageSchema = z.object({
   entries: z.array(HistoryEntrySchema),
   next: HistoryCursorSchema.nullable(),
   completeness: HistoryCompletenessSchema,
+  // Read from here to get only what changed since this page; the page starts over when `reset`.
+  resume: HistoryCursorSchema.nullable().optional(),
+  reset: z.boolean().optional(),
 })
 const ConversationReceiptSchema = z.object({
   conversation: z.number().int().nonnegative(),
@@ -106,6 +113,13 @@ const ConversationReceiptSchema = z.object({
     z.object({ Acknowledged: z.object({ turn_id: z.string() }) }),
   ]),
 })
+// The daemon held the message because a turn was running (see `ReadResult.queued`).
+const QueuedReceiptSchema = z.object({
+  conversation: z.number().int().nonnegative(),
+  generation: z.number().int().nonnegative(),
+  operation: z.number().int().nonnegative(),
+})
+const QueuedMessageSchema = z.object({ operation: z.number().int().nonnegative(), text: z.string() })
 const FileChangePreviewSchema = z.object({ path: z.string(), kind: z.string(), diff: z.string() })
 const UserInputQuestionSchema = z.object({
   id: z.string(),
@@ -139,6 +153,8 @@ const ReadResultSchema = z.object({
   history: HistoryPageSchema,
   checks: z.array(z.unknown()),
   approvals: z.array(ApprovalRequestSchema),
+  // Messages the daemon holds until the running turn ends; absent from a daemon that predates the queue.
+  queued: z.array(QueuedMessageSchema).default([]),
   // Approvals a person already answered (most recent last); absent from a daemon that predates it.
   answered_approvals: z
     .array(
@@ -310,17 +326,23 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
     })
     : []
   // A terminal session has a chat when the daemon holds a conversation whose native terminal is that pane.
-  const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation }] as const])))
-  const terminals = Object.values(snapshot.terms)
+  // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0052).
+  const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation, ...(summary.execution === 'Native' ? { readOnly: true } : {}) }] as const])))
+  const listed = Object.values(snapshot.terms)
     .flatMap((term) => {
       const read = readTerminal(term, from)
       return read ? [read] : []
     })
     .filter(isTerminalSession)
+  // A conversation that belongs to a pane in this list is that session's chat, not a session of its own.
+  const shownPanes = new Set(listed.map((term) => term.id))
+  const terminals = listed
     .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, machine === undefined ? chatOf.get(term.id) : undefined))
   if (machine !== undefined) return terminals
   return [
-    ...summaries.map((conversation) => toConversation(conversation, snapshot.workspaces)),
+    ...summaries
+      .filter((summary) => summary.native_term === null || !shownPanes.has(summary.native_term))
+      .map((conversation) => toConversation(conversation, snapshot.workspaces)),
     ...terminals,
   ]
 }
@@ -495,10 +517,13 @@ const ChatPageSchema = z.object({
     entries: z.array(z.unknown()),
     next: HistoryCursorSchema.nullable(),
     completeness: HistoryCompletenessSchema,
+    resume: HistoryCursorSchema.nullable().optional(),
+    reset: z.boolean().optional(),
   }),
   approvals: z.array(z.unknown()),
   // Approvals a person already answered; the chat projection validates each one. Absent from an older daemon.
   answered_approvals: z.array(z.unknown()).default([]),
+  queued: z.array(QueuedMessageSchema).default([]),
 })
 export type HistoryCursor = z.infer<typeof HistoryCursorSchema>
 export type ChatPage = z.infer<typeof ChatPageSchema>
@@ -657,8 +682,14 @@ export async function resizeTerminal(conversation: Pick<Conversation, 'id'> & { 
   })
 }
 
-export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string): Promise<ConversationReceipt> {
-  return invokeParsed('send_conversation', ConversationReceiptSchema, {
+export type QueuedReceipt = z.infer<typeof QueuedReceiptSchema>
+
+/**
+ * Sends a message. A conversation that is mid-turn does not refuse it: the daemon holds it and sends it
+ * when the turn ends, in order, even if this window closes, and answers with a `QueuedReceipt`.
+ */
+export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string): Promise<ConversationReceipt | QueuedReceipt> {
+  return invokeParsed('send_conversation', z.union([ConversationReceiptSchema, QueuedReceiptSchema]), {
     id: Number(conversation.id),
     generation: conversation.generation,
     operation,
@@ -678,6 +709,15 @@ export function classifySubmissionFailure(
   if (receipt.generation !== expectedGeneration || receipt.operation > operation) return 'unknown'
   if (receipt.operation < operation) return 'not-delivered'
   return receipt.delivery === 'SubmissionUncertain' ? 'unknown' : 'delivered'
+}
+
+/** Takes a message back out of the daemon's queue before it is sent; it fails when it was already sent. */
+export async function dequeueMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number): Promise<void> {
+  await invokeParsed('dequeue_conversation', NullSchema, {
+    id: Number(conversation.id),
+    generation: conversation.generation,
+    operation,
+  })
 }
 
 export async function approveRequest(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel'): Promise<void> {

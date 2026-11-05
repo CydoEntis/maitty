@@ -42,6 +42,14 @@ impl Daemon {
                 self.conversation_cancel(client, id, generation)?;
                 return Ok(false);
             }
+            Command::ConversationDequeue {
+                id,
+                generation,
+                operation,
+            } => {
+                self.conversation_dequeue(client, id, generation, operation)?;
+                return Ok(false);
+            }
             Command::ConversationEnd { id, generation } => {
                 self.conversation_end(client, id, generation)?;
                 return Ok(false);

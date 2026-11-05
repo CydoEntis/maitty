@@ -4,11 +4,9 @@ import { PanelRightClose } from 'lucide-react'
 import { Tabs } from 'radix-ui'
 import { loadTargetDiff } from '@/api/daemon'
 import { Button } from '@/components/ui/button'
-import { hasPendingApproval, type ChatFeed } from '@/features/chat/chatFeed'
+import { hasPendingApproval } from '@/features/chat/chatFeed'
 import { formatComment } from '@/features/chat/commentMessage'
 import { AgentsCard } from '@/features/chat/components/AgentsCard'
-import { newQueuedMessage, updateComposer } from '@/features/chat/composerStore'
-import { useChatComposer } from '@/features/chat/useChatComposer'
 import { useChatFeed } from '@/features/chat/useChatFeed'
 import { relativePath } from '@/features/chat/stepInfo'
 import { useTipWithKeys } from '@/features/shortcuts/platform'
@@ -19,6 +17,7 @@ import { artifactsOf } from './artifacts'
 import { ChangesSegment } from './ChangesSegment'
 import { ChecklistCard } from './ChecklistCard'
 import { addComment, useComments } from './commentStore'
+import { COMMENT_READ_ONLY_REASON, useCommentDelivery } from './useCommentDelivery'
 import { DiffView } from './DiffView'
 import { usePublishChecklistProgress } from './progressStore'
 import { FilesSegment } from './FilesSegment'
@@ -45,8 +44,6 @@ type Props = {
   branch: string | null
   /** The daemon is connected, so a comment can be delivered. */
   online: boolean
-  /** The chat is showing this session, so its composer delivers queued messages; otherwise the panel does. */
-  chatOpen: boolean
   width: number
   onWide: (wide: boolean) => void
   /** Shows a file in the Inspect drawer's Files view. */
@@ -79,19 +76,10 @@ function Nothing({ children }: { children: ReactNode }) {
   )
 }
 
-/**
- * Delivers the messages queued for the conversation while the chat is not open. The chat's own
- * composer does it when it is; exactly one of them runs, so a comment is sent once.
- */
-function QueueDelivery({ link, feed, online, refresh }: { link: ChatLink; feed: ChatFeed; online: boolean; refresh: () => void }) {
-  useChatComposer({ link, feed, online, refresh })
-  return null
-}
-
 const SEGMENT = 'h-7 flex-1 rounded-md px-2 text-[12px] text-dim data-[state=active]:bg-hover data-[state=active]:text-fg hover:text-fg'
 
 /** What the session's own events say: its checklist, helper agents and worktree changes. Mounted only for a session with a chat link. */
-function AgentBody({ link, agent, root, folder, branch, online, chatOpen, onWide, onOpenInFiles }: { link: ChatLink; agent: ChatAgent; root: string | null; folder: string | null; branch: string | null; online: boolean; chatOpen: boolean; onWide: (wide: boolean) => void; onOpenInFiles: (file: string) => void }) {
+function AgentBody({ link, agent, root, folder, branch, online, onWide, onOpenInFiles }: { link: ChatLink; agent: ChatAgent; root: string | null; folder: string | null; branch: string | null; online: boolean; onWide: (wide: boolean) => void; onOpenInFiles: (file: string) => void }) {
   const { feed, events, refresh } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const working = feed.status === 'Working'
   const { checklist, unreadable } = useMemo(() => checklistOf(events), [events])
@@ -150,6 +138,7 @@ function AgentBody({ link, agent, root, folder, branch, online, chatOpen, onWide
     return () => { onWide(false) }
   }, [diffOpen, onWide])
 
+  const { send: deliver, readOnly } = useCommentDelivery({ link, feed, online, refresh })
   const deliveryNote = hasPendingApproval(feed)
     ? `${agent} is waiting for an approval. This comment is queued and sent after you answer it.`
     : !online ? 'The daemon is offline. This comment is queued until it is back.'
@@ -158,23 +147,21 @@ function AgentBody({ link, agent, root, folder, branch, online, chatOpen, onWide
   const sendComment = useCallback((file: string, comment: { line: number; code: string; text: string }) => {
     const entry = { file, ...comment }
     const message = formatComment(entry)
-    // The composer's own queue is the one route to the agent, so a comment is never sent while an approval waits.
-    updateComposer(link.conversation, (state) => ({ ...state, queue: [...state.queue, newQueuedMessage(message)] }))
+    // The daemon is the one route to the agent: it holds the comment while a turn runs, and the panel holds it while an approval waits.
+    deliver(message)
     addComment(link.conversation, entry, message)
-  }, [link.conversation])
-
-  const delivery = !chatOpen && <QueueDelivery link={link} feed={feed} online={online} refresh={refresh} />
+  }, [link.conversation, deliver])
 
   if (!feed.loaded) return <p className="m-0 px-1 py-6 text-center text-[12.5px] text-dim">Reading the conversation…</p>
   if (openFile !== undefined) {
     return (
       <>
-        {delivery}
         <DiffView
           file={openFile}
           agent={agent}
           comments={comments.filter((comment) => comment.file === openFile.path)}
           deliveryNote={deliveryNote}
+          disabledReason={readOnly ? COMMENT_READ_ONLY_REASON : null}
           onBack={() => { setDiffFile(null) }}
           onComment={(comment) => { sendComment(openFile.path, comment) }}
         />
@@ -184,7 +171,6 @@ function AgentBody({ link, agent, root, folder, branch, online, chatOpen, onWide
   const changeCount = diff.data?.total_files
   return (
     <>
-      {delivery}
       {checklist !== null && <ChecklistCard checklist={checklist} working={working} currentSince={since} />}
       {checklist === null && unreadable && <p className="m-0 rounded-[10px] border border-line2 bg-raise px-3 py-2 text-[12px] text-dim">The agent made a checklist, but the conversation history did not keep its items.</p>}
       {helpers.length > 0 && <AgentsCard agents={helpers} panel />}
@@ -224,7 +210,7 @@ function AgentBody({ link, agent, root, folder, branch, online, chatOpen, onWide
  * session with no agent or no event stream says why there is nothing to show. Docked beside the
  * panes on a wide window, an overlay on a compact one.
  */
-export function SessionPanel({ mode, title, process, availability, root, folder, branch, online, chatOpen, width, onWide, onOpenInFiles, onClose }: Props) {
+export function SessionPanel({ mode, title, process, availability, root, folder, branch, online, width, onWide, onOpenInFiles, onClose }: Props) {
   const agent = availability.kind === 'ready' ? availability.agent : null
   const body = (
     <aside
@@ -235,7 +221,7 @@ export function SessionPanel({ mode, title, process, availability, root, folder,
       <Header title={title} process={process} agent={agent} onClose={onClose} />
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
         {availability.kind === 'ready'
-          ? <AgentBody key={availability.link.conversation} link={availability.link} agent={availability.agent} root={root} folder={folder} branch={branch} online={online} chatOpen={chatOpen} onWide={onWide} onOpenInFiles={onOpenInFiles} />
+          ? <AgentBody key={availability.link.conversation} link={availability.link} agent={availability.agent} root={root} folder={folder} branch={branch} online={online} onWide={onWide} onOpenInFiles={onOpenInFiles} />
           : <Nothing>{emptyReason(availability)}</Nothing>}
       </div>
     </aside>

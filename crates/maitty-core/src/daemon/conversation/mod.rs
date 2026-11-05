@@ -2,6 +2,8 @@ pub(super) mod checks;
 mod claude;
 pub(super) mod commands;
 mod daemon;
+pub(super) mod follow;
+mod follow_transcript;
 pub(super) mod history;
 mod history_provider;
 mod tool_input;

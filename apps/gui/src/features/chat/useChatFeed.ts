@@ -25,7 +25,7 @@ export function forgetChatFeeds(): void {
 }
 
 function isActive(feed: ChatFeed): boolean {
-  return feed.status === 'Working' || feed.status === 'Blocked' || hasPendingApproval(feed)
+  return feed.status === 'Working' || feed.status === 'Blocked' || hasPendingApproval(feed) || feed.queued.length > 0
 }
 
 /** The feed this window already read for the conversation, unless the conversation has started over since. */

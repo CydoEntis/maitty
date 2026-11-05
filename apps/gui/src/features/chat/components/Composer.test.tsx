@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers } from '../composerStore'
-import { DELIVERY_GRACE_MS, PENDING_APPROVAL_NOTE } from '../useChatComposer'
+import { PENDING_APPROVAL_NOTE } from '../useChatComposer'
 import { forgetChatFeeds, IDLE_POLL_MS } from '../useChatFeed'
 import { ChatSession } from './ChatSession'
 
@@ -11,6 +11,7 @@ const fake = vi.hoisted(() => ({
   current: null as null | { read: (cursor: never) => Promise<unknown> },
   submitMessage: vi.fn<(conversation: { id: string; generation: number }, operation: number, text: string) => Promise<unknown>>(),
   cancelTurn: vi.fn<(conversation: { id: string; generation: number }) => Promise<void>>(),
+  dequeueMessage: vi.fn<(conversation: { id: string; generation: number }, operation: number) => Promise<void>>(),
   approveRequest: vi.fn<(conversation: { id: string; generation: number }, requestId: number | string, decision: string) => Promise<void>>(),
 }))
 
@@ -18,6 +19,7 @@ vi.mock('@/api/daemon', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/daemon')>()),
   submitMessage: fake.submitMessage,
   cancelTurn: fake.cancelTurn,
+  dequeueMessage: fake.dequeueMessage,
   approveRequest: fake.approveRequest,
   readConversationPage: (_id: number, cursor: unknown) => {
     if (fake.current === null) throw new Error('no fake daemon')
@@ -34,6 +36,7 @@ beforeEach(() => {
   forgetComposers()
   fake.submitMessage.mockReset()
   fake.cancelTurn.mockReset()
+  fake.dequeueMessage.mockReset()
   fake.approveRequest.mockReset()
   fake.submitMessage.mockResolvedValue({})
   fake.cancelTurn.mockResolvedValue(undefined)
@@ -140,47 +143,107 @@ describe('while a request waits for an answer', () => {
 })
 
 describe('while the agent works', () => {
-  it('queues a message instead of sending it, and says so', async () => {
-    const { user, box } = await open((daemon) => { daemon.status = 'Working' })
+  // The daemon holds a message sent mid-turn: the stand-in does the same, as the real one answers.
+  function daemonQueues(daemon: FakeDaemonHistory) {
+    fake.submitMessage.mockImplementation((_conversation, operation, text) => {
+      if (daemon.status === 'Working') {
+        daemon.queued.push({ operation, text })
+        return Promise.resolve({ conversation: FAKE_CONVERSATION, generation: 1, operation })
+      }
+      return Promise.resolve({})
+    })
+    fake.dequeueMessage.mockImplementation((_conversation, operation) => {
+      daemon.queued = daemon.queued.filter((message) => message.operation !== operation)
+      return Promise.resolve()
+    })
+  }
+
+  it('hands a message to the daemon, which queues it, and shows it as queued until it is sent', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
 
     expect(box).toHaveAttribute('placeholder', 'Queue a message for when claude finishes')
     await user.type(box, 'and then lint it{Enter}')
+    await settle()
 
-    expect(fake.submitMessage).not.toHaveBeenCalled()
+    expect(fake.submitMessage).toHaveBeenCalledWith(TARGET, 1, 'and then lint it')
     const queued = screen.getByRole('list', { name: 'Queued messages' })
     expect(queued).toHaveTextContent('and then lint it')
-    expect(queued).toHaveTextContent('Queued')
+    expect(queued).toHaveTextContent('even if you close the window')
+    expect(box).toHaveValue('')
   })
 
-  it('removes a queued message on request', async () => {
-    const { user, box } = await open((daemon) => { daemon.status = 'Working' })
+  it('numbers each message after the ones the daemon already holds, in order', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
+
+    await user.type(box, 'first{Enter}')
+    await settle()
+    await user.type(box, 'second{Enter}')
+    await settle()
+
+    expect(fake.submitMessage).toHaveBeenNthCalledWith(1, TARGET, 1, 'first')
+    expect(fake.submitMessage).toHaveBeenNthCalledWith(2, TARGET, 2, 'second')
+    expect(screen.getByRole('list', { name: 'Queued messages' }).querySelectorAll('li')).toHaveLength(2)
+  })
+
+  it('shows what the daemon holds when the chat is opened again, so closing the window loses nothing', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
+    await user.type(box, 'still here{Enter}')
+    await settle()
+
+    cleanup()
+    forgetChatFeeds()
+    forgetComposers()
+    render(<ChatSession link={LINK} agent="claude" online />)
+    await settle()
+
+    expect(screen.getByRole('list', { name: 'Queued messages' })).toHaveTextContent('still here')
+  })
+
+  it('removes a queued message through the daemon', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
     await user.type(box, 'never mind{Enter}')
+    await settle()
 
     await user.click(screen.getByRole('button', { name: /Remove/ }))
+    await settle()
 
+    expect(fake.dequeueMessage).toHaveBeenCalledWith(TARGET, 1)
     expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
   })
 
-  it('delivers the queue in order, once each, after the turn ends', async () => {
+  it('says so when a message was sent a moment before it could be removed, and shows the daemon\'s state', async () => {
     const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
-    await user.type(box, 'first{Enter}')
-    await user.type(box, 'second{Enter}')
-    expect(fake.submitMessage).not.toHaveBeenCalled()
+    daemonQueues(daemon)
+    await user.type(box, 'too late{Enter}')
+    await settle()
+    fake.dequeueMessage.mockRejectedValueOnce(new Error('That message is no longer waiting; it may already have been sent'))
+    daemon.queued = []
 
-    daemon.status = 'Idle'
-    await settle(IDLE_POLL_MS)
-    expect(fake.submitMessage).toHaveBeenCalledTimes(1)
-    expect(fake.submitMessage).toHaveBeenLastCalledWith(TARGET, 1, 'first')
+    await user.click(screen.getByRole('button', { name: /Remove/ }))
+    await settle()
 
-    // The second waits out the grace period after the first, and does not go while the turn it started runs.
-    daemon.status = 'Working'
-    await settle(DELIVERY_GRACE_MS + IDLE_POLL_MS)
-    expect(fake.submitMessage).toHaveBeenCalledTimes(1)
-    daemon.status = 'Idle'
-    await settle(IDLE_POLL_MS + DELIVERY_GRACE_MS)
-    expect(fake.submitMessage).toHaveBeenCalledTimes(2)
-    expect(fake.submitMessage).toHaveBeenLastCalledWith(TARGET, 2, 'second')
+    expect(await screen.findByRole('alert')).toHaveTextContent('no longer waiting')
     expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
+  })
+
+  it('picks a new number when the daemon says another window got there first', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
+    fake.submitMessage.mockRejectedValueOnce(new Error('Operation ID is stale or reused with changed content'))
+    // The other window's message arrived meanwhile.
+    daemon.queued.push({ operation: 1, text: 'from the other window' })
+
+    await user.type(box, 'mine{Enter}')
+    await settle()
+    await user.type(box, '{Enter}')
+    await settle()
+
+    expect(fake.submitMessage).toHaveBeenNthCalledWith(1, TARGET, 1, 'mine')
+    expect(fake.submitMessage).toHaveBeenNthCalledWith(2, TARGET, 2, 'mine')
   })
 
   it('interrupts with Stop and with Esc', async () => {

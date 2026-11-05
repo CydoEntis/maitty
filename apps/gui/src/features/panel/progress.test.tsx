@@ -118,7 +118,7 @@ describe('reading a conversation in the panel', () => {
     const probe = hook(() => useChecklistProgress(FAKE_CONVERSATION))
     render(
       <Providers>
-        <SessionPanel mode="docked" title="t" process="claude" availability={{ kind: 'ready', agent: 'claude', link: { conversation: FAKE_CONVERSATION, generation: 1 } }} root={null} folder={null} branch={null} online chatOpen width={320} onWide={() => undefined} onOpenInFiles={() => undefined} onClose={() => undefined} />
+        <SessionPanel mode="docked" title="t" process="claude" availability={{ kind: 'ready', agent: 'claude', link: { conversation: FAKE_CONVERSATION, generation: 1 } }} root={null} folder={null} branch={null} online width={320} onWide={() => undefined} onOpenInFiles={() => undefined} onClose={() => undefined} />
       </Providers>,
     )
     await act(async () => { await vi.advanceTimersByTimeAsync(0) })

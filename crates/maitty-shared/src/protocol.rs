@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 70;
+pub const PROTOCOL_VERSION: u32 = 71;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -187,6 +187,12 @@ pub enum Command {
         generation: u64,
         operation: u64,
         text: String,
+    },
+    /// Take a message back out of the daemon's queue before it is delivered.
+    ConversationDequeue {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        operation: u64,
     },
     ConversationApprove {
         id: crate::conversation::ConversationId,
@@ -730,6 +736,8 @@ pub enum Reply {
         generation: u64,
     },
     ConversationSent(crate::conversation::Receipt),
+    /// The conversation was busy, so the message waits in the daemon's queue (see `ReadResult::queued`).
+    ConversationQueued(crate::conversation::QueuedReceipt),
     ConversationRead(crate::conversation::ReadResult),
     ConversationDiff(crate::conversation::ConversationDiff),
     ConversationFiles(Vec<crate::conversation::ConversationFileEntry>),
@@ -1681,6 +1689,48 @@ mod tests {
         assert_eq!((a, b), (3, 4));
     }
 
+    /// Removing a queued message and the reply to a queued send are a new command and a new reply:
+    /// a peer built before them cannot read either, which is why protocol 71 refuses protocol 70.
+    #[test]
+    fn a_peer_from_before_the_send_queue_cannot_read_its_messages() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            ConversationCancel { id: u64, generation: u64 },
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldReply {
+            Ok,
+        }
+        let id = crate::conversation::ConversationId(3);
+        let dequeue = encode(&Command::ConversationDequeue { id, generation: 1, operation: 4 }).unwrap();
+        assert!(decode::<OldCommand>(&dequeue).is_err());
+        assert!(matches!(
+            decode::<Command>(&dequeue).unwrap(),
+            Command::ConversationDequeue { operation: 4, .. }
+        ));
+        let queued = Reply::ConversationQueued(crate::conversation::QueuedReceipt {
+            conversation: id,
+            generation: 1,
+            operation: 4,
+        });
+        assert!(decode::<OldReply>(&encode(&queued).unwrap()).is_err());
+    }
+
+    /// `queued` was added to the read as a defaulted field: a reply from before it still decodes,
+    /// as an empty queue.
+    #[test]
+    fn a_conversation_read_from_before_the_send_queue_still_decodes() {
+        let read: crate::conversation::ReadResult = serde_json::from_value(serde_json::json!({
+            "conversation": 3, "generation": 1, "status": "Idle", "receipt": null,
+            "history": { "entries": [], "next": null, "completeness": "Complete" },
+            "error": null, "checks": [], "approvals": []
+        }))
+        .expect("a read from before the queue");
+        assert!(read.queued.is_empty() && read.history.resume.is_none() && !read.history.reset);
+    }
+
     /// `agent` and `prompt` were added to `NewWorktree` as defaulted fields: a peer that does not
     /// send them still decodes, as "no agent", so the version stays as it was.
     #[test]
@@ -1748,7 +1798,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 70);
+        assert_eq!(PROTOCOL_VERSION, 71);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()

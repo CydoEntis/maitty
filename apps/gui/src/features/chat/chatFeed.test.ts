@@ -18,8 +18,9 @@ function conversationOf(count: number, pageSize: number): FakeDaemonHistory {
 }
 
 describe('reading a conversation', () => {
-  it('pages the whole history on the first read and remembers where the last page began', async () => {
+  it('pages the whole history on the first read and, from a daemon without resume, remembers where the last page began', async () => {
     const daemon = conversationOf(5, 2)
+    daemon.legacy = true
     const feed = await syncFeed(newFeed(), daemon.read, now)
 
     expect(selectChatEvents(feed.projection)).toHaveLength(5)
@@ -28,8 +29,9 @@ describe('reading a conversation', () => {
     expect(feed.loaded).toBe(true)
   })
 
-  it('asks only for the last page when nothing changed, and keeps the events as they were', async () => {
+  it('asks, of a daemon without resume, only for the last page when nothing changed, and keeps the events as they were', async () => {
     const daemon = conversationOf(5, 2)
+    daemon.legacy = true
     const first = await syncFeed(newFeed(), daemon.read, now)
     daemon.reads.length = 0
 
@@ -41,8 +43,9 @@ describe('reading a conversation', () => {
     expect(selectChatEvents(second.projection)).toHaveLength(5)
   })
 
-  it('applies only the new entries when history grows, with no duplicates', async () => {
+  it('applies only the new entries when a daemon without resume grows, with no duplicates', async () => {
     const daemon = conversationOf(3, 2)
+    daemon.legacy = true
     const first = await syncFeed(newFeed(), daemon.read, now)
     const before = kinds(first)
 
@@ -92,6 +95,99 @@ describe('reading a conversation', () => {
     daemon.approvals = []
     const second = await syncFeed(first, daemon.read, now)
     expect(second.projection.approvals).toMatchObject([{ requestId: 7, resolution: { status: 'answered', answer: 'unknown' } }])
+  })
+})
+
+describe('following a long conversation by what changed', () => {
+  it('reads the whole history once, then only what changed since, with the daemon\'s resume cursor', async () => {
+    const daemon = conversationOf(5, 2)
+    const first = await syncFeed(newFeed(), daemon.read, now)
+    expect(daemon.reads.map((cursor) => cursor?.next_position ?? null)).toEqual([null, 2, 4])
+    expect(first.resume).toMatchObject({ delta: true, next_position: 0 })
+    daemon.reads.length = 0
+
+    const quiet = await syncFeed(first, daemon.read, now)
+
+    expect(daemon.reads).toHaveLength(1)
+    expect(daemon.reads[0]).toMatchObject({ delta: true })
+    expect(quiet.projection.turns).toBe(first.projection.turns)
+    expect(selectChatEvents(quiet.projection)).toHaveLength(5)
+  })
+
+  it('keeps one small read per poll while a 1,000-entry conversation streams', async () => {
+    const daemon = conversationOf(1000, 128)
+    const first = await syncFeed(newFeed(), daemon.read, now)
+    expect(daemon.reads).toHaveLength(8)
+    daemon.reads.length = 0
+
+    daemon.upsert(daemon.message(T1, 'live', 'Assistant', 'typing', 'Running'))
+    let feed = await syncFeed(first, daemon.read, now)
+    for (let step = 1; step <= 5; step += 1) {
+      daemon.upsert(daemon.message(T1, 'live', 'Assistant', `typing${'.'.repeat(step)}`, 'Running'))
+      feed = await syncFeed(feed, daemon.read, now)
+    }
+
+    expect(daemon.reads).toHaveLength(6)
+    const live = selectChatEvents(feed.projection).find((event) => event.kind === 'message' && event.id === 'turn-1:live')
+    expect(live).toMatchObject({ text: 'typing.....' })
+    expect(selectChatEvents(feed.projection)).toHaveLength(1001)
+  })
+
+  it('applies an item changed in place and an added one, and no other event changes', async () => {
+    const daemon = new FakeDaemonHistory()
+    daemon.upsert(daemon.message(T1, 'u', 'User', 'run it'))
+    daemon.upsert(daemon.tool(T1, 'c', 'ls', '', 'Running'))
+    daemon.upsert(daemon.message(T1, 'a', 'Assistant', 'done'))
+    const first = await syncFeed(newFeed(), daemon.read, now)
+    const before = selectChatEvents(first.projection)
+
+    daemon.upsert(daemon.tool(T1, 'c', 'ls', 'a.txt', 'Completed'))
+    daemon.upsert(daemon.message(T1, 'b', 'Assistant', 'one more'))
+    const second = await syncFeed(first, daemon.read, now)
+
+    const after = selectChatEvents(second.projection)
+    expect(after.find((event) => event.kind === 'command')).toMatchObject({ status: 'completed', output: 'a.txt' })
+    expect(after.map((event) => event.id)).toEqual([...before.map((event) => event.id), 'turn-1:b'])
+    expect(after[0]).toBe(before[0])
+  })
+
+  it('discards what it held when the daemon says the history was rebuilt', async () => {
+    const daemon = conversationOf(4, 10)
+    const first = await syncFeed(newFeed(), daemon.read, now)
+    expect(selectChatEvents(first.projection)).toHaveLength(4)
+
+    // A reconnect dropped an unfinished entry: the rows are not the ones the feed holds.
+    daemon.entries.pop()
+    daemon.changedAt.pop()
+    daemon.rebuild()
+    const second = await syncFeed(first, daemon.read, now)
+
+    expect(selectChatEvents(second.projection)).toHaveLength(3)
+    expect(second.resume).toMatchObject({ delta: true })
+  })
+
+  it('starts over on a new generation without an error, and then follows the new history', async () => {
+    const daemon = conversationOf(3, 10)
+    const first = await syncFeed(newFeed(), daemon.read, now)
+
+    daemon.restart()
+    daemon.upsert(daemon.message(T2, 'n0', 'User', 'a fresh start'))
+    const second = await syncFeed(first, daemon.read, now)
+    daemon.upsert(daemon.message(T2, 'n1', 'Assistant', 'hello'))
+    const third = await syncFeed(second, daemon.read, now)
+
+    expect(kinds(second)).toEqual(['message:turn-2:n0'])
+    expect(kinds(third)).toEqual(['message:turn-2:n0', 'message:turn-2:n1'])
+  })
+
+  it('pages a delta read that is longer than a page and does not miss the last entries', async () => {
+    const daemon = conversationOf(6, 2)
+    const first = await syncFeed(newFeed(), daemon.read, now)
+    for (let index = 6; index < 12; index += 1) daemon.upsert(daemon.message(T1, `m${String(index)}`, 'User', `late ${String(index)}`))
+
+    const second = await syncFeed(first, daemon.read, now)
+
+    expect(selectChatEvents(second.projection)).toHaveLength(12)
   })
 })
 

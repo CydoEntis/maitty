@@ -1777,7 +1777,6 @@ export function DesktopApp() {
                 branch={focusedSession.branch}
                 onOpenInFiles={(file) => { openPath(focusedSession, file) }}
                 online={online}
-                chatOpen={chatOf(focusedSession).view === 'chat'}
                 onClose={sessionPanel.close}
                 onDockedWidth={setPanelDockedWidth}
               />

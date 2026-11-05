@@ -401,6 +401,21 @@ exhaustion only. Completeness is independently Unknown, Loading, Complete or
 Incomplete(reason). Ordinary snapshots contain summaries only; explicit
 `ConversationRead` replies carry bounded history pages.
 
+**Following a long history.** Entries are added at the end and changed in place (a tool step
+finishing, a message growing), never moved or removed until the history is rebuilt. Every page
+carries `resume`, a `delta` cursor (`epoch`, `revision`): reading with it returns only the entries
+added or changed after that revision, in order, paged with `next` like any read, so a client that
+applies entries by their source id follows a conversation of any length with small reads. The
+daemon keeps the revision of each entry's last change (`Track` in `history.rs`). A delta read pages
+against the revision its first page began at, and its last page's `resume` starts there too, so a
+change made between its pages is returned again rather than missed. A history that is rebuilt
+(hydration, or a reconnect that drops drafts) gets a new `epoch`; a `delta` cursor from another
+epoch, from the future (another run of the daemon) or from another generation is not an error: the
+page starts from the beginning and sets `reset`, and the client discards what it held. A plain
+paging cursor still goes stale on any change (`StaleCursor`) and the client starts that read over.
+`epoch`, `delta`, `snapshot`, `resume` and `reset` are all defaulted, so an older client or daemon
+reads the rest as before (a test decodes the old shapes); no `PROTOCOL_VERSION` bump.
+
 Daemon notifications reach
 attached projections only after current generation/connection acceptance, and
 client disconnect drops that attachment's memory. Production admission pages
@@ -434,6 +449,35 @@ background storage lock. Attachments never submit independent cache revisions.
 
 See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 process boundary and event/approval handling rules.
+
+**An agent in a pane has a read-only conversation** ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)),
+with no protocol change. For an owned desktop pane whose hook-verified agent is `claude` or `codex` and
+whose hook gave a session id (and, for Claude, its transcript path), the snapshot's `conversations` holds
+a `ConversationSummary` with `execution: Native`, `native_term: <pane>`, the pane's `status` and no
+checks; `Query::ConversationRead` serves its history. The id is the daemon's, stays while the pane runs
+the agent, and its `generation` rises when the pane's session id changes. It is in memory only (never in
+the session file or history cache). `ConversationSend`, `Approve`, `AnswerInput`, `Cancel` and `End` on it
+fail with a "read-only" error; `Rename` and `Archive` fail as for an unknown id (the pane is named and
+closed as a pane). A client the pane does not belong to (ADR 0045) gets "No such conversation". The
+history is the provider's own transcript projected through the same entries a structured runtime
+produces (`conversation/follow_transcript.rs`); nothing read from the file sets any status.
+
+Protocol 71 adds the daemon-held send queue. A `ConversationSend` for a conversation that is
+mid-turn (or whose earlier messages are still waiting, or with a send in flight) is not refused: the
+daemon holds it and answers `Reply::ConversationQueued { conversation, generation, operation }`.
+`ReadResult.queued` (`#[serde(default)]`) lists what it holds, oldest first (`operation`, `text`).
+On its tick the daemon delivers the oldest message of each conversation whose turn has ended and
+that has no unanswered request, no cancel in flight and no uncertain earlier send, through the same
+receipt and durable-barrier path as a direct send, so a delivered message is one `Receipt` with its
+own operation number. The queue is per conversation, in order (an operation number must exceed the
+last one held), bounded (32 messages, 1 MiB), in memory only, and dropped when the conversation is
+ended or has started over (a new generation). Retries keep their meaning: the same operation and text
+while queued answers `ConversationQueued` again without a second copy, once delivered it answers the
+`Receipt`, and the same number with other text is `stale or reused`. `Command::ConversationDequeue
+{ id, generation, operation }` takes a waiting message back out (human clients only, write grant;
+`Ok`, or an error that it is no longer waiting). A new command and a new reply variant, so
+`PROTOCOL_VERSION` is 71; tests assert an older peer cannot read them and that an older read reply
+still decodes.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store

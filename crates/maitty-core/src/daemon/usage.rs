@@ -310,6 +310,11 @@ fn codex_root<'a>(sessions: &'a [CodexSession], session: Option<&str>) -> Option
     sessions.iter().find(|s| s.parent.is_none() && s.id == id)
 }
 
+/// The rollout file of a Codex session, among its recent session files.
+pub(super) fn codex_file_for(session: &str) -> Option<PathBuf> {
+    codex_root(&codex_recent_sessions(), Some(session)).map(|s| s.file.clone())
+}
+
 /// Codex's sessions folder (`$CODEX_HOME/sessions`, else `~/.codex/sessions`).
 fn codex_sessions() -> Option<PathBuf> {
     let home = std::env::var_os("CODEX_HOME")

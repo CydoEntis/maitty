@@ -721,6 +721,9 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   It never reads terminal output. A session has a chat only when `conversationsFromSnapshot` found a daemon
   conversation whose native terminal is that pane (`Conversation.chat`); `model/chatView.ts` decides
   availability: `ready`, `no-events`, `remote` (local-only in v1), `unsupported` (another agent) or `shell`.
+  The daemon gives a Claude or Codex agent started in a pane a **read-only** conversation that follows the agent's
+  own transcript ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)); its link has
+  `readOnly: true`, and the conversation is not listed as a session of its own (the pane is the session).
 - **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
   mounted and its pane keeps its size, and no daemon command is sent. The shortcut is `chat-toggle`
   (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.
@@ -728,10 +731,12 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   hidden from Tab and screen readers. The chat adds no layer to the Esc ladder.
 - **History.** `useChatFeed` follows one conversation while its chat is open (`chatFeed.ts` is the pure core). The
   first read pages the whole history; later polls (1 s while the agent works or waits on a person, 3 s otherwise,
-  none while the window is hidden) ask only for the last page they read (`resume`). The daemon makes a cursor stale
-  on every change, so a stale cursor, a failed read or a new generation falls back to a read from the start; entries
-  already applied unchanged are skipped, so nothing is shown twice and unchanged events stay the same objects. A new
-  generation shows a fresh projection. Pending approvals come with every page and go to `applyApprovals`. The last
+  none while the window is hidden) read from the daemon's `resume` cursor, which returns only the entries added or
+  changed since, so a 1,000-entry conversation costs one small read per poll. A page that says `reset` (the history was
+  rebuilt, or the conversation started over) replaces what the feed held. A failed read, or a daemon that predates
+  `resume`, falls back to the old way: ask again for the last page read, or read from the start when that cursor is
+  stale. Entries already applied unchanged are skipped, so nothing is shown twice and unchanged events stay the same
+  objects. A new generation shows a fresh projection. Pending approvals come with every page and go to `applyApprovals`. The last
   feed per conversation is kept (8 at most), so reopening a chat shows it at once.
 - **List.** `VirtualList` draws only the rows near the view (`transform` placement, measured heights, stable event
   ids as keys), follows the newest row until the reader scrolls away, then offers "Jump to the latest message". Rows
@@ -765,10 +770,16 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   new message). Enter sends, Shift+Enter adds a line (not while an input method is composing), Esc or Stop interrupts
   the running turn (`cancel_conversation`). It is off, with the reason as its placeholder, while an approval is
   pending ("Answer the request above first") or the daemon is offline. While the daemon reports the turn working,
-  Enter queues: the queue is the window's memory (`composerStore.ts`), shown as dashed pending bubbles with Remove,
-  and its oldest message is delivered once the turn has ended (after a 2.5 s grace so it never lands in the turn that
-  is starting), one at a time and in order, only while the chat is open. The daemon has no queue, so delivery is at
-  the end of the turn, not at a step boundary, and closing the window drops what is queued.
+  Enter still sends: the daemon holds the message (`ReadResult.queued`) and delivers it when the turn ends, in order
+  and once each, so it is shown as a dashed pending bubble with Remove (`dequeue_conversation`) for as long as the
+  daemon holds it, and closing the window loses nothing. The queue is the daemon's memory: a daemon restart drops it,
+  and a message queued for a conversation that has since started over is dropped, not sent into the new one. The
+  boundary is the end of the turn, the one the daemon can observe for both providers; a message is never delivered
+  into a running turn. A send that the daemon refuses as `stale or reused` (another window sent in between) is read
+  and sent again under a new number; a retry of any other failure keeps its number.
+- **Read-only chat.** For a link with `readOnly` the composer is off with "Read-only: talk to the agent in the
+  terminal" as its placeholder, and offers no Stop or queue wording; the daemon refuses send, approve and cancel
+  for such a conversation. The history and status still follow the agent.
 - **Approvals.** The card answers through `approve_conversation` by request id and then reads "You answered: ...",
   with the buttons gone. While it is pending and focused, `y` (once), `a` (this session) and `n` (no) answer it, the
   same letters as typing into the terminal, which stays a working fallback. The daemon's `answered_approvals` are
@@ -812,10 +823,7 @@ view too. Local sessions only.
   here (`panelCommands.ts`), opening the panel first.
 - **Line comments.** The daemon's send takes text only, so a comment goes as one message,
   `Comment on <file>:<line>`, the line's code quoted, a blank line, the text (`chat/commentMessage.ts`); the chat
-  draws that message as a comment bubble. It is handed to the composer's own queue (`composerStore`), which sends
-  it once the agent's turn is over and never while an approval waits; the note under the composer says which. Exactly
-  one `useChatComposer` delivers a conversation's queue: the chat's when it is open, otherwise the panel's
-  (`QueueDelivery`), so a comment is sent once. A line with comments shows a count pill whose label lists them, and
+  draws that message as a comment bubble. It is sent to the daemon as an ordinary message (`useCommentDelivery`): while the agent works the daemon holds it and delivers it when the turn ends, whether or not the chat is open. The panel holds it itself, and sends it in order afterwards, while an approval waits or the daemon is offline; the note under the composer says which. It takes its operation number from the same per-conversation counter as the chat's composer (`chat/sendOperation.ts`), reuses it on a retry, and takes a new one after a "stale or reused" refusal. A read-only chat cannot take comments: the + buttons are disabled with "Read-only: talk to the agent in the terminal". A line with comments shows a count pill whose label lists them, and
   the file row a badge. The written comments are the window's memory only (`commentStore.ts`).
 - **Files and Artifacts** (`FilesSegment.tsx`, `ArtifactsSegment.tsx`, `artifacts.ts`). The segment bar is
   Changes, Files, Artifacts, each with a count. **Files** lists what the agent's tool calls named, in the order it

@@ -57,7 +57,7 @@ function open() {
   fake.history = history
   render(
     <Providers>
-      <SessionPanel mode="docked" title="t" process="claude" availability={ready} root="/repo" folder="/repo" branch={null} online chatOpen width={320} onWide={() => undefined} onOpenInFiles={(file) => { opened.push(file) }} onClose={() => undefined} />
+      <SessionPanel mode="docked" title="t" process="claude" availability={ready} root="/repo" folder="/repo" branch={null} online width={320} onWide={() => undefined} onOpenInFiles={(file) => { opened.push(file) }} onClose={() => undefined} />
     </Providers>,
   )
 }
@@ -183,7 +183,7 @@ describe('the Artifacts segment', () => {
     const history = new FakeDaemonHistory()
     history.upsert(tool('r1', 'Read ', { file_path: '/repo/README.md' }))
     fake.history = history
-    render(<Providers><SessionPanel mode="docked" title="t" process="claude" availability={ready} root="/repo" folder="/repo" branch={null} online chatOpen width={320} onWide={() => undefined} onOpenInFiles={() => undefined} onClose={() => undefined} /></Providers>)
+    render(<Providers><SessionPanel mode="docked" title="t" process="claude" availability={ready} root="/repo" folder="/repo" branch={null} online width={320} onWide={() => undefined} onOpenInFiles={() => undefined} onClose={() => undefined} /></Providers>)
     await segment(/^Artifacts/)
 
     expect(screen.getByText(/has not created a document/)).toBeInTheDocument()

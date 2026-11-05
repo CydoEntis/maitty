@@ -483,6 +483,18 @@ async fn cancel_conversation(
 }
 
 #[tauri::command]
+async fn dequeue_conversation(
+    app: tauri::AppHandle,
+    id: u64,
+    generation: u64,
+    operation: u64,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::dequeue_conversation(id, generation, operation, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn rename_conversation(
     app: tauri::AppHandle,
     id: u64,
@@ -642,6 +654,7 @@ pub fn run() {
             approve_conversation,
             answer_conversation_input,
             cancel_conversation,
+            dequeue_conversation,
             rename_conversation,
             archive_conversation,
             resume_codex_conversation,

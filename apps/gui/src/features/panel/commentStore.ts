@@ -10,7 +10,7 @@ import type { LineComment } from '@/features/chat/commentMessage'
 
 export type SentComment = LineComment & {
   readonly id: number
-  /** The exact message handed to the composer's queue, so the panel can tell whether it is still waiting. */
+  /** The exact message sent to the daemon. */
   readonly message: string
 }
 

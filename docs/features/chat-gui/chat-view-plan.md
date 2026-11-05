@@ -71,10 +71,10 @@ check for the view). Acceptance criteria are the bullets.
    - Reconnecting the daemon resumes from the last cursor, no duplicates.
 3. **CV-3 Composer.** **Done in the client** (`useChatComposer.ts`, `components/Composer.tsx`): Enter sends,
    Shift+Enter adds a line, Esc or Stop interrupts, disabled while an approval is pending or the daemon is offline,
-   and a minimal approval card answers by request id. **Not done: the daemon-held queue.** There is no queue API,
-   so a message sent while a turn runs waits in the window (a pending bubble with Remove) and is sent once the daemon
-   reports the turn finished, in order and once each, only while the chat is open and not at a step boundary.
-   Closing the window drops it. Original brief:  Enter sends, Shift+Enter newlines, Esc or **Stop**
+   and a minimal approval card answers by request id. **The queue is the daemon's** (G24): a message sent while a
+   turn runs is held by the daemon (`ReadResult.queued`, removed with `ConversationDequeue`) and delivered when the
+   turn ends, in order and once each, whether or not the window stays open; the chat shows it as a pending bubble
+   with Remove. Delivery is at the end of the turn, not mid-turn. Original brief:  Enter sends, Shift+Enter newlines, Esc or **Stop**
    interrupts. While a turn runs the composer **queues** the message and says so
    ("Queue a message for when Claude finishes this step"); it is sent at the turn
    boundary. Disabled while an approval is pending.
@@ -143,13 +143,15 @@ check for the view). Acceptance criteria are the bullets.
 
 ## What is still missing (client and daemon)
 
-- **A session's chat needs a daemon conversation for its pane.** The desktop app lists terminal sessions only, and
-  a shell where `claude` or `codex` was typed has no conversation, so today no pane is `ready` and the chat shows
-  "no event stream" for it. The client side is finished (it links a pane to the conversation whose native terminal
-  it is); the daemon must start or attach a Claude/Codex conversation for an agent running in a pane (for example
-  from the provider's session id, hydrating from its saved history).
-- **A daemon-held queue and a push of history.** Queued sends are window-only, and the history is polled (1 s while
-  working) because a cursor goes stale on every change.
+- **A composer, approvals and a queue for a pane's chat.** A Claude or Codex agent running in a pane now has a
+  **read-only** daemon conversation that follows the agent's own transcript (G23, [ADR 0052](../../adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)):
+  `native_term` is the pane, so the chat opens with its history, and the status stays the pane's. Sending, answering
+  approvals and cancelling still happen in the terminal. Giving these panes a composer needs the owner's decision
+  (ADR 0052, *To confirm*): typing into the pane's PTY when the agent is idle, or starting new sessions as
+  daemon-owned structured conversations. Not tried against a live Claude or Codex; Codex's rollout shape is read
+  from its observed format and is covered by fixtures only.
+- History is still polled (1 s while working), but a poll is now one small read: every page carries a `resume`
+  cursor that returns only the entries changed since (G24 part 2). A push of events is not built.
 - Left: token counts (no usage events in the history), a helper agent's phase line and step count (not in the
   history), the sidebar working shimmer, an external-link route (agent links copy their address, see UI.md), a
   Claude exit code (the provider reports none), and the session panel (CV-8, CV-11, CV-12).

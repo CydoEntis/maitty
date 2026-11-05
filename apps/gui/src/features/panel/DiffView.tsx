@@ -25,6 +25,8 @@ type Props = {
   comments: readonly SentComment[]
   /** Why a comment would wait rather than go at once, or `null` when it goes now. */
   deliveryNote: string | null
+  /** Why comments cannot be written, or `null` when they can. */
+  disabledReason: string | null
   onBack: () => void
   onComment: (comment: { line: number; code: string; text: string }) => void
 }
@@ -78,7 +80,7 @@ function CommentComposer({ line, agent, note, onSend, onCancel }: { line: number
  * count marker whose tooltip lists what was written. Removed lines have no number in the file as it
  * is now, so they take no comment.
  */
-export function DiffView({ file, agent, comments, deliveryNote, onBack, onComment }: Props) {
+export function DiffView({ file, agent, comments, deliveryNote, disabledReason, onBack, onComment }: Props) {
   const lines = useMemo(() => parsePatch(file.patch), [file.patch])
   const [composing, setComposing] = useState<number | null>(null)
   const [limit, setLimit] = useState(ROWS_PER_STEP)
@@ -102,7 +104,7 @@ export function DiffView({ file, agent, comments, deliveryNote, onBack, onCommen
         <span className="shrink-0 font-mono text-[11.5px] text-[var(--ok)]">+{file.additions}</span>
         <span className="shrink-0 font-mono text-[11.5px] text-[var(--danger)]">−{file.deletions}</span>
       </div>
-      <p className="m-0 shrink-0 px-3 py-1.5 text-[11.5px] text-dim">Hover a line and click + to leave a comment for {agent}.</p>
+      <p className="m-0 shrink-0 px-3 py-1.5 text-[11.5px] text-dim">{disabledReason ?? `Hover a line and click + to leave a comment for ${agent}.`}</p>
       {file.binary ? (
         <p className="m-0 px-3 py-2 text-[12px] text-dim">Binary file; there is no diff to show.</p>
       ) : lines.length === 0 ? (
@@ -122,6 +124,8 @@ export function DiffView({ file, agent, comments, deliveryNote, onBack, onCommen
                     <button
                       type="button"
                       aria-label={`Comment on line ${String(newNo)}`}
+                      disabled={disabledReason !== null}
+                      title={disabledReason ?? undefined}
                       className="absolute top-[1.5px] left-0.5 z-10 flex size-4 items-center justify-center rounded bg-brand text-[var(--on-accent)] opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                       onClick={() => { setComposing(newNo) }}
                     >

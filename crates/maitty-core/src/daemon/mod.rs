@@ -104,6 +104,8 @@ pub enum Ev {
         token: u64,
         result: Result<conversation::transport::Launch, String>,
     },
+    /// A background read of a followed pane's transcript finished (ADR 0052).
+    FollowRead(Box<conversation::follow::Done>),
     ConversationStorage {
         id: crate::conversation::ConversationId,
         revision: Option<u64>,
@@ -368,6 +370,16 @@ struct Daemon {
     conversation_barriers: BTreeMap<u64, u64>,
     conversation_histories:
         BTreeMap<crate::conversation::ConversationId, conversation::history::History>,
+    /// Agents running in desktop panes, followed read-only through their own transcripts.
+    followed: Vec<conversation::follow::Followed>,
+    /// Messages sent while a turn ran, per conversation, delivered in order as turns end.
+    conversation_queues:
+        BTreeMap<crate::conversation::ConversationId, Vec<conversation::commands::QueuedSend>>,
+    /// The highest id given to a followed pane, so an id is not reused while the daemon lives.
+    followed_high_water: u64,
+    /// Tests read transcripts from a scratch "home" instead of the real one.
+    #[cfg(test)]
+    followed_home: Option<PathBuf>,
     conversation_cache: Option<conversation::history_storage::Cache>,
     conversation_cache_dirty: std::collections::BTreeSet<crate::conversation::ConversationId>,
     conversation_cache_writes: BTreeMap<crate::conversation::ConversationId, u64>,
@@ -753,6 +765,16 @@ impl Daemon {
                 anyhow::bail!("Only a human client can end a conversation")
             }
             Command::ConversationEnd { .. } => self.may(client, Grant::Write, None),
+            Command::ConversationDequeue { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can remove a queued message")
+            }
+            Command::ConversationDequeue { .. } => self.may(client, Grant::Write, None),
             Command::ConversationRename { .. } | Command::ConversationArchive { .. }
                 if structured
                     || self
@@ -994,6 +1016,11 @@ impl Daemon {
             conversation_request_id: 0,
             conversation_barriers: BTreeMap::new(),
             conversation_histories: BTreeMap::new(),
+            followed: Vec::new(),
+            conversation_queues: BTreeMap::new(),
+            followed_high_water: 0,
+            #[cfg(test)]
+            followed_home: None,
             conversation_cache: None,
             conversation_cache_dirty: Default::default(),
             conversation_cache_writes: Default::default(),
@@ -1049,6 +1076,8 @@ impl Daemon {
                     self.phone_alerts();
                     self.auto_continue();
                     self.poll_codex();
+                    self.follow_tick();
+                    self.deliver_queued();
                     self.usage_store.save_if_due(term::unix_now());
                     self.poll_git();
                     self.sweep_secrets();
@@ -1444,6 +1473,7 @@ impl Daemon {
                 }
                 self.conversation_save_completed(barrier, result);
             }
+            Ev::FollowRead(done) => self.follow_read_done(*done),
             Ev::ConversationStorage {
                 id,
                 revision,

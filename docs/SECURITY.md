@@ -517,6 +517,21 @@ the folder's name and the agent's session id. It holds no prompts, output, paths
 file is private to the user (0600 in a 0700 folder on Unix). `Query::UsageReport` is for human
 clients only: an agent pane or a structured runtime cannot read what other sessions cost.
 
+## Project-specific: followed transcripts
+
+The daemon reads an agent's own transcript for a pane it follows ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)).
+The path comes from a hook report, so it is input, not trust:
+
+- It is read only if its real path (links followed) is a regular `.jsonl` file inside the user's home folder
+  and its name carries the session id the hook reported (Claude `<session>.jsonl`; Codex
+  `rollout-…<session>.jsonl`). Anything else is refused with a reason that names no content.
+- Only a pane that is hook-verified, owned by the desktop app and running `claude` or `codex` is followed; a
+  pane cannot make the daemon read a file for another session.
+- Reads are incremental and bounded (4 MiB per poll, a 16 MiB tail first, lines over 1 MiB dropped), run off the
+  event loop, never write, and are cleaned and bounded like structured history (`tool_input.rs`). The text is
+  held in daemon memory for the conversation's life, never cached, logged or put in a fixture.
+- A followed conversation is read-only, and reading never changes a status.
+
 ## Project-specific: structured history cache boundary
 
 The structured-history cache reuses private-directory/file helpers:
@@ -546,6 +561,9 @@ that cannot be bounded in shape is dropped (`tool_input.rs`). There is no secret
 redaction of history text, input included; do not assume one. Answered approvals
 keep the request's command and diff in daemon memory only, never in the cache, and
 the answers to user-input requests are not kept at all.
+A message queued while a turn runs is held in daemon memory only, never in the session file or the history
+cache, and goes through the same admission checks as a direct send (invisible characters, size, write grant)
+when it is queued and the same durable-receipt path when it is delivered. Removing one needs a human client.
 Prompts are checked for invisible characters at daemon admission. Launch inputs
 are validated in background and explicit sandbox/approval posture is checked in
 the provider response. Native profile-v2 and ambiguous identity are refused.

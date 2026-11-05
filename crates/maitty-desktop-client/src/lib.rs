@@ -843,7 +843,30 @@ pub async fn send_conversation(
     .await?;
     match reply {
         Reply::ConversationSent(receipt) => Ok(serde_json::to_value(receipt)?),
+        // The conversation was busy: the daemon holds the message and sends it when the turn ends.
+        Reply::ConversationQueued(queued) => Ok(serde_json::to_value(queued)?),
         _ => bail!("daemon returned an unexpected conversation send reply"),
+    }
+}
+
+pub async fn dequeue_conversation(
+    id: u64,
+    generation: u64,
+    operation: u64,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ConversationDequeue {
+            id: maitty_shared::conversation::ConversationId(id),
+            generation,
+            operation,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected queued message removal reply"),
     }
 }
 

@@ -37,7 +37,7 @@ export function Composer({ agent, composer }: Props) {
               <li key={message.id} className="flex max-w-[85%] flex-col gap-0.5 rounded-[16px_16px_5px_16px] border border-dashed border-line2 px-3.5 py-2 text-[14px] leading-[1.5] text-fg2">
                 <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{message.text}</span>
                 <span className="flex items-center gap-1.5 text-[11.5px] text-dim">
-                  Queued · sends when {agent} finishes this turn, while this chat is open
+                  Queued · sent when {agent} finishes this turn, even if you close the window
                   <button type="button" className="inline-flex items-center gap-0.5 text-dim underline-offset-2 hover:text-fg hover:underline" onClick={() => { removeQueued(message.id) }}>
                     <X className="size-3" aria-hidden="true" />Remove
                   </button>

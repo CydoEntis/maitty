@@ -3,12 +3,14 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { useState, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConversationDiff } from '@/api/daemon'
-import { forgetComposers, useComposerState } from '@/features/chat/composerStore'
+import { forgetComposers } from '@/features/chat/composerStore'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '@/features/chat/fakeDaemonHistory'
+import { reserveOperation } from '@/features/chat/sendOperation'
 import { forgetChatFeeds } from '@/features/chat/useChatFeed'
 import { forgetComments } from './commentStore'
 import { forgetDiffRequest, requestDiff } from './panelCommands'
 import { SessionPanel } from './SessionPanel'
+import { forgetCommentDelivery } from './useCommentDelivery'
 
 const fake = vi.hoisted(() => ({
   history: null as null | { read: (cursor: never) => Promise<unknown> },
@@ -64,25 +66,19 @@ function Providers({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }
 
-/** Shows what the composer's queue holds, so a test sees what the panel handed it. */
-function QueueProbe() {
-  const { queue } = useComposerState(FAKE_CONVERSATION)
-  return <ul aria-label="probe queue">{queue.map((message) => <li key={message.id}>{message.text}</li>)}</ul>
-}
-
-function open(options: { chatOpen?: boolean; online?: boolean; status?: 'Idle' | 'Working' | 'Blocked'; approvals?: unknown[] } = {}) {
+function open(options: { readOnly?: boolean; online?: boolean; status?: 'Idle' | 'Working' | 'Blocked'; approvals?: unknown[]; queued?: Array<{ operation: number; text: string }> } = {}) {
   const history = new FakeDaemonHistory()
   history.upsert(history.message('t1', 'u', 'User', 'hello'))
   history.status = options.status ?? 'Idle'
   history.approvals = options.approvals ?? []
+  history.queued = options.queued ?? []
   fake.history = history
   fake.diff = () => Promise.resolve(DIFF)
   widths = []
   opened = []
   render(
     <Providers>
-      <SessionPanel mode="docked" title="fix tests" process="claude" availability={ready} root="/repo" folder="/repo" onOpenInFiles={(file) => { opened.push(file) }} branch="feat/fix" online={options.online ?? true} chatOpen={options.chatOpen ?? false} width={320} onWide={(wide) => { widths.push(wide) }} onClose={() => undefined} />
-      <QueueProbe />
+      <SessionPanel mode="docked" title="fix tests" process="claude" availability={options.readOnly === true ? { ...ready, link: { ...link, readOnly: true } } : ready} root="/repo" folder="/repo" onOpenInFiles={(file) => { opened.push(file) }} branch="feat/fix" online={options.online ?? true} width={320} onWide={(wide) => { widths.push(wide) }} onClose={() => undefined} />
     </Providers>,
   )
   return history
@@ -102,6 +98,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   forgetChatFeeds()
   forgetComposers()
+  forgetCommentDelivery()
   forgetComments()
   forgetDiffRequest()
   fake.submitMessage.mockReset()
@@ -222,50 +219,114 @@ describe('line comments', () => {
     expect(fake.submitMessage).not.toHaveBeenCalled()
   })
 
-  it('never sends while an approval waits: the comment is queued and goes after the answer', async () => {
-    const history = open({ status: 'Blocked', approvals: [{ request_id: 'r1', kind: 'Command', turn_id: 't1', command: 'rm -rf build', choices: ['Accept', 'Decline'] }] })
+  const CONVERSATION = { id: String(FAKE_CONVERSATION), generation: 1 }
+  const approval = { request_id: 'r1', kind: 'Command', turn_id: 't1', command: 'rm -rf build', choices: ['Accept', 'Decline'] }
+
+  it('never sends while an approval waits: the comment waits in the panel and goes after the answer', async () => {
+    const history = open({ status: 'Blocked', approvals: [approval] })
     await openFile('src/app.ts')
     fireEvent.click(screen.getByRole('button', { name: 'Comment on line 1' }))
-    expect(screen.getByText(/waiting for an approval/)).toBeInTheDocument()
+    expect(screen.getByText(/waiting for an approval. This comment is queued and sent after you answer it/)).toBeInTheDocument()
 
     await comment(1, 'Keep the import sorted.')
     await settle(5000)
-
     expect(fake.submitMessage).not.toHaveBeenCalled()
-    expect(screen.getByRole('list', { name: 'probe queue' })).toHaveTextContent('Comment on src/app.ts:1')
 
     history.approvals = []
     history.status = 'Idle'
     history.upsert(history.message('t1', 'u2', 'User', 'ping'))
     await settle(5000)
-    expect(fake.submitMessage).toHaveBeenCalledOnce()
-    expect(screen.getByRole('list', { name: 'probe queue' })).toBeEmptyDOMElement()
+    expect(fake.submitMessage).toHaveBeenCalledExactlyOnceWith(CONVERSATION, 1, 'Comment on src/app.ts:1\n> import a\n\nKeep the import sorted.')
   })
 
-  it('queues while the agent works and sends when the turn is over', async () => {
-    const history = open({ status: 'Working' })
+  it('sends at once while the agent works, since the daemon holds it until the turn ends', async () => {
+    open({ status: 'Working' })
     await openFile('src/app.ts')
     fireEvent.click(screen.getByRole('button', { name: 'Comment on line 3' }))
     expect(screen.getByText(/queued and sent when it finishes this turn/)).toBeInTheDocument()
 
     await comment(3, 'Add a test.')
-    expect(fake.submitMessage).not.toHaveBeenCalled()
-
-    history.status = 'Idle'
-    history.upsert(history.message('t1', 'u2', 'User', 'ping'))
     await settle(5000)
-    expect(fake.submitMessage).toHaveBeenCalledExactlyOnceWith(expect.anything(), expect.any(Number), 'Comment on src/app.ts:3\n> export {}\n\nAdd a test.')
+
+    expect(fake.submitMessage).toHaveBeenCalledExactlyOnceWith(CONVERSATION, 1, 'Comment on src/app.ts:3\n> export {}\n\nAdd a test.')
   })
 
-  it('leaves delivery to the chat\'s own composer while the chat is open, so a comment is sent once', async () => {
-    open({ chatOpen: true })
+  it('numbers a comment above what the daemon already holds', async () => {
+    open({ status: 'Working', queued: [{ operation: 4, text: 'earlier' }] })
+    await openFile('src/app.ts')
+
+    await comment(1, 'Next.')
+
+    expect(fake.submitMessage).toHaveBeenCalledExactlyOnceWith(CONVERSATION, 5, expect.stringContaining('Next.'))
+  })
+
+  it('holds a comment while the daemon is offline and sends it once it is back', async () => {
+    open({ online: false })
+    await openFile('src/app.ts')
+    fireEvent.click(screen.getByRole('button', { name: 'Comment on line 1' }))
+    expect(screen.getByText(/The daemon is offline. This comment is queued until it is back/)).toBeInTheDocument()
+
+    await comment(1, 'Later.')
+    await settle(5000)
+    expect(fake.submitMessage).not.toHaveBeenCalled()
+    cleanup()
+
+    open({ online: true })
+    await settle(5000)
+    expect(fake.submitMessage).toHaveBeenCalledExactlyOnceWith(CONVERSATION, 1, 'Comment on src/app.ts:1\n> import a\n\nLater.')
+  })
+
+  it('sends a comment once through the daemon, whether or not the chat is open', async () => {
+    open()
     await openFile('src/app.ts')
 
     await comment(1, 'Once only.')
     await settle(5000)
 
+    expect(fake.submitMessage).toHaveBeenCalledExactlyOnceWith(CONVERSATION, 1, expect.stringContaining('Once only.'))
+  })
+
+  it('tries a failed send again with the same operation number', async () => {
+    const history = open()
+    fake.submitMessage.mockRejectedValueOnce(new Error('connection lost'))
+    await openFile('src/app.ts')
+
+    await comment(1, 'Again.')
+    expect(fake.submitMessage).toHaveBeenCalledTimes(1)
+
+    history.upsert(history.message('t1', 'u2', 'User', 'ping'))
+    await settle(5000)
+
+    expect(fake.submitMessage).toHaveBeenCalledTimes(2)
+    expect(fake.submitMessage.mock.calls[1]).toEqual(fake.submitMessage.mock.calls[0])
+  })
+
+  it('takes a new operation number when the daemon calls the old one stale or reused', async () => {
+    open()
+    fake.submitMessage.mockImplementationOnce(() => {
+      // Another sender (the chat's composer) used higher numbers before the daemon answered.
+      reserveOperation(FAKE_CONVERSATION, { receipt: null, queued: [{ operation: 6 }] })
+      return Promise.reject(new Error('operation is stale or reused'))
+    })
+    await openFile('src/app.ts')
+
+    await comment(1, 'Renumber.')
+    await settle(5000)
+
+    expect(fake.submitMessage).toHaveBeenCalledTimes(2)
+    expect(fake.submitMessage.mock.calls[0]?.[1]).toBe(1)
+    expect(fake.submitMessage.mock.calls[1]?.[1]).toBe(8)
+  })
+
+  it('cannot comment in a read-only chat and says why', async () => {
+    open({ readOnly: true })
+    await openFile('src/app.ts')
+
+    expect(screen.getByText('Read-only: talk to the agent in the terminal')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Comment on line 1' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Comment on line 1' }))
+    expect(screen.queryByRole('textbox', { name: /Comment on line/ })).toBeNull()
     expect(fake.submitMessage).not.toHaveBeenCalled()
-    expect(screen.getByRole('list', { name: 'probe queue' })).toHaveTextContent('Once only.')
   })
 })
 
