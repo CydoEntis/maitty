@@ -153,7 +153,7 @@ fn secret_named_assignments_lose_only_the_value() {
         ),
         ("PRIVATE_KEY=abc123def".into(), "PRIVATE_KEY=[redacted]".into()),
         ("AWS_CREDENTIAL=abcdef12".into(), "AWS_CREDENTIAL=[redacted]".into()),
-        ("OAUTH_TOKEN=abc".repeat(1) + "defgh", "OAUTH_TOKEN=[redacted]".into()),
+        ("OAUTH_TOKEN=abcdefgh".into(),"OAUTH_TOKEN=[redacted]".into()),
         ("curl 'https://x.test/a?id=1&token=abc123def'".into(), "curl 'https://x.test/a?id=1&token=[redacted]'".into()),
         ("githubToken: 'abc123xyz789'".into(), "githubToken: '[redacted]'".into()),
     ];
