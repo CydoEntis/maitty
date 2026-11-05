@@ -20,7 +20,7 @@ function show(heads: SidebarProps['machineHeads'], groups: SessionGroup[]) {
       startFolderLabel="~" canStart portalContainer={null} onToggleRail={none} canExpand tabOf={new Map()} tabPanes={new Map()}
       openIds={new Set()} paneOf={new Map()} trayStyle="stacked" leadMode="focused" side="left" width={280} onResize={none}
       onResizeEnd={none} onNewSession={none} onNewSessionIn={none} onNewWorktree={none} onShowSession={none} onEndSession={none}
-      onEndProject={none} onSetName={none} onRenameSession={none} onPinSession={none} onOpenSettings={none} updateSlot={null} railUpdateSlot={null} overview={{ open: false, needs: 0, onToggle: none }}
+      onEndProject={none} onSetName={none} onRenameSession={none} onPinSession={none} onOpenSettings={none} onOpenUsage={none} updateSlot={null} railUpdateSlot={null} overview={{ open: false, needs: 0, onToggle: none }}
     />,
   )
 }

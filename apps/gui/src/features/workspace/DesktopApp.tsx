@@ -45,6 +45,7 @@ import { runsProgram } from './components/useArmed'
 import { rememberSessions, withEnded } from './model/ended'
 import { advanceLoginWatch, LOGIN_CHECK_MS, startLoginWatch, type LoginWatch } from './model/loginWatch'
 import { announcementFor, idsOfMachinesNotHeard, machineHeads, remoteStartRefusal, remoteTargetOf, remoteTerminals, type RemoteMachine } from './model/machines'
+import { UsagePage } from '@/features/usage/UsagePage'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { StatusBar } from './components/StatusBar'
@@ -236,6 +237,7 @@ export function DesktopApp() {
   const [inboxOpen, setInboxOpen] = useState(false)
   const [overviewOpen, setOverviewOpen] = useState(false)
   const [jumped, setJumped] = useState<JumpMark | null>(null)
+  const [usageOpen, setUsageOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
   const [inspectOpen, setInspectOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
@@ -898,6 +900,12 @@ export function DesktopApp() {
     setLayout((current) => showSession(current, sessionId, makeId))
   }, [])
 
+  // The usage report names panes of this computer's daemon by number; only a pane this window has can be opened.
+  const sessionForUsageTerm = useCallback((term: number) => {
+    const found = sessions.find((member) => member.machine === LOCAL_MACHINE && member.pane === term)
+    return found ? { id: found.id, name: displayName(found) } : null
+  }, [sessions])
+
   // Cmd/Ctrl-click on a file name in a pane's output: find it in that pane's repo, then show it in Inspect.
   const openPath = useCallback((session: SessionView, path: string, line?: number) => {
     // Files and Changes look at this computer's own checkouts; a pane of another machine has none here.
@@ -1098,8 +1106,10 @@ export function DesktopApp() {
       // Registered in the table but not built (or not undoable): the key does nothing until the feature ships.
       case 'undo-close':
       case 'session-panel':
-      case 'usage':
       case 'chat-toggle':
+        return
+      case 'usage':
+        setUsageOpen((open) => !open)
         return
       case 'focus-mode':
         setFocusMode((on) => !on)
@@ -1137,10 +1147,10 @@ export function DesktopApp() {
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
-  const modalOpen = settingsSection !== null || renameId !== null || remoteStart !== null || overlayOpen
+  const modalOpen = settingsSection !== null || renameId !== null || remoteStart !== null || overlayOpen || usageOpen
   const drawerShown = compact && drawerOpen
-  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, paletteOpen, inboxOpen, overviewOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
-  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, paletteOpen, inboxOpen, overviewOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
+  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, paletteOpen, inboxOpen, overviewOpen, usageOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
+  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, paletteOpen, inboxOpen, overviewOpen, usageOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
   useEffect(() => {
     // How each layer of the Esc ladder closes. A new dialog adds its closer here and its id to ESC_LADDER.
     const closers: Partial<Record<EscLayer, () => void>> = {
@@ -1149,6 +1159,7 @@ export function DesktopApp() {
       inbox: () => { setInboxOpen(false) },
       settings: () => { setSettingsSection(null) },
       drawer: () => { setDrawerOpen(false) },
+      usage: () => { setUsageOpen(false) },
       'focus-mode': () => { setFocusMode(false) },
     }
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1167,7 +1178,7 @@ export function DesktopApp() {
       if (event.key === 'Escape') {
         // A menu or list that is open (the spinner picker in Settings) takes Esc itself.
         if (event.target instanceof Element && event.target.closest('[role="menu"]')) return
-        const top = topmostOpen({ overview: state.overviewOpen, palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, drawer: state.drawerShown, 'focus-mode': state.focusMode })
+        const top = topmostOpen({ overview: state.overviewOpen, palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, drawer: state.drawerShown, usage: state.usageOpen, 'focus-mode': state.focusMode })
         if (top === null) return
         // What Esc closes is not also sent on to the terminal, where it would interrupt an agent.
         event.preventDefault()
@@ -1370,6 +1381,7 @@ export function DesktopApp() {
       action('split-down', 'Split down', () => { split(null, 'down') }, keys('split-down')),
       action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('inbox')),
       action('overview', overviewOpen ? 'Close the Overview' : 'Open the Overview', () => { setOverviewOpen((open) => !open) }, keys('overview')),
+      action('usage', 'Open usage and cost', () => { setUsageOpen(true) }, keys('usage')),
       action('jump-needs', 'Jump to the next session that needs you', () => { runShortcut('jump-needs') }, keys('jump-needs')),
       action('inspect', 'Inspect the repository', () => { if (inspectRefusal !== null) toast.message(inspectRefusal); else setInspectOpen(true) }, keys('inspect')),
       ...(focusedSession ? [action('new-worktree', 'New worktree', () => { runShortcut('new-worktree') }, keys('new-worktree'))] : []),
@@ -1471,6 +1483,7 @@ export function DesktopApp() {
       onRenameSession={setRenameId}
       onPinSession={pinSession}
       onOpenSettings={() => { afterPick(); setSettingsSection('general') }}
+      onOpenUsage={() => { afterPick(); setUsageOpen(true) }}
       updateSlot={updateSlot('footer')}
       railUpdateSlot={updateSlot('rail')}
       overview={{ open: overviewOpen, needs: needsYouCount(sessions), onToggle: () => { afterPick(); setOverviewOpen((open) => !open) } }}
@@ -1629,6 +1642,15 @@ export function DesktopApp() {
                                   canStart={canStart}
                     onNewSession={newSession}
                     onChangeStartFolder={() => { setSettingsSection('general') }}
+                  />
+                )}
+                {usageOpen && (
+                  <UsagePage
+                    budget={preferences.monthlyBudget}
+                    onBudget={(budget) => { setPreferences((current) => ({ ...current, monthlyBudget: budget })) }}
+                    sessionForTerm={sessionForUsageTerm}
+                    onOpenSession={(id) => { setUsageOpen(false); showSessionById(id) }}
+                    onClose={() => { setUsageOpen(false) }}
                   />
                 )}
                 {!focusMode && preferences.statusBar && (

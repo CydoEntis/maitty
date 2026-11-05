@@ -147,6 +147,15 @@ Rules for `apps/gui/`. Owner-approved 2026-11-04.
 files in `features/workspace/theme/`, and `TerminalView.tsx` (the xterm.js
 palette takes literal colours). Don't widen the exemptions to pass a change.
 
+## Project-specific: usage and cost page (desktop)
+
+The Usage and cost page (`apps/gui/src/features/usage/`, look in [DESIGN](DESIGN.md#desktop-app)) shows only
+what providers reported through the daemon's usage store ([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)).
+A figure nobody reported is a dash in the UI, never zero and never computed from tokens. The monthly
+budget is a client preference (`monthlyBudget`, validated in `preferences.ts`); the ring needs a budget, a
+known cost and the Month window. The report is fetched with a query (no polling faster than 60 s), and
+the page never blocks the UI thread.
+
 ## Project-specific: layout and navigation
 
 <!-- local: user requested sidebar-bottom controls and no global footer; on 2026-10-24 they chose one exception, the mode bar along the bottom (ADR 0024). -->

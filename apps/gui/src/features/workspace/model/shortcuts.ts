@@ -112,7 +112,7 @@ export const BINDINGS: readonly Binding[] = [
   { action: 'toggle-sidebar', label: 'Collapse sidebar', group: 'Window', mac: [cmd('B')], other: [ctrlShift('B')], available: true },
   { action: 'session-panel', label: 'Session panel', group: 'Window', mac: [cmd('\\')], other: [{ mods: ['ctrl'], key: '\\' }], available: false },
   { action: 'chat-toggle', label: 'Terminal or chat', group: 'Window', mac: [cmd('E', 'shift')], other: [ctrlShift('E')], available: false },
-  { action: 'usage', label: 'Usage and cost', group: 'Window', mac: [cmd('U', 'shift')], other: [ctrlShift('U')], available: false },
+  { action: 'usage', label: 'Usage and cost', group: 'Window', mac: [cmd('U', 'shift')], other: [ctrlShift('U')], available: true },
   { action: 'performance', label: 'Performance', group: 'Window', mac: [cmd('P', 'shift')], other: [ctrlShift('P')], available: true },
   { action: 'focus-mode', label: 'Focus mode', group: 'Window', mac: [cmd('.')], other: [{ mods: ['ctrl'], key: '.' }], available: true },
   { action: 'settings', label: 'Settings', group: 'Window', mac: [cmd(',')], other: [{ mods: ['ctrl'], key: ',' }], available: true },
