@@ -358,7 +358,7 @@ pub const SETTINGS: &[Setting] = &[
         label: "Tool rail",
         kind: Kind::Bool,
         cat: Cat::Appearance,
-        help: "The column of f, c, b and a chips on the right edge that opens Files, Changes, Branch and References.",
+        help: "A column of f, c, b and a chips on the right edge that opens Files, Changes, Branch and References. They are in the Menu too.",
     },
     Setting {
         path: "ui.glyphs",
@@ -474,7 +474,28 @@ pub const SETTINGS: &[Setting] = &[
         label: "Alert sounds",
         kind: Kind::Bool,
         cat: Cat::Alerts,
-        help: "Two rising notes when an agent needs you, one soft note when a background session finishes.",
+        help: "Every alert sound, on or off. Off silences the two below.",
+    },
+    Setting {
+        path: "notify.sound_on_needs",
+        label: "Sound when an agent needs you",
+        kind: Kind::Bool,
+        cat: Cat::Alerts,
+        help: "Two rising notes when an agent you are not looking at asks you something.",
+    },
+    Setting {
+        path: "notify.sound_on_done",
+        label: "Sound when an agent finishes",
+        kind: Kind::Bool,
+        cat: Cat::Alerts,
+        help: "One soft note when an agent you are not looking at finishes. Once per request: not again when it picks itself back up.",
+    },
+    Setting {
+        path: "notify.volume",
+        label: "Sound volume",
+        kind: Kind::Choice(maitty_settings::config::VOLUMES),
+        cat: Cat::Alerts,
+        help: "How loud the alert sounds are.",
     },
     Setting {
         path: "notify.phone_topic",

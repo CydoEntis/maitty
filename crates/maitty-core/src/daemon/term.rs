@@ -152,6 +152,9 @@ pub struct Term {
     pub alerted: Option<(Status, std::time::Instant)>,
     /// The queued attention status and when it can ring if still current.
     pub alert_due: Option<(Status, std::time::Instant)>,
+    /// When the windows were last told this pane finished, while that finish stands: one that
+    /// did not last long enough to be said is forgotten.
+    pub finish_said: Option<std::time::Instant>,
     /// Hooks reported for this agent session: trust them over heuristics.
     pub hooked: bool,
     pub last_output: Instant,
@@ -817,6 +820,7 @@ impl Term {
             phoned: 0,
             alerted: None,
             alert_due: None,
+            finish_said: None,
             hooked: false,
             last_output: now,
             last_input: now,

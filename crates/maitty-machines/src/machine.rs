@@ -270,6 +270,22 @@ impl Machine {
         Ok(ssh_command::popup_command(&argv)?)
     }
 
+    /// `<program> machine update <name>` as one line for a pane's shell, where it can say what
+    /// it found and ask before it installs. `install`: the app is not on the machine at all.
+    pub fn update_command(&self, program: &str, install: bool) -> Result<String> {
+        self.ssh_route()?;
+        let mut argv = vec![
+            program.to_string(),
+            "machine".to_string(),
+            "update".to_string(),
+            self.name.clone(),
+        ];
+        if install {
+            argv.push("--install".to_string());
+        }
+        Ok(ssh_command::popup_command(&argv)?)
+    }
+
     fn ssh_route(&self) -> Result<&SshRoute> {
         match &self.route {
             Route::Ssh(route) => Ok(route),

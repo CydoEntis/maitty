@@ -294,15 +294,6 @@ pub(super) fn glyph(app: &App, s: Status) -> String {
     }
 }
 
-pub(super) fn state_label(s: Status) -> &'static str {
-    match s {
-        Status::Blocked => "needs you",
-        Status::Working => "working",
-        Status::Done => "done",
-        _ => "idle",
-    }
-}
-
 // ---- the layout ------------------------------------------------------------------------------
 
 /// A title bar: name + location on the left, the given segments on the right.
@@ -1531,7 +1522,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
             p if p.starts_with("restore.") => "RESTARTS",
             "scrollback" => "HISTORY",
-            "notify.sound" => "SOUND",
+            "notify.sound" | "notify.sound_on_needs" | "notify.sound_on_done" | "notify.volume" => "SOUND",
             p if p.starts_with("notify.") => "PHONE",
             "detection.working_window_ms" => AGENT_STATUS_GROUP,
             "sessions.helpers" | "sessions.helpers_at_once" | "ui.subagent_count" => "HELPERS",

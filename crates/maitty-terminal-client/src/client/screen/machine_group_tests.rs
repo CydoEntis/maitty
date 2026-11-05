@@ -11,6 +11,7 @@ use crate::link_failure::FIX_LOGIN;
 use crate::protocol::{
     CheckInfo, CheckState, ClientMsg, Command, HumanQuestion, Limit, ServerMsg, Snapshot,
 };
+use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use std::time::{Duration, Instant};
@@ -548,25 +549,119 @@ fn a_connected_machine_is_a_header_with_its_projects_under_remote() {
 }
 
 #[test]
-fn a_machine_whose_line_is_down_is_one_item_that_opens_the_machines_dialog() {
+fn a_machine_whose_line_is_down_is_one_item_that_says_how_it_stands() {
     let mut app = two_machines(reconnecting());
-    let side = raw_text(&mut app, Layout::Floating, 160, 45, "unicode")
-        .lines()
-        .map(|l| l.chars().take(34).collect::<String>())
-        .collect::<Vec<_>>()
-        .join("\n");
+    let side = side_columns(&mut app);
     assert!(side.contains("⇄ build"), "{side}");
-    assert!(side.contains("disconnected"), "{side}");
+    assert!(side.contains("reconnecting…"), "{side}");
     assert!(
         !side.contains("fix-auth"),
         "its cards are not drawn: {side}"
     );
-    let add = app
-        .hits
+    assert_eq!(machine_rows_hit(&app).len(), 2, "both rows are the machine's");
+
+    let mut app = two_machines(ConnectionState::NeedsUpdate {
+        why: crate::link_failure::FIX_UPDATE.into(),
+    });
+    let side = side_columns(&mut app);
+    assert!(
+        side.contains("needs update") && !side.contains("disconnected"),
+        "the state has its own word, not a general one: {side}"
+    );
+    assert_eq!(
+        machine_group::state_forms(&app, THERE),
+        ["needs update · click for the fix", "needs update"],
+        "the hint gives way to the word in a narrow sidebar"
+    );
+}
+
+/// The sidebar's columns of a wide frame, as text.
+fn side_columns(app: &mut App) -> String {
+    raw_text(app, Layout::Floating, 160, 45, "unicode")
+        .lines()
+        .map(|l| l.chars().take(34).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Where a click or a right-click is the other machine's, topmost target only.
+fn machine_rows_hit(app: &App) -> Vec<Rect> {
+    app.hits
         .iter()
-        .filter(|(_, h)| *h == crate::client::Hit::Screen(ScreenHit::AddMachine))
-        .count();
-    assert!(add >= 2, "both rows of the item take the click");
+        .filter(|(r, h)| {
+            *h == crate::client::Hit::Screen(ScreenHit::MachineRow(THERE))
+                && app
+                    .hover_hit(Position::new(r.x, r.y))
+                    .is_some_and(|(_, top)| top == h)
+        })
+        .map(|(r, _)| *r)
+        .collect()
+}
+
+fn mouse(app: &mut App, button: MouseButton, at: Rect) {
+    for kind in [MouseEventKind::Down(button), MouseEventKind::Up(button)] {
+        app.on_mouse(MouseEvent {
+            kind,
+            column: at.x + 2,
+            row: at.y,
+            modifiers: KeyModifiers::NONE,
+        });
+    }
+}
+
+#[test]
+fn a_right_click_on_either_row_of_a_machine_opens_its_menu() {
+    for row in 0..2 {
+        let mut app = two_machines(ConnectionState::Unreachable {
+            since: ago(150),
+            why: "no route to host".into(),
+        });
+        side_columns(&mut app);
+        let at = machine_rows_hit(&app)[row];
+        mouse(&mut app, MouseButton::Right, at);
+        let Mode::ScreenMenu(menu) = &app.mode else {
+            panic!("row {row}: no menu, the mode is {:?}", app.mode);
+        };
+        let items: Vec<&str> = menu.items.iter().map(|(label, _)| label.as_str()).collect();
+        assert_eq!(menu.title, "build");
+        assert_eq!(
+            items,
+            ["Reconnect", "Update…", "Edit…", "Remove"],
+            "Remove is last"
+        );
+    }
+}
+
+#[test]
+fn a_click_on_a_machine_opens_the_dialog_on_it_with_the_fix() {
+    let mut app = two_machines(ConnectionState::NeedsUpdate {
+        why: crate::link_failure::FIX_UPDATE.into(),
+    });
+    app.cfg.machines.push(maitty_settings::config::MachineDef {
+        name: "build".into(),
+        target: "ci@build".into(),
+        ..Default::default()
+    });
+    side_columns(&mut app);
+    let at = machine_rows_hit(&app)[1];
+    mouse(&mut app, MouseButton::Left, at);
+    let Mode::Machines(view) = &app.mode else {
+        panic!("no dialog, the mode is {:?}", app.mode);
+    };
+    assert_eq!(view.machine_sel, Some(0), "the clicked machine is chosen");
+    let frame = raw_text(&mut app, Layout::Floating, 160, 45, "unicode");
+    for want in [
+        "MACHINES",
+        "YOUR MACHINES",
+        "ci@build",
+        "needs update",
+        "run `maitty machine update build`, then retry",
+        "reconnect",
+        "update",
+        "remove",
+    ] {
+        assert!(frame.contains(want), "{want:?} is not in:\n{frame}");
+    }
 }
 
 #[test]

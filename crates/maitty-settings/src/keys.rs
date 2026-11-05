@@ -226,8 +226,6 @@ pub enum Action {
     StopAgent,
     /// A quick follow-up to the agent you're on: its next prompt, without going there.
     Message,
-    /// Why the session you're on has its status: the hook, screen and process evidence.
-    Why,
     /// Sessions that need you, then finished ones, across every project.
     Jump,
     /// A new agent session in the sidebar cursor's worktree.
@@ -327,7 +325,6 @@ impl Action {
             Action::Changes => "Changes".into(),
             Action::StopAgent => "Stop agent".into(),
             Action::Message => "Message this session".into(),
-            Action::Why => "Why this status".into(),
             Action::Jump => "Inbox".into(),
             Action::NewSession => "New session beside this one".into(),
             Action::CloseSplit => "Close the split".into(),
@@ -427,7 +424,6 @@ impl Action {
             Action::Changes => "changes".into(),
             Action::StopAgent => "stop-agent".into(),
             Action::Message => "message".into(),
-            Action::Why => "why".into(),
             Action::Detach => "detach".into(),
             Action::Help => "help".into(),
             Action::ReloadConfig => "reload-config".into(),
@@ -532,7 +528,6 @@ impl FromStr for Action {
             "changes" => Action::Changes,
             "stop-agent" => Action::StopAgent,
             "message" | "follow-up" => Action::Message,
-            "why" => Action::Why,
             "detach" => Action::Detach,
             "help" => Action::Help,
             "reload-config" => Action::ReloadConfig,
@@ -546,8 +541,9 @@ impl FromStr for Action {
             "tidy-worktrees" => Action::TidyWorktrees,
             "menu" | "actions" => Action::Menu,
             "worktrees" => Action::Worktrees,
-            // The fleet is gone; a binding written for it stays harmless, not a config error.
-            "none" | "unbind" | "start-fleet" => Action::None,
+            // The fleet and the why popover are gone; a binding written for one stays
+            // harmless, not a config error.
+            "none" | "unbind" | "start-fleet" | "why" => Action::None,
             _ => bail!("unknown action `{s}`"),
         })
     }
@@ -564,7 +560,6 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("enter", "message"),
     ("k", "stop-agent"),
     ("i", "jump"),
-    ("y", "why"),
     // Panes
     ("left", "focus-left"),
     ("down", "focus-down"),

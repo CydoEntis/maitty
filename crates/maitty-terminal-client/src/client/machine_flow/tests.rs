@@ -858,3 +858,96 @@ fn retry_on_a_connected_machine_says_so_and_a_machine_with_no_supervisor_gets_on
         assert!(h.app.machine_retry("nobody").error);
     });
 }
+
+// ---- your machines in the dialog: the arrows, reconnect, update, remove ----------------------
+
+#[test]
+fn the_dialog_lists_your_machines_and_its_keys_update_and_remove_the_chosen_one() {
+    let runtime = Runtime::new();
+    runtime.block_on(async {
+        let mut h = Harness::live("not-installed").await;
+        h.add_by_enter("box");
+        h.until("the machine to say what it needs", |h| {
+            matches!(h.state_of("box"), Some(ConnectionState::NeedsUpdate { .. }))
+        })
+        .await;
+
+        // Up from the input is your machines, Down from the last of them is the input again.
+        h.open(Vec::new());
+        assert_eq!(h.view().machine_sel, None, "the keys start in the input");
+        h.key(KeyCode::Up);
+        assert_eq!(h.view().machine_sel, Some(0));
+        h.key(KeyCode::Down);
+        assert_eq!(h.view().machine_sel, None);
+        h.type_text("r");
+        assert_eq!(h.view().query, "r", "in the input a letter is typed");
+
+        // `u` runs the update in a popup on this computer, with --install for a machine that
+        // has no app, and the machine is dialled when the popup closes.
+        h.open(Vec::new());
+        h.key(KeyCode::Up);
+        h.type_text("u");
+        let popups = h.popups();
+        let (machine, cmd) = popups.last().expect("a popup");
+        assert_eq!(*machine, MachineId::LOCAL);
+        assert!(cmd.ends_with(" machine update box --install"), "{cmd}");
+        assert!(
+            !matches!(h.app.mode, Mode::Machines(_)),
+            "the popup takes the keys, so the dialog is closed"
+        );
+        assert!(h.notice().starts_with("Updating box"), "{}", h.notice());
+        assert!(h.app.machine_login_waiting("box"));
+
+        // `r` dials it again and says so in the dialog.
+        h.open(Vec::new());
+        h.key(KeyCode::Up);
+        h.type_text("r");
+        assert_eq!(h.notice(), "Trying box again.");
+        assert_eq!(h.view().machine_sel, Some(0), "the keys stay on the machine");
+
+        // `e` asks where the machine is. A target ssh would read as an option is refused inline
+        // and nothing is written; a good one is saved in place and dialled at once.
+        h.type_text("e");
+        assert!(
+            matches!(&h.view().step, MachineStep::Edit { target, .. } if target == "box"),
+            "the field starts with where it is now"
+        );
+        for _ in 0.."box".len() {
+            h.key(KeyCode::Backspace);
+        }
+        h.type_text("-oProxyCommand=x");
+        h.key(KeyCode::Enter);
+        assert!(
+            matches!(&h.view().step, MachineStep::Edit { error: Some(_), .. }),
+            "refused where it was typed"
+        );
+        assert_eq!(
+            machine_entries(&h.local_config().unwrap()),
+            [("box".to_string(), "box".to_string())]
+        );
+        for _ in 0.."-oProxyCommand=x".len() {
+            h.key(KeyCode::Backspace);
+        }
+        let old_id = h.id_of("box").expect("its connection");
+        h.type_text("me@box");
+        h.key(KeyCode::Enter);
+        assert_eq!(h.notice(), "box now connects to me@box. Connecting.");
+        assert_eq!(h.view().step, MachineStep::Browse);
+        assert_eq!(h.view().machine_sel, Some(0), "the keys are back on the machine");
+        assert_eq!(
+            machine_entries(&h.local_config().unwrap()),
+            [("box".to_string(), "me@box".to_string())]
+        );
+        assert_eq!(h.app.cfg.machines[0].target, "me@box");
+        let new_id = h.id_of("box").expect("it is dialled at the new address");
+        assert_ne!(new_id, old_id, "the old connection was let go");
+        assert!(!h.app.remotes.contains_key(&old_id));
+
+        // `x` removes it from the config; with none left the keys are back in the input.
+        h.type_text("x");
+        assert!(h.notice().starts_with("Removes box from this list."));
+        assert_eq!(h.view().machine_sel, None);
+        assert!(machine_entries(&h.local_config().unwrap()).is_empty());
+        assert!(h.app.cfg.machines.is_empty());
+    });
+}

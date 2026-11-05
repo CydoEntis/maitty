@@ -566,12 +566,17 @@ impl Daemon {
         }
         // Whatever it was about to say is out of date now.
         if let Some(t) = self.terms.get_mut(&term) {
-            t.alert_due = None;
+            // A finish that did not stay long enough to be said was never said.
+            if t.alert_due.take().is_some_and(|(s, _)| s == Status::Done) {
+                t.finish_said = None;
+            }
             // A turn has started: the next queued follow-up waits for this one to end.
             if new == Status::Working {
                 t.queue_sent = None;
-                // A new turn's finish is news again; a question asked again soon is not.
-                if t.alerted.is_some_and(|(s, _)| s == Status::Done) {
+                // The finish of something you asked for since is news again. An agent that
+                // picked itself back up (a helper or a background job reported in) is still on
+                // the same work, and a question asked again soon is not news either.
+                if t.alerted.is_some_and(|(s, at)| s == Status::Done && t.last_input > at) {
                     t.alerted = None;
                 }
             }
@@ -587,6 +592,25 @@ impl Daemon {
     pub(super) fn announce(&mut self, term: TermId, status: Status) {
         if status == Status::Done && self.terms.get(&term).is_some_and(|t| t.awaiting_background) {
             return;
+        }
+        // A finish is said once for what you asked. An agent that stops, picks itself back up
+        // (a helper or a background job reported in) and stops again has nothing new to say
+        // until something is typed into its pane, or long enough has passed to be news.
+        if status == Status::Done
+            && let Some(t) = self.terms.get_mut(&term)
+        {
+            let now = std::time::Instant::now();
+            let said_already = t.finish_said.is_some_and(|at| {
+                t.last_input <= at
+                    && now.saturating_duration_since(at) < crate::alert::SAME_AGAIN_AFTER
+            });
+            if said_already {
+                tracing::info!(
+                    "pane {term}: finished again with nothing asked since: not said twice"
+                );
+                return;
+            }
+            t.finish_said = Some(now);
         }
         // Every sound a window plays starts here or in `check_settled`: log it, so a sound
         // nobody expected can be traced.

@@ -632,10 +632,11 @@ pub(crate) fn run() {
                 ("needs you", alert::Kind::Needs),
                 ("finished", alert::Kind::Done),
             ] {
-                match alert::tone_file(kind) {
+                let volume = alert::Volume::of(&cfg.notify);
+                match alert::tone_file(kind, volume) {
                     Some(f) => {
                         println!("{what} sound: {}", f.display());
-                        alert::play(kind);
+                        alert::play(kind, volume);
                     }
                     None => {
                         println!("{what} sound: couldn't be written to {APP_COMMAND}'s data folder")

@@ -4841,19 +4841,86 @@ fn a_screen_finish_seconds_after_working_began_is_not_announced() {
 }
 
 #[test]
-fn a_new_turn_forgets_a_finish_but_not_a_question() {
+fn a_turn_you_asked_for_forgets_a_finish_but_one_the_agent_began_itself_does_not() {
     let (mut d, _rx) = daemon();
     let t = working_agent(&mut d);
-    for (said, kept) in [(Status::Blocked, true), (Status::Done, false)] {
+    // (what was said, whether you typed since, whether it is still remembered)
+    for (said, typed, kept) in [
+        (Status::Blocked, true, true),
+        (Status::Done, false, true),
+        (Status::Done, true, false),
+    ] {
         d.set_status(t, Status::Idle, "test");
-        d.terms.get_mut(&t).unwrap().alerted = Some((said, Instant::now()));
+        let said_at = Instant::now();
+        let pane = d.terms.get_mut(&t).unwrap();
+        pane.alerted = Some((said, said_at));
+        pane.last_input = if typed {
+            said_at + Duration::from_millis(1)
+        } else {
+            said_at - Duration::from_secs(5)
+        };
         d.set_status(t, Status::Working, "test");
         assert_eq!(
             d.terms[&t].alerted.is_some(),
             kept,
-            "{said:?}: asking again soon stays quiet; a new turn's finish is news"
+            "{said:?}, typed since: {typed}: only the finish of something you asked for is news again"
         );
     }
+    close(&mut d, &[t]);
+}
+
+/// The pane finishes and stays finished long enough for the windows to say it.
+fn finishes_and_settles(d: &mut Daemon, t: TermId) {
+    d.terms.get_mut(&t).unwrap().status_since = term::unix_now() - 60;
+    d.set_status(t, Status::Done, "test");
+    // Nothing waits to be said when the finish was not announced.
+    if d.terms[&t].alert_due.is_some() {
+        overdue(d, t);
+    }
+    d.settled_alerts();
+}
+
+#[test]
+fn an_agent_that_picks_itself_back_up_and_finishes_again_is_not_said_twice() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    d.terms.get_mut(&t).unwrap().last_input = Instant::now() - Duration::from_secs(30);
+    finishes_and_settles(&mut d, t);
+    assert!(told_done(&mut seen), "the finish of what you asked is said");
+
+    // A background job reports in: it works a little more and stops again. Nobody typed.
+    d.set_status(t, Status::Working, "test");
+    finishes_and_settles(&mut d, t);
+    assert!(
+        !told_done(&mut seen),
+        "the same work finishing again rings nothing"
+    );
+
+    // You ask for something else: its finish is news.
+    d.terms.get_mut(&t).unwrap().last_input = Instant::now();
+    d.set_status(t, Status::Working, "test");
+    finishes_and_settles(&mut d, t);
+    assert!(told_done(&mut seen), "a new request's finish is said");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_finish_that_did_not_last_is_not_counted_as_said() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    d.terms.get_mut(&t).unwrap().last_input = Instant::now() - Duration::from_secs(30);
+    d.terms.get_mut(&t).unwrap().status_since = term::unix_now() - 60;
+    // It stops and carries straight on, before a window would have rung.
+    d.set_status(t, Status::Done, "test");
+    d.set_status(t, Status::Working, "test");
+    heard(&mut seen);
+    finishes_and_settles(&mut d, t);
+    assert!(
+        told_done(&mut seen),
+        "the finish that stands is the first one anybody hears"
+    );
     close(&mut d, &[t]);
 }
 

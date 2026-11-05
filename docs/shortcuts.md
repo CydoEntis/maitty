@@ -17,7 +17,6 @@ one thing (ADR 0017, 0022).
 | `Enter` | Message the agent |
 | `k` | Stop the agent |
 | `i` | Inbox: what needs you, then every session |
-| `y` | Why this status |
 
 ### Panes
 

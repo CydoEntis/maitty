@@ -385,7 +385,6 @@ impl App {
             Mode::Machines(v) => self.on_machines_key(*v, &k),
             Mode::GoTo { query, sel } => self.on_goto_key(query, sel, &k),
             Mode::Compose(c) => self.on_compose_key(*c, &k),
-            Mode::Why { term, side } => self.on_why_key(term, side, &k),
             Mode::Helpers { term, side } => self.on_helpers_key(term, side, &k),
             Mode::Secret { term, .. } => self.on_secret_key(term, &k),
             Mode::Confirm(c) if matches!(c.act, crate::client::menu::Act::OverrideCheck(..)) => {
@@ -1006,11 +1005,6 @@ impl App {
                         self.menu_for_session(term, at);
                     }
                 }
-                Some(Hit::Screen(screen::ScreenHit::Why(t)))
-                    if self.screen.side_rect.contains(pos) =>
-                {
-                    self.menu_for_session(t, at)
-                }
                 Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => {
                     self.menu_for_project(pi, at)
                 }
@@ -1085,9 +1079,7 @@ impl App {
                     .last_click
                     .is_some_and(|(prev, at)| prev == h && at.elapsed() < DOUBLE_CLICK);
                 self.last_click = Some((h, Instant::now()));
-                if matches!(self.mode, Mode::Prefix { .. } | Mode::Side)
-                    && !matches!(hh, screen::ScreenHit::Why(_))
-                {
+                if matches!(self.mode, Mode::Prefix { .. } | Mode::Side) {
                     // The cursor goes with the keys: left behind, close would act on its row.
                     self.screen_side_leave();
                 }

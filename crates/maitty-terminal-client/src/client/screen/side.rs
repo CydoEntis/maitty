@@ -37,18 +37,10 @@ const AGES_FROM: u16 = 100;
 /// The folder meta is shown only when at least this many columns are left for it.
 const META_MIN_COLS: u16 = 6;
 
-/// An agent that has started and been told nothing yet.
-pub(super) fn is_new(s: &Session) -> bool {
-    s.is_agent
-        && !s.asleep
-        && s.status == Status::Idle
-        && s.title == WAITING
-        && check::shown(s).is_none()
-}
-
-/// A row that wants a look: its name is strong and bold. Finished-and-seen and asleep rows are calm.
-pub(super) fn is_hot(s: &Session, state: State, new: bool) -> bool {
-    new || s.status == Status::Done || !matches!(state, State::Idle | State::Asleep | State::Passed)
+/// A row that wants a look: its name is strong and bold. Idle, finished-and-seen and asleep rows
+/// are calm, an agent told nothing yet among them: it is idle, and reads as idle.
+pub(super) fn is_hot(s: &Session, state: State) -> bool {
+    s.status == Status::Done || !matches!(state, State::Idle | State::Asleep | State::Passed)
 }
 
 /// How many helpers the agent reports running: the recorded ones, and the older name-only ones
@@ -598,11 +590,18 @@ fn draw_rails(
                 i = from;
             }
             Line::Tab(..) => {
-                let from = i;
+                // From the session's own row to its last tab, a column left of their marks.
+                let mut from = i;
+                while from > 0 && matches!(lines[from - 1], Line::Detail(_)) {
+                    from -= 1;
+                }
+                if from > 0 && matches!(lines[from - 1], Line::Sess(..)) {
+                    from -= 1;
+                }
                 while i < lines.len() && matches!(lines[i], Line::Tab(..)) {
                     i += 1;
                 }
-                draw(from, i, (x + 2, x + 2), vertical, t.muted);
+                draw(from, i, (x + 1, x + 1), vertical, t.muted);
             }
             _ => i += 1,
         }
@@ -635,10 +634,7 @@ fn draw_rows(app: &mut App, buf: &mut Buffer, pass: &Pass, t: &Theme, lines: &[L
         while matches!(lines.get(i + n), Some(Line::Detail(_))) {
             n += 1;
         }
-        Rect {
-            height: (n as u16).min(bottom.saturating_sub(y)),
-            ..cols.row(y)
-        }
+        lit_rect(cols, y, (n as u16).min(bottom.saturating_sub(y)))
     };
     let mut looks: std::collections::BTreeMap<ClientSession, RowLook> = Default::default();
     for (i, line) in lines.iter().enumerate().skip(scroll).take(list_h) {
@@ -656,37 +652,13 @@ fn draw_rows(app: &mut App, buf: &mut Buffer, pass: &Pass, t: &Theme, lines: &[L
                 };
                 row_look(picked, pb, t)
             });
-            // A pill leaves the first cell alone: the project's line down the left stays, and the
-            // highlight is what says the row has the focus.
-            let tint = if look.round_rows && rl.bg != pb && row.width > 2 {
-                Rect {
-                    x: row.x + 1,
-                    width: row.width - 1,
-                    ..row
-                }
-            } else {
-                row
-            };
-            if rl.bg != pb {
-                fill(buf, tint, rl.bg);
-            }
-            if look.round_rows && rl.bg != pb && row.width > 2 {
-                // A one-line row is a pill. A block of lines keeps square ends: caps would
-                // scallop it and quarter-cell corners notch it, so its lines meet as one block.
-                let first = (scroll..=i)
-                    .rev()
-                    .find(|&j| matches!(lines[j], Line::Sess(..)) || j == scroll)
-                    .unwrap_or(i);
-                if row_rect(first, top + (first - scroll) as u16).height == 1 {
-                    buf[(tint.x, y)].set_symbol(CAP_L).set_fg(rl.bg).set_bg(pb);
-                    buf[(row.right() - 1, y)]
-                        .set_symbol(CAP_R)
-                        .set_fg(rl.bg)
-                        .set_bg(pb);
-                }
-            } else if let Some(c) = rl.bar {
-                check::edge(app, buf, cols.x, y, c, rl.bg);
-            }
+            // A one-line card is a pill; one with more lines is a block.
+            let first = (scroll..=i)
+                .rev()
+                .find(|&j| matches!(lines[j], Line::Sess(..)) || j == scroll)
+                .unwrap_or(i);
+            let one_line = row_rect(first, top + (first - scroll) as u16).height == 1;
+            light_row(app, buf, (look, cols), y, one_line, rl, pb);
             if matches!(line, Line::Sess(..)) || i == scroll {
                 hit(app, row_rect(i, y), ScreenHit::Session(term));
             }
@@ -883,6 +855,45 @@ fn row_look(picked: bool, ground: Color, t: &Theme) -> RowLook {
     RowLook { bg, picked, bar }
 }
 
+/// The cells a row's highlight covers, `height` rows of them: the selection's and the pointer's
+/// alike, so a session, one of its tabs and a project light the same way. It runs from the
+/// column of the project's line, where the selection's bar goes.
+fn lit_rect(cols: Cols, y: u16, height: u16) -> Rect {
+    Rect {
+        height,
+        ..cols.row(y)
+    }
+}
+
+/// Light row `y` as the selected one: its ground from the left edge, where the accent bar
+/// stands in for the project's line, and with rounded rows a cap at its right end when the row
+/// is `one_line` (a block of lines keeps a square end: caps would scallop it). The left end is
+/// never rounded: it meets the line down the side.
+fn light_row(
+    app: &App,
+    buf: &mut Buffer,
+    (look, cols): (Look, Cols),
+    y: u16,
+    one_line: bool,
+    rl: RowLook,
+    pb: Color,
+) {
+    if rl.bg == pb {
+        return;
+    }
+    let lit = lit_rect(cols, y, 1);
+    fill(buf, lit, rl.bg);
+    if look.round_rows && one_line && lit.width > 1 {
+        buf[(lit.right() - 1, y)]
+            .set_symbol(CAP_R)
+            .set_fg(rl.bg)
+            .set_bg(pb);
+    }
+    if let Some(c) = rl.bar {
+        check::edge(app, buf, cols.x, y, c, rl.bg);
+    }
+}
+
 /// The `«` chip on the top border at the right: a click shrinks the sidebar to the narrow column.
 fn draw_collapse_chip(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme) {
     let mut segs = vec![seg(
@@ -1058,38 +1069,23 @@ fn draw_session(
     let mark = check::mark(app, s, t, &spinner);
     let state = check::kind(s);
     let st = Style::default().bg(rl.bg);
-    let new = is_new(s);
-    let hot = is_hot(s, state, new);
-    let mark_colour = if new { t.accent } else { mark.color };
+    let hot = is_hot(s, state);
     let (g, gc) = if plain_shell(s) {
         ("›", t.muted)
     } else {
-        (mark.glyph, rl.paint(t, mark_colour))
+        (mark.glyph, rl.paint(t, mark.color))
     };
     let mut gs = st.fg(gc);
     if matches!(
         state,
         State::Failed | State::Needs | State::Approve | State::Working
-    ) || new
-    {
+    ) {
         gs = gs.add_modifier(Modifier::BOLD);
     }
     let gx = cols.x + 2 + indent;
     // The 3-bar spinner is two cells wide; the name steps right to make room, as the reference's does.
     let gw = (g.width() as u16).max(1);
     put(buf, gx, y, &[seg(g, gs)], gx + gw);
-    if let Some(term) = s.native_term {
-        hit(
-            app,
-            Rect {
-                x: gx,
-                y,
-                width: gw + 1,
-                height: 1,
-            },
-            ScreenHit::Why(term),
-        );
-    }
     let menu = hovered(app, cols.row(y)) && !rl.picked;
     let when = if ages && s.is_agent && matches!(s.key.key, SessionKey::Pane(_)) {
         age(s.since)
@@ -1296,11 +1292,8 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
             }
             words
         }
-        Status::Blocked => vec![seg("needs you", Style::default().fg(t.blocked))],
-        Status::Done => vec![seg(
-            "done · not seen",
-            Style::default().fg(t.done).add_modifier(Modifier::BOLD),
-        )],
+        // Needs you and finished are the mark's and the name's colour to say: a line of words
+        // under them would only repeat it.
         _ => Vec::new(),
     }
 }
@@ -1333,7 +1326,6 @@ fn draw_line(
     t: &Theme,
     small: bool,
 ) {
-    let row = cols.row(y);
     match line {
         Line::Proj(pi) => draw_proj(app, buf, model, *pi, cols, y, pb, t, small),
         // Nothing running: one click starts a shell there.
@@ -1349,7 +1341,8 @@ fn draw_line(
                 ],
                 cols.end(),
             );
-            hit(app, row, ScreenHit::ShellIn(*pi));
+            let lit = lit_rect(cols, y, 1);
+            hit(app, lit, ScreenHit::ShellIn(*pi));
         }
         Line::Machine(machine) => draw_machine_row(app, buf, *machine, cols, y, pb, t),
         Line::MachineState(machine) => draw_machine_state(app, buf, *machine, cols, y, pb, t),
@@ -1385,15 +1378,21 @@ fn draw_shell_row(
         .iter()
         .filter(|tb| tb.owner == owner)
         .count();
+    // The tab on screen is the selected row, lit as a session's is. While the sidebar has the
+    // keys the selection is the cursor's, which the arrows never put on a tab.
+    let rl = row_look(line.current && !side_focused(app), pb, t);
+    let look = Look::of(&app.cfg.ui);
+    light_row(app, buf, (look, cols), y, true, rl, pb);
     let name = if line.needs {
         t.blocked
     } else if line.current {
-        t.accent
+        t.strong
     } else {
         t.text
     };
-    let st = Style::default().bg(pb);
-    let x = cols.x + 4;
+    let st = Style::default().bg(rl.bg);
+    // In line with its session's mark and name: the line down their left is what groups them.
+    let x = cols.x + 2;
     let room = cols.end().saturating_sub(x) as usize;
     // The state of what runs in the tab: an agent's mark (the spinner while it works), else a
     // plain shell's `○`.
@@ -1422,7 +1421,7 @@ fn draw_shell_row(
     draw_tab_line(
         app,
         buf,
-        cols.row(y),
+        lit_rect(cols, y, 1),
         x,
         cols.end(),
         (left, vec![seg(number, st.fg(t.muted))]),
@@ -1501,10 +1500,9 @@ fn draw_machine_row(
         &right,
         cols.end(),
     );
-    hit(app, row, ScreenHit::AddMachine);
 }
 
-/// The second row of a machine item: what is wrong, or that it has nothing running.
+/// The second row of a machine item: how its connection stands, or that it has nothing running.
 fn draw_machine_state(
     app: &mut App,
     buf: &mut Buffer,
@@ -1514,19 +1512,9 @@ fn draw_machine_state(
     pb: Color,
     t: &Theme,
 ) {
-    let text = match app.remotes.get(&machine).map(|r| &r.state) {
-        Some(ConnectionState::Connected) => "no sessions yet",
-        Some(ConnectionState::Connecting) => "connecting…",
-        _ => "disconnected · click for the fix",
-    };
-    put(
-        buf,
-        cols.x + 2,
-        y,
-        &[seg(text, Style::default().fg(t.muted).bg(pb))],
-        cols.end(),
-    );
-    hit(app, cols.row(y), ScreenHit::AddMachine);
+    let forms = machine_group::state_forms(app, machine);
+    machine_group::draw_note(buf, (cols.x + 2, cols.end()), y, (&forms, t.muted), pb);
+    hit(app, cols.row(y), ScreenHit::MachineRow(machine));
 }
 
 /// A folder's header: its fold arrow and name, and right-aligned what it is (branch, its
@@ -1548,20 +1536,15 @@ fn draw_proj(
     let open = !app.screen.saved.closed.contains(&format!("p:{}", p.key));
     let on = side_focused(app) && app.screen.cursor_proj.as_ref() == Some(&p.key);
     let hov = hovered(app, row);
-    let bg = if on { t.sel_bg() } else { pb };
-    if bg != pb {
-        fill(buf, row, bg);
-    }
-    // A selected folder row is one line, so it can end in half-circles. Text stops a cell short
-    // of the right cap; the left one has a cell of its own before the fold button.
-    let round = on && Look::of(&app.cfg.ui).round_tabs;
-    let text_end = if round { row.right() - 1 } else { cols.rx + 1 };
-    if round {
-        buf[(text_end, y)].set_symbol(CAP_R).set_fg(bg).set_bg(pb);
-        if cols.lead {
-            buf[(row.x, y)].set_symbol(CAP_L).set_fg(bg).set_bg(pb);
-        }
-    }
+    // Selected, it is lit as a session's row is: the same cells, the same ends. Its fold arrow
+    // stays outside, in the column of the project's line.
+    let look = Look::of(&app.cfg.ui);
+    let rl = row_look(on, pb, t);
+    let bg = rl.bg;
+    light_row(app, buf, (look, cols), y, true, rl, pb);
+    let text_end = cols.rx + 1;
+    let lit = lit_rect(cols, y, 1);
+    let arrow_st = Style::default().bg(if lit.x > cols.x { pb } else { bg });
     let st = Style::default().bg(bg);
     if !app.screen.fold_colors.contains_key(&p.key) {
         app.pick_fold_color(&p.key);
@@ -1576,10 +1559,10 @@ fn draw_proj(
         (true, true) => "v",
         (false, true) => ">",
     };
-    put(buf, cols.x, y, &[seg(fold, st.fg(t.muted))], text_end);
+    put(buf, cols.x, y, &[seg(fold, arrow_st.fg(t.muted))], text_end);
     let name = truncate(&p.name, cols.rx.saturating_sub(cols.x + 2) as usize);
     let mut left = vec![
-        seg("  ", st),
+        seg(" ", st),
         seg(name, st.fg(t.strong).add_modifier(Modifier::BOLD)),
     ];
     if p.fresh {
@@ -1592,9 +1575,19 @@ fn draw_proj(
                 .add_modifier(Modifier::BOLD),
         ));
     }
-    let lx = cols.x + 1;
+    // After the pill's left end, which has the cell beside the arrow.
+    let lx = cols.x + 2;
     put(buf, lx, y, &left, text_end);
-    hit(app, row, ScreenHit::ToggleProj(pi));
+    // The arrow is a button of its own; the rest of the row lights as every row does.
+    hit(
+        app,
+        Rect {
+            width: cols.x + 1 - row.x,
+            ..row
+        },
+        ScreenHit::ToggleProj(pi),
+    );
+    hit(app, lit, ScreenHit::ToggleProj(pi));
     if hov && !small {
         row_glyph(
             app,

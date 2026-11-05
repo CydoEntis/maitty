@@ -94,7 +94,6 @@ fn selecting_and_typing_on_an_unbound_conversation_sends_no_terminal_commands() 
         Action::NewTab,
         Action::SplitRight,
         Action::Message,
-        Action::Why,
     ] {
         app.act(action);
     }

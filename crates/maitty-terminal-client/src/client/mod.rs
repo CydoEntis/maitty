@@ -179,11 +179,6 @@ enum Mode {
     },
     /// Writing a quick follow-up to an agent (beside its row, or in its Inbox row).
     Compose(Box<screen::Compose>),
-    /// Why a session has its status (beside its row); `side`: back to the sidebar after.
-    Why {
-        term: ClientTerm,
-        side: bool,
-    },
     /// A session asks to start helpers (beside its row); `side`: back to the sidebar after.
     Helpers {
         term: ClientTerm,

@@ -208,11 +208,11 @@ still has them loads, and they are ignored.
 
 Needs-you alerts use two rising notes and stay quiet for the session you're looking at; the
 same session asking again within 2 minutes stays quiet too. A background
-session's completion uses one soft note; the session you're viewing stays quiet. Other panes get an in-app completion notice. A needs-you alert is delayed briefly
+session's completion uses one soft note, once for each thing you asked for: an agent that stops, picks itself back up (a helper or a background job reported in) and stops again does not ring a second time until you type into its pane, or two minutes have passed. The session you're viewing stays quiet. Other panes get an in-app completion notice. A needs-you alert is delayed briefly
 to ignore transient prompts and is cancelled if the agent resumes work. Sessions started
 by another agent do not alert when they finish. With no maitty window open, the server
 plays the needs-you sound and shows a desktop notification. `[notify] sound = false`
-(Settings → Alert sounds) turns sounds off; `maitty test-alert` plays both sample tones.
+(Settings → Alerts → Alert sounds) turns every sound off. Each sound has its own switch beside it: `sound_on_needs` (Sound when an agent needs you) and `sound_on_done` (Sound when an agent finishes), and `volume` (Sound volume) is `quiet`, `normal` or `loud`. `maitty test-alert` plays both sample tones at that volume.
 
 **On your phone** (off until you set it up): install the free [ntfy](https://ntfy.sh) app (no
 account), subscribe to a topic name nobody would guess, and put it in Settings → Phone alerts
@@ -432,8 +432,8 @@ need shows in the Inbox with `· on build`.
 | `unreachable` | No answer, or maitty is not running there. The reason is written under it (ssh's last line, or "maitty is not running on that machine; retry to start it there"); maitty keeps trying in the background. |
 | `refused` | A different computer now answers at that name. If you replaced the machine, remove it and add it again; otherwise check the host name and DNS. |
 
-When a machine drops, its cards give way to one item saying `disconnected · click for the fix` (click it for the
-Machines dialog, which says what to do). They come back by themselves when the line does, each pane showing
+When a machine drops, its cards give way to one item saying how it stands, such as `needs update · click for the fix` (click it for the
+Machines dialog, which says what to do and can reconnect, update or remove it; right-click it for the same three). They come back by themselves when the line does, each pane showing
 its screen again. Its needs-you and failed marks leave the Inbox while it is down. Typing sent to a machine while it
 was down is dropped, never queued (replaying keystrokes into a pane that moved on could run commands you no
 longer meant); when the machine is back, maitty says how much was not sent.
