@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -50,7 +50,14 @@ vi.mock('@/api/machines', async (importOriginal) => ({
   listenMachineClipboard: () => Promise.resolve(() => undefined),
 }))
 
-vi.mock('@/features/terminal/useFileDrop', () => ({ useFileDrop: () => undefined }))
+// The test plays the shell's file drop by calling the handler the app registered.
+const fileDrop = vi.hoisted(() => ({ current: null as null | ((paths: string[], at: { x: number; y: number }) => void) }))
+vi.mock('@/features/terminal/useFileDrop', () => ({
+  useFileDrop: (onDrop: (paths: string[], at: { x: number; y: number }) => void) => { fileDrop.current = onDrop },
+}))
+
+const attachments = vi.hoisted(() => ({ attachLocalFile: vi.fn(), attachmentsExist: vi.fn() }))
+vi.mock('@/api/attachments', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/api/attachments')>()), ...attachments }))
 
 const terminal = vi.hoisted(() => ({ mounts: 0, focused: [] as boolean[] }))
 
@@ -227,6 +234,35 @@ describe('the Terminal | Chat view of a pane', () => {
 
     await user.type(box, 'thanks{Enter}')
     expect(daemon.submitMessage).toHaveBeenCalledWith({ id: '42', generation: 1 }, 1, 'thanks')
+  })
+
+  it('attaches a file dropped on the chat composer and sends it, instead of typing its path into the pane', async () => {
+    const user = userEvent.setup()
+    const history = new FakeDaemonHistory()
+    history.upsert(history.message('t1', 'u', 'User', 'earlier'))
+    daemon.loadConversations.mockResolvedValue([claude(2)])
+    attachments.attachLocalFile.mockResolvedValue({ path: '/cache/attachments/attach-1730000000000-0a1b2c3d-shot.png', name: 'shot.png', size: 2048, kind: 'image' })
+    attachments.attachmentsExist.mockImplementation((paths: string[]) => Promise.resolve(paths.map(() => true)))
+    renderDesktopApp()
+    const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
+    daemon.readConversationPage.mockImplementation((_id: number, cursor: never) => history.read(cursor))
+    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+    const box = await within(pane).findByRole('textbox', { name: 'Message claude' })
+
+    // jsdom has no hit testing: the pointer is over the text box.
+    const hit = vi.fn(() => box)
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: hit })
+    act(() => { fileDrop.current?.(['/home/casey/Downloads/shot.png'], { x: 10, y: 10 }) })
+
+    expect(await within(pane).findByText('shot.png')).toBeInTheDocument()
+    expect(attachments.attachLocalFile).toHaveBeenCalledWith('/home/casey/Downloads/shot.png')
+    expect(daemon.sendTerminalInput).not.toHaveBeenCalled()
+    await user.type(box, 'what is wrong here?{Enter}')
+    expect(daemon.submitMessage).toHaveBeenCalledWith(
+      { id: '42', generation: 1 },
+      1,
+      'what is wrong here?\n\nAttached files (kept by Maitty; read them with your file tools):\n- /cache/attachments/attach-1730000000000-0a1b2c3d-shot.png',
+    )
   })
 
   it('does not hand the keyboard to the terminal while the chat covers it', async () => {

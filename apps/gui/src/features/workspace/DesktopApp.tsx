@@ -64,6 +64,7 @@ import { UpdatedNotice } from '@/features/updates/UpdatedNotice'
 import { markRestarting, skippedUpdate, skipUpdate, takeRestarted, type RestartedUpdate } from '@/features/updates/updateMemory'
 import { useIdleUpdate } from '@/features/updates/useIdleUpdate'
 import { routeDrop } from '@/features/terminal/dropRoute'
+import { dropOnComposer } from '@/features/chat/composerDrop'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
 import { useFileSends } from '@/features/terminal/useFileSends'
 import { useImagePaste } from '@/features/terminal/useImagePaste'
@@ -466,7 +467,10 @@ export function DesktopApp() {
   // On another machine's pane a path here names nothing there, so the files are sent to it and the
   // paths they land at are typed instead (ADR 0050).
   useFileDrop((paths, at) => {
-    const target = document.elementFromPoint(at.x, at.y)?.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ?? focusedId
+    const under = document.elementFromPoint(at.x, at.y)
+    // A drop on a chat composer attaches the files to its message; it is not a drop on the pane around it (ticket 20).
+    if (dropOnComposer(paths, under)) return
+    const target = under?.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ?? focusedId
     const handle = target ? terminalHandles.current.get(target) : undefined
     if (!target || !handle) return
     const route = routeDrop(target, paths, /Windows/i.test(navigator.userAgent))

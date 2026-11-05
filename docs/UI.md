@@ -777,6 +777,21 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   boundary is the end of the turn, the one the daemon can observe for both providers; a message is never delivered
   into a running turn. A send that the daemon refuses as `stale or reused` (another window sent in between) is read
   and sent again under a new number; a retry of any other failure keeps its number.
+- **Attachments** (ticket 20, ADR 0053). A paperclip left of the text box (tooltip and `aria-label` "Attach files",
+  or "Attach files: <reason>" while the composer is off; `aria-disabled`, not `disabled`, so the reason can be read),
+  a drop on the composer, or a bare image pasted into the box adds files to the draft; a paste that holds any text
+  stays a text paste. The picker is the dialog plugin's `open` (`api/attachments.chooseFilesToAttach`); a drop
+  reaches the composer through `chat/composerDrop.ts`, which `DesktopApp`'s one file-drop handler asks before it
+  routes the drop to a pane. `useAttachmentIntake` is the only code that adds or removes a draft file: at most 10 per
+  message (a drop over the limit is refused whole), a pasted image over 25 MB is refused before it is read, the
+  host (`attach_local_file`, `attachment.rs`) checks everything else and returns the cleaned name that is shown.
+  Draft files live in `composerStore` beside the text, so switching views loses nothing. Each is a chip (kind icon,
+  name, size, a Remove button) or, for a pasted image, a thumbnail made from the bytes the window already holds
+  (an object URL, revoked on remove or send). Sending builds the text with `buildAttachmentMessage` (the text, then a
+  fixed block naming each kept file by path); a message may be only files. A failed send gives text and files back.
+  A sent message is shown by `parseAttachmentMessage` as its text and chips (icon and name; "no longer available"
+  when `attachments_exist` says the kept file was swept). The composer takes a `machine`; only this computer is built,
+  and another machine's chat says attaching is not available yet. A read-only chat shows no paperclip.
 - **Read-only chat.** For a link with `readOnly` the composer is off with "Read-only: talk to the agent in the
   terminal" as its placeholder, and offers no Stop or queue wording; the daemon refuses send, approve and cancel
   for such a conversation. The history and status still follow the agent.

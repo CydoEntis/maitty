@@ -1,5 +1,6 @@
 mod add_machine;
 mod file_send;
+mod attachment;
 mod image_paste;
 pub mod hub;
 mod machines;
@@ -619,6 +620,8 @@ pub fn run() {
             add_machine::cancel_add_machine,
             file_send::send_files_to_machine,
             file_send::cancel_file_send,
+            attachment::attach_local_file,
+            attachment::attachments_exist,
             image_paste::save_pasted_image,
             image_paste::send_pasted_image,
             read_conversation,

@@ -319,6 +319,17 @@ are created `create_new` and mode 600 in an owner-only folder of the app's cache
 extension from the checked type, never from the webview. The image is the raw body of a command, not a logged
 event, and is never written to a log. What the far side prints is checked as for any file.
 
+A chat attachment (`attachment.rs`, ticket 20, ADR 0053) is a path from a drop or the file picker, so it is a string
+from outside: the host follows it only to a regular file (not a folder, device or pipe), refuses an empty file, caps an
+image (by its first bytes, not its name) at 25 MB and any other file at 100 MB while copying (so a file that grows is
+cut off and removed), and copies it `create_new`, mode 600, into an owner-only `attachments` folder of the app's
+cache. The copy's name keeps only letters, digits, `.`, `_` and `-` (directory parts, spaces, control, direction and
+invisible characters become `_`), so the path the agent is told never needs quoting and the name shown is the name
+on disk. A zip is never unpacked. Nothing but `attach-` files of that folder is swept (after a week).
+`attachments_exist` answers only for files directly inside the attachments or paste folder, so the window cannot use it
+to probe the disk. The message stores the path and name, never the bytes; sending a file to the agent is the person's
+own act and is not scanned (secrets stay out of chat, ADR 0036).
+
 Sending any file to another machine (`client/send_file.rs`, ADR 0050) is the same line and the same script;
 only the name, the cap and the trigger differ. A file is read from this computer only when the person
 names it in the send prompt (a terminal cannot tell a drop from a paste, so a paste of text never

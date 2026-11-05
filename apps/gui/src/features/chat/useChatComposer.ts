@@ -3,7 +3,9 @@ import { cancelTurn, dequeueMessage, submitMessage } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import type { ChatLink } from '@/features/workspace/model/chatView'
 import { hasPendingApproval, type ChatFeed } from './chatFeed'
-import { updateComposer, useComposerState } from './composerStore'
+import { buildAttachmentMessage } from './attachmentMessage'
+import { peekComposer, updateComposer, useComposerState, type DraftAttachment } from './composerStore'
+import { revokePreviews, useAttachmentIntake, type AttachmentIntake } from './useAttachmentIntake'
 import { reserveOperation, STALE_OPERATION } from './sendOperation'
 
 export const PENDING_APPROVAL_NOTE = 'Answer the request above first'
@@ -24,6 +26,12 @@ type Input = {
 export type ChatComposer = {
   draft: string
   setDraft: (text: string) => void
+  /** The files attached to the draft, in the order they were added. */
+  attachments: readonly DraftAttachment[]
+  /** Adding and removing them. */
+  attach: AttachmentIntake
+  /** The chat only follows an agent running in the terminal (ADR 0052): there is nothing to attach to. */
+  readOnly: boolean
   /** What the daemon holds for the running turn, oldest first. */
   queue: readonly QueuedItem[]
   removeQueued: (id: number) => void
@@ -47,7 +55,7 @@ export type ChatComposer = {
  * until it is sent. While an approval waits, nothing is sent.
  */
 export function useChatComposer({ link, feed, online, refresh }: Input): ChatComposer {
-  const { draft } = useComposerState(link.conversation)
+  const { draft, attachments } = useComposerState(link.conversation)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // A send that failed is tried again with the same operation number, so the daemon can tell it is the same message.
@@ -59,6 +67,7 @@ export function useChatComposer({ link, feed, online, refresh }: Input): ChatCom
   const awaitingAnswer = hasPendingApproval(feed)
   const disabledReason = readOnly ? READ_ONLY_NOTE : !online ? 'The daemon is offline' : awaitingAnswer ? PENDING_APPROVAL_NOTE : null
   const conversation = link.conversation
+  const attach = useAttachmentIntake({ conversation, blocked: disabledReason })
   const queue = useMemo<readonly QueuedItem[]>(() => feed.queued.map((message) => ({ id: message.operation, text: message.text })), [feed.queued])
 
   const setDraft = useCallback((text: string) => {
@@ -91,13 +100,24 @@ export function useChatComposer({ link, feed, online, refresh }: Input): ChatCom
 
   const submit = useCallback(() => {
     const text = draft.trim()
-    if (text === '' || disabledReason !== null || sending) return
-    setDraft('')
-    void send(text).then((delivered) => {
-      // A message that did not go is given back, unless something new was typed meanwhile.
-      if (!delivered) updateComposer(conversation, (state) => (state.draft === '' ? { ...state, draft: text } : state))
+    // A message may be only attachments; the block naming them is then the whole text (ADR 0053).
+    if ((text === '' && attachments.length === 0) || disabledReason !== null || sending) return
+    const files = attachments
+    updateComposer(conversation, (state) => ({ ...state, draft: '', attachments: [] }))
+    void send(buildAttachmentMessage(text, files)).then((delivered) => {
+      if (delivered) {
+        revokePreviews(files)
+        return
+      }
+      // A message that did not go is given back, unless something new was typed or attached meanwhile.
+      const now = peekComposer(conversation)
+      if (now.draft !== '' || now.attachments.length > 0) {
+        revokePreviews(files)
+        return
+      }
+      updateComposer(conversation, () => ({ draft: text, attachments: files }))
     })
-  }, [draft, disabledReason, sending, conversation, setDraft, send])
+  }, [draft, attachments, disabledReason, sending, conversation, send])
 
   const removeQueued = useCallback((operation: number) => {
     dequeueMessage({ id: String(conversation), generation: link.generation }, operation)
@@ -116,5 +136,5 @@ export function useChatComposer({ link, feed, online, refresh }: Input): ChatCom
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not interrupt the turn')) })
   }, [running, feed.cancelling, conversation, link.generation, refresh])
 
-  return { draft, setDraft, queue, removeQueued, submit, stop, running, sending, disabledReason, error }
+  return { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error }
 }

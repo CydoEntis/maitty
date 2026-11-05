@@ -318,3 +318,12 @@ path. Open questions to settle in an ADR: how each provider receives attachments
 Codex accept image paths or inline images differently), size caps, whether archives are unpacked or
 passed as a path, what the history stores (the path or the bytes; see ticket 18 on secrets), and
 cleanup. Blocked by the chat composer (G16) and tickets 11 and 19.
+
+Progress (2026-11-04, ADR 0053 proposed): the local case is built. The composer has a paperclip, drop
+and image paste, draft chips and thumbnails with remove, and sent messages show their files; the host
+copies each file into a private `attachments` cache after checking it. The message names the files by
+path in its text, so the daemon and `PROTOCOL_VERSION` are unchanged. Remaining: attachments for a chat
+on another machine (needs remote chat; reuse `send_files_to_machine` / `send_pasted_image` and put the
+far-side path in the message, behind the `machine` argument that already exists), a structured field
+(Codex `localImage`, Claude image blocks) if path-in-text proves weak, and thumbnails for picked or
+dropped images (the window never reads those files).

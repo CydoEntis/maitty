@@ -380,7 +380,10 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Composer.** A well (`--raise`, hairline, radius 14, accent ring on focus) under the list: a growing text box, Stop
   while a turn runs, and a round send button. Footer hint "Same session as the terminal · switching views never
   restarts claude"; while a turn runs it reads "Enter queues it · Esc interrupts claude" and queued messages show as
-  dashed bubbles. Disabled, it shows its reason in place of the placeholder.
+  dashed bubbles. Disabled, it shows its reason in place of the placeholder. A ghost paperclip button sits left of the
+  text box; attached files show above the text row inside the well as small chips (`--term` fill, hairline, radius 8:
+  kind icon or a 32 px thumbnail, name, size, a remove cross). A sent message's files are the same chips under its
+  bubble, right-aligned, with "no longer available" in `--dim` when the file was cleared.
 - **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
   open (`model/escLadder.ts`): comment composer, New agent and What's new, Overview, palette,
   inbox, Settings, the session panel (when it is an overlay), the sidebar drawer, Usage and cost,

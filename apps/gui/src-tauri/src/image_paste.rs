@@ -80,18 +80,24 @@ pub fn check_image(bytes: &[u8]) -> Result<ImageType, String> {
     }
 }
 
-/// A name no other paste has: the time, and something that differs between two in a millisecond.
-fn unique(prefix: &str, extension: &str) -> String {
+/// What makes a file name differ from every other made in the same millisecond: the time, and
+/// something that differs between two processes.
+pub(crate) fn stamp() -> String {
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default();
     let salt = now.subsec_nanos() ^ std::process::id().rotate_left(16);
-    format!("{prefix}-{}-{salt:08x}.{extension}", now.as_millis())
+    format!("{}-{salt:08x}", now.as_millis())
+}
+
+/// A name no other paste has.
+fn unique(prefix: &str, extension: &str) -> String {
+    format!("{prefix}-{}.{extension}", stamp())
 }
 
 /// Make `folder` (owner-only on Unix) and refuse a link in its place: the person's cache is
 /// theirs, but nothing here should follow a link someone else left there.
-fn private_folder(folder: &Path) -> std::io::Result<()> {
+pub(crate) fn private_folder(folder: &Path) -> std::io::Result<()> {
     if let Ok(meta) = std::fs::symlink_metadata(folder)
         && !meta.is_dir()
     {
