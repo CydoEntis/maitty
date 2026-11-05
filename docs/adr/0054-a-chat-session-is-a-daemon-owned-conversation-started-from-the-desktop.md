@@ -1,6 +1,7 @@
 # 0054. A chat session is a daemon-owned structured conversation started from the desktop
 
-- **Status:** Proposed (the owner confirms the points under *To confirm*)
+- **Status:** Proposed (the owner confirms the points under *To confirm*). Points 3 and 5 were amended on 2026-11-05 by
+  the owner's decisions below (default Chat; full access offered).
 - **Date:** 2026-11-04
 - **Relates to:** AGENTS.md non-negotiables 1, 4, 5 and 6;
   [0036](0036-secrets-never-enter-chat.md) and the chat GUI [spec](../features/chat-gui/spec.md)
@@ -34,7 +35,8 @@ terminal screen to show for it, and none is faked.
    that the agent has no terminal; to use the agent's own interface the user starts a terminal
    session instead. Nothing converts one into the other (one writer per conversation, spec R5).
 3. **Choosing the kind.** *New agent on a branch* gets a **Chat | Terminal** choice beside the agent
-   (Claude | Codex), **Terminal by default**. The chat empty state of a shell pane keeps
+   (Claude | Codex), **Chat by default**, a desktop Setting (Settings › General › Chat view › *New agent sessions start as*;
+   Chat or Terminal). Terminal stays one click away in the dialog. The chat empty state of a shell pane keeps
    **Start claude here** and **Start codex here** (they type the command into the shell, as before)
    and gains **Start a Claude chat** and **Start a Codex chat**, which start a chat session in the
    pane's folder. A chat session has no `claude` or `codex` in a shell, so a plain shell, the TUI and
@@ -51,8 +53,14 @@ terminal screen to show for it, and none is faked.
    (Claude `--permission-mode default` with `--permission-prompt-tool=stdio`; Codex `workspace-write`
    with `on-request`). Every tool use the provider does not allow by itself becomes an approval card
    in the chat, answered by request id with Yes once (y), This session (a) or No (n). **There is no
-   auto-approve and no bypass option in the window.** The Tauri command does not take a permission
-   argument, so a window cannot ask for full access. The older `create_conversation` command (which
+   auto-approve.** The owner uses the agent's full-access mode for everything, so a chat can instead start in
+   it, per chat: the Tauri command takes an optional `full_access` flag, and the daemon starts the provider with
+   `Sandbox::FullAccess` and `ApprovalPolicy::Never` (ADR 0043: Claude `bypassPermissions`, Codex
+   `danger-full-access`). It is a labelled checkbox, "Full access (skip permission prompts)", with a warning that
+   there is no sandbox and no prompts; the Setting "Full access in new chats" only sets its starting value and is
+   **off** by default. A chat started this way shows a red Full access tag in its header. The posture is fixed
+   for the session and never widened in place. It needs no wire change: the choice is already in
+   `LaunchSettings`. The older `create_conversation` command (which
    takes one) is left in the host for the preview screens in `App.tsx`; the desktop window does not call it. A sandbox
    is as strong as the provider's own; the agent runs with the user's permissions and the card is the
    user's gate (SECURITY.md).
@@ -90,8 +98,8 @@ terminal screen to show for it, and none is faked.
 - **Create the worktree from the window**, then start in its folder. Rejected: the window would have
   to run git (non-negotiable 6), skip the trust copy and hook, and the daemon could not tell the folder
   is one it should clean up.
-- **Offer full access** as an advanced option. Rejected for now: nothing in the product asked for it
-  and the card is the point of a chat session. Adding it needs a visible warning and an owner decision.
+- **Offer full access** as an advanced option. First rejected (nothing asked for it), then accepted on
+  2026-11-05 on the owner's decision, with the visible warning and tag described in point 5.
 - **Convert a running terminal session into a chat session.** Rejected: ADR 0044 removed the handoff;
   the agent's process cannot change its transport.
 
@@ -110,9 +118,9 @@ terminal screen to show for it, and none is faked.
 
 ## To confirm
 
-1. The default stays **Terminal**; Chat is an explicit choice in both places.
+1. Decided 2026-11-05: the default is **Chat** (a Setting), Terminal stays reachable in both places.
 2. Closing a chat session ends its agent (not only hides it).
-3. No full-access option in the window. Say if you want one, and with which warning.
+3. Decided 2026-11-05: full access is offered per chat, off by default, with a warning and a visible tag.
 4. A chat session has no terminal at all; the way to see the agent's own interface is a terminal
    session. Say if you want a button that starts one in the same folder.
 5. The branch chat runs the repository's setup hook (the same as a branch terminal session).

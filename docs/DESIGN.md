@@ -369,7 +369,9 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   **Start codex here** (shells only; they type the command into the shell), **Start a Claude chat** /
   **Start a Codex chat** (shells only; they start a chat session in the shell's folder) and **Back to terminal**.
   Settings › General › Chat view picks the view each of Claude and Codex opens in (Terminal by default); a
-  session never switched by hand follows it.
+  session never switched by hand follows it. The same card holds **New agent sessions start as** (Chat by
+  default; Terminal stays one click away in the dialog) and **Full access in new chats** (off by default).
+  A chat started with full access shows a red **Full access** tag in the chat header.
 - **Chat session ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).**
   A row, tab and pane like any session, with the agent's mark and its branch line. Its pane head has no
   Terminal | Chat switch; the pane is the chat, and the chat's status strip ends with "Chat session · no
@@ -466,8 +468,9 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   mounted in the themed window root): **Project** chips (this computer's git repositories; it opens
   on the focused session's), an optional **First prompt**, a mono **Branch** that is `agent/<slug>`
   (the first four meaningful words of the prompt) until you edit it, then the **Agent** choice (Claude
-  or Codex), the **Session** choice (**Terminal**, the default, or **Chat**, with a line saying a chat
-  has no terminal and asks before it runs a tool) and a **Folder** preview (`<repo>-worktrees/<branch>`
+  or Codex), the **Session** choice (**Chat**, the default from Settings, or **Terminal**, with a line saying a chat
+  has no terminal and asks before it runs a tool unless full access is on; for a chat, a **Full access
+  (skip permission prompts)** checkbox with a red warning while it is ticked) and a **Folder** preview (`<repo>-worktrees/<branch>`
   beside the repo, the daemon's default naming). A branch outside `[\w./-]+` or git's ref rules gets a red ring and its reason; a prompt
   that starts with a dash is refused. **Start** (Ctrl+Enter, ⌘↵ on macOS) opens the session in a
   new tab. Entries: the branch button beside **+** in the sidebar head and the rail, **New agent on a

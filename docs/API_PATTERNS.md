@@ -495,8 +495,10 @@ and requires the target's folder to be a project the app shows and a git reposit
 repo's setup hook, notes it in `made_worktrees`, and starts the conversation in the new folder; the reply
 is the usual `ConversationStarted`. The field is defaulted, so the old shape decodes (a test), but a
 peer that predates it would drop the field and start in the main checkout, so the version was raised
-to 72 and the two refuse to talk. The window's Tauri command `start_chat_session` always asks for
-workspace write with approval on request (no argument for a broader posture) and is local-only.
+to 72 and the two refuse to talk. The window's Tauri command `start_chat_session` asks for
+workspace write with approval on request, or, with its optional `full_access` flag, for `Sandbox::FullAccess`
+with `ApprovalPolicy::Never` (ADR 0043 and 0054). It adds no wire field: the choice rides in the existing
+`LaunchSettings`, so the protocol version is unchanged. It is local-only.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
