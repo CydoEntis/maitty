@@ -108,3 +108,19 @@ as it is and left in place). Until the machine has listed its sessions, a layout
 
 The glue's per-update logic is `terminal_stream::react` (no window involved), so the host's behaviour
 is tested end to end against real daemons (`hub/tests/end_to_end.rs`).
+
+File sends (ADR 0055): `file_send.rs` takes the paths of files dropped on a pane of another machine and
+that machine's name (`send_files_to_machine`), checks them in Rust (a known ssh machine; each path absolute, an
+existing regular file of at most 100 MB; at most 10; one send at a time), and sends them in turn on a blocking
+worker through `maitty-machines`' `remote_send` and `ssh_run`, the runner the terminal app uses. It reports
+`file-send` events (`progress`, `sent`, `failed`, `cancelled`, `done`) and `cancel_file_send` ends the one named by
+the id the window chose. The window, not the host, types the far-side paths into the pane.
+
+Pasted images (ticket 19): `image_paste.rs` has two commands that take the image as the **raw body** of the
+call (`tauri::ipc::Request`, not base64 in JSON or an event), with the machine and send id in `x-maitty-*`
+headers. `save_pasted_image` checks the bytes (PNG, JPEG, GIF or WebP signature, at most 25 MB), keeps them in the
+app's cache folder `pastes` (owner-only, never over an existing file, our own old files swept) and returns the
+path. `send_pasted_image` runs the same checks, then that the machine is known, ssh, and `connected`
+(`MachineStates::is_connected`), stages the bytes as a private file and starts a `file_send` job of kind `Image`:
+the runner, events, Cancel and the far-side path checks are the file send's, and the staged copy is removed when
+the send ends. A chat composer's attachment calls these two commands.

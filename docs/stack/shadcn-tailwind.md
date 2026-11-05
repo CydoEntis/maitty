@@ -64,3 +64,7 @@ primary actions and working status. Amber is reserved for needs-you attention;
 red is reserved for errors and recovery. Use the shared CSS variables for every
 theme and keep shadcn primitives unchanged unless an accessibility or product
 need is documented.
+
+The GUI's design system rules (tokens only, popups from `components/ui/`, where
+Tailwind and `workspace.css` each apply, and the colour lint) are owned by
+[UI § GUI design system rules](../UI.md#project-specific-gui-design-system-rules).

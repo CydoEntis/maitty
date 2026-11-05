@@ -398,6 +398,8 @@ impl App {
             cmd,
             split: None,
             from: Some(proj.path.clone()),
+            agent: None,
+            prompt: None,
         });
     }
 
@@ -1986,7 +1988,11 @@ impl App {
             ScreenHit::ViewClose => self.view = None,
             ScreenHit::DrawerTab(i) => self.switch_drawer(i),
             ScreenHit::Noop => {}
-            ScreenHit::ToastClose => self.dismiss_notice(),
+            ScreenHit::ToastClose => {
+                // The close mark on a progress toast stops the send it shows.
+                self.cancel_send();
+                self.dismiss_notice();
+            }
             ScreenHit::SettingsBody => {}
             ScreenHit::FinderPick(i) => {
                 if let Mode::Finder(fd) = &self.mode {

@@ -1,17 +1,48 @@
 import type { UpdaterState } from '@/features/updates/useUpdater'
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
-import { spinnerDefinition, SPINNER_TICK_MS, type SpinnerStyle } from '@/lib/spinner-clock'
-import { useNow } from '@/lib/clock'
+import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
+import { styleUnderCap, type EffectStyle } from '@/lib/animation-level'
+import { EffectsContext, type AppliedEffect, type StatusEffectKey } from '@/features/workspace/components/motion'
+import { StatusEffect } from '@/features/workspace/components/StatusEffect'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
+import { SpinnerPicker, SpinnerPreview } from './SpinnerPicker'
 import { PerformanceSection } from './PerformanceSection'
-import { hotkeyRows, isModifierSymbol, type Chord } from '@/features/workspace/model/shortcuts'
-import { PROJECT_COLORS } from '@/features/workspace/model/folderColor'
+import { hotkeyRows, type Platform } from '@/features/workspace/model/shortcuts'
+import { CHAT_AGENTS } from '@/features/workspace/model/chatView'
+import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { Icon } from '@/features/workspace/components/glyphs'
+import { errorMessage } from '@/lib/error-message'
+import { BUNDLED_FONT_NAME, fontStackFor, installedMonospaceFamilies, isFontFamily, WEIGHT_BOLD, WEIGHT_EXTRA_BOLD, WEIGHT_LIGHT, WEIGHT_MEDIUM, WEIGHT_REGULAR, WEIGHT_SEMIBOLD, type TerminalFontWeight } from '@/lib/terminalFont'
+import type { Added, Grant, HostChoice } from '@/api/machines'
+import { DisconnectedSince } from '@/features/workspace/components/times'
+import type { MachineHead } from '@/features/workspace/model/machines'
 import { FOLDER_PATH } from '@/features/workspace/components/paths'
 import { SCROLL_SPEED_CHOICES, SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type ScrollSpeed, type SettingsPreferences, type StyleChoice } from '../preferences'
 
-export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'notifications' | 'keys' | 'daemon' | 'performance'
+export type DesktopSettingsSection = 'general' | 'terminal' | 'appearance' | 'notifications' | 'machines' | 'keys' | 'daemon' | 'performance'
+
+/** The other machines, for the Machines page: what the window knows of each, and what it can ask of the host. */
+export type MachinesInfo = {
+  /** The host has answered about the machines: before that the page says it is loading. */
+  known: boolean
+  list: readonly MachineHead[]
+  onRetry: (name: string) => void
+  onRemove: (name: string) => void
+  /** Allow or stop one of a machine's powers over this computer. */
+  onGrant: (name: string, grant: Grant, on: boolean) => void
+  /** Puts a command on the clipboard to run in a terminal; the app never runs it on a machine. */
+  onCopyCommand: (command: string) => void
+  add: {
+    /** Windows has no ssh agent by default: the page says to use keys. */
+    windows: boolean
+    /** The hosts of ~/.ssh/config that are not machines yet. Stable between renders. */
+    loadHosts: () => Promise<HostChoice[]>
+    /** Looks at the target and adds it. Rejects with the words to show when it cannot be added. */
+    onAdd: (target: string, name?: string) => Promise<Added>
+    /** Ends the look that is running. */
+    onCancel: () => void
+  }
+}
 
 export type DaemonInfo = {
   online: boolean
@@ -38,12 +69,11 @@ type DesktopSettingsProps = {
   onPreviewTheme: (name: string | null) => void
   /** Closes Settings and plays the first-run welcome again. */
   onShowWelcome: () => void
-  mac: boolean
+  platform: Platform
   daemon: DaemonInfo
   /** The running app's version, for the performance report; null until known. */
   appVersion: string | null
-  /** The projects in the sidebar, so each can be given a colour. */
-  projects: ReadonlyArray<{ key: string; name: string; colorId: string | undefined }>
+  machines: MachinesInfo
   /** Resolves whether a typed folder exists. */
   validateFolder: (path: string) => Promise<boolean>
   /** Opens the system's folder picker at the folder given; the path picked, or null when it is cancelled. */
@@ -66,6 +96,7 @@ const NAV: Array<{ label: string; items: NavItem[] }> = [
     label: 'WORKSPACE',
     items: [
       { id: 'notifications', label: 'Notifications', key: 'N', tint: 'var(--warn)', path: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0' },
+      { id: 'machines', label: 'Machines', key: 'M', tint: 'var(--ansi-green)', path: 'M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01M17 7h.01M17 17h.01' },
       { id: 'keys', label: 'Hotkeys', key: '?', tint: 'var(--ansi-blue)', path: 'M2 6h20v12H2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8' },
     ],
   },
@@ -83,12 +114,13 @@ const PAGE: Record<DesktopSettingsSection, [string, string]> = {
   terminal: ['Text & cursor', 'How every pane renders. Changes apply instantly.'],
   appearance: ['Appearance', 'Colours, spinner and motion for the whole window.'],
   notifications: ['Notifications', 'When the system should tell you a session needs you.'],
+  machines: ['Machines', 'Other computers whose sessions show up beside this one.'],
   keys: ['Hotkeys', 'Everything the window handles before the shell does.'],
   daemon: ['Daemon', 'The local maittyd that owns every session.'],
   performance: ['Performance', 'What the window is spending its time on, measured live.'],
 }
 
-const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', n: 'notifications', '?': 'keys', d: 'daemon', p: 'performance' }
+const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', t: 'terminal', a: 'appearance', n: 'notifications', m: 'machines', '?': 'keys', d: 'daemon', p: 'performance' }
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -165,15 +197,16 @@ export function DesktopSettings(props: DesktopSettingsProps) {
               <h2>{title}</h2>
               <p>{subtitle}</p>
             </div>
-            <button type="button" className="mx-settings-close" aria-label="Close settings" onClick={props.onClose}>Close<kbd>esc</kbd></button>
+            <button type="button" className="mx-icon-button mx-settings-close" aria-label="Close settings" title="Close (Esc)" onClick={props.onClose}><Icon name="close" size={14} /></button>
           </header>
           <div className="mx-settings-scroll">
             <div className="mx-settings-sections" key={section}>
               {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} onChooseFolder={props.onChooseFolder} onShowWelcome={props.onShowWelcome} updates={props.updates} />}
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
-              {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} projects={props.projects} />}
+              {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} />}
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} onTestNotice={props.onTestNotice} />}
-              {section === 'keys' && <HotkeysSection mac={props.mac} />}
+              {section === 'machines' && <MachinesSection machines={props.machines} />}
+              {section === 'keys' && <HotkeysSection platform={props.platform} />}
               {section === 'daemon' && <DaemonSection daemon={props.daemon} />}
               {section === 'performance' && <PerformanceSection preferences={preferences} update={update} appVersion={props.appVersion} />}
             </div>
@@ -295,8 +328,8 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
           <Row label="Download updates automatically" detail="A new release is fetched in the background. Installing waits until you restart.">
             <Switch label="Download updates automatically" checked={preferences.autoDownloadUpdates} onChange={(value) => { update('autoDownloadUpdates', value) }} />
           </Row>
-          <Row label="Restart when nothing is running" detail="Restart into a downloaded update once no session is working or waiting on you. Sessions keep running either way.">
-            <Switch label="Restart when nothing is running" checked={preferences.restartWhenIdle} onChange={(value) => { update('restartWhenIdle', value) }} />
+          <Row label="Install updates when idle" detail="Never while an agent is working.">
+            <Switch label="Install updates when idle" checked={preferences.restartWhenIdle} onChange={(value) => { update('restartWhenIdle', value) }} />
           </Row>
         </Card>
       )}
@@ -314,14 +347,21 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
           <button type="button" className="mx-scard-button" onClick={onShowWelcome}>Show the welcome again</button>
         </Row>
       </Card>
+      <Card title="Chat view" color="var(--accent)" iconPath={<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />}>
+        <Row label="New agent sessions start as" detail="The default in New agent on a branch. A terminal session is always one choice away.">
+          <Segmented label="New agent sessions start as" value={preferences.newSessionView} options={CHAT_VIEW_OPTIONS_CHAT_FIRST} onChange={(value) => { update('newSessionView', value) }} />
+        </Row>
+        <Row label="Full access in new chats" detail="Start new chats with the agent's skip-permissions mode: no sandbox and no approval prompts, so the agent can change files and run commands without asking. Each chat can still turn it off or on when it starts.">
+          <Switch label="Full access in new chats" checked={preferences.chatFullAccessDefault} onChange={(value) => { update('chatFullAccessDefault', value) }} />
+        </Row>
+        {CHAT_AGENTS.map((agent) => (
+          <Row key={agent} label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} detail="Only a session with a chat opens in it; the switch on each pane changes one session.">
+            <Segmented label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} value={preferences.chatViewDefault[agent]} options={CHAT_VIEW_OPTIONS} onChange={(value) => { update('chatViewDefault', { ...preferences.chatViewDefault, [agent]: value }) }} />
+          </Row>
+        ))}
+      </Card>
     </>
   )
-}
-
-/** The colours with one project's choice set, or cleared when `id` is null. */
-function setColor(colors: Record<string, string>, key: string, id: string | null): Record<string, string> {
-  const rest = Object.fromEntries(Object.entries(colors).filter(([project]) => project !== key))
-  return id === null ? rest : { ...rest, [key]: id }
 }
 
 const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string; foot: string }> = [
@@ -329,6 +369,8 @@ const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string;
   { id: 'tiled', name: 'Tiled', blurb: 'Edge-to-edge panes, square corners, hairline dividers', foot: 'Edge-to-edge panes with square corners. Status sweeps start off.' },
   { id: 'glass', name: 'Glass', blurb: 'Floating frosted cards, colour icons, status sweeps', foot: 'Floating glass cards and glow.' },
 ]
+const CHAT_VIEW_OPTIONS = [['terminal', 'Terminal'], ['chat', 'Chat']] as const
+const CHAT_VIEW_OPTIONS_CHAT_FIRST = [['chat', 'Chat'], ['terminal', 'Terminal']] as const
 const ICON_COLOR_OPTIONS = [['color', 'Color'], ['grayscale', 'Grayscale']] as const
 const TRAY_OPTIONS = [['names', 'With names'], ['icons', 'Icons'], ['stacked', 'Stacked']] as const
 const UPDATE_CHIP: Record<UpdaterState['status'], string> = { idle: 'Not checked', checking: 'Checking…', current: 'Up to date', available: 'Update available', downloading: 'Downloading', ready: 'Ready to restart', failed: 'Failed' }
@@ -356,6 +398,10 @@ const FONT_SIZES = Array.from({ length: TERMINAL_FONT_SIZE_MAX - TERMINAL_FONT_S
   const size = TERMINAL_FONT_SIZE_MIN + index
   return [size, String(size)] as const
 })
+const WEIGHT_NAMES: Readonly<Record<TerminalFontWeight, string>> = { [WEIGHT_LIGHT]: 'Light', [WEIGHT_REGULAR]: 'Regular', [WEIGHT_MEDIUM]: 'Medium', [WEIGHT_SEMIBOLD]: 'Semibold', [WEIGHT_BOLD]: 'Bold', [WEIGHT_EXTRA_BOLD]: 'Extra bold' }
+const weightOptions = (weights: readonly TerminalFontWeight[]) => weights.map((weight) => [weight, WEIGHT_NAMES[weight]] as const)
+const NORMAL_WEIGHTS = weightOptions([WEIGHT_LIGHT, WEIGHT_REGULAR, WEIGHT_MEDIUM, WEIGHT_SEMIBOLD])
+const BOLD_WEIGHTS = weightOptions([WEIGHT_SEMIBOLD, WEIGHT_BOLD, WEIGHT_EXTRA_BOLD])
 const CURSORS: ReadonlyArray<readonly [CursorStyle, string]> = [['block', 'Block'], ['bar', 'Bar'], ['underline', 'Underline']]
 const THOUSAND = 1000
 const SCROLLBACKS: ReadonlyArray<readonly [ScrollbackLines, string]> = SCROLLBACK_CHOICES.map((lines) => [lines, `${String(lines / THOUSAND)}k`] as const)
@@ -369,21 +415,77 @@ function PromptPrefix() {
   return <><span style={{ color: 'var(--accent)', fontWeight: 600 }}>maitty</span><span style={{ color: 'var(--ansi-mag)' }}> (main)</span><span style={{ color: 'var(--dim)' }}> ❯ </span></>
 }
 
+/** The family field: a draft saved on Enter or leaving the field, so half-typed names never reach the terminals. */
+function FontFamilyField({ value, onCommit }: { value: string; onCommit: (family: string) => void }) {
+  // null while the field shows the saved value; text only while it is being edited.
+  const [edit, setEdit] = useState<string | null>(null)
+  const draft = edit ?? value
+  const [installed, setInstalled] = useState<string[]>([])
+  // Measured after the first paint so opening the page is not held up by it.
+  useEffect(() => {
+    const timer = window.setTimeout(() => { setInstalled(installedMonospaceFamilies()) }, 0)
+    return () => { window.clearTimeout(timer) }
+  }, [])
+  const invalid = !isFontFamily(draft)
+  const commit = () => {
+    if (!invalid && draft.trim() !== value) onCommit(draft.trim())
+    if (!invalid) setEdit(null)
+  }
+  return (
+    <div className="mx-font-field">
+      <input
+        className={`mx-scard-input${invalid ? ' is-invalid' : ''}`}
+        aria-label="Terminal font family"
+        aria-invalid={invalid}
+        list="mx-font-families"
+        value={draft}
+        placeholder={BUNDLED_FONT_NAME}
+        spellCheck={false}
+        onChange={(event) => { setEdit(event.target.value) }}
+        onBlur={commit}
+        onKeyDown={(event) => { if (event.key === 'Enter') commit() }}
+      />
+      <datalist id="mx-font-families">
+        {installed.map((name) => <option key={name} value={name} />)}
+      </datalist>
+      {invalid && <span className="mx-font-error" role="alert">Use one font name: letters, numbers, spaces and . _ + - only.</span>}
+    </div>
+  )
+}
+
 function TerminalSection({ preferences, update }: { preferences: SettingsPreferences; update: Update }) {
+  const family = preferences.terminalFontFamily === '' ? BUNDLED_FONT_NAME : preferences.terminalFontFamily
   return (
     <>
-      <Card title="Text" color="var(--ansi-blue)" iconPath={<path d="M5 6h14M12 6v12" />} meta={<span className="mono" style={{ fontSize: 12, color: 'var(--fg2)' }}>Geist Mono · {preferences.terminalFontSize}px</span>}>
+      <Card title="Text" color="var(--ansi-blue)" iconPath={<path d="M5 6h14M12 6v12" />} meta={<span className="mono" style={{ fontSize: 12, color: 'var(--fg2)' }}>{family} · {preferences.terminalFontSize}px</span>}
+        foot="Leave the font empty for Geist Mono, or name any monospace font installed on this computer; if it is missing, Geist Mono is used. Regular at 400 can look thin on Linux: try Medium.">
         <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span className="mx-field-label">Size</span>
             <Segmented label="Terminal text size" value={preferences.terminalFontSize} options={FONT_SIZES} onChange={(value) => { update('terminalFontSize', value) }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span className="mx-field-label">Font</span>
+            <FontFamilyField value={preferences.terminalFontFamily} onCommit={(next) => { update('terminalFontFamily', next) }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span className="mx-field-label">Weight</span>
+            <Segmented label="Terminal text weight" value={preferences.terminalFontWeight} options={NORMAL_WEIGHTS} onChange={(value) => { update('terminalFontWeight', value) }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span className="mx-field-label">Bold</span>
+            <Segmented label="Terminal bold weight" value={preferences.terminalFontWeightBold} options={BOLD_WEIGHTS} onChange={(value) => { update('terminalFontWeightBold', value) }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span className="mx-field-label">Cursor</span>
             <Segmented label="Cursor" value={preferences.cursorStyle} options={CURSORS} onChange={(value) => { update('cursorStyle', value) }} />
           </div>
-          <div className="mx-preview" style={{ fontSize: preferences.terminalFontSize }} aria-label="Terminal preview" role="img">
-            <div><PromptPrefix /><span style={{ fontWeight: 600 }}>cargo</span> test <span style={{ color: 'var(--ansi-blue)' }}>-p</span> maitty-core</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span className="mx-field-label">Blink</span>
+            <Switch label="Blinking cursor" checked={preferences.cursorBlink} onChange={(value) => { update('cursorBlink', value) }} />
+          </div>
+          <div className="mx-preview" style={{ fontSize: preferences.terminalFontSize, fontFamily: fontStackFor(preferences.terminalFontFamily), fontWeight: preferences.terminalFontWeight }} aria-label="Terminal preview" role="img">
+            <div><PromptPrefix /><span style={{ fontWeight: preferences.terminalFontWeightBold }}>cargo</span> test <span style={{ color: 'var(--ansi-blue)' }}>-p</span> maitty-core</div>
             <div style={{ color: 'var(--fg2)' }}>test pane_terminal::replay_then_stream ... <span style={{ color: 'var(--ok)' }}>ok</span></div>
             <div style={{ display: 'flex', alignItems: 'center' }}><PromptPrefix /><span className="mx-caret" style={caretStyle(preferences.cursorStyle)} /></div>
           </div>
@@ -404,22 +506,30 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
   )
 }
 
-const SPINNERS: ReadonlyArray<readonly [SpinnerStyle, string]> = [['braille', 'Braille'], ['snake', 'Snake'], ['bars', 'Bars']]
-const SECONDS_PER_MINUTE = 60
-const SECONDS_DIGITS = 2
+
+const EFFECT_STYLE_OPTIONS = [['waves', 'Waves'], ['sweep', 'Sweep']] as const
+const ANIMATION_OPTIONS = [['auto', 'Auto'], ['full', 'Full'], ['light', 'Light'], ['off', 'Off']] as const
+const WORKING_SCOPE_OPTIONS = [['all', 'All'], ['selected', 'Selected'], ['off', 'Off']] as const
+
+/** What the preview says: the chosen style, or why a cheaper one (or none) is showing. */
+function effectNote(wanted: EffectStyle, shown: EffectStyle | null, on: boolean): string {
+  if (!on) return 'Off'
+  if (shown === null) return 'Off: animations are turned down'
+  if (shown !== wanted) return 'Shown as Sweep: the Animations level does not allow Waves'
+  return shown === 'waves' ? 'Soft bands drift while it lasts' : 'One band crosses as it starts, then rests'
+}
 
 const MODE_OPTIONS = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as const
 
-function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme, projects }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void; projects: DesktopSettingsProps['projects'] }) {
+function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void }) {
   const reduced = preferences.reduceMotion || systemReducedMotion
-  const now = useNow()
   const darkInUse = preferences.themeMode === 'dark' || (preferences.themeMode === 'system' && systemDark)
   const modeNote = preferences.themeMode === 'system' ? `Follows your OS. Right now: ${systemDark ? 'dark' : 'light'}.` : `Always uses your ${preferences.themeMode} theme.`
-  const seconds = String(Math.floor(now / THOUSAND) % SECONDS_PER_MINUTE).padStart(SECONDS_DIGITS, '0')
-  const effects: Array<{ key: 'effectWorking' | 'effectNeedsYou' | 'effectDone'; label: string; detail: string; color: string; glyph: ReactNode; short: string; fx: string }> = [
-    { key: 'effectWorking', label: 'Working', detail: 'One teal sweep as work starts', color: 'var(--accent)', glyph: <PreviewSpinner spinner={preferences.spinner} reduced={reduced} />, short: '0:42', fx: 'mx-fx-working mx-fx-strong' },
-    { key: 'effectNeedsYou', label: 'Needs you', detail: 'Amber glow that breathes, then rests', color: 'var(--warn)', glyph: '◆', short: 'Allow?', fx: 'mx-fx-needs mx-fx-strong' },
-    { key: 'effectDone', label: 'Done', detail: 'One green sweep, then still', color: 'var(--ok)', glyph: '✓', short: 'Done', fx: 'mx-fx-done mx-fx-strong' },
+  const { cap } = useContext(EffectsContext)
+  const effects: Array<{ key: 'effectWorking' | 'effectNeedsYou' | 'effectDone'; styleKey: 'effectStyleWorking' | 'effectStyleNeedsYou' | 'effectStyleDone'; status: StatusEffectKey; label: string; color: string; glyph: ReactNode; short: string }> = [
+    { key: 'effectWorking', styleKey: 'effectStyleWorking', status: 'working', label: 'Working', color: 'var(--accent)', glyph: <SpinnerPreview spinner={preferences.spinner} reduced={reduced} />, short: '0:42' },
+    { key: 'effectNeedsYou', styleKey: 'effectStyleNeedsYou', status: 'needs', label: 'Needs you', color: 'var(--warn)', glyph: '◆', short: 'Allow?' },
+    { key: 'effectDone', styleKey: 'effectStyleDone', status: 'done', label: 'Done', color: 'var(--ok)', glyph: '✓', short: 'Done' },
   ]
   return (
     <>
@@ -441,6 +551,9 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         <Row label="Icons" detail="Agent and folder icons in their own colours, or neutral gray tiles.">
           <Segmented label="Icons" value={preferences.iconColor} options={ICON_COLOR_OPTIONS} onChange={(value) => { update('iconColor', value) }} />
         </Row>
+        <Row label="Background glow" detail="Two faint tints of the theme behind the cards. Off is a flat ground; a web view without WebGL always uses the flat one.">
+          <Switch label="Background glow" checked={preferences.backgroundGlow} onChange={(value) => { update('backgroundGlow', value) }} />
+        </Row>
         <Row label="See-through terminal" detail="Lets the card show behind a pane's text when WebGL draws it. Programs that paint their own backgrounds, like Claude Code under its prompt, then show as boxes.">
           <Switch label="See-through terminal" checked={preferences.terminalSeeThrough} onChange={(value) => { update('terminalSeeThrough', value) }} />
         </Row>
@@ -457,27 +570,9 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         <Row label="Light theme" detail="Used when the window is light.">
           <ThemePicker kind="light" value={preferences.lightTheme} inUse={!darkInUse} dimmed={darkInUse && preferences.themeMode !== 'system'} onPick={(name) => { update('lightTheme', name) }} onPreview={onPreviewTheme} />
         </Row>
-      </Card>
-      <Card title="Working spinner" color="var(--accent)" iconPath={<path d="M12 3a9 9 0 1 0 9 9" />} meta={<span className="mx-scard-meta">Live preview</span>} foot="Same frames as the Maitty TUI. Shown on tabs, pane headers and sidebar rows while something runs.">
-        <div role="radiogroup" aria-label="Working spinner" className="mx-spinner-grid">
-          {SPINNERS.map(([id, name]) => {
-            const definition = spinnerDefinition(id)
-            const selected = preferences.spinner === id
-            return (
-              <button key={id} type="button" role="radio" aria-checked={selected} aria-label={name} className="mx-spinner-card" onClick={() => { update('spinner', id) }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span className="mx-spinner-glyph"><PreviewSpinner spinner={id} reduced={reduced} /></span>
-                  <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>{name}</span>
-                    <span style={{ fontSize: 11.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{definition.frames.length} frames · {definition.intervalMs} ms</span>
-                  </span>
-                  {selected && <Icon name="check" size={15} stroke="var(--accent)" strokeWidth={2.5} />}
-                </span>
-                <span className="mx-spinner-sample"><span style={{ color: 'var(--accent)' }}><PreviewSpinner spinner={id} reduced={reduced} /></span>cargo test<span style={{ flex: 1 }} /><span style={{ color: 'var(--dim)' }}>0:{seconds}</span></span>
-              </button>
-            )
-          })}
-        </div>
+        <Row label="Working spinner" detail="Shown on tabs, pane headers and sidebar rows while something runs. The TUI ones use its exact frames.">
+          <SpinnerPicker value={preferences.spinner} reduced={reduced} onPick={(spinner) => { update('spinner', spinner) }} />
+        </Row>
       </Card>
       <Card title="Sidebar" color="var(--accent)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></>}
         foot={<>{preferences.trayStyle === 'stacked' ? 'One per line under the main row, with folder and status.' : preferences.trayStyle === 'icons' ? 'Small icon tabs under the main row.' : 'Small named tabs under the main row.'} {preferences.leadMode === 'attention' ? 'The session that most needs you leads: needs you, error, done, working.' : 'The session you are in leads; the others are sorted by attention.'}</>}
@@ -491,21 +586,6 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         <Row label="Main row shows" detail="Which session leads each project.">
           <Segmented label="Main row shows" value={preferences.leadMode} options={LEAD_OPTIONS} onChange={(value) => { update('leadMode', value) }} />
         </Row>
-        {projects.length > 0 && (
-          <div className="mx-scard-row is-stacked">
-            <div className="mx-scard-text"><span>Project colors</span><span>Amber and red are left out: they only ever mean needs you and error.</span></div>
-            {projects.map((project) => (
-              <div key={project.key} className="mx-project-color">
-                <span className="mx-project-color-name">{project.name}</span>
-                <div role="radiogroup" aria-label={`Color for ${project.name}`} className="mx-swatches">
-                  {PROJECT_COLORS.map((color) => (
-                    <button key={color.id} type="button" role="radio" aria-checked={project.colorId === color.id} aria-label={color.label} title={color.label} className="mx-swatch-dot" style={{ background: color.color }} onClick={() => { update('projectColors', setColor(preferences.projectColors, project.key, project.colorId === color.id ? null : color.id)) }} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </Card>
       <Card title="Interface size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>
         <Row label="Density" detail="How much room the sidebar rows, tabs and panes get.">
@@ -529,65 +609,49 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         <Row label="Reduce motion" detail="Turns off the shimmer, pulses and slide-ins. Your system setting is always respected.">
           <Switch label="Reduce motion" checked={preferences.reduceMotion} onChange={(value) => { update('reduceMotion', value) }} />
         </Row>
+        <Row label="Animations" detail="Auto starts with what this window can draw, and steps down if frames run slow. Full always allows Waves, Light only Sweep, Off no status effects. Reduce motion wins over all of them.">
+          <Segmented label="Animations" value={preferences.animations} options={ANIMATION_OPTIONS} onChange={(value) => { update('animations', value) }} />
+        </Row>
         <div className={`mx-effects${reduced ? ' is-locked' : ''}`}>
-          <div className="mx-scard-text"><span>Status effects</span><span>{reduced ? 'Off while Reduce motion is on.' : 'Choose which states animate on sidebar rows and tabs. Icons and words always show.'}</span></div>
+          <div className="mx-scard-text"><span>Status effects</span><span>{reduced ? 'Off while Reduce motion is on.' : 'Choose which states animate on sidebar rows and tabs, and how. Icons and words always show.'}</span></div>
           {effects.map((effect) => {
-            const on = preferences[effect.key]
+            const on = preferences[effect.key] && !reduced
+            const wanted = preferences[effect.styleKey]
+            const shown = on ? styleUnderCap(wanted, cap) : null
+            const applied: AppliedEffect = { className: `mx-fx-${effect.status} mx-fx-strong`, status: effect.status, style: shown }
             return (
               <div key={effect.key} className="mx-effect-row">
-                <span className={`mx-effect-chip${on && !reduced ? ` ${effect.fx}` : ''}`} style={{ color: effect.color }} aria-hidden="true">{effect.glyph}<span>{effect.short}</span></span>
+                <span className={`mx-effect-chip${shown ? ` ${applied.className}` : ''}`} style={{ color: effect.color }} aria-hidden="true"><StatusEffect effect={applied} />{effect.glyph}<span>{effect.short}</span></span>
                 <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <span style={{ fontSize: 12.5, color: 'var(--fg)' }}>{effect.label}</span>
-                  <span style={{ fontSize: 11.5, color: 'var(--dim)' }}>{effect.detail}</span>
+                  <span style={{ fontSize: 11.5, color: 'var(--dim)' }}>{effectNote(wanted, shown, on)}</span>
                 </span>
-                <Switch label={effect.label} checked={on && !reduced} disabled={reduced} onChange={(value) => { update(effect.key, value) }} />
+                <Segmented label={`${effect.label} style`} value={wanted} options={EFFECT_STYLE_OPTIONS} onChange={(value) => { update(effect.styleKey, value) }} />
+                <Switch label={effect.label} checked={on} disabled={reduced} onChange={(value) => { update(effect.key, value) }} />
               </div>
             )
           })}
         </div>
+        <Row label="Working effect" detail="Which working rows and tabs animate: all of them, only the one you are in, or none.">
+          <Segmented label="Working effect" value={preferences.workingScope} options={WORKING_SCOPE_OPTIONS} onChange={(value) => { update('workingScope', value) }} />
+        </Row>
       </Card>
     </>
   )
 }
 
-/** One style's spinner, stepping on its own clock written straight into the element, so the page never re-renders for a frame. */
-function PreviewSpinner({ spinner, reduced }: { spinner: SpinnerStyle; reduced: boolean }) {
-  const { frames } = spinnerDefinition(spinner)
-  const element = useRef<HTMLSpanElement>(null)
-  useEffect(() => {
-    const target = element.current
-    if (reduced || !target) return
-    let frame = 0
-    const timer = window.setInterval(() => {
-      frame = (frame + 1) % frames.length
-      target.textContent = frames[frame] ?? ''
-    }, SPINNER_TICK_MS)
-    return () => { window.clearInterval(timer) }
-  }, [frames, reduced])
-  return <span ref={element}>{frames[0]}</span>
-}
-
-/** A key combination as a row of key-shaped caps; the modifier symbols are set in the interface font. */
-function Keycaps({ chord }: { chord: Chord }) {
+function HotkeysSection({ platform }: { platform: Platform }) {
   return (
-    <span className="mx-chord" role="group" aria-label={chord.join(' ')}>
-      {chord.map((key) => <kbd key={key} className={`mx-keycap${isModifierSymbol(key) ? ' is-symbol' : ''}`}>{key}</kbd>)}
-    </span>
-  )
-}
-
-function HotkeysSection({ mac }: { mac: boolean }) {
-  return (
-    <Card title="Hotkeys" color="var(--ansi-blue)" iconPath={<><rect x="3" y="7" width="18" height="10" rx="2" /><path d="M7 11h.01M11 11h.01M15 11h.01M8 14h8" /></>} meta={<span className="mx-scard-meta">{mac ? '⌘ is Ctrl on Windows and Linux' : 'Ctrl is ⌘ on macOS'}</span>} foot="In a focused pane, every other key goes straight to the shell.">
+    <Card title="Hotkeys" color="var(--ansi-blue)" iconPath={<><rect x="3" y="7" width="18" height="10" rx="2" /><path d="M7 11h.01M11 11h.01M15 11h.01M8 14h8" /></>} meta={<span className="mx-scard-meta">{platform === 'mac' ? '⌘ here, Ctrl+Shift on Windows and Linux' : 'Ctrl+Shift here, ⌘ on macOS'}</span>} foot="In a focused pane, every other key goes straight to the shell.">
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {hotkeyRows(mac).map((row) => (
+        {hotkeyRows(platform).map((row) => (
           <div key={row.action} className="mx-hotkey-row">
             <span>{row.action}</span>
             <span className="mx-keys">
               {row.chords.map((chord, index) => (
                 <Fragment key={chord.join('+')}>
                   {index > 0 && <span className="mx-or">or</span>}
-                  <Keycaps chord={chord} />
+                  <Keycaps chord={chord} className="mx-chord" labelled />
                 </Fragment>
               ))}
             </span>
@@ -641,3 +705,180 @@ function DaemonSection({ daemon }: { daemon: DaemonInfo }) {
   )
 }
 
+
+function MachinesSection({ machines }: { machines: MachinesInfo }) {
+  return (
+    <>
+      <MachineList machines={machines} />
+      {machines.known && <AddMachineCard add={machines.add} />}
+    </>
+  )
+}
+
+type HostsState = { status: 'loading' } | { status: 'ready'; hosts: readonly HostChoice[] } | { status: 'failed'; message: string }
+
+function AddMachineCard({ add }: { add: MachinesInfo['add'] }) {
+  const [hosts, setHosts] = useState<HostsState>({ status: 'loading' })
+  const [text, setText] = useState('')
+  const [checking, setChecking] = useState<string | null>(null)
+  const [naming, setNaming] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  const [note, setNote] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const { loadHosts } = add
+  useEffect(() => {
+    let gone = false
+    loadHosts().then(
+      (list) => { if (!gone) setHosts({ status: 'ready', hosts: list }) },
+      (error: unknown) => { if (!gone) setHosts({ status: 'failed', message: errorMessage(error, 'Could not read ~/.ssh/config') }) },
+    )
+    return () => { gone = true }
+  }, [loadHosts])
+
+  const submit = (target: string, chosenName?: string) => {
+    setChecking(target)
+    setNote(null)
+    add.onAdd(target, chosenName).then(
+      (result) => {
+        setChecking(null)
+        switch (result.outcome) {
+          case 'needs-name':
+            setNaming(target)
+            setName('')
+            return
+          case 'cancelled':
+            setNote({ kind: 'ok', text: 'Cancelled. Nothing was added.' })
+            return
+          case 'added':
+            setNote({ kind: 'ok', text: `Added ${result.name}.${result.version ? ` ${result.version} answered there.` : ''} Connecting.` })
+            break
+          case 'login':
+            setNote({ kind: 'ok', text: `Added ${result.name}. ssh needs you to log in: use the session named “ssh ${result.name}”.` })
+            break
+          case 'login-manual':
+            setNote({ kind: 'error', text: `Added ${result.name}. Run “ssh ${result.target}” once in a terminal to log in, then retry (${result.why}).` })
+            break
+        }
+        setText('')
+        setNaming(null)
+        setHosts((current) => current.status === 'ready' ? { status: 'ready', hosts: current.hosts.filter((host) => host.alias !== target) } : current)
+      },
+      (error: unknown) => {
+        setChecking(null)
+        setNote({ kind: 'error', text: errorMessage(error, 'Could not add the machine') })
+      },
+    )
+  }
+
+  const typed = text.trim()
+  const shown = hosts.status === 'ready' ? hosts.hosts.filter((host) => `${host.alias} ${host.detail}`.toLowerCase().includes(typed.toLowerCase())) : []
+  const icon = <><circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" /></>
+  return (
+    <Card title="Add a machine" color="var(--accent)" iconPath={icon}>
+      {add.windows && <p className="mx-scard-note">Windows: use ssh keys or an agent. Password prompts work in the session but are not remembered.</p>}
+      {checking !== null
+        ? (
+          <div className="mx-scard-row" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); add.onCancel() } }}>
+            <div className="mx-scard-text"><span role="status">Checking {checking}…</span><span>Esc ends ssh and adds nothing.</span></div>
+            <button type="button" className="mx-scard-button" onClick={add.onCancel}>Cancel</button>
+          </div>
+        )
+        : naming !== null
+          ? (
+            <form className="mx-scard-row" onSubmit={(event) => { event.preventDefault(); if (name.trim() !== '') submit(naming, name.trim()) }}>
+              <div className="mx-scard-text"><span>Name for {naming}</span><span>A short name for the sidebar, such as build.</span></div>
+              <input className="mx-scard-input" aria-label="Machine name" value={name} autoFocus onChange={(event) => { setName(event.target.value) }} />
+              <button type="submit" className="mx-scard-button" disabled={name.trim() === ''}>Add</button>
+              <button type="button" className="mx-scard-button" onClick={() => { setNaming(null) }}>Back</button>
+            </form>
+          )
+          : (
+            <form className="mx-scard-row" onSubmit={(event) => { event.preventDefault(); if (typed !== '') submit(typed) }}>
+              <div className="mx-scard-text"><span>Host</span><span>Pick one below, or type user@host.</span></div>
+              <input className="mx-scard-input" aria-label="Host or user@host" value={text} placeholder="user@host" onChange={(event) => { setText(event.target.value) }} />
+              <button type="submit" className="mx-scard-button" disabled={typed === ''}>Add</button>
+            </form>
+          )}
+      {note && <p className="mx-scard-note" role={note.kind === 'error' ? 'alert' : 'status'}>{note.text}</p>}
+      {checking === null && naming === null && (
+        hosts.status === 'loading'
+          ? <p className="mx-scard-note" role="status">Loading hosts from ~/.ssh/config…</p>
+          : hosts.status === 'failed'
+            ? <p className="mx-scard-note" role="alert">{hosts.message}</p>
+            : hosts.hosts.length === 0
+              ? <p className="mx-scard-note">No hosts in ~/.ssh/config. Type user@host above.</p>
+              : (
+                <ul className="mx-host-list" aria-label="Hosts in ~/.ssh/config">
+                  {shown.map((host) => (
+                    <li key={host.alias}>
+                      <button type="button" className="mx-host-row" onClick={() => { submit(host.alias) }}>
+                        <span>{host.alias}</span><span className="mx-host-detail">{host.detail}</span>
+                      </button>
+                    </li>
+                  ))}
+                  {shown.length === 0 && <li className="mx-scard-note">No host matches “{typed}”. Add presses Enter for it as typed.</li>}
+                </ul>
+              )
+      )}
+    </Card>
+  )
+}
+
+function MachineList({ machines }: { machines: MachinesInfo }) {
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const icon = <><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>
+  if (!machines.known) {
+    return <Card title="Machines" color="var(--ansi-green)" iconPath={icon}><p className="mx-scard-note" role="status">Loading machines…</p></Card>
+  }
+  if (machines.list.length === 0) {
+    return (
+      <Card title="Machines" color="var(--ansi-green)" iconPath={icon}>
+        <p className="mx-scard-note">No other machines. List them as [[machines]] in config.local.toml and restart the app.</p>
+      </Card>
+    )
+  }
+  return (
+    <Card title="Machines" color="var(--ansi-green)" iconPath={icon} meta={<span className="mx-scard-meta">{machines.list.length}</span>}>
+      {machines.list.map((head) => {
+        const name = head.label
+        const chip = head.chip
+        const asking = confirming === name
+        return (
+          <Fragment key={head.key}>
+          <div className="mx-scard-row mx-machine-row">
+            <div className="mx-scard-text">
+              <span>
+                {name}
+                {chip && <span className={`mx-machine-chip is-${chip.tone}`}> <span aria-hidden="true">{chip.glyph}</span> {chip.word}</span>}
+              </span>
+              {head.down && <span><DisconnectedSince at={head.downSince} /></span>}
+              {head.why !== null && head.chip?.tone === 'bad' && <span className="mx-machine-fix">{head.why}</span>}
+              {head.updateCommand !== null && <span className="mx-machine-fix mono">{head.updateCommand}</span>}
+              {asking && <span role="alert">Removes {name} from this list. Its sessions keep running on {name}.</span>}
+            </div>
+            {asking
+              ? (
+                <>
+                  <button type="button" className="mx-scard-button is-danger" onClick={() => { setConfirming(null); machines.onRemove(name) }}>Remove {name}</button>
+                  <button type="button" className="mx-scard-button" onClick={() => { setConfirming(null) }}>Keep</button>
+                </>
+              )
+              : (
+                <>
+                  {head.updateCommand !== null && <button type="button" className="mx-scard-button" aria-label={`Copy the update command for ${name}`} onClick={() => { if (head.updateCommand !== null) machines.onCopyCommand(head.updateCommand) }}>Copy command</button>}
+                  <button type="button" className="mx-scard-button" disabled={chip?.word === 'connected'} aria-label={`Retry ${name}`} onClick={() => { machines.onRetry(name) }}>Retry</button>
+                  <button type="button" className="mx-scard-button" aria-label={`Remove ${name}`} onClick={() => { setConfirming(name) }}>Remove</button>
+                </>
+              )}
+          </div>
+          <Row label={`Copy to your clipboard`} detail={`Let ${name} put text on your clipboard.`}>
+            <Switch label={`Allow ${name} to copy to your clipboard`} checked={head.grants.clipboard} onChange={(on) => { machines.onGrant(name, 'clipboard', on) }} />
+          </Row>
+          <Row label="Notifications" detail={`Let ${name} raise notices, and tell you when its sessions need you or finish.`}>
+            <Switch label={`Allow ${name} to notify you`} checked={head.grants.notices} onChange={(on) => { machines.onGrant(name, 'notices', on) }} />
+          </Row>
+          </Fragment>
+        )
+      })}
+    </Card>
+  )
+}

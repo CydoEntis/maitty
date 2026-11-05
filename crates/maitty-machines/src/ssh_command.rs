@@ -259,8 +259,9 @@ pub(crate) fn ssh_argv_install(
     Ok(build(ssh, target, remote, Shape::PROXY))
 }
 
-/// The longest name a pasted file may have.
-const PASTE_NAME_MAX: usize = 64;
+/// The longest name a pasted or sent file may have: the 28-character stamp and salt (ADR 0055)
+/// and the 48 kept of the original name fit with room to spare.
+const PASTE_NAME_MAX: usize = 96;
 
 /// Runs the paste script on the far side; the image goes in on stdin. `name` and `bytes` are
 /// its two arguments.
@@ -951,7 +952,7 @@ mod tests {
             "x$(id)",
             "x\ny",
             "-oProxyCommand=x",
-            &"a".repeat(65),
+            &"a".repeat(97),
         ] {
             assert_eq!(name(bad), Err(BadPasteName(bad.to_owned())), "{bad:?}");
         }

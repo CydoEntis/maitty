@@ -5,6 +5,7 @@
 //! channel, so there is no locking around the model.
 
 mod approvals;
+mod branch_agent;
 mod check;
 pub use check::first_failing_line;
 mod check_source;
@@ -26,6 +27,7 @@ mod secrets;
 mod status;
 mod term;
 mod usage;
+mod usage_store;
 mod worktrees;
 
 use crate::brand::APP_COMMAND;
@@ -102,6 +104,8 @@ pub enum Ev {
         token: u64,
         result: Result<conversation::transport::Launch, String>,
     },
+    /// A background read of a followed pane's transcript finished (ADR 0052).
+    FollowRead(Box<conversation::follow::Done>),
     ConversationStorage {
         id: crate::conversation::ConversationId,
         revision: Option<u64>,
@@ -142,6 +146,15 @@ pub enum Ev {
         /// The pane that asked, noted when it asked: its connection is usually gone by now.
         by: Option<TermId>,
         /// The repo's setup (its on_create hook) has run: open what was asked for.
+        set_up: bool,
+        result: Result<(PathBuf, String), String>,
+    },
+    /// The worktree a chat session on a branch starts in is made (or failed): start it, ADR 0054.
+    ChatWorktreeCreated {
+        client: ClientId,
+        settings: crate::conversation::LaunchSettings,
+        branch: String,
+        /// The repo's setup (its on_create hook) has run.
         set_up: bool,
         result: Result<(PathBuf, String), String>,
     },
@@ -366,6 +379,16 @@ struct Daemon {
     conversation_barriers: BTreeMap<u64, u64>,
     conversation_histories:
         BTreeMap<crate::conversation::ConversationId, conversation::history::History>,
+    /// Agents running in desktop panes, followed read-only through their own transcripts.
+    followed: Vec<conversation::follow::Followed>,
+    /// Messages sent while a turn ran, per conversation, delivered in order as turns end.
+    conversation_queues:
+        BTreeMap<crate::conversation::ConversationId, Vec<conversation::commands::QueuedSend>>,
+    /// The highest id given to a followed pane, so an id is not reused while the daemon lives.
+    followed_high_water: u64,
+    /// Tests read transcripts from a scratch "home" instead of the real one.
+    #[cfg(test)]
+    followed_home: Option<PathBuf>,
     conversation_cache: Option<conversation::history_storage::Cache>,
     conversation_cache_dirty: std::collections::BTreeSet<crate::conversation::ConversationId>,
     conversation_cache_writes: BTreeMap<crate::conversation::ConversationId, u64>,
@@ -382,6 +405,8 @@ struct Daemon {
     spent: Vec<(u64, f64, String, String)>,
     /// Turns agents finished over the last day: (when, agent, folder, seconds working).
     turns: Vec<(u64, String, String, u64)>,
+    /// Provider-reported usage per session per day, kept on disk (ADR 0051).
+    usage_store: usage_store::UsageStore,
     codex_busy: bool,
     last_codex: Instant,
     /// The next pane runs its command once and ends with it (a popup).
@@ -749,6 +774,16 @@ impl Daemon {
                 anyhow::bail!("Only a human client can end a conversation")
             }
             Command::ConversationEnd { .. } => self.may(client, Grant::Write, None),
+            Command::ConversationDequeue { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can remove a queued message")
+            }
+            Command::ConversationDequeue { .. } => self.may(client, Grant::Write, None),
             Command::ConversationRename { .. } | Command::ConversationArchive { .. }
                 if structured
                     || self
@@ -990,6 +1025,11 @@ impl Daemon {
             conversation_request_id: 0,
             conversation_barriers: BTreeMap::new(),
             conversation_histories: BTreeMap::new(),
+            followed: Vec::new(),
+            conversation_queues: BTreeMap::new(),
+            followed_high_water: 0,
+            #[cfg(test)]
+            followed_home: None,
             conversation_cache: None,
             conversation_cache_dirty: Default::default(),
             conversation_cache_writes: Default::default(),
@@ -1005,6 +1045,14 @@ impl Daemon {
             limits: BTreeMap::new(),
             spent: Vec::new(),
             turns: Vec::new(),
+            usage_store: if cfg!(test) {
+                usage_store::UsageStore::in_memory()
+            } else {
+                usage_store::UsageStore::open(
+                    usage_store::UsageStore::default_path(),
+                    term::unix_now(),
+                )
+            },
             codex_busy: false,
             last_codex: Instant::now() - Duration::from_secs(3600),
             next_once: false,
@@ -1037,6 +1085,9 @@ impl Daemon {
                     self.phone_alerts();
                     self.auto_continue();
                     self.poll_codex();
+                    self.follow_tick();
+                    self.deliver_queued();
+                    self.usage_store.save_if_due(term::unix_now());
                     self.poll_git();
                     self.sweep_secrets();
                     self.poll_prs();
@@ -1073,6 +1124,7 @@ impl Daemon {
                 tracing::info!("no panes left; exiting");
                 // The user closed everything, so start fresh next time.
                 persist::forget();
+                self.usage_store.save_now(term::unix_now());
                 self.broadcast(|_| true, ServerMsg::Bye);
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 let _ = std::fs::remove_file(ipc::pid_file());
@@ -1430,6 +1482,7 @@ impl Daemon {
                 }
                 self.conversation_save_completed(barrier, result);
             }
+            Ev::FollowRead(done) => self.follow_read_done(*done),
             Ev::ConversationStorage {
                 id,
                 revision,
@@ -1773,6 +1826,13 @@ impl Daemon {
                 }
                 self.dirty = true;
             }
+            Ev::ChatWorktreeCreated {
+                client,
+                settings,
+                branch,
+                set_up,
+                result,
+            } => self.chat_worktree_created(client, settings, branch, set_up, result),
             Ev::AgentWorktreeMade { client, result } => {
                 self.pending_ops -= 1;
                 match result {
@@ -2348,6 +2408,16 @@ impl Daemon {
                         }) =>
                     {
                         ServerMsg::Error("Only a human client can search terminals".into())
+                    }
+                    Query::UsageReport { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can read usage".into())
+                    }
+                    Query::UsageReport { period } => {
+                        ServerMsg::Reply(Reply::UsageReport(self.usage_report(period)))
                     }
                     Query::PaneSearch { query } => {
                         let query = query.trim().to_string();
@@ -2929,6 +2999,8 @@ fn home() -> PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
 }
 
+#[cfg(test)]
+mod branch_agent_tests;
 #[cfg(test)]
 mod logic_tests;
 

@@ -8,17 +8,19 @@ import { isDesktop, loadTerminalReplay, resizeTerminal, sendTerminalInput } from
 import { listenTerminalChunks, loadTerminalHistory, type TerminalChunk, type TerminalHistory } from '@/api/terminalStream'
 import type { Conversation } from '@/data/preview'
 import type { TerminalHandle } from '@/features/terminal/handle'
+import { isPasteChord, listenForImagePaste } from '@/features/terminal/clipboardImage'
 import { findPathLinks } from '@/features/terminal/pathLinks'
+import { appendToScreen, cachedScreen, replaceScreen, screenKey } from '@/features/terminal/screenCache'
 import { isWindowActive, useWindowActive } from '@/lib/window-activity'
 import { hasWebgl2 } from '@/lib/gpu'
 import { oscColor } from '@/lib/osc-color'
 import { beginFlush, forgetRenderer, reportRenderer } from '@/lib/perf-meter'
+import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, fontStackFor, type TerminalFontWeight } from '@/lib/terminalFont'
 import '@xterm/xterm/css/xterm.css'
 
 const DEFAULT_SCROLLBACK_LINES = 10000
 const DEFAULT_SCROLL_SPEED = 1
 const LINE_HEIGHT = 1.6
-const FONT_FAMILY = '"Geist Mono Variable", "Geist Mono", ui-monospace, monospace'
 const DEFAULT_THEME: ITheme = { background: '#060d16', foreground: '#c9d6e3', cursor: '#3dd6c6' }
 const TRANSPARENT = 'rgba(0,0,0,0)'
 /**
@@ -27,6 +29,7 @@ const TRANSPARENT = 'rgba(0,0,0,0)'
  * echo waits at most this long, and only while output is already streaming.
  */
 const FLUSH_GAP_MS = 32
+const NO_MINIMUM_CONTRAST = 1
 
 type Renderer = 'webgl' | 'dom'
 
@@ -78,13 +81,21 @@ type TerminalBinding = Pick<Conversation, 'id'> & { generation: number }
 /** How a pane renders; each one is applied to the open terminal in place, without remounting. */
 export type TerminalLook = {
   cursorStyle?: 'block' | 'bar' | 'underline'
+  /** One family name put in front of the bundled font; empty or absent is the bundled font alone. */
+  fontFamily?: string
+  fontWeight?: TerminalFontWeight
+  fontWeightBold?: TerminalFontWeight
   scrollback?: number
   /** Lines per wheel notch as a multiple of xterm's default. */
   scrollSpeed?: number
   /** The card shows behind the text (WebGL only); programs' own backgrounds then show as boxes. */
   seeThrough?: boolean
+  /** xterm's own cursor blink, for the focused pane only. Off unless asked for. */
+  cursorBlink?: boolean
   screenReader?: boolean
   theme?: ITheme
+  /** xterm's own floor for the contrast of any foreground a program picks; 1 leaves colours as asked. */
+  minimumContrast?: number
 }
 
 type TerminalViewProps = {
@@ -106,6 +117,8 @@ type TerminalViewProps = {
   onOpenPath?: (path: string, line?: number) => void
   /** Receives the open terminal's controls, and null when it closes. */
   onHandle?: (handle: TerminalHandle | null) => void
+  /** The clipboard held an image and no text when the user pasted here. */
+  onPasteImage?: (image: File) => void
 }
 
 type NativeConversation = Conversation & { generation: number; nativePane: number }
@@ -116,15 +129,26 @@ const INPUT_RETRY_MS = 1500
 /** How long a view waits for the replay the host asked the daemon for before it fetches one itself. */
 const REPLAY_WAIT_MS = 3000
 
+/** A remote attach slower than this shows the "Catching up" strip; a local one never shows anything. */
+const CATCH_UP_DELAY_MS = 300
+/** How often the strip's milliseconds update while it shows. */
+const CATCH_UP_TICK_MS = 100
+
+/**
+ * Full reset (RIS) sent in the output itself. xterm's `reset()` takes effect at once, ahead of
+ * output still waiting to be parsed, so a screen that replaces another goes through the same write.
+ */
+const RESET_SCREEN = new TextEncoder().encode('\x1bc')
+
 /** What Shift+Enter sends: Alt+Enter, which Claude Code and Codex take as a new line in their prompt. */
 const NEW_LINE_KEYS = '\x1b\r'
 
-export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, ended = false, focused = false, onInput, onOpenPath, onHandle }: TerminalViewProps) {
+export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, ended = false, focused = false, onInput, onOpenPath, onHandle, onPasteImage }: TerminalViewProps) {
   if (!desktop) return null
   if (!isDesktop()) return <div className="panel-empty"><TerminalSquare size={18} /><h2>Native terminal is not available</h2><p>Open Maitty Desktop to use the daemon-owned terminal.</p></div>
   if (!hasNativeTerminal(conversation)) return <NativeHandoffView conversation={conversation} />
 
-  return <ConnectedTerminalView conversation={conversation} fontSize={fontSize} look={look} label={label ?? `Native ${conversation.provider} terminal`} inputDisabled={inputDisabled || ended} ended={ended} focused={focused} onInput={onInput} onOpenPath={onOpenPath} onHandle={onHandle} />
+  return <ConnectedTerminalView conversation={conversation} fontSize={fontSize} look={look} label={label ?? `Native ${conversation.provider} terminal`} inputDisabled={inputDisabled || ended} ended={ended} focused={focused} onInput={onInput} onOpenPath={onOpenPath} onHandle={onHandle} onPasteImage={onPasteImage} />
 }
 
 function NativeHandoffView({ conversation }: { conversation: Conversation }) {
@@ -143,9 +167,9 @@ function NativeHandoffView({ conversation }: { conversation: Conversation }) {
   </div>
 }
 
-type ConnectedProps = { conversation: NativeConversation; fontSize: number; look: TerminalLook; label: string; inputDisabled: boolean; ended: boolean; focused: boolean; onInput: ((data: string | Uint8Array) => void) | undefined; onOpenPath: ((path: string, line?: number) => void) | undefined; onHandle: ((handle: TerminalHandle | null) => void) | undefined }
+type ConnectedProps = { conversation: NativeConversation; fontSize: number; look: TerminalLook; label: string; inputDisabled: boolean; ended: boolean; focused: boolean; onInput: ((data: string | Uint8Array) => void) | undefined; onOpenPath: ((path: string, line?: number) => void) | undefined; onHandle: ((handle: TerminalHandle | null) => void) | undefined; onPasteImage: ((image: File) => void) | undefined }
 
-function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisabled, ended, focused, onInput, onOpenPath, onHandle }: ConnectedProps) {
+function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisabled, ended, focused, onInput, onOpenPath, onHandle, onPasteImage }: ConnectedProps) {
   const term = conversation.nativePane
   // Each machine numbers its own panes: the stream and its history are kept by machine and pane.
   const machine = conversation.machine ?? 0
@@ -167,12 +191,15 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   useEffect(() => { onInputRef.current = onInput })
   const onOpenPathRef = useRef(onOpenPath)
   const onHandleRef = useRef(onHandle)
+  const onPasteImageRef = useRef(onPasteImage)
   useEffect(() => {
     onOpenPathRef.current = onOpenPath
     onHandleRef.current = onHandle
+    onPasteImageRef.current = onPasteImage
   })
   const refitTerminal = useRef<(() => void) | null>(null)
   const [connecting, setConnecting] = useState(true)
+  const [catchUpMs, setCatchUpMs] = useState<number | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [inputFailed, setInputFailed] = useState(false)
   const [resizeError, setResizeError] = useState('')
@@ -212,11 +239,13 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     let disposeInput: (() => void) | null = null
     let disposeBinary: (() => void) | null = null
     let disposeCopy: (() => void) | null = null
+    let disposePasteImage: (() => void) | null = null
     let frame = 0
     let flushWait = 0
     let queued: Uint8Array[] = []
     let replayWait = 0
     let lastFlushAt = 0
+    const screen = screenKey(machine, term, binding.generation)
 
     const writeQueued = () => {
       if (frame !== 0) cancelAnimationFrame(frame)
@@ -249,8 +278,8 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       }
       writeQueued()
     }
-    const enqueue = (bytes: Uint8Array) => {
-      queued.push(bytes)
+    const enqueue = (...parts: Uint8Array[]) => {
+      queued.push(...parts)
       // A hidden window gets no animation frames, so output would pile up and then land in one freeze.
       if (document.hidden) {
         writeQueued()
@@ -273,16 +302,19 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         const startSeeThrough = seeThroughOf(lookRef.current, startRenderer)
         emulator = new TerminalEmulator({
           allowTransparency: startSeeThrough,
-          cursorBlink: focusedRef.current && isWindowActive(),
+          cursorBlink: (lookRef.current.cursorBlink ?? false) && focusedRef.current && isWindowActive(),
           cursorStyle: lookRef.current.cursorStyle ?? 'block',
           disableStdin: inputDisabledRef.current,
-          fontFamily: FONT_FAMILY,
+          fontFamily: fontStackFor(lookRef.current.fontFamily ?? ''),
+          fontWeight: lookRef.current.fontWeight ?? DEFAULT_FONT_WEIGHT,
+          fontWeightBold: lookRef.current.fontWeightBold ?? DEFAULT_FONT_WEIGHT_BOLD,
           fontSize: fontSizeRef.current,
           lineHeight: LINE_HEIGHT,
           scrollback: lookRef.current.scrollback ?? DEFAULT_SCROLLBACK_LINES,
           scrollSensitivity: lookRef.current.scrollSpeed ?? DEFAULT_SCROLL_SPEED,
           screenReaderMode: lookRef.current.screenReader ?? false,
           theme: terminalTheme(lookRef.current, startSeeThrough),
+          minimumContrastRatio: lookRef.current.minimumContrast ?? NO_MINIMUM_CONTRAST,
         })
         const terminalInstance = emulator
         const fit = new FitAddon()
@@ -395,9 +427,18 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           fitAndResize()
         }
 
+        // Show the last screen this pane had at once; the daemon's history confirms or replaces it.
+        let lastSeq = 0
+        let shown: number | null = null
+        const kept = cachedScreen(screen)
+        if (kept) {
+          fit.fit()
+          enqueue(kept.bytes)
+          lastSeq = kept.seq
+          shown = kept.seq
+        }
         // Follow the live stream first, hold what arrives while the history loads, then write
         // the history and continue from the next chunk: no gap and no repeat.
-        let lastSeq = 0
         let caughtUp = false
         const pending: TerminalChunk[] = []
         const apply = (chunk: TerminalChunk) => {
@@ -405,9 +446,15 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
           lastSeq = chunk.seq
           if (chunk.replay) {
             window.clearTimeout(replayWait)
-            writeQueued()
-            terminalInstance.reset()
+            // The replay replaces the screen, so older output still waiting is dropped and the
+            // reset travels with the replay: one write for the frame.
+            queued = []
+            replaceScreen(screen, chunk.seq, chunk.bytes)
+            enqueue(RESET_SCREEN, chunk.bytes)
+            setConnecting(false)
+            return
           }
+          appendToScreen(screen, chunk.seq, chunk.bytes)
           enqueue(chunk.bytes)
         }
         // This computer's panes are asked for exactly as before machines: a machine is named only when it is another.
@@ -424,30 +471,45 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         // the pane's replay over the stream (it arrives as the next chunk). Without a stream it
         // refuses, and the replay is fetched from the daemon directly.
         let history: TerminalHistory | null
+        let fetched = false
         try {
           history = await loadTerminalHistory(term, ...machineArg)
         } catch {
           history = null
           if (!stillMounted()) return
-          enqueue(await loadTerminalReplay(binding))
+          const replay = await loadTerminalReplay(binding)
+          if (!stillMounted()) return
+          fetched = true
+          // A fetched replay has no sequence number: it is only a screen to start from.
+          replaceScreen(screen, lastSeq, replay)
+          enqueue(...(shown === null ? [replay] : [RESET_SCREEN, replay]))
         }
         if (!stillMounted()) return
         if (history) {
+          // History that ends where the kept screen did changes nothing on screen.
+          if (history.seq !== shown) {
+            // Drop an older screen still waiting; the history replaces it in the same write.
+            if (shown !== null) queued = []
+            enqueue(...(shown === null ? [history.bytes] : [RESET_SCREEN, history.bytes]))
+          }
           lastSeq = history.seq
-          enqueue(history.bytes)
-        } else {
+          replaceScreen(screen, history.seq, history.bytes)
+        } else if (!fetched) {
+          // The replay that is coming is not bound by the kept screen's numbering.
+          lastSeq = 0
           // The stream may drop between the host's request and the daemon's answer; then the
           // pane would stay blank, so after a while the replay is fetched directly.
           replayWait = window.setTimeout(() => {
             loadTerminalReplay(binding).then(
-              (bytes) => { if (stillMounted()) enqueue(bytes) },
-              () => { if (stillMounted()) setLoadError(true) },
+              (bytes) => { if (stillMounted()) { replaceScreen(screen, lastSeq, bytes); enqueue(RESET_SCREEN, bytes); setConnecting(false) } },
+              () => { if (stillMounted()) { setLoadError(true); setConnecting(false) } },
             )
           }, REPLAY_WAIT_MS)
         }
         caughtUp = true
         for (const chunk of pending) apply(chunk)
-        setConnecting(false)
+        // Without history, the replay is still on its way over the stream: attaching has not finished.
+        if (history || fetched) setConnecting(false)
 
         resizeObserver = new ResizeObserver(fitAndResize)
         resizeObserver.observe(hostElement)
@@ -457,7 +519,9 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         void fonts?.ready.then(() => { refitTerminal.current?.() })
 
         // A terminal sends the same byte for Shift+Enter as for Enter. Agents read ESC then Enter (Alt+Enter) as "new line", so that is what goes.
+        // Ctrl+Shift+V is left to the browser, whose paste event is how an image on the clipboard is found (ticket 19). Plain Ctrl+V still reaches the program as ^V.
         terminalInstance.attachCustomKeyEventHandler((event) => {
+          if (isPasteChord(event, navigator.userAgent)) return false
           if (event.key !== 'Enter' || !event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return true
           if (event.type === 'keydown') send(NEW_LINE_KEYS)
           return false
@@ -479,6 +543,12 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         }
         hostElement.addEventListener('mouseup', copySelection)
         disposeCopy = () => { hostElement.removeEventListener('mouseup', copySelection) }
+        // A paste of an image (with no text) goes to the window; text pastes as it always has.
+        disposePasteImage = listenForImagePaste(
+          hostElement,
+          (image) => { onPasteImageRef.current?.(image) },
+          (message) => { toast.error(message) },
+        )
       } catch (error) {
         if (isMounted) {
           setLoadError(true)
@@ -501,6 +571,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       disposeInput?.()
       disposeBinary?.()
       disposeCopy?.()
+      disposePasteImage?.()
       if (emulator) forgetRenderer(emulator)
       emulator?.dispose()
       terminal.current = null
@@ -521,12 +592,24 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     const emulator = terminal.current
     if (!emulator) return
     if (look.cursorStyle && emulator.options.cursorStyle !== look.cursorStyle) emulator.options.cursorStyle = look.cursorStyle
+    // A new face or weight changes the cell size, so the grid is measured again.
+    const family = fontStackFor(look.fontFamily ?? '')
+    const weight = look.fontWeight ?? DEFAULT_FONT_WEIGHT
+    const weightBold = look.fontWeightBold ?? DEFAULT_FONT_WEIGHT_BOLD
+    if (emulator.options.fontFamily !== family || emulator.options.fontWeight !== weight || emulator.options.fontWeightBold !== weightBold) {
+      emulator.options.fontFamily = family
+      emulator.options.fontWeight = weight
+      emulator.options.fontWeightBold = weightBold
+      refitTerminal.current?.()
+    }
     if (look.scrollback && emulator.options.scrollback !== look.scrollback) emulator.options.scrollback = look.scrollback
     if (look.scrollSpeed && emulator.options.scrollSensitivity !== look.scrollSpeed) emulator.options.scrollSensitivity = look.scrollSpeed
     if (look.screenReader !== undefined && emulator.options.screenReaderMode !== look.screenReader) emulator.options.screenReaderMode = look.screenReader
     const seeThrough = seeThroughOf(look, rendererRef.current)
     if (emulator.options.allowTransparency !== seeThrough) emulator.options.allowTransparency = seeThrough
     if (look.theme) emulator.options.theme = terminalTheme(look, seeThrough)
+    const minimumContrast = look.minimumContrast ?? NO_MINIMUM_CONTRAST
+    if (emulator.options.minimumContrastRatio !== minimumContrast) emulator.options.minimumContrastRatio = minimumContrast
     setTransparent(seeThrough)
   }, [look])
 
@@ -536,19 +619,39 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     if (emulator) emulator.options.disableStdin = inputDisabled
   }, [inputDisabled])
 
+  // Only another machine can be slow to attach; this computer's panes show nothing while they connect.
+  useEffect(() => {
+    if (machine === 0 || !connecting) return
+    const started = performance.now()
+    let tick = 0
+    const show = window.setTimeout(() => {
+      setCatchUpMs(Math.round(performance.now() - started))
+      tick = window.setInterval(() => { setCatchUpMs(Math.round(performance.now() - started)) }, CATCH_UP_TICK_MS)
+    }, CATCH_UP_DELAY_MS)
+    return () => {
+      window.clearTimeout(show)
+      window.clearInterval(tick)
+    }
+  }, [machine, connecting])
+
   useEffect(() => {
     focusedRef.current = focused
     if (focused && !connecting) terminal.current?.focus()
   }, [focused, connecting])
 
   useEffect(() => {
-    // A blinking cursor repaints its pane twice a second, so only the pane you are in blinks, and
-    // only while the window is in front.
-    if (terminal.current) terminal.current.options.cursorBlink = focused && windowActive
-  }, [focused, windowActive, connecting])
+    // A blinking cursor repaints its pane twice a second, so it is opt-in, only the pane you are in
+    // blinks, and only while the window is in front.
+    if (terminal.current) terminal.current.options.cursorBlink = (look.cursorBlink ?? false) && focused && windowActive
+  }, [focused, windowActive, connecting, look.cursorBlink])
 
   return <div className={`terminal-view${transparent ? ' is-transparent' : ''}`}>
-    {connecting && !loadError && <div className="terminal-load-status" role="status"><LoaderCircle size={14} />Connecting to terminal</div>}
+    {machine !== 0 && connecting && catchUpMs !== null && !loadError && (
+      <div className="terminal-catch-up" role="status">
+        <LoaderCircle size={13} aria-hidden="true" />
+        <span>Catching up from {conversation.machineName ?? 'the machine'} · {catchUpMs} ms</span>
+      </div>
+    )}
     {loadError && <div className="terminal-input-error" role="status"><p>Could not load the terminal. Check the daemon connection and reopen this session.</p></div>}
     <div className="terminal-screen" ref={terminalHost} role="region" aria-label={label} />
     {inputFailed && <div className="terminal-input-error" role="status"><p>Input stopped because the daemon could not be reached.</p><Button variant="outline" size="sm" onClick={() => { inputFailedRef.current = false; setInputFailed(false) }}>Try typing again</Button></div>}

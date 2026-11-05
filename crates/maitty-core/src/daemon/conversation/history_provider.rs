@@ -1,16 +1,22 @@
 use super::history::{Content, Entry, IncompleteReason, ItemState, Role, SourceId, Update};
+use super::tool_input::{bound_input, clean_text};
 use crate::conversation::ConversationId;
 use serde_json::Value;
 
 type Result<T> = std::result::Result<T, IncompleteReason>;
 const ERROR_MESSAGE_CHARS: usize = 1024;
-const TOOL_LABEL_CHARS: usize = 256;
+/// A command is shown whole in the chat view, so the label keeps far more than a title would.
+const TOOL_LABEL_CHARS: usize = 2048;
+/// A helper agent's title: the first line of the task it was given.
+const HELPER_TITLE_CHARS: usize = 120;
+/// Largest plan text kept for one plan item.
+const MAX_PLAN_BYTES: usize = 64 * 1024;
 
 fn tool_label(item: &Value) -> String {
     item.get("command")
         .and_then(Value::as_str)
         .filter(|command| !command.trim().is_empty())
-        .map(|command| command.chars().take(TOOL_LABEL_CHARS).collect())
+        .map(|command| clean_text(command).chars().take(TOOL_LABEL_CHARS).collect())
         .unwrap_or_else(|| "Run command".into())
 }
 
@@ -71,6 +77,8 @@ pub(super) fn notification(
         return Ok(Some(Update::SetTurnStatus {
             turn: text(turn, "id")?.into(),
             state: status(text(turn, "status")?)?,
+            started_at_ms: seconds_as_ms(turn, "startedAt"),
+            completed_at_ms: seconds_as_ms(turn, "completedAt"),
         }));
     }
     let turn = text(params, "turnId")?.to_owned();
@@ -135,18 +143,41 @@ pub(super) fn notification(
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .into(),
+            // Claude's adapter sends the tool's input here; Codex commands have none.
+            input: item.get("input").and_then(bound_input),
+            exit_code: item.get("exitCode").and_then(Value::as_i64),
+            duration_ms: item.get("durationMs").and_then(Value::as_u64),
         },
         "fileChange" => Content::Tool {
             kind: kind.into(),
             label: file_change_label(item),
             output: file_change_output(item),
+            input: None,
+            exit_code: None,
+            duration_ms: None,
+        },
+        "plan" => Content::Tool {
+            kind: kind.into(),
+            label: "Plan".into(),
+            output: bounded_plan(item.get("text").and_then(Value::as_str).unwrap_or_default()),
+            input: None,
+            exit_code: None,
+            duration_ms: None,
+        },
+        "collabAgentToolCall" => Content::Tool {
+            kind: kind.into(),
+            label: helper_title(item),
+            output: String::new(),
+            input: helper_input(item),
+            exit_code: None,
+            duration_ms: None,
         },
         // Never retain unknown raw provider objects: they can contain unrelated private state.
         _ => Content::Unsupported { kind: kind.into() },
     };
     // A file edit may not carry a status on its first event; fall back to the event name.
     let state = if kind == "commandExecution"
-        || (kind == "fileChange" && item.get("status").is_some())
+        || (matches!(kind, "fileChange" | "collabAgentToolCall") && item.get("status").is_some())
     {
         status(text(item, "status")?)?
     } else if method == "item/started" {
@@ -158,7 +189,64 @@ pub(super) fn notification(
         source,
         content,
         state,
+        started_at_ms: params.get("startedAtMs").and_then(Value::as_u64),
+        completed_at_ms: params.get("completedAtMs").and_then(Value::as_u64),
     })))
+}
+
+/// A turn's `startedAt` / `completedAt`, which Codex reports in whole seconds.
+fn seconds_as_ms(turn: &Value, field: &str) -> Option<u64> {
+    turn.get(field)
+        .and_then(Value::as_u64)
+        .and_then(|seconds| seconds.checked_mul(1000))
+}
+
+fn bounded_plan(text: &str) -> String {
+    let clean = clean_text(text);
+    if clean.len() <= MAX_PLAN_BYTES {
+        return clean;
+    }
+    let mut end = MAX_PLAN_BYTES;
+    while !clean.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n... plan cut off", &clean[..end])
+}
+
+/// The first line of the task given to a helper agent, or the helper tool's name when the call
+/// carries no prompt (waiting on or closing a helper).
+fn helper_title(item: &Value) -> String {
+    let first_line = item
+        .get("prompt")
+        .and_then(Value::as_str)
+        .map(clean_text)
+        .and_then(|prompt| {
+            prompt
+                .lines()
+                .map(str::trim)
+                .find(|line| !line.is_empty())
+                .map(str::to_owned)
+        });
+    match first_line {
+        Some(line) => line.chars().take(HELPER_TITLE_CHARS).collect(),
+        None => item
+            .get("tool")
+            .and_then(Value::as_str)
+            .map_or_else(|| "Helper agent".into(), clean_text),
+    }
+}
+
+/// What a helper-agent call was asked to do, in the same shape Claude's `Task` input has.
+fn helper_input(item: &Value) -> Option<Value> {
+    let field = |name: &str| item.get(name).and_then(Value::as_str);
+    let mut input = serde_json::Map::new();
+    input.insert("description".into(), helper_title(item).into());
+    for name in ["prompt", "tool", "model"] {
+        if let Some(value) = field(name) {
+            input.insert(name.into(), value.into());
+        }
+    }
+    bound_input(&Value::Object(input))
 }
 
 /// Largest diff kept for one edit, so one huge file cannot bloat a conversation's history.
@@ -202,7 +290,11 @@ fn file_change_output(item: &Value) -> String {
             output.push('\n');
         }
         output.push_str(&format!("{} ({})\n", change_path(change), change_kind(change)));
-        output.push_str(change.get("diff").and_then(Value::as_str).unwrap_or_default());
+        // The content of a secret file never enters the history; its path and kind do.
+        output.push_str(&super::redact::redact_diff(
+            change_path(change),
+            change.get("diff").and_then(Value::as_str).unwrap_or_default(),
+        ));
     }
     if output.len() > MAX_FILE_CHANGE_OUTPUT_BYTES {
         let mut end = MAX_FILE_CHANGE_OUTPUT_BYTES;
@@ -214,3 +306,6 @@ fn file_change_output(item: &Value) -> String {
     }
     output
 }
+
+#[cfg(test)]
+mod tests;

@@ -221,6 +221,8 @@ fn a_chat_command_goes_to_the_machine_that_lists_the_chat() {
         checks: Vec::new(),
         title: None,
         archived: false,
+        root: None,
+        branch: None,
     };
     app.remotes.get_mut(&THERE).unwrap().snap.conversations = vec![chat];
     app.archive_conversation(id);
@@ -565,4 +567,65 @@ fn a_machine_that_is_gone_gives_the_focus_back_to_this_computer() {
     app.remotes.remove(&THERE);
     assert_eq!(app.focus_machine(), MachineId::LOCAL);
     assert_eq!(app.focused().map(|t| t.machine), Some(MachineId::LOCAL));
+}
+
+#[test]
+fn sending_a_file_from_a_local_pane_says_there_is_nothing_to_send() {
+    let (mut app, _rx) = two_machines();
+    app.notice = None;
+    app.act(Action::SendFile);
+    let (text, _, _) = app.notice.clone().expect("a toast");
+    assert_eq!(
+        text,
+        "this pane is on this computer; there is nothing to send"
+    );
+    assert!(matches!(app.mode, Mode::Normal));
+}
+
+#[test]
+fn sending_a_file_from_a_remote_pane_asks_for_the_path_and_nothing_goes_to_a_daemon() {
+    let (mut app, mut rx) = two_machines();
+    focus(&app, THERE);
+    sent(&mut rx);
+    app.act(Action::SendFile);
+    assert!(matches!(
+        app.mode,
+        Mode::Prompt {
+            kind: PromptKind::SendFile(_),
+            ..
+        }
+    ));
+    // A machine this computer has no entry for cannot be reached: said, not guessed at.
+    app.mode = Mode::Normal;
+    let term = app.typing_to().expect("a pane");
+    app.start_send(term, "/tmp/some-file.txt");
+    let (text, _, error) = app.notice.clone().expect("a toast");
+    assert!(error, "{text}");
+    assert_eq!(text, "build is not one of this computer's machines");
+    assert!(app.sending.is_none());
+    assert!(sent(&mut rx).is_empty());
+}
+
+#[test]
+fn a_file_that_cannot_be_sent_ends_as_an_error_toast_and_frees_the_next_send() {
+    let (mut app, mut rx) = two_machines();
+    app.cfg.machines.push(maitty_settings::config::MachineDef {
+        name: "build".into(),
+        target: "build".into(),
+        ..Default::default()
+    });
+    let (bg_tx, mut bg_rx) = mpsc::unbounded_channel();
+    app.bg = bg_tx;
+    app.run_background_jobs_inline = true;
+    focus(&app, THERE);
+    sent(&mut rx);
+    let term = app.typing_to().expect("a pane");
+    app.start_send(term, "'/no/such/dir/file.txt'");
+    assert!(app.sending.is_some(), "the send is shown while it runs");
+    let done = bg_rx.try_recv().expect("the job's result");
+    app.on_bg(done);
+    let (text, _, error) = app.notice.clone().expect("a toast");
+    assert!(error, "{text}");
+    assert!(text.starts_with("could not read file.txt"), "{text}");
+    assert!(app.sending.is_none(), "the next send may start");
 }

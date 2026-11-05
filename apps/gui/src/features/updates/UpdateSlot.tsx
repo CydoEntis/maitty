@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '@/features/workspace/components/glyphs'
+import { noteLines } from './noteLines'
 import type { UpdaterState } from './useUpdater'
 
-const MAX_NOTES = 5
 const PERCENT = 100
 const CARD_GAP_PX = 8
 const CARD_EDGE_PX = 12
@@ -21,10 +21,6 @@ type Props = {
   onRestartNow: () => void
   onCheck: () => void
   onSkip: (version: string) => void
-}
-
-function noteLines(notes: string): string[] {
-  return notes.split('\n').map((line) => line.replace(/^[-*]\s*/, '').trim()).filter(Boolean).slice(0, MAX_NOTES)
 }
 
 type Offer = Exclude<UpdaterState, { status: 'idle' | 'checking' | 'current' }>

@@ -13,6 +13,8 @@ pub(in crate::daemon::conversation) fn entry(index: usize) -> Entry {
             text: format!("synthetic {index}"),
         },
         state: ItemState::Completed,
+        started_at_ms: None,
+        completed_at_ms: None,
     }
 }
 #[test]
@@ -68,12 +70,16 @@ fn turn_status_has_an_independent_stable_row_even_without_items() {
     h.apply(Update::SetTurnStatus {
         turn: "turn".into(),
         state: ItemState::Running,
+        started_at_ms: None,
+        completed_at_ms: None,
     })
     .unwrap();
     h.apply(Update::UpsertItem(entry(1))).unwrap();
     h.apply(Update::SetTurnStatus {
         turn: "turn".into(),
         state: ItemState::Failed,
+        started_at_ms: None,
+        completed_at_ms: None,
     })
     .unwrap();
     assert_eq!(h.entries.len(), 2);
@@ -94,8 +100,13 @@ fn interrupting_a_turn_marks_its_running_tools_interrupted() {
             kind: "commandExecution".into(),
             output: String::new(),
             label: "Run command".into(),
+            input: None,
+            exit_code: None,
+            duration_ms: None,
         },
         state: ItemState::Running,
+        started_at_ms: None,
+        completed_at_ms: None,
     };
     history
         .apply(Update::UpsertItem(tool("interrupted")))
@@ -106,6 +117,8 @@ fn interrupting_a_turn_marks_its_running_tools_interrupted() {
         .apply(Update::SetTurnStatus {
             turn: "interrupted".into(),
             state: ItemState::Interrupted,
+            started_at_ms: None,
+            completed_at_ms: None,
         })
         .unwrap();
 
@@ -225,7 +238,7 @@ fn a_codex_file_edit_keeps_its_files_and_diff_for_review() {
         Completeness::Incomplete(IncompleteReason::UnsupportedItem)
     );
     assert_eq!(history.entries[0].state, ItemState::Completed);
-    let Content::Tool { kind, output, label } = &history.entries[0].content else {
+    let Content::Tool { kind, output, label, .. } = &history.entries[0].content else {
         panic!("a file edit is shown as a tool row");
     };
     assert_eq!(kind, "fileChange");
@@ -479,4 +492,245 @@ fn exhausted_attachment_prevents_partial_notification_or_reconnect_updates() {
     );
     assert_eq!(attachments.get(1), Some(&first));
     assert_eq!(attachments.get(2), Some(&second));
+}
+
+fn running(index: usize) -> Entry {
+    let mut running = entry(index);
+    running.state = ItemState::Running;
+    running
+}
+
+fn sources(page: &Page) -> Vec<String> {
+    page.entries.iter().map(|e| e.source.item.clone()).collect()
+}
+
+#[test]
+fn a_resume_cursor_reads_only_what_was_added_or_changed_since() {
+    let mut h = History::new(ConversationId(1));
+    for i in 0..5 {
+        h.apply(Update::UpsertItem(entry(i))).unwrap();
+    }
+    let first = h.read(None, 128, MAX_READ_BYTES).unwrap();
+    assert_eq!(first.entries.len(), 5);
+    assert!(!first.reset);
+    let resume = first.resume.clone().unwrap();
+
+    // Nothing happened: nothing comes back.
+    let quiet = h.read(Some(&resume), 128, MAX_READ_BYTES).unwrap();
+    assert!(quiet.entries.is_empty() && quiet.next.is_none() && !quiet.reset);
+
+    // An old row changes in place and a new one is added.
+    let mut changed = entry(1);
+    changed.state = ItemState::Failed;
+    h.apply(Update::UpsertItem(changed.clone())).unwrap();
+    h.apply(Update::UpsertItem(entry(5))).unwrap();
+    let news = h.read(Some(&resume), 128, MAX_READ_BYTES).unwrap();
+    assert_eq!(news.entries, vec![changed, entry(5)]);
+    assert!(!news.reset);
+
+    // A message growing by deltas is a change of that row alone.
+    let again = news.resume.clone().unwrap();
+    h.apply(Update::AppendDelta {
+        source: running(7).source,
+        delta: "x".into(),
+    })
+    .unwrap();
+    assert_eq!(
+        sources(&h.read(Some(&again), 128, MAX_READ_BYTES).unwrap()),
+        ["7"]
+    );
+}
+
+#[test]
+fn a_turn_ending_marks_the_rows_it_closed_as_changed() {
+    let mut h = History::new(ConversationId(1));
+    h.apply(Update::UpsertItem(running(1))).unwrap();
+    h.apply(Update::UpsertItem(entry(2))).unwrap();
+    let resume = h.read(None, 128, MAX_READ_BYTES).unwrap().resume.unwrap();
+
+    h.apply(Update::SetTurnStatus {
+        turn: "turn".into(),
+        state: ItemState::Interrupted,
+        started_at_ms: None,
+        completed_at_ms: None,
+    })
+    .unwrap();
+
+    let page = h.read(Some(&resume), 128, MAX_READ_BYTES).unwrap();
+    assert!(
+        page.entries
+            .iter()
+            .any(|e| e.source.item == "1" && e.state == ItemState::Interrupted)
+    );
+}
+
+#[test]
+fn a_delta_read_pages_and_a_change_made_between_its_pages_is_not_missed() {
+    let mut h = History::new(ConversationId(1));
+    for i in 0..6 {
+        h.apply(Update::UpsertItem(entry(i))).unwrap();
+    }
+    let resume = h.read(None, 128, MAX_READ_BYTES).unwrap().resume.unwrap();
+    for i in 0..6 {
+        let mut changed = entry(i);
+        changed.state = ItemState::Failed;
+        h.apply(Update::UpsertItem(changed)).unwrap();
+    }
+
+    let first = h.read(Some(&resume), 2, MAX_READ_BYTES).unwrap();
+    assert_eq!(sources(&first), ["0", "1"]);
+    // Row 0, already delivered, changes again while the later pages are being fetched.
+    let mut again = entry(0);
+    again.state = ItemState::Interrupted;
+    h.apply(Update::UpsertItem(again.clone())).unwrap();
+    let second = h.read(first.next.as_ref(), 2, MAX_READ_BYTES).unwrap();
+    let third = h.read(second.next.as_ref(), 2, MAX_READ_BYTES).unwrap();
+    assert_eq!(sources(&second), ["2", "3"]);
+    assert_eq!(sources(&third), ["4", "5"]);
+    assert!(third.next.is_none());
+
+    // The cursor to read from next starts where the first page did, so row 0's second change shows.
+    let after = h.read(third.resume.as_ref(), 128, MAX_READ_BYTES).unwrap();
+    assert_eq!(after.entries, vec![again]);
+}
+
+#[test]
+fn a_history_that_was_rebuilt_answers_a_resume_cursor_with_a_reset_from_the_start() {
+    let mut h = History::new(ConversationId(1));
+    h.apply(Update::UpsertItem(entry(1))).unwrap();
+    h.apply(Update::UpsertItem(running(2))).unwrap();
+    let resume = h.read(None, 128, MAX_READ_BYTES).unwrap().resume.unwrap();
+
+    h.reconnect().unwrap();
+
+    let page = h.read(Some(&resume), 128, MAX_READ_BYTES).unwrap();
+    assert!(page.reset);
+    assert_eq!(sources(&page), ["1"]);
+    // The new cursor works.
+    let next = h.read(page.resume.as_ref(), 128, MAX_READ_BYTES).unwrap();
+    assert!(!next.reset && next.entries.is_empty());
+}
+
+#[test]
+fn a_reconnect_that_drops_nothing_keeps_resume_cursors_valid() {
+    let mut h = History::new(ConversationId(1));
+    h.apply(Update::UpsertItem(entry(1))).unwrap();
+    let resume = h.read(None, 128, MAX_READ_BYTES).unwrap().resume.unwrap();
+
+    h.reconnect().unwrap();
+
+    assert!(!h.read(Some(&resume), 128, MAX_READ_BYTES).unwrap().reset);
+}
+
+#[test]
+fn a_resume_cursor_from_another_run_of_the_daemon_is_a_reset_not_a_guess() {
+    let mut h = History::new(ConversationId(1));
+    h.apply(Update::UpsertItem(entry(1))).unwrap();
+    let mut resume = h.read(None, 128, MAX_READ_BYTES).unwrap().resume.unwrap();
+    resume.epoch += 1_000_000;
+    let ahead = Cursor {
+        revision: h.revision + 50,
+        ..resume.clone()
+    };
+
+    assert!(h.read(Some(&resume), 128, MAX_READ_BYTES).unwrap().reset);
+    assert!(h.read(Some(&ahead), 128, MAX_READ_BYTES).unwrap().reset);
+}
+
+#[test]
+fn a_cursor_of_another_generation_starts_over_and_says_so() {
+    let mut h = History::new(ConversationId(1));
+    h.apply(Update::UpsertItem(entry(1))).unwrap();
+    let first = h.read_generation(3, None, 128, MAX_READ_BYTES).unwrap();
+    assert_eq!(first.resume.as_ref().unwrap().generation, 3);
+
+    let page = h
+        .read_generation(4, first.resume.as_ref(), 128, MAX_READ_BYTES)
+        .unwrap();
+
+    assert!(page.reset);
+    assert_eq!(page.entries.len(), 1);
+    assert_eq!(page.resume.unwrap().generation, 4);
+}
+
+#[test]
+fn cursors_and_pages_from_before_epochs_still_decode_and_work() {
+    let cursor: Cursor = serde_json::from_value(json!({
+        "generation": 1, "conversation": 1, "revision": 1, "next_position": 0
+    }))
+    .unwrap();
+    assert_eq!((cursor.epoch, cursor.delta, cursor.snapshot), (0, false, 0));
+    let page: Page = serde_json::from_value(json!({
+        "entries": [], "next": null, "completeness": "Complete"
+    }))
+    .unwrap();
+    assert!(page.resume.is_none() && !page.reset);
+
+    // A full read that began before epochs: its continuation cursor carries epoch 0.
+    let mut h = History::new(ConversationId(1));
+    for i in 0..3 {
+        h.apply(Update::UpsertItem(entry(i))).unwrap();
+    }
+    let first = h.read(None, 2, MAX_READ_BYTES).unwrap();
+    let legacy = Cursor {
+        epoch: 0,
+        ..first.next.unwrap()
+    };
+    assert_eq!(
+        sources(&h.read(Some(&legacy), 2, MAX_READ_BYTES).unwrap()),
+        ["2"]
+    );
+}
+
+fn fake_token() -> String {
+    format!("{}{}", "ghp_", "aB3d".repeat(9))
+}
+
+fn message_text(history: &History, item: usize) -> String {
+    match &history.entries[item].content {
+        Content::Message { text, .. } => text.clone(),
+        other => panic!("not a message: {other:?}"),
+    }
+}
+
+#[test]
+fn a_token_split_across_streamed_deltas_is_masked_once_whole() {
+    let token = fake_token();
+    let (first, second) = token.split_at(20);
+    let source = entry(1).source;
+    let mut h = History::new(ConversationId(1));
+    for delta in [format!("key {first}"), format!("{second} done")] {
+        h.apply(Update::AppendDelta { source: source.clone(), delta }).unwrap();
+    }
+    assert_eq!(message_text(&h, 0), "key [redacted] done");
+}
+
+#[test]
+fn entries_hydrated_or_loaded_from_an_older_cache_are_masked() {
+    let mut stored = entry(1);
+    stored.content = Content::Message {
+        role: Role::Assistant,
+        text: format!("old cache {}", fake_token()),
+    };
+    let mut h = History::new(ConversationId(1));
+    h.hydrate(vec![stored.clone()], Completeness::Complete).unwrap();
+    assert_eq!(message_text(&h, 0), "old cache [redacted]");
+
+    // A history written before redaction existed decodes, and is masked when loaded.
+    let mut old: History = serde_json::from_value(json!({
+        "conversation": 1, "revision": 3, "completeness": "Complete",
+        "entries": [{
+            "source": {"conversation": 1, "turn": "t", "item": "i"},
+            "content": {"Tool": {"kind": "commandExecution", "output": format!("x {}", fake_token()),
+                                 "label": "ls", "input": {"file_path": ".env", "content": "A=1"}}},
+            "state": "Completed"
+        }]
+    }))
+    .unwrap();
+    old.redact_stored();
+    let Content::Tool { output, input, .. } = &old.entries[0].content else {
+        panic!("a tool row");
+    };
+    assert_eq!(output, "x [redacted]");
+    assert_eq!(input.as_ref().unwrap()["content"], "[content of a secret file omitted]");
 }

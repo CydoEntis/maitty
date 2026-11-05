@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { displayName, MAX_SESSION_NAME_LENGTH, statusText, STATUS_WORD, type SessionView } from '../model/session'
+import { branchLineOf } from '../model/branchLine'
 import { MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
 import { useRecent } from '@/lib/clock'
+import { useChecklistProgress } from '@/features/panel/progressStore'
 import { Ago } from './times'
 import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
 import { InlineName } from './InlineName'
 import { useSessionMenu } from './SessionMenu'
 import { hoverHandlers, type RailHover } from './railHover'
-import { useEffectClass } from './motion'
+import { useStatusEffect } from './motion'
+import { StatusEffect } from './StatusEffect'
 import { runsAgent, useArmed } from './useArmed'
 
 export type SessionRowProps = {
@@ -37,16 +40,19 @@ export function SessionRow(props: SessionRowProps) {
   // How long ago it changed. A working row shows its spinner instead: a run time only counts from when this window saw it start.
   const changedAt = status === 'working' || status === 'needs' ? null : track?.changedAt ?? null
   const loud = selected || unread || status === 'needs'
-  const effect = useEffectClass(status, selected)
+  const effect = useStatusEffect(status, selected)
   const closing = useArmed(runsAgent(session.process))
   const [editing, setEditing] = useState(false)
   const menu = useSessionMenu(session, { online, portalContainer: props.portalContainer, onShow: props.onShow, onRename: () => { setEditing(true) }, onPin: props.onPin, onEnd: props.onEnd })
-  const rowClass = ['mx-row', selected && 'is-selected', loud && 'is-loud', props.swapped && 'is-swapped', moved ? 'is-moved' : effect].filter(Boolean).join(' ')
+  const rowClass = ['mx-row', selected && 'is-selected', loud && 'is-loud', props.swapped && 'is-swapped', moved ? 'is-moved' : effect.className].filter(Boolean).join(' ')
   // The first line names the program, a working row has its spinner and an idle one is the default: say only what they do not.
   const line2 = status === 'working' || status === 'idle' ? '' : statusText(session)
+  const branchLine = branchLineOf(session)
+  const progress = useChecklistProgress(session.conversation.chat?.conversation)
   const line2Class = status === 'needs' ? 'is-needs' : status === 'error' ? 'is-error' : status === 'working' ? 'is-working' : ''
   const body = (
     <>
+          {!moved && <StatusEffect effect={effect} />}
           <span className="mx-row-icon">
             <AppIcon process={session.process} size={24} dimmed={status === 'unknown'} />
             <StatusBadge status={status} />
@@ -62,6 +68,13 @@ export function SessionRow(props: SessionRowProps) {
               {changedAt !== null && <span className="mx-row-meta"><Ago at={changedAt} /></span>}
             </span>
             {line2 && <span className={`mx-row-line2 ${line2Class}`}>{line2}</span>}
+            {branchLine && <span className="flex min-w-0 items-center gap-1 overflow-hidden font-mono text-[11.5px] leading-[1.35] text-[var(--ansi-mag)]" title={`Branch ${branchLine}`}><Icon name="branch" size={11} /><span className="truncate">{branchLine}</span></span>}
+            {progress !== null && (
+              <span className="mx-row-progress flex min-w-0 flex-col gap-[3px]" title={`The agent's checklist: ${String(progress.done)} of ${String(progress.total)} done${progress.current === null ? '' : `, now: ${progress.current}`}`}>
+                <span className="truncate text-[11.5px] leading-[1.35] text-dim">{progress.done} of {progress.total}{progress.current !== null && ` · ${progress.current}`}</span>
+                <span className="block h-[2px] overflow-hidden rounded-full bg-line2" aria-hidden="true"><span className="block h-full origin-left bg-brand" style={{ transform: `scaleX(${String(progress.total === 0 ? 0 : progress.done / progress.total)})` }} /></span>
+              </span>
+            )}
           </span>
     </>
   )

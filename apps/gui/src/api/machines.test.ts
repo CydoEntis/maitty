@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { addressOf, forgetMachines, machineArgs, machineNameOf, parseSessionId, registerMachine, terminalOf, terminalSessionId } from './machines'
+import { addressOf, forgetMachines, machineArgs, machineNameOf, parseSessionId, registerMachine, terminalOf, terminalSessionId, unregisterMachine } from './machines'
 
 afterEach(() => { forgetMachines() })
 
@@ -45,5 +45,15 @@ describe('session ids', () => {
   it('names the machine to the host only for another machine', () => {
     expect(machineArgs({ machine: 0, machineName: null, term: 1 })).toEqual({})
     expect(machineArgs({ machine: 4, machineName: 'build', term: 1 })).toEqual({ machine: 4 })
+  })
+})
+
+describe('a machine taken out of the list', () => {
+  it('can no longer be addressed, in any case of its name', () => {
+    registerMachine('build', 3)
+    expect(parseSessionId('build/t1')?.machine).toBe(3)
+    unregisterMachine('BUILD')
+    expect(parseSessionId('build/t1')).toBeNull()
+    expect(() => addressOf('build/t1')).toThrow(/not one of this computer's machines/)
   })
 })

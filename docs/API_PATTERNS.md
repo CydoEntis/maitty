@@ -161,7 +161,7 @@ daemon's `Snapshot` goes out as a `sessions-changed` event
 whenever it changes, with `null` when the stream dropped, and the webview sets its session query
 from it instead of polling (a 15 s poll remains as a safety net); another machine's goes out as
 `machine-sessions-changed` (`{machine, snapshot}`), after the host has cleaned it, and its connection
-state as `machine-state`; `list_machines_overview` gives a window that starts late each machine's last state and
+state as `machine-state` (`connecting`, `connected`, `reconnecting`, `needs-login`, `needs-update`, `unreachable`, or `refused` when a different daemon answers at its name), with `since` (epoch ms) once it is not connected and the machine's `clipboard`, `notices` and `sounds` opt-ins from its entry (all off unless it says); a notice from a machine that opted in goes to the window as `machine-notice` (`{machine, text}`, cleaned, cut and led by `[name]`) and the window shows it as a toast or, away from it, a system notification; `retry_machine(name)` dials a machine now and clears a refusal; `remove_machine(name)` deletes its entry from `config.local.toml` first and only then stops it, forgets its daemon id and tells the window with `machine-removed` (its sessions and saved layout are left alone); the commands that read a pane's files or repository (`repo_query`, `restore_snapshot`, `new_worktree_session`, `pane_terminal_screen`) take the pane's `machine` and refuse another machine's with the terminal app's words (`<Feature> is local-only in v1: the files are on <machine>, not on this computer.`), as the window does before it asks (`apps/gui/src/lib/localOnly.ts`); `set_machine_grant(name, grant, on)` allows or stops a machine's `clipboard` or `notices` (written to its entry in `config.local.toml` first, then applied at once; the new state follows as `machine-state`); text an allowed machine asks to copy arrives as `machine-clipboard` (`{machine, text}`); `start_session_on_machine(machine, folder)` starts a terminal session in a typed folder of another machine (one that is not there opens in its home folder); `list_ssh_hosts` lists the `~/.ssh/config` hosts that are not machines yet; `add_machine(target, name?)` checks the target, looks at the machine over ssh without asking anyone anything (12 s at most; `cancel_add_machine` ends it), writes the entry only when that held up, and starts dialling it (a login that needs a person opens ssh in a session on this computer, and the window dials again when it closes); `list_machines_overview` gives a window that starts late each machine's last state and
 snapshot. The window names a machine's terminal sessions `build/t12` (the machine's name, so a saved
 layout survives a restart; this computer's stay `t12`) and passes the number the host gave the
 machine (`machine`) with each command, only for a pane of another machine. Files, Changes, Find,
@@ -191,7 +191,15 @@ config keys for them are read and ignored. Sessions, ordinary agent launches, he
 MCP session controls remain supported. The wire protocol is version 66.
 Conversation tool-history entries carry a bounded provider-supplied `label` for
 display; `#[serde(default)]` keeps older cached entries readable without a
-protocol bump.
+protocol bump. A tool entry may also carry `input` (the tool's own input JSON,
+bounded: strings cut with a `[truncated]` marker, a value too deep or too big left
+out whole), `exit_code` and `duration_ms` (Codex only), and every entry may carry
+`started_at_ms` / `completed_at_ms` (Unix milliseconds). All are optional and skipped
+when absent, so old shapes decode and no bump is needed. `ConversationRead` also
+returns `answered_approvals`, the last 64 approvals a person answered (request,
+decision, time), in daemon memory only. A Claude approval's `item_id` is the
+tool-use id when Claude names it, so it links to the tool step; an edit tool is a
+`FileChange` request with its diff in `changes`.
 
 `SwapPanes { a, b }` trades the places of two panes of one tab (the split ratios stay with
 their slots). Panes in different tabs, or one that isn't there, are an error.
@@ -386,12 +394,34 @@ or offset, so equal chunks are appended within one connection; completed native
 items win over replayed deltas. Reconnect drops uncertain drafts before ordered
 authoritative hydration. Unknown items/events make completeness explicit.
 
+Every entry is passed through `redact_entry` (`redact.rs`) before it is stored, so a
+history page never carries a token-shaped string (shown as `[redacted]`) or the text of a
+secret file (a tool input, diff or command output holding `[content of a secret file
+omitted]`, with `omitted_bytes` in the input). Both are plain strings in existing fields,
+so the wire shape and `PROTOCOL_VERSION` are unchanged; clients show them as hidden, not as
+errors. See [SECURITY](SECURITY.md#conversation-history-and-secrets).
+
 Internal reads accept a conversation/revision/position cursor, at most 128 entries
 and 256 KiB of serialized JSON including the page envelope. Content/order changes
 invalidate cursors; oversized entries fail explicitly. `next = None` means cached
 exhaustion only. Completeness is independently Unknown, Loading, Complete or
 Incomplete(reason). Ordinary snapshots contain summaries only; explicit
 `ConversationRead` replies carry bounded history pages.
+
+**Following a long history.** Entries are added at the end and changed in place (a tool step
+finishing, a message growing), never moved or removed until the history is rebuilt. Every page
+carries `resume`, a `delta` cursor (`epoch`, `revision`): reading with it returns only the entries
+added or changed after that revision, in order, paged with `next` like any read, so a client that
+applies entries by their source id follows a conversation of any length with small reads. The
+daemon keeps the revision of each entry's last change (`Track` in `history.rs`). A delta read pages
+against the revision its first page began at, and its last page's `resume` starts there too, so a
+change made between its pages is returned again rather than missed. A history that is rebuilt
+(hydration, or a reconnect that drops drafts) gets a new `epoch`; a `delta` cursor from another
+epoch, from the future (another run of the daemon) or from another generation is not an error: the
+page starts from the beginning and sets `reset`, and the client discards what it held. A plain
+paging cursor still goes stale on any change (`StaleCursor`) and the client starts that read over.
+`epoch`, `delta`, `snapshot`, `resume` and `reset` are all defaulted, so an older client or daemon
+reads the rest as before (a test decodes the old shapes); no `PROTOCOL_VERSION` bump.
 
 Daemon notifications reach
 attached projections only after current generation/connection acceptance, and
@@ -427,6 +457,58 @@ background storage lock. Attachments never submit independent cache revisions.
 See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 process boundary and event/approval handling rules.
 
+**An agent in a pane has a read-only conversation** ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)),
+with no protocol change. For an owned desktop pane whose hook-verified agent is `claude` or `codex` and
+whose hook gave a session id (and, for Claude, its transcript path), the snapshot's `conversations` holds
+a `ConversationSummary` with `execution: Native`, `native_term: <pane>`, the pane's `status` and no
+checks; `Query::ConversationRead` serves its history. The id is the daemon's, stays while the pane runs
+the agent, and its `generation` rises when the pane's session id changes. It is in memory only (never in
+the session file or history cache). `ConversationSend`, `Approve`, `AnswerInput`, `Cancel` and `End` on it
+fail with a "read-only" error; `Rename` and `Archive` fail as for an unknown id (the pane is named and
+closed as a pane). A client the pane does not belong to (ADR 0045) gets "No such conversation". The
+history is the provider's own transcript projected through the same entries a structured runtime
+produces (`conversation/follow_transcript.rs`); nothing read from the file sets any status.
+
+Protocol 71 adds the daemon-held send queue. A `ConversationSend` for a conversation that is
+mid-turn (or whose earlier messages are still waiting, or with a send in flight) is not refused: the
+daemon holds it and answers `Reply::ConversationQueued { conversation, generation, operation }`.
+`ReadResult.queued` (`#[serde(default)]`) lists what it holds, oldest first (`operation`, `text`).
+On its tick the daemon delivers the oldest message of each conversation whose turn has ended and
+that has no unanswered request, no cancel in flight and no uncertain earlier send, through the same
+receipt and durable-barrier path as a direct send, so a delivered message is one `Receipt` with its
+own operation number. The queue is per conversation, in order (an operation number must exceed the
+last one held), bounded (32 messages, 1 MiB), in memory only, and dropped when the conversation is
+ended or has started over (a new generation). Retries keep their meaning: the same operation and text
+while queued answers `ConversationQueued` again without a second copy, once delivered it answers the
+`Receipt`, and the same number with other text is `stale or reused`. `Command::ConversationDequeue
+{ id, generation, operation }` takes a waiting message back out (human clients only, write grant;
+`Ok`, or an error that it is no longer waiting). A new command and a new reply variant, so
+the version was raised to 71; tests assert an older peer cannot read them and that an older read reply
+still decodes.
+
+Protocol 72 adds `branch: Option<String>` (`#[serde(default)]`) to `Command::ConversationStart`, for a
+chat session on a branch ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).
+The daemon, before anything is made, refuses a `branch` beside anything but a new conversation
+(`StartTarget::Create`), checks the name with the branch agent's rules (`branch_agent::branch_problem`),
+and requires the target's folder to be a project the app shows and a git repository
+(`conversation/branch_start.rs`). It then makes the worktree with `create_trusted_worktree`, runs the
+repo's setup hook, notes it in `made_worktrees`, and starts the conversation in the new folder; the reply
+is the usual `ConversationStarted`. The field is defaulted, so the old shape decodes (a test), but a
+peer that predates it would drop the field and start in the main checkout, so the version was raised
+to 72 and the two refuse to talk. The window's Tauri command `start_chat_session` asks for
+workspace write with approval on request, or, with its optional `full_access` flag, for `Sandbox::FullAccess`
+with `ApprovalPolicy::Never` (ADR 0043 and 0054). It adds no wire field: the choice rides in the existing
+`LaunchSettings`, so the protocol version is unchanged. It is local-only.
+
+Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
+ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
+([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)): totals, one entry per
+session and one per day with usage, as `UsageReport` in `crates/maitty-shared/src/usage_report.rs`
+(camelCase when it reaches the desktop app as JSON). Human clients only. A figure no provider
+reported is `null`, never zero. `Usage` also gains the defaulted `tokens_in` and `tokens_out`
+(the halves of `tokens`), so older peers still decode it. The desktop app calls it through the
+`usage_report` command.
+
 Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links and worktrees:
 
 - `Query::Repo { term, tag, request }` and `Reply::Repo { tag, reply }`: read-only looks at the
@@ -460,6 +542,18 @@ Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links an
   panes printed recently, case-insensitively, at most 100 hits and 20 from one pane. Human clients
   only, over the panes the client may use. The text is the pane's replay with escape sequences
   removed, so it is what was printed, not what is on screen now.
+
+`NewWorktree` also carries `agent` and `prompt` (`Option<String>`, `#[serde(default)]`; added without
+a `PROTOCOL_VERSION` bump, and a test decodes the old shape): the desktop app's "New agent on a
+branch" (`new_branch_agent`). When either is set the daemon, before anything is made, refuses
+a `cmd` beside them, checks `branch` (`[A-Za-z0-9_./-]+` plus git's ref rules, at most 200
+characters; `daemon/branch_agent.rs`), requires `from` to be a project the app shows (a repository some
+workspace or pane is in), requires the agent to be a configured preset or built-in agent, and bounds the
+prompt (8000 characters, no control characters but line breaks and tabs, no leading dash so the agent
+cannot read it as an option). The prompt goes in the agent's command line quoted for the pane's shell
+(`Config::agent_command`), as the MCP `start` tool does, never interpolated. The worktree itself is the
+usual one (`create_trusted_worktree`, the repo's setup hook, the `[worktree] dir` naming, clean-up when
+its last session closes). Local projects only: the window refuses another machine's project.
 
 Protocol 65 removes the handoff between chat and terminal
 (`ConversationHandoffToNative`, `ConversationHandoffToChat`; see
@@ -715,7 +809,7 @@ focus never takes the keys.
 | `NewTab` (`SpawnTab`) | this computer | `target_machine()` with that machine's active workspace |
 | `RenameTab`, `CloseWorkspace` (prompts carrying `WsId` / `TabId`) | this computer | `focus_machine()` (the ids came from its active workspace) |
 | `ConversationRename`, `ConversationArchive` | this computer | `conversation_machine(id)`: the selected session's machine if it lists the chat, else the first machine that does |
-| `NewWorktree`, `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree` | this computer | this computer; refused for another machine's project or pane |
+| `NewWorktree` (also with `agent` and `prompt`), `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree` | this computer | this computer; refused for another machine's project or pane |
 | `ForgetCheckApproval`, `ReloadConfig`, `KillServer`, first-state `SelectWorkspace` / `NewWorkspace` | this computer | this computer (no owning machine) |
 
 **Local-only features.** `Feature` (Files, Changes, Find, Branches, References, image paste, agent

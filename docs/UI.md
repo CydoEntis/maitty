@@ -109,6 +109,15 @@ only: a new session there is a plain shell, closing a pane or tab detaches, and 
 session is its own action ([ADR 0046](adr/0046-desktop-app-is-a-terminal-multiplexer.md);
 its look is in [DESIGN](DESIGN.md#desktop-app)).
 
+The desktop app also shows other machines' terminal sessions (ADR 0048).
+Its host holds one supervised connection per machine and the web view only renders: it knows a machine by
+name, never by where it points. A session of another machine has the id `build/t12` (the machine's name, so a
+saved layout survives a restart; this computer's stay `t12`). **Settings › Machines** retries, removes and
+adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
+with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
+login that needs a person run in a session named `ssh <name>`); **New session** on a pane of another machine
+asks for a folder on that machine. A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
+
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,
 and status colours (`working`, `blocked` = needs you, `done`, `idle`, `err`).
@@ -118,6 +127,35 @@ Every built-in theme passes a WCAG contrast audit test. Shared primitives in
 (text runs), `keycap`/`keycaps`, `hints`, `button`, `dim_all`. Icons come from
 config (`[icons]`), with Nerd Font glyphs where present.
 
+## Project-specific: GUI design system rules
+
+Rules for `apps/gui/`. Owner-approved 2026-11-04.
+
+1. Every colour, radius and shadow comes from a theme token (a CSS variable),
+   mapped into Tailwind by the `@theme inline` block in `apps/gui/src/index.css`.
+   No raw hex, `rgb()` or `hsl()` in components.
+2. Every popup (menu, dropdown, dialog, tooltip, popover, listbox) is a
+   shadcn/Radix primitive from `src/components/ui/`. No hand-rolled focus, Esc
+   or arrow-key handling.
+3. New components use Tailwind utilities on those tokens. Heavy animation and
+   per-style rules (Flat, Tiled, Glass, `data-gpu`) stay in `workspace.css`.
+4. Old CSS moves to these rules only when a ticket touches that area. There is
+   no big-bang rewrite.
+
+`pnpm lint` enforces rule 1 in TS and TSX: `eslint.config.ts` rejects a hex,
+`rgb()` or `hsl()` literal in `apps/gui/src`. Exempt: test files, the theme
+files in `features/workspace/theme/`, and `TerminalView.tsx` (the xterm.js
+palette takes literal colours). Don't widen the exemptions to pass a change.
+
+## Project-specific: usage and cost page (desktop)
+
+The Usage and cost page (`apps/gui/src/features/usage/`, look in [DESIGN](DESIGN.md#desktop-app)) shows only
+what providers reported through the daemon's usage store ([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)).
+A figure nobody reported is a dash in the UI, never zero and never computed from tokens. The monthly
+budget is a client preference (`monthlyBudget`, validated in `preferences.ts`); the ring needs a budget, a
+known cost and the Month window. The report is fetched with a query (no polling faster than 60 s), and
+the page never blocks the UI thread.
+
 ## Project-specific: layout and navigation
 
 <!-- local: user requested sidebar-bottom controls and no global footer; on 2026-10-24 they chose one exception, the mode bar along the bottom (ADR 0024). -->
@@ -125,6 +163,8 @@ config (`[icons]`), with Nerd Font glyphs where present.
 Maitty has one terminal interface: a sidebar of projects and session cards (this computer's under Local, other machines' under Remote, [ADR 0050](adr/0050-local-and-remote-sidebar-with-session-cards.md)), with tabs and split panes in the remaining area. There is one look, **Floating** (ADR 0039): a box per pane, `ui.gap` (`small`, `medium` or `large`) between them. **Pane colours** (`ui.pane_colors`) draws each pane's border in its own colour by its place in the tab: `Theme::grid_colors`, top-left first, repeating from the fifth; the focused pane's border full and bold, the others' faded 42% toward `bg`. `ui.rounded` (`full`, `corners` or `off`) rounds the corners of every box (`╭╮╰╯`) with `full` or `corners`; with `corners` chips, buttons and rows keep square ends, and with `full` they end in half-circle pills (a Nerd Font glyph). `ui.padding` (`small` by default, `medium` or `large`) leaves that many cells empty round the whole screen (`draw.rs` `padded`; `framed` is that room less the mode bar's row). Older config values still load (`Ui::fold_retired_layout`, the file not rewritten): `tiled` (and `cards` with `panes = "tiled"`) as Floating with `gap = 0`, `grid` as Floating with pane colours, and `compact`, `flat` and `hairline` as Floating. The first start with such a file says so once in a toast (`RetiredLayout::note`) and writes what stands for it into the file (`client/mod.rs` `settle_retired_layout`). In this doc **Cards** means Floating. Tab, Shift+Tab and Esc go to the program in the pane; the leader's Focus the sidebar moves focus to the sidebar. There is no application-wide footer bar but the mode bar (see *Mode bar*), and the tabs are chips on the first pane's top border ([ADR 0038](adr/0038-tabs-sit-on-the-pane-border.md)), `ui.tab_gap` leaving a cell clear between them (or none), followed by a **+** chip (`strong` bold on `btn`) that opens a tab (see *the frame*). Keep the **new** and **menu** chips at the bottom of the sidebar (see *sidebar check result*), and collapse or hide the sidebar as *collapsed sidebar* says. The mode bar along the bottom always shows the mode, and **Update** at its right end only when a newer release is available.
 
 The leader is `Ctrl+Space` by default. Inbox (`i`), Changes (`c`), Files (`f`), Branch (`b`) and References (`a`) use the right-hand sheet. Settings (`,`) opens as a centred modal over the workspace so the pane layout does not change. The key overlay (`Ctrl+Space`; `Space` searches, `?` lists all), the branch switcher and new agents use popups. The minimum supported size is about 80 by 24; popups clamp to the screen. Mouse users can reach every visible control; support click, right-click menus, drag dividers, scrolling and Ctrl+click paths. A click on a toast (a finished session's note, the Restart now button) is the toast's even where it covers a pane whose program asked for the mouse; the program never sees it (`Screen::toast_rect`). A right-click menu answers each item's key while it is open but does not draw it, as the Menu doesn't (a bare letter beside an item reads as a key that works anywhere): the leader key bound to the same action in the live keymap (`menu.rs` `menu_keys`: split `v` / `h`, close `x`, move `Alt`+arrows, Changes `c`), else a letter of its own, clear of those keys. A bound key the menu answers itself (`j` / `k` and the arrows, Enter, Esc, Delete, a check's `r` `o` `O` `u`, or the `x` that closes) goes to the menu, and that item takes a letter instead. Prefer Maitty's retained history when it has lines; when an agent has no retained history, pass wheel and Page Up/Down input to the agent so its own transcript can scroll. Branch (`b`, `client/screen/branch_sheet.rs`) uses the right-hand sheet: the session's branch, ahead/behind its upstream and its base branch (the main checkout's, else `main`, else `master`), the last 10 commits, the session's last check and its snapshots, all read by git in a background task. Its first row, **Switch branch…**, opens the switcher popup; Enter on a snapshot starts the row menu's restore (asked first). A folder outside git says so instead of the lists; an upstream whose remote branch is gone reads `gone from the remote`, and a git error shows in the place of what it was reading. References (`a`, `client/screen/references_sheet.rs`, files through `crates/maitty-terminal-client/src/references.rs`) lists the project's screenshots and design files from `.maitty/references/` at the repo's main checkout (a folder outside git keeps its own), so agents in every worktree see one set: name, kind, size and age per row, newest first, the selected row a neutral tint with an accent `▎`. Enter (or `o`) opens one in the system viewer as a Ctrl+click path does, `p` (or Ctrl+V) adds the clipboard image as `screenshot-<UTC time>.png`, `n` asks for a file's path (typed or pasted; a drop's quotes come off) and copies it in, `d` (or Delete) removes the chosen one after a danger confirm, `y` copies its absolute path; `a` again or Esc closes it. A paste while it has the keys stays in it: one line naming a file (a file dropped on the terminal) is added, an empty paste adds the clipboard image, and anything else gets the toast "References has the keys: …", which never repeats what was pasted. A name starting with a dot is refused. Entries the listing left out (unreadable, or links out of the folder) are counted on the list's last row in `err`, with the first reason. Empty, it reads "No references yet · paste an image or add a file", where they are kept and that agents find them through MCP, and its action bar holds only the ways to add one. Every file step runs in `spawn_bg`; the first time Maitty makes the folder in a repo it adds `.maitty/references/` to the repo's `info/exclude`. Over `--remote` it is refused with a toast, like Files. The minimum supported size is about 80 by 24; popups clamp to the screen. Mouse users can reach every visible control; support click, right-click menus, drag dividers, scrolling and Ctrl+click paths. Prefer Maitty's retained history when it has lines; when an agent has no retained history, pass wheel and Page Up/Down input to the agent so its own transcript can scroll.
+
+**Send a file** (`client/send_file.rs`, ADR 0055). In a pane on another machine the leader key `d` opens the prompt `Send a file to this machine: its path` (mode bar `SEND FILE`; a paste or a drop puts its first line in the box, a drop's quotes come off). Enter starts the upload in `spawn_bg`; a toast reads `sending <file> to <machine>… <n>%` and is refreshed once a second from the byte count, without adding to the notification history. `d` again, or a click on the toast's close mark, stops it (`stopping the send to <machine>…`, then `stopped sending the file to <machine>`); Esc only dismisses the toast and does not stop it, because Esc also belongs to the program in the pane. One file is sent at a time. On success the far-side path is typed into the pane like a local paste, and the toast says `sent <file> to <machine>`; every failure is an error toast (not a file, over 100 MB, no ssh to the machine, a login that needs a prompt, the machine could not keep it). On a local pane the key says there is nothing to send.
 
 The sidebar's **+ new** chip, a project row's **+**, the empty project row's new action and leader + `n` are one action (`Action::ShellHere`): a plain shell where you are, whose tab opens with focus. You type your agent in it (see *Agent launchers* below). Leader + `s` starts an agent session straight away with the defaults in Settings › Sessions (`Action::StartSession`, Menu › Session). **Menu** is in the sidebar footer. Every row of the key overlay and the Menu is clickable and wheel-scrollable. Include configured commands and retain existing confirmations.
 
@@ -532,7 +572,7 @@ Code: `client/screen/machine_group.rs` (header, notes, grey), `side.rs` (`Line::
 
 Code: `client/screen/machines.rs` (the view, its keys and its drawing), `client/machine_flow.rs` (what a
 choice does), `client/machine_config.rs` (where `config.local.toml` is; the `[[machines]]` entry edits are in `maitty-machines`),
-`maitty-core/src/machine_probe.rs` (the look at a machine). Opened by leader `w` or the command palette
+`maitty-machines/src/machine_probe.rs` (the look at a machine). Opened by leader `w` or the command palette
 (`Machines`); `Mode::Machines`.
 
 - **One input, typed like scp.** `ADD MACHINE`: `Where's the machine? Type it like scp or ssh.`, the
@@ -599,13 +639,46 @@ Not applicable: the Hairline look was removed ([ADR 0039](adr/0039-floating-is-t
 
 ## Project-specific: features that need a pane's files
 
-Files, Changes, Find, Branches, References, image paste, connecting an agent, and worktree
-actions read or change the files of the pane they apply to. For a pane on another machine they do
+Files, Changes, Find, Branches, References, connecting an agent, and worktree
+actions read or change the files of the pane they apply to. (Pasting an image is not on this list in
+the desktop app: it works for panes on other machines, see below. The terminal app's own list is
+unchanged.) For a pane on another machine they do
 nothing but show one error toast, always in this form: "<Feature> is local-only in v1: the files
 are on <machine>, not on this computer." The check is per pane: moving the focus or the sidebar
 selection between a local and a remote pane turns the feature off and on. Menu entries that would
 run git in a remote pane's folder (Changes, Snapshots, Make it a git repo) are left out of that
 pane's menu instead.
+
+**Dropping files on a pane** (`features/terminal/dropRoute.ts`, `useFileSends.tsx`, host `file_send.rs`,
+ADR 0055). On a pane of this computer the dropped paths are typed into it, quoted for its shell. On a
+pane of another machine a path here names nothing there, so the files are sent to that machine over its ssh
+line (regular files only, 100 MB each, at most 10 at a time; more are refused whole with one error toast,
+never cut) and the path each one is kept at is typed into the pane as it lands. A machine that is not
+`connected` is refused with one error toast. The send runs on the host's background worker, one at a time. A
+progress toast (`Sending a.log to build (2 of 3)`, a named progress bar with the percentage, and a
+**Cancel** button) stays until the host reports the end; it has no close button, because hiding it would not
+stop the send. It ends as `Sent 3 files to build`, an error toast with what ssh said (the files after the
+failed one are not tried), or `Stopped sending to build`. Cancel cuts the file now going and tries no other.
+What the machine reports is untrusted: the window types a path only if it is absolute, at most 4096
+characters and free of control and invisible characters, and a path that is not typed is named in the final
+toast instead.
+
+**Pasting an image into a pane** (`features/terminal/clipboardImage.ts`, `useImagePaste.ts`, `api/imagePaste.ts`,
+host `image_paste.rs`, ADR 0049 and the amendment to 0055). Ctrl+Shift+V on Windows and Linux, or Cmd+V on macOS, pastes through the
+webview's paste event, whose clipboard holds text, an image or both. **Text comes first**: any text and the
+terminal pastes it as it always has (bracketed paste included); only an image with no text becomes an image
+paste. Plain Ctrl+V on Windows and Linux is never taken: like every plain Ctrl+letter there, it goes to the program
+in the pane as a raw `^V` (so Claude Code's own clipboard handling and vim's `^V` work). The chat composer takes any
+paste chord, since its paste event is not behind a terminal. PNG, JPEG, GIF and WebP are taken (the host checks the
+first bytes, not the name the webview gives); another image type is refused with one error toast. At most 25 MB,
+refused before the image is read. On a pane of this computer the host keeps the image in its private cache
+(`pastes` in the app's cache folder, mode 600, cleared after a week) and the path is typed into the pane, quoted
+for the shell. On a pane of another machine the image is sent as a dropped file is, by the same runner and events:
+the same progress toast (`Sending the image to build`, progress bar, **Cancel**), the same error toasts, and the
+far-side path typed only if it is absolute, at most 4096 characters and free of control and invisible characters.
+A machine that is not `connected`, one reached by a custom transport (`via`), or an unknown one is refused with one
+error toast, in the words used for dropped files. The image never goes through an event and is never logged: it is
+the raw body of the command.
 
 ## Project-specific: frame presentation
 
@@ -617,3 +690,165 @@ Keep pane padding and the card interior on the same surface as a terminal app
 when at least three screen corners use one explicit background color. Preserve
 the pane insets; isolated colored panels keep their existing theme treatment.
 Preserve colors applications paint explicitly.
+
+## Project-specific: desktop chat view
+
+The desktop app's chat view is a second view of a Claude Code or Codex session, never a second session
+([chat view plan](features/chat-gui/chat-view-plan.md), ADR 0036). Rules:
+
+- **Source.** It renders only the daemon's structured events, through `features/chat/` (the projection).
+  It never reads terminal output. A session has a chat only when `conversationsFromSnapshot` found a daemon
+  conversation whose native terminal is that pane (`Conversation.chat`); `model/chatView.ts` decides
+  availability: `ready`, `no-events`, `remote` (local-only in v1), `unsupported` (another agent) or `shell`.
+  The daemon gives a Claude or Codex agent started in a pane a **read-only** conversation that follows the agent's
+  own transcript ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)); its link has
+  `readOnly: true`, and the conversation is not listed as a session of its own (the pane is the session).
+- **A chat session is the other kind of session** ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)):
+  a structured conversation the daemon started (`Conversation.execution` is `Structured`, `chat` is set without
+  `readOnly`, `native_term` is none; `model/chatSession.ts` `isChatSession`). It is a sidebar row, tab and pane of its
+  own, grouped by its repository (`ConversationSummary.root`, `branch`). It has **no terminal**: the pane is the chat
+  always, there is no Terminal | Chat switch, `chat-toggle` does nothing, the terminal slot holds a one-line note
+  (`NoTerminalNote`), and nothing that needs a pane number (find, restart, paste, broadcast, typed answers, the
+  worktree menu, Inspect) is offered for it. Its composer is on (send, queue with Remove, Stop, attachments); an
+  approval is answered by request id (y / a / n) and a user-input request by a form (`UserInputForm`), so neither
+  points to a terminal. It starts from **New agent on a branch** with **Session: Chat** (Terminal is the
+  default) or from a shell's empty chat card (**Start a Claude chat** / **Start a Codex chat**). Closing it stops
+  the agent (`closeChatSession`: end, then put away); if the stop fails it stays open. The read-only chat that
+  follows an agent typed in a shell keeps its pane, its switch and its disabled composer.
+- **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
+  mounted and its pane keeps its size, and no daemon command is sent. The shortcut is `chat-toggle`
+  (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.
+- **Keyboard.** While the chat covers a pane its terminal is not focused (`TerminalView focused` is false) and is
+  hidden from Tab and screen readers. The chat adds no layer to the Esc ladder.
+- **History.** `useChatFeed` follows one conversation while its chat is open (`chatFeed.ts` is the pure core). The
+  first read pages the whole history; later polls (1 s while the agent works or waits on a person, 3 s otherwise,
+  none while the window is hidden) read from the daemon's `resume` cursor, which returns only the entries added or
+  changed since, so a 1,000-entry conversation costs one small read per poll. A page that says `reset` (the history was
+  rebuilt, or the conversation started over) replaces what the feed held. A failed read, or a daemon that predates
+  `resume`, falls back to the old way: ask again for the last page read, or read from the start when that cursor is
+  stale. Entries already applied unchanged are skipped, so nothing is shown twice and unchanged events stay the same
+  objects. A new generation shows a fresh projection. Pending approvals come with every page and go to `applyApprovals`. The last
+  feed per conversation is kept (8 at most), so reopening a chat shows it at once.
+- **List.** `VirtualList` draws only the rows near the view (`transform` placement, measured heights, stable event
+  ids as keys), follows the newest row until the reader scrolls away, then offers "Jump to the latest message". Rows
+  are `buildRows(events)`: one agent message per turn (adjacent agent messages of a turn are joined; a step between
+  two messages keeps their order), user bubbles, step cards, approvals, turn dividers, and the working line last.
+- **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
+  unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
+  does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step
+  that is running animates (its spinner).
+  - *Tool chip:* a 28px mono chip with the tool's name and what it acted on (read from the tool's input; Codex: its
+    label); click opens the input and the result, bounded.
+  - *Edit block:* header (pencil, verb, file relative to the session's folder, `+N` `-N`), the diff with tinted
+    lines (theme tokens at 10%), folded past 12 lines with "N more lines" / "Show less". The header opens the file's
+    diff in the session panel when the window has one.
+  - *Command card:* the command, then `Running · m:ss` (live) or the elapsed time and an `exit N` pill, and the last
+    3 lines of output with "Show all N lines". The elapsed time is the provider's duration, else the daemon's start
+    and completion times; the exit code exists for Codex only, so for Claude it reads "exit code unavailable".
+  - *Approval card:* see Approvals. *Helper agents:* consecutive helper calls are one card, "3 agents, 2 working",
+    a row each (title, type, elapsed or "Done · 5m 30s"); a row opens what it was asked and its report. *Checklist:*
+    the agent's own to-do items with a progress bar. *Working line:* "claude is working · m:ss"; no token count,
+    because the daemon's history carries none.
+  - *Markdown* (`markdown.ts`, `components/Markdown.tsx`): an agent message is read into a data tree and drawn as
+    elements. There is no HTML anywhere (no `dangerouslySetInnerHTML`), raw tags are text, images are never loaded
+    (their alt text shows), and a link is kept only for an `http(s)` address. The app has no route that opens an
+    address outside the window, so a link is a button that copies its address; it never navigates the webview.
+    Supported: paragraphs, headings, fenced code, lists, quotes, rules, inline code, bold, italic.
+  - *Rows* are memoised on their events (`ChatItem`), and the virtual list measures heights, so a card that expands
+    resizes its own row only.
+- **Composer.** `useChatComposer` sends through the conversation's own send (`send_conversation`) with an operation
+  number (the receipt's plus one; a failed send is retried with the same number so the daemon can tell a retry from a
+  new message). Enter sends, Shift+Enter adds a line (not while an input method is composing), Esc or Stop interrupts
+  the running turn (`cancel_conversation`). It is off, with the reason as its placeholder, while an approval is
+  pending ("Answer the request above first") or the daemon is offline. While the daemon reports the turn working,
+  Enter still sends: the daemon holds the message (`ReadResult.queued`) and delivers it when the turn ends, in order
+  and once each, so it is shown as a dashed pending bubble with Remove (`dequeue_conversation`) for as long as the
+  daemon holds it, and closing the window loses nothing. The queue is the daemon's memory: a daemon restart drops it,
+  and a message queued for a conversation that has since started over is dropped, not sent into the new one. The
+  boundary is the end of the turn, the one the daemon can observe for both providers; a message is never delivered
+  into a running turn. A send that the daemon refuses as `stale or reused` (another window sent in between) is read
+  and sent again under a new number; a retry of any other failure keeps its number.
+- **Attachments** (ticket 20, ADR 0053). A paperclip left of the text box (tooltip and `aria-label` "Attach files",
+  or "Attach files: <reason>" while the composer is off; `aria-disabled`, not `disabled`, so the reason can be read),
+  a drop on the composer, or a bare image pasted into the box adds files to the draft; a paste that holds any text
+  stays a text paste. The picker is the dialog plugin's `open` (`api/attachments.chooseFilesToAttach`); a drop
+  reaches the composer through `chat/composerDrop.ts`, which `DesktopApp`'s one file-drop handler asks before it
+  routes the drop to a pane. `useAttachmentIntake` is the only code that adds or removes a draft file: at most 10 per
+  message (a drop over the limit is refused whole), a pasted image over 25 MB is refused before it is read, the
+  host (`attach_local_file`, `attachment.rs`) checks everything else and returns the cleaned name that is shown.
+  Draft files live in `composerStore` beside the text, so switching views loses nothing. Each is a chip (kind icon,
+  name, size, a Remove button) or, for a pasted image, a thumbnail made from the bytes the window already holds
+  (an object URL, revoked on remove or send). Sending builds the text with `buildAttachmentMessage` (the text, then a
+  fixed block naming each kept file by path); a message may be only files. A failed send gives text and files back.
+  A sent message is shown by `parseAttachmentMessage` as its text and chips (icon and name; "no longer available"
+  when `attachments_exist` says the kept file was swept). The composer takes a `machine` (the chat link's):
+  for another machine the same picker, drop and paste send the file there (`sendAttachments` over `send_files_to_machine` /
+  `send_pasted_image`, with the terminal's progress toast and Cancel) and the chip holds the far-side path, checked
+  before it is used; see ADR 0053 point 8. No chat sets a machine yet. A read-only chat shows no paperclip.
+- **Read-only chat.** For a link with `readOnly` the composer is off with "Read-only: talk to the agent in the
+  terminal" as its placeholder, and offers no Stop or queue wording; the daemon refuses send, approve and cancel
+  for such a conversation. The history and status still follow the agent.
+- **Approvals.** The card answers through `approve_conversation` by request id and then reads "You answered: ...",
+  with the buttons gone. While it is pending and focused, `y` (once), `a` (this session) and `n` (no) answer it, the
+  same letters as typing into the terminal, which stays a working fallback. The daemon's `answered_approvals` are
+  read with every page, so a request answered in the terminal or in another window shows as answered with the real
+  choice, even when this chat was opened afterwards. The card names the tool step it is about (`item_id`) and its
+  "For: ..." link scrolls the list to that step. A request that asks the person a question (`UserInput`) is answered
+  in the terminal.
+- **Screen readers.** The history is a labelled region, not a live region. A separate polite status line says only
+  that the agent is working, is waiting for an answer, or finished.
+- **Styling.** Tailwind utilities on theme tokens only; the keyframes for the view change live in `workspace.css`.
+
+## Project-specific: desktop session panel
+
+The panel beside the panes for the focused agent session ([chat view plan](features/chat-gui/chat-view-plan.md),
+v18 C.2). It reads the same daemon conversation as the chat, through `useChatFeed`, so it works in the terminal
+view too. Local sessions only.
+
+- **Toggle.** `Ctrl/Cmd+\` (`session-panel`), or the panel button in a pane head beside the Terminal | Chat
+  switch. Both flip the one window-level state in `features/panel/useSessionPanelState.ts`.
+- **Placement.** A window of 1100px or more (`COMPACT_WIDTH_PX`) docks it: a 320px floating card (`mx-card`)
+  beside the panes, which shrink; the choice is remembered (`maitty.gui.sessionPanel.v1`). Under 1100px it is an
+  overlay from the window edge over a scrim, closed by default and not remembered, closed by the scrim, Hide, or
+  Esc (`session-panel` in `model/escLadder.ts`, below Settings and above the sidebar drawer). It sits on the side
+  opposite the sidebar. A docked panel offsets the Inspect drawer by `--session-panel-w`, so both can be open.
+  The panel's width does not animate (a layout property); Reduce motion changes nothing for it.
+- **Content.** `panelModel.ts` derives everything from the chat projection and adds nothing: the **Checklist** is
+  the agent's last to-do list that carried its items ("Checklist · 2 of 5", a 3px progress bar, the current item
+  with a spinner and its running time only while the agent works; the time is that of the first list in an
+  unbroken run that named the item current), and **Agents** is every helper call ("Agents · 2 working" or "all
+  done"). A session with no agent, no event stream, or on another machine shows "Nothing to track yet" and one
+  sentence saying why (`emptyReason`); an agent with neither list nor helpers says so too.
+- **Changes** (`ChangesSegment.tsx`, `DiffView.tsx`). The agent's worktree through `conversation_diff` (read every
+  4 s while the panel is open, and at once when the agent edits a file): the branch name from the session list,
+  then one list of changed files (directory dim, file name, a comment badge, `+a` `-d`). The daemon's diff does
+  not say which files are staged, how far the branch is ahead or behind, or whether it was pushed, so none of that
+  is shown. A file opens its diff in the panel, which widens to 520px: back arrow, the path truncated from the
+  start, `+a -d`, then numbered lines (the new side's numbers, from the hunk headers; a removed line has none and
+  takes no comment). Hovering a line shows a **+**; it opens a composer under the line ("Tell claude what to change
+  here...", Enter or Ctrl/Cmd+Enter sends, Shift+Enter adds a line, Cancel or Esc closes it; Esc is the top layer
+  of the ladder, `comment-composer`). Diffs over 1,500 lines draw in steps. An edit block's header opens its file
+  here (`panelCommands.ts`), opening the panel first.
+- **Line comments.** The daemon's send takes text only, so a comment goes as one message,
+  `Comment on <file>:<line>`, the line's code quoted, a blank line, the text (`chat/commentMessage.ts`); the chat
+  draws that message as a comment bubble. It is sent to the daemon as an ordinary message (`useCommentDelivery`): while the agent works the daemon holds it and delivers it when the turn ends, whether or not the chat is open. The panel holds it itself, and sends it in order afterwards, while an approval waits or the daemon is offline; the note under the composer says which. It takes its operation number from the same per-conversation counter as the chat's composer (`chat/sendOperation.ts`), reuses it on a retry, and takes a new one after a "stale or reused" refusal. A read-only chat cannot take comments: the + buttons are disabled with "Read-only: talk to the agent in the terminal". A line with comments shows a count pill whose label lists them, and
+  the file row a badge. The written comments are the window's memory only (`commentStore.ts`).
+- **Files and Artifacts** (`FilesSegment.tsx`, `ArtifactsSegment.tsx`, `artifacts.ts`). The segment bar is
+  Changes, Files, Artifacts, each with a count. **Files** lists what the agent's tool calls named, in the order it
+  first touched them: Edited (amber), Created (green), Read (dim), with `+a -d` for edits. An edited or created file
+  that the worktree still has a diff for opens that diff; any other (a file only read, or one committed since) opens
+  in the Inspect drawer's Files view. Claude's `Write` does not say whether it created the file, but Claude Code
+  will not overwrite a file it has not read, so a `Write` to an untouched path counts as a new file (Codex says
+  `add`). **Artifacts** are the created files that are documents, reports, data or pictures (by extension: md, mdx,
+  txt, rst, html, json, csv, xml, log, png, jpg, gif, webp, svg); the daemon has no artifact concept. A card has a
+  tinted tile, the file name and a subtitle. Opening one reads it with `conversation_file` (UTF-8 text, size
+  limited by the daemon, path relative to the session's folder) and shows it as text, markdown drawn through the
+  safe renderer; a picture cannot be shown because files arrive as text, so it offers the Files drawer. The
+  daemon's `conversation_files` listing is not used: the panel shows what the session touched, not the project tree.
+- **Sidebar progress.** A session row shows the agent's checklist under the name, "2 of 5 · Write the fix" and a 2px
+  bar (`progressStore.ts`). The daemon reports no per-session progress and the sidebar must not poll every
+  conversation, so the row appears only for a session whose conversation this window has read (its chat or its
+  panel was open) and shows the last list read; a session never opened has no such row.
+- **Cost.** The panel reads the conversation with its own `useChatFeed`, so an open chat and an open panel each
+  poll (a read of the last page, 1 s while the agent works). The panel polls the worktree diff every 4 s and
+  stops while the window is hidden.

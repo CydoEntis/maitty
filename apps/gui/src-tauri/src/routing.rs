@@ -54,6 +54,27 @@ pub fn expects_answer(msg: &ClientMsg) -> bool {
     matches!(msg, ClientMsg::Command(_) | ClientMsg::Query(_))
 }
 
+/// The words for a feature that reads or changes a pane's files, asked of a pane of another
+/// machine: the files are there, not here. The terminal app says the same.
+pub fn local_only_message(label: &str, machine: &str) -> String {
+    format!("{label} is local-only in v1: the files are on {machine}, not on this computer.")
+}
+
+/// Refuse a request about a pane's files when the pane is on another machine. The window does not
+/// ask this of the host for such a pane; this is the host saying no if it ever does, since a pane
+/// number alone would otherwise reach a pane of this computer.
+pub fn require_local(
+    machine: Option<u16>,
+    label: &str,
+    name_of: impl FnOnce(MachineId) -> Option<String>,
+) -> Result<(), String> {
+    if !is_remote(machine) {
+        return Ok(());
+    }
+    let name = name_of(machine_of(machine)).unwrap_or_else(|| "another machine".to_string());
+    Err(local_only_message(label, &name))
+}
+
 /// The machine a window request is for: this computer when it names none.
 pub fn machine_of(machine: Option<u16>) -> MachineId {
     MachineId(machine.unwrap_or(MachineId::LOCAL.0))
@@ -73,6 +94,21 @@ pub fn message(term: u32, command: PaneCommand) -> ClientMsg {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pane_of_another_machine_is_refused_for_its_files_in_the_terminal_apps_words() {
+        let named = |_| Some("build".to_string());
+        assert_eq!(
+            require_local(Some(2), "Changes", named).unwrap_err(),
+            "Changes is local-only in v1: the files are on build, not on this computer."
+        );
+        assert_eq!(
+            require_local(Some(2), "Worktrees", |_| None).unwrap_err(),
+            "Worktrees is local-only in v1: the files are on another machine, not on this computer."
+        );
+        assert!(require_local(None, "Changes", named).is_ok());
+        assert!(require_local(Some(0), "Changes", named).is_ok());
+    }
 
     #[test]
     fn a_request_out_lets_one_answer_in() {

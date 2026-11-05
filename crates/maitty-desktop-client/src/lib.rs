@@ -550,6 +550,28 @@ pub async fn start_shell_session(cwd: PathBuf, daemon_executable: PathBuf) -> Re
     }
 }
 
+/// Run a command line in a new terminal session on this computer, named `name`. For a login that
+/// needs a person (ssh asking for a password or a host key): the person answers in the pane.
+pub async fn start_command_session(
+    command: String,
+    name: String,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::NewWorkspace {
+            cwd: None,
+            name: Some(name),
+            cmd: Some(command),
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected reply to a command session"),
+    }
+}
+
 /// Start an agent in a terminal session (a pane the daemon owns) in a project folder.
 pub async fn start_terminal_session(
     cwd: PathBuf,
@@ -645,6 +667,51 @@ pub async fn new_worktree_session(
             cmd: None,
             split: None,
             from: None,
+            agent: None,
+            prompt: None,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected worktree reply"),
+    }
+}
+
+/// A new branch in its own worktree of `project` (a folder of a project the app shows), with
+/// `agent` started in it and `prompt` as its first prompt. The daemon checks every part and
+/// opens the session as a new workspace of the project.
+pub async fn new_branch_agent(
+    project: PathBuf,
+    branch: String,
+    agent: String,
+    prompt: String,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let snapshot = match request(ClientMsg::Query(Query::List), daemon_executable.clone()).await? {
+        Reply::List(snapshot) => snapshot,
+        _ => bail!("daemon returned an unexpected session list reply"),
+    };
+    // Any workspace will do as the anchor: `from` names the repository, and the daemon opens the
+    // new session as a workspace of its own.
+    let ws = snapshot
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.cwd == project)
+        .or_else(|| snapshot.workspaces.first())
+        .map(|workspace| workspace.id)
+        .context("no session is open to start from")?;
+    let reply = request(
+        ClientMsg::Command(Command::NewWorktree {
+            ws,
+            branch,
+            base: None,
+            cmd: None,
+            split: None,
+            from: Some(project),
+            agent: Some(agent),
+            prompt: Some(prompt),
         }),
         daemon_executable,
     )
@@ -665,6 +732,22 @@ pub async fn search_panes(query: String, daemon_executable: PathBuf) -> Result<V
     match reply {
         Reply::Search(hits) => Ok(serde_json::to_value(hits)?),
         _ => bail!("daemon returned an unexpected search reply"),
+    }
+}
+
+/// What agents reported using over `period`: totals, per session and per day.
+pub async fn usage_report(
+    period: maitty_shared::usage_report::UsagePeriod,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Query(Query::UsageReport { period }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::UsageReport(report) => Ok(serde_json::to_value(report)?),
+        _ => bail!("daemon returned an unexpected usage reply"),
     }
 }
 
@@ -760,7 +843,30 @@ pub async fn send_conversation(
     .await?;
     match reply {
         Reply::ConversationSent(receipt) => Ok(serde_json::to_value(receipt)?),
+        // The conversation was busy: the daemon holds the message and sends it when the turn ends.
+        Reply::ConversationQueued(queued) => Ok(serde_json::to_value(queued)?),
         _ => bail!("daemon returned an unexpected conversation send reply"),
+    }
+}
+
+pub async fn dequeue_conversation(
+    id: u64,
+    generation: u64,
+    operation: u64,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let reply = request(
+        ClientMsg::Command(Command::ConversationDequeue {
+            id: maitty_shared::conversation::ConversationId(id),
+            generation,
+            operation,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected queued message removal reply"),
     }
 }
 
@@ -878,6 +984,7 @@ pub async fn resume_codex_conversation(
                 id: maitty_shared::conversation::ConversationId(id),
                 generation,
             },
+            branch: None,
         }),
         daemon_executable,
     )
@@ -938,10 +1045,41 @@ impl Permissions {
     }
 }
 
+/// The posture of a chat session: it asks before a tool use the provider does not allow by itself,
+/// unless the caller asks for the provider's own skip-permissions mode (ADR 0043, ADR 0054).
+fn chat_session_permissions(full_access: bool) -> Permissions {
+    if full_access {
+        Permissions::FullAccess
+    } else {
+        Permissions::WorkspaceWrite
+    }
+}
+
+/// Start a chat session: a structured conversation the daemon owns (ADR 0054). With `full_access` the
+/// provider runs unsandboxed and without approvals; there is no other posture to choose. With a
+/// `branch` the daemon makes a worktree for it from the project at `cwd` and starts there.
+pub async fn start_chat_session(
+    cwd: PathBuf,
+    provider: Provider,
+    branch: Option<String>,
+    full_access: bool,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    create_conversation(
+        cwd,
+        provider,
+        chat_session_permissions(full_access),
+        branch,
+        daemon_executable,
+    )
+    .await
+}
+
 pub async fn create_conversation(
     cwd: PathBuf,
     provider: Provider,
     permissions: Permissions,
+    branch: Option<String>,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
     let cwd = cwd
@@ -968,6 +1106,7 @@ pub async fn create_conversation(
     let reply = request(
         ClientMsg::Command(Command::ConversationStart {
             target: StartTarget::Create(settings),
+            branch,
         }),
         daemon_executable,
     )
@@ -1413,5 +1552,27 @@ mod pane_command_tests {
                 "{shown}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod chat_posture_tests {
+    use super::{chat_session_permissions, Permissions};
+    use maitty_shared::conversation::{ApprovalPolicy, Sandbox};
+
+    #[test]
+    fn a_chat_session_asks_unless_full_access_is_requested() {
+        assert_eq!(
+            chat_session_permissions(false).launch_policy(),
+            (Sandbox::WorkspaceWrite, ApprovalPolicy::OnRequest)
+        );
+        assert!(matches!(
+            chat_session_permissions(true),
+            Permissions::FullAccess
+        ));
+        assert_eq!(
+            chat_session_permissions(true).launch_policy(),
+            (Sandbox::FullAccess, ApprovalPolicy::Never)
+        );
     }
 }

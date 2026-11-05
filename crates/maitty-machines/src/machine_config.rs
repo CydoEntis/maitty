@@ -86,6 +86,64 @@ fn write(file: &Path, doc: &toml_edit::DocumentMut) -> Result<()> {
     crate::files::write_atomic(file, doc.to_string()).context("writing config.local.toml")
 }
 
+/// What a machine may do to this computer. Clipboard is on unless its entry says `false`; the
+/// others are off unless it says `true`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Grant {
+    Clipboard,
+    Notices,
+    Sounds,
+}
+
+impl Grant {
+    /// The key in the entry.
+    pub fn key(self) -> &'static str {
+        match self {
+            Grant::Clipboard => "clipboard",
+            Grant::Notices => "notices",
+            Grant::Sounds => "sounds",
+        }
+    }
+
+    /// What a machine has when its entry does not name this grant (`MachineDef`'s default).
+    fn on_by_default(self) -> bool {
+        matches!(self, Grant::Clipboard)
+    }
+
+    pub fn parse(key: &str) -> Option<Grant> {
+        [Grant::Clipboard, Grant::Notices, Grant::Sounds]
+            .into_iter()
+            .find(|grant| grant.key() == key)
+    }
+}
+
+/// Turn one of the entry's grants on or off. The grant's default removes the key, so the entry
+/// stays as short as it was; anything else is written, or a missing key would undo it on the next
+/// read. False when the file has no entry called `name`.
+pub fn set_grant(file: &Path, name: &str, grant: Grant, on: bool) -> Result<bool> {
+    let mut doc = read(file)?;
+    let Some(list) = doc
+        .get_mut(KEY)
+        .and_then(toml_edit::Item::as_array_of_tables_mut)
+    else {
+        return Ok(false);
+    };
+    let Some(entry) = list.iter_mut().find(|t| {
+        t.get("name")
+            .and_then(|n| n.as_str())
+            .is_some_and(|n| n.eq_ignore_ascii_case(name))
+    }) else {
+        return Ok(false);
+    };
+    if on == grant.on_by_default() {
+        entry.remove(grant.key());
+    } else {
+        entry.insert(grant.key(), toml_edit::value(on));
+    }
+    write(file, &doc)?;
+    Ok(true)
+}
+
 /// A name for a machine reached by `target`: its host without any user, with every character
 /// the name may not have turned into `-`, and a number after it when `taken` has it already.
 /// None when nothing usable is left of the target, and the person must type one.
@@ -170,6 +228,48 @@ mod tests {
             "[[machines]]\nname = \"build\"\ntarget = \"build\""
         );
         assert_eq!(after.matches("[[machines]]").count(), 2);
+    }
+
+    #[test]
+    fn a_grant_is_set_on_the_one_entry_and_removed_again_leaving_the_rest() {
+        let file = dir("grant").join("config.local.toml");
+        let before = "# mine\n[[machines]]\nname = 'old'\ntarget = 'old.example'\n\n[[machines]]\nname = 'build'\ntarget = 'build' # here\n";
+        std::fs::write(&file, before).unwrap();
+        assert!(set_grant(&file, "BUILD", Grant::Notices, true).unwrap());
+        let on = std::fs::read_to_string(&file).unwrap();
+        let loaded: toml::Table = toml::from_str(&on).unwrap();
+        let machines = loaded["machines"].as_array().unwrap();
+        assert_eq!(machines[1]["notices"].as_bool(), Some(true));
+        assert!(machines[0].get("notices").is_none(), "{on}");
+        assert!(on.contains("# mine") && on.contains("# here"), "{on}");
+        assert!(set_grant(&file, "build", Grant::Notices, false).unwrap());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+    }
+
+    #[test]
+    fn turning_the_clipboard_off_is_written_so_the_next_read_keeps_it_off() {
+        let file = dir("grant-clipboard").join("config.local.toml");
+        let before = "[[machines]]\nname = 'build'\ntarget = 'build'\n";
+        std::fs::write(&file, before).unwrap();
+        let loaded = |file: &Path| machines_of(&read(file).unwrap());
+        assert!(loaded(&file)[0].clipboard, "on until the entry says otherwise");
+        assert!(set_grant(&file, "build", Grant::Clipboard, false).unwrap());
+        assert!(!loaded(&file)[0].clipboard);
+        assert!(set_grant(&file, "build", Grant::Clipboard, true).unwrap());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+    }
+
+    #[test]
+    fn a_grant_for_a_machine_that_is_not_there_changes_nothing() {
+        let file = dir("grant-none").join("config.local.toml");
+        assert!(!set_grant(&file, "ghost", Grant::Clipboard, true).unwrap());
+        assert!(!file.exists());
+        add_machine(&file, "box", "box").unwrap();
+        let before = std::fs::read_to_string(&file).unwrap();
+        assert!(!set_grant(&file, "ghost", Grant::Clipboard, true).unwrap());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+        assert_eq!(Grant::parse("sounds"), Some(Grant::Sounds));
+        assert_eq!(Grant::parse("mcp"), None);
     }
 
     #[test]

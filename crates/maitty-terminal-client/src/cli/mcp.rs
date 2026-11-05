@@ -698,6 +698,8 @@ impl Server {
                 cmd: Some(cmd),
                 split: None,
                 from: Some(self.root.clone()),
+                agent: None,
+                prompt: None,
             }
         } else {
             Command::NewWorkspace {

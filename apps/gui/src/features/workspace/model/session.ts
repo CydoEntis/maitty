@@ -1,5 +1,4 @@
 import { terminalOf } from '@/api/daemon'
-import { assignProjectColors } from './folderColor'
 import type { Conversation, TerminalDetails } from '@/data/preview'
 
 /** The status vocabulary of the desktop app. Each one has its own shape, never colour alone. */
@@ -236,8 +235,6 @@ export type SessionGroup = {
   machineName: string | null
   sessions: SessionView[]
   containsFocused: boolean
-  /** The colour the user gave the project (a `PROJECT_COLORS` id); undefined takes the one chosen from its path. */
-  colorId: string | undefined
   needsCount: number
   workingCount: number
 }
@@ -247,7 +244,7 @@ export type SessionGroup = {
  * grouped by its own folder), or always by folder. Groups sort by name; rows keep creation order,
  * so nothing moves when a status changes.
  */
-export function groupSessions(sessions: readonly SessionView[], groupBy: GroupBy, focusedId: string | null, home: string, colors: Readonly<Record<string, string>> = {}): SessionGroup[] {
+export function groupSessions(sessions: readonly SessionView[], groupBy: GroupBy, focusedId: string | null, home: string): SessionGroup[] {
   const groups = new Map<string, SessionGroup>()
   for (const session of [...sessions].sort((a, b) => a.pane - b.pane)) {
     const repoRoot = groupBy === 'repo' ? session.repoRoot : null
@@ -263,7 +260,6 @@ export function groupSessions(sessions: readonly SessionView[], groupBy: GroupBy
         machineName: session.machineName,
         sessions: [],
         containsFocused: false,
-        colorId: undefined,
         needsCount: 0,
         workingCount: 0,
       }
@@ -274,8 +270,6 @@ export function groupSessions(sessions: readonly SessionView[], groupBy: GroupBy
     if (session.status === 'needs') group.needsCount += 1
     if (session.status === 'working') group.workingCount += 1
   }
-  const assigned = assignProjectColors([...groups.keys()], colors)
-  for (const group of groups.values()) group.colorId = assigned.get(group.key)
   return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 

@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { DropdownMenu } from 'radix-ui'
-import { isModifierSymbol, type Chord } from '../model/shortcuts'
+import { Keycaps } from '@/features/shortcuts/Keycaps'
+import { type Chord } from '../model/shortcuts'
 import { THEMES, type ThemeMode } from '../theme/themes'
 import { Icon } from './glyphs'
 
@@ -98,7 +99,7 @@ export const StatusBar = memo(function StatusBar(props: Props) {
         <button type="button" className="mx-sb-step" aria-label="Larger text" disabled={props.textSize >= props.maxTextSize} onClick={() => { props.onTextSize(props.textSize + 1) }}>+</button>
       </span>
       <button type="button" className="mx-sb-item mx-sb-button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" onClick={props.onOpenShortcuts}>
-        {props.shortcutChord.map((key) => <kbd key={key} className={`mx-keycap${isModifierSymbol(key) ? ' is-symbol' : ''}`}>{key}</kbd>)}
+        <Keycaps chord={props.shortcutChord} />
       </button>
     </footer>
   )

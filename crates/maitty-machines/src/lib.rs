@@ -13,11 +13,15 @@ pub mod local_machines;
 mod machine;
 pub mod machine_config;
 pub mod machine_ids;
+pub mod machine_probe;
+pub mod remote_paste;
 pub mod remote_policy;
 mod remote_scripts;
+pub mod remote_send;
 pub mod remote_snapshot;
 mod ssh_command;
 pub mod ssh_hosts;
+pub mod ssh_run;
 
 pub use def::{
     LOCAL_MACHINE, MACHINE_NAME_MAX, MachineDef, VIA_NOT_ON_WINDOWS, VIA_PLACEHOLDER,
@@ -29,7 +33,9 @@ pub use machine::{
     CONNECT_BUDGET, Dial, Machine, NO_DAEMON_EXIT, OtherVersion, PROXY_ATTACH_ONLY_FLAG,
     SSH_PROGRAM, hello, open_remote, other_version,
 };
-pub use remote_scripts::{INSTALL_SCRIPT, PASTE_MARKER, PASTE_SCRIPT, PLATFORM_SCRIPT, WHERE_SCRIPT};
+pub use remote_scripts::{
+    INSTALL_SCRIPT, PASTE_MARKER, PASTE_SCRIPT, PLATFORM_SCRIPT, WHERE_SCRIPT,
+};
 
 /// Windows: start a console program without opening a console window.
 #[cfg(windows)]

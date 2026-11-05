@@ -244,3 +244,52 @@ is met.
 **The streaming number** is in *Measured again on Linux* above: the mock now feeds the
 `watch_terminal_output` channel with the host's frame header (machine, pane, sequence, replay).
 Still owed: the hub's state messages, so that scenario `e` lists its four panes instead of one.
+
+## Status effects and adaptive animations (2026-11-04)
+
+Waves (Settings › Appearance › Motion) are the one deliberate loop: a 200%-wide SVG layer per band
+translating -50% with `transform` only, in a clipped child of the row or tab. Auto starts at Waves
+with WebGL 2 and at Sweep without it, samples frame times (3 s, 2 s after launch and again when Waves
+begin to run) and steps down one level on slow frames; Full, Light and Off fix the level
+([DESIGN](DESIGN.md), Status effects).
+
+Harness, cage headless with pixman and `WEBKIT_DISABLE_COMPOSITING_MODE=1` (WebKitGTK 2.52.6; the page
+still reports `data-gpu="webgl"` there), web process CPU as a share of one core, 15 s after 5 s warm,
+base `a9b0828` against this branch, runs alternated. The machine was shared and the same build
+swung between two modes, about 18-24% and about 46% on `b` and `w`, whatever the configuration, so
+only same-mode runs compare:
+
+| Scenario | Base | This branch (Waves) | Sweep (Light) | Off |
+| --- | --- | --- | --- | --- |
+| `a` quiet | 1.3-1.5% | 1.4% (3.7-3.9% in a loaded run) | | |
+| `b` streaming | 16.5-33% / 46% | 16.6-18% / 46-48% | | |
+| `w` six working rows, three tabs, Waves on 7 layers | 18-20% / 46% | 18.5-19% / 47% | 47% (loaded) | 32-44% |
+
+Waves added nothing measurable over the base in either mode, so there is no Waves-only overrun to
+hide. The streaming runs in the 46% mode are over the 30% budget for the base build too, so that is
+the harness environment and the terminal path (cause 3 above), not the effects.
+
+### Paper, scenario `b`: the occasional 37% (unexplained)
+
+Seventeen finished Paper runs of `b` (settings `themeMode: light`, `lightTheme: Paper`, 15 s after 5 s
+warm, cage headless with pixman): sixteen read 14.1-18.9% of one core on the main thread (17.8-21.0% for
+the whole web process, where recorded), one read 37.7% (45.1% whole process), and an eighth run of the last
+batch never finished. In that batch a fixed Python loop run before each run took 0.33-0.40 s in the fast
+CPU mode and 0.80-0.96 s in the slow one.
+
+Ruled out, by reading the page's own state at the end of every run:
+
+- **Machine mode, partly.** The one slow-mode run that finished read 16.5%, so the slow mode alone does
+  not make 37%. The 37.7% run had no control loop beside it, so its mode is not known.
+- **Effects and animations.** Every run that printed it (the six of the second batch, the 37.7% one among them), had the same Animation list (four paused
+  `mx-fx-drift` layers and the finished focus ring) and the same two Waves layers, so no animation
+  started or stopped.
+- **Compositing mode and renderer.** `data-gpu` was `webgl` and the page drew 61-62 frames a second in
+  the bad run as in the good ones.
+- **Hidden page.** `document.hidden` was false in all of them (`hasFocus` was false in all of them too).
+
+What the bad run does differ in is the other threads: 7 points beyond the main thread against 2 in
+the good runs, so extra work sat outside the page's script. It was the first run of a batch, which
+might point at the harness (a cold web process, cage's Xwayland starting lazily) rather than the app,
+but one sample cannot show that. If it appears in the app, compare `webProcessCpuPct` against
+`webProcessMainThreadCpuPct` first.

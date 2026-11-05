@@ -2,11 +2,12 @@
 //! the real paste script runs on the host's POSIX `sh` with `HOME` a temporary folder, so the
 //! file really lands in a fake remote's cache. A host with no usable `sh` skips these and says so.
 
-use super::remote_image::upload;
+use super::remote_image::{send_file, upload};
 use super::remote_status_tests::built;
 use crate::brand::APP_COMMAND;
 use crate::ipc::Machine;
 use crate::remote_paste::MAX_PASTE_BYTES;
+use maitty_machines::ssh_run::Watch;
 use std::path::PathBuf;
 
 fn sh_has_the_tools() -> bool {
@@ -160,7 +161,7 @@ fn a_machine_reached_by_a_custom_transport_is_told_it_needs_ssh() {
     let machine = Machine::from_def(&def, "ssh");
     let error = upload(&machine, "fly", &image).unwrap_err();
     assert!(
-        error.starts_with("pasting an image to fly needs ssh"),
+        error.starts_with("sending the image to fly needs ssh"),
         "{error}"
     );
 }
@@ -177,4 +178,134 @@ fn a_login_that_fails_says_so_and_sends_nothing() {
         "{error}"
     );
     assert!(remote.pastes().is_empty());
+}
+
+// Sending any file (ADR 0055).
+
+impl Remote {
+    fn file(&self, name: &str, bytes: &[u8]) -> PathBuf {
+        let path = self.dir.join(name);
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+}
+
+#[test]
+fn a_file_arrives_whole_under_a_plain_name_that_ends_like_the_original() {
+    needs_sh!();
+    let remote = Remote::new();
+    let file = remote.file("my report (final).txt", b"line one\nline two\n");
+    let watch = Watch::default();
+    let path = send_file(&remote.machine("remote-sh"), "box", &file, &watch).expect("it is sent");
+    let kept = remote.pastes();
+    assert_eq!(kept.len(), 1, "{kept:?}");
+    assert_eq!(std::fs::read(&kept[0]).unwrap(), b"line one\nline two\n");
+    assert_eq!(std::path::Path::new(&path).file_name(), kept[0].file_name());
+    assert!(path.ends_with("-my_report__final_.txt"), "{path}");
+    assert_eq!(
+        watch.total.load(std::sync::atomic::Ordering::Relaxed),
+        18,
+        "the size was reported"
+    );
+    assert_eq!(watch.sent.load(std::sync::atomic::Ordering::Relaxed), 18);
+}
+
+#[test]
+fn two_files_with_the_same_name_are_two_files() {
+    needs_sh!();
+    let remote = Remote::new();
+    let file = remote.file("a.log", b"x");
+    let watch = Watch::default();
+    let first = send_file(&remote.machine("remote-sh"), "box", &file, &watch).unwrap();
+    let second = send_file(&remote.machine("remote-sh"), "box", &file, &watch).unwrap();
+    assert_ne!(first, second);
+    assert_eq!(remote.pastes().len(), 2);
+}
+
+#[test]
+fn a_folder_or_a_missing_path_is_refused_before_ssh_is_started() {
+    let remote = Remote::new();
+    let watch = Watch::default();
+    let machine = remote.machine("remote-sh");
+    let folder = send_file(&machine, "box", &remote.dir, &watch).unwrap_err();
+    assert!(folder.contains("is not a file"), "{folder}");
+    let missing = send_file(&machine, "box", &remote.dir.join("nope"), &watch).unwrap_err();
+    assert!(missing.starts_with("could not read nope"), "{missing}");
+    assert_eq!(remote.commands(), 0);
+}
+
+#[test]
+fn a_file_over_the_cap_is_refused_before_ssh_is_started() {
+    let remote = Remote::new();
+    let big = remote.dir.join("big.bin");
+    let file = std::fs::File::create(&big).unwrap();
+    file.set_len(crate::remote_paste::MAX_SEND_BYTES + 1)
+        .unwrap();
+    let error =
+        send_file(&remote.machine("remote-sh"), "box", &big, &Watch::default()).unwrap_err();
+    assert!(
+        error.contains("more than the 100 MB that can be sent to box"),
+        "{error}"
+    );
+    assert_eq!(remote.commands(), 0);
+}
+
+#[test]
+fn a_file_sent_to_a_machine_on_a_custom_transport_is_told_it_needs_ssh() {
+    let remote = Remote::new();
+    let file = remote.file("a.txt", b"x");
+    let (_, shim) = built();
+    let def = maitty_settings::config::MachineDef {
+        name: "fly".into(),
+        target: "fly".into(),
+        via: Some(vec![shim.to_string_lossy().into_owned()]),
+        ..Default::default()
+    };
+    let machine = Machine::from_def(&def, "ssh");
+    let error = send_file(&machine, "fly", &file, &Watch::default()).unwrap_err();
+    assert!(
+        error.starts_with("sending the file to fly needs ssh"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_send_that_is_stopped_ends_at_once_and_keeps_nothing() {
+    needs_sh!();
+    let remote = Remote::new();
+    // Bigger than a pipe holds, so the sender is still writing when the stop comes.
+    let file = remote.file("big.bin", &vec![7u8; 4 * 1024 * 1024]);
+    let watch = Watch::default();
+    let stopper = watch.clone();
+    let thread = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        stopper
+            .cancel
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    });
+    let started = std::time::Instant::now();
+    let error = send_file(&remote.machine("hang"), "box", &file, &watch).unwrap_err();
+    thread.join().unwrap();
+    assert_eq!(error, "stopped sending the file to box");
+    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    assert!(remote.pastes().is_empty());
+}
+
+#[test]
+fn a_login_that_fails_while_sending_a_file_says_so() {
+    needs_sh!();
+    let remote = Remote::new();
+    let file = remote.file("a.txt", b"x");
+    let error = send_file(
+        &remote.machine("auth-fail"),
+        "box",
+        &file,
+        &Watch::default(),
+    )
+    .unwrap_err();
+    assert!(
+        error.starts_with("could not send the file to box: ")
+            && error.contains("Permission denied"),
+        "{error}"
+    );
 }

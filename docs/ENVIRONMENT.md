@@ -245,6 +245,13 @@ Local only: Maitty is a desktop tool. Development builds use `cargo install --pa
 release archives and installers are published through the GitHub release workflow.
 `dev` is the working branch.
 
+## Project-specific: usage store
+
+The daemon keeps `usage-<socket>.json` in the data folder beside `session-<socket>.json`: 90 days
+of provider-reported usage per session per day ([DATABASE](DATABASE.md#project-specific-usage-store),
+[ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)). It adds no setting or variable.
+Deleting the file starts the history over; nothing else depends on it.
+
 ## Project-specific: structured history retention foundation
 
 The structured cache derives `session-<socket>.history/` beside the

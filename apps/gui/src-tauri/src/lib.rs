@@ -1,3 +1,7 @@
+mod add_machine;
+mod file_send;
+mod attachment;
+mod image_paste;
 pub mod hub;
 mod machines;
 mod performance;
@@ -174,7 +178,13 @@ async fn resize_terminal(
 }
 
 #[tauri::command]
-async fn pane_terminal_screen(app: tauri::AppHandle, term: u32) -> Result<String, String> {
+async fn pane_terminal_screen(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+) -> Result<String, String> {
+    wire.require_local(machine, "The screen text")?;
     maitty_desktop_client::pane_terminal_screen(term, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -212,9 +222,12 @@ async fn pane_terminal_resize(
 #[tauri::command]
 async fn repo_query(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     term: u32,
     question: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    wire.require_local(machine, "Inspect")?;
     maitty_desktop_client::repo_query(term, question, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -223,13 +236,38 @@ async fn repo_query(
 #[tauri::command]
 async fn new_worktree_session(
     app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
     term: u32,
     branch: String,
     base: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    wire.require_local(machine, "Worktrees")?;
     maitty_desktop_client::new_worktree_session(term, branch, base, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn new_branch_agent(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    project: PathBuf,
+    branch: String,
+    agent: String,
+    prompt: String,
+) -> Result<serde_json::Value, String> {
+    wire.require_local(machine, "A new agent on a branch")?;
+    maitty_desktop_client::new_branch_agent(
+        project,
+        branch,
+        agent,
+        prompt,
+        daemon_executable(&app)?,
+    )
+    .await
+    .map_err(|error| format!("{error:#}"))
 }
 
 #[tauri::command]
@@ -239,8 +277,30 @@ async fn search_panes(app: tauri::AppHandle, query: String) -> Result<serde_json
         .map_err(|error| format!("{error:#}"))
 }
 
+/// What agents reported using over a period (`day`, `week` or `month`), from the daemon's
+/// usage store on this computer.
 #[tauri::command]
-async fn restore_snapshot(app: tauri::AppHandle, term: u32, commit: String) -> Result<u64, String> {
+async fn usage_report(app: tauri::AppHandle, period: String) -> Result<serde_json::Value, String> {
+    let period = match period.as_str() {
+        "day" => maitty_shared::usage_report::UsagePeriod::Day,
+        "week" => maitty_shared::usage_report::UsagePeriod::Week,
+        "month" => maitty_shared::usage_report::UsagePeriod::Month,
+        other => return Err(format!("unknown usage period: {other}")),
+    };
+    maitty_desktop_client::usage_report(period, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
+async fn restore_snapshot(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    term: u32,
+    commit: String,
+) -> Result<u64, String> {
+    wire.require_local(machine, "Restoring a snapshot")?;
     maitty_desktop_client::restore_snapshot(term, commit, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
@@ -424,6 +484,18 @@ async fn cancel_conversation(
 }
 
 #[tauri::command]
+async fn dequeue_conversation(
+    app: tauri::AppHandle,
+    id: u64,
+    generation: u64,
+    operation: u64,
+) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::dequeue_conversation(id, generation, operation, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn rename_conversation(
     app: tauri::AppHandle,
     id: u64,
@@ -467,6 +539,31 @@ async fn end_conversation(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// A chat session (ADR 0054): a structured Claude or Codex conversation the daemon owns, in `cwd` or,
+/// with `branch`, in a new worktree of the project at `cwd`. The session asks before a tool use the
+/// provider does not allow by itself, unless `full_access` is true (the provider's skip-permissions mode).
+#[tauri::command]
+async fn start_chat_session(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    cwd: PathBuf,
+    provider: maitty_shared::conversation::Provider,
+    branch: Option<String>,
+    full_access: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    wire.require_local(machine, "A chat session")?;
+    maitty_desktop_client::start_chat_session(
+        cwd,
+        provider,
+        branch,
+        full_access.unwrap_or(false),
+        daemon_executable(&app)?,
+    )
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn create_conversation(
     app: tauri::AppHandle,
@@ -480,6 +577,7 @@ async fn create_conversation(
         cwd,
         provider,
         permissions,
+        None,
         daemon_executable(&app)?,
     )
     .await
@@ -526,6 +624,8 @@ pub fn run() {
         .manage(terminal_stream::TerminalOutput::default())
         .manage(terminal_stream::Wire::default())
         .manage(performance::ProcessStats::default())
+        .manage(add_machine::AddProbe::default())
+        .manage(file_send::Transfers::default())
         .setup(|app| {
             terminal_stream::start(
                 app.handle().clone(),
@@ -537,6 +637,19 @@ pub fn run() {
             list_sessions,
             machines::list_machines,
             terminal_stream::list_machines_overview,
+            terminal_stream::retry_machine,
+            terminal_stream::start_session_on_machine,
+            terminal_stream::remove_machine,
+            terminal_stream::set_machine_grant,
+            add_machine::list_ssh_hosts,
+            add_machine::add_machine,
+            add_machine::cancel_add_machine,
+            file_send::send_files_to_machine,
+            file_send::cancel_file_send,
+            attachment::attach_local_file,
+            attachment::attachments_exist,
+            image_paste::save_pasted_image,
+            image_paste::send_pasted_image,
             read_conversation,
             conversation_diff,
             conversation_files,
@@ -555,7 +668,9 @@ pub fn run() {
             pane_terminal_resize,
             repo_query,
             search_panes,
+            usage_report,
             new_worktree_session,
+            new_branch_agent,
             restore_snapshot,
             start_terminal_session,
             start_shell_session,
@@ -568,10 +683,12 @@ pub fn run() {
             approve_conversation,
             answer_conversation_input,
             cancel_conversation,
+            dequeue_conversation,
             rename_conversation,
             archive_conversation,
             resume_codex_conversation,
             create_conversation,
+            start_chat_session,
             end_conversation,
             codex_executable_path,
             claude_executable_path,

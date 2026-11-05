@@ -57,30 +57,40 @@ const CSS_VARIABLES: Record<keyof ThemeTokens, string> = {
 }
 
 const DARK_STATUS = { warn: '#F2B65A', warnSoft: 'rgba(242,182,90,.07)', warnLine: 'rgba(242,182,90,.28)', onWarn: '#151007', danger: '#F07F78', dangerSoft: 'rgba(240,127,120,.07)', dangerLine: 'rgba(240,127,120,.3)' }
-const LIGHT_STATUS = { warn: '#9A5B00', warnSoft: 'rgba(154,91,0,.07)', warnLine: 'rgba(154,91,0,.3)', onWarn: '#FFFFFF', danger: '#C0392F', dangerSoft: 'rgba(192,57,47,.06)', dangerLine: 'rgba(192,57,47,.3)' }
-
+// Dark enough for AA on the grounds of every generated light theme (Gruvbox Light's cream is the tightest).
+const LIGHT_STATUS = { warn: '#8F5400', warnSoft: 'rgba(143,84,0,.07)', warnLine: 'rgba(143,84,0,.3)', onWarn: '#FFFFFF', danger: '#B8362C', dangerSoft: 'rgba(184,54,44,.06)', dangerLine: 'rgba(184,54,44,.3)' }
+// Paper and Day are darker than the generated light themes so amber and red pass AA on --term and --bg.
+const PAPER_STATUS = { warn: '#8A5000', warnSoft: 'rgba(138,80,0,.07)', warnLine: 'rgba(138,80,0,.3)', onWarn: '#FFFFFF', danger: '#B3342A', dangerSoft: 'rgba(179,52,42,.06)', dangerLine: 'rgba(179,52,42,.3)' }
+const DAY_STATUS = { warn: '#8C4F00', warnSoft: 'rgba(140,79,0,.07)', warnLine: 'rgba(140,79,0,.3)', onWarn: '#FFFFFF', danger: '#B1302A', dangerSoft: 'rgba(177,48,42,.06)', dangerLine: 'rgba(177,48,42,.3)' }
 const MIDNIGHT: ThemeTokens = {
-  ansiBlue: '#82AAFF', ansiMag: '#C3A6F2', ansiGreen: '#9FD39A', pane: 'rgba(14,18,24,.86)', paneLine: 'rgba(255,255,255,.07)',
+  ansiBlue: '#82AAFF', ansiMag: '#C3A6F2', ansiGreen: '#9FD39A', pane: '#0D1116', paneLine: 'rgba(255,255,255,.07)',
   bg: '#090C10', main: '#0D1116', raise: '#141A21', hover: '#12171E', sel: '#1A212A', line: '#1B222B', line2: '#26303B',
   well: '#080A0D', term: '#06080B', fg: '#E8ECEF', fg2: '#B3BCC5', muted: '#8C96A1', dim: '#75808B', accent: '#5FD4BF',
   accentSoft: 'rgba(95,212,191,.11)', accentLine: 'rgba(95,212,191,.5)', onAccent: '#06110F', ...DARK_STATUS, ok: '#8DB89B',
 }
 
 const ABYSS: ThemeTokens = {
-  ...MIDNIGHT, pane: 'rgba(9,20,32,.86)', bg: '#07111B', main: '#0B1724', raise: '#112131', hover: '#0F1C29', sel: '#162839',
+  ...MIDNIGHT, pane: '#0B1724', bg: '#07111B', main: '#0B1724', raise: '#112131', hover: '#0F1C29', sel: '#162839',
   line: '#14243A', line2: '#1E3248', well: '#06101A', term: '#050D15',
 }
 
 const PAPER: ThemeTokens = {
-  ansiBlue: '#2F5FD0', ansiMag: '#8146C9', ansiGreen: '#2F7A3B', pane: 'rgba(255,255,255,.92)', paneLine: 'rgba(0,0,0,.08)',
-  bg: '#EEF0EE', main: '#FFFFFF', raise: '#F5F6F4', hover: '#F0F2F0', sel: '#E7EAE8', line: '#E3E6E4', line2: '#D2D7D4',
-  well: '#F2F4F2', term: '#FAFBFA', fg: '#12171C', fg2: '#3B444C', muted: '#58626C', dim: '#646E78', accent: '#0E8F7A',
-  accentSoft: 'rgba(14,143,122,.1)', accentLine: 'rgba(14,143,122,.5)', onAccent: '#FFFFFF', ...LIGHT_STATUS, ok: '#2F7A4B',
+  ansiBlue: '#2F5FD0', ansiMag: '#8146C9', ansiGreen: '#2F7A3B', pane: '#FFFFFF', paneLine: 'rgba(17,22,27,.1)',
+  bg: '#ECEEEA', main: '#FFFFFF', raise: '#F5F6F4', hover: '#F0F2F0', sel: '#E7EAE8', line: '#E3E6E4', line2: '#D2D7D4',
+  well: '#F2F4F2', term: '#FBFBF9', fg: '#11161B', fg2: '#353E46', muted: '#4E5862', dim: '#5B6570', accent: '#0A7564',
+  accentSoft: 'rgba(10,117,100,.1)', accentLine: 'rgba(10,117,100,.5)', onAccent: '#FFFFFF', ...PAPER_STATUS, ok: '#28713F',
+}
+
+const DAY: ThemeTokens = {
+  ansiBlue: '#2457C5', ansiMag: '#7A3FC0', ansiGreen: '#2A7A3C', pane: '#FFFFFF', paneLine: 'rgba(14,20,26,.1)',
+  bg: '#E9EEF3', main: '#FFFFFF', raise: '#F4F7FA', hover: '#EEF2F6', sel: '#E3EAF1', line: '#DDE4EB', line2: '#CCD6E0',
+  well: '#F1F5F8', term: '#FFFFFF', fg: '#0E141A', fg2: '#30404D', muted: '#4A5A68', dim: '#566573', accent: '#0A6F86',
+  accentSoft: 'rgba(10,111,134,.1)', accentLine: 'rgba(10,111,134,.5)', onAccent: '#FFFFFF', ...DAY_STATUS, ok: '#23703E',
 }
 
 // Pure black and white with strong lines, for readability over polish. Warn and danger keep their meaning.
 const HIGH_CONTRAST: ThemeTokens = {
-  ansiBlue: '#8FB8FF', ansiMag: '#E3B5FF', ansiGreen: '#7CF29A', pane: 'rgba(0,0,0,.96)', paneLine: 'rgba(255,255,255,.3)',
+  ansiBlue: '#8FB8FF', ansiMag: '#E3B5FF', ansiGreen: '#7CF29A', pane: '#000000', paneLine: 'rgba(255,255,255,.3)',
   bg: '#000000', main: '#000000', raise: '#0D0D0D', hover: '#0A0A0A', sel: '#1C1C1C', line: '#5A5A5A', line2: '#8A8A8A',
   well: '#000000', term: '#000000', fg: '#FFFFFF', fg2: '#EDEDED', muted: '#CFCFCF', dim: '#ABABAB', accent: '#3CF2D2',
   accentSoft: 'rgba(60,242,210,.16)', accentLine: 'rgba(60,242,210,.75)', onAccent: '#000000',
@@ -88,11 +98,21 @@ const HIGH_CONTRAST: ThemeTokens = {
   danger: '#FF7A7A', dangerSoft: 'rgba(255,122,122,.12)', dangerLine: 'rgba(255,122,122,.6)', ok: '#7CF29A',
 }
 
-// Mix percentages from the design; `muted` and `dim` are raised when a theme would fall below
-// MIN_TEXT_CONTRAST against its pane.
+// Mix percentages from the design; `fg2`, `muted` and `dim` are raised when a theme would fall below
+// MIN_TEXT_CONTRAST against the terminal ground or the window ground.
 const MIX = {
   raiseDark: 7, raiseLight: 5, hover: 5, sel: 10, line: 9, line2: 15, bgDark: 18, bgLight: 4, wellDark: 25, wellLight: 3,
-  fg2: 80, muted: 62, dim: 52, accentSoft: 13, accentLine: 50, pane: 90, paneLine: 10, contrastStep: 2, full: 100,
+  fg2: 80, muted: 62, dim: 52, accentSoft: 13, accentLine: 50, paneLine: 10, contrastStep: 2, full: 100,
+}
+
+const SHIFT_STEP = 2
+
+/** Mixes a colour toward black (light themes) or white (dark themes) a step at a time until it reads as text on every ground. */
+function shiftUntilReadable(colour: string, grounds: readonly string[], toward: string): string {
+  let percent = 0
+  const passes = (candidate: string) => grounds.every((ground) => contrastRatio(candidate, ground) >= MIN_TEXT_CONTRAST)
+  while (percent < MIX.full && !passes(mixOklab(colour, toward, percent))) percent += SHIFT_STEP
+  return mixOklab(colour, toward, percent)
 }
 
 /** Builds every token from a theme's six inputs, as the TUI themes import. */
@@ -100,13 +120,22 @@ export function generateTheme(inputs: ThemeInputs): ThemeTokens {
   const { bg, fg, accent, mag, blue, green, light } = inputs
   const towardFg = (percent: number) => mixOklab(bg, fg, percent)
   const windowBg = light ? towardFg(MIX.bgLight) : mixOklab(bg, '#000000', MIX.bgDark)
-  const pane = withAlpha(bg, MIX.pane)
-  const paneOnWindow = composite(pane, windowBg)
+  // Text sits on the card and terminal ground (`bg`) and, in the sidebar's gaps and the status bar, on the window ground.
   const readable = (start: number) => {
     let percent = start
-    while (percent < MIX.full && contrastRatio(mixOklab(bg, fg, percent), paneOnWindow) < MIN_TEXT_CONTRAST) percent += MIX.contrastStep
+    const passes = (candidate: string) => contrastRatio(candidate, bg) >= MIN_TEXT_CONTRAST && contrastRatio(candidate, windowBg) >= MIN_TEXT_CONTRAST
+    while (percent < MIX.full && !passes(mixOklab(bg, fg, percent))) percent += MIX.contrastStep
     return mixOklab(bg, fg, Math.min(percent, MIX.full))
   }
+  // A light theme's published hues (Solarized cyan, Latte green) are pastel against its own ground, so
+  // they are darkened in place (same hue, less lightness) until they read as text on both grounds.
+  // A dark theme's mid-tone hues (Solarized blue, Zenburn red) fall short the other way, so they are
+  // lightened in place instead.
+  const hue = (colour: string) => shiftUntilReadable(colour, [bg, windowBg], light ? '#000000' : '#FFFFFF')
+  const baseStatus = light ? LIGHT_STATUS : DARK_STATUS
+  // Only the text colours move; the soft and line tints keep the published hue.
+  const status = { ...baseStatus, warn: hue(baseStatus.warn), danger: hue(baseStatus.danger) }
+  const [accentText, magText, blueText, greenText] = [hue(accent), hue(mag), hue(blue), hue(green)]
   return {
     bg: windowBg,
     main: bg,
@@ -118,19 +147,19 @@ export function generateTheme(inputs: ThemeInputs): ThemeTokens {
     well: light ? towardFg(MIX.wellLight) : mixOklab(bg, '#000000', MIX.wellDark),
     term: bg,
     fg,
-    fg2: mixOklab(bg, fg, MIX.fg2),
+    fg2: readable(MIX.fg2),
     muted: readable(MIX.muted),
     dim: readable(MIX.dim),
-    accent,
-    accentSoft: withAlpha(accent, MIX.accentSoft),
-    accentLine: withAlpha(accent, MIX.accentLine),
+    accent: accentText,
+    accentSoft: withAlpha(accentText, MIX.accentSoft),
+    accentLine: withAlpha(accentText, MIX.accentLine),
     onAccent: light ? '#FFFFFF' : bg,
-    ...(light ? LIGHT_STATUS : DARK_STATUS),
-    ok: green,
-    ansiBlue: blue,
-    ansiMag: mag,
-    ansiGreen: green,
-    pane,
+    ...status,
+    ok: greenText,
+    ansiBlue: blueText,
+    ansiMag: magText,
+    ansiGreen: greenText,
+    pane: bg,
     paneLine: withAlpha(fg, MIX.paneLine),
   }
 }
@@ -164,22 +193,23 @@ const GENERATED: readonly GeneratedSource[] = [
   ['Zenburn', '#3F3F3F', '#DCDCCC', '#93E0E3', '#DC8CC3', '#8CD0D3', '#7F9F7F', false, 'Low contrast'],
 ]
 
-const entry = (name: string, family: string, light: boolean, tokens: ThemeTokens, cardRing?: string): ThemeEntry => ({
+const entry = (name: string, family: string, light: boolean, tokens: ThemeTokens): ThemeEntry => ({
   name,
   family,
   light,
   tokens,
-  cardRing: cardRing ?? composite(tokens.pane, tokens.bg),
+  cardRing: composite(tokens.pane, tokens.bg),
 })
 
 export const THEMES: readonly ThemeEntry[] = [
-  entry('Midnight', 'Maitty · default', false, MIDNIGHT, '#0E1218'),
+  entry('Midnight', 'Maitty · default', false, MIDNIGHT),
   entry('Abyss', 'Maitty · deeper blue', false, ABYSS),
   entry('Paper', 'Maitty · light', true, PAPER),
+  entry('Day', 'Maitty · light, cool', true, DAY),
   ...GENERATED.map(([name, bg, fg, accent, mag, blue, green, light, family]) =>
     entry(name, `${family} · ${light ? 'light' : 'dark'}`, light, generateTheme({ bg, fg, accent, mag, blue, green, light })),
   ),
-  entry('High Contrast', 'Accessibility · dark', false, HIGH_CONTRAST, '#000000'),
+  entry('High Contrast', 'Accessibility · dark', false, HIGH_CONTRAST),
 ]
 
 /** The theme in use for a mode. `systemDark` only matters in System mode. */
@@ -205,6 +235,8 @@ export function themeStyle(theme: ThemeEntry): Record<string, string> {
 const SELECTION_ALPHA = 25
 const SELECTION_ALPHA_STEP = 5
 const SELECTION_ALPHA_MIN = 10
+const INK = '#000000'
+const PAPER_WHITE = '#FFFFFF'
 
 /**
  * Opaque on purpose: xterm's WebGL renderer draws the selection without its alpha, so a
@@ -216,9 +248,22 @@ function selectionColors(tokens: ThemeTokens): { background: string; foreground:
   for (;;) {
     const background = composite(withAlpha(tokens.accent, alpha), tokens.term)
     const foreground = contrastRatio(tokens.fg, background) >= contrastRatio(tokens.term, background) ? tokens.fg : tokens.term
-    if (contrastRatio(foreground, background) >= MIN_TEXT_CONTRAST || alpha <= SELECTION_ALPHA_MIN) return { background, foreground }
+    if (contrastRatio(foreground, background) >= MIN_TEXT_CONTRAST) return { background, foreground }
+    // Even the faintest tint can leave a theme's own text short (a darkened light accent over a pale
+    // ground), so the text turns to plain black or white, whichever reads better.
+    if (alpha <= SELECTION_ALPHA_MIN) return { background, foreground: contrastRatio(INK, background) >= contrastRatio(PAPER_WHITE, background) ? INK : PAPER_WHITE }
     alpha -= SELECTION_ALPHA_STEP
   }
+}
+
+/**
+ * What xterm should enforce for colours a program picks itself. The 16 ANSI slots are audited, but
+ * a program also paints with the 256-colour cube and truecolour (Claude Code's pale blue 153 is
+ * unreadable on white), which no palette can fix; xterm nudges those until they reach the ratio.
+ * Dark themes keep every colour as the program asked.
+ */
+export function terminalMinimumContrast(theme: ThemeEntry): number {
+  return theme.light ? MIN_TEXT_CONTRAST : 1
 }
 
 /**
@@ -253,9 +298,4 @@ export function xtermTheme(tokens: ThemeTokens): ITheme {
     white: tokens.fg2,
     brightWhite: tokens.fg,
   }
-}
-
-/** The pane colour as it is seen: painted over the window ground. */
-export function paneSurface(tokens: ThemeTokens): string {
-  return composite(tokens.pane, tokens.bg)
 }

@@ -64,9 +64,9 @@ src/
   prompt.rs      the question and numbered choices an agent is stopped on, read off its screen (the MCP answer tool and the inbox card share it)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
   ipc.rs         local sockets and the `proxy` command; opening a connection to another machine (ssh or a custom transport) is `maitty-machines`, which this module re-exports
-  remote_paste.rs sending a pasted image to another machine (ADR 0049): the file name, the check of the path the far side prints, the failure words; the script itself is in `maitty-machines`
+  remote_paste.rs (now `maitty-machines`' `remote_paste`, re-exported here) sending a pasted image or a file to another machine (ADR 0049, 0055): the file name, the check of the path the far side prints, the failure words; the script itself is also in `maitty-machines`, as is `remote_send` (the upload) and `ssh_run` (the runner that counts bytes and takes a cancel flag; the desktop app uses them too)
   remote_install.rs installing the app on another machine, as pure rules: the `uname -sm` parser, the installed-version check, the decision table (nothing is installed without a yes), the destination, the install script's exit-code table (the script itself is in `maitty-machines`)
-  machine_probe.rs a look at a machine before it is added: `ssh ... maitty --version` with no prompt, ended by a limit or a cancel flag, and its result classified (ready, a failure class, cancelled); `locate` asks the same way where the login shell finds the app (`command -v`)
+  machine_probe.rs (now `maitty-machines`' `machine_probe`, re-exported here) a look at a machine before it is added: `ssh ... maitty --version` with no prompt, ended by a limit or a cancel flag, and its result classified (ready, a failure class, cancelled); `locate` asks the same way where the login shell finds the app (`command -v`)
   config.rs      config.toml (+ config.local.toml) loading, atomic state files
   keys.rs        actions, default bindings, key parsing
   theme.rs       built-in themes and contrast audit
@@ -130,7 +130,7 @@ src/
     tests.rs     rendering and behaviour tests
   installed_executable.rs, version.rs, project.rs, gitfs.rs, alert.rs, reveal.rs,
   restart.rs, sync.rs, cli/mcp.rs, cli/update.rs, cli/reveal.rs, cli/restart.rs,
-  cli/machine_update.rs (`machine update <name>`: probe, decide, send, swap, ask the daemon; with `machine_update/binary.rs` for this computer's own build or a fetched, verified release, and `machine_update/ssh_run.rs` to run one ssh line)
+  cli/machine_update.rs (`machine update <name>`: probe, decide, send, swap, ask the daemon; with `machine_update/binary.rs` for this computer's own build or a fetched, verified release; its ssh line runs through `maitty-machines`' `ssh_run`)
   secret_files.rs  a secret handed to an agent as a private file, and clearing the stale ones
   login_path.rs  the daemon host's login-shell PATH, resolved once at start and applied to panes, providers and lookups
   shim.rs        the per-agent launchers on a shell pane's PATH, and the PATH code `maitty agent-launch` shares

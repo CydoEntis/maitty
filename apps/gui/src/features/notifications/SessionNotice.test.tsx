@@ -7,7 +7,7 @@ describe('session notice card', () => {
   it('shows the app, the title and the body, and runs an action and goes away', async () => {
     const onDismiss = vi.fn()
     const onClick = vi.fn()
-    render(<SessionNotice kind="needs" color="#3ad" title="Needs you · maitty" body="codex in (root): $ git push" actions={[{ label: 'Allow once', primary: true, onClick }, { label: 'Open', onClick: vi.fn() }]} onDismiss={onDismiss} />)
+    render(<SessionNotice kind="needs" title="Needs you · maitty" body="codex in (root): $ git push" actions={[{ label: 'Allow once', primary: true, onClick }, { label: 'Open', onClick: vi.fn() }]} onDismiss={onDismiss} />)
 
     expect(screen.getByText('MAITTY')).toBeInTheDocument()
     expect(screen.getByText('Needs you · maitty')).toBeInTheDocument()
@@ -20,7 +20,7 @@ describe('session notice card', () => {
   it('always has a Dismiss that only closes the card', async () => {
     const onDismiss = vi.fn()
     const onClick = vi.fn()
-    render(<SessionNotice kind="done" color="#3ad" title="Finished · maitty" body="codex in (root) finished" actions={[{ label: 'Open', onClick }]} countdownMs={7000} onDismiss={onDismiss} />)
+    render(<SessionNotice kind="done" title="Finished · maitty" body="codex in (root) finished" actions={[{ label: 'Open', onClick }]} countdownMs={7000} onDismiss={onDismiss} />)
 
     await userEvent.setup().click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(onDismiss).toHaveBeenCalledOnce()

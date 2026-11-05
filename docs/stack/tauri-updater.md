@@ -5,9 +5,13 @@
 > **Fills:** SECURITY § supply chain, ENVIRONMENT § releases
 
 ## Rules
+<!-- local: owner approved idle installs on 2026-11-04; the stack default was install on a click only -->
 
-- Never install an update without a click. The GUI checks once on launch and when asked in
+- Install an update only on a click, or when **Install updates when idle** is on (the default) and the
+  app is idle: no agent working or waiting on an answer, no keyboard input for 5 minutes, and the window
+  unfocused or minimized (`features/updates/idle.ts`). The GUI checks once on launch and when asked in
   Settings › General › Updates; it offers the version and what changed, and the user chooses.
+  After the restart a toast and a What's new dialog say which version this is.
 - Verify every update with the project's updater key. The public key is in `tauri.conf.json`; the
   private key lives only in the `TAURI_SIGNING_PRIVATE_KEY` repository secret and the owner's
   backup. Never commit it, print it, or put it in a fixture or log.
@@ -22,7 +26,7 @@
 The GUI uses `@tauri-apps/plugin-updater` and `@tauri-apps/plugin-process` with
 `tauri-plugin-updater` and `tauri-plugin-process` 2.x, desktop targets only. The capability allows
 `updater:allow-check`, `updater:allow-download`, `updater:allow-install` and
-`process:allow-restart`. The app downloads in the background and installs on restart, which are two
+`process:allow-restart`. The app downloads in the background and installs on restart (a click, or the idle rule above), which are two
 commands, so the combined `updater:allow-download-and-install` does not cover it.
 
 The app reads `https://github.com/CydoEntis/maitty/releases/latest/download/latest.json`. The release

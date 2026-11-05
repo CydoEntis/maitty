@@ -356,6 +356,213 @@ async fn claude_adapter_allows_a_host_approved_tool() {
     exercise_claude_approval("approval", "accept").await;
 }
 
+#[test]
+fn only_the_most_recent_answered_approvals_are_kept() {
+    use crate::conversation::{
+        ApprovalDecision, ApprovalRequest, ApprovalRequestKind, ProviderRequestId,
+    };
+    let request = |n: i64| ApprovalRequest {
+        request_id: ProviderRequestId::Integer(n),
+        kind: ApprovalRequestKind::Command,
+        item_id: None,
+        turn_id: None,
+        command: Some("ls".into()),
+        reason: None,
+        cwd: None,
+        changes: Vec::new(),
+        questions: Vec::new(),
+        permissions: None,
+        choices: vec![ApprovalDecision::Accept, ApprovalDecision::Decline],
+    };
+    let mut state = super::State::default();
+    for n in 0..70 {
+        state.record_answer(request(n), ApprovalDecision::Decline);
+    }
+    assert_eq!(state.answered_approvals.len(), 64);
+    assert_eq!(
+        state.answered_approvals[0].request.request_id,
+        ProviderRequestId::Integer(6)
+    );
+    assert_eq!(
+        state.answered_approvals[63].request.request_id,
+        ProviderRequestId::Integer(69)
+    );
+}
+
+/// A Claude `Edit` call reaches the history with its input and times, and its approval names
+/// the file, carries the diff and points at the tool's own step.
+#[tokio::test]
+async fn claude_edit_call_and_approval_carry_input_diff_and_a_link_to_the_tool_step() {
+    use super::history::{Attachments, Content, ItemState};
+    use crate::conversation::ConversationId;
+
+    let directory = crate::daemon::persist::scratch_dir();
+    let (launch, owner) = claude_launch(directory.path(), Some("tool-edit"));
+    let (task, stop, requests, mut received) = start_claude_adapter(launch, owner).await;
+    start_claude_thread(&requests, &mut received, owner).await;
+    requests
+        .send(super::runtime::Command {
+            token: 3,
+            request: super::runtime::Rpc::Send {
+                params: json!({
+                    "threadId":"fixture-session",
+                    "input":[{"type":"text","text":"hello fake Claude"}]
+                }),
+            },
+        })
+        .await
+        .unwrap();
+
+    let mut histories = Attachments::default();
+    histories.attach(1, ConversationId(1));
+    let mut approval = None;
+    loop {
+        match receive_claude_payload(&mut received, owner).await {
+            Payload::Notification { method, params } => {
+                histories
+                    .notification(ConversationId(1), "fixture-session", &method, &params)
+                    .unwrap();
+                if method == "turn/completed" {
+                    break;
+                }
+            }
+            Payload::Request { id, method, params } => {
+                approval = Some((method, params));
+                requests
+                    .send(super::runtime::Command {
+                        token: 4,
+                        request: super::runtime::Rpc::Answer {
+                            request_id: id,
+                            response: json!({"decision":"accept"}),
+                        },
+                    })
+                    .await
+                    .unwrap();
+            }
+            Payload::Response { .. } => {}
+            _ => panic!("unexpected Claude edit payload"),
+        }
+    }
+
+    let (method, params) = approval.expect("the edit asks for approval");
+    assert_eq!(method, "item/fileChange/requestApproval");
+    assert_eq!(params["itemId"], "toolu_edit");
+    assert_eq!(params["command"], "Edit: src/a.rs");
+    assert_eq!(
+        params["changes"],
+        json!([{"path":"src/a.rs","kind":"update","diff":"-old\n+new"}])
+    );
+
+    let history = histories.get(1).unwrap();
+    let tool = history
+        .entries
+        .iter()
+        .find(|entry| entry.source.item == "toolu_edit")
+        .expect("the edit step is in the history under the id the approval names");
+    assert_eq!(tool.state, ItemState::Completed);
+    let Content::Tool { label, output, input, .. } = &tool.content else {
+        panic!("an edit is a tool row");
+    };
+    assert_eq!(label, "Edit ");
+    assert_eq!(output, "edited");
+    assert_eq!(
+        input,
+        &Some(json!({"file_path":"src/a.rs","old_string":"old","new_string":"new"}))
+    );
+    let (started, completed) = (tool.started_at_ms.unwrap(), tool.completed_at_ms.unwrap());
+    assert!(completed >= started);
+    let turn = history
+        .entries
+        .iter()
+        .find(|entry| entry.content == Content::TurnStatus)
+        .expect("the turn has a row");
+    assert!(turn.started_at_ms.is_some() && turn.completed_at_ms.is_some());
+
+    stop_claude_adapter(task, stop, &mut received, owner).await;
+    drop(directory);
+}
+
+#[tokio::test]
+async fn claude_write_of_a_secret_file_and_an_echoed_token_are_masked_in_history() {
+    use super::history::{Attachments, Content};
+    use crate::conversation::ConversationId;
+
+    let directory = crate::daemon::persist::scratch_dir();
+    let (launch, owner) = claude_launch(directory.path(), Some("tool-secret"));
+    let (task, stop, requests, mut received) = start_claude_adapter(launch, owner).await;
+    start_claude_thread(&requests, &mut received, owner).await;
+    requests
+        .send(super::runtime::Command {
+            token: 3,
+            request: super::runtime::Rpc::Send {
+                params: json!({
+                    "threadId":"fixture-session",
+                    "input":[{"type":"text","text":"hello fake Claude"}]
+                }),
+            },
+        })
+        .await
+        .unwrap();
+
+    let mut histories = Attachments::default();
+    histories.attach(1, ConversationId(1));
+    let mut approval = None;
+    loop {
+        match receive_claude_payload(&mut received, owner).await {
+            Payload::Notification { method, params } => {
+                histories
+                    .notification(ConversationId(1), "fixture-session", &method, &params)
+                    .unwrap();
+                if method == "turn/completed" {
+                    break;
+                }
+            }
+            Payload::Request { id, method, params } => {
+                approval = Some((method, params));
+                requests
+                    .send(super::runtime::Command {
+                        token: 4,
+                        request: super::runtime::Rpc::Answer {
+                            request_id: id,
+                            response: json!({"decision":"accept"}),
+                        },
+                    })
+                    .await
+                    .unwrap();
+            }
+            Payload::Response { .. } => {}
+            _ => panic!("unexpected Claude payload"),
+        }
+    }
+
+    // The fixture asserts the agent was answered with its own, unmasked input. The approval the
+    // adapter raises is masked where the daemon stores it (see the daemon-level test).
+    let (method, _) = approval.expect("the write asks for approval");
+    assert_eq!(method, "item/fileChange/requestApproval");
+
+    let history = histories.get(1).unwrap();
+    let find = |item: &str| {
+        history
+            .entries
+            .iter()
+            .find(|entry| entry.source.item == item)
+            .unwrap_or_else(|| panic!("{item} is in the history"))
+    };
+    let Content::Tool { input, .. } = &find("toolu_write").content else {
+        panic!("a write is a tool row");
+    };
+    let input = input.as_ref().expect("the write keeps its input");
+    assert_eq!(input["file_path"], "app/.env");
+    assert_eq!(input["content"], super::redact::OMITTED);
+    let Content::Tool { output, .. } = &find("toolu_echo").content else {
+        panic!("a command is a tool row");
+    };
+    assert_eq!(output, "token is [redacted]");
+
+    stop_claude_adapter(task, stop, &mut received, owner).await;
+    drop(directory);
+}
+
 #[tokio::test]
 async fn claude_adapter_denies_a_host_declined_tool() {
     exercise_claude_approval("approval-decline", "decline").await;
@@ -529,6 +736,16 @@ impl Fixture {
         let directory = self.directory.path().to_owned();
         let executable = self.record.binding.executable.clone();
         tokio::task::spawn_blocking(move || {
+            // Windows refuses to delete a folder while a just-killed process or a scanner still
+            // holds a handle in it, and the guard's own removal tries once and ignores failure.
+            // Retry here until a deadline, then let the assertions judge the result.
+            let until = std::time::Instant::now() + Duration::from_secs(10);
+            while directory.exists() && std::fs::remove_dir_all(&directory).is_err() {
+                if std::time::Instant::now() >= until {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
             drop(self);
             assert!(!directory.exists(), "fixture directory survived cleanup");
             assert!(!executable.exists(), "compiled provider survived cleanup");
@@ -817,7 +1034,7 @@ async fn create(session: &mut TestSession) -> (crate::conversation::Conversation
     match exchange(
         session,
         100,
-        crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart { target }),
+        crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart { target, branch: None }),
         None,
     )
     .await
@@ -1230,6 +1447,7 @@ async fn structured_start_honors_authenticated_pane_never_helper_policy() {
             200,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target,
+                branch: None,
             }),
             Some(from),
         )
@@ -1257,6 +1475,7 @@ async fn structured_start_honors_authenticated_pane_ask_and_no_helper_answer() {
             201,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target: target.clone(),
+                branch: None,
             }),
             Some(from.clone()),
         )
@@ -1271,6 +1490,7 @@ async fn structured_start_honors_authenticated_pane_ask_and_no_helper_answer() {
             202,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target,
+                branch: None,
             }),
             Some(from),
         )
@@ -1299,6 +1519,7 @@ async fn structured_helpers_count_against_authenticated_pane_concurrency_limit()
             203,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target: target.clone(),
+                branch: None,
             }),
             Some(from.clone()),
         )
@@ -1313,6 +1534,7 @@ async fn structured_helpers_count_against_authenticated_pane_concurrency_limit()
             204,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target,
+                branch: None,
             }),
             Some(from),
         )
@@ -1424,7 +1646,7 @@ async fn command_approval_is_human_only_generation_bound_and_uses_exact_provider
         assert!(matches!(
             read,
             ServerMsg::Reply(crate::protocol::Reply::ConversationRead(ref result))
-                if result.approvals == [approval]
+                if result.approvals == [approval.clone()]
         ));
 
         let unauthorized_from = authenticated_pane(&mut session);
@@ -1523,6 +1745,29 @@ async fn command_approval_is_human_only_generation_bound_and_uses_exact_provider
         assert_eq!(response["id"], "approval-private");
         assert_eq!(response["result"]["decision"], "accept");
         assert!(session.daemon.conversation_states[&id].approvals.is_empty());
+
+        // The answer outlives the request: a viewer that restarts still reads what was decided.
+        let reread = exchange(
+            &mut session,
+            307,
+            crate::protocol::ClientMsg::Query(crate::protocol::Query::ConversationRead {
+                id,
+                cursor: None,
+                limit: 128,
+            }),
+            None,
+        )
+        .await;
+        let ServerMsg::Reply(crate::protocol::Reply::ConversationRead(result)) = reread else {
+            panic!("expected a conversation read");
+        };
+        assert!(result.approvals.is_empty());
+        let [answered] = result.answered_approvals.as_slice() else {
+            panic!("exactly one answered approval is kept");
+        };
+        assert_eq!(answered.request, approval);
+        assert_eq!(answered.decision, crate::conversation::ApprovalDecision::Accept);
+        assert!(answered.answered_at_ms.is_some());
     })
     .catch_unwind()
     .await;
@@ -1617,6 +1862,55 @@ async fn file_change_approval_is_human_only_and_uses_exact_provider_id() {
         let response: Value = serde_json::from_str(response.trim()).unwrap();
         assert_eq!(response["id"], "file-approval-private");
         assert_eq!(response["result"]["decision"], "accept");
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+async fn a_file_change_approval_for_a_secret_file_keeps_the_path_and_omits_the_diff() {
+    let mut session = conversation_fixture("conversation-file-approval-secret").await;
+    let outcome = AssertUnwindSafe(async {
+        let (id, generation) = create(&mut session).await;
+        let sent = exchange(
+            &mut session,
+            320,
+            crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend {
+                id,
+                generation,
+                operation: 1,
+                text: "Synthetic secret file request".into(),
+            }),
+            None,
+        )
+        .await;
+        assert!(matches!(
+            sent,
+            ServerMsg::Reply(crate::protocol::Reply::ConversationSent(_))
+        ));
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while session.daemon.conversation_states[&id].approvals.is_empty() {
+                session.daemon.handle(session.events.recv().await.unwrap());
+            }
+        })
+        .await
+        .expect("the file-change request reached the daemon");
+
+        let request_id =
+            crate::conversation::ProviderRequestId::Text("file-approval-private".into());
+        let approval = session.daemon.conversation_states[&id].approvals[&request_id].clone();
+        assert_eq!(approval.changes.len(), 1);
+        assert_eq!(approval.changes[0].path, "app/.env");
+        assert_eq!(approval.changes[0].kind, "add");
+        assert_eq!(approval.changes[0].diff, super::redact::OMITTED);
+        assert_eq!(
+            approval.reason.as_deref(),
+            Some("Write the token [redacted] to .env")
+        );
     })
     .catch_unwind()
     .await;
@@ -2260,6 +2554,40 @@ async fn structured_read_acknowledgement_waits_for_durable_receipt_barrier() {
     }
 }
 
+/// The send is acknowledged before the provider's streamed items reach the
+/// daemon, so a read right after the ack can legitimately miss them. Read until
+/// the message is in the history, bounded by a deadline.
+async fn wait_for_history_message(
+    session: &mut TestSession,
+    id: crate::conversation::ConversationId,
+    wanted: &str,
+) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    for client in 1000u64.. {
+        let read = exchange(
+            session,
+            client,
+            crate::protocol::ClientMsg::Query(crate::protocol::Query::ConversationRead {
+                id,
+                cursor: None,
+                limit: 128,
+            }),
+            None,
+        )
+        .await;
+        let found = matches!(read, ServerMsg::Reply(crate::protocol::Reply::ConversationRead(ref r))
+            if r.history.entries.iter().any(|e| matches!(&e.content, super::history::Content::Message { text, .. } if text == wanted)));
+        if found {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "history never contained {wanted:?}"
+        );
+        tokio::task::yield_now().await;
+    }
+}
+
 #[tokio::test]
 async fn structured_local_ipc_create_send_read_reconnect_and_exact_identity() {
     let mut s = conversation_fixture("conversation").await;
@@ -2269,8 +2597,7 @@ async fn structured_local_ipc_create_send_read_reconnect_and_exact_identity() {
         assert_eq!(s.daemon.conversations[0].binding.session_id,"exact-thread");
         let sent=exchange(&mut s,101,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend { id,generation,operation:1,text:"Synthetic prompt".into() }),None).await;
         assert!(matches!(sent,ServerMsg::Reply(crate::protocol::Reply::ConversationSent(crate::conversation::Receipt { delivery:crate::conversation::Delivery::Acknowledged {..},.. }))));
-        let read=exchange(&mut s,102,crate::protocol::ClientMsg::Query(crate::protocol::Query::ConversationRead { id,cursor:None,limit:128 }),None).await;
-        assert!(matches!(read,ServerMsg::Reply(crate::protocol::Reply::ConversationRead(ref r)) if r.history.entries.iter().any(|e|matches!(&e.content,super::history::Content::Message {text,..} if text=="Synthetic stream complete"))));
+        wait_for_history_message(&mut s,id,"Synthetic stream complete").await;
         let retry=exchange(&mut s,103,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend { id,generation,operation:1,text:"Synthetic prompt".into() }),None).await;
         assert!(matches!(retry,ServerMsg::Reply(crate::protocol::Reply::ConversationSent(_))));
         let root=s.fixture.directory.path().to_owned();
@@ -2300,6 +2627,7 @@ async fn structured_local_ipc_missing_exact_thread_never_creates_fallback() {
             110,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target,
+                branch: None,
             }),
             None,
         )
@@ -2611,6 +2939,7 @@ async fn structured_newer_full_commit_releases_two_matching_conversation_barrier
             190,
             crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationStart {
                 target,
+                branch: None,
             }),
             None,
         )
@@ -3135,3 +3464,7 @@ async fn history_projection_accepts_only_current_owned_events_and_drops_disconne
         })
     }).await;
 }
+
+mod queue;
+mod branch_chat;
+mod claude_chat;

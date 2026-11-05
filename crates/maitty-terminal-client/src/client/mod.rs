@@ -28,15 +28,16 @@ use maitty_machines::remote_policy;
 #[cfg(test)]
 mod remote_policy_tests;
 pub(crate) use maitty_machines::remote_snapshot;
-#[cfg(test)]
-mod remote_snapshot_tests;
 mod remote_image;
 #[cfg(test)]
 mod remote_image_tests;
+#[cfg(test)]
+mod remote_snapshot_tests;
 mod render;
 pub mod restart_prompt;
 mod routing;
 mod screen;
+mod send_file;
 mod spinners;
 pub mod ssh_hosts;
 mod tasks;
@@ -437,6 +438,8 @@ enum PromptKind {
     ConfirmRemoveWorktree(WsId),
     /// A file to copy into the project's references: (project root, folder a relative path starts from).
     AddReference(PathBuf, PathBuf),
+    /// A file on this computer to send to the machine this pane is on (ADR 0055).
+    SendFile(ClientTerm),
 }
 
 impl PromptKind {
@@ -451,6 +454,7 @@ impl PromptKind {
             PromptKind::ConfirmKillServer => "Kill the server and every pane? (y/n)",
             PromptKind::ConfirmRemoveWorktree(_) => "Remove this worktree? (y / f = force / n)",
             PromptKind::AddReference(..) => "Add a reference: the file's path",
+            PromptKind::SendFile(_) => "Send a file to this machine: its path",
         }
     }
     fn is_confirm(&self) -> bool {
@@ -509,6 +513,8 @@ pub struct App {
     notice_restart: bool,
     /// The toast is a hint about keys, not news: it is marked `i`, not ✓.
     notice_hint: bool,
+    /// The file being sent to another machine, if any (ADR 0055).
+    sending: Option<send_file::Sending>,
     /// The toast's second and third rows, when the notice has them.
     notice_card: Option<NoticeCard>,
     /// The selection just copied, glowing for a moment after copy mode closed.
@@ -798,6 +804,7 @@ impl App {
             notice_term: None,
             notice_restart: false,
             notice_hint: false,
+            sending: None,
             notice_card: None,
             copy_flash: None,
             history: Default::default(),
@@ -945,6 +952,7 @@ impl App {
                     if last_fresh.elapsed() >= Duration::from_secs(1) {
                         last_fresh = Instant::now();
                         self.screen_fresh();
+                        self.show_send_progress();
                         self.dirty = true;
                     }
                     let frame = self.spinner_frame();
@@ -1948,37 +1956,15 @@ impl App {
     /// The clipboard's image, sent to the machine the pane is on and kept there as a file; its
     /// path there is typed into the pane. The upload is ssh, run off the UI thread.
     fn paste_image_to_machine(&mut self, term: ClientTerm) {
-        let name = self.machine_name(term.machine).to_owned();
-        let def = self
-            .cfg
-            .machines
-            .iter()
-            .find(|def| def.name.eq_ignore_ascii_case(&name))
-            .cloned();
-        let Some(def) = def else {
-            self.notify(
-                format!("{name} is not one of this computer's machines"),
-                true,
-            );
+        let Some((machine, name)) = self.machine_for(term) else {
             return;
         };
-        let machine = ipc::Machine::from_def_via(&def, &self.machine_flow.ssh);
         self.notify(format!("sending the clipboard image to {name}…"), false);
         self.spawn_bg(move || {
             let sent = remote_image::send(&machine, &name);
             Bg::Then(Box::new(move |app: &mut App| match sent {
                 Ok(sent) => {
-                    let text = files::quote_path(std::path::Path::new(&sent.path));
-                    let bracketed = app
-                        .parsers
-                        .get(&term)
-                        .is_some_and(|p| p.screen().bracketed_paste());
-                    let data = if bracketed {
-                        format!("\x1b[200~{text} \x1b[201~")
-                    } else {
-                        format!("{text} ")
-                    };
-                    app.send_input(term, data.into_bytes());
+                    app.type_path_into(term, &sent.path);
                     app.notify(
                         format!(
                             "pasted the clipboard image ({}×{}) to {name}",

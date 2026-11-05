@@ -1,6 +1,10 @@
-import type { SpinnerStyle } from '@/lib/spinner-clock'
+import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
+import type { EffectStyle } from '@/lib/animation-level'
+import type { AnimationMode } from '@/lib/animation-auto'
+import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
+import { DEFAULT_CHAT_VIEWS, type ChatViewDefaults, type PaneView } from '@/features/workspace/model/chatView'
 
 export type ToastPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
 export type CursorStyle = 'block' | 'bar' | 'underline'
@@ -9,6 +13,8 @@ export type Density = 'compact' | 'comfortable' | 'spacious'
 export const DENSITIES: readonly Density[] = ['compact', 'comfortable', 'spacious']
 /** How big the sidebar's and the rail's icons and tiles are. */
 export type IconSize = 'small' | 'medium' | 'large'
+/** Which working rows and tabs show the working effect: every one, only the one you are in, or none. */
+export type WorkingScope = 'all' | 'selected' | 'off'
 /** How a project's other sessions sit under its main row in the sidebar. */
 export type TrayStyle = 'names' | 'icons' | 'stacked'
 /** Which side of the window the sidebar sits on. */
@@ -48,6 +54,10 @@ export type SettingsPreferences = {
   notifyError: boolean
   notificationSound: boolean
   terminalFontSize: number
+  /** One family name for the terminal text; empty uses the bundled Geist Mono. */
+  terminalFontFamily: string
+  terminalFontWeight: TerminalFontWeight
+  terminalFontWeightBold: TerminalFontWeight
   /** Where a new session starts. Empty: your home folder (ADR 0046). */
   startFolder: string
   /** How the sidebar groups sessions: by git repository, or by the folder they are in. */
@@ -67,6 +77,13 @@ export type SettingsPreferences = {
   effectWorking: boolean
   effectNeedsYou: boolean
   effectDone: boolean
+  /** Waves or Sweep for each status; the animation level can only make it cheaper. */
+  effectStyleWorking: EffectStyle
+  effectStyleNeedsYou: EffectStyle
+  effectStyleDone: EffectStyle
+  workingScope: WorkingScope
+  /** How much the status effects may move: Auto measures, the others fix the level. Reduce motion wins over all of them. */
+  animations: AnimationMode
   density: Density
   /** Text size of the sidebar's folder names and session rows, in px. */
   sidebarTextSize: number
@@ -80,18 +97,38 @@ export type SettingsPreferences = {
   leadMode: LeadMode
   style: StyleChoice
   iconColor: IconColor
+  /** Which view a Claude or Codex session opens in. Terminal until you change it. */
+  chatViewDefault: ChatViewDefaults
+  /** What a NEW agent session starts as: a chat session or a terminal session. Chat until you change it. */
+  newSessionView: PaneView
+  /** A new chat starts with the agent's full-access mode (no sandbox, no permission prompts). Off until you turn it on. */
+  chatFullAccessDefault: boolean
   /** The bottom line of the window: daemon, branch, counts and the focused session. */
   statusBar: boolean
   /** A small readout of frames and process load over the window, for finding what lags. */
   perfOverlay: boolean
   /** The card shows behind a pane's text (Glass with WebGL); programs' own backgrounds show as boxes. */
   terminalSeeThrough: boolean
+  /** Glass paints two faint tints of the theme over the window ground. Off is a flat ground; the software path is always flat. */
+  backgroundGlow: boolean
+  /** The terminal cursor blinks while its pane is focused. xterm drives it, so it is off by default. */
+  cursorBlink: boolean
   /** Fetch a new release in the background. Installing still waits for a restart. */
   autoDownloadUpdates: boolean
   /** Restart into a downloaded update when no session is working or waiting on you. */
+  /** Install a downloaded update while the app is idle. Kept under its old key so a stored choice carries over. */
   restartWhenIdle: boolean
-  /** A colour the user gave a project, by the project's key (its repo or folder path). */
-  projectColors: Record<string, string>
+  /** Monthly spend in US dollars the Usage page's ring measures against; null is no budget (the default). Kept here because the daemon serves none. */
+  monthlyBudget: number | null
+}
+
+/** Large enough for any real budget; a typo of extra digits is refused rather than stored. */
+export const MONTHLY_BUDGET_MAX = 1_000_000
+
+/** A budget from storage or the page: a positive amount in range, else none. */
+export function validBudget(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return value > 0 && value <= MONTHLY_BUDGET_MAX ? value : null
 }
 
 export const TERMINAL_FONT_SIZE_MIN = 12
@@ -126,6 +163,9 @@ function defaults(): SettingsPreferences {
     notifyError: true,
     notificationSound: false,
     terminalFontSize: 13,
+    terminalFontFamily: '',
+    terminalFontWeight: DEFAULT_FONT_WEIGHT,
+    terminalFontWeightBold: DEFAULT_FONT_WEIGHT_BOLD,
     startFolder: '',
     groupBy: 'repo',
     // The theme chosen before there were two slots keeps its look; otherwise follow the system.
@@ -141,6 +181,11 @@ function defaults(): SettingsPreferences {
     effectWorking: true,
     effectNeedsYou: true,
     effectDone: true,
+    effectStyleWorking: 'waves',
+    effectStyleNeedsYou: 'sweep',
+    effectStyleDone: 'sweep',
+    workingScope: 'all',
+    animations: 'auto',
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
@@ -150,12 +195,17 @@ function defaults(): SettingsPreferences {
     trayStyle: 'stacked',
     leadMode: 'focused',
     iconColor: 'color',
+    chatViewDefault: DEFAULT_CHAT_VIEWS,
+    newSessionView: 'chat',
+    chatFullAccessDefault: false,
     statusBar: true,
     perfOverlay: false,
     terminalSeeThrough: false,
+    backgroundGlow: false,
+    cursorBlink: false,
     autoDownloadUpdates: true,
-    restartWhenIdle: false,
-    projectColors: {},
+    restartWhenIdle: true,
+    monthlyBudget: null,
   }
 }
 
@@ -186,7 +236,7 @@ export function readSettingsPreferences(): SettingsPreferences {
     const fallback = fresh
     return {
       accent: isAccent(preferences.accent) ? preferences.accent : fallback.accent,
-      spinner: isSpinner(preferences.spinner) ? preferences.spinner : fallback.spinner,
+      spinner: isSpinnerStyle(preferences.spinner) ? preferences.spinner : fallback.spinner,
       restoreTabs: bool(preferences.restoreTabs, fallback.restoreTabs),
       reduceMotion: bool(preferences.reduceMotion, fallback.reduceMotion),
       animateSidebarActivity: bool(preferences.animateSidebarActivity, fallback.animateSidebarActivity),
@@ -197,6 +247,9 @@ export function readSettingsPreferences(): SettingsPreferences {
       notifyError: bool(preferences.notifyError, fallback.notifyError),
       notificationSound: bool(preferences.notificationSound, fallback.notificationSound),
       terminalFontSize: terminalFontSize(preferences.terminalFontSize, fallback.terminalFontSize),
+      terminalFontFamily: isFontFamily(preferences.terminalFontFamily) ? preferences.terminalFontFamily.trim() : fallback.terminalFontFamily,
+      terminalFontWeight: isFontWeight(preferences.terminalFontWeight) ? preferences.terminalFontWeight : fallback.terminalFontWeight,
+      terminalFontWeightBold: isFontWeight(preferences.terminalFontWeightBold) ? preferences.terminalFontWeightBold : fallback.terminalFontWeightBold,
       startFolder: typeof preferences.startFolder === 'string' ? preferences.startFolder.trim() : fallback.startFolder,
       groupBy: preferences.groupBy === 'folder' || preferences.groupBy === 'repo' ? preferences.groupBy : fallback.groupBy,
       ...themeChoice(preferences, fallback),
@@ -207,6 +260,11 @@ export function readSettingsPreferences(): SettingsPreferences {
       effectWorking: bool(preferences.effectWorking, fallback.effectWorking),
       effectNeedsYou: bool(preferences.effectNeedsYou, fallback.effectNeedsYou),
       effectDone: bool(preferences.effectDone, fallback.effectDone),
+      effectStyleWorking: effectStyle(preferences.effectStyleWorking, fallback.effectStyleWorking),
+      effectStyleNeedsYou: effectStyle(preferences.effectStyleNeedsYou, fallback.effectStyleNeedsYou),
+      effectStyleDone: effectStyle(preferences.effectStyleDone, fallback.effectStyleDone),
+      workingScope: preferences.workingScope === 'all' || preferences.workingScope === 'selected' || preferences.workingScope === 'off' ? preferences.workingScope : fallback.workingScope,
+      animations: isAnimationMode(preferences.animations) ? preferences.animations : fallback.animations,
       density: isDensity(preferences.density) ? preferences.density : fallback.density,
       sidebarTextSize: clampNumber(preferences.sidebarTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.sidebarTextSize),
       tabTextSize: clampNumber(preferences.tabTextSize, UI_TEXT_SIZE_MIN, UI_TEXT_SIZE_MAX, fallback.tabTextSize),
@@ -214,13 +272,18 @@ export function readSettingsPreferences(): SettingsPreferences {
       sidebarSide: preferences.sidebarSide === 'left' || preferences.sidebarSide === 'right' ? preferences.sidebarSide : fallback.sidebarSide,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
       trayStyle: preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
-      projectColors: stringRecord(preferences.projectColors),
       style: styleOf(preferences.style) ?? fallback.style,
+      chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),
+      newSessionView: paneView(preferences.newSessionView, fallback.newSessionView),
+      chatFullAccessDefault: bool(preferences.chatFullAccessDefault, fallback.chatFullAccessDefault),
       statusBar: bool(preferences.statusBar, fallback.statusBar),
       perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),
       terminalSeeThrough: bool(preferences.terminalSeeThrough, fallback.terminalSeeThrough),
+      backgroundGlow: bool(preferences.backgroundGlow, fallback.backgroundGlow),
+      cursorBlink: bool(preferences.cursorBlink, fallback.cursorBlink),
       autoDownloadUpdates: bool(preferences.autoDownloadUpdates, fallback.autoDownloadUpdates),
       restartWhenIdle: bool(preferences.restartWhenIdle, fallback.restartWhenIdle),
+      monthlyBudget: validBudget(preferences.monthlyBudget),
       iconColor: preferences.iconColor === 'color' || preferences.iconColor === 'grayscale' ? preferences.iconColor : fallback.iconColor,
       leadMode: preferences.leadMode === 'focused' || preferences.leadMode === 'attention' ? preferences.leadMode : fallback.leadMode,
     }
@@ -232,11 +295,6 @@ export function readSettingsPreferences(): SettingsPreferences {
 
 export function writeSettingsPreferences(preferences: SettingsPreferences): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences))
-}
-
-function stringRecord(value: unknown): Record<string, string> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
-  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
 }
 
 function isToastPosition(value: unknown): value is ToastPosition {
@@ -252,6 +310,14 @@ function terminalFontSize(value: unknown, fallback: number): number {
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.min(max, Math.max(min, value))
+}
+
+function effectStyle(value: unknown, fallback: EffectStyle): EffectStyle {
+  return value === 'waves' || value === 'sweep' ? value : fallback
+}
+
+function isAnimationMode(value: unknown): value is AnimationMode {
+  return value === 'auto' || value === 'full' || value === 'light' || value === 'off'
 }
 
 function isDensity(value: unknown): value is Density {
@@ -287,8 +353,12 @@ function themeChoice(saved: Partial<Record<string, unknown>>, fallback: Settings
   }
 }
 
-function isSpinner(value: unknown): value is SpinnerStyle {
-  return value === 'braille' || value === 'snake' || value === 'bars'
+const paneView = (value: unknown, fallback: PaneView): PaneView => (value === 'chat' || value === 'terminal' ? value : fallback)
+
+function chatViewDefault(value: unknown, fallback: ChatViewDefaults): ChatViewDefaults {
+  if (typeof value !== 'object' || value === null) return fallback
+  const saved = value as Partial<Record<keyof ChatViewDefaults, unknown>>
+  return { claude: paneView(saved.claude, fallback.claude), codex: paneView(saved.codex, fallback.codex) }
 }
 
 function isCursorStyle(value: unknown): value is CursorStyle {

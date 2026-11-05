@@ -198,6 +198,14 @@ still has them loads, and they are ignored.
   another machine the image is sent to that machine over ssh (up to 25 MB), kept there in
   `~/.cache/maitty/pastes` (private, cleared after a week), and its path there is pasted. It needs
   ssh to that machine (not a custom transport) and a login that works without a prompt.
+- **Files to another machine:** in a pane on another machine, `Ctrl+Space`, then `d`, asks for a
+  file's path (type it, or drop the file on the terminal: the path is pasted into the box). The
+  file (up to 100 MB; one file, not a folder) goes to that machine over ssh the same way as an image,
+  into the same private folder (`~/.cache/maitty/pastes`), and its path there is typed into the pane.
+  The name there is `paste-<time>-<id>-<your file's name>`, so two files never overwrite each other.
+  A toast shows the percentage; `Ctrl+Space`, `d` again (or the toast's close mark) stops it.
+  A sent file stays on that machine for a week, readable by you only, so do not send a secret you
+  would not leave there. A paste of text never sends a file, even when the text is a path.
 - **Keys:** on Windows, combos plain terminals can't send (Ctrl+Shift+letter, Ctrl+Enter, Ctrl+Tab)
   reach programs exactly, as native key records. Shift+Enter is still a newline for agents.
 - **Resize:** text re-wraps to the new width (history included). Programs' cursor shape (bar,
@@ -598,6 +606,62 @@ answers does not hold up the rest. The section is not printed when there are no 
   a machine you added, it starts the daemon there when none is running, and it keeps its own worktrees.
 - The desktop app has no machines; this is the terminal app's.
 
+### Machines in the desktop app
+
+The desktop app uses the same machine list as the terminal app (`config.local.toml`), so a machine added in
+one shows in the other the next time that app starts.
+
+With one machine the sidebar looks as it always did. Once you have another, every machine's folders sit under
+a header: **this computer** first, then the others. A machine's header carries its state as a shape and a
+word: `connected`, `connecting`, `reconnecting #2`, `needs login`, `needs update`, `unreachable` or `refused`
+(a different computer answers at that name). When you have to act, the fix is written under the header, in
+full. A machine that is down keeps its folders and sessions, dimmed, with `disconnected since 2m ago`; its
+sessions' needs-you and done marks leave the counts and the Inbox until it is back, and everything returns on
+its own. An Inbox row from another machine says `· on build`.
+
+**Settings › Machines** (or *Machines* in the command palette) lists them:
+
+- **Retry** dials a machine now and lets a refused one be looked at again.
+- **Remove** asks first, then takes the machine out of the list and out of `config.local.toml`. Its sessions
+  keep running on it and the layout you saved is kept.
+- **Add a machine** lists the hosts in `~/.ssh/config` that are not machines yet, or takes `user@host`. The
+  desktop app first looks at the machine over ssh without asking anything (12 seconds at most; *Cancel* ends
+  it) and adds it only when ssh could reach it. If ssh needs you to type a password or accept a host key, the
+  machine is added and ssh opens in a session named `ssh <name>`; the machine connects when that session
+  closes. On Windows use ssh keys or an agent: password prompts work in that session but are not remembered.
+  A machine whose app is missing or old is added too; its header then says `needs update` with the fix.
+
+A machine that needs an update or no app at all says `needs update`, with the exact command to run (for example
+`maitty machine update build --install`) and a **Copy command** button. The desktop app never installs or restarts
+anything on a machine: you run the command in a terminal.
+
+Each machine on that page has two switches. **Copy to your clipboard** (what that machine's sessions ask to
+copy is put on your clipboard) is on until you turn it off. **Notifications** (its notices, and a notice when
+its sessions need you or finish, each starting with `[name]`) is off until you turn it on. They are written to
+the machine's entry in `config.local.toml`, as `clipboard = false` and `notices = true`. The desktop app plays
+no sounds, so there is no switch for them.
+
+A new session (**New session**, ⌘T) starts where the focused session is. On another machine it asks for a
+folder there, starting at `~`, because the folder picker is this computer's; a folder that does not exist
+opens in the machine's home folder. Files, Changes, worktrees and the other features that read a pane's files
+are for this computer's sessions only.
+
+**Dropping files on a session of another machine** sends them there: drag up to 10 files from your file
+manager onto the pane. Each goes over ssh (not a custom transport) into `~/.cache/maitty/pastes` on that
+machine (private, cleared after a week), and its path there is typed into the pane. Only files are sent, up
+to 100 MB each; a folder is refused. A toast shows the file, how far it has got, and a **Cancel** button; if a
+file fails, the ones after it are not tried. The machine has to be `connected`. A file stays on the machine for
+a week, readable by you only, so do not send a secret you would not leave there. Dropping on a session of this
+computer types the file's path, as before.
+
+**Pasting an image** works in the desktop app too: copy a screenshot or an image, click the session and press
+Ctrl+Shift+V on Windows and Linux, or ⌘V on a Mac. On a session of this computer the image is saved in the app's private cache folder and its
+path is typed; on a session of another machine it is sent over ssh (up to 25 MB, not a custom transport) into
+`~/.cache/maitty/pastes` there, with the same progress toast and **Cancel** as a file, and its path there is typed.
+If the clipboard holds text as well, the text is pasted and the image is left alone. On Linux and Windows
+plain Ctrl+V still goes to the program in the pane as the raw `^V`, so Claude Code and vim see it; use Ctrl+Shift+V
+to paste. In the chat box any paste key attaches an image.
+
 ## Never leave maitty
 
 | Leader + | Panel | What it does |
@@ -670,6 +734,25 @@ maitty worktree-remove [--force]          # closes the workspace and removes the
 New worktrees go to `{repo_parent}/{repo}-worktrees/{branch}` (set `[worktree] dir`). An existing
 local or `origin/` branch is checked out instead of created. Set `[worktree] command = "claude"`
 to start an agent in every new worktree.
+
+In the desktop app, **New agent on a branch** (the branch button in the sidebar, ⌘K, or a
+repository's right-click menu) takes a project, Claude or Codex, an optional first prompt and a
+branch (`agent/<words of the prompt>` until you type your own). It makes the worktree the usual way
+(same folder naming, same repo setup hook, same clean-up when its last session closes), starts the
+agent in it with the prompt, and opens it in a new tab under its project. The prompt is handed to the
+agent as one argument, never run by the shell, and cannot start with a dash. It is for projects on
+this computer.
+
+The same dialog has a **Session** choice: **Terminal** (the default, as above) or **Chat**. A chat
+session is Claude or Codex run by Maitty's background service instead of in a terminal, so the chat
+has a message box that works: Enter sends, Stop interrupts, a message sent while the agent is busy
+waits in a queue (with Remove), and each permission the agent asks for appears in the chat with
+**Yes, once (y)**, **This session (a)** and **No (n)**. It always asks first; there is no option to
+skip the questions. A chat session has no terminal (to use the agent's own screen, start a terminal
+session), it keeps running when you close the window, and closing its tab or pane stops the agent. A
+shell's empty chat card also offers **Start a Claude chat** and **Start a Codex chat** for the shell's
+folder. If you typed `claude` or `codex` in a shell yourself, its chat is read-only: it shows what
+the agent did and you answer in the terminal.
 
 With **Own worktree per agent** enabled (the default), typing `claude`, `codex`, `gemini`,
 `opencode` (or a quick agent's name) in a Maitty shell in a Git repository's main checkout
