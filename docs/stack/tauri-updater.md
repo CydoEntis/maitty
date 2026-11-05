@@ -39,6 +39,6 @@ publishes the signed bundles and `latest.json` beside the installers:
 | macOS Apple Silicon | `Maitty_<version>_aarch64.app.tar.gz` |
 | Linux x64 | `Maitty_<version>_amd64.AppImage` |
 
-Pull-request CI builds without `createUpdaterArtifacts`, because it has no private key. On Windows
+CI builds the installers on a push to `dev`, without `createUpdaterArtifacts` because it has no private key. On Windows
 the installer runs in `passive` mode and closes the app while it installs. The `.deb`, `.rpm`, `.msi`
 and `.dmg` installers are not update bundles; a user who installed one reinstalls to update.
