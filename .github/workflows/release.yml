@@ -291,6 +291,8 @@ jobs:
   # Install the release just published, the way users do, and run it.
   verify:
     needs: release
+    # Without a condition of its own this is skipped whenever build-gui was, two jobs back.
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
     name: install on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
