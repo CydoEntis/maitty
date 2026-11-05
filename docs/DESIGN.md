@@ -356,8 +356,8 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   Ctrl+letter always goes to the terminal, so the window uses Ctrl+Shift (T, W, D, F, K, I, B, N,
   J ...); where two actions want the same Ctrl+Shift letter the second takes Ctrl+Alt+Shift (split
   down, broadcast). Ctrl with a non-letter (`,` `.` `/` `[` `]` `=` `1`-`9` Tab) is the window's
-  too. A binding with `available: false` (Session panel, Undo
-  close) is registered but its key does nothing and the overlay hides it until the feature lands.
+  too. A binding with `available: false` (Undo close) is registered but
+  its key does nothing and the overlay hides it until the feature lands.
   Jump to the next session that needs you is ⌘J on macOS only: Ctrl+J is a terminal key.
 - **Terminal | Chat switch.** Every pane head carries a two-button switch (terminal glyph, chat bubble) with a
   raised thumb that slides by `transform` (.32s). The chat covers the pane body while the terminal stays mounted
@@ -383,7 +383,13 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   dashed bubbles. Disabled, it shows its reason in place of the placeholder.
 - **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
   open (`model/escLadder.ts`): comment composer, New agent and What's new, Overview, palette,
-  inbox, Settings, the sidebar drawer, Usage and cost, Focus mode. A new dialog adds its id there.
+  inbox, Settings, the session panel (when it is an overlay), the sidebar drawer, Usage and cost,
+  Focus mode. A new dialog adds its id there.
+- **Session panel (Ctrl/Cmd+\\).** A 320px floating card (`mx-card`, radius `--r14`) beside the panes on the side
+  opposite the sidebar: a 46px header (agent tile, session name, process in mono, Hide), the checklist card
+  (3px accent progress bar, done items struck through in `--dim`, the current item bold with the spinner and its
+  running time in the accent, pending items hollow) and the Agents card. Under 1100px it is an overlay from the
+  window edge over the 40% drawer scrim. A pane head carries a panel button beside the view switch.
 - **Overview (⌘0 / Ctrl+0).** The sidebar's pinned **Overview** row (a 40 by 36 icon in the
   rail) carries an amber badge with the number of sessions that need you, hidden at 0. The screen
   sits over the panes (they stay mounted, so no terminal is resized or replayed) under the tab bar;

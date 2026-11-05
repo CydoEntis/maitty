@@ -761,3 +761,24 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
 - **Screen readers.** The history is a labelled region, not a live region. A separate polite status line says only
   that the agent is working, is waiting for an answer, or finished.
 - **Styling.** Tailwind utilities on theme tokens only; the keyframes for the view change live in `workspace.css`.
+
+## Project-specific: desktop session panel
+
+The panel beside the panes for the focused agent session ([chat view plan](features/chat-gui/chat-view-plan.md),
+v18 C.2). It reads the same daemon conversation as the chat, through `useChatFeed`, so it works in the terminal
+view too. Local sessions only.
+
+- **Toggle.** `Ctrl/Cmd+\` (`session-panel`), or the panel button in a pane head beside the Terminal | Chat
+  switch. Both flip the one window-level state in `features/panel/useSessionPanelState.ts`.
+- **Placement.** A window of 1100px or more (`COMPACT_WIDTH_PX`) docks it: a 320px floating card (`mx-card`)
+  beside the panes, which shrink; the choice is remembered (`maitty.gui.sessionPanel.v1`). Under 1100px it is an
+  overlay from the window edge over a scrim, closed by default and not remembered, closed by the scrim, Hide, or
+  Esc (`session-panel` in `model/escLadder.ts`, below Settings and above the sidebar drawer). It sits on the side
+  opposite the sidebar. A docked panel offsets the Inspect drawer by `--session-panel-w`, so both can be open.
+  The panel's width does not animate (a layout property); Reduce motion changes nothing for it.
+- **Content.** `panelModel.ts` derives everything from the chat projection and adds nothing: the **Checklist** is
+  the agent's last to-do list that carried its items ("Checklist · 2 of 5", a 3px progress bar, the current item
+  with a spinner and its running time only while the agent works; the time is that of the first list in an
+  unbroken run that named the item current), and **Agents** is every helper call ("Agents · 2 working" or "all
+  done"). A session with no agent, no event stream, or on another machine shows "Nothing to track yet" and one
+  sentence saying why (`emptyReason`); an agent with neither list nor helpers says so too.

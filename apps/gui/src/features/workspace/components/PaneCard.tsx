@@ -1,5 +1,6 @@
 import { useEffect, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui'
+import { PanelRight } from 'lucide-react'
 import { MAX_PANES, type PaneSlot } from '../model/layout'
 import type { SessionView } from '../model/session'
 import { AppIcon, Icon } from './glyphs'
@@ -30,6 +31,9 @@ export type PaneCardProps = {
   onViewChange?: (view: PaneView) => void
   /** The chat that covers the terminal while `view` is `chat`. */
   chat?: ReactNode
+  /** Present when the pane has the session panel's toggle (next to the view switch). */
+  onTogglePanel?: () => void
+  panelOpen?: boolean
   online: boolean
   /** Where portalled menus mount, so they read the theme's colours. */
   portalContainer: HTMLElement | null
@@ -125,6 +129,9 @@ export function PaneCard(props: PaneCardProps) {
         {session.repoName && <span className="mx-pill mx-repo-pill" title={session.repoRoot ?? undefined}><Icon name="branch" />{session.repoName}</span>}
         <span className="mx-pane-controls">
           {props.onViewChange && <PaneViewSwitch view={view} onChange={props.onViewChange} />}
+          {props.onTogglePanel && (
+            <button type="button" className={`mx-pane-control${props.panelOpen ? ' is-on' : ''}`} aria-label={tip(props.panelOpen ? 'Hide session panel' : 'Show session panel', 'session-panel')} aria-pressed={props.panelOpen === true} onMouseDown={stop} onClick={props.onTogglePanel}><PanelRight className="size-3.5" aria-hidden="true" /></button>
+          )}
           <button type="button" className={`mx-pane-control${props.broadcast ? ' is-on' : ''}`} aria-label={props.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab'} aria-pressed={props.broadcast} title={tip('Broadcast to idle panes in this tab', 'broadcast')} disabled={!multi} onMouseDown={stop} onClick={props.onToggleBroadcast}><Icon name="broadcast" /></button>
           <button type="button" className="mx-pane-control" aria-label={tip('Split right', 'split-right')} title={tip('Split right', 'split-right')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'right') }}><Icon name="splitRight" /></button>
           <button type="button" className="mx-pane-control" aria-label={tip('Split down', 'split-down')} title={tip('Split down', 'split-down')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'down') }}><Icon name="splitDown" /></button>

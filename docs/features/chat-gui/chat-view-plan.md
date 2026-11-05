@@ -1,6 +1,6 @@
 # Plan: the Terminal / Chat view switch
 
-Status: in progress (CV-0 to CV-7, CV-9, CV-10 and CV-13 done; CV-8, CV-11, CV-12 in the session panel work) · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
+Status: in progress (CV-0 to CV-7, CV-9, CV-10 and CV-13 done; CV-8 shell, checklist and Agents done; CV-11, CV-12 follow) · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
 
 ## What it is
 
@@ -93,7 +93,7 @@ check for the view). Acceptance criteria are the bullets.
    This session (a) / No (n)**, answered through the daemon's approval id. After an
    answer the card reads "You answered: …" and the buttons are gone in every view.
    - Keys y / a / n work while the card is focused.
-8. **CV-8 Checklist and session panel (§C.2).** The docked panel (right by
+8. **CV-8 Checklist and session panel (§C.2).** **Done** except the sidebar rows (`features/panel/`: `Ctrl/Cmd+\` toggle, docked 320px or overlay under 1100px, checklist card, Agents card, empty states). The docked panel (right by
    default, overlay under 1100px, `Ctrl/Cmd+\`), its header, the "Nothing to
    track yet" state, and the checklist card. Claude's `TodoWrite` and Codex's plan items feed a
    side panel: items with done / current / pending marks, "2 of 5" with a progress
