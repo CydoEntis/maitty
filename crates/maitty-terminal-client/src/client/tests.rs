@@ -129,6 +129,7 @@ mod design_tests {
             cwd: PathBuf::from(cwd),
             summary: String::new(),
             said: String::new(),
+            last_lines: String::new(),
             branch: None,
             linked: false,
             subagents: Vec::new(),
@@ -7957,8 +7958,8 @@ second line
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(
-            o.contains("FINISHED  1") && o.contains("finished · not seen"),
-            "what it finished"
+            o.contains("FINISHED  1") && !o.contains("finished · not seen"),
+            "what it finished, under a heading that already says so"
         );
         key(&mut app, 'M');
         let o = draw(&mut app, 160, 45);
@@ -12970,8 +12971,8 @@ mod check_inbox_tests {
                     "{at_}: no check text\n{text}"
                 );
                 assert!(
-                    text.contains("✓ plain") && text.contains("finished · not seen"),
-                    "{at_}: the finished row\n{text}"
+                    text.contains("✓ plain") && !text.contains("finished · not seen"),
+                    "{at_}: the finished row, which has said nothing, is its head line\n{text}"
                 );
                 // A result that counts as finished keeps the rows where they were.
                 for state in [CheckState::Passed, CheckState::Overridden] {

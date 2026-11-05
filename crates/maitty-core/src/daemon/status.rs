@@ -568,6 +568,20 @@ impl Daemon {
         // Whatever it was about to say is out of date now.
         if let Some(t) = self.terms.get_mut(&term) {
             t.alert_due = None;
+            match new {
+                // Its turn ended, or it stopped to ask: an agent whose hooks told us what it
+                // said needs nothing more; for one that did not, its screen is all there is.
+                Status::Done | Status::Blocked => {
+                    t.last_lines = if t.said.trim().is_empty() {
+                        t.screen_last_lines()
+                    } else {
+                        String::new()
+                    };
+                }
+                // A turn under way has not said anything yet.
+                Status::Working => t.last_lines.clear(),
+                _ => {}
+            }
             // A turn has started: the next queued follow-up waits for this one to end.
             if new == Status::Working {
                 t.queue_sent = None;

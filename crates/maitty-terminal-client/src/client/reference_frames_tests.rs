@@ -722,6 +722,14 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
                 mask_key_bar(row, x0, x1);
             }
             swap(row, QUESTION, "use pnpm or npm?", x0, x1);
+            // A finished item says what its agent last said: its heading already says finished.
+            swap_tail(
+                row,
+                "finished · not seen",
+                crate::client::reference_fixture::QUICK_FOX_SAID,
+                x0,
+                x1,
+            );
             // A failure offers Send to agent after Override. At 80 columns it takes the
             // evidence sheet's room for Open session, and the Inbox has no room for it.
             if b.w >= 100 {
