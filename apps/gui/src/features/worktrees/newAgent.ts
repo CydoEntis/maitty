@@ -9,13 +9,16 @@ export const BRANCH_AGENTS = [
 ] as const
 export type BranchAgent = (typeof BRANCH_AGENTS)[number]['id']
 
-/** How the agent runs: in a terminal of its own (the default), or as a chat session the daemon owns (ADR 0054). */
+/** How the agent runs: in a terminal of its own, or as a chat session the daemon owns (ADR 0054). */
 export const SESSION_MODES = [
   { id: 'terminal', label: 'Terminal', note: 'The agent runs in a terminal session, as if you typed it.' },
-  { id: 'chat', label: 'Chat', note: 'A chat with a message box, Stop and a queue. The agent has no terminal, and asks before it runs a tool.' },
+  { id: 'chat', label: 'Chat', note: 'A chat with a message box, Stop and a queue. The agent has no terminal. It asks before it runs a tool, unless you turn on full access.' },
 ] as const
 export type SessionMode = (typeof SESSION_MODES)[number]['id']
-export const DEFAULT_SESSION_MODE: SessionMode = 'terminal'
+
+/** The label and warning of the per-chat full-access switch, shared by every place that starts a chat. */
+export const FULL_ACCESS_LABEL = 'Full access (skip permission prompts)'
+export const FULL_ACCESS_WARNING = 'No sandbox and no approval prompts: the agent can change files and run commands without asking.'
 
 /** The daemon's limit on a first prompt (characters); it checks again. */
 export const MAX_PROMPT_CHARS = 8000

@@ -548,11 +548,16 @@ The path comes from a hook report, so it is input, not trust:
 A chat session is a Claude or Codex run the daemon starts itself ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).
 The agent runs with the user's permissions, so the window's start path is narrow:
 
-- **Posture.** `start_chat_session` takes no permission argument. The daemon starts the provider with workspace
-  write and approval on request (Claude `--permission-mode default` with the stdio permission prompt; Codex
-  `workspace-write`, `on-request`). Every tool use the provider does not allow by itself becomes an approval
-  that waits for a person's answer. There is no auto-approve, no bypass and no read-only-to-writable switch in
-  the window. Answers are human-only, bound to the current generation and the exact request id (unchanged
+- **Posture.** `start_chat_session` takes one optional boolean, `full_access`, and no other permission argument. By
+  default the daemon starts the provider with workspace write and approval on request (Claude `--permission-mode
+  default` with the stdio permission prompt; Codex `workspace-write`, `on-request`). With `full_access` it starts
+  the provider's own skip-permissions mode (ADR 0043: Claude `bypassPermissions` with
+  `--allow-dangerously-skip-permissions`; Codex `danger-full-access` with approval `never`). It is the user's
+  explicit choice per chat (a labelled checkbox with a warning; the Settings default is off), is never selected
+  silently, and is fixed for the session: Maitty never widens a running session, and a chat started with it shows
+  a visible Full access tag. In the default posture every tool use the provider does not allow by itself becomes an approval
+  that waits for a person's answer, and there is no auto-approve. There is no way to change a running session's
+  posture, and no read-only-to-writable switch, in the window. Answers are human-only, bound to the current generation and the exact request id (unchanged
   from the structured runtime rules above).
 - **Where it runs.** The folder is a project the app already shows; a branch start also needs a git
   repository and a valid branch name (`branch_agent::branch_problem`), and the worktree is made by the daemon

@@ -348,6 +348,12 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
         </Row>
       </Card>
       <Card title="Chat view" color="var(--accent)" iconPath={<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />}>
+        <Row label="New agent sessions start as" detail="The default in New agent on a branch. A terminal session is always one choice away.">
+          <Segmented label="New agent sessions start as" value={preferences.newSessionView} options={CHAT_VIEW_OPTIONS_CHAT_FIRST} onChange={(value) => { update('newSessionView', value) }} />
+        </Row>
+        <Row label="Full access in new chats" detail="Start new chats with the agent's skip-permissions mode: no sandbox and no approval prompts, so the agent can change files and run commands without asking. Each chat can still turn it off or on when it starts.">
+          <Switch label="Full access in new chats" checked={preferences.chatFullAccessDefault} onChange={(value) => { update('chatFullAccessDefault', value) }} />
+        </Row>
         {CHAT_AGENTS.map((agent) => (
           <Row key={agent} label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} detail="Only a session with a chat opens in it; the switch on each pane changes one session.">
             <Segmented label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} value={preferences.chatViewDefault[agent]} options={CHAT_VIEW_OPTIONS} onChange={(value) => { update('chatViewDefault', { ...preferences.chatViewDefault, [agent]: value }) }} />
@@ -364,6 +370,7 @@ const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string;
   { id: 'glass', name: 'Glass', blurb: 'Floating frosted cards, colour icons, status sweeps', foot: 'Floating glass cards and glow.' },
 ]
 const CHAT_VIEW_OPTIONS = [['terminal', 'Terminal'], ['chat', 'Chat']] as const
+const CHAT_VIEW_OPTIONS_CHAT_FIRST = [['chat', 'Chat'], ['terminal', 'Terminal']] as const
 const ICON_COLOR_OPTIONS = [['color', 'Color'], ['grayscale', 'Grayscale']] as const
 const TRAY_OPTIONS = [['names', 'With names'], ['icons', 'Icons'], ['stacked', 'Stacked']] as const
 const UPDATE_CHIP: Record<UpdaterState['status'], string> = { idle: 'Not checked', checking: 'Checking…', current: 'Up to date', available: 'Update available', downloading: 'Downloading', ready: 'Ready to restart', failed: 'Failed' }

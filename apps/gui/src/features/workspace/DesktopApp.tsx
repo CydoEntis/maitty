@@ -87,6 +87,7 @@ import type { LookAt } from '@/features/inspect/FilesTab'
 import { PaneCard } from './components/PaneCard'
 import { ChatPane } from '@/features/chat/components/ChatPane'
 import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
+import { rememberConversationPermissions } from '@/data/conversationPermissions'
 import { reserveOperation } from '@/features/chat/sendOperation'
 import { usePaneViews } from './usePaneViews'
 import { chatAvailability, chatSourceOf, effectiveView, type ChatAgent, type PaneView } from './model/chatView'
@@ -793,7 +794,8 @@ export function DesktopApp() {
 
   const startBranchAgent = useCallback(async (request: NewAgentRequest) => {
     if (request.mode === 'chat') {
-      const started = await startChatSession(request.project.path, request.agent, request.branch)
+      const started = await startChatSession(request.project.path, request.agent, request.branch, request.fullAccess)
+      if (request.fullAccess) rememberConversationPermissions(String(started.id), 'full-access')
       setNewAgent(null)
       try {
         await openStartedChat(started, request.prompt)
@@ -813,7 +815,7 @@ export function DesktopApp() {
   }, [sessions, newSessionSince, flash, openStartedChat])
 
   // "Start a Claude chat" on a shell's empty chat card: a chat session in that shell's folder.
-  const startChatHere = useCallback((from: SessionView, agent: ChatAgent) => {
+  const startChatHere = useCallback((from: SessionView, agent: ChatAgent, fullAccess: boolean) => {
     const refusal = remoteStartRefusal(from.machine !== LOCAL_MACHINE, from.machineName, 'A chat session')
     if (refusal) {
       toast.message(refusal)
@@ -821,8 +823,11 @@ export function DesktopApp() {
     }
     if (!online || starting) return
     setStarting(true)
-    startChatSession(from.cwd, agent)
-      .then((started) => openStartedChat(started, ''))
+    startChatSession(from.cwd, agent, null, fullAccess)
+      .then((started) => {
+        if (fullAccess) rememberConversationPermissions(String(started.id), 'full-access')
+        return openStartedChat(started, '')
+      })
       .then(() => { flash(`${agent} chat started`) })
       .catch((error: unknown) => { toast.error(errorMessage(error, `Could not start a ${agent} chat`)) })
       .finally(() => { setStarting(false) })
@@ -1736,7 +1741,8 @@ export function DesktopApp() {
                                     paneViews.choose(session.id, 'terminal')
                                     void sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, `${agent}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })
                                   }}
-                                  onStartChat={(agent) => { startChatHere(session, agent) }}
+                                  defaultFullAccess={preferences.chatFullAccessDefault}
+                                  onStartChat={(agent, fullAccess) => { startChatHere(session, agent, fullAccess) }}
                                 />
                               ) : undefined}
                               online={online}
@@ -1905,7 +1911,7 @@ export function DesktopApp() {
               />
             )}
             {newAgent !== null && (
-              <NewAgentDialog projects={branchProjects} initialKey={newAgent.projectKey} home={home} container={root} onStart={startBranchAgent} onCancel={() => { setNewAgent(null) }} />
+              <NewAgentDialog projects={branchProjects} initialKey={newAgent.projectKey} home={home} defaultMode={preferences.newSessionView === 'chat' ? 'chat' : 'terminal'} defaultFullAccess={preferences.chatFullAccessDefault} container={root} onStart={startBranchAgent} onCancel={() => { setNewAgent(null) }} />
             )}
             {remoteStart !== null && (
               <RemoteSessionDialog machineName={remoteStart.name} onStart={(folder) => startOnMachine(remoteStart, folder)} onCancel={() => { setRemoteStart(null) }} />

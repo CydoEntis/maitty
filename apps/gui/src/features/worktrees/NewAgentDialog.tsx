@@ -6,15 +6,19 @@ import { errorMessage } from '@/lib/error-message'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { usePlatform } from '@/features/shortcuts/platform'
-import { agentBranchProblem, BRANCH_AGENTS, DEFAULT_SESSION_MODE, SESSION_MODES, defaultProject, promptProblem, suggestedBranch, worktreeFolder, type AgentProject, type BranchAgent, type SessionMode } from './newAgent'
+import { agentBranchProblem, BRANCH_AGENTS, FULL_ACCESS_LABEL, FULL_ACCESS_WARNING, SESSION_MODES, defaultProject, promptProblem, suggestedBranch, worktreeFolder, type AgentProject, type BranchAgent, type SessionMode } from './newAgent'
 
-export type NewAgentRequest = { project: AgentProject; agent: BranchAgent; mode: SessionMode; prompt: string; branch: string }
+export type NewAgentRequest = { project: AgentProject; agent: BranchAgent; mode: SessionMode; prompt: string; branch: string; fullAccess: boolean }
 
 type Props = {
   projects: readonly AgentProject[]
   /** The sidebar group the dialog opens on (the focused session's, or the one right-clicked). */
   initialKey: string | null
   home: string
+  /** What the Session choice starts on (the desktop setting). */
+  defaultMode: SessionMode
+  /** Whether the full-access switch starts on for a chat (the desktop setting). */
+  defaultFullAccess: boolean
   /** The themed window root, so the dialog reads the theme's tokens. */
   container: HTMLElement | null
   onStart: (request: NewAgentRequest) => Promise<void>
@@ -29,11 +33,12 @@ const labelClass = 'text-[11px] font-semibold tracking-wide text-[var(--muted-te
  * New agent on a branch (v18 C.4): a project, an agent and a first prompt become a branch in its own
  * worktree with the agent started in it. The branch follows the prompt until it is edited by hand.
  */
-export function NewAgentDialog({ projects, initialKey, home, container, onStart, onCancel }: Props) {
+export function NewAgentDialog({ projects, initialKey, home, defaultMode, defaultFullAccess, container, onStart, onCancel }: Props) {
   const platform = usePlatform()
   const [projectKey, setProjectKey] = useState(() => defaultProject(projects, initialKey)?.key ?? '')
   const [agent, setAgent] = useState<BranchAgent>('claude')
-  const [mode, setMode] = useState<SessionMode>(DEFAULT_SESSION_MODE)
+  const [mode, setMode] = useState<SessionMode>(defaultMode)
+  const [fullAccess, setFullAccess] = useState(defaultFullAccess)
   const [prompt, setPrompt] = useState('')
   // Null while the branch is the one the prompt suggests; the user's own text once they edit it.
   const [typedBranch, setTypedBranch] = useState<string | null>(null)
@@ -50,7 +55,7 @@ export function NewAgentDialog({ projects, initialKey, home, container, onStart,
     if (!ready) return
     setBusy(true)
     setError(null)
-    onStart({ project, agent, mode, prompt: prompt.trim(), branch })
+    onStart({ project, agent, mode, prompt: prompt.trim(), branch, fullAccess: mode === 'chat' && fullAccess })
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not start the agent')) })
       .finally(() => { setBusy(false) })
   }
@@ -126,6 +131,15 @@ export function NewAgentDialog({ projects, initialKey, home, container, onStart,
             </RadioGroup.Root>
             <span className="text-[12px] text-[var(--muted-text)]" aria-live="polite">{SESSION_MODES.find((choice) => choice.id === mode)?.note}</span>
           </div>
+          {mode === 'chat' && (
+            <div className="grid gap-1">
+              <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[var(--fg)]">
+                <input type="checkbox" checked={fullAccess} onChange={(event) => { setFullAccess(event.target.checked) }} />
+                {FULL_ACCESS_LABEL}
+              </label>
+              {fullAccess && <span role="note" className="text-[12px] text-[var(--danger)]">{FULL_ACCESS_WARNING}</span>}
+            </div>
+          )}
           <p className="m-0 text-[12px] text-[var(--muted-text)]" aria-live="polite">
             Folder<span className="font-mono text-[var(--fg2)]">{project && branch !== '' ? worktreeFolder(project.path, branch, home) : '—'}</span>
           </p>

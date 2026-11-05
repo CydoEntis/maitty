@@ -825,13 +825,15 @@ export async function createConversation(
 /**
  * Starts a chat session: a Claude or Codex conversation the daemon owns, in `folder` or, with a
  * `branch`, in a new checkout of the project at `folder` (ADR 0054). It always asks before a tool
- * use the provider does not allow by itself; there is no argument for a broader posture.
+ * use the provider does not allow by itself, unless `fullAccess` asks for the provider's own
+ * skip-permissions mode (no sandbox, no prompts; ADR 0043 and 0054).
  */
-export async function startChatSession(folder: string, agent: 'claude' | 'codex', branch: string | null = null): Promise<{ id: number; generation: number }> {
+export async function startChatSession(folder: string, agent: 'claude' | 'codex', branch: string | null = null, fullAccess = false): Promise<{ id: number; generation: number }> {
   return invokeParsed('start_chat_session', CreatedConversationSchema, {
     cwd: folder,
     provider: agent === 'claude' ? 'Claude' : 'Codex',
     branch,
+    fullAccess,
   })
 }
 

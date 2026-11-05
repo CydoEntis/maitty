@@ -21,12 +21,14 @@ describe('chat sessions', () => {
   })
   const snapshot = (conversations: unknown[]) => ({ terms: {}, workspaces: [], conversations })
 
-  it('starts a chat session without any argument for a broader posture', async () => {
+  it('starts a chat session that asks first, unless full access is requested', async () => {
     await expect(startChatSession('/work/app', 'claude')).resolves.toEqual({ id: 44, generation: 1 })
     await startChatSession('/work/app', 'codex', 'agent/x')
+    await startChatSession('/work/app', 'claude', null, true)
     expect(vi.mocked(invoke).mock.calls).toEqual([
-      ['start_chat_session', { cwd: '/work/app', provider: 'Claude', branch: null }],
-      ['start_chat_session', { cwd: '/work/app', provider: 'Codex', branch: 'agent/x' }],
+      ['start_chat_session', { cwd: '/work/app', provider: 'Claude', branch: null, fullAccess: false }],
+      ['start_chat_session', { cwd: '/work/app', provider: 'Codex', branch: 'agent/x', fullAccess: false }],
+      ['start_chat_session', { cwd: '/work/app', provider: 'Claude', branch: null, fullAccess: true }],
     ])
   })
 
