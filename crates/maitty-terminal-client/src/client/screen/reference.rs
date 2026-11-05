@@ -25,6 +25,18 @@ impl Ref {
             .to_string();
     }
 
+    /// A finished item says what its agent last said where the reference says it finished and
+    /// was not seen: its heading already says finished.
+    pub fn says_what_the_agent_said(&mut self, said: &str) {
+        const FINISHED: &str = "finished · not seen";
+        for i in 0..self.rows.len() {
+            if self.rows[i].contains(FINISHED) {
+                let new = self.rows[i].replacen(FINISHED, said, 1);
+                self.set_row(i, &new);
+            }
+        }
+    }
+
     /// A failure offers Send to agent after Override, a button the reference predates. On a
     /// screen under 100 columns it takes the evidence sheet's room for Open session, and the
     /// Inbox has no room for it.
