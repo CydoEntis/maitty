@@ -580,11 +580,48 @@ pub fn to_clipboard(text: &str) -> bool {
     let native = arboard::Clipboard::new()
         .and_then(|mut c| c.set_text(text.to_string()))
         .is_ok();
+    // On Linux the clipboard is only there while a program owns it, and a desktop with no
+    // clipboard manager loses what a short-lived owner set: `wl-copy` or `xclip` stay behind to
+    // serve it.
+    #[cfg(target_os = "linux")]
+    let native = external_copy(text) || native;
     let osc = format!("\x1b]52;c;{}\x07", base64(text.as_bytes()));
     let mut out = std::io::stdout();
     let _ = out.write_all(osc.as_bytes());
     let _ = out.flush();
     native
+}
+
+/// Hand `text` to the desktop's own clipboard tool, which keeps serving it after this program's
+/// turn: `wl-copy` on Wayland, else `xclip` or `xsel`. Run off the UI thread; true when a tool
+/// was found and started.
+#[cfg(all(not(test), target_os = "linux"))]
+fn external_copy(text: &str) -> bool {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let tools: &[(&str, &[&str])] = if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        &[("wl-copy", &[]), ("xclip", &["-selection", "clipboard"])]
+    } else {
+        &[("xclip", &["-selection", "clipboard"]), ("xsel", &["-ib"])]
+    };
+    for (program, args) in tools {
+        let spawned = Command::new(program)
+            .args(*args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        let Ok(mut child) = spawned else { continue };
+        let text = text.to_string();
+        std::thread::spawn(move || {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            let _ = child.wait();
+        });
+        return true;
+    }
+    false
 }
 
 fn base64(data: &[u8]) -> String {
