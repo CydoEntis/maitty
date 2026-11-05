@@ -2324,7 +2324,8 @@ fn is_ours(group: &Value) -> bool {
 }
 
 fn app_hook_names() -> Vec<&'static str> {
-    std::iter::once(crate::brand::APP_COMMAND)
+    [crate::brand::APP_COMMAND, BUNDLED_DAEMON]
+        .into_iter()
         .chain(crate::brand::previous())
         .collect()
 }
@@ -2465,11 +2466,60 @@ fn back_up_once(path: &std::path::Path, ext: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-/// This the app, as hook commands name it.
+/// The daemon the desktop app bundles: the same program under another name.
+const BUNDLED_DAEMON: &str = concat!(env!("APP_COMMAND"), "-gui-daemon");
+
+/// This the app, as hook commands name it. The desktop app's daemon can run from a folder that
+/// does not outlive it (an AppImage's temporary mount), and Claude Code's settings are global, so
+/// hooks naming that path break every session once the app closes. They name a copy at a fixed
+/// path instead.
 fn this_exe() -> Result<String> {
-    Ok(std::env::current_exe()?
-        .to_string_lossy()
-        .replace('\\', "/"))
+    let running = std::env::current_exe()?;
+    let program = if is_bundled_daemon(&running) {
+        keep_copy(&running, &crate::config::data_dir())?
+    } else {
+        running
+    };
+    Ok(program.to_string_lossy().replace('\\', "/"))
+}
+
+/// Whether `exe` is the daemon the desktop app bundles, including its development name with the
+/// target triple after it.
+fn is_bundled_daemon(exe: &std::path::Path) -> bool {
+    exe.file_stem()
+        .is_some_and(|stem| stem.to_string_lossy().starts_with(BUNDLED_DAEMON))
+}
+
+/// `running` copied into `folder` under the bundled daemon's plain name, unless the copy there is
+/// already this build. The copy is written beside the target and renamed over it, so a hook that
+/// starts during the update runs the old file or the new one, never half of one.
+fn keep_copy(running: &std::path::Path, folder: &std::path::Path) -> Result<PathBuf> {
+    let name = if cfg!(windows) {
+        format!("{BUNDLED_DAEMON}.exe")
+    } else {
+        BUNDLED_DAEMON.to_string()
+    };
+    let target = folder.join(&name);
+    if copy_is_current(running, &target) {
+        return Ok(target);
+    }
+    std::fs::create_dir_all(folder)
+        .with_context(|| format!("creating {}", folder.display()))?;
+    let partial = folder.join(format!("{name}.partial"));
+    std::fs::copy(running, &partial)
+        .with_context(|| format!("copying {} to {}", running.display(), partial.display()))?;
+    std::fs::rename(&partial, &target)
+        .with_context(|| format!("replacing {}", target.display()))?;
+    Ok(target)
+}
+
+/// The copy has the running file's size and is not older than it.
+fn copy_is_current(running: &std::path::Path, copy: &std::path::Path) -> bool {
+    let (Ok(running), Ok(copy)) = (std::fs::metadata(running), std::fs::metadata(copy)) else {
+        return false;
+    };
+    running.len() == copy.len()
+        && matches!((running.modified(), copy.modified()), (Ok(made), Ok(kept)) if kept >= made)
 }
 
 /// Context, cost and plan limits from the JSON Claude Code hands its status line.
@@ -2778,8 +2828,10 @@ pub fn refresh_claude_hooks() {
     // A side server (<APP>_SOCKET) or a build in a source checkout mustn't take your
     // hooks from the copy of the app you use.
     let side = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).is_ok_and(|s| s != "default");
-    let dev_build =
-        this_exe().is_ok_and(|e| e.contains("/target/debug/") || e.contains("/target/release/"));
+    let dev_build = std::env::current_exe().is_ok_and(|exe| {
+        let exe = exe.to_string_lossy().replace('\\', "/");
+        exe.contains("/target/debug/") || exe.contains("/target/release/")
+    });
     if side || dev_build {
         return;
     }
@@ -3218,6 +3270,70 @@ pub fn allow(dir: Option<std::path::PathBuf>) -> Result<()> {
     }
     println!("(if the commands change, they won't run until you allow them again)");
     Ok(())
+}
+
+#[cfg(test)]
+mod bundled_daemon_tests {
+    use super::{BUNDLED_DAEMON, app_hook_names, is_bundled_daemon, keep_copy};
+    use std::path::Path;
+
+    fn scratch(label: &str) -> std::path::PathBuf {
+        let folder = std::env::temp_dir().join(format!(
+            "{}-bundled-{label}-{}",
+            env!("APP_COMMAND"),
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        folder
+    }
+
+    #[test]
+    fn the_bundled_daemon_is_told_by_its_name_with_or_without_a_target_triple() {
+        for name in [
+            BUNDLED_DAEMON.to_string(),
+            format!("{BUNDLED_DAEMON}.exe"),
+            format!("{BUNDLED_DAEMON}-x86_64-unknown-linux-gnu"),
+        ] {
+            assert!(
+                is_bundled_daemon(&Path::new("/tmp/.mount_X/usr/bin").join(&name)),
+                "{name}"
+            );
+        }
+        let terminal_app = Path::new("/home/me/.local/bin").join(env!("APP_COMMAND"));
+        assert!(!is_bundled_daemon(&terminal_app));
+    }
+
+    #[test]
+    fn an_old_hook_naming_the_bundled_daemon_is_one_of_ours() {
+        assert!(app_hook_names().contains(&BUNDLED_DAEMON));
+        let dead = format!("\"/tmp/.mount_Gone/usr/bin/{BUNDLED_DAEMON}\" hook claude");
+        assert!(maitty_provider_claude::runs_our_hook(&dead, &app_hook_names()));
+    }
+
+    #[test]
+    fn the_copy_is_made_once_and_replaced_when_the_build_changes() {
+        let from = scratch("from");
+        let to = scratch("to");
+        let running = from.join(format!("{BUNDLED_DAEMON}-x86_64-unknown-linux-gnu"));
+        std::fs::write(&running, b"build one").unwrap();
+
+        let first = keep_copy(&running, &to).unwrap();
+        assert_eq!(std::fs::read(&first).unwrap(), b"build one");
+        assert_eq!(first.file_stem().unwrap().to_string_lossy(), BUNDLED_DAEMON);
+
+        let modified = std::fs::metadata(&first).unwrap().modified().unwrap();
+        assert_eq!(keep_copy(&running, &to).unwrap(), first);
+        assert_eq!(
+            std::fs::metadata(&first).unwrap().modified().unwrap(),
+            modified
+        );
+
+        std::fs::write(&running, b"build two, longer").unwrap();
+        assert_eq!(keep_copy(&running, &to).unwrap(), first);
+        assert_eq!(std::fs::read(&first).unwrap(), b"build two, longer");
+        assert!(!to.join(format!("{BUNDLED_DAEMON}.partial")).exists());
+    }
 }
 
 #[cfg(test)]
