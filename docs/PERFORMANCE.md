@@ -376,3 +376,46 @@ A change to this area passes when all of these hold on Linux with WebKitGTK:
   next key.
 - CI cannot feel lag, and it passed v0.65.0. Until the harness scenario runs in CI, a release of
   the desktop app needs the **Key to echo** figure from a real Linux window in its pull request.
+
+### How two other apps do it (read 2026-11-05)
+
+From a read of both repositories on that date: T3 Code (`pingdotgg/t3code` at `b18434e`) and
+PandaCode (`aicodeking/pandacode` at `78f77a0`). Neither app was run, and the links were not
+re-checked after the read.
+
+| | Maitty desktop | T3 Code | PandaCode |
+| --- | --- | --- | --- |
+| Shell | Tauri 2 | Electron 44 | Tauri 2 |
+| Engine on Linux | WebKitGTK | Chromium | WebKitGTK 4.1; Linux builds are "previews", the AppImage forces X11 |
+| What an agent is on screen | its terminal first, a chat view second | a structured chat built from the agent's event stream | a structured chat; the agent's own TUI is an optional panel |
+| Terminal | xterm.js with the WebGL addon | not xterm.js since [#4860](https://github.com/pingdotgg/t3code/pull/4860): `libghostty-vt` as WASM, drawn on Canvas 2D, dirty rows only | xterm.js 6 with no renderer addon |
+| Output on its way to the window | held up to 12 ms in the host, then a Tauri channel | WebSocket; an ack window of 8 chunks or 64 KiB, no fixed timer found | a Tauri event for each read, no batching |
+| Chat text | not coalesced | coalesced at 50 ms; the list is virtualized and history is paged | coalesced at 33 ms or 8 KiB; 100 messages a page |
+| Who owns the agents | a daemon that outlives the window | a server; outlives the window only when installed as a service | the app; closing the window quits on Linux |
+
+What each has said about lag:
+
+- **T3 Code.** Its one diagnosed typing lag
+  ([#12689](https://github.com/pingdotgg/t3code/issues/12689), Windows) was the shell's own IPC:
+  the browser UI on the same server was smooth. A request to move to Tauri was declined
+  ([#4152](https://github.com/pingdotgg/t3code/issues/4152)). No Linux lag issue was found.
+- **PandaCode.** [#333](https://github.com/aicodeking/pandacode/issues/333), opened the same day
+  by a user on Arch and Hyprland, reports the WebKit main thread at 98 to 100% of a core while
+  streaming, with typing lag, and blames a layout forced on every key and an unfiltered
+  `MutationObserver`. One user's figures, no maintainer reply yet.
+
+**What to try here, each one judged by the Key to echo probe and not by feel:**
+
+1. **No fixed hold on the first bytes.** Neither app waits on a timer before sending output. Send
+   a pane's first chunk at once and batch only while more keeps coming.
+2. **The terminal without the WebGL addon** on WebKitGTK. Neither app uses xterm's WebGL renderer.
+3. **Channel and command time against a local WebSocket** to the daemon. T3's window talks to its
+   server over WebSocket, and its typing lag was shell IPC.
+4. **`GDK_BACKEND=x11`**, which PandaCode forces. It may change nothing about latency.
+5. **The chat view**: coalesce deltas, virtualize the list, page the history. Both apps do.
+
+**A decision for the owner, after the probe has named the hop.** Both apps lead with a structured
+chat and treat the terminal as secondary, and the one on Chromium has no Linux lag on record while
+the one on WebKitGTK calls its Linux build a preview. If the hop turns out to be the web view or
+Tauri's IPC and not this app's code, the choice is between working around WebKitGTK and moving the
+desktop app to Chromium (Electron, or a Chromium web view). That is an ADR, not a ticket.
