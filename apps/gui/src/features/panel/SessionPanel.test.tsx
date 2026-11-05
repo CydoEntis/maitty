@@ -1,4 +1,6 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useState, type ReactElement, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '@/features/chat/fakeDaemonHistory'
 import { forgetChatFeeds } from '@/features/chat/useChatFeed'
@@ -13,7 +15,19 @@ vi.mock('@/api/daemon', async (importOriginal) => ({
     if (fake.current === null) throw new Error('no fake daemon')
     return fake.current.read(cursor as never)
   },
+  loadTargetDiff: () => Promise.resolve({ files: [], additions: 0, deletions: 0, total_files: 0, truncated: false }),
 }))
+
+const base = { root: null, branch: null, online: true, chatOpen: false, width: 320, onWide: () => undefined } as const
+
+function Providers({ children }: { children: ReactNode }) {
+  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }))
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+}
+
+function renderPanel(ui: ReactElement) {
+  return render(ui, { wrapper: Providers })
+}
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -46,7 +60,7 @@ function open(entries: Entry[], status: 'Idle' | 'Working' = 'Idle') {
   daemon.status = status
   fake.current = daemon
   const onClose = vi.fn()
-  render(<SessionPanel mode="docked" title="fix tests" process="claude" availability={ready} onClose={onClose} />)
+  renderPanel(<SessionPanel {...base} mode="docked" title="fix tests" process="claude" availability={ready} onClose={onClose} />)
   return { daemon, onClose }
 }
 
@@ -119,7 +133,7 @@ describe('a session with nothing to track', () => {
     [{ kind: 'remote', agent: 'claude', machineName: 'devbox' } as const, /local-only/],
     [{ kind: 'no-events', agent: 'codex' } as const, /no conversation/],
   ])('says why for %j and reads no conversation', (availability, why) => {
-    render(<SessionPanel mode="docked" title="shell" process="shell" availability={availability} onClose={() => undefined} />)
+    renderPanel(<SessionPanel {...base} mode="docked" title="shell" process="shell" availability={availability} onClose={() => undefined} />)
 
     expect(screen.getByText('Nothing to track yet')).toBeInTheDocument()
     expect(screen.getByText(why)).toBeInTheDocument()
@@ -129,7 +143,7 @@ describe('a session with nothing to track', () => {
 describe('docked and overlay', () => {
   it('draws the overlay over a scrim that closes it, and keeps the docked form scrim-free', () => {
     const onClose = vi.fn()
-    const { container, rerender } = render(<SessionPanel mode="overlay" title="t" process="shell" availability={{ kind: 'shell' }} onClose={onClose} />)
+    const { container, rerender } = renderPanel(<SessionPanel {...base} mode="overlay" title="t" process="shell" availability={{ kind: 'shell' }} onClose={onClose} />)
     const scrim = container.querySelector('.mx-drawer-scrim')
     expect(scrim).not.toBeNull()
 
@@ -138,7 +152,7 @@ describe('docked and overlay', () => {
     fireEvent.mouseDown(scrim as Element)
     expect(onClose).toHaveBeenCalledOnce()
 
-    rerender(<SessionPanel mode="docked" title="t" process="shell" availability={{ kind: 'shell' }} onClose={onClose} />)
+    rerender(<SessionPanel {...base} mode="docked" title="t" process="shell" availability={{ kind: 'shell' }} onClose={onClose} />)
     expect(container.querySelector('.mx-drawer-scrim')).toBeNull()
   })
 })

@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -29,6 +29,7 @@ const daemon = vi.hoisted(() => ({
   submitMessage: vi.fn(() => Promise.resolve({})),
   approveRequest: vi.fn(() => Promise.resolve()),
   cancelTurn: vi.fn(() => Promise.resolve()),
+  loadTargetDiff: vi.fn(),
 }))
 
 vi.mock('@/api/daemon', () => ({
@@ -212,5 +213,50 @@ describe('the session panel', () => {
     expect(screen.queryByRole('complementary', { name: 'Session panel' })).not.toBeInTheDocument()
     act(() => { setWidth(1400) })
     expect(await screen.findByRole('complementary', { name: 'Session panel' })).toBeInTheDocument()
+  })
+  it('opens the panel on the file\'s diff when an edit block\'s header is pressed', async () => {
+    setWidth(1400)
+    const user = userEvent.setup()
+    const fake = new FakeDaemonHistory()
+    fake.upsert({
+      source: { conversation: 5, turn: 't1', item: 'edit' },
+      content: { Tool: { kind: 'commandExecution', label: 'Edit ', output: '', input: { file_path: `${HOME}/src/app.ts`, old_string: 'a', new_string: 'b' } } },
+      state: 'Completed',
+    })
+    daemon.readConversationPage.mockImplementation((_id: number, cursor: never) => fake.read(cursor))
+    daemon.loadTargetDiff.mockResolvedValue({
+      files: [{ path: 'src/app.ts', additions: 1, deletions: 1, patch: '@@ -1 +1 @@\n-a\n+b', binary: false }],
+      additions: 1,
+      deletions: 1,
+      total_files: 1,
+      truncated: false,
+    })
+    daemon.loadConversations.mockResolvedValue([claude(2, { cwd: HOME })])
+    renderDesktopApp()
+    const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
+    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+    expect(screen.queryByRole('complementary', { name: 'Session panel' })).not.toBeInTheDocument()
+
+    await user.click(await within(pane).findByRole('button', { name: 'Open the diff of src/app.ts in the session panel' }))
+
+    const panel = await screen.findByRole('complementary', { name: 'Session panel' })
+    await waitFor(() => { expect(within(panel).getByRole('region', { name: 'Diff of src/app.ts' })).toBeInTheDocument() })
+  })
+
+  it('shows a line comment as a bubble in the chat', async () => {
+    setWidth(1400)
+    const user = userEvent.setup()
+    const fake = new FakeDaemonHistory()
+    fake.upsert(fake.message('t1', 'c', 'User', 'Comment on src/app.ts:2\n> const count = 1\n\nWhy not a let?'))
+    daemon.readConversationPage.mockImplementation((_id: number, cursor: never) => fake.read(cursor))
+    daemon.loadConversations.mockResolvedValue([claude(2)])
+    renderDesktopApp()
+    const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
+
+    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+
+    const bubble = await within(pane).findByRole('group', { name: 'Comment on src/app.ts:2' })
+    expect(bubble).toHaveTextContent('const count = 1')
+    expect(bubble).toHaveTextContent('Why not a let?')
   })
 })

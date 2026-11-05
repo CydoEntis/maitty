@@ -41,6 +41,8 @@ import { ColumnHandle } from './components/ColumnHandle'
 import { CommandPalette } from './components/CommandPalette'
 import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPanel'
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
+import { cancelCommentComposer, isCommentComposerOpen } from '@/features/panel/commentStore'
+import { requestDiff } from '@/features/panel/panelCommands'
 import { SessionPanelHost } from '@/features/panel/SessionPanelHost'
 import { useSessionPanelState } from '@/features/panel/useSessionPanelState'
 import { runsProgram } from './components/useArmed'
@@ -1048,6 +1050,11 @@ export function DesktopApp() {
     else setInspectOpen((open) => !open)
   }, [inspectRefusal])
   const openDrawer = useCallback(() => { setDrawerOpen(true) }, [])
+  // An edit block's header: show that file's diff in the panel, opening the panel first if it is hidden.
+  const showDiffInPanel = useCallback((file: string) => {
+    requestDiff(file)
+    if (!sessionPanel.open) sessionPanel.toggle()
+  }, [sessionPanel])
   const setThemeMode = useCallback((themeMode: SettingsPreferences['themeMode']) => { setPreferences((current) => ({ ...current, themeMode })) }, [])
   const pickTheme = useCallback((name: string) => { setPreferences((current) => (findTheme(name).light ? { ...current, lightTheme: name } : { ...current, darkTheme: name })) }, [])
   const openAppearance = useCallback(() => { setSettingsSection('appearance') }, [])
@@ -1209,6 +1216,7 @@ export function DesktopApp() {
       settings: () => { setSettingsSection(null) },
       drawer: () => { setDrawerOpen(false) },
       'session-panel': () => { shortcutState.current.closePanel() },
+      'comment-composer': cancelCommentComposer,
       usage: () => { setUsageOpen(false) },
       'focus-mode': () => { setFocusMode(false) },
     }
@@ -1228,7 +1236,7 @@ export function DesktopApp() {
       if (event.key === 'Escape') {
         // A menu or list that is open (the spinner picker in Settings) takes Esc itself.
         if (event.target instanceof Element && event.target.closest('[role="menu"]')) return
-        const top = topmostOpen({ 'new-agent': state.newAgentOpen, overview: state.overviewOpen, palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, 'session-panel': state.panelOverlayShown, drawer: state.drawerShown, usage: state.usageOpen, 'focus-mode': state.focusMode })
+        const top = topmostOpen({ 'comment-composer': isCommentComposerOpen(), 'new-agent': state.newAgentOpen, overview: state.overviewOpen, palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, 'session-panel': state.panelOverlayShown, drawer: state.drawerShown, usage: state.usageOpen, 'focus-mode': state.focusMode })
         if (top === null) return
         // What Esc closes is not also sent on to the terminal, where it would interrupt an agent.
         event.preventDefault()
@@ -1645,6 +1653,8 @@ export function DesktopApp() {
                               chat={chat.view === 'chat' ? (
                                 <ChatPane
                                   availability={chat.availability}
+                                  root={session.repoRoot ?? session.cwd}
+                                  onOpenDiff={showDiffInPanel}
                                   process={session.process}
                                   online={online}
                                   onBackToTerminal={() => { paneViews.choose(session.id, 'terminal') }}
@@ -1753,6 +1763,10 @@ export function DesktopApp() {
                 title={displayName(focusedSession)}
                 process={focusedSession.process}
                 availability={chatOf(focusedSession).availability}
+                root={focusedSession.repoRoot ?? focusedSession.cwd}
+                branch={focusedSession.branch}
+                online={online}
+                chatOpen={chatOf(focusedSession).view === 'chat'}
                 onClose={sessionPanel.close}
                 onDockedWidth={setPanelDockedWidth}
               />

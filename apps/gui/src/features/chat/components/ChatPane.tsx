@@ -5,6 +5,10 @@ import { ChatSession } from './ChatSession'
 
 export type ChatPaneProps = {
   availability: ChatAvailability
+  /** The session's folder, so file names read relative to it. */
+  root?: string | null
+  /** Shows a file's diff in the session panel. */
+  onOpenDiff?: ((file: string) => void) | null
   /** What runs in the pane: the agent, or the shell's own name. */
   process: string
   /** The computer is connected to the daemon; starting an agent types into the shell. */
@@ -22,7 +26,7 @@ export function ChatPane(props: ChatPaneProps) {
   const { availability } = props
   return (
     <section className="mx-chat-layer mx-chat-in" aria-label="Chat">
-      {availability.kind === 'ready' ? <ChatSession key={availability.link.conversation} link={availability.link} agent={availability.agent} online={props.online} /> : <NoChat {...props} availability={availability} />}
+      {availability.kind === 'ready' ? <ChatSession key={availability.link.conversation} link={availability.link} agent={availability.agent} online={props.online} root={props.root ?? null} onOpenDiff={props.onOpenDiff ?? null} /> : <NoChat {...props} availability={availability} />}
     </section>
   )
 }

@@ -1,6 +1,6 @@
 # Plan: the Terminal / Chat view switch
 
-Status: in progress (CV-0 to CV-7, CV-9, CV-10 and CV-13 done; CV-8 shell, checklist and Agents done; CV-11, CV-12 follow) · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
+Status: in progress (CV-0 to CV-7, CV-9, CV-10 and CV-13 done; CV-8 shell, checklist and Agents done; CV-11 done; CV-12 follows) · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
 
 ## What it is
 
@@ -106,7 +106,7 @@ check for the view). Acceptance criteria are the bullets.
     with the spinner under the last item; sidebar rows in *working* get a slow
     shimmer (CSS only, off under reduce motion). Token counts come from the
     provider's usage events when present, else hidden.
-11. **CV-11 Line comments (§C.2 Changes).** The panel's Changes segment for
+11. **CV-11 Line comments (§C.2 Changes).** **Done** except the structured send: the daemon takes text, so the comment is one formatted message (see UI.md); no staged/unstaged groups or ahead/behind (not in the daemon's diff). The panel's Changes segment for
     this agent's worktree, the diff view, the per-line composer, the count
     marker, the comment bubble in chat, delivered as a structured comment
     `{file, line, text}` or queued while a step runs.

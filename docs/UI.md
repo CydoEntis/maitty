@@ -782,3 +782,20 @@ view too. Local sessions only.
   unbroken run that named the item current), and **Agents** is every helper call ("Agents · 2 working" or "all
   done"). A session with no agent, no event stream, or on another machine shows "Nothing to track yet" and one
   sentence saying why (`emptyReason`); an agent with neither list nor helpers says so too.
+- **Changes** (`ChangesSegment.tsx`, `DiffView.tsx`). The agent's worktree through `conversation_diff` (read every
+  4 s while the panel is open, and at once when the agent edits a file): the branch name from the session list,
+  then one list of changed files (directory dim, file name, a comment badge, `+a` `-d`). The daemon's diff does
+  not say which files are staged, how far the branch is ahead or behind, or whether it was pushed, so none of that
+  is shown. A file opens its diff in the panel, which widens to 520px: back arrow, the path truncated from the
+  start, `+a -d`, then numbered lines (the new side's numbers, from the hunk headers; a removed line has none and
+  takes no comment). Hovering a line shows a **+**; it opens a composer under the line ("Tell claude what to change
+  here...", Enter or Ctrl/Cmd+Enter sends, Shift+Enter adds a line, Cancel or Esc closes it; Esc is the top layer
+  of the ladder, `comment-composer`). Diffs over 1,500 lines draw in steps. An edit block's header opens its file
+  here (`panelCommands.ts`), opening the panel first.
+- **Line comments.** The daemon's send takes text only, so a comment goes as one message,
+  `Comment on <file>:<line>`, the line's code quoted, a blank line, the text (`chat/commentMessage.ts`); the chat
+  draws that message as a comment bubble. It is handed to the composer's own queue (`composerStore`), which sends
+  it once the agent's turn is over and never while an approval waits; the note under the composer says which. Exactly
+  one `useChatComposer` delivers a conversation's queue: the chat's when it is open, otherwise the panel's
+  (`QueueDelivery`), so a comment is sent once. A line with comments shows a count pill whose label lists them, and
+  the file row a badge. The written comments are the window's memory only (`commentStore.ts`).

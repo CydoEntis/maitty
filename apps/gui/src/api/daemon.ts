@@ -557,6 +557,33 @@ export async function loadConversationFile(
   })
 }
 
+/**
+ * The same three project questions for a session's chat link (the daemon conversation a pane is
+ * linked to), which is what the session panel holds; `loadConversation*` above take a whole
+ * `Conversation`, which the panel does not have.
+ */
+export type ConversationTarget = { conversation: number; generation: number }
+
+function requireProjectAccess(target: ConversationTarget): void {
+  if (!isDesktop()) throw new Error('Project files are available in the desktop app')
+  if (!Number.isSafeInteger(target.conversation) || target.conversation < 0) throw new Error('Conversation id is invalid')
+}
+
+export async function loadTargetDiff(target: ConversationTarget): Promise<ConversationDiff> {
+  requireProjectAccess(target)
+  return invokeParsed('conversation_diff', ConversationDiffSchema, { id: target.conversation, generation: target.generation })
+}
+
+export async function loadTargetFiles(target: ConversationTarget, path: string | null): Promise<ConversationFileEntry[]> {
+  requireProjectAccess(target)
+  return invokeParsed('conversation_files', z.array(ConversationFileEntrySchema), { id: target.conversation, generation: target.generation, path })
+}
+
+export async function loadTargetFile(target: ConversationTarget, path: string): Promise<string> {
+  requireProjectAccess(target)
+  return invokeParsed('conversation_file', z.string(), { id: target.conversation, generation: target.generation, path })
+}
+
 /** The folder a new session starts in when none is chosen: the home folder. */
 export async function defaultSessionFolder(): Promise<string> {
   if (!isDesktop()) return ''
