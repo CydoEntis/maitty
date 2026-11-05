@@ -124,8 +124,7 @@ jobs:
       - name: Install Tauri Linux dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          scripts/ci-apt-install.sh \
             build-essential curl file libayatana-appindicator3-dev libssl-dev \
             libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf rpm wget
 
@@ -160,6 +159,7 @@ jobs:
           ver=$(node -p "JSON.parse(require('fs').readFileSync('apps/gui/src-tauri/tauri.conf.json', 'utf8')).version")
           case "${{ runner.os }}" in
             Windows) find target/release/bundle -type f \( -iname '*.msi' -o -iname '*.exe' -o -iname '*.sig' \) -exec cp {} dist/ \; ;;
+        timeout-minutes: 15
             macOS)
               find target/release/bundle -type f -iname '*.dmg' -exec cp {} dist/ \;
               # The update bundle is named after the app only; give it the version and arch.

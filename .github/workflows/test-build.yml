@@ -50,9 +50,9 @@ jobs:
 
       - name: Install Tauri Linux dependencies
         if: runner.os == 'Linux'
+        timeout-minutes: 15
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          scripts/ci-apt-install.sh \
             build-essential curl file libayatana-appindicator3-dev libssl-dev \
             libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf rpm wget
 
