@@ -400,3 +400,182 @@ Asked for 2026-11-05. Today a machine whose Maitty is older than this computer's
 - Ticket 18 (secrets in history): owner delegated. Mask token- and key-shaped strings and omit the content of
   obviously secret files (`.env`, keys, credentials) from stored tool input; keep the file name and kind.
 - Push: after the three items above are done.
+
+
+## Added 2026-11-05: release and CI speed, from the v0.65.0 release
+
+Releasing v0.65.0 took most of a working day, nearly all of it waiting on CI. Where the time went:
+
+| Cause | Lost | State |
+| --- | --- | --- |
+| `test (windows-latest)` compiled from an empty cache, about 35 min a pull request | ~70 min | fixed in #270: 11 to 12 min |
+| The same job hit its 15 minute step limit while still compiling, and was re-run | ~30 min | fixed in #268 and #270 |
+| The release was a chain of pull requests (feature, bump #272, release #273), each waiting on CI | ~60 min | ticket 23 |
+| GitHub had no macOS runner: jobs cancelled three times on 2026-11-05, once on 2026-11-04 | ~45 min | ticket 24 |
+| One intermittent Windows test, re-run | ~30 min | ticket 26 |
+| `apt-get` took 30 min on a GitHub runner | 30 min | ticket 25 |
+
+Already on `dev` (#270): only `dev` saves a build cache, failed runs included; pull requests build no
+installers (the push to `dev` does); the frontend's tests and lint run once; `scripts/ci-areas.sh`
+skips jobs a change cannot reach; a pull request into `main` runs nothing.
+
+**Order.** 23, 24 and 25 are small and independent of each other: one pull request each, or one
+`ci` pull request with three commits. 26 needs Windows runs and is its own pull request. 27 is a
+decision first and may not be worth doing.
+
+**To do them:** read `AGENTS.md`, then `.github/workflows/ci.yml`, `.github/workflows/release.yml`
+and `scripts/ci-areas.sh`. Run the verification gate before each push. A pull request's own CI run
+is the test of a workflow change; say in the pull request what could not be run before merging.
+
+## 23. One command for a release (chore, `tooling`)
+
+The bump pull request (#272) and the release pull request (#273) each waited on a full CI run to
+change three version strings. The release rule in `AGENTS.md` asks only for: set the version,
+commit, bring `main` up to `dev`, tag. Add `scripts/release.sh <X.Y.Z> [--dry-run]` that does that
+and nothing else.
+
+**What it does, in order**
+1. Refuses, with a message and a non-zero exit, unless all of these hold:
+   - the argument is `X.Y.Z` and greater than the version in `apps/tui/Cargo.toml`;
+   - the tag `vX.Y.Z` exists neither locally nor on `origin`;
+   - the newest `ci` run for a push to `dev` is complete and green, and is for `origin/dev`'s head
+     (a head whose commits since that run touch only `docs/**` or `*.md` has no run of its own:
+     accept the newest run then). `--skip-ci-check` overrides this one check and says so in its
+     output: GitHub cancelling a macOS job for lack of a runner marks the whole run failed.
+2. Works in a temporary detached worktree of `origin/dev`, so the caller's checkout, index and local
+   branches are untouched. `dev` and `main` are often checked out in other worktrees, where
+   `git switch` would refuse.
+3. Sets the version in `apps/tui/Cargo.toml` and `apps/gui/src-tauri/tauri.conf.json`, refreshes
+   `Cargo.lock` with `cargo update --workspace --offline`, and commits the three files as
+   `build: bump to vX.Y.Z`.
+4. Checks out `origin/main` detached, merges the bump commit with
+   `git merge --no-ff -m "Merge dev into main for vX.Y.Z"` (the form used up to v0.61.0), and tags
+   the merge commit `vX.Y.Z` (a lightweight tag, like the existing ones).
+5. Pushes all three together:
+   `git push --atomic origin <bump>:refs/heads/dev <merge>:refs/heads/main refs/tags/vX.Y.Z`.
+   If the push is refused, deletes the local tag. Always removes the temporary worktree.
+6. Prints the URL of the release run the tag started.
+
+`--dry-run` runs every check in step 1 and prints the commands of steps 3 to 5 without running any
+that commit, tag or push.
+
+**Acceptance**
+- `scripts/release.sh 0.65.1 --dry-run` on a green `dev` prints the plan and leaves `git status`,
+  `git branch -vv`, `git tag -l` and `git worktree list` exactly as they were.
+- Each refusal in step 1 is shown once by hand (a bad version, an existing tag, a red run), with its
+  message quoted in the pull request.
+- The **Releases** bullet in `AGENTS.md` (*Project-specific: workflow and tooling*) names the script
+  and drops the hand-run steps. The owner approved changing this rule on 2026-11-05.
+- `docs/COMMIT-STANDARDS.md` says a direct commit to a protected branch needs explicit, one-time
+  authorization: note in the script's header that running it is that authorization for one release.
+
+**Notes**
+- It can only be proven end to end by the next real release. Say so in the pull request.
+- `release.yml`'s "Check release versions" step still fails a tag that does not match both version
+  fields, so a half-applied bump cannot publish.
+- The release notes are every `feat` and `fix` subject since the previous tag (`release.yml`,
+  "Release notes"). v0.65.0 has 124 lines, which is what the app's update dialog shows. Out of scope
+  here; file separately if it should be capped or grouped.
+
+## 24. Pull requests must not wait on macOS runners (chore, `tooling`)
+
+GitHub cancelled macOS jobs that never started, with "The job was not acquired by Runner of type
+hosted even after multiple attempts": `desktop GUI (macOS)` on #272 twice (run 42060316400),
+`desktop GUI (macOS host)` on `dev` (run 42068870969), and `install on macos-15` in the v0.64.0
+release (run 41875940232). Each cost a 15 minute wait and marked the run failed with nothing wrong.
+
+**What**
+- Remove the `gui-host-macos` job from `.github/workflows/ci.yml` and the comment above it.
+  `desktop package (macOS)`, on the push to `dev`, stays as the place the desktop host is compiled on
+  macOS. Update the file's header comment to say so.
+- Leave `check (macOS)` alone: it cross-checks on a Linux runner.
+- Leave `release.yml`'s `verify` job alone: it runs after the release is published and holds nothing up.
+
+**Acceptance**
+- A pull request's checks include no job that runs on a macOS runner.
+- A push to `dev` still runs `desktop package (macOS)`.
+
+**Notes**
+- Trade-off the owner accepted: a break that only shows when compiling the desktop host on macOS is
+  found on `dev` after the merge, not on the pull request.
+
+## 25. Linux package install: a limit and a retry (chore, `tooling`)
+
+On `dev` run 42068870969, `test (ubuntu-latest)` spent 30 minutes in "Install Tauri Linux
+dependencies" (16:54:14Z to 17:24:24Z). The log shows `azure.archive.ubuntu.com` going quiet for up
+to 473 seconds between packages. The step normally takes under a minute, and it has no limit.
+
+**What**
+- Add `scripts/ci-apt-install.sh <package>…`: `apt-get update` then `apt-get install -y`, each with
+  `-o Acquire::Retries=3 -o Acquire::http::Timeout=30`, each attempt under `timeout 240`, three
+  attempts, `sudo dpkg --configure -a` before a retry (a killed `apt-get` can leave `dpkg` half way).
+- Call it from the four steps that install the Tauri packages: `ci.yml` jobs `test` and
+  `package-linux`, `release.yml` job `build-gui`, and `test-build.yml`. Keep each job's own package
+  list. Give each step `timeout-minutes: 15`.
+- The Arch job uses `pacman`; leave it.
+
+**Acceptance**
+- The four steps call the script, and no workflow has its own `apt-get install` line left.
+- The pull request's `test (ubuntu-latest)` passes with the step under two minutes.
+
+## 26. Intermittent Windows failure in the three-machines hub test (bug, `client`, `windows`)
+
+On #270, `test (windows-latest)` failed once
+(https://github.com/CydoEntis/maitty/actions/runs/42055392461/job/127360803248):
+
+```text
+hub::tests::end_to_end::three_machines_snapshots_typing_and_a_replay_after_one_reconnects
+panicked at apps\gui\src-tauri\src\hub\tests\end_to_end.rs:235:13:
+assertion `left == right` failed: ECHO_ALPHA_92 reached machine 2
+  left: 1
+ right: 0
+```
+
+The same tree passed on #268 and on the re-run, and the test passes every time on Linux. The
+assertion says text typed for one machine showed once in another machine's pane, which would be a
+serious bug if the desktop hub did it.
+
+**Guess, not confirmed.** The three sandboxed daemons' shells share one user profile on the Windows
+runner (`maitty-test-support`'s `Sandbox::env` sets three variables, none of them the profile), and
+PowerShell's PSReadLine keeps one history file for every session and draws an inline suggestion
+from it. The token that leaked is the one run most recently, and it showed in the pane typed into
+next, which fits a suggestion and not a misrouted frame.
+
+**What**
+1. Make the failure say what it saw: put the pane's text in the assertion message at
+   `end_to_end.rs:235`.
+2. Confirm or rule out the guess on a Windows runner, for example by giving each sandbox its own
+   PSReadLine history path, or by turning suggestions off for the test's shells.
+3. If it holds, isolate the shells in `Sandbox` so no test's shell reads another's history.
+4. If it does not hold, stop and report: a real leak between machines is a routing bug in the
+   desktop hub, not a test fix.
+
+**Acceptance**
+- The cause is named with evidence from a Windows run.
+- The test passes ten runs in a row on `windows-latest`.
+- No retry is added (ticket 21's rule: fix the cause, don't retry).
+
+## 27. A build cache for the release workflow (spike, `tooling`)
+
+`release.yml` has no build cache, and its slowest build took 17 minutes (`build GUI windows-x64`,
+v0.64.0). Adding `Swatinem/rust-cache` to it as it stands saves nothing: GitHub lets a run read only
+the caches saved by its own ref and by the default branch, a release runs on a tag, and every
+release is a new tag.
+
+**Decide**
+- Whether to trigger the release from the push to `main` (the default branch, whose caches carry
+  over) and have the workflow create the tag, or to leave the release uncached.
+- Whether release caches fit: the repository's limit is 10 GB, shared with CI's caches, and eight
+  release builds would want several of them.
+
+Do this last, after timing a release made with ticket 23. It may not be worth the change.
+
+## Housekeeping from 2026-11-05 (not tickets)
+
+- Close #271: `dev` already has its two changes (the separate build step from #268, the cache saved
+  on failure from #270), and it conflicts with #270.
+- `docs/adr/0048-machines-in-the-desktop-app.md` says clipboard writes are off unless granted. Since
+  #269 a machine's `clipboard` is on unless its entry says `false` (`crates/maitty-machines/src/def.rs`),
+  in both apps. Amend the ADR or record the change in a new one.
+- A branch cut before these merges (the terminal fixes for v0.65.1) should merge `dev` before its
+  pull request: #268 changed about 500 lines of `crates/maitty-terminal-client`.
