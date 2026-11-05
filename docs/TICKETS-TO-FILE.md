@@ -12,6 +12,10 @@ change it, and an agent does not.
 desktop app (`apps/gui/RELEASE-HOLD` holds it out), so the terminal fixes in #275 and #276 ship.
 Phase 1 follows.
 
+**v0.65.1 is out (2026-11-05)**, without the desktop app: the updater still offers 0.64.0. Phase 1
+is next. What is left of phase 2: ticket 26 (draft #281), ten passes in a row on `windows-latest`
+for 28 and 29, and ticket 27.
+
 **How to work**
 - One ticket, one branch from `dev`, one pull request into `dev`. Read `AGENTS.md` and the docs the
   ticket touches before planning it.
@@ -45,7 +49,7 @@ Phase 1 follows.
 | 7 | 24 | Pull requests stop waiting on macOS runners. Done in #279 |
 | 8 | 25 | Linux package install gets a limit and a retry. Done in #279 |
 | 9 | 23 | One command for a release. Done in #279 |
-| 10 | 26, 28, 29 | The three intermittent Windows test failures, one pull request each. Name the cause from a Windows run; no retries |
+| 10 | 26, 28, 29 | The three intermittent Windows test failures, one pull request each. Name the cause from a Windows run; no retries. 28 fixed in #280 and 29 in #282; 26 is the draft #281 |
 | 11 | 27 | A build cache for the release workflow. **owner**: a decision first, and it may not be worth doing |
 
 **Phase 3. The terminal app.**
@@ -498,7 +502,8 @@ is the test of a workflow change; say in the pull request what could not be run 
 ## 23. One command for a release (chore, `tooling`)
 
 **Done 2026-11-05** (#279): `scripts/release.sh`. Run against a copy of the repository with a
-stand-in remote; the first real release is its end to end proof.
+stand-in remote, then used for v0.65.1: 8 minutes 26 seconds from the tag to the last install
+check, with the desktop app held out.
 
 The bump pull request (#272) and the release pull request (#273) each waited on a full CI run to
 change three version strings. The release rule in `AGENTS.md` asks only for: set the version,
@@ -630,6 +635,14 @@ next, which fits a suggestion and not a misrouted frame.
 - The test passes ten runs in a row on `windows-latest`.
 - No retry is added (ticket 21's rule: fix the cause, don't retry).
 
+**Cause seen on CI, not fixed (draft #281, 2026-11-05).** Under `pwsh` 7 on `windows-latest` a
+shell in one sandbox recalls a line typed in another sandbox's shell: #281's own test failed with
+the second sandbox's pane showing `echo TYPED_IN_FIRST`. So the shared history is real there.
+Setting `USERPROFILE` for each sandbox moves the history file for Windows PowerShell 5.1 but not
+for `pwsh` 7. Next: another lever (the test shells naming their own `HistorySavePath`, or saving
+no history), tried on `windows-latest`. #281's first commit, the assertion that prints the pane,
+is good by itself.
+
 ## 27. A build cache for the release workflow (spike, `tooling`)
 
 `release.yml` has no build cache, and its slowest build took 17 minutes (`build GUI windows-x64`,
@@ -697,7 +710,7 @@ nothing in the window stopped it. The app's own loop lets go of the connection i
 key press, so there a daemon's message cannot arrive late; a supervisor's event queued before it
 was stopped can (read from the code, not seen happening).
 
-**Fix.** The window remembers the ids it has forgotten and drops what arrives under one, from the
+**Fix (#280, in v0.65.1).** The window remembers the ids it has forgotten and drops what arrives under one, from the
 daemon or the supervisor. Two tests hand it the late message on purpose and fail without the fix.
 
 **Acceptance** as ticket 26: the cause named with evidence from a Windows run, ten passes in a row,
@@ -714,7 +727,14 @@ panicked at crates\maitty-core\src\daemon\logic_tests.rs:1018:14:
 a pane there
 ```
 
-The third run of the same commit passed. Not looked into.
+The third run of the same commit passed.
+
+**Cause, seen on Windows 11 with the temp folder under an 8.3 name; fixed in #282.** A race in the
+test, not in the daemon. The test found a pane by comparing its folder with the fixture path as
+text. A pane's shell reports its folder by its real long name at its first prompt, so with a temp
+folder spelled like `RUNNER~1` the pane stopped matching once that prompt was handled. The fixture
+now names its root canonically. That CI's temp folder is spelled that way is inferred. Still to
+see: ten passes in a row on `windows-latest`.
 
 **Acceptance** as ticket 26.
 
@@ -940,3 +960,59 @@ not be there. Fixing these one complaint at a time is how it drifted, so review 
 - **The block cursor hides the letter under it.** May be ticket 35 (the letter not drawn yet);
   check again once 35 is fixed.
 - **Claude Code is slow to start** in a pane. May be 35 or 36; check again once both are fixed.
+
+## Added 2026-11-05 (evening): found while fixing the intermittent Windows tests
+
+Each was seen or read during tickets 26, 28 and 29 and left alone as outside them.
+
+## 41. The desktop hub lets a removed machine come back (bug, `client`)
+
+The shape ticket 28 fixed in the terminal app is also in `apps/gui/src-tauri/src/hub.rs`:
+`on_link_event` takes a `Line` or a `State` with no check after `Command::Remove`. Read from the
+code, not tested. Dropping a stopped machine's events in `Links::next` (`maitty-machines`) would
+cover both apps.
+
+## 42. Other test sandboxes share the real profile's shell history (chore, `tooling`, `windows`)
+
+`apps/tui/tests/fake_ssh.rs`, `remote_status_tests.rs` and the in-process daemon tests set up their
+own environment, so their shells can read each other's history and write test lines into the
+developer's real PowerShell history. Do with ticket 26, once it has a lever that works.
+
+## 43. `tests/fake_ssh.rs` can leave a daemon running (bug, `tooling`, `windows`)
+
+Seen once: a left-over daemon (`fakessh-<pid>-<n>`) held `target\debug\maitty.exe` open, and 40
+desktop tests then failed with `building the maitty binary failed`.
+
+## 44. Intermittent hub test failures under load (bug, `client`, `windows`)
+
+With other test runs on the same machine: `end_to_end.rs:294`, `one dial for the line, one to
+redial at once`, left 1, right 2 (2 of 25 runs), and once each
+`killing_the_ssh_process_shows_reconnecting_then_connected_and_the_pane_comes_again` (the same
+message) and `a_different_daemon_at_a_known_name_is_turned_away_and_says_nothing_that_counts`
+(`retry dials a parked machine: Elapsed(())`). Each passed alone. Guess, not confirmed: the shim
+writes its `--calls` line after it starts the proxy, so the reconnect can be seen first.
+
+## 45. Intermittent conversation test failure under load (bug, `daemon`, `windows`)
+
+Once in a heavily loaded full run:
+`daemon::conversation::tests::user_input_requests_use_exact_ids_and_validated_ephemeral_answers`,
+`conversation	ests.rs:880`, `provider process tree survived disposal`. Passed 3 of 3 alone.
+
+## 46. `same_path` compares paths as text (bug, `daemon`, `windows`)
+
+Read from the code while fixing ticket 29, not exercised: a made worktree recorded under an 8.3
+spelling would never be removed automatically once its pane reports the long name
+(`cleanup_worktrees`), and `runs_in` would miss such a pane.
+
+## 47. The gate's cross-checks cannot build the desktop crate on Windows (chore, `docs`)
+
+On a Windows host `cargo check --target x86_64-unknown-linux-gnu` and
+`--target aarch64-apple-darwin` both fail as written, in the desktop crate's system dependencies
+(`libdbus-sys`, `objc2-exception-helper`). With `--workspace --exclude maitty-gui` both pass.
+[ENVIRONMENT](ENVIRONMENT.md) says so for the macOS target only. **owner**: whether the gate in
+`AGENTS.md` names the excluded form.
+
+## Housekeeping from 2026-11-05, evening (not tickets)
+
+- `docs/COMMIT-STANDARDS.md`, *Project-specific: tooling*, still says there is no release tooling.
+  `scripts/release.sh` is that tooling now. **owner** to change the line.
