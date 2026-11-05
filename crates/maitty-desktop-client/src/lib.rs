@@ -213,10 +213,26 @@ fn is_app_daemon(pid: u32) -> bool {
 fn is_daemon_command_line(command_line: &[u8]) -> bool {
     let mut args = command_line.split(|byte| *byte == 0);
     let program = args.next().unwrap_or_default();
-    let name = program.rsplit(|byte| *byte == b'/').next().unwrap_or_default();
+    is_daemon_invocation(program, args.next())
+}
+
+const EXE_SUFFIX: &[u8] = b".exe";
+
+/// Whether a program (a path or a bare name) started with this first argument is this product's
+/// daemon. One rule for stopping a daemon and for listing them.
+pub fn is_daemon_invocation(program: &[u8], first_argument: Option<&[u8]>) -> bool {
+    let file = program
+        .rsplit(|byte| matches!(byte, b'/' | b'\\'))
+        .next()
+        .unwrap_or_default();
+    // Windows names the program with its extension.
+    let name = match file.len().checked_sub(EXE_SUFFIX.len()) {
+        Some(stem) if file[stem..].eq_ignore_ascii_case(EXE_SUFFIX) => &file[..stem],
+        _ => file,
+    };
     let bundled = format!("{APP_COMMAND}-gui-daemon");
     (name == APP_COMMAND.as_bytes() || name.starts_with(bundled.as_bytes()))
-        && args.next() == Some(b"daemon".as_slice())
+        && first_argument == Some(b"daemon".as_slice())
 }
 
 /// Stop only the exact older local daemon the user confirmed replacing.
@@ -1402,6 +1418,8 @@ mod restart_confirmation_tests {
             command.to_string(),
             format!("/tmp/.mount_AppXyZ/usr/bin/{command}-gui-daemon"),
             format!("/repo/target/debug/{command}-gui-daemon-x86_64-unknown-linux-gnu"),
+            format!(r"C:\Users\me\AppData\Local\Maitty\{command}.exe"),
+            format!(r"C:\Program Files\Maitty\{command}-gui-daemon.EXE"),
         ] {
             assert!(is_daemon_command_line(&line(&program, "daemon")), "{program}");
         }
