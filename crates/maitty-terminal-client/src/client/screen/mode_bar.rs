@@ -435,7 +435,11 @@ fn keys_holder(app: &App) -> Option<Holder> {
             ("Esc", "cancel"),
         ),
         // Esc drops a selection first; only the next one leaves.
-        Mode::Copy(c) if c.anchor.is_some() => holder("COPY", &[("y", "copy")], ("Esc", "clear")),
+        Mode::Copy(c) if c.anchor.is_some() => holder(
+            "COPY",
+            &[("y", "copy"), ("J", "copy as one line")],
+            ("Esc", "clear"),
+        ),
         Mode::Copy(_) => holder(
             "COPY",
             &[("v", "select"), ("y", "copy"), ("/", "search")],

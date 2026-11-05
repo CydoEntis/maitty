@@ -276,6 +276,26 @@ impl Copy {
         out.join("\n")
     }
 
+    /// The selection as one line, for a command that wrapped across several: each line's
+    /// indentation and trailing space go, and lines join with a space, or with nothing where the
+    /// line before ran to the pane's last column (a word cut in two by the wrap).
+    pub fn selected_one_line(&self) -> String {
+        let mut out = String::new();
+        let mut prev_full = false;
+        for (n, line) in self.selected_text().lines().enumerate() {
+            let part = if n == 0 { line.trim_end() } else { line.trim() };
+            if part.is_empty() {
+                continue;
+            }
+            if n > 0 && !out.is_empty() && !prev_full {
+                out.push(' ');
+            }
+            out.push_str(part);
+            prev_full = line.chars().count() + 1 >= self.width && self.width > 0;
+        }
+        out
+    }
+
     fn insensitive(q: &str) -> bool {
         !q.chars().any(char::is_uppercase)
     }
@@ -470,6 +490,10 @@ impl Copy {
             KeyCode::Char('y') | KeyCode::Enter if self.anchor.is_some() => {
                 return Outcome::Yank(self.selected_text());
             }
+            // J: the selection as one line, for a command that wrapped.
+            KeyCode::Char('J') if self.anchor.is_some() => {
+                return Outcome::Yank(self.selected_one_line());
+            }
             KeyCode::Char('y') | KeyCode::Char('Y') => return Outcome::Yank(self.lines[l].clone()),
             KeyCode::Enter => return Outcome::Exit,
             KeyCode::Char('/') => {
@@ -638,6 +662,26 @@ mod tests {
         assert_eq!(c.selected_text(), "beta\ngamma");
         c.line_mode = true;
         assert_eq!(c.selected_text(), "alpha beta\ngamma Beta");
+    }
+
+    #[test]
+    fn a_wrapped_command_copies_as_one_line() {
+        // 20 columns: the first line breaks between words, the second runs to the last column
+        // (a word cut in two), the third is the rest, indented as an agent wraps it.
+        let mut c = copy_of("scp file host:/a/b\n  /c/ddd.png ok\n  tail");
+        c.width = 20;
+        c.anchor = Some((0, 0));
+        c.cur = (2, 10);
+        assert_eq!(c.selected_one_line(), "scp file host:/a/b /c/ddd.png ok tail");
+        let mut c = copy_of("abcdefghijklmnopqrs\n  tuvw");
+        c.width = 20;
+        c.anchor = Some((0, 0));
+        c.cur = (1, 10);
+        assert_eq!(
+            c.selected_one_line(),
+            "abcdefghijklmnopqrstuvw",
+            "a line that ran to the last column joins with nothing"
+        );
     }
 
     #[test]

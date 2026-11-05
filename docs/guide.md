@@ -711,6 +711,8 @@ Copy mode has no default key: open it from search commands (leader, then `Space`
 
 `Esc` clears an active selection before exiting; **Ctrl+C** exits immediately.
 Without a selection, `y` or `Y` copies the current line; Enter exits without copying.
+**J** copies the selection as one line: each line's indentation goes and the lines join with a space (with nothing where a line ran to the last column, a word cut by the wrap), for a command that wrapped. With the mouse, hold **Alt** while you let go of a drag to copy the same way.
+
 **Ctrl+Y / Ctrl+E** scroll one line up / down. Full details: [Copy mode controls](shortcuts.md#copy-mode).
 
 Copies go to the system clipboard and, through OSC 52, to your outer terminal (works over SSH).

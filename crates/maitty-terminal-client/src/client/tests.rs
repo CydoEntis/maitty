@@ -8896,7 +8896,7 @@ second line
             false,
             "COPY  · type to search · Enter find · Esc cancel",
         ),
-        ("copy selection", false, "COPY  · y copy · Esc clear"),
+        ("copy selection", false, "COPY  · y copy · J copy as one line · Esc clear"),
         (
             "key map step",
             true,

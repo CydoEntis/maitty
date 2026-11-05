@@ -763,10 +763,8 @@ impl App {
                 self.hover = Some(pos);
                 self.dirty = true;
             }
-            if matches!(m.kind, MouseEventKind::Down(_)) {
-                if Some(term) != self.focused() {
-                    self.cmd_on(term.machine, Command::FocusPane { term: term.term });
-                }
+            if matches!(m.kind, MouseEventKind::Down(_)) && Some(term) != self.focused() {
+                self.cmd_on(term.machine, Command::FocusPane { term: term.term });
             }
             if !bytes.is_empty() {
                 self.send_input(term, bytes);
@@ -1511,7 +1509,12 @@ impl App {
                 if let Mode::Copy(c) = &self.mode
                     && c.mouse
                 {
-                    let text = c.selected_text();
+                    // Alt held on release: the selection as one line, for a wrapped command.
+                    let text = if m.modifiers.contains(KeyModifiers::ALT) {
+                        c.selected_one_line()
+                    } else {
+                        c.selected_text()
+                    };
                     self.yank(text);
                     return true;
                 }
