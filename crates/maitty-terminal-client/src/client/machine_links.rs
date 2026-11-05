@@ -8,6 +8,10 @@ use maitty_settings::config::MachineDef;
 impl App {
     pub(super) fn on_link_event(&mut self, event: LinkEvent, connections: &mut Connections) {
         match event {
+            // A stopped supervisor's last events can still be in the queue. A line dropped
+            // here ends its ssh.
+            LinkEvent::Line(machine, _) | LinkEvent::State { machine, .. }
+                if self.machine_is_forgotten(machine) => {}
             LinkEvent::Line(machine, halves) => {
                 // A fresh line is a fresh look at who answers: the same wrong daemon is
                 // refused again on its first State, a fixed one is let in.

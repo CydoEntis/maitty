@@ -52,6 +52,9 @@ pub(super) struct Flow {
     logins: Vec<Login>,
     /// Machines removed, whose connections the event loop lets go of.
     dropped: Vec<MachineId>,
+    /// Every machine removed while the window ran. An id is never given to another machine,
+    /// so whatever arrives under one of these was sent before its machine was removed.
+    forgotten: HashSet<MachineId>,
 }
 
 impl Default for Flow {
@@ -64,6 +67,7 @@ impl Default for Flow {
             next_token: 0,
             logins: Vec::new(),
             dropped: Vec::new(),
+            forgotten: HashSet::new(),
         }
     }
 }
@@ -589,6 +593,14 @@ impl App {
         self.unsent_input.remove(&id);
         self.sync_terms(id, &Snapshot::default());
         self.machine_flow.dropped.push(id);
+        self.machine_flow.forgotten.insert(id);
+    }
+
+    /// Whether `machine` was removed. What its supervisor raised and what its daemon sent
+    /// before that can still be waiting to be taken in, and taking it in would put the machine
+    /// back in the sidebar with no entry left to remove it by.
+    pub(super) fn machine_is_forgotten(&self, machine: MachineId) -> bool {
+        self.machine_flow.forgotten.contains(&machine)
     }
 
     /// The connections to let go of: those of machines removed since the last look.

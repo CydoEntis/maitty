@@ -675,12 +675,22 @@ panicked at crates\maitty-terminal-client\src\client\machine_flow\tests.rs:773:9
 assertion failed: h.app.remotes.is_empty() && h.app.refused.is_empty()
 ```
 
-#276 changes neither the test nor the machine flow, and the re-run of the same commit passed. Not
-looked into: whether a late report from the removed machine's connection puts it back, which would
-be a bug in the app and not in the test.
+#276 changes neither the test nor the machine flow, and the re-run of the same commit passed.
+
+**Cause, seen on Windows 11 (1 failure in 421 runs).** With the assertion saying what it saw, the
+window still held `(MachineId(1), "", Connecting, 1 pane)`: no name and one pane is an entry made by
+the daemon's state, not by the supervisor. The daemon sends `TermsChanged` a few milliseconds after
+the new pane appears, as its shell starts, and the test's `pump` takes one more turn of messages
+before it lets go of the removed machine's connection. A late report does put the machine back:
+nothing in the window stopped it. The app's own loop lets go of the connection in the turn of the
+key press, so there a daemon's message cannot arrive late; a supervisor's event queued before it
+was stopped can (read from the code, not seen happening).
+
+**Fix.** The window remembers the ids it has forgotten and drops what arrives under one, from the
+daemon or the supervisor. Two tests hand it the late message on purpose and fail without the fix.
 
 **Acceptance** as ticket 26: the cause named with evidence from a Windows run, ten passes in a row,
-no retry added.
+no retry added. Still to see: ten passes in a row on `windows-latest`.
 
 ## 29. Intermittent Windows failure closing a worktree's last pane (bug, `daemon`, `windows`)
 
