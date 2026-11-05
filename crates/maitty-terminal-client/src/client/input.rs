@@ -162,6 +162,22 @@ impl App {
             }
             Mode::Themes { saving: true, .. } => {}
             Mode::Branch(v) => v.query.push_str(s.lines().next().unwrap_or("").trim()),
+            // The Add Machine input takes a pasted `user@host`; while a check or the result is
+            // shown there is no text box, and the paste is dropped, not sent to the pane behind.
+            Mode::Machines(v) => {
+                let line = s.lines().next().unwrap_or("").trim();
+                match &mut v.step {
+                    screen::machines::MachineStep::Browse => {
+                        v.query.push_str(line);
+                        (v.in_list, v.host_sel, v.notice) = (false, 0, None);
+                    }
+                    screen::machines::MachineStep::Name { name, error, .. } => {
+                        name.push_str(line);
+                        *error = None;
+                    }
+                    _ => {}
+                }
+            }
             Mode::Finder(fd) => {
                 fd.q.push_str(s.lines().next().unwrap_or("").trim());
                 fd.sel = 0;

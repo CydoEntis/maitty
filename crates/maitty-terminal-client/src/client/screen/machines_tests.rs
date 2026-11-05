@@ -444,3 +444,15 @@ fn the_dialog_keeps_to_a_small_window() {
     assert_box_whole(&text, r, &buf);
     assert!(words(&text, r).contains("a refusal that wraps"), "{text}");
 }
+
+#[test]
+fn a_paste_goes_into_the_input_not_the_pane_behind() {
+    let mut app = app_with(&[]);
+    open(&mut app, view(Some(hosts())));
+    app.on_paste("dev@kingdom.lan\nsecond line".into());
+    let Mode::Machines(v) = &app.mode else {
+        panic!("the dialog")
+    };
+    assert_eq!(v.query, "dev@kingdom.lan", "the first line, in the input");
+    assert!(!v.in_list);
+}
