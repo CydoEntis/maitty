@@ -4,6 +4,10 @@
 name: test-build
 
 on:
+  # GitHub only lists a manual workflow once it is on the default branch, so pushing a branch
+  # named test-build/<anything> also runs it.
+  push:
+    branches: ["test-build/**"]
   workflow_dispatch:
     inputs:
       ref:
