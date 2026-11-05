@@ -240,12 +240,6 @@ impl App {
                 self.screen_focus(v.term);
                 return false;
             }
-            KeyCode::Char('i') => {
-                self.mode = Mode::Why {
-                    term: v.term,
-                    side: false,
-                }
-            }
             KeyCode::Char('m') if sheet_failed(self, v) => {
                 self.send_failure(v.term, v.name.clone(), v.output.as_deref(), None)
             }
@@ -1103,16 +1097,7 @@ mod tests {
     }
 
     #[test]
-    fn the_sheet_s_keys_reach_the_session_its_why_and_its_settings() {
-        let mut app = sheet_world(Stage::Failed, OUT_FAIL, None);
-        app.on_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE));
-        assert_eq!(
-            app.mode,
-            Mode::Why {
-                term: ClientTerm::local(1),
-                side: false
-            }
-        );
+    fn the_sheet_s_keys_reach_the_session_and_its_settings() {
         let mut app = sheet_world(Stage::Never, "", Some(0));
         app.on_key(KeyEvent::new(KeyCode::Char(','), KeyModifiers::NONE));
         assert!(

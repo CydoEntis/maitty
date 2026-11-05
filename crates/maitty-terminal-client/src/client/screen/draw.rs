@@ -425,7 +425,6 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         Mode::Compose(c) if c.inbox.is_none() => {
             draw_compose_pop(app, f.buffer_mut(), above, g.side, &c, t)
         }
-        Mode::Why { term, .. } => draw_why_pop(app, f.buffer_mut(), above, g.side, term, t),
         Mode::Helpers { term, .. } => draw_helpers_pop(app, f.buffer_mut(), above, g.side, term, t),
         Mode::Secret { term, .. } => draw_secret_pop(app, f.buffer_mut(), above, g.side, term, t),
         _ => {}
@@ -1100,21 +1099,6 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
             },
             ScreenHit::TabPick(i),
         );
-        // The tab's glyph opens why, as a split pane's does: a lone pane's state is only here.
-        if marks[n].is_some()
-            && let Some(agent) = tab_agent_term(app, i)
-        {
-            hit(
-                app,
-                Rect {
-                    x: at + u16::from(look.round_tabs) + 1,
-                    y,
-                    width: 1,
-                    height: 1,
-                },
-                ScreenHit::Why(agent),
-            );
-        }
         if let Some(h) = closes[n] {
             let close_w = if look.round_tabs { 3 } else { 2 };
             hit(
@@ -1706,13 +1690,17 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     // notice's colour. Hairline, which has no boxes: a solid block in `card2` (its `card` is the
     // ground), its left edge a heavy rule (ADR 0028).
     let bg = if look.hairline { t.card2 } else { t.bg };
-    fill(buf, r, bg);
     let bar = Style::default().fg(ink(colour, bg)).bg(bg);
+    // A box's outline keeps the ground behind it, as a modal's does: a border cell on the
+    // toast's own ground would show a band of it outside the line.
+    let behind_top = top_ground(buf, r);
     if look.hairline {
+        fill(buf, r, bg);
         for yy in r.y..r.bottom() {
             buf[(r.x, yy)].set_symbol("┃").set_style(bar);
         }
     } else {
+        fill(buf, inside_outline(r), bg);
         panel_box(
             buf,
             r,
@@ -1720,7 +1708,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
                 rounded: true,
                 ..look
             },
-            bar,
+            Style::default().fg(ink(colour, bg)),
         );
         // The kind chip carries the notice's mark, as a modal's title chip carries its title.
         let chip = pill(
@@ -1846,6 +1834,9 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         hit(app, rect(lx, segs_width(&later)), ScreenHit::ToastClose);
     }
     hit(app, close, ScreenHit::ToastClose);
+    if !look.hairline {
+        border_on_ground(buf, r, bg, &behind_top);
+    }
 }
 
 /// A bold label on a pill of `bg`, ends rounded on `outer` when the look rounds them.

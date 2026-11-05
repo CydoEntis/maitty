@@ -313,7 +313,6 @@ fn keys_holder(app: &App) -> Option<Holder> {
             &[("", "type"), ("Enter", "save")],
             ("Esc", "cancel"),
         ),
-        Mode::Why { .. } => holder("WHY", &[], ("Esc", "close")),
         Mode::Helpers { .. } => holder(
             "HELPERS",
             &[("1", "allow"), ("2", "always"), ("3", "no")],

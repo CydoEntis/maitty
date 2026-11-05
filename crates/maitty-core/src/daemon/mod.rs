@@ -16,6 +16,7 @@ mod conversation;
 mod git;
 mod helpers;
 mod identity;
+mod last_lines;
 mod pane_terminal;
 mod persist;
 mod pr;
@@ -2638,6 +2639,7 @@ impl Daemon {
                         cpu: t.cpu,
                         bell: t.bell,
                         said: t.said.clone(),
+                        last_lines: t.last_lines.clone(),
                         branch: t.head.as_ref().map(|h| h.branch.clone()),
                         linked: t.head.as_ref().is_some_and(|h| h.linked),
                         root: t.head.as_ref().map(|h| h.main_root.clone()),

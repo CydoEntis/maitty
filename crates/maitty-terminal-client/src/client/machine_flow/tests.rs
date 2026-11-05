@@ -6,7 +6,7 @@
 use super::*;
 use crate::client::connections::Connections;
 use crate::client::ids::Outgoing;
-use crate::client::link::{Backoff, Links, Timing};
+use crate::client::link::{Backoff, LinkEvent, Links, Timing};
 use crate::client::machine_ids::{IdCheck, check_daemon_id};
 use crate::client::reference_fixture::term;
 use crate::client::remote_status_tests::{Runtime, Sandbox};
@@ -709,6 +709,23 @@ async fn terms_the_daemon_has(sandbox: &Sandbox) -> usize {
         .expect("the daemon's state")
 }
 
+/// Fails saying which machine the window still knows, and what it knows of it: a machine put
+/// back by its daemon has no name, one put back by its supervisor has no panes.
+#[track_caller]
+fn assert_no_machine_is_held(h: &Harness) {
+    let held: Vec<_> = h
+        .app
+        .remotes
+        .iter()
+        .map(|(id, r)| (*id, &r.name, &r.state, r.snap.terms.len()))
+        .collect();
+    assert!(
+        held.is_empty() && h.app.refused.is_empty(),
+        "the window still holds a machine: (id, name, state, panes) {held:?}, refused {:?}",
+        h.app.refused
+    );
+}
+
 #[test]
 fn removing_forgets_the_machine_here_and_leaves_its_sessions_and_the_saved_layout_alone() {
     let runtime = Runtime::new();
@@ -770,7 +787,7 @@ fn removing_forgets_the_machine_here_and_leaves_its_sessions_and_the_saved_layou
         assert!(!kept.contains("box"), "{kept}");
         assert!(h.app.cfg.machines.is_empty());
         assert!(!h.app.links.supervises(id), "its supervisor is stopped");
-        assert!(h.app.remotes.is_empty() && h.app.refused.is_empty());
+        assert_no_machine_is_held(&h);
         assert!(
             h.app.screen_model().iter().all(|p| p.machine != id),
             "its folders are out of the sidebar"
@@ -797,6 +814,85 @@ fn removing_forgets_the_machine_here_and_leaves_its_sessions_and_the_saved_layou
             terms_the_daemon_has(&h.sandbox).await >= 1,
             "the remote daemon's pane is still alive"
         );
+    });
+}
+
+fn work_pane() -> TermInfo {
+    term(1, "work", "", Status::Idle, Path::new("/"), 0)
+}
+
+/// A window that has `box` in its config and knows it as connected with one pane, and the id
+/// it knows it by. Nothing is dialled: the window is told what a supervisor and a daemon say.
+fn window_with_box() -> (Harness, MachineId) {
+    let mut h = Harness::new("proxy");
+    let def = MachineDef {
+        name: "box".into(),
+        target: "box".into(),
+        ..MachineDef::default()
+    };
+    machine_config::add_machine(&h.app.machine_flow.local_config, &def.name, &def.target)
+        .expect("write the machine");
+    h.app.cfg.machines.push(def);
+    let id = MachineId(1);
+    h.app
+        .on_link_state(id, "box".into(), ConnectionState::Connected);
+    let state = Snapshot {
+        terms: [(1, work_pane())].into_iter().collect(),
+        ..Snapshot::default()
+    };
+    h.app.on_machine_server(id, ServerMsg::State(state));
+    assert_eq!(h.app.remotes[&id].snap.terms.len(), 1, "its pane is known");
+    (h, id)
+}
+
+#[test]
+fn what_a_removed_machine_s_daemon_says_afterwards_does_not_bring_it_back() {
+    let (mut h, id) = window_with_box();
+    assert!(!h.app.machines_remove("box").error);
+
+    // Sent before the connection was let go of and taken in after: a pane that changed.
+    let changed = ServerMsg::TermsChanged {
+        changed: vec![work_pane()],
+        removed: Vec::new(),
+    };
+    h.app.on_machine_server(id, changed);
+
+    assert_no_machine_is_held(&h);
+    assert!(
+        h.app.screen_model().iter().all(|p| p.machine != id),
+        "its folders stay out of the sidebar"
+    );
+}
+
+#[test]
+fn what_a_removed_machine_s_supervisor_said_before_it_stopped_does_not_bring_it_back() {
+    let runtime = Runtime::new();
+    runtime.block_on(async {
+        let (mut h, id) = window_with_box();
+        assert!(!h.app.machines_remove("box").error);
+
+        // Raised before the supervisor was stopped and taken in after: a line it had just
+        // dialled, and the state that follows one.
+        let (window, _daemon) = tokio::io::duplex(1024);
+        let (read, write) = tokio::io::split(window);
+        let halves = (
+            maitty_ipc_transport::reader(read),
+            maitty_ipc_transport::writer(write),
+        );
+        h.app
+            .on_link_event(LinkEvent::Line(id, halves), &mut h.connections);
+        let connected = LinkEvent::State {
+            machine: id,
+            name: "box".into(),
+            state: ConnectionState::Connected,
+        };
+        h.app.on_link_event(connected, &mut h.connections);
+
+        assert!(
+            !h.connections.is_connected(id),
+            "the line is not taken, which ends its ssh"
+        );
+        assert_no_machine_is_held(&h);
     });
 }
 
@@ -856,5 +952,98 @@ fn retry_on_a_connected_machine_says_so_and_a_machine_with_no_supervisor_gets_on
             .await;
         assert_eq!(h.app.machine_retry("box").text, "box is connected.");
         assert!(h.app.machine_retry("nobody").error);
+    });
+}
+
+// ---- your machines in the dialog: the arrows, reconnect, update, remove ----------------------
+
+#[test]
+fn the_dialog_lists_your_machines_and_its_keys_update_and_remove_the_chosen_one() {
+    let runtime = Runtime::new();
+    runtime.block_on(async {
+        let mut h = Harness::live("not-installed").await;
+        h.add_by_enter("box");
+        h.until("the machine to say what it needs", |h| {
+            matches!(h.state_of("box"), Some(ConnectionState::NeedsUpdate { .. }))
+        })
+        .await;
+
+        // Up from the input is your machines, Down from the last of them is the input again.
+        h.open(Vec::new());
+        assert_eq!(h.view().machine_sel, None, "the keys start in the input");
+        h.key(KeyCode::Up);
+        assert_eq!(h.view().machine_sel, Some(0));
+        h.key(KeyCode::Down);
+        assert_eq!(h.view().machine_sel, None);
+        h.type_text("r");
+        assert_eq!(h.view().query, "r", "in the input a letter is typed");
+
+        // `u` runs the update in a popup on this computer, with --install for a machine that
+        // has no app, and the machine is dialled when the popup closes.
+        h.open(Vec::new());
+        h.key(KeyCode::Up);
+        h.type_text("u");
+        let popups = h.popups();
+        let (machine, cmd) = popups.last().expect("a popup");
+        assert_eq!(*machine, MachineId::LOCAL);
+        assert!(cmd.ends_with(" machine update box --install"), "{cmd}");
+        assert!(
+            !matches!(h.app.mode, Mode::Machines(_)),
+            "the popup takes the keys, so the dialog is closed"
+        );
+        assert!(h.notice().starts_with("Updating box"), "{}", h.notice());
+        assert!(h.app.machine_login_waiting("box"));
+
+        // `r` dials it again and says so in the dialog.
+        h.open(Vec::new());
+        h.key(KeyCode::Up);
+        h.type_text("r");
+        assert_eq!(h.notice(), "Trying box again.");
+        assert_eq!(h.view().machine_sel, Some(0), "the keys stay on the machine");
+
+        // `e` asks where the machine is. A target ssh would read as an option is refused inline
+        // and nothing is written; a good one is saved in place and dialled at once.
+        h.type_text("e");
+        assert!(
+            matches!(&h.view().step, MachineStep::Edit { target, .. } if target == "box"),
+            "the field starts with where it is now"
+        );
+        for _ in 0.."box".len() {
+            h.key(KeyCode::Backspace);
+        }
+        h.type_text("-oProxyCommand=x");
+        h.key(KeyCode::Enter);
+        assert!(
+            matches!(&h.view().step, MachineStep::Edit { error: Some(_), .. }),
+            "refused where it was typed"
+        );
+        assert_eq!(
+            machine_entries(&h.local_config().unwrap()),
+            [("box".to_string(), "box".to_string())]
+        );
+        for _ in 0.."-oProxyCommand=x".len() {
+            h.key(KeyCode::Backspace);
+        }
+        let old_id = h.id_of("box").expect("its connection");
+        h.type_text("me@box");
+        h.key(KeyCode::Enter);
+        assert_eq!(h.notice(), "box now connects to me@box. Connecting.");
+        assert_eq!(h.view().step, MachineStep::Browse);
+        assert_eq!(h.view().machine_sel, Some(0), "the keys are back on the machine");
+        assert_eq!(
+            machine_entries(&h.local_config().unwrap()),
+            [("box".to_string(), "me@box".to_string())]
+        );
+        assert_eq!(h.app.cfg.machines[0].target, "me@box");
+        let new_id = h.id_of("box").expect("it is dialled at the new address");
+        assert_ne!(new_id, old_id, "the old connection was let go");
+        assert!(!h.app.remotes.contains_key(&old_id));
+
+        // `x` removes it from the config; with none left the keys are back in the input.
+        h.type_text("x");
+        assert!(h.notice().starts_with("Removes box from this list."));
+        assert_eq!(h.view().machine_sel, None);
+        assert!(machine_entries(&h.local_config().unwrap()).is_empty());
+        assert!(h.app.cfg.machines.is_empty());
     });
 }

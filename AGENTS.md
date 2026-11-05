@@ -305,10 +305,14 @@ runs a nested server with `MAITTY_SOCKET=<name> maitty`.
   commit per logical change, pushed after the gate passes.
 - **Install locally:** `cargo install --path apps/tui` (stop a running `maitty` first on
   Windows, or the binary is locked).
-- **Releases:** set `version` in `apps/tui/Cargo.toml`, commit, bring `main` up to `dev`, then tag
-  `vX.Y.Z` on `main` and push the tag. `.github/workflows/release.yml` builds Windows, macOS
+- **Releases:** run `scripts/release.sh X.Y.Z` (`--dry-run` prints what it would do). It refuses
+  unless `dev`'s head passed CI, then sets the version in `apps/tui/Cargo.toml` and
+  `apps/gui/src-tauri/tauri.conf.json`, brings `main` up to `dev`, tags `vX.Y.Z` on `main` and
+  pushes the three together. `.github/workflows/release.yml` builds Windows, macOS
   (Apple Silicon and Intel) and Linux (x64, ARM; static musl) archives with checksums and
-  publishes the GitHub Release that `install.sh` / `install.ps1` download from.
+  publishes the GitHub Release that `install.sh` / `install.ps1` download from. While
+  `apps/gui/RELEASE-HOLD` exists a release leaves the desktop app out; see
+  [`docs/stack/tauri-updater.md`](docs/stack/tauri-updater.md#project-specific-updater).
 - **Tickets:** Plane work items `MAITTY-N` (see the next section). Older GitHub issues on CydoEntis/maitty (labelled `phase-5`, …) are history; don't file new planned work there.
 
 ## Project-specific: planning (Plane)

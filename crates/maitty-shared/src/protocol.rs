@@ -1063,6 +1063,10 @@ pub struct TermInfo {
     pub bell: bool,
     /// The agent's last message, if hooks reported it.
     pub said: String,
+    /// The last lines of text on the pane when its turn ended, for an agent whose hooks
+    /// reported no last message. Empty while `said` has one.
+    #[serde(default)]
+    pub last_lines: String,
     /// The git branch the pane is on, if it's in a repo.
     pub branch: Option<String>,
     /// The pane is in a linked worktree.
@@ -1895,6 +1899,17 @@ mod tests {
             "a peer that knows no helper requests"
         );
         term.helper_ask = vec!["fix the login test".into(), "port the footer".into()];
+        round_trips(&ServerMsg::State(Snapshot {
+            terms: [(3, term)].into(),
+            ..Default::default()
+        }));
+    }
+
+    #[test]
+    fn a_pane_from_a_peer_that_reads_no_screens_has_no_last_lines() {
+        let mut term = pane_from(serde_json::json!({}));
+        assert!(term.last_lines.is_empty(), "an older peer sends none");
+        term.last_lines = "All three migrations ran clean.".into();
         round_trips(&ServerMsg::State(Snapshot {
             terms: [(3, term)].into(),
             ..Default::default()

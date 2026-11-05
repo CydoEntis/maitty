@@ -28,12 +28,6 @@ fn surfaces() -> Vec<(&'static str, Open)> {
         ("row menu", |app| {
             app.menu_for_session(ClientTerm::local(4), (10, 10))
         }),
-        ("why", |app| {
-            app.mode = Mode::Why {
-                term: ClientTerm::local(3),
-                side: true,
-            }
-        }),
         ("message", |app| app.act(Action::Message)),
         ("confirm close", |app| app.act(Action::ClosePane)),
         ("rename", |app| app.act(Action::RenameTab)),

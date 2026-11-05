@@ -29,12 +29,23 @@ impl Kind {
         }
     }
 
-    fn file_name(self) -> &'static str {
-        // The number changes with the sound, so an older file isn't played in its place.
-        match self {
-            Kind::Needs => concat!(env!("APP_COMMAND"), "-needs-you-1.wav"),
-            Kind::Done => concat!(env!("APP_COMMAND"), "-finished-1.wav"),
-        }
+    /// The number changes with the sound, so an older file isn't played in its place; each
+    /// loudness is a file of its own.
+    fn file_name(self, volume: Volume) -> String {
+        let sound = match self {
+            Kind::Needs => "needs-you-1",
+            Kind::Done => "finished-1",
+        };
+        format!("{}-{sound}-{}.wav", env!("APP_COMMAND"), volume.word())
+    }
+
+    /// Whether the person wants this sound: sounds are on, and so is this one.
+    fn wanted(self, cfg: &crate::config::Notify) -> bool {
+        cfg.sound
+            && match self {
+                Kind::Needs => cfg.sound_on_needs,
+                Kind::Done => cfg.sound_on_done,
+            }
     }
 
     /// The sound for a user-facing status change, if that change needs the user to act.
@@ -47,14 +58,48 @@ impl Kind {
     }
 }
 
+/// How loud the sounds are (`notify.volume`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Volume {
+    Quiet,
+    Normal,
+    Loud,
+}
+
+impl Volume {
+    /// The setting's word as a loudness; anything unknown is `normal`.
+    pub fn of(cfg: &crate::config::Notify) -> Volume {
+        match cfg.volume.as_str() {
+            "quiet" => Volume::Quiet,
+            "loud" => Volume::Loud,
+            _ => Volume::Normal,
+        }
+    }
+
+    fn word(self) -> &'static str {
+        match self {
+            Volume::Quiet => "quiet",
+            Volume::Normal => "normal",
+            Volume::Loud => "loud",
+        }
+    }
+
+    /// Of full scale. Normal is heard, not startling.
+    fn level(self) -> f32 {
+        match self {
+            Volume::Quiet => 0.12,
+            Volume::Normal => 0.3,
+            Volume::Loud => 0.6,
+        }
+    }
+}
+
 const SAMPLE_RATE: u32 = 22_050;
-/// How loud the sounds are, of full scale: heard, not startling.
-const LEVEL: f32 = 0.3;
 /// Each note fades in over this long, so it doesn't click.
 const ATTACK_MS: f32 = 6.0;
 
-/// `kind`'s sound as a WAV file's bytes (16-bit mono).
-pub fn tone(kind: Kind) -> Vec<u8> {
+/// `kind`'s sound at `volume` as a WAV file's bytes (16-bit mono).
+pub fn tone(kind: Kind, volume: Volume) -> Vec<u8> {
     let mut pcm: Vec<i16> = Vec::new();
     for (hz, ms) in kind.notes() {
         let n = SAMPLE_RATE * ms / 1000;
@@ -65,7 +110,7 @@ pub fn tone(kind: Kind) -> Vec<u8> {
             let fade_out = (-4.0 * i as f32 / n as f32).exp();
             let wave = (std::f32::consts::TAU * hz * t).sin()
                 + 0.25 * (std::f32::consts::TAU * hz * 2.0 * t).sin();
-            pcm.push((wave / 1.25 * fade_in * fade_out * LEVEL * f32::from(i16::MAX)) as i16);
+            pcm.push((wave / 1.25 * fade_in * fade_out * volume.level() * f32::from(i16::MAX)) as i16);
         }
     }
     let data_len = (pcm.len() * 2) as u32;
@@ -91,10 +136,10 @@ pub fn tone(kind: Kind) -> Vec<u8> {
 
 /// `kind`'s sound as a file the system's player can open: written to the app's data folder the
 /// first time it's needed.
-pub fn tone_file(kind: Kind) -> Option<PathBuf> {
-    let path = crate::config::data_dir().join(kind.file_name());
+pub fn tone_file(kind: Kind, volume: Volume) -> Option<PathBuf> {
+    let path = crate::config::data_dir().join(kind.file_name(volume));
     if !path.is_file()
-        && let Err(e) = crate::config::write_atomic(&path, tone(kind))
+        && let Err(e) = crate::config::write_atomic(&path, tone(kind, volume))
     {
         tracing::warn!("writing {}: {e}", path.display());
         return None;
@@ -136,11 +181,12 @@ pub fn should_alert<S: PartialEq>(
     !same_again && !crowded
 }
 
-/// Play the app's sound for `kind`, unless sounds are off. Returns at once.
+/// Play the app's sound for `kind`, unless sounds or that sound are off. Returns at once.
 pub fn ring(cfg: &crate::config::Notify, kind: Kind) {
     // Tests drive real status changes: they must not ring the machine they run on.
-    if cfg.sound && !cfg!(test) {
-        std::thread::spawn(move || play(kind));
+    if kind.wanted(cfg) && !cfg!(test) {
+        let volume = Volume::of(cfg);
+        std::thread::spawn(move || play(kind, volume));
     }
 }
 
@@ -340,8 +386,10 @@ fn on_path(tool: &str) -> bool {
 }
 
 /// Play `kind`'s sound. Blocks until it has played.
-pub fn play(kind: Kind) {
-    let Some(file) = tone_file(kind) else { return };
+pub fn play(kind: Kind, volume: Volume) {
+    let Some(file) = tone_file(kind, volume) else {
+        return;
+    };
     if cfg!(windows) {
         // MediaPlayer handles wav, mp3 and wma; it plays asynchronously, so wait a moment.
         const PLAY: &str = concat!(
@@ -434,7 +482,10 @@ mod tests {
 
     #[test]
     fn the_two_sounds_are_wav_files_you_can_tell_apart() {
-        let (needs, done) = (tone(Kind::Needs), tone(Kind::Done));
+        let (needs, done) = (
+            tone(Kind::Needs, Volume::Normal),
+            tone(Kind::Done, Volume::Normal),
+        );
         for wav in [&needs, &done] {
             assert_eq!((&wav[..4], &wav[8..16]), (&b"RIFF"[..], &b"WAVEfmt "[..]));
             let riff = u32::from_le_bytes(wav[4..8].try_into().unwrap()) as usize;
@@ -452,7 +503,7 @@ mod tests {
                 .collect();
             let peak = samples.iter().map(|s| s.unsigned_abs()).max().unwrap();
             assert!(
-                peak > 2000 && f32::from(peak) <= LEVEL * f32::from(i16::MAX) + 1.0,
+                peak > 2000 && f32::from(peak) <= Volume::Normal.level() * f32::from(i16::MAX) + 1.0,
                 "audible, and no louder than its level: {peak}"
             );
             assert!(
@@ -470,7 +521,7 @@ mod tests {
             Kind::Needs.notes()[0].0 < Kind::Needs.notes()[1].0,
             "needs you rises"
         );
-        assert!(Kind::Needs.file_name() != Kind::Done.file_name());
+        assert!(Kind::Needs.file_name(Volume::Normal) != Kind::Done.file_name(Volume::Normal));
     }
 
     #[test]
@@ -531,5 +582,42 @@ mod tests {
             place_label(None, Path::new("/home/me/notes"), Some(" ")),
             "notes"
         );
+    }
+
+    #[test]
+    fn each_sound_has_its_own_switch_and_the_main_one_silences_both() {
+        let mut cfg = crate::config::Notify::default();
+        assert!(Kind::Needs.wanted(&cfg) && Kind::Done.wanted(&cfg));
+        cfg.sound_on_done = false;
+        assert!(Kind::Needs.wanted(&cfg) && !Kind::Done.wanted(&cfg));
+        (cfg.sound_on_done, cfg.sound_on_needs) = (true, false);
+        assert!(!Kind::Needs.wanted(&cfg) && Kind::Done.wanted(&cfg));
+        (cfg.sound_on_needs, cfg.sound) = (true, false);
+        assert!(!Kind::Needs.wanted(&cfg) && !Kind::Done.wanted(&cfg));
+    }
+
+    #[test]
+    fn the_volume_setting_changes_how_loud_the_sound_is_and_which_file_holds_it() {
+        let peak = |volume| {
+            tone(Kind::Done, volume)[44..]
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|b| i16::from_le_bytes(*b).unsigned_abs())
+                .max()
+                .unwrap_or(0)
+        };
+        assert!(peak(Volume::Quiet) < peak(Volume::Normal));
+        assert!(peak(Volume::Normal) < peak(Volume::Loud));
+        assert_ne!(
+            Kind::Done.file_name(Volume::Quiet),
+            Kind::Done.file_name(Volume::Loud)
+        );
+        let mut cfg = crate::config::Notify::default();
+        assert_eq!(Volume::of(&cfg), Volume::Normal);
+        for (word, volume) in [("quiet", Volume::Quiet), ("loud", Volume::Loud), ("?", Volume::Normal)] {
+            cfg.volume = word.into();
+            assert_eq!(Volume::of(&cfg), volume, "{word}");
+        }
     }
 }

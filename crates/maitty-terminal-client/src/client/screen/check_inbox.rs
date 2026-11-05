@@ -58,6 +58,8 @@ pub(super) type Button = (&'static str, &'static str, char);
 const OUTPUT: Button = ("Output", "⏎", '\n');
 const RERUN: Button = ("Re-run", "r", 'r');
 const SEND: Button = ("Send to agent", "m", 'm');
+const REPLY: Button = ("Reply", "m", 'm');
+const OPEN: Button = ("Open", "o", 'o');
 pub(super) const OVERRIDE: Button = ("Override…", "O", 'O');
 
 /// An Inbox item as drawn: its head line, the line under it, a third for a failure, and the
@@ -70,7 +72,11 @@ pub(super) struct Item {
     /// The machine it is on, when not this computer.
     pub machine: String,
     pub age: String,
+    /// What it says under its head line; empty when `said` says it, or it has nothing to say.
     pub line: Vec<Words>,
+    /// The agent's last words in place of `line`, on one line, and their colour: for a row
+    /// that finished, or waits on you without having asked through the app.
+    pub said: Option<(String, Color)>,
     /// Several checkpoints: the line in full, and the glyph strip when that doesn't fit.
     pub strip: Option<Vec<Words>>,
     pub third: Option<String>,
@@ -224,13 +230,32 @@ fn failing_line(info: &CheckInfo) -> Option<String> {
 
 fn buttons(row: &GoRow, info: Option<&CheckInfo>) -> Vec<Button> {
     match row {
-        GoRow::Ask(_) => vec![("Reply", "m", 'm'), ("Open", "o", 'o')],
+        GoRow::Ask(_) => vec![REPLY, OPEN],
         GoRow::Approve(_) => vec![("Read the command", "⏎", '\n')],
         GoRow::Failed(_) => vec![OUTPUT, RERUN, OVERRIDE, SEND],
         GoRow::NotRun(_) => vec![OUTPUT, ("Settings", ",", ',')],
         GoRow::Done(_) if info.is_some_and(|i| i.state == CheckState::Stale) => vec![RERUN, OUTPUT],
+        // A plain finish: what it said is on the row, so the answer to it is too.
+        GoRow::Done(_) if info.is_none() => vec![REPLY, OPEN],
         _ => Vec::new(),
     }
+}
+
+/// What the agent last said, on one line: its own message, else the last lines of its screen
+/// (an agent whose hooks report none). Empty when there is neither.
+fn last_said(app: &App, s: &Session) -> String {
+    let Some(info) = s.native_term.and_then(|id| app.term_info(id)) else {
+        return String::new();
+    };
+    let text = if info.said.trim().is_empty() {
+        &info.last_lines
+    } else {
+        &info.said
+    };
+    crate::hidden::sanitize(text, false)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// The item for an Inbox row of a session, or None for a heading, a heads-up or a search hit.
@@ -247,17 +272,18 @@ pub(super) fn item(app: &App, model: &[Proj], row: &GoRow, t: &Theme) -> Option<
         .and_then(|id| app.term_info(id))
         .map(|i| i.checks.clone())
         .unwrap_or_default();
+    let last = last_said(app, s);
+    let mut said = None;
     let (line, strip) = match (row, info) {
-        (GoRow::Ask(_), _) => (
-            vec![(
-                s.question
-                    .clone()
-                    .unwrap_or_else(|| "waiting on you".into()),
-                t.blocked,
-                false,
-            )],
-            None,
-        ),
+        // It asked through the app: the question. Else what it last said is the question.
+        (GoRow::Ask(_), _) => match &s.question {
+            Some(question) => (vec![(question.clone(), t.blocked, false)], None),
+            None if !last.is_empty() => {
+                said = Some((last, t.blocked));
+                (Vec::new(), None)
+            }
+            None => (vec![("waiting on you".into(), t.blocked, false)], None),
+        },
         (GoRow::Quiet(_), _) => (
             vec![(
                 format!(
@@ -274,7 +300,13 @@ pub(super) fn item(app: &App, model: &[Proj], row: &GoRow, t: &Theme) -> Option<
             (full, Some(strip))
         }
         (_, Some(info)) => (check_line(info, t), None),
-        (_, None) => (vec![("finished · not seen".into(), t.muted, false)], None),
+        // A plain finish: its heading says finished, so the row says what the agent said.
+        (_, None) => {
+            if !last.is_empty() {
+                said = Some((last, t.text));
+            }
+            (Vec::new(), None)
+        }
     };
     let failed = matches!(row, GoRow::Failed(_));
     Some(Item {
@@ -285,6 +317,7 @@ pub(super) fn item(app: &App, model: &[Proj], row: &GoRow, t: &Theme) -> Option<
         machine: app.machine_label_of(s.key.machine),
         age: age(s.since),
         line,
+        said,
         strip,
         third: info.filter(|_| failed).and_then(failing_line),
         buttons: buttons(row, info),

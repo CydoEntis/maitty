@@ -91,6 +91,14 @@ Two things to know when building on Windows while a desktop daemon is running:
   build the Tauri crate `maitty-gui` from Windows, because its `libdbus-sys` needs a
   Linux sysroot. Cross-check the rest with `--workspace --exclude maitty-gui`.
 
+Two more, on Linux:
+
+- A fresh checkout or worktree has no `apps/gui/src-tauri/binaries/` sidecar, and `cargo build`
+  fails in `maitty-gui`'s build script until there is one. `node apps/gui/scripts/bundle-daemon.ts`
+  builds `maitty` and copies it there (the desktop commands do this themselves).
+- `cargo check --target aarch64-apple-darwin` cannot build `maitty-gui` without a macOS C compiler
+  (its Objective-C does not compile). Cross-check the rest with `--workspace --exclude maitty-gui`.
+
 The release workflow signs the desktop update bundles with a Tauri updater key. Generate one once
 with `pnpm exec tauri signer generate -w <path outside the repo>`, put its public half in
 `plugins.updater.pubkey` in `apps/gui/src-tauri/tauri.conf.json`, and store the private half as the

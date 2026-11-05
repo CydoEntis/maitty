@@ -27,6 +27,12 @@ pub enum MachineStep {
         name: String,
         error: Option<String>,
     },
+    /// Where one of your machines is, being typed again.
+    Edit {
+        name: String,
+        target: String,
+        error: Option<String>,
+    },
     /// ssh is being asked, without a prompt, whether the machine can be reached.
     Checking {
         target: String,
@@ -67,6 +73,8 @@ pub struct MachinesView {
     pub host_sel: usize,
     /// The keys are on the list of hosts, not the input.
     pub in_list: bool,
+    /// The keys are on your machines, above the input: the chosen one's place in `machine_rows`.
+    pub machine_sel: Option<usize>,
     pub step: MachineStep,
     pub notice: Option<MachineNotice>,
     /// Whether to say what Windows ssh can and cannot remember.
@@ -80,10 +88,104 @@ impl MachinesView {
             query: String::new(),
             host_sel: 0,
             in_list: false,
+            machine_sel: None,
             step: MachineStep::Browse,
             notice: None,
             windows,
         }
+    }
+}
+
+/// One configured machine as the dialog lists it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MachineRow {
+    pub name: String,
+    pub target: String,
+    pub glyph: &'static str,
+    pub word: String,
+    pub color: Color,
+    /// Why it is down and what to do, in full.
+    pub detail: Option<String>,
+}
+
+impl App {
+    /// The configured machines in the order the dialog lists them: by name.
+    fn listed_machines(&self) -> Vec<&MachineDef> {
+        let mut defs: Vec<&MachineDef> = self.cfg.machines.iter().collect();
+        defs.sort_by_key(|d| d.name.to_lowercase());
+        defs
+    }
+
+    fn machine_names(&self) -> Vec<String> {
+        self.listed_machines()
+            .into_iter()
+            .map(|def| def.name.clone())
+            .collect()
+    }
+
+    /// Where a machine is in the dialog's list.
+    pub(in crate::client) fn machine_listed_at(&self, name: &str) -> Option<usize> {
+        self.machine_names()
+            .iter()
+            .position(|n| n.eq_ignore_ascii_case(name))
+    }
+
+    /// The configured machines, each with how its connection stands.
+    pub(in crate::client) fn machine_rows(&self, t: &Theme) -> Vec<MachineRow> {
+        self.listed_machines()
+            .into_iter()
+            .map(|def| self.machine_row(def, t))
+            .collect()
+    }
+
+    fn machine_row(&self, def: &MachineDef, t: &Theme) -> MachineRow {
+        let found = self
+            .remotes
+            .iter()
+            .find(|(_, remote)| remote.name.eq_ignore_ascii_case(&def.name));
+        let (glyph, word, color, detail) = match found {
+            Some((id, _)) if self.refused.contains_key(id) => (
+                "✕",
+                "refused".to_string(),
+                t.err,
+                self.refused.get(id).map(|why| sanitize(why, false)),
+            ),
+            Some((_, remote)) => {
+                let mark = machine_group::state_mark(&remote.state, self.ascii_marks(), t);
+                (
+                    mark.glyph,
+                    mark.word,
+                    mark.color,
+                    state_detail(&remote.state),
+                )
+            }
+            None => (
+                "◌",
+                "not started".to_string(),
+                t.muted,
+                Some("Reconnect starts it.".to_string()),
+            ),
+        };
+        MachineRow {
+            name: sanitize(&def.name, false),
+            target: sanitize(&def.target, false),
+            glyph,
+            word,
+            color,
+            // The fix texts name the machine as `<name>`: say which one.
+            detail: detail.map(|why| why.replace("<name>", &def.name)),
+        }
+    }
+}
+
+fn state_detail(state: &crate::client::link::ConnectionState) -> Option<String> {
+    use crate::client::link::ConnectionState::*;
+    match state {
+        NeedsLogin { why } | NeedsUpdate { why } | Unreachable { why, .. } => {
+            Some(sanitize(why, false))
+        }
+        Reconnecting { .. } => Some("The connection was lost; trying again.".to_string()),
+        Connecting | Connected => None,
     }
 }
 
@@ -191,6 +293,9 @@ impl App {
             MachineStep::Name { target, name, .. } => {
                 self.machines_name_key(&mut v, target, name, k)
             }
+            MachineStep::Edit { name, target, .. } => {
+                self.machines_edit_key(&mut v, name, target, k)
+            }
             MachineStep::Checking { .. } => {
                 if k.code == KeyCode::Esc {
                     self.machines_cancel_probe(&mut v);
@@ -207,9 +312,64 @@ impl App {
         }
     }
 
-    fn machines_browse_key(&mut self, v: &mut MachinesView, k: &KeyEvent) {
+    /// The keys while they are on your machines: the arrows move (Down from the last one is back
+    /// in the input), and a letter acts on the chosen machine.
+    fn machines_list_key(&mut self, v: &mut MachinesView, sel: usize, k: &KeyEvent) {
+        let names = self.machine_names();
+        let sel = sel.min(names.len().saturating_sub(1));
+        let Some(name) = names.get(sel).cloned() else {
+            v.machine_sel = None;
+            return;
+        };
         match k.code {
             KeyCode::Esc => self.mode = Mode::Normal,
+            KeyCode::Up => v.machine_sel = Some(sel.saturating_sub(1)),
+            KeyCode::Down if sel + 1 < names.len() => v.machine_sel = Some(sel + 1),
+            KeyCode::Down | KeyCode::Tab | KeyCode::BackTab => v.machine_sel = None,
+            KeyCode::Enter | KeyCode::Char('r') => v.notice = Some(self.machine_retry(&name)),
+            KeyCode::Char('u') => {
+                let said = self.machine_update(&name);
+                // The update's popup takes the keys, so the dialog is closed: say it in a toast.
+                if matches!(self.mode, Mode::Machines(_)) {
+                    v.notice = Some(said);
+                } else {
+                    self.notify(said.text, said.error);
+                }
+            }
+            KeyCode::Char('e') => {
+                let target = self
+                    .cfg
+                    .machines
+                    .iter()
+                    .find(|m| m.name == name)
+                    .map(|m| m.target.clone())
+                    .unwrap_or_default();
+                v.notice = None;
+                v.step = MachineStep::Edit {
+                    name,
+                    target,
+                    error: None,
+                };
+            }
+            KeyCode::Char('x') | KeyCode::Delete => {
+                v.notice = Some(self.machines_remove(&name));
+                let left = self.cfg.machines.len();
+                v.machine_sel = (left > 0).then(|| sel.min(left - 1));
+            }
+            _ => {}
+        }
+    }
+
+    fn machines_browse_key(&mut self, v: &mut MachinesView, k: &KeyEvent) {
+        if let Some(sel) = v.machine_sel {
+            return self.machines_list_key(v, sel, k);
+        }
+        match k.code {
+            KeyCode::Esc => self.mode = Mode::Normal,
+            // Up from the input is the last of your machines.
+            KeyCode::Up if !v.in_list && !self.cfg.machines.is_empty() => {
+                v.machine_sel = Some(self.cfg.machines.len() - 1);
+            }
             // Down walks into the list of hosts, Up from its first row is back in the input.
             KeyCode::Up if v.in_list && v.host_sel == 0 => v.in_list = false,
             KeyCode::Up => v.host_sel = v.host_sel.saturating_sub(1),
@@ -241,6 +401,51 @@ impl App {
                     (v.in_list, v.host_sel) = (false, 0);
                     v.notice = None;
                 }
+            }
+        }
+    }
+
+    /// Typing where a machine is: Enter saves it and dials there, Esc leaves it as it was.
+    fn machines_edit_key(
+        &mut self,
+        v: &mut MachinesView,
+        name: String,
+        mut target: String,
+        k: &KeyEvent,
+    ) {
+        match k.code {
+            KeyCode::Esc => v.step = MachineStep::Browse,
+            KeyCode::Enter => {
+                let said = self.machine_retarget(&name, &target);
+                if said.error {
+                    v.step = MachineStep::Edit {
+                        name,
+                        target,
+                        error: Some(said.text),
+                    };
+                } else {
+                    v.step = MachineStep::Browse;
+                    v.machine_sel = self.machine_listed_at(&name);
+                    v.notice = Some(said);
+                }
+            }
+            KeyCode::Backspace => {
+                target.pop();
+                v.step = MachineStep::Edit {
+                    name,
+                    target,
+                    error: None,
+                };
+            }
+            _ => {
+                if let Some(c) = typed(k) {
+                    target.push(c);
+                }
+                v.step = MachineStep::Edit {
+                    name,
+                    target,
+                    error: None,
+                };
             }
         }
     }
@@ -284,6 +489,10 @@ const INDENT: u16 = 3;
 const WIDTH: u16 = 96;
 const HEIGHT: u16 = 26;
 const MOST_SUGGESTIONS: usize = 6;
+/// Your machines shown at once; the list follows the chosen one past them.
+const MOST_MACHINES: usize = 4;
+/// The most lines the chosen machine's fix takes before its end is cut.
+const DETAIL_LINES: usize = 2;
 /// Rows the dialog keeps for everything but the suggestions: the question, the input, the parse
 /// line and the heading, with the gaps between.
 const FIXED_ROWS: u16 = 6;
@@ -326,6 +535,8 @@ pub(in crate::client) fn draw_machines(
     dim_all(app, buf, area, t);
     let title = match v.step {
         MachineStep::Added { .. } => "MACHINE ADDED",
+        // Opened on one of your machines, it is about that machine, not about adding one.
+        MachineStep::Browse if v.machine_sel.is_some() => "MACHINES",
         _ => "ADD MACHINE",
     };
     let r = panel(app, buf, area, WIDTH, HEIGHT, title, &[], t);
@@ -344,7 +555,21 @@ pub(in crate::client) fn draw_machines(
             target,
             name,
             error,
-        } => draw_name(buf, inner, target, name, error.as_deref(), t),
+        } => {
+            let ask = format!("Name for {}", sanitize(target, false));
+            draw_name(buf, inner, &ask, name, error.as_deref(), t)
+        }
+        MachineStep::Edit {
+            name,
+            target,
+            error,
+        } => {
+            let ask = format!(
+                "Where is {}? Type it like scp or ssh.",
+                sanitize(name, false)
+            );
+            draw_name(buf, inner, &ask, target, error.as_deref(), t)
+        }
         MachineStep::Checking { target } => {
             let who = parse_target(target).unwrap_or_default();
             let steps = checklist(&who, None);
@@ -377,7 +602,7 @@ pub(in crate::client) fn draw_machines(
             );
         }
     }
-    panel_bar(buf, r, t, &bar_keys(&v.step));
+    panel_bar(buf, r, t, &bar_keys(v));
 }
 
 fn heading(buf: &mut Buffer, inner: Rect, y: u16, text: &str, t: &Theme) {
@@ -402,11 +627,12 @@ fn draw_input(app: &mut App, buf: &mut Buffer, inner: Rect, v: &MachinesView, t:
         popover::wrap(&sanitize(&n.text, false), inner.width as usize).len() as u16
     });
     let windows = if v.windows { WINDOWS_ROWS } else { 0 };
+    let yours = draw_your_machines(app, buf, inner, v, t);
     let room = (inner
         .height
-        .saturating_sub(FIXED_ROWS + windows + notice_rows) as usize)
+        .saturating_sub(FIXED_ROWS + yours + windows + notice_rows) as usize)
         .clamp(1, MOST_SUGGESTIONS);
-    let mut y = inner.y;
+    let mut y = inner.y + yours;
     put(
         buf,
         inner.x,
@@ -418,7 +644,14 @@ fn draw_input(app: &mut App, buf: &mut Buffer, inner: Rect, v: &MachinesView, t:
         inner.right(),
     );
     y += 2;
-    draw_field(buf, inner, y, &v.query, !v.in_list, t);
+    draw_field(
+        buf,
+        inner,
+        y,
+        &v.query,
+        !v.in_list && v.machine_sel.is_none(),
+        t,
+    );
     y += 1;
     let hosts = v.hosts.as_deref().unwrap_or_default();
     let parsed = parse_target(&v.query);
@@ -534,6 +767,89 @@ fn draw_input(app: &mut App, buf: &mut Buffer, inner: Rect, v: &MachinesView, t:
     }
 }
 
+/// Your machines, above the input: a row each with how its connection stands, and under the
+/// chosen one what to do about it. Returns the rows taken, the gap after them included; none
+/// when there is no machine yet.
+fn draw_your_machines(
+    app: &mut App,
+    buf: &mut Buffer,
+    inner: Rect,
+    v: &MachinesView,
+    t: &Theme,
+) -> u16 {
+    let rows = app.machine_rows(t);
+    if rows.is_empty() {
+        return 0;
+    }
+    let mut y = inner.y;
+    heading(buf, inner, y, "YOUR MACHINES", t);
+    y += 1;
+    let sel = v.machine_sel.map(|s| s.min(rows.len() - 1));
+    let start = sel.map_or(0, |s| (s + 1).saturating_sub(MOST_MACHINES));
+    let name_w = rows
+        .iter()
+        .map(|r| r.name.width())
+        .max()
+        .unwrap_or(0)
+        .clamp(6, 24);
+    for (n, row) in rows.iter().enumerate().skip(start).take(MOST_MACHINES) {
+        let rr = Rect {
+            x: inner.x,
+            y,
+            width: inner.width,
+            height: 1,
+        };
+        let on = sel == Some(n);
+        let st = list_row(app, buf, rr, on, t);
+        let state = format!("{} {}", row.glyph, row.word);
+        let state_w = state.width();
+        let target_w = (inner.width as usize).saturating_sub(name_w + state_w + 12);
+        put(
+            buf,
+            rr.x + 2,
+            y,
+            &[
+                seg(
+                    format!(
+                        "{} {:<name_w$}",
+                        machine_group::REMOTE_ICON,
+                        truncate(&row.name, name_w)
+                    ),
+                    st.fg(if on { t.strong } else { t.text })
+                        .add_modifier(Modifier::BOLD),
+                ),
+                seg(
+                    format!("  {}", truncate(&row.target, target_w)),
+                    st.fg(t.muted),
+                ),
+            ],
+            rr.right(),
+        );
+        put(
+            buf,
+            rr.right().saturating_sub(state_w as u16 + 2),
+            y,
+            &[seg(state, st.fg(row.color).add_modifier(Modifier::BOLD))],
+            rr.right(),
+        );
+        y += 1;
+    }
+    if let Some(detail) = sel.and_then(|s| rows[s].detail.as_deref()) {
+        let room = inner.width.saturating_sub(2) as usize;
+        for line in popover::wrap_capped(detail, room, DETAIL_LINES) {
+            put(
+                buf,
+                inner.x + 2,
+                y,
+                &[seg(line, Style::default().bg(t.card).fg(t.text))],
+                inner.right(),
+            );
+            y += 1;
+        }
+    }
+    y + 1 - inner.y
+}
+
 /// The input, its row tinted, with the cursor.
 fn draw_field(buf: &mut Buffer, inner: Rect, y: u16, query: &str, on: bool, t: &Theme) {
     let row = Rect {
@@ -557,20 +873,19 @@ fn draw_field(buf: &mut Buffer, inner: Rect, y: u16, query: &str, on: bool, t: &
     put(buf, inner.x, y, &segs, inner.right());
 }
 
+/// A step that asks for one line: what it asks, the field with what is typed, and under it why
+/// the last answer was refused.
 fn draw_name(
     buf: &mut Buffer,
     inner: Rect,
-    target: &str,
+    ask: &str,
     name: &str,
     error: Option<&str>,
     t: &Theme,
 ) {
     let c = Style::default().bg(t.card);
     let bold = c.fg(t.strong).add_modifier(Modifier::BOLD);
-    let mut lines: Vec<Vec<Seg>> = vec![
-        vec![seg(format!("Name for {}", sanitize(target, false)), bold)],
-        vec![],
-    ];
+    let mut lines: Vec<Vec<Seg>> = vec![vec![seg(ask.to_string(), bold)], vec![]];
     let field_y = inner.y + 2;
     draw_field(buf, inner, field_y, name, true, t);
     if let Some(error) = error {
@@ -690,8 +1005,16 @@ fn draw_checklist(
     }
 }
 
-fn bar_keys(step: &MachineStep) -> Vec<(&'static str, &'static str)> {
-    match step {
+fn bar_keys(v: &MachinesView) -> Vec<(&'static str, &'static str)> {
+    match &v.step {
+        MachineStep::Browse if v.machine_sel.is_some() => vec![
+            ("r", "reconnect"),
+            ("u", "update"),
+            ("e", "edit"),
+            ("x", "remove"),
+            ("↑↓", "move"),
+            ("Esc", "close"),
+        ],
         MachineStep::Browse => vec![
             ("Enter", "connect"),
             ("↑↓", "input / hosts"),
@@ -699,6 +1022,9 @@ fn bar_keys(step: &MachineStep) -> Vec<(&'static str, &'static str)> {
         ],
         MachineStep::Name { .. } => {
             vec![("", "type a name"), ("Enter", "add"), ("Esc", "back")]
+        }
+        MachineStep::Edit { .. } => {
+            vec![("", "type where it is"), ("Enter", "save"), ("Esc", "back")]
         }
         MachineStep::Checking { .. } => vec![("Esc", "cancel")],
         MachineStep::Added { .. } => vec![("Enter", "done"), ("Esc", "close")],

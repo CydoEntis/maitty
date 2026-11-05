@@ -118,11 +118,21 @@ impl Default for Snapshots {
     }
 }
 
+/// How loud the alert sounds are (`notify.volume`), quietest first.
+pub const VOLUMES: &[&str] = &["quiet", VOLUME_NORMAL, "loud"];
+pub const VOLUME_NORMAL: &str = "normal";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Notify {
-    /// Play the app's sound when an agent needs you.
+    /// Play the app's sounds at all. Off silences both of the ones below.
     pub sound: bool,
+    /// The sound when an agent needs you (two rising notes).
+    pub sound_on_needs: bool,
+    /// The sound when an agent you are not looking at finishes (one soft note).
+    pub sound_on_done: bool,
+    /// How loud the sounds are: `quiet`, `normal` or `loud`.
+    pub volume: String,
     /// Alerts on your phone through ntfy (the free ntfy app): your topic's name. Empty is off.
     /// On the public server the name is all that keeps them private, so make it hard to guess.
     pub phone_topic: String,
@@ -141,6 +151,9 @@ impl Default for Notify {
     fn default() -> Self {
         Notify {
             sound: true,
+            sound_on_needs: true,
+            sound_on_done: true,
+            volume: VOLUME_NORMAL.into(),
             phone_topic: String::new(),
             phone_server: "https://ntfy.sh".into(),
             phone_after: 60,
@@ -831,7 +844,7 @@ impl Default for Ui {
         Ui {
             sidebar: true,
             sidebar_position: "left".into(),
-            tool_rail: true,
+            tool_rail: false,
             which_key_delay_ms: 600,
             which_key: false,
             mouse: true,

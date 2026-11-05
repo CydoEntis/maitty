@@ -352,20 +352,10 @@ fn focus_cell(look: &str, r: Rect) -> (u16, u16) {
 #[test]
 fn the_focused_pane_stays_lit_under_a_menu_popover_or_confirm_in_every_look() {
     type Open = fn(&mut App, ClientTerm, ClientTerm);
-    let overlays: [(&str, Open, bool); 4] = [
+    let overlays: [(&str, Open, bool); 3] = [
         (
             "the pane's menu",
             |app, focus, _| app.menu_for_pane(focus, (60, 5)),
-            false,
-        ),
-        (
-            "why",
-            |app, focus, _| {
-                app.mode = Mode::Why {
-                    term: focus,
-                    side: false,
-                }
-            },
             false,
         ),
         (

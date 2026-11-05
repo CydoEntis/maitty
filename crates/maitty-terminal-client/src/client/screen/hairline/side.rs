@@ -465,18 +465,6 @@ fn draw_session(
         &[seg(g, st.fg(gc).add_modifier(Modifier::BOLD))],
         nx,
     );
-    if let Some(term) = s.native_term {
-        hit(
-            app,
-            Rect {
-                x: gx,
-                y,
-                width: 2,
-                height: 1,
-            },
-            ScreenHit::Why(term),
-        );
-    }
     let end = text_end(r);
     let menu = state != RowState::Focused && hovered(app, row);
     let right = if menu {

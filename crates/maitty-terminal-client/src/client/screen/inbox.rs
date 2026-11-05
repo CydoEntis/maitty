@@ -156,8 +156,36 @@ enum Extra {
     Busy,
 }
 
-/// How many rows a row of the Inbox takes, its gap included.
-fn row_height(row: &GoRow, item: Option<&Item>, selected: bool, extra: Extra) -> u16 {
+/// The most lines of what an agent last said that the selected row shows.
+const SAID_ROWS: usize = 4;
+
+/// What the agent last said as a row shows it in `room` cells: the selected row up to
+/// `SAID_ROWS` wrapped lines, any other row its first line cut short. Nothing for a row that
+/// says something else.
+fn said_lines(it: &Item, room: usize, selected: bool) -> Vec<String> {
+    let Some((text, _)) = &it.said else {
+        return Vec::new();
+    };
+    if selected {
+        super::popover::wrap_capped(text, room.max(1), SAID_ROWS)
+    } else {
+        vec![truncate(text, room)]
+    }
+}
+
+/// The rows under an item's head line that say something: `said` of what the agent last said,
+/// else its one line when it has one.
+fn body_rows(it: &Item, said: u16) -> u16 {
+    if said > 0 {
+        said
+    } else {
+        u16::from(!it.line.is_empty())
+    }
+}
+
+/// How many rows a row of the Inbox takes, its gap included. `said`: the lines of what the
+/// agent last said that it shows.
+fn row_height(row: &GoRow, item: Option<&Item>, said: u16, selected: bool, extra: Extra) -> u16 {
     match (row, item) {
         (GoRow::Head(_), _) => 1,
         (GoRow::Heads(_), _) => 4,
@@ -169,7 +197,7 @@ fn row_height(row: &GoRow, item: Option<&Item>, selected: bool, extra: Extra) ->
                 Extra::Asking => 2,
                 Extra::Busy => 1,
             };
-            2 + u16::from(it.third.is_some()) + buttons + more + 1
+            1 + body_rows(it, said) + u16::from(it.third.is_some()) + buttons + more + 1
         }
         _ => 1,
     }
@@ -184,8 +212,16 @@ fn on_machine(label: &str) -> String {
     }
 }
 
-/// An item's lines at `y`: its head line and the lines under it, on `bg`.
-fn draw_item(buf: &mut Buffer, (x, y, right): (u16, u16, u16), it: &Item, bg: Color, t: &Theme) {
+/// An item's lines at `y`: its head line and the lines under it, on `bg`. `said`: the lines of
+/// what the agent last said, in place of its own line.
+fn draw_item(
+    buf: &mut Buffer,
+    (x, y, right): (u16, u16, u16),
+    it: &Item,
+    said: &[String],
+    bg: Color,
+    t: &Theme,
+) {
     let st = Style::default().bg(bg);
     let age_w = it.age.width() as u16;
     let head = [
@@ -228,12 +264,24 @@ fn draw_item(buf: &mut Buffer, (x, y, right): (u16, u16, u16), it: &Item, bg: Co
     {
         line = words(strip);
     }
-    put(buf, x + 2, y + 1, &line, right);
+    let said_colour = it.said.as_ref().map_or(t.text, |(_, colour)| *colour);
+    for (n, text) in said.iter().enumerate() {
+        put(
+            buf,
+            x + 2,
+            y + 1 + n as u16,
+            &[seg(text.clone(), st.fg(said_colour))],
+            right,
+        );
+    }
+    if said.is_empty() {
+        put(buf, x + 2, y + 1, &line, right);
+    }
     if let Some(third) = &it.third {
         put(
             buf,
             x + 2,
-            y + 2,
+            y + 1 + body_rows(it, said.len() as u16),
             &[seg(third.clone(), st.fg(t.muted))],
             right,
         );
@@ -520,7 +568,23 @@ pub(super) fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, ground: 
         }
         _ => Extra::None,
     };
-    let height = |i: usize| row_height(&rows[i], items[i].as_ref(), i == sel, extra(&rows[i]));
+    // What an agent last said takes more rows on the selected row, so the row's height does too.
+    let said_room = right.saturating_sub(x + 2) as usize;
+    let said = |i: usize| -> Vec<String> {
+        items[i]
+            .as_ref()
+            .map(|it| said_lines(it, said_room, i == sel))
+            .unwrap_or_default()
+    };
+    let height = |i: usize| {
+        row_height(
+            &rows[i],
+            items[i].as_ref(),
+            said(i).len() as u16,
+            i == sel,
+            extra(&rows[i]),
+        )
+    };
     // Scrolled so the selected row is whole on screen.
     let avail = bottom.saturating_sub(y);
     let mut start = 0;
@@ -597,8 +661,10 @@ pub(super) fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, ground: 
                 }
             }
             (_, Some(it)) => {
-                draw_item(buf, (x, y, right), it, bg, t);
-                let under = y + 2 + u16::from(it.third.is_some());
+                let said = said(i);
+                draw_item(buf, (x, y, right), it, &said, bg, t);
+                let under =
+                    y + 1 + body_rows(it, said.len() as u16) + u16::from(it.third.is_some());
                 match extra(row) {
                     Extra::Compose(_) => {
                         if let Some(cm) = &compose {
@@ -670,7 +736,7 @@ mod tests {
     use super::super::reference::{Ref, assert_same, layout_name, reference, text};
     use super::*;
     use crate::client::View;
-    use crate::client::reference_fixture::{LAYOUTS, SIZES, Stage, now, world};
+    use crate::client::reference_fixture::{LAYOUTS, QUICK_FOX_SAID, SIZES, Stage, now, world};
     use crate::protocol::{CheckState, ClientMsg, Command};
 
     /// The reference's sample question and first failing line, in place of the fixture's.
@@ -727,6 +793,7 @@ mod tests {
             for (w, h) in SIZES {
                 let mut want = reference(preset, layout_name(layout), w, h);
                 want.offers_send_to_agent(w);
+                want.says_what_the_agent_said(QUICK_FOX_SAID);
                 fix(&mut want);
                 let mut app = inbox_world(stage, term);
                 tweak(&mut app);
@@ -734,6 +801,120 @@ mod tests {
                 assert_same(&got, &want, &format!("{preset} {layout:?} {w}x{h}"));
             }
         }
+    }
+
+    /// The sample's finished agent.
+    const FOX: TermId = 4;
+
+    /// The Inbox's row that names `name`.
+    fn row_of(rows: &[String], name: &str) -> usize {
+        rows.iter()
+            .position(|r| r.contains(name))
+            .unwrap_or_else(|| panic!("no {name} in\n{}", rows.join("\n")))
+    }
+
+    #[test]
+    fn a_finished_item_says_what_its_agent_last_said_and_nothing_when_it_said_nothing() {
+        let area = Rect::new(0, 0, 100, 30);
+        let mut app = inbox_world(Stage::Failed, 1);
+        let rows = draw(&mut app, area, 100, 30);
+        let at = row_of(&rows, "quick-fox");
+        assert!(rows[at + 1].contains(QUICK_FOX_SAID), "{}", rows[at + 1]);
+        assert!(
+            !rows.iter().any(|r| r.contains("finished · not seen")),
+            "its heading already says finished"
+        );
+
+        // An agent whose hooks report no message: the last lines of its screen, on one line.
+        let info = app.snap.terms.get_mut(&FOX).unwrap();
+        info.said.clear();
+        info.last_lines =
+            "All three migrations ran clean.\nWant me to open the pull request?".into();
+        let rows = draw(&mut app, area, 100, 30);
+        assert!(
+            rows[at + 1]
+                .contains("All three migrations ran clean. Want me to open the pull request?"),
+            "{}",
+            rows[at + 1]
+        );
+
+        // Neither: the item is its head line alone.
+        app.snap.terms.get_mut(&FOX).unwrap().last_lines.clear();
+        let rows = draw(&mut app, area, 100, 30);
+        assert!(rows[at + 1].trim().is_empty(), "{:?}", rows[at + 1]);
+    }
+
+    #[test]
+    fn the_selected_item_shows_up_to_four_lines_of_what_was_said_above_its_buttons() {
+        let area = Rect::new(0, 0, 60, 30);
+        let mut app = inbox_world(Stage::Failed, FOX);
+        app.snap.terms.get_mut(&FOX).unwrap().said = "word ".repeat(80);
+        let said = |rows: &[String]| -> Vec<String> {
+            let at = row_of(rows, "quick-fox");
+            rows[at + 1..]
+                .iter()
+                .take_while(|r| r.contains("word"))
+                .cloned()
+                .collect()
+        };
+        let rows = draw(&mut app, area, 60, 30);
+        let lines = said(&rows);
+        assert_eq!(lines.len(), 4, "wrapped, and no more than four:\n{lines:#?}");
+        assert!(
+            lines[3].trim_end().ends_with('…'),
+            "what does not fit is cut: {}",
+            lines[3]
+        );
+        let buttons = &rows[row_of(&rows, "quick-fox") + 5];
+        assert!(
+            buttons.contains("Reply") && buttons.contains("Open"),
+            "the answer to it is right under it: {buttons}"
+        );
+
+        // Any other item: one line of it, cut short.
+        select(&mut app, 1);
+        let lines = said(&draw(&mut app, area, 60, 30));
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(lines[0].trim_end().ends_with('…'), "{}", lines[0]);
+    }
+
+    #[test]
+    fn an_item_that_waits_on_you_without_a_question_says_what_was_last_said() {
+        let area = Rect::new(0, 0, 100, 30);
+        let mut app = inbox_world(Stage::Failed, 1);
+        // quick-fox stops to ask, in its own interface: the app has no question from it.
+        let info = app.snap.terms.get_mut(&FOX).unwrap();
+        info.status = Status::Blocked;
+        info.said = "Which package manager should I use?".into();
+        app.screen_fresh();
+        app.screen_sync();
+        select(&mut app, FOX);
+        assert!(
+            matches!(
+                goto_rows(&app.screen_model(), "", 0)
+                    .iter()
+                    .find(|r| r.term() == Some(ClientTerm::local(FOX))),
+                Some(GoRow::Ask(_))
+            ),
+            "it is listed as needing you"
+        );
+        let rows = draw(&mut app, area, 100, 30);
+        let at = row_of(&rows, "quick-fox");
+        assert!(
+            rows[at + 1].contains("Which package manager should I use?"),
+            "its last words stand in for the question:\n{}",
+            rows.join("\n")
+        );
+        assert!(
+            rows[at + 2].contains("Reply") && rows[at + 2].contains("Open"),
+            "{}",
+            rows[at + 2]
+        );
+
+        // Nothing said either: the old words.
+        app.snap.terms.get_mut(&FOX).unwrap().said.clear();
+        let rows = draw(&mut app, area, 100, 30);
+        assert!(rows[at + 1].contains("waiting on you"), "{}", rows[at + 1]);
     }
 
     #[test]

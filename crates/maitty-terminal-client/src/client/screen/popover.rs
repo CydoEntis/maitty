@@ -1,9 +1,9 @@
-//! Popovers beside a sidebar row (the screen isn't dimmed): a quick follow-up to an agent
-//! (`m`), and why it has the status it has (`i`). A `◂` points at the row.
+//! The popover beside a sidebar row (the screen isn't dimmed): a quick follow-up to an agent
+//! (`m`). A `◂` points at the row.
 
 use super::*;
 use crate::client::ids::{ClientTerm, Outgoing};
-use crate::protocol::{CheckInfo, CheckState, ClientMsg};
+use crate::protocol::ClientMsg;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::{Duration, Instant};
 
@@ -19,14 +19,6 @@ pub(in crate::client) struct Compose {
 
 /// The Inbox row's text area grows to this many rows.
 pub(in crate::client) const INBOX_ROWS: u16 = 6;
-/// The popovers' widths, when there's room.
-const WHY_W: u16 = 64;
-const WHY_H: u16 = 12;
-/// The why popover of a session with a check: its three lines and the keys.
-const CHECK_WHY_W: u16 = 60;
-const CHECK_WHY_H: u16 = 8;
-/// Width of the time column in the check timeline (`14:21:51 `).
-const TIME_COL: usize = 9;
 
 /// Word-wrapped to `width`, keeping blank lines.
 pub(super) fn wrap(text: &str, width: usize) -> Vec<String> {
@@ -255,7 +247,8 @@ pub(in crate::client) fn frame_beside_row(
         width: side.width,
         height: 1,
     });
-    let top = place(screen, anchor, h);
+    // Never in the padding round the screen, which stays empty.
+    let top = place(screen, anchor, h).max(framed(app, screen).y);
     let r = Rect {
         x: x0,
         y: top,
@@ -334,7 +327,9 @@ pub(in crate::client) fn draw_compose_pop(
     };
     let ascii = app.cfg.ui.glyphs == "ascii";
     let (quote_max, input_max) = size_tier(screen.height);
-    let x0 = side.right() + 1;
+    // Beside the sidebar; with the sidebar hidden, inside the padding round the screen, which
+    // stays empty.
+    let x0 = (side.right() + 1).max(framed(app, screen).x + 1);
     let w = POPOVER_W.min(screen.right().saturating_sub(x0 + 1));
     if w < 20 {
         return;
@@ -605,312 +600,6 @@ pub(in crate::client) fn receipt_segs(app: &App, term: ClientTerm, t: &Theme) ->
     ])
 }
 
-/// Where a status came from: "hook", "screen" or "process" (the rest: you).
-fn source_of(why: &str) -> &'static str {
-    match why.split(':').next().unwrap_or("") {
-        "hook" => "hook",
-        "screen" => "screen",
-        "process" => "process",
-        _ => "",
-    }
-}
-
-/// Why a session has its status: the hook, screen and process evidence, each with its age,
-/// the one that set it bold and marked.
-pub(in crate::client) fn draw_why_pop(
-    app: &mut App,
-    buf: &mut Buffer,
-    screen: Rect,
-    side: Rect,
-    term: ClientTerm,
-    t: &Theme,
-) {
-    let Some(info) = app.term_info(term).cloned() else {
-        return;
-    };
-    if let Some(check) = info.check() {
-        let r = popover_at(
-            app,
-            buf,
-            popover_rect(screen, side, CHECK_WHY_W, CHECK_WHY_H),
-            &check_why_title(app, term, &info),
-            t,
-        );
-        hit(app, r, ScreenHit::CheckEvidence(term));
-        draw_check_why(app, buf, r, &info, check, t);
-        return;
-    }
-    let title = format!(
-        "why {} {}",
-        glyph(app, info.status),
-        state_label(info.status)
-    );
-    let r = popover_at(
-        app,
-        buf,
-        popover_rect(screen, side, WHY_W, WHY_H),
-        &title,
-        t,
-    );
-    let ago = |at: u64| {
-        if at == 0 {
-            String::new()
-        } else {
-            format!("{} ago", age(at))
-        }
-    };
-    let process = match (info.agent.as_deref(), info.pid) {
-        (Some(a), 0) => format!("{a} running"),
-        (Some(a), pid) => format!("{a} running · pid {pid}"),
-        (None, _) => format!(
-            "{} running",
-            if info.process.is_empty() {
-                "shell"
-            } else {
-                &info.process
-            }
-        ),
-    };
-    let won = source_of(&info.status_why);
-    let rows = [
-        (
-            "hook",
-            if info.why_hook.is_empty() {
-                "none since it started".to_string()
-            } else {
-                info.why_hook.clone()
-            },
-            ago(info.why_hook_at),
-        ),
-        (
-            "screen",
-            if info.why_screen.is_empty() {
-                "nothing matched yet".to_string()
-            } else {
-                info.why_screen.clone()
-            },
-            ago(info.why_screen_at),
-        ),
-        ("process", process, ago(info.why_process_at)),
-    ];
-    let c = Style::default().bg(t.card);
-    let confirmed = info.why_hook_at.max(info.why_screen_at);
-    let summary = if let (Status::Working, Some(at)) = (info.status, info.quiet_since) {
-        format!("No output or report for {} — it may be stuck.", age(at))
-    } else if info.agent.is_some() && confirmed == 0 && info.status_why.is_empty() {
-        "Status uncertain — no report or screen confirmation.".into()
-    } else {
-        match info.status {
-            Status::Blocked => "Waiting for your answer or permission.",
-            Status::Done => "Turn finished; ready for you to review.",
-            Status::Idle => "Ready for your next instruction.",
-            Status::Working if won == "hook" => "The agent reported that it is working.",
-            Status::Working if info.status_why.contains("one of its own") => {
-                "Waiting for its helpers to finish."
-            }
-            Status::Working if info.why_screen_at == 0 => {
-                "Status uncertain — no turn confirmation yet."
-            }
-            Status::Working => "Working — estimated from the screen.",
-            Status::None => "No agent status is available for this terminal.",
-        }
-        .into()
-    };
-    put(
-        buf,
-        r.x + 3,
-        r.y + 2,
-        &[seg(summary, c.fg(t.text))],
-        r.right() - 2,
-    );
-    let confirmation = if confirmed == 0 {
-        "Last confirmation: none".into()
-    } else {
-        format!("Last confirmation: {}", ago(confirmed))
-    };
-    put(
-        buf,
-        r.x + 3,
-        r.y + 3,
-        &[seg(confirmation, c.fg(t.muted))],
-        r.right() - 2,
-    );
-    for (i, (src, detail, when)) in rows.iter().enumerate() {
-        let y = r.y + 5 + i as u16;
-        let win = *src == won;
-        let name = if win {
-            c.fg(t.strong).add_modifier(Modifier::BOLD)
-        } else {
-            c.fg(t.muted)
-        };
-        let right = vec![
-            seg(when.clone(), c.fg(t.muted)),
-            seg(
-                if win { "  ◂" } else { "   " },
-                c.fg(t.accent).add_modifier(Modifier::BOLD),
-            ),
-        ];
-        let rw = segs_width(&right);
-        put(
-            buf,
-            r.x + 3,
-            y,
-            &[
-                seg(format!("{src:<9}"), name),
-                seg(detail.clone(), c.fg(if win { t.text } else { t.muted })),
-            ],
-            r.right().saturating_sub(rw + 4),
-        );
-        put(
-            buf,
-            r.right().saturating_sub(rw + 3),
-            y,
-            &right,
-            r.right() - 1,
-        );
-    }
-    let note = if won.is_empty() && !info.status_why.is_empty() {
-        format!("Reason: {}.", info.status_why)
-    } else {
-        "The most specific source wins: hook, then screen, then process.".to_string()
-    };
-    put(
-        buf,
-        r.x + 3,
-        r.y + 9,
-        &[seg(
-            truncate(&note, r.width.saturating_sub(6) as usize),
-            c.fg(t.muted).add_modifier(Modifier::ITALIC),
-        )],
-        r.right() - 2,
-    );
-}
-
-/// " WHY · fix-footer reads failed ": the session and the word it reads as.
-pub(in crate::client) fn check_why_title(app: &App, term: ClientTerm, info: &TermInfo) -> String {
-    let word = super::glyphs::Kind::of(info.status, info.check(), info.asleep).word();
-    format!("WHY · {} reads {word}", app.session_name(term))
-}
-
-/// What the check's run came to, as the last line: its words and colour. A result that isn't
-/// a plain pass or failure says what its row says.
-fn check_result(app: &App, check: &CheckInfo, t: &Theme) -> (String, Color) {
-    let g = super::check::glyph(app, check);
-    let exit = check
-        .exit_code
-        .map(|c| format!("exit {c}"))
-        .unwrap_or_default();
-    let took = super::check::duration(check.duration_ms);
-    let name = if check.name.is_empty() {
-        &check.command
-    } else {
-        &check.name
-    };
-    let words = match check.state {
-        CheckState::Passed | CheckState::Failed => format!("{exit} after {took}"),
-        CheckState::Overridden => format!("failed, overridden: {name}"),
-        CheckState::Stale => format!(
-            "stale pass: {name} · {} files changed",
-            check.changed_files.len()
-        ),
-        CheckState::Never => "not checked: never for this repo".into(),
-        CheckState::NeedsApproval => format!("approve check: {}", check.command),
-        CheckState::CouldNotRun => format!(
-            "{name} could not run{}",
-            super::check::why_not_run(check.exit_code)
-        ),
-        CheckState::Checking => format!("checking {name}"),
-        CheckState::Pending => format!("next: {name}"),
-    };
-    let color = super::glyphs::Kind::of(Status::Done, Some(check), false).color(t);
-    (format!("{g} {words}"), color)
-}
-
-/// The popover's keys, only those that act on this result.
-fn check_keys(state: CheckState) -> Vec<(&'static str, &'static str)> {
-    let mut keys = vec![("⏎", "evidence")];
-    if state != CheckState::Checking {
-        keys.push(("r", "re-run"));
-    }
-    if state == CheckState::Failed {
-        keys.push(("O", "override"));
-    }
-    keys.push(("Esc", "close"));
-    keys
-}
-
-/// Why a session with a check reads as it does: the turn that ended, the app running the
-/// command, and what came of it, one line each with its time, inside the popover `r`.
-fn draw_check_why(
-    app: &App,
-    buf: &mut Buffer,
-    r: Rect,
-    info: &TermInfo,
-    check: &CheckInfo,
-    t: &Theme,
-) {
-    let c = Style::default().bg(t.card);
-    let (x, right) = (r.x + 2, r.right().saturating_sub(1));
-    let time = |at: u64| {
-        if at == 0 {
-            " ".repeat(TIME_COL)
-        } else {
-            format!("{} ", crate::clock::local_hms(at))
-        }
-    };
-    let said = info
-        .said
-        .lines()
-        .rev()
-        .map(str::trim)
-        .find(|l| !l.is_empty());
-    let mut lines: Vec<(u64, Vec<Seg>)> = Vec::new();
-    if check.after_turn_ended_at > 0 {
-        let quote = said
-            .map(|s| format!(" · it said \"{s}\""))
-            .unwrap_or_default();
-        lines.push((
-            check.after_turn_ended_at,
-            vec![seg(format!("agent's turn ended{quote}"), c.fg(t.text))],
-        ));
-    }
-    if check.started_at > 0 {
-        lines.push((
-            check.started_at,
-            vec![
-                seg(concat!(env!("APP_NAME"), " ran "), c.fg(t.text)),
-                seg(
-                    check.command.clone(),
-                    c.fg(t.strong).add_modifier(Modifier::BOLD),
-                ),
-                seg(" in its worktree", c.fg(t.text)),
-            ],
-        ));
-    }
-    let (result, color) = check_result(app, check, t);
-    let finished = if check.state == CheckState::Checking || check.started_at == 0 {
-        0
-    } else {
-        check.started_at + check.duration_ms / 1000
-    };
-    lines.push((
-        finished,
-        vec![seg(result, c.fg(color).add_modifier(Modifier::BOLD))],
-    ));
-    for (i, (at, body)) in lines.into_iter().enumerate() {
-        let mut row = vec![seg(time(at), c.fg(t.muted))];
-        row.extend(body);
-        put(buf, x, r.y + 2 + i as u16, &row, right);
-    }
-    put(
-        buf,
-        x,
-        r.y + 6,
-        &cap_hints_fit(t, t.card, &check_keys(check.state), right.saturating_sub(x)),
-        right,
-    );
-}
-
 impl App {
     /// Start a follow-up to `term`; `inbox`: from that Inbox place (query, row). A draft kept
     /// with Esc comes back.
@@ -1048,29 +737,6 @@ impl App {
         });
     }
 
-    /// `i` again or Esc closes it; any other key closes it and does its own thing.
-    pub(in crate::client) fn on_why_key(&mut self, term: ClientTerm, side: bool, k: &KeyEvent) {
-        self.mode = if side { Mode::Side } else { Mode::Normal };
-        // A check's timeline shows the keys that act; the ones it doesn't show are not passed on
-        // to the pane behind it.
-        if let Some(info) = self.term_info(term).and_then(|t| t.check().cloned()) {
-            let key = match k.code {
-                KeyCode::Enter => Some(('o', true)),
-                KeyCode::Char('r') => Some(('r', check::settled(&info))),
-                KeyCode::Char('O') => Some(('O', check::failed(&info))),
-                _ => None,
-            };
-            if let Some((key, shown)) = key {
-                if shown {
-                    self.do_check_key(term, None, key);
-                }
-                return;
-            }
-        }
-        if !matches!(k.code, KeyCode::Esc | KeyCode::Char('i')) {
-            self.on_key(*k);
-        }
-    }
 }
 
 /// How long after the text the follow-up's Enter goes, so the agent has taken the text.
@@ -1131,129 +797,6 @@ mod tests {
             vec!["abcd", "efgh", "ij"],
             "a word longer than the line breaks"
         );
-    }
-}
-
-#[cfg(test)]
-mod why_tests {
-    use super::super::reference::{assert_same, layout_name, reference, text};
-    use super::*;
-    use crate::client::reference_fixture::{LAYOUTS, SIZES, Stage, world};
-
-    fn why_world(stage: Stage) -> App {
-        let mut app = world(stage);
-        app.cfg.ui.glyphs = "unicode".into();
-        app.snap.terms.get_mut(&1).unwrap().said = "tests pass".into();
-        app
-    }
-
-    /// The popover drawn in the rectangle the reference's inside is under.
-    fn draw(app: &App, area: Rect, w: u16, h: u16) -> Vec<String> {
-        let t = Theme::named(crate::theme::DEFAULT);
-        let mut buf = Buffer::empty(Rect {
-            x: 0,
-            y: 0,
-            width: w,
-            height: h,
-        });
-        let info = app.snap.terms[&1].clone();
-        let r = Rect {
-            y: area.y - 1,
-            height: CHECK_WHY_H,
-            ..area
-        };
-        draw_check_why(app, &mut buf, r, &info, info.check().unwrap(), &t);
-        text(&buf, area)
-    }
-
-    /// The reference's sample counts the tests that failed, which a check's result does not carry.
-    #[test]
-    fn why_reads_the_turn_the_run_and_what_it_came_to() {
-        for layout in LAYOUTS {
-            for (w, h) in SIZES {
-                let mut want = reference("13 Why? (i)", layout_name(layout), w, h);
-                want.set_row(3, "  14:22:19 ✕ exit 1 after 14.2s");
-                let app = why_world(Stage::Failed);
-                assert_same(
-                    &draw(&app, want.area, w, h),
-                    &want,
-                    &format!("13 {layout:?} {w}x{h}"),
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn the_title_says_what_the_session_reads_as() {
-        let title = |stage| {
-            let app = why_world(stage);
-            check_why_title(&app, ClientTerm::local(1), &app.snap.terms[&1])
-        };
-        assert_eq!(title(Stage::Failed), "WHY · fix-footer reads failed");
-        assert_eq!(title(Stage::Stale), "WHY · fix-footer reads done · stale");
-        assert_eq!(title(Stage::Never), "WHY · fix-footer reads not checked");
-    }
-
-    #[test]
-    fn a_result_that_is_not_a_plain_pass_or_failure_says_its_row_words() {
-        let lines = |stage| {
-            draw(
-                &why_world(stage),
-                Rect {
-                    x: 0,
-                    y: 1,
-                    width: 60,
-                    height: 7,
-                },
-                60,
-                9,
-            )
-            .join("\n")
-        };
-        assert!(
-            lines(Stage::Over).contains("⊘ failed, overridden: test"),
-            "{}",
-            lines(Stage::Over)
-        );
-        assert!(lines(Stage::Stale).contains("◷ stale pass: test · 3 files changed"));
-        assert!(lines(Stage::Never).contains("? not checked: never for this repo"));
-        assert!(lines(Stage::Approve).contains("● approve check: npm test"));
-        assert!(lines(Stage::Passed).contains("✓ exit 0 after 14.2s"));
-    }
-
-    #[test]
-    fn a_click_on_it_opens_the_evidence() {
-        let mut app = why_world(Stage::Failed);
-        app.mode = Mode::Why {
-            term: ClientTerm::local(1),
-            side: false,
-        };
-        crate::client::reference_fixture::frame(
-            &mut app,
-            crate::client::reference_fixture::Layout::Floating,
-            100,
-            30,
-            "unicode",
-        );
-        assert!(app.hits.iter().any(|(_, h)| *h
-            == crate::client::Hit::Screen(ScreenHit::CheckEvidence(ClientTerm::local(1)))));
-        app.on_hy_hit(ScreenHit::CheckEvidence(ClientTerm::local(1)), false);
-        assert!(
-            matches!(&app.view, Some(crate::client::View::Check(v)) if v.term == ClientTerm::local(1))
-        );
-    }
-
-    #[test]
-    fn its_keys_are_only_those_that_act() {
-        let keys = |state| {
-            check_keys(state)
-                .iter()
-                .map(|(k, _)| *k)
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(keys(CheckState::Failed), ["⏎", "r", "O", "Esc"]);
-        assert_eq!(keys(CheckState::Passed), ["⏎", "r", "Esc"]);
-        assert_eq!(keys(CheckState::Checking), ["⏎", "Esc"]);
     }
 }
 

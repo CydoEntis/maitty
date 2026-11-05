@@ -11,7 +11,7 @@ use super::*;
 use crate::client::link::ConnectionState;
 use crate::client::machine_config;
 use crate::client::machine_ids;
-use crate::link_failure::FailureClass;
+use crate::link_failure::{FIX_INSTALL, FailureClass};
 use crate::machine_probe::{self, Probe};
 use maitty_settings::config::MachineDef;
 use std::collections::HashSet;
@@ -32,8 +32,8 @@ struct Probing {
     cancel: Arc<AtomicBool>,
 }
 
-/// A first login open in a popup: the popup's pane once it has shown up, and the popups
-/// that were there before, which are not it.
+/// A first login or an update open in a popup: the popup's pane once it has shown up, and the
+/// popups that were there before, which are not it. The machine is dialled when it closes.
 struct Login {
     name: String,
     before: HashSet<TermId>,
@@ -52,6 +52,9 @@ pub(super) struct Flow {
     logins: Vec<Login>,
     /// Machines removed, whose connections the event loop lets go of.
     dropped: Vec<MachineId>,
+    /// Every machine removed while the window ran. An id is never given to another machine,
+    /// so whatever arrives under one of these was sent before its machine was removed.
+    forgotten: HashSet<MachineId>,
 }
 
 impl Default for Flow {
@@ -64,6 +67,7 @@ impl Default for Flow {
             next_token: 0,
             logins: Vec::new(),
             dropped: Vec::new(),
+            forgotten: HashSet::new(),
         }
     }
 }
@@ -80,6 +84,30 @@ impl App {
         self.mode = Mode::Machines(Box::new(MachinesView::new(cfg!(windows))));
         ssh_hosts::load_in_background(self, |app, hosts| {
             app.with_machines_view(|v| v.hosts = Some(hosts));
+        });
+    }
+
+    /// Open the dialog on one of your machines: its row chosen, the fix under it.
+    pub(super) fn open_machines_on(&mut self, machine: MachineId) {
+        let at = self.machine_listed_at(self.machine_name(machine));
+        self.open_machines();
+        self.with_machines_view(|v| v.machine_sel = at);
+    }
+
+    /// Open the dialog on changing where one of your machines is.
+    pub(super) fn open_machine_edit(&mut self, machine: MachineId) {
+        let name = self.machine_name(machine).to_string();
+        let Some(def) = self.configured(&name) else {
+            self.notify(format!("{name} is not in your machines."), true);
+            return;
+        };
+        self.open_machines_on(machine);
+        self.with_machines_view(|v| {
+            v.step = MachineStep::Edit {
+                name: def.name,
+                target: def.target,
+                error: None,
+            }
         });
     }
 
@@ -292,6 +320,54 @@ impl App {
         Ok(())
     }
 
+    /// Run `machine update` for a configured machine in a popup on this computer, where it asks
+    /// before it installs. The machine is dialled again when the popup closes.
+    pub(in crate::client) fn machine_update(&mut self, name: &str) -> MachineNotice {
+        let Some(def) = self.configured(name) else {
+            return say(format!("{name} is not in your machines."), true);
+        };
+        let install = self.machine_id_named(&def.name).is_some_and(|id| {
+            matches!(
+                self.remotes.get(&id).map(|r| &r.state),
+                Some(ConnectionState::NeedsUpdate { why }) if why == FIX_INSTALL
+            )
+        });
+        let program = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.to_str().map(str::to_string))
+            .unwrap_or_else(|| env!("APP_COMMAND").to_string());
+        let machine = ipc::Machine::from_def_via(&def, &self.machine_flow.ssh);
+        let cmd = match machine.update_command(&program, install) {
+            Ok(cmd) => cmd,
+            Err(e) => {
+                return say(
+                    format!(
+                        "Run `{} machine update {}` in a terminal ({e:#}).",
+                        env!("APP_COMMAND"),
+                        def.name
+                    ),
+                    true,
+                );
+            }
+        };
+        self.machine_flow.logins.push(Login {
+            name: def.name.clone(),
+            before: self.popup_terms(),
+            term: None,
+            since: Instant::now(),
+        });
+        // A popup has the keys only in plain typing mode, as the first login's does.
+        self.leave_shortcut_mode();
+        self.cmd_on(MachineId::LOCAL, Command::Popup { cmd, cwd: None });
+        say(
+            format!(
+                "Updating {}: answer in the popup. It reconnects when the popup closes.",
+                def.name
+            ),
+            false,
+        )
+    }
+
     fn popup_terms(&self) -> HashSet<TermId> {
         self.snap
             .terms
@@ -431,6 +507,75 @@ impl App {
         say(removal_note(&def.name), false)
     }
 
+    /// Point a machine at another address. Its entry keeps its name and its other keys; the
+    /// connection it had is let go and the new address is dialled at once. The daemon recorded
+    /// for the name is forgotten, since another computer may answer there now.
+    pub(in crate::client) fn machine_retarget(
+        &mut self,
+        name: &str,
+        target: &str,
+    ) -> MachineNotice {
+        let Some(def) = self.configured(name) else {
+            return say(format!("{name} is not in your machines."), true);
+        };
+        let target = target.trim();
+        if target == def.target {
+            return say(
+                format!("{} already connects to {target}.", def.name),
+                false,
+            );
+        }
+        let others: Vec<MachineDef> = self
+            .cfg
+            .machines
+            .iter()
+            .filter(|m| !m.name.eq_ignore_ascii_case(&def.name))
+            .cloned()
+            .collect();
+        if let Some(why) = machine_config::refusal(&others, &def.name, target) {
+            return say(why, true);
+        }
+        match machine_config::set_target(&self.machine_flow.local_config, &def.name, target) {
+            Ok(true) => {}
+            Ok(false) => {
+                return say(
+                    format!(
+                        "{} is not in config.local.toml, so it cannot be edited here.",
+                        def.name
+                    ),
+                    true,
+                );
+            }
+            Err(e) => return say(format!("Could not edit {}: {e:#}", def.name), true),
+        }
+        let edited = MachineDef {
+            target: target.to_string(),
+            ..def.clone()
+        };
+        for m in &mut self.cfg.machines {
+            if m.name.eq_ignore_ascii_case(&def.name) {
+                *m = edited.clone();
+            }
+        }
+        self.machine_flow
+            .logins
+            .retain(|l| !l.name.eq_ignore_ascii_case(&def.name));
+        if let Some(id) = self.machine_id_named(&def.name) {
+            self.machine_forgotten(id);
+        }
+        if self.machine_ids.forget(&def.name) {
+            machine_ids::save(&self.machine_ids);
+        }
+        self.machine_start(&edited);
+        self.screen_sync();
+        self.screen_fresh();
+        self.dirty = true;
+        say(
+            format!("{} now connects to {target}. Connecting.", def.name),
+            false,
+        )
+    }
+
     fn machine_id_named(&self, name: &str) -> Option<MachineId> {
         self.links.id_of(name).or_else(|| {
             self.remotes
@@ -448,6 +593,14 @@ impl App {
         self.unsent_input.remove(&id);
         self.sync_terms(id, &Snapshot::default());
         self.machine_flow.dropped.push(id);
+        self.machine_flow.forgotten.insert(id);
+    }
+
+    /// Whether `machine` was removed. What its supervisor raised and what its daemon sent
+    /// before that can still be waiting to be taken in, and taking it in would put the machine
+    /// back in the sidebar with no entry left to remove it by.
+    pub(super) fn machine_is_forgotten(&self, machine: MachineId) -> bool {
+        self.machine_flow.forgotten.contains(&machine)
     }
 
     /// The connections to let go of: those of machines removed since the last look.

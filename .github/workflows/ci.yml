@@ -6,6 +6,11 @@
 # desktop app without packaging it. The installers are built on the push to dev, where a
 # failure no longer holds a pull request up but still shows before a release.
 #
+# No pull request job runs on a macOS runner: GitHub often has none to give, and a job that never
+# starts is cancelled after 15 minutes and fails the run. `check (macOS)` cross-checks from Linux
+# and leaves the desktop host out, because its Apple-only C helper does not cross-compile.
+# `desktop package (macOS)`, on the push to dev, is where the desktop host is compiled on macOS.
+#
 # Build caches: only dev saves one. A pull request reads dev's, and a copy per pull request
 # filled the repository's 10 GB and pushed the others out. A failed run saves what it compiled
 # too, or a job that fails on dev never has a cache and compiles everything every time.
@@ -79,9 +84,9 @@ jobs:
           cache-on-failure: true
       - name: Install Tauri Linux dependencies
         if: runner.os == 'Linux'
+        timeout-minutes: 15
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          scripts/ci-apt-install.sh \
             build-essential curl file libayatana-appindicator3-dev libssl-dev \
             libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf
       - uses: pnpm/action-setup@v4
@@ -155,32 +160,6 @@ jobs:
         working-directory: apps/gui
         run: pnpm build
 
-  # The `test` jobs compile the desktop host on Linux and Windows, and `check (macOS)` leaves it
-  # out because its Apple-only C helper does not cross-compile. This is its macOS compile.
-  gui-host-macos:
-    name: desktop GUI (macOS host)
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.rust != 'false' && needs.changes.outputs.desktop != 'false' }}
-    runs-on: macos-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/dev' }}
-          cache-on-failure: true
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.32.1
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-      - name: Prepare GUI daemon sidecar
-        working-directory: apps/gui
-        run: pnpm bundle:daemon:dev
-      - run: cargo check --locked -p maitty-gui --all-targets
-
   # The installers, on the push to dev only (see the top of this file).
   package-linux:
     name: desktop package (Linux)
@@ -203,9 +182,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: apps/gui/pnpm-lock.yaml
       - name: Install Tauri Linux dependencies
+        timeout-minutes: 15
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          scripts/ci-apt-install.sh \
             build-essential curl file libayatana-appindicator3-dev libssl-dev \
             libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf rpm wget
       - name: Install GUI dependencies

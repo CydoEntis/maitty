@@ -122,6 +122,10 @@ Live checks use a nested
 server: `MAITTY_SOCKET=test maitty`, then `maitty send` / `maitty read` against it.
 Tests never touch the user's real config (`MAITTY_CONFIG` or in-memory configs).
 
+A daemon test that finds a pane by its folder names that folder canonically
+(`clean_path(root.canonicalize())`). The pane's shell reports the folder's real name at its first
+prompt, and the temp folder can be spelled another way (an 8.3 name such as `RUNNER~1` on Windows).
+
 ## Project-specific: testing over ssh (fake-ssh)
 
 Anything that reaches another machine is tested through a stand-in for `ssh`, never a real
@@ -254,7 +258,9 @@ the probe (a bad host shows ssh's error, a hung ssh is ended by the limit and by
 gone, a host that logs in is added with no popup), the first login (`Command::Popup` to this computer with
 the interactive line, the machine dialled when the popup pane closes, `needs login` with the fix when the
 login still fails), removing (config, supervisor, sidebar, daemon id, saved layout lane, and the remote
-daemon's pane still alive over a second connection) and retrying a refusal. The frames of the dialog are
+daemon's pane still alive over a second connection), that what a removed machine's daemon or supervisor
+says afterwards does not bring it back (handed to the window directly, with no daemon), and retrying a
+refusal. The frames of the dialog are
 `client/screen/machines_tests.rs` (`MAITTY_SHOW=1 cargo test machines_tests -- --nocapture` prints them
 at 80x24, 100x30 and 160x45).
 

@@ -212,7 +212,11 @@ choices and id.
 **Helpers.** A start that comes from an agent's pane (`NewWorkspace`, `NewTab`, `Split`,
 `NewWorktree` over a connection that proved it is that pane by its secret) is a helper
 start. Under `[sessions] helpers = "ask"` the first one is refused with an error telling the
-agent the user was asked, and the daemon records the task on the pane. `TermInfo.helper_ask`
+agent the user was asked, and the daemon records the task on the pane. `TermInfo.last_lines`
+(`String`, `#[serde(default)]`, added without a protocol bump) is the last three lines of text on
+the pane above its input line when its turn ended or it stopped to ask, for an agent whose hooks
+reported no last message; it is empty while `TermInfo.said` has one, and cleared when a turn
+starts (`daemon/last_lines.rs`). `TermInfo.helper_ask`
 lists the recorded tasks (not empty: the pane needs you, and `TermInfo.status` reads Blocked
 whatever its hooks report), and the request is announced like any needs-you. Only you answer
 it, with `Command::AnswerHelpers { term, choice }`: `Allow` (this session may from now on),

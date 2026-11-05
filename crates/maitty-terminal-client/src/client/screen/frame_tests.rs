@@ -234,17 +234,29 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
                 "the title chip is the accent: {at}"
             );
             let chip = |x: u16| buf[(x, r.y)].symbol() != "─";
+            // The empty buffer's ground stands for whatever the modal is drawn over.
+            let behind = Color::Reset;
             assert!(
                 (r.x + 1..r.right() - 1)
                     .filter(|x| !chip(*x))
-                    .all(|x| buf[(x, r.y)].bg == t.card),
-                "no accent bar: {at}"
+                    .all(|x| buf[(x, r.y)].bg == behind),
+                "no accent bar, and the line keeps the ground behind it: {at}"
             );
+            let outline = (r.x..r.right())
+                .map(|x| (x, r.bottom() - 1))
+                .chain((r.y + 1..r.bottom()).flat_map(|y| [(r.x, y), (r.right() - 1, y)]));
+            for at_cell in outline {
+                assert_eq!(
+                    buf[at_cell].bg, behind,
+                    "the body's colour stops inside the outline, none of it outside the line: {at} {at_cell:?}"
+                );
+            }
+            assert_eq!(buf[(r.x + 1, r.y + 1)].bg, t.card, "the body is filled: {at}");
             if caps {
                 for x in [title, esc] {
                     assert_eq!(
                         buf[(x, r.y)].bg,
-                        t.card,
+                        behind,
                         "a cap sits on the border's ground: {at}"
                     );
                 }
@@ -265,66 +277,6 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
     }
 }
 
-#[test]
-fn a_popover_sits_beside_the_sidebar_boxed_with_a_raised_title_and_no_shadow() {
-    for layout in LAYOUTS {
-        for (w, h) in SIZES {
-            let mut app = world(Stage::Failed);
-            let mut buf = buffer(&mut app, layout, w, h);
-            let t = app.theme.clone();
-            let area = Rect::new(0, 0, w, h);
-            let side = grid(&app, area).side;
-            let before = buf.clone();
-            let r = popover_at(
-                &mut app,
-                &mut buf,
-                popover_rect(area, side, 60, 8),
-                "WHY · fix-footer reads failed",
-                &t,
-            );
-            let at = format!("{layout:?} {w}x{h}");
-            let x = (side_w(w) + 2).min(w - 40);
-            assert_eq!(
-                r,
-                Rect::new(x, if h < 30 { 3 } else { 5 }, 60.min(w - x - 2), 8),
-                "{at}"
-            );
-            assert!(
-                (r.x..r.right()).all(|x| buf[(x, r.y)].bg == t.btn),
-                "the title row is raised: {at}"
-            );
-            let title: String = (r.x..r.x + 8)
-                .map(|x| buf[(x, r.y)].symbol().to_string())
-                .collect();
-            assert_eq!(title, "  WHY · ", "{at}");
-            assert!(
-                (r.y + 1..r.bottom())
-                    .all(|y| buf[(r.x, y)].bg == t.card && buf[(r.x, y)].symbol() == " "),
-                "its words a column in from its edge: {at}"
-            );
-            // Boxed as a pane is (ADR 0028), a cell outside it; nothing past the box.
-            assert!(
-                (r.y..r.bottom())
-                    .all(|y| buf[(r.x - 1, y)].symbol() == "│"
-                        && buf[(r.right(), y)].symbol() == "│"),
-                "its box: {at}"
-            );
-            let outer = Rect {
-                x: r.x - 1,
-                y: r.y - 1,
-                width: r.width + 2,
-                height: r.height + 2,
-            };
-            assert!(
-                beside_and_under(outer, w, h).all(|p| buf[p] == before[p]),
-                "no shadow: {at}"
-            );
-        }
-    }
-}
-
-/// A confirm's sub (the folder `changes` found no repo in) is part of its title chip, cut before
-/// the Esc chip, which stays whole and closes it.
 #[test]
 fn a_confirm_s_long_sub_is_cut_inside_its_title_chip() {
     use crate::config::Rounding;

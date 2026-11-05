@@ -219,7 +219,7 @@ pub(in crate::client) fn splash_animating(app: &App) -> bool {
 
 /// What happened while you were away ("2 need you   3 still working   1 finished"), or
 /// nothing when nothing did.
-fn away_line(app: &App, model: &[Proj], t: &Theme, width: u16) -> Vec<Seg> {
+pub(super) fn away_line(app: &App, model: &[Proj], t: &Theme, width: u16) -> Vec<Seg> {
     let all: Vec<&Session> = model.iter().flat_map(|p| p.sessions()).collect();
     let working = all.iter().filter(|s| s.status == Status::Working).count();
     let needs = all.iter().filter(|s| check::needs_you(s)).count();
@@ -369,7 +369,7 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     };
     let model = app.screen_model();
     app.screen.splash_wide = false;
-    if super::splash_wide::is_wide(area) {
+    if super::splash_wide::fits(area) {
         super::splash_wide::draw_wide(app, f, area, &model, (intro, clock), t);
         return;
     }

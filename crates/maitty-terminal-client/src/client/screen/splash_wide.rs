@@ -1,6 +1,8 @@
-//! The splash on a roomy terminal: the wordmark over two boxes side by side, START (the three
-//! choices and the recent projects) and WHILE YOU WERE AWAY (the agents, most urgent first, and
-//! the machines). A smaller terminal keeps the centred cards in `splash.rs`.
+//! The splash: the wordmark over two boxes side by side, START (the three choices and the
+//! recent projects) and WHILE YOU WERE AWAY (the agents, most urgent first, and the machines),
+//! on the plain ground with nothing round them. A terminal too narrow for both keeps START
+//! alone, one too short for the wordmark keeps the boxes; only one that cannot hold the START
+//! box falls back to the centred cards in `splash.rs`.
 
 use super::splash::{SWELL_REACH, draw_logo, draw_swell, logo_width, pixel_width};
 use super::*;
@@ -12,20 +14,29 @@ const BOX_GAP: u16 = 2;
 const BOX_H: u16 = 22;
 /// The wordmark, the swell and the tagline above the boxes, and the gap before them.
 const ABOVE_BOXES: u16 = 11;
-/// The terminal needs this much for both boxes and the wordmark above them.
-const MIN_W: u16 = START_W + BOX_GAP + AWAY_W + 4;
-const MIN_H: u16 = ABOVE_BOXES + BOX_H + 7;
-/// The most the wordmark sits below the outer box's top edge.
+/// A column clear each side of what is drawn.
+const MARGIN: u16 = 1;
+/// The most the wordmark sits below the top of the screen.
 const LOGO_DROP: u16 = 8;
 /// Rows a menu choice's highlight takes, and the blank row between two.
 const CHOICE_ROWS: u16 = 3;
 /// Rows a session takes in the away list: its line, its activity and a blank row.
 const AWAY_ROW: u16 = 3;
 
-/// Whether `area` has room for both boxes.
-pub(in crate::client) fn is_wide(area: Rect) -> bool {
-    area.width >= MIN_W && area.height >= MIN_H
+/// Whether `area` can hold this splash at all: its START box.
+pub(in crate::client) fn fits(area: Rect) -> bool {
+    area.width >= START_W + 2 * MARGIN && area.height >= BOX_H
 }
+
+/// Whether `area` has room for the away box beside START.
+fn fits_both(area: Rect) -> bool {
+    area.width >= START_W + BOX_GAP + AWAY_W + 2 * MARGIN
+}
+
+/// Rows the counts add over START when the away box, which carries them, is not drawn: the
+/// line and a blank row under it. Under the wordmark one of the two is already there.
+const COUNT_ROWS: u16 = 2;
+const COUNT_ROWS_UNDER_WORDMARK: u16 = 1;
 
 /// The projects the splash lists to open, this computer's first.
 pub(in crate::client) fn recent_projects(model: &[Proj]) -> Vec<&Proj> {
@@ -184,7 +195,7 @@ fn status_colour(s: &Session, t: &Theme) -> Color {
     }
 }
 
-/// The splash, wide: `intro` and `clock` are the frames the wordmark and swell are drawn by.
+/// The splash: `intro` and `clock` are the frames the wordmark and swell are drawn by.
 pub(in crate::client) fn draw_wide(
     app: &mut App,
     f: &mut Frame,
@@ -194,154 +205,82 @@ pub(in crate::client) fn draw_wide(
     t: &Theme,
 ) {
     app.screen.splash_wide = true;
-    let look = Look::of(&app.cfg.ui);
+    let both = fits_both(area);
+    // A box that is not drawn cannot hold the keys.
+    if !both {
+        app.screen.splash_away = false;
+    }
     fill(f.buffer_mut(), area, t.bg);
-    let outer = Rect {
-        height: area.height.saturating_sub(1),
-        ..area
+    // How many need you is never dropped: without the away box, its counts are a line over
+    // START. The wordmark gives way before they do.
+    let counts = if both {
+        Vec::new()
+    } else {
+        super::splash::away_line(app, model, t, area.width)
     };
-    let line = Style::default().fg(t.line).bg(t.bg);
-    panel_box(f.buffer_mut(), outer, look, line);
-    let version = format!(" {} ", env!("APP_VERSION"));
-    let name = format!(" {} ", crate::brand::APP_NAME.to_uppercase());
-    let nw = title(
-        app,
-        f.buffer_mut(),
-        (outer.x + 2, outer.y),
-        name.trim(),
-        true,
-        t,
-    );
-    put(
-        f.buffer_mut(),
-        outer.x + 2 + nw + 1,
-        outer.y,
-        &[seg(version, Style::default().fg(t.muted).bg(t.bg))],
-        outer.right(),
-    );
-    // A release waiting: a chip on the top edge, where it can't be missed; a click or `u` acts.
-    if let Some((news, what, hit_as)) = super::splash::release_news(app) {
-        let chip = pill(
-            app,
-            vec![seg(
-                format!(" {news}  u {what} "),
-                Style::default()
-                    .fg(t.acc_ink)
-                    .bg(t.accent)
-                    .add_modifier(Modifier::BOLD),
-            )],
-            t.bg,
+    let counted = !counts.is_empty();
+    let wordmark = area.height
+        >= ABOVE_BOXES + BOX_H + if counted { COUNT_ROWS_UNDER_WORDMARK } else { 0 };
+    let lead = match (counted, wordmark) {
+        (false, _) => 0,
+        (true, true) => COUNT_ROWS_UNDER_WORDMARK,
+        (true, false) if area.height >= BOX_H + COUNT_ROWS => COUNT_ROWS,
+        (true, false) => 0,
+    };
+    let centre = |w: u16| area.x + area.width.saturating_sub(w) / 2;
+    let above = if wordmark { ABOVE_BOXES } else { 0 };
+    let free = area.height.saturating_sub(above + lead + BOX_H);
+    let top = area.y + (free / 2).min(LOGO_DROP);
+    if wordmark {
+        let lw = logo_width(area.width);
+        draw_logo(
+            f.buffer_mut(),
+            (centre(lw), top),
+            pixel_width(area.width),
+            intro,
+            t,
         );
-        let cw = segs_width(&chip);
-        let x = outer.x + 2 + nw + 12;
-        put(f.buffer_mut(), x, outer.y, &chip, outer.right());
-        hit(
-            app,
-            Rect {
-                x,
-                y: outer.y,
-                width: cw,
-                height: 1,
-            },
-            hit_as,
+        let swell_w = (lw + SWELL_REACH * 2).min(area.width);
+        draw_swell(
+            f.buffer_mut(),
+            (centre(swell_w), top + 6),
+            swell_w,
+            clock,
+            intro,
+            t,
+        );
+        let tag = concat!(env!("APP_TAGLINE"), ".");
+        let shown = ((intro as f32 - 10.0) / 10.0).clamp(0.0, 1.0);
+        put(
+            f.buffer_mut(),
+            centre(tag.width() as u16),
+            top + 8,
+            &[seg(
+                tag,
+                Style::default()
+                    .fg(mix(t.bg, t.muted, shown))
+                    .bg(t.bg)
+                    .add_modifier(Modifier::ITALIC),
+            )],
+            area.right(),
         );
     }
-    let here = pill(
-        app,
-        vec![seg(
-            format!(" {} Local ", machine_group::LOCAL_ICON),
-            Style::default()
-                .fg(t.strong)
-                .bg(t.btn)
-                .add_modifier(Modifier::BOLD),
-        )],
-        t.bg,
-    );
-    let hw = segs_width(&here);
-    put(
-        f.buffer_mut(),
-        outer.right().saturating_sub(hw + 2),
-        outer.y,
-        &here,
-        outer.right(),
-    );
 
-    let centre = |w: u16| area.x + area.width.saturating_sub(w) / 2;
-    let free = outer.height.saturating_sub(2 + ABOVE_BOXES + BOX_H);
-    let top = outer.y + 1 + (free / 2).min(LOGO_DROP);
-    let lw = logo_width(area.width);
-    draw_logo(
-        f.buffer_mut(),
-        (centre(lw), top),
-        pixel_width(area.width),
-        intro,
-        t,
-    );
-    let swell_w = (lw + SWELL_REACH * 2).min(area.width);
-    draw_swell(
-        f.buffer_mut(),
-        (centre(swell_w), top + 6),
-        swell_w,
-        clock,
-        intro,
-        t,
-    );
-    let tag = concat!(env!("APP_TAGLINE"), ".");
-    let shown = ((intro as f32 - 10.0) / 10.0).clamp(0.0, 1.0);
-    put(
-        f.buffer_mut(),
-        centre(tag.width() as u16),
-        top + 8,
-        &[seg(
-            tag,
-            Style::default()
-                .fg(mix(t.bg, t.muted, shown))
-                .bg(t.bg)
-                .add_modifier(Modifier::ITALIC),
-        )],
-        area.right(),
-    );
-
-    // The keys, and the version barely there, on the row under the box.
-    let hints = crate::client::design::cap_hints_gap(
-        t,
-        t.bg,
-        "   ",
-        &[
-            ("↑↓", "choose"),
-            ("Enter", "open"),
-            ("Tab", "switch box"),
-            ("r n o", "jump"),
-            ("?", "keys"),
-        ],
-    );
-    let (hx, hy) = (area.x + 2, area.bottom().saturating_sub(1));
-    put(f.buffer_mut(), hx, hy, &hints, area.right());
-    hit(
-        app,
-        Rect {
-            x: hx,
-            y: hy,
-            width: segs_width(&hints),
-            height: 1,
-        },
-        ScreenHit::SplashKey('?'),
-    );
-    let foot = seg(
-        format!(concat!(env!("APP_COMMAND"), " {}"), env!("APP_VERSION")),
-        Style::default().fg(t.line).bg(t.bg),
-    );
-    let fw = segs_width(std::slice::from_ref(&foot));
-    put(
-        f.buffer_mut(),
-        area.right().saturating_sub(fw + 2),
-        hy,
-        &[foot],
-        area.right(),
-    );
-
-    let by = top + ABOVE_BOXES;
-    let gx = centre(START_W + BOX_GAP + AWAY_W);
+    let by = top + above + lead;
+    if lead > 0 {
+        put(
+            f.buffer_mut(),
+            centre(segs_width(&counts)),
+            by - COUNT_ROWS,
+            &counts,
+            area.right(),
+        );
+    }
+    let gx = centre(if both {
+        START_W + BOX_GAP + AWAY_W
+    } else {
+        START_W
+    });
     let away = away_sessions(model);
     let recent = recent_projects(model);
     draw_start(
@@ -356,18 +295,48 @@ pub(in crate::client) fn draw_wide(
         (&away, &recent),
         t,
     );
-    draw_away(
-        app,
-        f.buffer_mut(),
-        Rect {
-            x: gx + START_W + BOX_GAP,
-            y: by,
-            width: AWAY_W,
-            height: BOX_H,
-        },
-        &away,
-        t,
-    );
+    if both {
+        draw_away(
+            app,
+            f.buffer_mut(),
+            Rect {
+                x: gx + START_W + BOX_GAP,
+                y: by,
+                width: AWAY_W,
+                height: BOX_H,
+            },
+            &away,
+            t,
+        );
+    }
+    // A release waiting: a chip at the right of START's top edge, where it is at every size and
+    // can't be missed; a click or `u` acts.
+    if let Some((news, what, hit_as)) = super::splash::release_news(app) {
+        let chip = pill(
+            app,
+            vec![seg(
+                format!(" {news}  u {what} "),
+                Style::default()
+                    .fg(t.acc_ink)
+                    .bg(t.accent)
+                    .add_modifier(Modifier::BOLD),
+            )],
+            t.bg,
+        );
+        let cw = segs_width(&chip);
+        let x = (gx + START_W).saturating_sub(cw + 2);
+        put(f.buffer_mut(), x, by, &chip, gx + START_W);
+        hit(
+            app,
+            Rect {
+                x,
+                y: by,
+                width: cw,
+                height: 1,
+            },
+            hit_as,
+        );
+    }
 }
 
 fn draw_start(
