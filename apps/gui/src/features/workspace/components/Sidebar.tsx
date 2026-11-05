@@ -16,6 +16,7 @@ import { LOCAL_MACHINE } from '@/api/machines'
 import type { MachineHead } from '../model/machines'
 import { WorktreeMenu } from '@/features/worktrees/WorktreeMenu'
 import { useTipWithKeys } from '@/features/shortcuts/platform'
+import { OverviewEntry, type OverviewEntryProps } from '@/features/overview/components/OverviewEntry'
 
 export type SidebarProps = {
   groups: SessionGroup[]
@@ -66,6 +67,7 @@ export type SidebarProps = {
   updateSlot: ReactNode
   /** The rail's download button, present only while an update exists. */
   railUpdateSlot: ReactNode
+  overview: OverviewEntryProps
 }
 
 
@@ -165,6 +167,7 @@ function Expanded(props: GroupProps) {
           <button type="button" className="mx-icon-button mx-collapse" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
         )}
       </div>
+      <OverviewEntry {...props.overview} />
       <div className="mx-sidebar-list">
         {heads.length === 0
           ? groups.map(renderGroup)
@@ -287,6 +290,7 @@ function Rail(props: GroupProps) {
         {props.canExpand && <button type="button" className="mx-icon-button mx-rail-button" aria-label="Expand sidebar" title={tip('Expand sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="expand" /></button>}
         <button type="button" className="mx-icon-button mx-rail-button mx-rail-new" aria-label="New session" title={tip('New session', 'new-session')} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" /></button>
       </div>
+      <OverviewEntry {...props.overview} rail />
       <div className="mx-rail-divider" />
       <div className="mx-rail-list mx-no-scrollbar">
         {groups.map((group) => {

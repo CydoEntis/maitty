@@ -142,7 +142,7 @@ describe('matching a key press', () => {
     const press = (key: string) => matchShortcut({ key, ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }, 'windows')
     expect(press('1')).toEqual({ action: 'go-to-tab', tab: 1 })
     expect(press('9')).toEqual({ action: 'go-to-tab', tab: 9 })
-    expect(press('0')).toBeNull()
+    expect(press('0')).toEqual({ action: 'overview' })
   })
 })
 
@@ -160,7 +160,8 @@ describe('the shortcut lists', () => {
   it('leaves out an action with no key on the platform, and one that is not built', () => {
     expect(hotkeyRows('linux').some((row) => row.action.startsWith('Jump to the next'))).toBe(false)
     expect(hotkeyRows('mac').some((row) => row.action.startsWith('Jump to the next'))).toBe(true)
-    expect(hotkeyRows('mac').some((row) => row.action === 'Overview')).toBe(false)
+    expect(hotkeyRows('mac').some((row) => row.action === 'Overview')).toBe(true)
+    expect(hotkeyRows('mac').some((row) => row.action === 'Session panel')).toBe(false)
   })
 
   it('puts every hotkey in a group of the overlay, and every group has some', () => {
