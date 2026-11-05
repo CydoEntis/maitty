@@ -51,12 +51,13 @@ impl App {
 
     /// Whether to act on a message from `machine`. Another machine's state is held back when a
     /// different daemon answers at its name: its saved layout must not be reused for it. The
-    /// reason is told once, and everything else it says is dropped.
+    /// reason is told once, and everything else it says is dropped. A machine that was removed
+    /// is not heard at all.
     fn admits(&mut self, machine: MachineId, msg: &ServerMsg) -> bool {
         if machine == MachineId::LOCAL {
             return true;
         }
-        if self.refused.contains_key(&machine) {
+        if self.refused.contains_key(&machine) || self.machine_is_forgotten(machine) {
             return false;
         }
         let ServerMsg::State(snap) = msg else {

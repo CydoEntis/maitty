@@ -6,7 +6,7 @@
 use super::*;
 use crate::client::connections::Connections;
 use crate::client::ids::Outgoing;
-use crate::client::link::{Backoff, Links, Timing};
+use crate::client::link::{Backoff, LinkEvent, Links, Timing};
 use crate::client::machine_ids::{IdCheck, check_daemon_id};
 use crate::client::reference_fixture::term;
 use crate::client::remote_status_tests::{Runtime, Sandbox};
@@ -709,6 +709,23 @@ async fn terms_the_daemon_has(sandbox: &Sandbox) -> usize {
         .expect("the daemon's state")
 }
 
+/// Fails saying which machine the window still knows, and what it knows of it: a machine put
+/// back by its daemon has no name, one put back by its supervisor has no panes.
+#[track_caller]
+fn assert_no_machine_is_held(h: &Harness) {
+    let held: Vec<_> = h
+        .app
+        .remotes
+        .iter()
+        .map(|(id, r)| (*id, &r.name, &r.state, r.snap.terms.len()))
+        .collect();
+    assert!(
+        held.is_empty() && h.app.refused.is_empty(),
+        "the window still holds a machine: (id, name, state, panes) {held:?}, refused {:?}",
+        h.app.refused
+    );
+}
+
 #[test]
 fn removing_forgets_the_machine_here_and_leaves_its_sessions_and_the_saved_layout_alone() {
     let runtime = Runtime::new();
@@ -770,7 +787,7 @@ fn removing_forgets_the_machine_here_and_leaves_its_sessions_and_the_saved_layou
         assert!(!kept.contains("box"), "{kept}");
         assert!(h.app.cfg.machines.is_empty());
         assert!(!h.app.links.supervises(id), "its supervisor is stopped");
-        assert!(h.app.remotes.is_empty() && h.app.refused.is_empty());
+        assert_no_machine_is_held(&h);
         assert!(
             h.app.screen_model().iter().all(|p| p.machine != id),
             "its folders are out of the sidebar"
@@ -797,6 +814,85 @@ fn removing_forgets_the_machine_here_and_leaves_its_sessions_and_the_saved_layou
             terms_the_daemon_has(&h.sandbox).await >= 1,
             "the remote daemon's pane is still alive"
         );
+    });
+}
+
+fn work_pane() -> TermInfo {
+    term(1, "work", "", Status::Idle, Path::new("/"), 0)
+}
+
+/// A window that has `box` in its config and knows it as connected with one pane, and the id
+/// it knows it by. Nothing is dialled: the window is told what a supervisor and a daemon say.
+fn window_with_box() -> (Harness, MachineId) {
+    let mut h = Harness::new("proxy");
+    let def = MachineDef {
+        name: "box".into(),
+        target: "box".into(),
+        ..MachineDef::default()
+    };
+    machine_config::add_machine(&h.app.machine_flow.local_config, &def.name, &def.target)
+        .expect("write the machine");
+    h.app.cfg.machines.push(def);
+    let id = MachineId(1);
+    h.app
+        .on_link_state(id, "box".into(), ConnectionState::Connected);
+    let state = Snapshot {
+        terms: [(1, work_pane())].into_iter().collect(),
+        ..Snapshot::default()
+    };
+    h.app.on_machine_server(id, ServerMsg::State(state));
+    assert_eq!(h.app.remotes[&id].snap.terms.len(), 1, "its pane is known");
+    (h, id)
+}
+
+#[test]
+fn what_a_removed_machine_s_daemon_says_afterwards_does_not_bring_it_back() {
+    let (mut h, id) = window_with_box();
+    assert!(!h.app.machines_remove("box").error);
+
+    // Sent before the connection was let go of and taken in after: a pane that changed.
+    let changed = ServerMsg::TermsChanged {
+        changed: vec![work_pane()],
+        removed: Vec::new(),
+    };
+    h.app.on_machine_server(id, changed);
+
+    assert_no_machine_is_held(&h);
+    assert!(
+        h.app.screen_model().iter().all(|p| p.machine != id),
+        "its folders stay out of the sidebar"
+    );
+}
+
+#[test]
+fn what_a_removed_machine_s_supervisor_said_before_it_stopped_does_not_bring_it_back() {
+    let runtime = Runtime::new();
+    runtime.block_on(async {
+        let (mut h, id) = window_with_box();
+        assert!(!h.app.machines_remove("box").error);
+
+        // Raised before the supervisor was stopped and taken in after: a line it had just
+        // dialled, and the state that follows one.
+        let (window, _daemon) = tokio::io::duplex(1024);
+        let (read, write) = tokio::io::split(window);
+        let halves = (
+            maitty_ipc_transport::reader(read),
+            maitty_ipc_transport::writer(write),
+        );
+        h.app
+            .on_link_event(LinkEvent::Line(id, halves), &mut h.connections);
+        let connected = LinkEvent::State {
+            machine: id,
+            name: "box".into(),
+            state: ConnectionState::Connected,
+        };
+        h.app.on_link_event(connected, &mut h.connections);
+
+        assert!(
+            !h.connections.is_connected(id),
+            "the line is not taken, which ends its ssh"
+        );
+        assert_no_machine_is_held(&h);
     });
 }
 
