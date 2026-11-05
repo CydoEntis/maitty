@@ -3,6 +3,70 @@
 Follow-ups from 2026-11-04 that need tickets in the `MAITTY` project. Plane is only reachable
 from the home network, so they are parked here. **Delete this file once they are filed.**
 
+## Game plan: the order to work through everything (proposed 2026-11-05)
+
+Read this first. It orders every open fix in this file. The order is a proposal: the owner can
+change it, and an agent does not.
+
+**How to work**
+- One ticket, one branch from `dev`, one pull request into `dev`. Read `AGENTS.md` and the docs the
+  ticket touches before planning it.
+- Do the tickets in the order below. Do not start the next one because it looks close.
+- Run the verification gate before every push and quote the results in the pull request.
+- A ticket marked **owner** needs a decision first: stop, ask, and record the answer in the doc
+  that owns the topic.
+- When a ticket is merged, mark it done here with the pull request number.
+
+**Step 0. Before any code (ten minutes)**
+- `git pull` on `dev`. Check that pull request #271 is closed (it is redundant) and that the
+  v0.65.0 release page still carries its warning.
+- Tickets 1 to 22 and G1 to G25 are older than v0.65.0. Most of them shipped in #268 and are not
+  marked. They are **not** part of this plan. Do not start one from here.
+
+**Phase 1. Make the desktop app usable.** Nothing else about the desktop app matters until this is done.
+
+| Order | Ticket | What | Needs |
+| --- | --- | --- | --- |
+| 1 | 35 | The terminal runs one action behind. Follow *The fix, in order* in [PERFORMANCE](PERFORMANCE.md), *Input latency* | **owner** for the ADR in its step 2 (a local socket for terminal output) |
+| 2 | 40 | Opening a pane types old terminal replies into it | nothing |
+| 3 | 36 | Agent hooks point into the AppImage's temporary folder | **owner**: where the daemon is kept so its path does not change |
+| 4 | 37 | Restart and restore cannot stop the desktop app's own daemon. The fix is on `fix/desktop-upgrade-path`: rebase, gate, pull request | nothing |
+| 5 | 38 | Settings › Performance lists no daemons | nothing |
+| 6 | release | v0.65.1 with the desktop app back. The pull request carries the **Key to echo** figure from a real Linux window; put the real `latest.json` back on the release | **owner** says go |
+
+**Phase 2. Stop a release costing a day.** Small, independent, no owner decision except the last.
+
+| Order | Ticket | What |
+| --- | --- | --- |
+| 7 | 24 | Pull requests stop waiting on macOS runners |
+| 8 | 25 | Linux package install gets a limit and a retry |
+| 9 | 23 | One command for a release |
+| 10 | 26, 28, 29 | The three intermittent Windows test failures, one pull request each. Name the cause from a Windows run; no retries |
+| 11 | 27 | A build cache for the release workflow. **owner**: a decision first, and it may not be worth doing |
+
+**Phase 3. The terminal app.**
+
+| Order | Ticket | What | Needs |
+| --- | --- | --- | --- |
+| 12 | 31 | A needs-you alert rings for a prompt that settles itself. Status has to be right, so this is first here | nothing |
+| 13 | 33 | A click on a project row moves the keys into the sidebar | nothing |
+| 14 | 30 | What Codex, Gemini and OpenCode send as their last message (spike) | nothing |
+| 15 | 32, 34 | Rename a machine; choose the alert sounds | **owner**: these are features, built when the owner asks |
+
+**Phase 4. The desktop app's design.** Only after phase 1: a layout cannot be judged in a window that lags.
+
+| Order | Ticket | What | Needs |
+| --- | --- | --- | --- |
+| 16 | 39 | Review every screen with the owner: keep, change or cut. Agree the smallest window. Put the reference designs in `.maitty/references/` | **owner**, throughout |
+| 17 | from 39 | The cuts and changes it produces, cuts first. The list so far is under *Design changes the owner asked for* | **owner** marks each screen first |
+| 18 | ADR | Chat on any session reverses ADR 0052 | **owner** |
+
+**When to stop and ask instead of pressing on**
+- The lag in ticket 35 does not show on the machine in use. It was measured on Hyprland, NVIDIA
+  and WebKitGTK; a machine without it changes the fix.
+- A fix would change what a person sees or does in the app beyond what its ticket says.
+- A check in the gate fails for a reason the ticket does not cover.
+
 ## 1. Glass on light themes (feature, `client`)
 
 On Paper and Day the Glass finish reads badly: the ambient glow and the cards' resting drop
@@ -671,7 +735,7 @@ were removed, still loads and is ignored.
 
 ## Added 2026-11-05 (afternoon): found testing the v0.65.0 desktop app on Linux
 
-**Start here.** Where things stand, and what to do next, in order.
+**Start here.** Where things stand. The order to work in is the *Game plan* at the top of this file.
 
 **State when the owner left work (2:55 PM ET, 2026-11-05)**
 - v0.65.0 is released. The terminal app in it is fine. The desktop app is not usable (ticket 35).
