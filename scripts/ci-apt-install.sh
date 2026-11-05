@@ -8,6 +8,8 @@ set -euo pipefail
 
 readonly ATTEMPTS=3
 readonly ATTEMPT_SECONDS=240
+# How long a cut-off apt-get gets to stop by itself before it is killed.
+readonly KILL_AFTER_SECONDS=10
 readonly APT_OPTIONS=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30)
 
 if [ "$#" -eq 0 ]; then
@@ -19,7 +21,7 @@ fi
 attempt() {
   local try
   for try in $(seq "$ATTEMPTS"); do
-    if sudo timeout "$ATTEMPT_SECONDS" apt-get "${APT_OPTIONS[@]}" "$@"; then
+    if sudo timeout --kill-after="$KILL_AFTER_SECONDS" "$ATTEMPT_SECONDS" apt-get "${APT_OPTIONS[@]}" "$@"; then
       return 0
     fi
     echo "apt-get $1 failed or ran past ${ATTEMPT_SECONDS}s (attempt $try of $ATTEMPTS)" >&2
