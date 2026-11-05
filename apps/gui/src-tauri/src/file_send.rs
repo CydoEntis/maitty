@@ -6,7 +6,7 @@
 //! far-side paths into the pane itself, from the events.
 
 use maitty_machines::remote_paste::MAX_SEND_BYTES;
-use maitty_machines::remote_send::{send_file, shown};
+use maitty_machines::remote_send::{send_file, send_image, shown};
 use maitty_machines::ssh_run::Watch;
 use maitty_machines::{Machine, MachineDef};
 use serde::Serialize;
@@ -72,6 +72,19 @@ pub enum SendEvent {
     },
 }
 
+/// What a send carries. The same runner, events and cancel serve both (tickets 11 and 19).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendKind {
+    /// Files the person named, up to 100 MB each (ADR 0050).
+    Files,
+    /// A pasted image the host staged in its private cache, up to 25 MB (ADR 0049). The window
+    /// is told it is `image`, not the staged file's name, which means nothing to a person.
+    Image { extension: &'static str },
+}
+
+/// What the window is told the file of an image send is called.
+pub const IMAGE_LABEL: &str = "image";
+
 /// A send that passed its checks: where it goes and what, in order.
 pub struct Job {
     pub transfer: String,
@@ -79,17 +92,35 @@ pub struct Job {
     /// The machine's name in words.
     pub name: String,
     pub files: Vec<PathBuf>,
+    pub kind: SendKind,
 }
 
-/// Check what the window asked for. Everything is checked before the first byte is sent, so a
-/// bad third file does not leave two already sent. `ssh` is the program and its leading arguments.
-pub fn plan(
+impl Job {
+    /// How the window is told to call `path`.
+    fn label(&self, path: &std::path::Path) -> String {
+        match self.kind {
+            SendKind::Files => shown(path),
+            SendKind::Image { .. } => IMAGE_LABEL.to_owned(),
+        }
+    }
+}
+
+/// The machine a request names, once it is known to be one that can be sent to. Whether it is
+/// connected is for the caller to check.
+pub struct Target {
+    pub machine: Machine,
+    /// The machine's name as the person wrote it in the machine file.
+    pub name: String,
+}
+
+/// Check the machine and the id a request names. Shared by files and images so both refuse a
+/// machine in the same words.
+pub fn target(
     machines: &[MachineDef],
     ssh: &[String],
     machine: &str,
     transfer: &str,
-    paths: &[String],
-) -> Result<Job, String> {
+) -> Result<Target, String> {
     if transfer.is_empty()
         || transfer.len() > TRANSFER_ID_MAX
         || !transfer
@@ -108,6 +139,22 @@ pub fn plan(
             def.name
         ));
     }
+    Ok(Target {
+        machine: Machine::from_def_via(def, ssh),
+        name: def.name.clone(),
+    })
+}
+
+/// Check what the window asked for. Everything is checked before the first byte is sent, so a
+/// bad third file does not leave two already sent. `ssh` is the program and its leading arguments.
+pub fn plan(
+    machines: &[MachineDef],
+    ssh: &[String],
+    machine: &str,
+    transfer: &str,
+    paths: &[String],
+) -> Result<Job, String> {
+    let target = target(machines, ssh, machine, transfer)?;
     if paths.is_empty() {
         return Err("there is no file to send".into());
     }
@@ -123,9 +170,10 @@ pub fn plan(
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Job {
         transfer: transfer.to_owned(),
-        machine: Machine::from_def_via(def, ssh),
-        name: def.name.clone(),
+        machine: target.machine,
+        name: target.name,
         files,
+        kind: SendKind::Files,
     })
 }
 
@@ -178,7 +226,7 @@ pub fn run(job: &Job, cancel: &Arc<AtomicBool>, emit: &(dyn Fn(SendEvent) + Sync
                 let sent = watch.sent.load(Ordering::Relaxed).min(total);
                 emit(SendEvent::Progress {
                     transfer: transfer.to_owned(),
-                    file: shown(&job.files[index]),
+                    file: job.label(&job.files[index]),
                     index,
                     count,
                     percent: u8::try_from(sent * 100 / total).unwrap_or(100),
@@ -210,10 +258,16 @@ fn send_all(
         at.store(index, Ordering::Relaxed);
         watch.sent.store(0, Ordering::Relaxed);
         watch.total.store(0, Ordering::Relaxed);
-        match send_file(&job.machine, &job.name, path, watch) {
+        let sent = match job.kind {
+            SendKind::Files => send_file(&job.machine, &job.name, path, watch),
+            SendKind::Image { extension } => {
+                send_image(&job.machine, &job.name, path, extension, watch)
+            }
+        };
+        match sent {
             Ok(remote_path) => emit(SendEvent::Sent {
                 transfer: transfer.clone(),
-                file: shown(path),
+                file: job.label(path),
                 index,
                 count,
                 remote_path,
@@ -227,7 +281,7 @@ fn send_all(
             Err(message) => {
                 return SendEvent::Failed {
                     transfer,
-                    file: shown(path),
+                    file: job.label(path),
                     message,
                     unsent: count - index,
                 };
@@ -290,14 +344,25 @@ impl Drop for Ending {
 pub async fn send_files_to_machine(
     app: tauri::AppHandle,
     machines: tauri::State<'_, crate::machines::Machines>,
-    transfers: tauri::State<'_, Transfers>,
     machine: String,
     paths: Vec<String>,
     transfer: String,
 ) -> Result<(), String> {
     let ssh = [maitty_machines::SSH_PROGRAM.to_owned()];
     let job = plan(&machines.0.machines, &ssh, &machine, &transfer, &paths)?;
-    let cancel = transfers.begin(&job.transfer)?;
+    start(&app, job)
+}
+
+/// Run a planned send on a blocking worker, one at a time. The files of an image job are staged
+/// copies the host made, so they are removed once the send ends, however it ends.
+pub fn start(app: &tauri::AppHandle, job: Job) -> Result<(), String> {
+    let cancel = match app.state::<Transfers>().begin(&job.transfer) {
+        Ok(cancel) => cancel,
+        Err(refused) => {
+            discard_staged(&job);
+            return Err(refused);
+        }
+    };
     let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         // Dropped even if the send panics, or no later send could start.
@@ -310,8 +375,23 @@ pub async fn send_files_to_machine(
                 tracing::warn!("could not tell the window how a file send went: {error}");
             }
         });
+        discard_staged(&job);
     });
     Ok(())
+}
+
+/// Remove the staged copy of a pasted image; a dropped file is the person's own and stays.
+pub(crate) fn discard_staged(job: &Job) {
+    if matches!(job.kind, SendKind::Files) {
+        return;
+    }
+    for path in &job.files {
+        if let Err(error) = std::fs::remove_file(path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!("could not remove a staged image: {error}");
+        }
+    }
 }
 
 /// Stop the send named `transfer`: the file now going is cut off and the rest are not tried.

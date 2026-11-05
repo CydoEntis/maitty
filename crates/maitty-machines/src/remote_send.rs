@@ -60,6 +60,21 @@ pub fn upload_image(machine: &Machine, name: &str, png: &Path) -> Result<String,
     )
 }
 
+/// Send the image file at `image` to `machine`, kept there as `image.<extension>` so a JPEG is
+/// not named `.png`. `extension` is cleaned like any name. Like `send_file` it reports bytes sent
+/// and can be cancelled through `watch`, but it has the image's cap and time limit (ADR 0049).
+pub fn send_image(
+    machine: &Machine,
+    name: &str,
+    image: &Path,
+    extension: &str,
+    watch: &Watch,
+) -> Result<String, String> {
+    let (stamp, salt) = stamp_and_salt();
+    let remote_name = sent_file_name(stamp, salt, &format!("image.{extension}"));
+    transfer(machine, name, image, Kind::Image, &remote_name, watch)
+}
+
 /// Send the file at `path` to `machine`, called `name` in words for the person. Anything but a
 /// regular file is refused here, before ssh starts. `watch` reports bytes sent and can end it.
 pub fn send_file(
@@ -181,6 +196,21 @@ mod tests {
         let _ = std::fs::remove_file(&big);
         assert!(
             error.contains("more than the 100 MB that can be sent to box"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn an_image_over_its_cap_is_refused_though_a_file_that_size_may_go() {
+        let big = std::env::temp_dir().join(format!("remote-send-image-{}", std::process::id()));
+        std::fs::File::create(&big)
+            .unwrap()
+            .set_len(MAX_PASTE_BYTES + 1)
+            .unwrap();
+        let error = send_image(&box_machine(), "box", &big, "png", &Watch::default()).unwrap_err();
+        let _ = std::fs::remove_file(&big);
+        assert!(
+            error.contains("more than the 25 MB that can be sent to box"),
             "{error}"
         );
     }

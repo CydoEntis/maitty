@@ -57,6 +57,17 @@ pub struct StreamState(Mutex<Streams>);
 #[derive(Default)]
 pub struct MachineStates(Mutex<BTreeMap<u16, MachineState>>);
 
+impl MachineStates {
+    /// Whether the machine called `name` (any case) is `connected` now.
+    pub fn is_connected(&self, name: &str) -> bool {
+        self.0.lock().is_ok_and(|states| {
+            states
+                .values()
+                .any(|state| state.name.eq_ignore_ascii_case(name) && state.state == "connected")
+        })
+    }
+}
+
 /// A machine as the window finds it when it starts: its state, and the snapshot it last gave.
 #[derive(Clone, Serialize, Debug)]
 pub struct MachineOverview {
