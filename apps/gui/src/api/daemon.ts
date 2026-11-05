@@ -482,6 +482,38 @@ export async function loadMessages(
   }
 }
 
+// The chat view's read of a conversation: entries and approvals stay raw (`unknown`) because the chat
+// projection validates each one itself, so a single entry this app cannot read never hides the rest.
+const ChatPageSchema = z.object({
+  conversation: z.number().int().nonnegative(),
+  generation: z.number().int().nonnegative(),
+  status: StatusSchema,
+  receipt: ConversationReceiptSchema.nullable(),
+  error: z.string().nullable(),
+  cancelling: z.boolean(),
+  history: z.object({
+    entries: z.array(z.unknown()),
+    next: HistoryCursorSchema.nullable(),
+    completeness: HistoryCompletenessSchema,
+  }),
+  approvals: z.array(z.unknown()),
+})
+export type HistoryCursor = z.infer<typeof HistoryCursorSchema>
+export type ChatPage = z.infer<typeof ChatPageSchema>
+
+/**
+ * One page of a conversation's history from `cursor` (null: the start), with the approvals waiting
+ * and the conversation's status. A cursor goes stale when the history changes; the caller then
+ * reads again from the start.
+ */
+export async function readConversationPage(id: number, cursor: HistoryCursor | null): Promise<ChatPage> {
+  if (!isDesktop()) throw new Error('Chat needs the desktop app')
+  if (!Number.isSafeInteger(id) || id < 0) throw new Error('Conversation id is invalid')
+  const page = await invokeParsed('read_conversation', ChatPageSchema, { id, cursor, limit: ReadPageLimit })
+  if (page.conversation !== id) throw new Error('Daemon returned a different conversation')
+  return page
+}
+
 export async function loadConversationDiff(conversation: Conversation): Promise<ConversationDiff> {
   if (terminalOf(conversation.id) !== null) throw new Error('Changes are shown for chat sessions')
   if (!isDesktop() || conversation.generation === undefined) {

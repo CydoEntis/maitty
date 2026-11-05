@@ -57,7 +57,15 @@ check for the view). Acceptance criteria are the bullets.
    - Switching a working agent changes nothing in the daemon (assert no command sent).
    - A shell tab shows "Chat view is for agent sessions" with **Start claude here**
      and **Back to terminal**.
-2. **CV-2 History.** Read the conversation on open and follow the cursor. Your
+2. **CV-2 History.** **Done:** `features/chat/` (`chatFeed.ts`, `useChatFeed.ts`, `chatRows.ts`, `components/`).
+   A virtualised list (1,500 items draw under 40 rows), stable event ids as keys, the cursor followed as far as the
+   daemon allows (see UI.md: the daemon makes a cursor stale on every change, so the feed re-reads from the start
+   then and applies only entries that changed), a fresh projection on a new generation, a resume after a failed
+   read without duplicates, pending approvals polled into `applyApprovals`. Cards are plain and complete; the
+   polished chips, diffs and approval card are CV-4..7. Known limits: adjacent agent messages of a turn are joined,
+   not all of a turn's messages (that would reorder text against its steps); a command card shows no exit code yet
+   (the history carries it, the projection does not); `answered_approvals` are not read; no markdown rendering.
+   Original brief:  Read the conversation on open and follow the cursor. Your
    messages as right-aligned bubbles; one agent message per turn with a lead
    sentence; turn dividers "Cooked for 7s · done 10:11 AM".
    - A history of 1,000 items renders without jank (virtualised list).

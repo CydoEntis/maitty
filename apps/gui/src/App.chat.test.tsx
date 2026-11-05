@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
 import App from './App'
+import { FakeDaemonHistory } from './features/chat/fakeDaemonHistory'
+import { forgetChatFeeds } from './features/chat/useChatFeed'
 
 const daemon = vi.hoisted(() => ({
   loadConversations: vi.fn<() => Promise<Conversation[]>>(),
@@ -21,6 +23,7 @@ const daemon = vi.hoisted(() => ({
   sendTerminalInput: vi.fn<(conversation: { id: string; generation: number }, input: string | Uint8Array) => Promise<void>>(() => Promise.resolve()),
   resizeTerminal: vi.fn(() => Promise.resolve()),
   loadMachines: vi.fn(() => Promise.resolve({ names: [], error: null })),
+  readConversationPage: vi.fn(),
 }))
 
 vi.mock('@/api/daemon', () => ({
@@ -100,6 +103,7 @@ describe('the Terminal | Chat view of a pane', () => {
     window.localStorage.clear()
     terminal.mounts = 0
     terminal.focused.length = 0
+    forgetChatFeeds()
     daemon.defaultSessionFolder.mockResolvedValue(HOME)
     daemon.loadDaemonRestartStatus.mockResolvedValue({ daemonProtocol: 49, guiProtocol: 59, canRestart: false, sessionCount: 1, activeTurnCount: 0 })
   })
@@ -169,6 +173,29 @@ describe('the Terminal | Chat view of a pane', () => {
     const chats = panes.filter((pane) => within(pane).queryByRole('region', { name: 'Chat' }) !== null)
     expect(chats).toHaveLength(1)
     expect(within(chats[0] as HTMLElement).getByRole('radio', { name: /^Chat view/ })).toBeChecked()
+  })
+
+  it('shows the daemon\'s conversation in the chat and keeps the terminal untouched while it reads', async () => {
+    const user = userEvent.setup()
+    const history = new FakeDaemonHistory()
+    history.upsert(history.message('t1', 'u', 'User', 'fix the failing test'))
+    history.upsert(history.message('t1', 'a', 'Assistant', 'I found the cause. It was a stale fixture.'))
+    history.upsert(history.turnStatus('t1', 'Completed', { started_at_ms: 1_000, completed_at_ms: 8_000 }))
+    daemon.readConversationPage.mockImplementation((_id: number, cursor: never) => history.read(cursor))
+    daemon.loadConversations.mockResolvedValue([claude(2)])
+    renderDesktopApp()
+    const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
+    vi.clearAllMocks()
+    daemon.readConversationPage.mockImplementation((_id: number, cursor: never) => history.read(cursor))
+
+    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+
+    expect(await within(pane).findByText('fix the failing test')).toBeInTheDocument()
+    expect(within(pane).getByText('I found the cause.')).toBeInTheDocument()
+    expect(within(pane).getByRole('separator', { name: /Cooked for 7s/ })).toBeInTheDocument()
+    expect(daemon.readConversationPage).toHaveBeenCalledWith(42, null)
+    expect(daemon.sendTerminalInput).not.toHaveBeenCalled()
+    expect(daemon.resizeTerminal).not.toHaveBeenCalled()
   })
 
   it('does not hand the keyboard to the terminal while the chat covers it', async () => {

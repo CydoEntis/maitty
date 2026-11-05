@@ -368,6 +368,11 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   show the chat card's empty state, "Chat view is for agent sessions", with the reason, **Start claude here** /
   **Start codex here** (shells only) and **Back to terminal**. Settings › General › Chat view picks the view each
   of Claude and Codex opens in (Terminal by default); a session never switched by hand follows it.
+- **Chat body.** A 760px centred column. Your messages are right-aligned bubbles (`--raise`, hairline, radius
+  16/16/5/16); an agent message has a 24px agent tile, a lead sentence in `--fg` and paragraphs in `--fg2`;
+  turn dividers read "Cooked for 7s · done 10:11 AM" (only with the daemon's times); tool steps are mono chips;
+  edits, commands, checklists, helper agents and approvals are cards on `--term` or `--raise` with a hairline.
+  Colour is a token everywhere (`--ok`, `--danger`, `--warn`), and a diff tints its lines 10%.
 - **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
   open (`model/escLadder.ts`): comment composer, New agent and What's new, Overview, palette,
   inbox, Settings, the sidebar drawer, Focus mode. A new dialog adds its id there.

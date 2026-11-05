@@ -273,6 +273,12 @@ describe('turns', () => {
     expect(events.at(-1)).toMatchObject({ kind: 'turn', turnId: TURN, outcome: 'completed' })
   })
 
+  it('takes a turn\'s duration from the daemon\'s times, and says when it has none', () => {
+    const timed = { ...turnStatus(TURN, 'Completed'), started_at_ms: 1_000, completed_at_ms: 8_000 }
+    expect(project('claude', [message('u', 'User', 'go'), timed]).at(-1)).toMatchObject({ kind: 'turn', startedAtMs: 1_000, endedAtMs: 8_000, timed: true })
+    expect(project('claude', [message('u', 'User', 'go'), turnStatus(TURN, 'Completed')]).at(-1)).toMatchObject({ kind: 'turn', timed: false })
+  })
+
   it('has no divider while the turn is still running', () => {
     const events = project('claude', [turnStatus(TURN, 'Running'), message('u', 'User', 'go')])
     expect(events.map((event) => event.kind)).toEqual(['message'])

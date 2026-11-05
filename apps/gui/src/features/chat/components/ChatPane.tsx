@@ -1,6 +1,7 @@
 import { MessageSquare } from 'lucide-react'
 import { CHAT_AGENTS, noChatReason, type ChatAgent, type ChatAvailability } from '@/features/workspace/model/chatView'
 import { Button } from '@/components/ui/button'
+import { ChatSession } from './ChatSession'
 
 export type ChatPaneProps = {
   availability: ChatAvailability
@@ -21,16 +22,8 @@ export function ChatPane(props: ChatPaneProps) {
   const { availability } = props
   return (
     <section className="mx-chat-layer mx-chat-in" aria-label="Chat">
-      {availability.kind === 'ready' ? <ReadyChat /> : <NoChat {...props} availability={availability} />}
+      {availability.kind === 'ready' ? <ChatSession key={availability.link.conversation} link={availability.link} agent={availability.agent} /> : <NoChat {...props} availability={availability} />}
     </section>
-  )
-}
-
-function ReadyChat() {
-  return (
-    <div className="flex flex-1 items-center justify-center p-6 text-[13px] text-dim">
-      Nothing to show yet. The conversation appears here once its history is read.
-    </div>
   )
 }
 
