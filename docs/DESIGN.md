@@ -115,7 +115,7 @@ pane's top border, as the sidebar's `LOCAL` chip sits on its own ([ADR 0038](adr
 the border running on between the chips (`ui.tab_gap`, on by default, leaves a cell of it between one tab and the next; off, they touch). A chip's ends follow `ui.rounded`: square, rounded corners, or a pill. Each chip is led by its state's glyph (on screen or
 not) and ended by its ✕, the current one in the accent and the others one `btn` chip with a muted
 number, then a **+** chip for a new tab. At the right, in the first stretch of plain border that
-fits it, a badge names where the focused session runs: `⌂ this computer` or `▭ build`. A tab
+fits it, a badge names where the focused session runs: `⌂ Local` or `▭ build`. A tab
 is named the same everywhere: its own name, else its focused session's. Panes are titled as an
 editor's are ([ADR 0030](adr/0030-panes-titled-like-an-editor.md)): a tab's only pane has no
 title of its own (its border carries the tabs), its tab naming it, showing its state (the glyph opens why) and
