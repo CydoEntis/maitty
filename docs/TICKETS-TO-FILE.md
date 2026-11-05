@@ -180,7 +180,8 @@ The desktop window is terminal-only today; the chat body (G15-G18) does not exis
 - **G11 Brain dump (C.6)** (feature / client, daemon). Needs question 7. Blocked by G1, G9.
 - **G12 Usage store and API (C.7 daemon)** (feature / daemon). Per-session per-day provider-reported
   usage, never estimated. Needs question 8.
-- **G13 Usage and cost page (C.7)** (feature / client). Blocked by G12, G1.
+- **G13 Usage and cost page (C.7)** (feature / client). Blocked by G12, G1. Built on `feat/gui-usage-page`
+  (page, Ctrl+Shift+U, footer icon, client-side budget); remote machines' usage waits for a daemon report that covers them.
 - **G14 Performance page to spec (C.8)** (feature / client). Four tiles with sparklines, daemon ping,
   ranked "What's costing" with session-only switches, Ctrl+Shift+P, harness brought up to date.
 - **G15 Event projection (CV-0)** (feature / client). Needs question 1.

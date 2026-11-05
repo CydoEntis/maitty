@@ -354,12 +354,12 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   Ctrl+letter always goes to the terminal, so the window uses Ctrl+Shift (T, W, D, F, K, I, B, N,
   J ...); where two actions want the same Ctrl+Shift letter the second takes Ctrl+Alt+Shift (split
   down, broadcast). Ctrl with a non-letter (`,` `.` `/` `[` `]` `=` `1`-`9` Tab) is the window's
-  too. A binding with `available: false` (Overview, Session panel, Usage, Terminal/Chat, Undo
+  too. A binding with `available: false` (Overview, Session panel, Terminal/Chat, Undo
   close) is registered but its key does nothing and the overlay hides it until the feature lands.
   Jump to the next session that needs you is ⌘J on macOS only: Ctrl+J is a terminal key.
 - **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
   open (`model/escLadder.ts`): comment composer, New agent and What's new, Overview, palette,
-  inbox, Settings, the sidebar drawer, Focus mode. A new dialog adds its id there.
+  inbox, Settings, the sidebar drawer, Usage and cost, Focus mode. A new dialog adds its id there.
 - **Command palette (⌘K).** A 600px card over a dimmed scrim: type a few letters to jump to a
   session, project, action or theme (themes only once something is typed). A run of the typed text
   ranks above letters that merely appear in order; ↑ ↓ move, ↵ runs, Esc closes. Sessions that need
@@ -447,6 +447,25 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   a banner above the panes says which agent and shows the command that brings it back
   (`codex resume --last`). **Resume** types it into that session; **Dismiss** hides the banner. Nothing
   resumes on its own.
+- **Usage and cost (⌘⇧U / Ctrl+Shift+U).** A page that covers the pane area (the panes stay mounted
+  beneath it); opened by the shortcut, the bar-chart icon beside Settings in the sidebar footer
+  (expanded and rail, tooltip with the keycaps) or the palette, closed by Esc, its × or the same key.
+  Header: a **Day / Week / Month** switch and the window it means, named honestly because the daemon
+  counts rolling UTC days that end today (Today (UTC), Last 7 days, Last 30 days), then tokens (in
+  and out), cost, turns and time working. A figure no provider reported is a dash; with no reported
+  cost the page shows no dollar total, and when any session reports none it shows **one** note, never
+  one per row. A per-day bar chart (accent bars, no animation) has a hidden table as its text
+  alternative. The table sorts on every header (`aria-sort`, buttons, cost descending by default;
+  text columns start A to Z, numbers biggest first; unreported figures sort last), ends in a totals
+  row, and its Machine column is always "This computer" until the report covers remote machines. A
+  row opens its pane only while that pane is open in this window; a closed session's row is plain
+  text. The **budget ring** (56px, accent, warn from 70%, danger from 90%) appears only when a monthly
+  budget is set, the cost is known and the Month window is showing; otherwise "Set a monthly budget"
+  (an inline `$` field; empty or "No budget" clears it). The budget is the `monthlyBudget`
+  preference (client-side; the daemon serves none). States: skeleton while loading, plain words with
+  Retry on failure (a failed refresh keeps the old figures and says they may be stale), "Nothing
+  recorded yet" when the store is empty. Refreshes on open, when the period changes and every 60 s
+  while open. Source: `features/usage/`, ADR 0051.
 - **Usage pill.** A pane's header shows what the provider reports the session has used (tokens,
   context filled, cost). It is not drawn when the provider said nothing, so no number is invented.
 - **Turn timeline.** Inspect › Timeline lists the focused pane's latest events, newest first: the
