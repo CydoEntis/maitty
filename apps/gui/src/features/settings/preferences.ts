@@ -111,6 +111,17 @@ export type SettingsPreferences = {
   /** Restart into a downloaded update when no session is working or waiting on you. */
   /** Install a downloaded update while the app is idle. Kept under its old key so a stored choice carries over. */
   restartWhenIdle: boolean
+  /** Monthly spend in US dollars the Usage page's ring measures against; null is no budget (the default). Kept here because the daemon serves none. */
+  monthlyBudget: number | null
+}
+
+/** Large enough for any real budget; a typo of extra digits is refused rather than stored. */
+export const MONTHLY_BUDGET_MAX = 1_000_000
+
+/** A budget from storage or the page: a positive amount in range, else none. */
+export function validBudget(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return value > 0 && value <= MONTHLY_BUDGET_MAX ? value : null
 }
 
 export const TERMINAL_FONT_SIZE_MIN = 12
@@ -184,6 +195,7 @@ function defaults(): SettingsPreferences {
     cursorBlink: false,
     autoDownloadUpdates: true,
     restartWhenIdle: true,
+    monthlyBudget: null,
   }
 }
 
@@ -258,6 +270,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       cursorBlink: bool(preferences.cursorBlink, fallback.cursorBlink),
       autoDownloadUpdates: bool(preferences.autoDownloadUpdates, fallback.autoDownloadUpdates),
       restartWhenIdle: bool(preferences.restartWhenIdle, fallback.restartWhenIdle),
+      monthlyBudget: validBudget(preferences.monthlyBudget),
       iconColor: preferences.iconColor === 'color' || preferences.iconColor === 'grayscale' ? preferences.iconColor : fallback.iconColor,
       leadMode: preferences.leadMode === 'focused' || preferences.leadMode === 'attention' ? preferences.leadMode : fallback.leadMode,
     }
