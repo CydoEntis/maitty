@@ -388,7 +388,9 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Session panel (Ctrl/Cmd+\\).** A 320px floating card (`mx-card`, radius `--r14`) beside the panes on the side
   opposite the sidebar: a 46px header (agent tile, session name, process in mono, Hide), the checklist card
   (3px accent progress bar, done items struck through in `--dim`, the current item bold with the spinner and its
-  running time in the accent, pending items hollow) and the Agents card. Under 1100px it is an overlay from the
+  running time in the accent, pending items hollow), the Agents card and the Changes / Files / Artifacts segments
+  (the Changes diff widens the panel to 520px). A session row shows the checklist's "2 of 5 · current item" and a 2px
+  progress bar under the name once the window has read that session. Under 1100px it is an overlay from the
   window edge over the 40% drawer scrim. A pane head carries a panel button beside the view switch.
 - **Overview (⌘0 / Ctrl+0).** The sidebar's pinned **Overview** row (a 40 by 36 icon in the
   rail) carries an amber badge with the number of sessions that need you, hidden at 0. The screen

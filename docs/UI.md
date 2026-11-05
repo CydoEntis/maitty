@@ -811,3 +811,10 @@ view too. Local sessions only.
   limited by the daemon, path relative to the session's folder) and shows it as text, markdown drawn through the
   safe renderer; a picture cannot be shown because files arrive as text, so it offers the Files drawer. The
   daemon's `conversation_files` listing is not used: the panel shows what the session touched, not the project tree.
+- **Sidebar progress.** A session row shows the agent's checklist under the name, "2 of 5 · Write the fix" and a 2px
+  bar (`progressStore.ts`). The daemon reports no per-session progress and the sidebar must not poll every
+  conversation, so the row appears only for a session whose conversation this window has read (its chat or its
+  panel was open) and shows the last list read; a session never opened has no such row.
+- **Cost.** The panel reads the conversation with its own `useChatFeed`, so an open chat and an open panel each
+  poll (a read of the last page, 1 s while the agent works). The panel polls the worktree diff every 4 s and
+  stops while the window is hidden.

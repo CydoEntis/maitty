@@ -5,6 +5,7 @@ import { errorMessage } from '@/lib/error-message'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
 import { hasPendingApproval, runningTurnStartedAt, type ChatFeed } from '../chatFeed'
 import { buildRows, type ChatRow } from '../chatRows'
+import { usePublishChecklistProgress } from '@/features/panel/progressStore'
 import { useChatFeed } from '../useChatFeed'
 import { useChatComposer } from '../useChatComposer'
 import type { ApprovalDecision } from '../chatEvents'
@@ -61,6 +62,8 @@ type Props = {
 export function ChatSession({ link, agent, online, root = null, onOpenDiff = null }: Props) {
   const { feed, events, offline, refresh, recordAnswer } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const working = feed.status === 'Working'
+  // The sidebar row shows the checklist's progress for a conversation the window has read.
+  usePublishChecklistProgress(link.conversation, events)
   const rows = useMemo(() => buildRows(events, working, root), [events, working, root])
   const workingSince = working ? runningTurnStartedAt(feed) : null
   const incomplete = incompleteReason(feed.completeness)

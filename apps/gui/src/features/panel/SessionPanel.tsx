@@ -20,6 +20,7 @@ import { ChangesSegment } from './ChangesSegment'
 import { ChecklistCard } from './ChecklistCard'
 import { addComment, useComments } from './commentStore'
 import { DiffView } from './DiffView'
+import { usePublishChecklistProgress } from './progressStore'
 import { FilesSegment } from './FilesSegment'
 import { checklistOf, currentItemSince, emptyReason, helperAgentsOf, touchedFilesOf } from './panelModel'
 import { consumeDiffRequest, useDiffRequest } from './panelCommands'
@@ -97,6 +98,7 @@ function AgentBody({ link, agent, root, folder, branch, online, chatOpen, onWide
   const helpers = useMemo(() => helperAgentsOf(events), [events])
   const since = useMemo(() => (checklist === null ? null : currentItemSince(events, checklist)), [events, checklist])
   const comments = useComments(link.conversation)
+  usePublishChecklistProgress(link.conversation, events)
   const touched = useMemo(() => touchedFilesOf(events), [events])
   // The agent names files by absolute path; the panel shows and asks the daemon for them relative to the project.
   const showPath = useCallback((file: string) => relativePath(file.replace(/\\/g, '/'), root), [root])
