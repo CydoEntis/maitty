@@ -753,6 +753,7 @@ impl App {
                 },
             ),
             PromptKind::AddReference(root, dir) => self.add_reference(root, dir, &input),
+            PromptKind::SendFile(term) => self.start_send(term, &input),
             PromptKind::NewWorkspace => {
                 // A group starts with a shell where you are.
                 let name = (!input.is_empty()).then_some(input);

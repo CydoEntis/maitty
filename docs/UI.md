@@ -109,6 +109,15 @@ only: a new session there is a plain shell, closing a pane or tab detaches, and 
 session is its own action ([ADR 0046](adr/0046-desktop-app-is-a-terminal-multiplexer.md);
 its look is in [DESIGN](DESIGN.md#desktop-app)).
 
+The desktop app also shows other machines' terminal sessions (ADR 0048).
+Its host holds one supervised connection per machine and the web view only renders: it knows a machine by
+name, never by where it points. A session of another machine has the id `build/t12` (the machine's name, so a
+saved layout survives a restart; this computer's stay `t12`). **Settings › Machines** retries, removes and
+adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
+with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
+login that needs a person run in a session named `ssh <name>`); **New session** on a pane of another machine
+asks for a folder on that machine. A screen reader is told when a machine goes down (`build disconnected: unreachable`) and when it is back, once each and not for every retry, through a polite live region; every state is a word as well as a shape and a colour, nothing about machines animates, and the Machines page works with the keyboard alone (Tab, Enter, Esc ends a look in progress without closing Settings). Features that read a pane's files (Inspect, worktreesFeatures that read a pane's files (Inspect, worktrees, opening a file from the output, dropping files, the screen text) are for this computer's panes only: each says `<Feature> is local-only in v1: the files are on <machine>, not on this computer.` and the Repository button shows disabled with that text.
+
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,
 and status colours (`working`, `blocked` = needs you, `done`, `idle`, `err`).
@@ -118,13 +127,44 @@ Every built-in theme passes a WCAG contrast audit test. Shared primitives in
 (text runs), `keycap`/`keycaps`, `hints`, `button`, `dim_all`. Icons come from
 config (`[icons]`), with Nerd Font glyphs where present.
 
+## Project-specific: GUI design system rules
+
+Rules for `apps/gui/`. Owner-approved 2026-11-04.
+
+1. Every colour, radius and shadow comes from a theme token (a CSS variable),
+   mapped into Tailwind by the `@theme inline` block in `apps/gui/src/index.css`.
+   No raw hex, `rgb()` or `hsl()` in components.
+2. Every popup (menu, dropdown, dialog, tooltip, popover, listbox) is a
+   shadcn/Radix primitive from `src/components/ui/`. No hand-rolled focus, Esc
+   or arrow-key handling.
+3. New components use Tailwind utilities on those tokens. Heavy animation and
+   per-style rules (Flat, Tiled, Glass, `data-gpu`) stay in `workspace.css`.
+4. Old CSS moves to these rules only when a ticket touches that area. There is
+   no big-bang rewrite.
+
+`pnpm lint` enforces rule 1 in TS and TSX: `eslint.config.ts` rejects a hex,
+`rgb()` or `hsl()` literal in `apps/gui/src`. Exempt: test files, the theme
+files in `features/workspace/theme/`, and `TerminalView.tsx` (the xterm.js
+palette takes literal colours). Don't widen the exemptions to pass a change.
+
+## Project-specific: usage and cost page (desktop)
+
+The Usage and cost page (`apps/gui/src/features/usage/`, look in [DESIGN](DESIGN.md#desktop-app)) shows only
+what providers reported through the daemon's usage store ([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)).
+A figure nobody reported is a dash in the UI, never zero and never computed from tokens. The monthly
+budget is a client preference (`monthlyBudget`, validated in `preferences.ts`); the ring needs a budget, a
+known cost and the Month window. The report is fetched with a query (no polling faster than 60 s), and
+the page never blocks the UI thread.
+
 ## Project-specific: layout and navigation
 
 <!-- local: user requested sidebar-bottom controls and no global footer; on 2026-10-24 they chose one exception, the mode bar along the bottom (ADR 0024). -->
 
-Maitty has one terminal interface: a sidebar of projects and sessions, with tabs and split panes in the remaining area. There is one look, **Floating** (ADR 0039): a box per pane, `ui.gap` (`small`, `medium` or `large`) between them. **Pane colours** (`ui.pane_colors`) draws each pane's border in its own colour by its place in the tab: `Theme::grid_colors`, top-left first, repeating from the fifth; the focused pane's border full and bold, the others' faded 42% toward `bg`. `ui.rounded` (on or off) rounds the corners of every box (`╭╮╰╯`); chips, buttons and rows have square ends either way. `ui.padding` (`small` by default, `medium` or `large`) leaves that many cells empty round the whole screen (`draw.rs` `padded`; `framed` is that room less the mode bar's row). Older config values still load (`Ui::fold_retired_layout`, the file not rewritten): `tiled` (and `cards` with `panes = "tiled"`) as Floating with `gap = 0`, `grid` as Floating with pane colours, and `compact`, `flat` and `hairline` as Floating. The first start with such a file says so once in a toast (`RetiredLayout::note`) and writes what stands for it into the file (`client/mod.rs` `settle_retired_layout`). In this doc **Cards** means Floating. Tab, Shift+Tab and Esc go to the program in the pane; the leader's Focus the sidebar moves focus to the sidebar. There is no application-wide footer bar but the mode bar (see *Mode bar*), and the tabs are chips on the first pane's top border ([ADR 0038](adr/0038-tabs-sit-on-the-pane-border.md)), `ui.tab_gap` leaving a cell clear between them (or none), followed by a **+** chip (`strong` bold on `btn`) that opens a tab (see *the frame*). Keep the **new** and **menu** chips at the bottom of the sidebar (see *sidebar check result*), and collapse or hide the sidebar as *collapsed sidebar* says. The mode bar along the bottom always shows the mode, and **Update** at its right end only when a newer release is available.
+Maitty has one terminal interface: a sidebar of projects and session cards (this computer's under Local, other machines' under Remote, [ADR 0050](adr/0050-local-and-remote-sidebar-with-session-cards.md)), with tabs and split panes in the remaining area. There is one look, **Floating** (ADR 0039): a box per pane, `ui.gap` (`small`, `medium` or `large`) between them. **Pane colours** (`ui.pane_colors`) draws each pane's border in its own colour by its place in the tab: `Theme::grid_colors`, top-left first, repeating from the fifth; the focused pane's border full and bold, the others' faded 42% toward `bg`. `ui.rounded` (`full`, `corners` or `off`) rounds the corners of every box (`╭╮╰╯`) with `full` or `corners`; with `corners` chips, buttons and rows keep square ends, and with `full` they end in half-circle pills (a Nerd Font glyph). `ui.padding` (`small` by default, `medium` or `large`) leaves that many cells empty round the whole screen (`draw.rs` `padded`; `framed` is that room less the mode bar's row). Older config values still load (`Ui::fold_retired_layout`, the file not rewritten): `tiled` (and `cards` with `panes = "tiled"`) as Floating with `gap = 0`, `grid` as Floating with pane colours, and `compact`, `flat` and `hairline` as Floating. The first start with such a file says so once in a toast (`RetiredLayout::note`) and writes what stands for it into the file (`client/mod.rs` `settle_retired_layout`). In this doc **Cards** means Floating. Tab, Shift+Tab and Esc go to the program in the pane; the leader's Focus the sidebar moves focus to the sidebar. There is no application-wide footer bar but the mode bar (see *Mode bar*), and the tabs are chips on the first pane's top border ([ADR 0038](adr/0038-tabs-sit-on-the-pane-border.md)), `ui.tab_gap` leaving a cell clear between them (or none), followed by a **+** chip (`strong` bold on `btn`) that opens a tab (see *the frame*). Keep the **new** and **menu** chips at the bottom of the sidebar (see *sidebar check result*), and collapse or hide the sidebar as *collapsed sidebar* says. The mode bar along the bottom always shows the mode, and **Update** at its right end only when a newer release is available.
 
 The leader is `Ctrl+Space` by default. Inbox (`i`), Changes (`c`), Files (`f`), Branch (`b`) and References (`a`) use the right-hand sheet. Settings (`,`) opens as a centred modal over the workspace so the pane layout does not change. The key overlay (`Ctrl+Space`; `Space` searches, `?` lists all), the branch switcher and new agents use popups. The minimum supported size is about 80 by 24; popups clamp to the screen. Mouse users can reach every visible control; support click, right-click menus, drag dividers, scrolling and Ctrl+click paths. A click on a toast (a finished session's note, the Restart now button) is the toast's even where it covers a pane whose program asked for the mouse; the program never sees it (`Screen::toast_rect`). A right-click menu answers each item's key while it is open but does not draw it, as the Menu doesn't (a bare letter beside an item reads as a key that works anywhere): the leader key bound to the same action in the live keymap (`menu.rs` `menu_keys`: split `v` / `h`, close `x`, move `Alt`+arrows, Changes `c`), else a letter of its own, clear of those keys. A bound key the menu answers itself (`j` / `k` and the arrows, Enter, Esc, Delete, a check's `r` `o` `O` `u`, or the `x` that closes) goes to the menu, and that item takes a letter instead. Prefer Maitty's retained history when it has lines; when an agent has no retained history, pass wheel and Page Up/Down input to the agent so its own transcript can scroll. Branch (`b`, `client/screen/branch_sheet.rs`) uses the right-hand sheet: the session's branch, ahead/behind its upstream and its base branch (the main checkout's, else `main`, else `master`), the last 10 commits, the session's last check and its snapshots, all read by git in a background task. Its first row, **Switch branch…**, opens the switcher popup; Enter on a snapshot starts the row menu's restore (asked first). A folder outside git says so instead of the lists; an upstream whose remote branch is gone reads `gone from the remote`, and a git error shows in the place of what it was reading. References (`a`, `client/screen/references_sheet.rs`, files through `crates/maitty-terminal-client/src/references.rs`) lists the project's screenshots and design files from `.maitty/references/` at the repo's main checkout (a folder outside git keeps its own), so agents in every worktree see one set: name, kind, size and age per row, newest first, the selected row a neutral tint with an accent `▎`. Enter (or `o`) opens one in the system viewer as a Ctrl+click path does, `p` (or Ctrl+V) adds the clipboard image as `screenshot-<UTC time>.png`, `n` asks for a file's path (typed or pasted; a drop's quotes come off) and copies it in, `d` (or Delete) removes the chosen one after a danger confirm, `y` copies its absolute path; `a` again or Esc closes it. A paste while it has the keys stays in it: one line naming a file (a file dropped on the terminal) is added, an empty paste adds the clipboard image, and anything else gets the toast "References has the keys: …", which never repeats what was pasted. A name starting with a dot is refused. Entries the listing left out (unreadable, or links out of the folder) are counted on the list's last row in `err`, with the first reason. Empty, it reads "No references yet · paste an image or add a file", where they are kept and that agents find them through MCP, and its action bar holds only the ways to add one. Every file step runs in `spawn_bg`; the first time Maitty makes the folder in a repo it adds `.maitty/references/` to the repo's `info/exclude`. Over `--remote` it is refused with a toast, like Files. The minimum supported size is about 80 by 24; popups clamp to the screen. Mouse users can reach every visible control; support click, right-click menus, drag dividers, scrolling and Ctrl+click paths. Prefer Maitty's retained history when it has lines; when an agent has no retained history, pass wheel and Page Up/Down input to the agent so its own transcript can scroll.
+
+**Send a file** (`client/send_file.rs`, ADR 0055). In a pane on another machine the leader key `d` opens the prompt `Send a file to this machine: its path` (mode bar `SEND FILE`; a paste or a drop puts its first line in the box, a drop's quotes come off). Enter starts the upload in `spawn_bg`; a toast reads `sending <file> to <machine>… <n>%` and is refreshed once a second from the byte count, without adding to the notification history. `d` again, or a click on the toast's close mark, stops it (`stopping the send to <machine>…`, then `stopped sending the file to <machine>`); Esc only dismisses the toast and does not stop it, because Esc also belongs to the program in the pane. One file is sent at a time. On success the far-side path is typed into the pane like a local paste, and the toast says `sent <file> to <machine>`; every failure is an error toast (not a file, over 100 MB, no ssh to the machine, a login that needs a prompt, the machine could not keep it). On a local pane the key says there is nothing to send.
 
 The sidebar's **+ new** chip, a project row's **+**, the empty project row's new action and leader + `n` are one action (`Action::ShellHere`): a plain shell where you are, whose tab opens with focus. You type your agent in it (see *Agent launchers* below). Leader + `s` starts an agent session straight away with the defaults in Settings › Sessions (`Action::StartSession`, Menu › Session). **Menu** is in the sidebar footer. Every row of the key overlay and the Menu is clickable and wheel-scrollable. Include configured commands and retain existing confirmations.
 
@@ -150,7 +190,7 @@ Keep update indicators until the installed program, window and daemon versions a
 
 A new `maitty` that finds a server of another version replaces it on the way in. A server of an older release whose protocol this one speaks, and which is idle, is stopped at once (`restart::replace_older_idle_server`, from the activity file the server keeps beside its pid file: `restart::Activity`). A server whose protocol this one cannot speak (`ipc::OtherVersion`) is judged by that file, or for a server too old to write one by the agents in the saved session (`restart::plan_for_mismatch`): when nothing is working or waiting, the terminal says `Updating maitty…`, the server is stopped by its process as `maitty kill-server` does across versions, and the window opens with the sessions restored, with no prompt. When something is working or waiting, or the server is newer than this maitty (never replaced unasked), the full-screen prompt (`client/restart_prompt.rs`) shows the protocols, how many sessions resume and how many are mid-turn, and **Restart and open** (Enter) and **Quit** (Esc, Ctrl+C), each clickable; Quit prints the usual error and exits 1. Without a terminal on stdin and stdout, or with `--remote`, there is no automatic step or prompt: the error text and exit code are unchanged, and a remote server is never restarted this way. A same-protocol older server that is busy is left running; the `↻ Restart` pill offers the restart.
 
-**One key overlay** replaces the command palette, the long shortcuts reference and the old leader overview (`client/screen/keyoverlay.rs`). It has three faces in one card with one typing row:
+**One key overlay** replaces the command palette, the long shortcuts reference and the old leader overview (`client/screen/keyoverlay.rs`). It has three faces in one card with one typing row: Its card has no fill (its lifted rows are flattened to the ground), a red `×` close on the top border, and its key hints are chips on the bottom border.
 
 - **Key map** (`Ctrl+Space`, or the pause after it). A banner, "Every key goes after the leader: `Ctrl+Space` then `v` = split", then Sessions, Panes, Tabs, Project and Maitty, each key a keycap followed by its name, from `key_groups()` and the real bindings. A pressed key runs its command; `Tab`, or an unbound letter, switches to the search. Three columns when the card is 100 or more wide, else two; each group's key column is as wide as its widest key. A key marked `›` opens a second step (Worktrees). Action bar: `key` run it, `Tab` search, `?` show all, `Esc` close.
 - **Search** (`Space` after the leader, or the Menu's Search commands). Every command, keyed or not: the name with the match in the accent, its group in dim, its key at the right. With nothing typed it lists RECENT (the last commands run from the overlay; a few defaults before there are any). Enter runs, `Tab` returns to the map. A set of keys (the arrows) is searched one key at a time. Every command the old palette offered stays reachable here.
@@ -158,7 +198,13 @@ A new `maitty` that finds a server of another version replaces it on the way in.
 
 Rules for keys and their labels: one key per action (no alias keys; a user's own `[keys.prefix]` entries still load), no default needing Shift, keys other apps use (ADR 0017), sentence case, no bracketed explanations (the group gives the context). Every action has a leader key or is search only; nothing in the sidebar acts on a bare letter. `docs/shortcuts.md` documents the other screens' keys and is not embedded in the app.
 
-**Cursor.** The focused pane shows the cursor its program asked for (DECSCUSR, read from its output); where it asks for none, or for the default, Settings › Appearance › Cursor (`ui.cursor`: `terminal`, the terminal's own, by default; `block`, `underline` or `bar`) and Cursor blink (`ui.cursor_blink`) decide (`client/mod.rs` `cursor_code`). An unknown `ui.cursor` is refused when the config loads.
+**Tool rail and drawer** (`client/screen/tools.rs`, `sheet.rs`). A 5-column rail on the right edge,
+always drawn from 100 columns (`ui.tool_rail`, on by default; a left sidebar only), has a chip per tool
+(`f` Files, `c` Changes, `b` Branch, `a` References, two rows apart, the keys of the keymap). A click opens that
+tool in the drawer, switches to another, or closes the one open. The drawer is a column beside the terminal by default: the terminal shrinks for it, so nothing is hidden under it; each tool keeps its own width (drag its left edge, or `[` `]` or `<` `>`, 4 at a time, while it has the keys). With `drawer_floats` in the saved UI state it instead floats over the right of the terminal, which keeps its whole column (never resized by opening, closing or sizing it) and shares one width of 84 columns between the four tools; there is no button for it yet. Its top border is its title (` Files `, ` Changes `, ` Branch ` or ` References `) and the `×`; the rail is where the others are, and Tab and Shift+Tab still step along them while it has the keys. It has no tab strip, no legend row and no width chip. Files shows the tree and the open file side by side from 60 columns, and by turns under that. The Inbox and the check sheets stay docked. A draggable edge (the sidebar's, the drawer's) wears a quiet
+three-row `┃` grip, in the accent while pointed at or dragged.
+
+**Cursor.** The focused pane shows the cursor its program asked for (DECSCUSR, read from its output); where it asks for none, or for the default, Settings › Appearance › Cursor (`ui.cursor`: `block` by default, `underline` or `line`; an older `terminal` reads as `block` and `bar` as `line`) and Cursor blink (`ui.cursor_blink`) decide (`client/mod.rs` `cursor_code`). An unknown `ui.cursor` is refused when the config loads.
 
 **Background.** Settings › Appearance › Background (`ui.background`): `solid`, the default, paints every cell the theme's `bg` and sets the terminal's own background to it (OSC 11, given back with OSC 111 on exit) so a plain terminal shows the whole theme; `terminal` leaves the chrome on the terminal's background (SGR 49) for transparent or image backgrounds (`client/render.rs` `draw`).
 
@@ -182,12 +228,13 @@ Only the area with the keyboard is lit: the focused pane's whole border, or the 
 
 - Popups are centred `panel()`s (`panel_at()` for a given rectangle) framed like a
   pane, in every layout: a box in the `accent` (a modal holds the keys) with corners by
-  `ui.rounded`, the title as an accent chip on the top border two in, and a red ✕ chip
+  `ui.rounded`, the title as an accent chip on the top border two in, and a red × chip
   before the top right corner (the whole chip closes it); with `ui.rounded = full`
   both chips have caps. There is no accent bar across the top: the user chose the
   pane-like frame over an accent title bar (2026-10-24), and the frame
   tests apply that one difference (`as_bordered_header`). No shadow; the screen
-  behind is dimmed, its ground darkened as well as its text. Small explanations (why, a row's menu) are
+  behind is left as it is, not dimmed: the modal clears its own area to the ground (`dim_all` only
+  marks what is behind as taking no hover). Small explanations (why, a row's menu) are
   `popover_at()`s: a raised title row, no border, no shadow, beside the sidebar
   (`popover_rect()`). Settings is a
   centred modal that preserves the workspace layout and keeps its General,
@@ -266,8 +313,7 @@ meaning.
 
 The **Bars** preset is the 3-bar Braille spinner the reference frames draw. A frame is one column, or
 two when every character is Braille; a two-column mark moves the sidebar row's name one
-column right. The ASCII glyph set draws Bars as `. o O o`; other choices are never
-rewritten. Working also shimmers its sidebar name in the working colour. With
+column right. Other choices are never rewritten. Working also shimmers its sidebar name in the working colour. With
 motion off (`app.motion_on()`) the spinner rests on its third frame and the shimmer stands
 still, so nothing depends on motion.
 
@@ -275,61 +321,19 @@ still, so nothing depends on motion.
 <!-- local: the user chose on 2026-10-23 to drop the `idle` line on a plain idle row at every width (the reference drew it from 140 columns) -->
 <!-- local: the user chose on 2026-10-24 one-line session rows with the agent's mark and uncommitted lines, names in their state's colour (ADR 0021) -->
 
-The sidebar's rows are tested cell for cell against the reference frames (`client/screen/side_frames.txt`), read
-through `reference_fixture::as_one_line_rows`, which applies ADR 0021's one-line rows.
+The sidebar is two halves of session cards ([ADR 0050](adr/0050-local-and-remote-sidebar-with-session-cards.md)); the reference frames do not compare its column, and `screen::side` and `machine_group_tests` hold its tests (`side.rs` `card_lines`, `draw_side`, `draw_rows`).
 
-- **Title:** `SESSIONS` bold and the count, then right-aligned `●n` (`blocked`, bold:
-  asking or waiting for check approval) and `✕n` (`err`, bold: failed checks), each only
-  above zero.
-- **Folder:** a one-cell `−` (open) or `+` (closed) button in the state bars' column, bold, in a colour picked at random each time the folder opens (no ground of its own), name (`strong`, bold, never cut before the meta),
-  meta right-aligned in `muted`: `⎇ main` plus ` · check: <name>` or ` · N checkpoints`,
-  or `no git`. The meta shows only with 6 or more columns free, cut with `…`. A blank row
-  follows each folder.
-- **Row line 1:** the session's mark (`client/screen/glyphs.rs` `Kind`; bold for failed,
-  needs you and approve; a new session's `○` is `accent`, bold), the name, then
-  right-aligned the agent's mark (`muted`: `✻` Claude, `◆` Codex, `✦` Gemini, `◇` OpenCode,
-  else its first letter; `C`, `X`, `G`, `O` with the ASCII glyph set), a space and the
-  agent's context once past half full (`72%`, rounded, from `TermInfo.usage.context`;
-  `muted`, `err` from 85%, never amber; nothing for an agent that reports none), the
-  checkout's uncommitted lines (`+N` in `done`, `−N` in `err`; shown only when there are
-  any) and the age (`muted`), two spaces apart (`side.rs` `row_meta`). The lines give way
-  first, then the agent's mark, then the context, so the name keeps 8 columns. The `+N −N` is its own click target
-  (`ScreenHit::RowChanges`): it opens that checkout's Changes in the side panel, as `c` on
-  the session does, and the hover tint covers just it; the rest of the row opens the
-  session. A right-click or a drag from it acts on the row, as anywhere else on it. Hover
-  never moves it: the row's `⋯` takes the age's place, and a row with no age keeps two
-  columns free for it. A name in a state worth a look (working,
-  checking, done and not seen, needs you) is drawn in its state's colour, the glyph's, and
-  bold; with motion on it shimmers up toward `strong` (working, checking, not seen) or pulses
-  (needs you) (`side.rs` `NameMotion`). Another row that wants a look (failed, new, a check
-  result other than a plain pass) has a `strong` bold name; a done, seen or asleep row a
-  `text` name, not bold, `strong` only while selected. Only the selected row carries a `▎`
-  edge bar, in `accent`, on each of its lines; with `ui.rounded = "full"` a one-line
-  selected row has half-circle ends instead.
-- **Uncommitted lines** are counted off the UI thread every 5 s for each checkout with a
-  session (`tasks::uncommitted_lines`: `git diff --numstat HEAD` plus untracked files' lines),
-  kept in `Screen::lines_changed`. A checkout git cannot read shows none.
-- **Row lines 2 and 3** are `muted` and never bold (`side.rs` `quiet`), whatever they say.
-- **Row line 2** shows only when it says more than line 1 (`side.rs` `has_detail`): the
-  headline check's result (`TermInfo::check()`) by checkpoint name, the question, helpers it
-  asks for, a plan-limit wait, a new agent's first step, `asleep zzZ`, a message just sent,
-  or for a working agent its helpers (`2 agents`, `ui.subagent_count`) and a quiet spell
-  (`quiet 12m`, `TermInfo::quiet_since`). It never names the state alone (`working`,
-  `needs you`, `done · not seen`, `idle`): the mark and the name's colour say it. While the
-  agent works or asks, its last result is about an older turn and is not shown. An asleep
-  row keeps `asleep zzZ` from 140 columns.
-- **Below 140 columns** line 3 goes, and an asleep row is one line too.
-- **Row line 3** (140 columns and up): a failed check's first failing line (`muted`), or
-  every checkpoint by name: `build ✓ · test ✕` (a failed name in `err`).
+- **Halves:** `LOCAL` is a title chip on the card's top border (the accent while the sidebar has the keys, else `btn`, with ` ⇄ host` after it when the whole window is on a remote server). The Remote half starts on a rule across the card, `├ REMOTE n ── + add ┤`, n the machines known (omitted at none), the `+ Add` chip opening the Machines dialog (`ScreenHit::AddMachine`). The list below the title is shared evenly (`halve`: one row for the rule, Local keeping an odd one); under four list rows only Local shows. Each half has its own scroll (`Screen::side_scroll`, `remote_scroll`; the wheel scrolls the half under the pointer) and the selected or open card is kept in view in whichever half holds it.
+- **Project row** (`draw_proj`): `▾` or `▸` in the state bars' column, the name (`strong`, bold, never cut before the meta) and right-aligned `proj_meta`: `⎇ main` and `✓` or `✕` in `done` or `err` once a session has a check result, or `no git`. Folded, `n hidden` with an amber `●` when one needs you. A click or the fold button folds it; a project drags within its machine.
+- **Card, row 1:** the session's mark (`client/screen/glyphs.rs` `Kind`; bold for failed, needs you and approve; a new session's `○` is `accent`, bold), the name, then right-aligned `● you` in `blocked` when it needs you, else the agent's mark (`muted`: `✻` Claude, `◆` Codex, `✦` Gemini, `◇` OpenCode, else its first letter), a space and the age (`muted`, from 100 columns). The mark gives way first, so the name keeps 8 columns. A name in a state worth a look (working, checking, done and not seen, needs you) is drawn in its state's colour, the glyph's, and bold; with motion on it shimmers up toward `strong` (working, checking, not seen) or pulses (needs you) (`side.rs` `NameMotion`). Another row that wants a look (failed, new, a check result other than a plain pass) has a `strong` bold name; a done, seen or asleep row a `text` name, not bold, `strong` only while selected. The hovered row's `⋯` takes the age's place.
+- **Card, row 2** (`activity`): the headline check's result by checkpoint name, the question (`asks: …`, in `blocked`), helpers it asks for, a plan-limit wait, a new agent's first step, `asleep zzZ`, a message just sent, or for a working agent its helpers (`2 agents`, `ui.subagent_count`) and a quiet spell (`quiet 12m`); else the agent's name or `shell`. `muted` and never bold, except a question or an approval, which stay amber. While the agent works or asks, its last result is about an older turn and is not shown.
+- **Machine header and items:** each Remote machine starts with ` ⇄ build ` (a badge on `btn`, the icon from `App::machine_icon`; dim while it is down) and its connection at the right as one dot (`App::machine_dot`: `done` up, `blocked` amber while it connects or reconnects, `err` unreachable). The amber here is the one place it does not mean needs you, at the user's request. Local has none. A machine that is not connected, or has no sessions, is that header and one line (`no sessions yet`, `connecting…` or `disconnected · click for the fix`) in place of its projects; a click on either opens the Machines dialog. This computer with nothing running says `no sessions  new shell` and a click starts a shell. Sessions of a machine whose line is down are not drawn and not counted; its needs-you and failed marks leave the Inbox until the line is back.
+- **Blank rows:** one follows each project. A helper session is listed like any other, not stepped in under the session that started it.
 
-- **Tabs** (`side_tabs.rs`, ADR 0027, 0031): a session with two tabs or more has one line per tab
-  under its row and its second and third lines, in both looks, flush with the row's name, no
-  branch marks and no numbers: the tab's name (its own, else its focused session's) after its
-  most urgent agent's state glyph (a tab of shells shows the shell's `›`, in `muted`), and at the right
-  that agent's age. The tab on screen is
-  `raised` with an accent `▎` and an accent name; one that needs you has an amber
-  `▎` and an amber name. A session row of shells shows its shape at the right too. Short of room the name shortens; the
-  glyph and the age stay. The arrows walk the tab lines like any row (`SideItem::Tab`): Enter or → shows the tab and gives it the keys, ← goes up to its session, leader `x` closes it. A session's own row shows only its own tab's panes' state, plus a question from any other tab (`fold_splits`); another tab's working or done is its line's to say. A click shows that tab (`ScreenHit::TabPick`), so a drag reorders them and a
+- **Tabs** (`side_tabs.rs`, ADR 0027, 0031): a session with two tabs or more has one row per tab
+  under its card, beside a thin `muted` line one column in from the card's mark: the tab's state glyph (the agent's mark, the spinner while it works; `○` for a plain shell), its name (its own, else
+  its focused session's), and its number in `muted` at the right. A project has a line of its own in its project colour, down the fold arrows' column along everything inside it, and a faint rule across the blank row divides it from the next project. The tab on screen has an
+  accent name, bold; one that needs you an amber name. Short of room the name shortens. The arrows skip these rows (they are not `SideItem`s). A session's own card shows only the state of the panes in its own tab (`fold_splits`); another tab's working, done or question is its own row's to say. A plain shell is one row: it has no second line. A click shows that tab (`ScreenHit::TabPick`), so a drag reorders them and a
   middle click closes one, as on the tab chips. A session with one tab has none.
   `ui.sidebar_tabs` (Settings › Sessions › Tabs in the sidebar) shows `all` of them, only the
   `busy` ones (working or needing you) and the one on screen, or none (`off`). Never the tab the
@@ -337,16 +341,16 @@ through `reference_fixture::as_one_line_rows`, which applies ADR 0021's one-line
 - **Foot:** one row off the bottom (Cards: the last row inside the border), a `line` divider above it, no band behind it. Two `btn` chips: `+ New` a column in (the `+` in `accent` bold) and `Menu` at the right, the words in `text`, no letter lit (`side.rs` `word_chip`). `Menu` drops first when the sidebar is too narrow for both. Chips are square on the plain `bg`, since a cap there has no ground of its own; `ui.rounded` rounds them where the ground is raised.
 - **Amber is for needs you.** `blocked` colours only what needs you (its mark, question, counts and approvals), never a heading: Inbox "HEADS UP", the both-diffs sheet and the tidy list use `sky()`.
 
-Settings › Appearance › Status glyphs picks how a session is marked. **Dots** (the default, and what `auto` gives unless your status icons are plain ASCII) draws a coloured `●` for every state that wants you or says something (needs you, done, failed, stale, overridden, not checked) and `○` at rest (idle, asleep); the colour and the word beside the mark carry the meaning. Working keeps your spinner and checking its ring. A check's own `✓` and `✕` beside its name (`build ✓ · test ✕`) keep their shapes. **Unicode**, **ASCII** and **Nerd** are the full sets, where every state has a glyph of its own, as the table shows.
+Settings › Appearance › Status glyphs picks how a session is marked. **Dots** (the default; an older `auto`, `ascii` or `nerd` reads as dots) draws a coloured `●` for every state that wants you or says something (needs you, done, failed, stale, overridden, not checked) and `○` at rest (idle, asleep); the colour and the word beside the mark carry the meaning. Working keeps your spinner and checking its ring. A check's own `✓` and `✕` beside its name (`build ✓ · test ✕`) keep their shapes. **Unicode** is the full set, where every state has a glyph of its own, as the table shows.
 
 The colour slot is the glyph's; line 2 is always `muted` (see above).
 
-| State | Glyph (Unicode / ASCII) | Colour slot | Line 2 |
+| State | Glyph | Colour slot | Line 2 |
 | --- | --- | --- | --- |
 | working | the spinner you chose (Bars is 3-bar), bold | `accent` | none; `4 agents` only when the agent reports helpers, `quiet 12m` when it has gone quiet |
 | needs you | `●` / `!` | `blocked` | `asks: <question>`, else none |
 | done, not seen / seen | `✓` / `+`; `○` / `o` | `done`; `muted` | none: the row is one line |
-| new (an agent told nothing yet) | `○` / `o`, bold | `accent` | `claude · new · type to begin` |
+| new (an agent told nothing yet), idle | `○` / `o`, bold | `accent` | none: the card is one line |
 | asleep | `z` | `muted` | `asleep zzZ` |
 | checking | `◜◝◞◟` / `- \ \| /` | `sky()` | `checking test · 6s` |
 | passed | `✓` / `+` | `done` | `passed: test · 14.2s · 14:22` (local clock) |
@@ -364,19 +368,13 @@ The colour slot is the glyph's; line 2 is always `muted` (see above).
   `needs you: <name>` (`blocked`), `checking: <name>` (`sky()`), `next: <name>` (`muted`),
   `stale pass: <name>`, `not checked: <name>`, `overridden: <name>`, `all passed` (`done`).
   The glyphs are clipped, never the word.
-- **What gives way:** the folder meta first (by its room), then the age (below 100
-  columns), then line 3 (below 140), then line 2 of rows with no check result, question
-  or plan-limit wait. Queued follow-ups keep their lines after these.
-- **Selection:** the keyboard's row (while the sidebar has the keys) or the open session
-  is tinted (`Theme::sel_bg()`) from X to one past RX on all its lines, with `▎` at X:
-  `accent` while the sidebar has the keys, else `muted`; while the keyboard browses, the
-  open row keeps a `muted` bar. A failed row carries `▎` in `err` on every line, selected
-  or not. X is 2 columns in, RX 3 from the right.
-- **Foot:** `+ new` at the left and `menu` (its `m` lit) right-aligned, on the last row inside.
+- **What gives way:** the agent's mark (before the age), then the age (below 100 columns). Every card keeps its three rows; row 3 is cut with `…` at the sidebar's edge.
+- **Selection:** the keyboard's card (while the sidebar has the keys) or the open session is tinted (`Theme::sel_bg()`) across both rows with `▎` at X: `accent` while the sidebar has the keys, else `muted`; while the keyboard browses, the open card keeps a `muted` bar. A failed card carries `▎` in `err` on every row, selected or not. X is 2 columns in, RX 3 from the right. With `ui.rounded = full` the block keeps square ends: both lines lit across the same columns.
+- **Foot:** `+ New` at the left and `Menu` right-aligned, on the last row inside.
 - Shape and word carry the meaning; colour only backs them, so every state reads in the
-  ASCII set and without colour. Glyphs come from `[ui] glyphs` (`unicode`, `ascii`,
-  `nerd`, or `auto`: ASCII when the `blocked`, `done` and `idle` icons are all ASCII);
-  a Nerd icon is clipped to one cell. Take marks from `check::marks`, never a literal.
+  Unicode set and without colour. Glyphs come from `[ui] glyphs` (`dots` or `unicode`; an older
+  `auto`, `ascii` or `nerd` reads as `dots`, `Ui::fold_legacy_sizes`). Take marks from
+  `check::marks`, never a literal.
 - Colours are existing theme slots only; there is no check role. `Theme::violet()` and
   `sky()` are derived, not roles. Code: `client/screen/side.rs` (the card),
   `client/screen/check.rs` (a result's words and marks).
@@ -457,7 +455,7 @@ with its count. A question is never below a check.
 The layout and checkpoints are summed up in [DESIGN](DESIGN.md). The frame is [ADR 0013](adr/0013-v7-frame.md); `client/screen/frame_tests.rs` holds it to the reference frames, and `client/reference_frames_tests.rs` holds every preset's whole screen to them (see [TESTING](TESTING.md)).
 
 - **Grid** (`draw.rs` `grid`): inside `ui.padding` (`framed`), no margin of its own. The sidebar is 40 columns from 200, 34 from 140, else 26 (a width you dragged wins), the full height. Floating leaves `ui.gap` between cards (with `gap = 0` borders sit side by side, never merged).
-- **Cards** (`card.rs` `card`): `┌┐└┘`, or `╭╮╰╯` when `ui.rounded` is `full` or `corners`, `line`, the focused card's whole border in the accent. The title chip sits on the top border two in; the right-hand segments end a padding space before the corner. `ui.rounded = "full"` rounds pill ends (buttons, selected rows in modals and popovers, the answer bar, the toast); each cap sits on the ground around it (`card` in a modal or popover, the pane's `bg` in its body), not on the theme's `bg` throughout. The same `full` caps the tab chips (number and name as one shape, and the **+** chip) and the sidebar's folder row, selected or hovered, its fold button holds the state bars' column, so with `full` the row's highlight and click target start a cell before it to leave its left end a blank cell to cap. The chips' caps sit on the top border's own ground (no background); each chip is two cells wider and its hit rect includes them. A card's close (a plain `×`, red, over the border's corner cell) with `full` is a chip of its own (`card::close_width`): a space each side of the ✕ inside its caps, so the pointer's tint lights a whole chip, a blank cell clear of what is before it and of the border or the next zone's rule after it; square, it keeps the reference frames' place. A session that keeps a second line is one even block with square ends, selected or hovered: every line lit across the same columns, since a half-circle on every line would scallop and quarter-cell corners notch the block where its lines meet; a one-line row gets half-circles. With `round_tabs` off the chips are blocks, as before.
+- **Cards** (`card.rs` `card`): `┌┐└┘`, or `╭╮╰╯` when `ui.rounded` is `full` or `corners`, `line`, the focused card's whole border in the accent. The title chip sits on the top border two in; the right-hand segments end a padding space before the corner. `ui.rounded = "full"` rounds pill ends (buttons, selected rows in modals and popovers, the answer bar, the toast); each cap sits on the ground around it (`card` in a modal or popover, the pane's `bg` in its body), not on the theme's `bg` throughout. The same `full` caps the tab chips (number and name as one shape, and the **+** chip) The chips' caps sit on the top border's own ground (no background); each chip is two cells wider and its hit rect includes them. A card's close (a plain `×`, red, over the border's corner cell) with `full` is a chip of its own (`card::close_width`): a space each side of the ✕ inside its caps, so the pointer's tint lights a whole chip, a blank cell clear of what is before it and of the border or the next zone's rule after it; square, it keeps the reference frames' place. A session card is one even block with square ends, selected or hovered: every line lit across the same columns, since a half-circle on every line would scallop and quarter-cell corners notch the block where its lines meet. With `round_tabs` off the chips are blocks, as before.
 - **Tab row** (`draw.rs` `draw_tab_chips`, `grid`'s `tabs`; ADR 0028, ADR 0035): Floating's tabs are chips on one plain row level with the sidebar's top edge, over the pane boxes and outside them (ADR 0035): the boxes start on the row under it, for a lone pane and for splits alike; the side sheet keeps its full height beside them. Each tab leads with its most urgent agent's glyph (`tab_agent`: needs you first, then by state, read from the daemon's snapshot whether the tab is on screen or not; in the state's colour, in `acc_ink` on the current tab's accent), then a number chip and a name chip (the current one in the accent; a project with one tab has no number chip) and, on the open tab only, its `×` (`tab_close`: the tab while the project has several, else its only pane; a lone tab that is split has none, each pane keeping its own). The row lists every tab of the project in the sidebar's order (`session_tabs`; ADR 0031), named by `tab_label`: the tab's own name, else its focused session's, as the sidebar's tab lines say it. Those that don't fit drop, the **+** chip first of all (it never shows without every tab before it), then the other tabs, before and after the current one, which keeps its whole name while any other shows, and the current tab shortens its name rather than drop. A click picks a tab, a drag reorders, a middle click closes. Splitting and zooming are keys and the Menu, not buttons.
 - **Pane edge** (`draw.rs` `card_frame`, ADR 0031): a pane has no title: a tab's only pane has a plain top border, and a split's panes are told apart by their edge alone, the tab naming where you are and showing its state (a click on the tab's glyph opens why). A pane's border is the accent on the focused pane (`sky()` in shortcut mode), `blocked` amber on one that needs you (focus wins), else `line`. The load a pane takes is in the bottom bar. A name you gave the tab stays on the tab (`1 build`, or `build` alone for a lone tab). The open tab has a ✕ (`tab_close`): it closes the tab, or a session's only tab's only pane; a pane closes with Alt+x, leader `x` or its menu. Closing asks first: the confirm reads `Close pane 2 · claude` (`Close pane · claude` for a lone pane, `Close panes` for a tab of several) over the pane's folder, and while it is up those panes' borders are `err`, kept bright over the dimmed screen (`draw.rs` `closing`, `menu.rs` `closing_lines`). In shortcut mode the focused pane's border is `sky()` in every look (with pane colours too); while a popup, modal or view an action opened holds the keys it is not. There is no frame round the window (ADR 0024).
 - **Swapping panes** (`input.rs` `Drag::Pane`, `behaviour.rs` `swap_panes`): a press on a pane's top border focuses it and, in a tab of two or more panes, starts a drag; let go on another pane of the tab and the two trade places, each taking the other's size (the split's ratios stay with their slots). While dragging, the pane under the pointer lights its border in `accent` with a centred `⇄ swap here` pill, and a `btn` pill with the dragged pane's name follows the pointer (`draw.rs` `draw_pane_drag`). Let go on the same pane or outside the panes, move with no button held, or press Esc, and nothing moves. The same swap from the keys is leader `Alt`+arrows (`swap-left/right/up/down`, the neighbour that way, as `focus-*` finds it) and from the pane's right-click menu, "Move pane left/right/up/down" for each side that has a pane. The client swaps its own view at once and sends `Command::SwapPanes` only when the server's tab holds both panes (a split the server made, or restored), so the saved session keeps the new order.
@@ -496,6 +494,19 @@ accent `▌` down its edge, a bold strong label and an accent keycap. Arrows or 
 key, choose; Enter opens the chosen one; a click chooses and a click on the chosen card opens it.
 Below 30 rows Resume loses its second row and the gaps between and above the cards close.
 
+**Wide** (140 columns and 40 rows or more, `client/screen/splash_wide.rs`): an outer box with
+a ` MAITTY ` chip, the version and a `⌂ Local` badge on its top edge (a waiting release is an accent
+chip beside the version, `u` or a click acts); the wordmark, swell and tagline as above; under them
+two boxes side by side, **START** (64 columns: the three choices as 3-row highlights with the
+sub-text and a key chip on the middle row, then a `RECENT PROJECTS` rule and up to five projects
+with a machine badge and `⎇ branch`) and **WHILE YOU WERE AWAY** (72 columns: `●n ✻n ✓n` chips on
+its top edge, up to five agents, the ones that need you first, each two rows: glyph, name, machine
+badge, project, `● you` or its age, then what it asks or does; a `MACHINES` rule with each
+machine's badge and dot). The box that has the keys has the accent border and title chip. Tab
+switches box, the arrows walk the one that has them, Enter opens: a choice, a project (the splash
+goes, the project is unfolded and selected in the sidebar) or a session. The hints sit under the
+box and the version at the bottom right. Smaller terminals keep the cards above.
+
 The intro, at 50 ms a frame: letter k rises from the deep colour to its own from frame 3k over 8
 frames (eased out), nothing moving; the swell fades in over 14 frames and rolls a step every 3; the
 tagline fades in over frames 10–20. Cards and hints are drawn from the first frame and keys act at
@@ -510,14 +521,16 @@ Leader `z` (`Action::ToggleSidebar`) swaps full and collapsed; Hide sidebar (`Ac
 the sessions or brings the sidebar back. The `»` chip (`«` with the sidebar on the right) and the `…` row
 restore it. There are no bare-letter keys for this in the sidebar.
 
-- **Collapsed** (`screen/rail.rs`, ADR 0033): a narrow column, `RAIL_W` (5) wide, down the sidebar's side; the panes take the rest
-  and keep the top row. A `»` chip first (`«` with the sidebar on the right), then each project as its first letter in the
-  project's colour and, under it, each of its sessions as its mark (same glyph and colour as the row) and the first letter of its
-  name, in the sidebar's order, a blank row between projects. The selected row is `accent` with `acc_ink` text while the column has the
-  keys, else `btn`. At the foot a `+` chip starts a shell and a `≡` chip opens the Menu. Rows that don't fit scroll, the selected one kept in view, and a `…` in the
-  last place opens the sidebar. A click on a project's letter opens the sidebar. A machine other than this one is a
-  row `●B` above its folders: its state glyph and its first letter (see *machines in the sidebar*).
-  `ui.rounded` (Settings › Appearance › Rounded: `full`, `corners` or `off`, off by default) is the one shape setting. `corners` rounds every box's corners only. `full` rounds them too, and caps every chip (tabs, the SESSIONS title, card titles, + New, Menu, buttons, menu rows) on whatever ground it sits, the pointer's hover, and draws a selected or failed session row as one block, in place of the edge bar: half-circle caps for one line, square ends for more so its lines read as one even block, never a pill per line; what is right-aligned stops a cell short of the cap. The Settings tab strip carries no update dot: the mode bar's pill and the splash announce updates, and the version lives in one row, General › UPDATES › Version (`maitty 0.42.0 · up to date · u check now`, or `9.9.9 is out · Enter to update`; Enter or a click acts, `u` checks from any tab). Above the pages, only what is off shows: an installed or daemon version that differs, or a pending restart with Restart now.
+- **Collapsed** (`screen/rail.rs`, ADR 0033): a box `RAIL_W` (5) wide down the sidebar's side; the panes take the rest.
+  A `»` chip (`«` with the sidebar on the right) is set into its top edge; under it, in amber, how many sessions need
+  you (left out at none); a blank row; this computer's `⌂` mark; then one state glyph per session (the glyph and
+  colour of its card), a `─` between projects. A rule `├───┤` joins the box where the other machines begin, and each
+  has a `⇄` mark, dim while it is down. The chosen session has the `card2` ground and, while the column has the keys, an
+  accent `▌` at its left. At the foot a `+` chip starts a shell and a `≡` chip opens the Menu. Rows that don't fit scroll,
+  the selected one kept in view, and a `…` in the last place opens the sidebar. Each glyph is a click target that opens
+  its session. The full sidebar has a `«` chip on its top border at the right that collapses it; `[` while the sidebar
+  has the keys cycles full, collapsed, hidden. Hidden, a `»` chip leads the tabs on the terminal's top border.
+  `ui.rounded` (Settings › Appearance › Rounded: `full`, `corners` or `off`, off by default) is the one shape setting. `corners` rounds every box's corners only. `full` rounds them too, and caps every chip (tabs, the LOCAL and REMOTE titles, card titles, + New, Menu, buttons, menu rows) on whatever ground it sits, the pointer's hover, and draws a selected or failed session row as one block, in place of the edge bar: half-circle caps for one line, square ends for more so its lines read as one even block, never a pill per line; what is right-aligned stops a cell short of the cap. The Settings tab strip carries no update dot: the mode bar's pill and the splash announce updates, and the version lives in one row, General › UPDATES › Version (`maitty 0.42.0 · up to date · u check now`, or `9.9.9 is out · Enter to update`; Enter or a click acts, `u` checks from any tab). Above the pages, only what is off shows: an installed or daemon version that differs, or a pending restart with Restart now.
 - **Column focus** is the sidebar focus with the sidebar collapsed (leader Focus the sidebar). `↑` `↓`, `←` `→` and `1`–`9` switch
   sessions, opening each in the pane while the keys stay on the column; `1`–`9` mean nothing elsewhere. Enter focuses the pane, Esc leaves.
 - **Hidden**: no sessions and no strip; the panes take everything. Reach them again with leader `z` or `Z`.
@@ -529,29 +542,24 @@ A session an agent started (a helper) steps in two columns under the session tha
 Code: `client/screen/machine_group.rs` (header, notes, grey), `side.rs` (`Line::Machine`,
 `Line::MachineNote`), `rail.rs`, `check_inbox.rs`. Look: [DESIGN](DESIGN.md#sidebar).
 
-- **No header without a second machine.** A window with no other machine draws no header, chip or
-  note; its frames are the reference frames. The headers appear as soon as the window has a
-  `Remote` (a configured machine's first link event), which also heads this computer as
-  `this computer` so the groups read as groups. A machine nobody has heard from yet is a header
-  that says `connecting` and no sessions; it never leaves a gap.
-- **Order.** Machine by machine: this computer's folders (in the order you dragged them), then each
-  other machine in id order. A folder drags only within its machine. Sessions keep the saved order of
-  their own machine.
-- **Status is the daemon's word.** A remote row is drawn by the same code from the same `Status`
+- **Local and Remote.** This computer's sessions are always the sidebar's Local half and other
+  machines' the Remote half (ADR 0050), whether or not any machine is known; a window with none
+  says so in Remote and offers to add one. There are no machine headers: a card's badge names its
+  machine. A machine nobody has heard from yet is a two-row item that says `connecting…`; it never
+  leaves a gap.
+- **Order.** This computer's cards (in the order you dragged them) in Local; in Remote each other
+  machine in id order, its cards in the saved order of its own machine. A project and a card drag only within
+  their machine.
+- **Status is the daemon's word.** A remote card is drawn by the same code from the same `Status`
   its daemon reported; nothing is recomputed or translated here (non-negotiable 5).
 - **Down.** `ConnectionState::is_down` (reconnecting, needs login, needs update, unreachable)
-  greys the machine's rows (`Session::down`, set when the model is built and rebuilt on every link
-  state) and drops them from the title counts and the Inbox groups; connecting is not down. How
-  long it has been down is `Remote::down_since`, kept across the failure states.
+  turns the machine into one two-row item and its cards are not drawn (`Session::down` still drops
+  them from the Inbox groups); connecting shows the same item. How long it has been down is
+  `Remote::down_since`, kept across the failure states.
 - **Per-machine values.** Limits, today's spend and the daemon version come from that machine's
-  snapshot and are shown under its own header (this computer's under `this computer`), never
-  summed. The TUI shows them nowhere else.
-- **Narrow widths.** Every line is cut to the sidebar with display-width-aware `…`, except a down
-  machine's reason, which wraps onto up to 3 rows (`Line::MachineNote`, one per row, so scrolling and
-  hit-testing stay by row; `machine_group::note_room`) at the width the last frame drew the sidebar
-  (the narrowest before the first) and is recomputed with the lines on every frame, so a resize or a
-  drag re-wraps it; the machine mark
-  leaves first, then the state's word (its glyph stays), and the name keeps eight cells.
+  snapshot and are shown in the Machines dialog, never summed.
+- **Narrow widths.** Every line is cut to the sidebar with display-width-aware `…`; the machine's
+  badge shortens before its connection word, and the name keeps eight cells.
 - **Inbox.** A remote item ends its head line with ` · on <machine>`; the sort across machines is the
   existing one (longest waiting first) with this computer's before another's at the same moment.
   Its keys reach that machine's daemon (`ClientTerm.machine`), and the local-only features say so as
@@ -563,17 +571,20 @@ Code: `client/screen/machine_group.rs` (header, notes, grey), `side.rs` (`Line::
 ## Project-specific: Machines dialog
 
 Code: `client/screen/machines.rs` (the view, its keys and its drawing), `client/machine_flow.rs` (what a
-choice does), `client/machine_config.rs` (the `[[machines]]` entry in `config.local.toml`),
-`maitty-core/src/machine_probe.rs` (the look at a machine). Opened by leader `w` or the command palette
+choice does), `client/machine_config.rs` (where `config.local.toml` is; the `[[machines]]` entry edits are in `maitty-machines`),
+`maitty-machines/src/machine_probe.rs` (the look at a machine). Opened by leader `w` or the command palette
 (`Machines`); `Mode::Machines`.
 
-- **Two lists.** *Yours*: the configured machines in name order, each as a state chip (the words of
-  [machines in the sidebar](#project-specific-machines-in-the-sidebar), plus `refused`, `waiting for login`
-  and `not started`), its name and its target, and under every machine that is not up the reason and the fix
-  in full, wrapped to the dialog and never cut. *Add*: a field and the hosts of `~/.ssh/config` (read off the
-  UI thread; `loading hosts from ~/.ssh/config…`, then `alias  user@hostname`). Typing filters the hosts and
-  adds a last row, `add as typed`, for the text itself (`user@host`). A host that is already a machine is not
-  offered again. `Tab` moves between the lists; the keys are in the bar under the dialog.
+- **One input, typed like scp.** `ADD MACHINE`: `Where's the machine? Type it like scp or ssh.`, the
+  input (`› user@host`, on `card2`) and under it a parse line, `user` and `host` each a faint label and a
+  bold value, a faint `—` while unknown. A host that is a `Host` of `~/.ssh/config` fills its user and host
+  name. Under it, `FROM ~/.ssh/config` lists the hosts (read off the UI thread; `loading hosts from
+  ~/.ssh/config…`, then `alias  user@hostname`), filtered by the host part of the input; a host that is
+  already a machine is not offered. The keys start in the input (the cursor `█`); `↓` (or `Tab`) walks into the list, where the chosen
+  host is marked with `⏎ connect`, and `↑` from its first row (or typing) is back in the input.
+  Keys: typing, `↑↓`, `Enter` connects (to the typed text, or the chosen host), `Esc` cancels. A
+  `:path` after the host is refused for now (opening a folder after connecting is not built). The dialog does
+  not list machines: *Reconnect* and *Remove* are on a machine's line in the sidebar (see below).
 - **Windows.** The dialog says, in a dim line at its top and on Windows only, `Windows: use ssh keys or an
   agent. Password prompts work in the popup but are not remembered.`
 - **Adding is one step for a key-based host.** Enter on a host row (or on the typed text) first refuses a
@@ -604,14 +615,21 @@ choice does), `client/machine_config.rs` (the `[[machines]]` entry in `config.lo
     under the lists, and nothing is added. Nothing hangs: every look ends at its limit, on `Esc`, or when
     ssh does.
   A Windows remote is not supported in v1; the dialog does not guess one from the probe.
-- **Retry** (`r` or Enter on a machine in *Yours*) dials it now and clears a refusal. A machine with no
-  supervisor gets one.
-- **Remove** (`x`) asks first: `Removes build from this list. Its sessions keep running on build.` It then
-  deletes the entry from `config.local.toml`, stops the supervisor and the connection, takes the machine out
+- **Checklist.** After Enter the dialog shows the steps connecting takes: `reach host`, `verify host
+  key`, `sign in as user`, `maitty-daemon`, with `✓` done, a spinner while running, `●` (amber) waiting on you,
+  `○` pending and `✕` failed. While ssh is being asked, the first step runs. When the machine is written the
+  title becomes `MACHINE ADDED` and the steps show how it stands: all `✓` with the daemon's version; `●` at
+  the sign-in with `log in in the popup`; or `✕` at `maitty-daemon` with `the connection shows the fix`.
+  `Enter` or `Esc` closes. The host key, password and daemon install are still asked by ssh in its popup,
+  not inline.
+- **Reconnect** and **Remove** are in the menu of a right-click on a remote machine's line in the sidebar
+  (the machine's name as its title, `Remove` last). Reconnect dials it now and clears a refusal; a machine
+  with no supervisor gets one. Remove says `Removes build from this list. Its sessions keep running on
+  build.` in a toast. It deletes the entry from `config.local.toml`, stops the supervisor and the connection, takes the machine out
   of the sidebar and the window's records, and forgets the daemon id recorded for the name. The machine, its
   daemon, its sessions and its saved layout (kept under its name) are not touched.
 - **A refused machine** (a different daemon answers at its name) shows `refused` with the reason and the
-  fix: remove it and add it again, or fix the host name or DNS and retry.
+  fix: remove it and add it again, or fix the host name or DNS and reconnect.
 - Adding and removing take effect in the running window. Editing the file by hand still takes effect at the
   next start.
 
@@ -621,13 +639,46 @@ Not applicable: the Hairline look was removed ([ADR 0039](adr/0039-floating-is-t
 
 ## Project-specific: features that need a pane's files
 
-Files, Changes, Find, Branches, References, image paste, connecting an agent, and worktree
-actions read or change the files of the pane they apply to. For a pane on another machine they do
+Files, Changes, Find, Branches, References, connecting an agent, and worktree
+actions read or change the files of the pane they apply to. (Pasting an image is not on this list in
+the desktop app: it works for panes on other machines, see below. The terminal app's own list is
+unchanged.) For a pane on another machine they do
 nothing but show one error toast, always in this form: "<Feature> is local-only in v1: the files
 are on <machine>, not on this computer." The check is per pane: moving the focus or the sidebar
 selection between a local and a remote pane turns the feature off and on. Menu entries that would
 run git in a remote pane's folder (Changes, Snapshots, Make it a git repo) are left out of that
 pane's menu instead.
+
+**Dropping files on a pane** (`features/terminal/dropRoute.ts`, `useFileSends.tsx`, host `file_send.rs`,
+ADR 0055). On a pane of this computer the dropped paths are typed into it, quoted for its shell. On a
+pane of another machine a path here names nothing there, so the files are sent to that machine over its ssh
+line (regular files only, 100 MB each, at most 10 at a time; more are refused whole with one error toast,
+never cut) and the path each one is kept at is typed into the pane as it lands. A machine that is not
+`connected` is refused with one error toast. The send runs on the host's background worker, one at a time. A
+progress toast (`Sending a.log to build (2 of 3)`, a named progress bar with the percentage, and a
+**Cancel** button) stays until the host reports the end; it has no close button, because hiding it would not
+stop the send. It ends as `Sent 3 files to build`, an error toast with what ssh said (the files after the
+failed one are not tried), or `Stopped sending to build`. Cancel cuts the file now going and tries no other.
+What the machine reports is untrusted: the window types a path only if it is absolute, at most 4096
+characters and free of control and invisible characters, and a path that is not typed is named in the final
+toast instead.
+
+**Pasting an image into a pane** (`features/terminal/clipboardImage.ts`, `useImagePaste.ts`, `api/imagePaste.ts`,
+host `image_paste.rs`, ADR 0049 and the amendment to 0055). Ctrl+Shift+V on Windows and Linux, or Cmd+V on macOS, pastes through the
+webview's paste event, whose clipboard holds text, an image or both. **Text comes first**: any text and the
+terminal pastes it as it always has (bracketed paste included); only an image with no text becomes an image
+paste. Plain Ctrl+V on Windows and Linux is never taken: like every plain Ctrl+letter there, it goes to the program
+in the pane as a raw `^V` (so Claude Code's own clipboard handling and vim's `^V` work). The chat composer takes any
+paste chord, since its paste event is not behind a terminal. PNG, JPEG, GIF and WebP are taken (the host checks the
+first bytes, not the name the webview gives); another image type is refused with one error toast. At most 25 MB,
+refused before the image is read. On a pane of this computer the host keeps the image in its private cache
+(`pastes` in the app's cache folder, mode 600, cleared after a week) and the path is typed into the pane, quoted
+for the shell. On a pane of another machine the image is sent as a dropped file is, by the same runner and events:
+the same progress toast (`Sending the image to build`, progress bar, **Cancel**), the same error toasts, and the
+far-side path typed only if it is absolute, at most 4096 characters and free of control and invisible characters.
+A machine that is not `connected`, one reached by a custom transport (`via`), or an unknown one is refused with one
+error toast, in the words used for dropped files. The image never goes through an event and is never logged: it is
+the raw body of the command.
 
 ## Project-specific: frame presentation
 
@@ -639,3 +690,165 @@ Keep pane padding and the card interior on the same surface as a terminal app
 when at least three screen corners use one explicit background color. Preserve
 the pane insets; isolated colored panels keep their existing theme treatment.
 Preserve colors applications paint explicitly.
+
+## Project-specific: desktop chat view
+
+The desktop app's chat view is a second view of a Claude Code or Codex session, never a second session
+([chat view plan](features/chat-gui/chat-view-plan.md), ADR 0036). Rules:
+
+- **Source.** It renders only the daemon's structured events, through `features/chat/` (the projection).
+  It never reads terminal output. A session has a chat only when `conversationsFromSnapshot` found a daemon
+  conversation whose native terminal is that pane (`Conversation.chat`); `model/chatView.ts` decides
+  availability: `ready`, `no-events`, `remote` (local-only in v1), `unsupported` (another agent) or `shell`.
+  The daemon gives a Claude or Codex agent started in a pane a **read-only** conversation that follows the agent's
+  own transcript ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)); its link has
+  `readOnly: true`, and the conversation is not listed as a session of its own (the pane is the session).
+- **A chat session is the other kind of session** ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)):
+  a structured conversation the daemon started (`Conversation.execution` is `Structured`, `chat` is set without
+  `readOnly`, `native_term` is none; `model/chatSession.ts` `isChatSession`). It is a sidebar row, tab and pane of its
+  own, grouped by its repository (`ConversationSummary.root`, `branch`). It has **no terminal**: the pane is the chat
+  always, there is no Terminal | Chat switch, `chat-toggle` does nothing, the terminal slot holds a one-line note
+  (`NoTerminalNote`), and nothing that needs a pane number (find, restart, paste, broadcast, typed answers, the
+  worktree menu, Inspect) is offered for it. Its composer is on (send, queue with Remove, Stop, attachments); an
+  approval is answered by request id (y / a / n) and a user-input request by a form (`UserInputForm`), so neither
+  points to a terminal. It starts from **New agent on a branch** with **Session: Chat** (Terminal is the
+  default) or from a shell's empty chat card (**Start a Claude chat** / **Start a Codex chat**). Closing it stops
+  the agent (`closeChatSession`: end, then put away); if the stop fails it stays open. The read-only chat that
+  follows an agent typed in a shell keeps its pane, its switch and its disabled composer.
+- **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
+  mounted and its pane keeps its size, and no daemon command is sent. The shortcut is `chat-toggle`
+  (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.
+- **Keyboard.** While the chat covers a pane its terminal is not focused (`TerminalView focused` is false) and is
+  hidden from Tab and screen readers. The chat adds no layer to the Esc ladder.
+- **History.** `useChatFeed` follows one conversation while its chat is open (`chatFeed.ts` is the pure core). The
+  first read pages the whole history; later polls (1 s while the agent works or waits on a person, 3 s otherwise,
+  none while the window is hidden) read from the daemon's `resume` cursor, which returns only the entries added or
+  changed since, so a 1,000-entry conversation costs one small read per poll. A page that says `reset` (the history was
+  rebuilt, or the conversation started over) replaces what the feed held. A failed read, or a daemon that predates
+  `resume`, falls back to the old way: ask again for the last page read, or read from the start when that cursor is
+  stale. Entries already applied unchanged are skipped, so nothing is shown twice and unchanged events stay the same
+  objects. A new generation shows a fresh projection. Pending approvals come with every page and go to `applyApprovals`. The last
+  feed per conversation is kept (8 at most), so reopening a chat shows it at once.
+- **List.** `VirtualList` draws only the rows near the view (`transform` placement, measured heights, stable event
+  ids as keys), follows the newest row until the reader scrolls away, then offers "Jump to the latest message". Rows
+  are `buildRows(events)`: one agent message per turn (adjacent agent messages of a turn are joined; a step between
+  two messages keeps their order), user bubbles, step cards, approvals, turn dividers, and the working line last.
+- **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
+  unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
+  does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step
+  that is running animates (its spinner).
+  - *Tool chip:* a 28px mono chip with the tool's name and what it acted on (read from the tool's input; Codex: its
+    label); click opens the input and the result, bounded.
+  - *Edit block:* header (pencil, verb, file relative to the session's folder, `+N` `-N`), the diff with tinted
+    lines (theme tokens at 10%), folded past 12 lines with "N more lines" / "Show less". The header opens the file's
+    diff in the session panel when the window has one.
+  - *Command card:* the command, then `Running · m:ss` (live) or the elapsed time and an `exit N` pill, and the last
+    3 lines of output with "Show all N lines". The elapsed time is the provider's duration, else the daemon's start
+    and completion times; the exit code exists for Codex only, so for Claude it reads "exit code unavailable".
+  - *Approval card:* see Approvals. *Helper agents:* consecutive helper calls are one card, "3 agents, 2 working",
+    a row each (title, type, elapsed or "Done · 5m 30s"); a row opens what it was asked and its report. *Checklist:*
+    the agent's own to-do items with a progress bar. *Working line:* "claude is working · m:ss"; no token count,
+    because the daemon's history carries none.
+  - *Markdown* (`markdown.ts`, `components/Markdown.tsx`): an agent message is read into a data tree and drawn as
+    elements. There is no HTML anywhere (no `dangerouslySetInnerHTML`), raw tags are text, images are never loaded
+    (their alt text shows), and a link is kept only for an `http(s)` address. The app has no route that opens an
+    address outside the window, so a link is a button that copies its address; it never navigates the webview.
+    Supported: paragraphs, headings, fenced code, lists, quotes, rules, inline code, bold, italic.
+  - *Rows* are memoised on their events (`ChatItem`), and the virtual list measures heights, so a card that expands
+    resizes its own row only.
+- **Composer.** `useChatComposer` sends through the conversation's own send (`send_conversation`) with an operation
+  number (the receipt's plus one; a failed send is retried with the same number so the daemon can tell a retry from a
+  new message). Enter sends, Shift+Enter adds a line (not while an input method is composing), Esc or Stop interrupts
+  the running turn (`cancel_conversation`). It is off, with the reason as its placeholder, while an approval is
+  pending ("Answer the request above first") or the daemon is offline. While the daemon reports the turn working,
+  Enter still sends: the daemon holds the message (`ReadResult.queued`) and delivers it when the turn ends, in order
+  and once each, so it is shown as a dashed pending bubble with Remove (`dequeue_conversation`) for as long as the
+  daemon holds it, and closing the window loses nothing. The queue is the daemon's memory: a daemon restart drops it,
+  and a message queued for a conversation that has since started over is dropped, not sent into the new one. The
+  boundary is the end of the turn, the one the daemon can observe for both providers; a message is never delivered
+  into a running turn. A send that the daemon refuses as `stale or reused` (another window sent in between) is read
+  and sent again under a new number; a retry of any other failure keeps its number.
+- **Attachments** (ticket 20, ADR 0053). A paperclip left of the text box (tooltip and `aria-label` "Attach files",
+  or "Attach files: <reason>" while the composer is off; `aria-disabled`, not `disabled`, so the reason can be read),
+  a drop on the composer, or a bare image pasted into the box adds files to the draft; a paste that holds any text
+  stays a text paste. The picker is the dialog plugin's `open` (`api/attachments.chooseFilesToAttach`); a drop
+  reaches the composer through `chat/composerDrop.ts`, which `DesktopApp`'s one file-drop handler asks before it
+  routes the drop to a pane. `useAttachmentIntake` is the only code that adds or removes a draft file: at most 10 per
+  message (a drop over the limit is refused whole), a pasted image over 25 MB is refused before it is read, the
+  host (`attach_local_file`, `attachment.rs`) checks everything else and returns the cleaned name that is shown.
+  Draft files live in `composerStore` beside the text, so switching views loses nothing. Each is a chip (kind icon,
+  name, size, a Remove button) or, for a pasted image, a thumbnail made from the bytes the window already holds
+  (an object URL, revoked on remove or send). Sending builds the text with `buildAttachmentMessage` (the text, then a
+  fixed block naming each kept file by path); a message may be only files. A failed send gives text and files back.
+  A sent message is shown by `parseAttachmentMessage` as its text and chips (icon and name; "no longer available"
+  when `attachments_exist` says the kept file was swept). The composer takes a `machine` (the chat link's):
+  for another machine the same picker, drop and paste send the file there (`sendAttachments` over `send_files_to_machine` /
+  `send_pasted_image`, with the terminal's progress toast and Cancel) and the chip holds the far-side path, checked
+  before it is used; see ADR 0053 point 8. No chat sets a machine yet. A read-only chat shows no paperclip.
+- **Read-only chat.** For a link with `readOnly` the composer is off with "Read-only: talk to the agent in the
+  terminal" as its placeholder, and offers no Stop or queue wording; the daemon refuses send, approve and cancel
+  for such a conversation. The history and status still follow the agent.
+- **Approvals.** The card answers through `approve_conversation` by request id and then reads "You answered: ...",
+  with the buttons gone. While it is pending and focused, `y` (once), `a` (this session) and `n` (no) answer it, the
+  same letters as typing into the terminal, which stays a working fallback. The daemon's `answered_approvals` are
+  read with every page, so a request answered in the terminal or in another window shows as answered with the real
+  choice, even when this chat was opened afterwards. The card names the tool step it is about (`item_id`) and its
+  "For: ..." link scrolls the list to that step. A request that asks the person a question (`UserInput`) is answered
+  in the terminal.
+- **Screen readers.** The history is a labelled region, not a live region. A separate polite status line says only
+  that the agent is working, is waiting for an answer, or finished.
+- **Styling.** Tailwind utilities on theme tokens only; the keyframes for the view change live in `workspace.css`.
+
+## Project-specific: desktop session panel
+
+The panel beside the panes for the focused agent session ([chat view plan](features/chat-gui/chat-view-plan.md),
+v18 C.2). It reads the same daemon conversation as the chat, through `useChatFeed`, so it works in the terminal
+view too. Local sessions only.
+
+- **Toggle.** `Ctrl/Cmd+\` (`session-panel`), or the panel button in a pane head beside the Terminal | Chat
+  switch. Both flip the one window-level state in `features/panel/useSessionPanelState.ts`.
+- **Placement.** A window of 1100px or more (`COMPACT_WIDTH_PX`) docks it: a 320px floating card (`mx-card`)
+  beside the panes, which shrink; the choice is remembered (`maitty.gui.sessionPanel.v1`). Under 1100px it is an
+  overlay from the window edge over a scrim, closed by default and not remembered, closed by the scrim, Hide, or
+  Esc (`session-panel` in `model/escLadder.ts`, below Settings and above the sidebar drawer). It sits on the side
+  opposite the sidebar. A docked panel offsets the Inspect drawer by `--session-panel-w`, so both can be open.
+  The panel's width does not animate (a layout property); Reduce motion changes nothing for it.
+- **Content.** `panelModel.ts` derives everything from the chat projection and adds nothing: the **Checklist** is
+  the agent's last to-do list that carried its items ("Checklist · 2 of 5", a 3px progress bar, the current item
+  with a spinner and its running time only while the agent works; the time is that of the first list in an
+  unbroken run that named the item current), and **Agents** is every helper call ("Agents · 2 working" or "all
+  done"). A session with no agent, no event stream, or on another machine shows "Nothing to track yet" and one
+  sentence saying why (`emptyReason`); an agent with neither list nor helpers says so too.
+- **Changes** (`ChangesSegment.tsx`, `DiffView.tsx`). The agent's worktree through `conversation_diff` (read every
+  4 s while the panel is open, and at once when the agent edits a file): the branch name from the session list,
+  then one list of changed files (directory dim, file name, a comment badge, `+a` `-d`). The daemon's diff does
+  not say which files are staged, how far the branch is ahead or behind, or whether it was pushed, so none of that
+  is shown. A file opens its diff in the panel, which widens to 520px: back arrow, the path truncated from the
+  start, `+a -d`, then numbered lines (the new side's numbers, from the hunk headers; a removed line has none and
+  takes no comment). Hovering a line shows a **+**; it opens a composer under the line ("Tell claude what to change
+  here...", Enter or Ctrl/Cmd+Enter sends, Shift+Enter adds a line, Cancel or Esc closes it; Esc is the top layer
+  of the ladder, `comment-composer`). Diffs over 1,500 lines draw in steps. An edit block's header opens its file
+  here (`panelCommands.ts`), opening the panel first.
+- **Line comments.** The daemon's send takes text only, so a comment goes as one message,
+  `Comment on <file>:<line>`, the line's code quoted, a blank line, the text (`chat/commentMessage.ts`); the chat
+  draws that message as a comment bubble. It is sent to the daemon as an ordinary message (`useCommentDelivery`): while the agent works the daemon holds it and delivers it when the turn ends, whether or not the chat is open. The panel holds it itself, and sends it in order afterwards, while an approval waits or the daemon is offline; the note under the composer says which. It takes its operation number from the same per-conversation counter as the chat's composer (`chat/sendOperation.ts`), reuses it on a retry, and takes a new one after a "stale or reused" refusal. A read-only chat cannot take comments: the + buttons are disabled with "Read-only: talk to the agent in the terminal". A line with comments shows a count pill whose label lists them, and
+  the file row a badge. The written comments are the window's memory only (`commentStore.ts`).
+- **Files and Artifacts** (`FilesSegment.tsx`, `ArtifactsSegment.tsx`, `artifacts.ts`). The segment bar is
+  Changes, Files, Artifacts, each with a count. **Files** lists what the agent's tool calls named, in the order it
+  first touched them: Edited (amber), Created (green), Read (dim), with `+a -d` for edits. An edited or created file
+  that the worktree still has a diff for opens that diff; any other (a file only read, or one committed since) opens
+  in the Inspect drawer's Files view. Claude's `Write` does not say whether it created the file, but Claude Code
+  will not overwrite a file it has not read, so a `Write` to an untouched path counts as a new file (Codex says
+  `add`). **Artifacts** are the created files that are documents, reports, data or pictures (by extension: md, mdx,
+  txt, rst, html, json, csv, xml, log, png, jpg, gif, webp, svg); the daemon has no artifact concept. A card has a
+  tinted tile, the file name and a subtitle. Opening one reads it with `conversation_file` (UTF-8 text, size
+  limited by the daemon, path relative to the session's folder) and shows it as text, markdown drawn through the
+  safe renderer; a picture cannot be shown because files arrive as text, so it offers the Files drawer. The
+  daemon's `conversation_files` listing is not used: the panel shows what the session touched, not the project tree.
+- **Sidebar progress.** A session row shows the agent's checklist under the name, "2 of 5 · Write the fix" and a 2px
+  bar (`progressStore.ts`). The daemon reports no per-session progress and the sidebar must not poll every
+  conversation, so the row appears only for a session whose conversation this window has read (its chat or its
+  panel was open) and shows the last list read; a session never opened has no such row.
+- **Cost.** The panel reads the conversation with its own `useChatFeed`, so an open chat and an open panel each
+  poll (a read of the last page, 1 s while the agent works). The panel polls the worktree diff every 4 s and
+  stops while the window is hidden.

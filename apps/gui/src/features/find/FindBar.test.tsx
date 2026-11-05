@@ -50,7 +50,8 @@ describe('Find bar', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /api server/ }))
     expect(vi.mocked(invoke)).toHaveBeenCalledWith('search_panes', { query: 'error' })
-    expect(props.onOpenSession).toHaveBeenCalledWith(7)
+    // A hit names its machine as well as the pane: every machine numbers its own panes. Only this computer's are searched.
+    expect(props.onOpenSession).toHaveBeenCalledWith(7, 0)
     expect(props.onClose).toHaveBeenCalled()
   })
 
@@ -69,5 +70,26 @@ describe('Find bar', () => {
     fireEvent.keyDown(screen.getByLabelText('Search text'), { key: 'Escape' })
     expect(props.clearPane).toHaveBeenCalled()
     expect(props.onClose).toHaveBeenCalled()
+  })
+})
+
+describe('Find bar with other machines', () => {
+  it('names the all-sessions search as this computer\'s, since the daemon it asks is this computer\'s', async () => {
+    vi.mocked(invoke).mockReset().mockResolvedValue([])
+    renderBar({ otherMachines: true })
+    expect(screen.queryByRole('button', { name: 'All sessions' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'This computer' }))
+    expect(screen.getByLabelText('Search text')).toHaveAttribute('placeholder', 'Find in this computer\'s sessions')
+    fireEvent.change(screen.getByLabelText('Search text'), { target: { value: 'error' } })
+    fireEvent.keyDown(screen.getByLabelText('Search text'), { key: 'Enter' })
+    expect(await screen.findByText('No session on this computer printed that recently')).toBeInTheDocument()
+  })
+
+  it('keeps the pane search for any pane, whichever machine it is on', () => {
+    const props = renderBar({ otherMachines: true })
+    const input = screen.getByLabelText('Search text')
+    fireEvent.change(input, { target: { value: 'x' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(props.findInPane).toHaveBeenCalledWith('x', 'next')
   })
 })

@@ -1330,6 +1330,8 @@ pub fn worktree(
         cmd: join_command(cmd),
         split: None,
         from: None,
+        agent: None,
+        prompt: None,
     })
 }
 
@@ -2475,15 +2477,18 @@ pub(crate) fn statusline_facts(json: &str) -> (Usage, Vec<Limit>) {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
         return (Usage::default(), Vec::new());
     };
+    let tokens_in = v["context_window"]["total_input_tokens"].as_u64();
+    let tokens_out = v["context_window"]["total_output_tokens"].as_u64();
     let usage = Usage {
         context: v["context_window"]["used_percentage"]
             .as_f64()
             .map(|p| p as f32),
         cost: v["cost"]["total_cost_usd"].as_f64(),
-        tokens: v["context_window"]["total_input_tokens"]
-            .as_u64()
-            .zip(v["context_window"]["total_output_tokens"].as_u64())
+        tokens: tokens_in
+            .zip(tokens_out)
             .map(|(input, output)| input + output),
+        tokens_in,
+        tokens_out,
     };
     let limits = [("five_hour", "5h"), ("seven_day", "week")]
         .iter()
@@ -3738,6 +3743,22 @@ mod tests {
     }
 
     #[test]
+    fn claude_reports_input_and_output_tokens_apart() {
+        let (usage, _) = super::statusline_facts(
+            r#"{"context_window":{"total_input_tokens":1200,"total_output_tokens":300}}"#,
+        );
+        assert_eq!(
+            (usage.tokens, usage.tokens_in, usage.tokens_out),
+            (Some(1500), Some(1200), Some(300))
+        );
+        let (usage, _) = super::statusline_facts(r#"{"context_window":{"total_input_tokens":7}}"#);
+        assert_eq!(
+            (usage.tokens, usage.tokens_in, usage.tokens_out),
+            (None, Some(7), None)
+        );
+    }
+
+    #[test]
     fn claude_says_what_it_used_through_its_status_line() {
         let json = r#"{"cost":{"total_cost_usd":1.25},"context_window":{"context_window_size":200000,"used_percentage":42},
             "rate_limits":{"five_hour":{"used_percentage":23.5,"resets_at":1738425600},"seven_day":{"used_percentage":41.2,"resets_at":1738857600}}}"#;
@@ -3747,7 +3768,7 @@ mod tests {
             crate::protocol::Usage {
                 context: Some(42.0),
                 cost: Some(1.25),
-                tokens: None
+                ..Default::default()
             }
         );
         assert_eq!(

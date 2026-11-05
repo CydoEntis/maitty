@@ -4,9 +4,10 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
+
+use maitty_test_support::{fake_ssh, output_within, text};
 
 const MAITTY: &str = env!("CARGO_BIN_EXE_maitty");
 const WAIT: Duration = Duration::from_secs(60);
@@ -108,83 +109,6 @@ impl Drop for Sandbox {
         }
         let _ = std::fs::remove_dir_all(&self.dir);
     }
-}
-
-/// `target/<profile>/examples/fake-ssh`, built here: `cargo test --test <name>` does not
-/// build examples.
-fn fake_ssh() -> PathBuf {
-    static BUILT: OnceLock<PathBuf> = OnceLock::new();
-    BUILT
-        .get_or_init(|| {
-            let exe = std::env::current_exe().expect("the test's own path");
-            let profile = exe
-                .parent()
-                .and_then(Path::parent)
-                .expect("target/<profile>");
-            let path = profile
-                .join("examples")
-                .join(format!("fake-ssh{}", std::env::consts::EXE_SUFFIX));
-            // Always ask cargo: it is a no-op when current, and `cargo test --test` would
-            // otherwise leave a stale shim from an earlier build.
-            let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-            let built = Command::new(cargo)
-                .args(["build", "--package", "maitty", "--example", "fake-ssh"])
-                .status()
-                .expect("run cargo");
-            assert!(built.success(), "building the fake-ssh example failed");
-            path
-        })
-        .clone()
-}
-
-/// Runs to completion, or is killed once `limit` passes (a hung connection must fail the
-/// test, not stall the suite). Output goes to files, not pipes: a daemon started by the
-/// command inherits its pipes on Windows, and reading them would wait for the daemon to exit.
-fn output_within(mut command: Command, limit: Duration) -> Output {
-    static NEXT: AtomicU32 = AtomicU32::new(0);
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let base = std::env::temp_dir().join(format!("fakessh-out-{}-{n}", std::process::id()));
-    let (out_path, err_path) = (base.with_extension("out"), base.with_extension("err"));
-    let mut child = command
-        .stdin(Stdio::null())
-        .stdout(std::fs::File::create(&out_path).expect("create the stdout file"))
-        .stderr(std::fs::File::create(&err_path).expect("create the stderr file"))
-        .spawn()
-        .expect("start the process");
-    let start = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait().expect("poll the process") {
-            break Some(status);
-        }
-        if start.elapsed() > limit {
-            let _ = child.kill();
-            let _ = child.wait();
-            break None;
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    };
-    let read = |path: &Path| {
-        let bytes = std::fs::read(path).unwrap_or_default();
-        let _ = std::fs::remove_file(path);
-        bytes
-    };
-    let (stdout, stderr) = (read(&out_path), read(&err_path));
-    let Some(status) = status else {
-        panic!(
-            "still running after {limit:?}:
-{}",
-            text(&stderr)
-        );
-    };
-    Output {
-        status,
-        stdout,
-        stderr,
-    }
-}
-
-fn text(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).into_owned()
 }
 
 #[test]
@@ -770,6 +694,63 @@ impl Heard {
     }
 }
 
+/// Block until both machines' shells run what is typed. A login shell can still be running its
+/// profile (a banner, `fastfetch`) when the pane exists, and input typed then is dropped, so a
+/// test that types at once waits for output that never comes. Each round types a fresh probe
+/// to the machines not yet ready and listens briefly; a dropped probe costs one short round.
+async fn wait_for_shells(
+    connections: &mut runtime::connections::Connections,
+    heard: &mut Heard,
+) {
+    use runtime::connections::{MachineId, Outgoing};
+    use runtime::protocol::{ClientMsg, ServerMsg};
+
+    const PROBE: Duration = Duration::from_secs(2);
+    const MARK: &str = "shell-ready-";
+    // The terminal echoes the probe as "echo shell-ready-N"; only the shell's output has the mark
+    // without "echo " before it. Escape sequences around the output line rule out line matching.
+    let ran = |text: &str| {
+        text.match_indices(MARK)
+            .any(|(at, _)| !text[..at].ends_with("echo "))
+    };
+    let deadline = std::time::Instant::now() + WAIT;
+    for round in 0.. {
+        for machine in [MachineId::LOCAL, THERE] {
+            if !ran(heard.of(machine)) {
+                connections
+                    .send(Outgoing {
+                        machine,
+                        msg: ClientMsg::Input {
+                            term: 1,
+                            data: format!("echo {MARK}{round}\r").into_bytes(),
+                        },
+                    })
+                    .unwrap();
+            }
+        }
+        let listening = async {
+            while !(ran(&heard.here) && ran(&heard.there)) {
+                let burst = connections.recv_burst(512).await;
+                assert!(!burst.lost, "machine {} was lost", burst.machine.0);
+                for msg in burst.msgs {
+                    if let ServerMsg::Output { data, .. } | ServerMsg::Replay { data, .. } = msg {
+                        heard
+                            .of(burst.machine)
+                            .push_str(&String::from_utf8_lossy(&data));
+                    }
+                }
+            }
+        };
+        if tokio::time::timeout(PROBE, listening).await.is_ok() {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the shells never ran a command"
+        );
+    }
+}
+
 /// Read both machines until `done` holds of what they have printed and the sizes they report.
 async fn listen_until(
     connections: &mut runtime::connections::Connections,
@@ -813,9 +794,15 @@ async fn listen_until(
             ));
         }
     };
-    tokio::time::timeout(WAIT, listening)
-        .await
-        .expect("each machine reports what was sent to it");
+    if tokio::time::timeout(WAIT, listening).await.is_err() {
+        panic!(
+            "each machine reports what was sent to it; sizes {sizes:?}, heard here {} bytes, there {} bytes; tail here {:?}, tail there {:?}",
+            heard.here.len(),
+            heard.there.len(),
+            &heard.here[heard.here.len().saturating_sub(300)..],
+            &heard.there[heard.there.len().saturating_sub(300)..],
+        );
+    }
 }
 
 /// Ends the whole test run, saying what it last saw, if the wait it guards is still going after
@@ -884,6 +871,7 @@ fn typing_and_resizing_reach_only_the_machine_that_owns_the_pane() {
                 rows,
             },
         };
+        wait_for_shells(&mut connections, &mut heard).await;
         connections.send(input(THERE, FOR_THERE)).unwrap();
         connections.send(input(MachineId::LOCAL, FOR_HERE)).unwrap();
         connections.send(resize(THERE, 101, 31)).unwrap();
@@ -976,7 +964,7 @@ mod supervised {
 
     impl Window {
         fn new(machines: Vec<(MachineId, Machine)>, timing: Timing) -> Window {
-            let links = Links::start(machines, timing);
+            let links = Links::start(machines, timing, || runtime::ipc::terminal_dial(true));
             Window {
                 control: links.control(),
                 links,

@@ -1,0 +1,49 @@
+import { describe, expect, it } from 'vitest'
+import { buildPerformanceReport, formatMemory, formatRate, type PerformanceEnvironment } from './performance-report'
+
+const ENVIRONMENT: PerformanceEnvironment = { version: '0.64.0', userAgent: 'WebKit test', gpu: 'webgl', style: 'glass', reduceMotion: false, statusEffects: true, animations: 'Auto: Software rendering detected, using Sweep', terminalFontSize: 14 }
+
+describe('performance report', () => {
+  it('formats sizes in binary units', () => {
+    expect(formatMemory(512)).toBe('1 KiB')
+    expect(formatMemory(3 * 1024 * 1024)).toBe('3 MiB')
+    expect(formatRate(900)).toBe('900 B/s')
+    expect(formatRate(20 * 1024)).toBe('20.0 KiB/s')
+  })
+
+  it('says what it does not have yet', () => {
+    const report = buildPerformanceReport(ENVIRONMENT, null, null)
+    expect(report).toContain('Maitty desktop 0.64.0')
+    expect(report).toContain('Web view sample: none yet')
+    expect(report).toContain('Processes: none yet')
+  })
+
+  it('lists the samples and every process', () => {
+    const report = buildPerformanceReport(
+      ENVIRONMENT,
+      { visible: true, framesPerSecond: 60, slowFrames: 2, worstFrameMs: 80, outputBytesPerSecond: 2048, outputFramesPerSecond: 4, flushesPerSecond: 3, writeLatencyMs: 5, animations: 1, domNodes: 900, renderers: { webgl: 2, dom: 0 } },
+      {
+        cores: 8,
+        host: { pid: 10, name: 'host', command: 'host', cpu: 2, memory_bytes: 1024 * 1024 },
+        webview: [{ pid: 11, name: 'WebKitWebProcess', command: '', cpu: 13.4, memory_bytes: 2 * 1024 * 1024 }],
+        daemons: [{ pid: 12, name: 'daemon', command: '/usr/bin/daemon daemon', cpu: 0.5, memory_bytes: 1024 }],
+      },
+    )
+    expect(report).toContain('frames/s 60; slow frames 2; worst frame 80 ms')
+    expect(report).toContain('2 WebGL, 0 DOM')
+    expect(report).toContain('output 2.0 KiB/s in 4 frames/s; 3 xterm writes/s, 5 ms each')
+    expect(report).toContain('  11  13% cpu  2 MiB  WebKitWebProcess')
+    expect(report).toContain('  12  1% cpu  1 KiB  /usr/bin/daemon daemon')
+  })
+
+  it('notes when the window was hidden and when no web view process is a child', () => {
+    const report = buildPerformanceReport(
+      ENVIRONMENT,
+      { visible: false, framesPerSecond: 0, slowFrames: 0, worstFrameMs: 0, outputBytesPerSecond: 0, outputFramesPerSecond: 0, flushesPerSecond: 0, writeLatencyMs: 0, animations: 0, domNodes: 1, renderers: { webgl: 0, dom: 0 } },
+      { cores: 1, host: { pid: 1, name: 'host', command: '', cpu: 0, memory_bytes: 0 }, webview: [], daemons: [] },
+    )
+    expect(report).toContain('frames/s 0 (window hidden)')
+    expect(report).toContain('web view: not a child process here')
+    expect(report).toContain('daemons: none found')
+  })
+})

@@ -711,65 +711,7 @@ pub fn codex_config_dir() -> PathBuf {
         })
 }
 
-/// Write a file so a reader (or a crash) never sees half of it: write a temporary file
-/// beside it, then swap it in.
-pub fn write_atomic(path: &std::path::Path, data: impl AsRef<[u8]>) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let tmp = path.with_file_name(format!(".{name}.{APP_COMMAND}-tmp"));
-    std::fs::write(&tmp, data)?;
-    keep_mode(path, &tmp)
-        .and_then(|()| std::fs::rename(&tmp, path))
-        .inspect_err(|_| {
-            let _ = std::fs::remove_file(&tmp);
-        })
-}
-
-/// Gives the new file the old one's permissions, so swapping it in never widens a private
-/// file (a 0600 agent config) to the default mode.
-#[cfg(unix)]
-fn keep_mode(old: &std::path::Path, new: &std::path::Path) -> std::io::Result<()> {
-    match std::fs::metadata(old) {
-        Ok(meta) => std::fs::set_permissions(new, meta.permissions()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e),
-    }
-}
-
-#[cfg(not(unix))]
-fn keep_mode(_old: &std::path::Path, _new: &std::path::Path) -> std::io::Result<()> {
-    Ok(())
-}
-
-/// Read a JSON state file; one that's there but won't parse is kept as `<name>.bak` (so a
-/// bad write or a hand edit loses nothing) and the defaults are used.
-pub fn read_state<T: serde::de::DeserializeOwned + Default>(path: &std::path::Path) -> T {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return T::default();
-    };
-    match serde_json::from_str(&text) {
-        Ok(v) => v,
-        Err(e) => {
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let bak = path.with_file_name(format!("{name}.bak"));
-            tracing::warn!(
-                "{} doesn't parse ({e}); kept it as {}",
-                path.display(),
-                bak.display()
-            );
-            let _ = std::fs::copy(path, &bak);
-            T::default()
-        }
-    }
-}
+pub use maitty_machines::{read_state, write_atomic};
 
 const DATA_DIR_ENV: &str = concat!(env!("APP_ENV"), "_DATA_DIR");
 
@@ -1859,7 +1801,7 @@ mod tests {
         for (written, read) in [
             ("true", Rounding::Corners),
             ("false", Rounding::Off),
-            ("\"full\"", Rounding::Corners),
+            ("\"full\"", Rounding::Full),
             ("\"corners\"", Rounding::Corners),
             ("\"off\"", Rounding::Off),
         ] {
@@ -1875,7 +1817,7 @@ mod tests {
     #[test]
     fn the_cursor_defaults_to_the_terminals_own_and_refuses_an_unknown_shape() {
         let ui = super::Ui::default();
-        assert_eq!((ui.cursor.as_str(), ui.cursor_blink), ("terminal", true));
+        assert_eq!((ui.cursor.as_str(), ui.cursor_blink), ("block", true));
         for shape in super::CURSOR_SHAPES {
             let c: super::Config = toml::from_str(&format!(
                 "[ui]\ncursor = \"{shape}\"\ncursor_blink = false\n"
@@ -2328,6 +2270,11 @@ ssh_args = ['-p', '2222']
     }
 
     #[test]
+    fn the_machines_crate_finds_the_same_config_file() {
+        assert_eq!(maitty_machines::local_machines::config_path(), config_path());
+    }
+
+    #[test]
     fn machines_in_the_local_config_load() {
         let dir = config_dir("local");
         std::fs::write(
@@ -2582,11 +2529,11 @@ layout = 'cards'",
         };
         assert_eq!(
             ui("[ui]\nlayout = 'hairline'\nrounded = 'full'").rounding(),
-            Rounding::Corners
+            Rounding::Full
         );
         assert_eq!(
             ui("[ui]\nlayout = 'tiled'\nrounded = 'full'").rounding(),
-            Rounding::Corners,
+            Rounding::Full,
             "the same setting applies everywhere"
         );
     }

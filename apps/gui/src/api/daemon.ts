@@ -2,6 +2,8 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { z } from 'zod'
 import { bytesOf } from './ipcBytes'
+import { assertLocal, type LocalFeature } from '@/lib/localOnly'
+import { LOCAL_MACHINE, addressOf, machineArgs, terminalOf, terminalSessionId } from './machines'
 import { previewConversations, type Conversation, type Message, type SessionStatus } from '@/data/preview'
 
 const StatusSchema = z.enum(['None', 'Idle', 'Working', 'Blocked', 'Done'])
@@ -18,6 +20,8 @@ const ConversationSummarySchema = z.object({
   checks: z.array(z.unknown()),
   title: z.string().nullable().default(null),
   archived: z.boolean().default(false),
+  root: z.string().nullable().default(null),
+  branch: z.string().nullable().default(null),
 })
 const WorkspaceSummarySchema = z.object({
   cwd: z.string(),
@@ -64,6 +68,10 @@ const HistoryCursorSchema = z.object({
   conversation: z.number().int().nonnegative(),
   revision: z.number().int().nonnegative(),
   next_position: z.number().int().nonnegative(),
+  // Absent from a daemon that predates them. A cursor goes back to the daemon as it came, so these are kept.
+  epoch: z.number().int().nonnegative().optional(),
+  delta: z.boolean().optional(),
+  snapshot: z.number().int().nonnegative().optional(),
 })
 const HistoryCompletenessSchema = z.union([
   z.enum(['Unknown', 'Loading', 'Complete']),
@@ -74,15 +82,29 @@ const HistoryEntrySchema = z.object({
   content: z.union([
     z.literal('TurnStatus'),
     z.object({ Message: z.object({ role: z.enum(['User', 'Assistant']), text: z.string() }) }),
-    z.object({ Tool: z.object({ kind: z.string(), output: z.string(), label: z.string().optional() }) }),
+    z.object({
+      Tool: z.object({
+        kind: z.string(),
+        output: z.string(),
+        label: z.string().optional(),
+        input: z.unknown().optional(),
+        exit_code: z.number().int().optional(),
+        duration_ms: z.number().int().nonnegative().optional(),
+      }),
+    }),
     z.object({ Unsupported: z.object({ kind: z.string() }) }),
   ]),
   state: z.enum(['Running', 'Completed', 'Failed', 'Interrupted']),
+  started_at_ms: z.number().int().nonnegative().optional(),
+  completed_at_ms: z.number().int().nonnegative().optional(),
 })
 const HistoryPageSchema = z.object({
   entries: z.array(HistoryEntrySchema),
   next: HistoryCursorSchema.nullable(),
   completeness: HistoryCompletenessSchema,
+  // Read from here to get only what changed since this page; the page starts over when `reset`.
+  resume: HistoryCursorSchema.nullable().optional(),
+  reset: z.boolean().optional(),
 })
 const ConversationReceiptSchema = z.object({
   conversation: z.number().int().nonnegative(),
@@ -93,6 +115,13 @@ const ConversationReceiptSchema = z.object({
     z.object({ Acknowledged: z.object({ turn_id: z.string() }) }),
   ]),
 })
+// The daemon held the message because a turn was running (see `ReadResult.queued`).
+const QueuedReceiptSchema = z.object({
+  conversation: z.number().int().nonnegative(),
+  generation: z.number().int().nonnegative(),
+  operation: z.number().int().nonnegative(),
+})
+const QueuedMessageSchema = z.object({ operation: z.number().int().nonnegative(), text: z.string() })
 const FileChangePreviewSchema = z.object({ path: z.string(), kind: z.string(), diff: z.string() })
 const UserInputQuestionSchema = z.object({
   id: z.string(),
@@ -105,6 +134,9 @@ const UserInputQuestionSchema = z.object({
 const ApprovalRequestSchema = z.object({
   request_id: z.union([z.number().int(), z.string()]),
   kind: z.enum(['Command', 'FileChange', 'Permission', 'UserInput']),
+  // Names the tool step the request is about (Claude: the tool-use id; Codex: the item id).
+  item_id: z.string().nullable().optional(),
+  turn_id: z.string().nullable().optional(),
   command: z.string().nullable(),
   reason: z.string().nullable(),
   cwd: z.string().nullable(),
@@ -123,6 +155,18 @@ const ReadResultSchema = z.object({
   history: HistoryPageSchema,
   checks: z.array(z.unknown()),
   approvals: z.array(ApprovalRequestSchema),
+  // Messages the daemon holds until the running turn ends; absent from a daemon that predates the queue.
+  queued: z.array(QueuedMessageSchema).default([]),
+  // Approvals a person already answered (most recent last); absent from a daemon that predates it.
+  answered_approvals: z
+    .array(
+      z.object({
+        request: ApprovalRequestSchema,
+        decision: z.enum(['Accept', 'AcceptForSession', 'Decline', 'Cancel']),
+        answered_at_ms: z.number().int().nonnegative().nullable().optional(),
+      }),
+    )
+    .default([]),
 })
 const ConversationDiffSchema = z.object({
   files: z.array(z.object({ path: z.string(), additions: z.number().int().nonnegative(), deletions: z.number().int().nonnegative(), patch: z.string(), binary: z.boolean() })),
@@ -207,6 +251,41 @@ export async function restartMismatchedDaemon(expectedProtocol: number): Promise
   await invoke('restart_mismatched_daemon', { expectedProtocol })
 }
 
+const ProcessLoadSchema = z.object({
+  pid: z.number().int().nonnegative(),
+  name: z.string(),
+  command: z.string(),
+  cpu: z.number(),
+  memory_bytes: z.number().nonnegative(),
+})
+const ProcessSampleSchema = z.object({
+  cores: z.number().int().positive(),
+  host: ProcessLoadSchema,
+  webview: z.array(ProcessLoadSchema),
+  daemons: z.array(ProcessLoadSchema),
+})
+
+export type ProcessLoad = z.infer<typeof ProcessLoadSchema>
+/** The host's, the web view's and the daemons' CPU (percent of one core) and memory. */
+export type ProcessSample = z.infer<typeof ProcessSampleSchema>
+
+export async function loadPerformanceSample(): Promise<ProcessSample> {
+  if (!isDesktop()) throw new Error('Process figures are available in the desktop app')
+  return invokeParsed('performance_sample', ProcessSampleSchema)
+}
+
+const MachineListSchema = z.object({ names: z.array(z.string()), error: z.string().nullable() })
+export type MachineList = z.infer<typeof MachineListSchema>
+
+/**
+ * The machines in this computer's `config.local.toml`, by name, and what is wrong with the file
+ * when it is bad. The host reads it once at start, so a hand edit applies on the next start.
+ */
+export async function loadMachines(): Promise<MachineList> {
+  if (!isDesktop()) return { names: [], error: null }
+  return invokeParsed('list_machines', MachineListSchema)
+}
+
 async function invokeParsed<T>(command: string, schema: z.ZodType<T>, args?: Record<string, unknown>): Promise<T> {
   const result = await invoke<unknown>(command, args)
   return schema.parse(result)
@@ -228,23 +307,43 @@ export function listenSessionsChanged(onChange: (snapshot: unknown) => void): Pr
   return listen<unknown>('sessions-changed', (event) => { onChange(event.payload) })
 }
 
-/** The sessions in a daemon snapshot, from `list_sessions` or the `sessions-changed` event. */
-export function conversationsFromSnapshot(raw: unknown): Conversation[] {
+/** A machine whose snapshot this is: its number for this run, and its name. This computer when left out. */
+export type SnapshotMachine = { id: number; name: string }
+
+/**
+ * The sessions in a daemon snapshot, from `list_sessions` or the `sessions-changed` event, or
+ * (with `machine`) in another machine's snapshot from `machine-sessions-changed`. Another
+ * machine's terminals are all the window shows of it; its ids carry the machine's name.
+ */
+export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachine): Conversation[] {
   const snapshot = DaemonSnapshotSchema.parse(raw)
-  for (const id of lastGoodTerm.keys()) if (!(String(id) in snapshot.terms)) lastGoodTerm.delete(id)
-  const terminals = Object.values(snapshot.terms)
+  const from = machine?.id ?? LOCAL_MACHINE
+  for (const key of lastGoodTerm.keys()) {
+    if (isOfMachine(key, from) && !(String(termOfKey(key)) in snapshot.terms)) lastGoodTerm.delete(key)
+  }
+  const summaries = machine === undefined
+    ? snapshot.conversations.flatMap((raw) => {
+      const parsed = ConversationSummarySchema.safeParse(raw)
+      return parsed.success ? [parsed.data] : []
+    })
+    : []
+  // A terminal session has a chat when the daemon holds a conversation whose native terminal is that pane.
+  // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0052).
+  const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation, ...(summary.execution === 'Native' ? { readOnly: true } : {}) }] as const])))
+  const listed = Object.values(snapshot.terms)
     .flatMap((term) => {
-      const read = readTerminal(term)
+      const read = readTerminal(term, from)
       return read ? [read] : []
     })
     .filter(isTerminalSession)
-    .map((term) => toTerminalConversation(term, snapshot.workspaces))
+  // A conversation that belongs to a pane in this list is that session's chat, not a session of its own.
+  const shownPanes = new Set(listed.map((term) => term.id))
+  const terminals = listed
+    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, machine === undefined ? chatOf.get(term.id) : undefined))
+  if (machine !== undefined) return terminals
   return [
-    ...snapshot.conversations
-      .flatMap((raw) => {
-        const parsed = ConversationSummarySchema.safeParse(raw)
-        return parsed.success ? [parsed.data] : []
-      })
+    ...summaries
+      .filter((summary) => summary.native_term === null || !shownPanes.has(summary.native_term))
       .map((conversation) => toConversation(conversation, snapshot.workspaces)),
     ...terminals,
   ]
@@ -254,34 +353,43 @@ type TerminalSession = z.infer<typeof TerminalSessionSchema>
 
 // A session that fails to read for one refresh must not vanish from the sidebar and come back
 // 1.5 seconds later, so it keeps its last good state, and the reason is logged once.
-const lastGoodTerm = new Map<number, TerminalSession>()
-const unreadable = new Set<number>()
+// Each machine numbers its panes from 1, so these are kept by machine and pane together.
+const lastGoodTerm = new Map<string, TerminalSession>()
+const unreadable = new Set<string>()
 
-function readTerminal(raw: unknown): TerminalSession | null {
+function paneKey(machine: number, term: number): string {
+  return `${String(machine)}:${String(term)}`
+}
+
+function isOfMachine(key: string, machine: number): boolean {
+  return key.startsWith(`${String(machine)}:`)
+}
+
+function termOfKey(key: string): number {
+  return Number(key.slice(key.indexOf(':') + 1))
+}
+
+function readTerminal(raw: unknown, machine: number): TerminalSession | null {
   const parsed = TerminalSessionSchema.safeParse(raw)
   const id = typeof raw === 'object' && raw !== null && 'id' in raw && typeof raw.id === 'number' ? raw.id : null
   if (parsed.success) {
-    lastGoodTerm.set(parsed.data.id, parsed.data)
-    unreadable.delete(parsed.data.id)
+    const key = paneKey(machine, parsed.data.id)
+    lastGoodTerm.set(key, parsed.data)
+    unreadable.delete(key)
     return parsed.data
   }
   if (id === null) return null
-  if (!unreadable.has(id)) {
-    unreadable.add(id)
-    console.warn(`Session t${String(id)} could not be read; showing its last good state`, parsed.error.issues)
+  const key = paneKey(machine, id)
+  if (!unreadable.has(key)) {
+    unreadable.add(key)
+    console.warn(`Session ${machine === LOCAL_MACHINE ? '' : `of machine ${String(machine)} `}t${String(id)} could not be read; showing its last good state`, parsed.error.issues)
   }
-  return lastGoodTerm.get(id) ?? null
+  return lastGoodTerm.get(key) ?? null
 }
 
-// Terminal sessions are ids like "t12": the pane's number, kept apart from a chat's number.
-export function terminalSessionId(term: number): string {
-  return `t${String(term)}`
-}
-
-export function terminalOf(conversationId: string): number | null {
-  const match = /^t(\d+)$/.exec(conversationId)
-  return match?.[1] === undefined ? null : Number(match[1])
-}
+// Terminal sessions are ids like "t12", the pane's number kept apart from a chat's number, or
+// "build/t12" for a pane of another machine (see `machines.ts`).
+export { terminalOf, terminalSessionId }
 
 // A terminal this app can show as a session: a shell (with or without an agent running in it) in
 // a pane of its own, not a chat's terminal, a popup, or another machine's (ADR 0046). The daemon
@@ -398,6 +506,43 @@ export async function loadMessages(
   }
 }
 
+// The chat view's read of a conversation: entries and approvals stay raw (`unknown`) because the chat
+// projection validates each one itself, so a single entry this app cannot read never hides the rest.
+const ChatPageSchema = z.object({
+  conversation: z.number().int().nonnegative(),
+  generation: z.number().int().nonnegative(),
+  status: StatusSchema,
+  receipt: ConversationReceiptSchema.nullable(),
+  error: z.string().nullable(),
+  cancelling: z.boolean(),
+  history: z.object({
+    entries: z.array(z.unknown()),
+    next: HistoryCursorSchema.nullable(),
+    completeness: HistoryCompletenessSchema,
+    resume: HistoryCursorSchema.nullable().optional(),
+    reset: z.boolean().optional(),
+  }),
+  approvals: z.array(z.unknown()),
+  // Approvals a person already answered; the chat projection validates each one. Absent from an older daemon.
+  answered_approvals: z.array(z.unknown()).default([]),
+  queued: z.array(QueuedMessageSchema).default([]),
+})
+export type HistoryCursor = z.infer<typeof HistoryCursorSchema>
+export type ChatPage = z.infer<typeof ChatPageSchema>
+
+/**
+ * One page of a conversation's history from `cursor` (null: the start), with the approvals waiting
+ * and the conversation's status. A cursor goes stale when the history changes; the caller then
+ * reads again from the start.
+ */
+export async function readConversationPage(id: number, cursor: HistoryCursor | null): Promise<ChatPage> {
+  if (!isDesktop()) throw new Error('Chat needs the desktop app')
+  if (!Number.isSafeInteger(id) || id < 0) throw new Error('Conversation id is invalid')
+  const page = await invokeParsed('read_conversation', ChatPageSchema, { id, cursor, limit: ReadPageLimit })
+  if (page.conversation !== id) throw new Error('Daemon returned a different conversation')
+  return page
+}
+
 export async function loadConversationDiff(conversation: Conversation): Promise<ConversationDiff> {
   if (terminalOf(conversation.id) !== null) throw new Error('Changes are shown for chat sessions')
   if (!isDesktop() || conversation.generation === undefined) {
@@ -439,6 +584,33 @@ export async function loadConversationFile(
   })
 }
 
+/**
+ * The same three project questions for a session's chat link (the daemon conversation a pane is
+ * linked to), which is what the session panel holds; `loadConversation*` above take a whole
+ * `Conversation`, which the panel does not have.
+ */
+export type ConversationTarget = { conversation: number; generation: number }
+
+function requireProjectAccess(target: ConversationTarget): void {
+  if (!isDesktop()) throw new Error('Project files are available in the desktop app')
+  if (!Number.isSafeInteger(target.conversation) || target.conversation < 0) throw new Error('Conversation id is invalid')
+}
+
+export async function loadTargetDiff(target: ConversationTarget): Promise<ConversationDiff> {
+  requireProjectAccess(target)
+  return invokeParsed('conversation_diff', ConversationDiffSchema, { id: target.conversation, generation: target.generation })
+}
+
+export async function loadTargetFiles(target: ConversationTarget, path: string | null): Promise<ConversationFileEntry[]> {
+  requireProjectAccess(target)
+  return invokeParsed('conversation_files', z.array(ConversationFileEntrySchema), { id: target.conversation, generation: target.generation, path })
+}
+
+export async function loadTargetFile(target: ConversationTarget, path: string): Promise<string> {
+  requireProjectAccess(target)
+  return invokeParsed('conversation_file', z.string(), { id: target.conversation, generation: target.generation, path })
+}
+
 /** The folder a new session starts in when none is chosen: the home folder. */
 export async function defaultSessionFolder(): Promise<string> {
   if (!isDesktop()) return ''
@@ -450,10 +622,18 @@ export async function suggestProjectFolders(typed: string): Promise<string[]> {
   return invokeParsed('suggest_project_folders', z.array(z.string()), { typed })
 }
 
+/** Questions the host answers by opening its own connection to this computer's daemon cannot be asked of another machine's pane. */
+function refuseOtherMachine(pane: { machine: number; machineName: string | null }, feature: LocalFeature): void {
+  assertLocal(pane, feature)
+}
+
 export async function loadTerminalScreen(conversation: Pick<Conversation, 'id'> & { generation: number }): Promise<string> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
-  const term = terminalOf(conversation.id)
-  if (term !== null) return invokeParsed('pane_terminal_screen', z.string(), { term })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) {
+    refuseOtherMachine(pane, 'screen-text')
+    return invokeParsed('pane_terminal_screen', z.string(), { term: pane.term })
+  }
   return invokeParsed('terminal_screen', z.string(), {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -462,10 +642,11 @@ export async function loadTerminalScreen(conversation: Pick<Conversation, 'id'> 
 
 export async function loadTerminalReplay(conversation: Pick<Conversation, 'id'> & { generation: number }): Promise<Uint8Array> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
-  const term = terminalOf(conversation.id)
+  const pane = addressOf(conversation.id)
+  if (pane !== null) refuseOtherMachine(pane, 'replay')
   // The host answers with raw bytes: as JSON a replay would be a number per byte.
-  const reply = term !== null
-    ? await invoke<unknown>('pane_terminal_replay', { term })
+  const reply = pane !== null
+    ? await invoke<unknown>('pane_terminal_replay', { term: pane.term })
     : await invoke<unknown>('terminal_replay', {
       id: Number(conversation.id),
       generation: conversation.generation,
@@ -476,9 +657,9 @@ export async function loadTerminalReplay(conversation: Pick<Conversation, 'id'> 
 export async function sendTerminalInput(conversation: Pick<Conversation, 'id'> & { generation: number }, input: string | Uint8Array): Promise<void> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
   const data = Array.from(typeof input === 'string' ? new TextEncoder().encode(input) : input)
-  const term = terminalOf(conversation.id)
-  if (term !== null) {
-    await invokeParsed('terminal_input', NullSchema, { term, data })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) {
+    await invokeParsed('terminal_input', NullSchema, { term: pane.term, data, ...machineArgs(pane) })
     return
   }
   await invokeParsed('send_terminal_input', z.string(), {
@@ -490,9 +671,9 @@ export async function sendTerminalInput(conversation: Pick<Conversation, 'id'> &
 
 export async function resizeTerminal(conversation: Pick<Conversation, 'id'> & { generation: number }, cols: number, rows: number): Promise<void> {
   if (!isDesktop()) throw new Error('The native terminal is only available in the desktop app')
-  const term = terminalOf(conversation.id)
-  if (term !== null) {
-    await invokeParsed('pane_terminal_resize', NullSchema, { term, cols, rows })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) {
+    await invokeParsed('pane_terminal_resize', NullSchema, { term: pane.term, cols, rows, ...machineArgs(pane) })
     return
   }
   await invokeParsed('resize_terminal', NullSchema, {
@@ -503,8 +684,14 @@ export async function resizeTerminal(conversation: Pick<Conversation, 'id'> & { 
   })
 }
 
-export async function submitMessage(conversation: Conversation, operation: number, text: string): Promise<ConversationReceipt> {
-  return invokeParsed('send_conversation', ConversationReceiptSchema, {
+export type QueuedReceipt = z.infer<typeof QueuedReceiptSchema>
+
+/**
+ * Sends a message. A conversation that is mid-turn does not refuse it: the daemon holds it and sends it
+ * when the turn ends, in order, even if this window closes, and answers with a `QueuedReceipt`.
+ */
+export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string): Promise<ConversationReceipt | QueuedReceipt> {
+  return invokeParsed('send_conversation', z.union([ConversationReceiptSchema, QueuedReceiptSchema]), {
     id: Number(conversation.id),
     generation: conversation.generation,
     operation,
@@ -526,7 +713,16 @@ export function classifySubmissionFailure(
   return receipt.delivery === 'SubmissionUncertain' ? 'unknown' : 'delivered'
 }
 
-export async function approveRequest(conversation: Conversation, requestId: number | string, decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel'): Promise<void> {
+/** Takes a message back out of the daemon's queue before it is sent; it fails when it was already sent. */
+export async function dequeueMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number): Promise<void> {
+  await invokeParsed('dequeue_conversation', NullSchema, {
+    id: Number(conversation.id),
+    generation: conversation.generation,
+    operation,
+  })
+}
+
+export async function approveRequest(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel'): Promise<void> {
   await invokeParsed('approve_conversation', NullSchema, {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -535,7 +731,7 @@ export async function approveRequest(conversation: Conversation, requestId: numb
   })
 }
 
-export async function answerUserInput(conversation: Conversation, requestId: number | string, answers: Record<string, string[]>): Promise<void> {
+export async function answerUserInput(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, answers: Record<string, string[]>): Promise<void> {
   await invokeParsed('answer_conversation_input', NullSchema, {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -544,7 +740,7 @@ export async function answerUserInput(conversation: Conversation, requestId: num
   })
 }
 
-export async function cancelTurn(conversation: Conversation): Promise<void> {
+export async function cancelTurn(conversation: Pick<Conversation, 'id' | 'generation'>): Promise<void> {
   await invokeParsed('cancel_conversation', NullSchema, {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -554,28 +750,28 @@ export async function cancelTurn(conversation: Conversation): Promise<void> {
 /** Pin a session to the top of its project, or let it go back to its place. The daemon keeps it for every app. */
 export async function pinSessionOnDaemon(conversation: Pick<Conversation, 'id'>, pinned: boolean): Promise<void> {
   if (!isDesktop()) return
-  const term = terminalOf(conversation.id)
-  if (term !== null) await invokeParsed('pin_terminal_session', NullSchema, { term, pinned })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('pin_terminal_session', NullSchema, { term: pane.term, pinned, ...machineArgs(pane) })
 }
 
 /** Put a session away from the project lists and tabs, or bring it back. It keeps running: this is a view setting, never a kill. */
 export async function archiveSessionOnDaemon(conversation: Pick<Conversation, 'id'>, archived: boolean): Promise<void> {
   if (!isDesktop()) return
-  const term = terminalOf(conversation.id)
-  if (term !== null) await invokeParsed('archive_terminal_session', NullSchema, { term, archived })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('archive_terminal_session', NullSchema, { term: pane.term, archived, ...machineArgs(pane) })
 }
 
 /** The user is looking at this pane: a finished agent's "done" becomes idle, as when the terminal app focuses it. */
 export async function markSeenOnDaemon(conversation: Pick<Conversation, 'id'>): Promise<void> {
   if (!isDesktop()) return
-  const term = terminalOf(conversation.id)
-  if (term !== null) await invokeParsed('mark_terminal_seen', NullSchema, { term })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) await invokeParsed('mark_terminal_seen', NullSchema, { term: pane.term, ...machineArgs(pane) })
 }
 
 export async function renameConversationOnDaemon(conversation: Pick<Conversation, 'id'>, title: string): Promise<void> {
-  const term = terminalOf(conversation.id)
-  if (term !== null) {
-    await invokeParsed('rename_terminal_session', NullSchema, { term, name: title })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) {
+    await invokeParsed('rename_terminal_session', NullSchema, { term: pane.term, name: title, ...machineArgs(pane) })
     return
   }
   await invokeParsed('rename_conversation', NullSchema, { id: Number(conversation.id), title })
@@ -593,12 +789,23 @@ export async function endConversation(conversation: Conversation): Promise<void>
 // Closing a chat only puts it away, but closing a terminal session ends its program, as in the
 // terminal app. A terminal session that has ended is gone, so there is nothing to bring back.
 export async function archiveConversationOnDaemon(conversation: Pick<Conversation, 'id'>, archived: boolean): Promise<void> {
-  const term = terminalOf(conversation.id)
-  if (term !== null) {
-    if (archived) await invokeParsed('close_terminal_session', NullSchema, { term })
+  const pane = addressOf(conversation.id)
+  if (pane !== null) {
+    if (archived) await invokeParsed('close_terminal_session', NullSchema, { term: pane.term, ...machineArgs(pane) })
     return
   }
   await invokeParsed('archive_conversation', NullSchema, { id: Number(conversation.id), archived })
+}
+
+/**
+ * Closing a chat session in the window ends it, as closing a terminal session ends its program: the
+ * agent is stopped first (its record stays, so the history can be read) and then the session is put
+ * away (ADR 0054). If the agent cannot be stopped nothing is put away, so a session the user believes
+ * ended is never left running out of sight.
+ */
+export async function closeChatSession(conversation: Conversation): Promise<void> {
+  await endConversation(conversation)
+  await archiveConversationOnDaemon(conversation, true)
 }
 
 export type SessionPermissions = 'read-only' | 'workspace-write' | 'full-access'
@@ -612,6 +819,21 @@ export async function createConversation(
     cwd: folder,
     provider,
     permissions,
+  })
+}
+
+/**
+ * Starts a chat session: a Claude or Codex conversation the daemon owns, in `folder` or, with a
+ * `branch`, in a new checkout of the project at `folder` (ADR 0054). It always asks before a tool
+ * use the provider does not allow by itself, unless `fullAccess` asks for the provider's own
+ * skip-permissions mode (no sandbox, no prompts; ADR 0043 and 0054).
+ */
+export async function startChatSession(folder: string, agent: 'claude' | 'codex', branch: string | null = null, fullAccess = false): Promise<{ id: number; generation: number }> {
+  return invokeParsed('start_chat_session', CreatedConversationSchema, {
+    cwd: folder,
+    provider: agent === 'claude' ? 'Claude' : 'Codex',
+    branch,
+    fullAccess,
   })
 }
 
@@ -633,7 +855,7 @@ export async function resumeConversation(conversation: Conversation): Promise<{ 
   })
 }
 
-function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[]): Conversation {
+function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[], machine?: SnapshotMachine, chat?: Conversation['chat']): Conversation {
   const folder = term.root ?? term.cwd
   const repo = term.root ? (term.root.split(/[\\/]/).filter(Boolean).at(-1) ?? null) : null
   const workspace = workspaces.find((candidate) => candidate.cwd === folder || candidate.cwd === term.cwd)
@@ -647,7 +869,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
         ? 'done'
         : 'idle'
   return {
-    id: terminalSessionId(term.id),
+    id: terminalSessionId(term.id, machine?.name ?? null),
     generation: 0,
     execution: 'Native',
     kind: 'terminal',
@@ -664,6 +886,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     permission: 'Terminal session',
     context: null,
     nativePane: term.id,
+    ...(machine ? { machine: machine.id, machineName: machine.name } : {}),
     hasDiff: false,
     named: label !== '',
     pinned: term.pinned,
@@ -672,6 +895,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     process: term.process,
     summary: term.summary,
     details: { asking: term.asking, interrupted: term.interrupted, timeline: term.timeline, usage: term.usage },
+    ...(chat ? { chat } : {}),
   }
 }
 
@@ -688,6 +912,10 @@ function toConversation(summary: ConversationSummary, workspaces: WorkspaceSumma
           ? 'done'
           : 'idle'
   const project = cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Project'
+  // A chat session is a conversation the daemon started itself: it has no terminal, and the window writes to it
+  // (ADR 0054). A followed pane's conversation is read-only and belongs to that pane, so it is not one.
+  const chatSession = summary.execution === 'Structured' && summary.native_term === null
+  const root = summary.root
 
   return {
     id: String(summary.id),
@@ -697,8 +925,8 @@ function toConversation(summary: ConversationSummary, workspaces: WorkspaceSumma
     archived: summary.archived,
     named: summary.title !== null,
     project,
-    folder: cwd,
-    branch: workspace?.git?.branch ?? 'working tree',
+    folder: chatSession && root !== null ? root : cwd,
+    branch: summary.branch ?? workspace?.git?.branch ?? 'working tree',
     provider: summary.provider,
     status,
     updated: null,
@@ -708,5 +936,14 @@ function toConversation(summary: ConversationSummary, workspaces: WorkspaceSumma
     nativePane: summary.native_term,
     hasDiff: (workspace?.git?.dirty ?? 0) > 0,
     ...(workspace ? { isGitRepository: workspace.git !== null } : {}),
+    ...(chatSession
+      ? {
+          cwd,
+          repo: root === null ? null : (root.split(/[\\/]/).filter(Boolean).at(-1) ?? null),
+          agent: summary.provider.toLowerCase(),
+          process: summary.provider.toLowerCase(),
+          chat: { conversation: summary.id, generation: summary.generation },
+        }
+      : {}),
   }
 }

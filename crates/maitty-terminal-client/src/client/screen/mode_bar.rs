@@ -300,6 +300,14 @@ fn keys_holder(app: &App) -> Option<Holder> {
             &[("", "type or paste a path"), ("Enter", "add")],
             ("Esc", "cancel"),
         ),
+        Mode::Prompt {
+            kind: crate::client::PromptKind::SendFile(_),
+            ..
+        } => holder(
+            "SEND FILE",
+            &[("", "type or drop a path"), ("Enter", "send")],
+            ("Esc", "cancel"),
+        ),
         Mode::Prompt { .. } | Mode::RenameTab(_) => holder(
             "NAME",
             &[("", "type"), ("Enter", "save")],
@@ -411,8 +419,8 @@ fn keys_holder(app: &App) -> Option<Holder> {
             ("Esc", "close"),
         ),
         Mode::Machines(_) => holder(
-            "MACHINES",
-            &[("Tab", "yours / add"), ("Enter", "add or retry")],
+            "ADD MACHINE",
+            &[("Tab", "complete"), ("Enter", "connect")],
             ("Esc", "close"),
         ),
         Mode::Tidy(_) => holder(
@@ -435,7 +443,11 @@ fn keys_holder(app: &App) -> Option<Holder> {
             ("Esc", "cancel"),
         ),
         // Esc drops a selection first; only the next one leaves.
-        Mode::Copy(c) if c.anchor.is_some() => holder("COPY", &[("y", "copy")], ("Esc", "clear")),
+        Mode::Copy(c) if c.anchor.is_some() => holder(
+            "COPY",
+            &[("y", "copy"), ("J", "copy as one line")],
+            ("Esc", "clear"),
+        ),
         Mode::Copy(_) => holder(
             "COPY",
             &[("v", "select"), ("y", "copy"), ("/", "search")],
@@ -566,6 +578,7 @@ fn view_holder(app: &App) -> Option<Holder> {
                 ("p", "paste image"),
                 ("n", "add file"),
                 ("d", "remove"),
+                ("y", "copy path"),
             ],
             ("Esc", "close"),
         ),

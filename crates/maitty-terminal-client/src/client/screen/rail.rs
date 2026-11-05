@@ -1,113 +1,83 @@
-//! The collapsed sidebar: a narrow column down the side. A project is its first letter in the
-//! project's colour; under it each session is its state mark and the first letter of its name.
+//! The collapsed sidebar: a 5-column box down the side. At the top a `»` chip and the count of
+//! sessions that need you; then this computer's mark and one state glyph per session, a `─`
+//! between projects and a rule where the other machines begin; at the foot the `+` and `≡` chips.
 use super::side::Line;
 use super::*;
 use crate::client::ids::ClientSession;
 
-/// The column's width: a mark and a letter, a cell of room round each.
+/// The column's width: the box's two edges and three cells inside, one glyph in the middle.
 pub(in crate::client) const RAIL_W: u16 = 5;
-/// Rows above the list: the expand chip, then a blank one.
+/// Inside rows above the list: the count of sessions that need you, then a blank one.
 const HEAD_ROWS: u16 = 2;
-/// Rows below the list: a blank one, then the New and Menu chips.
-const FOOT_ROWS: u16 = 3;
+/// Inside rows below the list: the `+` and `≡` chips.
+const FOOT_ROWS: u16 = 2;
 
 /// A row of the column.
 enum Row {
-    /// A machine other than this one: its state and first letter.
+    /// A machine's mark: `⌂` for this computer, `⇄` and its state's colour for another.
     Machine(MachineId),
-    Head(usize),
+    /// Between two projects.
+    Divider,
+    /// Where the other machines begin.
+    Split,
     Sess(ClientSession),
-    Gap,
 }
 
-/// The first letter of `name`, upper case; a dot for a name with none.
-fn initial(name: &str) -> String {
-    name.chars()
-        .find(|c| !c.is_whitespace())
-        .map_or_else(|| "·".to_string(), |c| c.to_uppercase().collect())
-}
-
-/// A session's row: its mark and the first letter of its name. `on` is the selection, `lit`
-/// when the column has the keys (ink on the accent), else a raised row.
+/// A session's row: its state glyph in the middle of three cells. `on` is the selection, which
+/// has a tinted ground and, while the column has the keys (`lit`), the accent bar at the left.
 fn session_segs(app: &App, s: &Session, on: bool, lit: bool, ground: Color, t: &Theme) -> Vec<Seg> {
     let spinner = super::machine_group::working_mark(app, s.down);
     let mark = check::mark(app, s, t, &spinner);
-    let state = check::kind(s);
-    let new = super::side::is_new(s);
-    let (bg, ink) = match (on, lit) {
-        (true, true) => (t.accent, Some(t.acc_ink)),
-        (true, false) => (t.btn, None),
-        _ => (ground, None),
-    };
     let plain = super::side::plain_shell(s);
-    let (glyph, mut colour) = if plain {
+    let (glyph, colour) = if plain {
         ("›", t.muted)
+    } else if super::side::is_new(s) {
+        (mark.glyph, t.accent)
     } else {
         (mark.glyph, mark.color)
     };
-    if new {
-        colour = t.accent;
-    }
-    let hot = super::side::is_hot(s, state, new);
+    let bg = if on { t.card2 } else { ground };
     let st = Style::default().bg(bg);
-    let letter_fg = if on || hot {
-        t.strong
-    } else if plain {
-        t.muted
-    } else {
-        t.text
-    };
-    let bold = if on || hot {
-        Modifier::BOLD
-    } else {
-        Modifier::empty()
-    };
     vec![
-        seg(" ", st),
-        seg(
-            glyph,
-            st.fg(ink.unwrap_or(colour)).add_modifier(Modifier::BOLD),
-        ),
-        seg(" ", st),
-        seg(
-            initial(&s.name),
-            st.fg(ink.unwrap_or(letter_fg)).add_modifier(bold),
-        ),
+        if on && lit {
+            seg("▌", Style::default().fg(t.accent).bg(bg))
+        } else {
+            seg(" ", st)
+        },
+        seg(glyph, st.fg(colour).add_modifier(Modifier::BOLD)),
         seg(" ", st),
     ]
 }
 
-/// A small chip (`»`, `+`, `≡`) on the raised ground, a cell in from the column's edge.
+/// A small chip (`»`, `+`, `≡`) filling the three cells inside the box, on the raised ground.
 fn chip(
     app: &mut App,
     buf: &mut Buffer,
-    area: Rect,
+    inner: Rect,
     y: u16,
     symbol: &str,
     hit_as: ScreenHit,
     t: &Theme,
 ) {
-    let look = Look::of(&app.cfg.ui);
-    let body = vec![seg(
-        format!(" {symbol} "),
-        Style::default()
-            .fg(t.strong)
-            .bg(t.btn)
-            .add_modifier(Modifier::BOLD),
-    )];
-    let segs = if look.round_tabs {
-        round_ends(body, t.bg)
-    } else {
-        body
-    };
-    let x = area.x + 1;
-    put(buf, x, y, &segs, area.right());
+    put(
+        buf,
+        inner.x,
+        y,
+        &[seg(
+            format!(" {symbol} "),
+            Style::default()
+                .fg(t.strong)
+                .bg(t.btn)
+                .add_modifier(Modifier::BOLD),
+        )],
+        inner.right(),
+    );
     hit(
         app,
         Rect {
-            x,
+            x: inner.x,
             y,
-            width: segs_width(&segs),
+            width: inner.width,
             height: 1,
         },
         hit_as,
@@ -121,33 +91,51 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
     fill(buf, area, ground);
     app.screen.side_rect = Rect::default();
     hit(app, area, ScreenHit::SideFocus);
+    let look = Look::of(&app.cfg.ui);
+    let lit = side_focused(app);
+    panel_box(
+        buf,
+        area,
+        look,
+        Style::default()
+            .fg(if lit { t.accent } else { t.line })
+            .bg(ground),
+    );
+    if area.width < 5 || area.height < HEAD_ROWS + FOOT_ROWS + 3 {
+        return;
+    }
+    let inner = Rect {
+        x: area.x + 1,
+        y: area.y + 1,
+        width: area.width - 2,
+        height: area.height - 2,
+    };
 
     let lines = super::side::side_lines(app, model, t);
-    let rows: Vec<Row> = lines
-        .iter()
-        .filter_map(|l| match l {
-            Line::Proj(pi) => Some(Row::Head(*pi)),
-            Line::Machine(machine) if *machine != MachineId::LOCAL => Some(Row::Machine(*machine)),
-            Line::Gap => Some(Row::Gap),
-            other => super::side::line_term(model, other).map(Row::Sess),
-        })
-        .collect();
+    let mut rows: Vec<Row> = vec![Row::Machine(MachineId::LOCAL)];
+    for l in &lines {
+        match l {
+            Line::Proj(_) if matches!(rows.last(), Some(Row::Sess(_))) => rows.push(Row::Divider),
+            Line::Machine(machine) if *machine != MachineId::LOCAL => {
+                rows.push(Row::Split);
+                rows.push(Row::Machine(*machine));
+            }
+            other => {
+                if let Some(key) = super::side::line_term(model, other) {
+                    rows.push(Row::Sess(key));
+                }
+            }
+        }
+    }
     let sessions: Vec<ClientSession> = rows
         .iter()
-        .filter_map(|r| {
-            if let Row::Sess(key) = r {
-                Some(*key)
-            } else {
-                None
-            }
-        })
+        .filter_map(|r| if let Row::Sess(key) = r { Some(*key) } else { None })
         .collect();
     app.screen.visible = sessions.clone();
     app.screen.side_items = sessions.iter().map(|key| SideItem::Sess(*key)).collect();
     app.screen.row_y.clear();
     app.screen.proj_keys = model.iter().map(|p| p.key.clone()).collect();
 
-    let lit = side_focused(app);
     let selected = if lit {
         app.screen
             .cursor
@@ -156,34 +144,63 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
         app.focused().map(|id| app.session_key(id))
     };
 
+    // The top border: the chip that brings the sidebar back, set into it.
     let arrow = if app.cfg.ui.sidebar_position == "right" {
         "«"
     } else {
         "»"
     };
-    chip(app, buf, area, area.y, arrow, ScreenHit::ExpandSidebar, t);
-    if area.height > HEAD_ROWS + FOOT_ROWS {
-        chip(
-            app,
+    chip(app, buf, inner, area.y, arrow, ScreenHit::ExpandSidebar, t);
+    // How many need you, in amber, under it.
+    let needing = model
+        .iter()
+        .flat_map(|p| p.sessions())
+        .filter(|s| check::needs_you(s))
+        .count();
+    if needing > 0 {
+        put(
             buf,
-            area,
-            area.bottom() - 2,
-            "+",
-            ScreenHit::NewShell,
-            t,
+            inner.x,
+            inner.y,
+            &[seg(
+                format!("{needing:^3}"),
+                Style::default()
+                    .fg(t.blocked)
+                    .bg(t.btn)
+                    .add_modifier(Modifier::BOLD),
+            )],
+            inner.right(),
         );
-        chip(
+        hit(
             app,
-            buf,
-            area,
-            area.bottom() - 1,
-            "≡",
-            ScreenHit::Actions,
-            t,
+            Rect {
+                y: inner.y,
+                height: 1,
+                ..inner
+            },
+            ScreenHit::ExpandSidebar,
         );
     }
+    chip(
+        app,
+        buf,
+        inner,
+        inner.bottom() - 2,
+        "+",
+        ScreenHit::NewShell,
+        t,
+    );
+    chip(
+        app,
+        buf,
+        inner,
+        inner.bottom() - 1,
+        "≡",
+        ScreenHit::Actions,
+        t,
+    );
 
-    let room = area.height.saturating_sub(HEAD_ROWS + FOOT_ROWS) as usize;
+    let room = inner.height.saturating_sub(HEAD_ROWS + FOOT_ROWS) as usize;
     let at = selected.and_then(|sel| {
         rows.iter()
             .position(|r| matches!(r, Row::Sess(term) if *term == sel))
@@ -194,45 +211,65 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
     };
     let more_below = from + room < rows.len();
     for (n, row) in rows.iter().skip(from).take(room).enumerate() {
-        let y = area.y + HEAD_ROWS + n as u16;
+        let y = inner.y + HEAD_ROWS + n as u16;
         let row_area = Rect {
-            x: area.x,
             y,
-            width: area.width,
             height: 1,
+            ..inner
         };
         if more_below && n + 1 == room {
             put(
                 buf,
-                area.x + 1,
+                inner.x,
                 y,
                 &[seg(" … ", Style::default().fg(t.muted).bg(ground))],
-                area.right(),
+                inner.right(),
             );
             hit(app, row_area, ScreenHit::ExpandSidebar);
             break;
         }
         match row {
-            Row::Gap => {}
-            Row::Machine(machine) => {
-                let segs = super::machine_group::rail_segs(app, *machine, ground, t);
-                put(buf, area.x, y, &segs, area.right());
-                hit(app, row_area, ScreenHit::ExpandSidebar);
-            }
-            Row::Head(pi) => {
-                let p = &model[*pi];
+            Row::Divider => {
                 put(
                     buf,
-                    area.x + 1,
+                    inner.x,
+                    y,
+                    &[seg(" ─ ", Style::default().fg(t.line).bg(ground))],
+                    inner.right(),
+                );
+            }
+            Row::Split => {
+                // The rule between this computer's half and the others', joined to the box.
+                let rule = Style::default()
+                    .fg(if lit { t.accent } else { t.line })
+                    .bg(ground);
+                put(
+                    buf,
+                    area.x,
+                    y,
+                    &[seg(format!("├{}┤", "─".repeat(inner.width as usize)), rule)],
+                    area.right(),
+                );
+            }
+            Row::Machine(machine) => {
+                let (glyph, colour) = if *machine == MachineId::LOCAL {
+                    (super::machine_group::LOCAL_ICON, t.muted)
+                } else {
+                    let (_, colour) = app.machine_dot(*machine, t);
+                    (
+                        super::machine_group::REMOTE_ICON,
+                        if colour == t.done { t.muted } else { t.line },
+                    )
+                };
+                put(
+                    buf,
+                    inner.x,
                     y,
                     &[seg(
-                        initial(&p.name),
-                        Style::default()
-                            .fg(p.color)
-                            .bg(ground)
-                            .add_modifier(Modifier::BOLD),
+                        format!(" {glyph} "),
+                        Style::default().fg(colour).bg(ground),
                     )],
-                    area.right(),
+                    inner.right(),
                 );
                 hit(app, row_area, ScreenHit::ExpandSidebar);
             }
@@ -242,10 +279,10 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
                 };
                 put(
                     buf,
-                    area.x,
+                    inner.x,
                     y,
                     &session_segs(app, s, Some(*key) == selected, lit, ground, t),
-                    area.right(),
+                    inner.right(),
                 );
                 hit(app, row_area, ScreenHit::Session(*key));
                 if s.down {

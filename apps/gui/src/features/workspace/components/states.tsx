@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
+import { useShortcutText } from '@/features/shortcuts/platform'
 import { Icon } from './glyphs'
 
-export function EmptyState({ hasSessions, startFolderLabel, primary, canStart, onNewSession, onChangeStartFolder }: {
+export function EmptyState({ hasSessions, startFolderLabel, canStart, onNewSession, onChangeStartFolder }: {
   hasSessions: boolean
   startFolderLabel: string
-  primary: string
   canStart: boolean
   onNewSession: () => void
   onChangeStartFolder: () => void
 }) {
+  const shortcutText = useShortcutText()
   return (
     <div className="mx-empty">
       <div className="mx-empty-column">
@@ -22,7 +23,7 @@ export function EmptyState({ hasSessions, startFolderLabel, primary, canStart, o
           )}
         </div>
         <div className="mx-empty-actions">
-          <button type="button" className="mx-primary" disabled={!canStart} onClick={onNewSession}>New session<kbd>{primary}T</kbd></button>
+          <button type="button" className="mx-primary" disabled={!canStart} onClick={onNewSession}>New session<kbd>{shortcutText('new-session')}</kbd></button>
           <button type="button" className="mx-quiet" onClick={onChangeStartFolder}>Change start folder</button>
         </div>
         <span className="mx-empty-note-small">Sessions live in maittyd. Closing this window never stops them, and the Maitty TUI sees the same sessions.</span>

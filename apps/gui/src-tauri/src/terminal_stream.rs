@@ -1,298 +1,673 @@
-//! Live terminal output for the window. The daemon pushes each pane's replay and then its output;
-//! this forwards them to the window as events and keeps a short history per pane, so a view that
-//! opens later can catch up and then continue from the next chunk without a gap or a repeat.
+//! Live terminal output for the window, from every machine. The hub holds a line to this
+//! computer's daemon (machine 0) and one to each configured machine; this forwards what they
+//! push to the window as events and frames, and keeps each pane's history so a view that opens
+//! later can catch up and then continue from the next chunk without a gap or a repeat.
 //!
 //! A PTY read is often a few bytes and every message is a trip through the web view, so output
-//! waits briefly (`FLUSH_EVERY`, or `FLUSH_AT_BYTES` of one pane) and one frame carries what
-//! gathered. Frames go over the raw channel the window opens with `watch_terminal_output`, as
-//! bytes rather than JSON. The daemon's state goes out as `sessions-changed` when it changes, so
-//! the window need not poll; a change to some panes arrives as a delta and is merged here, so the
-//! window always gets a whole snapshot.
+//! waits briefly and one frame carries what gathered (`streams.rs` holds the rules, including
+//! how little another machine may take). Frames go over the raw channel the window opens with
+//! `watch_terminal_output`, as bytes rather than JSON. This computer's state goes out as
+//! `sessions-changed` when it changes, so the window need not poll; a change to some panes
+//! arrives as a delta and is merged, so the window always gets a whole snapshot. Another
+//! machine's goes out as `machine-sessions-changed`, and each machine's connection state as
+//! `machine-state`.
 //!
 //! The stream attaches without replays: a pane's replay is asked for over the stream when a view
 //! opens on it (`terminal_history`), so panes nobody looks at cost nothing to carry.
 
-use maitty_desktop_client::TerminalInput;
-use maitty_shared::protocol::{ServerMsg, Snapshot};
-use std::collections::{BTreeMap, HashMap};
-use std::sync::Mutex;
-use std::time::Duration;
+use crate::hub::{Hub, HubHandle, LocalDial, MACHINE_STATE_EVENT, MachineState, Update, describe};
+use crate::routing::{self, machine_of};
+use crate::streams::{Out, Streams};
+use maitty_desktop_client::PaneCommand;
+use maitty_machines::link::Timing;
+use maitty_machines::machine_config::Grant;
+use maitty_machines::machine_ids::MachineIds;
+use maitty_machines::{MachineDef, MachineId, Outgoing};
+use maitty_shared::protocol::{ClientMsg, Command, Snapshot};
+use serde::Serialize;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::time::Instant;
 
-/// Carries the daemon's `Snapshot` (what `list_sessions` returns) as it changes, or `null` when
-/// the stream dropped and the window should ask for the list itself.
+/// Carries this computer's `Snapshot` (what `list_sessions` returns) as it changes, or `null`
+/// when the line dropped and the window should ask for the list itself.
 const SESSIONS_EVENT: &str = "sessions-changed";
-/// More history than this for one pane is dropped; a view then asks the daemon for a fresh replay.
-const HISTORY_LIMIT_BYTES: usize = 8 * 1024 * 1024;
-const RECONNECT_DELAY: Duration = Duration::from_secs(1);
-/// Output waits this long for more before it is sent: under a frame, so typing still echoes at once.
-const FLUSH_EVERY: Duration = Duration::from_millis(12);
-/// A pane with this much waiting is sent without waiting for the timer.
-const FLUSH_AT_BYTES: usize = 64 * 1024;
-/// The history reply starts with the sequence number it ends at, as big-endian bytes.
-const SEQ_BYTES: usize = std::mem::size_of::<u64>();
-/// A frame's header: the pane, the sequence number and the replay flag.
-const FRAME_HEADER_BYTES: usize = std::mem::size_of::<u32>() + SEQ_BYTES + 1;
+/// Carries another machine's whole snapshot as it changes: `{machine, snapshot}`.
+const MACHINE_SESSIONS_EVENT: &str = "machine-sessions-changed";
+/// Carries what another machine said went wrong with a request: `{machine, text}`.
+/// Carries the number of a machine that was removed from the list.
+const MACHINE_REMOVED_EVENT: &str = "machine-removed";
+/// Carries what an opted-in machine wants shown: `{machine, text}`.
+const MACHINE_NOTICE_EVENT: &str = "machine-notice";
+/// Carries text an opted-in machine asks to be copied: `{machine, text}`.
+const MACHINE_CLIPBOARD_EVENT: &str = "machine-clipboard";
+const MACHINE_ERROR_EVENT: &str = "machine-error";
+
+/// The longest folder path sent to another machine.
+const MOST_FOLDER_BYTES: usize = 4096;
+
+const NOT_CONNECTED: &str = "The terminal is not connected to the daemon";
 
 #[derive(Default)]
-struct Pane {
-    /// The sequence number of the last chunk, counting from 1.
-    seq: u64,
-    /// The pane's last replay followed by every chunk of output since.
-    history: Vec<u8>,
-    /// False once the history overflowed: it no longer starts at a replay.
-    complete: bool,
+pub struct StreamState(Mutex<Streams>);
+
+/// Each machine's last state, for a window that was not there to hear it change.
+#[derive(Default)]
+pub struct MachineStates(Mutex<BTreeMap<u16, MachineState>>);
+
+impl MachineStates {
+    /// Whether the machine called `name` (any case) is `connected` now.
+    pub fn is_connected(&self, name: &str) -> bool {
+        self.0.lock().is_ok_and(|states| {
+            states
+                .values()
+                .any(|state| state.name.eq_ignore_ascii_case(name) && state.state == "connected")
+        })
+    }
 }
 
-#[derive(Default)]
-pub struct TerminalHistory(Mutex<HashMap<u32, Pane>>);
+/// A machine as the window finds it when it starts: its state, and the snapshot it last gave.
+#[derive(Clone, Serialize, Debug)]
+pub struct MachineOverview {
+    #[serde(flatten)]
+    pub state: MachineState,
+    pub snapshot: Option<Box<Snapshot>>,
+}
 
-/// Where typed keys go: back over the stream's own connection. None while it is not connected.
-#[derive(Default)]
-pub struct TerminalKeys(tokio::sync::Mutex<Option<TerminalInput>>);
+/// The overview of every machine but this computer, which the window asks for itself.
+pub fn overview(states: &MachineStates, streams: &Streams) -> Vec<MachineOverview> {
+    let Ok(states) = states.0.lock() else {
+        return Vec::new();
+    };
+    states
+        .values()
+        .filter(|state| state.machine != MachineId::LOCAL.0)
+        .map(|state| MachineOverview {
+            snapshot: streams
+                .last_snapshot(MachineId(state.machine))
+                .map(|snapshot| Box::new(snapshot.clone())),
+            state: state.clone(),
+        })
+        .collect()
+}
+
+/// Start a terminal session in a folder of another machine.
+#[tauri::command]
+pub fn start_session_on_machine(
+    wire: tauri::State<'_, Wire>,
+    machine: u16,
+    folder: String,
+) -> Result<(), String> {
+    wire.new_session(machine, &folder)
+}
+
+/// Dial a machine now, and let a daemon that was refused be looked at again.
+#[tauri::command]
+pub fn retry_machine(wire: tauri::State<'_, Wire>, name: String) -> Result<(), String> {
+    wire.0
+        .get()
+        .ok_or_else(|| NOT_CONNECTED.to_string())?
+        .retry(&name);
+    Ok(())
+}
+
+/// Take a machine out of the list: its entry leaves `config.local.toml` first, and only when
+/// that worked is its connection stopped and its record forgotten. The machine, its sessions and
+/// the layout saved under its name are not touched.
+#[tauri::command]
+pub async fn remove_machine(wire: tauri::State<'_, Wire>, name: String) -> Result<(), String> {
+    let handle = wire.0.get().ok_or_else(|| NOT_CONNECTED.to_string())?;
+    let file = maitty_machines::local_machines::config_path().with_file_name("config.local.toml");
+    let entry = name.clone();
+    tauri::async_runtime::spawn_blocking(move || remove_entry(&file, &entry))
+        .await
+        .map_err(|error| format!("Could not remove {name}: {error}"))??;
+    handle.remove(&name);
+    Ok(())
+}
+
+/// Allow or stop one of a machine's powers over this computer. The entry in `config.local.toml`
+/// is written first; only when that worked does the host start or stop acting on what the machine
+/// sends, and the window is told the machine's new state.
+#[tauri::command]
+pub async fn set_machine_grant(
+    app: AppHandle,
+    wire: tauri::State<'_, Wire>,
+    name: String,
+    grant: String,
+    on: bool,
+) -> Result<(), String> {
+    let handle = wire.handle()?.clone();
+    let grant = Grant::parse(&grant).ok_or_else(|| format!("{grant} is not something a machine can be allowed"))?;
+    if handle.id_of(&name).is_none() {
+        return Err(format!("{name} is not one of this computer's machines"));
+    }
+    let file = maitty_machines::local_machines::config_path().with_file_name("config.local.toml");
+    let entry = name.clone();
+    tauri::async_runtime::spawn_blocking(move || write_grant(&file, &entry, grant, on))
+        .await
+        .map_err(|error| format!("Could not change {name}: {error}"))??;
+    if let Some(machine) = handle.set_grant(&name, grant, on)
+        && let Ok(mut states) = app.state::<MachineStates>().0.lock()
+        && let Some(state) = states.get_mut(&machine.0)
+    {
+        let opts = handle.opts_of(machine);
+        (state.clipboard, state.notices, state.sounds) = (opts.clipboard, opts.notices, opts.sounds);
+        let _ = app.emit(MACHINE_STATE_EVENT, state.clone());
+    }
+    Ok(())
+}
+
+/// Write one grant of the entry named `name` in the machine file.
+fn write_grant(file: &std::path::Path, name: &str, grant: Grant, on: bool) -> Result<(), String> {
+    match maitty_machines::machine_config::set_grant(file, name, grant, on) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(format!(
+            "{name} is not in config.local.toml, so it cannot be changed here."
+        )),
+        Err(error) => Err(format!("Could not change {name}: {error:#}")),
+    }
+}
+
+/// Delete the entry named `name` from the machine file.
+fn remove_entry(file: &std::path::Path, name: &str) -> Result<(), String> {
+    match maitty_machines::machine_config::remove_machine(file, name) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(format!(
+            "{name} is not in config.local.toml, so it cannot be removed here."
+        )),
+        Err(error) => Err(format!("Could not remove {name}: {error:#}")),
+    }
+}
+
+#[tauri::command]
+pub fn list_machines_overview(
+    states: tauri::State<'_, MachineStates>,
+    streams: tauri::State<'_, StreamState>,
+) -> Vec<MachineOverview> {
+    match streams.0.lock() {
+        Ok(streams) => overview(&states, &streams),
+        Err(_) => Vec::new(),
+    }
+}
 
 /// The window's channel for output frames. None until the window asks; a window that reloads
 /// asks again and takes the place of the old one.
 #[derive(Default)]
 pub struct TerminalOutput(Mutex<Option<Channel<Response>>>);
 
-/// The daemon's last whole snapshot for this window, so a delta can be applied to it.
+/// Where typed keys and requests for a replay go: to the machine's line, through the hub.
+/// Empty until the hub has started.
 #[derive(Default)]
-pub struct LastSnapshot(Mutex<Option<Snapshot>>);
+pub struct Wire(OnceLock<HubHandle>);
 
-/// Each frame: the pane as 4 big-endian bytes, the sequence number as 8, one byte that is 1 for a
-/// replay, then the output. The view decodes it in `apps/gui/src/api/terminalStream.ts`.
+impl Wire {
+    #[cfg(test)]
+    pub fn reaching(handle: HubHandle) -> Wire {
+        let wire = Wire::default();
+        let _ = wire.0.set(handle);
+        wire
+    }
+
+    /// Refuse a request about a pane's files when the pane is on another machine.
+    pub fn require_local(&self, machine: Option<u16>, label: &str) -> Result<(), String> {
+        routing::require_local(machine, label, |id| {
+            self.0.get().and_then(|handle| handle.name_of(id))
+        })
+    }
+
+    /// The hub's handle, or why there is none yet.
+    pub fn handle(&self) -> Result<&HubHandle, String> {
+        self.0.get().ok_or_else(|| NOT_CONNECTED.to_string())
+    }
+
+    fn send(&self, machine: MachineId, msg: ClientMsg) -> Result<(), String> {
+        let handle = self.0.get().ok_or_else(|| NOT_CONNECTED.to_string())?;
+        handle
+            .send(Outgoing { machine, msg })
+            .map_err(|_| refusal(handle, machine))
+    }
+
+    /// Start a terminal session in `folder` on another machine. The folder is a path there: one
+    /// that does not exist opens in that machine's home folder, so `~` is a fair default.
+    /// Refused, naming the machine, when it has no line.
+    pub fn new_session(&self, machine: u16, folder: &str) -> Result<(), String> {
+        if !routing::is_remote(Some(machine)) {
+            return Err("This computer starts its own sessions".to_string());
+        }
+        let folder = folder.trim();
+        if folder.is_empty() || folder.len() > MOST_FOLDER_BYTES || folder.chars().any(char::is_control) {
+            return Err("Type a folder on that machine, such as ~ or /srv/app".to_string());
+        }
+        self.send(
+            MachineId(machine),
+            ClientMsg::Command(Command::NewWorkspace {
+                cwd: Some(std::path::PathBuf::from(folder)),
+                name: None,
+                cmd: None,
+            }),
+        )
+    }
+
+    /// Ask the daemon of `term`'s machine (this computer when none is named) to do `command`.
+    /// The machine's line takes it without waiting; its answer is taken, if it comes, by the hub.
+    /// Refused, naming the machine, when the machine has no line.
+    pub fn command(
+        &self,
+        machine: Option<u16>,
+        term: u32,
+        command: PaneCommand,
+    ) -> Result<(), String> {
+        self.send(machine_of(machine), routing::message(term, command))
+    }
+}
+
+/// Why a machine took nothing: it is down, or it is not one of ours.
+fn refusal(handle: &HubHandle, machine: MachineId) -> String {
+    if machine == MachineId::LOCAL {
+        return NOT_CONNECTED.to_string();
+    }
+    match handle.name_of(machine) {
+        Some(name) => format!("{name} is not connected"),
+        None => format!(
+            "Machine {} is not one of this computer's machines",
+            machine.0
+        ),
+    }
+}
+
+/// Each frame: the machine as 2 big-endian bytes, the pane as 4, the sequence number as 8, one
+/// byte that is 1 for a replay, then the output. The view decodes it in
+/// `apps/gui/src/api/terminalStream.ts`.
 #[tauri::command]
-pub fn watch_terminal_output(output: tauri::State<'_, TerminalOutput>, on_chunk: Channel<Response>) {
+pub fn watch_terminal_output(
+    output: tauri::State<'_, TerminalOutput>,
+    on_chunk: Channel<Response>,
+) {
     if let Ok(mut channel) = output.0.lock() {
         *channel = Some(on_chunk);
     }
 }
 
-/// Output the daemon sent that the window has not been given yet, by pane.
-#[derive(Default)]
-struct Pending {
-    panes: BTreeMap<u32, Vec<u8>>,
-    /// When the oldest waiting output arrived; None while nothing waits.
-    since: Option<Instant>,
-}
-
+/// `machine` is left out for this computer's own panes.
 #[tauri::command]
 pub async fn terminal_input(
-    keys: tauri::State<'_, TerminalKeys>,
+    wire: tauri::State<'_, Wire>,
+    machine: Option<u16>,
     term: u32,
     data: Vec<u8>,
 ) -> Result<(), String> {
-    let mut keys = keys.0.lock().await;
-    let input = keys
-        .as_mut()
-        .ok_or_else(|| "The terminal is not connected to the daemon".to_string())?;
-    input
-        .send(term, data)
-        .await
-        .map_err(|error| format!("{error:#}"))
+    let largest = maitty_desktop_client::MAX_TERMINAL_INPUT_BYTES;
+    if data.is_empty() || data.len() > largest {
+        return Err(format!(
+            "Terminal input must contain between 1 and {largest} bytes"
+        ));
+    }
+    wire.command(machine, term, PaneCommand::Input(data))
 }
 
 /// What a view needs to open on a pane: the sequence number it ends at (`SEQ_BYTES`, big-endian),
-/// then everything shown so far. Empty when the pane has no history yet: the daemon has then been
+/// then everything shown so far. Empty when the pane has no history yet: its daemon has then been
 /// asked for its replay over the stream, and it arrives as the next frame for that pane. An error
 /// when the stream is down, so the view asks the daemon itself. Raw bytes, because as JSON a
 /// megabyte of output is several of text to parse.
 #[tauri::command]
 pub async fn terminal_history(
-    history: tauri::State<'_, TerminalHistory>,
-    keys: tauri::State<'_, TerminalKeys>,
+    streams: tauri::State<'_, StreamState>,
+    wire: tauri::State<'_, Wire>,
+    machine: Option<u16>,
     term: u32,
 ) -> Result<Response, String> {
-    let body = {
-        let panes = history
-            .0
-            .lock()
-            .map_err(|_| "The terminal history is unavailable".to_string())?;
-        panes.get(&term).filter(|pane| pane.complete).map(|pane| {
-            // One copy under the lock; live output waits for a memcpy, not for an encoding.
-            let mut body = Vec::with_capacity(SEQ_BYTES + pane.history.len());
-            body.extend_from_slice(&pane.seq.to_be_bytes());
-            body.extend_from_slice(&pane.history);
-            body
-        })
-    };
+    let machine = machine_of(machine);
+    let body = streams
+        .0
+        .lock()
+        .map_err(|_| "The terminal history is unavailable".to_string())?
+        .history(machine, term);
     if let Some(body) = body {
         return Ok(Response::new(body));
     }
-    let mut keys = keys.0.lock().await;
-    let input = keys
-        .as_mut()
-        .ok_or_else(|| "The terminal is not connected to the daemon".to_string())?;
-    input
-        .want_replay(term)
-        .await
-        .map_err(|error| format!("{error:#}"))?;
+    wire.command(Some(machine.0), term, PaneCommand::WantReplay)?;
     Ok(Response::new(Vec::new()))
 }
 
-/// Read the daemon's stream for as long as the app runs, reconnecting when it drops.
-pub fn start(app: AppHandle) {
+/// Read every machine's line for as long as the app runs, reconnecting when one drops.
+pub fn start(app: AppHandle, defs: Vec<MachineDef>) {
     tauri::async_runtime::spawn(async move {
+        let local: LocalDial = {
+            let app = app.clone();
+            Arc::new(move || {
+                let executable = super::daemon_executable(&app);
+                Box::pin(async move {
+                    maitty_desktop_client::open_terminal_line(
+                        executable.map_err(anyhow::Error::msg)?,
+                    )
+                    .await
+                })
+            })
+        };
+        let mut hub = Hub::start(
+            &defs,
+            maitty_machines::SSH_PROGRAM,
+            MachineIds::file_in(&maitty_desktop_client::data_dir()),
+            Timing::DEFAULT,
+            Some(local),
+        );
+        let handle = hub.handle();
+        let _ = app.state::<Wire>().0.set(handle.clone());
         loop {
-            read_stream(&app).await;
-            tokio::time::sleep(RECONNECT_DELAY).await;
+            let due = app
+                .state::<StreamState>()
+                .0
+                .lock()
+                .ok()
+                .and_then(|streams| streams.due());
+            let update = match due {
+                None => hub.next().await,
+                Some(at) => {
+                    // Waiting for the next update is safe to cut short: the hub keeps what it took.
+                    match tokio::time::timeout_at(tokio::time::Instant::from_std(at), hub.next())
+                        .await
+                    {
+                        Ok(update) => update,
+                        Err(_elapsed) => {
+                            let now = Instant::now();
+                            let done = streams(&app, |streams| flush(streams, &handle, now));
+                            perform(&app, done.unwrap_or_default());
+                            continue;
+                        }
+                    }
+                }
+            };
+            apply(&app, &handle, update);
         }
     });
 }
 
-async fn read_stream(app: &AppHandle) {
-    let Ok(executable) = super::daemon_executable(app) else {
-        return;
-    };
-    let Ok((mut stream, mut input)) = maitty_desktop_client::open_terminal_stream(executable).await
-    else {
-        return;
-    };
-    // The histories start over, but the sequence numbers run on: a view drops anything numbered
-    // at or below what it has seen, so a restart from 1 would leave it deaf. Panes a view was
-    // watching are asked for again, and the replay that comes puts each view back in step.
-    let watched: Vec<u32> = match app.state::<TerminalHistory>().0.lock() {
-        Ok(mut panes) => panes
-            .iter_mut()
-            .filter_map(|(term, pane)| {
-                let watched = pane.complete;
-                pane.history.clear();
-                pane.complete = false;
-                watched.then_some(*term)
-            })
-            .collect(),
-        Err(_) => Vec::new(),
-    };
-    for term in watched {
-        // A write that fails here shows up as the stream ending on the first read below.
-        let _ = input.want_replay(term).await;
-    }
-    *app.state::<TerminalKeys>().0.lock().await = Some(input);
-    if let Ok(mut last) = app.state::<LastSnapshot>().0.lock() {
-        *last = None;
-    }
-    let mut pending = Pending::default();
-    loop {
-        // Waiting for the next frame is safe to cut short: the framed reader keeps a partial frame.
-        let next = match pending.since {
-            None => stream.next().await,
-            Some(since) => match tokio::time::timeout_at(since + FLUSH_EVERY, stream.next()).await
-            {
-                Ok(next) => next,
-                Err(_elapsed) => {
-                    flush(app, &mut pending);
-                    continue;
-                }
-            },
-        };
-        let Ok(Some(message)) = next else {
-            break;
-        };
-        handle(app, message, &mut pending);
-    }
-    flush(app, &mut pending);
-    *app.state::<TerminalKeys>().0.lock().await = None;
-    // The window's list is stale now: it asks again, and learns the daemon is gone if it is.
-    let _ = app.emit(SESSIONS_EVENT, ());
-}
-
-fn handle(app: &AppHandle, message: ServerMsg, pending: &mut Pending) {
-    match message {
-        ServerMsg::Replay { term, data, .. } => {
-            // A replay replaces the pane, so output held from before it lands first.
-            flush(app, pending);
-            emit_chunk(app, term, data, true);
-        }
-        ServerMsg::Output { term, data } => {
-            let waiting = pending.panes.entry(term).or_default();
-            waiting.extend_from_slice(&data);
-            pending.since.get_or_insert_with(Instant::now);
-            if waiting.len() >= FLUSH_AT_BYTES {
-                let data = pending.panes.remove(&term).unwrap_or_default();
-                if pending.panes.is_empty() {
-                    pending.since = None;
-                }
-                emit_chunk(app, term, data, false);
-            }
-        }
-        ServerMsg::State(snapshot) => publish_snapshot(app, snapshot),
-        ServerMsg::TermsChanged { changed, removed } => {
-            let merged = app.state::<LastSnapshot>().0.lock().ok().and_then(|last| {
-                let mut merged = last.clone()?;
-                for term in removed {
-                    merged.terms.remove(&term);
-                }
-                for term in changed {
-                    merged.terms.insert(term.id, term);
-                }
-                Some(merged)
-            });
-            // A delta before any whole snapshot has nothing to apply to; the next whole one comes with the next reconnect.
-            if let Some(merged) = merged {
-                publish_snapshot(app, merged);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn publish_snapshot(app: &AppHandle, snapshot: Snapshot) {
-    if let Ok(mut panes) = app.state::<TerminalHistory>().0.lock() {
-        panes.retain(|term, _| snapshot.terms.contains_key(term));
-    }
-    let _ = app.emit(SESSIONS_EVENT, &snapshot);
-    if let Ok(mut last) = app.state::<LastSnapshot>().0.lock() {
-        *last = Some(snapshot);
-    }
-}
-
-fn flush(app: &AppHandle, pending: &mut Pending) {
-    pending.since = None;
-    for (term, data) in std::mem::take(&mut pending.panes) {
-        emit_chunk(app, term, data, false);
-    }
-}
-
-fn emit_chunk(app: &AppHandle, term: u32, data: Vec<u8>, replay: bool) {
-    let Some(frame) = record(&app.state::<TerminalHistory>(), term, data, replay) else {
-        return;
-    };
-    let channel = app
-        .state::<TerminalOutput>()
+fn streams<T>(app: &AppHandle, f: impl FnOnce(&mut Streams) -> T) -> Option<T> {
+    app.state::<StreamState>()
         .0
         .lock()
         .ok()
-        .and_then(|channel| channel.clone());
-    // A window that has not asked yet, or is gone, has nothing to show; the next one opens from the history.
-    if let Some(channel) = channel {
-        let _ = channel.send(Response::new(frame));
+        .map(|mut s| f(&mut s))
+}
+
+/// What the window is to be given because of one thing the hub reported.
+pub enum Reaction {
+    /// A machine's connection changed state.
+    State(MachineState),
+    /// A frame of output for the window's channel.
+    Frame(Vec<u8>),
+    /// What another machine said went wrong with a request.
+    Error { machine: MachineId, text: String },
+    /// What another machine, opted in to notices, wants shown.
+    Notice { machine: MachineId, text: String },
+    /// Text an opted-in machine asks to be copied.
+    Clipboard { machine: MachineId, text: String },
+    /// A machine was taken out of the list.
+    Removed { machine: MachineId },
+    /// A machine's whole snapshot, or none when this computer's line ended.
+    Sessions {
+        machine: MachineId,
+        snapshot: Option<Box<Snapshot>>,
+    },
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
+}
+
+/// What one update from the hub does: to the history and snapshots held for the window, to the
+/// machines (a replay asked for again), and what the window is to be told. No window is involved,
+/// so all of it is tested without one.
+pub fn react(
+    streams: &mut Streams,
+    handle: &HubHandle,
+    update: Update,
+    now: Instant,
+) -> Vec<Reaction> {
+    let outs = match update {
+        Update::State {
+            machine,
+            name,
+            state,
+        } => {
+            let mut told = describe(machine, &name, &state);
+            // The state machine has no word for it: a refusal reads as unreachable there.
+            if handle.is_refused(machine) {
+                told.state = "refused";
+            }
+            let opts = handle.opts_of(machine);
+            (told.clipboard, told.notices, told.sounds) = (opts.clipboard, opts.notices, opts.sounds);
+            told.since = handle.down_since(machine, state.is_connected(), now_ms());
+            if state.is_connected() {
+                // Typing the machine could not take while it was down, now it can be said.
+                told.unsent = Some(handle.take_unsent(machine)).filter(|n| *n > 0);
+            }
+            return vec![Reaction::State(told)];
+        }
+        Update::Removed { machine } => {
+            streams.forget(machine);
+            return vec![Reaction::Removed { machine }];
+        }
+        Update::LineUp { machine } => {
+            // Panes a view was watching are asked for again; the replay that comes puts each
+            // view back in step.
+            for term in streams.line_up(machine) {
+                // A write that fails here shows up as the line ending.
+                let _ = handle.send(Outgoing {
+                    machine,
+                    msg: ClientMsg::WantReplay { term },
+                });
+            }
+            Vec::new()
+        }
+        Update::Messages { machine, msgs } => msgs
+            .into_iter()
+            .flat_map(|msg| streams.on_message(machine, msg, now))
+            .collect(),
+        Update::LineEnded { machine } => streams.line_ended(machine, now),
+    };
+    reactions(handle, outs)
+}
+
+/// Give the window what has waited long enough.
+pub fn flush(streams: &mut Streams, handle: &HubHandle, now: Instant) -> Vec<Reaction> {
+    reactions(handle, streams.flush(now))
+}
+
+fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
+    outs.into_iter()
+        .filter_map(|out| match out {
+            Out::Frame(frame) => Some(Reaction::Frame(frame)),
+            Out::Error { machine, text } => Some(Reaction::Error { machine, text }),
+            Out::Notice { machine, text } => Some(Reaction::Notice { machine, text }),
+            Out::Clipboard { machine, text } => Some(Reaction::Clipboard { machine, text }),
+            Out::Sessions { machine, snapshot } => Some(Reaction::Sessions { machine, snapshot }),
+            Out::WantReplay { machine, term } => {
+                let _ = handle.send(Outgoing {
+                    machine,
+                    msg: ClientMsg::WantReplay { term },
+                });
+                None
+            }
+        })
+        .collect()
+}
+
+fn apply(app: &AppHandle, handle: &HubHandle, update: Update) {
+    let now = Instant::now();
+    let done = streams(app, |streams| react(streams, handle, update, now));
+    perform(app, done.unwrap_or_default());
+}
+
+#[derive(Clone, Serialize)]
+struct MachineError {
+    machine: u16,
+    text: String,
+}
+
+#[derive(Clone, Serialize)]
+struct MachineSessions {
+    machine: u16,
+    snapshot: Option<Box<Snapshot>>,
+}
+
+fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
+    for reaction in reactions {
+        match reaction {
+            Reaction::State(told) => {
+                if let Ok(mut states) = app.state::<MachineStates>().0.lock() {
+                    states.insert(told.machine, told.clone());
+                }
+                let _ = app.emit(MACHINE_STATE_EVENT, told);
+            }
+            Reaction::Notice { machine, text } => {
+                let _ = app.emit(
+                    MACHINE_NOTICE_EVENT,
+                    MachineError {
+                        machine: machine.0,
+                        text,
+                    },
+                );
+            }
+            Reaction::Clipboard { machine, text } => {
+                let _ = app.emit(
+                    MACHINE_CLIPBOARD_EVENT,
+                    MachineError {
+                        machine: machine.0,
+                        text,
+                    },
+                );
+            }
+            Reaction::Removed { machine } => {
+                if let Ok(mut states) = app.state::<MachineStates>().0.lock() {
+                    states.remove(&machine.0);
+                }
+                let _ = app.emit(MACHINE_REMOVED_EVENT, machine.0);
+            }
+            Reaction::Error { machine, text } => {
+                let _ = app.emit(
+                    MACHINE_ERROR_EVENT,
+                    MachineError {
+                        machine: machine.0,
+                        text,
+                    },
+                );
+            }
+            Reaction::Frame(frame) => {
+                let channel = app
+                    .state::<TerminalOutput>()
+                    .0
+                    .lock()
+                    .ok()
+                    .and_then(|channel| channel.clone());
+                // A window that has not asked yet, or is gone, has nothing to show; the next one
+                // opens from the history.
+                if let Some(channel) = channel {
+                    let _ = channel.send(Response::new(frame));
+                }
+            }
+            Reaction::Sessions { machine, snapshot } if machine == MachineId::LOCAL => {
+                let _ = app.emit(SESSIONS_EVENT, snapshot);
+            }
+            Reaction::Sessions { machine, snapshot } => {
+                let _ = app.emit(
+                    MACHINE_SESSIONS_EVENT,
+                    MachineSessions {
+                        machine: machine.0,
+                        snapshot,
+                    },
+                );
+            }
+        }
     }
 }
 
-/// Adds the output to the pane's history and returns its frame for the window.
-fn record(history: &TerminalHistory, term: u32, data: Vec<u8>, replay: bool) -> Option<Vec<u8>> {
-    let mut panes = history.0.lock().ok()?;
-    let pane = panes.entry(term).or_default();
-    pane.seq += 1;
-    if replay {
-        pane.history.clear();
-        pane.complete = true;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use maitty_shared::protocol::ServerMsg;
+
+    fn state(machine: u16, name: &str, kind: &'static str) -> MachineState {
+        MachineState {
+            machine,
+            name: name.into(),
+            state: kind,
+            why: None,
+            attempt: None,
+            unsent: None,
+            since: None,
+            clipboard: false,
+            notices: false,
+            sounds: false,
+        }
     }
-    // Output before a replay is not kept: without the replay it starts nowhere a view can use.
-    if pane.complete {
-        pane.history.extend_from_slice(&data);
+
+    #[test]
+    fn a_grant_is_written_to_the_entry_and_a_missing_entry_says_so() {
+        let dir = std::env::temp_dir().join(format!("maitty-gui-grant-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("config.local.toml");
+        std::fs::write(&file, "[[machines]]\nname = 'box'\ntarget = 'box'\n").unwrap();
+        write_grant(&file, "BOX", Grant::Notices, true).unwrap();
+        assert!(std::fs::read_to_string(&file).unwrap().contains("notices = true"));
+        let missing = write_grant(&file, "ghost", Grant::Notices, true).unwrap_err();
+        assert!(missing.contains("not in config.local.toml"), "{missing}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
-    if pane.history.len() > HISTORY_LIMIT_BYTES {
-        pane.history.clear();
-        pane.complete = false;
+
+    #[test]
+    fn removing_an_entry_takes_only_that_machine_out_of_the_file() {
+        let dir = std::env::temp_dir().join(format!("maitty-gui-remove-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("config.local.toml");
+        std::fs::write(
+            &file,
+            "[[machines]]\nname = 'box'\ntarget = 'box'\n\n# mine\n[[machines]]\nname = 'build'\ntarget = 'build'\n",
+        )
+        .unwrap();
+        remove_entry(&file, "BOX").unwrap();
+        let left = std::fs::read_to_string(&file).unwrap();
+        assert!(left.contains("# mine") && left.contains("build") && !left.contains("'box'"), "{left}");
+        let again = remove_entry(&file, "box").unwrap_err();
+        assert!(again.contains("not in config.local.toml"), "{again}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
-    let mut frame = Vec::with_capacity(FRAME_HEADER_BYTES + data.len());
-    frame.extend_from_slice(&term.to_be_bytes());
-    frame.extend_from_slice(&pane.seq.to_be_bytes());
-    frame.push(u8::from(replay));
-    frame.extend_from_slice(&data);
-    Some(frame)
+
+    #[test]
+    fn a_window_that_starts_late_is_told_each_machine_and_the_snapshot_it_last_gave() {
+        let states = MachineStates::default();
+        {
+            let mut held = states.0.lock().unwrap();
+            held.insert(0, state(0, "local", "connected"));
+            held.insert(1, state(1, "box", "connected"));
+            held.insert(2, state(2, "build", "needs-login"));
+        }
+        let mut streams = Streams::default();
+        let now = Instant::now();
+        streams.on_message(MachineId(1), ServerMsg::State(Snapshot::default()), now);
+
+        let told = overview(&states, &streams);
+        assert_eq!(
+            told.iter()
+                .map(|m| m.state.name.as_str())
+                .collect::<Vec<_>>(),
+            ["box", "build"],
+            "this computer is not among them"
+        );
+        assert!(told[0].snapshot.is_some());
+        assert!(
+            told[1].snapshot.is_none(),
+            "a machine never heard from has none"
+        );
+        let json = serde_json::to_value(&told[0]).unwrap();
+        assert_eq!(json["machine"], 1);
+        assert_eq!(json["state"], "connected");
+        assert!(json.get("snapshot").is_some());
+    }
 }

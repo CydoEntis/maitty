@@ -1,19 +1,14 @@
-//! The Machines dialog drawn: with nothing, while it loads, with hosts and a filter, with a
-//! machine in each state, asking before it removes one, and with the Windows hint. Every frame
-//! is looked at at 80x24, 100x30 and 160x45.
+//! The Add Machine dialog drawn: loading, with hosts and a typed target, checking, added in each
+//! way and naming. Every frame is looked at at 80x24, 100x30 and 160x45.
 
 use super::machines::*;
 use super::*;
-use crate::client::ids::Remote;
-use crate::client::link::ConnectionState;
 use crate::client::reference_fixture::{Stage, world};
 use crate::client::render;
 use crate::client::ssh_hosts::SshHost;
-use crate::link_failure::{FIX_INSTALL, FIX_LOGIN, FIX_NO_DAEMON, FIX_UPDATE};
 use maitty_settings::config::MachineDef;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use std::time::{Duration, Instant};
 
 const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
 
@@ -39,12 +34,6 @@ fn def(name: &str, target: &str) -> MachineDef {
         target: target.into(),
         ..MachineDef::default()
     }
-}
-
-fn ago(secs: u64) -> Instant {
-    Instant::now()
-        .checked_sub(Duration::from_secs(secs))
-        .expect("an instant that far back")
 }
 
 fn open(app: &mut App, view: MachinesView) {
@@ -137,427 +126,333 @@ fn app_with(machines: &[(&str, &str)]) -> App {
     app
 }
 
-fn remote(app: &mut App, id: u16, name: &str, state: ConnectionState) {
-    app.remotes.insert(
-        MachineId(id),
-        Remote {
-            name: name.into(),
-            down_since: state.is_down().then(|| ago(90)),
-            state,
-            ..Remote::default()
-        },
-    );
+fn shown(
+    app: &mut App,
+    v: MachinesView,
+    w: u16,
+    h: u16,
+) -> (String, Rect, ratatui::buffer::Buffer) {
+    open(app, v);
+    frame(app, w, h)
 }
 
 #[test]
-fn with_no_machine_and_no_ssh_hosts_it_says_so_and_how_to_add_one() {
+fn it_asks_for_the_machine_and_lists_the_hosts_with_the_chosen_one_marked() {
     for (w, h) in SIZES {
         let mut app = app_with(&[]);
-        open(&mut app, view(Some(Vec::new())));
-        let (text, r, buf) = frame(&mut app, w, h);
+        let (text, r, buf) = shown(&mut app, view(Some(hosts())), w, h);
         assert_box_whole(&text, r, &buf);
         let said = words(&text, r);
         for want in [
-            "Machines",
-            "YOURS",
-            "none yet: pick a host below, or type user@host",
-            "ADD",
-            "no hosts in ~/.ssh/config: type user@host above",
-            "type user@host, or filter the hosts below",
+            "ADD MACHINE",
+            "Where's the machine? Type it like scp or ssh.",
+            "FROM ~/.ssh/config",
+            "build dev@build.example.com",
+            "Enter connect",
+            "↑↓ input / hosts",
+            "Esc cancel",
         ] {
-            assert!(said.contains(want), "{w}x{h} lacks {want:?}:\n{text}");
+            assert!(said.contains(want), "{w}x{h}: {want:?}\n{text}");
         }
-    }
-}
-
-#[test]
-fn while_the_hosts_are_read_it_says_loading() {
-    for (w, h) in SIZES {
-        let mut app = app_with(&[]);
-        open(&mut app, view(None));
-        let (text, r, buf) = frame(&mut app, w, h);
-        assert_box_whole(&text, r, &buf);
         assert!(
-            words(&text, r).contains("loading hosts from ~/.ssh/config…"),
-            "{text}"
+            !said.contains("YOURS") && !said.contains("Machines"),
+            "{w}x{h}: no list of machines"
         );
     }
 }
 
 #[test]
-fn the_hosts_are_listed_as_alias_and_where_they_lead() {
-    for (w, h) in SIZES {
-        let mut app = app_with(&[]);
-        open(&mut app, view(Some(hosts())));
-        let (text, r, buf) = frame(&mut app, w, h);
-        assert_box_whole(&text, r, &buf);
-        let said = words(&text, r);
-        for want in ["build dev@build.example.com", "gpu 10.0.0.7", "web deploy@"] {
-            assert!(said.contains(want), "{w}x{h} lacks {want:?}:\n{text}");
-        }
-    }
-}
-
-#[test]
-fn typing_filters_the_hosts_and_offers_the_text_as_a_host() {
-    for (w, h) in SIZES {
-        let mut app = app_with(&[]);
-        let mut typing = view(Some(hosts()));
-        typing.query = "bu".into();
-        open(&mut app, typing);
-        let (text, r, buf) = frame(&mut app, w, h);
-        assert_box_whole(&text, r, &buf);
-        let said = words(&text, r);
-        assert!(said.contains("› bu"), "{text}");
-        assert!(said.contains("build dev@build.example.com"), "{text}");
-        assert!(said.contains("bu add as typed"), "{text}");
-        assert!(!said.contains("gpu 10.0.0.7"), "{text}");
-    }
-}
-
-#[test]
-fn a_host_that_is_a_machine_already_is_not_offered_again() {
-    let mut app = app_with(&[("build", "build")]);
-    open(&mut app, view(Some(hosts())));
-    let (text, ..) = frame(&mut app, 100, 30);
-    let list = text.split("ADD").nth(1).expect("the Add side");
-    assert!(!list.contains("dev@build.example.com"), "{text}");
-    assert!(list.contains("gpu"), "{text}");
-}
-
-fn every_state() -> App {
-    let mut app = app_with(&[
-        ("alpha", "alpha"),
-        ("bravo", "me@bravo.example"),
-        ("charlie", "charlie"),
-        ("delta", "delta"),
-        ("echo", "echo"),
-        ("foxtrot", "foxtrot"),
-    ]);
-    remote(&mut app, 1, "alpha", ConnectionState::Connecting);
-    remote(&mut app, 2, "bravo", ConnectionState::Connected);
-    remote(
-        &mut app,
-        3,
-        "charlie",
-        ConnectionState::NeedsLogin {
-            why: FIX_LOGIN.into(),
-        },
-    );
-    remote(
-        &mut app,
-        4,
-        "delta",
-        ConnectionState::NeedsUpdate {
-            why: FIX_UPDATE.into(),
-        },
-    );
-    remote(
-        &mut app,
-        5,
-        "echo",
-        ConnectionState::Unreachable {
-            since: ago(90),
-            why: "ssh: connect to host echo port 22: Connection timed out".into(),
-        },
-    );
-    remote(&mut app, 6, "foxtrot", ConnectionState::Connected);
-    app.refused.insert(
-        MachineId(6),
-        "a different machine answers at foxtrot (id bbbbbbbb instead of aaaaaaaa). If you \
-         replaced that machine, open Machines, remove it and add it again; otherwise check the \
-         host name and DNS."
-            .into(),
-    );
-    app
-}
-
-#[test]
-fn each_state_shows_its_word_and_the_exact_fix() {
-    let fixes = [
-        FIX_LOGIN,
-        FIX_UPDATE,
-        "Connection timed out",
-        "open Machines, remove it and add it again",
-    ];
-    for (w, h) in [(100, 30), (160, 45)] {
-        let mut app = every_state();
-        open(&mut app, view(Some(Vec::new())));
-        let (text, r, buf) = frame(&mut app, w, h);
-        assert_box_whole(&text, r, &buf);
-        let said = words(&text, r);
-        for chip in [
-            "connecting alpha",
-            "connected bravo",
-            "needs login charlie",
-            "needs update delta",
-            "unreachable echo",
-            "refused foxtrot",
-        ] {
-            assert!(said.contains(chip), "{w}x{h} lacks {chip:?}:\n{text}");
-        }
-        for fix in fixes {
-            assert!(said.contains(fix), "{w}x{h} lacks {fix:?}:\n{text}");
-        }
-    }
-}
-
-#[test]
-fn at_80x24_the_selected_machine_s_fix_is_always_on_screen() {
-    let fixes = [
-        (2, "charlie", FIX_LOGIN),
-        (3, "delta", FIX_UPDATE),
-        (5, "foxtrot", "remove it and add it again"),
-    ];
-    for (sel, name, fix) in fixes {
-        let mut app = every_state();
-        let mut v = view(Some(Vec::new()));
-        v.section = MachineSection::Machines;
-        v.sel = sel;
-        open(&mut app, v);
-        let (text, r, buf) = frame(&mut app, 80, 24);
-        assert_box_whole(&text, r, &buf);
-        let said = words(&text, r);
-        assert!(said.contains(name) && said.contains(fix), "{name}:\n{text}");
-    }
-}
-
-#[test]
-fn the_install_and_daemon_fixes_are_shown_in_full_too() {
-    let mut app = app_with(&[("one", "one"), ("two", "two")]);
-    remote(
-        &mut app,
-        1,
-        "one",
-        ConnectionState::NeedsUpdate {
-            why: FIX_INSTALL.into(),
-        },
-    );
-    remote(
-        &mut app,
-        2,
-        "two",
-        ConnectionState::Unreachable {
-            since: ago(5),
-            why: FIX_NO_DAEMON.into(),
-        },
-    );
-    open(&mut app, view(Some(Vec::new())));
-    let (text, r, _) = frame(&mut app, 100, 30);
+fn the_parse_line_reads_user_and_host_and_fills_an_alias_from_ssh_config() {
+    let mut app = app_with(&[]);
+    let typed = |q: &str| MachinesView {
+        query: q.into(),
+        ..view(Some(hosts()))
+    };
+    let (text, r, _) = shown(&mut app, typed("dev@kingdom.lan"), 100, 30);
+    let said = words(&text, r);
+    assert!(said.contains("user dev host kingdom.lan"), "{text}");
+    let (text, r, _) = shown(&mut app, typed("web"), 100, 30);
     let said = words(&text, r);
     assert!(
-        said.contains(FIX_INSTALL) && said.contains(FIX_NO_DAEMON),
+        said.contains("user deploy host web"),
+        "the alias's user: {text}"
+    );
+    let (text, r, _) = shown(&mut app, typed(""), 100, 30);
+    assert!(words(&text, r).contains("user — host —"), "{text}");
+}
+
+#[test]
+fn typing_filters_the_suggestions_by_the_host_part_only() {
+    let v = MachinesView {
+        query: "dev@bui".into(),
+        ..view(Some(hosts()))
+    };
+    let names: Vec<String> = suggestions(&v, &[]).into_iter().map(|h| h.alias).collect();
+    assert_eq!(names, ["build"]);
+    let v = MachinesView {
+        query: "10.0".into(),
+        ..view(Some(hosts()))
+    };
+    let names: Vec<String> = suggestions(&v, &[]).into_iter().map(|h| h.alias).collect();
+    assert_eq!(names, ["gpu"]);
+    let taken = [def("b", "build")];
+    let v = view(Some(hosts()));
+    assert!(
+        !suggestions(&v, &taken).iter().any(|h| h.alias == "build"),
+        "a host that is a machine is not offered"
+    );
+}
+
+#[test]
+fn enter_connects_to_the_typed_text_or_the_host_the_keys_are_on() {
+    let at = |q: &str, in_list: bool, sel: usize| {
+        let v = MachinesView {
+            query: q.into(),
+            in_list,
+            host_sel: sel,
+            ..view(Some(hosts()))
+        };
+        connect_target(&v, &[])
+    };
+    assert_eq!(
+        at("dev@kingdom.lan", false, 0).as_deref(),
+        Some("dev@kingdom.lan")
+    );
+    assert_eq!(
+        at("g", false, 0).as_deref(),
+        Some("g"),
+        "in the input: what was typed"
+    );
+    assert_eq!(at("", false, 0), None, "an empty input connects to nothing");
+    assert_eq!(
+        at("", true, 1).as_deref(),
+        Some("gpu"),
+        "in the list: the chosen host"
+    );
+    assert_eq!(
+        at("g", true, 0).as_deref(),
+        Some("gpu"),
+        "the list is filtered by the input"
+    );
+}
+
+#[test]
+fn down_walks_into_the_hosts_and_up_from_the_first_one_is_back_in_the_input() {
+    let mut app = app_with(&[]);
+    open(&mut app, view(Some(hosts())));
+    let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
+    let state = |app: &App| match &app.mode {
+        Mode::Machines(v) => (v.in_list, v.host_sel),
+        _ => panic!("the dialog"),
+    };
+    assert_eq!(state(&app), (false, 0), "it opens with the input");
+    app.on_key(key(KeyCode::Down));
+    assert_eq!(state(&app), (true, 0), "Down is the first host");
+    app.on_key(key(KeyCode::Down));
+    assert_eq!(state(&app), (true, 1));
+    app.on_key(key(KeyCode::Up));
+    app.on_key(key(KeyCode::Up));
+    assert_eq!(
+        state(&app),
+        (false, 0),
+        "Up from the first host is the input"
+    );
+    app.on_key(key(KeyCode::Down));
+    app.on_key(key(KeyCode::Char('x')));
+    assert_eq!(state(&app), (false, 0), "typing is the input again");
+    let Mode::Machines(v) = &app.mode else {
+        panic!("the dialog")
+    };
+    assert_eq!(v.query, "x");
+}
+
+#[test]
+fn parse_reads_user_host_and_path() {
+    assert_eq!(
+        parse_target("dev@kingdom.lan:~/maitty"),
+        Some(Parsed {
+            user: Some("dev".into()),
+            host: "kingdom.lan".into(),
+            path: Some("~/maitty".into()),
+        })
+    );
+    assert_eq!(
+        parse_target("pi").map(|p| (p.user, p.host)),
+        Some((None, "pi".into()))
+    );
+    assert_eq!(parse_target("  "), None);
+    assert_eq!(parse_target("dev@"), None);
+    assert_eq!(parse_target("a b"), None, "no spaces in a host");
+}
+
+#[test]
+fn hosts_still_loading_say_so() {
+    let mut app = app_with(&[]);
+    let (text, r, _) = shown(&mut app, view(None), 100, 30);
+    assert!(
+        words(&text, r).contains("loading hosts from ~/.ssh/config"),
         "{text}"
     );
 }
 
 #[test]
-fn removing_asks_first_and_says_the_sessions_keep_running() {
-    for (w, h) in SIZES {
-        let mut app = every_state();
-        let mut v = view(Some(hosts()));
-        v.step = MachineStep::Remove {
-            name: "bravo".into(),
-        };
-        open(&mut app, v);
-        let (text, r, buf) = frame(&mut app, w, h);
-        assert_box_whole(&text, r, &buf);
-        let said = words(&text, r);
-        assert!(said.contains("Remove bravo?"), "{text}");
-        assert!(
-            said.contains("Removes bravo from this list. Its sessions keep running on bravo."),
-            "{text}"
-        );
-        assert!(said.contains("Enter removes it. Esc keeps it."), "{text}");
-    }
+fn with_no_hosts_it_says_to_type_user_at_host() {
+    let mut app = app_with(&[]);
+    let (text, r, _) = shown(&mut app, view(Some(vec![])), 100, 30);
+    assert!(
+        words(&text, r).contains("no hosts in ~/.ssh/config: type user@host above"),
+        "{text}"
+    );
 }
 
 #[test]
 fn the_windows_hint_is_said_on_windows_only() {
-    for (w, h) in SIZES {
-        let mut app = app_with(&[]);
-        let mut v = view(Some(hosts()));
-        v.windows = true;
-        open(&mut app, v);
-        let (text, r, buf) = frame(&mut app, w, h);
-        assert_box_whole(&text, r, &buf);
-        assert!(words(&text, r).contains(WINDOWS_HINT), "{w}x{h}:\n{text}");
-
-        open(&mut app, view(Some(hosts())));
-        let (text, r, _) = frame(&mut app, w, h);
-        assert!(!words(&text, r).contains("Windows:"), "{text}");
-    }
-}
-
-#[test]
-fn the_steps_that_wait_say_what_they_wait_for() {
-    let steps = [
-        (
-            MachineStep::Checking {
-                target: "me@box".into(),
-            },
-            "Checking me@box…",
-        ),
-        (
-            MachineStep::Name {
-                target: "---".into(),
-                name: "x".into(),
-                error: Some("`name` is up to 32 letters".into()),
-            },
-            "`name` is up to 32 letters",
-        ),
-    ];
-    for (step, want) in steps {
-        for (w, h) in SIZES {
-            let mut app = app_with(&[]);
-            let mut v = view(Some(hosts()));
-            v.step = step.clone();
-            open(&mut app, v);
-            let (text, r, buf) = frame(&mut app, w, h);
-            assert_box_whole(&text, r, &buf);
-            assert!(
-                words(&text, r).contains(want),
-                "{w}x{h} lacks {want:?}:\n{text}"
-            );
-        }
-    }
-}
-
-#[test]
-fn a_refusal_or_an_ssh_error_is_shown_under_the_lists() {
     let mut app = app_with(&[]);
-    let mut v = view(Some(hosts()));
-    v.notice = Some(MachineNotice {
-        text: "box: ssh: connect to host box port 22: Connection refused".into(),
-        error: true,
-    });
-    open(&mut app, v);
-    for (w, h) in SIZES {
-        let (text, r, buf) = frame(&mut app, w, h);
-        assert_box_whole(&text, r, &buf);
-        assert!(words(&text, r).contains("Connection refused"), "{text}");
-    }
-}
-
-#[test]
-fn long_names_and_targets_are_cut_to_the_width_and_the_border_holds() {
-    let long = "h".repeat(32);
-    let target = format!("someone@{}.example.com", "x".repeat(150));
-    let mut app = app_with(&[(&long, &target)]);
-    remote(&mut app, 1, &long, ConnectionState::Connected);
-    let mut v = view(Some(vec![host(
-        &"a".repeat(80),
-        Some(&"u".repeat(60)),
-        Some(&"n".repeat(200)),
-    )]));
-    v.section = MachineSection::Machines;
-    open(&mut app, v);
-    for (w, h) in SIZES {
-        let (text, r, buf) = frame(&mut app, w, h);
-        assert_box_whole(&text, r, &buf);
-        assert!(text.contains('…'), "{w}x{h}:\n{text}");
-        for line in text.lines() {
-            assert!(line.chars().count() <= w as usize, "{line}");
-        }
-    }
-}
-
-#[test]
-fn a_machine_name_with_control_characters_is_drawn_without_them() {
-    let mut app = app_with(&[("bad", "evil\u{1b}[2Jhost")]);
-    remote(
-        &mut app,
-        1,
-        "bad",
-        ConnectionState::Unreachable {
-            since: ago(1),
-            why: "\u{1b}[31mred\u{7}".into(),
-        },
-    );
-    open(&mut app, view(Some(Vec::new())));
-    let (text, ..) = frame(&mut app, 100, 30);
+    let on = MachinesView {
+        windows: true,
+        ..view(Some(hosts()))
+    };
+    let (text, r, _) = shown(&mut app, on, 120, 40);
     assert!(
-        !text.contains('\u{1b}') && !text.contains('\u{7}'),
-        "{text:?}"
-    );
-    assert!(
-        text.contains("evil[2Jhost") && text.contains("[31mred"),
+        words(&text, r).contains("Windows: use ssh keys or an agent"),
         "{text}"
     );
+    let (text, r, _) = shown(&mut app, view(Some(hosts())), 120, 40);
+    assert!(!words(&text, r).contains("Windows:"), "{text}");
 }
 
 #[test]
-fn every_dialog_fits_a_tiny_window() {
-    for (w, h) in [(20, 6), (1, 1), (40, 10), (60, 12), (80, 3)] {
-        for windows in [false, true] {
-            let mut app = every_state();
-            let mut v = view(Some(hosts()));
-            v.windows = windows;
-            open(&mut app, v);
-            app.screen_fresh();
-            let mut term = Terminal::new(TestBackend::new(w, h)).expect("a test terminal");
-            term.draw(|f| render::draw(&mut app, f)).expect("a frame");
+fn checking_is_a_checklist_with_the_first_step_running() {
+    for (w, h) in SIZES {
+        let mut app = app_with(&[]);
+        let v = MachinesView {
+            step: MachineStep::Checking {
+                target: "dev@kingdom.lan".into(),
+            },
+            ..view(Some(hosts()))
+        };
+        let (text, r, buf) = shown(&mut app, v, w, h);
+        assert_box_whole(&text, r, &buf);
+        let said = words(&text, r);
+        for want in [
+            "ADD MACHINE",
+            "reach kingdom.lan",
+            "○ verify host key",
+            "○ sign in as dev",
+            "○ maitty-daemon",
+            "Esc cancel",
+        ] {
+            assert!(said.contains(want), "{w}x{h}: {want:?}\n{text}");
         }
     }
 }
 
-fn press(app: &mut App, c: char) {
-    app.on_key(ratatui::crossterm::event::KeyEvent::new(
-        ratatui::crossterm::event::KeyCode::Char(c),
-        ratatui::crossterm::event::KeyModifiers::NONE,
-    ));
+#[test]
+fn an_added_machine_says_how_it_stands() {
+    let cases = [
+        (
+            Outcome::Ready("0.64.0".into()),
+            [
+                "✓ reach kingdom.lan",
+                "✓ maitty-daemon 0.64.0",
+                "Enter done",
+            ],
+        ),
+        (
+            Outcome::Login,
+            [
+                "● sign in as dev log in in the popup",
+                "○ maitty-daemon",
+                "Esc close",
+            ],
+        ),
+        (
+            Outcome::Fix,
+            [
+                "✓ sign in as dev",
+                "✕ maitty-daemon the connection shows the fix",
+                "Esc close",
+            ],
+        ),
+    ];
+    for (how, wants) in cases {
+        for (w, h) in SIZES {
+            let mut app = app_with(&[("kingdom", "dev@kingdom.lan")]);
+            let v = MachinesView {
+                step: MachineStep::Added {
+                    name: "kingdom".into(),
+                    target: "dev@kingdom.lan".into(),
+                    how: how.clone(),
+                },
+                ..view(Some(hosts()))
+            };
+            let (text, r, buf) = shown(&mut app, v, w, h);
+            assert_box_whole(&text, r, &buf);
+            let said = words(&text, r);
+            assert!(said.contains("MACHINE ADDED"), "{w}x{h}\n{text}");
+            assert!(
+                said.contains("⇄ kingdom dev@kingdom.lan"),
+                "{w}x{h}\n{text}"
+            );
+            for want in wants {
+                assert!(said.contains(want), "{w}x{h}: {want:?}\n{text}");
+            }
+        }
+    }
 }
 
 #[test]
-fn the_leader_and_o_open_the_dialog_and_escape_closes_it() {
+fn naming_a_machine_the_target_gave_no_name_for() {
+    for (w, h) in SIZES {
+        let mut app = app_with(&[]);
+        let v = MachinesView {
+            step: MachineStep::Name {
+                target: "10.0.0.7".into(),
+                name: "gp".into(),
+                error: Some("that name is taken".into()),
+            },
+            ..view(Some(hosts()))
+        };
+        let (text, r, buf) = shown(&mut app, v, w, h);
+        assert_box_whole(&text, r, &buf);
+        let said = words(&text, r);
+        for want in [
+            "Name for 10.0.0.7",
+            "› gp",
+            "that name is taken",
+            "Esc back",
+        ] {
+            assert!(said.contains(want), "{w}x{h}: {want:?}\n{text}");
+        }
+    }
+}
+
+#[test]
+fn the_dialog_keeps_to_a_small_window() {
     let mut app = app_with(&[]);
-    app.mode = Mode::Prefix {
-        since: Instant::now(),
-        acted: false,
+    let v = MachinesView {
+        notice: Some(MachineNotice {
+            text:
+                "a refusal that wraps over a couple of lines in a narrow window of eighty columns"
+                    .into(),
+            error: true,
+        }),
+        query: "dev@build".into(),
+        ..view(Some(hosts()))
     };
-    press(&mut app, 'w');
-    assert!(
-        matches!(&app.mode, Mode::Machines(v) if v.hosts.is_none() && v.step == MachineStep::Browse)
-    );
-    app.on_key(ratatui::crossterm::event::KeyEvent::new(
-        ratatui::crossterm::event::KeyCode::Esc,
-        ratatui::crossterm::event::KeyModifiers::NONE,
-    ));
-    assert!(matches!(app.mode, Mode::Normal));
+    let (text, r, buf) = shown(&mut app, v, 80, 24);
+    assert_box_whole(&text, r, &buf);
+    assert!(words(&text, r).contains("a refusal that wraps"), "{text}");
 }
 
 #[test]
-fn the_palette_and_the_key_overlay_list_machines_with_its_key() {
+fn a_paste_goes_into_the_input_not_the_pane_behind() {
     let mut app = app_with(&[]);
-    assert!(app.palette_commands().contains(&Action::Machines));
-    assert_eq!(Action::Machines.describe(), "Machines");
-    app.act(Action::Help);
-    app.screen_fresh();
-    let mut term = Terminal::new(TestBackend::new(160, 45)).expect("a test terminal");
-    term.draw(|f| render::draw(&mut app, f)).expect("a frame");
-    let buf = term.backend().buffer().clone();
-    let text: String = (0..45)
-        .map(|y| {
-            (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>()
-                + "
-"
-        })
-        .collect();
-    let row = text
-        .lines()
-        .find(|l| l.contains("Machines"))
-        .unwrap_or_else(|| {
-            panic!(
-                "no Machines row in the key overlay:
-{text}"
-            )
-        });
-    assert!(row.contains('w'), "{row}");
-}
-
-#[test]
-fn the_windows_hint_is_only_asked_for_on_windows() {
-    let mut app = app_with(&[]);
-    app.open_machines();
-    assert!(matches!(&app.mode, Mode::Machines(v) if v.windows == cfg!(windows)));
+    open(&mut app, view(Some(hosts())));
+    app.on_paste("dev@kingdom.lan\nsecond line".into());
+    let Mode::Machines(v) = &app.mode else {
+        panic!("the dialog")
+    };
+    assert_eq!(v.query, "dev@kingdom.lan", "the first line, in the input");
+    assert!(!v.in_list);
 }

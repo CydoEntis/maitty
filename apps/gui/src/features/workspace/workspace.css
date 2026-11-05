@@ -3,13 +3,10 @@
 
 @keyframes v7fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes v7scrim { from { opacity: 0; } to { opacity: 1; } }
-@keyframes v7caret { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
 @keyframes v7pulse { 0% { opacity: .9; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.7); } }
-@keyframes v14focus { from { box-shadow: 0 0 0 0 var(--accent-line); } to { box-shadow: 0 0 0 8px transparent; } }
+@keyframes mx-ov-pulse { 0% { transform: scale(.97); } 50% { transform: scale(1.015); } 100% { transform: none; } }
+@keyframes v14focus { from { opacity: 1; } to { opacity: 0; } }
 @keyframes v7moved { 0% { background-color: rgba(95, 212, 191, .16); } 100% { background-color: transparent; } }
-@keyframes v14sweep { from { transform: translateX(-90%); } to { transform: translateX(30%); } }
-@keyframes v14sweepdone { from { transform: translateX(-90%); } to { transform: translateX(36%); } }
-@keyframes v14breathe { 0%, 100% { opacity: .55; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.15); } }
 @keyframes v8tabin { from { opacity: 0; transform: translateY(-3px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes v8pane { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes v8swap { from { opacity: .35; transform: translateY(5px) scale(.985); } to { opacity: 1; transform: none; } }
@@ -60,19 +57,27 @@
 .mx-icon-button:not(:disabled):hover { background: rgba(255, 255, 255, .06); color: var(--fg); }
 .mx-icon-button:not(:disabled):active { transform: scale(.9); }
 
-/* The window: two soft glows over the ground; cards float on top. */
+/* The window ground is the theme's --bg. Cards on it are opaque, so nothing that changes inside a card
+   repaints the ground. With Background glow on, two faint tints of the theme are painted once behind them. */
 .mx-window {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   overflow: hidden;
-  background: radial-gradient(1100px 620px at 8% -10%, var(--accent-soft), transparent 60%), radial-gradient(900px 520px at 100% 110%, rgba(195, 166, 242, .07), transparent 60%), var(--bg);
+  background: var(--bg);
+}
+:root[data-glow="on"]:not([data-gpu="software"]):not([data-finish="flat"]) .mx-window {
+  background:
+    radial-gradient(1000px 600px at 15% 0%, color-mix(in oklab, var(--accent) var(--glow-accent), transparent), transparent 70%),
+    radial-gradient(900px 560px at 100% 100%, color-mix(in oklab, var(--ansi-mag) var(--glow-mag), transparent), transparent 70%),
+    var(--bg);
 }
 .mx-card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane);
+  background: var(--card);
   border: 1px solid var(--pane-line);
   border-radius: var(--r14);
+  box-shadow: var(--sh);
 }
 
 
@@ -87,7 +92,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, .3);
+  box-shadow: var(--sh);
   transition: width .32s var(--ease-out), background-color .35s ease;
 }
 .mx-drawer-scrim { position: absolute; inset: 0; z-index: 54; background: rgba(0, 0, 0, .45); animation: v7scrim .2s ease-out; }
@@ -114,16 +119,46 @@
 .mx-group-head:active { transform: scale(.985); }
 .mx-chevron { flex: none; transition: transform .2s var(--ease-out); }
 .mx-group.is-open .mx-group-head .mx-chevron { transform: rotate(90deg); }
-.mx-folder-tile { width: calc(22px * var(--icon-scale, 1)); height: calc(22px * var(--icon-scale, 1)); flex: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: linear-gradient(140deg, var(--folder-from, #6FE0CB), var(--folder-to, #2E9C88)); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18), 0 1px 2px rgba(0, 0, 0, .3); color: var(--on-accent); }
-.mx-folder-tile svg path { fill: color-mix(in srgb, var(--on-accent) 22%, transparent); }
-/* The folder that holds the focused session carries a ring, since every folder has its own colour. */
-.mx-folder-tile.is-focused { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .4), 0 0 0 2px var(--accent-soft), 0 1px 2px rgba(0, 0, 0, .3); }
-.mx-group-name { font-size: var(--sidebar-fs, 13.5px); font-weight: 600; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-folder-tile { width: calc(22px * var(--icon-scale, 1)); height: calc(22px * var(--icon-scale, 1)); flex: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: var(--raise); color: var(--fg2); }
+.mx-folder-tile svg path { fill: color-mix(in srgb, var(--fg2) 22%, transparent); }
+/* The folder that holds the focused session carries a ring, since every tile is the same neutral. */
+.mx-folder-tile.is-focused { box-shadow: 0 0 0 2px var(--accent-soft); }
+.mx-group-name { font-size: var(--ch-fs-md, var(--sidebar-fs, 13.5px)); font-weight: 600; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-group.has-focused .mx-group-name { color: var(--fg); }
 /* A fixed width and layout containment keep a frame change inside the glyph: the row is not laid out
    again 6 times a second. The clock writes the frame straight into the element (lib/spinner-clock.ts). */
-.mx-spin { display: inline-block; inline-size: 1ch; text-align: center; contain: layout style; font-family: var(--mono); font-size: 12px; color: var(--accent); flex: none; }
+.mx-spin { display: inline-block; inline-size: 1ch; text-align: center; contain: layout style paint; will-change: transform; font-family: var(--mono); font-size: 12px; color: var(--accent); flex: none; }
 .mx-spin.is-wide { inline-size: 2ch; }
+/* Web spinners (components/WebSpinner.tsx): inline SVG in the text colour, 1em square, each in its own
+   paint-contained layer. Only transform and opacity move. They hold still under Reduce motion (the
+   rule near the end of this file) and while the window is hidden or in the background. */
+.mx-wspin { display: inline-block; inline-size: 1em; block-size: 1em; flex: none; contain: paint; will-change: transform; vertical-align: -.125em; }
+.mx-wspin svg { display: block; inline-size: 100%; block-size: 100%; }
+.mx-wspin[data-kind="circle"] svg { animation: mx-wspin-turn .8s linear infinite; }
+.mx-wspin[data-kind="spokes"] svg { animation: mx-wspin-turn .9s steps(8) infinite; }
+.mx-wspin-dot { transform-box: fill-box; transform-origin: center; animation: mx-wspin-dot 1s ease-in-out infinite; }
+.mx-wspin-dot:nth-child(2) { animation-delay: .16s; }
+.mx-wspin-dot:nth-child(3) { animation-delay: .32s; }
+.mx-wspin-bar { transform-box: fill-box; transform-origin: 50% 100%; animation: mx-wspin-bar .9s ease-in-out infinite; }
+.mx-wspin-bar:nth-child(2) { animation-delay: .15s; }
+.mx-wspin-bar:nth-child(3) { animation-delay: .3s; }
+.mx-wspin-ring { transform-box: fill-box; transform-origin: center; animation: mx-wspin-ping 1.3s ease-out infinite; }
+.mx-wspin.is-still svg, .mx-wspin.is-still svg * { animation: none; }
+:root[data-window="inactive"] .mx-wspin svg, :root[data-window="inactive"] .mx-wspin svg * { animation-play-state: paused; }
+@keyframes mx-wspin-turn { to { transform: rotate(360deg); } }
+@keyframes mx-wspin-dot { 0%, 100% { transform: scale(.5); opacity: .35; } 50% { transform: scale(1); opacity: 1; } }
+@keyframes mx-wspin-bar { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+@keyframes mx-wspin-ping { from { transform: scale(.35); opacity: 1; } to { transform: scale(1); opacity: 0; } }
+.mx-machine { display: flex; flex-direction: column; gap: calc(6px * var(--pad, 1)); }
+.mx-machine + .mx-machine { margin-top: 6px; }
+.mx-machine-head { display: flex; align-items: center; gap: 8px; padding: 2px 8px 0 4px; min-width: 0; }
+.mx-machine-name { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* No animation: a state is told by its shape and its word, and the colour only backs them. */
+.mx-machine-chip { flex: none; font-size: 11.5px; white-space: nowrap; color: var(--dim); }
+.mx-machine-chip.is-ok { color: var(--done); }
+.mx-machine-chip.is-bad { color: var(--danger); }
+.mx-machine.is-down .mx-group { opacity: .6; }
+.mx-machine-why { margin: 0; padding: 0 8px 0 4px; font-size: 11.5px; line-height: 1.5; color: var(--dim); overflow-wrap: anywhere; text-wrap: pretty; }
 .mx-needs-text { font-size: 11.5px; color: var(--warn); white-space: nowrap; }
 .mx-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--raise); font-size: 11px; color: var(--muted); display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
 .mx-group-rows { position: relative; display: flex; flex-direction: column; gap: 2px; padding-left: 20px; animation: v7fade .2s ease-out; }
@@ -160,7 +195,7 @@
 .mx-row-line2.is-needs { color: var(--warn); }
 .mx-row-line2.is-error { color: var(--danger); }
 .mx-row-line2.is-working { color: var(--muted); }
-.mx-row-line2 .mx-proc { font-family: var(--mono); font-size: 11.5px; }
+.mx-row-proc { color: var(--fg); font-weight: 500; }
 .mx-row-end { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 7px; color: var(--dim); opacity: 0; background: var(--raise); transition: opacity .14s ease, background-color .14s ease, color .14s ease; }
 .mx-row-wrap:hover .mx-row-end, .mx-row-end:focus-visible { opacity: 1; }
 .mx-row-end:hover { color: var(--danger); background: var(--danger-soft); }
@@ -175,6 +210,8 @@
 .mx-daemon-text.is-offline { color: var(--danger); }
 .mx-settings-button { height: 26px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 0 8px; border-radius: 7px; }
 .mx-settings-button:hover { color: var(--fg); background: rgba(255, 255, 255, .06); }
+.mx-usage-button { width: 26px; height: 26px; border-radius: 7px; color: var(--muted); }
+.mx-usage-button:hover { color: var(--fg); background: rgba(255, 255, 255, .06); }
 
 /* Rail */
 .mx-rail { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; animation: v7fade .24s ease-out; }
@@ -185,26 +222,25 @@
 .mx-rail-divider { width: calc(28px * var(--icon-scale, 1)); height: 1px; background: var(--pane-line); flex: none; }
 .mx-rail-list { flex: 1; min-height: 0; width: 100%; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0 12px; }
 /* A folder and its sessions sit on one strip in the folder's colour, so the rail shows which belong together. */
-.mx-rail-group { --tint: 6%; --ring: 20%; position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: calc(48px * var(--icon-scale, 1)); padding: 4px 0; border-radius: calc(14px * var(--rk)); background: color-mix(in srgb, var(--folder-from, #6FE0CB) var(--tint), transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--folder-from, #6FE0CB) var(--ring), transparent); transition: background-color .2s ease, box-shadow .2s ease; }
+.mx-rail-group { --tint: 6%; --ring: 20%; position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: calc(48px * var(--icon-scale, 1)); padding: 4px 0; border-radius: calc(14px * var(--rk)); background: color-mix(in srgb, var(--fg2) var(--tint), transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg2) var(--ring), transparent); transition: background-color .2s ease, box-shadow .2s ease; }
 .mx-rail-group.is-open { --tint: 9%; }
 .mx-rail-group.has-focused { --tint: 10%; --ring: 34%; }
 .mx-rail-group.is-open.has-focused { --tint: 13%; }
-.mx-rail-group.has-focused::before { content: ""; position: absolute; left: -6px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--folder-from, #6FE0CB); }
+.mx-rail-group.has-focused::before { content: ""; position: absolute; left: -6px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--fg2); }
 .mx-rail-label { position: relative; width: calc(40px * var(--icon-scale, 1)); height: calc(36px * var(--icon-scale, 1)); display: flex; align-items: center; justify-content: center; border-radius: calc(9px * var(--rk)); transition: background-color .14s ease, transform .2s var(--ease-out); }
 .mx-rail-label:hover { background: rgba(255, 255, 255, .06); transform: scale(1.06); }
-.mx-rail-folder-shape { fill: color-mix(in srgb, var(--folder-from, #6FE0CB) 14%, transparent); stroke: color-mix(in srgb, var(--folder-from, #6FE0CB) 55%, transparent); stroke-width: 1.4; transition: fill .2s ease; }
-.mx-rail-folder.is-focused .mx-rail-folder-shape { fill: color-mix(in srgb, var(--folder-from, #6FE0CB) 26%, transparent); }
+.mx-rail-folder-shape { fill: color-mix(in srgb, var(--fg2) 14%, transparent); stroke: color-mix(in srgb, var(--fg2) 55%, transparent); stroke-width: 1.4; transition: fill .2s ease; }
+.mx-rail-folder.is-focused .mx-rail-folder-shape { fill: color-mix(in srgb, var(--fg2) 26%, transparent); }
 .mx-rail-folder svg { display: block; width: calc(30px * var(--icon-scale, 1)); height: calc(26px * var(--icon-scale, 1)); overflow: visible; }
-.mx-rail-folder-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-top: 3px; font-size: 10.5px; font-weight: 700; line-height: 1; color: color-mix(in srgb, var(--folder-from, #6FE0CB) 70%, var(--fg)); }
+.mx-rail-folder-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-top: 3px; font-size: 10.5px; font-weight: 700; line-height: 1; color: color-mix(in srgb, var(--fg2) 70%, var(--fg)); }
 .mx-rail-folder.is-focused .mx-rail-folder-text { color: var(--fg); }
 .mx-rail-needs { position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 2px; background: var(--warn); }
 .mx-rail-count { position: absolute; right: -2px; bottom: -2px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg); background: var(--raise); box-shadow: 0 0 0 2px var(--card-ring); }
-.mx-rail-spin { position: absolute; left: -2px; bottom: -2px; width: 15px; height: 15px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; line-height: 1; color: var(--accent); background: var(--well); box-shadow: 0 0 0 2px var(--card-ring); }
-.mx-rail-hairline { flex: none; width: 20px; height: 1px; background: color-mix(in srgb, var(--folder-from, #6FE0CB) 30%, transparent); }
-:root[data-icons="grayscale"] .mx-rail-group { --folder-from: var(--fg2) !important; --folder-to: var(--fg2) !important; }
+.mx-rail-spin { position: absolute; left: -2px; bottom: -2px; width: 15px; height: 15px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; line-height: 1; color: var(--accent); background: var(--well); box-shadow: 0 0 0 2px var(--card-ring); contain: layout style paint; will-change: transform; }
+.mx-rail-hairline { flex: none; width: 20px; height: 1px; background: color-mix(in srgb, var(--fg2) 30%, transparent); }
 .mx-rail-folder { position: relative; display: flex; align-items: center; justify-content: center; }
 /* What a collapsed folder is, beside it: fixed to the window so the rail's scrolling cannot clip it. */
-.mx-rail-popover { position: fixed; z-index: 50; transform: translateY(-50%); min-width: 200px; max-width: 300px; padding: 10px 12px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 14px 34px rgba(0, 0, 0, .35); backdrop-filter: blur(18px); pointer-events: none; animation: v7fade .14s ease-out; }
+.mx-rail-popover { position: fixed; z-index: 50; transform: translateY(-50%); min-width: 200px; max-width: 300px; padding: 10px 12px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); pointer-events: none; animation: v7fade .14s ease-out; }
 .mx-pop-head { display: flex; align-items: center; gap: 8px; }
 .mx-pop-head strong { font-size: 13.5px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-pop-path { margin-top: 4px; font-family: var(--mono); font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -237,23 +273,25 @@
 .mx-app-icon.is-rust { background: linear-gradient(140deg, color-mix(in oklab, var(--warn) 80%, var(--fg) 20%), color-mix(in oklab, var(--warn) 55%, var(--danger) 45%)); color: var(--on-warn); }
 .mx-app-icon.is-claude { background: linear-gradient(140deg, #E8926F, #C4623F); color: #FFF6F0; }
 /* Any other agent or program: a letter on a colour taken from its name. */
-.mx-app-icon.is-tinted { background: linear-gradient(140deg, var(--folder-from), var(--folder-to)); color: var(--on-accent); }
+.mx-app-icon.is-tinted { background: linear-gradient(140deg, var(--program-from), var(--program-to)); color: var(--on-accent); }
 
 .mx-badge { position: absolute; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--card-ring); }
 .mx-row-icon .mx-badge { right: -4px; bottom: -4px; width: 14px; height: 14px; border-radius: 4px; }
 .mx-rail-row .mx-badge { right: 1px; bottom: 1px; width: 15px; height: 15px; border-radius: 4px; }
 .mx-badge { animation: v9pop .26s var(--ease-out); }
 .mx-badge.is-needs { gap: 1.5px; background: var(--warn); }
-/* A pulse is a ring on a pseudo-element that scales out and fades a few times, then rests. An animated
+/* A pulse is a ring on a pseudo-element that scales out and fades once, then rests. An animated
    box-shadow, or any endless animation, repaints the card on every frame for as long as the state lasts
    (docs/PERFORMANCE.md). */
 .mx-inbox-count.is-needs, .mx-upd-dot { position: relative; }
-.mx-badge.is-needs::after, .mx-inbox-count.is-needs::after, .mx-upd-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px rgba(242, 182, 90, .45); opacity: 0; pointer-events: none; animation: v7pulse 2.4s ease-out 3; }
+.mx-badge.is-needs::after, .mx-inbox-count.is-needs::after, .mx-upd-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px rgba(242, 182, 90, .45); opacity: 0; pointer-events: none; animation: v7pulse .6s ease-out 1; }
+.mx-upd-dot::after { animation-duration: .7s; }
 .mx-badge.is-done { background: color-mix(in oklab, var(--ok) 24%, var(--bg)); }
 .mx-badge.is-error { background: color-mix(in oklab, var(--danger) 24%, var(--bg)); }
 .mx-row-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 .mx-rail-row .mx-badge.is-working { width: 16px; height: 16px; border-radius: 50%; background: var(--well); font-family: var(--mono); font-size: 11px; line-height: 1; color: var(--accent); }
 .mx-rail-unread { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card-ring); }
+.mx-ov-pulse { animation: mx-ov-pulse .5s ease-out 1; }
 .mx-pause-bar { width: 2px; height: 5px; border-radius: 1px; background: var(--on-warn); }
 
 /* Tab bar */
@@ -274,7 +312,7 @@
   border-right: var(--tabbr);
   cursor: pointer;
   color: var(--muted);
-  font-size: var(--tab-fs, 13.5px);
+  font-size: var(--ch-fs-md, var(--tab-fs, 13.5px));
   font-weight: 400;
   background-color: transparent;
   background-repeat: no-repeat;
@@ -334,6 +372,9 @@
 .mx-empty-note-small { font-size: 12px; color: var(--dim); }
 
 /* Panes */
+/* Chrome type: the hooks are set by Tiled (uppercase Geist Mono) and unset elsewhere, where these fall back
+   to what the elements already were. Terminal text and session names never read them. */
+.mx-tab-label, .mx-pane-proc, .mx-group-name, .mx-statusbar { font-family: var(--ch-ff, inherit); text-transform: var(--ch-tt, inherit); letter-spacing: var(--ch-ls, inherit); }
 .mx-panes { flex: 1; min-height: 0; padding: calc(var(--ptop) * var(--pad, 1)) calc(var(--pg) * var(--pad, 1)) calc(var(--pg) * var(--pad, 1)); display: flex; flex-direction: row; gap: calc(var(--pg) * var(--pad, 1)); }
 .mx-app.is-narrow .mx-panes { flex-direction: column; }
 .mx-pane-column { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: calc(var(--pg) * var(--pad, 1)); }
@@ -345,25 +386,25 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--r14);
-  background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 120px), var(--pane);
+  background: var(--pane);
   border: 1px solid var(--pane-line);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, .3);
+  box-shadow: var(--sh);
   outline-offset: -1px;
   overflow: hidden;
   /* Repaints inside a pane stay inside it. */
   contain: paint;
   animation: v8pane .3s var(--ease-out);
-  transition: border-color .2s ease, box-shadow .2s ease, background-color .35s ease;
+  transition: border-color .2s ease, background-color .35s ease;
 }
-.mx-pane:hover { border-color: rgba(255, 255, 255, .14); }
-.mx-pane.is-focused, .mx-pane.is-focused:hover { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft), 0 18px 40px rgba(0, 0, 0, .35); }
-.mx-pane.is-focused .mx-pane-head { box-shadow: inset 0 2px 0 var(--accent); }
-.mx-pane.is-focused::after { content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none; animation: v14focus .45s ease-out; }
+.mx-pane:hover { border-color: var(--line2); }
+.mx-pane.is-focused, .mx-pane.is-focused:hover { border-color: var(--accent-line); box-shadow: 0 0 0 1px var(--accent-line), var(--sh); }
+/* The focus ring flashes once, as opacity on a pseudo-element; animating its box-shadow would repaint the pane. */
+.mx-pane.is-focused::after { content: ''; position: absolute; inset: -1px; border: 2px solid var(--accent); border-radius: inherit; pointer-events: none; animation: v14focus .45s ease-out forwards; }
 .mx-pane.is-drop-target { outline: 2px dashed var(--accent); }
 .mx-pane-head { flex: none; height: calc(44px * var(--pad, 1)); display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px; cursor: default; }
 .mx-pane-head.is-draggable { cursor: grab; }
 .mx-pane-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; }
-.mx-pane-proc { font-size: 14px; font-weight: 600; color: var(--fg); }
+.mx-pane-proc { font-size: var(--ch-fs-md, 14px); font-weight: 600; color: var(--fg); }
 .mx-pane-cwd { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .mx-pill { height: 22px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; white-space: nowrap; flex: none; }
 .mx-status-pill { font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -387,6 +428,9 @@
 .mx-pane-body .terminal-screen { flex: 1; min-height: 0; margin: 0; background: transparent; border: 0; border-radius: 0; padding: 0; }
 /* The pane card carries the focus ring; the terminal draws none of its own. */
 .mx-pane-body .terminal-screen:focus-within { border-color: transparent; box-shadow: none; }
+/* xterm's own stylesheet paints the scroll viewport black. It is taller than the rows by the part of a
+   row that does not fit, so on the opaque renderers that remainder showed as a black bar along the pane's bottom edge. */
+.mx-pane-body .xterm-viewport { background-color: var(--term); }
 /* With the WebGL renderer the terminal is see-through and the card shows behind the text. The DOM
    renderer keeps the theme's opaque terminal ground, so a row repaint never blends through the card. */
 .mx-pane-body .terminal-view.is-transparent .xterm, .mx-pane-body .terminal-view.is-transparent .xterm-viewport, .mx-pane-body .terminal-view.is-transparent .xterm-screen { background-color: transparent !important; }
@@ -397,8 +441,8 @@
 .mx-toast { position: absolute; left: 50%; top: 58px; transform: translateX(-50%); z-index: 45; padding: 8px 14px; border-radius: 999px; background: var(--raise); border: 1px solid var(--line2); font-size: 12.5px; color: var(--fg); box-shadow: 0 12px 40px rgba(0, 0, 0, .45); white-space: nowrap; animation: v7fade .22s ease-out; }
 
 /* Settings */
-.mx-settings-scrim { position: absolute; inset: 0; z-index: 40; background: rgba(3, 5, 8, .62); display: flex; align-items: center; justify-content: center; padding: 24px; animation: v7scrim .2s ease-out; }
-.mx-settings { width: 100%; max-width: 880px; height: 100%; max-height: 620px; display: flex; border-radius: var(--r16); background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); overflow: hidden; backdrop-filter: blur(24px); animation: v8pane .26s var(--ease-out); }
+.mx-settings-scrim { position: absolute; inset: 0; z-index: 40; background: rgba(3, 5, 8, .62); backdrop-filter: var(--blur-pop); display: flex; align-items: center; justify-content: center; padding: 24px; animation: v7scrim .2s ease-out; }
+.mx-settings { width: 100%; max-width: 880px; height: 100%; max-height: 620px; display: flex; border-radius: var(--r16); background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); overflow: hidden; backdrop-filter: var(--blur-pop); animation: v8pane .26s var(--ease-out); }
 .mx-settings-nav { width: 212px; flex: none; display: flex; flex-direction: column; padding: 18px 10px; background: rgba(0, 0, 0, .18); border-right: 1px solid var(--pane-line); overflow-y: auto; }
 .mx-app.is-narrow .mx-settings-nav { width: 176px; }
 .mx-settings-nav-title { font-size: 14px; font-weight: 600; padding: 0 10px 14px; }
@@ -412,10 +456,7 @@
 .mx-settings-nav-text { flex: 1; white-space: nowrap; }
 .mx-settings-nav-key { font-family: var(--mono); font-size: 11px; color: var(--dim); }
 .mx-settings-body { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
-.mx-settings-close { flex: none; height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 8px 0 12px; border-radius: 9px; font-size: 13px; color: var(--fg2); transition: background-color .14s ease, color .14s ease, transform .12s ease; }
-.mx-settings-close:hover { background: rgba(255, 255, 255, .07); color: var(--fg); }
-.mx-settings-close:active { transform: scale(.96); }
-.mx-settings-close kbd { font-family: var(--mono); font-size: 10.5px; padding: 2px 6px; border-radius: 5px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line); color: var(--muted); }
+.mx-settings-close { width: 30px; height: 30px; border-radius: 8px; color: var(--muted); }
 .mx-settings-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 28px 28px; scroll-behavior: smooth; }
 .mx-settings-header { flex: none; min-height: 68px; display: flex; align-items: center; gap: 16px; padding: 14px 14px 14px 28px; border-bottom: 1px solid var(--pane-line); background: var(--pane); }
 .mx-settings-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; animation: v7fade .22s ease-out; }
@@ -452,7 +493,7 @@
 .mx-folder-field input:focus-visible, .mx-search-field input:focus-visible { outline: none; }
 .mx-folder-field:focus-within, .mx-search-field:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mx-preview { padding: 12px 14px; border-radius: 10px; background: var(--term); box-shadow: inset 0 0 0 1px var(--pane-line); font-family: var(--mono); line-height: 1.6; }
-.mx-caret { display: inline-block; background: var(--accent); animation: v7caret 1s steps(1) infinite; }
+.mx-caret { display: inline-block; background: var(--accent); }
 .mx-search-field { flex: 1; min-width: 0; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 8px; background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); color: var(--dim); }
 .mx-search-field input { font-size: 12.5px; }
 .mx-picker { position: relative; flex: none; transition: opacity .16s ease; }
@@ -478,17 +519,11 @@
 .mx-swatch i { height: 3px; border-radius: 2px; display: block; }
 .mx-theme-name { font-size: 12.5px; font-weight: 500; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-theme-sub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-spinner-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 12px 12px; }
-.mx-spinner-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px; background: rgba(255, 255, 255, .02); box-shadow: inset 0 0 0 1px var(--pane-line); transition: background-color .16s ease, box-shadow .16s ease, transform .12s ease; }
-.mx-spinner-card:active { transform: scale(.98); }
-.mx-spinner-card[aria-checked="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); }
-.mx-spinner-glyph { width: 36px; height: 36px; flex: none; border-radius: 9px; background: var(--term); box-shadow: inset 0 0 0 1px var(--pane-line); display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 19px; line-height: 1; color: var(--accent); }
-.mx-spinner-sample { display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 9px; border-radius: 7px; background: var(--term); box-shadow: inset 0 0 0 1px var(--pane-line); font-family: var(--mono); font-size: 11.5px; color: var(--fg2); white-space: nowrap; overflow: hidden; }
 .mx-effects { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 14px; border-top: 1px solid var(--pane-line); transition: opacity .2s ease; }
 .mx-effects.is-locked { opacity: .45; }
 .mx-effect-row { display: flex; align-items: center; gap: 12px; min-height: 36px; }
 .mx-effect-chip { width: 84px; height: 26px; flex: none; border-radius: 7px; background-color: var(--raise); background-repeat: no-repeat; box-shadow: inset 0 0 0 1px var(--pane-line); display: flex; align-items: center; gap: 6px; padding: 0 8px; font-size: 11.5px; }
-.mx-effect-chip span { color: var(--fg2); }
+.mx-effect-chip > span:not(.mx-fx) { color: var(--fg2); }
 .mx-hotkey { font-family: var(--mono); font-size: 11.5px; color: var(--fg); padding: 3px 8px; border-radius: 6px; background: var(--well); box-shadow: inset 0 0 0 1px var(--pane-line); white-space: pre; }
 .mx-hotkey-row { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 16px; border-top: 1px solid var(--pane-line); font-size: 13px; }
 .mx-hotkey-row > span:first-child { flex: 1; color: var(--fg2); }
@@ -504,16 +539,32 @@
 .mx-menu-hint { margin-left: auto; padding-left: 18px; font-family: var(--mono); font-size: 11px; color: var(--dim); }
 .mx-menu-sep { height: 1px; margin: 4px 2px; background: var(--line2); }
 
-/* Status effects on rows and tabs, after the row and tab rules so their animation wins. The app
-   adds these classes only for effects that are switched on (see EffectsContext). Each plays once when
-   the status appears and then rests: the signal is the change, and an endless animation keeps a
-   software-rendered web view repainting the card (docs/PERFORMANCE.md). */
+/* Status effects on rows and tabs, after the row and tab rules so their layer sits behind the
+   content. The app renders a `.mx-fx` child only for effects that are switched on and allowed (see
+   EffectsContext, StatusEffect). The child is clipped to its host, paints once and then only moves
+   with `transform` on its own layer: never box-shadow, filter or background-position, which would
+   repaint the card every frame (docs/PERFORMANCE.md).
+   Sweep crosses once when the status appears and rests. Waves drift forever, which is the one
+   deliberate loop; they stop with the window (data-window) and the app drops them to Sweep where
+   frames run slow (lib/animation-level.ts). */
 .mx-fx-working, .mx-fx-needs, .mx-fx-done { position: relative; overflow: hidden; isolation: isolate; }
-.mx-fx-working::after, .mx-fx-needs::after, .mx-fx-done::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: -1; pointer-events: none; }
-.mx-fx-working::after { left: 0; width: 250%; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--accent) calc(9% * var(--fx-k, .6)), transparent) 44%, color-mix(in srgb, var(--accent) calc(18% * var(--fx-k, .6)), transparent) 50%, color-mix(in srgb, var(--accent) calc(9% * var(--fx-k, .6)), transparent) 56%, transparent 70%); transform: translateX(-90%); animation: v14sweep 2.6s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
-.mx-fx-needs::after { top: -50%; bottom: -50%; left: -30%; width: 120%; background: radial-gradient(closest-side, color-mix(in srgb, var(--warn) calc(22% * var(--fx-k, .6)), transparent), transparent); opacity: .55; transform: scale(.8); animation: v14breathe 2.4s ease-in-out 3; }
-.mx-fx-done::after { left: 0; width: 250%; background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--ok) calc(16% * var(--fx-k, .6)), transparent) 50%, transparent 65%); transform: translateX(-90%); animation: v14sweepdone 1.4s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
+.mx-fx { position: absolute; inset: 0; z-index: -1; overflow: hidden; contain: paint; pointer-events: none; border-radius: inherit; }
+.mx-fx[data-status="working"] { color: var(--accent); }
+.mx-fx[data-status="needs"] { color: var(--warn); }
+.mx-fx[data-status="done"] { color: var(--ok); }
 .mx-fx-strong { --fx-k: 1; }
+.mx-fx-band { position: absolute; top: 0; bottom: 0; left: 0; width: 30%; will-change: transform; transform: translate3d(-110%, 0, 0); background: linear-gradient(90deg, transparent, color-mix(in srgb, currentColor calc(20% * var(--fx-k, .6)), transparent) 50%, transparent); animation: mx-fx-sweep 1.4s cubic-bezier(.4, 0, .2, 1) 1 forwards; }
+.mx-fx-wave { position: absolute; top: 0; bottom: 0; left: 0; width: 200%; will-change: transform; animation: mx-fx-drift 18s linear infinite; }
+.mx-fx-wave.is-reverse { animation-duration: 28s; animation-direction: reverse; }
+.mx-fx-wave svg { display: block; width: 100%; height: 100%; }
+.mx-fx-wave path { fill: currentColor; fill-opacity: calc(.11 * var(--fx-k, .6)); }
+.mx-fx-wave.is-reverse path { fill-opacity: calc(.08 * var(--fx-k, .6)); }
+:root[data-window="inactive"] .mx-fx-wave { animation-play-state: paused; }
+@keyframes mx-fx-sweep { from { transform: translate3d(-110%, 0, 0); } to { transform: translate3d(330%, 0, 0); } }
+@keyframes mx-fx-drift { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-50%, 0, 0); } }
+/* The Settings preview repeats the one-pass sweep so there is something to see. */
+.mx-effect-chip .mx-fx-band { animation: mx-fx-sweep-preview 3.2s cubic-bezier(.4, 0, .2, 1) infinite; }
+@keyframes mx-fx-sweep-preview { 0% { transform: translate3d(-110%, 0, 0); } 45%, 100% { transform: translate3d(330%, 0, 0); } }
 
 
 /* Reduce motion (the setting or the system's) stops slides, lifts, pulses and sweeps; spinners
@@ -591,7 +642,7 @@
 .mx-tablist.has-left.has-right { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%); mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%); }
 
 /* Naming a session. */
-.mx-rename { width: 100%; max-width: 420px; padding: 20px; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); backdrop-filter: blur(18px); display: flex; flex-direction: column; gap: 10px; animation: v8pane .3s var(--ease-out); }
+.mx-rename { width: 100%; max-width: 420px; padding: 20px; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); display: flex; flex-direction: column; gap: 10px; animation: v8pane .3s var(--ease-out); }
 .mx-rename h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); }
 .mx-rename p { margin: 0; font-size: 12.5px; color: var(--muted); }
 .mx-rename input { height: 38px; padding: 0 12px; border-radius: 10px; background: var(--well); border: 1px solid var(--pane-line); color: var(--fg); font-size: 14px; outline: none; }
@@ -635,7 +686,7 @@
 
 /* Every session of a project, beside the sidebar */
 .mx-menu-scrim { position: fixed; inset: 0; z-index: 34; }
-.mx-stack-menu { position: fixed; z-index: 35; width: 300px; max-height: 420px; display: flex; flex-direction: column; border-radius: 14px; background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, 0) 120px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 22px 60px rgba(0, 0, 0, .5); backdrop-filter: blur(18px); overflow: hidden; animation: v8insp .26s var(--ease-out); transform-origin: left top; }
+.mx-stack-menu { position: fixed; z-index: 35; width: 300px; max-height: 420px; display: flex; flex-direction: column; border-radius: 14px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); overflow: hidden; animation: v8insp .26s var(--ease-out); transform-origin: left top; }
 .mx-stack-menu-head { flex: none; height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--pane-line); }
 .mx-stack-menu-head .mx-icon-button { width: 26px; height: 26px; border-radius: 7px; color: var(--muted); }
 .mx-stack-menu-title { font-size: 13.5px; font-weight: 600; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -664,7 +715,7 @@
 .mx-alltabs-button:active { transform: scale(.94); }
 .mx-alltabs-button span:first-child { font-variant-numeric: tabular-nums; }
 .mx-alltabs-needs { position: absolute; right: 4px; top: 4px; width: 7px; height: 7px; border-radius: 2px; transform: rotate(45deg); background: var(--warn); }
-.mx-alltabs-menu { position: absolute; z-index: 40; top: 42px; right: 0; width: 280px; max-height: 360px; overflow-y: auto; overflow-x: hidden; padding: 5px; border-radius: 12px; background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, 0) 100px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 18px 50px rgba(0, 0, 0, .5); backdrop-filter: blur(18px); display: flex; flex-direction: column; gap: 1px; animation: v7fade .18s ease-out; }
+.mx-alltabs-menu { position: absolute; z-index: 40; top: 42px; right: 0; width: 280px; max-height: 360px; overflow-y: auto; overflow-x: hidden; padding: 5px; border-radius: 12px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); display: flex; flex-direction: column; gap: 1px; animation: v7fade .18s ease-out; }
 .mx-alltabs-row { height: 34px; flex: none; display: flex; align-items: center; gap: 9px; padding: 0 10px 0 7px; border-radius: 8px; font-size: 12.5px; color: var(--fg); text-align: left; cursor: pointer; transition: background-color .12s ease; }
 .mx-alltabs-row:hover { background: rgba(255, 255, 255, .06); }
 .mx-alltabs-row.is-active { background: var(--raise); }
@@ -681,30 +732,24 @@
 .mx-keycap { min-width: 24px; height: 24px; box-sizing: border-box; padding: 0 7px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: linear-gradient(180deg, color-mix(in oklab, var(--raise) 94%, white), var(--raise)); border: 1px solid var(--line2); border-bottom-width: 2.5px; box-shadow: 0 1px 0 rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .07); font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--fg); line-height: 1; }
 .mx-keycap.is-symbol { font-family: inherit; font-size: 13px; font-weight: 400; }
 
-/* Resizing columns: the 10px gap between them is the handle */
+/* Resizing columns: the 10px gap between them is the handle. The negative margin cancels the two flex gaps
+   around it, so the handle takes the gap's width whatever --pg is (0 under Tiled). */
 .mx-pane-column { flex-basis: 0; }
-.mx-col-handle { flex: none; width: 10px; margin: 0 calc(-6px * var(--pad, 1) - 5px); position: relative; z-index: 3; cursor: col-resize; touch-action: none; }
+.mx-col-handle { flex: none; width: 10px; margin: 0 calc(-5px - var(--pg) * var(--pad, 1) / 2); position: relative; z-index: 3; cursor: col-resize; touch-action: none; }
 .mx-col-handle:hover, .mx-col-handle.is-dragging { background: linear-gradient(90deg, transparent 4px, var(--accent) 4px 6px, transparent 6px); }
 .mx-app.is-narrow .mx-col-handle { display: none; }
 
 /* Project colours in Settings */
 .mx-scard-row.is-stacked { flex-direction: column; align-items: stretch; gap: 8px; }
-.mx-project-color { display: flex; align-items: center; gap: 12px; min-height: 28px; }
-.mx-project-color-name { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-swatches { display: flex; gap: 8px; }
-.mx-swatch-dot { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2); transition: transform .14s ease; }
-.mx-swatch-dot:hover { transform: scale(1.15); }
-.mx-swatch-dot[aria-checked="true"] { box-shadow: 0 0 0 2px var(--pane), 0 0 0 4px var(--fg2); }
 
 /* Command palette */
 .mx-palette-scrim { position: absolute; inset: 0; z-index: 60; background: rgba(0, 0, 0, .58); animation: v7scrim .2s ease-out; }
-.mx-palette { position: absolute; top: 12%; left: 50%; width: min(600px, calc(100% - 24px)); transform: translateX(-50%); display: flex; flex-direction: column; border-radius: 16px; background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, 0) 120px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 30px 80px rgba(0, 0, 0, .55); backdrop-filter: blur(18px); overflow: hidden; animation: v8pane .22s var(--ease-out); }
+.mx-palette { position: absolute; top: 12%; left: 50%; width: min(600px, calc(100% - 24px)); transform: translateX(-50%); display: flex; flex-direction: column; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); backdrop-filter: var(--blur-pop); overflow: hidden; animation: v8pane .22s var(--ease-out); }
 .mx-palette-input { flex: none; height: 54px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--pane-line); color: var(--dim); }
 .mx-palette-input input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; font: inherit; font-size: 15px; color: var(--fg); }
 .mx-palette-list { max-height: 380px; overflow-y: auto; overflow-x: hidden; padding: 6px; display: flex; flex-direction: column; gap: 1px; }
 .mx-palette-row { flex: none; height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-radius: 9px; font-size: 13.5px; color: var(--fg); cursor: pointer; }
 .mx-palette-row.is-selected { background: var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line); }
-.mx-palette-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .mx-palette-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-palette-detail { color: var(--dim); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-palette-shortcut { font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
@@ -715,7 +760,7 @@
 
 /* Inbox */
 .mx-inbox-scrim { position: absolute; inset: 0; z-index: 55; background: rgba(0, 0, 0, .45); animation: v7scrim .2s ease-out; }
-.mx-inbox { position: absolute; top: 44px; right: 12px; bottom: 12px; width: min(440px, calc(100% - 24px)); display: flex; flex-direction: column; border-radius: 14px; background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 160px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 22px 60px rgba(0, 0, 0, .5); overflow: hidden; animation: v8insp .32s var(--ease-out); }
+.mx-inbox { position: absolute; top: 44px; right: 12px; bottom: 12px; width: min(440px, calc(100% - 24px)); display: flex; flex-direction: column; border-radius: 14px; background: var(--card); border: 1px solid var(--pane-line); box-shadow: var(--sh); overflow: hidden; animation: v8insp .32s var(--ease-out); }
 .mx-inbox-head { flex: none; height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--pane-line); }
 .mx-inbox-head strong { font-size: 15px; font-weight: 600; }
 .mx-inbox-sub { font-size: 12px; color: var(--dim); }
@@ -724,7 +769,6 @@
 .mx-inbox-card { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px; background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1px var(--pane-line); }
 .mx-inbox-card.is-needs { box-shadow: inset 0 0 0 1px var(--warn-line); }
 .mx-inbox-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.mx-inbox-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .mx-inbox-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .mx-inbox-title { font-size: 13px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mx-inbox-title strong { color: var(--fg); font-weight: 600; }
@@ -792,7 +836,6 @@
 .mx-rp-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .mx-rp-title strong { font-size: 13.5px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-rp-path { font-family: var(--mono); font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-rp-dot { width: 10px; height: 10px; flex: none; border-radius: 3px; background: linear-gradient(140deg, var(--folder-from), var(--folder-to)); }
 .mx-rp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
 .mx-rp-row { width: 100%; display: flex; align-items: center; gap: 9px; padding: 5px 6px; border-radius: 8px; text-align: left; transition: background-color .14s ease; }
 .mx-rp-row:hover { background: rgba(255, 255, 255, .06); }
@@ -812,7 +855,7 @@
 /* First-run welcome. */
 @keyframes v9stepin { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
 .mx-wel-scrim { position: fixed; inset: 0; z-index: 80; background: rgba(3, 5, 8, .66); animation: v7scrim .2s ease-out; }
-.mx-welcome { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(560px, calc(100% - 32px)); transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 18px; padding: 22px 24px 20px; border-radius: 16px; background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 140px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); animation: v9dialog .26s var(--ease-out); }
+.mx-welcome { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(560px, calc(100% - 32px)); transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 18px; padding: 22px 24px 20px; border-radius: 16px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); animation: v9dialog .26s var(--ease-out); }
 .mx-wel-bars { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
 .mx-wel-bars span { height: 3px; border-radius: 2px; background: var(--line2); transition: background-color .3s ease; }
 .mx-wel-bars span.is-done { background: var(--accent); }
@@ -833,10 +876,24 @@
 .mx-confirm-button.is-primary:hover { background: color-mix(in srgb, var(--accent) 88%, #fff); }
 .mx-confirm-button:disabled { opacity: .5; }
 .mx-scard-button { height: 30px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; color: var(--fg2); background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--pane-line); transition: background-color .14s ease, color .14s ease; }
+.mx-host-list { list-style: none; margin: 0; padding: 4px 8px 8px; display: flex; flex-direction: column; max-height: 220px; overflow-y: auto; border-top: 1px solid var(--pane-line); }
+.mx-host-row { display: flex; align-items: baseline; gap: 12px; width: 100%; padding: 7px 8px; border-radius: 7px; font-size: 12.5px; color: var(--fg2); text-align: left; }
+.mx-host-row:hover, .mx-host-row:focus-visible { background: var(--accent-soft); color: var(--accent); }
+.mx-host-detail { color: var(--dim); font-size: 11.5px; overflow-wrap: anywhere; }
+.mx-scard-input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; color: var(--fg); background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px var(--pane-line); }
+.mx-scard-input.is-invalid { box-shadow: inset 0 0 0 1px var(--danger-line); }
+.mx-font-field { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mx-font-error { font-size: 11.5px; color: var(--danger); }
+.mx-scard-input:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--accent-line); }
+.mx-scard-note { margin: 0; padding: 12px 16px; font-size: 12.5px; line-height: 1.55; color: var(--dim); text-wrap: pretty; }
+.mx-machine-row .mx-scard-text { min-width: 0; flex: 1; }
+.mx-machine-row .mx-scard-text > span { overflow-wrap: anywhere; }
+.mx-scard-button.is-danger { color: var(--danger); }
+.mx-scard-button:disabled { opacity: .4; pointer-events: none; }
 .mx-scard-button:hover { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-line); }
 
 /* Keyboard shortcut overlay. */
-.mx-shortcuts { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(820px, calc(100% - 32px)); max-height: calc(100% - 48px); transform: translate(-50%, -50%); display: flex; flex-direction: column; border-radius: var(--r16); background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 140px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 40px 100px rgba(0, 0, 0, .6); overflow: hidden; animation: v9dialog .26s var(--ease-out); }
+.mx-shortcuts { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(820px, calc(100% - 32px)); max-height: calc(100% - 48px); transform: translate(-50%, -50%); display: flex; flex-direction: column; border-radius: var(--r16); background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); overflow: hidden; animation: v9dialog .26s var(--ease-out); }
 .mx-shortcuts-head { flex: none; display: flex; align-items: center; gap: 16px; padding: 14px 14px 14px 24px; border-bottom: 1px solid var(--pane-line); }
 .mx-shortcuts-title { flex: 1; margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em; color: var(--fg); }
 .mx-shortcuts-grid { min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 22px 28px; padding: 18px 24px 24px; align-items: start; }
@@ -855,7 +912,7 @@
 .mx-row-pin { flex: none; display: inline-flex; align-items: center; color: var(--accent); }
 
 /* Notification card (design 10.3): the app, the project, what happened, and what you can do about it. */
-.mx-notice { position: relative; width: 356px; max-width: calc(100vw - 32px); display: flex; gap: 12px; padding: 12px 14px 12px 12px; border-radius: 16px; overflow: hidden; color: var(--fg); background: color-mix(in oklab, var(--raise) 82%, transparent); backdrop-filter: blur(18px) saturate(1.2); border: 1px solid var(--pane-line); box-shadow: 0 16px 44px rgba(0, 0, 0, .5); animation: v7fade .18s ease-out; }
+.mx-notice { position: relative; width: 356px; max-width: calc(100vw - 32px); display: flex; gap: 12px; padding: 12px 14px 12px 12px; border-radius: 16px; overflow: hidden; color: var(--fg); background: color-mix(in oklab, var(--raise) 82%, transparent); backdrop-filter: var(--blur-pop); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); animation: v7fade .18s ease-out; }
 .mx-notice { --notice: var(--ok); --notice-ink: var(--on-accent); }
 .mx-notice.is-needs { --notice: var(--warn); --notice-ink: var(--on-warn); }
 .mx-notice.is-error { --notice: var(--danger); --notice-ink: var(--on-accent); }
@@ -867,7 +924,6 @@
 .mx-notice-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .mx-notice-head { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); }
 .mx-notice-app { font-weight: 600; letter-spacing: .08em; }
-.mx-notice-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
 .mx-notice-age { margin-left: auto; }
 .mx-notice-title { font-size: 13.5px; font-weight: 600; }
 .mx-notice-body { font-size: 12.5px; line-height: 1.4; color: var(--fg2); overflow-wrap: anywhere; }
@@ -885,7 +941,7 @@
 .mx-update-notes { margin: 0; padding: 0 0 0 18px; font-size: 12px; color: var(--muted); }
 
 /* Status bar. */
-.mx-statusbar { flex: none; height: 28px; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-top: 1px solid var(--pane-line); font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.mx-statusbar { flex: none; height: 28px; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-top: 1px solid var(--pane-line); font-size: var(--ch-fs-sm, 11.5px); color: var(--muted); white-space: nowrap; overflow: hidden; }
 .mx-sb-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mx-sb-item.mono { font-family: var(--mono); }
 .mx-sb-item.is-offline { color: var(--warn); }
@@ -910,11 +966,20 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-statusbar .mx-keycap { transform: scale(.9); transform-origin: right center; }
 
 /* Hover tooltip for anything with a title. */
-.mx-tip { position: fixed; z-index: 90; max-width: 240px; padding: 5px 9px; transform: translateX(-50%); border-radius: 8px; background: var(--raise); border: 1px solid var(--pane-line); box-shadow: 0 10px 28px rgba(0, 0, 0, .4); font-size: 12px; line-height: 1.4; color: var(--fg); pointer-events: none; animation: v7fade .12s ease-out; }
+.mx-tip { position: fixed; z-index: 90; max-width: 260px; display: flex; flex-direction: column; gap: 2px; padding: 5px 9px; transform: translateX(-50%); border-radius: 8px; background: var(--raise); border: 1px solid var(--pane-line); box-shadow: 0 10px 28px rgba(0, 0, 0, .4); line-height: 1.4; color: var(--fg); pointer-events: none; animation: mx-tip-in .16s ease-out; }
+.mx-tip-line { display: flex; align-items: center; gap: 8px; }
+.mx-tip-name { font-size: 12px; font-weight: 500; }
+.mx-tip-keys { display: inline-flex; gap: 2px; }
+.mx-tip .mx-keycap { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 4px; border-bottom-width: 2px; font-size: 10.5px; }
+.mx-tip-hint { font-size: 11.5px; color: var(--fg2); }
+/* The slide comes from the side the tip is anchored to, through the standalone `translate` so it does not fight the centring transform. */
+@keyframes mx-tip-in { from { opacity: 0; translate: var(--tip-dx, 0) var(--tip-dy, 0); } to { opacity: 1; translate: 0 0; } }
+:root:has(.mx-app[data-motion="reduced"]) .mx-tip { animation: none; }
+@media (prefers-reduced-motion: reduce) { .mx-tip { animation: none; } }
 
 /* Confirm before ending sessions. */
 .mx-confirm-scrim { position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, .5); animation: v7scrim .2s ease-out; }
-.mx-confirm { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(400px, calc(100% - 32px)); transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 14px; background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, 0) 120px), var(--pane); border: 1px solid var(--pane-line); box-shadow: 0 22px 60px rgba(0, 0, 0, .5); animation: v9dialog .22s var(--ease-out); }
+.mx-confirm { position: fixed; z-index: 81; top: 50%; left: 50%; width: min(400px, calc(100% - 32px)); transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 14px; background: var(--pane); border: 1px solid var(--pane-line); box-shadow: var(--sh-pop); animation: v9dialog .22s var(--ease-out); }
 .mx-confirm-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
 .mx-confirm-text { margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg2); }
 .mx-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
@@ -930,18 +995,17 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 :root[data-finish="flat"] .mx-window { background: var(--bg); }
 :root[data-finish="flat"] .mx-card,
 :root[data-finish="flat"] .mx-pane { background: var(--main); backdrop-filter: none; }
-:root[data-finish="flat"] .mx-pane { box-shadow: none; }
+:root[data-finish="flat"] .mx-pane,
+:root[data-finish="flat"] .mx-card { box-shadow: none; }
+:root[data-finish="flat"] .mx-inbox { box-shadow: 0 22px 60px rgba(0, 0, 0, .5); }
 :root[data-finish="flat"] .mx-pane.is-focused,
 :root[data-finish="flat"] .mx-pane.is-focused:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
 :root[data-finish="flat"] .mx-sidebar { box-shadow: none; }
 :root[data-finish="flat"] .mx-settings { background: var(--main); box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 :root[data-finish="flat"] .mx-settings-scrim { backdrop-filter: none; }
 :root[data-finish="flat"] .mx-rail-popover { box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
-/* Settings › Appearance › Icons: Grayscale. Neutral tiles in either style; status badges on them keep their colours. */
-:root[data-icons="grayscale"] .mx-folder-tile,
-:root[data-icons="grayscale"] .mx-folder-tile.is-focused,
+/* Settings › Appearance › Icons: Grayscale. Neutral app icons in either style; status badges on them keep their colours. */
 :root[data-icons="grayscale"] .mx-app-icon { background: var(--raise); box-shadow: none; color: var(--fg2); }
-:root[data-icons="grayscale"] .mx-folder-tile svg path { fill: color-mix(in srgb, var(--fg2) 22%, transparent); }
 /* No outlines on the selected row, hovered rows or the open tab: the fill says it. */
 :root[data-finish="flat"] .mx-row.is-selected,
 :root[data-finish="flat"] .mx-rail-row.is-selected,
@@ -967,31 +1031,61 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 :root[data-finish="flat"] .mx-badge:not(.is-needs) { animation: none; }
 :root[data-finish="flat"] .mx-inspect { background: var(--main); backdrop-filter: none;  }
 
-/* A web view without GPU access (no WebGL 2) rasterises in software, where every resting shadow,
-   gradient and blur is paid again on each repaint (docs/PERFORMANCE.md). Glass keeps its colours,
-   radii and layout there and gives up only those three; the focus ring and status colours stay. */
-:root[data-gpu="software"] .mx-card,
-:root[data-gpu="software"] .mx-pane { background: var(--pane); box-shadow: none; }
-:root[data-gpu="software"] .mx-sidebar { box-shadow: none; }
-:root[data-gpu="software"] .mx-pane.is-focused,
-:root[data-gpu="software"] .mx-pane.is-focused:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
-:root[data-gpu="software"] :is(.mx-rail-popover, .mx-settings, .mx-settings-scrim, .mx-rename, .mx-stack-menu, .mx-alltabs-menu, .mx-palette, .mx-inbox, .mx-notice, .mx-inspect, .mx-pane-status) { backdrop-filter: none; }
-:root[data-gpu="software"] :is(.mx-stack-menu, .mx-alltabs-menu, .mx-palette, .mx-inbox, .mx-welcome, .mx-shortcuts, .mx-confirm) { background: var(--pane); }
+/* A web view without GPU access (no WebGL 2) rasterises in software, where every blur and shadow is paid
+   again on each repaint (docs/PERFORMANCE.md). It takes the same rules with cheaper token values: no blur,
+   a hairline ring instead of a soft popover shadow, and a flat ground (see .mx-window above). */
+:root[data-gpu="software"] .mx-app { --blur-pop: none; --sh-pop: 0 0 0 1px var(--line2); }
+:root[data-gpu="software"] .mx-app[data-theme-kind="light"] { --sh-pop: 0 0 0 1px rgba(17, 22, 27, .14); }
 
 /* Window style variables, set on the app root so they can use the theme's colours. Glass is the default; Flat softens the radii and shadow; Tiled pulls the layout edge to
    edge (square corners, 4px gaps, a flush 40px tab strip with hairlines). The layout rules above read these.
    --rk multiplies the radii that Tiled squares off. --strip-* are the tab bar's buttons: Tiled drops their fill and ring. */
 .mx-app {
   --rk: 1; --r14: 14px; --r16: 16px; --pg: 12px; --ptop: 0px; --tbh: 56px; --tbp: 0 10px; --tbg: 6px; --tbb: 0;
-  --tabh: 36px; --tabbr: 0; --sh: 0 22px 60px rgba(0, 0, 0, .5);
+  --tabh: 36px; --tabbr: 0; --tick: transparent;
+  /* Glass surfaces: opaque cards with a hairline and, on dark themes, a 1px top highlight; blur and a soft
+     shadow only on short-lived popovers. */
+  --card: var(--main); --sh: inset 0 1px 0 rgba(255, 255, 255, .045); --blur-pop: blur(14px) saturate(1.2); --sh-pop: 0 16px 40px rgba(0, 0, 0, .45);
+  --glow-accent: 10%; --glow-mag: 7%;
   --sbm: 8px 0 8px 8px; --sbw: 1px; --tba: center; --tl: 4px; --edge: 8px; --tsh: 32px; --tsw: 26px; --ibh: 30px;
 }
-:root[data-style="flat"] .mx-app { --r14: 8px; --r16: 10px; --sh: 0 8px 24px rgba(0, 0, 0, .3); }
+.mx-app[data-theme-kind="light"] { --sh: none; --sh-pop: 0 12px 32px rgba(17, 24, 32, .14), 0 0 0 1px rgba(17, 22, 27, .08); --glow-accent: 9%; --glow-mag: 6%; }
+:root[data-style="flat"] .mx-app { --r14: 8px; --r16: 10px; }
 :root[data-style="tiled"] .mx-app {
-  --rk: 0; --r14: 0px; --r16: 0px; --pg: 4px; --ptop: 4px; --tbh: 40px; --tbp: 0; --tbg: 0px; --tbb: 1px solid var(--pane-line);
-  --tabh: 40px; --tabbr: 1px solid var(--pane-line); --sh: 0 6px 18px rgba(0, 0, 0, .35);
-  --sbm: 0; --sbw: 0 1px 0 0; --tba: stretch; --tl: 0px; --edge: 4px; --tsh: 40px; --tsw: 40px; --ibh: 40px;
+  --rk: 0; --r14: 0px; --r16: 0px; --pg: 0px; --ptop: 0px; --tbh: 40px; --tbp: 0; --tbg: 0px; --tbb: 1px solid var(--pane-line);
+  --tabh: 40px; --tabbr: 1px solid var(--pane-line); --sh: none; --sh-pop: 0 0 0 1px var(--line2); --blur-pop: none;
+  --sbm: 0; --sbw: 0 1px 0 0; --tba: stretch; --tl: 0px; --edge: 0px; --tsh: 40px; --tsw: 40px; --ibh: 40px;
   --strip-bg: transparent; --strip-ring: none; --strip-hover: rgba(255, 255, 255, .06);
+  --tick: var(--line2); --ch-ff: var(--mono); --ch-tt: uppercase; --ch-ls: .1em; --ch-fs-sm: 11px; --ch-fs-md: 11.5px;
+}
+
+/* Tiled: a hairline grid. The variables above zero the gaps and radii; these rules draw the lines between
+   regions and take away what the flat finish still shadows. Each pane owns its right and bottom hairline, and
+   the tab bar, sidebar and title bar own the top and left, so no line is drawn twice. */
+:root[data-style="tiled"] .title-bar { background: var(--main); border-bottom: 1px solid var(--pane-line); }
+:root[data-style="tiled"] .mx-pane { border-width: 0 1px 1px 0; }
+:root[data-style="tiled"] .mx-pane-head { border-bottom: 1px solid var(--pane-line); }
+:root[data-style="tiled"] .mx-pane.is-focused,
+:root[data-style="tiled"] .mx-pane.is-focused:hover { box-shadow: inset 0 0 0 1px var(--accent-line); }
+:root[data-style="tiled"] .mx-inspect { border-width: 0 0 0 1px; box-shadow: none; }
+/* Popovers carry a hairline and no blur, and sit square. */
+:root[data-style="tiled"] :is(.mx-menu, .mx-tip, .mx-rail-popover, .mx-status-pop, .mx-stack-menu, .mx-alltabs-menu, .mx-palette, .mx-sessionmenu, .mx-picker-menu, .mx-notice, .mx-toast, .mx-upd-card, .mx-rename, .mx-settings, .mx-inbox) {
+  border-radius: 0; box-shadow: var(--sh-pop); backdrop-filter: none;
+}
+:root[data-style="tiled"] :is(.mx-menu-item, .mx-alltabs-row, .mx-stack-menu-row, .mx-palette-row, .mx-keycap, .mx-tab-close, .mx-pane-control, .mx-group-head, .mx-new-button, .mx-sb-modes, .mx-sb-mode) { border-radius: 0; }
+/* The four corners of the pane area carry a static 9px "+", drawn as two 1px bars each in one pseudo-element. */
+:root[data-style="tiled"] .mx-panes { position: relative; }
+:root[data-style="tiled"] .mx-panes::after {
+  content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  background:
+    linear-gradient(var(--tick), var(--tick)) left 0 top 4px / 9px 1px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) left 4px top 0 / 1px 9px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) right 0 top 4px / 9px 1px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) right 4px top 0 / 1px 9px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) left 0 bottom 4px / 9px 1px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) left 4px bottom 0 / 1px 9px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) right 0 bottom 4px / 9px 1px no-repeat,
+    linear-gradient(var(--tick), var(--tick)) right 4px bottom 0 / 1px 9px no-repeat;
 }
 
 /* Settings › Appearance › Window style cards. */
@@ -1008,7 +1102,7 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-sp-pane b:nth-child(3) { width: 66%; }
 .mx-style-preview.is-tiled { --g: 0; --r: 0; overflow: hidden; }
 .mx-style-preview.is-glass { --r: 8px; background: radial-gradient(90px 50px at 8% 0, var(--accent-soft), transparent), var(--well); }
-.mx-style-preview.is-glass .mx-sp-side, .mx-style-preview.is-glass .mx-sp-pane { background: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, 0)), var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line), 0 5px 12px rgba(0, 0, 0, .4); }
+.mx-style-preview.is-glass .mx-sp-side, .mx-style-preview.is-glass .mx-sp-pane { background: var(--main); box-shadow: inset 0 0 0 1px var(--pane-line); }
 .mx-style-name { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 600; color: var(--fg); }
 .mx-style-card.is-selected .mx-style-name { color: var(--accent); }
 .mx-style-blurb { font-size: 11.5px; line-height: 1.4; color: var(--dim); }
@@ -1036,6 +1130,8 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-upd-primary:hover { background: color-mix(in srgb, var(--accent) 88%, #fff); }
 .mx-upd-ghost { height: 30px; padding: 0 10px; border-radius: 8px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
 .mx-upd-ghost:hover { background: rgba(255, 255, 255, .06); color: var(--fg); }
+/* Settings › Performance › Overlay: a corner readout that never takes the pointer. */
+.mx-perf-hud { position: absolute; right: 12px; bottom: 36px; z-index: 80; display: flex; gap: 10px; padding: 4px 9px; border-radius: 8px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--pane-line); font-family: var(--mono); font-size: 11px; color: var(--fg2); pointer-events: none; white-space: nowrap; }
 .mx-restarting { position: absolute; inset: 0; z-index: 90; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: var(--bg); animation: v7scrim .2s ease-out; }
 .mx-restarting strong { font-size: 18px; font-weight: 600; }
 .mx-restarting span { font-size: 13px; color: var(--muted); }
@@ -1095,3 +1191,14 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-pane-ended-button:disabled { opacity: .5; cursor: default; }
 .mx-folder-row { display: flex; align-items: center; gap: 8px; }
 .mx-folder-row .mx-folder-field { flex: 1; min-width: 0; }
+
+/* The Terminal / Chat view change (v18 B.3): the view coming in slides 18px from its side and fades.
+   Transform and opacity only; Reduce motion removes every animation at the window root. */
+@keyframes mx-view-from-right { from { transform: translateX(18px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes mx-view-from-left { from { transform: translateX(-18px); opacity: 0; } to { transform: none; opacity: 1; } }
+.mx-pane-body { position: relative; }
+.mx-chat-in { animation: mx-view-from-right .42s cubic-bezier(.16, 1, .3, 1) both; }
+.mx-term-in { animation: mx-view-from-left .42s cubic-bezier(.16, 1, .3, 1) both; }
+/* The terminal stays mounted and keeps its size while the chat covers it; hidden, it is not reached by Tab or a screen reader. */
+.mx-pane-body.is-chat > :not(.mx-chat-layer) { visibility: hidden; }
+.mx-chat-layer { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; min-height: 0; background: var(--pane); font-family: "Geist Variable", system-ui, sans-serif; line-height: normal; cursor: default; }

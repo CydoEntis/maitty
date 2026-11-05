@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 69;
+pub const PROTOCOL_VERSION: u32 = 72;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -60,6 +60,13 @@ pub struct ConversationSummary {
     /// Put away: hidden from the lists, still running.
     #[serde(default)]
     pub archived: bool,
+    /// The main checkout of the repository the conversation works in, so a chat session sits with its
+    /// project in a list (ADR 0054). Absent outside git.
+    #[serde(default)]
+    pub root: Option<PathBuf>,
+    /// The branch checked out there.
+    #[serde(default)]
+    pub branch: Option<String>,
 }
 
 /// Which app a client is. A terminal session belongs to the app that started it, and only
@@ -159,6 +166,11 @@ pub struct Usage {
     /// Tokens the provider says the session has used (what it reports, never an estimate).
     #[serde(default)]
     pub tokens: Option<u64>,
+    /// The input and output halves of `tokens`, as the provider reports them.
+    #[serde(default)]
+    pub tokens_in: Option<u64>,
+    #[serde(default)]
+    pub tokens_out: Option<u64>,
 }
 
 /// One of an agent's plan limits: how much is used and when it starts over.
@@ -176,12 +188,24 @@ pub struct Limit {
 pub enum Command {
     ConversationStart {
         target: crate::conversation::StartTarget,
+        /// Start in a new checkout of the project at the target's folder, on this branch (a chat
+        /// session on a branch, ADR 0054). Only a new conversation takes one. A peer that
+        /// predates it would start in the main checkout instead, which is why the protocol
+        /// version was raised with it.
+        #[serde(default)]
+        branch: Option<String>,
     },
     ConversationSend {
         id: crate::conversation::ConversationId,
         generation: u64,
         operation: u64,
         text: String,
+    },
+    /// Take a message back out of the daemon's queue before it is delivered.
+    ConversationDequeue {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        operation: u64,
     },
     ConversationApprove {
         id: crate::conversation::ConversationId,
@@ -344,6 +368,8 @@ pub enum Command {
     /// `git worktree add` next to the workspace's repo, then open it as a new workspace.
     /// `split`: open the worktree as a pane beside this one instead of as a workspace.
     /// `from`: the repo to branch from (default: the workspace's folder).
+    /// `agent` / `prompt`: start a known agent preset in it with a first prompt, in place of
+    /// `cmd` (naming both is an error). The daemon checks both and quotes the prompt itself.
     NewWorktree {
         ws: WsId,
         branch: String,
@@ -351,6 +377,10 @@ pub enum Command {
         cmd: Option<String>,
         split: Option<TermId>,
         from: Option<PathBuf>,
+        #[serde(default)]
+        agent: Option<String>,
+        #[serde(default)]
+        prompt: Option<String>,
     },
     /// From a pane about to start an agent in `dir`: a new worktree for it when `dir` is
     /// in a repo's main checkout (and per-agent worktrees are on). Replies with the folder
@@ -546,6 +576,10 @@ pub enum Query {
     PaneSearch {
         query: String,
     },
+    /// Provider-reported usage over a period, per session and per day (human clients only).
+    UsageReport {
+        period: crate::usage_report::UsagePeriod,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
@@ -715,6 +749,8 @@ pub enum Reply {
         generation: u64,
     },
     ConversationSent(crate::conversation::Receipt),
+    /// The conversation was busy, so the message waits in the daemon's queue (see `ReadResult::queued`).
+    ConversationQueued(crate::conversation::QueuedReceipt),
     ConversationRead(crate::conversation::ReadResult),
     ConversationDiff(crate::conversation::ConversationDiff),
     ConversationFiles(Vec<crate::conversation::ConversationFileEntry>),
@@ -729,6 +765,7 @@ pub enum Reply {
         reply: crate::repo::RepoReply,
     },
     Search(Vec<SearchHit>),
+    UsageReport(crate::usage_report::UsageReport),
 }
 
 /// One line of a pane's output that matched a search.
@@ -1646,6 +1683,8 @@ mod tests {
             summary.execution,
             crate::conversation::ExecutionKind::Structured
         );
+        // `root` and `branch` (a chat session's project, ADR 0054) are defaulted too.
+        assert_eq!((summary.root, summary.branch), (None, None));
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -1663,6 +1702,125 @@ mod tests {
             panic!("expected a swap")
         };
         assert_eq!((a, b), (3, 4));
+    }
+
+    /// Removing a queued message and the reply to a queued send are a new command and a new reply:
+    /// a peer built before them cannot read either, which is why protocol 71 refuses protocol 70.
+    #[test]
+    fn a_peer_from_before_the_send_queue_cannot_read_its_messages() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            ConversationCancel { id: u64, generation: u64 },
+        }
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldReply {
+            Ok,
+        }
+        let id = crate::conversation::ConversationId(3);
+        let dequeue = encode(&Command::ConversationDequeue { id, generation: 1, operation: 4 }).unwrap();
+        assert!(decode::<OldCommand>(&dequeue).is_err());
+        assert!(matches!(
+            decode::<Command>(&dequeue).unwrap(),
+            Command::ConversationDequeue { operation: 4, .. }
+        ));
+        let queued = Reply::ConversationQueued(crate::conversation::QueuedReceipt {
+            conversation: id,
+            generation: 1,
+            operation: 4,
+        });
+        assert!(decode::<OldReply>(&encode(&queued).unwrap()).is_err());
+    }
+
+    /// `queued` was added to the read as a defaulted field: a reply from before it still decodes,
+    /// as an empty queue.
+    #[test]
+    fn a_conversation_read_from_before_the_send_queue_still_decodes() {
+        let read: crate::conversation::ReadResult = serde_json::from_value(serde_json::json!({
+            "conversation": 3, "generation": 1, "status": "Idle", "receipt": null,
+            "history": { "entries": [], "next": null, "completeness": "Complete" },
+            "error": null, "checks": [], "approvals": []
+        }))
+        .expect("a read from before the queue");
+        assert!(read.queued.is_empty() && read.history.resume.is_none() && !read.history.reset);
+    }
+
+    /// `agent` and `prompt` were added to `NewWorktree` as defaulted fields: a peer that does not
+    /// send them still decodes, as "no agent", so the version stays as it was.
+    #[test]
+    fn a_worktree_request_from_before_agent_and_prompt_still_decodes() {
+        #[derive(Serialize)]
+        enum OldCommand {
+            NewWorktree {
+                ws: WsId,
+                branch: String,
+                base: Option<String>,
+                cmd: Option<String>,
+                split: Option<TermId>,
+                from: Option<PathBuf>,
+            },
+        }
+        let bytes = encode(&OldCommand::NewWorktree {
+            ws: 1,
+            branch: "feat/x".into(),
+            base: None,
+            cmd: Some("claude".into()),
+            split: None,
+            from: None,
+        })
+        .unwrap();
+        let Command::NewWorktree {
+            branch,
+            cmd,
+            agent,
+            prompt,
+            ..
+        } = decode(&bytes).unwrap()
+        else {
+            panic!("expected a worktree request")
+        };
+        assert_eq!(
+            (branch.as_str(), cmd.as_deref()),
+            ("feat/x", Some("claude"))
+        );
+        assert_eq!((agent, prompt), (None, None));
+    }
+
+    /// `branch` was added to `ConversationStart` as a defaulted field (protocol 72, chat sessions
+    /// on a branch): the shape from before it still decodes, as "no branch", and a start that
+    /// names one round-trips. The version was raised too, because a peer that predates the field
+    /// would drop it and start in the main checkout.
+    #[test]
+    fn a_conversation_start_from_before_branch_still_decodes() {
+        #[derive(Serialize)]
+        enum OldCommand {
+            ConversationStart {
+                target: crate::conversation::StartTarget,
+            },
+        }
+        let target = crate::conversation::StartTarget::Conversation {
+            id: crate::conversation::ConversationId(5),
+            generation: 2,
+        };
+        let bytes = encode(&OldCommand::ConversationStart {
+            target: target.clone(),
+        })
+        .unwrap();
+        let Command::ConversationStart { target: read, branch } = decode(&bytes).unwrap() else {
+            panic!("expected a conversation start")
+        };
+        assert_eq!((read, branch), (target.clone(), None));
+
+        let bytes = encode(&Command::ConversationStart {
+            target,
+            branch: Some("chat/one".into()),
+        })
+        .unwrap();
+        assert!(matches!(
+            decode::<Command>(&bytes).unwrap(),
+            Command::ConversationStart { branch: Some(ref b), .. } if b == "chat/one"
+        ));
     }
 
     /// A `Snapshot` as a daemon built before `daemon_id` encoded it.
@@ -1691,7 +1849,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 69);
+        assert_eq!(PROTOCOL_VERSION, 72);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()

@@ -97,8 +97,9 @@ and compares it cell for cell with the reference in `client/reference_frames/<pr
 header lists the masks (the pane's terminal text, the working spinner and ages the fixture
 can't pin, the sample's checkpoint kinds) and every deliberate difference from the sample. A
 failure prints each differing row as got/want. The reference frames
-(`client/reference_frames/*.txt`, `client/screen/reference.txt`, `client/screen/check_modals_frames.txt`
-and `client/screen/side_frames.txt`) are fixed fixtures. Update them by hand, in the same
+(`client/reference_frames/*.txt`, `client/screen/reference.txt` and
+`client/screen/check_modals_frames.txt`) are fixed fixtures. The sidebar's column is masked in the
+presets; its cards are tested in `screen::side` and `screen::machine_group_tests`. Update them by hand, in the same
 change, only when the design itself changes; never to make a failing test pass.
 
 The website's screenshots are real frames: `client/site_frames.rs` draws made-up app states
@@ -127,7 +128,16 @@ Anything that reaches another machine is tested through a stand-in for `ssh`, ne
 server. `apps/tui/examples/fake-ssh.rs` is a small program (no `sh`, except in `remote-sh` mode, so it runs the same on
 Windows, Linux and macOS): point `MAITTY_SSH` at it and it ignores the host and every option,
 then runs the real `maitty proxy` against the socket the test chose. `cargo test` builds it
-with the tests (`apps/tui/tests/fake_ssh.rs` builds it itself when run with `--test`).
+with the tests (`apps/tui/tests/fake_ssh.rs` builds it itself when run with `--test`). The code that
+builds and locates the shim (`fake_ssh()`) and runs a command with a time limit (`output_within()`)
+is in `crates/maitty-test-support`, a dev-dependency any crate's tests can use, with `Sandbox`: a
+private daemon's environment, the shim's per-machine arguments (`--mode`, `--maitty`, `--env`,
+`--calls`, which let one process hold several machines), and killing the last connection. The
+desktop host's `hub` tests use it.
+The host also has an end-to-end test without a window (`hub/tests/end_to_end.rs`): a real daemon for
+this computer and two behind the shim, the hub and the same `react` the window's glue runs; it checks
+snapshots per machine, typing, a pane's replay, and a pane replayed again after one machine's link is
+killed while the others are never touched.
 
 | `MAITTY_FAKE_SSH_MODE` | The shim |
 | --- | --- |
@@ -189,7 +199,7 @@ is pure and runs everywhere. The one unix-only assertion (the `0755` mode) is `#
 runs in the fake home, and the tests check that the file arrives whole and private, that two pastes are two
 files, that an image over 25 MB never starts ssh, that a machine reached by a custom transport is told it
 needs ssh, and that a failed login says so and keeps nothing. The script itself is also run directly
-(`maitty-core`'s `remote_paste` tests: a short upload is not kept, a bad name writes nothing, old pastes are
+(`maitty-machines`' `remote_paste` tests: a short upload is not kept, a bad name writes nothing, old pastes are
 cleared, only pastes are cleared). They need `sh` with `wc mv mktemp cat tr printf rm mkdir find` and print
 `skipped:` and pass when there is none.
 
@@ -229,7 +239,7 @@ and the pane replays with the same pane id; one machine dying leaves another ans
 machine that is dialled again with its hung ssh killed; no daemon means unreachable and no daemon
 started; a refused machine stays parked until a retry. They use tiny backoff and no sleeps for
 correctness; a timeout only turns a hang into a failure. The watchdog and the state machine are
-unit tests (`client/connections.rs`, `client/link/state.rs`) with durations of tens of
+unit tests (`connections.rs`, `link/state.rs` in `maitty-machines`) with durations of tens of
 milliseconds and no clock.
 
 `client/remote_status_tests.rs` is the same pattern from inside the client: a real daemon behind the

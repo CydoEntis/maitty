@@ -5,12 +5,12 @@ import { SELF_DISMISS_MS, sessionNoticeFor } from './noticeForSession'
 function session(status: SessionStatus, asking = ''): SessionView {
   return { id: 't1', name: null, title: '(root)', process: 'codex', cwdLabel: '(root)', status, asking } as unknown as SessionView
 }
-const project = { name: 'maitty', color: '#3ad' }
+const project = { name: 'maitty' }
 
 describe('session notice', () => {
   it('names the kind and project in the title, and what it is asking in the body', () => {
     const notice = sessionNoticeFor(session('needs', '$ git push origin main'), project, { open: vi.fn(), allow: vi.fn() })
-    expect(notice).toMatchObject({ kind: 'needs', title: 'Needs you · maitty', body: 'codex in (root): $ git push origin main', color: '#3ad' })
+    expect(notice).toMatchObject({ kind: 'needs', title: 'Needs you · maitty', body: 'codex in (root): $ git push origin main' })
   })
 
   it('offers Allow once, then Open, for a session stopped on a choice, and waits for you', () => {

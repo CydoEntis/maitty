@@ -34,6 +34,10 @@ export type Conversation = {
   permission: string
   context: number | null
   nativePane: number | null
+  /** The number the host gave the machine this session lives on; absent for this computer. */
+  machine?: number
+  /** The machine's name; absent for this computer. */
+  machineName?: string
   hasDiff: boolean
   isGitRepository?: boolean
   // Put away in any client; the daemon keeps it running.
@@ -52,6 +56,12 @@ export type Conversation = {
   /** The last prompt the agent in a terminal session was given, as one line; empty when unknown. */
   summary?: string
   details?: TerminalDetails
+  /**
+   * The daemon conversation that carries this terminal session's structured events, when it holds
+   * one (a conversation whose native terminal is this pane). The chat view reads and writes
+   * through it; without it the session has no chat.
+   */
+  chat?: { conversation: number; generation: number; /** Follows an agent the user started in the terminal (ADR 0052): the chat reads, it does not write. */ readOnly?: boolean }
 }
 
 export type Message = {

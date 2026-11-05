@@ -6,7 +6,7 @@ export const SELF_DISMISS_MS = 7000
 
 const LABEL = { needs: 'Needs you', done: 'Finished', error: 'Error' } as const
 
-type Project = { name: string; color: string } | undefined
+type Project = { name: string } | undefined
 type Handlers = {
   open: () => void
   /** Types "yes, once" into the session's own prompt; null when there is nothing to allow. */
@@ -25,7 +25,6 @@ export function sessionNoticeFor(session: SessionView, project: Project, handler
   const allow = kind === 'needs' && session.asking !== '' ? handlers.allow : null
   return {
     kind,
-    color: project?.color ?? 'var(--accent)',
     title: `${LABEL[kind]} · ${project?.name ?? displayName(session)}`,
     body,
     actions: [...(allow ? [{ label: 'Allow once', primary: true, onClick: allow }] : []), { label: 'Open', onClick: handlers.open }],

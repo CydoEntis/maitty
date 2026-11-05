@@ -360,6 +360,8 @@ pub(super) fn world(stage: Stage) -> App {
     let cfg = Config {
         ui: crate::config::Ui {
             padding: "0".into(),
+            // The reference has no tool rail, and its sheets sit beside the panes.
+            tool_rail: false,
             ..Default::default()
         },
         ..Default::default()

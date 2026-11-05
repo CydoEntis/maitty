@@ -9,18 +9,8 @@ use crate::client::menu::Act;
 use crate::client::{Bg, Btn, PromptKind, View};
 use crate::references::{self as refs, Listing, Reference};
 
-/// Rows under the list: a gap and the hints.
-const FOOT_ROWS: u16 = 2;
-const HINTS: [(&str, &str); 6] = [
-    ("Enter", "open"),
-    ("p", "paste image"),
-    ("n", "add file"),
-    ("d", "remove"),
-    ("y", "copy path"),
-    ("Esc", "close"),
-];
-/// With nothing listed, only the ways to add one.
-const EMPTY_HINTS: [(&str, &str); 3] = [("p", "paste image"), ("n", "add file"), ("Esc", "close")];
+/// Rows under the list: none; the mode bar carries the keys.
+const FOOT_ROWS: u16 = 0;
 /// Below this width a row shows its name and age only.
 const FULL_ROW_FROM: u16 = 44;
 const EMPTY: &str = "No references yet · paste an image or add a file";
@@ -372,7 +362,6 @@ pub(in crate::client) fn draw_references(
                 &[seg("Agents find them through MCP.", c.fg(t.muted))],
                 list.right(),
             );
-            return status_bar(buf, body, t, &EMPTY_HINTS, &[]);
         }
         Some(Ok(l)) => {
             let skipped = skipped_note(l);
@@ -392,7 +381,6 @@ pub(in crate::client) fn draw_references(
             draw_rows(app, buf, rows, bg, t, v);
         }
     }
-    status_bar(buf, body, t, &HINTS, &[]);
 }
 
 /// What the listing left out, for the line under the rows.

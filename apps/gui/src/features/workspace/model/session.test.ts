@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '@/data/preview'
-import { displayName, groupInitials, groupSessions, processName, statusPhrase, tildePath, toSessionView, truncatePrompt, worstSession } from './session'
+import { displayName, groupInitials, groupSessions, processName, statusText, tildePath, toSessionView, truncatePrompt, worstSession } from './session'
 import { formatAgo, formatElapsed, markSeen, trackSessions } from './tracking'
-import { HOTKEY_GROUPS, hotkeyRows, matchShortcut } from './shortcuts'
 import { folderExists, resolveStartFolder } from './startFolder'
 
 vi.mock('@/api/daemon', () => ({
@@ -27,7 +26,7 @@ describe('session view', () => {
   })
 
   it('names a shell by where it is within its repo, or by its ~ path outside one', () => {
-    expect(toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty`), HOME)).toMatchObject({ title: '(root)', promptPath: 'maitty', repoName: 'maitty', branch: 'main', process: 'shell' })
+    expect(toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty`), HOME)).toMatchObject({ title: 'main', promptPath: 'maitty', repoName: 'maitty', branch: 'main', process: 'shell' })
     expect(toSessionView(repo(1, `${HOME}/maitty`, `${HOME}/maitty/crates/maitty-core/src`), HOME)).toMatchObject({ title: 'maitty-core/src', promptPath: 'maitty/crates/maitty-core/src' })
     expect(toSessionView(conversation(1, `${HOME}/Downloads`, { agent: 'codex' }), HOME)).toMatchObject({ title: '~/Downloads', repoName: null, branch: null, process: 'codex' })
   })
@@ -63,12 +62,12 @@ describe('session view', () => {
   })
 
   it('says each status in words on the row', () => {
-    const view = (status: Conversation['status'], extra: Partial<Conversation> = {}) => statusPhrase(toSessionView(conversation(1, HOME, { status, ...extra }), HOME))
-    expect(view('working')).toBe(' · working')
-    expect(view('needs-you')).toBe(' · needs you')
-    expect(view('done')).toBe(' · finished')
-    expect(view('idle')).toBe(' · idle')
-    expect(view('unknown', { lastKnownStatus: 'working' })).toBe(' · last seen working')
+    const view = (status: Conversation['status'], extra: Partial<Conversation> = {}) => statusText(toSessionView(conversation(1, HOME, { status, ...extra }), HOME))
+    expect(view('working')).toBe('working')
+    expect(view('needs-you')).toBe('needs you')
+    expect(view('done')).toBe('finished')
+    expect(view('idle')).toBe('idle')
+    expect(view('unknown', { lastKnownStatus: 'working' })).toBe('last seen working')
   })
 
   it('reports what needs you first, then what is working', () => {
@@ -148,54 +147,6 @@ describe('session tracking', () => {
     expect(formatAgo(42 * 60_000)).toBe('42m')
     expect(formatAgo(3 * 3_600_000)).toBe('3h')
     expect(formatAgo(2 * 86_400_000)).toBe('2d')
-  })
-})
-
-describe('window shortcuts', () => {
-  const key = (k: string, extra: Partial<KeyboardEvent> = {}) => ({ key: k, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...extra })
-
-  it('uses Ctrl on Windows and Linux', () => {
-    expect(matchShortcut(key('t', { ctrlKey: true }), false)).toBe('new-session')
-    expect(matchShortcut(key('d', { ctrlKey: true }), false)).toBe('split-right')
-    expect(matchShortcut(key('D', { ctrlKey: true, shiftKey: true }), false)).toBe('split-down')
-    expect(matchShortcut(key('[', { ctrlKey: true }), false)).toBe('focus-previous')
-    expect(matchShortcut(key(']', { ctrlKey: true }), false)).toBe('focus-next')
-    expect(matchShortcut(key('w', { ctrlKey: true }), false)).toBe('close')
-    expect(matchShortcut(key('b', { ctrlKey: true }), false)).toBe('toggle-sidebar')
-    expect(matchShortcut(key(',', { ctrlKey: true }), false)).toBe('settings')
-    expect(matchShortcut(key('Tab', { ctrlKey: true }), false)).toBe('next-tab')
-    expect(matchShortcut(key('Tab', { ctrlKey: true, shiftKey: true }), false)).toBe('previous-tab')
-  })
-
-  it('passes every other key to the shell', () => {
-    expect(matchShortcut(key('c', { ctrlKey: true }), false)).toBeNull()
-    expect(matchShortcut(key('l', { ctrlKey: true }), false)).toBeNull()
-    expect(matchShortcut(key('t'), false)).toBeNull()
-    expect(matchShortcut(key('t', { ctrlKey: true, altKey: true }), false)).toBeNull()
-  })
-
-  it('uses Command on macOS and leaves Ctrl to the shell', () => {
-    expect(matchShortcut(key('t', { metaKey: true }), true)).toBe('new-session')
-    expect(matchShortcut(key('d', { ctrlKey: true }), true)).toBeNull()
-    expect(matchShortcut(key('Tab', { ctrlKey: true }), true)).toBe('next-tab')
-  })
-
-  it('lists the hotkeys in the platform’s words', () => {
-    expect(hotkeyRows(true)[2]).toEqual({ action: 'Split down', group: 'Panes', chords: [['⌘', '⇧', 'D']] })
-    expect(hotkeyRows(false)[2]).toEqual({ action: 'Split down', group: 'Panes', chords: [['Ctrl', 'Shift', 'D']] })
-  })
-
-  it('opens the shortcut overlay with the primary key and a slash', () => {
-    expect(matchShortcut(key('/', { ctrlKey: true }), false)).toBe('shortcuts')
-    expect(matchShortcut(key('/', { metaKey: true }), true)).toBe('shortcuts')
-    expect(matchShortcut(key('/'), false)).toBeNull()
-  })
-
-  it('puts every hotkey in a group of the shortcut overlay, and every group has some', () => {
-    const rows = hotkeyRows(false)
-    expect(rows.every((row) => HOTKEY_GROUPS.includes(row.group))).toBe(true)
-    for (const group of HOTKEY_GROUPS) expect(rows.some((row) => row.group === group)).toBe(true)
-    expect(rows.find((row) => row.action === 'Keyboard shortcuts')).toMatchObject({ group: 'Window', chords: [['Ctrl', '/']] })
   })
 })
 

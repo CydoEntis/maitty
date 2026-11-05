@@ -85,8 +85,41 @@ pub struct ReadResult {
     pub error: Option<String>,
     pub checks: Vec<crate::protocol::CheckInfo>,
     pub approvals: Vec<ApprovalRequest>,
+    /// The most recent approvals a person already answered, oldest first, so the answer
+    /// survives a restart of the viewing app.
+    #[serde(default)]
+    pub answered_approvals: Vec<AnsweredApproval>,
     #[serde(default)]
     pub cancelling: bool,
+    /// Messages sent while a turn was running, held by the daemon in order and delivered once
+    /// each when the turn ends; the window may close and they are still delivered.
+    #[serde(default)]
+    pub queued: Vec<QueuedMessage>,
+}
+
+/// A message waiting for the running turn to end.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueuedMessage {
+    /// The sender's operation number, which names the message for `ConversationDequeue`.
+    pub operation: u64,
+    pub text: String,
+}
+
+/// The answer to a send that was queued instead of delivered.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueuedReceipt {
+    pub conversation: ConversationId,
+    pub generation: u64,
+    pub operation: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnsweredApproval {
+    pub request: ApprovalRequest,
+    pub decision: ApprovalDecision,
+    /// Unix milliseconds when the daemon relayed the answer to the provider.
+    #[serde(default)]
+    pub answered_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -428,6 +461,22 @@ pub mod tests {
             .remove("awaiting_first_user_message");
         let legacy: Conversation = serde_json::from_value(legacy).unwrap();
         assert!(!legacy.awaiting_first_user_message);
+    }
+
+    #[test]
+    fn a_read_from_before_answered_approvals_still_decodes() {
+        let read: ReadResult = serde_json::from_value(serde_json::json!({
+            "conversation": 1,
+            "generation": 2,
+            "status": "Working",
+            "receipt": null,
+            "history": { "entries": [], "next": null, "completeness": "Complete" },
+            "error": null,
+            "checks": [],
+            "approvals": []
+        }))
+        .unwrap();
+        assert!(read.answered_approvals.is_empty());
     }
 
     #[test]

@@ -9,8 +9,6 @@ export type SessionNoticeAction = {
 
 export type SessionNoticeProps = {
   kind: SessionNoticeKind
-  /** The project's own colour, shown as a dot beside the time. */
-  color: string
   title: string
   body: string
   actions: readonly SessionNoticeAction[]
@@ -19,14 +17,13 @@ export type SessionNoticeProps = {
 }
 
 /** A notification card for a session you are not looking at: the app, the project, what happened, and what you can do about it. */
-export function SessionNotice({ kind, color, title, body, actions, countdownMs, onDismiss }: SessionNoticeProps & { onDismiss: () => void }) {
+export function SessionNotice({ kind, title, body, actions, countdownMs, onDismiss }: SessionNoticeProps & { onDismiss: () => void }) {
   return (
     <div className={`mx-notice is-${kind}`} role="status">
       <span className="mx-notice-tile" aria-hidden="true">&gt;_</span>
       <div className="mx-notice-main">
         <div className="mx-notice-head">
           <span className="mx-notice-app">MAITTY</span>
-          <span className="mx-notice-dot" style={{ background: color }} aria-hidden="true" />
           <span className="mx-notice-age">now</span>
         </div>
         <div className="mx-notice-title">{title}</div>

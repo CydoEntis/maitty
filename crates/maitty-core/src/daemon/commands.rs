@@ -7,8 +7,11 @@ impl Daemon {
     /// Apply a command. `Ok(false)` means the reply is sent later (background git work).
     pub(super) fn command(&mut self, client: ClientId, cmd: Command) -> Result<bool> {
         match cmd {
-            Command::ConversationStart { target } => {
-                self.conversation_start(client, target)?;
+            Command::ConversationStart { target, branch } => {
+                match branch {
+                    Some(branch) => self.conversation_start_on_branch(client, target, branch)?,
+                    None => self.conversation_start(client, target)?,
+                }
                 return Ok(false);
             }
             Command::ConversationSend {
@@ -40,6 +43,14 @@ impl Daemon {
             }
             Command::ConversationCancel { id, generation } => {
                 self.conversation_cancel(client, id, generation)?;
+                return Ok(false);
+            }
+            Command::ConversationDequeue {
+                id,
+                generation,
+                operation,
+            } => {
+                self.conversation_dequeue(client, id, generation, operation)?;
                 return Ok(false);
             }
             Command::ConversationEnd { id, generation } => {
@@ -395,7 +406,33 @@ impl Daemon {
                 cmd,
                 split,
                 from,
+                agent,
+                prompt,
             } => {
+                // A start that names an agent is the "new agent on a branch" request: every
+                // part of it is checked here, before anything is made.
+                let cmd = if agent.is_some() || prompt.is_some() {
+                    if cmd.is_some() {
+                        anyhow::bail!("name an agent or give a command, not both");
+                    }
+                    if let Some(problem) = branch_agent::branch_problem(&branch) {
+                        anyhow::bail!("{problem}");
+                    }
+                    let project = from
+                        .clone()
+                        .map(clean_path)
+                        .filter(|d| d.is_dir() && self.is_known_project(d))
+                        .ok_or_else(|| anyhow::anyhow!("that is not a project in the app"))?;
+                    if crate::gitfs::head(&project).is_none() {
+                        anyhow::bail!("{} is not in a git repository", project.display());
+                    }
+                    Some(
+                        branch_agent::start_line(&self.cfg, agent.as_deref(), prompt.as_deref())
+                            .map_err(anyhow::Error::msg)?,
+                    )
+                } else {
+                    cmd
+                };
                 let by =
                     self.starting(client, &helpers::task_label(cmd.as_deref(), Some(&branch)))?;
                 let ws_dir = self.ws_mut(ws)?.cwd.clone();
@@ -889,6 +926,8 @@ impl Daemon {
                 } else {
                     self.save_outputs(true);
                 }
+                // Usage is history, not session state: it is kept even with --forget.
+                self.usage_store.save_now(term::unix_now());
                 for t in self.terms.values_mut() {
                     t.kill_tree();
                 }

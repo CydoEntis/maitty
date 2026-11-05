@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke, isTauri } from '@tauri-apps/api/core'
-import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, loadDaemonRestartStatus, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
+import { forgetMachines, registerMachine } from './machines'
+import { startTerminalSession, loadTerminalScreen, loadTerminalReplay, sendTerminalInput, resizeTerminal, archiveConversationOnDaemon, renameConversationOnDaemon, classifySubmissionFailure, createConversation, loadClaudeExecutablePath, loadCodexExecutablePath, loadConversationDiff, loadConversationFile, loadConversationFiles, loadConversations, conversationsFromSnapshot, markSeenOnDaemon, pinSessionOnDaemon, archiveSessionOnDaemon, loadDaemonRestartStatus, loadMachines, loadMessages, restartMismatchedDaemon, resumeConversation } from './daemon'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -476,6 +477,34 @@ describe('terminal sessions shown beside chats', () => {
     expect(sessions[2]).toMatchObject({ id: 't10', agent: 'gemini' })
   })
 
+  it('links a terminal to the daemon conversation whose native terminal it is, and only on this computer', async () => {
+    const summary = (overrides: Record<string, unknown>) => ({ id: 40, generation: 3, execution: 'Native', provider: 'Claude', cwd: '/home/casey/sample', worktree: null, state: 'Running', status: 'Idle', native_term: null, checks: [], ...overrides })
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [summary({ id: 40, generation: 3, native_term: 5 }), summary({ id: 41, native_term: null })],
+      workspaces: [],
+      terms: { '5': term({}), '6': term({ id: 6, agent: null }) },
+    })
+
+    const sessions = await loadConversations()
+
+    // A followed agent's chat only shows what it did (ADR 0052), so the link says it cannot send.
+    expect(sessions.find((session) => session.id === 't5')?.chat).toEqual({ conversation: 40, generation: 3, readOnly: true })
+    expect(sessions.find((session) => session.id === 't6')?.chat).toBeUndefined()
+  })
+
+  it('does not list a pane\'s conversation as a session of its own, but keeps one whose pane is not listed', async () => {
+    const summary = (overrides: Record<string, unknown>) => ({ id: 40, generation: 3, execution: 'Native', provider: 'Claude', cwd: '/home/casey/sample', worktree: null, state: 'Running', status: 'Idle', native_term: null, checks: [], ...overrides })
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [summary({ id: 40, native_term: 5 }), summary({ id: 41, native_term: 9 }), summary({ id: 42, execution: 'Structured', native_term: null })],
+      workspaces: [],
+      terms: { '5': term({}), '9': term({ id: 9, conversation_id: 41 }) },
+    })
+
+    const sessions = await loadConversations()
+
+    expect(sessions.map((session) => session.id)).toEqual(['41', '42', 't5'])
+  })
+
   it('reads, types into, resizes, names and closes a terminal session by its pane number', async () => {
     vi.mocked(invoke).mockResolvedValue(null)
     const target = { id: 't5', generation: 0 }
@@ -500,5 +529,101 @@ describe('terminal sessions shown beside chats', () => {
       ['close_terminal_session', { term: 5 }],
       ['start_terminal_session', { cwd: '/home/casey/sample', provider: 'Claude' }],
     ])
+  })
+})
+
+describe('machines', () => {
+  it('lists the machine names the host read, and nothing about where they point', async () => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(invoke).mockReset().mockResolvedValue({ names: ['build', 'box'], error: null })
+    expect(await loadMachines()).toEqual({ names: ['build', 'box'], error: null })
+    expect(invoke).toHaveBeenCalledWith('list_machines', undefined)
+  })
+
+  it('carries the host\'s error for a bad machine file', async () => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(invoke).mockReset().mockResolvedValue({ names: [], error: '[[machines]] #1: bad name' })
+    expect((await loadMachines()).error).toBe('[[machines]] #1: bad name')
+  })
+
+  it('has no machines in a plain browser', async () => {
+    vi.mocked(isTauri).mockReturnValue(false)
+    vi.mocked(invoke).mockReset()
+    expect(await loadMachines()).toEqual({ names: [], error: null })
+    expect(invoke).not.toHaveBeenCalled()
+  })
+})
+
+describe('commands for a pane, on whichever machine it is', () => {
+  const pane = { id: 't7', generation: 0 }
+  const there = { id: 'build/t7', generation: 0 }
+
+  beforeEach(() => {
+    forgetMachines()
+    registerMachine('build', 3)
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(invoke).mockReset().mockResolvedValue(null)
+  })
+
+  it('asks the host about a pane of this computer exactly as before machines', async () => {
+    await sendTerminalInput(pane, 'ls')
+    await resizeTerminal(pane, 100, 30)
+    await renameConversationOnDaemon(pane, 'api')
+    await archiveConversationOnDaemon(pane, true)
+    await markSeenOnDaemon(pane)
+    await pinSessionOnDaemon(pane, true)
+    await archiveSessionOnDaemon(pane, true)
+    expect(vi.mocked(invoke).mock.calls).toEqual([
+      ['terminal_input', { term: 7, data: [108, 115] }],
+      ['pane_terminal_resize', { term: 7, cols: 100, rows: 30 }],
+      ['rename_terminal_session', { term: 7, name: 'api' }],
+      ['close_terminal_session', { term: 7 }],
+      ['mark_terminal_seen', { term: 7 }],
+      ['pin_terminal_session', { term: 7, pinned: true }],
+      ['archive_terminal_session', { term: 7, archived: true }],
+    ])
+  })
+
+  it('names the machine to the host for a pane of another, and nothing else about the call changes', async () => {
+    await sendTerminalInput(there, 'ls')
+    await resizeTerminal(there, 100, 30)
+    await renameConversationOnDaemon(there, 'api')
+    await archiveConversationOnDaemon(there, true)
+    await markSeenOnDaemon(there)
+    await pinSessionOnDaemon(there, true)
+    await archiveSessionOnDaemon(there, false)
+    expect(vi.mocked(invoke).mock.calls).toEqual([
+      ['terminal_input', { term: 7, data: [108, 115], machine: 3 }],
+      ['pane_terminal_resize', { term: 7, cols: 100, rows: 30, machine: 3 }],
+      ['rename_terminal_session', { term: 7, name: 'api', machine: 3 }],
+      ['close_terminal_session', { term: 7, machine: 3 }],
+      ['mark_terminal_seen', { term: 7, machine: 3 }],
+      ['pin_terminal_session', { term: 7, pinned: true, machine: 3 }],
+      ['archive_terminal_session', { term: 7, archived: false, machine: 3 }],
+    ])
+  })
+
+  it('sends nothing for a machine the host has not told it of', async () => {
+    forgetMachines()
+    await expect(sendTerminalInput(there, 'ls')).rejects.toThrow('build is not one of this computer\'s machines')
+    await expect(pinSessionOnDaemon(there, true)).rejects.toThrow('build is not one of this computer\'s machines')
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('does not ask this computer\'s daemon for the screen or replay of another machine\'s pane', async () => {
+    await expect(loadTerminalScreen(there)).rejects.toThrow('The screen text is local-only in v1: the files are on build, not on this computer.')
+    await expect(loadTerminalReplay(there)).rejects.toThrow('A fresh replay is local-only in v1: the files are on build, not on this computer.')
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('lists only the terminals of another machine, with ids that name it', () => {
+    const snapshot = {
+      terms: { '7': { id: 7, agent: null, process: 'bash', status: 'Idle', cwd: '/srv', summary: '', name: 'n', label: '', pinned: false, archived: false, branch: null, root: null, conversation_id: null, popup: false, remote: null } },
+      workspaces: [],
+      conversations: [{ id: 5, generation: 1, execution: 'Structured', provider: 'Claude', cwd: '/srv', worktree: null, state: 'Running', status: 'Idle', native_term: null, checks: [] }],
+    }
+    const listed = conversationsFromSnapshot(snapshot, { id: 3, name: 'build' })
+    expect(listed.map((item) => item.id)).toEqual(['build/t7'])
+    expect(conversationsFromSnapshot(snapshot).map((item) => item.id)).toEqual(['5', 't7'])
   })
 })

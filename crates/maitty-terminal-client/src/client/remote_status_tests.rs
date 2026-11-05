@@ -125,6 +125,8 @@ impl Window {
             BOX,
             Remote {
                 name: "box".into(),
+                // The sidebar lists a machine's sessions only while its line is up.
+                state: crate::client::link::ConnectionState::Connected,
                 ..Remote::default()
             },
         );
@@ -140,6 +142,42 @@ impl Window {
         self.connections
             .send(Outgoing { machine: BOX, msg })
             .expect("the machine is connected");
+    }
+
+    /// Block until the pane's shell runs what is typed. A login shell can still be running its
+    /// profile when the pane exists, and input typed then is dropped, so each round types a
+    /// fresh probe and waits briefly for its output.
+    async fn wait_for_shell(&mut self, term: TermId) {
+        const PROBE: Duration = Duration::from_secs(2);
+        let start = std::time::Instant::now();
+        for round in 0.. {
+            let marker = format!("shell-ready-{round}");
+            self.send(ClientMsg::Input {
+                term,
+                data: format!("echo {marker}\r").into_bytes(),
+            });
+            let seen = |app: &App| {
+                app.parsers
+                    .values()
+                    .any(|p| p.screen().contents().lines().any(|l| l.trim() == marker))
+            };
+            let probe = async {
+                while !seen(&self.app) {
+                    let burst = self.connections.recv_burst(64).await;
+                    assert!(!burst.lost, "the line was lost waiting for the shell");
+                    for msg in burst.msgs {
+                        self.app.on_machine_server(BOX, msg);
+                    }
+                }
+            };
+            if tokio::time::timeout(PROBE, probe).await.is_ok() {
+                return;
+            }
+            assert!(
+                start.elapsed() < WAIT,
+                "timed out waiting for the pane's shell to run a command"
+            );
+        }
     }
 
     /// Take what the daemon says until `done` holds of the window.
@@ -239,6 +277,8 @@ fn a_remote_agents_row_is_what_its_daemon_reported_and_follows_its_next_report()
         }));
         window.until("a pane", |app| reported(app).is_some()).await;
         let term = *window.app.remotes[&BOX].snap.terms.keys().next().unwrap();
+
+        window.wait_for_shell(term).await;
 
         window.send(ask_in_pane(&sandbox, term, "use redis or memcached?"));
         window

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>html,body{margin:0;background:#090C10}a{color:#5FD4BF}a:hover{color:#8FE3D3}@keyframes cspin{to{transform:rotate(360deg)}}@keyframes cshim{from{background-position:150% 0}to{background-position:-50% 0}}@keyframes cpulse{0%{box-shadow:0 0 0 0 rgba(242,182,90,.45)}70%{box-shadow:0 0 0 4px rgba(242,182,90,0)}100%{box-shadow:0 0 0 0 rgba(242,182,90,0)}}</style>
+</helmet>
+<div style="--bg:#090C10;--main:#0D1116;--raise:#141A21;--sel:#1A212A;--line:#1B222B;--line2:#26303B;--well:#080A0D;--term:#06080B;--fg:#E8ECEF;--fg2:#B3BCC5;--muted:#8C96A1;--dim:#75808B;--accent:#5FD4BF;--accent-soft:rgba(95,212,191,.11);--accent-line:rgba(95,212,191,.5);--on-accent:#06110F;--warn:#F2B65A;--warn-soft:rgba(242,182,90,.07);--warn-line:rgba(242,182,90,.28);--danger:#F07F78;--danger-soft:rgba(240,127,120,.07);--danger-line:rgba(240,127,120,.3);--ok:#8DB89B;--ansi-blue:#82AAFF;--ansi-mag:#C3A6F2;--pane-line:rgba(255,255,255,.07);--rk:{{ rk }};--card:{{ card }};min-height:100vh;background:{{ pageBg }};color:var(--fg);font-family:Geist,system-ui,sans-serif;-webkit-font-smoothing:antialiased;padding:40px 48px 80px;box-sizing:border-box;display:flex;flex-direction:column;gap:36px">
+
+  <header style="display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap">
+    <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:6px">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.1em;color:var(--dim)">MAITTY DESKTOP · v13</span>
+      <h1 style="margin:0;font-size:28px;font-weight:600;letter-spacing:-.02em">Component reference</h1>
+      <p style="margin:0;font-size:14px;line-height:1.6;color:var(--fg2);max-width:640px;text-wrap:pretty">Every primitive in every state, in the selected look. Values match the prototype; radii scale with <span style="font-family:'Geist Mono',monospace;font-size:12.5px;color:var(--fg)">--rk</span> (1 for Flat and Glass, 0 for Tiled).</p>
+    </div>
+    <div role="radiogroup" aria-label="Look" style="display:flex;gap:2px;padding:3px;border-radius:calc(10px * var(--rk));background:var(--well);box-shadow:inset 0 0 0 1px var(--pane-line)">
+      <sc-for list="{{ looks }}" as="o" hint-placeholder-count="3"><button role="radio" aria-checked="{{ o.sel }}" onClick="{{ o.pick }}" style="all:unset;cursor:pointer;height:28px;padding:0 14px;display:flex;align-items:center;border-radius:calc(7px * var(--rk));font-size:13px;background:{{ o.bg }};color:{{ o.fg }};font-weight:{{ o.fw }};transition:background-color .16s ease,color .16s ease">{{ o.label }}</button></sc-for>
+    </div>
+  </header>
+
+  <section style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr));grid-auto-flow:dense;gap:20px">
+
+    <div style="display:flex;flex-direction:column;gap:14px;padding:20px;border-radius:calc(14px * var(--rk));background:var(--card);border:1px solid var(--pane-line)">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--dim)">BUTTONS</span>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <button style="all:unset;cursor:pointer;height:30px;padding:0 12px;display:flex;align-items:center;border-radius:calc(8px * var(--rk));background:var(--accent);color:var(--on-accent);font-size:12.5px;font-weight:600">Primary</button>
+        <button style="all:unset;cursor:pointer;height:30px;padding:0 12px;display:flex;align-items:center;border-radius:calc(8px * var(--rk));background:var(--raise);box-shadow:inset 0 0 0 1px var(--pane-line);color:var(--fg);font-size:12.5px">Secondary</button>
+        <button style="all:unset;cursor:pointer;height:30px;padding:0 12px;display:flex;align-items:center;border-radius:calc(8px * var(--rk));color:var(--muted);font-size:12.5px" style-hover="color:var(--fg);background:rgba(255,255,255,.05)">Ghost</button>
+        <button style="all:unset;cursor:pointer;height:30px;padding:0 12px;display:flex;align-items:center;border-radius:calc(8px * var(--rk));color:var(--danger);font-size:12.5px;background:var(--danger-soft);box-shadow:inset 0 0 0 1px var(--danger-line)">End session? Click again</button>
+        <button style="all:unset;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:calc(8px * var(--rk));color:var(--muted)" style-hover="background:rgba(255,255,255,.09);color:var(--fg)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4.5" width="18" height="15" rx="2.5"></rect><path d="M12 4.5v15"></path></svg></button>
+        <button style="all:unset;height:30px;padding:0 12px;display:flex;align-items:center;border-radius:calc(8px * var(--rk));background:var(--accent);color:var(--on-accent);font-size:12.5px;font-weight:600;opacity:.45">Disabled</button>
+        <button style="all:unset;height:30px;padding:0 12px;display:flex;align-items:center;border-radius:calc(8px * var(--rk));background:var(--raise);color:var(--fg);font-size:12.5px;outline:2px solid var(--accent);outline-offset:2px">Focused</button>
+      </div>
+      <span style="font-size:12px;color:var(--dim)">30px tall · 12.5px · press scale .97 · danger always needs a second click.</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;padding:20px;border-radius:calc(14px * var(--rk));background:var(--card);border:1px solid var(--pane-line)">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--dim)">INPUTS</span>
+      <div style="height:34px;display:flex;align-items:center;padding:0 12px;border-radius:calc(9px * var(--rk));background:var(--well);box-shadow:inset 0 0 0 1px var(--pane-line);font-family:'Geist Mono',monospace;font-size:12.5px;color:var(--dim)">~/code</div>
+      <div style="height:34px;display:flex;align-items:center;padding:0 12px;border-radius:calc(9px * var(--rk));background:var(--well);box-shadow:inset 0 0 0 1.5px var(--accent-line),0 0 0 3px var(--accent-soft);font-family:'Geist Mono',monospace;font-size:12.5px;color:var(--fg)">~/dev/AeVoxGrowth<span style="width:1.5px;height:15px;background:var(--accent);margin-left:1px"></span></div>
+      <div style="display:flex;flex-direction:column;gap:5px"><div style="height:34px;display:flex;align-items:center;padding:0 12px;border-radius:calc(9px * var(--rk));background:var(--well);box-shadow:inset 0 0 0 1.5px var(--danger-line);font-family:'Geist Mono',monospace;font-size:12.5px;color:var(--fg)">~/code/nope</div><span style="font-size:11.5px;color:var(--danger)">Folder not found</span></div>
+      <div style="height:30px;display:flex;align-items:center;gap:7px;padding:0 9px;border-radius:calc(8px * var(--rk));background:rgba(255,255,255,.035);box-shadow:inset 0 0 0 1px var(--pane-line);font-size:12.5px;color:var(--dim)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><span style="flex:1">Filter sessions</span><kbd style="height:18px;padding:0 5px;display:inline-flex;align-items:center;border-radius:calc(4px * var(--rk));border:1px solid var(--line2);font-family:Geist,sans-serif;font-size:10.5px">/</kbd></div>
+      <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--muted)">Inline rename</span><span style="flex:1;height:22px;display:flex;align-items:center;padding:0 7px;border-radius:calc(6px * var(--rk));background:var(--well);box-shadow:inset 0 0 0 1.5px var(--accent-line),0 0 0 3px var(--accent-soft);font-size:13px"><span style="background:rgba(95,212,191,.3)">Growth Tests</span></span></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;padding:20px;border-radius:calc(14px * var(--rk));background:var(--card);border:1px solid var(--pane-line)">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--dim)">SWITCH · SEGMENTED · KEYCAPS</span>
+      <div style="display:flex;align-items:center;gap:16px">
+        <span style="width:30px;height:17px;border-radius:999px;background:var(--accent);position:relative"><span style="position:absolute;top:2px;left:15px;width:13px;height:13px;border-radius:50%;background:#fff"></span></span>
+        <span style="width:30px;height:17px;border-radius:999px;background:var(--line2);position:relative"><span style="position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff"></span></span>
+        <span style="width:30px;height:17px;border-radius:999px;background:var(--line2);position:relative;opacity:.45"><span style="position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff"></span></span>
+      </div>
+      <div style="display:flex;gap:2px;padding:2px;border-radius:calc(8px * var(--rk));background:var(--well);box-shadow:inset 0 0 0 1px var(--pane-line);align-self:flex-start"><span style="height:26px;padding:0 10px;display:flex;align-items:center;border-radius:calc(6px * var(--rk));background:var(--raise);font-size:12px;font-weight:500">Tree</span><span style="height:26px;padding:0 10px;display:flex;align-items:center;font-size:12px;color:var(--muted)">Names</span><span style="height:26px;padding:0 10px;display:flex;align-items:center;font-size:12px;color:var(--muted)">Icons</span><span style="height:26px;padding:0 10px;display:flex;align-items:center;font-size:12px;color:var(--muted)">Stacked</span></div>
+      <div style="display:flex;gap:4px;align-items:center"><sc-for list="{{ keys }}" as="k" hint-placeholder-count="4"><kbd style="min-width:22px;height:22px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0 6px;border-radius:calc(6px * var(--rk));background:linear-gradient(180deg,#1C232B,var(--raise));border:1px solid var(--line2);border-bottom-width:2.5px;font-family:Geist,sans-serif;font-size:11.5px;color:var(--fg2)">{{ k }}</kbd></sc-for></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;padding:20px;border-radius:calc(14px * var(--rk));background:var(--card);border:1px solid var(--pane-line)">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--dim)">STATUS · BADGE · PILL · WORD</span>
+      <sc-for list="{{ states }}" as="s" hint-placeholder-count="6">
+        <div style="display:grid;grid-template-columns:90px 34px 1fr auto;align-items:center;gap:10px">
+          <span style="font-size:12.5px;color:var(--fg2)">{{ s.name }}</span>
+          <span style="position:relative;width:24px;height:24px"><span style="width:24px;height:24px;border-radius:calc(7px * var(--rk));background:linear-gradient(140deg,#F29A6E,#D8613A);display:flex;align-items:center;justify-content:center;font-size:12px;color:#FFF6EF">✻</span><span style="position:absolute;right:-5px;bottom:-5px;width:14px;height:14px;border-radius:calc(4px * var(--rk));background:{{ s.bBg }};border:{{ s.bBd }};box-shadow:0 0 0 2px var(--main);display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:9px;font-weight:700;color:{{ s.bFg }};animation:{{ s.bAnim }}">{{ s.glyph }}</span></span>
+          <span style="justify-self:start;height:24px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:999px;background:{{ s.pBg }};box-shadow:inset 0 0 0 1px {{ s.pRing }};font-size:11.5px;font-weight:500;color:{{ s.c }}">{{ s.pill }}</span>
+          <span style="font-size:11.5px;color:{{ s.c }}">{{ s.word }}</span>
+        </div>
+      </sc-for>
+      <span style="font-size:12px;color:var(--dim)">Shape + word, never color alone. Amber only for needs-you; red only for failure.</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;padding:20px;border-radius:calc(14px * var(--rk));background:var(--card);border:1px solid var(--pane-line)">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--dim)">SIDEBAR · PROJECT + MAIN ROW + TREE</span>
+      <div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 8px;border-radius:calc(9px * var(--rk))"><span style="font-size:9px;color:var(--dim);transform:rotate(90deg)">▶</span><span style="width:22px;height:22px;border-radius:calc(6px * var(--rk));background:linear-gradient(140deg,#6FE0CB,#2E9C88);display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="#06110F"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg></span><span style="font-size:13.5px;font-weight:600">AeVoxGrowth</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--dim)">main</span><span style="flex:1"></span><span style="font-size:11px;color:var(--warn)">1 needs you</span><span style="min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;border-radius:999px;background:rgba(255,255,255,.06);font-size:10.5px;display:flex;align-items:center;justify-content:center;color:var(--muted)">3</span></div>
+      <sc-for list="{{ rows }}" as="r" hint-placeholder-count="3">
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:6px 8px;border-radius:calc(9px * var(--rk));background-color:{{ r.bg }};background-image:{{ r.sh }};background-size:250% 100%;box-shadow:{{ r.ring }};transform:{{ r.lift }};animation:{{ r.anim }}">
+          <span style="width:24px;height:24px;flex:none;border-radius:calc(7px * var(--rk));background:{{ r.icBg }};display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:11px;font-weight:600;color:{{ r.icFg }}">{{ r.ic }}</span>
+          <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px"><span style="display:flex;gap:8px;font-size:13.5px"><span style="flex:1;color:var(--fg)">{{ r.title }}</span><span style="font-size:11.5px;color:var(--dim)">{{ r.meta }}</span></span><span style="font-size:12px;color:{{ r.subC }}"><span style="font-family:'Geist Mono',monospace;font-size:11.5px">{{ r.proc }}</span> · {{ r.sub }}</span></span>
+          <span style="font-size:10.5px;color:var(--dim);align-self:center">{{ r.state }}</span>
+        </div>
+      </sc-for>
+      <div style="position:relative;display:flex;flex-direction:column">
+        <sc-for list="{{ tree }}" as="t" hint-placeholder-count="2"><div style="position:relative;height:26px;display:flex;align-items:center;gap:8px;padding:0 8px 0 34px;border-radius:calc(7px * var(--rk));background:{{ t.bg }}"><span style="position:absolute;left:19px;top:0;bottom:{{ t.vEnd }};width:1px;background:var(--line2)"></span><span style="position:absolute;left:19px;top:7px;width:9px;height:6px;border-left:1px solid var(--line2);border-bottom:1px solid var(--line2);border-bottom-left-radius:5px"></span><span style="width:12px;text-align:center;font-size:11px;color:{{ t.mc }}">{{ t.mark }}</span><span style="font-family:'Geist Mono',monospace;font-size:12px;font-weight:500;color:var(--fg2)">{{ t.proc }}</span><span style="flex:1;font-size:12px;color:var(--dim)">{{ t.where }}</span><span style="font-size:11px;color:{{ t.mc }}">{{ t.word }}</span></div></sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;padding:20px;border-radius:calc(14px * var(--rk));background:var(--card);border:1px solid var(--pane-line)">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--dim)">TABS</span>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><div style="height:36px;display:flex;align-items:center;gap:8px;padding:0 8px 0 7px;border-radius:calc(10px * var(--rk));background-color:{{ t.bg }};background-image:{{ t.sh }};background-size:250% 100%;box-shadow:{{ t.ring }};transform:{{ t.lift }};animation:{{ t.anim }};font-size:13px;color:{{ t.fg }}"><span style="width:22px;height:22px;border-radius:calc(6px * var(--rk));background:{{ t.icBg }};display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:10px;font-weight:600;color:{{ t.icFg }}">{{ t.ic }}</span><span style="font-weight:600">{{ t.proc }}</span><span style="color:var(--muted)">{{ t.title }}</span><span style="font-size:11px;color:{{ t.mc }}">{{ t.mark }}</span><span style="color:var(--dim);opacity:{{ t.xOp }}">×</span></div></sc-for>
+      </div>
+      <span style="font-size:12px;color:var(--dim)">Inactive · hover (lift 1px, × visible) · active (raised + hairline) · active + working (shimmer).</span>
+    </div>
+
+    <div style="grid-column:span 2;display:flex;flex-direction:column;gap:14px;padding:20px;border-radius:calc(14px * var(--rk));background:var(--card);border:1px solid var(--pane-line)">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--dim)">PANE HEADER · STATUS PILL</span>
+      <div style="position:relative;border-radius:calc(12px * var(--rk));background:var(--term);border:1px solid var(--accent-line);box-shadow:0 0 0 3px var(--accent-soft);overflow:hidden">
+        <div style="height:44px;display:flex;align-items:center;gap:9px;padding:0 6px 0 12px;border-bottom:1px solid var(--pane-line)"><span style="width:20px;height:20px;border-radius:calc(6px * var(--rk));background:linear-gradient(140deg,#F29A6E,#D8613A);display:flex;align-items:center;justify-content:center;font-size:11px;color:#FFF6EF">✻</span><span style="font-size:14px;font-weight:600">claude</span><span style="font-size:13px;font-weight:500;color:var(--accent);white-space:nowrap">Growth Tests</span><span style="flex:1;min-width:0;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">~/dev/AeVoxGrowth</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap">238k · 24% · $4.97</span></div>
+        <div style="height:96px;padding:10px 14px;font-family:'Geist Mono',monospace;font-size:12.5px;line-height:1.6;color:var(--fg2)"><div style="background:rgba(232,236,239,.18);color:var(--fg);padding:0 4px;margin:0 -4px">❯ keep working</div><div>● Running 1 shell command…</div><div style="color:#E8806A">✻ Germinating… (1m 11s · ↓ 11.1k tokens)</div></div>
+        <span style="position:absolute;right:12px;bottom:10px;height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:999px;background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent-line);font-size:11.5px;font-weight:500;color:var(--accent)">⠹ Working · 1:09</span>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;padding:20px;border-radius:calc(14px * var(--rk));background:var(--card);border:1px solid var(--pane-line)">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--dim)">MENU · TOAST</span>
+      <div style="width:250px;display:flex;flex-direction:column;padding:5px;border-radius:calc(12px * var(--rk));background:var(--main);border:1px solid var(--line2);box-shadow:0 16px 40px rgba(0,0,0,.5)">
+        <span style="height:26px;display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--dim)">GROWTH TESTS</span>
+        <sc-for list="{{ menu }}" as="m" hint-placeholder-count="5"><sc-if value="{{ m.sep }}" hint-placeholder-val="{{ false }}"><div style="height:1px;margin:4px 6px;background:var(--pane-line)"></div></sc-if><sc-if value="{{ m.item }}" hint-placeholder-val="{{ true }}"><div style="height:32px;display:flex;align-items:center;padding:0 10px;border-radius:calc(7px * var(--rk));font-size:13px;color:{{ m.c }};background:{{ m.bg }};outline:{{ m.ol }};outline-offset:-2px"><span style="flex:1">{{ m.label }}</span><span style="font-size:11px;color:var(--dim)">{{ m.sub }}</span></div></sc-if></sc-for>
+      </div>
+      <div style="align-self:flex-start;position:relative;display:flex;align-items:center;gap:12px;padding:6px 6px 6px 14px;border-radius:calc(12px * var(--rk));background:var(--raise);border:1px solid var(--line2);font-size:12.5px;overflow:hidden"><span>Tab closed</span><span style="color:var(--dim)">sessions keep running</span><span style="height:26px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:calc(7px * var(--rk));background:var(--accent-soft);color:var(--accent);font-weight:600">Undo <span style="font-size:11px;opacity:.7">Ctrl Z</span></span><span style="position:absolute;left:0;bottom:0;height:2px;width:62%;background:var(--accent);opacity:.5"></span></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;padding:20px;border-radius:calc(14px * var(--rk));background:var(--card);border:1px solid var(--pane-line)">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--dim)">POPOVER · CARD · ERROR</span>
+      <div style="position:relative;width:260px;display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:calc(12px * var(--rk));background:var(--main);border:1px solid var(--line2);box-shadow:0 16px 44px rgba(0,0,0,.5)"><span style="position:absolute;left:-5px;top:18px;width:9px;height:9px;background:var(--main);border-left:1px solid var(--line2);border-bottom:1px solid var(--line2);transform:rotate(45deg)"></span><span style="display:flex;gap:8px;font-size:13px;font-weight:600"><span style="flex:1">AeVoxGrowth · Growth Tests</span><span style="font-size:11px;color:var(--accent)">⠹ 1:09</span></span><span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:var(--fg2)">claude · ~/dev/AeVoxGrowth</span><span style="font-size:11px;color:var(--dim)">In tab 1 · right-click to rename or pin</span></div>
+      <div style="display:flex;gap:12px;padding:14px;border-radius:calc(12px * var(--rk));background:rgba(255,255,255,.025);box-shadow:inset 0 0 0 1px var(--pane-line)"><span style="width:30px;height:30px;flex:none;border-radius:calc(9px * var(--rk));background:linear-gradient(160deg,#FFA29B,#E0605A);display:flex;align-items:center;justify-content:center;font-weight:700;color:#3A0C09">!</span><span style="display:flex;flex-direction:column;gap:4px"><span style="font-size:13.5px;font-weight:600">Can't reach maittyd</span><span style="font-size:12.5px;line-height:1.5;color:var(--fg2)">Your sessions are still running; only this panel is affected.</span><span style="display:flex;gap:6px;padding-top:4px"><span style="height:26px;padding:0 10px;display:flex;align-items:center;border-radius:calc(7px * var(--rk));background:var(--raise);box-shadow:inset 0 0 0 1px var(--pane-line);font-size:12px">Retry</span><span style="height:26px;padding:0 10px;display:flex;align-items:center;font-size:12px;color:var(--muted)">Copy details</span></span></span></div>
+    </div>
+
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;look&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Flat&quot;,&quot;Tiled&quot;,&quot;Glass&quot;],&quot;default&quot;:&quot;Glass&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  state = { look: null };
+  renderVals() {
+    const look = this.state.look || this.props.look || 'Glass';
+    const sh = 'linear-gradient(100deg,transparent 30%,rgba(95,212,191,.09) 44%,rgba(95,212,191,.18) 50%,rgba(95,212,191,.09) 56%,transparent 70%)';
+    const CL = ['linear-gradient(140deg,#F29A6E,#D8613A)', '#FFF6EF', '✻'], SH = ['linear-gradient(140deg,#3A4656,#151B23)', '#5FD4BF', '>_'], PM = ['linear-gradient(140deg,#9AD88A,#4F9E46)', '#0D2A09', 'P'];
+    const flat = look === 'Flat', tiled = look === 'Tiled';
+    return {
+      rk: tiled ? '0' : '1',
+      card: look === 'Glass' ? 'linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,0) 140px),rgba(14,18,24,.86)' : '#0D1116',
+      pageBg: look === 'Glass' ? 'radial-gradient(900px 520px at 22% 20%,rgba(92,112,100,.28),transparent 70%),radial-gradient(1100px 640px at 80% 80%,rgba(70,84,80,.3),transparent 70%),#121514' : '#090C10',
+      looks: ['Flat', 'Tiled', 'Glass'].map(l => ({ label: l, sel: l === look, bg: l === look ? 'var(--raise)' : 'transparent', fg: l === look ? 'var(--fg)' : 'var(--muted)', fw: l === look ? 500 : 400, pick: () => this.setState({ look: l }) })),
+      keys: ['Ctrl', '⇧', 'K', 'Tab'],
+      states: [
+        ['Working', 'rgba(14,18,24,1)', 'none', 'var(--accent)', '⠹', 'var(--accent-soft)', 'var(--accent-line)', 'var(--accent)', '⠹ Working · 1:09', 'last output line', 'none'],
+        ['Needs you', 'linear-gradient(160deg,#FFD27A,#EFA436)', 'none', '#3A2402', '›', 'var(--warn-soft)', 'var(--warn-line)', 'var(--warn)', 'Needs you', 'Allow git push?', 'cpulse 2.4s ease-out infinite'],
+        ['Done', 'linear-gradient(160deg,#AEE5BC,#6DB386)', 'none', '#0E2A18', '✓', 'rgba(141,184,155,.12)', 'rgba(141,184,155,.4)', 'var(--ok)', 'Done', 'finished', 'none'],
+        ['Exited', 'linear-gradient(160deg,#FFA29B,#E0605A)', 'none', '#3A0C09', '!', 'var(--danger-soft)', 'var(--danger-line)', 'var(--danger)', 'Exited', 'exited with error', 'none'],
+        ['Idle', 'var(--main)', '1.5px solid #56616C', '#56616C', '', 'rgba(255,255,255,.04)', 'var(--pane-line)', 'var(--muted)', 'Idle', 'idle', 'none'],
+        ['Unknown', 'var(--main)', '1.5px dashed var(--dim)', 'var(--dim)', '', 'rgba(255,255,255,.03)', 'var(--pane-line)', 'var(--dim)', 'Unknown', 'daemon offline', 'none']
+      ].map(([name, bBg, bBd, bFg, glyph, pBg, pRing, c, pill, word, bAnim]) => ({ name, bBg, bBd, bFg, glyph, pBg, pRing, c, pill, word, bAnim })),
+      rows: [
+        { title: 'Growth Tests', meta: '1:09', proc: 'claude', sub: 'Running 1 shell command…', subC: 'var(--muted)', state: 'selected · working', bg: 'var(--raise)', ring: flat ? 'none' : 'inset 0 0 0 1px var(--pane-line),0 4px 12px rgba(0,0,0,.25)', sh, anim: 'cshim 2.6s cubic-bezier(.4,0,.2,1) infinite', lift: 'none', icBg: CL[0], icFg: CL[1], ic: CL[2] },
+        { title: '(root)', meta: '14m', proc: 'pacman', sub: 'idle', subC: 'var(--dim)', state: 'hover', bg: 'rgba(255,255,255,.055)', ring: 'inset 0 0 0 1px rgba(255,255,255,.08)', sh: 'none', anim: 'none', lift: 'translateX(2px)', icBg: PM[0], icFg: PM[1], ic: PM[2] },
+        { title: 'worktrees/swift-lynx', meta: '6m', proc: 'claude', sub: 'finished', subC: 'var(--dim)', state: 'default', bg: 'transparent', ring: 'none', sh: 'none', anim: 'none', lift: 'none', icBg: CL[0], icFg: CL[1], ic: CL[2] }
+      ],
+      tree: [
+        { proc: 'claude', where: 'worktrees/swift-lynx', mark: '›', mc: 'var(--warn)', word: 'needs you', vEnd: '0', bg: 'transparent' },
+        { proc: 'shell', where: '(root)', mark: '●', mc: 'var(--line2)', word: '', vEnd: '50%', bg: 'rgba(255,255,255,.055)' }
+      ],
+      tabs: [
+        { proc: 'zsh', title: 'dev', fg: 'var(--muted)', bg: 'transparent', ring: 'none', lift: 'none', sh: 'none', anim: 'none', mark: '', mc: '', xOp: .3, icBg: SH[0], icFg: SH[1], ic: SH[2] },
+        { proc: 'pacman', title: 'AeVoxGrowth', fg: 'var(--fg)', bg: 'rgba(255,255,255,.075)', ring: 'inset 0 0 0 1px rgba(255,255,255,.09),0 4px 12px rgba(0,0,0,.22)', lift: 'translateY(-1px)', sh: 'none', anim: 'none', mark: '', mc: '', xOp: .9, icBg: PM[0], icFg: PM[1], ic: PM[2] },
+        { proc: 'claude', title: 'swift-lynx', fg: 'var(--fg)', bg: 'var(--raise)', ring: flat ? 'none' : 'inset 0 0 0 1px var(--pane-line),0 6px 16px rgba(0,0,0,.28)', lift: 'none', sh: 'none', anim: 'none', mark: '›', mc: 'var(--warn)', xOp: .9, icBg: CL[0], icFg: CL[1], ic: CL[2] },
+        { proc: 'claude', title: 'Growth Tests', fg: 'var(--fg)', bg: 'var(--raise)', ring: flat ? 'none' : 'inset 0 0 0 1px var(--pane-line),0 6px 16px rgba(0,0,0,.28)', lift: 'none', sh, anim: 'cshim 2.6s cubic-bezier(.4,0,.2,1) infinite', mark: '⠹', mc: 'var(--accent)', xOp: .9, icBg: CL[0], icFg: CL[1], ic: CL[2] }
+      ],
+      menu: [
+        { item: true, sep: false, label: 'Rename', sub: 'F2', c: 'var(--fg)', bg: 'rgba(255,255,255,.07)', ol: '2px solid var(--accent)' },
+        { item: true, sep: false, label: 'Pin to top', sub: '', c: 'var(--fg)', bg: 'transparent', ol: 'none' },
+        { item: false, sep: true },
+        { item: true, sep: false, label: 'Close tab', sub: 'keeps running', c: 'var(--fg)', bg: 'transparent', ol: 'none' },
+        { item: true, sep: false, label: 'End session', sub: 'stops claude', c: 'var(--danger)', bg: 'transparent', ol: 'none' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

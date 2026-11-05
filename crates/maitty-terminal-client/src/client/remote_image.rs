@@ -1,17 +1,15 @@
-//! Pasting the clipboard image into a pane of another machine. The picture is on this computer
-//! and the pane's programs run there, so the image is sent over the machine's own hardened ssh
-//! line as a file the far side keeps (`remote_paste`), and the path it names is
-//! typed into the pane, as a local paste types a local path. Run it off the UI thread: reading
-//! the clipboard and the upload both take a while.
+//! Pasting the clipboard image, or sending any file, into a pane of another machine. The file is
+//! on this computer and the pane's programs run there, so it is sent over the machine's own
+//! hardened ssh line as a file the far side keeps (`remote_paste`, ADR 0049 and 0055), and the
+//! path it names is typed into the pane, as a local paste types a local path. Run it off the UI
+//! thread: reading the clipboard and the upload both take a while.
 
 use super::{ClientTerm, clipboard_image_to_file};
-use crate::cli::machine_update::ssh_run;
 use crate::ipc::Machine;
-use crate::remote_paste::{MAX_PASTE_BYTES, paste_failure, paste_file_name, pasted_path};
-use std::time::Duration;
+use maitty_machines::remote_send;
+use std::path::Path;
 
-/// How long sending one image may take, connecting included.
-const PASTE_LIMIT: Duration = Duration::from_secs(120);
+pub(super) use maitty_machines::remote_send::{send_file, shown};
 
 /// An image kept on the far side.
 pub(super) struct Sent {
@@ -34,39 +32,8 @@ pub(super) fn send(machine: &Machine, name: &str) -> Result<Sent, String> {
     })
 }
 
-pub(super) fn upload(
-    machine: &Machine,
-    name: &str,
-    png: &std::path::Path,
-) -> Result<String, String> {
-    let bytes = std::fs::metadata(png)
-        .map_err(|e| format!("could not read the image to send: {e}"))?
-        .len();
-    if bytes > MAX_PASTE_BYTES {
-        return Err(format!(
-            "the image is {} MB, more than the {} MB that can be sent to {name}",
-            bytes.div_ceil(1024 * 1024),
-            MAX_PASTE_BYTES / (1024 * 1024)
-        ));
-    }
-    let argv = machine
-        .paste_argv(&file_name(), bytes)
-        .map_err(|e| format!("pasting an image to {name} needs ssh: {e}"))?;
-    let ran = ssh_run::run(&argv, Some(png), PASTE_LIMIT)?;
-    if ran.code == Some(0) {
-        pasted_path(&ran.stdout).map_err(|why| format!("{name}: {why}"))
-    } else {
-        Err(paste_failure(name, ran.code, &ran.stderr))
-    }
-}
-
-/// A name no other paste has: the time, and something that differs between two in a millisecond.
-fn file_name() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let salt = now.subsec_nanos() ^ std::process::id().rotate_left(16);
-    paste_file_name(now.as_millis(), salt)
+pub(super) fn upload(machine: &Machine, name: &str, png: &Path) -> Result<String, String> {
+    remote_send::upload_image(machine, name, png)
 }
 
 /// The pane a paste is for, on a machine other than this computer.

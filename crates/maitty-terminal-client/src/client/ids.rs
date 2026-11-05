@@ -2,41 +2,8 @@
 //! so a pane is only named by its machine together with its `TermId`. These never cross the wire.
 
 use super::link::ConnectionState;
-use crate::protocol::{ClientMsg, SessionKey, Snapshot, TermId, TermInfo};
-
-/// Which machine's daemon something belongs to. The window starts with only `LOCAL`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct MachineId(pub u16);
-
-impl MachineId {
-    pub const LOCAL: MachineId = MachineId(0);
-
-    /// The high bits of a motion key, so two machines' panes animate apart. Zero for this machine.
-    pub const fn motion_key(self) -> u64 {
-        (self.0 as u64) << 48
-    }
-}
-
-/// A pane, named across machines.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ClientTerm {
-    pub machine: MachineId,
-    pub term: TermId,
-}
-
-impl ClientTerm {
-    pub const fn on(machine: MachineId, term: TermId) -> Self {
-        ClientTerm { machine, term }
-    }
-
-    pub const fn local(term: TermId) -> Self {
-        ClientTerm::on(MachineId::LOCAL, term)
-    }
-
-    pub const fn motion_key(self) -> u64 {
-        self.machine.motion_key() | self.term as u64
-    }
-}
+use crate::protocol::{SessionKey, Snapshot, TermId, TermInfo};
+pub use maitty_machines::{ClientTerm, MachineId, Outgoing};
 
 /// A session row (pane or conversation), named across machines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -84,19 +51,12 @@ pub struct Remote {
     pub down_since: Option<std::time::Instant>,
 }
 
-/// A message for one machine's daemon: the send side routes by `machine`.
-#[derive(Debug)]
-pub struct Outgoing {
-    pub machine: MachineId,
-    pub msg: ClientMsg,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::client::App;
     use crate::client::reference_fixture::{Stage, world};
-    use crate::protocol::{PROTOCOL_VERSION, Surface, encode};
+    use crate::protocol::{ClientMsg, PROTOCOL_VERSION, Surface, encode};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use std::collections::{HashMap, HashSet};
@@ -148,7 +108,7 @@ mod tests {
 
     #[test]
     fn machines_do_not_change_what_goes_over_the_wire() {
-        assert_eq!(PROTOCOL_VERSION, 69);
+        assert_eq!(PROTOCOL_VERSION, 72);
         let hello = ClientMsg::Hello {
             version: PROTOCOL_VERSION,
             attach: true,
@@ -169,7 +129,7 @@ mod tests {
         let command = ClientMsg::Command(crate::protocol::Command::FocusPane { term: 3 });
         assert_eq!(
             hex(&hello),
-            "81a548656c6c6f86a776657273696f6e45a6617474616368c3a466726f6d9203a430306666aa73747275637475726564c0a773757266616365a87465726d696e616ca77265706c617973c3"
+            "81a548656c6c6f86a776657273696f6e48a6617474616368c3a466726f6d9203a430306666aa73747275637475726564c0a773757266616365a87465726d696e616ca77265706c617973c3"
         );
         assert_eq!(
             hex(&input),
@@ -216,6 +176,7 @@ mod tests {
             Remote {
                 name: "build".into(),
                 snap: there,
+                state: crate::client::link::ConnectionState::Connected,
                 ..Remote::default()
             },
         );

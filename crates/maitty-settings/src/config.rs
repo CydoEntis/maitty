@@ -159,6 +159,8 @@ pub struct Ui {
     pub sidebar: bool,
     /// "left" or "right".
     pub sidebar_position: String,
+    /// The column of tool chips (Files, Changes, Branch, References) on the right edge.
+    pub tool_rail: bool,
     /// Milliseconds after the prefix before the which-key popup shows (0 = immediately).
     pub which_key_delay_ms: u64,
     pub which_key: bool,
@@ -198,8 +200,8 @@ pub struct Ui {
     /// Older files' Cards spacing, "floating" or "tiled": read only while `layout` is unset or
     /// "cards".
     pub panes: String,
-    /// Which glyph set marks sessions and checks: "auto" (ASCII when the blocked, done and idle
-    /// icons are all ASCII, else Unicode), "unicode", "ascii" or "nerd".
+    /// Which glyph set marks sessions and checks: "dots" (a coloured dot and a word) or "unicode"
+    /// (a shape per state). Older "auto", "ascii" and "nerd" read as "dots".
     pub glyphs: String,
     /// Space between floating cards: one of `SIZES` (or a legacy value before loading).
     pub gap: String,
@@ -209,7 +211,7 @@ pub struct Ui {
     pub dim: String,
     /// The focused card's border: "accent", "bright" or "none".
     pub focus_border: String,
-    /// Whether card corners are rounded. Kept as a drawing enum internally; config writes a bool.
+    /// How round the shapes are: `full` (pills), `corners` (rounded boxes, square chips) or `off`.
     pub rounded: Rounding,
     /// Floating: each pane's border in its own colour, by its place in the tab (ADR 0027).
     pub pane_colors: bool,
@@ -221,8 +223,8 @@ pub struct Ui {
     pub retired_layout: Option<RetiredLayout>,
     /// Show `· N agents` on a working session's row when the agent reports helpers.
     pub subagent_count: bool,
-    /// The cursor's shape when the program in a pane doesn't ask for one: "terminal" (the
-    /// terminal's own), "block", "underline" or "bar" (`CURSOR_SHAPES`).
+    /// The cursor's shape when the program in a pane doesn't ask for one: "block", "underline"
+    /// or "line" (`CURSOR_SHAPES`). An older "terminal" reads as block and "bar" as line.
     pub cursor: String,
     /// That cursor blinks.
     pub cursor_blink: bool,
@@ -476,158 +478,10 @@ pub fn validate_check(n: usize, c: &CheckDef, place: &str) -> Result<()> {
     Ok(())
 }
 
-/// Longest machine name; it is typed on the command line and shown in the sidebar.
-pub const MACHINE_NAME_MAX: usize = 32;
-
-/// The name of this machine in `machine/id` addresses; no `[[machines]]` entry may take it.
-pub const LOCAL_MACHINE: &str = "local";
-
-/// Another machine, reached over ssh (`[[machines]]`). Read only from the local config, never
-/// the synced one: where it points is this computer's business.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MachineDef {
-    /// How the machine is addressed (`--on name`, `name/3`).
-    pub name: String,
-    /// The ssh destination: a host, `user@host`, or a `Host` alias from ssh's own config.
-    pub target: String,
-    /// Extra arguments for ssh, one list entry each (`["-p", "2222"]`); never split on spaces.
-    pub ssh_args: Vec<String>,
-    /// The app's command on the far side; unset, the app's own name from the remote PATH.
-    pub remote_cmd: Option<String>,
-    /// A command that carries stdin and stdout unchanged in place of ssh (`["fly", "ssh",
-    /// "console", "-C", "{command}"]`): a program and its arguments, never a shell line. The
-    /// element `{command}` is replaced by the remote command; without one it is appended last.
-    /// It is code this app runs, so it is read only from the local config.
-    pub via: Option<Vec<String>>,
-    /// Let this machine's panes write to this computer's clipboard.
-    pub clipboard: bool,
-    /// Let this machine raise notices.
-    pub notices: bool,
-    /// Let this machine play sounds.
-    pub sounds: bool,
-    /// Let an agent in a pane here reach this machine through its MCP tools (`machine` argument
-    /// or a `name/id`), within that pane's own grants.
-    pub mcp: bool,
-}
-
-/// Refuse a `[[machines]]` entry that could not name or reach a machine, so the mistake shows
-/// when the config loads. Each message names the machine and what to change.
-pub fn validate_machines(machines: &[MachineDef]) -> Result<()> {
-    validate_machines_on(machines, cfg!(windows))
-}
-
-/// `validate_machines` for a given platform, so the Windows refusal of `via` is testable anywhere.
-pub fn validate_machines_on(machines: &[MachineDef], windows: bool) -> Result<()> {
-    for (i, m) in machines.iter().enumerate() {
-        let n = i + 1;
-        validate_machine_name(n, &m.name)?;
-        anyhow::ensure!(
-            !machines[..i]
-                .iter()
-                .any(|o| o.name.eq_ignore_ascii_case(&m.name)),
-            "[[machines]] #{n}: another machine is already named `{}`; names differ by more than case",
-            m.name
-        );
-        validate_machine_route(&m.name, m)?;
-        validate_machine_via(&m.name, m, windows)?;
-    }
-    Ok(())
-}
-
-/// The element of `via` that is replaced by the remote command.
-pub const VIA_PLACEHOLDER: &str = "{command}";
-
-/// Why a `via` machine is refused on Windows, at load and at connect.
-pub const VIA_NOT_ON_WINDOWS: &str =
-    "a custom transport (`via`) is not supported on Windows in v1; use ssh";
-
-fn validate_machine_via(name: &str, m: &MachineDef, windows: bool) -> Result<()> {
-    let Some(via) = &m.via else { return Ok(()) };
-    anyhow::ensure!(
-        !windows,
-        "[[machines]] `{name}`: {VIA_NOT_ON_WINDOWS}"
-    );
-    anyhow::ensure!(
-        m.ssh_args.is_empty(),
-        "[[machines]] `{name}`: `ssh_args` has no effect with `via` (it is not ssh); remove one of them"
-    );
-    let Some(program) = via.first() else {
-        anyhow::bail!("[[machines]] `{name}`: `via` is empty; give the program and its arguments, or remove the key");
-    };
-    anyhow::ensure!(
-        !program.is_empty() && !program.starts_with('-') && program != VIA_PLACEHOLDER,
-        "[[machines]] `{name}`: the first `via` entry is the program to run (got {program:?})"
-    );
-    for word in via {
-        anyhow::ensure!(
-            !word.chars().any(char::is_control),
-            "[[machines]] `{name}`: each `via` entry is one argument without control characters (got {word:?})"
-        );
-        anyhow::ensure!(
-            !word.contains(VIA_PLACEHOLDER) || word == VIA_PLACEHOLDER,
-            "[[machines]] `{name}`: `{VIA_PLACEHOLDER}` must be an entry of its own in `via` (got {word:?})"
-        );
-    }
-    anyhow::ensure!(
-        via.iter().filter(|w| *w == VIA_PLACEHOLDER).count() <= 1,
-        "[[machines]] `{name}`: `via` has more than one `{VIA_PLACEHOLDER}`"
-    );
-    Ok(())
-}
-
-fn validate_machine_name(n: usize, name: &str) -> Result<()> {
-    anyhow::ensure!(!name.is_empty(), "[[machines]] #{n} needs a `name`");
-    anyhow::ensure!(
-        !name.eq_ignore_ascii_case(LOCAL_MACHINE),
-        "[[machines]] #{n}: `{name}` is reserved for this computer; choose another `name`"
-    );
-    anyhow::ensure!(
-        !name.chars().all(|c| c.is_ascii_digit()),
-        "[[machines]] `{name}`: a name of only digits reads as a pane id; add a letter to `name`"
-    );
-    let starts_ok = name.starts_with(|c: char| c.is_ascii_alphanumeric());
-    let chars_ok = name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
-    anyhow::ensure!(
-        starts_ok && chars_ok && name.len() <= MACHINE_NAME_MAX,
-        "[[machines]] `{name}`: `name` is up to {MACHINE_NAME_MAX} letters, digits, `-`, `_` or `.`, starting with a letter or digit"
-    );
-    Ok(())
-}
-
-fn validate_machine_route(name: &str, m: &MachineDef) -> Result<()> {
-    anyhow::ensure!(
-        !m.target.is_empty(),
-        "[[machines]] `{name}` needs a `target`"
-    );
-    anyhow::ensure!(
-        !m.target.starts_with('-'),
-        "[[machines]] `{name}`: `target` {:?} starts with `-`, which ssh would read as an option; give a host",
-        m.target
-    );
-    anyhow::ensure!(
-        !m.target
-            .chars()
-            .any(|c| c.is_whitespace() || c.is_control()),
-        "[[machines]] `{name}`: `target` {:?} has whitespace or a control character; give a host, or put options in `ssh_args`",
-        m.target
-    );
-    for arg in &m.ssh_args {
-        anyhow::ensure!(
-            !arg.is_empty() && !arg.chars().any(char::is_control),
-            "[[machines]] `{name}`: each `ssh_args` entry is one non-empty argument without control characters (got {arg:?})"
-        );
-    }
-    if let Some(cmd) = &m.remote_cmd {
-        anyhow::ensure!(
-            !cmd.trim().is_empty() && !cmd.chars().any(char::is_control),
-            "[[machines]] `{name}`: `remote_cmd` is empty or has a control character; give the command, or remove the key"
-        );
-    }
-    Ok(())
-}
+pub use maitty_machines::{
+    LOCAL_MACHINE, MACHINE_NAME_MAX, MachineDef, VIA_NOT_ON_WINDOWS, VIA_PLACEHOLDER,
+    validate_machines, validate_machines_on,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -759,7 +613,11 @@ pub enum Rounding {
 
 impl Serialize for Rounding {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bool(*self != Rounding::Off)
+        serializer.serialize_str(match self {
+            Rounding::Full => "full",
+            Rounding::Corners => "corners",
+            Rounding::Off => "off",
+        })
     }
 }
 
@@ -772,13 +630,13 @@ impl Rounding {
         self != Rounding::Off
     }
 
-    /// Chips, buttons, rows and the hover end in half-circles.
+    /// Chips, buttons, titles, rows and the hover end in half-circles (pills, a Nerd Font glyph).
     pub fn caps(self) -> bool {
         self == Rounding::Full
     }
 }
 
-/// Older files wrote `rounded = true` / `false`: on is `full`, off is `off`.
+/// Older files wrote `rounded = true` / `false`: on is `corners`, off is `off`.
 impl<'de> Deserialize<'de> for Rounding {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
@@ -790,7 +648,7 @@ impl<'de> Deserialize<'de> for Rounding {
         match Written::deserialize(d)? {
             Written::Switch(on) => Ok(if on { Rounding::Corners } else { Rounding::Off }),
             Written::Name(name) => match name.as_str() {
-                "full" => Ok(Rounding::Corners),
+                "full" => Ok(Rounding::Full),
                 "corners" => Ok(Rounding::Corners),
                 "off" => Ok(Rounding::Off),
                 _ => Err(serde::de::Error::custom(format!(
@@ -806,7 +664,7 @@ impl<'de> Deserialize<'de> for Rounding {
 pub const SIDEBAR_TABS: &[&str] = &["all", "busy", "off"];
 
 /// `ui.cursor`'s choices, in Settings' order.
-pub const CURSOR_SHAPES: &[&str] = &["terminal", "block", "underline", "bar"];
+pub const CURSOR_SHAPES: &[&str] = &["block", "underline", "line"];
 
 /// Reject cursor names outside the shapes supported by the terminal client.
 pub fn validate_cursor(ui: &Ui) -> Result<()> {
@@ -904,8 +762,17 @@ impl Ui {
         });
     }
 
-    /// Convert older padding, gap and dim names to the values Settings now offers.
+    /// Convert older padding, gap, dim and glyph-set names to the values Settings now offers.
     pub fn fold_legacy_sizes(&mut self) {
+        // Only Unicode is supported: the ASCII and Nerd sets, and `auto`, read as dots.
+        if matches!(self.glyphs.as_str(), "ascii" | "nerd" | "auto") {
+            self.glyphs = "dots".into();
+        }
+        match self.cursor.as_str() {
+            "terminal" => self.cursor = "block".into(),
+            "bar" => self.cursor = "line".into(),
+            _ => {}
+        }
         for size in [&mut self.padding, &mut self.gap] {
             match size.as_str() {
                 "top" | "1" => *size = "small".into(),
@@ -931,8 +798,7 @@ impl Ui {
     }
 }
 
-/// The reference frames' working spinner: three Braille bars, two columns wide. The ASCII glyph set
-/// swaps it for `BARS_ASCII` (see `client::render::status_icon`).
+/// The reference frames' working spinner: three Braille bars, two columns wide.
 pub const BARS_FRAMES: &[&str] = &["⣰⡄", "⣼⡀", "⣶⡆", "⣧⡇", "⣆⡆", "⣤⡄", "⣸⡆", "⣴⡇", "⣇⡄", "⣦⡀"];
 
 pub const SPINNERS: &[(&str, &[&str])] = &[
@@ -965,6 +831,7 @@ impl Default for Ui {
         Ui {
             sidebar: true,
             sidebar_position: "left".into(),
+            tool_rail: true,
             which_key_delay_ms: 600,
             which_key: false,
             mouse: true,
@@ -996,7 +863,7 @@ impl Default for Ui {
             tab_gap: true,
             retired_layout: None,
             subagent_count: true,
-            cursor: "terminal".into(),
+            cursor: "block".into(),
             cursor_blink: true,
         }
     }
@@ -1006,10 +873,9 @@ impl Default for Ui {
 mod tests {
     use super::{
         AgentDef, CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG, Detection,
-        HELPERS_AT_ONCE, HELPERS_MAY, Icons, Keys, LayoutKind, MachineDef, Mcp, NEW_AGENTS,
-        NEW_WHERE, Notify, Preset, Quick, Recipe, Restore, Rounding, Sessions, Snapshots, Ui,
-        Worktree, same_path, size_cells, validate_checks, validate_cursor, validate_machines,
-        validate_machines_on, validate_sessions,
+        HELPERS_AT_ONCE, HELPERS_MAY, Icons, Keys, LayoutKind, Mcp, NEW_AGENTS, NEW_WHERE, Notify,
+        Preset, Quick, Recipe, Restore, Rounding, Sessions, Snapshots, Ui, Worktree, same_path,
+        size_cells, validate_checks, validate_cursor, validate_sessions,
     };
 
     #[test]
@@ -1069,7 +935,7 @@ mod tests {
 
         assert_eq!(ui.rounded, Rounding::Off);
         assert_eq!(ui.background, "solid");
-        assert_eq!(ui.cursor, "terminal");
+        assert_eq!(ui.cursor, "block");
         assert_eq!(ui.padding, "small");
         assert_eq!(ui.gap, "small");
         assert_eq!(ui.dim, "normal");
@@ -1082,7 +948,7 @@ mod tests {
         for (written, expected) in [
             ("true", Rounding::Corners),
             ("false", Rounding::Off),
-            ("\"full\"", Rounding::Corners),
+            ("\"full\"", Rounding::Full),
             ("\"corners\"", Rounding::Corners),
             ("\"off\"", Rounding::Off),
         ] {
@@ -1102,10 +968,10 @@ mod tests {
             (ui.padding.as_str(), ui.gap.as_str(), ui.dim.as_str()),
             ("small", "medium", "light")
         );
-        assert_eq!(ui.rounded, Rounding::Corners);
+        assert_eq!(ui.rounded, Rounding::Full);
         assert_eq!(size_cells("large"), 3);
         assert_eq!(size_cells("0"), 0);
-        assert!(toml::to_string(&ui).unwrap().contains("rounded = true"));
+        assert!(toml::to_string(&ui).unwrap().contains("rounded = \"full\""));
     }
 
     #[test]
@@ -1128,6 +994,16 @@ mod tests {
             ui.retired_layout.map(|layout| layout.name),
             Some("Hairline")
         );
+    }
+
+    #[test]
+    fn an_older_terminal_or_bar_cursor_reads_as_block_or_line() {
+        for (old, now) in [("terminal", "block"), ("bar", "line"), ("underline", "underline")] {
+            let mut ui: Ui = toml::from_str(&format!("cursor = '{old}'")).unwrap();
+            ui.fold_legacy_sizes();
+            assert_eq!(ui.cursor, now, "{old}");
+            assert!(validate_cursor(&ui).is_ok());
+        }
     }
 
     #[test]
@@ -1235,209 +1111,5 @@ mod tests {
         assert_eq!(quick.agents[0].name, "claude");
         assert_eq!(quick.agents[1].name, "codex");
         assert_eq!(DEFAULT_MODEL_FLAG, "--model");
-    }
-
-    fn machine(name: &str, target: &str) -> MachineDef {
-        MachineDef {
-            name: name.into(),
-            target: target.into(),
-            ..MachineDef::default()
-        }
-    }
-
-    fn refusal(machines: &[MachineDef]) -> String {
-        validate_machines(machines).unwrap_err().to_string()
-    }
-
-    #[test]
-    fn a_machine_reads_with_its_defaults_and_opt_ins_off() {
-        let m: MachineDef = toml::from_str("name = 'box'\ntarget = 'me@box'").unwrap();
-        assert_eq!(m, machine("box", "me@box"));
-        assert!(!(m.clipboard || m.notices || m.sounds) && m.ssh_args.is_empty());
-        validate_machines(&[m]).unwrap();
-    }
-
-    #[test]
-    fn an_agent_may_reach_a_machine_only_when_it_says_mcp() {
-        let plain: MachineDef = toml::from_str("name = 'box'\ntarget = 'me@box'").unwrap();
-        assert!(!plain.mcp);
-        let opted: MachineDef =
-            toml::from_str("name = 'box'\ntarget = 'me@box'\nmcp = true").unwrap();
-        assert!(opted.mcp);
-        validate_machines(&[opted]).unwrap();
-    }
-
-    #[test]
-    fn a_machine_keeps_ssh_args_as_a_list() {
-        let m: MachineDef =
-            toml::from_str("name = 'b'\ntarget = 'h'\nssh_args = ['-p', '2222', '-i', 'my key']")
-                .unwrap();
-        assert_eq!(m.ssh_args, ["-p", "2222", "-i", "my key"]);
-        validate_machines(&[m]).unwrap();
-    }
-
-    #[test]
-    fn two_machines_may_not_share_a_name_in_any_case() {
-        let err = refusal(&[machine("box", "a"), machine("BOX", "b")]);
-        assert!(err.contains("#2") && err.contains("`BOX`"), "{err}");
-    }
-
-    #[test]
-    fn local_is_reserved_in_any_case() {
-        for name in ["local", "LOCAL", "Local"] {
-            let err = refusal(&[machine(name, "h")]);
-            assert!(err.contains("reserved"), "{err}");
-        }
-    }
-
-    #[test]
-    fn a_name_needs_the_pattern() {
-        let too_long = "a".repeat(33);
-        for name in [
-            "", "-box", ".box", "my box", "bo/x", "bo:x", "\u{e9}", &too_long,
-        ] {
-            assert!(
-                validate_machines(&[machine(name, "h")]).is_err(),
-                "{name:?}"
-            );
-        }
-        let longest = "a".repeat(32);
-        for name in ["a", "box-1", "web_2.prod", &longest] {
-            validate_machines(&[machine(name, "h")]).unwrap();
-        }
-    }
-
-    #[test]
-    fn a_name_that_looks_like_a_pane_id_is_refused() {
-        let err = refusal(&[machine("12", "h")]);
-        assert!(err.contains("`12`") && err.contains("pane id"), "{err}");
-        validate_machines(&[machine("12b", "h")]).unwrap();
-    }
-
-    #[test]
-    fn a_target_is_required() {
-        let err = refusal(&[machine("box", "")]);
-        assert!(err.contains("`box`") && err.contains("`target`"), "{err}");
-    }
-
-    #[test]
-    fn a_target_starting_with_a_dash_is_refused() {
-        for target in ["-oProxyCommand=x", "-p", "--"] {
-            let err = refusal(&[machine("box", target)]);
-            assert!(err.contains("starts with `-`"), "{err}");
-        }
-    }
-
-    #[test]
-    fn a_target_with_whitespace_or_a_control_character_is_refused() {
-        for target in ["a b", "a\tb", "host\n", "a\u{7}b", "a\u{0}b", "a\u{a0}b"] {
-            let err = refusal(&[machine("box", target)]);
-            assert!(
-                err.contains("whitespace or a control character"),
-                "{target:?}: {err}"
-            );
-        }
-    }
-
-    #[test]
-    fn an_empty_ssh_arg_is_refused() {
-        let mut m = machine("box", "h");
-        m.ssh_args = vec!["-p".into(), String::new()];
-        assert!(refusal(&[m]).contains("`ssh_args`"));
-    }
-
-    #[test]
-    fn an_ssh_arg_with_a_control_character_is_refused() {
-        let mut m = machine("box", "h");
-        m.ssh_args = vec!["-o\nProxyCommand=x".into()];
-        assert!(refusal(&[m]).contains("`ssh_args`"));
-    }
-
-    fn via_machine(via: &[&str]) -> MachineDef {
-        let mut m = machine("box", "box");
-        m.via = Some(via.iter().map(|w| w.to_string()).collect());
-        m
-    }
-
-    fn via_refusal(via: &[&str]) -> String {
-        validate_machines_on(&[via_machine(via)], false)
-            .unwrap_err()
-            .to_string()
-    }
-
-    #[test]
-    fn a_via_is_a_list_of_arguments_and_off_unless_set() {
-        let m: MachineDef = toml::from_str(
-            "name = 'box'\ntarget = 'box'\nvia = ['fly', 'ssh', 'console', '-C', '{command}']",
-        )
-        .unwrap();
-        assert_eq!(
-            m.via.as_deref(),
-            Some(&["fly", "ssh", "console", "-C", "{command}"].map(String::from)[..])
-        );
-        validate_machines_on(&[m], false).unwrap();
-        let plain: MachineDef = toml::from_str("name = 'box'\ntarget = 'box'").unwrap();
-        assert_eq!(plain.via, None);
-    }
-
-    #[test]
-    fn a_via_with_a_program_and_one_placeholder_or_none_is_accepted() {
-        for via in [&["relay"][..], &["relay", "--to", "box", "{command}"], &["relay", "{command}", "-x"]] {
-            validate_machines_on(&[via_machine(via)], false).unwrap();
-        }
-    }
-
-    #[test]
-    fn a_via_that_is_empty_or_has_no_program_is_refused() {
-        assert!(via_refusal(&[]).contains("`via` is empty"));
-        assert!(via_refusal(&[""]).contains("program"));
-        assert!(via_refusal(&["-oProxyCommand=x"]).contains("program"));
-    }
-
-    #[test]
-    fn a_via_entry_with_a_control_character_is_refused() {
-        for via in [&["relay\n"][..], &["relay", "a\u{7}b"], &["relay", "x\ty"]] {
-            assert!(via_refusal(via).contains("control characters"), "{via:?}");
-        }
-    }
-
-    #[test]
-    fn the_placeholder_is_one_entry_of_its_own_and_at_most_once() {
-        assert!(via_refusal(&["relay", "{command}", "{command}"]).contains("more than one"));
-        for via in [&["relay", "x{command}"][..], &["relay", "--cmd={command}"]] {
-            assert!(via_refusal(via).contains("entry of its own"), "{via:?}");
-        }
-    }
-
-    #[test]
-    fn ssh_args_beside_a_via_are_refused_not_ignored() {
-        let mut m = via_machine(&["relay"]);
-        m.ssh_args = vec!["-p".into(), "22".into()];
-        let err = validate_machines_on(&[m], false).unwrap_err().to_string();
-        assert!(err.contains("`ssh_args`") && err.contains("remove one"), "{err}");
-    }
-
-    #[test]
-    fn a_via_is_refused_on_windows_whatever_it_says() {
-        let err = validate_machines_on(&[via_machine(&["relay", "{command}"])], true)
-            .unwrap_err()
-            .to_string();
-        assert!(
-            err.contains("`box`") && err.contains("not supported on Windows in v1") && err.contains("use ssh"),
-            "{err}"
-        );
-        validate_machines_on(&[machine("box", "box")], true).unwrap();
-    }
-
-    #[test]
-    fn a_remote_cmd_must_be_text_without_control_characters() {
-        for cmd in ["", "  ", "maitty\nrm -rf ~"] {
-            let mut m = machine("box", "h");
-            m.remote_cmd = Some(cmd.into());
-            assert!(refusal(&[m]).contains("`remote_cmd`"), "{cmd:?}");
-        }
-        let mut ok = machine("box", "h");
-        ok.remote_cmd = Some("~/.cargo/bin/maitty".into());
-        validate_machines(&[ok]).unwrap();
     }
 }

@@ -14,5 +14,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     restoreMocks: true,
+    // The App-level tests render the whole window and take 5 to 7 s on CI's Windows and Arch
+    // runners, past vitest's 5 s default. A slow render is not a failing test.
+    testTimeout: 30_000,
   },
 })

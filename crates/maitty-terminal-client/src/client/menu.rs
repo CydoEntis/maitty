@@ -23,6 +23,10 @@ pub(super) const RESTORE_WHILE_WORKING: &str =
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
+    /// Dial a machine again.
+    ReconnectMachine(String),
+    /// Take a machine out of the list; its sessions keep running there.
+    RemoveMachine(String),
     Beside(ClientTerm),
     /// The program in this pane is an agent: the app learns it.
     TeachAgent(ClientTerm),
@@ -280,7 +284,10 @@ impl App {
         items.sort_by_key(|(_, a)| {
             matches!(
                 a,
-                Act::End(_) | Act::CloseProject(_) | Act::ArchiveConversation(_)
+                Act::End(_)
+                    | Act::CloseProject(_)
+                    | Act::ArchiveConversation(_)
+                    | Act::RemoveMachine(_)
             )
         });
         self.mode = Mode::ScreenMenu(Box::new(ScreenMenu {
@@ -468,6 +475,19 @@ impl App {
     }
 
     /// Right-click on a project row.
+    /// Right-click on a remote machine's line.
+    pub(super) fn menu_for_machine(&mut self, machine: MachineId, at: (u16, u16)) {
+        let name = self.machine_name(machine).to_string();
+        if name.is_empty() {
+            return;
+        }
+        let items = vec![
+            ("Reconnect".to_string(), Act::ReconnectMachine(name.clone())),
+            ("Remove".to_string(), Act::RemoveMachine(name.clone())),
+        ];
+        self.menu(name, items, at);
+    }
+
     pub(super) fn menu_for_project(&mut self, pi: usize, at: (u16, u16)) {
         if let Some((title, items)) = self.project_items(pi) {
             self.menu(title, items, at);
@@ -874,6 +894,14 @@ impl App {
                         false,
                     );
                 }
+            }
+            Act::ReconnectMachine(name) => {
+                let said = self.machine_retry(&name);
+                self.notify(said.text, said.error);
+            }
+            Act::RemoveMachine(name) => {
+                let said = self.machines_remove(&name);
+                self.notify(said.text, said.error);
             }
             Act::RenameProject(key, name) => {
                 self.mode = Mode::Prompt {

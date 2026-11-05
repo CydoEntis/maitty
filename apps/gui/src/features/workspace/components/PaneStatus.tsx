@@ -4,10 +4,11 @@ import { STATUS_HELP, STATUS_LABEL } from '../model/statusText'
 import { Icon, PauseBars, Spinner } from './glyphs'
 import { ElapsedSince } from './times'
 
-function Glyph({ status }: { status: SessionStatus }) {
+/** The shape of a status. `frozen` holds the working spinner on one frame, for surfaces that must not animate. */
+export function StatusGlyph({ status, frozen = false }: { status: SessionStatus; frozen?: boolean }) {
   switch (status) {
     case 'working':
-      return <Spinner className="" />
+      return <Spinner className="" frozen={frozen} />
     case 'needs':
       return <PauseBars />
     case 'done':
@@ -28,7 +29,7 @@ export function PaneStatus({ status, workingSince }: { status: SessionStatus; wo
   return (
     <span className="mx-pane-status-wrap">
       <button key={status} type="button" className={`mx-pane-status is-${status}`} aria-label={`Status: ${label}`} aria-describedby={popoverId}>
-        <span className="mx-pane-status-icon" aria-hidden="true"><Glyph status={status} /></span>
+        <span className="mx-pane-status-icon" aria-hidden="true"><StatusGlyph status={status} /></span>
         <span>{label}{status === 'working' && workingSince !== null && <ElapsedSince since={workingSince} prefix=" · " />}</span>
       </button>
       <span role="tooltip" id={popoverId} className="mx-status-pop"><strong>{label}</strong>{STATUS_HELP[status]}</span>

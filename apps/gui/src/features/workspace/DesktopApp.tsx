@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 import {
   archiveConversationOnDaemon,
+  closeChatSession,
   markSeenOnDaemon,
   pinSessionOnDaemon,
   defaultSessionFolder,
@@ -15,8 +16,11 @@ import {
   renameConversationOnDaemon,
   restartMismatchedDaemon,
   sendTerminalInput,
+  submitMessage,
+  startChatSession,
   startShellSession,
 } from '@/api/daemon'
+import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, setMachineGrant, startSessionOnMachine, terminalOf, unregisterMachine, type Grant, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -26,7 +30,13 @@ import type { Conversation } from '@/data/preview'
 import { sizeVariables } from './model/layoutSize'
 import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-connection'
 import { errorMessage } from '@/lib/error-message'
+import { guardLocal } from '@/lib/localOnly'
 import { markGpu } from '@/lib/gpu'
+import { isWindowActive, subscribeWindowActivity } from '@/lib/window-activity'
+import { styleUnderCap, type EffectStyle } from '@/lib/animation-level'
+import { levelFor, useAutoState } from '@/lib/animation-auto'
+import { useAdaptiveAnimations } from './useAdaptiveAnimations'
+import { PerfOverlay } from './components/PerfOverlay'
 import { setSpinnerStyle } from '@/lib/spinner-clock'
 import { TerminalView } from '@/TerminalView'
 import { EffectsContext, ReducedMotionContext } from './components/motion'
@@ -34,8 +44,16 @@ import { ColumnHandle } from './components/ColumnHandle'
 import { CommandPalette } from './components/CommandPalette'
 import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPanel'
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
+import { cancelCommentComposer, isCommentComposerOpen } from '@/features/panel/commentStore'
+import { requestDiff } from '@/features/panel/panelCommands'
+import { SessionPanelHost } from '@/features/panel/SessionPanelHost'
+import { useSessionPanelState } from '@/features/panel/useSessionPanelState'
 import { runsProgram } from './components/useArmed'
 import { rememberSessions, withEnded } from './model/ended'
+import { isChatSession, isListedChatSession } from './model/chatSession'
+import { advanceLoginWatch, LOGIN_CHECK_MS, startLoginWatch, type LoginWatch } from './model/loginWatch'
+import { announcementFor, idsOfMachinesNotHeard, machineHeads, remoteStartRefusal, remoteTargetOf, remoteTerminals, type RemoteMachine } from './model/machines'
+import { UsagePage } from '@/features/usage/UsagePage'
 import { HoverTips } from './components/HoverTips'
 import { ShortcutOverlay } from '@/features/shortcuts/ShortcutOverlay'
 import { StatusBar } from './components/StatusBar'
@@ -46,9 +64,14 @@ import { FindBar } from '@/features/find/FindBar'
 import { RestoreBanner } from './components/RestoreBanner'
 import { UpdateSlot } from '@/features/updates/UpdateSlot'
 import { appVersion } from '@/features/updates/appVersion'
-import { markRestarting, skippedUpdate, skipUpdate, takeRestarted } from '@/features/updates/updateMemory'
-import { formatDroppedPaths } from '@/features/terminal/droppedPaths'
+import { UpdatedNotice } from '@/features/updates/UpdatedNotice'
+import { markRestarting, skippedUpdate, skipUpdate, takeRestarted, type RestartedUpdate } from '@/features/updates/updateMemory'
+import { useIdleUpdate } from '@/features/updates/useIdleUpdate'
+import { routeDrop } from '@/features/terminal/dropRoute'
+import { dropOnComposer } from '@/features/chat/composerDrop'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
+import { useFileSends } from '@/features/terminal/useFileSends'
+import { useImagePaste } from '@/features/terminal/useImagePaste'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
 import { sendNativeNotice } from '@/features/notifications/native'
 import { chooseProjectFolder } from '@/api/folderPicker'
@@ -56,10 +79,19 @@ import { dismissSessionNotice, showSessionNotice } from '@/features/notification
 import { sessionNoticeFor } from '@/features/notifications/noticeForSession'
 import { noticesFor } from '@/features/notifications/transitions'
 import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
-import { newWorktreeSession } from '@/features/worktrees/api'
+import { newBranchAgent, newWorktreeSession } from '@/features/worktrees/api'
+import { NewAgentDialog, type NewAgentRequest } from '@/features/worktrees/NewAgentDialog'
+import { agentProjects, newAgentPaletteItem } from '@/features/worktrees/newAgent'
 import type { TerminalHandle } from '@/features/terminal/handle'
 import type { LookAt } from '@/features/inspect/FilesTab'
 import { PaneCard } from './components/PaneCard'
+import { ChatPane } from '@/features/chat/components/ChatPane'
+import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
+import { rememberConversationPermissions } from '@/data/conversationPermissions'
+import { reserveOperation } from '@/features/chat/sendOperation'
+import { usePaneViews } from './usePaneViews'
+import { chatAvailability, chatSourceOf, effectiveView, type ChatAgent, type PaneView } from './model/chatView'
+import { RemoteSessionDialog } from './components/RemoteSessionDialog'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar } from './components/Sidebar'
 import { EmptyState, OfflineBanner, Toast, type RestartOffer } from './components/states'
@@ -93,17 +125,23 @@ import {
 import { readLayout, writeLayout } from './model/layoutStorage'
 import { byPriority } from './model/stack'
 import { displayName, groupKeyOf, groupSessions, tildePath, toSessionView, type SessionView } from './model/session'
-import { hotkeyRows, isMacPlatform, keyLabels, matchShortcut, type ShortcutAction } from './model/shortcuts'
+import { Keycaps } from '@/features/shortcuts/Keycaps'
+import { topmostOpen, type EscLayer } from './model/escLadder'
+import { OverviewScreen, type JumpMark } from '@/features/overview/components/OverviewScreen'
+import { jumpToast, needsYouCount, NOTHING_NEEDS_YOU, nextNeedsYou } from '@/features/overview/model/overview'
+import { bindingFor, detectPlatform, matchShortcut, shortcutChords, shortcutText, type ShortcutAction } from './model/shortcuts'
 import { folderExists, resolveStartFolder } from './model/startFolder'
 import { markSeen, trackSessions, tracksEqual, type SessionTrack } from './model/tracking'
-import { folderColor } from './model/folderColor'
 import type { PaletteItem } from './model/palette'
-import { activeThemeName, findTheme, themeStyle, THEMES, xtermTheme } from './theme/themes'
+import { activeThemeName, findTheme, terminalMinimumContrast, themeStyle, THEMES, xtermTheme } from './theme/themes'
 import './workspace.css'
 
 /** The daemon pushes every change (`sessions-changed`); this slow poll only catches a stream that went quiet. */
 const SESSION_REFRESH_MS = 15_000
 const COMPACT_WIDTH_PX = 1100
+/** How long a new session on another machine is waited for, and how often its list is looked at. */
+const REMOTE_START_WAIT_MS = 8000
+const REMOTE_START_POLL_MS = 250
 const MIN_TABS_FOR_NUMBERS = 2
 /** A tab's hover card lists its panes only when it has more than one. */
 const MIN_PANES_FOR_LIST = 2
@@ -184,8 +222,7 @@ function olderServiceNote(status: { canRestart: boolean; sessionCount: number; a
 
 export function DesktopApp() {
   const queryClient = useQueryClient()
-  const mac = isMacPlatform(navigator.userAgent)
-  const labels = keyLabels(mac)
+  const platform = detectPlatform(navigator.userAgent)
   const width = useWindowWidth()
   const compact = width < COMPACT_WIDTH_PX
   const narrow = width < NARROW_WIDTH_PX
@@ -209,6 +246,7 @@ export function DesktopApp() {
   const [welcomeOpen, setWelcomeOpen] = useState(isFirstRun)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [preferences, setPreferences] = useState(readSettingsPreferences)
+  const paneViews = usePaneViews()
   const [layout, setLayout] = useState<Layout>(() => (preferences.restoreTabs ? readLayout() : EMPTY_LAYOUT))
   // The width while the sidebar's edge is being dragged; it is saved when the pointer is released.
   const [liveSidebarWidth, setLiveSidebarWidth] = useState<number | null>(null)
@@ -216,8 +254,14 @@ export function DesktopApp() {
   const [renameId, setRenameId] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [inboxOpen, setInboxOpen] = useState(false)
+  const [overviewOpen, setOverviewOpen] = useState(false)
+  const [jumped, setJumped] = useState<JumpMark | null>(null)
+  const [usageOpen, setUsageOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
   const [inspectOpen, setInspectOpen] = useState(false)
+  const sessionPanel = useSessionPanelState(compact)
+  // The docked panel's width, so the Inspect drawer that overlays the window stays beside it and not under it.
+  const [panelDockedWidth, setPanelDockedWidth] = useState(0)
   const [findOpen, setFindOpen] = useState(false)
   // Under 1100px the sidebar is a drawer over the panes, opened from the tab bar's Sessions button.
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -227,20 +271,22 @@ export function DesktopApp() {
   const [dismissedRestores, setDismissedRestores] = useState<ReadonlySet<string>>(new Set())
   // The session a new worktree is made from, while the dialog is open.
   const [worktreeFrom, setWorktreeFrom] = useState<SessionView | null>(null)
+  // The New agent on a branch dialog, with the project it opens on (null: the focused session's).
+  const [newAgent, setNewAgent] = useState<{ projectKey: string | null } | null>(null)
   const [inspectView, setInspectView] = useState<InspectView>('changes')
   const [lookAt, setLookAt] = useState<LookAt | null>(null)
   const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
   // Inbox entries the user cleared, by the status they had; an entry comes back if the session changes state.
   const [cleared, setCleared] = useState<ReadonlyMap<string, SessionView['status']>>(new Map())
-  // After a restart into an update, the first thing said is what happened to the sessions.
-  const [toastMessage, setToastMessage] = useState<{ text: string; key: number } | null>(() => {
-    const version = takeRestarted()
-    return version ? { text: `Maitty ${version} · every session kept running`, key: Date.now() } : null
-  })
+  const [toastMessage, setToastMessage] = useState<{ text: string; key: number } | null>(null)
+  // After a restart into an update, the first thing said is which version this is and what changed.
+  const [updatedTo, setUpdatedTo] = useState<RestartedUpdate | null>(takeRestarted)
   const [tracks, setTracks] = useState<ReadonlyMap<string, SessionTrack>>(new Map())
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropId, setDropId] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  // A new session on another machine asks for a folder there first.
+  const [remoteStart, setRemoteStart] = useState<{ machine: number; name: string } | null>(null)
   const [failures, setFailures] = useState(0)
   const [restartPending, setRestartPending] = useState(false)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
@@ -273,10 +319,106 @@ export function DesktopApp() {
   const mismatch = sessionsQuery.isError ? daemonProtocolMismatch(sessionsQuery.error) : null
   const restartStatusQuery = useQuery({ queryKey: ['daemon-restart-status', mismatch?.daemonProtocol], queryFn: loadDaemonRestartStatus, enabled: Boolean(mismatch), retry: false })
 
+  // Other machines (ADR 0048): the host holds their connections and tells the window each one's state
+  // and, when it changes, the sessions it lists. The window never connects.
+  const [machines, setMachines] = useState<ReadonlyMap<number, RemoteMachine>>(new Map())
+  const machinesRef = useRef(machines)
+  useEffect(() => { machinesRef.current = machines }, [machines])
+  // The first answer about the machines has come, so a Machines page can tell loading from empty.
+  const [machinesKnown, setMachinesKnown] = useState(false)
+  // Said to a screen reader when a machine goes down or comes back.
+  const [machineSaid, setMachineSaid] = useState('')
+  useEffect(() => {
+    const stops: Array<() => void> = []
+    let gone = false
+    const keep = (stop: () => void) => { if (gone) stop(); else stops.push(stop) }
+    const change = (id: number, update: (before: RemoteMachine | undefined) => RemoteMachine | undefined) => {
+      setMachines((current) => {
+        const next = update(current.get(id))
+        if (next === undefined) return current
+        return new Map(current).set(id, next)
+      })
+    }
+    // The host names a machine in its state, and only by number in its snapshots.
+    const names = new Map<number, string>()
+    const settle = (state: MachineState) => {
+      if (state.machine === LOCAL_MACHINE) return
+      names.set(state.machine, state.name)
+      const said = announcementFor(machinesRef.current.get(state.machine)?.state, state)
+      if (said !== null) setMachineSaid(said)
+      change(state.machine, (before) => ({ conversations: before?.conversations ?? [], heard: before?.heard ?? false, state }))
+      // Typing the machine could not take while it was down: say so once it is back.
+      if (state.state === 'connected' && state.unsent) {
+        toast.message(`${String(state.unsent)} ${state.unsent === 1 ? 'keystroke' : 'keystrokes'} to ${state.name} ${state.unsent === 1 ? 'was' : 'were'} not sent while it was disconnected`)
+      }
+    }
+    const list = (id: number, name: string, snapshot: unknown) => {
+      let conversations: Conversation[]
+      try {
+        conversations = conversationsFromSnapshot(snapshot, { id, name })
+      } catch (error: unknown) {
+        if (!(error instanceof z.ZodError)) throw error
+        console.warn(`${name} sent a session list this window cannot read`, error)
+        return
+      }
+      change(id, (before) => (before ? { ...before, conversations, heard: true } : undefined))
+    }
+    void loadMachinesOverview().then((overview) => {
+      if (gone) return
+      for (const machine of overview) {
+        settle(machine)
+        if (machine.snapshot !== null) list(machine.machine, machine.name, machine.snapshot)
+      }
+      setMachinesKnown(true)
+    }, (error: unknown) => {
+      console.warn('Could not read the state of the machines', error)
+      if (!gone) setMachinesKnown(true)
+    })
+    for (const listening of [
+      listenMachineState(settle),
+      listenMachineError((text) => { toast.error(text) }),
+      // A machine that was allowed to raise notices: in the window as a toast, away from it as the system's.
+      // Text a machine that was allowed to asks to put on the clipboard.
+      listenMachineClipboard((id, text) => {
+        const name = names.get(id) ?? 'A machine'
+        navigator.clipboard.writeText(text).then(
+          () => { toast.message(`${name} copied ${String(text.length)} characters to your clipboard`) },
+          (error: unknown) => { toast.error(errorMessage(error, `Could not copy what ${name} sent`)) },
+        )
+      }),
+      listenMachineNotice((text) => {
+        if (document.hasFocus()) toast.message(text)
+        else sendNativeNotice(text, '').catch((error: unknown) => { console.warn('Could not show a system notification', error) })
+      }),
+      listenMachineRemoved((id) => {
+        const name = names.get(id)
+        names.delete(id)
+        if (name !== undefined) unregisterMachine(name)
+        setMachines((current) => {
+          if (!current.has(id)) return current
+          const next = new Map(current)
+          next.delete(id)
+          return next
+        })
+      }),
+      listenMachineSessions((id, snapshot) => {
+        const name = names.get(id)
+        if (snapshot !== null && name !== undefined) list(id, name, snapshot)
+      }),
+    ]) {
+      listening.then(keep, (error: unknown) => { toast.error(errorMessage(error, 'Could not follow the machines')) })
+    }
+    return () => {
+      gone = true
+      for (const stop of stops) stop()
+    }
+  }, [])
   const everySession = useMemo(() => {
-    const terminals = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal')
-    return (online ? terminals : markConversationsDisconnected(terminals)).map((conversation) => toSessionView(conversation, home))
-  }, [sessionsQuery.data, online, home])
+    // Terminal sessions, and the chat sessions the daemon owns that are not put away (ADR 0054).
+    const terminals = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal' || isListedChatSession(item))
+    const here = online ? terminals : markConversationsDisconnected(terminals)
+    return [...here, ...remoteTerminals(machines)].map((conversation) => toSessionView(conversation, home))
+  }, [sessionsQuery.data, online, home, machines])
   const sessions = everySession
   const sessionMap = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
   // A session the daemon stops listing keeps its pane, shown as ended, so a refresh that misses one
@@ -313,16 +455,53 @@ export function DesktopApp() {
     return () => { document.removeEventListener('mousedown', onMouseDown, true) }
   }, [])
   const focusedSession = focusedId ? sessionMap.get(focusedId) : undefined
+  // A path the machine kept a sent file at is typed into the pane the drop was for, if that pane is still open.
+  const typeIntoPane = (sessionId: string, text: string) => {
+    const handle = terminalHandles.current.get(sessionId)
+    if (!handle) return false
+    handle.paste(text)
+    return true
+  }
+  const { sendFiles, sendImage } = useFileSends({ typeInto: typeIntoPane })
+  // A pasted image goes the same two ways (ticket 19): saved here and its path typed, or sent to the pane's machine.
+  const pasteImage = useImagePaste({
+    sendImage,
+    typeInto: typeIntoPane,
+    isConnected: (name) => [...machinesRef.current.values()].some((candidate) => candidate.state.name.toLowerCase() === name.toLowerCase() && candidate.state.state === 'connected'),
+    online,
+    windows: /Windows/i.test(navigator.userAgent),
+  })
   // Files dropped on a pane type their paths into it; the pane under the pointer, else the focused one.
+  // On another machine's pane a path here names nothing there, so the files are sent to it and the
+  // paths they land at are typed instead (ADR 0055).
   useFileDrop((paths, at) => {
-    const target = document.elementFromPoint(at.x, at.y)?.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ?? focusedId
+    const under = document.elementFromPoint(at.x, at.y)
+    // A drop on a chat composer attaches the files to its message; it is not a drop on the pane around it (ticket 20).
+    if (dropOnComposer(paths, under)) return
+    const target = under?.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ?? focusedId
     const handle = target ? terminalHandles.current.get(target) : undefined
-    if (!handle) return
+    if (!target || !handle) return
+    const route = routeDrop(target, paths, /Windows/i.test(navigator.userAgent))
+    if (route === null) return
+    if (route.kind === 'refuse') {
+      toast.error(route.message)
+      return
+    }
+    if (route.kind === 'send') {
+      const machine = [...machinesRef.current.values()].find((candidate) => candidate.state.name.toLowerCase() === route.machine.toLowerCase())
+      if (machine === undefined || machine.state.state !== 'connected') {
+        toast.error(`${route.machine} is not connected; reconnect before sending files to it`)
+        return
+      }
+      sendFiles(target, route.machine, route.paths)
+      handle.focus()
+      return
+    }
     if (!online) {
       toast.error('Reconnect to the Maitty service before dropping files on a pane')
       return
     }
-    handle.paste(formatDroppedPaths(paths, /Windows/i.test(navigator.userAgent)))
+    handle.paste(route.text)
     handle.focus()
   })
   // With the window in the background nothing is being looked at, so a session that finishes then keeps its unread dot.
@@ -354,7 +533,60 @@ export function DesktopApp() {
     for (const candidate of layout.tabs) candidate.panes.forEach((pane, index) => { numbers.set(pane.sessionId, index + 1) })
     return numbers
   }, [layout.tabs])
-  const groups = useMemo(() => groupSessions(sessions, preferences.groupBy, focusedId, home, preferences.projectColors), [sessions, preferences.groupBy, focusedId, home, preferences.projectColors])
+  const heads = useMemo(() => machineHeads(machines), [machines])
+  const retryNamed = useCallback((name: string) => {
+    retryMachine(name).catch((error: unknown) => { toast.error(errorMessage(error, `Could not retry ${name}`)) })
+  }, [])
+  // A first login runs in a session on this computer; the machine is dialled again when it closes.
+  const localTermsRef = useRef<ReadonlySet<number>>(new Set())
+  const loginsRef = useRef<LoginWatch[]>([])
+  const [watchingLogins, setWatchingLogins] = useState(false)
+  const checkLogins = useCallback(() => {
+    const next: LoginWatch[] = []
+    for (const watch of loginsRef.current) {
+      const step = advanceLoginWatch(watch, localTermsRef.current, Date.now())
+      if (step.dial) retryNamed(watch.machine)
+      if (step.watch) next.push(step.watch)
+    }
+    loginsRef.current = next
+    setWatchingLogins(next.length > 0)
+  }, [retryNamed])
+  useEffect(() => {
+    const terms = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal').map((item) => terminalOf(item.id))
+    localTermsRef.current = new Set(terms.filter((term): term is number => term !== null))
+  }, [sessionsQuery.data])
+  useEffect(() => {
+    if (!watchingLogins) return
+    const timer = setInterval(checkLogins, LOGIN_CHECK_MS)
+    return () => { clearInterval(timer) }
+  }, [watchingLogins, checkLogins])
+  const addNamed = useCallback(async (target: string, name?: string) => {
+    const added = await addMachine(target, name)
+    if (added.outcome === 'login') {
+      loginsRef.current = [...loginsRef.current, startLoginWatch(added.name, localTermsRef.current, Date.now())]
+      setWatchingLogins(true)
+    }
+    return added
+  }, [])
+  const grantNamed = useCallback((name: string, grant: Grant, on: boolean) => {
+    setMachineGrant(name, grant, on).catch((error: unknown) => { toast.error(errorMessage(error, `Could not change ${name}`)) })
+  }, [])
+  const copyCommand = useCallback((command: string) => {
+    navigator.clipboard.writeText(command).then(
+      () => { toast.message('Copied. Run it in a terminal on this computer.') },
+      (error: unknown) => { toast.error(errorMessage(error, 'Could not copy the command')) },
+    )
+  }, [])
+  const cancelAdding = useCallback(() => {
+    cancelAddMachine().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not cancel')) })
+  }, [])
+  const removeNamed = useCallback((name: string) => {
+    removeMachine(name).then(
+      () => { toast.message(`Removed ${name}. Its sessions keep running on ${name}.`) },
+      (error: unknown) => { toast.error(errorMessage(error, `Could not remove ${name}`)) },
+    )
+  }, [])
+  const groups = useMemo(() => groupSessions(sessions, preferences.groupBy, focusedId, home), [sessions, preferences.groupBy, focusedId, home])
   // A tab belongs to the project of the session in its focused pane, so it moves when that shell cds into another repo.
   const tabGroup = useCallback((candidate: Tab): string => {
     const sessionId = candidate.panes.find((pane) => pane.id === candidate.focus)?.sessionId ?? candidate.panes[0]?.sessionId
@@ -364,11 +596,23 @@ export function DesktopApp() {
 
   const reducedMotion = preferences.reduceMotion || systemReducedMotion
   const theme = findTheme(previewTheme ?? activeThemeName(preferences, systemDark))
-  const look = useMemo(() => ({ cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, screenReader: preferences.terminalScreenReader, theme: xtermTheme(theme.tokens) }), [preferences.cursorStyle, preferences.scrollback, preferences.terminalScreenReader, theme])
+  const look = useMemo(() => ({ fontFamily: preferences.terminalFontFamily, fontWeight: preferences.terminalFontWeight, fontWeightBold: preferences.terminalFontWeightBold, cursorStyle: preferences.cursorStyle, scrollback: preferences.scrollback, scrollSpeed: preferences.scrollSpeed, screenReader: preferences.terminalScreenReader, seeThrough: preferences.terminalSeeThrough, cursorBlink: preferences.cursorBlink, theme: xtermTheme(theme.tokens), minimumContrast: terminalMinimumContrast(theme) }), [preferences.terminalFontFamily, preferences.terminalFontWeight, preferences.terminalFontWeightBold, preferences.cursorStyle, preferences.cursorBlink, preferences.scrollback, preferences.scrollSpeed, preferences.terminalScreenReader, preferences.terminalSeeThrough, theme])
+  const auto = useAutoState()
+  const cap = levelFor(preferences.animations, auto)
   const effects = useMemo(() => {
     const allowed = online && !reducedMotion
-    return { working: allowed && preferences.effectWorking, needs: allowed && preferences.effectNeedsYou, done: allowed && preferences.effectDone }
-  }, [online, reducedMotion, preferences.effectWorking, preferences.effectNeedsYou, preferences.effectDone])
+    const styled = (on: boolean, style: EffectStyle) => (allowed && on ? styleUnderCap(style, cap) : null)
+    return {
+      working: styled(preferences.effectWorking, preferences.effectStyleWorking),
+      needs: styled(preferences.effectNeedsYou, preferences.effectStyleNeedsYou),
+      done: styled(preferences.effectDone, preferences.effectStyleDone),
+      workingScope: preferences.workingScope,
+      cap,
+    }
+  }, [online, reducedMotion, cap, preferences.effectWorking, preferences.effectNeedsYou, preferences.effectDone, preferences.effectStyleWorking, preferences.effectStyleNeedsYou, preferences.effectStyleDone, preferences.workingScope])
+  // Waves are running when a session in a status that has a Waves effect is listed.
+  const wavesRunning = useMemo(() => sessions.some((session) => (session.status === 'working' || session.status === 'needs' || session.status === 'done') && effects[session.status] === 'waves'), [sessions, effects])
+  useAdaptiveAnimations(preferences.animations === 'auto' && !reducedMotion && cap !== 'none', wavesRunning)
 
   const flash = useCallback((text: string) => { setToastMessage({ text, key: Date.now() }) }, [])
   useEffect(() => {
@@ -392,11 +636,23 @@ export function DesktopApp() {
 
   useEffect(() => { markGpu() }, [])
 
+  // Looping effects pause in the stylesheet while the window is hidden or in the background. It is an
+  // attribute on <html>, not React state, so a focus change repaints nothing and re-renders nothing.
+  useEffect(() => {
+    const mark = () => { document.documentElement.dataset.window = isWindowActive() ? 'active' : 'inactive' }
+    mark()
+    return subscribeWindowActivity(mark)
+  }, [])
+
   useEffect(() => {
     // Flat and Tiled share one finish (neutral, no glow); Tiled changes the layout on top of it.
     document.documentElement.dataset.style = preferences.style
     document.documentElement.dataset.finish = preferences.style === 'glass' ? 'glass' : 'flat'
   }, [preferences.style])
+
+  useEffect(() => {
+    document.documentElement.dataset.glow = preferences.backgroundGlow ? 'on' : 'off'
+  }, [preferences.backgroundGlow])
 
   useEffect(() => {
     document.documentElement.dataset.icons = preferences.iconColor
@@ -465,11 +721,14 @@ export function DesktopApp() {
     // An unchanged list keeps its identity (structural sharing), so only a real change counts here.
     if (!sessionsQuery.isSuccess || reconciled.current === sessionsQuery.data) return
     reconciled.current = sessionsQuery.data
-    const live = new Set(sessions.map((session) => session.id))
-    const first = [...sessions].sort((a, b) => a.pane - b.pane)[0]
+    const listed = sessions.map((session) => session.id)
+    // This computer's first pane, else the first of another machine.
+    const first = [...sessions].sort((a, b) => a.machine - b.machine || a.pane - b.pane)[0]
     const openFirst = !openedFirst.current
     openedFirst.current = true
     setLayout((current) => {
+      // A machine that has not answered yet has not lost its panes: they are unknown, not gone.
+      const live = new Set([...listed, ...idsOfMachinesNotHeard(current, machinesRef.current)])
       const reconciled = openFirst ? reconcileLayout(current, live, tabGroup) : current
       return openFirst && reconciled.tabs.length === 0 && first ? openInNewTab(reconciled, first.id, makeId) : reconciled
     })
@@ -519,6 +778,71 @@ export function DesktopApp() {
     flash(`Worktree ${branch} ready`)
   }, [sessions, newSessionSince, flash])
 
+  const branchProjects = useMemo(() => agentProjects(groups), [groups])
+  // Lists again and opens the chat session the daemon just started, with its first prompt if there is one.
+  const openStartedChat = useCallback(async (started: { id: number; generation: number }, prompt: string) => {
+    const id = String(started.id)
+    await queryClient.invalidateQueries({ queryKey: ['conversations'] })
+    await queryClient.query({ queryKey: ['conversations'], queryFn: loadConversations, staleTime: 0 })
+    setLayout((current) => openInNewTab(current, id, makeId))
+    if (prompt !== '') {
+      // The start has answered, so the agent is up: the first prompt is an ordinary send, number 1.
+      const operation = reserveOperation(started.id, { receipt: null, queued: [] })
+      await submitMessage({ id, generation: started.generation }, operation, prompt)
+    }
+  }, [queryClient])
+
+  const startBranchAgent = useCallback(async (request: NewAgentRequest) => {
+    if (request.mode === 'chat') {
+      const started = await startChatSession(request.project.path, request.agent, request.branch, request.fullAccess)
+      if (request.fullAccess) rememberConversationPermissions(String(started.id), 'full-access')
+      setNewAgent(null)
+      try {
+        await openStartedChat(started, request.prompt)
+      } catch (error) {
+        // The session exists and is open; only its first prompt did not go, and the composer is there to retry.
+        toast.error(errorMessage(error, 'The chat started, but its first prompt was not sent'))
+      }
+      flash(`${request.agent} chat started on ${request.branch}`)
+      return
+    }
+    const known = new Set(sessions.map((session) => session.id))
+    await newBranchAgent({ project: request.project.path, branch: request.branch, agent: request.agent, prompt: request.prompt })
+    const id = await newSessionSince(known)
+    setNewAgent(null)
+    if (id) setLayout((current) => openInNewTab(current, id, makeId))
+    flash(`${request.agent} started on ${request.branch}`)
+  }, [sessions, newSessionSince, flash, openStartedChat])
+
+  // "Start a Claude chat" on a shell's empty chat card: a chat session in that shell's folder.
+  const startChatHere = useCallback((from: SessionView, agent: ChatAgent, fullAccess: boolean) => {
+    const refusal = remoteStartRefusal(from.machine !== LOCAL_MACHINE, from.machineName, 'A chat session')
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
+    if (!online || starting) return
+    setStarting(true)
+    startChatSession(from.cwd, agent, null, fullAccess)
+      .then((started) => {
+        if (fullAccess) rememberConversationPermissions(String(started.id), 'full-access')
+        return openStartedChat(started, '')
+      })
+      .then(() => { flash(`${agent} chat started`) })
+      .catch((error: unknown) => { toast.error(errorMessage(error, `Could not start a ${agent} chat`)) })
+      .finally(() => { setStarting(false) })
+  }, [online, starting, openStartedChat, flash])
+
+  const openNewAgent = useCallback((projectKey: string | null) => {
+    if (!online) return
+    if (branchProjects.length === 0) {
+      toast.message('A new agent on a branch needs a git project on this computer')
+      return
+    }
+    setSettingsSection(null)
+    setNewAgent({ projectKey: projectKey ?? (focusedSession ? groupKeyOf(focusedSession, preferences.groupBy) : null) })
+  }, [online, branchProjects, focusedSession, preferences.groupBy])
+
   const runStart = useCallback((folder: () => Promise<string>, place: (sessionId: string) => void) => {
     if (!online || starting) return
     setStarting(true)
@@ -531,8 +855,32 @@ export function DesktopApp() {
 
   const newSession = useCallback(() => {
     setSettingsSection(null)
+    // A new session goes where the focused one is: on another machine the folder is typed there,
+    // because the folder picker and the start folder are this computer's.
+    const remote = remoteTargetOf(focusedSession)
+    if (remote !== null) {
+      setRemoteStart(remote)
+      return
+    }
     runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
-  }, [runStart, preferences.startFolder, home])
+  }, [runStart, preferences.startFolder, home, focusedSession])
+
+  const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string) => {
+    const known = new Set((machinesRef.current.get(target.machine)?.conversations ?? []).map((item) => item.id))
+    await startSessionOnMachine(target.machine, folder)
+    setRemoteStart(null)
+    // The machine tells its new session in its next list; the tab opens when it does.
+    const deadline = Date.now() + REMOTE_START_WAIT_MS
+    while (Date.now() < deadline) {
+      const fresh = machinesRef.current.get(target.machine)?.conversations.find((item) => item.kind === 'terminal' && !known.has(item.id))
+      if (fresh) {
+        setLayout((current) => openInNewTab(current, fresh.id, makeId))
+        return
+      }
+      await new Promise((resolve) => { setTimeout(resolve, REMOTE_START_POLL_MS) })
+    }
+    toast.error(`${target.name} did not report the new session`)
+  }, [])
 
   // The + after the tabs starts a shell in the project you are in; ⌘T and the sidebar's New use the start folder.
   const activeGroupKey = (() => {
@@ -543,21 +891,35 @@ export function DesktopApp() {
     setSettingsSection(null)
     runStart(() => Promise.resolve(folder), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
   }, [runStart])
-  const projectName = groups.find((group) => group.key === activeGroupKey)?.name
+  const activeGroup = groups.find((group) => group.key === activeGroupKey)
+  const projectName = activeGroup?.name
+  // A project of another machine is keyed by that machine and its folder: not a folder to start a shell in here.
+  const remoteGroup = activeGroup?.machineName ?? null
   const newProjectSession = useCallback(() => {
     if (!activeGroupKey) {
       newSession()
       return
     }
+    const refusal = remoteStartRefusal(remoteGroup !== null, remoteGroup, 'A new session here')
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
     setSettingsSection(null)
     runStart(() => Promise.resolve(activeGroupKey), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
-  }, [activeGroupKey, newSession, runStart])
+  }, [activeGroupKey, remoteGroup, newSession, runStart])
 
   const split = useCallback((paneId: string | null, direction: SplitDirection) => {
     const tab = activeTab(layout)
     if (!tab || tab.panes.length >= MAX_PANES) return
     const source = tab.panes.find((pane) => pane.id === (paneId ?? tab.focus))
-    const cwd = source ? sessionMap.get(source.sessionId)?.cwd : undefined
+    const sourceSession = source ? sessionMap.get(source.sessionId) : undefined
+    const refusal = sourceSession ? remoteStartRefusal(sourceSession.machine !== LOCAL_MACHINE, sourceSession.machineName, 'Splitting this pane') : null
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
+    const cwd = sourceSession?.cwd
     runStart(async () => cwd ?? resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
       // If the tab changed or filled up while the shell started, the shell still gets a tab: it must not be left with no pane.
       setLayout((current) => {
@@ -577,7 +939,7 @@ export function DesktopApp() {
       setLayout((current) => removeSessions(current, gone, tabGroup))
       return
     }
-    void Promise.all(running.map((session) => archiveConversationOnDaemon({ id: session.id }, true)))
+    void Promise.all(running.map((session) => (isChatSession(session.conversation) ? closeChatSession(session.conversation) : archiveConversationOnDaemon({ id: session.id }, true))))
       .then(async () => {
         setLayout((current) => removeSessions(current, gone, tabGroup))
         flash(`${what} closed · ${running.length === 1 ? 'session' : `${String(running.length)} sessions`} ended`)
@@ -609,6 +971,15 @@ export function DesktopApp() {
     const pane = layout.tabs.flatMap((tab) => tab.panes).find((candidate) => candidate.id === paneId)
     const old = pane ? paneSessions.get(pane.sessionId) : undefined
     if (!old) return
+    if (isChatSession(old.conversation)) {
+      toast.message('A chat session cannot be restarted. Close it and start a new one.')
+      return
+    }
+    const refusal = remoteStartRefusal(old.machine !== LOCAL_MACHINE, old.machineName, 'Restarting this pane')
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
     runStart(() => Promise.resolve(old.cwd), (id) => { setLayout((current) => dropSession(current, paneId, id)) })
   }, [layout, paneSessions, runStart])
 
@@ -629,11 +1000,24 @@ export function DesktopApp() {
   }, [queryClient])
 
   const showSessionById = useCallback((sessionId: string) => {
+    setOverviewOpen(false)
     setLayout((current) => showSession(current, sessionId, makeId))
   }, [])
 
+  // The usage report names panes of this computer's daemon by number; only a pane this window has can be opened.
+  const sessionForUsageTerm = useCallback((term: number) => {
+    const found = sessions.find((member) => member.machine === LOCAL_MACHINE && member.pane === term)
+    return found ? { id: found.id, name: displayName(found) } : null
+  }, [sessions])
+
   // Cmd/Ctrl-click on a file name in a pane's output: find it in that pane's repo, then show it in Inspect.
   const openPath = useCallback((session: SessionView, path: string, line?: number) => {
+    // Files and Changes look at this computer's own checkouts; a pane of another machine has none here.
+    const refusal = guardLocal(session, 'path-links')
+    if (refusal !== null) {
+      toast.message(refusal)
+      return
+    }
     void repoLocate(session.pane, path)
       .then((relative) => {
         showSessionById(session.id)
@@ -651,13 +1035,15 @@ export function DesktopApp() {
     return () => { active = false }
   }, [])
 
-  const restartNow = useCallback(() => {
+  const restartInto = useCallback((automatic: boolean) => {
     if (updater.state.status !== 'ready') return
-    markRestarting(updater.state.version)
+    markRestarting({ version: updater.state.version, previous: runningVersion, notes: updater.releaseNotes(), automatic })
     setRestarting(true)
     // If the install fails, the screen must not stay up: it goes, and so does the "kept running" note for the next launch.
     window.setTimeout(() => { updater.restart(() => { setRestarting(false); takeRestarted() }) }, RESTART_SCREEN_MS)
-  }, [updater])
+  }, [updater, runningVersion])
+  const restartNow = useCallback(() => { restartInto(false) }, [restartInto])
+  const installWhenIdle = useCallback(() => { restartInto(true) }, [restartInto])
 
   // With the setting on, a new release is fetched as soon as it is found. Installing still waits for a restart.
   const updateStatus = updater.state.status
@@ -669,13 +1055,16 @@ export function DesktopApp() {
     return () => { window.clearTimeout(timer) }
   }, [preferences.autoDownloadUpdates, updateStatus, updateOffered, skippedVersion, downloadUpdate])
 
-  // Optionally, a downloaded update restarts the window once nothing is working or waiting on you.
+  // With the setting on, an idle app fetches and installs an update by itself (docs/stack/tauri-updater.md).
   const busyCount = sessions.filter((session) => session.status === 'working' || session.status === 'needs').length
-  useEffect(() => {
-    if (!preferences.restartWhenIdle || updateStatus !== 'ready' || !online || busyCount > 0 || restarting) return
-    const timer = window.setTimeout(restartNow, 0)
-    return () => { window.clearTimeout(timer) }
-  }, [preferences.restartWhenIdle, updateStatus, online, busyCount, restarting, restartNow])
+  useIdleUpdate({
+    enabled: preferences.restartWhenIdle && online && !restarting,
+    agentBusy: busyCount > 0,
+    status: updateStatus,
+    offeredIsSkipped: updateOffered !== null && updateOffered === skippedVersion,
+    onDownload: downloadUpdate,
+    onInstall: installWhenIdle,
+  })
 
   const chooseStartFolder = useCallback(async (current: string): Promise<string | null> => {
     try {
@@ -690,7 +1079,6 @@ export function DesktopApp() {
   const showTestNotice = useCallback(() => {
     showSessionNotice('test', {
       kind: 'done',
-      color: 'var(--accent)',
       title: 'Finished · a test',
       body: 'A card like this appears when a session you are not looking at finishes.',
       actions: [{ label: 'Open', primary: true, onClick: () => undefined }],
@@ -722,19 +1110,38 @@ export function DesktopApp() {
   }, [compact])
 
   // The tab bar and status bar are memoised, so what they are handed keeps its identity.
-  const selectTabById = useCallback((tabId: string) => { setLayout((current) => selectTab(current, tabId)) }, [])
+  const selectTabById = useCallback((tabId: string) => { setOverviewOpen(false); setLayout((current) => selectTab(current, tabId)) }, [])
   const openInbox = useCallback(() => { setInboxOpen(true) }, [])
-  const toggleInspect = useCallback(() => { setInspectOpen((open) => !open) }, [])
+  // The repository view reads this computer's checkouts: on a pane of another machine it says so.
+  const inspectRefusal = guardLocal(focusedSession, 'inspect')
+  const toggleInspect = useCallback(() => {
+    if (inspectRefusal !== null) toast.message(inspectRefusal)
+    else setInspectOpen((open) => !open)
+  }, [inspectRefusal])
   const openDrawer = useCallback(() => { setDrawerOpen(true) }, [])
+  // An edit block's header: show that file's diff in the panel, opening the panel first if it is hidden.
+  const showDiffInPanel = useCallback((file: string) => {
+    requestDiff(file)
+    if (!sessionPanel.open) sessionPanel.toggle()
+  }, [sessionPanel])
   const setThemeMode = useCallback((themeMode: SettingsPreferences['themeMode']) => { setPreferences((current) => ({ ...current, themeMode })) }, [])
   const pickTheme = useCallback((name: string) => { setPreferences((current) => (findTheme(name).light ? { ...current, lightTheme: name } : { ...current, darkTheme: name })) }, [])
   const openAppearance = useCallback(() => { setSettingsSection('appearance') }, [])
   const setStyle = useCallback((style: SettingsPreferences['style']) => { setPreferences((current) => ({ ...current, style })) }, [])
   const resetTextSize = useCallback(() => { setTextSize(DEFAULT_TEXT_SIZE) }, [setTextSize])
   const openShortcuts = useCallback(() => { setShortcutsOpen(true) }, [])
-  const shortcutChord = useMemo(() => hotkeyRows(mac).find((row) => row.action === 'Keyboard shortcuts')?.chords[0] ?? [], [mac])
+  const shortcutChord = useMemo(() => shortcutChords(bindingFor('shortcuts'), platform)[0] ?? [], [platform])
+  const focusModeChord = useMemo(() => shortcutChords(bindingFor('focus-mode'), platform)[0] ?? [], [platform])
 
-  const runShortcut = useCallback((action: ShortcutAction) => {
+  // Which view a session shows, and whether it has a chat. Switching views only changes the window; no daemon command is sent.
+  const chatOf = useCallback((session: SessionView) => {
+    const availability = chatAvailability(chatSourceOf(session))
+    // A chat session has no terminal to switch to: its pane is the chat, always.
+    if (isChatSession(session.conversation)) return { availability, view: 'chat' as const }
+    return { availability, view: effectiveView(paneViews.choices.get(session.id), availability, preferences.chatViewDefault) }
+  }, [paneViews.choices, preferences.chatViewDefault])
+
+  const runShortcut = useCallback((action: ShortcutAction, tab?: number) => {
     switch (action) {
       case 'new-session':
         newSession()
@@ -764,7 +1171,7 @@ export function DesktopApp() {
         const confirmed = armedClose !== null && armedClose.key === key && Date.now() - armedClose.at <= CLOSE_ARM_MS
         if (shown.some((session) => !session.ended) && !confirmed) {
           setArmedClose({ key, at: Date.now() })
-          const chord = mac ? '⌘W' : 'Ctrl+W'
+          const chord = shortcutText('close', platform)
           flash(agent ? `Press ${chord} again to close and stop ${agent.process}` : `Press ${chord} again to close this ${single ? 'pane' : 'tab'}`)
           return
         }
@@ -790,6 +1197,44 @@ export function DesktopApp() {
       case 'inbox':
         setInboxOpen((open) => !open)
         return
+      case 'jump-needs': {
+        // On the Overview the ring moves to the card; anywhere else the session opens. One model decides, so the key and the screen agree.
+        const target = nextNeedsYou(sessions, (overviewOpen ? jumped?.id : null) ?? focusedSession?.id ?? null)
+        if (!target) flash(NOTHING_NEEDS_YOU)
+        else if (overviewOpen) setJumped({ id: target.session.id, key: Date.now() })
+        else {
+          showSessionById(target.session.id)
+          flash(jumpToast(target))
+        }
+        return
+      }
+      case 'overview':
+        setOverviewOpen((open) => !open)
+        return
+      case 'go-to-tab': {
+        const inProject = layout.tabs.filter((candidate) => tabGroup(candidate) === activeGroupKey)
+        const target = inProject[(tab ?? 0) - 1]
+        if (target) selectTabById(target.id)
+        return
+      }
+      case 'performance':
+        setSettingsSection('performance')
+        return
+      case 'session-panel':
+        sessionPanel.toggle()
+        return
+      // Registered in the table but not built (or not undoable): the key does nothing until the feature ships.
+      case 'undo-close':
+      case 'usage':
+        setUsageOpen((open) => !open)
+        return
+      case 'chat-toggle': {
+        // A chat session has only its chat; there is nothing to switch to.
+        if (!focusedSession || isChatSession(focusedSession.conversation)) return
+        const next: PaneView = chatOf(focusedSession).view === 'chat' ? 'terminal' : 'chat'
+        paneViews.choose(focusedSession.id, next)
+        return
+      }
       case 'focus-mode':
         setFocusMode((on) => !on)
         return
@@ -803,14 +1248,17 @@ export function DesktopApp() {
         setTextSize(preferences.terminalFontSize - 1)
         return
       case 'inspect':
-        setInspectOpen((open) => !open)
+        toggleInspect()
         return
       case 'find':
         setFindOpen((open) => !open)
         return
-      case 'new-worktree':
-        if (focusedSession && online) setWorktreeFrom(focusedSession)
+      case 'new-worktree': {
+        const refusal = guardLocal(focusedSession, 'worktrees')
+        if (refusal !== null) toast.message(refusal)
+        else if (focusedSession && online) setWorktreeFrom(focusedSession)
         return
+      }
       case 'broadcast':
         if (layout.activeTabId) {
           const turningOn = !activeTab(layout)?.broadcast
@@ -819,21 +1267,38 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, mac, paneSessions, armedClose])
+  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, platform, paneSessions, armedClose, toggleInspect, sessions, showSessionById, activeGroupKey, selectTabById, overviewOpen, jumped, chatOf, paneViews, sessionPanel])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
-  const modalOpen = settingsSection !== null || renameId !== null || overlayOpen
+  const newAgentOpen = newAgent !== null
+  const dialogOpen = settingsSection !== null || renameId !== null || remoteStart !== null || newAgentOpen
+  const modalOpen = dialogOpen || overlayOpen || usageOpen
   const drawerShown = compact && drawerOpen
-  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
-  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null, overlayOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
+  const panelOverlayShown = compact && sessionPanel.open
+  const shortcutState = useRef({ runShortcut, panelOverlayShown, closePanel: sessionPanel.close, settingsOpen: dialogOpen, newAgentOpen, overlayOpen, paletteOpen, inboxOpen, overviewOpen, usageOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
+  useEffect(() => { shortcutState.current = { runShortcut, panelOverlayShown, closePanel: sessionPanel.close, settingsOpen: dialogOpen, newAgentOpen, overlayOpen, paletteOpen, inboxOpen, overviewOpen, usageOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
   useEffect(() => {
+    // How each layer of the Esc ladder closes. A new dialog adds its closer here and its id to ESC_LADDER.
+    const closers: Partial<Record<EscLayer, () => void>> = {
+      'new-agent': () => { setNewAgent(null) },
+      overview: () => { setOverviewOpen(false) },
+      palette: () => { setPaletteOpen(false) },
+      inbox: () => { setInboxOpen(false) },
+      settings: () => { setSettingsSection(null) },
+      drawer: () => { setDrawerOpen(false) },
+      'session-panel': () => { shortcutState.current.closePanel() },
+      'comment-composer': cancelCommentComposer,
+      usage: () => { setUsageOpen(false) },
+      'focus-mode': () => { setFocusMode(false) },
+    }
     const onKeyDown = (event: KeyboardEvent) => {
       const state = shortcutState.current
       if (state.welcomeOpen) return
+      const match = matchShortcut(event, platform)
       if (state.shortcutsOpen) {
         // Only its own key closes it; Esc is the dialog's.
-        if (matchShortcut(event, mac) === 'shortcuts') {
+        if (match?.action === 'shortcuts') {
           event.preventDefault()
           event.stopPropagation()
           state.runShortcut('shortcuts')
@@ -841,55 +1306,38 @@ export function DesktopApp() {
         return
       }
       if (event.key === 'Escape') {
-        // Innermost first: the palette or inbox, then focus mode, then Settings.
+        // A menu or list that is open (the spinner picker in Settings) takes Esc itself.
+        if (event.target instanceof Element && event.target.closest('[role="menu"]')) return
+        const top = topmostOpen({ 'comment-composer': isCommentComposerOpen(), 'new-agent': state.newAgentOpen, overview: state.overviewOpen, palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, 'session-panel': state.panelOverlayShown, drawer: state.drawerShown, usage: state.usageOpen, 'focus-mode': state.focusMode })
+        if (top === null) return
         // What Esc closes is not also sent on to the terminal, where it would interrupt an agent.
-        const consume = () => { event.preventDefault(); event.stopPropagation() }
-        if (state.overlayOpen) {
-          consume()
-          setPaletteOpen(false)
-          setInboxOpen(false)
-          return
-        }
-        if (state.settingsOpen) {
-          consume()
-          setSettingsSection(null)
-          return
-        }
-        if (state.drawerShown) {
-          consume()
-          setDrawerOpen(false)
-          return
-        }
-        if (state.focusMode) {
-          consume()
-          setFocusMode(false)
-        }
+        event.preventDefault()
+        event.stopPropagation()
+        closers[top]?.()
         return
       }
       if (state.overlayOpen) {
-        const toggle = matchShortcut(event, mac)
-        if (toggle === 'palette' || toggle === 'inbox') {
+        if (match?.action === 'palette' || match?.action === 'inbox') {
           event.preventDefault()
           event.stopPropagation()
-          state.runShortcut(toggle)
+          state.runShortcut(match.action)
         }
         return
       }
       if (state.settingsOpen) return
-      const action = matchShortcut(event, mac)
-      if (!action) return
+      if (!match) return
       event.preventDefault()
       event.stopPropagation()
-      state.runShortcut(action)
+      state.runShortcut(match.action, match.tab)
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => { window.removeEventListener('keydown', onKeyDown, true) }
-  }, [mac])
+  }, [platform])
 
   // The project each session sits in, for the inbox and the palette.
   const projectOf = useMemo(() => {
-    const map = new Map<string, { name: string; color: string; key: string }>()
-    for (const group of groups) for (const member of group.sessions) map.set(member.id, { name: group.name, color: folderColor(group.key, group.colorId).from, key: group.key })
+    const map = new Map<string, { name: string; key: string }>()
+    for (const group of groups) for (const member of group.sessions) map.set(member.id, { name: group.name, key: group.key })
     return map
   }, [groups])
 
@@ -908,13 +1356,14 @@ export function DesktopApp() {
     return sessions
       .filter((item) => (item.status === 'needs' || item.status === 'error' || item.status === 'done') && cleared.get(item.id) !== item.status && !(item.status === 'error' && item.id === focusedId && windowFocused))
       .sort(byPriority(activity))
-      .map((item) => ({ session: item, projectName: projectOf.get(item.id)?.name ?? '', projectColor: projectOf.get(item.id)?.color ?? 'var(--accent)' }))
+      .map((item) => ({ session: item, projectName: projectOf.get(item.id)?.name ?? '' }))
   }, [sessions, cleared, tracks, projectOf, focusedId, windowFocused])
   const needsCount = inboxEntries.filter((entry) => entry.session.status === 'needs').length
   const needsElsewhere = sessions.filter((item) => item.status === 'needs' && item.id !== focusedId).length
 
   // Inspect looks at the focused pane's own repository; the tab bar's +N −N comes from the same daemon question.
-  const inspectTerm = online && isDesktop() && focusedSession ? focusedSession.pane : null
+  // A pane of another machine has no checkout on this computer, so there is nothing to inspect.
+  const inspectTerm = online && isDesktop() && focusedSession && focusedSession.machine === LOCAL_MACHINE && !isChatSession(focusedSession.conversation) ? focusedSession.pane : null
   const diffStat = useQuery({
     queryKey: ['repo', inspectTerm, 'diff-stat'],
     queryFn: async () => {
@@ -928,7 +1377,10 @@ export function DesktopApp() {
     refetchOnWindowFocus: false,
     retry: false,
   })
-  const inspect = useMemo(() => (inspectTerm === null ? null : { open: inspectOpen, additions: diffStat.data?.additions ?? 0, deletions: diffStat.data?.deletions ?? 0 }), [inspectTerm, inspectOpen, diffStat.data])
+  const inspect = useMemo(() => {
+    if (inspectTerm !== null) return { open: inspectOpen, additions: diffStat.data?.additions ?? 0, deletions: diffStat.data?.deletions ?? 0 }
+    return inspectRefusal === null ? null : { open: false, additions: 0, deletions: 0, refusal: inspectRefusal }
+  }, [inspectTerm, inspectOpen, diffStat.data, inspectRefusal])
 
   // Looking at a pane acknowledges it: a finished agent's done goes back to idle, as when the terminal app
   // focuses it, and an error in it leaves the inbox. Needs-you stays until the agent is answered.
@@ -953,7 +1405,11 @@ export function DesktopApp() {
     return () => { window.removeEventListener('focus', onFocus) }
   }, [showSessionById])
 
-  const sendTo = useCallback((target: SessionView, data: string) => sendTerminalInput({ id: target.id, generation: target.conversation.generation ?? 0 }, data), [])
+  const sendTo = useCallback((target: SessionView, data: string) => {
+    // A chat session has no terminal to type into; its answers go through the chat, by request id.
+    if (isChatSession(target.conversation)) return Promise.reject(new Error('A chat session has no terminal. Use its chat.'))
+    return sendTerminalInput({ id: target.id, generation: target.conversation.generation ?? 0 }, data)
+  }, [])
 
   const answerSession = useCallback((sessionId: string, answer: Answer) => {
     const target = sessionMap.get(sessionId)
@@ -973,10 +1429,12 @@ export function DesktopApp() {
   const { notifyNeedsYou, notifyFinished, notifyError } = preferences
   useEffect(() => {
     const previousStatuses = lastStatuses.current
+    // What another machine's agents do raises no system notice unless its entry says notices = true (ADR 0048).
+    const mine = sessions.filter((item) => item.machine === LOCAL_MACHINE || machines.get(item.machine)?.state.notices === true)
     const notices = online
-      ? noticesFor(lastStatuses.current, sessions, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
+      ? noticesFor(lastStatuses.current, mine, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
       : []
-    lastStatuses.current = new Map(sessions.map((item) => [item.id, item.status]))
+    lastStatuses.current = new Map(mine.map((item) => [item.id, item.status]))
     // In the window but on another pane: a toast you can click. Away from the window: the system's.
     const inWindow = document.hasFocus()
     // A card that said "Needs you" goes when the session stops needing you.
@@ -986,7 +1444,8 @@ export function DesktopApp() {
         const target = sessionMap.get(notice.sessionId)
         const card = target && sessionNoticeFor(target, projectOf.get(target.id), {
           open: () => { showSessionById(notice.sessionId) },
-          allow: online ? () => { answerSession(notice.sessionId, 'y') } : null,
+          // A chat session's approval is answered in its chat, by the request's id, never by typing a letter.
+          allow: online && !isChatSession(target.conversation) ? () => { answerSession(notice.sessionId, 'y') } : null,
         })
         if (card) showSessionNotice(notice.sessionId, card)
         continue
@@ -994,7 +1453,7 @@ export function DesktopApp() {
       lastNotified.current = { sessionId: notice.sessionId, at: Date.now() }
       sendNativeNotice(notice.title, notice.body).catch((error: unknown) => { console.warn('Could not show a system notification', error) })
     }
-  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, showSessionById, sessionMap, projectOf, answerSession])
+  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, showSessionById, sessionMap, projectOf, answerSession, machines])
 
   // Types the resume command into the session, as you would. Nothing resumes without this click.
   const resumeInterrupted = useCallback((target: SessionView) => {
@@ -1026,38 +1485,50 @@ export function DesktopApp() {
     if (!showing?.broadcast || typeof data !== 'string') return
     for (const pane of showing.panes) {
       const other = pane.sessionId === fromSessionId ? undefined : sessionMap.get(pane.sessionId)
-      if (other?.status === 'idle') void sendTo(other, data).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not broadcast to a pane')) })
+      if (other?.status === 'idle' && !isChatSession(other.conversation)) void sendTo(other, data).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not broadcast to a pane')) })
     }
   }, [layout, sessionMap, sendTo])
 
   const startAgent = useCallback((program: string) => {
+    const refusal = remoteStartRefusal(remoteGroup !== null, remoteGroup, `Starting ${program} here`)
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
     setSettingsSection(null)
     runStart(async () => activeGroupKey || resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => {
       setLayout((current) => openInNewTab(current, id, makeId))
       void sendTerminalInput({ id, generation: 0 }, `${program}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${program}`)) })
     })
-  }, [runStart, activeGroupKey, preferences.startFolder, home])
+  }, [runStart, activeGroupKey, remoteGroup, preferences.startFolder, home])
 
   const paletteItems: PaletteItem[] = useMemo(() => {
     // Thirty-odd items with closures, built only while the palette can show them.
     if (!paletteOpen) return []
-    const keys = (letter: string, shifted = false) => `${labels.primary}${shifted ? labels.shift : ''}${letter}`
+    const keys = (shortcut: ShortcutAction) => shortcutText(shortcut, platform)
     const action = (id: string, label: string, run: () => void, shortcut?: string): PaletteItem => ({ id, label, kind: 'Action', run, ...(shortcut ? { shortcut } : {}) })
     const showing = activeTab(layout)
+    const newAgentEntry = newAgentPaletteItem(branchProjects, online, undefined, () => { openNewAgent(null) })
     const items: PaletteItem[] = [
-      action('new-here', activeGroupKey ? `New session in ${projectName ?? 'this project'}` : 'New session', newProjectSession, keys('T')),
+      action('new-here', activeGroupKey ? `New session in ${projectName ?? 'this project'}` : 'New session', newProjectSession, keys('new-session')),
       action('new-start', 'New session in the start folder', newSession),
       action('sidebar-side', preferences.sidebarSide === 'left' ? 'Move sidebar to the right' : 'Move sidebar to the left', () => { setPreferences((current) => ({ ...current, sidebarSide: current.sidebarSide === 'left' ? 'right' : 'left' })) }),
-      action('split-right', 'Split right', () => { split(null, 'right') }, keys('D')),
-      action('split-down', 'Split down', () => { split(null, 'down') }, keys('D', true)),
-      action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('J')),
-      action('inspect', 'Inspect the repository', () => { setInspectOpen(true) }, keys('I')),
-      ...(focusedSession ? [action('new-worktree', 'New worktree', () => { setWorktreeFrom(focusedSession) }, keys('N', true))] : []),
-      action('find', 'Find in the pane or every session', () => { setFindOpen(true) }, keys('F')),
-      action('broadcast', showing?.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab', () => { runShortcut('broadcast') }, keys('B', true)),
-      action('focus', 'Focus mode', () => { setFocusMode(true) }, keys('.')),
-      action('settings', 'Open settings', () => { setSettingsSection('general') }, keys(',')),
-      action('shortcuts', 'Keyboard shortcuts', () => { setShortcutsOpen(true) }, keys('/')),
+      action('split-right', 'Split right', () => { split(null, 'right') }, keys('split-right')),
+      action('split-down', 'Split down', () => { split(null, 'down') }, keys('split-down')),
+      action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('inbox')),
+      action('overview', overviewOpen ? 'Close the Overview' : 'Open the Overview', () => { setOverviewOpen((open) => !open) }, keys('overview')),
+      action('usage', 'Open usage and cost', () => { setUsageOpen(true) }, keys('usage')),
+      action('jump-needs', 'Jump to the next session that needs you', () => { runShortcut('jump-needs') }, keys('jump-needs')),
+      action('inspect', 'Inspect the repository', () => { if (inspectRefusal !== null) toast.message(inspectRefusal); else setInspectOpen(true) }, keys('inspect')),
+      ...(newAgentEntry ? [newAgentEntry] : []),
+      ...(focusedSession ? [action('new-worktree', 'New worktree', () => { runShortcut('new-worktree') }, keys('new-worktree'))] : []),
+      action('find', 'Find in the pane or every session', () => { setFindOpen(true) }, keys('find')),
+      action('broadcast', showing?.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab', () => { runShortcut('broadcast') }, keys('broadcast')),
+      action('focus', 'Focus mode', () => { setFocusMode(true) }, keys('focus-mode')),
+      action('settings', 'Open settings', () => { setSettingsSection('general') }, keys('settings')),
+      action('performance', 'Open performance', () => { setSettingsSection('performance') }, keys('performance')),
+      action('machines', 'Machines', () => { setSettingsSection('machines') }),
+      action('shortcuts', 'Keyboard shortcuts', () => { setShortcutsOpen(true) }, keys('shortcuts')),
       ...(showing?.widths ? [action('reset-widths', 'Reset pane widths', () => { setLayout((current) => setColumnWidths(current, showing.id, null)) })] : []),
       action('start-codex', 'Start codex', () => { startAgent('codex') }),
     ]
@@ -1067,18 +1538,18 @@ export function DesktopApp() {
         id: `session-${member.id}`,
         label: `${displayName(member)} · ${member.process}`,
         kind: 'Session',
-        ...(project ? { detail: project.name, dot: project.color } : {}),
+        ...(project ? { detail: project.name } : {}),
         ...(member.status === 'needs' ? { badge: 'needs you' } : {}),
         run: () => { showSessionById(member.id) },
       })
     }
     for (const group of groups) {
       const target = group.sessions.find((member) => member.id === focusedId) ?? group.sessions[0]
-      if (target) items.push({ id: `project-${group.key}`, label: group.name, detail: group.path, kind: 'Project', dot: folderColor(group.key, group.colorId).from, run: () => { showSessionById(target.id) } })
+      if (target) items.push({ id: `project-${group.key}`, label: group.name, detail: group.path, kind: 'Project', run: () => { showSessionById(target.id) } })
     }
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [paletteOpen, labels.primary, labels.shift, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide])
+  }, [paletteOpen, overviewOpen, branchProjects, online, openNewAgent, platform, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal])
 
   const restartOffer: RestartOffer | null = mismatch
     ? {
@@ -1108,12 +1579,12 @@ export function DesktopApp() {
   const renderSidebar = (mode: 'docked' | 'rail', afterPick: () => void) => (
     <Sidebar
       groups={groups}
+      machineHeads={heads}
       focusedId={focusedId}
       tracks={tracks}
       mode={mode}
       online={online}
       sessionCount={sessions.length}
-      primary={labels.primary}
       startFolderLabel={startFolderLabel}
       canStart={canStart}
       portalContainer={root}
@@ -1142,6 +1613,8 @@ export function DesktopApp() {
           setWorktreeFrom(lead)
         }
       }}
+      onNewAgent={(groupKey) => { afterPick(); openNewAgent(groupKey) }}
+      canNewAgent={branchProjects.length > 0}
       onShowSession={(id) => { afterPick(); showSessionById(id) }}
       onEndSession={endSession}
       onEndProject={endProject}
@@ -1149,17 +1622,19 @@ export function DesktopApp() {
       onRenameSession={setRenameId}
       onPinSession={pinSession}
       onOpenSettings={() => { afterPick(); setSettingsSection('general') }}
+      onOpenUsage={() => { afterPick(); setUsageOpen(true) }}
       updateSlot={updateSlot('footer')}
       railUpdateSlot={updateSlot('rail')}
+      overview={{ open: overviewOpen, needs: needsYouCount(sessions), onToggle: () => { afterPick(); setOverviewOpen((open) => !open) } }}
     />
   )
 
   return (
     <ReducedMotionContext.Provider value={reducedMotion}>
       <EffectsContext.Provider value={effects}>
-        <div ref={setRoot} className={`mx-app${narrow ? ' is-narrow' : ''}`} style={rootStyle} data-motion={reducedMotion ? 'reduced' : 'full'} data-side={preferences.sidebarSide}>
+        <div ref={setRoot} className={`mx-app${narrow ? ' is-narrow' : ''}`} style={rootStyle} data-motion={reducedMotion ? 'reduced' : 'full'} data-theme-kind={theme.light ? 'light' : 'dark'} data-side={preferences.sidebarSide}>
           <TitleBar />
-          <div className="mx-window" role="application" aria-label="Maitty">
+          <div className="mx-window" role="application" aria-label="Maitty" style={panelDockedWidth > 0 ? ({ '--session-panel-w': `${String(panelDockedWidth)}px` } as CSSProperties) : undefined}>
             {!focusMode && !compact && renderSidebar(sidebarMode, noop)}
             {!focusMode && drawerShown && (
               <div className="mx-drawer-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawerOpen(false) }}>
@@ -1174,8 +1649,7 @@ export function DesktopApp() {
                   tabs={visibleTabs}
                   activeTabId={layout.activeTabId}
                   sessions={paneSessions}
-                  primary={labels.primary}
-                  canStart={canStart}
+                              canStart={canStart}
                   portalContainer={root}
                   onSelect={selectTabById}
                   onClose={closeTabById}
@@ -1193,10 +1667,11 @@ export function DesktopApp() {
                 {findOpen && (
                   <FindBar
                     online={online}
+                    otherMachines={heads.length > 0}
                     findInPane={(query, direction) => (focusedId ? terminalHandles.current.get(focusedId)?.find(query, direction) ?? false : false)}
                     clearPane={() => { if (focusedId) terminalHandles.current.get(focusedId)?.clearFind() }}
-                    nameOf={(term) => { const found = sessions.find((item) => item.pane === term); return found ? displayName(found) : null }}
-                    onOpenSession={(term) => { const found = sessions.find((item) => item.pane === term); if (found) showSessionById(found.id) }}
+                    nameOf={(term, machine) => { const found = sessions.find((item) => item.machine === machine && item.pane === term); return found ? displayName(found) : null }}
+                    onOpenSession={(term, machine) => { const found = sessions.find((item) => item.machine === machine && item.pane === term); if (found) showSessionById(found.id) }}
                     onClose={() => { setFindOpen(false); if (focusedId) terminalHandles.current.get(focusedId)?.focus() }}
                   />
                 )}
@@ -1207,6 +1682,17 @@ export function DesktopApp() {
                   onDismiss={(id) => { setDismissedRestores((current) => new Set(current).add(id)) }}
                 />
                 {!online && <OfflineBanner retryAt={retryAt} detail={offlineDetail} restart={restartOffer} onRetry={() => { void refetchSessions() }} />}
+                {overviewOpen && (
+                  <OverviewScreen
+                    sessions={sessions}
+                    tracks={tracks}
+                    projectOf={projectOf}
+                    jumped={jumped}
+                    onOpen={showSessionById}
+                    onJump={() => { runShortcut('jump-needs') }}
+                    onClose={() => { setOverviewOpen(false) }}
+                  />
+                )}
                 {tab ? (
                   <div className="mx-panes">
                     {paneColumns(tab, narrow).map((column, columnIndex, columns) => (
@@ -1223,6 +1709,8 @@ export function DesktopApp() {
                           const session = paneSessions.get(pane.sessionId)
                           if (!session) return null
                           const focused = pane.id === tab.focus
+                          const chat = chatOf(session)
+                          const chatOnly = isChatSession(session.conversation)
                           return (
                             <PaneCard
                               key={pane.id}
@@ -1236,11 +1724,30 @@ export function DesktopApp() {
                               maximized={tab.max === pane.id}
                               dropTarget={dropId === pane.id && dragId !== pane.id}
                               workingSince={tracks.get(session.id)?.workingSince ?? null}
-                              primary={labels.primary}
-                              shift={labels.shift}
+                              view={chat.view}
+                              {...(chatOnly ? {} : { onViewChange: (view: PaneView) => { paneViews.choose(session.id, view) } })}
+                              onTogglePanel={sessionPanel.toggle}
+                              panelOpen={sessionPanel.open}
+                              chat={chat.view === 'chat' ? (
+                                <ChatPane
+                                  availability={chat.availability}
+                                  hasTerminal={!chatOnly}
+                                  root={session.repoRoot ?? session.cwd}
+                                  onOpenDiff={showDiffInPanel}
+                                  process={session.process}
+                                  online={online}
+                                  onBackToTerminal={() => { paneViews.choose(session.id, 'terminal') }}
+                                  onStartAgent={(agent) => {
+                                    paneViews.choose(session.id, 'terminal')
+                                    void sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, `${agent}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })
+                                  }}
+                                  defaultFullAccess={preferences.chatFullAccessDefault}
+                                  onStartChat={(agent, fullAccess) => { startChatHere(session, agent, fullAccess) }}
+                                />
+                              ) : undefined}
                               online={online}
                               portalContainer={root}
-                              terminal={
+                              terminal={chatOnly ? <NoTerminalNote /> :
                                 <TerminalView
                                   key={session.id}
                                   conversation={session.conversation}
@@ -1250,9 +1757,10 @@ export function DesktopApp() {
                                   label={`Shell in ${session.cwdLabel}`}
                                   inputDisabled={!online}
                                   ended={session.ended}
-                                  focused={focused && !modalOpen}
+                                  focused={focused && !modalOpen && !overviewOpen && chat.view === 'terminal'}
                                   onInput={(data) => { mirrorInput(session.id, data) }}
                                   onOpenPath={(path, line) => { openPath(session, path, line) }}
+                                  onPasteImage={(image) => { pasteImage(session.id, image) }}
                                   onHandle={(handle) => {
                                     if (handle) terminalHandles.current.set(session.id, handle)
                                     else terminalHandles.current.delete(session.id)
@@ -1294,10 +1802,18 @@ export function DesktopApp() {
                   <EmptyState
                     hasSessions={sessions.length > 0}
                     startFolderLabel={startFolderLabel}
-                    primary={labels.primary}
-                    canStart={canStart}
+                                  canStart={canStart}
                     onNewSession={newSession}
                     onChangeStartFolder={() => { setSettingsSection('general') }}
+                  />
+                )}
+                {usageOpen && (
+                  <UsagePage
+                    budget={preferences.monthlyBudget}
+                    onBudget={(budget) => { setPreferences((current) => ({ ...current, monthlyBudget: budget })) }}
+                    sessionForTerm={sessionForUsageTerm}
+                    onOpenSession={(id) => { setUsageOpen(false); showSessionById(id) }}
+                    onClose={() => { setUsageOpen(false) }}
                   />
                 )}
                 {!focusMode && preferences.statusBar && (
@@ -1323,6 +1839,21 @@ export function DesktopApp() {
                 )}
               </main>
             </div>
+            {!focusMode && sessionPanel.open && focusedSession && (
+              <SessionPanelHost
+                mode={sessionPanel.mode}
+                title={displayName(focusedSession)}
+                process={focusedSession.process}
+                availability={chatOf(focusedSession).availability}
+                root={focusedSession.repoRoot ?? focusedSession.cwd}
+                folder={focusedSession.cwd}
+                branch={focusedSession.branch}
+                onOpenInFiles={(file) => { openPath(focusedSession, file) }}
+                online={online}
+                onClose={sessionPanel.close}
+                onDockedWidth={setPanelDockedWidth}
+              />
+            )}
             {inspectOpen && !focusMode && inspectTerm !== null && focusedSession && (
               <InspectPanel
                 key={inspectTerm}
@@ -1338,10 +1869,10 @@ export function DesktopApp() {
               />
             )}
             <HoverTips />
-            {shortcutsOpen && <ShortcutOverlay mac={mac} portalContainer={root} onClose={() => { setShortcutsOpen(false) }} />}
+            {shortcutsOpen && <ShortcutOverlay platform={platform} portalContainer={root} onClose={() => { setShortcutsOpen(false) }} />}
             {welcomeOpen && (
               <WelcomeDialog
-                mac={mac}
+                platform={platform}
                 startFolder={preferences.startFolder}
                 portalContainer={root}
                 validateFolder={folderExists}
@@ -1368,7 +1899,7 @@ export function DesktopApp() {
                 <span className="mx-focus-tag">Focus</span>
                 {focusedId && sessionMap.get(focusedId) && <span>{projectOf.get(focusedId)?.name} · {sessionMap.get(focusedId)?.cwdLabel} · {sessionMap.get(focusedId)?.process}</span>}
                 <span className={needsElsewhere > 0 ? 'mx-focus-needs' : undefined}>{needsElsewhere > 0 ? `${String(needsElsewhere)} need you elsewhere` : 'Nothing else needs you'}</span>
-                <button type="button" className="mx-focus-exit" onClick={() => { setFocusMode(false) }}>Exit <kbd className="mx-keycap">{labels.primary}.</kbd></button>
+                <button type="button" className="mx-focus-exit" onClick={() => { setFocusMode(false) }}>Exit <Keycaps chord={focusModeChord} /></button>
               </div>
             )}
             {worktreeFrom && (
@@ -1378,6 +1909,12 @@ export function DesktopApp() {
                 onCreate={(branch, base) => createWorktree(worktreeFrom, branch, base)}
                 onCancel={() => { setWorktreeFrom(null) }}
               />
+            )}
+            {newAgent !== null && (
+              <NewAgentDialog projects={branchProjects} initialKey={newAgent.projectKey} home={home} defaultMode={preferences.newSessionView === 'chat' ? 'chat' : 'terminal'} defaultFullAccess={preferences.chatFullAccessDefault} container={root} onStart={startBranchAgent} onCancel={() => { setNewAgent(null) }} />
+            )}
+            {remoteStart !== null && (
+              <RemoteSessionDialog machineName={remoteStart.name} onStart={(folder) => startOnMachine(remoteStart, folder)} onCancel={() => { setRemoteStart(null) }} />
             )}
             {renameId !== null && sessionMap.get(renameId) && (
               <RenameDialog session={sessionMap.get(renameId) as SessionView} onSave={(name) => { saveName(renameId, name) }} onCancel={() => { setRenameId(null) }} />
@@ -1394,15 +1931,18 @@ export function DesktopApp() {
                 onTestNotice={showTestNotice}
                 updates={{ summary: updaterSummary(updater.state), status: updater.state.status, onCheck: updater.check, onDownload: updater.download, onRestart: restartNow }}
                 onShowWelcome={() => { setPreviewTheme(null); setSettingsSection(null); setWelcomeOpen(true) }}
-                mac={mac}
+                platform={platform}
                 daemon={{ online, sessionCount: sessions.length }}
-                projects={groups.map((group) => ({ key: group.key, name: group.name, colorId: group.colorId }))}
+                appVersion={runningVersion}
+                machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed, onGrant: grantNamed, onCopyCommand: copyCommand, add: { windows: navigator.userAgent.includes('Windows'), loadHosts: listSshHosts, onAdd: addNamed, onCancel: cancelAdding } }}
                 validateFolder={folderExists}
                 onChooseFolder={chooseStartFolder}
                 onClose={() => { setPreviewTheme(null); setSettingsSection(null) }}
               />
             )}
             {toastMessage && <Toast key={toastMessage.key} message={toastMessage.text} />}
+            {updatedTo && <UpdatedNotice update={updatedTo} onDone={() => { setUpdatedTo(null) }} />}
+            {preferences.perfOverlay && <PerfOverlay />}
             {restarting && (
               <div className="mx-restarting" role="status">
                 <strong>Restarting Maitty</strong>
@@ -1411,6 +1951,7 @@ export function DesktopApp() {
             )}
           </div>
           <Toaster position={preferences.toastPosition} theme={theme.light ? 'light' : 'dark'} />
+          <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{machineSaid}</div>
         </div>
       </EffectsContext.Provider>
     </ReducedMotionContext.Provider>

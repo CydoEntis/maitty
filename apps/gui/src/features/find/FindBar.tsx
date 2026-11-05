@@ -9,15 +9,18 @@ type Props = {
   /** Selects the next/previous match in the focused pane; false when there is none. */
   findInPane: (query: string, direction: 'next' | 'previous') => boolean
   clearPane: () => void
-  /** What a session is called, by the daemon's pane number; null when it is not one of ours. */
-  nameOf: (term: number) => string | null
-  onOpenSession: (term: number) => void
+  /** What a session is called, by its machine and the pane number on it; null when it is not one of ours. */
+  nameOf: (term: number, machine: number) => string | null
+  onOpenSession: (term: number, machine: number) => void
   onClose: () => void
   online: boolean
+  /** The window knows other machines: the all-sessions search only covers this computer, and says so. */
+  otherMachines?: boolean
 }
 
 /** ⌘F: look for text in the focused pane, or in every session's recent output. */
-export function FindBar({ findInPane, clearPane, nameOf, onOpenSession, onClose, online }: Props) {
+export function FindBar({ findInPane, clearPane, nameOf, onOpenSession, onClose, online, otherMachines = false }: Props) {
+  const allLabel = otherMachines ? 'This computer' : 'All sessions'
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<Scope>('pane')
   const [missed, setMissed] = useState(false)
@@ -62,14 +65,14 @@ export function FindBar({ findInPane, clearPane, nameOf, onOpenSession, onClose,
           className="mx-find-input"
           type="text"
           value={query}
-          placeholder={scope === 'pane' ? 'Find in this pane' : 'Find in every session'}
+          placeholder={scope === 'pane' ? 'Find in this pane' : otherMachines ? 'Find in this computer\'s sessions' : 'Find in every session'}
           aria-label="Search text"
           onChange={(event) => { setQuery(event.target.value); setMissed(false); setHits(null) }}
           onKeyDown={onKeyDown}
         />
         <div className="mx-find-scope" role="group" aria-label="Where to look">
           <button type="button" aria-pressed={scope === 'pane'} onClick={() => { setScope('pane'); setHits(null) }}>Pane</button>
-          <button type="button" aria-pressed={scope === 'all'} disabled={!online} onClick={() => { clearPane(); setScope('all'); setMissed(false) }}>All sessions</button>
+          <button type="button" aria-pressed={scope === 'all'} disabled={!online} onClick={() => { clearPane(); setScope('all'); setMissed(false) }}>{allLabel}</button>
         </div>
         {scope === 'pane' && (
           <>
@@ -83,13 +86,13 @@ export function FindBar({ findInPane, clearPane, nameOf, onOpenSession, onClose,
       {error && <p className="mx-find-note is-error" role="alert">{error}</p>}
       {scope === 'all' && hits !== null && (
         hits.length === 0
-          ? <p className="mx-find-note" role="status">No session printed that recently</p>
+          ? <p className="mx-find-note" role="status">{otherMachines ? 'No session on this computer printed that recently' : 'No session printed that recently'}</p>
           : (
             <ul className="mx-find-hits" aria-label="Matches">
               {hits.map((hit) => (
-                <li key={`${String(hit.term)}:${String(hit.line)}`}>
-                  <button type="button" onClick={() => { onOpenSession(hit.term); close() }}>
-                    <span className="mx-find-session">{nameOf(hit.term) ?? `Session ${String(hit.term)}`}</span>
+                <li key={`${String(hit.machine)}/${String(hit.term)}:${String(hit.line)}`}>
+                  <button type="button" onClick={() => { onOpenSession(hit.term, hit.machine); close() }}>
+                    <span className="mx-find-session">{nameOf(hit.term, hit.machine) ?? `Session ${String(hit.term)}`}</span>
                     <span className="mx-find-text">{hit.text}</span>
                   </button>
                 </li>

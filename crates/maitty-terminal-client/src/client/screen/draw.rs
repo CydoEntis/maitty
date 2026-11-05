@@ -40,9 +40,15 @@ pub(in crate::client) struct Grid {
     pub edge: Rect,
     /// The sheet docked right of the panes, when one is open (else empty).
     pub sheet: Rect,
+    /// The tool rail on the right edge (empty when the screen is too narrow for it).
+    pub tools: Rect,
     /// The tab row: over the panes and the sheet in Hairline, over the panes in Floating.
     pub tabs: Rect,
 }
+
+/// The tool rail's width, and the screen width from which it is drawn.
+pub(in crate::client) const TOOLS_W: u16 = 5;
+const TOOLS_FROM: u16 = 100;
 
 /// Most the padding round the screen may be, in cells.
 const PADDING_MAX: u16 = 3;
@@ -173,6 +179,28 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
             (Rect::default(), r)
         }
     };
+    // The tool rail: a column on the right edge that is always there, so the drawer has a place
+    // to open from. The screen's too narrow for it, or a right-hand sidebar, and it is left out.
+    let (tools, col) = if !look.hairline
+        && app.cfg.ui.tool_rail
+        && app.cfg.ui.sidebar_position != "right"
+        && area.width >= TOOLS_FROM
+    {
+        let gap = look.gap.max(1);
+        (
+            Rect {
+                x: col.right().saturating_sub(TOOLS_W),
+                width: TOOLS_W,
+                ..col
+            },
+            Rect {
+                width: col.width.saturating_sub(TOOLS_W + gap),
+                ..col
+            },
+        )
+    } else {
+        (Rect::default(), col)
+    };
     let (hair_tabs, col) = if look.hairline {
         carve(col)
     } else {
@@ -192,6 +220,23 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         }
     };
     let (sheet, panes) = match open_sheet(app) {
+        // A tool floats over the panes' right side: the panes keep the whole column.
+        Some(kind) if overlaid(app, kind) => {
+            let full = if area.width < NARROW {
+                col.width
+            } else {
+                wanted_w(app, kind, area.width).clamp(SHEET_MIN, overlay_widest(col).max(SHEET_MIN))
+            };
+            let w = ((full as f32 * app.sheet_frac.clamp(0.0, 1.0)).round() as u16).min(col.width);
+            (
+                Rect {
+                    x: col.right() - w,
+                    width: w,
+                    ..col
+                },
+                col,
+            )
+        }
         Some(kind) => split_for_sheet(
             area.width,
             col,
@@ -211,6 +256,7 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         panes,
         edge,
         sheet,
+        tools,
         tabs,
     }
 }
@@ -224,9 +270,14 @@ fn note_sheet(app: &mut App, g: &Grid, screen_w: u16) {
         width: g.sheet.right().saturating_sub(g.panes.x),
         ..g.panes
     };
-    let sizable = open_sheet(app).is_some() && screen_w >= NARROW && widest(col, look) >= SHEET_MIN;
+    // A floating drawer is sized against the terminal under it, which it does not take room from.
+    let room = match open_sheet(app) {
+        Some(kind) if overlaid(app, kind) => overlay_widest(g.panes),
+        _ => widest(col, look),
+    };
+    let sizable = open_sheet(app).is_some() && screen_w >= NARROW && room >= SHEET_MIN;
     app.screen.sheet_rect = g.sheet;
-    app.screen.sheet_widest = if sizable { widest(col, look) } else { 0 };
+    app.screen.sheet_widest = if sizable { room } else { 0 };
     app.screen.sheet_screen_w = screen_w;
 }
 
@@ -243,16 +294,37 @@ fn draw_sheet_edge(app: &mut App, buf: &mut Buffer, g: &Grid, t: &Theme) {
         width: g.sheet.x.saturating_sub(g.panes.right()).max(1),
         ..g.sheet
     };
+    let ex = edge.x + edge.width / 2;
     if app.screen.drag == Some(Drag::Sheet) || hovered(app, edge) {
-        let ex = edge.x + edge.width / 2;
         for yy in g.sheet.top() + 1..g.sheet.bottom().saturating_sub(1) {
             if let Some(px) = buf.cell_mut((ex, yy)) {
                 px.set_symbol("│")
                     .set_style(Style::default().fg(t.accent).bg(t.bg));
             }
         }
+        draw_grip(buf, ex, (g.sheet.top(), g.sheet.bottom()), true, t);
+    } else {
+        draw_grip(buf, ex, (g.sheet.top(), g.sheet.bottom()), false, t);
     }
     hit(app, edge, ScreenHit::SheetEdge);
+}
+
+/// Rows the grip on a draggable edge is tall.
+const GRIP_ROWS: u16 = 3;
+
+/// The mark that an edge can be dragged: a short heavy bar at the middle of the line (`lit` when
+/// it is pointed at or dragged, else quiet), drawn in the column `x` between `top` and `bottom`.
+fn draw_grip(buf: &mut Buffer, x: u16, (top, bottom): (u16, u16), lit: bool, t: &Theme) {
+    let mid = top + bottom.saturating_sub(top) / 2;
+    let colour = if lit { t.accent } else { t.muted };
+    for y in mid.saturating_sub(GRIP_ROWS / 2)..mid.saturating_sub(GRIP_ROWS / 2) + GRIP_ROWS {
+        if y < bottom.saturating_sub(1)
+            && y > top
+            && let Some(px) = buf.cell_mut((x, y))
+        {
+            px.set_symbol("┃").set_style(Style::default().fg(colour).bg(t.bg));
+        }
+    }
 }
 
 /// The sessions are collapsed into the narrow column (`z`), not hidden (`Z`).
@@ -288,14 +360,18 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
             draw_side(app, f.buffer_mut(), g.side, &model, t);
         }
         // The edge beside the sidebar: drag it. It lights up while you point at it.
+        let ex = g.edge.x + g.edge.width / 2;
         if app.screen.drag == Some(Drag::Side) || hovered(app, g.edge) {
-            let ex = g.edge.x + g.edge.width / 2;
             for yy in g.side.top() + 1..g.side.bottom().saturating_sub(1) {
                 if let Some(px) = f.buffer_mut().cell_mut((ex, yy)) {
                     px.set_symbol("│")
                         .set_style(Style::default().fg(t.accent).bg(t.bg));
                 }
             }
+            draw_grip(f.buffer_mut(), ex, (g.side.top(), g.side.bottom()), true, t);
+        } else {
+            // Always a small grip, so a person can see the edge moves.
+            draw_grip(f.buffer_mut(), ex, (g.side.top(), g.side.bottom()), false, t);
         }
         hit(app, g.edge, ScreenHit::SideEdge);
     } else if !app.side_hidden {
@@ -332,9 +408,15 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         );
     }
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {
+        // A floating drawer clears what it covers first, or the chips of the tabs under it show
+        // through its border.
+        if overlaid(app, kind) {
+            fill(f.buffer_mut(), g.sheet, t.bg);
+        }
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
         draw_sheet_edge(app, f.buffer_mut(), &g, t);
     }
+    tools::draw_tools(app, f.buffer_mut(), g.tools, t);
     draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), t);
     app.screen.crumb_x = g.panes.x + 1;
     // A popup (`<app> popup`) floats over everything, the rest dimmed.
@@ -430,13 +512,43 @@ fn draw_tab_chips(app: &mut App, buf: &mut Buffer, panes: Rect, model: &[Proj], 
         return;
     }
     let x = card::title_x(first);
+    let border = buf[(x, first.y)].fg;
+    // With the sidebar hidden a `»` chip leads the tabs: a click brings it back.
+    let lead = if app.side_hidden {
+        let mut segs = vec![seg(
+            " » ",
+            Style::default()
+                .fg(t.strong)
+                .bg(t.btn)
+                .add_modifier(Modifier::BOLD),
+        )];
+        if Look::of(&app.cfg.ui).caps {
+            segs = round_ends(segs, t.bg);
+        }
+        let w = segs_width(&segs);
+        put(buf, x, first.y, &segs, panes.right());
+        hit(
+            app,
+            Rect {
+                x,
+                y: first.y,
+                width: w,
+                height: 1,
+            },
+            ScreenHit::ExpandSidebar,
+        );
+        put(buf, x + w, first.y, &[seg("─", Style::default().fg(border))], panes.right());
+        w + 1
+    } else {
+        0
+    };
+    let x = x + lead;
     let row = Rect {
         x,
         y: first.y,
         width: panes.right().saturating_sub(x),
         height: 1,
     };
-    let border = buf[(x, first.y)].fg;
     let chips = tab_strip(app, model, row, true, t)
         .into_iter()
         .map(|(text, style)| {
@@ -447,7 +559,56 @@ fn draw_tab_chips(app: &mut App, buf: &mut Buffer, panes: Rect, model: &[Proj], 
             }
         })
         .collect::<Vec<_>>();
+    let tabs_end = x + segs_width(&chips);
     put(buf, x, first.y, &chips, row.right());
+    draw_machine_badge(app, buf, (tabs_end, first.right(), first.y), t);
+}
+
+/// Where the focused session runs, as a chip set into the first pane's top border at the right:
+/// ` ⌂ Local ` or ` ⇄ build `. It takes the rightmost stretch of plain border that fits it
+/// between the tabs and the chips already at the right (the state, the ✕), and is left out when
+/// there is none.
+fn draw_machine_badge(app: &App, buf: &mut Buffer, (from, to, y): (u16, u16, u16), t: &Theme) {
+    let Some(focus) = app.focused() else {
+        return;
+    };
+    let name = if focus.machine == MachineId::LOCAL {
+        format!("{} Local", super::machine_group::LOCAL_ICON)
+    } else {
+        format!(
+            "{} {}",
+            super::machine_group::REMOTE_ICON,
+            app.machine_label_of(focus.machine)
+        )
+    };
+    let badge = seg(
+        format!(" {name} "),
+        Style::default()
+            .fg(t.strong)
+            .bg(t.btn)
+            .add_modifier(Modifier::BOLD),
+    );
+    // With `ui.rounded = full` the badge is a pill, its ends on the border's own ground.
+    let caps = Look::of(&app.cfg.ui).caps;
+    let w = badge.0.width() as u16 + 2 * u16::from(caps);
+    // One border cell is kept either side of the badge.
+    let mut run = 0u16;
+    for x in (from..to.saturating_sub(1)).rev() {
+        if buf[(x, y)].symbol() == "─" {
+            run += 1;
+            if run >= w + 2 {
+                let segs = if caps {
+                    round_ends(vec![badge], buf[(x, y)].bg)
+                } else {
+                    vec![badge]
+                };
+                put(buf, x + 1, y, &segs, x + 1 + w);
+                return;
+            }
+        } else {
+            run = 0;
+        }
+    }
 }
 
 /// The tab row's fixed right end: `◫` splits the focused pane and `⤢` zooms it (lit while it
@@ -836,16 +997,17 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
         .fg(t.acc_ink)
         .bg(t.accent)
         .add_modifier(Modifier::BOLD);
+    let close_mark = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
     let chips = |n: usize, on: bool, name: &str| {
         let number = if on {
             current
         } else {
-            Style::default().fg(t.text).bg(t.btn)
+            Style::default().fg(t.muted).bg(t.btn)
         };
         let label = if on {
             name_chip(name, lit, t)
         } else {
-            seg(format!(" {name} "), Style::default().fg(t.text).bg(t.card))
+            seg(format!(" {name} "), Style::default().fg(t.text).bg(t.btn))
         };
         // Its state, on screen or not, so a tab out of view still says it works or asks; on the
         // accent the glyph takes the accent's ink, its shape saying the state.
@@ -877,7 +1039,10 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
             } else {
                 (t.muted, t.card)
             };
-            pair.push(seg("× ", Style::default().fg(fg).bg(bg)));
+            pair.push(seg(
+                format!("{close_mark} "),
+                Style::default().fg(fg).bg(bg),
+            ));
         }
         if look.round_tabs {
             round_ends(pair, ground)
@@ -1477,7 +1642,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         _ => (t.accent, "✓", "Notice"),
     };
     let look = Look::of(&app.cfg.ui);
-    let button = restart.then(|| button_pill(look, t, "Restart now", "", false, t.card));
+    let button = restart.then(|| button_pill(look, t, "Restart now", "", false, t.bg));
     let body_w = |s: &str| s.width() + TOAST_TEXT_PAD;
     let want = [
         Some(body_w(&title)),
@@ -1536,11 +1701,11 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     };
     app.screen.toast_rect = r;
     let ink = |c: Color, bg: Color| if fade > 0.0 { blend(c, bg, fade) } else { c };
-    // Floating: framed like a modal (a box on `card`, round corners whatever `ui.rounded` says),
-    // its border and a kind chip on the top border in the notice's colour, so it reads as a
-    // small floating pane, not text on the ground. Hairline, which has no boxes: a solid block
-    // in `card2` (its `card` is the ground), its left edge a heavy rule (ADR 0028).
-    let bg = if look.hairline { t.card2 } else { t.card };
+    // Floating: framed like a pane (a box on the plain ground, round corners whatever
+    // `ui.rounded` says, no fill of its own), its border and a kind chip on the top border in the
+    // notice's colour. Hairline, which has no boxes: a solid block in `card2` (its `card` is the
+    // ground), its left edge a heavy rule (ADR 0028).
+    let bg = if look.hairline { t.card2 } else { t.bg };
     fill(buf, r, bg);
     let bar = Style::default().fg(ink(colour, bg)).bg(bg);
     if look.hairline {
@@ -1604,14 +1769,14 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         );
     }
     // Floating: the close is the red chip modals wear on their top border; Hairline keeps a
-    // quiet ✕ on the title row.
+    // quiet × on the title row.
     let close_chip = if look.hairline {
-        vec![seg("✕", Style::default().fg(ink(t.muted, bg)).bg(bg))]
+        vec![seg("×", Style::default().fg(ink(t.muted, bg)).bg(bg))]
     } else {
         pill(
             look,
             vec![seg(
-                "✕",
+                "×",
                 Style::default()
                     .fg(ink(t.ink_on(t.err), t.err))
                     .add_modifier(Modifier::BOLD),

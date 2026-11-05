@@ -11,7 +11,13 @@ export function hasWebgl2(): boolean {
   return webgl2Available
 }
 
+export type GpuKind = 'webgl' | 'software'
+
+export function gpuKind(): GpuKind {
+  return hasWebgl2() ? 'webgl' : 'software'
+}
+
 /** Marks the document for the stylesheet: `data-gpu` is `webgl` or `software`. */
 export function markGpu(): void {
-  document.documentElement.dataset.gpu = hasWebgl2() ? 'webgl' : 'software'
+  document.documentElement.dataset.gpu = gpuKind()
 }

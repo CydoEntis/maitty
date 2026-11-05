@@ -14,20 +14,37 @@ const DEFAULTS: SettingsPreferences = {
   notifyError: true,
   notificationSound: false,
   terminalFontSize: 13,
+  terminalFontFamily: '',
+  terminalFontWeight: 400,
+  terminalFontWeightBold: 700,
   startFolder: '',
   groupBy: 'repo',
   themeMode: 'system',
   darkTheme: 'Midnight',
   lightTheme: 'Paper',
   cursorStyle: 'block',
-  scrollback: 10000,
+  scrollback: 10000, scrollSpeed: 1,
   effectWorking: true,
   effectNeedsYou: true,
-  effectDone: true, density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: false, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, style: 'glass', projectColors: {},
+  effectDone: true, effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all', animations: 'auto', density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', statusBar: true, chatViewDefault: { claude: 'terminal', codex: 'terminal' }, newSessionView: 'chat', chatFullAccessDefault: false, perfOverlay: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass',
 }
 
 describe('settings preferences', () => {
   beforeEach(() => { localStorage.clear() })
+
+  it('starts with a flat ground and a steady cursor, and keeps a stored choice', () => {
+    expect(readSettingsPreferences()).toMatchObject({ backgroundGlow: false, cursorBlink: false })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass', backgroundGlow: true, cursorBlink: true }))
+    expect(readSettingsPreferences()).toMatchObject({ backgroundGlow: true, cursorBlink: true })
+  })
+
+  it('installs updates when idle by default, and a stored off stays off', () => {
+    expect(readSettingsPreferences().restartWhenIdle).toBe(true)
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass' }))
+    expect(readSettingsPreferences().restartWhenIdle).toBe(true)
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass', restartWhenIdle: false }))
+    expect(readSettingsPreferences().restartWhenIdle).toBe(false)
+  })
 
   it('uses the defaults until preferences are saved', () => {
     expect(readSettingsPreferences()).toEqual(DEFAULTS)
@@ -70,6 +87,22 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences()).toMatchObject({ style: 'flat', effectWorking: true, effectDone: true })
   })
 
+  it('defaults to Waves for working and Sweep for the rest, and ignores nonsense', () => {
+    expect(readSettingsPreferences()).toMatchObject({ effectStyleWorking: 'waves', effectStyleNeedsYou: 'sweep', effectStyleDone: 'sweep', workingScope: 'all' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ effectStyleWorking: 'sweep', effectStyleDone: 'waves', effectStyleNeedsYou: 'glitter', workingScope: 'selected' }))
+    expect(readSettingsPreferences()).toMatchObject({ effectStyleWorking: 'sweep', effectStyleDone: 'waves', effectStyleNeedsYou: 'sweep', workingScope: 'selected' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ workingScope: 'some' }))
+    expect(readSettingsPreferences().workingScope).toBe('all')
+  })
+
+  it('defaults Animations to Auto and ignores a value it does not know', () => {
+    expect(readSettingsPreferences().animations).toBe('auto')
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ animations: 'light' }))
+    expect(readSettingsPreferences().animations).toBe('light')
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ animations: 'turbo' }))
+    expect(readSettingsPreferences().animations).toBe('auto')
+  })
+
   it('reads the old style names as Flat and Glass, keeps Tiled, and falls back from nonsense', () => {
     const style = (value: string) => {
       localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: value }))
@@ -85,6 +118,22 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences().statusBar).toBe(false)
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: 'no' }))
     expect(readSettingsPreferences().statusBar).toBe(true)
+  })
+
+  it('starts new agent sessions as chats with full access off, and ignores nonsense', () => {
+    expect(readSettingsPreferences()).toMatchObject({ newSessionView: 'chat', chatFullAccessDefault: false })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ newSessionView: 'terminal', chatFullAccessDefault: true }))
+    expect(readSettingsPreferences()).toMatchObject({ newSessionView: 'terminal', chatFullAccessDefault: true })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ newSessionView: 'sideways', chatFullAccessDefault: 'yes' }))
+    expect(readSettingsPreferences()).toMatchObject({ newSessionView: 'chat', chatFullAccessDefault: false })
+  })
+
+  it('opens agent sessions in the terminal unless a view was chosen, and ignores nonsense', () => {
+    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'terminal', codex: 'terminal' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatViewDefault: { claude: 'chat', codex: 'sideways' } }))
+    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'chat', codex: 'terminal' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ chatViewDefault: 'chat' }))
+    expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'terminal', codex: 'terminal' })
   })
 
   it('keeps icons in colour unless grayscale was chosen, in either style', () => {
@@ -104,7 +153,25 @@ describe('settings preferences', () => {
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ trayStyle: 'stacked', leadMode: 'attention' }))
     expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'stacked', leadMode: 'attention' })
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ trayStyle: 'wide', leadMode: 'random' }))
-    expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color', projectColors: {} })
+    expect(readSettingsPreferences()).toMatchObject({ trayStyle: 'stacked', leadMode: 'focused', iconColor: 'color' })
+  })
+
+  it('keeps a valid terminal font and falls back to the defaults for nonsense', () => {
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ terminalFontFamily: ' Fira Code ', terminalFontWeight: 500, terminalFontWeightBold: 800 }))
+    expect(readSettingsPreferences()).toMatchObject({ terminalFontFamily: 'Fira Code', terminalFontWeight: 500, terminalFontWeightBold: 800 })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ terminalFontFamily: 'x"; background: red', terminalFontWeight: 450, terminalFontWeightBold: 'bold' }))
+    expect(readSettingsPreferences()).toMatchObject({ terminalFontFamily: '', terminalFontWeight: 400, terminalFontWeightBold: 700 })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ terminalFontFamily: 7, terminalFontWeight: null }))
+    expect(readSettingsPreferences()).toMatchObject({ terminalFontFamily: '', terminalFontWeight: 400 })
+  })
+
+  it('ignores per-project colours saved by an older version, without an error', () => {
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ density: 'spacious', projectColors: { '/code/maitty': 'violet' } }))
+
+    const read = readSettingsPreferences()
+
+    expect(read.density).toBe('spacious')
+    expect(read).not.toHaveProperty('projectColors')
   })
 
   it('carries over the theme chosen before the theme browser', () => {
@@ -127,5 +194,13 @@ describe('settings preferences', () => {
 
     localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ themeMode: 'auto', darkTheme: 'High Contrast' }))
     expect(readSettingsPreferences()).toMatchObject({ themeMode: 'system', darkTheme: 'High Contrast' })
+  })
+
+  it('has no monthly budget by default and keeps only a positive amount in range', () => {
+    expect(readSettingsPreferences().monthlyBudget).toBeNull()
+    for (const [stored, expected] of [[50, 50], [12.5, 12.5], [0, null], [-5, null], ['50', null], [2_000_000, null], [null, null]] as const) {
+      localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass', monthlyBudget: stored }))
+      expect(readSettingsPreferences().monthlyBudget).toBe(expected)
+    }
   })
 })

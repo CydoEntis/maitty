@@ -67,8 +67,7 @@ impl Ink {
 
 /// The working mark: the chosen spinner while motion is on (or in the ASCII set), else `⠿`.
 fn working_glyph(app: &App) -> String {
-    let ascii = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons) == &glyphs::ASCII;
-    if app.motion_on() || ascii {
+    if app.motion_on() {
         glyph(app, Status::Working)
     } else {
         STILL_WORKING.into()

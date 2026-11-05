@@ -4,14 +4,14 @@
 mod actions;
 mod background;
 mod branch;
-pub mod connections;
+pub use maitty_machines::connections;
 mod copy;
 mod design;
 mod files;
 mod find;
 mod ids;
 mod input;
-pub mod link;
+pub use maitty_machines::link;
 mod machine_config;
 mod machine_flow;
 mod machine_ids;
@@ -24,15 +24,20 @@ mod motion;
 mod overlap;
 mod pick;
 mod recipes;
+use maitty_machines::remote_policy;
+#[cfg(test)]
+mod remote_policy_tests;
+pub(crate) use maitty_machines::remote_snapshot;
 mod remote_image;
 #[cfg(test)]
 mod remote_image_tests;
-mod remote_policy;
-pub(crate) mod remote_snapshot;
+#[cfg(test)]
+mod remote_snapshot_tests;
 mod render;
 pub mod restart_prompt;
 mod routing;
 mod screen;
+mod send_file;
 mod spinners;
 pub mod ssh_hosts;
 mod tasks;
@@ -47,7 +52,7 @@ use crate::keys::{self, Action, KeySpec};
 use crate::protocol::*;
 use crate::theme::Theme;
 use anyhow::Result;
-use connections::{Burst, Connections, NotConnected};
+use connections::{Burst, Connections, NotConnected, SERVER_BURST};
 use futures_util::{FutureExt, StreamExt};
 use ids::{ClientSession, ClientTerm, MachineId, MachineSnap, Outgoing, Remote};
 use ratatui::crossterm::event::{
@@ -102,8 +107,6 @@ struct NoticeCard {
     preview: Option<String>,
 }
 
-/// Server messages taken in one go before the next frame.
-const SERVER_BURST: usize = 512;
 /// Losing the server twice within this long is the server going, not a hiccup: stop.
 const REATTACH_AT_MOST_EVERY: Duration = Duration::from_secs(10);
 /// The daemon sends Bye before exiting; wait past its graceful shutdown window before spawning it again.
@@ -277,7 +280,7 @@ fn cursor_code(program: Option<u8>, ui: &crate::config::Ui) -> u8 {
     let blinking = match ui.cursor.as_str() {
         "block" => 1,
         "underline" => 3,
-        "bar" => 5,
+        "line" => 5,
         _ => return 0,
     };
     // DECSCUSR's odd numbers blink and the even ones after them hold still.
@@ -324,19 +327,14 @@ mod cursor_tests {
 
     #[test]
     fn your_cursor_shows_where_the_program_asks_for_none() {
-        assert_eq!(
-            cursor_code(None, &ui("terminal", true)),
-            0,
-            "the terminal's own by default"
-        );
         assert_eq!(cursor_code(None, &ui("block", true)), 1);
         assert_eq!(cursor_code(None, &ui("block", false)), 2);
         assert_eq!(cursor_code(None, &ui("underline", true)), 3);
         assert_eq!(cursor_code(None, &ui("underline", false)), 4);
-        assert_eq!(cursor_code(None, &ui("bar", true)), 5);
-        assert_eq!(cursor_code(None, &ui("bar", false)), 6);
+        assert_eq!(cursor_code(None, &ui("line", true)), 5);
+        assert_eq!(cursor_code(None, &ui("line", false)), 6);
         assert_eq!(
-            cursor_code(Some(0), &ui("bar", false)),
+            cursor_code(Some(0), &ui("line", false)),
             6,
             "a program asking for the default gets yours"
         );
@@ -349,7 +347,7 @@ mod cursor_tests {
             5,
             "vim's insert-mode bar wins over your block"
         );
-        assert_eq!(cursor_code(Some(2), &ui("terminal", true)), 2);
+        assert_eq!(cursor_code(Some(2), &ui("block", true)), 2);
     }
 }
 
@@ -440,6 +438,8 @@ enum PromptKind {
     ConfirmRemoveWorktree(WsId),
     /// A file to copy into the project's references: (project root, folder a relative path starts from).
     AddReference(PathBuf, PathBuf),
+    /// A file on this computer to send to the machine this pane is on (ADR 0055).
+    SendFile(ClientTerm),
 }
 
 impl PromptKind {
@@ -454,6 +454,7 @@ impl PromptKind {
             PromptKind::ConfirmKillServer => "Kill the server and every pane? (y/n)",
             PromptKind::ConfirmRemoveWorktree(_) => "Remove this worktree? (y / f = force / n)",
             PromptKind::AddReference(..) => "Add a reference: the file's path",
+            PromptKind::SendFile(_) => "Send a file to this machine: its path",
         }
     }
     fn is_confirm(&self) -> bool {
@@ -512,6 +513,8 @@ pub struct App {
     notice_restart: bool,
     /// The toast is a hint about keys, not news: it is marked `i`, not ✓.
     notice_hint: bool,
+    /// The file being sent to another machine, if any (ADR 0055).
+    sending: Option<send_file::Sending>,
     /// The toast's second and third rows, when the notice has them.
     notice_card: Option<NoticeCard>,
     /// The selection just copied, glowing for a moment after copy mode closed.
@@ -580,6 +583,10 @@ pub struct App {
     /// Pages the wheel has sent up to an agent that scrolls itself, less those sent down:
     /// The app can't see where it is, so this is how far "Back to bottom" has to page down.
     paged_up: std::collections::HashMap<ClientTerm, u32>,
+    /// When a remote machine's refused copy was last told, so it is told once a minute.
+    copy_refusal_told: Option<Instant>,
+    /// The panes drawn at the last `sync_sizes`, to see which have just come into view.
+    shown_panes: std::collections::HashSet<ClientTerm>,
     out: mpsc::UnboundedSender<Outgoing>,
     quit: Option<String>,
     dirty: bool,
@@ -665,6 +672,7 @@ async fn run_async(opts: Options) -> Result<()> {
     let mut links = link::Links::start(
         link::configured_machines(&app.cfg.machines, ipc::SSH_PROGRAM),
         link::Timing::DEFAULT,
+        || ipc::terminal_dial(true),
     );
     app.links = links.control();
 
@@ -796,13 +804,14 @@ impl App {
             notice_term: None,
             notice_restart: false,
             notice_hint: false,
+            sending: None,
             notice_card: None,
             copy_flash: None,
             history: Default::default(),
             right_down: None,
             snap: Snapshot::default(),
             remotes: Default::default(),
-            machine_ids: machine_ids::MachineIds::load(),
+            machine_ids: machine_ids::load(),
             links: Default::default(),
             machine_flow: Default::default(),
             unsent_input: Default::default(),
@@ -823,6 +832,8 @@ impl App {
             pane_frames: Vec::new(),
             wheel_page: None,
             paged_up: std::collections::HashMap::new(),
+            copy_refusal_told: None,
+            shown_panes: std::collections::HashSet::new(),
             out,
             quit: None,
             dirty: true,
@@ -941,6 +952,7 @@ impl App {
                     if last_fresh.elapsed() >= Duration::from_secs(1) {
                         last_fresh = Instant::now();
                         self.screen_fresh();
+                        self.show_send_progress();
                         self.dirty = true;
                     }
                     let frame = self.spinner_frame();
@@ -1632,16 +1644,30 @@ impl App {
         }
         let panes = self.panes.clone();
         let dragging = self.screen.drag.is_some();
+        // A pane that was out of sight (another tab, a hidden session) and is shown again has its
+        // size told to the daemon afresh: another window on the same daemon may have set it to
+        // its own in the meantime, and the program then draws for a width this screen is not.
+        let now: std::collections::HashSet<ClientTerm> = panes.iter().map(|(t, _)| *t).collect();
+        for term in now.difference(&self.shown_panes) {
+            self.sizes.remove(term);
+        }
+        self.shown_panes = now;
         for (term, r) in panes {
             let want = (r.width.max(2), r.height.max(2));
-            if !dragging && self.rewrap.remove(&term) {
+            // An agent's screen is drawn by cursor moves and erases that are only right at the
+            // width they were made for: replaying them into a screen of another width scrambles
+            // it. The program redraws itself when it hears of the new size, so such a pane only
+            // changes size.
+            let replays = !self.draws_itself(term);
+            if !dragging && self.rewrap.remove(&term) && replays {
                 self.rewrap_pane(term, want);
             }
             if self.sizes.get(&term) == Some(&want) {
                 continue;
             }
             let old = self.sizes.insert(term, want);
-            if old.is_some_and(|o| o.0 != want.0)
+            if replays
+                && old.is_some_and(|o| o.0 != want.0)
                 && self.raw.get(&term).is_some_and(|r| !r.is_empty())
             {
                 // A new width: replay recent output into a fresh screen so text re-wraps
@@ -1667,6 +1693,11 @@ impl App {
                 },
             );
         }
+    }
+
+    /// Whether the program in `term` is an agent, which paints its own screen with cursor moves.
+    fn draws_itself(&self, term: ClientTerm) -> bool {
+        self.term_info(term).is_some_and(|i| i.agent.is_some())
     }
 
     /// A fresh screen for `term` at `(cols, rows)`, from the output kept for it.
@@ -1774,10 +1805,16 @@ impl App {
         if text.is_empty() {
             return;
         }
-        let chars = text.chars().count();
-        let lines = text.lines().count().max(1);
         let native = copy::to_clipboard(&text);
         let from = src.map(|t| self.session_name(t)).filter(|n| !n.is_empty());
+        self.announce_copy(&text, native, from);
+    }
+
+    /// The one toast for a copy, whether you selected the text here or a program asked for it:
+    /// what was copied, how much, from where, and a line of it.
+    pub(super) fn announce_copy(&mut self, text: &str, native: bool, from: Option<String>) {
+        let chars = text.chars().count();
+        let lines = text.lines().count().max(1);
         let mut detail = format!(
             "{chars} character{} · {lines} line{}",
             if chars == 1 { "" } else { "s" },
@@ -1919,37 +1956,15 @@ impl App {
     /// The clipboard's image, sent to the machine the pane is on and kept there as a file; its
     /// path there is typed into the pane. The upload is ssh, run off the UI thread.
     fn paste_image_to_machine(&mut self, term: ClientTerm) {
-        let name = self.machine_name(term.machine).to_owned();
-        let def = self
-            .cfg
-            .machines
-            .iter()
-            .find(|def| def.name.eq_ignore_ascii_case(&name))
-            .cloned();
-        let Some(def) = def else {
-            self.notify(
-                format!("{name} is not one of this computer's machines"),
-                true,
-            );
+        let Some((machine, name)) = self.machine_for(term) else {
             return;
         };
-        let machine = ipc::Machine::from_def_via(&def, &self.machine_flow.ssh);
         self.notify(format!("sending the clipboard image to {name}…"), false);
         self.spawn_bg(move || {
             let sent = remote_image::send(&machine, &name);
             Bg::Then(Box::new(move |app: &mut App| match sent {
                 Ok(sent) => {
-                    let text = files::quote_path(std::path::Path::new(&sent.path));
-                    let bracketed = app
-                        .parsers
-                        .get(&term)
-                        .is_some_and(|p| p.screen().bracketed_paste());
-                    let data = if bracketed {
-                        format!("\x1b[200~{text} \x1b[201~")
-                    } else {
-                        format!("{text} ")
-                    };
-                    app.send_input(term, data.into_bytes());
+                    app.type_path_into(term, &sent.path);
                     app.notify(
                         format!(
                             "pasted the clipboard image ({}×{}) to {name}",
@@ -2076,9 +2091,9 @@ mod cli_machine_tests;
 #[cfg(test)]
 mod doctor_machine_tests;
 #[cfg(test)]
-mod mcp_machine_tests;
-#[cfg(test)]
 mod machine_update_tests;
+#[cfg(test)]
+mod mcp_machine_tests;
 #[cfg(test)]
 mod remote_status_tests;
 #[cfg(test)]

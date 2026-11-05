@@ -354,6 +354,11 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 .terminal-screen .xterm-viewport { overflow-y: auto !important; }
 .terminal-screen .xterm-screen { padding-bottom: 1px; }
 .terminal-input-error { color: var(--danger); font-size: 11px; margin: 8px 2px; }
+/* A remote pane slow to attach: a strip in the flow above the terminal, so it never covers any of it. */
+.terminal-catch-up { position: relative; flex: none; display: flex; align-items: center; gap: 8px; height: 24px; overflow: hidden; padding: 0 2px; font: 12px/1 "Geist Variable", Geist, system-ui, sans-serif; color: var(--muted, var(--muted-foreground)); }
+.terminal-catch-up svg { animation: spin 1s linear infinite; }
+.terminal-catch-up::before { content: ""; position: absolute; top: 0; left: 0; width: 35%; height: 2px; border-radius: 1px; background: var(--accent, var(--primary)); animation: catch-up-slide 1.2s ease-in-out infinite; }
+@keyframes catch-up-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
 :root[data-theme="day"] .terminal-output { background: #14202d; }
 :root[data-theme="day"] .terminal-screen { background: #14202d; }
 .terminal-dim { color: #8a9bad; }
@@ -1117,10 +1122,6 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 .title-bar { align-items: center; background: var(--bg); color: var(--muted-text); display: flex; flex: 0 0 32px; gap: 8px; height: 32px; padding-left: 12px; user-select: none; }
 .title-bar-logo { height: 18px; pointer-events: none; width: 18px; }
 .title-bar-name { font-size: 12px; pointer-events: none; }
-.title-bar-controls { align-items: stretch; display: flex; height: 100%; margin-left: auto; }
-.title-bar-controls button { align-items: center; background: transparent; border: 0; color: var(--muted-text); display: flex; justify-content: center; transition: background-color .14s ease, color .14s ease; width: 46px; }
-.title-bar-controls button:hover { background: var(--hover); color: var(--fg); }
-.title-bar-controls button.is-close:hover { background: #c42b1c; color: #fff; }
 .sidebar-heading { justify-content: flex-end; }
 .sidebar-rail-toggle, .sidebar-collapse-toggle { margin-right: auto; }
 

@@ -40,4 +40,10 @@ describe('noticesFor', () => {
   it('does not notify for states that need nothing from you', () => {
     expect(noticesFor(seen([['t1', 'working']]), [session('t1', 'idle')], ALL, null)).toEqual([])
   })
+
+  it('starts a session of another machine with the machine in brackets, as its own notices do', () => {
+    const remote = { ...session('build/t7', 'needs'), machineName: 'build', name: 'deploy' } as SessionView
+    const notices = noticesFor(seen([['build/t7', 'working']]), [remote], ALL, null)
+    expect(notices.map((notice) => notice.title)).toEqual(['[build] deploy needs you'])
+  })
 })

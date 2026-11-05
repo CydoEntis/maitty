@@ -137,10 +137,21 @@ whose login also prints text can't be told from noise, and gets the error above,
 The optional Tauri GUI invokes only fixed desktop commands from
 `crates/maitty-desktop-client/`; validate webview input in both the TypeScript boundary and
 the Rust host. Never expose a generic process or shell command. Between the Tauri host and the
-webview (`apps/gui/src-tauri/src/terminal_stream.rs`, `apps/gui/src/api/`): pane output arrives as
-raw frames over the channel the webview opens once with `watch_terminal_output` (the pane as 4
-big-endian bytes, the sequence number as 8, one replay byte, then the output), one frame per pane
-per flush (the host gathers reads for up to 12 ms or 64 KiB; a replay flushes what came before it);
+webview (`apps/gui/src-tauri/src/terminal_stream.rs`, `streams.rs`, `apps/gui/src/api/`): pane output
+arrives, from every machine, as raw frames over the one channel the webview opens once with
+`watch_terminal_output` (the machine as 2 big-endian bytes, 0 for this computer, the pane as 4, the
+sequence number as 8, one replay byte, then the output; this header is the host-to-webview format
+only and the daemon protocol is unchanged), one frame per pane per flush (the host gathers reads for
+up to 12 ms or, for this computer, 64 KiB; a replay flushes what came before it; another machine gets
+at most 256 KiB into a flush, and if 4 MiB of its output waits, that pane's waiting output is dropped
+and its daemon is asked for a fresh replay, so one machine cannot slow this computer's panes);
+history, sequence numbers and the last snapshot are kept per machine, and `terminal_history` and
+`terminal_input` take an optional `machine` (this computer when left out), as do the pane commands
+(resize, rename, pin, archive, seen, close): a pane of another machine is asked over that machine's
+line (`PaneCommand` in `maitty-desktop-client` makes each message for both), a reply or error from it
+is taken only while a request of the host's is out to it (30 s, 64 kept, as in the terminal app), and
+typing or a command for a machine with no line is refused naming it, the typing counted and reported
+as `unsent` on the machine's next `machine-state` `connected`;
 the view uses the sequence number to catch up from `terminal_history`; `terminal_history` and the
 replay commands answer with raw bytes
 (`tauri::ipc::Response`), the history prefixed with its sequence number as 8 big-endian bytes and
@@ -148,7 +159,13 @@ empty once the host has asked the daemon for the pane's replay over the stream (
 pane's next frame) and an error when there is no stream, so the view fetches a replay itself; the
 daemon's `Snapshot` goes out as a `sessions-changed` event
 whenever it changes, with `null` when the stream dropped, and the webview sets its session query
-from it instead of polling (a 15 s poll remains as a safety net). A desktop
+from it instead of polling (a 15 s poll remains as a safety net); another machine's goes out as
+`machine-sessions-changed` (`{machine, snapshot}`), after the host has cleaned it, and its connection
+state as `machine-state` (`connecting`, `connected`, `reconnecting`, `needs-login`, `needs-update`, `unreachable`, or `refused` when a different daemon answers at its name), with `since` (epoch ms) once it is not connected and the machine's `clipboard`, `notices` and `sounds` opt-ins from its entry (all off unless it says); a notice from a machine that opted in goes to the window as `machine-notice` (`{machine, text}`, cleaned, cut and led by `[name]`) and the window shows it as a toast or, away from it, a system notification; `retry_machine(name)` dials a machine now and clears a refusal; `remove_machine(name)` deletes its entry from `config.local.toml` first and only then stops it, forgets its daemon id and tells the window with `machine-removed` (its sessions and saved layout are left alone); the commands that read a pane's files or repository (`repo_query`, `restore_snapshot`, `new_worktree_session`, `pane_terminal_screen`) take the pane's `machine` and refuse another machine's with the terminal app's words (`<Feature> is local-only in v1: the files are on <machine>, not on this computer.`), as the window does before it asks (`apps/gui/src/lib/localOnly.ts`); `set_machine_grant(name, grant, on)` allows or stops a machine's `clipboard` or `notices` (written to its entry in `config.local.toml` first, then applied at once; the new state follows as `machine-state`); text an allowed machine asks to copy arrives as `machine-clipboard` (`{machine, text}`); `start_session_on_machine(machine, folder)` starts a terminal session in a typed folder of another machine (one that is not there opens in its home folder); `list_ssh_hosts` lists the `~/.ssh/config` hosts that are not machines yet; `add_machine(target, name?)` checks the target, looks at the machine over ssh without asking anyone anything (12 s at most; `cancel_add_machine` ends it), writes the entry only when that held up, and starts dialling it (a login that needs a person opens ssh in a session on this computer, and the window dials again when it closes); `list_machines_overview` gives a window that starts late each machine's last state and
+snapshot. The window names a machine's terminal sessions `build/t12` (the machine's name, so a saved
+layout survives a restart; this computer's stay `t12`) and passes the number the host gave the
+machine (`machine`) with each command, only for a pane of another machine. Files, Changes, Find,
+worktrees, file drops and system notices are for this computer's panes only. A desktop
 protocol-mismatch restart must recheck the exact local protocol before stopping
 an older daemon and must refuse to downgrade a newer one. It stops an older daemon that
 owns sessions only after the user confirms, and only when those sessions are saved on disk
@@ -174,7 +191,15 @@ config keys for them are read and ignored. Sessions, ordinary agent launches, he
 MCP session controls remain supported. The wire protocol is version 66.
 Conversation tool-history entries carry a bounded provider-supplied `label` for
 display; `#[serde(default)]` keeps older cached entries readable without a
-protocol bump.
+protocol bump. A tool entry may also carry `input` (the tool's own input JSON,
+bounded: strings cut with a `[truncated]` marker, a value too deep or too big left
+out whole), `exit_code` and `duration_ms` (Codex only), and every entry may carry
+`started_at_ms` / `completed_at_ms` (Unix milliseconds). All are optional and skipped
+when absent, so old shapes decode and no bump is needed. `ConversationRead` also
+returns `answered_approvals`, the last 64 approvals a person answered (request,
+decision, time), in daemon memory only. A Claude approval's `item_id` is the
+tool-use id when Claude names it, so it links to the tool step; an edit tool is a
+`FileChange` request with its diff in `changes`.
 
 `SwapPanes { a, b }` trades the places of two panes of one tab (the split ratios stay with
 their slots). Panes in different tabs, or one that isn't there, are an error.
@@ -369,12 +394,34 @@ or offset, so equal chunks are appended within one connection; completed native
 items win over replayed deltas. Reconnect drops uncertain drafts before ordered
 authoritative hydration. Unknown items/events make completeness explicit.
 
+Every entry is passed through `redact_entry` (`redact.rs`) before it is stored, so a
+history page never carries a token-shaped string (shown as `[redacted]`) or the text of a
+secret file (a tool input, diff or command output holding `[content of a secret file
+omitted]`, with `omitted_bytes` in the input). Both are plain strings in existing fields,
+so the wire shape and `PROTOCOL_VERSION` are unchanged; clients show them as hidden, not as
+errors. See [SECURITY](SECURITY.md#conversation-history-and-secrets).
+
 Internal reads accept a conversation/revision/position cursor, at most 128 entries
 and 256 KiB of serialized JSON including the page envelope. Content/order changes
 invalidate cursors; oversized entries fail explicitly. `next = None` means cached
 exhaustion only. Completeness is independently Unknown, Loading, Complete or
 Incomplete(reason). Ordinary snapshots contain summaries only; explicit
 `ConversationRead` replies carry bounded history pages.
+
+**Following a long history.** Entries are added at the end and changed in place (a tool step
+finishing, a message growing), never moved or removed until the history is rebuilt. Every page
+carries `resume`, a `delta` cursor (`epoch`, `revision`): reading with it returns only the entries
+added or changed after that revision, in order, paged with `next` like any read, so a client that
+applies entries by their source id follows a conversation of any length with small reads. The
+daemon keeps the revision of each entry's last change (`Track` in `history.rs`). A delta read pages
+against the revision its first page began at, and its last page's `resume` starts there too, so a
+change made between its pages is returned again rather than missed. A history that is rebuilt
+(hydration, or a reconnect that drops drafts) gets a new `epoch`; a `delta` cursor from another
+epoch, from the future (another run of the daemon) or from another generation is not an error: the
+page starts from the beginning and sets `reset`, and the client discards what it held. A plain
+paging cursor still goes stale on any change (`StaleCursor`) and the client starts that read over.
+`epoch`, `delta`, `snapshot`, `resume` and `reset` are all defaulted, so an older client or daemon
+reads the rest as before (a test decodes the old shapes); no `PROTOCOL_VERSION` bump.
 
 Daemon notifications reach
 attached projections only after current generation/connection acceptance, and
@@ -410,6 +457,58 @@ background storage lock. Attachments never submit independent cache revisions.
 See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 process boundary and event/approval handling rules.
 
+**An agent in a pane has a read-only conversation** ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)),
+with no protocol change. For an owned desktop pane whose hook-verified agent is `claude` or `codex` and
+whose hook gave a session id (and, for Claude, its transcript path), the snapshot's `conversations` holds
+a `ConversationSummary` with `execution: Native`, `native_term: <pane>`, the pane's `status` and no
+checks; `Query::ConversationRead` serves its history. The id is the daemon's, stays while the pane runs
+the agent, and its `generation` rises when the pane's session id changes. It is in memory only (never in
+the session file or history cache). `ConversationSend`, `Approve`, `AnswerInput`, `Cancel` and `End` on it
+fail with a "read-only" error; `Rename` and `Archive` fail as for an unknown id (the pane is named and
+closed as a pane). A client the pane does not belong to (ADR 0045) gets "No such conversation". The
+history is the provider's own transcript projected through the same entries a structured runtime
+produces (`conversation/follow_transcript.rs`); nothing read from the file sets any status.
+
+Protocol 71 adds the daemon-held send queue. A `ConversationSend` for a conversation that is
+mid-turn (or whose earlier messages are still waiting, or with a send in flight) is not refused: the
+daemon holds it and answers `Reply::ConversationQueued { conversation, generation, operation }`.
+`ReadResult.queued` (`#[serde(default)]`) lists what it holds, oldest first (`operation`, `text`).
+On its tick the daemon delivers the oldest message of each conversation whose turn has ended and
+that has no unanswered request, no cancel in flight and no uncertain earlier send, through the same
+receipt and durable-barrier path as a direct send, so a delivered message is one `Receipt` with its
+own operation number. The queue is per conversation, in order (an operation number must exceed the
+last one held), bounded (32 messages, 1 MiB), in memory only, and dropped when the conversation is
+ended or has started over (a new generation). Retries keep their meaning: the same operation and text
+while queued answers `ConversationQueued` again without a second copy, once delivered it answers the
+`Receipt`, and the same number with other text is `stale or reused`. `Command::ConversationDequeue
+{ id, generation, operation }` takes a waiting message back out (human clients only, write grant;
+`Ok`, or an error that it is no longer waiting). A new command and a new reply variant, so
+the version was raised to 71; tests assert an older peer cannot read them and that an older read reply
+still decodes.
+
+Protocol 72 adds `branch: Option<String>` (`#[serde(default)]`) to `Command::ConversationStart`, for a
+chat session on a branch ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).
+The daemon, before anything is made, refuses a `branch` beside anything but a new conversation
+(`StartTarget::Create`), checks the name with the branch agent's rules (`branch_agent::branch_problem`),
+and requires the target's folder to be a project the app shows and a git repository
+(`conversation/branch_start.rs`). It then makes the worktree with `create_trusted_worktree`, runs the
+repo's setup hook, notes it in `made_worktrees`, and starts the conversation in the new folder; the reply
+is the usual `ConversationStarted`. The field is defaulted, so the old shape decodes (a test), but a
+peer that predates it would drop the field and start in the main checkout, so the version was raised
+to 72 and the two refuse to talk. The window's Tauri command `start_chat_session` asks for
+workspace write with approval on request, or, with its optional `full_access` flag, for `Sandbox::FullAccess`
+with `ApprovalPolicy::Never` (ADR 0043 and 0054). It adds no wire field: the choice rides in the existing
+`LaunchSettings`, so the protocol version is unchanged. It is local-only.
+
+Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
+ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
+([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)): totals, one entry per
+session and one per day with usage, as `UsageReport` in `crates/maitty-shared/src/usage_report.rs`
+(camelCase when it reaches the desktop app as JSON). Human clients only. A figure no provider
+reported is `null`, never zero. `Usage` also gains the defaulted `tokens_in` and `tokens_out`
+(the halves of `tokens`), so older peers still decode it. The desktop app calls it through the
+`usage_report` command.
+
 Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links and worktrees:
 
 - `Query::Repo { term, tag, request }` and `Reply::Repo { tag, reply }`: read-only looks at the
@@ -443,6 +542,18 @@ Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links an
   panes printed recently, case-insensitively, at most 100 hits and 20 from one pane. Human clients
   only, over the panes the client may use. The text is the pane's replay with escape sequences
   removed, so it is what was printed, not what is on screen now.
+
+`NewWorktree` also carries `agent` and `prompt` (`Option<String>`, `#[serde(default)]`; added without
+a `PROTOCOL_VERSION` bump, and a test decodes the old shape): the desktop app's "New agent on a
+branch" (`new_branch_agent`). When either is set the daemon, before anything is made, refuses
+a `cmd` beside them, checks `branch` (`[A-Za-z0-9_./-]+` plus git's ref rules, at most 200
+characters; `daemon/branch_agent.rs`), requires `from` to be a project the app shows (a repository some
+workspace or pane is in), requires the agent to be a configured preset or built-in agent, and bounds the
+prompt (8000 characters, no control characters but line breaks and tabs, no leading dash so the agent
+cannot read it as an option). The prompt goes in the agent's command line quoted for the pane's shell
+(`Config::agent_command`), as the MCP `start` tool does, never interpolated. The worktree itself is the
+usual one (`create_trusted_worktree`, the repo's setup hook, the `[worktree] dir` naming, clean-up when
+its last session closes). Local projects only: the window refuses another machine's project.
 
 Protocol 65 removes the handoff between chat and terminal
 (`ConversationHandoffToNative`, `ConversationHandoffToChat`; see
@@ -577,7 +688,7 @@ are checked before replacing the existing view. Revisions never wrap or saturate
 
 ## Project-specific: connections to other machines
 
-One supervisor task per `[[machines]]` entry (`client/link/`) keeps that machine's line up.
+One supervisor task per `[[machines]]` entry (`link/` in `maitty-machines`) keeps that machine's line up.
 It talks to the window only through `LinkEvent`s (a new line; a new state) and `LinkControl`
 commands (line ended, refuse, retry), so a dead machine cannot hold a lock or block drawing.
 With no `[[machines]]` entry nothing starts. `--remote host` is unchanged: the window's one
@@ -614,12 +725,12 @@ its stream marker or a frame. Exit 127 is `NeedsUpdate` with the install text. E
 and one of three fixed tokens in stderr (`Permission denied`, `Host key verification failed`,
 `Too many authentication failures`) is `NeedsLogin`: the only place ssh's words are read.
 Everything else is `Unreachable` with ssh's last stderr line, control characters removed and
-cut to 200 characters. The fix text of each class is one constant in `link_failure.rs`
+cut to 200 characters. The fix text of each class is one constant in `maitty-machines` (`link_failure.rs`)
 (`FIX_LOGIN`, `FIX_UPDATE`, `FIX_INSTALL`, `FIX_NO_DAEMON`); `FIX_UPDATE` and `FIX_INSTALL` name
 `maitty machine update <name>` (and `--install`), with `<name>` as written, one text for every machine.
 
 **Custom transport.** A machine with `via` is reached by running the user's program
-(`Route::Command`, `ssh_command::command_argv`) in place of ssh: the same pipes, stream marker skipping,
+(`Route::Command`, `ssh_command::command_argv`, both in `maitty-machines`) in place of ssh: the same pipes, stream marker skipping,
 handshake and `SshEnd` (with `custom` set) as ssh. Text before the marker with no marker is the same login
 error. Its failures classify without ssh's words: exit 127 is `NeedsInstall`, `NO_DAEMON_EXIT` is
 `NoDaemon`, anything else is `Unreachable` with the program's last stderr line, never `NeedsLogin`. On
@@ -627,11 +738,11 @@ Windows connecting fails with `a custom transport (via) is not supported on Wind
 
 **Attach only, and when the daemon may start.** A daemon exits ~30 s after it has no session and
 no attached window, so a fresh machine has nothing to attach to. The supervisor therefore decides
-per dial (`MayStart` in `link/supervisor.rs`): the dial runs `<remote_cmd> proxy` (the daemon is
+per dial (`MayStart` in `maitty-machines`' `link/supervisor.rs`): the dial runs `<remote_cmd> proxy` (the daemon is
 started if none runs, as `--remote host` does; `Machine::starting`) on the machine's first dial,
 on every retry of a failed first dial, and after an explicit `Command::Retry` (the Machines
 dialog's retry, also after a refusal). The redials after an established line ended (stalled or
-closed) run `<remote_cmd> proxy --attach-only` (built in `ssh_command.rs`): if no daemon runs
+closed) run `<remote_cmd> proxy --attach-only` (built in `maitty-machines`' `ssh_command.rs`): if no daemon runs
 there, the proxy exits `NO_DAEMON_EXIT` before writing anything, and the machine is `Unreachable`
 with `FIX_NO_DAEMON` ("retry to start it there") until a person retries, so a dropped link never
 brings back a daemon the user stopped. `Machine::from_def` is attach-only by default, which is
@@ -698,7 +809,7 @@ focus never takes the keys.
 | `NewTab` (`SpawnTab`) | this computer | `target_machine()` with that machine's active workspace |
 | `RenameTab`, `CloseWorkspace` (prompts carrying `WsId` / `TabId`) | this computer | `focus_machine()` (the ids came from its active workspace) |
 | `ConversationRename`, `ConversationArchive` | this computer | `conversation_machine(id)`: the selected session's machine if it lists the chat, else the first machine that does |
-| `NewWorktree`, `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree` | this computer | this computer; refused for another machine's project or pane |
+| `NewWorktree` (also with `agent` and `prompt`), `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree` | this computer | this computer; refused for another machine's project or pane |
 | `ForgetCheckApproval`, `ReloadConfig`, `KillServer`, first-state `SelectWorkspace` / `NewWorkspace` | this computer | this computer (no owning machine) |
 
 **Local-only features.** `Feature` (Files, Changes, Find, Branches, References, image paste, agent
@@ -730,7 +841,7 @@ the rest are dropped silently. Nothing blocks and nothing is queued.
 **One-shot commands.** `cli/target.rs` picks the machine of a command once, before it runs: a
 pane address `machine/id`, else `--on`, else the `--remote` adapter (`ipc::Machine::current()`),
 else this computer. Each command is handed that `Target` and opens its connection with
-`ipc::open_to`; nothing reads the environment for the machine after that. A configured machine only
+`ipc::open_to` (for another machine, `maitty_machines::open_remote`); nothing reads the environment for the machine after that. A configured machine only
 attaches. The pane a command runs in (`$MAITTY_TERM_ID`) is a pane of this computer's daemon, so it is
 the default pane only when the target is this computer or the ad-hoc `--remote` route; a command
 aimed at a named machine needs an explicit `--pane machine/id`. `ls` is unchanged for this computer;
