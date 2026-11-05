@@ -126,6 +126,23 @@ per user and never synced, written atomically; unknown fields are ignored and a 
 not parse is kept as `.bak` and starts empty. Neither has a version: a new field is added with a
 default.
 
+## Project-specific: usage store
+
+`daemon/usage_store.rs` keeps provider-reported usage per session per day in
+`usage-<socket>.json` in the data folder ([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)).
+It is a small versioned JSON file (`version`, `rows`, `cursors`), not a database. A row is
+(UTC day, session) with agent, folder name, input and output tokens, cost, turns and seconds
+working; a cursor is the last running total seen for a session, so only the growth is added and a
+restart does not count a session twice. Only what Claude Code and Codex report is stored; a figure
+nobody reported is absent, never estimated, and a subscription session stores no cost.
+
+Rows and cursors older than 90 days are pruned on load and on every save. The file is written
+private (0600 in a 0700 folder on Unix), synced, then renamed over the old one, off the loop at
+most every 30 seconds while something changed and once more when the daemon exits. A file that
+does not parse, or whose `version` is newer than the build reads, is renamed to `<file>.bak` and
+the store starts empty with a logged warning; it never stops the daemon. Unknown fields are
+ignored and missing ones default, so a field can be added without a version bump.
+
 ## Project-specific: structured history cache foundation
 
 `daemon/conversation/history_storage.rs` is a private structured display cache,

@@ -9,7 +9,7 @@ export function useProcessSample() {
   return useQuery({ queryKey: ['performance-sample'], queryFn: loadPerformanceSample, enabled: isDesktop(), refetchInterval: SAMPLE_EVERY_MS, retry: false })
 }
 
-export function environmentOf(preferences: SettingsPreferences, appVersion: string | null): PerformanceEnvironment {
+export function environmentOf(preferences: SettingsPreferences, appVersion: string | null, animations: string): PerformanceEnvironment {
   return {
     version: appVersion,
     userAgent: navigator.userAgent,
@@ -17,6 +17,7 @@ export function environmentOf(preferences: SettingsPreferences, appVersion: stri
     style: preferences.style,
     reduceMotion: preferences.reduceMotion,
     statusEffects: preferences.effectWorking || preferences.effectNeedsYou || preferences.effectDone,
+    animations,
     terminalFontSize: preferences.terminalFontSize,
   }
 }

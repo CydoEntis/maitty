@@ -3,7 +3,7 @@ import { conversationsFromSnapshot } from '@/api/daemon'
 import { forgetMachines, parseSessionId, registerMachine, type MachineKind, type MachineState } from '@/api/machines'
 import type { Conversation } from '@/data/preview'
 import type { Layout } from './layout'
-import { idsOfMachinesNotHeard, remoteStartRefusal, remoteTerminals, type RemoteMachine } from './machines'
+import { idsOfMachinesNotHeard, announcementFor, machineChip, machineHeads, remoteStartRefusal, remoteTargetOf, remoteTerminals, updateCommandOf, type RemoteMachine } from './machines'
 import { groupSessions, toSessionView } from './session'
 
 afterEach(() => { forgetMachines() })
@@ -51,6 +51,17 @@ describe('merging the snapshots of several machines', () => {
     expect(session?.lastKnownStatus).toBe('working')
     const up = machineOf(1, 'box', [busy], 'connected')
     expect(remoteTerminals(new Map([[1, up]]))[0]?.status).toBe('working')
+  })
+
+  it('takes the needs-you and done marks of a machine that is down out of the counts and the Inbox', () => {
+    const asking = { ...term(3, '/srv'), status: 'Blocked' }
+    const finished = { ...term(4, '/srv'), status: 'Done' }
+    const inboxStatuses = new Set(['needs', 'error', 'done'])
+    const views = (kind: MachineKind) => remoteTerminals(new Map([[1, machineOf(1, 'box', [asking, finished], kind)]])).map((item) => toSessionView(item, '/home/me'))
+    expect(views('connected').map((view) => view.status)).toEqual(['needs', 'done'])
+    const down = views('unreachable')
+    expect(down.some((view) => inboxStatuses.has(view.status))).toBe(false)
+    expect(groupSessions(down, 'folder', null, '/home/me').map((group) => group.needsCount)).toEqual([0])
   })
 
   it('says a session of this computer is exactly what it was, with one machine', () => {
@@ -126,6 +137,101 @@ describe('a saved layout at launch', () => {
     const box = machineOf(1, 'box', [term(4, '/srv')], 'connected', true)
     const build = machineOf(2, 'build', [], 'connecting', false)
     expect(idsOfMachinesNotHeard(layout, new Map([[1, box], [2, build]]))).toEqual(['build/t9'])
+  })
+})
+
+describe('machine chips', () => {
+  const words: Array<[MachineKind, string, string]> = [
+    ['connected', 'connected', 'ok'],
+    ['connecting', 'connecting', 'quiet'],
+    ['needs-login', 'needs login', 'bad'],
+    ['needs-update', 'needs update', 'bad'],
+    ['unreachable', 'unreachable', 'bad'],
+    ['refused', 'refused', 'bad'],
+  ]
+  it.each(words)('%s reads %s and is %s', (kind, word, tone) => {
+    const chip = machineChip(state(1, 'build', kind))
+    expect(chip.word).toBe(word)
+    expect(chip.tone).toBe(tone)
+    expect(chip.glyph).not.toBe('')
+  })
+
+  it('says which dial a reconnect is on', () => {
+    expect(machineChip({ ...state(1, 'build', 'reconnecting'), attempt: 2 }).word).toBe('reconnecting #2')
+    expect(machineChip(state(1, 'build', 'reconnecting')).word).toBe('reconnecting')
+  })
+
+  it('never colours a state alone: every kind has its own word, and shapes tell down from up', () => {
+    const chips = words.map(([kind]) => machineChip(state(1, 'build', kind)))
+    expect(new Set(chips.map((chip) => chip.word)).size).toBe(chips.length)
+    expect(machineChip(state(1, 'build', 'connected')).glyph).not.toBe(machineChip(state(1, 'build', 'unreachable')).glyph)
+  })
+})
+
+describe('machine headers', () => {
+  it('are none while this computer is the only machine', () => {
+    expect(machineHeads(new Map())).toEqual([])
+  })
+
+  it('put this computer first and the others in id order, whatever their names', () => {
+    const heads = machineHeads(new Map([
+      [3, machineOf(3, 'alpha', [])],
+      [1, machineOf(1, 'zeta', [], 'needs-login')],
+    ]))
+    expect(heads.map((head) => head.label)).toEqual(['this computer', 'zeta', 'alpha'])
+    expect(heads[0]).toMatchObject({ name: null, chip: null })
+    expect(heads[1]?.chip?.word).toBe('needs login')
+  })
+
+  it('say a machine is down only after its first dial, and since when', () => {
+    const first = machineOf(1, 'a', [], 'connecting')
+    const lost = machineOf(2, 'b', [], 'reconnecting')
+    const heads = machineHeads(new Map([[1, first], [2, { ...lost, state: { ...lost.state, since: 5_000 } }], [3, machineOf(3, 'c', [])]]))
+    expect(heads.map((head) => head.down)).toEqual([false, false, true, false])
+    expect(heads[2]?.downSince).toBe(5_000)
+  })
+
+  it('carry the fix a person has to act on', () => {
+    const down = machineOf(1, 'box', [], 'needs-update')
+    const heads = machineHeads(new Map([[1, { ...down, state: { ...down.state, why: 'run maitty machine update box --install' } }]]))
+    expect(heads[1]?.why).toBe('run maitty machine update box --install')
+  })
+})
+
+describe('where a new session goes', () => {
+  it('is the machine of the focused session, and this computer for anything else', () => {
+    expect(remoteTargetOf({ machine: 2, machineName: 'build' })).toEqual({ machine: 2, name: 'build' })
+    expect(remoteTargetOf({ machine: 0, machineName: null })).toBeNull()
+    expect(remoteTargetOf(undefined)).toBeNull()
+  })
+})
+
+describe('the command that fixes a machine that needs an update', () => {
+  it('is the one the fix text names, for a machine that needs an update only', () => {
+    const fix = 'run `maitty machine update build`, then retry'
+    expect(updateCommandOf({ ...state(1, 'build', 'needs-update'), why: fix })).toBe('maitty machine update build')
+    expect(updateCommandOf({ ...state(1, 'build', 'needs-update'), why: 'run `maitty machine update build --install` (or set `remote_cmd` to its path), then retry' })).toBe('maitty machine update build --install')
+    expect(updateCommandOf({ ...state(1, 'build', 'unreachable'), why: fix })).toBeNull()
+    expect(updateCommandOf(state(1, 'build', 'needs-update'))).toBeNull()
+  })
+})
+
+describe('what a screen reader hears about a machine', () => {
+  it('says when a machine went down and why, once, and when it is back', () => {
+    const up = state(1, 'build', 'connected')
+    expect(announcementFor(up, { ...state(1, 'build', 'reconnecting'), attempt: 1 })).toBe('build disconnected: reconnecting #1')
+    expect(announcementFor(state(1, 'build', 'reconnecting'), state(1, 'build', 'unreachable'))).toBeNull()
+    expect(announcementFor(state(1, 'build', 'unreachable'), up)).toBe('build is back')
+  })
+
+  it('says nothing for a first connection or a machine still on its first dial', () => {
+    expect(announcementFor(undefined, state(1, 'build', 'connecting'))).toBeNull()
+    expect(announcementFor(state(1, 'build', 'connecting'), state(1, 'build', 'connected'))).toBeNull()
+    expect(announcementFor(undefined, state(1, 'build', 'connected'))).toBeNull()
+  })
+
+  it('tells a machine that is down when the window first hears of it', () => {
+    expect(announcementFor(undefined, state(1, 'build', 'needs-login'))).toBe('build disconnected: needs login')
   })
 })
 

@@ -477,6 +477,34 @@ describe('terminal sessions shown beside chats', () => {
     expect(sessions[2]).toMatchObject({ id: 't10', agent: 'gemini' })
   })
 
+  it('links a terminal to the daemon conversation whose native terminal it is, and only on this computer', async () => {
+    const summary = (overrides: Record<string, unknown>) => ({ id: 40, generation: 3, execution: 'Native', provider: 'Claude', cwd: '/home/casey/sample', worktree: null, state: 'Running', status: 'Idle', native_term: null, checks: [], ...overrides })
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [summary({ id: 40, generation: 3, native_term: 5 }), summary({ id: 41, native_term: null })],
+      workspaces: [],
+      terms: { '5': term({}), '6': term({ id: 6, agent: null }) },
+    })
+
+    const sessions = await loadConversations()
+
+    // A followed agent's chat only shows what it did (ADR 0052), so the link says it cannot send.
+    expect(sessions.find((session) => session.id === 't5')?.chat).toEqual({ conversation: 40, generation: 3, readOnly: true })
+    expect(sessions.find((session) => session.id === 't6')?.chat).toBeUndefined()
+  })
+
+  it('does not list a pane\'s conversation as a session of its own, but keeps one whose pane is not listed', async () => {
+    const summary = (overrides: Record<string, unknown>) => ({ id: 40, generation: 3, execution: 'Native', provider: 'Claude', cwd: '/home/casey/sample', worktree: null, state: 'Running', status: 'Idle', native_term: null, checks: [], ...overrides })
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [summary({ id: 40, native_term: 5 }), summary({ id: 41, native_term: 9 }), summary({ id: 42, execution: 'Structured', native_term: null })],
+      workspaces: [],
+      terms: { '5': term({}), '9': term({ id: 9, conversation_id: 41 }) },
+    })
+
+    const sessions = await loadConversations()
+
+    expect(sessions.map((session) => session.id)).toEqual(['41', '42', 't5'])
+  })
+
   it('reads, types into, resizes, names and closes a terminal session by its pane number', async () => {
     vi.mocked(invoke).mockResolvedValue(null)
     const target = { id: 't5', generation: 0 }
@@ -583,8 +611,8 @@ describe('commands for a pane, on whichever machine it is', () => {
   })
 
   it('does not ask this computer\'s daemon for the screen or replay of another machine\'s pane', async () => {
-    await expect(loadTerminalScreen(there)).rejects.toThrow('on build is not available')
-    await expect(loadTerminalReplay(there)).rejects.toThrow('on build is not available')
+    await expect(loadTerminalScreen(there)).rejects.toThrow('The screen text is local-only in v1: the files are on build, not on this computer.')
+    await expect(loadTerminalReplay(there)).rejects.toThrow('A fresh replay is local-only in v1: the files are on build, not on this computer.')
     expect(invoke).not.toHaveBeenCalled()
   })
 

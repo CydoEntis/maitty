@@ -8,6 +8,8 @@ import { hotkeyRows } from './features/workspace/model/shortcuts'
 
 const daemon = vi.hoisted(() => ({
   loadConversations: vi.fn<() => Promise<Conversation[]>>(),
+  // Opening Settings > Performance asks the host for a sample; this page has nothing to show before one arrives.
+  loadPerformanceSample: vi.fn<() => Promise<never>>(() => new Promise(() => {})),
   listenSessionsChanged: vi.fn(() => Promise.resolve(() => {})),
   defaultSessionFolder: vi.fn<() => Promise<string>>(),
   startShellSession: vi.fn<(folder: string) => Promise<void>>(),
@@ -42,6 +44,10 @@ vi.mock('@/api/machines', async (importOriginal) => ({
   loadMachinesOverview: () => Promise.resolve([]),
   listenMachineState: () => Promise.resolve(() => undefined),
   listenMachineSessions: () => Promise.resolve(() => undefined),
+  listenMachineError: () => Promise.resolve(() => undefined),
+  listenMachineRemoved: () => Promise.resolve(() => undefined),
+  listenMachineNotice: () => Promise.resolve(() => undefined),
+  listenMachineClipboard: () => Promise.resolve(() => undefined),
 }))
 
 vi.mock('@/features/terminal/useFileDrop', () => ({
@@ -126,7 +132,7 @@ describe('desktop terminal multiplexer', () => {
     await screen.findByRole('heading', { name: 'No sessions running' })
     daemon.loadConversations.mockResolvedValue([term(5, HOME)])
 
-    await user.keyboard('{Control>}t{/Control}')
+    await user.keyboard('{Control>}{Shift>}t{/Shift}{/Control}')
 
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(HOME) })
     const tab = await screen.findByRole('tab', { selected: true })
@@ -304,7 +310,7 @@ describe('desktop terminal multiplexer', () => {
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`, { agent: 'claude' }), term(7, `${HOME}/a`)])
     expect(screen.getByRole('tab', { selected: true }).querySelectorAll('.mx-tab-icons .mx-app-icon')).toHaveLength(1)
 
-    await user.keyboard('{Control>}d{/Control}')
+    await user.keyboard('{Control>}{Shift>}d{/Shift}{/Control}')
 
     const tab = await screen.findByRole('tab', { selected: true })
     await waitFor(() => { expect(tab.querySelectorAll('.mx-tab-icons .mx-app-icon')).toHaveLength(2) })
@@ -756,14 +762,14 @@ describe('desktop terminal multiplexer', () => {
     expect(screen.getAllByRole('tab')).toHaveLength(1)
   })
 
-  it('splits right in the focused shell’s folder, moves focus, and ends the focused pane’s session on Ctrl+W', async () => {
+  it('splits right in the focused shell’s folder, moves focus, and ends the focused pane’s session on Ctrl+Shift+W', async () => {
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([inRepo(2, `${HOME}/code/maitty`, `${HOME}/code/maitty/apps`)])
     renderDesktopApp()
     await screen.findByRole('region', { name: 'Shell in ~/code/maitty/apps' })
     daemon.loadConversations.mockResolvedValue([inRepo(2, `${HOME}/code/maitty`, `${HOME}/code/maitty/apps`), inRepo(7, `${HOME}/code/maitty`, `${HOME}/code/maitty/apps`)])
 
-    await user.keyboard('{Control>}d{/Control}')
+    await user.keyboard('{Control>}{Shift>}d{/Shift}{/Control}')
 
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(`${HOME}/code/maitty/apps`) })
     expect(await screen.findByRole('region', { name: 'Terminal 2: ~/code/maitty/apps, focused' })).toBeInTheDocument()
@@ -773,10 +779,10 @@ describe('desktop terminal multiplexer', () => {
     await user.keyboard('{Control>}[[{/Control}')
     expect(screen.getByRole('region', { name: 'Terminal 1: ~/code/maitty/apps, focused' })).toBeInTheDocument()
 
-    await user.keyboard('{Control>}w{/Control}')
-    expect(await screen.findByText('Press Ctrl+W again to close this pane')).toBeInTheDocument()
+    await user.keyboard('{Control>}{Shift>}w{/Shift}{/Control}')
+    expect(await screen.findByText('Press Ctrl+Shift+W again to close this pane')).toBeInTheDocument()
     expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
-    await user.keyboard('{Control>}w{/Control}')
+    await user.keyboard('{Control>}{Shift>}w{/Shift}{/Control}')
     await waitFor(() => { expect(screen.getAllByRole('region', { name: /^Terminal \d/ })).toHaveLength(1) })
     expect(await screen.findByText('Pane closed · session ended')).toBeInTheDocument()
     expect(daemon.archiveConversationOnDaemon).toHaveBeenCalledTimes(1)
@@ -789,7 +795,7 @@ describe('desktop terminal multiplexer', () => {
     renderDesktopApp()
     await screen.findByRole('region', { name: 'Shell in ~/a' })
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`), term(3, `${HOME}/b`)])
-    await user.click(screen.getByRole('button', { name: 'Split down (Ctrl+Shift+D)' }))
+    await user.click(screen.getByRole('button', { name: 'Split down (Ctrl+Alt+Shift+D)' }))
     await screen.findByRole('region', { name: 'Shell in ~/b' })
 
     const first = screen.getByRole('region', { name: /^Terminal 1:/ })
@@ -818,21 +824,21 @@ describe('desktop terminal multiplexer', () => {
     expect(screen.queryByRole('button', { name: /^Undo/ })).not.toBeInTheDocument()
   })
 
-  it('asks for Ctrl+W again for the pane you are in, not for the one you pressed it on before', async () => {
+  it('asks for Ctrl+Shift+W again for the pane you are in, not for the one you pressed it on before', async () => {
     const user = userEvent.setup()
     const claude = inRepo(2, `${HOME}/code/maitty`, `${HOME}/code/maitty/apps`, { agent: 'claude' })
     daemon.loadConversations.mockResolvedValue([claude])
     renderDesktopApp()
     await screen.findByRole('region', { name: /^Terminal 1:/ })
     daemon.loadConversations.mockResolvedValue([claude, inRepo(7, `${HOME}/code/maitty`, `${HOME}/code/maitty/apps`, { agent: 'codex' })])
-    await user.keyboard('{Control>}d{/Control}')
+    await user.keyboard('{Control>}{Shift>}d{/Shift}{/Control}')
     await screen.findByRole('region', { name: /^Terminal 2:.*focused/ })
 
-    await user.keyboard('{Control>}w{/Control}')
-    expect(await screen.findByText(/Press Ctrl\+W again to close and stop codex/)).toBeInTheDocument()
+    await user.keyboard('{Control>}{Shift>}w{/Shift}{/Control}')
+    expect(await screen.findByText(/Press Ctrl\+Shift\+W again to close and stop codex/)).toBeInTheDocument()
     await user.keyboard('{Control>}[[{/Control}')
-    await user.keyboard('{Control>}w{/Control}')
-    expect(await screen.findByText(/Press Ctrl\+W again to close and stop claude/)).toBeInTheDocument()
+    await user.keyboard('{Control>}{Shift>}w{/Shift}{/Control}')
+    expect(await screen.findByText(/Press Ctrl\+Shift\+W again to close and stop claude/)).toBeInTheDocument()
 
     expect(daemon.archiveConversationOnDaemon).not.toHaveBeenCalled()
   })
@@ -1071,10 +1077,23 @@ describe('desktop terminal multiplexer', () => {
 
     expect(fireEvent.keyDown(terminal, { key: 'l', ctrlKey: true })).toBe(true)
     expect(fireEvent.keyDown(terminal, { key: 'c', ctrlKey: true })).toBe(true)
-    expect(fireEvent.keyDown(terminal, { key: 'b', ctrlKey: true })).toBe(false)
+    // The window's sidebar key is Ctrl+Shift+B; a plain Ctrl+B belongs to the shell.
+    expect(fireEvent.keyDown(terminal, { key: 'b', ctrlKey: true })).toBe(true)
+    expect(fireEvent.keyDown(terminal, { key: 'B', ctrlKey: true, shiftKey: true })).toBe(false)
 
     expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Sessions by project' })).toHaveClass('is-rail')
+  })
+
+  it('gives every button in the window a name, so an icon-only one still has a tooltip', async () => {
+    daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
+    renderDesktopApp()
+    await screen.findByRole('region', { name: 'Shell in ~/a' })
+
+    const unnamed = Array.from(document.querySelectorAll<HTMLElement>('button, [role="switch"], [role="radio"]'))
+      .filter((control) => (control.getAttribute('aria-label') ?? control.getAttribute('title') ?? control.textContent).trim() === '')
+      .map((control) => control.className)
+    expect(unnamed).toEqual([])
   })
 
   it('moves between a project\'s tabs with Ctrl+Tab and Ctrl+Shift+Tab', async () => {
@@ -1092,6 +1111,29 @@ describe('desktop terminal multiplexer', () => {
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('maitty/a')
     await user.keyboard('{Control>}{Shift>}{Tab}{/Shift}{/Control}')
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('maitty/b')
+
+    await user.keyboard('{Control>}1{/Control}')
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('maitty/a')
+    await user.keyboard('{Control>}2{/Control}')
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('maitty/b')
+    await user.keyboard('{Control>}9{/Control}')
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('maitty/b')
+  })
+
+  it('opens the inbox with Ctrl+Shift+J and Settings on Performance with Ctrl+Shift+P, and ignores a bare Ctrl+J', async () => {
+    const user = userEvent.setup()
+    renderDesktopApp()
+    await screen.findByRole('button', { name: 'New session' })
+
+    await user.keyboard('{Control>}j{/Control}')
+    expect(screen.queryByRole('dialog', { name: 'Inbox' })).not.toBeInTheDocument()
+    await user.keyboard('{Control>}{Shift>}j{/Shift}{/Control}')
+    expect(screen.getByRole('dialog', { name: 'Inbox' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    await user.keyboard('{Control>}{Shift>}p{/Shift}{/Control}')
+    const settings = screen.getByRole('dialog', { name: 'Settings' })
+    expect(within(settings).getByRole('heading', { name: 'Performance' })).toBeInTheDocument()
   })
 
   it('opens Settings with Ctrl+comma, jumps by letter, traps focus and gives it back on Escape', async () => {
@@ -1108,7 +1150,7 @@ describe('desktop terminal multiplexer', () => {
     await user.keyboard('t')
     expect(within(dialog).getByRole('heading', { name: 'Text & cursor' })).toBeInTheDocument()
     await user.keyboard('?')
-    expect(within(dialog).getByRole('group', { name: 'Ctrl Shift D' }).querySelectorAll('kbd')).toHaveLength(3)
+    expect(within(dialog).getByRole('group', { name: 'Ctrl Alt Shift D' }).querySelectorAll('kbd')).toHaveLength(4)
 
     within(dialog).getByRole('button', { name: 'Close settings' }).focus()
     const focusables = dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])')
@@ -1151,6 +1193,8 @@ describe('desktop terminal multiplexer', () => {
     renderDesktopApp()
     const row = await screen.findByRole('button', { name: '~/a, codex, working' })
     expect(row).toHaveClass('mx-fx-working')
+    // jsdom has no WebGL 2, so the web view counts as software and Waves fall back to Sweep.
+    expect(row.querySelector('.mx-fx')).toHaveAttribute('data-style', 'sweep')
     expect(screen.getByRole('tab', { selected: true })).toHaveClass('mx-fx-working', 'mx-fx-strong')
 
     await user.keyboard('{Control>},{/Control}')
@@ -1318,7 +1362,7 @@ describe('desktop overlays and tab tools', () => {
     renderDesktopApp()
     await screen.findByRole('region', { name: 'Shell in ~/a' })
 
-    await user.keyboard('{Control>}k{/Control}')
+    await user.keyboard('{Control>}{Shift>}k{/Shift}{/Control}')
     const dialog = await screen.findByRole('dialog', { name: 'Command palette' })
     await user.type(within(dialog).getByRole('combobox'), 'codex')
     await user.click(within(dialog).getByRole('option', { name: /~\/b · codex/ }))
@@ -1326,7 +1370,7 @@ describe('desktop overlays and tab tools', () => {
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).not.toBeInTheDocument()
     expect(await screen.findByRole('region', { name: 'Shell in ~/b' })).toBeInTheDocument()
 
-    await user.keyboard('{Control>}k{/Control}')
+    await user.keyboard('{Control>}{Shift>}k{/Shift}{/Control}')
     expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument()
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).not.toBeInTheDocument()
@@ -1336,7 +1380,7 @@ describe('desktop overlays and tab tools', () => {
     const user = userEvent.setup()
     renderDesktopApp()
     await screen.findByRole('heading', { name: 'No sessions running' })
-    await user.keyboard('{Control>}k{/Control}')
+    await user.keyboard('{Control>}{Shift>}k{/Shift}{/Control}')
     const dialog = await screen.findByRole('dialog', { name: 'Command palette' })
     expect(within(dialog).queryByRole('option', { name: /Abyss/ })).not.toBeInTheDocument()
 
@@ -1436,7 +1480,7 @@ describe('desktop overlays and tab tools', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Welcome to Maitty' })
     expect(dialog).toHaveTextContent('Closing this window never stops an agent')
     // Global shortcuts are ignored while it is open.
-    await user.keyboard('{Control>}k{/Control}')
+    await user.keyboard('{Control>}{Shift>}k{/Shift}{/Control}')
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).not.toBeInTheDocument()
 
     await user.type(within(dialog).getByRole('textbox', { name: 'New sessions start in' }), '/definitely/not/here')
@@ -1482,10 +1526,10 @@ describe('desktop overlays and tab tools', () => {
 
     await user.keyboard('{Control>}/{/Control}')
     const dialog = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })
-    for (const row of hotkeyRows(false)) expect(dialog).toHaveTextContent(row.action)
+    for (const row of hotkeyRows('linux')) expect(dialog).toHaveTextContent(row.action)
     for (const group of ['Sessions', 'Panes', 'Find & jump', 'Window']) expect(within(dialog).getByRole('region', { name: group })).toBeInTheDocument()
 
-    await user.keyboard('{Control>}k{/Control}')
+    await user.keyboard('{Control>}{Shift>}k{/Shift}{/Control}')
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).not.toBeInTheDocument()
 
     await user.keyboard('{Control>}/{/Control}')
@@ -1558,7 +1602,7 @@ describe('desktop overlays and tab tools', () => {
     const app = document.querySelector('.mx-app')
     expect(app).toHaveAttribute('data-side', 'left')
 
-    await user.keyboard('{Control>}k{/Control}')
+    await user.keyboard('{Control>}{Shift>}k{/Shift}{/Control}')
     await user.type(await screen.findByRole('combobox'), 'sidebar to the right')
     await user.keyboard('{Enter}')
 
@@ -1646,7 +1690,7 @@ describe('desktop overlays and tab tools', () => {
     renderDesktopApp()
     await screen.findByRole('region', { name: /^Shell in/ })
     daemon.loadConversations.mockResolvedValue([at(2), at(7), at(8, { status: 'working' })])
-    await user.keyboard('{Control>}d{/Control}')
+    await user.keyboard('{Control>}{Shift>}d{/Shift}{/Control}')
     await screen.findByRole('region', { name: /^Terminal 2:/ })
 
     await user.click(screen.getAllByRole('button', { name: 'Broadcast typing to this tab' })[0] as HTMLElement)

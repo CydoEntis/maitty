@@ -6,13 +6,13 @@ pub mod gitfs;
 pub mod installed_executable;
 pub mod ipc;
 mod login_path;
-pub mod machine_probe;
+pub use maitty_machines::machine_probe;
 pub mod proc;
 pub mod project;
 pub mod prompt;
 pub mod references;
 pub mod remote_install;
-pub mod remote_paste;
+pub use maitty_machines::remote_paste;
 pub mod restart;
 pub mod reveal;
 pub mod secret_files;
@@ -26,7 +26,7 @@ pub use daemon::run as run_daemon;
 pub use daemon::{first_failing_line, forget_session};
 pub use maitty_machines::link_failure;
 pub use maitty_settings::{keys, theme};
-pub use maitty_shared::{clock, conversation, hidden, layout, output_line, protocol, repo};
+pub use maitty_shared::{clock, conversation, hidden, layout, output_line, protocol, repo, usage_report};
 
 #[cfg(test)]
 mod test_support;

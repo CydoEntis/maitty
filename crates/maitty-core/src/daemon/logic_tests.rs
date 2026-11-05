@@ -2340,6 +2340,52 @@ fn claude_reports_what_its_session_used() {
     close(&mut d, &[t]);
 }
 
+#[test]
+fn the_usage_store_keeps_what_claude_reported_and_drops_cost_once_plan_limits_show() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let token = d.terms[&t].token.clone();
+    {
+        let pane = d.terms.get_mut(&t).unwrap();
+        pane.agent = Some("claude".into());
+        pane.session = Some("claude-session-1".into());
+    }
+    let report = |tokens_in, cost, limits| ClientMsg::Usage {
+        term: t,
+        token: token.clone(),
+        usage: Usage {
+            cost: Some(cost),
+            tokens_in: Some(tokens_in),
+            tokens_out: Some(tokens_in / 10),
+            ..Default::default()
+        },
+        limits,
+    };
+    d.handle(Ev::Msg(1, report(1000, 0.5, Vec::new())));
+    d.handle(Ev::Msg(1, report(1500, 0.75, Vec::new())));
+    let week = d.usage_report(crate::usage_report::UsagePeriod::Week);
+    assert_eq!(week.totals.tokens_in, Some(1500));
+    assert_eq!(week.totals.tokens_out, Some(150));
+    assert_eq!(week.totals.cost, Some(0.75));
+    assert_eq!(week.sessions[0].session, "claude-session-1");
+    assert_eq!(week.sessions[0].term, Some(t));
+
+    // Plan limits arrive: a subscription, so the cost is not kept from then on.
+    let limits = vec![Limit {
+        name: "5h".into(),
+        used: 10.0,
+        resets_at: term::unix_now() + 100,
+    }];
+    d.handle(Ev::Msg(1, report(2000, 9.0, limits)));
+    let week = d.usage_report(crate::usage_report::UsagePeriod::Week);
+    assert_eq!(week.totals.tokens_in, Some(2000));
+    assert_eq!(week.totals.cost, Some(0.75), "no cost added after the limits showed");
+
+    // The old "today" report of the terminal app is untouched.
+    assert!(d.spent_today() > 0.0);
+    close(&mut d, &[t]);
+}
+
 /// Tests that write or delete saved pane output share one folder per test run: one at a time.
 static SAVED_OUTPUT: std::sync::Mutex<()> = std::sync::Mutex::new(());
 

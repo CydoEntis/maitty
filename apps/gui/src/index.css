@@ -118,7 +118,19 @@
 :root[data-theme="night"][data-accent="violet"], :root[data-theme="abyss"][data-accent="violet"] { --primary: #b8a2ff; --accent-soft: rgb(184 162 255 / 11%); }
 :root[data-theme="day"][data-accent="violet"] { --primary: #6846b8; --accent-soft: rgb(104 70 184 / 11%); }
 
+/* Window-button colours are fixed by the platforms, so they are the same in every theme. */
+:root {
+  --caption-close-hover: #c42b1c;
+  --traffic-close: #ff5f57;
+  --traffic-minimize: #febc2e;
+  --traffic-maximize: #28c840;
+}
+
 @theme inline {
+  --color-caption-close: var(--caption-close-hover);
+  --color-traffic-close: var(--traffic-close);
+  --color-traffic-minimize: var(--traffic-minimize);
+  --color-traffic-maximize: var(--traffic-maximize);
   --font-sans: "Geist Variable", "Segoe UI", sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, "Cascadia Code", Consolas, monospace;
   --color-background: var(--background);
@@ -139,6 +151,18 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  /* The window's own theme tokens, set per theme on .mx-app. The shadcn names above resolve on :root
+     (and --accent is the hover surface there but the brand teal in the app), so feature components use these. */
+  --color-raise: var(--raise);
+  --color-hover: var(--hover);
+  --color-term: var(--term);
+  --color-fg: var(--fg);
+  --color-fg2: var(--fg2);
+  --color-dim: var(--dim);
+  --color-pane-line: var(--pane-line);
+  --color-line2: var(--line2);
+  --color-brand: var(--accent);
+  --shadow-pop: var(--sh-pop);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);

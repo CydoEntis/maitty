@@ -3,6 +3,11 @@ import { displayName, type SessionStatus, type SessionView } from '@/features/wo
 export type NotifySwitches = { needs: boolean; finished: boolean; error: boolean }
 export type Notice = { sessionId: string; title: string; body: string }
 
+/** What a notice calls a session. One on another machine starts with the machine in brackets, as that machine's own notices do. */
+function nameFor(session: SessionView): string {
+  return session.machineName ? `[${session.machineName}] ${session.name ?? session.title}` : displayName(session)
+}
+
 const TITLES: Partial<Record<SessionStatus, (name: string) => string>> = {
   needs: (name) => `${name} needs you`,
   done: (name) => `${name} finished`,
@@ -26,7 +31,7 @@ export function noticesFor(before: ReadonlyMap<string, SessionStatus> | null, se
     if (previous === undefined || previous === 'unknown' || previous === session.status) continue
     if (session.status !== 'needs' && session.status !== 'done' && session.status !== 'error') continue
     if (!switches[WANTED[session.status]] || session.id === attending) continue
-    const title = TITLES[session.status]?.(displayName(session))
+    const title = TITLES[session.status]?.(nameFor(session))
     if (title) notices.push({ sessionId: session.id, title, body: `${session.process} in ${session.cwdLabel}` })
   }
   return notices

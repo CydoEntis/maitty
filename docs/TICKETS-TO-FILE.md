@@ -84,3 +84,498 @@ Deliverables:
   running, one idle shell and the Settings dialog open.
 - Update docs/DESIGN.md to describe the result; do not add history to it.
 ```
+
+## Added 2026-11-04 (evening): v18 handoff, Machines GUI, send files
+
+The v18 handoff is in `docs/features/chat-gui/design-handoff/v18/` (README §D and
+`GLASS_AND_TILED.md`). It is the design for tickets 1 and 2 above: build them from it, not from the
+brief. Every v18 ticket carries the same gate: harness scenarios `a` and `b` before and after (quiet
+under 5% of a core, streaming under 30%), screenshots in Midnight, Monokai, Paper and Day, and
+`docs/DESIGN.md` updated.
+
+## 4. Land the Machines GUI (feature, `client`, `ssh`)
+
+Branch `refactor/maitty-machines-move` (19 commits, not in `dev`): sidebar machine groups and status
+chips, the Machines dialog and Settings page, add a machine, start a session on one, per-machine
+opt-ins, accessibility pass. Merge with `dev` (conflicts in `lib.rs`, `DesktopApp.tsx`,
+`DesktopSettings.tsx` and its test), then the full gate. The macOS cross-check needs a Mac or CI.
+
+## 5. v18 Glass and light themes (feature, `client`; replaces tickets 1 and 2)
+
+Glass tokens, opaque cards with a hairline, blur only on short-lived surfaces, the retuned Paper and
+a new Day theme, the Background glow switch, one-shot needs-you and update-dot effects, steady
+caret, isolated spinners. All text tokens pass WCAG AA on `--term` and `--bg`; the contrast audit in
+`themes.test.ts` covers the terminal foreground and dim text. Still to check: Monokai `--dim`, the
+generated light themes.
+
+## 6. v18 Tiled hairline grid (feature, `client`)
+
+Zero gap and radius, 1px hairlines, hairline-only popovers, uppercase Geist Mono chrome type, corner
+ticks, 40px flush tab bar. Blocked by 5 (shared tokens).
+
+## 7. v18 status effects: Waves and Sweep (feature, `client`)
+
+Per-status (Working, Needs you, Done) on/off and style, a Working scope (All / Selected / Off),
+previews clipped to their chip, automatic Sweep on `data-gpu="software"`. Waves loops while a
+session works, which breaks the "nothing loops" rule; the README keeps it by request, so measure
+scenario b with several working rows, and if over budget default to Selected or Sweep. Raise this
+conflict with the user before building.
+
+## 8. v18 spinner dropdown and web spinners (feature, `client`)
+
+Replace the spinner card with a dropdown in the Theme card: three TUI spinners and five web SVG
+spinners (Circle, Dots, Equalizer, Spokes, Ping), live previews, Esc and outside click close it.
+
+## 9. v18 Settings cleanups (chore, `client`)
+
+Close becomes a 30x30 × icon button (tooltip "Close (Esc)"). Remove per-project colours: the
+setting, the swatch row and the dots that depend on it.
+
+## 10. Terminal font settings (feature, `client`)
+
+Ticket 3 above, unchanged. Not in v18; GLASS_AND_TILED.md §3 says the weight fix belongs here.
+
+## 11. Send files to a machine (feature, `ssh`, `client`, `daemon`)
+
+Today only a clipboard image goes to a remote pane (ADR 0049: over the machine's own hardened ssh
+line, into a private cache folder, the path typed into the pane). Extend that to any file and to
+pasted text: drop or paste a file on a remote pane, it lands in that machine's cache folder, its
+path is typed into the pane. ADR 0047 listed a remote file API as out of scope, so this needs a new
+ADR that widens what a remote machine can receive: size cap, private folder, cleanup, refusal on a
+custom transport, and a progress and cancel state for large files. Windows is in scope.
+Reuses `crates/maitty-core/src/remote_paste.rs`.
+
+## 12. Check v17 against what is built (spike, `docs`)
+
+v17 describes the chat body, session panel, overview, branch agents, idle update, brain dump, usage
+and cost. Nobody has compared it with `apps/gui/src`. Produce a gap list, then file one ticket per
+gap.
+
+## v17/v18 gap tickets (G1-G21), from the ticket 12 check, 2026-11-04
+
+Found by reading `apps/gui`; a "partial" may hide a feature under another name. Labels: type / area.
+The desktop window is terminal-only today; the chat body (G15-G18) does not exist.
+
+- **G1 `formatShortcut(binding, platform)` and the v18 shortcut map** (chore / client). Route tooltips,
+  keycaps, menus, palette and `hotkeyRows` through it; Inbox moves to Ctrl+Shift+J, Ctrl+J jumps, add
+  Ctrl+0, Ctrl+\, Ctrl+Shift+N/U/P/E as stubs. Needs question 4.
+- **G2 Tooltip parity (B.4)** (bug / client). `HoverTips` also reads icon-only `aria-label`; 420 ms
+  delay, 40 ms follow-on, keycap parsing, placement rules. Blocked by G1.
+- **G3 Session switch with no loading screen (C.0a)** (feature / client). Remove "Connecting to
+  terminal" for local panes, per-session last-screen cache, one `term.write` per frame on replay,
+  the 300 ms "Catching up from <machine>" strip for remote.
+- **G4 Machine surfaces (B.1)** (feature / client). Status-bar machine item, pane and tab machine chip,
+  per-pane "Lost connection ... Retrying in Ns" strip, sidebar machine filter. Needs question 9.
+- **G5 Floating status bar (B.5)** (chore / client). 32 px floating card; left holds G4's machine.
+- **G6 Idle self-update (C.5)** (feature / client). 5-minute idle timer, never while an agent works,
+  default on, relabel, post-relaunch toast and What's new dialog.
+- **G7 Platform title bars (C.0)** (chore / client). macOS traffic lights, Windows 46x32 captions,
+  Linux round buttons.
+- **G8 Overview (C.3)** (feature / client). Ordering model, screen, Ctrl+J / Ctrl+Shift+J / Ctrl+0,
+  "Nothing needs you" toast. Blocked by G1.
+- **G9 New agent on a branch (C.4)** (feature / daemon, client). Agent choice and first prompt on the
+  worktree API, new dialog, pinned button, Ctrl+K entry. Needs question 5. Blocked by G1.
+- **G10 Status shimmer to spec (C.4)** (chore / client). Overlay span, amber needs-you, 1.4 s once,
+  software-GPU and unfocused gating. Overlaps ticket 7 (v18 status effects): do together.
+- **G11 Brain dump (C.6)** (feature / client, daemon). Needs question 7. Blocked by G1, G9.
+- **G12 Usage store and API (C.7 daemon)** (feature / daemon). Per-session per-day provider-reported
+  usage, never estimated. Needs question 8.
+- **G13 Usage and cost page (C.7)** (feature / client). Blocked by G12, G1. Built on `feat/gui-usage-page`
+  (page, Ctrl+Shift+U, footer icon, client-side budget); remote machines' usage waits for a daemon report that covers them.
+- **G14 Performance page to spec (C.8)** (feature / client). Four tiles with sparklines, daemon ping,
+  ranked "What's costing" with session-only switches, Ctrl+Shift+P, harness brought up to date.
+- **G15 Event projection (CV-0)** (feature / client). Needs question 1.
+- **G16 Chat switch, history, composer (CV-1..3)** (feature / client, daemon). Blocked by G15, G1.
+  Client side built (CV-1..3, see the chat view plan). Two daemon gaps found, proposed as new tickets:
+  **G23** (daemon part DONE, see ADR 0052; GUI link in the next commit) a Claude/Codex agent running in a terminal
+  pane had no daemon conversation, so no pane had a chat: the daemon now follows the agent's own transcript as a
+  read-only `Native` conversation whose `native_term` is the pane. Open: a composer for these panes (owner decision);
+  **G25** (DONE for Claude and Codex, protocol 72, ADR 0054) chat sessions: the desktop starts a Claude or Codex
+  structured conversation (Session: Chat in New agent on a branch, or Start a Claude/Codex chat on a shell), listed as
+  a session of its own with the full composer, approvals, user-input form, Stop, queue and attachments. Not built:
+  resuming the agent after a daemon restart from the window; another machine's chat sessions; not tried against a live
+  Claude or Codex;
+  **G24** (DONE, protocol 71) a daemon-held send queue, delivered when the turn ends, and a cheaper-to-follow history
+  (every page carries a `resume` cursor that returns only what changed). Not built: delivery in the middle of a
+  turn (steer), a queue that survives a daemon restart, and a pushed history (the client still polls, one small read).
+- **G17 Chat items (CV-4..7, 9, 10)** (feature / client). Blocked by G16.
+- **G18 Session panel (C.2)** (feature / client, daemon). Split: shell, Changes and comments, Files and
+  Artifacts. Blocked by G17.
+- **G19 Notification and Inbox action parity (B.6)** (chore / client). Dismiss everywhere now; approval
+  by id after G17.
+- **G20 Pane shortcut contract (B.8)** (bug / client). Non-mac code takes bare Ctrl+T/W/D/F/K, the spec
+  says Ctrl+Shift. Needs question 4. Blocked by G1.
+- **G21 Activity bar and Panels button (B.7)** (spike / client). Decide if v15 section A is in scope.
+
+### Questions for the owner (they block the tickets named)
+
+1. ANSWERED 2026-11-04: yes, the chat view is wanted for the desktop (the README's "no chat UI" line is outdated). (G15-G18)
+2. ANSWERED 2026-11-04: Claude Code and Codex sessions get Chat first; other agents stay terminal-only. (G16)
+3. DECIDED (owner delegated, 2026-11-04): yes, keep typing y/a/n into the terminal as a fallback. (G19)
+4. DECIDED 2026-11-04: follow the spec. On Windows and Linux, plain Ctrl+letter always goes to the terminal; the app uses Ctrl+Shift (Cmd on Mac). (G1, G20)
+5. DECIDED (owner delegated): yes, a small addition to the worktree API. (G9)
+6. DECIDED (owner delegated): toast only, per the handoff. (G8)
+7. Brain-dump split: which model and account, where does the JSON get validated? (G11)
+8. DECIDED 2026-11-04: yes, the daemon may store provider-reported usage per session per day; never estimated. (G12)
+9. DECIDED (owner delegated): local only in v1; remote branch agents come later. (G4, G9)
+10. Plans link to v17; v18 is newest. Fix the links. (docs)
+
+## 13. Adaptive animations: measure, then pick the effect level (feature, `client`)
+
+Today `data-gpu` is set once from whether WebGL 2 works, which is a guess at "rendering is fast".
+Measure frame times for a few seconds after start and again after Waves turns on; if frames run
+slow, step down one level (Waves, Sweep, none) and never step back up on its own. Add Settings >
+Appearance > Animations: Auto (default), Full, Light, Off. The performance page says what Auto chose
+and why ("Software rendering detected, using Sweep"). Reduce motion and the existing hidden/unfocused
+rules still win. Acceptance: unit tests with a fake clock for the step-down; harness scenarios `a`
+and `b` within budget. Blocked by: 7 (status effects).
+
+## 14. Design system rules and a hard-coded colour lint (chore, `client`, `docs`)
+
+Approved by the owner 2026-11-04. Unify the foundation, not the whole UI:
+1. Every colour, radius and shadow comes from a theme token (CSS variable), mapped into Tailwind by
+   the `@theme inline` block in `index.css`; no raw hex or `rgb()` in components.
+2. Every popup (menu, dropdown, dialog, tooltip, popover, listbox) is a shadcn/Radix primitive from
+   `src/components/ui/`; no hand-rolled focus, Esc or arrow-key handling.
+3. New components use Tailwind utilities on those tokens; heavy animation and per-style rules
+   (Flat, Tiled, Glass, `data-gpu`) stay in `workspace.css`.
+4. Old CSS moves to the rules above only when a ticket touches that area; no big-bang rewrite.
+
+Work: put the four rules in `docs/UI.md` (and point `docs/stack/shadcn-tailwind.md` at them), add an
+ESLint or script check that fails on a hard-coded colour in `apps/gui/src` outside the theme files
+(with a small allowlist for the terminal palette), and move the existing offenders or list them as
+the allowlist's baseline. Acceptance: the check runs in `pnpm lint` and passes. Do after wave 1 lands
+(it edits `docs/UI.md`); tickets 7 and 8 get rule 2 in their briefs.
+
+## G22. The daemon's conversation history must carry tool input and approval detail (feature, `daemon`)
+
+Found building G15 (the chat event projection, merged). Without this, Claude chat cards are mostly
+empty. Today:
+1. A Claude tool call is recorded as a bare label ("Edit "): `bounded_content_text(&input)` returns
+   an empty string for an object, so there is no file, diff, to-do list or helper-agent title. Add a
+   bounded `input` field to `Content::Tool` (a `#[serde(default)]` field needs no protocol bump if a
+   test decodes the old shape).
+2. A Claude approval's command is only "Edit: " with no path or diff, always `kind: Command`, and its
+   `item_id` is the request id, so it cannot be linked to its tool step. Codex links through
+   `item_id`.
+3. An answered approval vanishes from `read_conversation` and the answer is not recorded, so the
+   answer is lost after a GUI restart.
+4. No timestamps or exit codes, so "Cooked for 7s" and "exit N" cannot be shown from history.
+5. Codex command labels are cut at 256 characters; Codex plan and helper items keep only their kind.
+
+Blocks the real content of G17 (edit blocks, command cards, approvals) and G18. This is chat-view
+plan CV-13. Daemon work, so it follows ADR 0036 for status trust. Blocks G17 for Claude.
+
+## 15. Light themes: bright ANSI colours and the pane's bottom edge (bug, `client`, `theme`)
+
+Seen in the Tiled Paper screenshot: some terminal words (ANSI cyan and the bright colours) are a very
+pale blue on the white ground, and a heavy black bar runs along the bottom of the pane over the
+"Working" chip. Extend the contrast audit in `themes.test.ts` to all 16 ANSI colours on `--term` for
+Paper, Day and the generated light themes, retune what fails, and find out whether the black bar is
+the mock's cursor line or a real style bug. Also: a Paper streaming run sometimes reads about 37%
+instead of about 14% of a core; find what flips (animation or compositing mode) and fix or document it.
+
+## Order of the next batch
+
+Batch A (parallel): G1+G20+G2 shortcuts, G22 daemon history, G12 usage store, ticket 15.
+Batch B: G16 chat switch (after G22), G8 Overview and G9 New agent on a branch (after G1), G13 usage
+page (after G12 and G1). Postponed by the owner (2026-11-04): G11 brain dump; undecided whether it will be built at all.
+Until then Ctrl+Shift+N stays 'new worktree'.
+
+## 16. Dark themes: ANSI colours below 4.5:1 (bug, `theme`)
+
+**Done 2026-11-05** (70ba2d7): every dark theme's ANSI and status colours meet 4.5:1 on both grounds. `terminalMinimumContrast` still returns 1 for dark themes on purpose.
+
+Found by the ticket 15 audit, left alone because ticket 15 was light themes only: Nord magenta 4.41,
+Solarized Dark blue 4.08 and magenta 3.30, Rosé Pine blue 3.38, Zenburn red 4.02, green 3.59 and
+magenta 4.30. Lighten within the hue family, extend the audit to every dark theme, and decide whether
+xterm's `minimumContrastRatio` should also apply on dark themes.
+
+## 17. Design handoff v18 is out of date for generated light themes (docs)
+
+The code now uses warn #8F5400 and danger #B8362C for generated light themes (the handoff says
+#9A5B00 and #C0392F) and applies xterm `minimumContrastRatio` 4.5 on light themes. Update
+`GLASS_AND_TILED.md` section 3 when the design is next revised.
+
+## 18. Decide how conversation history treats secrets (spike, `daemon`, `docs`) — DONE
+
+Found building G22: the history now stores the full input of a tool call (bounded to 64 KiB, escapes
+stripped). The history has never redacted secrets, so a Claude `Write` of a `.env` file, or a command
+that echoes a token, is now readable by any machine or client with a read grant, and lands in the
+private history cache when it is on. `docs/SECURITY.md` says so plainly. Decide: redact by pattern
+(keys, tokens, `.env` content), omit input for sensitive paths, or accept and document. Also confirm
+against a live Claude CLI that `can_use_tool` carries `tool_use_id` (the fake CLI does; the code falls
+back to the request id). Blocks nothing, but decide before the chat view ships widely.
+
+**Done 2026-11-04** (owner decision in *Decisions on 2026-11-04 (night)*): the daemon masks token- and
+key-shaped strings and omits the content of obviously secret files at one choke point
+(`daemon/conversation/redact.rs`), with GUI cards that show both honestly. What is masked, what is
+omitted and the limits are in [SECURITY](SECURITY.md#conversation-history-and-secrets). No
+`PROTOCOL_VERSION` change. **Still open:** confirm against a live Claude CLI that `can_use_tool`
+carries `tool_use_id` (the fake CLI does; the code falls back to the request id).
+
+## 19. Paste an image into a remote pane in the desktop app (feature, `ssh`, `client`)
+
+The terminal app sends a pasted clipboard image to a pane on another machine (ADR 0049); the desktop
+app still says local-only for it. Reuse the transfer code that now lives in `maitty-machines` (moved
+for ticket 11) behind a Tauri command, with the same limits (25 MB for an image, private cache folder
+on the far side, path typed into the pane), progress and error states, and tests. Windows is in scope.
+
+## 20. Attachments in the chat: files and images, local and remote (feature, `client`, `ssh`, `daemon`)
+
+Owner idea, 2026-11-04. When the chat view is open (especially on a remote machine) the user must be
+able to attach screenshots, images, design zips and other files to a message, as in Claude's own chat:
+a paperclip and drag-and-drop on the composer, paste an image, a thumbnail or file chip in the draft
+and in the sent message, remove before sending. Remote sessions reuse ticket 11 and 19 (the file lands
+in the far side's private cache, the path goes into the message); local sessions reference the local
+path. Open questions to settle in an ADR: how each provider receives attachments (Claude Code and
+Codex accept image paths or inline images differently), size caps, whether archives are unpacked or
+passed as a path, what the history stores (the path or the bytes; see ticket 18 on secrets), and
+cleanup. Blocked by the chat composer (G16) and tickets 11 and 19.
+
+Progress (2026-11-04, ADR 0053 proposed): the local case is built. The composer has a paperclip, drop
+and image paste, draft chips and thumbnails with remove, and sent messages show their files; the host
+copies each file into a private `attachments` cache after checking it. The message names the files by
+path in its text, so the daemon and `PROTOCOL_VERSION` are unchanged. Remaining: attachments for a chat
+on another machine (needs remote chat; reuse `send_files_to_machine` / `send_pasted_image` and put the
+far-side path in the message, behind the `machine` argument that already exists), a structured field
+(Codex `localImage`, Claude image blocks) if path-in-text proves weak, and thumbnails for picked or
+dropped images (the window never reads those files).
+
+## 21. An intermittent Rust test failure (bug, `tooling`)
+
+**Done 2026-11-05** (d0e00d6, 19b958b): two causes, both test races (a history read right after the ack; typing into a pane before its login shell was ready). Fixed with deterministic waiting.
+
+On the merged tree (948786e) one `cargo test` run (without `--no-fail-fast`, so it stopped early at 832
+tests) exited 101 with 1 test failed; two reruns of the whole suite passed (2293 passed, 0 failed) and
+the first run's log did not keep the test name. A daemon helper saw
+`structured_local_ipc_create_send_read_reconnect_and_exact_identity` fail once under load, but it
+passes 6 of 6 in isolation, so the culprit is not confirmed. Next time it happens, keep the log, name
+the test, and fix its timing instead of retrying. The three slow `maitty-terminal-client` shell tests
+(`remote_status_tests::a_remote_agents_row_is_what_its_daemon_reported_and_follows_its_next_report`,
+`cli_machine_tests::send_and_wait_use_the_remote_pane_s_screen`,
+`mcp_machine_tests::an_agent_lists_reads_and_sends_to_another_machine_s_panes`) also time out under load.
+
+## 22. Update a machine from the GUI and the TUI (feature, `client`, `ssh`)
+
+Asked for 2026-11-05. Today a machine whose Maitty is older than this computer's shows
+"run `maitty machine update <name>`" as text, and the update exists only as that command
+(ADR 0047, D8; `crates/maitty-terminal-client/src/cli/machine_update.rs`). The owner wants an
+**Update** action on each machine instead of having to type the command.
+
+**Scope**
+- GUI: an Update button on a machine in the sidebar group and on its Machines screen, shown when the
+  machine is older, missing the app, or refused for a protocol mismatch (the "needs update" state).
+- TUI: the same action in the machine list.
+- One shared flow, not a copy of the command's logic: look first (the machine's platform and installed
+  version), show what was found, install only after a yes, then show progress and a plain error.
+- The far-side daemon is never signalled; it keeps its sessions and is offered a restart only when none
+  is open (the existing rule). Say so in the confirmation.
+- The binary comes from the existing source logic (`machine_update/binary.rs`): this computer's own when
+  the platform matches, else the checked release. Say plainly when there is nothing to fetch (for
+  example before a release exists).
+- A downgrade (`--force`) stays a command-line choice.
+
+**Acceptance**
+- A machine that needs an update shows the button; clicking it, confirming and finishing leaves the
+  machine connected at the current protocol with its sessions intact.
+- Cancel, an ssh failure and a failed checksum each leave the machine as it was and say so.
+- Reuses the file-send transport (`maitty-machines` ssh runner); no new ssh code path.
+- Tests with the scripted-ssh fixtures. Real ssh is checked by hand.
+
+**Notes**
+- Blocked in practice until a release exists, because only a release carries a protocol-72 `maitty`
+  to push to a machine whose platform differs from this computer's.
+- Needs an ADR amendment to 0047 or 0048 (the desktop app may now change another machine).
+
+
+## Decisions on 2026-11-04 (night)
+
+- Image paste key: Ctrl+Shift+V on Windows and Linux (plain Ctrl+V stays with the terminal, per the shortcut
+  rule), Cmd+V on macOS. Alt+V is NOT used: Claude Code takes Alt+V (image paste on Windows) and Alt+T
+  (ADR 0029).
+- G25 (new): a composer, approvals, queue and Stop for chats. Owner approved the recommendation: sessions
+  started from the GUI as daemon-owned structured Claude/Codex conversations; panes where the user typed
+  `claude` or `codex` in a plain shell stay read-only (ADR 0052).
+- Ticket 18 (secrets in history): owner delegated. Mask token- and key-shaped strings and omit the content of
+  obviously secret files (`.env`, keys, credentials) from stored tool input; keep the file name and kind.
+- Push: after the three items above are done.
+
+
+## Added 2026-11-05: release and CI speed, from the v0.65.0 release
+
+Releasing v0.65.0 took most of a working day, nearly all of it waiting on CI. Where the time went:
+
+| Cause | Lost | State |
+| --- | --- | --- |
+| `test (windows-latest)` compiled from an empty cache, about 35 min a pull request | ~70 min | fixed in #270: 11 to 12 min |
+| The same job hit its 15 minute step limit while still compiling, and was re-run | ~30 min | fixed in #268 and #270 |
+| The release was a chain of pull requests (feature, bump #272, release #273), each waiting on CI | ~60 min | ticket 23 |
+| GitHub had no macOS runner: jobs cancelled three times on 2026-11-05, once on 2026-11-04 | ~45 min | ticket 24 |
+| One intermittent Windows test, re-run | ~30 min | ticket 26 |
+| `apt-get` took 30 min on a GitHub runner | 30 min | ticket 25 |
+
+Already on `dev` (#270): only `dev` saves a build cache, failed runs included; pull requests build no
+installers (the push to `dev` does); the frontend's tests and lint run once; `scripts/ci-areas.sh`
+skips jobs a change cannot reach; a pull request into `main` runs nothing.
+
+**Order.** 23, 24 and 25 are small and independent of each other: one pull request each, or one
+`ci` pull request with three commits. 26 needs Windows runs and is its own pull request. 27 is a
+decision first and may not be worth doing.
+
+**To do them:** read `AGENTS.md`, then `.github/workflows/ci.yml`, `.github/workflows/release.yml`
+and `scripts/ci-areas.sh`. Run the verification gate before each push. A pull request's own CI run
+is the test of a workflow change; say in the pull request what could not be run before merging.
+
+## 23. One command for a release (chore, `tooling`)
+
+The bump pull request (#272) and the release pull request (#273) each waited on a full CI run to
+change three version strings. The release rule in `AGENTS.md` asks only for: set the version,
+commit, bring `main` up to `dev`, tag. Add `scripts/release.sh <X.Y.Z> [--dry-run]` that does that
+and nothing else.
+
+**What it does, in order**
+1. Refuses, with a message and a non-zero exit, unless all of these hold:
+   - the argument is `X.Y.Z` and greater than the version in `apps/tui/Cargo.toml`;
+   - the tag `vX.Y.Z` exists neither locally nor on `origin`;
+   - the newest `ci` run for a push to `dev` is complete and green, and is for `origin/dev`'s head
+     (a head whose commits since that run touch only `docs/**` or `*.md` has no run of its own:
+     accept the newest run then). `--skip-ci-check` overrides this one check and says so in its
+     output: GitHub cancelling a macOS job for lack of a runner marks the whole run failed.
+2. Works in a temporary detached worktree of `origin/dev`, so the caller's checkout, index and local
+   branches are untouched. `dev` and `main` are often checked out in other worktrees, where
+   `git switch` would refuse.
+3. Sets the version in `apps/tui/Cargo.toml` and `apps/gui/src-tauri/tauri.conf.json`, refreshes
+   `Cargo.lock` with `cargo update --workspace --offline`, and commits the three files as
+   `build: bump to vX.Y.Z`.
+4. Checks out `origin/main` detached, merges the bump commit with
+   `git merge --no-ff -m "Merge dev into main for vX.Y.Z"` (the form used up to v0.61.0), and tags
+   the merge commit `vX.Y.Z` (a lightweight tag, like the existing ones).
+5. Pushes all three together:
+   `git push --atomic origin <bump>:refs/heads/dev <merge>:refs/heads/main refs/tags/vX.Y.Z`.
+   If the push is refused, deletes the local tag. Always removes the temporary worktree.
+6. Prints the URL of the release run the tag started.
+
+`--dry-run` runs every check in step 1 and prints the commands of steps 3 to 5 without running any
+that commit, tag or push.
+
+**Acceptance**
+- `scripts/release.sh 0.65.1 --dry-run` on a green `dev` prints the plan and leaves `git status`,
+  `git branch -vv`, `git tag -l` and `git worktree list` exactly as they were.
+- Each refusal in step 1 is shown once by hand (a bad version, an existing tag, a red run), with its
+  message quoted in the pull request.
+- The **Releases** bullet in `AGENTS.md` (*Project-specific: workflow and tooling*) names the script
+  and drops the hand-run steps. The owner approved changing this rule on 2026-11-05.
+- `docs/COMMIT-STANDARDS.md` says a direct commit to a protected branch needs explicit, one-time
+  authorization: note in the script's header that running it is that authorization for one release.
+
+**Notes**
+- It can only be proven end to end by the next real release. Say so in the pull request.
+- `release.yml`'s "Check release versions" step still fails a tag that does not match both version
+  fields, so a half-applied bump cannot publish.
+- The release notes are every `feat` and `fix` subject since the previous tag (`release.yml`,
+  "Release notes"). v0.65.0 has 124 lines, which is what the app's update dialog shows. Out of scope
+  here; file separately if it should be capped or grouped.
+
+## 24. Pull requests must not wait on macOS runners (chore, `tooling`)
+
+GitHub cancelled macOS jobs that never started, with "The job was not acquired by Runner of type
+hosted even after multiple attempts": `desktop GUI (macOS)` on #272 twice (run 42060316400),
+`desktop GUI (macOS host)` on `dev` (run 42068870969), and `install on macos-15` in the v0.64.0
+release (run 41875940232). Each cost a 15 minute wait and marked the run failed with nothing wrong.
+
+**What**
+- Remove the `gui-host-macos` job from `.github/workflows/ci.yml` and the comment above it.
+  `desktop package (macOS)`, on the push to `dev`, stays as the place the desktop host is compiled on
+  macOS. Update the file's header comment to say so.
+- Leave `check (macOS)` alone: it cross-checks on a Linux runner.
+- Leave `release.yml`'s `verify` job alone: it runs after the release is published and holds nothing up.
+
+**Acceptance**
+- A pull request's checks include no job that runs on a macOS runner.
+- A push to `dev` still runs `desktop package (macOS)`.
+
+**Notes**
+- Trade-off the owner accepted: a break that only shows when compiling the desktop host on macOS is
+  found on `dev` after the merge, not on the pull request.
+
+## 25. Linux package install: a limit and a retry (chore, `tooling`)
+
+On `dev` run 42068870969, `test (ubuntu-latest)` spent 30 minutes in "Install Tauri Linux
+dependencies" (16:54:14Z to 17:24:24Z). The log shows `azure.archive.ubuntu.com` going quiet for up
+to 473 seconds between packages. The step normally takes under a minute, and it has no limit.
+
+**What**
+- Add `scripts/ci-apt-install.sh <package>…`: `apt-get update` then `apt-get install -y`, each with
+  `-o Acquire::Retries=3 -o Acquire::http::Timeout=30`, each attempt under `timeout 240`, three
+  attempts, `sudo dpkg --configure -a` before a retry (a killed `apt-get` can leave `dpkg` half way).
+- Call it from the four steps that install the Tauri packages: `ci.yml` jobs `test` and
+  `package-linux`, `release.yml` job `build-gui`, and `test-build.yml`. Keep each job's own package
+  list. Give each step `timeout-minutes: 15`.
+- The Arch job uses `pacman`; leave it.
+
+**Acceptance**
+- The four steps call the script, and no workflow has its own `apt-get install` line left.
+- The pull request's `test (ubuntu-latest)` passes with the step under two minutes.
+
+## 26. Intermittent Windows failure in the three-machines hub test (bug, `client`, `windows`)
+
+On #270, `test (windows-latest)` failed once
+(https://github.com/CydoEntis/maitty/actions/runs/42055392461/job/127360803248):
+
+```text
+hub::tests::end_to_end::three_machines_snapshots_typing_and_a_replay_after_one_reconnects
+panicked at apps\gui\src-tauri\src\hub\tests\end_to_end.rs:235:13:
+assertion `left == right` failed: ECHO_ALPHA_92 reached machine 2
+  left: 1
+ right: 0
+```
+
+The same tree passed on #268 and on the re-run, and the test passes every time on Linux. The
+assertion says text typed for one machine showed once in another machine's pane, which would be a
+serious bug if the desktop hub did it.
+
+**Guess, not confirmed.** The three sandboxed daemons' shells share one user profile on the Windows
+runner (`maitty-test-support`'s `Sandbox::env` sets three variables, none of them the profile), and
+PowerShell's PSReadLine keeps one history file for every session and draws an inline suggestion
+from it. The token that leaked is the one run most recently, and it showed in the pane typed into
+next, which fits a suggestion and not a misrouted frame.
+
+**What**
+1. Make the failure say what it saw: put the pane's text in the assertion message at
+   `end_to_end.rs:235`.
+2. Confirm or rule out the guess on a Windows runner, for example by giving each sandbox its own
+   PSReadLine history path, or by turning suggestions off for the test's shells.
+3. If it holds, isolate the shells in `Sandbox` so no test's shell reads another's history.
+4. If it does not hold, stop and report: a real leak between machines is a routing bug in the
+   desktop hub, not a test fix.
+
+**Acceptance**
+- The cause is named with evidence from a Windows run.
+- The test passes ten runs in a row on `windows-latest`.
+- No retry is added (ticket 21's rule: fix the cause, don't retry).
+
+## 27. A build cache for the release workflow (spike, `tooling`)
+
+`release.yml` has no build cache, and its slowest build took 17 minutes (`build GUI windows-x64`,
+v0.64.0). Adding `Swatinem/rust-cache` to it as it stands saves nothing: GitHub lets a run read only
+the caches saved by its own ref and by the default branch, a release runs on a tag, and every
+release is a new tag.
+
+**Decide**
+- Whether to trigger the release from the push to `main` (the default branch, whose caches carry
+  over) and have the workflow create the tag, or to leave the release uncached.
+- Whether release caches fit: the repository's limit is 10 GB, shared with CI's caches, and eight
+  release builds would want several of them.
+
+Do this last, after timing a release made with ticket 23. It may not be worth the change.
+
+## Housekeeping from 2026-11-05 (not tickets)
+
+- Close #271: `dev` already has its two changes (the separate build step from #268, the cache saved
+  on failure from #270), and it conflicts with #270.
+- `docs/adr/0048-machines-in-the-desktop-app.md` says clipboard writes are off unless granted. Since
+  #269 a machine's `clipboard` is on unless its entry says `false` (`crates/maitty-machines/src/def.rs`),
+  in both apps. Amend the ADR or record the change in a new one.
+- A branch cut before these merges (the terminal fixes for v0.65.1) should merge `dev` before its
+  pull request: #268 changed about 500 lines of `crates/maitty-terminal-client`.

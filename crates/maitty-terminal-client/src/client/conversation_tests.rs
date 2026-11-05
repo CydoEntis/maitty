@@ -18,6 +18,8 @@ fn conversation() -> ConversationSummary {
         checks: Vec::new(),
         title: None,
         archived: false,
+        root: None,
+        branch: None,
     }
 }
 

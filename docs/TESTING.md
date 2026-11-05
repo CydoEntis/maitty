@@ -199,7 +199,7 @@ is pure and runs everywhere. The one unix-only assertion (the `0755` mode) is `#
 runs in the fake home, and the tests check that the file arrives whole and private, that two pastes are two
 files, that an image over 25 MB never starts ssh, that a machine reached by a custom transport is told it
 needs ssh, and that a failed login says so and keeps nothing. The script itself is also run directly
-(`maitty-core`'s `remote_paste` tests: a short upload is not kept, a bad name writes nothing, old pastes are
+(`maitty-machines`' `remote_paste` tests: a short upload is not kept, a bad name writes nothing, old pastes are
 cleared, only pastes are cleared). They need `sh` with `wc mv mktemp cat tr printf rm mkdir find` and print
 `skipped:` and pass when there is none.
 

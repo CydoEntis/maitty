@@ -4,6 +4,7 @@
 
 use super::*;
 use maitty_machines::link::Backoff;
+use maitty_machines::machine_config::Grant;
 use maitty_machines::link_failure::{FIX_LOGIN, FIX_UPDATE};
 use maitty_test_support::{Sandbox, fake_ssh};
 use std::time::Duration;
@@ -45,6 +46,7 @@ struct Watch {
     msgs: Vec<(MachineId, ServerMsg)>,
     up: Vec<MachineId>,
     ended: Vec<MachineId>,
+    removed: Vec<MachineId>,
 }
 
 impl Watch {
@@ -55,6 +57,7 @@ impl Watch {
             msgs: Vec::new(),
             up: Vec::new(),
             ended: Vec::new(),
+            removed: Vec::new(),
         }
     }
 
@@ -66,6 +69,7 @@ impl Watch {
             }
             Update::LineUp { machine } => self.up.push(machine),
             Update::LineEnded { machine } => self.ended.push(machine),
+            Update::Removed { machine } => self.removed.push(machine),
         }
     }
 
@@ -193,6 +197,20 @@ async fn a_failed_login_needs_login_with_the_fix_and_the_retries_are_quiet() {
     assert_eq!(watch.kinds(BOX), ["connecting", "needs-login"]);
 }
 
+#[test]
+fn a_fix_names_the_machine_so_the_command_can_be_run_as_it_stands() {
+    let told = describe(
+        MachineId(2),
+        "build",
+        &ConnectionState::NeedsUpdate {
+            why: maitty_machines::link_failure::FIX_INSTALL.into(),
+        },
+    );
+    let why = told.why.expect("a fix");
+    assert!(why.contains("`maitty machine update build --install`"), "{why}");
+    assert!(!why.contains("<name>"), "{why}");
+}
+
 #[tokio::test]
 async fn a_daemon_of_another_version_needs_an_update_with_the_fix() {
     let sandbox = Sandbox::new();
@@ -249,6 +267,10 @@ async fn a_different_daemon_at_a_known_name_is_turned_away_and_says_nothing_that
         why.contains("a different machine answers at box"),
         "the reason is the refusal's own words: {why}"
     );
+    assert!(
+        watch.hub.handle().is_refused(BOX),
+        "the window is told refused, not just unreachable"
+    );
     assert_eq!(
         watch.snapshots(BOX),
         0,
@@ -266,6 +288,201 @@ async fn a_different_daemon_at_a_known_name_is_turned_away_and_says_nothing_that
     assert!(quiet.is_err(), "the watch only ends by timing out");
     assert_eq!(sandbox.calls_made(), parked, "no dial while parked");
     assert_eq!(watch.snapshots(BOX), 0);
+
+    // A person asking again clears the refusal and dials.
+    watch.hub.handle().retry("BOX");
+    let dialled = async {
+        while sandbox.calls_made() == parked {
+            let _ = tokio::time::timeout(Duration::from_millis(50), watch.step()).await;
+        }
+    };
+    tokio::time::timeout(WAIT, dialled)
+        .await
+        .expect("retry dials a parked machine");
+}
+
+#[tokio::test]
+async fn removing_a_machine_stops_it_and_forgets_it_and_its_daemon_id() {
+    let mut sandbox = Sandbox::new();
+    sandbox.start_daemon();
+    let mut watch = Watch::new(&[machine("box", &sandbox, "proxy")], &sandbox, quick(WAIT));
+    watch
+        .until("connected and a snapshot", |w| {
+            w.is(BOX, "connected") && w.snapshots(BOX) > 0
+        })
+        .await;
+    assert!(MachineIds::load(&ids_file(&sandbox)).forget("box"));
+
+    let handle = watch.hub.handle();
+    handle.remove("Box");
+    watch
+        .until("the machine is removed", |w| w.removed == [BOX])
+        .await;
+    assert!(!handle.is_up(BOX));
+    assert_eq!(handle.name_of(BOX), None);
+    assert!(!watch.hub.retry(BOX), "nothing supervises it any more");
+    assert!(
+        !MachineIds::load(&ids_file(&sandbox)).forget("box"),
+        "the daemon id recorded for the name is gone"
+    );
+}
+
+#[tokio::test]
+async fn a_machine_added_while_the_app_runs_connects_under_a_new_number() {
+    let mut sandbox = Sandbox::new();
+    sandbox.start_daemon();
+    let mut watch = Watch::new(&[], &sandbox, quick(WAIT));
+    assert!(!watch.hub.any());
+
+    watch.hub.handle().add(machine("late", &sandbox, "proxy"));
+    watch
+        .until("connected and a snapshot", |w| {
+            w.is(MachineId(1), "connected") && w.snapshots(MachineId(1)) > 0
+        })
+        .await;
+    assert_eq!(watch.hub.name_of(MachineId(1)), Some("late"));
+    assert_eq!(watch.hub.handle().name_of(MachineId(1)).as_deref(), Some("late"));
+    assert_eq!(watch.kinds(MachineId(1)), ["connecting", "connected"]);
+
+    // Adding the same name again changes nothing.
+    watch.hub.handle().add(machine("LATE", &sandbox, "proxy"));
+    let quiet = tokio::time::timeout(Duration::from_millis(300), watch.step()).await;
+    assert!(quiet.is_err());
+}
+
+#[tokio::test]
+async fn a_machines_opt_ins_are_what_its_entry_says_and_nothing_for_a_stranger() {
+    let sandbox = Sandbox::new();
+    let opted = MachineDef {
+        notices: true,
+        ..machine("box", &sandbox, "proxy")
+    };
+    let watch = Watch::new(&[opted, machine("other", &sandbox, "proxy")], &sandbox, quick(WAIT));
+    let handle = watch.hub.handle();
+    // Ids follow the names in order: box, then other.
+    assert!(handle.opts_of(MachineId(1)).notices);
+    assert!(!handle.opts_of(MachineId(1)).sounds);
+    let untouched = MachineOpts {
+        clipboard: true,
+        ..Default::default()
+    };
+    assert_eq!(handle.opts_of(MachineId(2)), untouched);
+    assert_eq!(handle.opts_of(MachineId(9)), Default::default());
+}
+
+#[tokio::test]
+async fn a_grant_changes_what_the_hub_lets_through_at_once_and_only_for_that_machine() {
+    let sandbox = Sandbox::new();
+    let refusing = |name: &str| MachineDef {
+        clipboard: false,
+        ..machine(name, &sandbox, "hang")
+    };
+    let watch = Watch::new(&[refusing("box"), refusing("other")], &sandbox, quick(WAIT));
+    let handle = watch.hub.handle();
+    assert_eq!(handle.id_of("BOX"), Some(MachineId(1)));
+    assert_eq!(handle.id_of("this computer"), None);
+    assert!(!handle.opts_of(MachineId(1)).clipboard);
+    assert_eq!(handle.set_grant("box", Grant::Clipboard, true), Some(MachineId(1)));
+    assert!(handle.opts_of(MachineId(1)).clipboard);
+    assert!(!handle.opts_of(MachineId(2)).clipboard);
+    handle.set_grant("box", Grant::Clipboard, false);
+    assert!(!handle.opts_of(MachineId(1)).clipboard);
+    assert_eq!(handle.set_grant("ghost", Grant::Notices, true), None);
+}
+
+#[tokio::test]
+async fn removing_a_machine_that_is_not_there_says_nothing() {
+    let sandbox = Sandbox::new();
+    let mut watch = Watch::new(&[], &sandbox, quick(WAIT));
+    watch.hub.handle().remove("ghost");
+    let quiet = tokio::time::timeout(Duration::from_millis(300), watch.step()).await;
+    assert!(quiet.is_err(), "no update for a machine that was never there");
+}
+
+#[tokio::test]
+async fn an_outage_is_dated_from_its_first_state_and_ends_when_the_machine_is_connected() {
+    let sandbox = Sandbox::new();
+    let hub = Hub::start(&[], &shim(), ids_file(&sandbox), quick(WAIT), None);
+    let handle = hub.handle();
+    assert_eq!(handle.down_since(BOX, false, 1_000), Some(1_000));
+    assert_eq!(
+        handle.down_since(BOX, false, 9_000),
+        Some(1_000),
+        "a later state of the same outage keeps its start"
+    );
+    assert_eq!(handle.down_since(BOX, true, 10_000), None);
+    assert_eq!(
+        handle.down_since(BOX, false, 20_000),
+        Some(20_000),
+        "a new outage starts afresh"
+    );
+}
+
+#[tokio::test]
+async fn a_refused_machine_is_let_in_once_it_is_removed_and_added_again() {
+    let mut sandbox = Sandbox::new();
+    sandbox.start_daemon();
+    let mut known = MachineIds::default();
+    check_daemon_id(&mut known, "box", Some("aaaaaaaa11111111aaaaaaaa11111111")).unwrap();
+    known.save(&ids_file(&sandbox));
+
+    let mut watch = Watch::new(&[machine("box", &sandbox, "proxy")], &sandbox, quick(WAIT));
+    watch
+        .until("turned away", |w| w.is(BOX, "unreachable"))
+        .await;
+    let handle = watch.hub.handle();
+    assert!(handle.is_refused(BOX), "told to the window as refused");
+
+    // The person removes it and adds it again, as the refusal says.
+    handle.remove("box");
+    watch
+        .until("removed", |w| w.removed == [BOX])
+        .await;
+    assert!(!handle.is_refused(BOX), "the refusal went with the machine");
+    handle.add(machine("box", &sandbox, "proxy"));
+    let again = MachineId(2);
+    watch
+        .until("connected and a snapshot", |w| {
+            w.is(again, "connected") && w.snapshots(again) > 0
+        })
+        .await;
+    assert!(!handle.is_refused(again));
+    let mut recorded = MachineIds::load(&ids_file(&sandbox));
+    assert!(
+        check_daemon_id(&mut recorded, "box", Some("aaaaaaaa11111111aaaaaaaa11111111")).is_err(),
+        "the daemon that answers now is the one recorded, not the one from before"
+    );
+}
+
+#[tokio::test]
+async fn a_computer_without_ssh_says_so_instead_of_hanging() {
+    let sandbox = Sandbox::new();
+    let missing = "maitty-no-such-ssh-program";
+    let mut watch = Watch {
+        hub: Hub::start(
+            &[MachineDef {
+                name: "box".into(),
+                target: "box".into(),
+                ..MachineDef::default()
+            }],
+            missing,
+            ids_file(&sandbox),
+            quick(WAIT),
+            None,
+        ),
+        states: Vec::new(),
+        msgs: Vec::new(),
+        up: Vec::new(),
+        ended: Vec::new(),
+        removed: Vec::new(),
+    };
+    watch
+        .until("unreachable", |w| w.is(BOX, "unreachable"))
+        .await;
+    let Some(ConnectionState::Unreachable { why, .. }) = watch.state_of(BOX) else {
+        panic!("{:?}", watch.state_of(BOX));
+    };
+    assert!(why.contains("is OpenSSH installed?"), "{why}");
 }
 
 #[tokio::test]
@@ -298,7 +515,11 @@ fn the_window_is_told_the_kind_and_what_a_person_must_do() {
             state: "connected",
             why: None,
             attempt: None,
-            unsent: None
+            unsent: None,
+            since: None,
+            clipboard: false,
+            notices: false,
+            sounds: false
         }
     );
     assert_eq!(
@@ -390,6 +611,22 @@ mod vetting {
     }
 
     #[tokio::test]
+    async fn an_opted_in_machines_notice_is_one_clean_line_led_by_its_name() {
+        let sandbox = Sandbox::new();
+        let mut def = machine("box", &sandbox, "hang");
+        def.notices = true;
+        let mut hub = Hub::start(&[def], &shim(), ids_file(&sandbox), quick(WAIT), None);
+        let hostile = format!("\u{1b}[31mdone\u{7}\n{}", "x".repeat(5000));
+        let Some(ServerMsg::Notice(text)) = hub.admit(BOX, ServerMsg::Notice(hostile)) else {
+            panic!("an opted-in notice is let through");
+        };
+        assert!(text.starts_with("[box] "), "{text}");
+        assert!(text.contains("done"), "{text}");
+        assert!(!text.chars().any(char::is_control), "{text:?}");
+        assert!(text.chars().count() < 400, "cut short: {}", text.len());
+    }
+
+    #[tokio::test]
     async fn an_answer_nobody_asked_for_is_ignored() {
         let sandbox = Sandbox::new();
         let mut hub = hub_with_box(&sandbox, false).await;
@@ -453,6 +690,7 @@ mod local_line {
             msgs: Vec::new(),
             up: Vec::new(),
             ended: Vec::new(),
+            removed: Vec::new(),
         }
     }
 

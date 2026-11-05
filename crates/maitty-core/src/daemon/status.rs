@@ -529,6 +529,7 @@ impl Daemon {
                 t.agent.clone().unwrap_or_default(),
                 t.place(),
                 term::unix_now().saturating_sub(t.status_since),
+                usage::session_key(t, self.usage_store.boot),
             )
         });
         // A turn is starting: the files as they are now are what it can be taken back to.
@@ -555,8 +556,8 @@ impl Daemon {
             && matches!(new, Status::Done | Status::Idle)
             && why != CANCELLED_WHY
             && !t.awaiting_background;
-        if let Some((agent, place, secs)) = turn {
-            self.note_turn(agent, place, secs);
+        if let Some((agent, place, secs, session)) = turn {
+            self.note_turn(agent, place, secs, session);
         }
         if turn_over {
             self.turn_ended(term);

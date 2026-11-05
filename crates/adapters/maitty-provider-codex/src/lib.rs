@@ -114,6 +114,8 @@ pub fn session_facts(tail: &str) -> (Option<Usage>, Option<Vec<Limit>>) {
         context: Some((used / window * 100.0).min(100.0) as f32),
         cost: None,
         tokens: info["total_token_usage"]["total_tokens"].as_u64(),
+        tokens_in: info["total_token_usage"]["input_tokens"].as_u64(),
+        tokens_out: info["total_token_usage"]["output_tokens"].as_u64(),
     });
     let limits: Vec<Limit> = ["primary", "secondary"]
         .iter()
@@ -203,6 +205,16 @@ mod usage_tests {
             ("5h", "week", 40.0)
         );
         assert_eq!(session_facts("nothing here"), (None, None));
+    }
+
+    #[test]
+    fn takes_the_input_and_output_totals_codex_reports_and_no_cost() {
+        let tail = r#"{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":900,"cached_input_tokens":400,"output_tokens":120,"total_tokens":1020},"last_token_usage":{"total_tokens":64600},"model_context_window":258400}}}"#;
+        let usage = session_facts(tail).0.unwrap();
+        assert_eq!(
+            (usage.tokens, usage.tokens_in, usage.tokens_out, usage.cost),
+            (Some(1020), Some(900), Some(120), None)
+        );
     }
 }
 

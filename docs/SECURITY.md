@@ -310,6 +310,38 @@ from the line after the marker and only when it is absolute and free of control 
 what ssh says when a send fails is cut to 200 characters and cleaned the same way. The image is
 capped at 25 MB and the send at two minutes. A machine reached by a custom transport is not sent an image.
 
+The desktop app's image paste (`image_paste.rs`, ticket 19) hands the host the bytes the webview read from the
+clipboard, so the host trusts nothing about them: the type comes from the first bytes (PNG, JPEG, GIF, WebP;
+anything else is refused), the size is capped at 25 MB before a byte is written, and the machine must be a known
+ssh machine that is connected, all before anything is staged. The staged copy and the copy kept for a local pane
+are created `create_new` and mode 600 in an owner-only folder of the app's cache, and nothing but this app's own
+`paste-` and `staged-` files is ever swept. The far-side name is `paste-<ms>-<8 hex>-image.<ext>` with the
+extension from the checked type, never from the webview. The image is the raw body of a command, not a logged
+event, and is never written to a log. What the far side prints is checked as for any file.
+
+A chat attachment (`attachment.rs`, ticket 20, ADR 0053) is a path from a drop or the file picker, so it is a string
+from outside: the host follows it only to a regular file (not a folder, device or pipe), refuses an empty file, caps an
+image (by its first bytes, not its name) at 25 MB and any other file at 100 MB while copying (so a file that grows is
+cut off and removed), and copies it `create_new`, mode 600, into an owner-only `attachments` folder of the app's
+cache. The copy's name keeps only letters, digits, `.`, `_` and `-` (directory parts, spaces, control, direction and
+invisible characters become `_`), so the path the agent is told never needs quoting and the name shown is the name
+on disk. A zip is never unpacked. Nothing but `attach-` files of that folder is swept (after a week).
+`attachments_exist` answers only for files directly inside the attachments or paste folder, so the window cannot use it
+to probe the disk. The message stores the path and name, never the bytes; sending a file to the agent is the person's
+own act and is not scanned (secrets stay out of chat, ADR 0036).
+
+Sending any file to another machine (`client/send_file.rs`, ADR 0055) is the same line and the same script;
+only the name, the cap and the trigger differ. A file is read from this computer only when the person
+names it in the send prompt (a terminal cannot tell a drop from a paste, so a paste of text never
+uploads a file, even when the text is a path); it must be a regular file, at most 100 MB, checked before ssh
+starts and again by the script's byte count. The far-side name is `paste-<ms>-<8 hex>-<original>` with the
+original reduced to letters, digits, `.`, `_` and `-` (anything else becomes `_`), leading dots dropped and
+cut to 48 characters, so it cannot be a path, an option or shell syntax and two files never overwrite each
+other; the line builder checks it again (at most 96 characters). Progress is the count of bytes written to
+ssh; stopping ends the ssh process, and the script keeps nothing that arrives short. What comes back is
+refused unless it is the checked path shape, exactly as for images. A sent file stays on the far machine
+for a week, mode 600 in a folder only its owner can use; the guide tells people so. Directories are not sent.
+
 `maitty machine update <name>` (`cli/machine_update.rs`) runs one fixed script on a machine and writes a
 binary there, so it follows the same rules as every other ssh line, plus these. The script is a constant
 in the app (`maitty_machines::INSTALL_SCRIPT`, re-exported by `remote_install`, passed to the remote shell as `sh -c '<script>' sh <args>`);
@@ -382,6 +414,33 @@ that is not this one (`remote_policy.rs`, `remote_snapshot.rs` in `maitty-machin
 The opt-ins are read from the machine's `[[machines]]` entry by name; a machine no entry names
 has all of them off. `AskRemoveWorktree` from this computer's own daemon still shows its path
 as the daemon sent it; the folder is removed by that daemon when you answer.
+
+**The desktop app and other machines** ([ADR 0048](adr/0048-machines-in-the-desktop-app.md)). The web view
+never connects to a machine and never starts `ssh`: the Rust host holds every connection, runs the same
+`remote_policy` and `remote_snapshot` checks as the terminal app on everything that arrives (`hub.rs`,
+before anything is kept or shown), and hands the web view cleaned data only. The Tauri capabilities did not
+grow for machines (`capabilities/default.json` still holds window controls, the folder dialog, notifications,
+the updater and restart; no shell, file system or network plugin). What the web view can ask of a machine
+is a fixed set of host commands that take a machine's name or number, never a program or a path to run:
+
+- **Names only.** The window knows a machine by name; where it points (`target`, `ssh_args`, `remote_cmd`,
+  `via`) stays in the host.
+- **Adding** a machine runs the loader's checks on the target and name first (an option-like or
+  whitespace target is refused before anything runs), then looks at it with the shared probe: no prompt
+  (`BatchMode`, stdin closed), ended by a 12 s limit or Cancel, and the entry is written only when that held
+  up. The one time ssh may ask a person is the first login, which runs as a session on this computer, with
+  the probe's hardening and a command line that refuses a word it cannot quote.
+- **Grants.** `clipboard` is on for a machine until its entry in `config.local.toml` says `false`, and
+  `notices` is off until it says `true`. The Machines page writes either through the shared editor before
+  the host changes what it lets through. A notice is one clean line led by `[machine]` and a copy is cut to 64 KiB. `sounds` is read but
+  never acted on: the desktop app plays none.
+- **Files stay on their machine.** Features that read a pane's files or repository are refused for another
+  machine's pane by the window and again by the host's commands, in the terminal app's words, so a pane
+  number from another machine can never reach a pane of this computer.
+- **No install or restart.** A machine that needs the app shows the command to run; the desktop app never
+  installs, updates or restarts anything on it.
+- **A different daemon at a known name** is refused (the shared daemon-id store) and says so; Remove then
+  adding the machine again is the way out.
 
 ## Project-specific: auth and permissions
 
@@ -462,6 +521,57 @@ warns and leaves the install in place. `MAITTY_NO_INTEGRATE=1` skips the step.
 `cargo audit` (install with `cargo install cargo-audit`) before releases; GitHub
 push protection for secrets. Not yet in CI (there is no CI yet).
 
+## Project-specific: usage store
+
+The usage store holds token counts, cost, turn counts and working seconds, with the agent name,
+the folder's name and the agent's session id. It holds no prompts, output, paths or secrets. The
+file is private to the user (0600 in a 0700 folder on Unix). `Query::UsageReport` is for human
+clients only: an agent pane or a structured runtime cannot read what other sessions cost.
+
+## Project-specific: followed transcripts
+
+The daemon reads an agent's own transcript for a pane it follows ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)).
+The path comes from a hook report, so it is input, not trust:
+
+- It is read only if its real path (links followed) is a regular `.jsonl` file inside the user's home folder
+  and its name carries the session id the hook reported (Claude `<session>.jsonl`; Codex
+  `rollout-…<session>.jsonl`). Anything else is refused with a reason that names no content.
+- Only a pane that is hook-verified, owned by the desktop app and running `claude` or `codex` is followed; a
+  pane cannot make the daemon read a file for another session.
+- Reads are incremental and bounded (4 MiB per poll, a 16 MiB tail first, lines over 1 MiB dropped), run off the
+  event loop, never write, and are cleaned and bounded like structured history (`tool_input.rs`). The text is
+  held in daemon memory for the conversation's life, never cached, logged or put in a fixture.
+- A followed conversation is read-only, and reading never changes a status.
+
+## Project-specific: chat sessions started from the desktop
+
+A chat session is a Claude or Codex run the daemon starts itself ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).
+The agent runs with the user's permissions, so the window's start path is narrow:
+
+- **Posture.** `start_chat_session` takes one optional boolean, `full_access`, and no other permission argument. By
+  default the daemon starts the provider with workspace write and approval on request (Claude `--permission-mode
+  default` with the stdio permission prompt; Codex `workspace-write`, `on-request`). With `full_access` it starts
+  the provider's own skip-permissions mode (ADR 0043: Claude `bypassPermissions` with
+  `--allow-dangerously-skip-permissions`; Codex `danger-full-access` with approval `never`). It is the user's
+  explicit choice per chat (a labelled checkbox with a warning; the Settings default is off), is never selected
+  silently, and is fixed for the session: Maitty never widens a running session, and a chat started with it shows
+  a visible Full access tag. In the default posture every tool use the provider does not allow by itself becomes an approval
+  that waits for a person's answer, and there is no auto-approve. There is no way to change a running session's
+  posture, and no read-only-to-writable switch, in the window. Answers are human-only, bound to the current generation and the exact request id (unchanged
+  from the structured runtime rules above).
+- **Where it runs.** The folder is a project the app already shows; a branch start also needs a git
+  repository and a valid branch name (`branch_agent::branch_problem`), and the worktree is made by the daemon
+  (`create_trusted_worktree`: the trust copy and the repo's allowed setup hook only). The window never builds a
+  path or runs git. A start for another machine is refused in the window.
+- **Status** comes only from the daemon's events for the current generation; a superseded generation's command
+  changes nothing.
+- **User-input answers** (including a question marked secret) are relayed once, typed hidden, and never recorded
+  or logged.
+- **Closing** a chat session stops its agent before it is put away, so a session the user closed is never left
+  running out of sight; if the stop fails nothing is hidden.
+- Secret masking in history is the daemon's (ticket 18), at the point where history is stored and served; the
+  window adds no copy of a message.
+
 ## Project-specific: structured history cache boundary
 
 The structured-history cache reuses private-directory/file helpers:
@@ -482,6 +592,18 @@ conversation generation and daemon-owned connection; unknown request kinds stay
 unanswered. Invisible characters are displayed as Unicode escapes. Only the
 command and reason needed for the decision leave the daemon;
 raw provider params are not retained in the conversation history or metadata.
+A tool call's `input` is kept in history (it can hold file contents, commands and
+environment), so it is held to the same boundary as the rest of the history: it
+leaves only in an explicit authorized read and in the private cache. It is cleaned
+of escape and control characters, invisible characters are spelled out as Unicode
+escapes, every string is cut and the whole value is capped at 64 KiB, and an input
+that cannot be bounded in shape is dropped (`tool_input.rs`). Secrets are
+masked on the way in; see *Conversation history and secrets* below. Answered approvals
+keep the request's command and diff in daemon memory only, never in the cache, and
+the answers to user-input requests are not kept at all.
+A message queued while a turn runs is held in daemon memory only, never in the session file or the history
+cache, and goes through the same admission checks as a direct send (invisible characters, size, write grant)
+when it is queued and the same durable-receipt path when it is delivered. Removing one needs a human client.
 Prompts are checked for invisible characters at daemon admission. Launch inputs
 are validated in background and explicit sandbox/approval posture is checked in
 the provider response. Native profile-v2 and ambiguous identity are refused.
@@ -517,3 +639,43 @@ reserved MCP environment conflicts before a thread starts. No credential
 exposure switch is broadened. Explicit MCP references revalidate current read
 authority before filesystem work. An in-memory native acknowledgement remains
 uncertain in every read response until its persistence barrier succeeds.
+
+### Conversation history and secrets
+
+Everything the daemon stores and serves as conversation history passes one function,
+`redact_entry` (`daemon/conversation/redact.rs`), when it enters the store (`History::apply`,
+`hydrate`) and again when a cache is loaded. That covers the Claude and Codex adapters, both
+followed-transcript parsers, message text, tool input, command output and approvals. It changes only
+Maitty's copy: the agent still sees exactly what it sent and received, and nothing is blocked.
+
+**Masked** (the secret part becomes `[redacted]`, the text around it stays):
+
+- GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), AWS access key ids (`AKIA`,
+  `ASIA`), Anthropic (`sk-ant-`) and OpenAI (`sk-`, `sk-proj-`) keys, Slack (`xox*`, `xapp-`), Google
+  (`AIza`), Stripe live (`sk_live_`, `rk_live_`), JSON Web Tokens.
+- PEM private key blocks, from the `BEGIN ... PRIVATE KEY` line to the `END` line (or to the end of the
+  text if it is cut or still streaming); the whole block becomes `[redacted private key]`.
+- `Authorization: Bearer|Basic|Token ...` headers and bare `Bearer <token>`.
+- The password in `scheme://user:password@host`.
+- `NAME=value`, `name: value` and `"name": "value"` where the name has a secret, token, password,
+  passwd, api key, private key, credential or auth part (`githubToken`, `AWS_SECRET_ACCESS_KEY`), and
+  every value under such a key in a tool's input JSON. Placeholders (`$VAR`, `<your-key>`, `****`),
+  URLs, paths, flags, short values and code references (`token = refresh_token`) are left alone.
+
+**Omitted** (the text becomes `[content of a secret file omitted]`; the path, tool, kind and an
+`omitted_bytes` count stay, so the chat still says "wrote .env"): the content, old/new text and diffs of
+a tool input, an approval's `changes` and a Codex file change whose path is `.env` or `.env.*` (not
+`.env.example`, `.sample`, `.template`), `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.kdbx`, `id_rsa`,
+`id_ed25519` (and `id_ecdsa`, `id_dsa`), `.npmrc`, `.pypirc`, `.netrc`, `credentials`,
+`.git-credentials`, `secrets` / `secrets.*`, or anything under `.aws`, `.ssh` or `.gnupg`. The output of
+a shell command that prints such a file (`cat`, `head`, `tail`, `grep`, `sed`, ...) is omitted too.
+
+**Limits.** Pattern masking is best-effort and is not a guarantee. It misses a secret with no known
+shape and no telling name (a bare 40-character key, a password in prose, a custom token format), a
+secret split by the provider across separate tool results, a file that holds secrets under an ordinary
+name (`config.json`), and a command that reads a secret file in a way the command list does not know.
+It can also hide something that was not a secret. The patterns lean towards missing a secret over
+wrecking ordinary text: prose, git hashes, UUIDs and plain base64 are not touched. Treat history as
+sensitive anyway: it still reaches any client with a read grant and the private cache. A person who
+approves a command reads the masked text, so a command's masked part cannot be checked from the chat.
+The functions never log or return what a pattern matched.

@@ -300,6 +300,14 @@ fn keys_holder(app: &App) -> Option<Holder> {
             &[("", "type or paste a path"), ("Enter", "add")],
             ("Esc", "cancel"),
         ),
+        Mode::Prompt {
+            kind: crate::client::PromptKind::SendFile(_),
+            ..
+        } => holder(
+            "SEND FILE",
+            &[("", "type or drop a path"), ("Enter", "send")],
+            ("Esc", "cancel"),
+        ),
         Mode::Prompt { .. } | Mode::RenameTab(_) => holder(
             "NAME",
             &[("", "type"), ("Enter", "save")],

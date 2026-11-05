@@ -50,10 +50,10 @@ Intent: [intent.md](intent.md) · Status: proposed · Date: 2026-11-04 · Design
 
 ## Tickets, in order
 
-- **OV-1** Overview model: ordering, sections, next-jump target. Tests only, no UI.
-- **OV-2** Overview screen and sidebar entry with badge.
-- **OV-3** Jump to next (`⌘J`) with the toast case.
-- **OV-4** Context line from structured events (needs chat view CV-8 for the
+- **OV-1** (done) Overview model: ordering, sections, next-jump target. Tests only, no UI.
+- **OV-2** (done) Overview screen and sidebar entry with badge.
+- **OV-3** (done) Jump to next (`⌘J`) with the toast case. With nothing needing you the jump only toasts; it does not fall back to a Done session (v18 C.3).
+- **OV-4** (partly done: the card shows what a stopped agent is asking, else the pane title; the last message's lead sentence has no GUI data yet) Context line from structured events (needs chat view CV-8 for the
   checklist item; ships with the last message's lead sentence first).
 - **OV-5** New agent on a branch dialog and command.
 - **OV-6** Idle updates with the working check and the setting.

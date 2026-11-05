@@ -73,6 +73,7 @@ impl App {
         let focused = self.selected_term();
         match a {
             Action::PasteImage => self.paste_image(),
+            Action::SendFile => self.send_file_action(),
             Action::Find(tab) => self.open_find(tab),
             Action::AgentStatusSetup => self.menu(
                 "Connect an agent · it then reports working, needs you and done itself".into(),
@@ -344,6 +345,7 @@ impl App {
             Action::PrevPrompt,
             Action::NextPrompt,
             Action::PasteImage,
+            Action::SendFile,
             Action::History,
             Action::Machines,
             Action::Settings,
