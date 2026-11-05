@@ -158,7 +158,7 @@ A new `maitty` that finds a server of another version replaces it on the way in.
 
 Rules for keys and their labels: one key per action (no alias keys; a user's own `[keys.prefix]` entries still load), no default needing Shift, keys other apps use (ADR 0017), sentence case, no bracketed explanations (the group gives the context). Every action has a leader key or is search only; nothing in the sidebar acts on a bare letter. `docs/shortcuts.md` documents the other screens' keys and is not embedded in the app.
 
-**Cursor.** The focused pane shows the cursor its program asked for (DECSCUSR, read from its output); where it asks for none, or for the default, Settings › Appearance › Cursor (`ui.cursor`: `terminal`, the terminal's own, by default; `block`, `underline` or `bar`) and Cursor blink (`ui.cursor_blink`) decide (`client/mod.rs` `cursor_code`). An unknown `ui.cursor` is refused when the config loads.
+**Cursor.** The focused pane shows the cursor its program asked for (DECSCUSR, read from its output); where it asks for none, or for the default, Settings › Appearance › Cursor (`ui.cursor`: `block` by default, `underline` or `line`; an older `terminal` reads as `block` and `bar` as `line`) and Cursor blink (`ui.cursor_blink`) decide (`client/mod.rs` `cursor_code`). An unknown `ui.cursor` is refused when the config loads.
 
 **Background.** Settings › Appearance › Background (`ui.background`): `solid`, the default, paints every cell the theme's `bg` and sets the terminal's own background to it (OSC 11, given back with OSC 111 on exit) so a plain terminal shows the whole theme; `terminal` leaves the chrome on the terminal's background (SGR 49) for transparent or image backgrounds (`client/render.rs` `draw`).
 
@@ -187,7 +187,8 @@ Only the area with the keyboard is lit: the focused pane's whole border, or the 
   both chips have caps. There is no accent bar across the top: the user chose the
   pane-like frame over an accent title bar (2026-10-24), and the frame
   tests apply that one difference (`as_bordered_header`). No shadow; the screen
-  behind is dimmed, its ground darkened as well as its text. Small explanations (why, a row's menu) are
+  behind is left as it is, not dimmed: the modal clears its own area to the ground (`dim_all` only
+  marks what is behind as taking no hover). Small explanations (why, a row's menu) are
   `popover_at()`s: a raised title row, no border, no shadow, beside the sidebar
   (`popover_rect()`). Settings is a
   centred modal that preserves the workspace layout and keeps its General,
@@ -531,8 +532,9 @@ choice does), `client/machine_config.rs` (where `config.local.toml` is; the `[[m
   bold value, a faint `—` while unknown. A host that is a `Host` of `~/.ssh/config` fills its user and host
   name. Under it, `FROM ~/.ssh/config` lists the hosts (read off the UI thread; `loading hosts from
   ~/.ssh/config…`, then `alias  user@hostname`), filtered by the host part of the input; a host that is
-  already a machine is not offered. The chosen one shows `tab fill · ⏎ connect`.
-  Keys: typing, `Tab` fills the input with the chosen host, `↑↓` choose, `Enter` connects, `Esc` cancels. A
+  already a machine is not offered. The keys start in the input (the cursor `█`); `↓` (or `Tab`) walks into the list, where the chosen
+  host is marked with `⏎ connect`, and `↑` from its first row (or typing) is back in the input.
+  Keys: typing, `↑↓`, `Enter` connects (to the typed text, or the chosen host), `Esc` cancels. A
   `:path` after the host is refused for now (opening a folder after connecting is not built). The dialog does
   not list machines: *Reconnect* and *Remove* are on a machine's line in the sidebar (see below).
 - **Windows.** The dialog says, in a dim line at its top and on Windows only, `Windows: use ssh keys or an

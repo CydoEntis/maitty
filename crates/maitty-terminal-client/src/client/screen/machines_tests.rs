@@ -148,9 +148,8 @@ fn it_asks_for_the_machine_and_lists_the_hosts_with_the_chosen_one_marked() {
             "Where's the machine? Type it like scp or ssh.",
             "FROM ~/.ssh/config",
             "build dev@build.example.com",
-            "tab fill · ⏎ connect",
             "Enter connect",
-            "Tab complete",
+            "↑↓ input / hosts",
             "Esc cancel",
         ] {
             assert!(said.contains(want), "{w}x{h}: {want:?}\n{text}");
@@ -205,32 +204,66 @@ fn typing_filters_the_suggestions_by_the_host_part_only() {
 }
 
 #[test]
-fn enter_connects_to_what_was_typed_when_it_is_known_else_the_chosen_suggestion() {
-    let at = |q: &str, sel: usize| {
+fn enter_connects_to_the_typed_text_or_the_host_the_keys_are_on() {
+    let at = |q: &str, in_list: bool, sel: usize| {
         let v = MachinesView {
             query: q.into(),
+            in_list,
             host_sel: sel,
             ..view(Some(hosts()))
         };
         connect_target(&v, &[])
     };
-    assert_eq!(at("dev@kingdom.lan", 0).as_deref(), Some("dev@kingdom.lan"));
-    assert_eq!(at("gpu", 1).as_deref(), Some("gpu"), "a known alias");
     assert_eq!(
-        at("", 1).as_deref(),
+        at("dev@kingdom.lan", false, 0).as_deref(),
+        Some("dev@kingdom.lan")
+    );
+    assert_eq!(
+        at("g", false, 0).as_deref(),
+        Some("g"),
+        "in the input: what was typed"
+    );
+    assert_eq!(at("", false, 0), None, "an empty input connects to nothing");
+    assert_eq!(
+        at("", true, 1).as_deref(),
         Some("gpu"),
-        "nothing typed: the chosen one"
+        "in the list: the chosen host"
     );
     assert_eq!(
-        at("g", 0).as_deref(),
+        at("g", true, 0).as_deref(),
         Some("gpu"),
-        "a part of one: the chosen one"
+        "the list is filtered by the input"
     );
+}
+
+#[test]
+fn down_walks_into_the_hosts_and_up_from_the_first_one_is_back_in_the_input() {
+    let mut app = app_with(&[]);
+    open(&mut app, view(Some(hosts())));
+    let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
+    let state = |app: &App| match &app.mode {
+        Mode::Machines(v) => (v.in_list, v.host_sel),
+        _ => panic!("the dialog"),
+    };
+    assert_eq!(state(&app), (false, 0), "it opens with the input");
+    app.on_key(key(KeyCode::Down));
+    assert_eq!(state(&app), (true, 0), "Down is the first host");
+    app.on_key(key(KeyCode::Down));
+    assert_eq!(state(&app), (true, 1));
+    app.on_key(key(KeyCode::Up));
+    app.on_key(key(KeyCode::Up));
     assert_eq!(
-        at("nothing-like-it", 0).as_deref(),
-        Some("nothing-like-it"),
-        "nothing suggested: the text"
+        state(&app),
+        (false, 0),
+        "Up from the first host is the input"
     );
+    app.on_key(key(KeyCode::Down));
+    app.on_key(key(KeyCode::Char('x')));
+    assert_eq!(state(&app), (false, 0), "typing is the input again");
+    let Mode::Machines(v) = &app.mode else {
+        panic!("the dialog")
+    };
+    assert_eq!(v.query, "x");
 }
 
 #[test]

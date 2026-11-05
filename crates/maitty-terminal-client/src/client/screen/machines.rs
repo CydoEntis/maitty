@@ -65,6 +65,8 @@ pub struct MachinesView {
     /// What is typed: `user@host`, or a host alias, completed from the hosts below it.
     pub query: String,
     pub host_sel: usize,
+    /// The keys are on the list of hosts, not the input.
+    pub in_list: bool,
     pub step: MachineStep,
     pub notice: Option<MachineNotice>,
     /// Whether to say what Windows ssh can and cannot remember.
@@ -77,6 +79,7 @@ impl MachinesView {
             hosts: None,
             query: String::new(),
             host_sel: 0,
+            in_list: false,
             step: MachineStep::Browse,
             notice: None,
             windows,
@@ -145,22 +148,16 @@ fn matches(host: &SshHost, query: &str) -> bool {
     query.split_whitespace().all(|word| text.contains(word))
 }
 
-/// What Enter connects to: the typed text when it is a known alias or has a user, else the chosen
-/// suggestion; the typed text again when nothing is suggested. None when there is nothing to say.
+/// What Enter connects to: the chosen host while the keys are on the list, else the typed text.
+/// None when there is nothing to connect to.
 pub fn connect_target(v: &MachinesView, existing: &[MachineDef]) -> Option<String> {
-    let hosts = v.hosts.as_deref().unwrap_or_default();
-    let list = suggestions(v, existing);
-    let chosen = list.get(v.host_sel.min(list.len().saturating_sub(1)));
-    let typed = v.query.trim();
-    match parse_target(typed) {
-        Some(p) if p.user.is_some() || known_host(&p, hosts).is_some() || chosen.is_none() => {
-            Some(typed.to_string())
-        }
-        // Not a target at all (spaces, say): the chosen host, or the text for the check to refuse.
-        _ => chosen
-            .map(|h| h.alias.clone())
-            .or_else(|| (!typed.is_empty()).then(|| typed.to_string())),
+    if v.in_list {
+        let list = suggestions(v, existing);
+        let at = v.host_sel.min(list.len().saturating_sub(1));
+        return list.get(at).map(|h| h.alias.clone());
     }
+    let typed = v.query.trim();
+    (!typed.is_empty()).then(|| typed.to_string())
 }
 
 fn host_line(host: &SshHost) -> String {
@@ -213,31 +210,35 @@ impl App {
     fn machines_browse_key(&mut self, v: &mut MachinesView, k: &KeyEvent) {
         match k.code {
             KeyCode::Esc => self.mode = Mode::Normal,
+            // Down walks into the list of hosts, Up from its first row is back in the input.
+            KeyCode::Up if v.in_list && v.host_sel == 0 => v.in_list = false,
             KeyCode::Up => v.host_sel = v.host_sel.saturating_sub(1),
             KeyCode::Down => {
                 let last = suggestions(v, &self.cfg.machines).len().saturating_sub(1);
-                v.host_sel = (v.host_sel + 1).min(last);
-            }
-            KeyCode::Tab => {
-                let list = suggestions(v, &self.cfg.machines);
-                if let Some(host) = list.get(v.host_sel.min(list.len().saturating_sub(1))) {
-                    v.query = host.alias.clone();
+                if v.in_list {
+                    v.host_sel = (v.host_sel + 1).min(last);
+                } else if !suggestions(v, &self.cfg.machines).is_empty() {
+                    v.in_list = true;
                     v.host_sel = 0;
                 }
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                v.in_list = !v.in_list && !suggestions(v, &self.cfg.machines).is_empty();
+                v.host_sel = 0;
             }
             KeyCode::Enter => self.machines_add_chosen(v),
             KeyCode::Backspace => {
                 v.query.pop();
-                v.host_sel = 0;
+                (v.in_list, v.host_sel) = (false, 0);
             }
             KeyCode::Char('u') if k.modifiers.contains(KeyModifiers::CONTROL) => {
                 v.query.clear();
-                v.host_sel = 0;
+                (v.in_list, v.host_sel) = (false, 0);
             }
             _ => {
                 if let Some(c) = typed(k) {
                     v.query.push(c);
-                    v.host_sel = 0;
+                    (v.in_list, v.host_sel) = (false, 0);
                     v.notice = None;
                 }
             }
@@ -417,7 +418,7 @@ fn draw_input(app: &mut App, buf: &mut Buffer, inner: Rect, v: &MachinesView, t:
         inner.right(),
     );
     y += 2;
-    draw_field(buf, inner, y, &v.query, t);
+    draw_field(buf, inner, y, &v.query, !v.in_list, t);
     y += 1;
     let hosts = v.hosts.as_deref().unwrap_or_default();
     let parsed = parse_target(&v.query);
@@ -481,7 +482,7 @@ fn draw_input(app: &mut App, buf: &mut Buffer, inner: Rect, v: &MachinesView, t:
             width: inner.width,
             height: 1,
         };
-        let on = n == sel;
+        let on = v.in_list && n == sel;
         let st = list_row(app, buf, rr, on, t);
         let rest_w = (inner.width as usize).saturating_sub(alias_w + 4 + 24);
         put(
@@ -505,7 +506,7 @@ fn draw_input(app: &mut App, buf: &mut Buffer, inner: Rect, v: &MachinesView, t:
             rr.right(),
         );
         if on {
-            let hint = "tab fill · ⏎ connect";
+            let hint = "⏎ connect";
             put(
                 buf,
                 rr.right().saturating_sub(hint.width() as u16 + 1),
@@ -534,7 +535,7 @@ fn draw_input(app: &mut App, buf: &mut Buffer, inner: Rect, v: &MachinesView, t:
 }
 
 /// The input, its row tinted, with the cursor.
-fn draw_field(buf: &mut Buffer, inner: Rect, y: u16, query: &str, t: &Theme) {
+fn draw_field(buf: &mut Buffer, inner: Rect, y: u16, query: &str, on: bool, t: &Theme) {
     let row = Rect {
         x: inner.x,
         y,
@@ -546,8 +547,10 @@ fn draw_field(buf: &mut Buffer, inner: Rect, y: u16, query: &str, t: &Theme) {
     let mut segs = vec![
         seg(" › ", s2.fg(t.accent).add_modifier(Modifier::BOLD)),
         seg(sanitize(query, false), s2.fg(t.strong)),
-        seg("█", s2.fg(t.accent)),
     ];
+    if on {
+        segs.push(seg("█", s2.fg(t.accent)));
+    }
     if query.is_empty() {
         segs.push(seg(" user@host", s2.fg(t.muted)));
     }
@@ -569,7 +572,7 @@ fn draw_name(
         vec![],
     ];
     let field_y = inner.y + 2;
-    draw_field(buf, inner, field_y, name, t);
+    draw_field(buf, inner, field_y, name, true, t);
     if let Some(error) = error {
         for line in popover::wrap(&sanitize(error, false), inner.width as usize) {
             lines.push(vec![seg(line, c.fg(t.err))]);
@@ -691,8 +694,7 @@ fn bar_keys(step: &MachineStep) -> Vec<(&'static str, &'static str)> {
     match step {
         MachineStep::Browse => vec![
             ("Enter", "connect"),
-            ("Tab", "complete"),
-            ("↑↓", "choose"),
+            ("↑↓", "input / hosts"),
             ("Esc", "cancel"),
         ],
         MachineStep::Name { .. } => {

@@ -344,7 +344,7 @@ pub const SETTINGS: &[Setting] = &[
         label: "Cursor",
         kind: Kind::Choice(crate::config::CURSOR_SHAPES),
         cat: Cat::Appearance,
-        help: "The caret where a pane's program picks none: the terminal's own, block, underline or bar. vim keeps its own.",
+        help: "The caret where a pane's program picks none: block, underline or line. vim keeps its own.",
     },
     Setting {
         path: "ui.cursor_blink",

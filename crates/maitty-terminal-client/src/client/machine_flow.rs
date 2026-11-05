@@ -109,7 +109,7 @@ impl App {
             return;
         }
         let Some(target) = connect_target(v, &self.cfg.machines) else {
-            v.notice = Some(say("Type user@host, or pick a host.", true));
+            v.notice = Some(say("Type user@host, or press ↓ to pick a host.", true));
             return;
         };
         let taken: Vec<String> = self.cfg.machines.iter().map(|m| m.name.clone()).collect();

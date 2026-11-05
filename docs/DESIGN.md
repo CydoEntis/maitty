@@ -148,7 +148,7 @@ The Menu and a row's context menu have no fill of their own: they are drawn on t
 `card` with corners by `ui.rounded`
 ([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)). Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
 a red × chip at the right), its border in the accent because it holds the keys, the screen behind
-dimmed in text and ground alike so the card stands out, no shadow. Settings, override, command
+left as it is (no dimming, no fill: the modal clears its own area to the ground), no shadow. Settings, override, command
 approval and the key overlay are modals. Small explanations (why, a row's menu, the message and
 helpers popovers) open beside their row with a `◂` pointer; a menu row ends in its key, the bound leader
 key when there is one. Every panel ends in an action bar

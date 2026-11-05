@@ -221,8 +221,8 @@ pub struct Ui {
     pub retired_layout: Option<RetiredLayout>,
     /// Show `· N agents` on a working session's row when the agent reports helpers.
     pub subagent_count: bool,
-    /// The cursor's shape when the program in a pane doesn't ask for one: "terminal" (the
-    /// terminal's own), "block", "underline" or "bar" (`CURSOR_SHAPES`).
+    /// The cursor's shape when the program in a pane doesn't ask for one: "block", "underline"
+    /// or "line" (`CURSOR_SHAPES`). An older "terminal" reads as block and "bar" as line.
     pub cursor: String,
     /// That cursor blinks.
     pub cursor_blink: bool,
@@ -662,7 +662,7 @@ impl<'de> Deserialize<'de> for Rounding {
 pub const SIDEBAR_TABS: &[&str] = &["all", "busy", "off"];
 
 /// `ui.cursor`'s choices, in Settings' order.
-pub const CURSOR_SHAPES: &[&str] = &["terminal", "block", "underline", "bar"];
+pub const CURSOR_SHAPES: &[&str] = &["block", "underline", "line"];
 
 /// Reject cursor names outside the shapes supported by the terminal client.
 pub fn validate_cursor(ui: &Ui) -> Result<()> {
@@ -766,6 +766,11 @@ impl Ui {
         if matches!(self.glyphs.as_str(), "ascii" | "nerd" | "auto") {
             self.glyphs = "dots".into();
         }
+        match self.cursor.as_str() {
+            "terminal" => self.cursor = "block".into(),
+            "bar" => self.cursor = "line".into(),
+            _ => {}
+        }
         for size in [&mut self.padding, &mut self.gap] {
             match size.as_str() {
                 "top" | "1" => *size = "small".into(),
@@ -855,7 +860,7 @@ impl Default for Ui {
             tab_gap: true,
             retired_layout: None,
             subagent_count: true,
-            cursor: "terminal".into(),
+            cursor: "block".into(),
             cursor_blink: true,
         }
     }
@@ -927,7 +932,7 @@ mod tests {
 
         assert_eq!(ui.rounded, Rounding::Off);
         assert_eq!(ui.background, "solid");
-        assert_eq!(ui.cursor, "terminal");
+        assert_eq!(ui.cursor, "block");
         assert_eq!(ui.padding, "small");
         assert_eq!(ui.gap, "small");
         assert_eq!(ui.dim, "normal");
@@ -986,6 +991,16 @@ mod tests {
             ui.retired_layout.map(|layout| layout.name),
             Some("Hairline")
         );
+    }
+
+    #[test]
+    fn an_older_terminal_or_bar_cursor_reads_as_block_or_line() {
+        for (old, now) in [("terminal", "block"), ("bar", "line"), ("underline", "underline")] {
+            let mut ui: Ui = toml::from_str(&format!("cursor = '{old}'")).unwrap();
+            ui.fold_legacy_sizes();
+            assert_eq!(ui.cursor, now, "{old}");
+            assert!(validate_cursor(&ui).is_ok());
+        }
     }
 
     #[test]

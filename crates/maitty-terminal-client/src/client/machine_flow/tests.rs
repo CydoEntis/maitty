@@ -236,6 +236,8 @@ impl Harness {
     /// Add the host `alias` the way a person does: type it, Enter.
     fn add_by_enter(&mut self, alias: &str) {
         self.open(vec![host(alias)]);
+        // Down from the input is the first host; Enter connects to it.
+        self.key(KeyCode::Down);
         self.key(KeyCode::Enter);
     }
 }
@@ -319,6 +321,7 @@ fn adding_from_the_picker_writes_one_entry_after_the_existing_ones_and_never_the
         ..MachineDef::default()
     }];
     h.open(vec![host("build")]);
+    h.key(KeyCode::Down);
     h.key(KeyCode::Enter);
     assert!(
         matches!(h.view().step, MachineStep::Checking { .. }),
@@ -377,6 +380,7 @@ fn a_name_that_is_taken_gets_a_number() {
         ..MachineDef::default()
     }];
     h.open(vec![host("build")]);
+    h.key(KeyCode::Down);
     h.key(KeyCode::Enter);
     h.next_bg();
     assert_eq!(

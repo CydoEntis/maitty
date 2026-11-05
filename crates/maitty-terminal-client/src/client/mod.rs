@@ -279,7 +279,7 @@ fn cursor_code(program: Option<u8>, ui: &crate::config::Ui) -> u8 {
     let blinking = match ui.cursor.as_str() {
         "block" => 1,
         "underline" => 3,
-        "bar" => 5,
+        "line" => 5,
         _ => return 0,
     };
     // DECSCUSR's odd numbers blink and the even ones after them hold still.
@@ -326,19 +326,14 @@ mod cursor_tests {
 
     #[test]
     fn your_cursor_shows_where_the_program_asks_for_none() {
-        assert_eq!(
-            cursor_code(None, &ui("terminal", true)),
-            0,
-            "the terminal's own by default"
-        );
         assert_eq!(cursor_code(None, &ui("block", true)), 1);
         assert_eq!(cursor_code(None, &ui("block", false)), 2);
         assert_eq!(cursor_code(None, &ui("underline", true)), 3);
         assert_eq!(cursor_code(None, &ui("underline", false)), 4);
-        assert_eq!(cursor_code(None, &ui("bar", true)), 5);
-        assert_eq!(cursor_code(None, &ui("bar", false)), 6);
+        assert_eq!(cursor_code(None, &ui("line", true)), 5);
+        assert_eq!(cursor_code(None, &ui("line", false)), 6);
         assert_eq!(
-            cursor_code(Some(0), &ui("bar", false)),
+            cursor_code(Some(0), &ui("line", false)),
             6,
             "a program asking for the default gets yours"
         );
@@ -351,7 +346,7 @@ mod cursor_tests {
             5,
             "vim's insert-mode bar wins over your block"
         );
-        assert_eq!(cursor_code(Some(2), &ui("terminal", true)), 2);
+        assert_eq!(cursor_code(Some(2), &ui("block", true)), 2);
     }
 }
 
