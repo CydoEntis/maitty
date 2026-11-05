@@ -570,6 +570,7 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                 // opens from the history.
                 if let Some(channel) = channel {
                     let _ = channel.send(Response::new(frame));
+                    crate::performance::count_terminal_frame_sent();
                 }
             }
             Reaction::Sessions { machine, snapshot } if machine == MachineId::LOCAL => {

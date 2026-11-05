@@ -16,6 +16,8 @@ export type PerfSample = {
   worstFrameMs: number
   outputBytesPerSecond: number
   outputFramesPerSecond: number
+  /** Output frames received since the window opened; never reset. */
+  outputFramesTotal: number
   flushesPerSecond: number
   /** How long a flushed write waited until xterm had parsed it, on average. */
   writeLatencyMs: number
@@ -37,6 +39,7 @@ type Counters = { outputBytes: number; outputFrames: number; flushes: number; wr
 const zeroCounters = (): Counters => ({ outputBytes: 0, outputFrames: 0, flushes: 0, writeLatencyMs: 0, writesTimed: 0, frames: 0, slowFrames: 0, worstFrameMs: 0 })
 
 let counters = zeroCounters()
+let outputFramesTotal = 0
 const renderers = new Map<object, TerminalRenderer>()
 const listeners = new Set<() => void>()
 let sample: PerfSample | null = null
@@ -48,6 +51,7 @@ let lastFrameAt: number | null = null
 export function countOutput(bytes: number): void {
   counters.outputBytes += bytes
   counters.outputFrames += 1
+  outputFramesTotal += 1
 }
 
 /** A view flushed a write into xterm; call the result once xterm has parsed it. */
@@ -101,6 +105,7 @@ function takeSample(): void {
     worstFrameMs: Math.round(taken.worstFrameMs),
     outputBytesPerSecond: Math.round(taken.outputBytes / seconds),
     outputFramesPerSecond: Math.round(taken.outputFrames / seconds),
+    outputFramesTotal,
     flushesPerSecond: Math.round(taken.flushes / seconds),
     writeLatencyMs: taken.writesTimed === 0 ? 0 : Math.round(taken.writeLatencyMs / taken.writesTimed),
     animations: typeof document.getAnimations === 'function' ? document.getAnimations().length : 0,

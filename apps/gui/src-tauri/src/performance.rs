@@ -2,9 +2,20 @@
 //! web view's own processes and the daemons are using. Settings › Performance and the overlay
 //! ask for a sample once a second while they are shown; nothing is sampled otherwise.
 use serde::Serialize;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use sysinfo::{Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tauri::Manager;
+
+/// Terminal frames the host has handed to the window's channel since it started. Read next to the
+/// window's own count of frames received: a gap that stays open while nothing is typed means the
+/// frames are lost, or held, between the two (ticket 35).
+static TERMINAL_FRAMES_SENT: AtomicU64 = AtomicU64::new(0);
+
+/// One terminal frame was handed to the window's channel.
+pub fn count_terminal_frame_sent() {
+    TERMINAL_FRAMES_SENT.fetch_add(1, Ordering::Relaxed);
+}
 
 /// The process table, kept between samples: a CPU share is the work done since the last refresh,
 /// so the first sample of a process reads as 0.
@@ -31,6 +42,8 @@ pub struct ProcessSample {
     pub webview: Vec<ProcessLoad>,
     /// Every daemon of this product on the machine, whoever started it.
     pub daemons: Vec<ProcessLoad>,
+    /// Terminal frames sent to the window since the host started; never reset.
+    pub terminal_frames_sent: u64,
 }
 
 #[tauri::command]
@@ -79,6 +92,7 @@ pub fn performance_sample(app: tauri::AppHandle) -> Result<ProcessSample, String
         host,
         webview,
         daemons,
+        terminal_frames_sent: TERMINAL_FRAMES_SENT.load(Ordering::Relaxed),
     })
 }
 

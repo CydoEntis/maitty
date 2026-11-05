@@ -28,6 +28,8 @@ const { loadTerminalReplay, resizeTerminal, sendTerminalInput, loadTerminalHisto
     line: '',
     searches: [] as string[],
     oscHandlers: new Map<number, (data: string) => boolean | Promise<boolean>>(),
+    /** Runs while a write is being parsed, where xterm answers the queries in it. */
+    duringWrite: undefined as ((data: Uint8Array) => void) | undefined,
   },
   toastError: vi.fn(),
 }))
@@ -68,7 +70,7 @@ vi.mock('@xterm/xterm', () => ({
     }
     onBinary() { return { dispose: vi.fn() } }
     attachCustomKeyEventHandler(handler: NonNullable<typeof terminalState.keyHandler>) { terminalState.keyHandler = handler }
-    write(data: Uint8Array, done?: () => void) { terminalState.writes.push(data); done?.() }
+    write(data: Uint8Array, done?: () => void) { terminalState.writes.push(data); terminalState.duringWrite?.(data); done?.() }
     parser = { registerOscHandler: (ident: number, handler: (data: string) => boolean | Promise<boolean>) => { terminalState.oscHandlers.set(ident, handler); return { dispose: vi.fn() } } }
     dispose() {}
   },
@@ -115,6 +117,7 @@ describe('terminal view', () => {
     terminalState.writes = []
     terminalState.resets = 0
     terminalState.onData = undefined
+    terminalState.duringWrite = undefined
     terminalState.onResize = undefined
     terminalState.resolveResize = undefined
     terminalState.onChunk = undefined
@@ -170,6 +173,24 @@ describe('terminal view', () => {
 
     terminalState.onData?.('\u0003')
     await waitFor(() => { expect(sendTerminalInput).toHaveBeenCalledWith(binding, '\u0003') })
+  })
+
+  it('does not send what xterm answers to the queries in a replay, but answers the same queries live', async () => {
+    const DEVICE_ATTRIBUTES_REPLY = '\x1b[?1;2c'
+    renderTerminal()
+    await waitFor(() => { expect(written()).toBe('hello ') })
+    // xterm answers a device-attributes query while it parses the write that holds one.
+    terminalState.duringWrite = (data) => {
+      if (new TextDecoder().decode(data).includes('\x1b[c')) terminalState.onData?.(DEVICE_ATTRIBUTES_REPLY)
+    }
+
+    act(() => { terminalState.onChunk?.(chunk(5, 'old screen \x1b[c', true)) })
+    await waitFor(() => { expect(written()).toContain('old screen') })
+    expect(sendTerminalInput).not.toHaveBeenCalledWith(binding, DEVICE_ATTRIBUTES_REPLY)
+
+    act(() => { terminalState.onChunk?.(chunk(6, 'live \x1b[c')) })
+    await waitFor(() => { expect(sendTerminalInput).toHaveBeenCalledWith(binding, DEVICE_ATTRIBUTES_REPLY) })
+    expect(sendTerminalInput).toHaveBeenCalledTimes(1)
   })
 
   it("answers a program's background query with the theme colour, not the see-through canvas", async () => {

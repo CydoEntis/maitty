@@ -263,6 +263,7 @@ const ProcessSampleSchema = z.object({
   host: ProcessLoadSchema,
   webview: z.array(ProcessLoadSchema),
   daemons: z.array(ProcessLoadSchema),
+  terminal_frames_sent: z.number().int().nonnegative(),
 })
 
 export type ProcessLoad = z.infer<typeof ProcessLoadSchema>
