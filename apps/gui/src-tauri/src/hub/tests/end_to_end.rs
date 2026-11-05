@@ -235,7 +235,7 @@ async fn three_machines_snapshots_typing_and_a_replay_after_one_reconnects() {
             assert_eq!(
                 occurrences(&text, other),
                 0,
-                "{other} reached machine {}",
+                "{other} reached machine {}, whose pane shows {text:?}",
                 machine.0
             );
         }
