@@ -144,7 +144,7 @@ jobs:
         working-directory: apps/gui
         run: pnpm install --frozen-lockfile
 
-      # Releases also produce the signed update bundles the app downloads. Pull-request CI builds
+      # Releases also produce the signed update bundles the app downloads. The CI build on dev runs
       # without them because it has no signing key.
       - name: Build GUI installers
         working-directory: apps/gui
