@@ -51,6 +51,18 @@ describe('the message an attachment makes', () => {
   })
 })
 
+describe('a file kept on another machine', () => {
+  it('reads back with the name a person gave, not the prefix the far side added (ADR 0050)', () => {
+    const log = '/home/dev/.cache/pastes/paste-1730000000002-0a1b2c3d-build_log.txt'
+    const shot = '/home/dev/.cache/pastes/paste-1730000000003-0a1b2c3d-image.jpg'
+    const message = buildAttachmentMessage('', [{ path: log }, { path: shot }])
+    expect(parseAttachmentMessage(message)?.files).toEqual([
+      { path: log, name: 'build_log.txt', kind: 'file' },
+      { path: shot, name: 'Pasted image.jpg', kind: 'image' },
+    ])
+  })
+})
+
 describe('a drop on a composer', () => {
   it('goes to the composer that holds the element under the pointer, and to no other', () => {
     const inside = document.createElement('div')

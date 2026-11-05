@@ -67,7 +67,7 @@ export function useChatComposer({ link, feed, online, refresh }: Input): ChatCom
   const awaitingAnswer = hasPendingApproval(feed)
   const disabledReason = readOnly ? READ_ONLY_NOTE : !online ? 'The daemon is offline' : awaitingAnswer ? PENDING_APPROVAL_NOTE : null
   const conversation = link.conversation
-  const attach = useAttachmentIntake({ conversation, blocked: disabledReason })
+  const attach = useAttachmentIntake({ conversation, blocked: disabledReason, machine: link.machine ?? null })
   const queue = useMemo<readonly QueuedItem[]>(() => feed.queued.map((message) => ({ id: message.operation, text: message.text })), [feed.queued])
 
   const setDraft = useCallback((text: string) => {
