@@ -141,15 +141,26 @@ impl Sandbox {
     }
 
     /// The sandbox's environment: what makes a `maitty` its own daemon's.
-    pub fn env(&self) -> [(&'static str, String); 3] {
-        [
+    pub fn env(&self) -> Vec<(&'static str, String)> {
+        let mut env = vec![
             ("MAITTY_SOCKET", self.socket.clone()),
             ("MAITTY_DATA_DIR", self.data().display().to_string()),
             (
                 "MAITTY_CONFIG",
                 self.dir.join("config.toml").display().to_string(),
             ),
-        ]
+        ];
+        // PowerShell keeps one command history for each user profile and shows lines from it at
+        // the prompt (a recalled line, a suggestion while typing), so under a shared profile a
+        // pane can show what was typed in another sandbox's pane. The history file's folder
+        // follows this variable.
+        if cfg!(windows) {
+            env.push((
+                "USERPROFILE",
+                self.dir.join("profile").display().to_string(),
+            ));
+        }
+        env
     }
 
     /// `maitty` as this sandbox's own, with no remote and no pane identity.
@@ -175,6 +186,7 @@ impl Sandbox {
         ];
         args.extend(
             self.env()
+                .into_iter()
                 .map(|(key, value)| format!("--env={key}={value}")),
         );
         args
@@ -256,5 +268,50 @@ impl Drop for Sandbox {
             let _ = child.wait();
         }
         let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    fn run(sandbox: &Sandbox, args: &[&str]) -> String {
+        let mut command = sandbox.maitty();
+        command.args(args);
+        let out = output_within(command, Duration::from_secs(90));
+        assert!(
+            out.status.success(),
+            "maitty {args:?} failed: {}",
+            text(&out.stderr)
+        );
+        text(&out.stdout)
+    }
+
+    #[test]
+    fn a_shell_does_not_recall_what_was_typed_in_another_sandbox() {
+        let (mut first, mut second) = (Sandbox::new(), Sandbox::new());
+        first.start_daemon();
+        run(&first, &["new"]);
+        run(&first, &["send", "echo TYPED_IN_FIRST"]);
+        run(
+            &first,
+            &["wait", "--regex", "^TYPED_IN_FIRST", "--timeout", "60"],
+        );
+
+        // The second shell starts after the first one saved its line, so a shared history
+        // would hold it, and the Up key would put it on the second shell's prompt.
+        second.start_daemon();
+        run(&second, &["new"]);
+        run(&second, &["send", "--no-enter", "--key", "up"]);
+        run(&second, &["send", "echo SECOND_RAN"]);
+        run(
+            &second,
+            &["wait", "--regex", "SECOND_RAN", "--timeout", "60"],
+        );
+        let screen = run(&second, &["read"]);
+        assert!(
+            !screen.contains("TYPED_IN_FIRST"),
+            "the second sandbox's pane shows {screen:?}"
+        );
     }
 }
