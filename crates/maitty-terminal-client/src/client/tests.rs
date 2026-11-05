@@ -2159,6 +2159,8 @@ mod screen_tests {
     #[test]
     fn rewraps_on_resize_and_follows_the_cursor_style() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
+        // A plain shell: text re-wraps; an agent paints its own screen (next test).
+        app.snap.terms.get_mut(&1).unwrap().agent = None;
         // Narrow pane: a long line wraps over several rows.
         let long = "word ".repeat(40);
         app.sizes.insert(ClientTerm::local(1), (40, 20));
@@ -2200,6 +2202,46 @@ mod screen_tests {
         );
         // The program asked for a blinking bar.
         assert_eq!(app.cursor_style.get(&ClientTerm::local(1)), Some(&5));
+    }
+
+    #[test]
+    fn an_agent_pane_is_only_resized_never_replayed_into_a_screen_of_another_width() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        assert!(
+            app.snap.terms[&1].agent.is_some(),
+            "the fixture's pane 1 is an agent"
+        );
+        let long = "word ".repeat(40);
+        app.sizes.insert(ClientTerm::local(1), (40, 20));
+        app.parsers
+            .insert(ClientTerm::local(1), vt100::Parser::new(20, 40, 1000));
+        app.on_server(ServerMsg::Output {
+            term: 1,
+            data: format!("{long}\r\nend").into_bytes(),
+        });
+        let rows_of = |app: &App| {
+            let sc = app.parsers[&ClientTerm::local(1)].screen();
+            sc.rows(0, sc.size().1)
+                .filter(|l| l.contains("word"))
+                .count()
+        };
+        let before = rows_of(&app);
+        app.panes = vec![(
+            ClientTerm::local(1),
+            Rect {
+                x: 0,
+                y: 0,
+                width: 120,
+                height: 20,
+            },
+        )];
+        app.sync_sizes();
+        assert_eq!(
+            rows_of(&app),
+            before,
+            "its screen was not rebuilt from the old output; the program redraws on the new size"
+        );
+        assert_eq!(app.parsers[&ClientTerm::local(1)].screen().size(), (20, 120));
     }
 
     #[test]
@@ -3722,6 +3764,8 @@ mod screen_tests {
     #[test]
     fn a_pane_rewraps_once_a_drag_ends() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
+        let focused = app.focused().unwrap();
+        app.snap.terms.get_mut(&focused.term).unwrap().agent = None;
         draw(&mut app, 160, 45);
         app.sync_sizes();
         let (term, _) = app.pane_frames[0];

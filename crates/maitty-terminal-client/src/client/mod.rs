@@ -1632,14 +1632,20 @@ impl App {
         let dragging = self.screen.drag.is_some();
         for (term, r) in panes {
             let want = (r.width.max(2), r.height.max(2));
-            if !dragging && self.rewrap.remove(&term) {
+            // An agent's screen is drawn by cursor moves and erases that are only right at the
+            // width they were made for: replaying them into a screen of another width scrambles
+            // it. The program redraws itself when it hears of the new size, so such a pane only
+            // changes size.
+            let replays = !self.draws_itself(term);
+            if !dragging && self.rewrap.remove(&term) && replays {
                 self.rewrap_pane(term, want);
             }
             if self.sizes.get(&term) == Some(&want) {
                 continue;
             }
             let old = self.sizes.insert(term, want);
-            if old.is_some_and(|o| o.0 != want.0)
+            if replays
+                && old.is_some_and(|o| o.0 != want.0)
                 && self.raw.get(&term).is_some_and(|r| !r.is_empty())
             {
                 // A new width: replay recent output into a fresh screen so text re-wraps
@@ -1665,6 +1671,11 @@ impl App {
                 },
             );
         }
+    }
+
+    /// Whether the program in `term` is an agent, which paints its own screen with cursor moves.
+    fn draws_itself(&self, term: ClientTerm) -> bool {
+        self.term_info(term).is_some_and(|i| i.agent.is_some())
     }
 
     /// A fresh screen for `term` at `(cols, rows)`, from the output kept for it.
