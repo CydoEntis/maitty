@@ -103,13 +103,37 @@ v18 = v17 plus a redesign of the **Glass** and **Tiled** styles, new status effe
 - **Project colours removed.** There's no user-set colour per project; every project tile uses the neutral tile. Remove the setting, the swatch row, and the colour dots that depended on it.
 - **Background glow** switch added (§D.1).
 
-### D.6 Ship checklist additions
+### D.6 Removed in v18 (don't build)
+These override any earlier section that describes them (C.2, C.3, C.4 and the v17 status-row spec).
+- **Overview screen** (C.3): the sidebar entry, its badge, the rail button, Ctrl/⌘0 and the ⌘K entry are all gone. **Jump to next needing you (Ctrl/⌘J) stays.**
+- **New agent on a branch** (C.4): the sidebar button with the branch glyph, the rail button and the ⌘K entry are gone. Sessions still show their branch under the name when they have one.
+- **Session side panel** (C.2): the right-hand Checklist / Agents / Changes·Files·Artifacts panel, its tab-bar toggle, Ctrl/⌘\ and its ⌘K entry are gone. Changes, Files, Branches, History and References are still in the activity bar (§A).
+- **Step details in sidebar rows:** no current checklist item, no "2/5" progress bar and no "Ran a subagent…" sub-step line. Agent rows use the same one-line status as every other row.
+- **Project colours** (§D.5).
+
+### D.7 Usage & cost moved into Settings
+- **Location:** Settings → **Workspace → Usage & cost** (key letter U), above Notifications. Ctrl/⌘⇧U and ⌘K open Settings on that page.
+- **Contents:** unchanged from C.7 (week total, optional budget ring, Day / Week / Month, the sortable table, the subscription note, the empty state). It's rendered as one Settings card: radius 12, `rgba(255,255,255,.025)` fill, hairline, no shadow or blur.
+- **Removed:** the bar-chart button in the sidebar footer (expanded and rail) and the full-screen usage view.
+
+### D.8 Sidebar sessions keep their place
+- **Fixed order:** sessions inside a project always render in **creation order** (`seq`). Status, pin and focus never reorder them (the v16 rule that order never changes, now applied inside each project too).
+- **Focused session:** shown as the full card **in its own position**. The project's other sessions are compact tree rows above and/or below it.
+- **Click a compact row:** it grows into the full card in place (`v18grow`: opacity .55 → 1, scale .97 → 1, .28s), and the previous card shrinks back to a compact row. Nothing moves up or down. Off under Reduce motion.
+- **Which session is the card:** the focused session if it's in this project; otherwise the last one picked here; otherwise the first by creation order.
+- **Remove the Settings option** "Main row shows: Focused / Needs attention"; it no longer does anything. Pinning still exists (menu + pin glyph) but doesn't reorder.
+- **"N more":** the overflow cap applies only to rows **after** the card.
+
+### D.9 Ship checklist additions
 - The Glass/Tiled tokens and rules land in `workspace.css` and the theme files, **not** a new stylesheet.
 - The harness numbers (a and b, before and after) are in the PR and under budget, **including Waves** (§D.3).
 - The four theme screenshots are attached, and docs/DESIGN.md is updated (no history).
 - Status effects: per-status style picker, Working scope, previews clipped to their chip, the software fallback to Sweep.
 - The spinner dropdown with eight options, and the web SVG spinners.
 - Settings: the × close, project colours removed.
+- The §D.6 removals are done, and nothing in the build still references Overview, New agent or the session panel.
+- Usage & cost lives only in Settings (§D.7).
+- Sidebar sessions never reorder, and the card grows in place (§D.8).
 
 
 ## C. v17: chat body, session panel, overview, branch agents, idle update (read first)
