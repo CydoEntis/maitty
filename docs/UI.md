@@ -713,10 +713,12 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   hidden from Tab and screen readers. The chat adds no layer to the Esc ladder.
 - **History.** `useChatFeed` follows one conversation while its chat is open (`chatFeed.ts` is the pure core). The
   first read pages the whole history; later polls (1 s while the agent works or waits on a person, 3 s otherwise,
-  none while the window is hidden) ask only for the last page they read (`resume`). The daemon makes a cursor stale
-  on every change, so a stale cursor, a failed read or a new generation falls back to a read from the start; entries
-  already applied unchanged are skipped, so nothing is shown twice and unchanged events stay the same objects. A new
-  generation shows a fresh projection. Pending approvals come with every page and go to `applyApprovals`. The last
+  none while the window is hidden) read from the daemon's `resume` cursor, which returns only the entries added or
+  changed since, so a 1,000-entry conversation costs one small read per poll. A page that says `reset` (the history was
+  rebuilt, or the conversation started over) replaces what the feed held. A failed read, or a daemon that predates
+  `resume`, falls back to the old way: ask again for the last page read, or read from the start when that cursor is
+  stale. Entries already applied unchanged are skipped, so nothing is shown twice and unchanged events stay the same
+  objects. A new generation shows a fresh projection. Pending approvals come with every page and go to `applyApprovals`. The last
   feed per conversation is kept (8 at most), so reopening a chat shows it at once.
 - **List.** `VirtualList` draws only the rows near the view (`transform` placement, measured heights, stable event
   ids as keys), follows the newest row until the reader scrolls away, then offers "Jump to the latest message". Rows

@@ -8,11 +8,15 @@ import { applyApprovals, applyHistoryEntries, createChatProjection, type ChatPro
  * paging, the cursor and the reconnect rules are tested without a daemon.
  *
  * How the daemon's history behaves decides the design. An entry is updated in place (a tool going
- * from Running to Completed, a message growing) and every change makes a cursor stale, so a cursor
- * cannot be followed forever. The feed therefore keeps `resume`, the cursor of the last page it
- * read, and asks for just that page again; when the daemon says the cursor is stale it reads the
- * history again from the start. Entries it has already applied unchanged are skipped, so a re-read
- * adds nothing twice and leaves the events it did not change as the same objects.
+ * from Running to Completed, a message growing), so a position in the list is not enough to follow
+ * it. Every page therefore carries a `resume` cursor, and a read from it returns only the entries
+ * added or changed since: the feed keeps it and a long conversation costs one small read per poll.
+ * When the history was rebuilt, or the conversation started over, the page says `reset` and the feed
+ * starts again from it. A daemon that predates `resume` is followed the old way: the feed keeps the
+ * cursor of the last page it read and asks for just that page again, and when the daemon says that
+ * cursor is stale it reads the history from the start. Either way an entry already applied unchanged
+ * is skipped, so a re-read adds nothing twice and leaves the events it did not change as the same
+ * objects.
  */
 
 export type ChatFeed = {
@@ -23,7 +27,7 @@ export type ChatFeed = {
   readonly projection: ChatProjection
   /** What was applied for each history entry, by its turn and item, to skip an entry that has not changed. */
   readonly seen: ReadonlyMap<string, string>
-  /** The cursor of the last page read; `null` while the whole history fits in the first page. */
+  /** Where the next read goes on: the daemon's `resume` cursor (only what changed), or the last page read. */
   readonly resume: HistoryCursor | null
   readonly status: ChatPage['status'] | null
   readonly error: string | null
@@ -64,7 +68,9 @@ function keyOf(raw: unknown, signature: string): string {
 
 /** Applies one page of history entries. A page of another generation discards what the feed held. */
 export function applyPage(feed: ChatFeed, page: ChatPage, nowMs: number): ChatFeed {
-  const base = feed.generation !== null && feed.generation !== page.generation ? createFeed(feed.provider, feed.conversation) : feed
+  // A page that says `reset` could not follow the cursor (the history was rebuilt): what was held is void.
+  const startsOver = (feed.generation !== null && feed.generation !== page.generation) || page.history.reset === true
+  const base = startsOver ? createFeed(feed.provider, feed.conversation) : feed
   const seen = new Map(base.seen)
   const fresh: unknown[] = []
   for (const raw of page.history.entries) {
@@ -135,7 +141,9 @@ export async function syncFeed(start: ChatFeed, read: ReadPage, now: () => numbe
   }
 
   let feed = applyPage(start, page, now())
-  let resume = from
+  // Without the daemon's `resume` (an older daemon) the feed asks again for the last page it read.
+  let lastPageStart = from
+  let unfinished = false
   const visited = new Set<string>()
   for (let pages = 1; page.history.next; pages += 1) {
     const next = page.history.next
@@ -145,15 +153,22 @@ export async function syncFeed(start: ChatFeed, read: ReadPage, now: () => numbe
     const key = JSON.stringify(next)
     if (visited.has(key)) throw new Error('Conversation history cursor repeated')
     visited.add(key)
-    if (pages >= MAX_PAGES_PER_SYNC) break
+    if (pages >= MAX_PAGES_PER_SYNC) {
+      // The rest is read by the next sync, from where this one stopped.
+      unfinished = true
+      lastPageStart = next
+      break
+    }
 
-    resume = next
+    lastPageStart = next
     const following = await read(next)
     if (following.generation !== page.generation) throw new Error('Conversation changed while its history was being read')
     page = following
     feed = applyPage(feed, page, now())
   }
 
+  // The daemon's `resume` returns only what changed after this read, however long the history is.
+  const resume = unfinished ? lastPageStart : page.history.resume ?? lastPageStart
   // The approvals come with every page and are the daemon's list of those still waiting: the last one is current.
   return { ...feed, projection: applyApprovals(feed.projection, page.approvals), resume }
 }

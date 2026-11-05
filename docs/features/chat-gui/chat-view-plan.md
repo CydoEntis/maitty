@@ -151,8 +151,9 @@ check for the view). Acceptance criteria are the bullets.
   (ADR 0052, *To confirm*): typing into the pane's PTY when the agent is idle, or starting new sessions as
   daemon-owned structured conversations. Not tried against a live Claude or Codex; Codex's rollout shape is read
   from its observed format and is covered by fixtures only.
-- **A daemon-held queue and a push of history.** Queued sends are window-only, and the history is polled (1 s while
-  working) because a cursor goes stale on every change.
+- **A daemon-held queue.** Queued sends are window-only (G24 part 1).
+- History is still polled (1 s while working), but a poll is now one small read: every page carries a `resume`
+  cursor that returns only the entries changed since (G24 part 2). A push of events is not built.
 - Left for CV-4..CV-7 and CV-9, CV-10: exit codes and live elapsed time on commands, polished chips and diffs,
   `answered_approvals`, key bindings y/a/n on the card, helper-agent and checklist panels, token counts, markdown in
   agent text.

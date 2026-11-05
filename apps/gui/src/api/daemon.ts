@@ -66,6 +66,10 @@ const HistoryCursorSchema = z.object({
   conversation: z.number().int().nonnegative(),
   revision: z.number().int().nonnegative(),
   next_position: z.number().int().nonnegative(),
+  // Absent from a daemon that predates them. A cursor goes back to the daemon as it came, so these are kept.
+  epoch: z.number().int().nonnegative().optional(),
+  delta: z.boolean().optional(),
+  snapshot: z.number().int().nonnegative().optional(),
 })
 const HistoryCompletenessSchema = z.union([
   z.enum(['Unknown', 'Loading', 'Complete']),
@@ -96,6 +100,9 @@ const HistoryPageSchema = z.object({
   entries: z.array(HistoryEntrySchema),
   next: HistoryCursorSchema.nullable(),
   completeness: HistoryCompletenessSchema,
+  // Read from here to get only what changed since this page; the page starts over when `reset`.
+  resume: HistoryCursorSchema.nullable().optional(),
+  reset: z.boolean().optional(),
 })
 const ConversationReceiptSchema = z.object({
   conversation: z.number().int().nonnegative(),
@@ -501,6 +508,8 @@ const ChatPageSchema = z.object({
     entries: z.array(z.unknown()),
     next: HistoryCursorSchema.nullable(),
     completeness: HistoryCompletenessSchema,
+    resume: HistoryCursorSchema.nullable().optional(),
+    reset: z.boolean().optional(),
   }),
   approvals: z.array(z.unknown()),
 })
