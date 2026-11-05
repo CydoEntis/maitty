@@ -310,17 +310,23 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
     })
     : []
   // A terminal session has a chat when the daemon holds a conversation whose native terminal is that pane.
-  const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation }] as const])))
-  const terminals = Object.values(snapshot.terms)
+  // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0052).
+  const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation, ...(summary.execution === 'Native' ? { readOnly: true } : {}) }] as const])))
+  const listed = Object.values(snapshot.terms)
     .flatMap((term) => {
       const read = readTerminal(term, from)
       return read ? [read] : []
     })
     .filter(isTerminalSession)
+  // A conversation that belongs to a pane in this list is that session's chat, not a session of its own.
+  const shownPanes = new Set(listed.map((term) => term.id))
+  const terminals = listed
     .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, machine === undefined ? chatOf.get(term.id) : undefined))
   if (machine !== undefined) return terminals
   return [
-    ...summaries.map((conversation) => toConversation(conversation, snapshot.workspaces)),
+    ...summaries
+      .filter((summary) => summary.native_term === null || !shownPanes.has(summary.native_term))
+      .map((conversation) => toConversation(conversation, snapshot.workspaces)),
     ...terminals,
   ]
 }

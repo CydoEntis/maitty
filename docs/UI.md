@@ -703,6 +703,9 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   It never reads terminal output. A session has a chat only when `conversationsFromSnapshot` found a daemon
   conversation whose native terminal is that pane (`Conversation.chat`); `model/chatView.ts` decides
   availability: `ready`, `no-events`, `remote` (local-only in v1), `unsupported` (another agent) or `shell`.
+  The daemon gives a Claude or Codex agent started in a pane a **read-only** conversation that follows the agent's
+  own transcript ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)); its link has
+  `readOnly: true`, and the conversation is not listed as a session of its own (the pane is the session).
 - **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
   mounted and its pane keeps its size, and no daemon command is sent. The shortcut is `chat-toggle`
   (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.
@@ -731,6 +734,9 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   and its oldest message is delivered once the turn has ended (after a 2.5 s grace so it never lands in the turn that
   is starting), one at a time and in order, only while the chat is open. The daemon has no queue, so delivery is at
   the end of the turn, not at a step boundary, and closing the window drops what is queued.
+- **Read-only chat.** For a link with `readOnly` the composer is off with "Read-only: talk to the agent in the
+  terminal" as its placeholder, and offers no Stop or queue wording; the daemon refuses send, approve and cancel
+  for such a conversation. The history and status still follow the agent.
 - **Approvals.** The card answers through `approve_conversation` by request id and then reads "You answered: ...",
   with the buttons gone. A request that asks the person a question (`UserInput`) is answered in the terminal.
 - **Screen readers.** The history is a labelled region, not a live region. A separate polite status line says only

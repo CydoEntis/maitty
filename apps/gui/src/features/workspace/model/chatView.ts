@@ -18,7 +18,15 @@ export type ChatViewDefaults = Readonly<Record<ChatAgent, PaneView>>
 export const DEFAULT_CHAT_VIEWS: ChatViewDefaults = { claude: 'terminal', codex: 'terminal' }
 
 /** The daemon conversation that carries a session's structured events. */
-export type ChatLink = { readonly conversation: number; readonly generation: number }
+export type ChatLink = {
+  readonly conversation: number
+  readonly generation: number
+  /**
+   * The conversation follows an agent the user started in the terminal (ADR 0052): the chat shows what
+   * it did, but sending, answering and interrupting happen in the terminal.
+   */
+  readonly readOnly?: boolean
+}
 
 export type ChatAvailability =
   /** The daemon holds this session's conversation: the chat can read and send. */

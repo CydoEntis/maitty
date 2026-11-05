@@ -12,6 +12,7 @@ import { newQueuedMessage, updateComposer, useComposerState, type QueuedMessage 
 export const DELIVERY_GRACE_MS = 2500
 
 export const PENDING_APPROVAL_NOTE = 'Answer the request above first'
+export const READ_ONLY_NOTE = 'Read-only: talk to the agent in the terminal'
 
 type Input = {
   link: ChatLink
@@ -56,9 +57,11 @@ export function useChatComposer({ link, feed, online, refresh }: Input): ChatCom
   // A send that failed is tried again with the same operation number, so the daemon can tell it is the same message.
   const retry = useRef<{ text: string; operation: number } | null>(null)
 
-  const running = feed.status === 'Working'
+  const readOnly = link.readOnly === true
+  // A read-only chat cannot interrupt or queue, so it never offers Stop or "queue" wording.
+  const running = feed.status === 'Working' && !readOnly
   const awaitingAnswer = hasPendingApproval(feed)
-  const disabledReason = !online ? 'The daemon is offline' : awaitingAnswer ? PENDING_APPROVAL_NOTE : null
+  const disabledReason = readOnly ? READ_ONLY_NOTE : !online ? 'The daemon is offline' : awaitingAnswer ? PENDING_APPROVAL_NOTE : null
   const conversation = link.conversation
 
   const setDraft = useCallback((text: string) => {

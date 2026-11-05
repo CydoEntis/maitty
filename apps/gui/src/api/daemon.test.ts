@@ -487,8 +487,22 @@ describe('terminal sessions shown beside chats', () => {
 
     const sessions = await loadConversations()
 
-    expect(sessions.find((session) => session.id === 't5')?.chat).toEqual({ conversation: 40, generation: 3 })
+    // A followed agent's chat only shows what it did (ADR 0052), so the link says it cannot send.
+    expect(sessions.find((session) => session.id === 't5')?.chat).toEqual({ conversation: 40, generation: 3, readOnly: true })
     expect(sessions.find((session) => session.id === 't6')?.chat).toBeUndefined()
+  })
+
+  it('does not list a pane\'s conversation as a session of its own, but keeps one whose pane is not listed', async () => {
+    const summary = (overrides: Record<string, unknown>) => ({ id: 40, generation: 3, execution: 'Native', provider: 'Claude', cwd: '/home/casey/sample', worktree: null, state: 'Running', status: 'Idle', native_term: null, checks: [], ...overrides })
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [summary({ id: 40, native_term: 5 }), summary({ id: 41, native_term: 9 }), summary({ id: 42, execution: 'Structured', native_term: null })],
+      workspaces: [],
+      terms: { '5': term({}), '9': term({ id: 9, conversation_id: 41 }) },
+    })
+
+    const sessions = await loadConversations()
+
+    expect(sessions.map((session) => session.id)).toEqual(['41', '42', 't5'])
   })
 
   it('reads, types into, resizes, names and closes a terminal session by its pane number', async () => {
