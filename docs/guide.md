@@ -75,7 +75,7 @@ and your configured custom ones; rows click and the wheel scrolls.
 │   ⣻ Growth Tests           12m  │
 │   ✓ Confirm Modal           1h  │
 │                                │
-├─ REMOTE 1 ────────────── + add ┤
+├─ REMOTE 1 ────────────── + Add ┤
 │                                │
 │  ⇄ kingdom                  ●  │
 │ ▾  maitty         ⎇ fixes/fir ✓│
@@ -84,7 +84,7 @@ and your configured custom ones; rows click and the wheel scrolls.
 ```
 
 - The top half, **Local**, is this computer. The bottom half, **Remote**, is every other
-  machine, each under its own header; `+ add` (or a click on "+ add one" when there is none) opens
+  machine, each under its own header; `+ Add` opens
   the Machines dialog. Each half scrolls on its own.
 - A project is its name with its branch and a `✓` (or `✕` if a check failed) on the right, or
   `no git` outside a repo. Click it to fold it; a folded project says how many sessions it hides

@@ -450,7 +450,7 @@ pub(in crate::client) fn draw_side(
     if remote_rows > 0 {
         let head_y = top + local_rows as u16;
         // The Remote title sits on a rule that joins the card's sides, as Local's sits on the
-        // top border: `├ REMOTE 2 ───── + add ┤`.
+        // top border: `├ REMOTE 2 ───── + Add ┤`.
         let rule = Style::default()
             .fg(if focused_side { t.accent } else { t.line })
             .bg(pb);
@@ -485,7 +485,7 @@ pub(in crate::client) fn draw_side(
             height: remote_rows as u16 + 1,
         };
         if remote_lines.is_empty() {
-            draw_no_machines(app, buf, &pass, t, remote_top, remote_rows);
+            draw_no_machines(buf, &pass, t, remote_top);
         } else {
             draw_rows(
                 app,
@@ -519,16 +519,9 @@ pub(in crate::client) fn draw_side(
     }
 }
 
-/// What the Remote half says while no other machine is known: one click opens the Machines
-/// dialog to add one.
-fn draw_no_machines(
-    app: &mut App,
-    buf: &mut Buffer,
-    pass: &Pass,
-    t: &Theme,
-    top: u16,
-    rows: usize,
-) {
+/// What the Remote half says while no other machine is known; the `+ Add` chip on its rule is
+/// the way to add one.
+fn draw_no_machines(buf: &mut Buffer, pass: &Pass, t: &Theme, top: u16) {
     let st = Style::default().bg(pass.pb);
     let x = pass.cols.x + 2;
     let end = pass.cols.end();
@@ -542,23 +535,6 @@ fn draw_no_machines(
         )],
         end,
     );
-    if rows > 1 {
-        let add = [seg(
-            "+ add one",
-            st.fg(t.accent).add_modifier(Modifier::BOLD),
-        )];
-        put(buf, x, top + 1, &add, end);
-        hit(
-            app,
-            Rect {
-                x,
-                y: top + 1,
-                width: segs_width(&add),
-                height: 1,
-            },
-            ScreenHit::AddMachine,
-        );
-    }
 }
 
 /// Thin lines that show what belongs to what: a project's, in the project's own colour, down the
@@ -924,12 +900,12 @@ fn draw_title(
     put(buf, at.0, at.1, &title, buf.area.right());
 }
 
-/// The Remote rule's `+ add` chip, ending at `end`: a click opens the Machines dialog.
+/// The Remote rule's `+ Add` chip, ending at `end`: a click opens the Machines dialog.
 fn draw_add_chip(app: &mut App, buf: &mut Buffer, (end, y): (u16, u16), ground: Color, t: &Theme) {
     let chip = Style::default().bg(t.btn);
     let mut segs = vec![
         seg(" + ", chip.fg(t.accent).add_modifier(Modifier::BOLD)),
-        seg("add ", chip.fg(t.text)),
+        seg("Add ", chip.fg(t.text)),
     ];
     if Look::of(&app.cfg.ui).caps {
         segs = round_ends(segs, ground);

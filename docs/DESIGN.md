@@ -77,9 +77,9 @@ accent fill. See UI › *UI conventions*.
 
 Two halves in one card ([ADR 0050](adr/0050-local-and-remote-sidebar-with-session-cards.md)). The
 top is `LOCAL`, a title chip on the card's border: this computer's sessions. The bottom half
-starts at a rule that joins the sides (`├ REMOTE 2 ──── + add ┤`) and holds the other machines;
-`+ add` opens the Machines dialog. Each half scrolls on its own, and with no other machine Remote
-says `no remote machines` and offers `+ add one`. There are no folder rows and no machine headers.
+starts at a rule that joins the sides (`├ REMOTE 2 ──── + Add ┤`) and holds the other machines;
+`+ Add` opens the Add Machine dialog. Each half scrolls on its own, and with no other machine Remote
+says `no remote machines`; the `+ Add` chip is the one way to add. There are no folder rows and no machine headers.
 
 Inside a half, projects are rows that fold: `▾` open or `▸` closed, the
 name in `strong` bold, and at the right `⎇ branch` in `muted` and a `✓` in `done`, or a `✕` in `err`
@@ -104,7 +104,7 @@ one line: `no sessions yet`, `connecting…` or `disconnected · click for the f
 Machines dialog. The foot holds **+ New** and **Menu**. Collapsed, the sessions become a narrow
 column; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed sidebar*.
 
-The **Add Machine dialog** (leader `w`, or `+ add`) is a standard modal: one input typed like scp on
+The **Add Machine dialog** (leader `w`, or `+ Add`) is a standard modal: one input typed like scp on
 `card2` with a parse line under it, the hosts of `~/.ssh/config` to complete it from, and a
 dim line for Windows; after Enter a checklist of the steps connecting takes. Its behaviour is in [UI](UI.md#project-specific-machines-dialog).
 
