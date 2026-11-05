@@ -4,6 +4,7 @@
 @keyframes v7fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes v7scrim { from { opacity: 0; } to { opacity: 1; } }
 @keyframes v7pulse { 0% { opacity: .9; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.7); } }
+@keyframes mx-ov-pulse { 0% { transform: scale(.97); } 50% { transform: scale(1.015); } 100% { transform: none; } }
 @keyframes v14focus { from { opacity: 1; } to { opacity: 0; } }
 @keyframes v7moved { 0% { background-color: rgba(95, 212, 191, .16); } 100% { background-color: transparent; } }
 @keyframes v8tabin { from { opacity: 0; transform: translateY(-3px) scale(.97); } to { opacity: 1; transform: none; } }
@@ -288,6 +289,7 @@
 .mx-row-icon .mx-badge.is-unknown { width: 12px; height: 12px; border-radius: 3.5px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
 .mx-rail-row .mx-badge.is-working { width: 16px; height: 16px; border-radius: 50%; background: var(--well); font-family: var(--mono); font-size: 11px; line-height: 1; color: var(--accent); }
 .mx-rail-unread { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card-ring); }
+.mx-ov-pulse { animation: mx-ov-pulse .5s ease-out 1; }
 .mx-pause-bar { width: 2px; height: 5px; border-radius: 1px; background: var(--on-warn); }
 
 /* Tab bar */

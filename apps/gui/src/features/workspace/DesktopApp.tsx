@@ -108,6 +108,8 @@ import { byPriority } from './model/stack'
 import { displayName, groupKeyOf, groupSessions, tildePath, toSessionView, type SessionView } from './model/session'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { topmostOpen, type EscLayer } from './model/escLadder'
+import { OverviewScreen, type JumpMark } from '@/features/overview/components/OverviewScreen'
+import { jumpToast, needsYouCount, NOTHING_NEEDS_YOU, nextNeedsYou } from '@/features/overview/model/overview'
 import { bindingFor, detectPlatform, matchShortcut, shortcutChords, shortcutText, type ShortcutAction } from './model/shortcuts'
 import { folderExists, resolveStartFolder } from './model/startFolder'
 import { markSeen, trackSessions, tracksEqual, type SessionTrack } from './model/tracking'
@@ -232,6 +234,8 @@ export function DesktopApp() {
   const [renameId, setRenameId] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [inboxOpen, setInboxOpen] = useState(false)
+  const [overviewOpen, setOverviewOpen] = useState(false)
+  const [jumped, setJumped] = useState<JumpMark | null>(null)
   const [focusMode, setFocusMode] = useState(false)
   const [inspectOpen, setInspectOpen] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
@@ -890,6 +894,7 @@ export function DesktopApp() {
   }, [queryClient])
 
   const showSessionById = useCallback((sessionId: string) => {
+    setOverviewOpen(false)
     setLayout((current) => showSession(current, sessionId, makeId))
   }, [])
 
@@ -993,7 +998,7 @@ export function DesktopApp() {
   }, [compact])
 
   // The tab bar and status bar are memoised, so what they are handed keeps its identity.
-  const selectTabById = useCallback((tabId: string) => { setLayout((current) => selectTab(current, tabId)) }, [])
+  const selectTabById = useCallback((tabId: string) => { setOverviewOpen(false); setLayout((current) => selectTab(current, tabId)) }, [])
   const openInbox = useCallback(() => { setInboxOpen(true) }, [])
   // The repository view reads this computer's checkouts: on a pane of another machine it says so.
   const inspectRefusal = guardLocal(focusedSession, 'inspect')
@@ -1068,14 +1073,19 @@ export function DesktopApp() {
         setInboxOpen((open) => !open)
         return
       case 'jump-needs': {
-        // Creation order, starting after the pane you are in, so repeated presses walk through every session that is asking.
-        const asking = sessions.filter((member) => member.status === 'needs')
-        const after = asking.findIndex((member) => member.id === focusedSession?.id)
-        const next = asking[(after + 1) % asking.length]
-        if (next) showSessionById(next.id)
-        else flash('Nothing needs you')
+        // On the Overview the ring moves to the card; anywhere else the session opens. One model decides, so the key and the screen agree.
+        const target = nextNeedsYou(sessions, (overviewOpen ? jumped?.id : null) ?? focusedSession?.id ?? null)
+        if (!target) flash(NOTHING_NEEDS_YOU)
+        else if (overviewOpen) setJumped({ id: target.session.id, key: Date.now() })
+        else {
+          showSessionById(target.session.id)
+          flash(jumpToast(target))
+        }
         return
       }
+      case 'overview':
+        setOverviewOpen((open) => !open)
+        return
       case 'go-to-tab': {
         const inProject = layout.tabs.filter((candidate) => tabGroup(candidate) === activeGroupKey)
         const target = inProject[(tab ?? 0) - 1]
@@ -1087,7 +1097,6 @@ export function DesktopApp() {
         return
       // Registered in the table but not built (or not undoable): the key does nothing until the feature ships.
       case 'undo-close':
-      case 'overview':
       case 'session-panel':
       case 'usage':
       case 'chat-toggle':
@@ -1124,17 +1133,18 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, platform, paneSessions, armedClose, toggleInspect, sessions, showSessionById, activeGroupKey, selectTabById])
+  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, platform, paneSessions, armedClose, toggleInspect, sessions, showSessionById, activeGroupKey, selectTabById, overviewOpen, jumped])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
   const modalOpen = settingsSection !== null || renameId !== null || remoteStart !== null || overlayOpen
   const drawerShown = compact && drawerOpen
-  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
-  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
+  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, paletteOpen, inboxOpen, overviewOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
+  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, paletteOpen, inboxOpen, overviewOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
   useEffect(() => {
     // How each layer of the Esc ladder closes. A new dialog adds its closer here and its id to ESC_LADDER.
     const closers: Partial<Record<EscLayer, () => void>> = {
+      overview: () => { setOverviewOpen(false) },
       palette: () => { setPaletteOpen(false) },
       inbox: () => { setInboxOpen(false) },
       settings: () => { setSettingsSection(null) },
@@ -1157,7 +1167,7 @@ export function DesktopApp() {
       if (event.key === 'Escape') {
         // A menu or list that is open (the spinner picker in Settings) takes Esc itself.
         if (event.target instanceof Element && event.target.closest('[role="menu"]')) return
-        const top = topmostOpen({ palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, drawer: state.drawerShown, 'focus-mode': state.focusMode })
+        const top = topmostOpen({ overview: state.overviewOpen, palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, drawer: state.drawerShown, 'focus-mode': state.focusMode })
         if (top === null) return
         // What Esc closes is not also sent on to the terminal, where it would interrupt an agent.
         event.preventDefault()
@@ -1359,6 +1369,7 @@ export function DesktopApp() {
       action('split-right', 'Split right', () => { split(null, 'right') }, keys('split-right')),
       action('split-down', 'Split down', () => { split(null, 'down') }, keys('split-down')),
       action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('inbox')),
+      action('overview', overviewOpen ? 'Close the Overview' : 'Open the Overview', () => { setOverviewOpen((open) => !open) }, keys('overview')),
       action('jump-needs', 'Jump to the next session that needs you', () => { runShortcut('jump-needs') }, keys('jump-needs')),
       action('inspect', 'Inspect the repository', () => { if (inspectRefusal !== null) toast.message(inspectRefusal); else setInspectOpen(true) }, keys('inspect')),
       ...(focusedSession ? [action('new-worktree', 'New worktree', () => { runShortcut('new-worktree') }, keys('new-worktree'))] : []),
@@ -1389,7 +1400,7 @@ export function DesktopApp() {
     }
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [paletteOpen, platform, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal])
+  }, [paletteOpen, overviewOpen, platform, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal])
 
   const restartOffer: RestartOffer | null = mismatch
     ? {
@@ -1462,6 +1473,7 @@ export function DesktopApp() {
       onOpenSettings={() => { afterPick(); setSettingsSection('general') }}
       updateSlot={updateSlot('footer')}
       railUpdateSlot={updateSlot('rail')}
+      overview={{ open: overviewOpen, needs: needsYouCount(sessions), onToggle: () => { afterPick(); setOverviewOpen((open) => !open) } }}
     />
   )
 
@@ -1518,6 +1530,17 @@ export function DesktopApp() {
                   onDismiss={(id) => { setDismissedRestores((current) => new Set(current).add(id)) }}
                 />
                 {!online && <OfflineBanner retryAt={retryAt} detail={offlineDetail} restart={restartOffer} onRetry={() => { void refetchSessions() }} />}
+                {overviewOpen && (
+                  <OverviewScreen
+                    sessions={sessions}
+                    tracks={tracks}
+                    projectOf={projectOf}
+                    jumped={jumped}
+                    onOpen={showSessionById}
+                    onJump={() => { runShortcut('jump-needs') }}
+                    onClose={() => { setOverviewOpen(false) }}
+                  />
+                )}
                 {tab ? (
                   <div className="mx-panes">
                     {paneColumns(tab, narrow).map((column, columnIndex, columns) => (
@@ -1559,7 +1582,7 @@ export function DesktopApp() {
                                   label={`Shell in ${session.cwdLabel}`}
                                   inputDisabled={!online}
                                   ended={session.ended}
-                                  focused={focused && !modalOpen}
+                                  focused={focused && !modalOpen && !overviewOpen}
                                   onInput={(data) => { mirrorInput(session.id, data) }}
                                   onOpenPath={(path, line) => { openPath(session, path, line) }}
                                   onHandle={(handle) => {

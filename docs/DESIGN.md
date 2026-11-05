@@ -354,12 +354,25 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   Ctrl+letter always goes to the terminal, so the window uses Ctrl+Shift (T, W, D, F, K, I, B, N,
   J ...); where two actions want the same Ctrl+Shift letter the second takes Ctrl+Alt+Shift (split
   down, broadcast). Ctrl with a non-letter (`,` `.` `/` `[` `]` `=` `1`-`9` Tab) is the window's
-  too. A binding with `available: false` (Overview, Session panel, Usage, Terminal/Chat, Undo
+  too. A binding with `available: false` (Session panel, Usage, Terminal/Chat, Undo
   close) is registered but its key does nothing and the overlay hides it until the feature lands.
   Jump to the next session that needs you is ⌘J on macOS only: Ctrl+J is a terminal key.
 - **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
   open (`model/escLadder.ts`): comment composer, New agent and What's new, Overview, palette,
   inbox, Settings, the sidebar drawer, Focus mode. A new dialog adds its id there.
+- **Overview (⌘0 / Ctrl+0).** The sidebar's pinned **Overview** row (a 40 by 36 icon in the
+  rail) carries an amber badge with the number of sessions that need you, hidden at 0. The screen
+  sits over the panes (they stay mounted, so no terminal is resized or replayed) under the tab bar;
+  a tab or a card leaves it, Esc closes it. One card per session across every machine, in the
+  sections Needs you (always shown, with a dashed "Nothing needs you" box when empty), Working,
+  Done (exited sessions included, keeping their red shape), Idle and Unknown; empty sections are
+  hidden. Cards keep creation order inside a section (`features/overview/model/overview.ts`), so a
+  status change moves a card between sections and never reorders the others. A card shows the
+  status shape (still, never animated) and name, the project, the branch, the machine chip when
+  remote, one context line (what a stopped agent is asking, else the process and folder) and the
+  state with the time in it. **Jump to next** (⌘J, macOS only) moves a ring and a one-shot pulse
+  to the next Needs-you card on the Overview; elsewhere it opens that session with the toast
+  "Needs you · name · 1 of 2"; with nothing needing you it only shows "Nothing needs you".
 - **Command palette (⌘K).** A 600px card over a dimmed scrim: type a few letters to jump to a
   session, project, action or theme (themes only once something is typed). A run of the typed text
   ranks above letters that merely appear in order; ↑ ↓ move, ↵ runs, Esc closes. Sessions that need
