@@ -845,6 +845,21 @@ impl App {
     /// Keys while the sidebar has them: ↑↓ move, →← open or fold (← from a session goes to
     /// its project), Enter opens, Space messages, Esc goes back to the pane. Anything you
     /// type goes to the pane you're on.
+    /// Full, then the narrow column, then hidden, then full again.
+    pub(in crate::client) fn cycle_sidebar(&mut self) {
+        if self.side_hidden {
+            (self.side_hidden, self.sidebar) = (false, true);
+        } else if self.sidebar {
+            self.sidebar = false;
+        } else {
+            self.side_hidden = true;
+            if self.mode == Mode::Side {
+                self.screen_side_leave();
+            }
+        }
+        self.screen.follow = true;
+    }
+
     pub(in crate::client) fn on_side_key(&mut self, k: &KeyEvent) {
         let spec = KeySpec::from_event(k);
         let proj = self.screen.cursor_proj.clone();
@@ -883,6 +898,8 @@ impl App {
             return;
         }
         match spec.code {
+            // [: full, then the narrow column, then hidden, then full again.
+            KeyCode::Char('[') if plain => self.cycle_sidebar(),
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.screen_side_move(-1)
             }
@@ -1919,7 +1936,9 @@ impl App {
                 };
             }
             ScreenHit::SideFocus => self.act(Action::BrowseTree),
-            ScreenHit::ExpandSidebar => self.act(Action::ToggleSidebar),
+            ScreenHit::ExpandSidebar | ScreenHit::CollapseSidebar => {
+                self.act(Action::ToggleSidebar)
+            }
             ScreenHit::NewShell => self.act(Action::ShellHere),
             ScreenHit::Actions => self.act(Action::Menu),
             ScreenHit::ActionRow(i) => self.actions_run(i),

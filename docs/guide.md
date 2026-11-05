@@ -99,7 +99,7 @@ and your configured custom ones; rows click and the wheel scrolls.
 - One card is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar
   has the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
   keyboard. Hover is a separate, quieter tint.
-- Collapsing the sidebar (leader, then `z`) leaves a narrow column down the side, each session as its mark and first letter: click a row to go to it, `»` (`«` with the sidebar on the right) or `…` to expand the sidebar again.
+- Collapsing the sidebar (the `«` chip on its top border, or leader then `z`) leaves a narrow box down the side with one state glyph per session and, in amber, how many need you: click a glyph to go to it, `»` (`«` with the sidebar on the right) or `…` to expand the sidebar again. `[` in the sidebar steps through full, narrow and hidden; hidden, a `»` chip at the start of the tabs brings it back.
 - A machine whose line is down, or that has no sessions, is its header and one line instead of its
   projects; click it for the Machines dialog. See *Machines* below.
 - Nothing moves in the sidebar by itself: a session that needs you or finishes keeps its row (its mark and name say so, and the Inbox lists what needs you). Idle agents stay running; no sleep screen is shown for sessions saved by older releases.

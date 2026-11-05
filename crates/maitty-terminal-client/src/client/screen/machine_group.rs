@@ -307,24 +307,6 @@ pub(super) fn draw_note(
     );
 }
 
-/// The collapsed sidebar's mark for a machine: its state glyph and its first letter.
-pub(super) fn rail_segs(app: &App, machine: MachineId, ground: Color, t: &Theme) -> Vec<Seg> {
-    let Some(mark) = app.machine_mark(machine, t) else {
-        return Vec::new();
-    };
-    let initial = app
-        .machine_label(machine)
-        .chars()
-        .find(|c| !c.is_whitespace())
-        .map_or_else(|| "·".to_string(), |c| c.to_uppercase().collect());
-    let st = Style::default().bg(ground).add_modifier(Modifier::BOLD);
-    vec![
-        seg(" ", st),
-        seg(mark.glyph, st.fg(mark.color)),
-        seg(initial, st.fg(t.muted)),
-    ]
-}
-
 /// A down machine's row, drawn again in the quiet colour: whatever it said is the last report,
 /// so none of it may read as live, and amber stays for what needs you now.
 pub(super) fn grey(buf: &mut Buffer, r: Rect, t: &Theme) {

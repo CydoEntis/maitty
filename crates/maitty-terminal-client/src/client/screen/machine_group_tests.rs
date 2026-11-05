@@ -405,20 +405,22 @@ fn the_collapsed_sidebar_marks_a_machine_and_greys_its_rows_when_down() {
     let t = app.theme.clone();
     app.sidebar = false;
     let text = frame(&mut app, 100, 30);
-    assert_eq!(
-        text.lines().filter(|l| l.contains("●B")).count(),
-        1,
-        "{text}"
-    );
+    let marks = |text: &str| {
+        text.lines()
+            .filter(|l| l.chars().take(5).any(|c| c == '⇄'))
+            .count()
+    };
+    assert_eq!(marks(&text), 1, "{text}");
     app.on_link_state(THERE, "build".into(), reconnecting());
     let buf = cells(&mut app, Layout::Floating, 100, 30, "unicode");
     let text = frame(&mut app, 100, 30);
+    assert_eq!(marks(&text), 1, "{text}");
     let y = text
         .lines()
-        .position(|l| l.contains("↻B"))
+        .position(|l| l.chars().take(5).any(|c| c == '⇄'))
         .expect("the mark") as u16;
-    // The folder's initial, then the first session.
-    let below: Vec<_> = (0..5).map(|x| &buf[(x, y + 2)]).collect();
+    // The first session under it.
+    let below: Vec<_> = (1..4).map(|x| &buf[(x, y + 1)]).collect();
     assert!(
         below
             .iter()

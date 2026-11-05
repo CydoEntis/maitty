@@ -17703,6 +17703,42 @@ mod tool_rail_tests {
         assert!(foot.contains("docked · terminal resized"), "{foot}");
     }
 
+    fn hit_rect(app: &App, h: screen::ScreenHit) -> Rect {
+        app.hits
+            .iter()
+            .find_map(|(r, x)| (*x == Hit::Screen(h)).then_some(*r))
+            .expect("the chip is clickable")
+    }
+
+    #[test]
+    fn the_sidebar_collapses_from_its_chip_and_comes_back_from_the_rail_and_from_hidden() {
+        let mut app = app();
+        let buf = draw(&mut app);
+        let chip = hit_rect(&app, screen::ScreenHit::CollapseSidebar);
+        let row: String = (0..W).map(|x| buf[(x, chip.y)].symbol()).collect();
+        assert!(row.contains('«'), "on the sidebar's top border: {row}");
+        click(&mut app, chip);
+        let buf = draw(&mut app);
+        assert!(!app.sidebar && !app.side_hidden, "the narrow column");
+        if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
+            for y in 0..24 {
+                println!("{}", (0..30).map(|x| buf[(x, y)].symbol()).collect::<String>());
+            }
+        }
+        let top: String = (0..6).map(|x| buf[(x, 0)].symbol()).collect();
+        assert!(top.contains('»'), "its chip is set into the top edge: {top}");
+        // [ walks on: hidden, then full again.
+        app.cycle_sidebar();
+        let buf = draw(&mut app);
+        assert!(app.side_hidden);
+        let lead = hit_rect(&app, screen::ScreenHit::ExpandSidebar);
+        let row: String = (0..W).map(|x| buf[(x, lead.y)].symbol()).collect();
+        assert!(row.contains('»'), "a » leads the tabs when it is hidden: {row}");
+        click(&mut app, lead);
+        draw(&mut app);
+        assert!(app.sidebar && !app.side_hidden, "back to full");
+    }
+
     #[test]
     fn a_draggable_edge_shows_a_grip_before_it_is_pointed_at() {
         let mut app = app();

@@ -424,6 +424,7 @@ pub(in crate::client) fn draw_side(
         t,
         focused_side,
     );
+    draw_collapse_chip(app, buf, r, t);
 
     let pass = Pass {
         model,
@@ -869,6 +870,37 @@ fn row_look(picked: bool, ground: Color, t: &Theme) -> RowLook {
     let bg = if picked { t.sel_bg() } else { ground };
     let bar = picked.then_some(t.accent);
     RowLook { bg, picked, bar }
+}
+
+/// The `«` chip on the top border at the right: a click shrinks the sidebar to the narrow column.
+fn draw_collapse_chip(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme) {
+    let mut segs = vec![seg(
+        " « ",
+        Style::default()
+            .fg(t.strong)
+            .bg(t.btn)
+            .add_modifier(Modifier::BOLD),
+    )];
+    if Look::of(&app.cfg.ui).caps {
+        segs = round_ends(segs, Color::Reset);
+    }
+    let w = segs_width(&segs);
+    // Leave the title its room: a narrow card has no chip.
+    if r.width < w + 24 {
+        return;
+    }
+    let x = r.right().saturating_sub(w + 2);
+    put(buf, x, r.y, &segs, r.right().saturating_sub(1));
+    hit(
+        app,
+        Rect {
+            x,
+            y: r.y,
+            width: w,
+            height: 1,
+        },
+        ScreenHit::CollapseSidebar,
+    );
 }
 
 /// A half's title chip, " LOCAL " or " REMOTE 2 ", set into a border or a rule at `at`. `outer` is
@@ -2138,15 +2170,13 @@ mod v8_tests {
         let _ = raw_text(&mut app, Layout::Floating, w, h, "unicode");
         let text = raw_text(&mut app, Layout::Floating, w, h, "unicode");
         let column: Vec<String> = text.lines().map(|l| l.chars().take(8).collect()).collect();
-        for letter in ['F', 'A', 'W', 'Q', 'O'] {
-            assert!(
-                column.iter().any(|l| l.contains(letter)),
-                "{letter} (a session's first letter) is in the column: {column:?}"
-            );
-        }
         assert!(
-            column[0].trim_start().starts_with('»'),
-            "the expand chip comes first: {column:?}"
+            column[0].contains('»'),
+            "the expand chip is set into the box's top edge: {column:?}"
+        );
+        assert!(
+            column.iter().any(|l| l.contains('⌂')),
+            "this computer's mark: {column:?}"
         );
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
@@ -2199,23 +2229,19 @@ mod v8_tests {
         let mut app = world(Stage::None);
         app.sidebar = false;
         let t = app.theme.clone();
-        let chip = |app: &mut App| {
+        // The chosen row has a tinted ground, and with the keys the accent bar at its left.
+        let bar = |app: &mut App| {
             let buf = cells(app, Layout::Floating, 160, 45, "unicode");
-            let (x, y) = (0..8u16)
+            (0..8u16)
                 .flat_map(|x| (0..45u16).map(move |y| (x, y)))
-                .find(|&(x, y)| buf[(x, y)].symbol() == "F")
-                .expect("fix-footer's letter");
-            (buf[(x, y)].bg, buf[(x, y)].fg)
+                .find(|&(x, y)| buf[(x, y)].symbol() == "▌" && buf[(x, y)].fg == t.accent)
+                .map(|(x, y)| buf[(x + 1, y)].bg)
         };
-        chip(&mut app);
+        assert_eq!(bar(&mut app), None, "no bar before the column has the keys");
         app.act(Action::BrowseTree);
-        assert_eq!(
-            chip(&mut app),
-            (t.accent, t.acc_ink),
-            "the strip has the keys"
-        );
+        assert_eq!(bar(&mut app), Some(t.card2), "the strip has the keys");
         app.mode = Mode::Normal;
         app.screen.cursor = None;
-        assert_eq!(chip(&mut app).0, t.btn, "else raised");
+        assert_eq!(bar(&mut app), None, "else just the tint");
     }
 }

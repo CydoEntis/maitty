@@ -488,13 +488,15 @@ Leader `z` (`Action::ToggleSidebar`) swaps full and collapsed; Hide sidebar (`Ac
 the sessions or brings the sidebar back. The `»` chip (`«` with the sidebar on the right) and the `…` row
 restore it. There are no bare-letter keys for this in the sidebar.
 
-- **Collapsed** (`screen/rail.rs`, ADR 0033): a narrow column, `RAIL_W` (5) wide, down the sidebar's side; the panes take the rest
-  and keep the top row. A `»` chip first (`«` with the sidebar on the right), then each project as its first letter in the
-  project's colour and, under it, each of its sessions as its mark (same glyph and colour as the row) and the first letter of its
-  name, in the sidebar's order, a blank row between projects. The selected row is `accent` with `acc_ink` text while the column has the
-  keys, else `btn`. At the foot a `+` chip starts a shell and a `≡` chip opens the Menu. Rows that don't fit scroll, the selected one kept in view, and a `…` in the
-  last place opens the sidebar. A click on a project's letter opens the sidebar. A machine other than this one is a
-  row `●B` above its folders: its state glyph and its first letter (see *machines in the sidebar*).
+- **Collapsed** (`screen/rail.rs`, ADR 0033): a box `RAIL_W` (5) wide down the sidebar's side; the panes take the rest.
+  A `»` chip (`«` with the sidebar on the right) is set into its top edge; under it, in amber, how many sessions need
+  you (left out at none); a blank row; this computer's `⌂` mark; then one state glyph per session (the glyph and
+  colour of its card), a `─` between projects. A rule `├───┤` joins the box where the other machines begin, and each
+  has a `⇄` mark, dim while it is down. The chosen session has the `card2` ground and, while the column has the keys, an
+  accent `▌` at its left. At the foot a `+` chip starts a shell and a `≡` chip opens the Menu. Rows that don't fit scroll,
+  the selected one kept in view, and a `…` in the last place opens the sidebar. Each glyph is a click target that opens
+  its session. The full sidebar has a `«` chip on its top border at the right that collapses it; `[` while the sidebar
+  has the keys cycles full, collapsed, hidden. Hidden, a `»` chip leads the tabs on the terminal's top border.
   `ui.rounded` (Settings › Appearance › Rounded: `full`, `corners` or `off`, off by default) is the one shape setting. `corners` rounds every box's corners only. `full` rounds them too, and caps every chip (tabs, the LOCAL and REMOTE titles, card titles, + New, Menu, buttons, menu rows) on whatever ground it sits, the pointer's hover, and draws a selected or failed session row as one block, in place of the edge bar: half-circle caps for one line, square ends for more so its lines read as one even block, never a pill per line; what is right-aligned stops a cell short of the cap. The Settings tab strip carries no update dot: the mode bar's pill and the splash announce updates, and the version lives in one row, General › UPDATES › Version (`maitty 0.42.0 · up to date · u check now`, or `9.9.9 is out · Enter to update`; Enter or a click acts, `u` checks from any tab). Above the pages, only what is off shows: an installed or daemon version that differs, or a pending restart with Restart now.
 - **Column focus** is the sidebar focus with the sidebar collapsed (leader Focus the sidebar). `↑` `↓`, `←` `→` and `1`–`9` switch
   sessions, opening each in the pane while the keys stay on the column; `1`–`9` mean nothing elsewhere. Enter focuses the pane, Esc leaves.

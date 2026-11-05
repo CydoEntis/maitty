@@ -513,13 +513,43 @@ fn draw_tab_chips(app: &mut App, buf: &mut Buffer, panes: Rect, model: &[Proj], 
         return;
     }
     let x = card::title_x(first);
+    let border = buf[(x, first.y)].fg;
+    // With the sidebar hidden a `»` chip leads the tabs: a click brings it back.
+    let lead = if app.side_hidden {
+        let mut segs = vec![seg(
+            " » ",
+            Style::default()
+                .fg(t.strong)
+                .bg(t.btn)
+                .add_modifier(Modifier::BOLD),
+        )];
+        if Look::of(&app.cfg.ui).caps {
+            segs = round_ends(segs, t.bg);
+        }
+        let w = segs_width(&segs);
+        put(buf, x, first.y, &segs, panes.right());
+        hit(
+            app,
+            Rect {
+                x,
+                y: first.y,
+                width: w,
+                height: 1,
+            },
+            ScreenHit::ExpandSidebar,
+        );
+        put(buf, x + w, first.y, &[seg("─", Style::default().fg(border))], panes.right());
+        w + 1
+    } else {
+        0
+    };
+    let x = x + lead;
     let row = Rect {
         x,
         y: first.y,
         width: panes.right().saturating_sub(x),
         height: 1,
     };
-    let border = buf[(x, first.y)].fg;
     let chips = tab_strip(app, model, row, true, t)
         .into_iter()
         .map(|(text, style)| {

@@ -1629,6 +1629,8 @@ pub(super) enum ScreenHit {
     /// The sidebar's empty space: the keys go to it.
     SideFocus,
     ExpandSidebar,
+    /// The `«` chip on the sidebar's border: shrink it to the narrow column.
+    CollapseSidebar,
     /// Install the newer the app (in Settings › General).
     Update,
     /// Restart the daemon onto the installed version (after an update).
