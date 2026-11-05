@@ -568,8 +568,8 @@ environment), so it is held to the same boundary as the rest of the history: it
 leaves only in an explicit authorized read and in the private cache. It is cleaned
 of escape and control characters, invisible characters are spelled out as Unicode
 escapes, every string is cut and the whole value is capped at 64 KiB, and an input
-that cannot be bounded in shape is dropped (`tool_input.rs`). There is no secret
-redaction of history text, input included; do not assume one. Answered approvals
+that cannot be bounded in shape is dropped (`tool_input.rs`). Secrets are
+masked on the way in; see *Conversation history and secrets* below. Answered approvals
 keep the request's command and diff in daemon memory only, never in the cache, and
 the answers to user-input requests are not kept at all.
 A message queued while a turn runs is held in daemon memory only, never in the session file or the history
@@ -610,3 +610,43 @@ reserved MCP environment conflicts before a thread starts. No credential
 exposure switch is broadened. Explicit MCP references revalidate current read
 authority before filesystem work. An in-memory native acknowledgement remains
 uncertain in every read response until its persistence barrier succeeds.
+
+### Conversation history and secrets
+
+Everything the daemon stores and serves as conversation history passes one function,
+`redact_entry` (`daemon/conversation/redact.rs`), when it enters the store (`History::apply`,
+`hydrate`) and again when a cache is loaded. That covers the Claude and Codex adapters, both
+followed-transcript parsers, message text, tool input, command output and approvals. It changes only
+Maitty's copy: the agent still sees exactly what it sent and received, and nothing is blocked.
+
+**Masked** (the secret part becomes `[redacted]`, the text around it stays):
+
+- GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), AWS access key ids (`AKIA`,
+  `ASIA`), Anthropic (`sk-ant-`) and OpenAI (`sk-`, `sk-proj-`) keys, Slack (`xox*`, `xapp-`), Google
+  (`AIza`), Stripe live (`sk_live_`, `rk_live_`), JSON Web Tokens.
+- PEM private key blocks, from the `BEGIN ... PRIVATE KEY` line to the `END` line (or to the end of the
+  text if it is cut or still streaming); the whole block becomes `[redacted private key]`.
+- `Authorization: Bearer|Basic|Token ...` headers and bare `Bearer <token>`.
+- The password in `scheme://user:password@host`.
+- `NAME=value`, `name: value` and `"name": "value"` where the name has a secret, token, password,
+  passwd, api key, private key, credential or auth part (`githubToken`, `AWS_SECRET_ACCESS_KEY`), and
+  every value under such a key in a tool's input JSON. Placeholders (`$VAR`, `<your-key>`, `****`),
+  URLs, paths, flags, short values and code references (`token = refresh_token`) are left alone.
+
+**Omitted** (the text becomes `[content of a secret file omitted]`; the path, tool, kind and an
+`omitted_bytes` count stay, so the chat still says "wrote .env"): the content, old/new text and diffs of
+a tool input, an approval's `changes` and a Codex file change whose path is `.env` or `.env.*` (not
+`.env.example`, `.sample`, `.template`), `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.kdbx`, `id_rsa`,
+`id_ed25519` (and `id_ecdsa`, `id_dsa`), `.npmrc`, `.pypirc`, `.netrc`, `credentials`,
+`.git-credentials`, `secrets` / `secrets.*`, or anything under `.aws`, `.ssh` or `.gnupg`. The output of
+a shell command that prints such a file (`cat`, `head`, `tail`, `grep`, `sed`, ...) is omitted too.
+
+**Limits.** Pattern masking is best-effort and is not a guarantee. It misses a secret with no known
+shape and no telling name (a bare 40-character key, a password in prose, a custom token format), a
+secret split by the provider across separate tool results, a file that holds secrets under an ordinary
+name (`config.json`), and a command that reads a secret file in a way the command list does not know.
+It can also hide something that was not a secret. The patterns lean towards missing a secret over
+wrecking ordinary text: prose, git hashes, UUIDs and plain base64 are not touched. Treat history as
+sensitive anyway: it still reaches any client with a read grant and the private cache. A person who
+approves a command reads the masked text, so a command's masked part cannot be checked from the chat.
+The functions never log or return what a pattern matched.

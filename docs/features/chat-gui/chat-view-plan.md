@@ -140,6 +140,14 @@ check for the view). Acceptance criteria are the bullets.
     Not verified against a live Claude CLI: that its `can_use_tool` request carries
     `tool_use_id` (the code falls back to the request id when it does not).
     GUI follow-up: render `answered_approvals` and the timestamps (G17, G18).
+    **Secrets (ticket 18, done):** the daemon masks token- and key-shaped strings in every history text
+    (message text, tool input, command output, approval text) with `[redacted]`, and replaces the text of
+    an edit or write to an obviously secret file (`.env`, keys, credential stores) with
+    `[content of a secret file omitted]`, keeping the path, the kind and an `omitted_bytes` count in the
+    input. A shell command that prints such a file has its output omitted the same way. The cards
+    (`redaction.ts`, `StepCards.tsx`) show an omitted edit as a named file with a muted note, a masked
+    value as text with a "the daemon hid it" note, never as an error or an empty diff. The rules and
+    their limits are in [SECURITY](../../SECURITY.md#conversation-history-and-secrets).
 
 ## What is still missing (client and daemon)
 

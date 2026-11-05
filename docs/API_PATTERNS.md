@@ -394,6 +394,13 @@ or offset, so equal chunks are appended within one connection; completed native
 items win over replayed deltas. Reconnect drops uncertain drafts before ordered
 authoritative hydration. Unknown items/events make completeness explicit.
 
+Every entry is passed through `redact_entry` (`redact.rs`) before it is stored, so a
+history page never carries a token-shaped string (shown as `[redacted]`) or the text of a
+secret file (a tool input, diff or command output holding `[content of a secret file
+omitted]`, with `omitted_bytes` in the input). Both are plain strings in existing fields,
+so the wire shape and `PROTOCOL_VERSION` are unchanged; clients show them as hidden, not as
+errors. See [SECURITY](SECURITY.md#conversation-history-and-secrets).
+
 Internal reads accept a conversation/revision/position cursor, at most 128 entries
 and 256 KiB of serialized JSON including the page envelope. Content/order changes
 invalidate cursors; oversized entries fail explicitly. `next = None` means cached

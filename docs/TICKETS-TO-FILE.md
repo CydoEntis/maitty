@@ -290,7 +290,7 @@ The code now uses warn #8F5400 and danger #B8362C for generated light themes (th
 #9A5B00 and #C0392F) and applies xterm `minimumContrastRatio` 4.5 on light themes. Update
 `GLASS_AND_TILED.md` section 3 when the design is next revised.
 
-## 18. Decide how conversation history treats secrets (spike, `daemon`, `docs`)
+## 18. Decide how conversation history treats secrets (spike, `daemon`, `docs`) — DONE
 
 Found building G22: the history now stores the full input of a tool call (bounded to 64 KiB, escapes
 stripped). The history has never redacted secrets, so a Claude `Write` of a `.env` file, or a command
@@ -299,6 +299,13 @@ private history cache when it is on. `docs/SECURITY.md` says so plainly. Decide:
 (keys, tokens, `.env` content), omit input for sensitive paths, or accept and document. Also confirm
 against a live Claude CLI that `can_use_tool` carries `tool_use_id` (the fake CLI does; the code falls
 back to the request id). Blocks nothing, but decide before the chat view ships widely.
+
+**Done 2026-11-04** (owner decision in *Decisions on 2026-11-04 (night)*): the daemon masks token- and
+key-shaped strings and omits the content of obviously secret files at one choke point
+(`daemon/conversation/redact.rs`), with GUI cards that show both honestly. What is masked, what is
+omitted and the limits are in [SECURITY](SECURITY.md#conversation-history-and-secrets). No
+`PROTOCOL_VERSION` change. **Still open:** confirm against a live Claude CLI that `can_use_tool`
+carries `tool_use_id` (the fake CLI does; the code falls back to the request id).
 
 ## 19. Paste an image into a remote pane in the desktop app (feature, `ssh`, `client`)
 
