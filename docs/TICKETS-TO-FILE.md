@@ -284,6 +284,8 @@ Until then Ctrl+Shift+N stays 'new worktree'.
 
 ## 16. Dark themes: ANSI colours below 4.5:1 (bug, `theme`)
 
+**Done 2026-11-05** (70ba2d7): every dark theme's ANSI and status colours meet 4.5:1 on both grounds. `terminalMinimumContrast` still returns 1 for dark themes on purpose.
+
 Found by the ticket 15 audit, left alone because ticket 15 was light themes only: Nord magenta 4.41,
 Solarized Dark blue 4.08 and magenta 3.30, Rosé Pine blue 3.38, Zenburn red 4.02, green 3.59 and
 magenta 4.30. Lighten within the hue family, extend the audit to every dark theme, and decide whether
@@ -341,6 +343,8 @@ far-side path in the message, behind the `machine` argument that already exists)
 dropped images (the window never reads those files).
 
 ## 21. An intermittent Rust test failure (bug, `tooling`)
+
+**Done 2026-11-05** (d0e00d6, 19b958b): two causes, both test races (a history read right after the ack; typing into a pane before its login shell was ready). Fixed with deterministic waiting.
 
 On the merged tree (948786e) one `cargo test` run (without `--no-fail-fast`, so it stopped early at 832
 tests) exited 101 with 1 test failed; two reruns of the whole suite passed (2293 passed, 0 failed) and
