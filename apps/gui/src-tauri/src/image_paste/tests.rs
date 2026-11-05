@@ -2,12 +2,17 @@
 //! `ssh` shim, where the real paste script keeps the image in a fake remote's home.
 
 use super::*;
-use crate::file_send::{SendEvent, discard_staged, run};
+use crate::file_send::discard_staged;
+#[cfg(unix)]
+use crate::file_send::{SendEvent, run};
 #[cfg(unix)]
 use maitty_machines::PASTE_MARKER;
 #[cfg(unix)]
 use maitty_test_support::fake_ssh;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+#[cfg(unix)]
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicU32, Ordering};
+#[cfg(unix)]
 use std::sync::{Arc, Mutex};
 
 const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDRrest-of-the-image";
