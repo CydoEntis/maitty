@@ -996,7 +996,7 @@ writes its `--calls` line after it starts the proxy, so the reconnect can be see
 
 Once in a heavily loaded full run:
 `daemon::conversation::tests::user_input_requests_use_exact_ids_and_validated_ephemeral_answers`,
-`conversation	ests.rs:880`, `provider process tree survived disposal`. Passed 3 of 3 alone.
+`conversation\tests.rs:880`, `provider process tree survived disposal`. Passed 3 of 3 alone.
 
 ## 46. `same_path` compares paths as text (bug, `daemon`, `windows`)
 
