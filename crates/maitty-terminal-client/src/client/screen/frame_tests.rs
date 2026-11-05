@@ -9,53 +9,6 @@ use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
-/// Preset 01 "No check set" from the reference: the last row. The reference's row 0 drew the
-/// tabs in the pane's title; they have a row of their own now (ADR 0028), checked apart.
-const ROWS_01: [(Layout, u16, u16, &str, &str); 6] = [
-    (
-        Layout::Floating,
-        160,
-        45,
-        "unicode",
-        "└────────────────────────────────┘ └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘",
-    ),
-    (
-        Layout::Floating,
-        100,
-        30,
-        "unicode",
-        "└────────────────────────┘ └───────────────────────────────────────────────────────────────────────┘",
-    ),
-    (
-        Layout::Floating,
-        80,
-        24,
-        "unicode",
-        "└────────────────────────┘ └───────────────────────────────────────────────────┘",
-    ),
-    (
-        Layout::Tiled,
-        160,
-        45,
-        "unicode",
-        "└────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘",
-    ),
-    (
-        Layout::Tiled,
-        100,
-        30,
-        "unicode",
-        "└────────────────────────┘└────────────────────────────────────────────────────────────────────────┘",
-    ),
-    (
-        Layout::Tiled,
-        80,
-        24,
-        "unicode",
-        "└────────────────────────┘└────────────────────────────────────────────────────┘",
-    ),
-];
-
 /// The modal sizes of presets 12 (Override?), A2 (Approve · read first) and 15 (Settings ·
 /// set) on a screen `w`×`h`.
 fn modal_sizes(w: u16, h: u16) -> [(&'static str, u16, u16); 3] {
@@ -97,19 +50,6 @@ fn rows(text: &str) -> Vec<Vec<char>> {
     text.lines().map(|l| l.chars().collect()).collect()
 }
 
-fn from(row: &[char], x: u16) -> String {
-    row.iter()
-        .skip(x as usize)
-        .collect::<String>()
-        .trim_end()
-        .to_string()
-}
-
-fn col(rows: &[Vec<char>], x: u16, ys: std::ops::Range<u16>) -> String {
-    ys.map(|y| rows[y as usize].get(x as usize).copied().unwrap_or(' '))
-        .collect()
-}
-
 /// `app` drawn in `layout` at `w`×`h`, as cells.
 fn buffer(app: &mut App, layout: Layout, w: u16, h: u16) -> Buffer {
     reference_fixture::frame(app, layout, w, h, "unicode");
@@ -117,48 +57,6 @@ fn buffer(app: &mut App, layout: Layout, w: u16, h: u16) -> Buffer {
     term.draw(|f| crate::client::render::draw(app, f))
         .expect("a frame");
     term.backend().buffer().clone()
-}
-
-#[test]
-fn preset_01_s_frame_is_the_reference_s_in_every_layout_and_size() {
-    for (layout, w, h, glyphs, last) in ROWS_01 {
-        let mut app = world(Stage::None);
-        let text = reference_fixture::frame(&mut app, layout, w, h, glyphs);
-        let at = format!("{layout:?} {w}x{h} {glyphs}\n{text}");
-        let r = rows(&text);
-        let (px, py) = (pane_x(layout, w), pane_y(layout));
-        let tabs = from(&r[0], px);
-        assert!(
-            tabs.contains(" 1  fix-footer ") && tabs.contains(" 2  add-payments"),
-            "row 0, the pane border, carries the tabs, each with its state: {at}"
-        );
-        let title = from(&r[py as usize], px);
-        assert!(
-            title.starts_with("┌─ ") && title.ends_with('┐'),
-            "a lone pane's top border carries the tabs: {at}"
-        );
-        assert_eq!(from(&r[h as usize - 1], 0), last, "last row: {at}");
-        let sw = side_w(w);
-        assert_eq!(
-            (r[0][0], r[0][sw as usize - 1]),
-            ('┌', '┐'),
-            "the sidebar's top corners: {at}"
-        );
-        for x in [0, sw - 1] {
-            assert_eq!(
-                col(&r, x, 1..h - 1),
-                "│".repeat(h as usize - 2),
-                "column {x}: {at}"
-            );
-        }
-        for x in [px, w - 1] {
-            assert_eq!(
-                col(&r, x, py + 1..h - 1),
-                "│".repeat((h - py) as usize - 2),
-                "column {x}: {at}"
-            );
-        }
-    }
 }
 
 #[test]
@@ -325,8 +223,8 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
             } else {
                 "╭"
             };
-            let caps = false;
-            let corner = " ";
+            let caps = rounded == Rounding::Full;
+            let corner = if caps { CAP_R } else { " " };
             assert_eq!(
                 (sym(r.x), sym(r.x + 1), sym(r.right() - 1)),
                 (tl.into(), "─".into(), corner.into()),
@@ -470,8 +368,9 @@ fn a_confirm_s_long_sub_is_cut_inside_its_title_chip() {
         let row: Vec<String> = (x0..x1)
             .map(|x| buf[(x, close.y)].symbol().to_string())
             .collect();
-        let (l, e) = ("", "");
-        let last = " ";
+        let caps = rounded == Rounding::Full;
+        let (l, e) = if caps { (CAP_L, CAP_R) } else { ("", "") };
+        let last = if caps { CAP_R } else { " " };
         let tl = if rounded == Rounding::Off {
             "┌"
         } else {
@@ -664,7 +563,7 @@ fn square_tabs_draw_no_caps_and_keep_their_widths_by_default() {
 }
 
 #[test]
-fn rounded_tabs_keep_square_ends_and_their_widths() {
+fn rounded_tabs_are_pills_two_cells_wider() {
     for layout in LAYOUTS {
         let mut off = world(Stage::None);
         buffer(&mut off, layout, 160, 45);
@@ -678,10 +577,15 @@ fn rounded_tabs_keep_square_ends_and_their_widths() {
         assert_eq!(rects.len(), 3, "{layout:?}");
         for (r, was) in rects.iter().zip(&square) {
             assert_eq!(
-                r.width, was.width,
-                "rounded does not add pill caps: {layout:?}"
+                r.width,
+                was.width + 2,
+                "rounded adds a cap each end: {layout:?}"
             );
-            assert!((r.x..r.right()).all(|x| ![CAP_L, CAP_R].contains(&buf[(x, r.y)].symbol())));
+            assert_eq!(
+                (buf[(r.x, r.y)].symbol(), buf[(r.right() - 1, r.y)].symbol()),
+                (CAP_L, CAP_R),
+                "{layout:?}"
+            );
         }
         assert!(
             rects
@@ -689,165 +593,6 @@ fn rounded_tabs_keep_square_ends_and_their_widths() {
                 .any(|r| (r.x..r.right()).any(|x| buf[(x, r.y)].fg == t.accent)),
             "the current tab's number chip is the accent: {layout:?}"
         );
-    }
-}
-
-/// Every session row drawn on more than one line, in the order the sidebar lists them.
-fn block_rows(app: &App) -> Vec<(TermId, Rect)> {
-    let mut v: Vec<(TermId, Rect)> = app
-        .hits
-        .iter()
-        .filter_map(|(r, h)| match h {
-            super::super::Hit::Screen(ScreenHit::Session(ClientSession {
-                key: SessionKey::Pane(t),
-                ..
-            })) if r.height >= 2 => Some((*t, *r)),
-            _ => None,
-        })
-        .collect();
-    v.sort_by_key(|(_, r)| r.y);
-    v
-}
-
-/// The first and last column of line `y` on the row's colour `c`.
-fn tinted_span(buf: &Buffer, row: Rect, y: u16, c: Color) -> Option<(u16, u16)> {
-    let lit: Vec<u16> = (row.x..row.right())
-        .filter(|&x| buf[(x, y)].bg == c)
-        .collect();
-    Some((*lit.first()?, *lit.last()?))
-}
-
-/// The row's lines with, under each, `#` where the row's colour is the ground.
-fn shown(buf: &Buffer, row: Rect, c: Color) -> String {
-    (row.y..row.bottom())
-        .map(|y| {
-            let text: String = (row.x..row.right())
-                .map(|x| buf[(x, y)].symbol().to_string())
-                .collect();
-            let tint: String = (row.x..row.right())
-                .map(|x| if buf[(x, y)].bg == c { '#' } else { '.' })
-                .collect();
-            format!("{text}\n{tint}\n")
-        })
-        .collect()
-}
-
-/// A session that keeps a second line (what it asks, its agents, its check) is one even block
-/// when selected or hovered: every line lit across the same columns, no quarter-cell corners
-/// to notch it, and with `ui.rounded = full` square ends, since caps on each line would scallop.
-#[test]
-fn a_selected_or_hovered_two_line_session_is_one_even_block() {
-    use crate::config::Rounding;
-    for (stage, layout) in [Stage::None, Stage::Passed, Stage::Failed]
-        .into_iter()
-        .flat_map(|s| ["cards", "tiled", "compact", "grid"].map(|l| (s, l)))
-    {
-        for side in ["left", "right"] {
-            for padding in ["0", "1", "2"] {
-                for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
-                    for selected in [true, false] {
-                        let mut app = reference_fixture::world(stage);
-                        app.snap.terms.get_mut(&2).expect("a session").subagents =
-                            vec!["a".into(), "b".into()];
-                        (
-                            app.cfg.ui.rounded,
-                            app.cfg.ui.sidebar_position,
-                            app.cfg.ui.padding,
-                        ) = (rounded, side.into(), padding.into());
-                        drawn_in(&mut app, layout);
-                        let rows = block_rows(&app);
-                        assert!(rows.len() >= 2, "sessions with a second line: {layout}");
-                        for (term, _) in rows {
-                            let at = format!(
-                                "{stage:?} {layout} {side} pad {padding} {rounded:?} {} {term}",
-                                if selected { "selected" } else { "hovered" }
-                            );
-                            app.hover = None;
-                            if selected {
-                                app.mode = Mode::Side;
-                                app.screen.cursor_proj = None;
-                                app.screen.cursor =
-                                    Some(ClientSession::local(SessionKey::Pane(term)));
-                            } else {
-                                app.mode = Mode::Normal;
-                                let row = block_rows(&app)
-                                    .into_iter()
-                                    .find(|(t, _)| *t == term)
-                                    .expect("the row")
-                                    .1;
-                                app.hover =
-                                    Some(Position::new(row.x + row.width / 2, row.bottom() - 1));
-                            }
-                            let buf = drawn_in(&mut app, layout);
-                            let (_, row) = block_rows(&app)
-                                .into_iter()
-                                .find(|(t, _)| *t == term)
-                                .expect("the row");
-                            let c = buf[(row.x + row.width / 2, row.y)].bg;
-                            if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
-                                println!("{at}\n{}", shown(&buf, row, c));
-                            }
-                            let spans: Vec<_> = (row.y..row.bottom())
-                                .map(|y| tinted_span(&buf, row, y, c))
-                                .collect();
-                            assert!(
-                                spans.iter().all(|s| s.is_some() && *s == spans[0]),
-                                "every line lit across the same columns {spans:?}: {at}\n{}",
-                                shown(&buf, row, c)
-                            );
-                            for y in row.y..row.bottom() {
-                                for x in row.x..row.right() {
-                                    assert!(
-                                        !["▗", "▖", "▝", "▘", CAP_L, CAP_R]
-                                            .contains(&buf[(x, y)].symbol()),
-                                        "no corner or cap at {x},{y}: {at}\n{}",
-                                        shown(&buf, row, c)
-                                    );
-                                }
-                                if rounded == Rounding::Full {
-                                    assert!(
-                                        (row.x..row.right()).all(|x| buf[(x, y)].bg == c),
-                                        "square, the whole width: {at}\n{}",
-                                        shown(&buf, row, c)
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// A session on one line keeps its half-circle caps when selected, with rounded shapes on.
-#[test]
-fn a_selected_one_line_session_keeps_square_ends() {
-    for layout in ["cards", "tiled", "compact", "grid"] {
-        let mut app = world(Stage::None);
-        app.cfg.ui.rounded = crate::config::Rounding::Full;
-        drawn_in(&mut app, layout);
-        let (term, _) = app
-            .hits
-            .iter()
-            .find_map(|(r, h)| match h {
-                super::super::Hit::Screen(ScreenHit::Session(ClientSession {
-                    key: SessionKey::Pane(t),
-                    ..
-                })) if r.height == 1 => Some((*t, *r)),
-                _ => None,
-            })
-            .expect("a one-line session");
-        app.mode = Mode::Side;
-        app.screen.cursor_proj = None;
-        app.screen.cursor = Some(ClientSession::local(SessionKey::Pane(term)));
-        let buf = drawn_in(&mut app, layout);
-        let row = app.hits.iter().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::Session(ClientSession { key: SessionKey::Pane(t), .. })) if *t == term).then_some(*r)).expect("the row");
-        let t = app.theme.clone();
-        let (left, right) = (&buf[(row.x, row.y)], &buf[(row.right() - 1, row.y)]);
-        assert_ne!(left.symbol(), CAP_L, "no left pill cap: {layout}");
-        assert_ne!(right.symbol(), CAP_R, "no right pill cap: {layout}");
-        assert_eq!(left.bg, t.sel_bg(), "the row remains selected: {layout}");
     }
 }
 
@@ -861,93 +606,23 @@ fn drawn_in(app: &mut App, layout: &str) -> Buffer {
     term.backend().buffer().clone()
 }
 
-fn folder_row(app: &App) -> Rect {
-    app.hits
-        .iter()
-        .rev()
-        .find_map(|(r, h)| {
-            matches!(h, super::super::Hit::Screen(ScreenHit::ToggleProj(0))).then_some(*r)
-        })
-        .expect("a folder row")
-}
-
-/// Rounded corners do not change a folder row's fold-button column or click target.
-#[test]
-fn a_selected_or_hovered_folder_keeps_its_fold_button_column() {
-    use crate::config::Rounding;
-    for layout in ["cards", "tiled", "compact", "grid"] {
-        let mut button_x = None;
-        for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
-            for selected in [true, false] {
-                let at = format!(
-                    "{layout} {rounded:?} {}",
-                    if selected { "selected" } else { "hovered" }
-                );
-                let mut app = world(Stage::None);
-                app.cfg.ui.rounded = rounded;
-                if selected {
-                    app.mode = Mode::Side;
-                    app.screen.cursor = None;
-                    app.screen.cursor_proj = Some(app.screen_model()[0].key.clone());
-                }
-                drawn_in(&mut app, layout);
-                let row = folder_row(&app);
-                if !selected {
-                    app.hover = Some(Position::new(row.x + 3, row.y));
-                }
-                let buf = drawn_in(&mut app, layout);
-                let row = folder_row(&app);
-                let (left, right) = (&buf[(row.x, row.y)], &buf[(row.right() - 1, row.y)]);
-                assert!(
-                    left.symbol() != CAP_L && right.symbol() != CAP_R,
-                    "square ends: {at}"
-                );
-                let fold = (row.x..row.right())
-                    .find(|&x| buf[(x, row.y)].symbol() == "−")
-                    .expect("the fold button");
-                assert_eq!(
-                    *button_x.get_or_insert(fold),
-                    fold,
-                    "the fold button keeps its column: {at}"
-                );
-                for kind in [
-                    MouseEventKind::Down(MouseButton::Left),
-                    MouseEventKind::Up(MouseButton::Left),
-                ] {
-                    app.on_mouse(MouseEvent {
-                        kind,
-                        column: fold,
-                        row: row.y,
-                        modifiers: KeyModifiers::NONE,
-                    });
-                }
-                drawn_in(&mut app, layout);
-                assert!(
-                    !app.screen.saved.closed.is_empty(),
-                    "a click on the button folds the folder: {at}"
-                );
-            }
-        }
-    }
-}
-
 /// Rounded shapes reach every chip and floating card: the SESSIONS chip, + New and Menu on the
 /// plain ground, and the Menu.
 #[test]
-fn rounded_shapes_round_cards_but_keep_chip_ends_square() {
+fn rounded_shapes_round_cards_and_give_chips_pill_ends() {
     for layout in LAYOUTS {
         let mut app = world(Stage::None);
         app.cfg.ui.rounded = crate::config::Rounding::Full;
         let text = reference_fixture::raw_text(&mut app, layout, 100, 30, "unicode");
-        for chip in [" SESSIONS 4 ", "+ New", "Menu"] {
+        for chip in [" LOCAL ", "+ New", "Menu"] {
             assert!(
                 text.contains(chip),
                 "{chip} stays visible: {layout:?}\n{text}"
             );
         }
         assert!(
-            !text.contains(CAP_L),
-            "rounded does not add pill caps: {layout:?}"
+            text.contains(CAP_L) && text.contains(CAP_R),
+            "rounded gives chips pill caps: {layout:?}"
         );
         app.act(Action::Menu);
         let text = reference_fixture::raw_text(&mut app, layout, 100, 30, "unicode");
@@ -956,8 +631,8 @@ fn rounded_shapes_round_cards_but_keep_chip_ends_square() {
             .find(|l| l.contains(" Menu "))
             .expect("the menu's title row");
         assert!(
-            title.contains("Menu") && !title.contains(CAP_L),
-            "the menu title stays square ended: {layout:?}\n{title}"
+            title.contains("Menu") && title.contains(CAP_L),
+            "the menu title is a pill: {layout:?}\n{title}"
         );
         assert!(
             title.contains("╭"),

@@ -993,7 +993,6 @@ impl App {
                         self.menu_for_session(term, at);
                     }
                 }
-                Some(Hit::Screen(screen::ScreenHit::RowChanges(t))) => self.menu_for_session(t, at),
                 Some(Hit::Screen(screen::ScreenHit::Why(t)))
                     if self.screen.side_rect.contains(pos) =>
                 {
@@ -1046,9 +1045,6 @@ impl App {
             // (on release).
             let session_press = match hit {
                 Some(Hit::Screen(press @ screen::ScreenHit::Session(s))) => Some((s, press)),
-                Some(Hit::Screen(press @ screen::ScreenHit::RowChanges(term))) => {
-                    Some((self.session_key(term), press))
-                }
                 _ => None,
             };
             if let Some((t, press)) = session_press {
@@ -1216,10 +1212,16 @@ impl App {
                     return;
                 }
                 if self.screen.side_rect.contains(pos) {
-                    self.screen.side_scroll = if up {
-                        self.screen.side_scroll.saturating_sub(3)
+                    // The Remote half scrolls on its own; the rest of the sidebar is Local's.
+                    let scroll = if self.screen.remote_rect.contains(pos) {
+                        &mut self.screen.remote_scroll
                     } else {
-                        self.screen.side_scroll + 3
+                        &mut self.screen.side_scroll
+                    };
+                    *scroll = if up {
+                        scroll.saturating_sub(3)
+                    } else {
+                        *scroll + 3
                     };
                     self.dirty = true;
                     return;

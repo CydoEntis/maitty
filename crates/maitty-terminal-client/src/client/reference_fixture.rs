@@ -774,8 +774,8 @@ mod tests {
                         "{stage:?} {layout:?} {w}x{h}"
                     );
                     assert!(
-                        text.contains("affiliate-site"),
-                        "{stage:?} {layout:?} {w}x{h}: the project is listed\n{text}"
+                        text.contains("⌂ local"),
+                        "{stage:?} {layout:?} {w}x{h}: a session is listed\n{text}"
                     );
                 }
             }

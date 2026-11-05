@@ -83,7 +83,7 @@ impl App {
             .is_ascii()
     }
 
-    fn machine_mark(&self, machine: MachineId, t: &Theme) -> Option<StateMark> {
+    pub(super) fn machine_mark(&self, machine: MachineId, t: &Theme) -> Option<StateMark> {
         let remote = self.remotes.get(&machine)?;
         Some(state_mark(&remote.state, self.ascii_marks(), t))
     }

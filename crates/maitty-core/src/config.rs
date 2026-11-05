@@ -1801,7 +1801,7 @@ mod tests {
         for (written, read) in [
             ("true", Rounding::Corners),
             ("false", Rounding::Off),
-            ("\"full\"", Rounding::Corners),
+            ("\"full\"", Rounding::Full),
             ("\"corners\"", Rounding::Corners),
             ("\"off\"", Rounding::Off),
         ] {
@@ -2529,11 +2529,11 @@ layout = 'cards'",
         };
         assert_eq!(
             ui("[ui]\nlayout = 'hairline'\nrounded = 'full'").rounding(),
-            Rounding::Corners
+            Rounding::Full
         );
         assert_eq!(
             ui("[ui]\nlayout = 'tiled'\nrounded = 'full'").rounding(),
-            Rounding::Corners,
+            Rounding::Full,
             "the same setting applies everywhere"
         );
     }

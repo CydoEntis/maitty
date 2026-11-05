@@ -209,7 +209,7 @@ pub struct Ui {
     pub dim: String,
     /// The focused card's border: "accent", "bright" or "none".
     pub focus_border: String,
-    /// Whether card corners are rounded. Kept as a drawing enum internally; config writes a bool.
+    /// How round the shapes are: `full` (pills), `corners` (rounded boxes, square chips) or `off`.
     pub rounded: Rounding,
     /// Floating: each pane's border in its own colour, by its place in the tab (ADR 0027).
     pub pane_colors: bool,
@@ -611,7 +611,11 @@ pub enum Rounding {
 
 impl Serialize for Rounding {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bool(*self != Rounding::Off)
+        serializer.serialize_str(match self {
+            Rounding::Full => "full",
+            Rounding::Corners => "corners",
+            Rounding::Off => "off",
+        })
     }
 }
 
@@ -624,13 +628,13 @@ impl Rounding {
         self != Rounding::Off
     }
 
-    /// Chips, buttons, rows and the hover end in half-circles.
+    /// Chips, buttons, titles, rows and the hover end in half-circles (pills, a Nerd Font glyph).
     pub fn caps(self) -> bool {
         self == Rounding::Full
     }
 }
 
-/// Older files wrote `rounded = true` / `false`: on is `full`, off is `off`.
+/// Older files wrote `rounded = true` / `false`: on is `corners`, off is `off`.
 impl<'de> Deserialize<'de> for Rounding {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
@@ -642,7 +646,7 @@ impl<'de> Deserialize<'de> for Rounding {
         match Written::deserialize(d)? {
             Written::Switch(on) => Ok(if on { Rounding::Corners } else { Rounding::Off }),
             Written::Name(name) => match name.as_str() {
-                "full" => Ok(Rounding::Corners),
+                "full" => Ok(Rounding::Full),
                 "corners" => Ok(Rounding::Corners),
                 "off" => Ok(Rounding::Off),
                 _ => Err(serde::de::Error::custom(format!(
@@ -933,7 +937,7 @@ mod tests {
         for (written, expected) in [
             ("true", Rounding::Corners),
             ("false", Rounding::Off),
-            ("\"full\"", Rounding::Corners),
+            ("\"full\"", Rounding::Full),
             ("\"corners\"", Rounding::Corners),
             ("\"off\"", Rounding::Off),
         ] {
@@ -953,10 +957,10 @@ mod tests {
             (ui.padding.as_str(), ui.gap.as_str(), ui.dim.as_str()),
             ("small", "medium", "light")
         );
-        assert_eq!(ui.rounded, Rounding::Corners);
+        assert_eq!(ui.rounded, Rounding::Full);
         assert_eq!(size_cells("large"), 3);
         assert_eq!(size_cells("0"), 0);
-        assert!(toml::to_string(&ui).unwrap().contains("rounded = true"));
+        assert!(toml::to_string(&ui).unwrap().contains("rounded = \"full\""));
     }
 
     #[test]

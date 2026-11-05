@@ -321,9 +321,9 @@ pub const SETTINGS: &[Setting] = &[
     Setting {
         path: "ui.rounded",
         label: "Rounded",
-        kind: Kind::Bool,
+        kind: Kind::Choice(crate::config::Rounding::NAMES),
         cat: Cat::Appearance,
-        help: "Round card corners. Tab ends remain square.",
+        help: "Corners round every box; full also makes chips, tabs and rows pills (needs a Nerd Font).",
     },
     Setting {
         path: "ui.dim",

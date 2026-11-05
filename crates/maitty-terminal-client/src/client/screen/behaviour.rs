@@ -1755,10 +1755,6 @@ impl App {
                 }
                 self.screen_side_set(SideItem::Sess(t));
             }
-            ScreenHit::RowChanges(t) => {
-                self.screen.cursor = Some(self.session_key(t));
-                self.act(Action::Changes);
-            }
             // From the splash's banner too, which then goes.
             ScreenHit::Update => {
                 self.splash = false;
@@ -1768,6 +1764,7 @@ impl App {
                 self.splash = false;
                 self.ask_restart();
             }
+            ScreenHit::AddMachine => self.open_machines(),
             ScreenHit::Why(term) => {
                 self.mode = Mode::Why {
                     term,

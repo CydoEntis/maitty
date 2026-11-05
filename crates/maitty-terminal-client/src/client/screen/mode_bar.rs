@@ -566,6 +566,7 @@ fn view_holder(app: &App) -> Option<Holder> {
                 ("p", "paste image"),
                 ("n", "add file"),
                 ("d", "remove"),
+                ("y", "copy path"),
             ],
             ("Esc", "close"),
         ),

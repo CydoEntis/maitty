@@ -447,7 +447,45 @@ fn draw_tab_chips(app: &mut App, buf: &mut Buffer, panes: Rect, model: &[Proj], 
             }
         })
         .collect::<Vec<_>>();
+    let tabs_end = x + segs_width(&chips);
     put(buf, x, first.y, &chips, row.right());
+    draw_machine_badge(app, buf, (tabs_end, first.right(), first.y), t);
+}
+
+/// Where the focused session runs, as a chip set into the first pane's top border at the right:
+/// ` ⌂ this computer ` or ` ⇄ build `. It takes the rightmost stretch of plain border that fits it
+/// between the tabs and the chips already at the right (the state, the ✕), and is left out when
+/// there is none.
+fn draw_machine_badge(app: &App, buf: &mut Buffer, (from, to, y): (u16, u16, u16), t: &Theme) {
+    let Some(focus) = app.focused() else {
+        return;
+    };
+    let name = if focus.machine == MachineId::LOCAL {
+        "⌂ this computer".to_string()
+    } else {
+        format!("⇄ {}", app.machine_label_of(focus.machine))
+    };
+    let badge = seg(
+        format!(" {name} "),
+        Style::default()
+            .fg(t.strong)
+            .bg(t.btn)
+            .add_modifier(Modifier::BOLD),
+    );
+    let w = badge.0.width() as u16;
+    // One border cell is kept either side of the badge.
+    let mut run = 0u16;
+    for x in (from..to.saturating_sub(1)).rev() {
+        if buf[(x, y)].symbol() == "─" {
+            run += 1;
+            if run >= w + 2 {
+                put(buf, x + 1, y, &[badge], x + 1 + w);
+                return;
+            }
+        } else {
+            run = 0;
+        }
+    }
 }
 
 /// The tab row's fixed right end: `◫` splits the focused pane and `⤢` zooms it (lit while it
@@ -840,12 +878,12 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
         let number = if on {
             current
         } else {
-            Style::default().fg(t.text).bg(t.btn)
+            Style::default().fg(t.muted).bg(t.btn)
         };
         let label = if on {
             name_chip(name, lit, t)
         } else {
-            seg(format!(" {name} "), Style::default().fg(t.text).bg(t.card))
+            seg(format!(" {name} "), Style::default().fg(t.text).bg(t.btn))
         };
         // Its state, on screen or not, so a tab out of view still says it works or asks; on the
         // accent the glyph takes the accent's ink, its shape saying the state.
@@ -1477,7 +1515,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         _ => (t.accent, "✓", "Notice"),
     };
     let look = Look::of(&app.cfg.ui);
-    let button = restart.then(|| button_pill(look, t, "Restart now", "", false, t.card));
+    let button = restart.then(|| button_pill(look, t, "Restart now", "", false, t.bg));
     let body_w = |s: &str| s.width() + TOAST_TEXT_PAD;
     let want = [
         Some(body_w(&title)),
@@ -1536,11 +1574,11 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     };
     app.screen.toast_rect = r;
     let ink = |c: Color, bg: Color| if fade > 0.0 { blend(c, bg, fade) } else { c };
-    // Floating: framed like a modal (a box on `card`, round corners whatever `ui.rounded` says),
-    // its border and a kind chip on the top border in the notice's colour, so it reads as a
-    // small floating pane, not text on the ground. Hairline, which has no boxes: a solid block
-    // in `card2` (its `card` is the ground), its left edge a heavy rule (ADR 0028).
-    let bg = if look.hairline { t.card2 } else { t.card };
+    // Floating: framed like a pane (a box on the plain ground, round corners whatever
+    // `ui.rounded` says, no fill of its own), its border and a kind chip on the top border in the
+    // notice's colour. Hairline, which has no boxes: a solid block in `card2` (its `card` is the
+    // ground), its left edge a heavy rule (ADR 0028).
+    let bg = if look.hairline { t.card2 } else { t.bg };
     fill(buf, r, bg);
     let bar = Style::default().fg(ink(colour, bg)).bg(bg);
     if look.hairline {

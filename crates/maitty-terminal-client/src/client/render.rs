@@ -30,7 +30,7 @@ pub fn draw(app: &mut App, f: &mut Frame) {
         app.theme.clone()
     };
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
-    super::screen::set_round(false);
+    super::screen::set_round(super::screen::Look::of(&app.cfg.ui).caps);
     super::screen::set_plain(hairline.then_some(&t));
     // The terminal's own background (its window padding) matches ours while we run.
     let terminal_bg = app.cfg.ui.background != "solid";

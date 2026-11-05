@@ -28,7 +28,10 @@
 //! - the C2 Inbox's footnote is an annotation, not a screen line;
 //! - a failure's buttons end in Send to agent, which the reference predates: under 100 columns
 //!   it takes the evidence sheet's Open session, and the Inbox has no room for it;
-//! - pill caps (a Nerd Font option, on by default) are off, so buttons have square ends;
+//! - the sidebar's column is not compared: it is the Local and Remote cards of the sidebar handoff
+//!   (ADR 0050), tested in `screen::side`;
+//! - pill caps (`ui.rounded = full`, a Nerd Font option, off by default) are off, so buttons have
+//!   square ends;
 //! - the mode bar along the bottom (ADR 0024) is not the reference's: `reference_fixture::cells` draws
 //!   a row taller and leaves out that row, the bar's.
 
@@ -297,6 +300,8 @@ struct Geometry {
     sheet: Option<Rect>,
     overlays: Vec<Rect>,
     side_inner: Rect,
+    /// Where the sidebar's column ends (exclusive), its gutter included.
+    side_end: u16,
 }
 
 fn geometry(id: &str, b: &Block) -> Geometry {
@@ -380,6 +385,7 @@ fn geometry(id: &str, b: &Block) -> Geometry {
         sheet,
         overlays,
         side_inner,
+        side_end: px,
     }
 }
 
@@ -853,6 +859,13 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
             }
         }
     }
+    // The sidebar is the handoff's Local and Remote cards now, not the reference's folders and
+    // rows; `screen::side` holds its own tests of them.
+    for row in &mut want {
+        row.iter_mut()
+            .take(g.side_end as usize)
+            .for_each(|c| *c = ANY);
+    }
     want
 }
 
@@ -1304,8 +1317,8 @@ fn needs_you_is_amber_and_failed_red_in_app_dark() {
     let (x, y) = at(&buf, "asks:");
     assert_eq!(
         buf[(x, y)].fg,
-        t.muted,
-        "the question is quiet: the glyph says it needs you"
+        t.blocked,
+        "the question is amber on a card that needs you"
     );
 }
 

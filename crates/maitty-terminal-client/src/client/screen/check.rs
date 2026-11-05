@@ -239,23 +239,6 @@ pub(super) fn strip(app: &App, checks: &[CheckInfo], t: &Theme) -> Vec<Seg> {
         .collect()
 }
 
-/// "build ✓ · test ✕": every checkpoint by name, a failed one's name in the failure colour.
-pub(super) fn names(app: &App, checks: &[CheckInfo], t: &Theme) -> Vec<Seg> {
-    let mut out = Vec::new();
-    for (i, c) in checks.iter().enumerate() {
-        if i > 0 {
-            out.push(styled(" · ", t.muted, false));
-        }
-        out.push(styled(
-            format!("{} ", name(c)),
-            if failed(c) { t.err } else { t.text },
-            false,
-        ));
-        out.push(styled(glyph(app, c), strip_color(t, c), true));
-    }
-    out
-}
-
 pub(super) fn duration(ms: u64) -> String {
     let secs = ms / 1000;
     if secs < SECS_PER_MIN {

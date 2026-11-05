@@ -215,6 +215,10 @@ pub(super) struct Screen {
     pub side_scroll: u16,
     pub follow: bool,
     pub side_rect: Rect,
+    /// The sidebar's Remote half (its header row and list) as last drawn, and how far its list is
+    /// scrolled; empty while the sidebar is too short to split.
+    pub remote_rect: Rect,
+    pub remote_scroll: u16,
     /// The sidebar drew the Update or Restart chip this frame.
     pub release_in_side: bool,
     /// Where the side sheet was drawn, and the widest it could be there (its edge's drag and
@@ -525,8 +529,6 @@ pub(super) struct Session {
     pub check: Option<CheckInfo>,
     /// Every checkpoint, in the project's order.
     pub checks: Vec<CheckInfo>,
-    /// How full the agent's context is, 0–100, when the agent reports it.
-    pub context: Option<f32>,
     /// Its machine's line is down: what the row says is the last report, not live.
     pub down: bool,
 }
@@ -1032,7 +1034,6 @@ impl App {
                     queued: t.queued.clone(),
                     check: t.check().cloned(),
                     checks: t.checks.clone(),
-                    context: t.usage.context,
                     down: self.machine_down(m.id),
                 });
             }
@@ -1107,7 +1108,6 @@ impl App {
                 queued: Vec::new(),
                 check,
                 checks,
-                context: None,
                 down: self.machine_down(m.id),
             });
         }
@@ -1605,10 +1605,10 @@ pub(super) enum ScreenHit {
     Update,
     /// Restart the daemon onto the installed version (after an update).
     Restart,
+    /// The sidebar's Remote half, empty: open the Machines dialog to add one.
+    AddMachine,
     NewShell,
     Why(ClientTerm),
-    /// The `+N −N` on a session's row: its checkout's Changes.
-    RowChanges(ClientTerm),
     /// The why popover of a session with a check: its evidence sheet.
     CheckEvidence(ClientTerm),
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.

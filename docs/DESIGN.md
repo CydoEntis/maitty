@@ -69,51 +69,49 @@ panes. See UI › *layout and navigation* and *the frame*.
 
 Anything you click or read as a control (a button, tab, tag or key) is a chip on `btn`, or on
 the accent when it is current. `ui.rounded` is the one shape setting
-([ADR 0039](adr/0039-floating-is-the-only-look.md)): off is square, on rounds every box's corners (`╭╮╰╯`). Chips, buttons and rows have square ends either way. Keys are keycaps: ` key ` on `btn`, `strong` and bold. The
+([ADR 0050](adr/0050-local-and-remote-sidebar-with-session-cards.md)): `off` is square, `corners` (the default when on) rounds every box (`╭╮╰╯`) and keeps chips as square-ended full-background rectangles, and `full` also ends chips, tabs, buttons, titles, rows and the hover in half-circle pills (a Nerd Font glyph). Keys are keycaps: ` key ` on `btn`, `strong` and bold. The
 pointer's hover is one quiet tint; selection is a neutral tint with an accent `▎` bar, never an
 accent fill. See UI › *UI conventions*.
 
 ## Sidebar
 
-`SESSIONS` and its count, with `●n` needs you and `✕n` failed at the right. Projects are folder
-rows (a `−`/`+` fold button, the name, `⎇ branch` and check meta). A session is one line: its
-mark, the name in its state's colour when it wants a look (shimmering while working, pulsing
-when it needs you), then the agent's mark, its context past half full (`✻ 72%`, red from 85%),
-uncommitted `+N −N` and the age. A second and third
-line, always `muted`, appear only when they say more: a question, a check result, the first
-failing line. A session with two tabs or more lists them under it, one line each, flush with the
-name and with no branch marks: the tab's number and name (the one on screen in the accent), and its most urgent agent's glyph and
-word at the right; a click shows that tab. The foot holds **+ New** and **Menu**. Collapsed, the sessions become a narrow
-column (each project its first letter, each session its mark and first letter); hidden, the panes take everything. See UI › *sidebar check result* and *collapsed
-sidebar*.
+Two halves in one card ([ADR 0050](adr/0050-local-and-remote-sidebar-with-session-cards.md)). The
+top is `LOCAL`, a title chip on the card's border: this computer's sessions. The bottom half
+starts at a rule that joins the sides (`├ REMOTE 2 ──── + add ┤`) and holds the other machines;
+`+ add` opens the Machines dialog. Each half scrolls on its own, and with no other machine Remote
+says `no remote machines` and offers `+ add one`. There are no folder rows and no machine headers.
 
-**Machines.** With one machine the sidebar is exactly as above. Once the window knows another
-machine, every machine's folders sit under a header, this computer first and the others in their
-stable id order (the sidebar never reorders itself, ADR 0034): `this computer` in `strong` bold,
-then `⇄ build` with its connection state at the right, a glyph and a word in a theme role
-(`connected` in `done`, `connecting` and `reconnecting #n` in `muted`, `needs login`, `needs
-update` and `unreachable` in `err`; amber stays for agents that need you). ASCII marks read
-`<> build` and `+`, `.`, `~`, `x`. The name is cut with a `…` before the word gives way to the
-glyph. A machine that dropped keeps its folders and sessions, drawn again in `muted`: no
-bold, no amber, the working mark held still. Under its header two `muted` lines say
-`disconnected since 2m ago` and why (`text`, the exact fix the link failure carries, wrapped onto
-up to three rows at the sidebar's width, the last ending in `…` only past three). Its needs-you and failed marks leave the title's counts and the Inbox
-until the line is back, and everything returns to normal on its own. A connected machine's header
-may carry up to two `muted` lines of what its own daemon reports, never added to another's: its
-plan limits (`claude 5h 23% · week 41%`) and `$9.00 today`, with `daemon 0.50.0` when that is not
-this window's version. Collapsed, a machine other than this one is a row `●B` (its state glyph,
-coloured as above, and its first letter) over its folders.
+A session is a **card** of three rows:
+1. its mark, its name in its state's colour (shimmering while it works, pulsing when it needs you),
+   and at the right the agent's mark and the age its state began, or `● you` in amber when it needs
+   you;
+2. a badge naming its machine (`⌂ local`, or `⇄ build`) on `btn`, then its folder and `⎇ branch` in
+   `muted`, the branch dropped when fewer than four cells are left;
+3. what it is doing in `muted` (a check result, a plan-limit wait, `2 agents`), or in amber when it
+   asks something.
 
-The **Machines dialog** (leader `w`) is a standard modal: the same state chips and words as the header,
-the fix of a down machine written in full under it in `text`, the Add field on `card2`, and a dim line
-for Windows. Its behaviour is in [UI](UI.md#project-specific-machines-dialog).
+Its other tabs hang under it, one row each: `├ shell  2`, the last `└`, the tab on screen in the
+accent and one that needs you in amber. A blank row follows each card. The selected card is a
+neutral tint on all three rows with an accent `▎` bar. A machine whose line is not up, or that has
+no sessions, is one two-row item in place of its cards: its badge (dim while it is down) with its
+connection at the right (`connected` in `done`, `connecting` and `reconnecting` in `muted`, the
+failures in `err`), then `no sessions yet`, `connecting…` or `disconnected · click for the fix`;
+a click opens the Machines dialog. The foot holds **+ New** and **Menu**. Collapsed, the sessions
+become a narrow column (each session its mark and first letter; a machine other than this one a row
+`●B`); hidden, the panes take everything. See UI › *sidebar check result* and *collapsed sidebar*.
+
+The **Machines dialog** (leader `w`) is a standard modal: the same state chips and words, the fix
+of a down machine written in full under it in `text`, the Add field on `card2`, and a dim line for
+Windows. Its behaviour is in [UI](UI.md#project-specific-machines-dialog).
 
 ## Pane titles and tabs
 
 The session's tabs sit on the first
-pane's top border, as the sidebar's `SESSIONS` chip sits on its own ([ADR 0038](adr/0038-tabs-sit-on-the-pane-border.md)),
+pane's top border, as the sidebar's `LOCAL` chip sits on its own ([ADR 0038](adr/0038-tabs-sit-on-the-pane-border.md)),
 the border running on between the chips (`ui.tab_gap`, on by default, leaves a cell of it between one tab and the next; off, they touch). A chip's ends follow `ui.rounded`: square, rounded corners, or a pill. Each chip is led by its state's glyph (on screen or
-not) and ended by its ✕, the current one in the accent, then a **+** chip for a new tab. A tab
+not) and ended by its ✕, the current one in the accent and the others one `btn` chip with a muted
+number, then a **+** chip for a new tab. At the right, in the first stretch of plain border that
+fits it, a badge names where the focused session runs: `⌂ this computer` or `⇄ build`. A tab
 is named the same everywhere: its own name, else its focused session's. Panes are titled as an
 editor's are ([ADR 0030](adr/0030-panes-titled-like-an-editor.md)): a tab's only pane has no
 title of its own (its border carries the tabs), its tab naming it, showing its state (the glyph opens why) and
@@ -136,7 +134,7 @@ tree beside the open file (Markdown drawn), Changes the changed files and their 
 branch, ahead/behind, recent commits, the last check and snapshots, References the project's
 screenshots and design files, one line each (name, then kind, size and age muted at the right).
 The lit tab names the open view, so the sheet's top border does not repeat it: Every tab
-carries only the ✕. The Inbox and the check evidence
+carries only the ✕. The sheets draw no key-hint row of their own; the mode bar shows their keys. The Inbox and the check evidence
 sheet dock in the same place without the strip. See UI › *the frame* (Sheet), *Inbox check
 groups* and *check evidence sheet*.
 
@@ -155,7 +153,7 @@ of keycaps. See UI › *UI conventions*, *check modals and settings* and *why po
 ## Toasts
 
 One component for every notice: bottom right, above the agent's input area, a small floating
-pane: a `card` boxed in the notice's colour (`err`, `blocked` for needs you, `done`, else the
+pane: a box on the plain ground (no fill of its own) in the notice's colour (`err`, `blocked` for needs you, `done`, else the
 accent) with a kind chip carrying the notice's mark on the top border (`▲ Needs you`,
 `✕ Error`, `✓ Done`, `i Hint`, `✓ Notice`) and the modals' red ✕ chip at its right, then a bold
 title, a detail and an optional preview in italics. Every text row wraps at the toast's width
