@@ -52,6 +52,8 @@ export type SidebarProps = {
   onNewSession: () => void
   /** A new shell in a project's folder. */
   onNewSessionIn: (folder: string) => void
+  /** A new shell on another machine; it asks for a folder there. */
+  onNewSessionOn: (machine: number, name: string) => void
   /** The New worktree dialog for a project, by its key. */
   onNewWorktree: (groupKey: string) => void
   onShowSession: (id: string) => void
@@ -169,7 +171,7 @@ function Expanded(props: GroupProps) {
       <div className="mx-sidebar-list">
         {heads.length === 0
           ? groups.map(renderGroup)
-          : heads.map((head) => <MachineSection key={head.key} head={head} groups={groups.filter((group) => (group.machineName?.toLowerCase() ?? null) === (head.name?.toLowerCase() ?? null))} renderGroup={renderGroup} />)}
+          : heads.map((head) => <MachineSection key={head.key} head={head} online={props.online} onNewSessionOn={props.onNewSessionOn} groups={groups.filter((group) => (group.machineName?.toLowerCase() ?? null) === (head.name?.toLowerCase() ?? null))} renderGroup={renderGroup} />)}
         {groups.length === 0 && <div className="mx-empty-note">No sessions. Projects show up here when a session cds into a git repo.</div>}
       </div>
       <div className="mx-sidebar-foot">
@@ -183,14 +185,18 @@ function Expanded(props: GroupProps) {
 }
 
 /** One machine's header, with its state as a chip, and its folders under it. */
-function MachineSection(props: { head: MachineHead; groups: SessionGroup[]; renderGroup: (group: SessionGroup) => ReactNode }) {
-  const { head, groups, renderGroup } = props
+function MachineSection(props: { head: MachineHead; online: boolean; onNewSessionOn: (machine: number, name: string) => void; groups: SessionGroup[]; renderGroup: (group: SessionGroup) => ReactNode }) {
+  const { head, groups, renderGroup, onNewSessionOn } = props
+  const target = head.name
   return (
     <section className={`mx-machine${head.down ? ' is-down' : ''}`} aria-label={head.label}>
       <div className="mx-machine-head">
         <span className="mx-machine-name">{head.label}</span>
         <span className="mx-spacer" />
         {head.chip && <span className={`mx-machine-chip is-${head.chip.tone}`}><span aria-hidden="true">{head.chip.glyph}</span> {head.chip.word}</span>}
+        {target !== null && (
+          <button type="button" className="mx-machine-new" aria-label={`New session on ${target}`} title={`New session on ${target}`} disabled={!props.online || head.chip?.tone !== 'ok'} onClick={() => { onNewSessionOn(head.machine, target) }}><Icon name="plus" size={13} /></button>
+        )}
       </div>
       {head.down && <p className="mx-machine-why"><DisconnectedSince at={head.downSince} /></p>}
       {head.why !== null && head.chip?.tone === 'bad' && <p className="mx-machine-why">{head.why}</p>}

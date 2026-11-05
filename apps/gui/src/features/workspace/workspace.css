@@ -157,6 +157,9 @@
 .mx-machine-chip { flex: none; font-size: 11.5px; white-space: nowrap; color: var(--dim); }
 .mx-machine-chip.is-ok { color: var(--done); }
 .mx-machine-chip.is-bad { color: var(--danger); }
+.mx-machine-new { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--dim); cursor: pointer; }
+.mx-machine-new:hover:not(:disabled) { background: var(--raise); color: var(--fg); }
+.mx-machine-new:disabled { opacity: .4; cursor: default; }
 .mx-machine.is-down .mx-group { opacity: .6; }
 .mx-machine-why { margin: 0; padding: 0 8px 0 4px; font-size: 11.5px; line-height: 1.5; color: var(--dim); overflow-wrap: anywhere; text-wrap: pretty; }
 .mx-needs-text { font-size: 11.5px; color: var(--warn); white-space: nowrap; }

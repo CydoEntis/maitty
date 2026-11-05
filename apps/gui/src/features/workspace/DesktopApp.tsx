@@ -817,6 +817,12 @@ export function DesktopApp() {
     runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
   }, [runStart, preferences.startFolder, home, focusedSession])
 
+  // The sidebar's header for a machine and the palette both choose where the session goes.
+  const newSessionOn = useCallback((machine: number, name: string) => {
+    setSettingsSection(null)
+    setRemoteStart({ machine, name })
+  }, [])
+
   const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string) => {
     const known = new Set((machinesRef.current.get(target.machine)?.conversations ?? []).map((item) => item.id))
     await startSessionOnMachine(target.machine, folder)
@@ -1458,6 +1464,7 @@ export function DesktopApp() {
     const items: PaletteItem[] = [
       action('new-here', activeGroupKey ? `New session in ${projectName ?? 'this project'}` : 'New session', newProjectSession, keys('new-session')),
       action('new-start', 'New session in the start folder', newSession),
+      ...heads.filter((head) => head.name !== null && head.chip?.tone === 'ok' && online).map((head) => action(`new-on-${head.key}`, `New session on ${head.label}`, () => { newSessionOn(head.machine, head.label) })),
       action('sidebar-side', preferences.sidebarSide === 'left' ? 'Move sidebar to the right' : 'Move sidebar to the left', () => { setPreferences((current) => ({ ...current, sidebarSide: current.sidebarSide === 'left' ? 'right' : 'left' })) }),
       action('split-right', 'Split right', () => { split(null, 'right') }, keys('split-right')),
       action('split-down', 'Split down', () => { split(null, 'down') }, keys('split-down')),
@@ -1493,7 +1500,7 @@ export function DesktopApp() {
     }
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [paletteOpen, platform, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal])
+  }, [paletteOpen, platform, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal, heads, online, newSessionOn])
 
   const restartOffer: RestartOffer | null = mismatch
     ? {
@@ -1549,6 +1556,7 @@ export function DesktopApp() {
       }}
       onNewSession={() => { afterPick(); newSession() }}
       onNewSessionIn={(folder) => { afterPick(); startIn(folder) }}
+      onNewSessionOn={(machine, name) => { afterPick(); newSessionOn(machine, name) }}
       onNewWorktree={(groupKey) => {
         const group = groups.find((candidate) => candidate.key === groupKey)
         const lead = group?.sessions.find((member) => member.id === focusedId) ?? group?.sessions[0]

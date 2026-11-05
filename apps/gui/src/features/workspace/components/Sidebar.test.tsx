@@ -19,7 +19,7 @@ function show(heads: SidebarProps['machineHeads'], groups: SessionGroup[], more:
       groups={groups} machineHeads={heads} focusedId={null} tracks={new Map()} mode="docked" online sessionCount={0}
       startFolderLabel="~" canStart portalContainer={null} onToggleRail={none} canExpand tabOf={new Map()} tabPanes={new Map()}
       openIds={new Set()} paneOf={new Map()} trayStyle="stacked" leadMode="focused" side="left" width={280} onResize={none}
-      onResizeEnd={none} onNewSession={none} onNewSessionIn={none} onNewWorktree={none}
+      onResizeEnd={none} onNewSession={none} onNewSessionIn={none} onNewSessionOn={none} onNewWorktree={none}
       {...more} onShowSession={none} onEndSession={none}
       onEndProject={none} onSetName={none} onRenameSession={none} onPinSession={none} onOpenSettings={none} updateSlot={null} railUpdateSlot={null}
     />,
@@ -42,6 +42,15 @@ describe('the sidebar with machines', () => {
     expect(within(here).queryByText('svc')).toBeNull()
     expect(within(there).getByText('svc')).toBeTruthy()
     expect(within(there).getByText(/connected/)).toBeTruthy()
+  })
+
+  it('starts a session on the machine whose header + is pressed, and not on one that is not connected', () => {
+    const onNewSessionOn = vi.fn()
+    show(machineHeads(new Map([machine(1, 'build', 'connected'), machine(2, 'lost', 'unreachable')])), [], { onNewSessionOn })
+    expect(screen.queryByRole('button', { name: 'New session on this computer' })).toBeNull()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'New session on lost' }).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'New session on build' }))
+    expect(onNewSessionOn).toHaveBeenCalledWith(1, 'build')
   })
 
   it('tells a machine that is down by its word, with the fix under it', () => {
