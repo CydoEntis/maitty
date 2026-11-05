@@ -3,6 +3,7 @@ import { Check, ChevronRight, Circle, CircleDot, Pencil } from 'lucide-react'
 import { Spinner } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { CommandEvent, EditEvent, TodoEvent, ToolEvent } from '../chatEvents'
+import { isOmitted, redactionNote } from '../redaction'
 import { elapsedMs, relativePath, todoProgress, tookText } from '../stepInfo'
 import { Detail, StatusMark, StatusWord } from './cardParts'
 import { DIFF_TONE, diffRows } from './diffRows'
@@ -39,10 +40,17 @@ export function ToolChip({ event }: { event: ToolEvent }) {
           )}
           {event.input !== null && event.detail.trim() !== '' && <p className="mt-1.5 mb-0 text-[11px] font-semibold text-dim">Result</p>}
           <Detail text={event.detail} empty={event.input === null ? 'The conversation history kept no detail for this step.' : 'It returned nothing, or the history did not keep it.'} />
+          <RedactionNote texts={[event.input, event.detail]} />
         </div>
       )}
     </div>
   )
+}
+
+/** A muted line saying the daemon hid a secret in the text above it; nothing when it hid none. */
+function RedactionNote({ texts }: { texts: readonly (string | null)[] }) {
+  const note = redactionNote(...texts)
+  return note === null ? null : <p className="mt-1 mb-0 text-[11.5px] text-dim">{note}</p>
 }
 
 function ExitPill({ event }: { event: CommandEvent }) {
@@ -78,7 +86,8 @@ function CommandState({ event }: { event: CommandEvent }) {
 /** The command, its state, and the last three lines of its output (all of it on request). */
 export function CommandCard({ event }: { event: CommandEvent }) {
   const [all, setAll] = useState(false)
-  const lines = event.output === '' ? [] : event.output.replace(/\n+$/, '').split('\n')
+  const omitted = isOmitted(event.output)
+  const lines = event.output === '' || omitted ? [] : event.output.replace(/\n+$/, '').split('\n')
   const shown = all ? lines : lines.slice(-COMMAND_TAIL_LINES)
   return (
     <div role="group" aria-label={`Command ${event.command}`} className="overflow-hidden rounded-[10px] border border-line2 bg-term">
@@ -87,6 +96,7 @@ export function CommandCard({ event }: { event: CommandEvent }) {
         <code className="min-w-0 flex-1 font-mono text-[12.5px] text-fg [overflow-wrap:anywhere]">{event.command === '' ? 'A command' : event.command}</code>
         <CommandState event={event} />
       </div>
+      {omitted && <p className="m-0 border-t border-line2 px-3 py-2 text-[12px] text-dim">The output shows a secret file, so the history does not keep it.</p>}
       {shown.length > 0 && (
         <div className="border-t border-line2 px-3 py-2">
           <pre className="m-0 max-h-72 overflow-auto font-mono text-[11.5px] leading-[18px] whitespace-pre-wrap text-fg2 [overflow-wrap:anywhere]">{shown.join('\n')}</pre>
@@ -95,6 +105,7 @@ export function CommandCard({ event }: { event: CommandEvent }) {
               {all ? 'Show less' : `Show all ${String(lines.length)} lines`}
             </button>
           )}
+          <RedactionNote texts={[event.output]} />
         </div>
       )}
     </div>
@@ -139,6 +150,9 @@ export function EditCard({ event, root, onOpen }: EditCardProps) {
       )}
       {event.diff.status === 'unavailable' && (
         <p className="m-0 border-t border-line2 px-3 py-2 text-[12px] text-dim">The conversation history did not keep this change&apos;s content, so its diff is unavailable.</p>
+      )}
+      {event.diff.status === 'omitted' && (
+        <p className="m-0 border-t border-line2 px-3 py-2 text-[12px] text-dim">This looks like a secret file, so the history keeps its name but not its content.</p>
       )}
       {shown.length > 0 && (
         <div className="border-t border-line2 py-1 font-mono text-[11.5px] leading-[19px]">

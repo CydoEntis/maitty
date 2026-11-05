@@ -420,3 +420,80 @@ fn rfc3339_times_become_unix_milliseconds() {
     assert_eq!(iso_ms("yesterday"), None);
     assert_eq!(iso_ms("2026-13-04T09:30:15Z"), None);
 }
+
+/// A GitHub-token-shaped string built from pieces, so no secret-shaped literal sits in the source.
+fn fake_token() -> String {
+    format!("{}{}", "ghp_", "aB3d".repeat(9))
+}
+
+#[test]
+fn a_followed_claude_transcript_masks_tokens_and_omits_a_secret_files_text() {
+    let lines = vec![
+        claude_user("u1", &format!("my token is {}", fake_token())),
+        claude_assistant(
+            "a1",
+            json!({ "type": "tool_use", "id": "toolu_1", "name": "Write", "input": { "file_path": "/w/.env", "content": "API_KEY=abc123def456\n" } }),
+        ),
+        claude_result("toolu_1", json!("created"), false),
+        claude_assistant(
+            "a2",
+            json!({ "type": "tool_use", "id": "toolu_2", "name": "Bash", "input": { "command": "echo $T" } }),
+        ),
+        claude_result("toolu_2", json!(format!("T={}", fake_token())), false),
+    ];
+    let history = history_of(Format::Claude, &lines);
+    let items = items(&history);
+    assert_eq!(message(items[0]), (&Role::User, "my token is [redacted]"));
+    let Content::Tool { input: Some(input), .. } = &items[1].content else {
+        panic!("a write")
+    };
+    assert_eq!(input["file_path"], "/w/.env");
+    assert_eq!(input["content"], "[content of a secret file omitted]");
+    let Content::Tool { output, .. } = &items[2].content else {
+        panic!("a command")
+    };
+    assert_eq!(output, "T=[redacted]");
+}
+
+#[test]
+fn a_followed_codex_rollout_masks_tokens_and_omits_a_secret_patch() {
+    let at = "2026-11-04T10:00:00.000Z";
+    let lines = vec![
+        codex(at, "event_msg:task_started", json!({ "turn_id": "turn-a" })),
+        codex(
+            at,
+            "response_item:custom_tool_call",
+            json!({
+                "name": "apply_patch", "call_id": "c1",
+                "input": "*** Begin Patch\n*** Add File: .env\n+DB_PASSWORD=hunter2hunter2\n*** End Patch",
+            }),
+        ),
+        codex(
+            at,
+            "response_item:custom_tool_call_output",
+            json!({ "call_id": "c1", "output": "{\"output\":\"Success\",\"metadata\":{\"exit_code\":0}}" }),
+        ),
+        codex(
+            at,
+            "response_item:function_call",
+            json!({ "name": "exec_command", "call_id": "c2", "arguments": json!({ "cmd": "env" }).to_string() }),
+        ),
+        codex(
+            at,
+            "response_item:function_call_output",
+            json!({ "call_id": "c2", "output": format!("Exit code: 0\nWall time: 1 seconds\nOutput:\nGH={}", fake_token()) }),
+        ),
+    ];
+    let history = history_of(Format::Codex, &lines);
+    let items = items(&history);
+    let Content::Tool { output, .. } = &items[0].content else {
+        panic!("a patch")
+    };
+    assert!(output.contains(".env (add)"));
+    assert!(output.contains("[content of a secret file omitted]"));
+    assert!(!output.contains("hunter2"));
+    let Content::Tool { output, .. } = &items[1].content else {
+        panic!("a command")
+    };
+    assert_eq!(output, "GH=[redacted]");
+}

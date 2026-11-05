@@ -1,4 +1,5 @@
 import type { FileChangeKind, FileDiff } from './chatEvents'
+import { isOmitted } from './redaction'
 import { parseUnifiedDiff, wholeFileDiff } from './unifiedDiff'
 
 // The daemon writes a Codex `fileChange` item as one text block (history_provider.rs):
@@ -30,6 +31,7 @@ export function changeKindOf(word: string): FileChangeKind {
 }
 
 export function diffForChange(change: FileChangeKind, body: string, truncated: boolean): FileDiff {
+  if (isOmitted(body)) return { status: 'omitted' }
   // Codex sends a created file as its raw contents, not as a diff.
   if (change === 'add') return wholeFileDiff(body, 'add', truncated)
   if (change === 'delete' && !body.startsWith('@@')) return wholeFileDiff(body, 'remove', truncated)

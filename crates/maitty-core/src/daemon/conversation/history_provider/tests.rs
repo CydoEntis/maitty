@@ -206,3 +206,89 @@ fn history_cached_before_these_fields_still_reads() {
     assert_eq!(history.entries.len(), 1);
     assert_eq!(history.entries[0].started_at_ms, None);
 }
+
+/// A GitHub-token-shaped string built from pieces, so no secret-shaped literal sits in the source.
+fn fake_token() -> String {
+    format!("{}{}", "ghp_", "aB3d".repeat(9))
+}
+
+#[test]
+fn a_claude_write_to_a_secret_file_keeps_its_path_and_loses_its_text() {
+    let entry = read_item(
+        "item/completed",
+        json!({}),
+        json!({"id":"1","type":"commandExecution","command":"Write ","status":"completed","aggregatedOutput":"created","input":{
+            "file_path":"app/.env","content":"DB_PASSWORD=hunter2hunter2\n"
+        }}),
+    );
+    let Content::Tool { input: Some(input), output, .. } = entry.content else {
+        panic!("input is kept");
+    };
+    assert_eq!(input["file_path"], "app/.env");
+    assert_eq!(input["content"], "[content of a secret file omitted]");
+    assert_eq!(output, "created");
+}
+
+#[test]
+fn a_claude_command_that_echoes_a_token_is_masked_in_input_label_and_output() {
+    let command = format!("curl -H 'Authorization: Bearer {}' https://x.test", fake_token());
+    let entry = read_item(
+        "item/completed",
+        json!({}),
+        json!({"id":"1","type":"commandExecution","command":command,"status":"completed",
+               "aggregatedOutput": format!("got {}", fake_token()),
+               "input":{"command":command}}),
+    );
+    let Content::Tool { input: Some(input), output, label, .. } = entry.content else {
+        panic!("a tool row");
+    };
+    for text in [input["command"].as_str().unwrap(), label.as_str(), output.as_str()] {
+        assert!(!text.contains(&fake_token()), "{text}");
+        assert!(text.contains("[redacted]"), "{text}");
+    }
+}
+
+#[test]
+fn a_codex_file_change_to_a_secret_file_omits_its_diff_and_keeps_other_files() {
+    let entry = read_item(
+        "item/completed",
+        json!({}),
+        json!({"id":"1","type":"fileChange","status":"completed","changes":[
+            {"path":"app/.env","kind":"add","diff":"+DB_PASSWORD=hunter2hunter2\n"},
+            {"path":"src/a.rs","kind":"update","diff":"-old\n+new\n"},
+        ]}),
+    );
+    let Content::Tool { output, .. } = entry.content else {
+        panic!("a file change row");
+    };
+    assert!(output.contains("app/.env (add)"));
+    assert!(output.contains("[content of a secret file omitted]"));
+    assert!(!output.contains("hunter2"));
+    assert!(output.contains("src/a.rs (update)\n-old\n+new"));
+}
+
+#[test]
+fn codex_command_output_and_messages_are_masked() {
+    let entry = read_item(
+        "item/completed",
+        json!({}),
+        json!({"id":"1","type":"commandExecution","command":"echo","status":"completed",
+               "aggregatedOutput": format!("TOKEN: {}", fake_token())}),
+    );
+    let Content::Tool { output, .. } = entry.content else {
+        panic!("a tool row");
+    };
+    assert_eq!(output, "TOKEN: [redacted]");
+    let entry = read_item(
+        "item/completed",
+        json!({}),
+        json!({"id":"2","type":"agentMessage","text": format!("the key is {}", fake_token())}),
+    );
+    assert_eq!(
+        entry.content,
+        Content::Message {
+            role: crate::daemon::conversation::history::Role::Assistant,
+            text: "the key is [redacted]".into()
+        }
+    );
+}

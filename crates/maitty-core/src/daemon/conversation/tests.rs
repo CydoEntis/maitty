@@ -483,6 +483,87 @@ async fn claude_edit_call_and_approval_carry_input_diff_and_a_link_to_the_tool_s
 }
 
 #[tokio::test]
+async fn claude_write_of_a_secret_file_and_an_echoed_token_are_masked_in_history() {
+    use super::history::{Attachments, Content};
+    use crate::conversation::ConversationId;
+
+    let directory = crate::daemon::persist::scratch_dir();
+    let (launch, owner) = claude_launch(directory.path(), Some("tool-secret"));
+    let (task, stop, requests, mut received) = start_claude_adapter(launch, owner).await;
+    start_claude_thread(&requests, &mut received, owner).await;
+    requests
+        .send(super::runtime::Command {
+            token: 3,
+            request: super::runtime::Rpc::Send {
+                params: json!({
+                    "threadId":"fixture-session",
+                    "input":[{"type":"text","text":"hello fake Claude"}]
+                }),
+            },
+        })
+        .await
+        .unwrap();
+
+    let mut histories = Attachments::default();
+    histories.attach(1, ConversationId(1));
+    let mut approval = None;
+    loop {
+        match receive_claude_payload(&mut received, owner).await {
+            Payload::Notification { method, params } => {
+                histories
+                    .notification(ConversationId(1), "fixture-session", &method, &params)
+                    .unwrap();
+                if method == "turn/completed" {
+                    break;
+                }
+            }
+            Payload::Request { id, method, params } => {
+                approval = Some((method, params));
+                requests
+                    .send(super::runtime::Command {
+                        token: 4,
+                        request: super::runtime::Rpc::Answer {
+                            request_id: id,
+                            response: json!({"decision":"accept"}),
+                        },
+                    })
+                    .await
+                    .unwrap();
+            }
+            Payload::Response { .. } => {}
+            _ => panic!("unexpected Claude payload"),
+        }
+    }
+
+    // The fixture asserts the agent was answered with its own, unmasked input. The approval the
+    // adapter raises is masked where the daemon stores it (see the daemon-level test).
+    let (method, _) = approval.expect("the write asks for approval");
+    assert_eq!(method, "item/fileChange/requestApproval");
+
+    let history = histories.get(1).unwrap();
+    let find = |item: &str| {
+        history
+            .entries
+            .iter()
+            .find(|entry| entry.source.item == item)
+            .unwrap_or_else(|| panic!("{item} is in the history"))
+    };
+    let Content::Tool { input, .. } = &find("toolu_write").content else {
+        panic!("a write is a tool row");
+    };
+    let input = input.as_ref().expect("the write keeps its input");
+    assert_eq!(input["file_path"], "app/.env");
+    assert_eq!(input["content"], super::redact::OMITTED);
+    let Content::Tool { output, .. } = &find("toolu_echo").content else {
+        panic!("a command is a tool row");
+    };
+    assert_eq!(output, "token is [redacted]");
+
+    stop_claude_adapter(task, stop, &mut received, owner).await;
+    drop(directory);
+}
+
+#[tokio::test]
 async fn claude_adapter_denies_a_host_declined_tool() {
     exercise_claude_approval("approval-decline", "decline").await;
 }
@@ -1766,6 +1847,55 @@ async fn file_change_approval_is_human_only_and_uses_exact_provider_id() {
         let response: Value = serde_json::from_str(response.trim()).unwrap();
         assert_eq!(response["id"], "file-approval-private");
         assert_eq!(response["result"]["decision"], "accept");
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+async fn a_file_change_approval_for_a_secret_file_keeps_the_path_and_omits_the_diff() {
+    let mut session = conversation_fixture("conversation-file-approval-secret").await;
+    let outcome = AssertUnwindSafe(async {
+        let (id, generation) = create(&mut session).await;
+        let sent = exchange(
+            &mut session,
+            320,
+            crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend {
+                id,
+                generation,
+                operation: 1,
+                text: "Synthetic secret file request".into(),
+            }),
+            None,
+        )
+        .await;
+        assert!(matches!(
+            sent,
+            ServerMsg::Reply(crate::protocol::Reply::ConversationSent(_))
+        ));
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while session.daemon.conversation_states[&id].approvals.is_empty() {
+                session.daemon.handle(session.events.recv().await.unwrap());
+            }
+        })
+        .await
+        .expect("the file-change request reached the daemon");
+
+        let request_id =
+            crate::conversation::ProviderRequestId::Text("file-approval-private".into());
+        let approval = session.daemon.conversation_states[&id].approvals[&request_id].clone();
+        assert_eq!(approval.changes.len(), 1);
+        assert_eq!(approval.changes[0].path, "app/.env");
+        assert_eq!(approval.changes[0].kind, "add");
+        assert_eq!(approval.changes[0].diff, super::redact::OMITTED);
+        assert_eq!(
+            approval.reason.as_deref(),
+            Some("Write the token [redacted] to .env")
+        );
     })
     .catch_unwind()
     .await;

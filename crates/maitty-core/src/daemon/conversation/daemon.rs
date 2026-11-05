@@ -40,6 +40,12 @@ fn visible_approval_text(text: &str) -> String {
     visible
 }
 
+/// Approval text that may be stored and served: invisible characters spelled out, and
+/// token- and key-shaped strings masked (see `redact.rs`).
+fn approval_text(text: &str) -> String {
+    super::redact::redact_text(&visible_approval_text(text)).into_owned()
+}
+
 fn supported_approval_choices(
     params: &serde_json::Value,
 ) -> Vec<crate::conversation::ApprovalDecision> {
@@ -94,8 +100,8 @@ fn user_input_questions(
                     .iter()
                     .map(|option| {
                         Some(crate::conversation::UserInputOption {
-                            label: visible_approval_text(option.get("label")?.as_str()?),
-                            description: visible_approval_text(
+                            label: approval_text(option.get("label")?.as_str()?),
+                            description: approval_text(
                                 option.get("description")?.as_str()?,
                             ),
                         })
@@ -105,8 +111,8 @@ fn user_input_questions(
             };
             Some(crate::conversation::UserInputQuestion {
                 id,
-                header: visible_approval_text(question.get("header")?.as_str()?),
-                question: visible_approval_text(question.get("question")?.as_str()?),
+                header: approval_text(question.get("header")?.as_str()?),
+                question: approval_text(question.get("question")?.as_str()?),
                 is_other: question
                     .get("isOther")
                     .and_then(serde_json::Value::as_bool)
@@ -127,10 +133,15 @@ fn file_change_previews(
     changes
         .iter()
         .map(|change| {
+            let raw_path = change.get("path")?.as_str()?;
             Some(crate::conversation::FileChangePreview {
-                path: visible_approval_text(change.get("path")?.as_str()?),
+                path: visible_approval_text(raw_path),
                 kind: change.get("kind")?.as_str()?.to_owned(),
-                diff: visible_approval_text(change.get("diff")?.as_str()?),
+                // The diff of a secret file is left out, the path and kind stay.
+                diff: super::redact::redact_diff(
+                    raw_path,
+                    &visible_approval_text(change.get("diff")?.as_str()?),
+                ),
             })
         })
         .collect()
@@ -147,6 +158,8 @@ impl Daemon {
             let mut histories = std::collections::BTreeMap::new();
             for c in records {
                 if let Some(mut history) = cache.load(c.id, &c.binding)? {
+                    // A cache written before redaction existed may still hold secrets.
+                    history.redact_stored();
                     history.reconnect()?;
                     histories.insert(c.id, history);
                 }
@@ -453,11 +466,11 @@ impl Daemon {
                             Vec::new()
                         },
                         permissions: params.get("permissions").cloned(),
-                        command: command.map(visible_approval_text),
+                        command: command.map(approval_text),
                         reason: params
                             .get("reason")
                             .and_then(serde_json::Value::as_str)
-                            .map(visible_approval_text),
+                            .map(approval_text),
                         cwd: params
                             .get("cwd")
                             .or_else(|| params.get("grantRoot"))

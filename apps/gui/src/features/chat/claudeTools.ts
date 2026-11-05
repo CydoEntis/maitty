@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { FileChangeKind, FileDiff, TodoItem, TodoItemState } from './chatEvents'
+import { isOmitted } from './redaction'
 import { diffFromHunks, replacementHunk, wholeFileDiff } from './unifiedDiff'
 
 // The Claude adapter reports every tool call as a `commandExecution` item whose label is the
@@ -45,6 +46,7 @@ export type ClaudeToolMapping =
   | { readonly kind: 'tool'; readonly name: string; readonly target: string | null; readonly input: string | null }
 
 const UNAVAILABLE: FileDiff = { status: 'unavailable' }
+const OMITTED: FileDiff = { status: 'omitted' }
 
 function mapEdit(tool: string, input: unknown): ClaudeToolMapping {
   const none: ClaudeToolMapping = { kind: 'edit', tool, file: null, change: tool === WRITE_TOOL ? 'unknown' : 'update', diff: UNAVAILABLE }
@@ -52,12 +54,16 @@ function mapEdit(tool: string, input: unknown): ClaudeToolMapping {
     const parsed = EditInputSchema.safeParse(input)
     if (!parsed.success) return none
     const { file_path: file, old_string: oldText, new_string: newText } = parsed.data
+    if (isOmitted(oldText) || isOmitted(newText)) return { kind: 'edit', tool, file, change: 'update', diff: OMITTED }
     return { kind: 'edit', tool, file, change: 'update', diff: diffFromHunks([replacementHunk(oldText, newText)]) }
   }
   if (tool === MULTI_EDIT_TOOL) {
     const parsed = MultiEditInputSchema.safeParse(input)
     if (!parsed.success) return none
     const { file_path: file, edits } = parsed.data
+    if (edits.some((edit) => isOmitted(edit.old_string) || isOmitted(edit.new_string))) {
+      return { kind: 'edit', tool, file, change: 'update', diff: OMITTED }
+    }
     return {
       kind: 'edit',
       tool,
@@ -68,6 +74,7 @@ function mapEdit(tool: string, input: unknown): ClaudeToolMapping {
   }
   const parsed = WriteInputSchema.safeParse(input)
   if (!parsed.success) return none
+  if (isOmitted(parsed.data.content)) return { kind: 'edit', tool, file: parsed.data.file_path, change: 'unknown', diff: OMITTED }
   // Write replaces the whole file and its input does not carry the old text, so an overwrite
   // shows every line as added.
   return { kind: 'edit', tool, file: parsed.data.file_path, change: 'unknown', diff: wholeFileDiff(parsed.data.content, 'add') }
