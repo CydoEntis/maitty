@@ -293,3 +293,200 @@ the good runs, so extra work sat outside the page's script. It was the first run
 might point at the harness (a cold web process, cage's Xwayland starting lazily) rather than the app,
 but one sample cannot show that. If it appears in the app, compare `webProcessCpuPct` against
 `webProcessMainThreadCpuPct` first.
+
+## Input latency: v0.65.0 runs one step behind (2026-11-05)
+
+The v0.65.0 desktop app is withdrawn (the update manifest on the release names v0.64.0 and the
+release page warns against its desktop installers) until this is fixed. Ticket 35 in
+[TICKETS-TO-FILE](TICKETS-TO-FILE.md) holds the bug; this section holds how it is to be found.
+
+### What was seen
+
+On the owner's Linux machine (Hyprland, NVIDIA RTX 4060, WebKitGTK), in every pane:
+
+- A typed letter shows after a pause, or when the next key is pressed.
+- A menu in Claude Code shows the row from before the last arrow key, so Enter acts on a row the
+  screen did not show.
+- Clicking away from the window and back brings the pane up to date.
+- Meanwhile the overlay reads 63 fps, 0% CPU, WebGL on every pane, and output arriving (121 B/s).
+
+### What that rules out
+
+- **The causes above.** They were CPU and paint cost; here the main thread is idle and frames are on
+  time.
+- **How frames reach the driver.** `WEBKIT_DISABLE_DMABUF_RENDERER=1` changed nothing.
+- **A library.** `Cargo.lock` and `apps/gui/package.json` are the same in v0.64.0 and v0.65.0 apart
+  from the new workspace crates.
+
+What is left is the path a pane's bytes take, which v0.65.0 rewrote for several machines:
+`hub.rs` and `streams.rs` are new, and `terminal_stream.rs`, `TerminalView.tsx` and `api/daemon.ts`
+were rebuilt around them.
+
+### What was measured on 2026-11-05 (afternoon), on the owner's machine
+
+Two measurements, both repeatable without a person at the keyboard.
+
+**1. The daemon, the hub and the host's batching are not the cause.** A test in
+`apps/gui/src-tauri/src/hub/tests/end_to_end.rs` (not kept; write it again as a kept test) typed
+eight keys, 400 ms apart, into a pane of a real daemon through `Wire::command`, and timed each echo
+arriving as a `Reaction::Frame`: **13 ms, eight times out of eight**. That is `FLUSH_EVERY` plus one.
+Nothing is a step behind up to the point where the host calls `channel.send`.
+
+**2. In the real window, output does not arrive while nobody touches it.** With the v0.65.0
+AppImage open on a second monitor and another window focused:
+
+- `maitty send -p <pane> --no-enter x` (the terminal app's CLI, on the same daemon) typed a key
+  into a shell pane the window shows. `maitty read <pane>` had the key at once.
+- A screenshot of the window every half second (`grim -g "<x>,<y> <w>x<h>"`) showed **no change for
+  25 s, three times out of three**, and again for 8 s four times after the window had been given
+  focus for a moment and lost it. Single keys, so frames far under 1,024 bytes.
+- The overlay in those screenshots read 62 to 63 fps and **0 B/s** throughout. `countOutput` runs
+  in the channel's `onmessage` (`api/terminalStream.ts`), so the frames were not reaching the
+  window's script at all.
+- When the window was next focused, the pane showed everything.
+
+So the wait is between `channel.send` in the host and `onmessage` in the window, and it ends when
+the window gets an event. With the window focused, each key press is such an event, which is why
+the pane runs exactly one step behind.
+
+**Read but not the cause, as far as reading goes:** `tao` 0.37.2's `EventLoopProxy::send_event` on
+Linux pushes the event and calls `MainContext::default().wakeup()`, and its loop takes user events
+before it blocks, so the host's main loop should be woken for each `eval`.
+
+**Not yet known:** whether the host's `eval` reaches the web process and is not run, or is not
+sent. Counting bytes in `/proc/<pid>/io` was too noisy to say (the overlay's own sampling reads
+`/proc` every second).
+
+**A second bug found while measuring.** After the window opened, the shell's input line held
+`11;rgb:0505/0d0d/1515` and `1;2c` several times over: the answers to an OSC 11 colour query and a
+device-attributes query, typed into the pane as if the person had typed them. A view that writes a
+pane's history or replay into xterm answers every query in it again, and the answer goes out
+through `onData` as input. In a shell it is junk on the prompt; in a program with a menu it is
+keys nobody pressed. Ticket 40.
+
+### The fix, in order
+
+1. **Find the side first (half an hour).** Count in the host each frame handed to `channel.send`
+   (a counter read by `performance_sample`), next to `countOutput` in the window. Run measurement 2.
+   If the host's count rises while the window's stays at 0, the frames are lost between the two,
+   and step 2 is the fix. If the host's count does not rise, the host is not sending while the
+   window is idle: follow that in `terminal_stream.rs` before anything else.
+2. **Carry terminal output on a socket the web view reads itself**, not on a Tauri channel. The
+   host listens on `127.0.0.1` on a port it picks, the window connects with a one-time token the
+   host hands it through a command, and frames keep the header they have now. A WebSocket is read
+   by the web process's own network stack and does not wait for the host's main loop or for
+   `eval`. T3 Code carries its terminal the same way. This needs an ADR (a new local listener,
+   the token, `connect-src` in the CSP) and the security checklist.
+3. **Stop answering queries in replayed output** (ticket 40): while a view writes history or a
+   replay, what xterm sends through `onData` is dropped; only live output may be answered.
+4. **Then the probe and the budgets below**, so the next release is measured.
+
+### How to run measurement 2 again
+
+```sh
+# The window: open, on a monitor, not focused. Its geometry:
+hyprctl clients -j | jq -r '.[] | select(.class=="maitty-gui") | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+# A shell pane it shows (find its number with `maitty read <n>`), then for each key:
+MAITTY_SOCKET=default maitty send -p <pane> --no-enter x
+grim -g "<geometry>" shot.png     # every half second; compare with the shot before the key
+```
+
+Turn the overlay on first (Settings › Performance): its B/s figure is in every screenshot.
+
+### The gap in what we measure
+
+Everything in *Measuring in the app* is about drawing: frames, slow frames, animations, CPU. None
+of it times a key. A pane can be one step behind with every one of those figures perfect, which is
+what happened. **The time from a key to its echo on screen has to be a measured figure**, in the
+app and in the harness, before anything is fixed.
+
+### How it will be found
+
+Measure first, change second. No fix goes in on a theory.
+
+1. **Reproduce away from the owner's window.** A dev build on a nested socket
+   (`MAITTY_SOCKET=<name>`), on the same machine. Also start the v0.64.0 AppImage on that machine
+   and note whether it is one step behind: that says whether the cause arrived in v0.65.0.
+2. **Add the probe.** Stamp one key at each hop and log the six times:
+   xterm `onData` → the `terminal_input` command received by the host → `Output` from the daemon
+   received by the hub → `Streams::flush` → the channel message received in the window →
+   `emulator.write` done. Keep it behind Settings › Performance as **Key to echo** (median, 95th
+   percentile, worst), so the next report has it.
+3. **Read the six times.** The hop where the time goes is the bug. If the times are all small and
+   the screen is still late, the wait is after `emulator.write`: xterm's own render, or the web
+   view presenting the canvas.
+4. **If the hop is not obvious, bisect.** v0.64.0 to v0.65.0 is the stack `pr/01` to `pr/35`; each
+   `pr/NN` branch is a point to build and try, so the search is about five builds.
+5. **Things to check first**, cheapest first, each by the probe and not by reading:
+   - A frame of 1,024 bytes or more goes to the window through Tauri's channel fetch and smaller ones
+     by direct eval, and the window hands channel messages over in order: one slow fetch holds every
+     later frame.
+   - `flushOnFrame` waits out `FLUSH_GAP_MS` with a timer and then an animation frame; a frame that
+     does not come leaves the write queued.
+   - The host loop's `timeout_at` around `hub.next()`: output held in `Streams` is sent only when
+     the wait ends.
+   - The input queue in `TerminalView.tsx` sends a key only after the key before it was answered.
+6. **Fix at that hop, with a test that fails without the fix.**
+
+### Budgets
+
+A change to this area passes when all of these hold on Linux with WebKitGTK:
+
+| Figure | Budget |
+| --- | --- |
+| Key to echo in an idle shell, 95th percentile | under 30 ms |
+| A menu redraw after an arrow key | shows without another key or a refocus |
+| One working session, silent | under 5% of a core (unchanged) |
+| One session streaming about 20 KB/s | under 40% of a core (unchanged) |
+
+### Keeping it fixed
+
+- A host test with a real daemon: send a key through `terminal_input`, and fail if no frame for it
+  reaches the channel within the budget with nothing else happening.
+- A harness scenario that types twenty keys a second apart and fails if any echo waits for the
+  next key.
+- CI cannot feel lag, and it passed v0.65.0. Until the harness scenario runs in CI, a release of
+  the desktop app needs the **Key to echo** figure from a real Linux window in its pull request.
+
+### How two other apps do it (read 2026-11-05)
+
+From a read of both repositories on that date: T3 Code (`pingdotgg/t3code` at `b18434e`) and
+PandaCode (`aicodeking/pandacode` at `78f77a0`). Neither app was run, and the links were not
+re-checked after the read.
+
+| | Maitty desktop | T3 Code | PandaCode |
+| --- | --- | --- | --- |
+| Shell | Tauri 2 | Electron 44 | Tauri 2 |
+| Engine on Linux | WebKitGTK | Chromium | WebKitGTK 4.1; Linux builds are "previews", the AppImage forces X11 |
+| What an agent is on screen | its terminal first, a chat view second | a structured chat built from the agent's event stream | a structured chat; the agent's own TUI is an optional panel |
+| Terminal | xterm.js with the WebGL addon | not xterm.js since [#4860](https://github.com/pingdotgg/t3code/pull/4860): `libghostty-vt` as WASM, drawn on Canvas 2D, dirty rows only | xterm.js 6 with no renderer addon |
+| Output on its way to the window | held up to 12 ms in the host, then a Tauri channel | WebSocket; an ack window of 8 chunks or 64 KiB, no fixed timer found | a Tauri event for each read, no batching |
+| Chat text | not coalesced | coalesced at 50 ms; the list is virtualized and history is paged | coalesced at 33 ms or 8 KiB; 100 messages a page |
+| Who owns the agents | a daemon that outlives the window | a server; outlives the window only when installed as a service | the app; closing the window quits on Linux |
+
+What each has said about lag:
+
+- **T3 Code.** Its one diagnosed typing lag
+  ([#12689](https://github.com/pingdotgg/t3code/issues/12689), Windows) was the shell's own IPC:
+  the browser UI on the same server was smooth. A request to move to Tauri was declined
+  ([#4152](https://github.com/pingdotgg/t3code/issues/4152)). No Linux lag issue was found.
+- **PandaCode.** [#333](https://github.com/aicodeking/pandacode/issues/333), opened the same day
+  by a user on Arch and Hyprland, reports the WebKit main thread at 98 to 100% of a core while
+  streaming, with typing lag, and blames a layout forced on every key and an unfiltered
+  `MutationObserver`. One user's figures, no maintainer reply yet.
+
+**What to try here, each one judged by the Key to echo probe and not by feel:**
+
+1. **No fixed hold on the first bytes.** Neither app waits on a timer before sending output. Send
+   a pane's first chunk at once and batch only while more keeps coming.
+2. **The terminal without the WebGL addon** on WebKitGTK. Neither app uses xterm's WebGL renderer.
+3. **Channel and command time against a local WebSocket** to the daemon. T3's window talks to its
+   server over WebSocket, and its typing lag was shell IPC.
+4. **`GDK_BACKEND=x11`**, which PandaCode forces. It may change nothing about latency.
+5. **The chat view**: coalesce deltas, virtualize the list, page the history. Both apps do.
+
+**A decision for the owner, after the probe has named the hop.** Both apps lead with a structured
+chat and treat the terminal as secondary, and the one on Chromium has no Linux lag on record while
+the one on WebKitGTK calls its Linux build a preview. If the hop turns out to be the web view or
+Tauri's IPC and not this app's code, the choice is between working around WebKitGTK and moving the
+desktop app to Chromium (Electron, or a Chromium web view). That is an ADR, not a ticket.
