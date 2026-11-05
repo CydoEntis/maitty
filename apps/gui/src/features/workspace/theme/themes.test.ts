@@ -35,7 +35,15 @@ describe('themes', () => {
     const generated = THEMES.filter((candidate) => !['High Contrast', 'Paper', 'Day'].includes(candidate.name))
     for (const theme of generated) {
       expect(theme.tokens.warn).toBe(theme.light ? '#8F5400' : '#F2B65A')
-      expect(theme.tokens.danger).toBe(theme.light ? '#B8362C' : '#F07F78')
+      const danger = theme.light ? '#B8362C' : '#F07F78'
+      if (contrastRatio(danger, theme.tokens.term) >= MIN_TEXT_CONTRAST) {
+        expect(theme.tokens.danger, theme.name).toBe(danger)
+      } else {
+        // A pale ground (Zenburn) lifts red toward white until it reads, and it stays red.
+        const { r, g, b } = parseColor(theme.tokens.danger)
+        expect(r, theme.name).toBeGreaterThan(g)
+        expect(r, theme.name).toBeGreaterThan(b)
+      }
     }
   })
 
@@ -134,6 +142,20 @@ describe('contrast audit', () => {
       const palette = xtermTheme(theme.tokens)
       for (const slot of ANSI_TEXT_COLOURS) {
         for (const [ground, colour] of TEXT_GROUNDS(theme.tokens)) {
+          expect(contrastRatio(palette[slot] ?? '', colour), `${theme.name} ${slot} on ${ground}`).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
+        }
+      }
+    }
+  })
+
+  it('keeps accent, status, ANSI slots and every ANSI colour but black readable on --term and --bg in every dark theme', () => {
+    for (const theme of THEMES.filter((candidate) => !candidate.light)) {
+      const palette = xtermTheme(theme.tokens)
+      for (const [ground, colour] of TEXT_GROUNDS(theme.tokens)) {
+        for (const slot of [...STATUS_TEXT_SLOTS, ...ANSI_TEXT_SLOTS]) {
+          expect(contrastRatio(theme.tokens[slot], colour), `${theme.name} ${slot} on ${ground}`).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
+        }
+        for (const slot of ANSI_TEXT_COLOURS) {
           expect(contrastRatio(palette[slot] ?? '', colour), `${theme.name} ${slot} on ${ground}`).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
         }
       }
