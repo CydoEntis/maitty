@@ -591,8 +591,9 @@ pub(super) fn side_focused(app: &App) -> bool {
 }
 
 /// A split is one session: the pane it was split from keeps its row, the panes opened
-/// beside it don't get rows of their own. The row shows the most urgent of them, so an agent
-/// in a split that needs you still says so (and what it asks).
+/// beside it don't get rows of their own. The row shows the most urgent of the panes in its own
+/// tab, so an agent in a split that needs you still says so (and what it asks). Another tab of
+/// the session has a row of its own in the sidebar and says its own state there.
 pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
     let mut owners: Vec<ClientTerm> = tabs.iter().map(|t| t.owner).collect();
     owners.sort_unstable();
@@ -604,6 +605,12 @@ pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
             .filter(|t| t.owner == owner)
             .flat_map(|t| t.leaves())
             .filter(|id| *id != owner)
+            .collect();
+        // The panes sharing the session's own tab.
+        let own: Vec<ClientTerm> = tabs
+            .iter()
+            .filter(|t| t.owner == owner && t.contains(owner))
+            .flat_map(|t| t.leaves())
             .collect();
         let has_row = projs
             .iter()
@@ -635,6 +642,7 @@ pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
         };
         if let Some(m) = members
             .into_iter()
+            .filter(|m| m.native_term.is_some_and(|id| own.contains(&id)))
             .filter(|m| rank(m.status) < rank(row.status))
             .min_by_key(|m| rank(m.status))
         {

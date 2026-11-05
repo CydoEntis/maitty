@@ -2584,6 +2584,50 @@ mod screen_tests {
     }
 
     #[test]
+    fn a_session_row_shows_only_its_own_tab_and_the_other_tabs_sit_under_a_tabs_heading() {
+        let (mut app, [owner, ..]) = tabbed_session("floating");
+        app.screen_fresh();
+        let model = app.screen_model();
+        let row = model
+            .iter()
+            .flat_map(|p| p.sessions())
+            .find(|s| s.native_term == Some(owner))
+            .expect("the session's row");
+        assert_eq!(
+            row.status,
+            Status::Idle,
+            "another tab that works or needs you does not change this row"
+        );
+        let buf = drawn(&mut app, 160, 45);
+        let rows = side_text(&app, &buf);
+        let heading = rows
+            .iter()
+            .position(|r| r.trim_matches(|c: char| c == '│' || c == ' ') == "tabs")
+            .unwrap_or_else(|| panic!("a tabs heading\n{}", rows.join("\n")));
+        assert!(
+            rows[heading + 1].contains("codex") && rows[heading + 2].contains("gemini"),
+            "the other tabs follow it: {:?}",
+            &rows[heading..heading + 3]
+        );
+    }
+
+    #[test]
+    fn a_plain_shell_is_one_row_with_no_repeated_word() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let buf = drawn(&mut app, 160, 45);
+        let rows = side_text(&app, &buf);
+        let shell = rows
+            .iter()
+            .position(|r| r.contains("shell"))
+            .expect("a shell row");
+        assert!(
+            !rows[shell + 1].contains("shell"),
+            "its name is not said twice: {:?}",
+            &rows[shell..shell + 2]
+        );
+    }
+
+    #[test]
     fn a_session_s_tabs_each_show_their_own_state_under_its_row() {
         for layout in ["floating", "hairline"] {
             let (mut app, _) = tabbed_session(layout);

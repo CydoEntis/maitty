@@ -18,6 +18,8 @@ pub(in crate::client) enum Line {
     Sess(usize, usize, usize, u8),
     /// A session's last line: its check result, its question, or what it is doing.
     Detail(ClientSession),
+    /// The `tabs` heading over a session's other tabs.
+    TabsHead,
     /// One of a session's tabs (its owner, and where the tab is in `screen.tabs`), under its
     /// row while it has two or more (`side_tabs`).
     Tab(ClientTerm, usize),
@@ -64,14 +66,16 @@ fn agent_count(s: &Session) -> usize {
 }
 
 pub(in crate::client) fn session_lines(app: &App, s: &Session, out: &mut Vec<Line>) {
-    // Every card has its three lines: the name, the badge, and what it is doing.
-    out.push(Line::Detail(s.key));
+    // A card is its name and what it is doing; a plain shell has nothing to add to its name.
+    if !plain_shell(s) {
+        out.push(Line::Detail(s.key));
+    }
     if let Some(term) = s.native_term {
-        out.extend(
-            shown_tab_indexes(app, term)
-                .into_iter()
-                .map(|i| Line::Tab(term, i)),
-        );
+        let tabs = shown_tab_indexes(app, term);
+        if !tabs.is_empty() {
+            out.push(Line::TabsHead);
+        }
+        out.extend(tabs.into_iter().map(|i| Line::Tab(term, i)));
     }
 }
 
@@ -201,7 +205,7 @@ fn card_lines(app: &App, model: &[Proj], t: &Theme) -> (Vec<Line>, Vec<Line>) {
                 at = model[*pi].machine;
                 by_machine.entry(at).or_default().push(l);
             }
-            Line::Sess(..) | Line::Detail(_) | Line::Tab(..) | Line::Gap => {
+            Line::Sess(..) | Line::Detail(_) | Line::TabsHead | Line::Tab(..) | Line::Gap => {
                 by_machine.entry(at).or_default().push(l);
             }
             // Headers and their notes are drawn from the connection, not from these.
@@ -1239,6 +1243,15 @@ fn draw_line(
         }
         Line::Machine(machine) => draw_machine_row(app, buf, *machine, cols, y, pb, t),
         Line::MachineState(machine) => draw_machine_state(app, buf, *machine, cols, y, pb, t),
+        Line::TabsHead => {
+            put(
+                buf,
+                cols.x + 2,
+                y,
+                &[seg("tabs", Style::default().fg(t.muted).bg(pb))],
+                cols.end(),
+            );
+        }
         Line::Tab(..) | Line::MachineNote(..) | Line::Sess(..) | Line::Detail(_) | Line::Gap => {}
     }
 }
@@ -1289,7 +1302,7 @@ fn draw_shell_row(
         t.text
     };
     let st = Style::default().bg(pb);
-    let x = cols.x + 2;
+    let x = cols.x + 4;
     let room = cols.end().saturating_sub(x) as usize;
     // The state of what runs in the tab: an agent's mark (the spinner while it works), else a
     // plain shell's `○`.

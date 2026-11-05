@@ -285,9 +285,9 @@ The sidebar is two halves of session cards ([ADR 0050](adr/0050-local-and-remote
 - **Blank rows:** one follows each project. A helper session is listed like any other, not stepped in under the session that started it.
 
 - **Tabs** (`side_tabs.rs`, ADR 0027, 0031): a session with two tabs or more has one row per tab
-  under its card, level with the card's mark: the tab's state glyph (the agent's mark, the spinner while it works; `○` for a plain shell), its name (its own, else
+  under its card, under a muted `tabs` heading, in a column of their own: the tab's state glyph (the agent's mark, the spinner while it works; `○` for a plain shell), its name (its own, else
   its focused session's), and its number in `muted` at the right. There are no connector lines. The tab on screen has an
-  accent name, bold; one that needs you an amber name. Short of room the name shortens. The arrows skip these rows (they are not `SideItem`s). A session's own card shows only its own tab's panes' state, plus a question from any other tab (`fold_splits`); another tab's working or done is its row's to say. A click shows that tab (`ScreenHit::TabPick`), so a drag reorders them and a
+  accent name, bold; one that needs you an amber name. Short of room the name shortens. The arrows skip these rows (they are not `SideItem`s). A session's own card shows only the state of the panes in its own tab (`fold_splits`); another tab's working, done or question is its own row's to say. A plain shell is one row: it has no second line. A click shows that tab (`ScreenHit::TabPick`), so a drag reorders them and a
   middle click closes one, as on the tab chips. A session with one tab has none.
   `ui.sidebar_tabs` (Settings › Sessions › Tabs in the sidebar) shows `all` of them, only the
   `busy` ones (working or needing you) and the one on screen, or none (`off`). Never the tab the
