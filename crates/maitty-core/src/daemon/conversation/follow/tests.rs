@@ -469,22 +469,24 @@ async fn a_new_session_in_the_pane_starts_a_new_generation_and_the_old_read_is_d
         result: Ok(old_chunk),
     });
     assert!(world.daemon.followed[0].history.entries.is_empty());
-    assert!(
-        world
-            .daemon
-            .conversation_read(
-                61,
-                id,
-                Some(Cursor {
-                    generation: first_generation,
-                    conversation: id,
-                    revision: 1,
-                    next_position: 0,
-                }),
-                10
-            )
-            .is_err()
-    );
+    // A reader still holding a cursor of the old session is told to start over, not refused.
+    let stale = Cursor {
+        generation: first_generation,
+        conversation: id,
+        revision: 1,
+        next_position: 0,
+        epoch: 0,
+        delta: false,
+        snapshot: 0,
+    };
+    world.daemon.conversation_read(61, id, Some(stale), 10).unwrap();
+    let read = loop {
+        if let Ok(ServerMsg::Reply(Reply::ConversationRead(read))) = world.client.try_recv() {
+            break read;
+        }
+    };
+    assert!(read.history.reset);
+    assert_eq!(read.generation, first_generation + 1);
 }
 
 #[tokio::test]

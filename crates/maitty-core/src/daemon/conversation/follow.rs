@@ -364,19 +364,10 @@ impl Daemon {
             self.shown_to(follower.term, self.surface_of(client)),
             "No such conversation"
         );
-        anyhow::ensure!(
-            cursor
-                .as_ref()
-                .is_none_or(|c| c.generation == follower.generation),
-            "Stale history cursor generation"
-        );
-        let mut page = follower
+        let page = follower
             .history
-            .read(cursor.as_ref(), limit, MAX_READ_BYTES)
+            .read_generation(follower.generation, cursor.as_ref(), limit, MAX_READ_BYTES)
             .map_err(|e| anyhow::anyhow!("History read refused: {e:?}"))?;
-        if let Some(next) = page.next.as_mut() {
-            next.generation = follower.generation;
-        }
         let status = self
             .terms
             .get(&follower.term)

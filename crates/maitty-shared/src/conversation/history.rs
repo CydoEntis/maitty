@@ -87,12 +87,39 @@ pub struct Cursor {
     pub conversation: ConversationId,
     pub revision: u64,
     pub next_position: usize,
+    /// Which run of the daemon's history this cursor belongs to; 0 from a client that predates it.
+    /// A history that is rebuilt (a reconnect that drops drafts, a new hydration) gets a new one, so
+    /// a `delta` cursor from before it is answered with a reset instead of silently missing entries.
+    #[serde(default)]
+    pub epoch: u64,
+    /// A `resume` cursor (see [`Page::resume`]): the entries that changed after `revision`, not a
+    /// place in the list.
+    #[serde(default)]
+    pub delta: bool,
+    /// While paging through a delta read: the revision the read began at. The next `resume` cursor
+    /// starts there, so a change made while the pages were being fetched is not missed.
+    #[serde(default)]
+    pub snapshot: u64,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Page {
     pub entries: Vec<Entry>,
     pub next: Option<Cursor>,
     pub completeness: Completeness,
+    /// Pass this to the next read to get only the entries that were added or changed since this
+    /// page. Entries are updated in place (a tool finishing, a message growing), so a position in
+    /// the list is not enough; a client that applies entries by their source id and reads from here
+    /// follows a long history without reading it again. Absent from a daemon that predates it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume: Option<Cursor>,
+    /// The cursor could not be followed (the history was rebuilt, or the conversation started over):
+    /// this page starts from the beginning and the client discards what it held.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub reset: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReadError {

@@ -1971,12 +1971,6 @@ impl Daemon {
                 .conversation_operations
                 .iter()
                 .any(|operation| operation.receipt.conversation == id);
-        if cursor
-            .as_ref()
-            .is_some_and(|cursor| cursor.generation != generation)
-        {
-            bail!("Stale history cursor generation");
-        }
         let read = ReadRequest {
             client,
             cursor,
@@ -2025,12 +2019,14 @@ impl Daemon {
             .conversation_history
             .get(read.client)
             .ok_or_else(|| anyhow::anyhow!("History attachment closed"))?;
-        let mut page = history
-            .read(read.cursor.as_ref(), read.limit, history::MAX_READ_BYTES)
+        let page = history
+            .read_generation(
+                c.generation,
+                read.cursor.as_ref(),
+                read.limit,
+                history::MAX_READ_BYTES,
+            )
             .map_err(|e| anyhow::anyhow!("History read refused: {e:?}"))?;
-        if let Some(next) = page.next.as_mut() {
-            next.generation = c.generation;
-        }
         let state = self.conversation_states.get(&id);
         self.send(
             read.client,

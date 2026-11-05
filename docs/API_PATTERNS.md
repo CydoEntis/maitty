@@ -401,6 +401,21 @@ exhaustion only. Completeness is independently Unknown, Loading, Complete or
 Incomplete(reason). Ordinary snapshots contain summaries only; explicit
 `ConversationRead` replies carry bounded history pages.
 
+**Following a long history.** Entries are added at the end and changed in place (a tool step
+finishing, a message growing), never moved or removed until the history is rebuilt. Every page
+carries `resume`, a `delta` cursor (`epoch`, `revision`): reading with it returns only the entries
+added or changed after that revision, in order, paged with `next` like any read, so a client that
+applies entries by their source id follows a conversation of any length with small reads. The
+daemon keeps the revision of each entry's last change (`Track` in `history.rs`). A delta read pages
+against the revision its first page began at, and its last page's `resume` starts there too, so a
+change made between its pages is returned again rather than missed. A history that is rebuilt
+(hydration, or a reconnect that drops drafts) gets a new `epoch`; a `delta` cursor from another
+epoch, from the future (another run of the daemon) or from another generation is not an error: the
+page starts from the beginning and sets `reset`, and the client discards what it held. A plain
+paging cursor still goes stale on any change (`StaleCursor`) and the client starts that read over.
+`epoch`, `delta`, `snapshot`, `resume` and `reset` are all defaulted, so an older client or daemon
+reads the rest as before (a test decodes the old shapes); no `PROTOCOL_VERSION` bump.
+
 Daemon notifications reach
 attached projections only after current generation/connection acceptance, and
 client disconnect drops that attachment's memory. Production admission pages
