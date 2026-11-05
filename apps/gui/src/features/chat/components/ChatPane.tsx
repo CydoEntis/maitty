@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { MessageSquare } from 'lucide-react'
 import { CHAT_AGENTS, noChatReason, type ChatAgent, type ChatAvailability } from '@/features/workspace/model/chatView'
 import { Button } from '@/components/ui/button'
+import { FULL_ACCESS_LABEL, FULL_ACCESS_WARNING } from '@/features/worktrees/newAgent'
 import { ChatSession } from './ChatSession'
 
 export type ChatPaneProps = {
@@ -19,7 +21,9 @@ export type ChatPaneProps = {
   /** Types the agent's command into the shell (a shell tab only). */
   onStartAgent: (agent: ChatAgent) => void
   /** Starts a chat session (a structured conversation the daemon owns) in the shell's folder (a shell tab only). */
-  onStartChat?: (agent: ChatAgent) => void
+  onStartChat?: (agent: ChatAgent, fullAccess: boolean) => void
+  /** Whether the full-access switch next to the start buttons starts on (the desktop setting). */
+  defaultFullAccess?: boolean
 }
 
 /**
@@ -38,7 +42,8 @@ export function ChatPane(props: ChatPaneProps) {
 type NoChatProps = ChatPaneProps & { availability: Exclude<ChatAvailability, { kind: 'ready' }> }
 
 /** A session that has no chat: why, what runs here, and the way back (v18 B.3, shell tabs). */
-function NoChat({ availability, process, online, onBackToTerminal, onStartAgent, onStartChat }: NoChatProps) {
+function NoChat({ availability, process, online, onBackToTerminal, onStartAgent, onStartChat, defaultFullAccess = false }: NoChatProps) {
+  const [fullAccess, setFullAccess] = useState(defaultFullAccess)
   return (
     <div className="flex flex-1 items-center justify-center overflow-y-auto p-6">
       <div className="flex w-full max-w-[420px] flex-col items-center gap-3 text-center">
@@ -55,12 +60,21 @@ function NoChat({ availability, process, online, onBackToTerminal, onStartAgent,
             </Button>
           ))}
           {availability.kind === 'shell' && onStartChat !== undefined && CHAT_AGENTS.map((agent) => (
-            <Button key={`chat-${agent}`} type="button" variant="outline" size="sm" disabled={!online} onClick={() => { onStartChat(agent) }}>
+            <Button key={`chat-${agent}`} type="button" variant="outline" size="sm" disabled={!online} onClick={() => { onStartChat(agent, fullAccess) }}>
               Start a {agent === 'claude' ? 'Claude' : 'Codex'} chat
             </Button>
           ))}
           <Button type="button" size="sm" onClick={onBackToTerminal}>Back to terminal</Button>
         </div>
+        {availability.kind === 'shell' && onStartChat !== undefined && (
+          <div className="grid gap-1 text-[12px]">
+            <label className="flex cursor-pointer items-center justify-center gap-2 text-fg2">
+              <input type="checkbox" checked={fullAccess} onChange={(event) => { setFullAccess(event.target.checked) }} />
+              {FULL_ACCESS_LABEL}
+            </label>
+            {fullAccess && <span role="note" className="text-[var(--danger)]">{FULL_ACCESS_WARNING}</span>}
+          </div>
+        )}
       </div>
     </div>
   )

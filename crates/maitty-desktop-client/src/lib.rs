@@ -1045,19 +1045,30 @@ impl Permissions {
     }
 }
 
-/// Start a chat session: a structured conversation the daemon owns (ADR 0054). It always asks before a
-/// tool use the provider does not allow by itself; the window cannot choose another posture. With a
+/// The posture of a chat session: it asks before a tool use the provider does not allow by itself,
+/// unless the caller asks for the provider's own skip-permissions mode (ADR 0043, ADR 0054).
+fn chat_session_permissions(full_access: bool) -> Permissions {
+    if full_access {
+        Permissions::FullAccess
+    } else {
+        Permissions::WorkspaceWrite
+    }
+}
+
+/// Start a chat session: a structured conversation the daemon owns (ADR 0054). With `full_access` the
+/// provider runs unsandboxed and without approvals; there is no other posture to choose. With a
 /// `branch` the daemon makes a worktree for it from the project at `cwd` and starts there.
 pub async fn start_chat_session(
     cwd: PathBuf,
     provider: Provider,
     branch: Option<String>,
+    full_access: bool,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
     create_conversation(
         cwd,
         provider,
-        Permissions::WorkspaceWrite,
+        chat_session_permissions(full_access),
         branch,
         daemon_executable,
     )
@@ -1541,5 +1552,27 @@ mod pane_command_tests {
                 "{shown}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod chat_posture_tests {
+    use super::{chat_session_permissions, Permissions};
+    use maitty_shared::conversation::{ApprovalPolicy, Sandbox};
+
+    #[test]
+    fn a_chat_session_asks_unless_full_access_is_requested() {
+        assert_eq!(
+            chat_session_permissions(false).launch_policy(),
+            (Sandbox::WorkspaceWrite, ApprovalPolicy::OnRequest)
+        );
+        assert!(matches!(
+            chat_session_permissions(true),
+            Permissions::FullAccess
+        ));
+        assert_eq!(
+            chat_session_permissions(true).launch_policy(),
+            (Sandbox::FullAccess, ApprovalPolicy::Never)
+        );
     }
 }

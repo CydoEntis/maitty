@@ -99,6 +99,10 @@ export type SettingsPreferences = {
   iconColor: IconColor
   /** Which view a Claude or Codex session opens in. Terminal until you change it. */
   chatViewDefault: ChatViewDefaults
+  /** What a NEW agent session starts as: a chat session or a terminal session. Chat until you change it. */
+  newSessionView: PaneView
+  /** A new chat starts with the agent's full-access mode (no sandbox, no permission prompts). Off until you turn it on. */
+  chatFullAccessDefault: boolean
   /** The bottom line of the window: daemon, branch, counts and the focused session. */
   statusBar: boolean
   /** A small readout of frames and process load over the window, for finding what lags. */
@@ -192,6 +196,8 @@ function defaults(): SettingsPreferences {
     leadMode: 'focused',
     iconColor: 'color',
     chatViewDefault: DEFAULT_CHAT_VIEWS,
+    newSessionView: 'chat',
+    chatFullAccessDefault: false,
     statusBar: true,
     perfOverlay: false,
     terminalSeeThrough: false,
@@ -268,6 +274,8 @@ export function readSettingsPreferences(): SettingsPreferences {
       trayStyle: preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
       style: styleOf(preferences.style) ?? fallback.style,
       chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),
+      newSessionView: paneView(preferences.newSessionView, fallback.newSessionView),
+      chatFullAccessDefault: bool(preferences.chatFullAccessDefault, fallback.chatFullAccessDefault),
       statusBar: bool(preferences.statusBar, fallback.statusBar),
       perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),
       terminalSeeThrough: bool(preferences.terminalSeeThrough, fallback.terminalSeeThrough),

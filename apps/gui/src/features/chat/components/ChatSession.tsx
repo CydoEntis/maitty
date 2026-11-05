@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { answerUserInput, approveRequest } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
+import { readConversationPermissions } from '@/data/conversationPermissions'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
 import { hasPendingApproval, runningTurnStartedAt, type ChatFeed } from '../chatFeed'
 import { buildRows, type ChatRow } from '../chatRows'
@@ -70,6 +71,8 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const workingSince = working ? runningTurnStartedAt(feed) : null
   const incomplete = incompleteReason(feed.completeness)
   const composer = useChatComposer({ link, feed, online, refresh })
+  // The daemon does not report how a session was started, so the window remembers the sessions it started with full access.
+  const fullAccess = useMemo(() => readConversationPermissions()[String(link.conversation)] === 'full-access', [link.conversation])
 
   const [answering, setAnswering] = useState(false)
   const answer = useCallback((requestId: number | string, decision: ApprovalDecision) => {
@@ -106,6 +109,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         {offline && <span role="status" className="text-[var(--warn)]">Reconnecting to the daemon. What is shown may be out of date.</span>}
         {!offline && incomplete !== null && <span className="text-dim">History is incomplete: {incomplete}.</span>}
         {feed.error !== null && <span className="text-[var(--danger)]">{feed.error}</span>}
+        {fullAccess && <span className="rounded border border-[var(--danger-line)] px-1.5 text-[11px] font-semibold text-[var(--danger)]" title="No sandbox and no approval prompts. End the session and start a new one to change this.">Full access</span>}
         {!hasTerminal && <span className="ml-auto text-dim">Chat session &middot; no terminal</span>}
       </div>
       {/* Politely announces a change of state only; the log itself is not a live region, so streaming text never floods a screen reader. */}

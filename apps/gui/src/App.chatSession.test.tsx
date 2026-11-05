@@ -201,13 +201,13 @@ describe('a chat session in the desktop window', () => {
 
     await user.click(within(pane).getByRole('button', { name: 'Start a Claude chat' }))
 
-    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(HOME, 'claude') })
+    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(HOME, 'claude', null, false) })
     expect(daemon.sendTerminalInput).not.toHaveBeenCalled()
     const chats = await screen.findAllByRole('region', { name: 'Chat' })
     expect(chats.some((chat) => within(chat).queryByText(/Chat session · no terminal/) !== null)).toBe(true)
   })
 
-  it('the New agent dialog starts a chat session on a branch when Chat is chosen, and a terminal one by default', async () => {
+  it('the New agent dialog starts a chat session on a branch when Chat is chosen, and a terminal one when Terminal is chosen', async () => {
     const user = userEvent.setup()
     serveHistory()
     daemon.loadConversations.mockResolvedValue([term(2)])
@@ -223,24 +223,53 @@ describe('a chat session in the desktop window', () => {
       return screen.findByRole('dialog', { name: /New agent on a branch/ })
     }
 
-    // Terminal is the default.
+    // Chat is the default; Terminal is one click away.
     let dialog = await openDialog()
-    expect(within(dialog).getByRole('radio', { name: 'Terminal' })).toBeChecked()
+    expect(within(dialog).getByRole('radio', { name: 'Chat' })).toBeChecked()
+    await user.click(within(dialog).getByRole('radio', { name: 'Terminal' }))
     await user.type(within(dialog).getByRole('textbox', { name: 'Branch' }), 'agent/t')
     await user.click(within(dialog).getByRole('button', { name: /^Start/ }))
     await waitFor(() => { expect(branchAgent.newBranchAgent).toHaveBeenCalledWith({ project: REPO, branch: 'agent/t', agent: 'claude', prompt: '' }) })
     expect(daemon.startChatSession).not.toHaveBeenCalled()
 
-    // Chat is chosen.
+    // Chat is the default again.
     dialog = await openDialog()
-    await user.click(within(dialog).getByRole('radio', { name: 'Chat' }))
+    expect(within(dialog).getByRole('radio', { name: 'Chat' })).toBeChecked()
     await user.type(within(dialog).getByRole('textbox', { name: 'First prompt' }), 'Fix the login bug')
     await user.click(within(dialog).getByRole('button', { name: /^Start/ }))
 
-    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(REPO, 'claude', 'agent/fix-login-bug') })
+    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(REPO, 'claude', 'agent/fix-login-bug', false) })
     // The first prompt is an ordinary send once the start has answered.
     await waitFor(() => { expect(daemon.submitMessage).toHaveBeenCalledWith({ id: '44', generation: 1 }, 1, 'Fix the login bug') })
     expect(branchAgent.newBranchAgent).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('full access in a chat session', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.localStorage.clear()
+  })
+
+  it('starts the chat with full access when the switch is on, and shows it on the chat afterwards', async () => {
+    const user = userEvent.setup()
+    serveHistory()
+    daemon.loadConversations.mockResolvedValue([term(2)])
+    daemon.startChatSession.mockImplementation(() => {
+      daemon.loadConversations.mockResolvedValue([term(2), chatSession(44)])
+      return Promise.resolve({ id: 44, generation: 1 })
+    })
+    renderDesktopApp()
+    await screen.findByRole('region', { name: /^Terminal 1/ })
+
+    await user.click(await screen.findByRole('button', { name: 'New agent on a branch' }))
+    const dialog = await screen.findByRole('dialog', { name: /New agent on a branch/ })
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Full access (skip permission prompts)' }))
+    await user.type(within(dialog).getByRole('textbox', { name: 'Branch' }), 'agent/yolo')
+    await user.click(within(dialog).getByRole('button', { name: /^Start/ }))
+
+    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(REPO, 'claude', 'agent/yolo', true) })
+    expect(await screen.findByText('Full access')).toBeInTheDocument()
   })
 })
 

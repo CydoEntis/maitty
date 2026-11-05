@@ -24,9 +24,14 @@ describe('the chat card of a shell pane', () => {
     expect(onStartChat).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Start a Claude chat' }))
-    expect(onStartChat).toHaveBeenCalledWith('claude')
+    expect(onStartChat).toHaveBeenCalledWith('claude', false)
     await user.click(screen.getByRole('button', { name: 'Start a Codex chat' }))
-    expect(onStartChat).toHaveBeenCalledWith('codex')
+    expect(onStartChat).toHaveBeenCalledWith('codex', false)
+    // The full-access switch is labelled, warns when on, and goes with the start.
+    await user.click(screen.getByRole('checkbox', { name: 'Full access (skip permission prompts)' }))
+    expect(screen.getByRole('note')).toHaveTextContent(/No sandbox and no approval prompts/)
+    await user.click(screen.getByRole('button', { name: 'Start a Claude chat' }))
+    expect(onStartChat).toHaveBeenLastCalledWith('claude', true)
     // Starting a chat does not type into the shell.
     expect(onStartAgent).toHaveBeenCalledTimes(1)
   })

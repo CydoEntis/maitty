@@ -2,17 +2,17 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { NewAgentDialog, type NewAgentRequest } from './NewAgentDialog'
-import type { AgentProject } from './newAgent'
+import type { AgentProject, SessionMode } from './newAgent'
 
 const PROJECTS: AgentProject[] = [
   { key: '/home/dev/code/app', name: 'app', path: '/home/dev/code/app' },
   { key: '/home/dev/code/api', name: 'api', path: '/home/dev/code/api' },
 ]
 
-function open(overrides: { initialKey?: string | null; onStart?: (request: NewAgentRequest) => Promise<void>; onCancel?: () => void } = {}) {
+function open(overrides: { defaultMode?: SessionMode; defaultFullAccess?: boolean; initialKey?: string | null; onStart?: (request: NewAgentRequest) => Promise<void>; onCancel?: () => void } = {}) {
   const onStart = overrides.onStart ?? vi.fn(() => Promise.resolve())
   const onCancel = overrides.onCancel ?? vi.fn()
-  render(<NewAgentDialog projects={PROJECTS} initialKey={overrides.initialKey ?? null} home="/home/dev" container={null} onStart={onStart} onCancel={onCancel} />)
+  render(<NewAgentDialog projects={PROJECTS} initialKey={overrides.initialKey ?? null} home="/home/dev" defaultMode={overrides.defaultMode ?? 'terminal'} defaultFullAccess={overrides.defaultFullAccess ?? false} container={null} onStart={onStart} onCancel={onCancel} />)
   return { onStart, onCancel, user: userEvent.setup() }
 }
 
@@ -73,10 +73,15 @@ describe('the New agent on a branch dialog', () => {
     await user.type(promptField(), '  Fix the login bug  ')
     fireEvent.keyDown(promptField(), { key: 'Enter', ctrlKey: true })
     await waitFor(() => { expect(onStart).toHaveBeenCalledTimes(1) })
-    expect(onStart).toHaveBeenCalledWith({ project: PROJECTS[1], agent: 'codex', mode: 'terminal', prompt: 'Fix the login bug', branch: 'agent/fix-login-bug' })
+    expect(onStart).toHaveBeenCalledWith({ project: PROJECTS[1], agent: 'codex', mode: 'terminal', prompt: 'Fix the login bug', branch: 'agent/fix-login-bug', fullAccess: false })
   })
 
-  it('starts as a terminal session unless Chat is chosen', () => {
+  it('starts on the mode the setting names', () => {
+    open({ defaultMode: 'chat' })
+    expect(screen.getByRole('radio', { name: 'Chat' })).toBeChecked()
+  })
+
+  it('starts as a terminal session when the setting says so', () => {
     open()
     expect(screen.getByRole('radio', { name: 'Terminal' })).toBeChecked()
     expect(screen.getByRole('radio', { name: 'Chat' })).not.toBeChecked()
@@ -85,7 +90,7 @@ describe('the New agent on a branch dialog', () => {
   it('says what a chat session is when it is chosen: no terminal, and it asks first', async () => {
     const { user } = open()
     await user.click(screen.getByRole('radio', { name: 'Chat' }))
-    expect(screen.getByText(/has no terminal, and asks before it runs a tool/)).toBeInTheDocument()
+    expect(screen.getByText(/has no terminal\. It asks before it runs a tool/)).toBeInTheDocument()
   })
 
   it('sends the chat choice with the agent, the prompt and the branch', async () => {
@@ -94,7 +99,29 @@ describe('the New agent on a branch dialog', () => {
     await user.click(screen.getByRole('radio', { name: 'Codex' }))
     await user.type(promptField(), 'Fix the login bug')
     await user.click(startButton())
-    await waitFor(() => { expect(onStart).toHaveBeenCalledWith({ project: PROJECTS[1], agent: 'codex', mode: 'chat', prompt: 'Fix the login bug', branch: 'agent/fix-login-bug' }) })
+    await waitFor(() => { expect(onStart).toHaveBeenCalledWith({ project: PROJECTS[1], agent: 'codex', mode: 'chat', prompt: 'Fix the login bug', branch: 'agent/fix-login-bug', fullAccess: false }) })
+  })
+
+  it('offers full access only for a chat, labelled and warned, and sends the choice', async () => {
+    const { user, onStart } = open()
+    expect(screen.queryByRole('checkbox', { name: /Full access/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('radio', { name: 'Chat' }))
+    const box = screen.getByRole('checkbox', { name: 'Full access (skip permission prompts)' })
+    expect(box).not.toBeChecked()
+    await user.click(box)
+    expect(screen.getByRole('note')).toHaveTextContent(/No sandbox and no approval prompts/)
+    await user.type(branchField(), 'agent/yolo')
+    await user.click(startButton())
+    await waitFor(() => { expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ mode: 'chat', fullAccess: true })) })
+  })
+
+  it('starts the full-access switch on only when the setting is on, and never sends it for a terminal', async () => {
+    const { user, onStart } = open({ defaultMode: 'chat', defaultFullAccess: true })
+    expect(screen.getByRole('checkbox', { name: /Full access/ })).toBeChecked()
+    await user.click(screen.getByRole('radio', { name: 'Terminal' }))
+    await user.type(branchField(), 'agent/t')
+    await user.click(startButton())
+    await waitFor(() => { expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ mode: 'terminal', fullAccess: false })) })
   })
 
   it('does not start with Ctrl+Enter while the branch is missing or invalid', () => {
@@ -107,7 +134,7 @@ describe('the New agent on a branch dialog', () => {
     const { user, onStart } = open()
     await user.type(branchField(), 'agent/scratch')
     await user.click(startButton())
-    await waitFor(() => { expect(onStart).toHaveBeenCalledWith({ project: PROJECTS[0], agent: 'claude', mode: 'terminal', prompt: '', branch: 'agent/scratch' }) })
+    await waitFor(() => { expect(onStart).toHaveBeenCalledWith({ project: PROJECTS[0], agent: 'claude', mode: 'terminal', prompt: '', branch: 'agent/scratch', fullAccess: false }) })
   })
 
   it('shows what went wrong and stays open for another try', async () => {
