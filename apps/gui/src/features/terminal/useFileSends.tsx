@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
-import { cancelFileSend, listenFileSends, newTransferId, sendFilesToMachine, type SendEvent } from '@/api/fileSends'
+import { listenFileSends, newTransferId, sendFilesToMachine, type SendEvent } from '@/api/fileSends'
 import { sendImageToMachine } from '@/api/imagePaste'
 import { errorMessage } from '@/lib/error-message'
 import { remotePathText } from './dropRoute'
-import { SendProgress } from './SendProgress'
+import { PLAIN_TOAST, showSendProgress } from './sendToast'
 
 /** What the window knows of a send it started. */
 type Send = {
@@ -27,12 +27,6 @@ type Options = {
 
 const noun = (count: number) => (count === 1 ? 'file' : 'files')
 
-/** How long a finished send's toast stays, as sonner's own default. */
-const TOAST_MS = 4000
-
-/** Settings that put a toast back to a plain one after it was a progress toast; sonner merges updates into the toast it has. */
-const PLAIN = { description: undefined, action: undefined, dismissible: true, closeButton: true, duration: TOAST_MS } as const
-
 /**
  * Files dropped on a pane of another machine: starts the send, shows a progress toast with Cancel,
  * and types each path the machine kept the file at into the pane as it lands (ADR 0050). The host
@@ -44,23 +38,7 @@ export function useFileSends({ typeInto }: Options) {
   useEffect(() => { typeRef.current = typeInto })
 
   const showProgress = useCallback((transfer: string, send: Send, index: number, percent: number | null) => {
-    const where = send.count > 1 ? ` (${String(index + 1)} of ${String(send.count)})` : ''
-    toast.loading(`Sending ${send.image ? 'the image' : send.file} to ${send.machine}${where}`, {
-      id: transfer,
-      duration: Infinity,
-      // Hiding the toast would not stop the send; Cancel does.
-      dismissible: false,
-      closeButton: false,
-      description: <SendProgress file={send.file} percent={percent} />,
-      action: {
-        label: 'Cancel',
-        onClick: (event) => {
-          // The toast stays until the host says the send has stopped.
-          event.preventDefault()
-          cancelFileSend(transfer).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not stop the send')) })
-        },
-      },
-    })
+    showSendProgress(transfer, send, index, percent)
   }, [])
 
   /** Shows the progress toast at once and starts the send through `start`, which the host may refuse. */
@@ -71,7 +49,7 @@ export function useFileSends({ typeInto }: Options) {
     showProgress(transfer, send, 0, null)
     start(transfer).catch((error: unknown) => {
       sends.current.delete(transfer)
-      toast.error(errorMessage(error, `Could not send to ${machine}`), { ...PLAIN, id: transfer })
+      toast.error(errorMessage(error, `Could not send to ${machine}`), { ...PLAIN_TOAST, id: transfer })
     })
   }, [showProgress])
 
@@ -99,18 +77,18 @@ export function useFileSends({ typeInto }: Options) {
         case 'done':
           sends.current.delete(event.transfer)
           toast.success(send.image ? `Sent the image to ${send.machine}` : `Sent ${String(event.count)} ${noun(event.count)} to ${send.machine}`, {
-            ...PLAIN,
+            ...PLAIN_TOAST,
             id: event.transfer,
             description: send.untyped.length > 0 ? `Not typed into the pane: ${send.untyped.join(', ')}` : undefined,
           })
           return
         case 'failed':
           sends.current.delete(event.transfer)
-          toast.error(event.unsent > 1 ? `${event.message} (${String(event.unsent - 1)} more not sent)` : event.message, { ...PLAIN, id: event.transfer })
+          toast.error(event.unsent > 1 ? `${event.message} (${String(event.unsent - 1)} more not sent)` : event.message, { ...PLAIN_TOAST, id: event.transfer })
           return
         case 'cancelled':
           sends.current.delete(event.transfer)
-          toast.message(`Stopped sending to ${send.machine}${event.sent > 0 ? `; ${String(event.sent)} of ${String(send.count)} were sent` : ''}`, { ...PLAIN, id: event.transfer })
+          toast.message(`Stopped sending to ${send.machine}${event.sent > 0 ? `; ${String(event.sent)} of ${String(send.count)} were sent` : ''}`, { ...PLAIN_TOAST, id: event.transfer })
           return
       }
     }

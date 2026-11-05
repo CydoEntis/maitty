@@ -18,7 +18,7 @@ const Shared = { transfer: z.string() }
 
 const SendEventSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('progress'), ...Shared, file: z.string(), index: z.number().int().nonnegative(), count: z.number().int().positive(), percent: z.number().int().min(0).max(PERCENT_MAX) }),
-  z.object({ kind: z.literal('sent'), ...Shared, file: z.string(), index: z.number().int().nonnegative(), count: z.number().int().positive(), remotePath: z.string() }),
+  z.object({ kind: z.literal('sent'), ...Shared, file: z.string(), index: z.number().int().nonnegative(), count: z.number().int().positive(), remotePath: z.string(), bytes: z.number().int().nonnegative() }),
   z.object({ kind: z.literal('failed'), ...Shared, file: z.string(), message: z.string(), unsent: z.number().int().nonnegative() }),
   z.object({ kind: z.literal('cancelled'), ...Shared, sent: z.number().int().nonnegative() }),
   z.object({ kind: z.literal('done'), ...Shared, sent: z.number().int().nonnegative(), count: z.number().int().positive() }),

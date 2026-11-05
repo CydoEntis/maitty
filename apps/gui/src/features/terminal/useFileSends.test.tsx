@@ -85,9 +85,9 @@ describe('files sent to the machine of a pane', () => {
   it('types each path the machine kept a file at into the pane the drop was for, as it lands', async () => {
     const typed: Array<[string, string]> = []
     const transfer = await start((session, text) => { typed.push([session, text]); return true }, ['/a/one.log', '/a/two.log'])
-    emit({ kind: 'sent', transfer, file: 'one.log', index: 0, count: 2, remotePath: '/home/me/.cache/p-one.log' })
+    emit({ kind: 'sent', transfer, file: 'one.log', index: 0, count: 2, remotePath: '/home/me/.cache/p-one.log', bytes: 1 })
     expect(typed).toEqual([['build/t7', '/home/me/.cache/p-one.log ']])
-    emit({ kind: 'sent', transfer, file: 'two.log', index: 1, count: 2, remotePath: '/home/me/.cache/p-two.log' })
+    emit({ kind: 'sent', transfer, file: 'two.log', index: 1, count: 2, remotePath: '/home/me/.cache/p-two.log', bytes: 1 })
     emit({ kind: 'done', transfer, sent: 2, count: 2 })
     expect(typed.map(([, text]) => text)).toEqual(['/home/me/.cache/p-one.log ', '/home/me/.cache/p-two.log '])
     expect(toasts.success).toHaveBeenCalledWith('Sent 2 files to build', expect.objectContaining({ id: transfer, action: undefined, description: undefined }))
@@ -96,7 +96,7 @@ describe('files sent to the machine of a pane', () => {
   it('never types a path the machine made up', async () => {
     const typed: string[] = []
     const transfer = await start((_, text) => { typed.push(text); return true })
-    emit({ kind: 'sent', transfer, file: 'a.log', index: 0, count: 1, remotePath: '/home/me/\u001b[2Jp.log' })
+    emit({ kind: 'sent', transfer, file: 'a.log', index: 0, count: 1, remotePath: '/home/me/\u001b[2Jp.log', bytes: 1 })
     emit({ kind: 'done', transfer, sent: 1, count: 1 })
     expect(typed).toEqual([])
     expect(toasts.success).toHaveBeenCalledWith('Sent 1 file to build', expect.objectContaining({ description: 'Not typed into the pane: a.log' }))
@@ -104,7 +104,7 @@ describe('files sent to the machine of a pane', () => {
 
   it('says where the file is when the pane is gone', async () => {
     const transfer = await start(() => false)
-    emit({ kind: 'sent', transfer, file: 'a.log', index: 0, count: 1, remotePath: '/home/me/.cache/p-a.log' })
+    emit({ kind: 'sent', transfer, file: 'a.log', index: 0, count: 1, remotePath: '/home/me/.cache/p-a.log', bytes: 1 })
     emit({ kind: 'done', transfer, sent: 1, count: 1 })
     expect(toasts.success).toHaveBeenCalledWith('Sent 1 file to build', expect.objectContaining({ description: 'Not typed into the pane: /home/me/.cache/p-a.log' }))
   })
@@ -162,7 +162,7 @@ describe('a pasted image sent to the machine of a pane', () => {
     const typed: Array<[string, string]> = []
     const transfer = await startImage((session, text) => { typed.push([session, text]); return true })
     emit({ kind: 'progress', transfer, file: 'image', index: 0, count: 1, percent: 40 })
-    emit({ kind: 'sent', transfer, file: 'image', index: 0, count: 1, remotePath: '/home/me/.cache/maitty/pastes/p-image.png' })
+    emit({ kind: 'sent', transfer, file: 'image', index: 0, count: 1, remotePath: '/home/me/.cache/maitty/pastes/p-image.png', bytes: 1 })
     emit({ kind: 'done', transfer, sent: 1, count: 1 })
     expect(typed).toEqual([['build/t7', '/home/me/.cache/maitty/pastes/p-image.png ']])
     expect(toasts.success).toHaveBeenCalledWith('Sent the image to build', expect.objectContaining({ id: transfer }))
@@ -171,7 +171,7 @@ describe('a pasted image sent to the machine of a pane', () => {
   it('never types a path the machine made up, and names the image instead', async () => {
     const typed: string[] = []
     const transfer = await startImage((_, text) => { typed.push(text); return true })
-    emit({ kind: 'sent', transfer, file: 'image', index: 0, count: 1, remotePath: '/home/me/\u001b[2J\u202ep.png' })
+    emit({ kind: 'sent', transfer, file: 'image', index: 0, count: 1, remotePath: '/home/me/\u001b[2J\u202ep.png', bytes: 1 })
     emit({ kind: 'done', transfer, sent: 1, count: 1 })
     expect(typed).toEqual([])
     expect(toasts.success).toHaveBeenCalledWith('Sent the image to build', expect.objectContaining({ description: 'Not typed into the pane: image' }))

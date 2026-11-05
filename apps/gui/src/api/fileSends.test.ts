@@ -52,9 +52,9 @@ describe('what the host says about a send', () => {
   it('passes on an event it can read and drops one it cannot', async () => {
     const heard: unknown[] = []
     await listenFileSends((event) => { heard.push(event) })
-    shell.handler?.({ payload: { kind: 'sent', transfer: 't', file: 'a', index: 0, count: 1, remotePath: '/p' } })
+    shell.handler?.({ payload: { kind: 'sent', transfer: 't', file: 'a', index: 0, count: 1, remotePath: '/p', bytes: 3 } })
     shell.handler?.({ payload: { kind: 'progress', transfer: 't', file: 'a', index: 0, count: 1, percent: 150 } })
     shell.handler?.({ payload: { kind: 'surprise' } })
-    expect(heard).toEqual([{ kind: 'sent', transfer: 't', file: 'a', index: 0, count: 1, remotePath: '/p' }])
+    expect(heard).toEqual([{ kind: 'sent', transfer: 't', file: 'a', index: 0, count: 1, remotePath: '/p', bytes: 3 }])
   })
 })

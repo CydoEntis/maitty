@@ -53,6 +53,8 @@ pub enum SendEvent {
         index: usize,
         count: usize,
         remote_path: String,
+        /// The size of the file that was sent, for a chip that shows it (a chat attachment, ADR 0053).
+        bytes: u64,
     },
     /// A file could not be sent; the ones after it were not tried.
     Failed {
@@ -271,6 +273,8 @@ fn send_all(
                 index,
                 count,
                 remote_path,
+                // A size is only for display; a file that vanished after it was sent shows as 0.
+                bytes: std::fs::metadata(path).map_or(0, |meta| meta.len()),
             }),
             Err(_) if watch.cancel.load(Ordering::Relaxed) => {
                 return SendEvent::Cancelled {

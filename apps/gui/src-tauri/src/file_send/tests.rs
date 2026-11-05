@@ -194,16 +194,17 @@ fn files_are_sent_in_turn_and_each_far_side_path_is_reported() {
                 file,
                 index,
                 remote_path,
+                bytes,
                 ..
-            } => Some((file.as_str(), *index, remote_path.as_str())),
+            } => Some((file.as_str(), *index, remote_path.as_str(), *bytes)),
             _ => None,
         })
         .collect();
     assert_eq!(
         sent,
         [
-            ("a.log", 0, "/home/me/.cache/pastes/p.log"),
-            ("b.log", 1, "/home/me/.cache/pastes/p.log")
+            ("a.log", 0, "/home/me/.cache/pastes/p.log", 1),
+            ("b.log", 1, "/home/me/.cache/pastes/p.log", 1)
         ]
     );
     assert_eq!(
@@ -355,13 +356,14 @@ fn an_event_reaches_the_window_in_the_shape_it_reads() {
         index: 0,
         count: 2,
         remote_path: "/p".into(),
+        bytes: 7,
     })
     .unwrap();
     assert_eq!(
         json,
         serde_json::json!({
             "kind": "sent", "transfer": "t-1", "file": "a.log",
-            "index": 0, "count": 2, "remotePath": "/p"
+            "index": 0, "count": 2, "remotePath": "/p", "bytes": 7
         })
     );
 }
