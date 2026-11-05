@@ -740,6 +740,17 @@ agent in it with the prompt, and opens it in a new tab under its project. The pr
 agent as one argument, never run by the shell, and cannot start with a dash. It is for projects on
 this computer.
 
+The same dialog has a **Session** choice: **Terminal** (the default, as above) or **Chat**. A chat
+session is Claude or Codex run by Maitty's background service instead of in a terminal, so the chat
+has a message box that works: Enter sends, Stop interrupts, a message sent while the agent is busy
+waits in a queue (with Remove), and each permission the agent asks for appears in the chat with
+**Yes, once (y)**, **This session (a)** and **No (n)**. It always asks first; there is no option to
+skip the questions. A chat session has no terminal (to use the agent's own screen, start a terminal
+session), it keeps running when you close the window, and closing its tab or pane stops the agent. A
+shell's empty chat card also offers **Start a Claude chat** and **Start a Codex chat** for the shell's
+folder. If you typed `claude` or `codex` in a shell yourself, its chat is read-only: it shows what
+the agent did and you answer in the terminal.
+
 With **Own worktree per agent** enabled (the default), typing `claude`, `codex`, `gemini`,
 `opencode` (or a quick agent's name) in a Maitty shell in a Git repository's main checkout
 creates a worktree and starts the agent in it, including with `-c` configuration

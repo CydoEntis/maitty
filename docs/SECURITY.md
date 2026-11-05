@@ -543,6 +543,30 @@ The path comes from a hook report, so it is input, not trust:
   held in daemon memory for the conversation's life, never cached, logged or put in a fixture.
 - A followed conversation is read-only, and reading never changes a status.
 
+## Project-specific: chat sessions started from the desktop
+
+A chat session is a Claude or Codex run the daemon starts itself ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).
+The agent runs with the user's permissions, so the window's start path is narrow:
+
+- **Posture.** `start_chat_session` takes no permission argument. The daemon starts the provider with workspace
+  write and approval on request (Claude `--permission-mode default` with the stdio permission prompt; Codex
+  `workspace-write`, `on-request`). Every tool use the provider does not allow by itself becomes an approval
+  that waits for a person's answer. There is no auto-approve, no bypass and no read-only-to-writable switch in
+  the window. Answers are human-only, bound to the current generation and the exact request id (unchanged
+  from the structured runtime rules above).
+- **Where it runs.** The folder is a project the app already shows; a branch start also needs a git
+  repository and a valid branch name (`branch_agent::branch_problem`), and the worktree is made by the daemon
+  (`create_trusted_worktree`: the trust copy and the repo's allowed setup hook only). The window never builds a
+  path or runs git. A start for another machine is refused in the window.
+- **Status** comes only from the daemon's events for the current generation; a superseded generation's command
+  changes nothing.
+- **User-input answers** (including a question marked secret) are relayed once, typed hidden, and never recorded
+  or logged.
+- **Closing** a chat session stops its agent before it is put away, so a session the user closed is never left
+  running out of sight; if the stop fails nothing is hidden.
+- Secret masking in history is the daemon's (ticket 18), at the point where history is stored and served; the
+  window adds no copy of a message.
+
 ## Project-specific: structured history cache boundary
 
 The structured-history cache reuses private-directory/file helpers:

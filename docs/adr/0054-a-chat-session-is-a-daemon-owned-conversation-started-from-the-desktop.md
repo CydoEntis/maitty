@@ -52,8 +52,8 @@ terminal screen to show for it, and none is faked.
    with `on-request`). Every tool use the provider does not allow by itself becomes an approval card
    in the chat, answered by request id with Yes once (y), This session (a) or No (n). **There is no
    auto-approve and no bypass option in the window.** The Tauri command does not take a permission
-   argument, so a window cannot ask for full access. The legacy `create_conversation` command (which
-   takes one) stays only for the browser preview and is not offered by the desktop window. A sandbox
+   argument, so a window cannot ask for full access. The older `create_conversation` command (which
+   takes one) is left in the host for the preview screens in `App.tsx`; the desktop window does not call it. A sandbox
    is as strong as the provider's own; the agent runs with the user's permissions and the card is the
    user's gate (SECURITY.md).
 6. **Status** comes only from the daemon's structured events for the current generation (ADR 0036).
@@ -66,8 +66,9 @@ terminal screen to show for it, and none is faked.
    chat, while an approval waits, and while the daemon is offline.
 8. **Surviving and ending.** The daemon owns the provider process, so closing the window, or the
    window crashing, changes nothing; the session is back in the sidebar at the next launch. The
-   conversation is also saved by the daemon's existing record, so a daemon restart shows it as
-   stopped (Claude resumes by its session id; Codex by **Resume**, as today). **Closing a chat
+   conversation is also saved by the daemon's existing record, so after a daemon restart it is
+   listed with its history readable and no agent running. Starting the agent again is the existing
+   resume path; the window does not offer it for a chat session yet (a follow-up). **Closing a chat
    session in the window ends the agent** (`ConversationEnd`: the process stops, the record stays so
    its history is readable) and puts it away (`ConversationArchive`), the same meaning as closing
    a terminal session ("closing a session ends it", ADR 0046).

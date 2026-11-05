@@ -143,13 +143,16 @@ check for the view). Acceptance criteria are the bullets.
 
 ## What is still missing (client and daemon)
 
-- **A composer, approvals and a queue for a pane's chat.** A Claude or Codex agent running in a pane now has a
+- **A composer, approvals and a queue for a pane's chat.** A Claude or Codex agent the user typed in a shell pane has a
   **read-only** daemon conversation that follows the agent's own transcript (G23, [ADR 0052](../../adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)):
-  `native_term` is the pane, so the chat opens with its history, and the status stays the pane's. Sending, answering
-  approvals and cancelling still happen in the terminal. Giving these panes a composer needs the owner's decision
-  (ADR 0052, *To confirm*): typing into the pane's PTY when the agent is idle, or starting new sessions as
-  daemon-owned structured conversations. Not tried against a live Claude or Codex; Codex's rollout shape is read
-  from its observed format and is covered by fixtures only.
+  sending, answering approvals and cancelling stay in the terminal. The composer, approvals, queue and Stop live in
+  **chat sessions** instead (G25, [ADR 0054](../../adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)):
+  Claude or Codex started from the desktop as a structured conversation the daemon owns, chosen with **Session: Chat**
+  in New agent on a branch or **Start a Claude chat** on a shell's empty chat card (Terminal is the default). Done:
+  start (in a folder or a new branch worktree), list, composer, Stop, daemon queue, approvals by id, user-input form,
+  attachments, close (ends the agent). Left: resuming a chat session's agent after a daemon restart from the window,
+  a chat session on another machine, and a try against a live Claude and Codex (the daemon is tested against the
+  fake providers only; Codex's rollout shape is fixtures only).
 - History is still polled (1 s while working), but a poll is now one small read: every page carries a `resume`
   cursor that returns only the entries changed since (G24 part 2). A push of events is not built.
 - Left: token counts (no usage events in the history), a helper agent's phase line and step count (not in the
