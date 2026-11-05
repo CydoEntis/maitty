@@ -322,6 +322,77 @@ What is left is the path a pane's bytes take, which v0.65.0 rewrote for several 
 `hub.rs` and `streams.rs` are new, and `terminal_stream.rs`, `TerminalView.tsx` and `api/daemon.ts`
 were rebuilt around them.
 
+### What was measured on 2026-11-05 (afternoon), on the owner's machine
+
+Two measurements, both repeatable without a person at the keyboard.
+
+**1. The daemon, the hub and the host's batching are not the cause.** A test in
+`apps/gui/src-tauri/src/hub/tests/end_to_end.rs` (not kept; write it again as a kept test) typed
+eight keys, 400 ms apart, into a pane of a real daemon through `Wire::command`, and timed each echo
+arriving as a `Reaction::Frame`: **13 ms, eight times out of eight**. That is `FLUSH_EVERY` plus one.
+Nothing is a step behind up to the point where the host calls `channel.send`.
+
+**2. In the real window, output does not arrive while nobody touches it.** With the v0.65.0
+AppImage open on a second monitor and another window focused:
+
+- `maitty send -p <pane> --no-enter x` (the terminal app's CLI, on the same daemon) typed a key
+  into a shell pane the window shows. `maitty read <pane>` had the key at once.
+- A screenshot of the window every half second (`grim -g "<x>,<y> <w>x<h>"`) showed **no change for
+  25 s, three times out of three**, and again for 8 s four times after the window had been given
+  focus for a moment and lost it. Single keys, so frames far under 1,024 bytes.
+- The overlay in those screenshots read 62 to 63 fps and **0 B/s** throughout. `countOutput` runs
+  in the channel's `onmessage` (`api/terminalStream.ts`), so the frames were not reaching the
+  window's script at all.
+- When the window was next focused, the pane showed everything.
+
+So the wait is between `channel.send` in the host and `onmessage` in the window, and it ends when
+the window gets an event. With the window focused, each key press is such an event, which is why
+the pane runs exactly one step behind.
+
+**Read but not the cause, as far as reading goes:** `tao` 0.37.2's `EventLoopProxy::send_event` on
+Linux pushes the event and calls `MainContext::default().wakeup()`, and its loop takes user events
+before it blocks, so the host's main loop should be woken for each `eval`.
+
+**Not yet known:** whether the host's `eval` reaches the web process and is not run, or is not
+sent. Counting bytes in `/proc/<pid>/io` was too noisy to say (the overlay's own sampling reads
+`/proc` every second).
+
+**A second bug found while measuring.** After the window opened, the shell's input line held
+`11;rgb:0505/0d0d/1515` and `1;2c` several times over: the answers to an OSC 11 colour query and a
+device-attributes query, typed into the pane as if the person had typed them. A view that writes a
+pane's history or replay into xterm answers every query in it again, and the answer goes out
+through `onData` as input. In a shell it is junk on the prompt; in a program with a menu it is
+keys nobody pressed. Ticket 33.
+
+### The fix, in order
+
+1. **Find the side first (half an hour).** Count in the host each frame handed to `channel.send`
+   (a counter read by `performance_sample`), next to `countOutput` in the window. Run measurement 2.
+   If the host's count rises while the window's stays at 0, the frames are lost between the two,
+   and step 2 is the fix. If the host's count does not rise, the host is not sending while the
+   window is idle: follow that in `terminal_stream.rs` before anything else.
+2. **Carry terminal output on a socket the web view reads itself**, not on a Tauri channel. The
+   host listens on `127.0.0.1` on a port it picks, the window connects with a one-time token the
+   host hands it through a command, and frames keep the header they have now. A WebSocket is read
+   by the web process's own network stack and does not wait for the host's main loop or for
+   `eval`. T3 Code carries its terminal the same way. This needs an ADR (a new local listener,
+   the token, `connect-src` in the CSP) and the security checklist.
+3. **Stop answering queries in replayed output** (ticket 33): while a view writes history or a
+   replay, what xterm sends through `onData` is dropped; only live output may be answered.
+4. **Then the probe and the budgets below**, so the next release is measured.
+
+### How to run measurement 2 again
+
+```sh
+# The window: open, on a monitor, not focused. Its geometry:
+hyprctl clients -j | jq -r '.[] | select(.class=="maitty-gui") | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+# A shell pane it shows (find its number with `maitty read <n>`), then for each key:
+MAITTY_SOCKET=default maitty send -p <pane> --no-enter x
+grim -g "<geometry>" shot.png     # every half second; compare with the shot before the key
+```
+
+Turn the overlay on first (Settings › Performance): its B/s figure is in every screenshot.
+
 ### The gap in what we measure
 
 Everything in *Measuring in the app* is about drawing: frames, slow frames, animations, CPU. None

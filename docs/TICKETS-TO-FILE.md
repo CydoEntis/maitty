@@ -622,6 +622,28 @@ out (the output reaching xterm). Read so far without finding it: the host loop i
 - A key's echo shows without another key or a refocus, in a shell and in Claude Code's menus.
 - A test covers the hop that was wrong.
 
+**Update, same afternoon.** Measured: the wait is between the host's `channel.send` and the
+window's `onmessage`, and it ends when the window gets an event. The figures, the order of the fix
+and how to run the measurement again are in [PERFORMANCE](PERFORMANCE.md), *Input latency*. Start
+there, at *The fix, in order*.
+
+## 33. Replayed output makes the pane answer old queries as typed input (bug, `client`)
+
+After the desktop window opened, a shell's input line held `11;rgb:0505/0d0d/1515` and `1;2c`
+several times: the replies to an OSC 11 colour query and a device-attributes query. A view writes
+a pane's history or replay into xterm, xterm answers every query in it, and the answer leaves
+through `onData` as input to whatever is in the pane now. In a menu those are keys nobody pressed.
+
+**What**
+- While a view writes history, a replay or a kept screen, drop what xterm sends through `onData`
+  and `onBinary`; pass input again from the first live chunk.
+- The OSC 10 and 11 answers `TerminalView.tsx` writes itself follow the same rule.
+
+**Acceptance**
+- A test: a replay holding `ESC [ c` and `ESC ] 11 ; ? ESC \` sends no input; the same bytes
+  arriving live are answered once.
+- Opening and closing the window twice leaves a shell's input line as it was.
+
 ## 29. Agent hooks point into the AppImage's temporary mount (bug, `agents`, `client`)
 
 The desktop app's daemon installs the Claude Code hooks and status line with its own path, which
