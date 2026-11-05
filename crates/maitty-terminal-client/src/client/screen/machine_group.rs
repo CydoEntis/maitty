@@ -77,15 +77,21 @@ impl App {
         }
     }
 
-    /// The mark that stands for another computer: the arrows `⇄`, or a desktop monitor with the
-    /// Nerd glyph set.
+    /// Whether the Nerd glyph set is chosen, which has icons of its own for machines.
+    fn nerd_icons(&self) -> bool {
+        glyphs::chosen(&self.cfg.ui.glyphs, &self.cfg.icons).close == "\u{f00d}"
+    }
+
+    /// The mark that stands for another computer: the arrows `⇄`, or a laptop with the Nerd
+    /// glyph set.
     pub(super) fn machine_icon(&self) -> &'static str {
-        let set = glyphs::chosen(&self.cfg.ui.glyphs, &self.cfg.icons);
-        if set.close == "\u{f00d}" {
-            "\u{f108}"
-        } else {
-            "⇄"
-        }
+        if self.nerd_icons() { "\u{f109}" } else { "⇄" }
+    }
+
+    /// The mark that stands for this computer: a house, or a desktop monitor with the Nerd glyph
+    /// set.
+    pub(super) fn local_icon(&self) -> &'static str {
+        if self.nerd_icons() { "\u{f108}" } else { "⌂" }
     }
 
     /// The machine's connection as one dot: `done` when it is up, amber while it connects or

@@ -453,7 +453,7 @@ fn draw_tab_chips(app: &mut App, buf: &mut Buffer, panes: Rect, model: &[Proj], 
 }
 
 /// Where the focused session runs, as a chip set into the first pane's top border at the right:
-/// ` ⌂ Local ` or ` ▭ build `. It takes the rightmost stretch of plain border that fits it
+/// ` ⌂ Local ` or ` ⇄ build `. It takes the rightmost stretch of plain border that fits it
 /// between the tabs and the chips already at the right (the state, the ✕), and is left out when
 /// there is none.
 fn draw_machine_badge(app: &App, buf: &mut Buffer, (from, to, y): (u16, u16, u16), t: &Theme) {
@@ -461,7 +461,7 @@ fn draw_machine_badge(app: &App, buf: &mut Buffer, (from, to, y): (u16, u16, u16
         return;
     };
     let name = if focus.machine == MachineId::LOCAL {
-        "⌂ Local".to_string()
+        format!("{} Local", app.local_icon())
     } else {
         format!(
             "{} {}",
