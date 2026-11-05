@@ -19,8 +19,43 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # What this release carries. While apps/gui/RELEASE-HOLD exists the desktop app is left out:
+  # nothing of it is built, and the desktop updater goes on being told about the last release
+  # that had it (see "Update manifest" below).
+  plan:
+    name: release plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      desktop: ${{ steps.desktop.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Check release versions
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          expected=${TAG#v}
+          tui=$(sed -n 's/^version = "\(.*\)"/\1/p' apps/tui/Cargo.toml | head -1)
+          gui=$(jq -er .version apps/gui/src-tauri/tauri.conf.json)
+          test "$expected" = "$tui" || { echo "Tag $TAG does not match TUI version $tui" >&2; exit 1; }
+          test "$expected" = "$gui" || { echo "Tag $TAG does not match GUI version $gui" >&2; exit 1; }
+
+      - id: desktop
+        run: |
+          if [ -e apps/gui/RELEASE-HOLD ]; then
+            echo "The desktop app is held out of this release:"
+            cat apps/gui/RELEASE-HOLD
+            echo desktop=false >> "$GITHUB_OUTPUT"
+          else
+            echo desktop=true >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: build ${{ matrix.target }}
+    needs: plan
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -96,6 +131,8 @@ jobs:
 
   build-gui:
     name: build GUI ${{ matrix.platform }}
+    needs: plan
+    if: needs.plan.outputs.desktop == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -123,21 +160,11 @@ jobs:
 
       - name: Install Tauri Linux dependencies
         if: runner.os == 'Linux'
+        timeout-minutes: 15
         run: |
           scripts/ci-apt-install.sh \
             build-essential curl file libayatana-appindicator3-dev libssl-dev \
             libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf rpm wget
-
-      - name: Check release versions
-        shell: bash
-        env:
-          TAG: ${{ github.event.inputs.tag || github.ref_name }}
-        run: |
-          expected=${TAG#v}
-          tui=$(sed -n 's/^version = "\(.*\)"/\1/p' apps/tui/Cargo.toml | head -1)
-          gui=$(node -p "JSON.parse(require('fs').readFileSync('apps/gui/src-tauri/tauri.conf.json', 'utf8')).version")
-          test "$expected" = "$tui" || { echo "Tag $TAG does not match TUI version $tui" >&2; exit 1; }
-          test "$expected" = "$gui" || { echo "Tag $TAG does not match GUI version $gui" >&2; exit 1; }
 
       - name: Install GUI dependencies
         working-directory: apps/gui
@@ -159,7 +186,6 @@ jobs:
           ver=$(node -p "JSON.parse(require('fs').readFileSync('apps/gui/src-tauri/tauri.conf.json', 'utf8')).version")
           case "${{ runner.os }}" in
             Windows) find target/release/bundle -type f \( -iname '*.msi' -o -iname '*.exe' -o -iname '*.sig' \) -exec cp {} dist/ \; ;;
-        timeout-minutes: 15
             macOS)
               find target/release/bundle -type f -iname '*.dmg' -exec cp {} dist/ \;
               # The update bundle is named after the app only; give it the version and arch.
@@ -177,7 +203,10 @@ jobs:
           path: dist/*
 
   release:
-    needs: [build, build-gui]
+    needs: [plan, build, build-gui]
+    # A held desktop app skips build-gui, and a job that needs a skipped one is skipped as well
+    # unless its own condition says otherwise.
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.build-gui.result == 'success' || needs.plan.outputs.desktop == 'false') }}
     runs-on: ubuntu-latest
     steps:
       # Full history and tags, for the notes below.
@@ -206,11 +235,27 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # The app reads this file to learn what the newest version is and how to verify it.
+      # The app reads this file to learn what the newest version is and how to verify it. It asks
+      # the newest release for it, so a release without the desktop app carries the newest
+      # release's file forward unchanged, and desktop users stay on the version they have.
       - name: Update manifest
         env:
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          DESKTOP: ${{ needs.plan.outputs.desktop }}
         run: |
+          if [ "$DESKTOP" != true ]; then
+            gh release download --pattern latest.json --dir dist -R "$GITHUB_REPOSITORY"
+            last=$(jq -er .version dist/latest.json)
+            {
+              echo "> The desktop app is not part of this release. Its newest installers are on [v$last](https://github.com/$GITHUB_REPOSITORY/releases/tag/v$last)."
+              echo
+              cat notes.md
+            } > notes.held.md
+            mv notes.held.md notes.md
+            cat dist/latest.json
+            exit 0
+          fi
           ver=${TAG#v}
           win="Maitty_${ver}_x64-setup.exe"
           mac="Maitty_${ver}_aarch64.app.tar.gz"
