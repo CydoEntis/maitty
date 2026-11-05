@@ -11,7 +11,6 @@ export const LOCAL_FEATURES = {
   find: 'Find',
   branches: 'Branches',
   references: 'References',
-  'paste-image': 'Pasting an image',
   'agent-status': 'Connecting an agent',
   worktrees: 'Worktrees',
   inspect: 'Inspect',

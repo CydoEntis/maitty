@@ -8,6 +8,7 @@ import { isDesktop, loadTerminalReplay, resizeTerminal, sendTerminalInput } from
 import { listenTerminalChunks, loadTerminalHistory, type TerminalChunk, type TerminalHistory } from '@/api/terminalStream'
 import type { Conversation } from '@/data/preview'
 import type { TerminalHandle } from '@/features/terminal/handle'
+import { isPasteChord, listenForImagePaste } from '@/features/terminal/clipboardImage'
 import { findPathLinks } from '@/features/terminal/pathLinks'
 import { appendToScreen, cachedScreen, replaceScreen, screenKey } from '@/features/terminal/screenCache'
 import { isWindowActive, useWindowActive } from '@/lib/window-activity'
@@ -116,6 +117,8 @@ type TerminalViewProps = {
   onOpenPath?: (path: string, line?: number) => void
   /** Receives the open terminal's controls, and null when it closes. */
   onHandle?: (handle: TerminalHandle | null) => void
+  /** The clipboard held an image and no text when the user pasted here. */
+  onPasteImage?: (image: File) => void
 }
 
 type NativeConversation = Conversation & { generation: number; nativePane: number }
@@ -140,12 +143,12 @@ const RESET_SCREEN = new TextEncoder().encode('\x1bc')
 /** What Shift+Enter sends: Alt+Enter, which Claude Code and Codex take as a new line in their prompt. */
 const NEW_LINE_KEYS = '\x1b\r'
 
-export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, ended = false, focused = false, onInput, onOpenPath, onHandle }: TerminalViewProps) {
+export function TerminalView({ conversation, desktop, fontSize, look = {}, label, inputDisabled = false, ended = false, focused = false, onInput, onOpenPath, onHandle, onPasteImage }: TerminalViewProps) {
   if (!desktop) return null
   if (!isDesktop()) return <div className="panel-empty"><TerminalSquare size={18} /><h2>Native terminal is not available</h2><p>Open Maitty Desktop to use the daemon-owned terminal.</p></div>
   if (!hasNativeTerminal(conversation)) return <NativeHandoffView conversation={conversation} />
 
-  return <ConnectedTerminalView conversation={conversation} fontSize={fontSize} look={look} label={label ?? `Native ${conversation.provider} terminal`} inputDisabled={inputDisabled || ended} ended={ended} focused={focused} onInput={onInput} onOpenPath={onOpenPath} onHandle={onHandle} />
+  return <ConnectedTerminalView conversation={conversation} fontSize={fontSize} look={look} label={label ?? `Native ${conversation.provider} terminal`} inputDisabled={inputDisabled || ended} ended={ended} focused={focused} onInput={onInput} onOpenPath={onOpenPath} onHandle={onHandle} onPasteImage={onPasteImage} />
 }
 
 function NativeHandoffView({ conversation }: { conversation: Conversation }) {
@@ -164,9 +167,9 @@ function NativeHandoffView({ conversation }: { conversation: Conversation }) {
   </div>
 }
 
-type ConnectedProps = { conversation: NativeConversation; fontSize: number; look: TerminalLook; label: string; inputDisabled: boolean; ended: boolean; focused: boolean; onInput: ((data: string | Uint8Array) => void) | undefined; onOpenPath: ((path: string, line?: number) => void) | undefined; onHandle: ((handle: TerminalHandle | null) => void) | undefined }
+type ConnectedProps = { conversation: NativeConversation; fontSize: number; look: TerminalLook; label: string; inputDisabled: boolean; ended: boolean; focused: boolean; onInput: ((data: string | Uint8Array) => void) | undefined; onOpenPath: ((path: string, line?: number) => void) | undefined; onHandle: ((handle: TerminalHandle | null) => void) | undefined; onPasteImage: ((image: File) => void) | undefined }
 
-function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisabled, ended, focused, onInput, onOpenPath, onHandle }: ConnectedProps) {
+function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisabled, ended, focused, onInput, onOpenPath, onHandle, onPasteImage }: ConnectedProps) {
   const term = conversation.nativePane
   // Each machine numbers its own panes: the stream and its history are kept by machine and pane.
   const machine = conversation.machine ?? 0
@@ -188,9 +191,11 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   useEffect(() => { onInputRef.current = onInput })
   const onOpenPathRef = useRef(onOpenPath)
   const onHandleRef = useRef(onHandle)
+  const onPasteImageRef = useRef(onPasteImage)
   useEffect(() => {
     onOpenPathRef.current = onOpenPath
     onHandleRef.current = onHandle
+    onPasteImageRef.current = onPasteImage
   })
   const refitTerminal = useRef<(() => void) | null>(null)
   const [connecting, setConnecting] = useState(true)
@@ -234,6 +239,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     let disposeInput: (() => void) | null = null
     let disposeBinary: (() => void) | null = null
     let disposeCopy: (() => void) | null = null
+    let disposePasteImage: (() => void) | null = null
     let frame = 0
     let flushWait = 0
     let queued: Uint8Array[] = []
@@ -513,7 +519,9 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         void fonts?.ready.then(() => { refitTerminal.current?.() })
 
         // A terminal sends the same byte for Shift+Enter as for Enter. Agents read ESC then Enter (Alt+Enter) as "new line", so that is what goes.
+        // Ctrl+V outside macOS would be sent on as ^V; the browser pastes instead, which is the only way to learn that the clipboard holds an image (ticket 19).
         terminalInstance.attachCustomKeyEventHandler((event) => {
+          if (isPasteChord(event, navigator.userAgent)) return false
           if (event.key !== 'Enter' || !event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return true
           if (event.type === 'keydown') send(NEW_LINE_KEYS)
           return false
@@ -535,6 +543,12 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         }
         hostElement.addEventListener('mouseup', copySelection)
         disposeCopy = () => { hostElement.removeEventListener('mouseup', copySelection) }
+        // A paste of an image (with no text) goes to the window; text pastes as it always has.
+        disposePasteImage = listenForImagePaste(
+          hostElement,
+          (image) => { onPasteImageRef.current?.(image) },
+          (message) => { toast.error(message) },
+        )
       } catch (error) {
         if (isMounted) {
           setLoadError(true)
@@ -557,6 +571,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       disposeInput?.()
       disposeBinary?.()
       disposeCopy?.()
+      disposePasteImage?.()
       if (emulator) forgetRenderer(emulator)
       emulator?.dispose()
       terminal.current = null
