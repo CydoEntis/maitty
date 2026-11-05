@@ -52,9 +52,33 @@ describe('command card', () => {
 
     expect(screen.queryByRole('button')).toBeNull()
   })
+
+  it('shows a masked token as it is and says the daemon hid it', () => {
+    render(<CommandCard event={commandEvent('c', { command: 'echo $T', output: 'token is [redacted]', exitCode: 0 })} />)
+
+    expect(screen.getByText('token is [redacted]')).toBeInTheDocument()
+    expect(screen.getByText(/looked like a secret/)).toBeInTheDocument()
+    expect(screen.getByText('exit 0')).toBeInTheDocument()
+  })
+
+  it('says a secret file was read instead of showing the marker as output', () => {
+    render(<CommandCard event={commandEvent('c', { command: 'cat .env', output: '[content of a secret file omitted]', exitCode: 0 })} />)
+
+    expect(screen.getByText(/shows a secret file/)).toBeInTheDocument()
+    expect(screen.queryByText('[content of a secret file omitted]')).toBeNull()
+  })
 })
 
 describe('edit block', () => {
+  it('names a secret file and says its content is not kept, not that the diff failed or is empty', () => {
+    render(<EditCard event={editEvent('e', { file: 'app/.env', change: 'add', diff: { status: 'omitted' } })} root={null} onOpen={null} />)
+
+    expect(screen.getByRole('group', { name: 'Created app/.env' })).toBeInTheDocument()
+    expect(screen.getByText(/keeps its name but not its content/)).toBeInTheDocument()
+    expect(screen.queryByText(/unavailable/)).toBeNull()
+    expect(screen.queryByText(/^[+−]\d+$/)).toBeNull()
+  })
+
   const lines = (count: number): DiffLine[] => Array.from({ length: count }, (_, index) => ({ kind: 'add', text: `line ${String(index)}` }))
   const long = (count: number) => editEvent('e', { diff: { status: 'available', hunks: [{ header: '', lines: lines(count) }], added: count, removed: 0, truncated: false } })
 

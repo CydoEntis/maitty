@@ -34,6 +34,8 @@ export type FileDiff =
       readonly truncated: boolean
     }
   | { readonly status: 'unavailable' }
+  /** The file is a secret file: the daemon kept its path and kind but not its text. */
+  | { readonly status: 'omitted' }
 
 export type FileChangeKind = 'add' | 'update' | 'delete' | 'unknown'
 
