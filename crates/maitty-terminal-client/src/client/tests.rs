@@ -4188,6 +4188,43 @@ mod screen_tests {
     }
 
     #[test]
+    fn a_click_or_drag_in_a_pane_scrolled_back_leaves_it_where_it_is() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        draw(&mut app, 160, 45);
+        let term = app.focused().unwrap();
+        let (_, r) = *app.panes.iter().find(|(t, _)| *t == term).unwrap();
+        let mut p = vt100::Parser::new(r.height, r.width, 1000);
+        // A program that asks for the mouse, with history above its screen.
+        p.process(b"\x1b[?1000h\x1b[?1006h");
+        for i in 0..80 {
+            p.process(format!("line {i}\r\n").as_bytes());
+        }
+        app.parsers.insert(term, p);
+        draw(&mut app, 160, 45);
+        app.scroll_by(term, 10);
+        let before = app.parsers[&term].screen().scrollback();
+        assert_eq!(before, 10);
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Drag(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            app.on_mouse(MouseEvent {
+                kind,
+                column: r.x + 2,
+                row: r.y + 3,
+                modifiers: KeyModifiers::NONE,
+            });
+            draw(&mut app, 160, 45);
+        }
+        assert_eq!(
+            app.parsers[&term].screen().scrollback(),
+            before,
+            "selecting while scrolled back never snaps the view to the bottom"
+        );
+    }
+
+    #[test]
     fn the_leader_lights_up_and_its_key_map_runs_or_searches() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.cfg.ui.which_key = false;

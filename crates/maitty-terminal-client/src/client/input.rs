@@ -754,6 +754,9 @@ impl App {
             && (!matches!(m.kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown)
                 || self.parsers.get(&term).is_some_and(|p| p.screen().alternate_screen())
                 || self.history(term).1 == 0)
+            // Scrolled back, the program's screen is not the one on view: a click there would land
+            // on the wrong cell, so it is not sent. The click is the app's (focus, selection).
+            && self.parsers.get(&term).is_some_and(|p| p.screen().scrollback() == 0)
             && let Some(bytes) = self.parsers.get(&term).and_then(|p| keys::mouse_bytes(p.screen(), &m, pos.x - inner.x, pos.y - inner.y))
         {
             if m.kind == MouseEventKind::Moved && self.hover != Some(pos) {
@@ -763,10 +766,6 @@ impl App {
             if matches!(m.kind, MouseEventKind::Down(_)) {
                 if Some(term) != self.focused() {
                     self.cmd_on(term.machine, Command::FocusPane { term: term.term });
-                }
-                // Clicking for the program brings its view back to the bottom.
-                if let Some(p) = self.parsers.get_mut(&term) {
-                    p.screen_mut().set_scrollback(0);
                 }
             }
             if !bytes.is_empty() {
