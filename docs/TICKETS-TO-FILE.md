@@ -579,3 +579,91 @@ Do this last, after timing a release made with ticket 23. It may not be worth th
   in both apps. Amend the ADR or record the change in a new one.
 - A branch cut before these merges (the terminal fixes for v0.65.1) should merge `dev` before its
   pull request: #268 changed about 500 lines of `crates/maitty-terminal-client`.
+
+## Added 2026-11-05 (afternoon): from the terminal fixes (#275) and the Inbox (#276)
+
+Both were built without access to Plane, so neither has a ticket there. Record them when Plane is
+reachable; what is left over from them is below.
+
+**Ticket 22 (update a machine), the TUI half.** #275 added **Update…** to a machine's right-click
+menu in the sidebar and `u` in the Machines dialog. It runs `maitty machine update <name>` (with
+`--install` when the app is not there at all) in a popup pane and dials the machine again when the
+popup closes. That is the command's own look-first, ask-first flow, not the shared flow ticket 22
+asks for. Still open from ticket 22: the GUI button, the one shared flow, and the ADR amendment.
+
+**Ticket 24, seen again.** On #275 `desktop GUI (macOS host)` was cancelled after 15 minutes with no
+runner and no step run
+(https://github.com/CydoEntis/maitty/actions/runs/42086501798/job/127453010943); the re-run passed
+in 1m28s.
+
+**Ticket 26, seen again.** On #275's first run
+(https://github.com/CydoEntis/maitty/actions/runs/42080268185/job/127431252289) the same test
+failed with `ECHO_BETA_93 reached machine 0`. #275 does not touch the desktop app.
+
+## 28. Intermittent Windows failure when a machine is removed (bug, `client`, `windows`)
+
+On #276's first run `test (windows-latest)` failed once
+(https://github.com/CydoEntis/maitty/actions/runs/42080810487/job/127433096613):
+
+```text
+client::machine_flow::tests::removing_forgets_the_machine_here_and_leaves_its_sessions_and_the_saved_layout_alone
+panicked at crates\maitty-terminal-client\src\client\machine_flow\tests.rs:773:9:
+assertion failed: h.app.remotes.is_empty() && h.app.refused.is_empty()
+```
+
+#276 changes neither the test nor the machine flow, and the re-run of the same commit passed. Not
+looked into: whether a late report from the removed machine's connection puts it back, which would
+be a bug in the app and not in the test.
+
+**Acceptance** as ticket 26: the cause named with evidence from a Windows run, ten passes in a row,
+no retry added.
+
+## 29. Intermittent Windows failure closing a worktree's last pane (bug, `daemon`, `windows`)
+
+On #275's second run `test (windows-latest)` failed once
+(https://github.com/CydoEntis/maitty/actions/runs/42080268185/job/127439731421):
+
+```text
+daemon::logic_tests::closing_a_worktrees_last_pane_removes_it_only_when_nothing_lives_only_there
+panicked at crates\maitty-core\src\daemon\logic_tests.rs:1018:14:
+a pane there
+```
+
+The third run of the same commit passed. Not looked into.
+
+**Acceptance** as ticket 26.
+
+## 30. What Codex, Gemini and OpenCode send as their last message (spike, `daemon`, `agents`)
+
+The Inbox shows what an agent last said (#276). The hook reads only `last_assistant_message` and
+`last-assistant-message` (`crates/maitty-terminal-client/src/cli.rs`), which Claude sends. For an
+agent that sends neither, the daemon reads the last three lines above the input line off the pane
+(`crates/maitty-core/src/daemon/last_lines.rs`), which was tested against made-up screens only.
+
+**What:** on real Codex, Gemini and OpenCode, capture the turn-end payload and add a row per agent
+to `docs/agent-status.md`: the field that carries its last message, or none. Where one exists, a
+follow-up ticket reads it. Also look at what the screen fallback shows for each and say whether it
+is readable.
+
+## 31. A needs-you alert can ring for a prompt that settles itself (bug, `daemon`)
+
+`NEEDS_SETTLES` in `crates/maitty-core/src/alert.rs` is 300 ms: a permission prompt that is
+auto-approved more slowly than that still rings. #275 left it alone because nothing measured how
+long such prompts last. **What:** measure it on real agents, then pick the delay.
+
+## 32. Rename a machine (feature, `client`, `ssh`)
+
+**Edit…** on a machine (#275) changes its `target` only. Its saved layout and its recorded daemon id
+are kept under its name, so a rename has to move both.
+
+## 33. A click on a project row moves the keys into the sidebar (change, `client`)
+
+#275 made a click on a session row open it and leave the keys in its pane, as a click on a tab row
+does. A click on a project row still folds it and gives the sidebar the keys
+(`ScreenHit::ToggleProj` in `screen/behaviour.rs`). The owner has not said which they want.
+
+## 34. Choose the alert sounds (feature, `client`)
+
+#275 added a switch for each sound and a volume. The two sounds are still generated and fixed; a
+config that set `notify.sound_needs` or `notify.sound_done` to a sound's name, from before they
+were removed, still loads and is ignored.
