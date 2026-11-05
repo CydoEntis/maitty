@@ -1289,9 +1289,22 @@ fn draw_shell_row(
     let st = Style::default().bg(pb);
     let x = cols.x + 4;
     let room = cols.end().saturating_sub(x) as usize;
-    let label = truncate(&line.label, room.saturating_sub(6));
-    let mut left = vec![
+    // The state of what runs in the tab: an agent's mark (the spinner while it works), else a
+    // plain shell's `○`.
+    let mark = line.mark.as_ref().map_or_else(
+        || seg("○ ", st.fg(t.muted)),
+        |(glyph, _, colour)| {
+            seg(
+                format!("{glyph} "),
+                st.fg(*colour).add_modifier(Modifier::BOLD),
+            )
+        },
+    );
+    let number = format!("{number}");
+    let label = truncate(&line.label, room.saturating_sub(4 + number.width() + 1));
+    let left = vec![
         seg(if last { "└ " } else { "├ " }, st.fg(t.muted)),
+        mark,
         seg(
             label,
             st.fg(name).add_modifier(if line.current {
@@ -1300,16 +1313,14 @@ fn draw_shell_row(
                 Modifier::empty()
             }),
         ),
-        seg(format!("  {number}"), st.fg(t.muted)),
     ];
-    left.retain(|(text, _)| !text.is_empty());
     draw_tab_line(
         app,
         buf,
         cols.row(y),
         x,
         cols.end(),
-        (left, Vec::new()),
+        (left, vec![seg(number, st.fg(t.muted))]),
         tab,
     );
 }

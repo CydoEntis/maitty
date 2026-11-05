@@ -2601,6 +2601,12 @@ mod screen_tests {
                 1,
                 "{layout}: no line for the tab the session's own pane is in: its row is that one"
             );
+            let spinner = crate::client::design::glyph(&app, Status::Working);
+            assert!(
+                rows[two].contains(&spinner),
+                "{layout}: the working tab says so though it is not on screen: {}",
+                rows[two]
+            );
             let side = app.screen.side_rect;
             let at = rows[three].find("gemini").expect("the name");
             let name_x = side.x + rows[three][..at].chars().count() as u16;
