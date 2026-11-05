@@ -62,6 +62,8 @@ export type SidebarProps = {
   onRenameSession: (id: string) => void
   onPinSession: (id: string, pinned: boolean) => void
   onOpenSettings: () => void
+  /** Opens the Usage and cost page; its icon sits beside Settings. */
+  onOpenUsage: () => void
   /** The footer's left slot while the daemon is reachable: the version, or an update that needs you. */
   updateSlot: ReactNode
   /** The rail's download button, present only while an update exists. */
@@ -175,6 +177,7 @@ function Expanded(props: GroupProps) {
         {online
           ? <span className="mx-foot-slot">{props.updateSlot}</span>
           : <><span className="mx-daemon-dot is-offline" aria-hidden="true" /><span className="mx-daemon-text is-offline" role="status">Reconnecting to maittyd…</span></>}
+        <button type="button" className="mx-icon-button mx-usage-button" aria-label="Usage and cost" title={tip('Usage and cost', 'usage')} onClick={props.onOpenUsage}><Icon name="chart" /></button>
         <button type="button" className="mx-settings-button" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" />Settings</button>
       </div>
     </div>
@@ -326,6 +329,7 @@ function Rail(props: GroupProps) {
       <div className="mx-rail-bottom">
         {props.railUpdateSlot}
         <span className={`mx-daemon-dot${online ? '' : ' is-offline'}`} role="img" aria-label={online ? `maittyd · ${String(sessionCount)} sessions` : 'Reconnecting to maittyd…'} title={online ? `maittyd · ${String(sessionCount)} sessions` : 'Reconnecting to maittyd…'} />
+        <button type="button" className="mx-icon-button mx-rail-button" aria-label="Usage and cost" title={tip('Usage and cost', 'usage')} onClick={props.onOpenUsage}><Icon name="chart" /></button>
         <button type="button" className="mx-icon-button mx-rail-button" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" /></button>
       </div>
     </div>

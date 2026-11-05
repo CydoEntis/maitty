@@ -12,6 +12,7 @@ export const ESC_LADDER = [
   'inbox',
   'settings',
   'drawer',
+  'usage',
   'focus-mode',
 ] as const
 
