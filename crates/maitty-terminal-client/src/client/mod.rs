@@ -279,7 +279,7 @@ fn cursor_code(program: Option<u8>, ui: &crate::config::Ui) -> u8 {
     let blinking = match ui.cursor.as_str() {
         "block" => 1,
         "underline" => 3,
-        "bar" => 5,
+        "line" => 5,
         _ => return 0,
     };
     // DECSCUSR's odd numbers blink and the even ones after them hold still.
@@ -326,19 +326,14 @@ mod cursor_tests {
 
     #[test]
     fn your_cursor_shows_where_the_program_asks_for_none() {
-        assert_eq!(
-            cursor_code(None, &ui("terminal", true)),
-            0,
-            "the terminal's own by default"
-        );
         assert_eq!(cursor_code(None, &ui("block", true)), 1);
         assert_eq!(cursor_code(None, &ui("block", false)), 2);
         assert_eq!(cursor_code(None, &ui("underline", true)), 3);
         assert_eq!(cursor_code(None, &ui("underline", false)), 4);
-        assert_eq!(cursor_code(None, &ui("bar", true)), 5);
-        assert_eq!(cursor_code(None, &ui("bar", false)), 6);
+        assert_eq!(cursor_code(None, &ui("line", true)), 5);
+        assert_eq!(cursor_code(None, &ui("line", false)), 6);
         assert_eq!(
-            cursor_code(Some(0), &ui("bar", false)),
+            cursor_code(Some(0), &ui("line", false)),
             6,
             "a program asking for the default gets yours"
         );
@@ -351,7 +346,7 @@ mod cursor_tests {
             5,
             "vim's insert-mode bar wins over your block"
         );
-        assert_eq!(cursor_code(Some(2), &ui("terminal", true)), 2);
+        assert_eq!(cursor_code(Some(2), &ui("block", true)), 2);
     }
 }
 
@@ -582,6 +577,10 @@ pub struct App {
     /// Pages the wheel has sent up to an agent that scrolls itself, less those sent down:
     /// The app can't see where it is, so this is how far "Back to bottom" has to page down.
     paged_up: std::collections::HashMap<ClientTerm, u32>,
+    /// When a remote machine's refused copy was last told, so it is told once a minute.
+    copy_refusal_told: Option<Instant>,
+    /// The panes drawn at the last `sync_sizes`, to see which have just come into view.
+    shown_panes: std::collections::HashSet<ClientTerm>,
     out: mpsc::UnboundedSender<Outgoing>,
     quit: Option<String>,
     dirty: bool,
@@ -826,6 +825,8 @@ impl App {
             pane_frames: Vec::new(),
             wheel_page: None,
             paged_up: std::collections::HashMap::new(),
+            copy_refusal_told: None,
+            shown_panes: std::collections::HashSet::new(),
             out,
             quit: None,
             dirty: true,
@@ -1635,16 +1636,30 @@ impl App {
         }
         let panes = self.panes.clone();
         let dragging = self.screen.drag.is_some();
+        // A pane that was out of sight (another tab, a hidden session) and is shown again has its
+        // size told to the daemon afresh: another window on the same daemon may have set it to
+        // its own in the meantime, and the program then draws for a width this screen is not.
+        let now: std::collections::HashSet<ClientTerm> = panes.iter().map(|(t, _)| *t).collect();
+        for term in now.difference(&self.shown_panes) {
+            self.sizes.remove(term);
+        }
+        self.shown_panes = now;
         for (term, r) in panes {
             let want = (r.width.max(2), r.height.max(2));
-            if !dragging && self.rewrap.remove(&term) {
+            // An agent's screen is drawn by cursor moves and erases that are only right at the
+            // width they were made for: replaying them into a screen of another width scrambles
+            // it. The program redraws itself when it hears of the new size, so such a pane only
+            // changes size.
+            let replays = !self.draws_itself(term);
+            if !dragging && self.rewrap.remove(&term) && replays {
                 self.rewrap_pane(term, want);
             }
             if self.sizes.get(&term) == Some(&want) {
                 continue;
             }
             let old = self.sizes.insert(term, want);
-            if old.is_some_and(|o| o.0 != want.0)
+            if replays
+                && old.is_some_and(|o| o.0 != want.0)
                 && self.raw.get(&term).is_some_and(|r| !r.is_empty())
             {
                 // A new width: replay recent output into a fresh screen so text re-wraps
@@ -1670,6 +1685,11 @@ impl App {
                 },
             );
         }
+    }
+
+    /// Whether the program in `term` is an agent, which paints its own screen with cursor moves.
+    fn draws_itself(&self, term: ClientTerm) -> bool {
+        self.term_info(term).is_some_and(|i| i.agent.is_some())
     }
 
     /// A fresh screen for `term` at `(cols, rows)`, from the output kept for it.
@@ -1777,10 +1797,16 @@ impl App {
         if text.is_empty() {
             return;
         }
-        let chars = text.chars().count();
-        let lines = text.lines().count().max(1);
         let native = copy::to_clipboard(&text);
         let from = src.map(|t| self.session_name(t)).filter(|n| !n.is_empty());
+        self.announce_copy(&text, native, from);
+    }
+
+    /// The one toast for a copy, whether you selected the text here or a program asked for it:
+    /// what was copied, how much, from where, and a line of it.
+    pub(super) fn announce_copy(&mut self, text: &str, native: bool, from: Option<String>) {
+        let chars = text.chars().count();
+        let lines = text.lines().count().max(1);
         let mut detail = format!(
             "{chars} character{} · {lines} line{}",
             if chars == 1 { "" } else { "s" },

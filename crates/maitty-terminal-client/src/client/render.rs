@@ -30,7 +30,7 @@ pub fn draw(app: &mut App, f: &mut Frame) {
         app.theme.clone()
     };
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
-    super::screen::set_round(false);
+    super::screen::set_round(super::screen::Look::of(&app.cfg.ui).caps);
     super::screen::set_plain(hairline.then_some(&t));
     // The terminal's own background (its window padding) matches ours while we run.
     let terminal_bg = app.cfg.ui.background != "solid";
@@ -319,13 +319,7 @@ pub(super) fn status_icon(app: &App, s: Status) -> String {
     let i = &app.cfg.icons;
     match s {
         Status::Working if !app.cfg.ui.spinner.is_empty() => {
-            let ascii = super::screen::glyphs::chosen(&app.cfg.ui.glyphs, i)
-                == &super::screen::glyphs::ASCII;
-            if ascii && app.cfg.ui.spinner == crate::config::BARS_FRAMES {
-                crate::config::BARS_ASCII[working_step(app, crate::config::BARS_ASCII.len())].into()
-            } else {
-                app.cfg.ui.spinner[working_step(app, app.cfg.ui.spinner.len())].clone()
-            }
+            app.cfg.ui.spinner[working_step(app, app.cfg.ui.spinner.len())].clone()
         }
         Status::Working => i.working.clone(),
         Status::Blocked => i.blocked.clone(),

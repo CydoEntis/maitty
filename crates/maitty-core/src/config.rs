@@ -1801,7 +1801,7 @@ mod tests {
         for (written, read) in [
             ("true", Rounding::Corners),
             ("false", Rounding::Off),
-            ("\"full\"", Rounding::Corners),
+            ("\"full\"", Rounding::Full),
             ("\"corners\"", Rounding::Corners),
             ("\"off\"", Rounding::Off),
         ] {
@@ -1817,7 +1817,7 @@ mod tests {
     #[test]
     fn the_cursor_defaults_to_the_terminals_own_and_refuses_an_unknown_shape() {
         let ui = super::Ui::default();
-        assert_eq!((ui.cursor.as_str(), ui.cursor_blink), ("terminal", true));
+        assert_eq!((ui.cursor.as_str(), ui.cursor_blink), ("block", true));
         for shape in super::CURSOR_SHAPES {
             let c: super::Config = toml::from_str(&format!(
                 "[ui]\ncursor = \"{shape}\"\ncursor_blink = false\n"
@@ -2529,11 +2529,11 @@ layout = 'cards'",
         };
         assert_eq!(
             ui("[ui]\nlayout = 'hairline'\nrounded = 'full'").rounding(),
-            Rounding::Corners
+            Rounding::Full
         );
         assert_eq!(
             ui("[ui]\nlayout = 'tiled'\nrounded = 'full'").rounding(),
-            Rounding::Corners,
+            Rounding::Full,
             "the same setting applies everywhere"
         );
     }

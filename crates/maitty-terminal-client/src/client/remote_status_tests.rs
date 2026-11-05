@@ -125,6 +125,8 @@ impl Window {
             BOX,
             Remote {
                 name: "box".into(),
+                // The sidebar lists a machine's sessions only while its line is up.
+                state: crate::client::link::ConnectionState::Connected,
                 ..Remote::default()
             },
         );

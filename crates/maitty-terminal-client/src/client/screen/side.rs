@@ -1,12 +1,14 @@
 //! The sidebar card: projects, their sessions in one to three lines each, and the lines they
-//! are drawn from. Its rows are held to the reference frames (`side_frames.txt`).
+//! are drawn from. Its cards are held to the sidebar handoff (ADR 0050).
 
 use super::check;
 use super::glyphs::Kind as State;
 use super::machine_group;
-use super::side_tabs::{draw_tab_line, shown_tab_indexes, tab_line, tab_segs};
+use super::side_tabs::{draw_tab_line, shown_tab_indexes, tab_line};
 use super::*;
 use crate::client::ids::ClientSession;
+use crate::client::link::ConnectionState;
+use crate::protocol::CheckState;
 
 /// A line of the sidebar tree.
 #[derive(Debug, Clone)]
@@ -14,13 +16,8 @@ pub(in crate::client) enum Line {
     Proj(usize),
     /// An agent or shell (pi, wi, si), and how deep it sits under the session that started it (0: not under anyone).
     Sess(usize, usize, usize, u8),
-    /// A session's second line: its check result, its question, or what it is doing.
+    /// A session's last line: its check result, its question, or what it is doing.
     Detail(ClientSession),
-    /// A session's third line, from `NARROW` columns: a failed check's first failing line, or
-    /// its checkpoints by name.
-    Third(ClientSession),
-    /// A dim line under an agent: a queued follow-up. Shares the agent's highlight.
-    Note(String, Color, ClientSession),
     /// One of a session's tabs (its owner, and where the tab is in `screen.tabs`), under its
     /// row while it has two or more (`side_tabs`).
     Tab(ClientTerm, usize),
@@ -30,6 +27,8 @@ pub(in crate::client) enum Line {
     Machine(MachineId),
     /// A line under a machine's header: why it is down, or what its daemon reports.
     MachineNote(Vec<String>, Color),
+    /// The second row of a machine shown as one item (no sessions, or its line is not up).
+    MachineState(MachineId),
     Gap,
 }
 
@@ -37,38 +36,6 @@ pub(in crate::client) enum Line {
 const AGES_FROM: u16 = 100;
 /// The folder meta is shown only when at least this many columns are left for it.
 const META_MIN_COLS: u16 = 6;
-
-/// A session has a second line only when it says more than the row does: the mark and the
-/// name's colour already say working, needs you, done or idle. What is left: a question, a check
-/// result, helpers it asks for, a wait for a plan limit, a new agent's first step, asleep, a
-/// quiet spell, its helpers at work, or a message just sent.
-fn has_detail(app: &App, s: &Session) -> bool {
-    let helpers_at_work =
-        app.cfg.ui.subagent_count && s.status == Status::Working && agent_count(s) > 0;
-    s.asleep
-        || is_new(s)
-        || check::shown(s).is_some()
-        || s.question.is_some()
-        || s.resume_at.is_some()
-        || s.helpers_wanted > 0
-        || s.secret_ask.is_some()
-        || (s.status == Status::Working && s.quiet_since.is_some())
-        || helpers_at_work
-        || s.native_term
-            .is_some_and(|id| app.screen.receipts.contains_key(&id))
-}
-
-/// A finished agent with nothing to say: its row is one line, since its `○` already says idle.
-/// Anything that needs a look (working, asking, new, a check result, a wait for a plan limit)
-/// keeps its second.
-fn quiet_done(s: &Session) -> bool {
-    !is_new(s)
-        && check::shown(s).is_none()
-        && s.question.is_none()
-        && s.resume_at.is_none()
-        && s.secret_ask.is_none()
-        && matches!(s.status, Status::Idle | Status::None)
-}
 
 /// An agent that has started and been told nothing yet.
 pub(super) fn is_new(s: &Session) -> bool {
@@ -96,27 +63,11 @@ fn agent_count(s: &Session) -> usize {
     active.count() + s.subagents.iter().filter(|n| !named(n)).count()
 }
 
-fn has_third(s: &Session) -> bool {
-    check::reported(s).len() > 1
-        || check::shown(s).is_some_and(|c| check::failed(c) && !c.first_failing_line.is_empty())
-}
-
-pub(in crate::client) fn session_lines(app: &App, s: &Session, t: &Theme, out: &mut Vec<Line>) {
-    let notes_c = t.muted;
-    if has_detail(app, s) {
+pub(in crate::client) fn session_lines(app: &App, s: &Session, out: &mut Vec<Line>) {
+    // A card is its name and what it is doing; a session with nothing to say, a plain shell or
+    // an agent that is idle or just started, is its name alone.
+    if !plain_shell(s) && says_something(app, s) {
         out.push(Line::Detail(s.key));
-    }
-    if has_third(s) {
-        out.push(Line::Third(s.key));
-    }
-    // What it's been told to do next, once this turn is over.
-    if let Some(next) = s.queued.first() {
-        let more = if s.queued.len() > 1 {
-            format!(" (+{})", s.queued.len() - 1)
-        } else {
-            String::new()
-        };
-        out.push(Line::Note(format!("⏵ next: {next}{more}"), notes_c, s.key));
     }
     if let Some(term) = s.native_term {
         out.extend(
@@ -227,7 +178,7 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             any = true;
             out.push(Line::Sess(pi, wi, si, depth));
             let s = &p.wts[wi].sessions[si];
-            session_lines(app, s, t, &mut out);
+            session_lines(app, s, &mut out);
         }
         if !any {
             out.push(Line::Empty(pi));
@@ -241,22 +192,51 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
     out
 }
 
-/// The lines drawn at `screen_w` columns. A finished, seen row is one line (an asleep one only
-/// below `NARROW`, where the third line goes too). A row that needs a look keeps its second.
-fn fitted_lines(app: &App, model: &[Proj], t: &Theme, screen_w: u16) -> Vec<Line> {
-    let mut lines = side_lines(app, model, t);
-    lines.retain(|l| match l {
-        Line::Third(_) => screen_w >= NARROW,
-        Line::Detail(term) => {
-            find_key(model, *term)
-                .is_some_and(|(.., s)| !quiet_done(s) || (s.asleep && screen_w >= NARROW))
-                || app
-                    .session_term(*term)
-                    .is_some_and(|id| app.screen.receipts.contains_key(&id))
+/// The lines drawn: this computer's projects and their cards, and the other machines' (each
+/// under a header of its own; a machine whose line is not up, or that has no sessions, is that
+/// header and one line of state instead of its projects).
+fn card_lines(app: &App, model: &[Proj], t: &Theme) -> (Vec<Line>, Vec<Line>) {
+    let mut by_machine: std::collections::BTreeMap<MachineId, Vec<Line>> = Default::default();
+    let mut at = MachineId::LOCAL;
+    for l in side_lines(app, model, t) {
+        match &l {
+            Line::Proj(pi) | Line::Empty(pi) => {
+                at = model[*pi].machine;
+                by_machine.entry(at).or_default().push(l);
+            }
+            Line::Sess(..) | Line::Detail(_) | Line::Tab(..) | Line::Gap => {
+                by_machine.entry(at).or_default().push(l);
+            }
+            // Headers and their notes are drawn from the connection, not from these.
+            Line::Machine(m) => at = *m,
+            Line::MachineNote(..) | Line::MachineState(_) => {}
         }
-        _ => true,
-    });
-    lines
+    }
+    let mut local = by_machine.remove(&MachineId::LOCAL).unwrap_or_default();
+    if !local.iter().any(|l| matches!(l, Line::Proj(_))) {
+        local = vec![Line::Machine(MachineId::LOCAL)];
+    }
+    let mut remote = Vec::new();
+    if !app.remotes.is_empty() {
+        remote.push(Line::Gap);
+    }
+    for machine in app.remotes.keys().copied() {
+        let up = app
+            .remotes
+            .get(&machine)
+            .is_some_and(|r| matches!(r.state, ConnectionState::Connected));
+        remote.push(Line::Machine(machine));
+        match by_machine.remove(&machine) {
+            Some(lines) if up && lines.iter().any(|l| matches!(l, Line::Proj(_))) => {
+                remote.extend(lines);
+            }
+            _ => {
+                remote.push(Line::MachineState(machine));
+                remote.push(Line::Gap);
+            }
+        }
+    }
+    (local, remote)
 }
 
 /// The session a sidebar line stands for, if any.
@@ -267,10 +247,10 @@ pub(in crate::client) fn line_term(model: &[Proj], l: &Line) -> Option<ClientSes
     }
 }
 
-/// The session a line belongs to as part of its row (its first, second or third line).
+/// The session a line belongs to as part of its card (its name, badge or last line).
 fn row_term(model: &[Proj], l: &Line) -> Option<ClientSession> {
     match l {
-        Line::Detail(term) | Line::Third(term) => Some(*term),
+        Line::Detail(term) => Some(*term),
         _ => line_term(model, l),
     }
 }
@@ -356,8 +336,40 @@ impl RowLook {
     }
 }
 
-/// The sidebar card: its title and counts, projects with their sessions under them, new and
-/// actions at the foot.
+/// What both halves of the sidebar share when their rows are drawn.
+struct Pass<'a> {
+    model: &'a [Proj],
+    look: Look,
+    cols: Cols,
+    pb: Color,
+    focus: Option<ClientSession>,
+    focused_side: bool,
+    screen_w: u16,
+}
+
+/// A half of the sidebar's list: its first row, how many rows it has, and how far it is scrolled.
+#[derive(Clone, Copy)]
+struct Window {
+    top: u16,
+    rows: usize,
+    scroll: usize,
+}
+
+/// A sidebar shorter than this many list rows is not split: it keeps only the Local half.
+const SPLIT_MIN_ROWS: usize = 4;
+
+/// The rows of the Local and the Remote half of a list `rows` tall: the Remote title takes one
+/// row and the rest is shared evenly, Local keeping any odd one.
+fn halve(rows: usize) -> (usize, usize) {
+    if rows < SPLIT_MIN_ROWS {
+        return (rows, 0);
+    }
+    let remote = (rows - 1) / 2;
+    (rows - 1 - remote, remote)
+}
+
+/// The sidebar card: Local on top, Remote below it, each with its title and counts, projects
+/// with their sessions under them, new and actions at the foot.
 pub(in crate::client) fn draw_side(
     app: &mut App,
     buf: &mut Buffer,
@@ -375,10 +387,10 @@ pub(in crate::client) fn draw_side(
     card(app, buf, r, &c, t);
     app.screen.side_rect = r;
     hit(app, r, ScreenHit::SideFocus);
-    draw_head(app, buf, r, model, t, focused_side);
     let cols = Cols::of(r, look.round_rows);
     let screen_w = buf.area.width;
-    let lines = fitted_lines(app, model, t, screen_w);
+    let (local_lines, remote_lines) = card_lines(app, model, t);
+    let lines: Vec<Line> = local_lines.iter().chain(&remote_lines).cloned().collect();
     let focus = open_row(app).map(|term| app.session_key(term));
     let top = r.y + 2;
     // The foot is lifted a row off the bottom (Cards: it sits above the border), a divider over it.
@@ -392,27 +404,235 @@ pub(in crate::client) fn draw_side(
     let list_h = foot_y
         .saturating_sub(1 + u16::from(release.is_some()))
         .saturating_sub(top) as usize;
-    let scroll = side_scroll(app, model, &lines, focus, list_h);
     note_rows(app, model, &lines);
+    let (local_rows, remote_rows) = halve(list_h);
+    let local_scroll = region_scroll(app, model, &local_lines, focus, local_rows, false);
+    let remote_scroll = region_scroll(app, model, &remote_lines, focus, remote_rows, true);
+    app.screen.follow = false;
 
+    let host = app
+        .machine
+        .host()
+        .map(|h| format!(" ⇄ {h}"))
+        .unwrap_or_default();
+    draw_title(
+        app,
+        buf,
+        (r.x + 2, r.y),
+        &format!("LOCAL{host}"),
+        Color::Reset,
+        t,
+        focused_side,
+    );
+    draw_collapse_chip(app, buf, r, t);
+
+    let pass = Pass {
+        model,
+        look,
+        cols,
+        pb,
+        focus,
+        focused_side,
+        screen_w,
+    };
+    draw_rows(
+        app,
+        buf,
+        &pass,
+        t,
+        &local_lines,
+        Window {
+            top,
+            rows: local_rows,
+            scroll: local_scroll,
+        },
+    );
+    app.screen.remote_rect = Rect::default();
+    if remote_rows > 0 {
+        let head_y = top + local_rows as u16;
+        // The Remote title sits on a rule that joins the card's sides, as Local's sits on the
+        // top border: `├ REMOTE 2 ───── + Add ┤`.
+        let rule = Style::default()
+            .fg(if focused_side { t.accent } else { t.line })
+            .bg(pb);
+        put(
+            buf,
+            r.x,
+            head_y,
+            &[seg(
+                format!("├{}┤", "─".repeat(r.width.saturating_sub(2) as usize)),
+                rule,
+            )],
+            r.right(),
+        );
+        draw_title(
+            app,
+            buf,
+            (r.x + 2, head_y),
+            &match app.remotes.len() {
+                0 => "REMOTE".to_string(),
+                n => format!("REMOTE {n}"),
+            },
+            pb,
+            t,
+            focused_side,
+        );
+        draw_add_chip(app, buf, (r.right().saturating_sub(2), head_y), pb, t);
+        let remote_top = head_y + 1;
+        app.screen.remote_rect = Rect {
+            x: r.x,
+            y: head_y,
+            width: r.width,
+            height: remote_rows as u16 + 1,
+        };
+        if remote_lines.is_empty() {
+            draw_no_machines(buf, &pass, t, remote_top);
+        } else {
+            draw_rows(
+                app,
+                buf,
+                &pass,
+                t,
+                &remote_lines,
+                Window {
+                    top: remote_top,
+                    rows: remote_rows,
+                    scroll: remote_scroll,
+                },
+            );
+        }
+    }
+    draw_foot(app, buf, r, cols, pb, t);
+    if let Some((segs, h)) = release {
+        let (x, y) = (cols.x + 1, r.bottom().saturating_sub(4));
+        let w = segs_width(&segs);
+        put(buf, x, y, &segs, cols.rx + 1);
+        hit(
+            app,
+            Rect {
+                x,
+                y,
+                width: w,
+                height: 1,
+            },
+            h,
+        );
+    }
+}
+
+/// What the Remote half says while no other machine is known; the `+ Add` chip on its rule is
+/// the way to add one.
+fn draw_no_machines(buf: &mut Buffer, pass: &Pass, t: &Theme, top: u16) {
+    let st = Style::default().bg(pass.pb);
+    let x = pass.cols.x + 2;
+    let end = pass.cols.end();
+    put(
+        buf,
+        x,
+        top,
+        &[seg(
+            "no remote machines",
+            st.fg(t.muted).add_modifier(Modifier::ITALIC),
+        )],
+        end,
+    );
+}
+
+/// Thin lines that show what belongs to what: a project's, in the project's own colour, down the
+/// column of its fold arrow along everything inside it; a session's, in `muted`, one column in,
+/// along its other tabs; and between two projects a faint rule across the blank row. A cell that
+/// already holds something (a selection bar) is left alone.
+fn draw_rails(
+    buf: &mut Buffer,
+    model: &[Proj],
+    lines: &[Line],
+    (x, rx, top, scroll, rows): (u16, u16, u16, usize, usize),
+    (ground, t, ascii): (Color, &Theme, bool),
+) {
+    // The line hugs the left of its cell, as the selection's `▎` bar does, so a selected card's
+    // bar sits where the line was instead of beside it.
+    let (vertical, horizontal) = if ascii { ("|", "-") } else { ("▏", "─") };
+    // Rows `from..to` of `lines` that are on screen, drawn at column `x` as `symbol` in `colour`.
+    let mut draw = |from: usize, to: usize, (x0, x1): (u16, u16), symbol: &str, colour: Color| {
+        for j in from.max(scroll)..to.min(scroll + rows) {
+            let y = top + (j - scroll) as u16;
+            for xx in x0..=x1 {
+                let cell = &mut buf[(xx, y)];
+                if cell.symbol() == " " {
+                    cell.set_symbol(symbol).set_fg(colour);
+                }
+            }
+        }
+    };
+    let mut i = 0;
+    while i < lines.len() {
+        match &lines[i] {
+            Line::Proj(pi) => {
+                let from = i + 1;
+                let mut to = from;
+                while to < lines.len()
+                    && !matches!(
+                        lines[to],
+                        Line::Proj(_) | Line::Machine(_) | Line::MachineState(_)
+                    )
+                {
+                    to += 1;
+                }
+                // The blank rows after its contents; a rule across the first of them divides it
+                // from the next project.
+                let mut end = to;
+                while end > from && matches!(lines[end - 1], Line::Gap) {
+                    end -= 1;
+                }
+                let colour = model[*pi].color;
+                draw(from, end, (x, x), vertical, colour);
+                if end > from && end < to && matches!(lines.get(to), Some(Line::Proj(_))) {
+                    draw(
+                        end,
+                        end + 1,
+                        (x, rx),
+                        horizontal,
+                        blend(colour, ground, 0.6),
+                    );
+                }
+                i = from;
+            }
+            Line::Tab(..) => {
+                let from = i;
+                while i < lines.len() && matches!(lines[i], Line::Tab(..)) {
+                    i += 1;
+                }
+                draw(from, i, (x + 2, x + 2), vertical, t.muted);
+            }
+            _ => i += 1,
+        }
+    }
+}
+
+/// One half of the sidebar's list: `lines` from `win.scroll`, `win.rows` of them, from `win.top`.
+fn draw_rows(app: &mut App, buf: &mut Buffer, pass: &Pass, t: &Theme, lines: &[Line], win: Window) {
+    let Pass {
+        model,
+        look,
+        cols,
+        pb,
+        focus,
+        focused_side,
+        screen_w,
+    } = *pass;
+    let Window {
+        top,
+        rows: list_h,
+        scroll,
+    } = win;
     let on = app.motion_on();
     let mut gliding: Option<u16> = None;
-    // The lines under a session (what it asks) step in as far as it does.
-    let mut indents: Vec<u16> = Vec::with_capacity(lines.len());
-    for l in &lines {
-        let last = indents.last().copied().unwrap_or(0);
-        indents.push(match l {
-            Line::Sess(.., depth) => u16::from(*depth) * HELPER_INDENT,
-            Line::Note(..) | Line::Detail(..) | Line::Third(..) | Line::Tab(..) => last,
-            _ => 0,
-        });
-    }
     // A session's row is its lines together: one click target, so the pointer's tint lights
     // them as one.
     let bottom = top + list_h as u16;
     let row_rect = |i: usize, y: u16| {
         let mut n = 1;
-        while matches!(lines.get(i + n), Some(Line::Detail(_) | Line::Third(_))) {
+        while matches!(lines.get(i + n), Some(Line::Detail(_))) {
             n += 1;
         }
         Rect {
@@ -423,10 +643,10 @@ pub(in crate::client) fn draw_side(
     let mut looks: std::collections::BTreeMap<ClientSession, RowLook> = Default::default();
     for (i, line) in lines.iter().enumerate().skip(scroll).take(list_h) {
         let y = top + (i - scroll) as u16;
-        let indent = indents[i];
+        let indent = 0;
         let row = cols.row(y);
         if let Some(term) = row_term(model, line)
-            && let Some((_, wt, s)) = find_key(model, term)
+            && let Some((_, _, s)) = find_key(model, term)
         {
             let rl = *looks.entry(term).or_insert_with(|| {
                 let picked = if focused_side {
@@ -436,8 +656,19 @@ pub(in crate::client) fn draw_side(
                 };
                 row_look(picked, pb, t)
             });
+            // A pill leaves the first cell alone: the project's line down the left stays, and the
+            // highlight is what says the row has the focus.
+            let tint = if look.round_rows && rl.bg != pb && row.width > 2 {
+                Rect {
+                    x: row.x + 1,
+                    width: row.width - 1,
+                    ..row
+                }
+            } else {
+                row
+            };
             if rl.bg != pb {
-                fill(buf, row, rl.bg);
+                fill(buf, tint, rl.bg);
             }
             if look.round_rows && rl.bg != pb && row.width > 2 {
                 // A one-line row is a pill. A block of lines keeps square ends: caps would
@@ -447,7 +678,7 @@ pub(in crate::client) fn draw_side(
                     .find(|&j| matches!(lines[j], Line::Sess(..)) || j == scroll)
                     .unwrap_or(i);
                 if row_rect(first, top + (first - scroll) as u16).height == 1 {
-                    buf[(row.x, y)].set_symbol(CAP_L).set_fg(rl.bg).set_bg(pb);
+                    buf[(tint.x, y)].set_symbol(CAP_L).set_fg(rl.bg).set_bg(pb);
                     buf[(row.right() - 1, y)]
                         .set_symbol(CAP_R)
                         .set_fg(rl.bg)
@@ -481,32 +712,11 @@ pub(in crate::client) fn draw_side(
                     {
                         gliding = Some(gy);
                     }
-                    draw_session(
-                        app,
-                        buf,
-                        s,
-                        app.screen.lines_changed.get(&wt.path).copied(),
-                        cols,
-                        y,
-                        indent,
-                        rl,
-                        t,
-                        screen_w >= AGES_FROM,
-                    );
+                    draw_session(app, buf, s, cols, y, indent, rl, t, screen_w >= AGES_FROM);
                 }
                 Line::Detail(_) => {
-                    put(
-                        buf,
-                        x,
-                        y,
-                        &quiet(
-                            app,
-                            s,
-                            detail(app, s, rl, t, cols.end().saturating_sub(x) as usize),
-                            t,
-                        ),
-                        cols.end(),
-                    );
+                    let text = activity(app, s, rl, t, cols.end().saturating_sub(x) as usize);
+                    put(buf, x, y, &text, cols.end());
                     // Its question is this line: a click answers it, not just opens the session.
                     if (s.helpers_wanted > 0 || s.secret_ask.is_some())
                         && let Some(term) = s.native_term
@@ -514,34 +724,29 @@ pub(in crate::client) fn draw_side(
                         hit(app, row, ScreenHit::HelperAsk(term));
                     }
                 }
-                _ => {
-                    put(
-                        buf,
-                        x,
-                        y,
-                        &quiet(app, s, rl.on(third(app, s, t), t), t),
-                        cols.end(),
-                    );
-                }
+                _ => {}
             }
             if s.down {
                 machine_group::grey(buf, row, t);
             }
             continue;
         }
-        draw_line(
-            app,
-            buf,
-            model,
-            line,
-            cols,
-            y,
-            indent,
-            pb,
-            t,
-            screen_w < NARROW,
-        );
+        if let Line::Tab(owner, tab) = line {
+            draw_shell_row(app, buf, model, (*owner, *tab), (cols, y), pb, t);
+            continue;
+        }
+        draw_line(app, buf, model, line, cols, y, pb, t, screen_w < NARROW);
     }
+    let ascii = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons)
+        .needs
+        .is_ascii();
+    draw_rails(
+        buf,
+        model,
+        lines,
+        (cols.x, cols.rx, top, scroll, list_h),
+        (pb, t, ascii),
+    );
     scroll_marks(
         buf,
         cols.rx + 1,
@@ -549,22 +754,6 @@ pub(in crate::client) fn draw_side(
         (scroll, list_h, lines.len()),
         Style::default().bg(pb).fg(t.muted),
     );
-    draw_foot(app, buf, r, cols, pb, t);
-    if let Some((segs, h)) = release {
-        let (x, y) = (cols.x + 1, r.bottom().saturating_sub(4));
-        let w = segs_width(&segs);
-        put(buf, x, y, &segs, cols.rx + 1);
-        hit(
-            app,
-            Rect {
-                x,
-                y,
-                width: w,
-                height: 1,
-            },
-            h,
-        );
-    }
     if let Some(gy) = gliding.filter(|gy| (top..top + list_h as u16).contains(gy))
         && focus
             .and_then(|key| app.session_term(key))
@@ -635,7 +824,7 @@ pub(super) fn scroll_marks(
 }
 
 /// The first line shown: the focused (or cursor) row is kept in view when it changes;
-/// otherwise the wheel rules.
+/// otherwise the wheel rules. Clears the follow request, so for the single list.
 pub(super) fn side_scroll(
     app: &mut App,
     model: &[Proj],
@@ -643,7 +832,26 @@ pub(super) fn side_scroll(
     focus: Option<ClientSession>,
     list_h: usize,
 ) -> usize {
-    let mut scroll = app.screen.side_scroll as usize;
+    let scroll = region_scroll(app, model, lines, focus, list_h, false);
+    app.screen.follow = false;
+    scroll
+}
+
+/// `side_scroll` for one half of the sidebar (`remote`: the lower one), which leaves the follow
+/// request for the other half to see; the caller clears it.
+fn region_scroll(
+    app: &mut App,
+    model: &[Proj],
+    lines: &[Line],
+    focus: Option<ClientSession>,
+    list_h: usize,
+    remote: bool,
+) -> usize {
+    let mut scroll = if remote {
+        app.screen.remote_scroll
+    } else {
+        app.screen.side_scroll
+    } as usize;
     if app.screen.follow {
         let want = app
             .screen
@@ -657,10 +865,13 @@ pub(super) fn side_scroll(
                 scroll = i + 3 - list_h.min(i + 3);
             }
         }
-        app.screen.follow = false;
     }
     scroll = scroll.min(lines.len().saturating_sub(list_h));
-    app.screen.side_scroll = scroll as u16;
+    if remote {
+        app.screen.remote_scroll = scroll as u16;
+    } else {
+        app.screen.side_scroll = scroll as u16;
+    }
     scroll
 }
 
@@ -672,67 +883,89 @@ fn row_look(picked: bool, ground: Color, t: &Theme) -> RowLook {
     RowLook { bg, picked, bar }
 }
 
-/// The title chip, "SESSIONS 5", and right of it ●n needing you (asking, or waiting for a check
-/// to be approved) and ✕n failed checks, each only when there are any.
-fn draw_head(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme, lit: bool) {
-    let all: Vec<&Session> = model.iter().flat_map(|p| p.sessions()).collect();
-    // What a machine said before its line dropped cannot be answered now: it is not counted.
-    let needs = all
-        .iter()
-        .filter(|s| !s.down && check::needs_you(s))
-        .count();
-    let failed = all
-        .iter()
-        .filter(|s| !s.down && check::shown(s).is_some_and(check::failed))
-        .count();
-    let marks = check::marks(app);
-    let ground = Style::default();
-    let mut right = Vec::new();
-    if needs > 0 {
-        right.push(seg(
-            format!("{}{needs}", marks.needs),
-            ground.fg(t.blocked).add_modifier(Modifier::BOLD),
-        ));
+/// The `«` chip on the top border at the right: a click shrinks the sidebar to the narrow column.
+fn draw_collapse_chip(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme) {
+    let mut segs = vec![seg(
+        " « ",
+        Style::default()
+            .fg(t.strong)
+            .bg(t.btn)
+            .add_modifier(Modifier::BOLD),
+    )];
+    if Look::of(&app.cfg.ui).caps {
+        segs = round_ends(segs, Color::Reset);
     }
-    if failed > 0 {
-        let gap = if needs > 0 { " " } else { "" };
-        right.push(seg(
-            format!("{gap}{}{failed}", marks.failed),
-            ground.fg(t.err).add_modifier(Modifier::BOLD),
-        ));
+    let w = segs_width(&segs);
+    // Leave the title its room: a narrow card has no chip.
+    if r.width < w + 24 {
+        return;
     }
-    let rw = segs_width(&right);
-    // A card's counts sit a space in from its corner, with a space either side.
-    let rx = r.right().saturating_sub(2 + rw);
-    let (chip_bg, ink, count) = if lit {
-        (t.accent, t.acc_ink, t.acc_ink)
+    let x = r.right().saturating_sub(w + 2);
+    put(buf, x, r.y, &segs, r.right().saturating_sub(1));
+    hit(
+        app,
+        Rect {
+            x,
+            y: r.y,
+            width: w,
+            height: 1,
+        },
+        ScreenHit::CollapseSidebar,
+    );
+}
+
+/// A half's title chip, " LOCAL " or " REMOTE 2 ", set into a border or a rule at `at`. `outer` is
+/// what lies under the chip's round ends.
+fn draw_title(
+    app: &App,
+    buf: &mut Buffer,
+    at: (u16, u16),
+    label: &str,
+    outer: Color,
+    t: &Theme,
+    lit: bool,
+) {
+    let (chip_bg, ink) = if lit {
+        (t.accent, t.acc_ink)
     } else {
-        (t.btn, t.strong, t.text)
+        (t.btn, t.strong)
     };
-    let chip = Style::default().bg(chip_bg);
-    let host = app
-        .machine
-        .host()
-        .map(|h| format!(" ⇄ {h}"))
-        .unwrap_or_default();
-    let mut title = vec![
-        seg(" SESSIONS", chip.fg(ink).add_modifier(Modifier::BOLD)),
-        seg(format!(" {}{host} ", all.len()), chip.fg(count)),
+    let mut title = vec![seg(
+        format!(" {label} "),
+        Style::default()
+            .bg(chip_bg)
+            .fg(ink)
+            .add_modifier(Modifier::BOLD),
+    )];
+    if Look::of(&app.cfg.ui).caps {
+        title = round_ends(title, outer);
+    }
+    put(buf, at.0, at.1, &title, buf.area.right());
+}
+
+/// The Remote rule's `+ Add` chip, ending at `end`: a click opens the Machines dialog.
+fn draw_add_chip(app: &mut App, buf: &mut Buffer, (end, y): (u16, u16), ground: Color, t: &Theme) {
+    let chip = Style::default().bg(t.btn);
+    let mut segs = vec![
+        seg(" + ", chip.fg(t.accent).add_modifier(Modifier::BOLD)),
+        seg("Add ", chip.fg(t.text)),
     ];
     if Look::of(&app.cfg.ui).caps {
-        title = round_ends(title, Color::Reset);
+        segs = round_ends(segs, ground);
     }
-    put(buf, r.x + 2, r.y, &title, rx.saturating_sub(1));
-    if rw > 0 {
-        let pad = seg(" ", ground);
-        put(
-            buf,
-            rx.saturating_sub(1),
-            r.y,
-            &[vec![pad.clone()], right, vec![pad]].concat(),
-            r.right(),
-        );
-    }
+    let w = segs_width(&segs);
+    let x = end.saturating_sub(w);
+    put(buf, x, y, &segs, end);
+    hit(
+        app,
+        Rect {
+            x,
+            y,
+            width: w,
+            height: 1,
+        },
+        ScreenHit::AddMachine,
+    );
 }
 
 /// A terminal with nothing to report is marked by its prompt arrow, not an idle state.
@@ -761,85 +994,50 @@ fn agent_mark(agent: &str, ascii: bool) -> String {
 
 /// The least room a name keeps before the row's right-hand marks give way.
 const NAME_MIN: usize = 8;
-/// Context shows on the row once it is past this full, so a row stays quiet until it matters.
-const CONTEXT_SHOWN_ABOVE: u8 = 50;
-/// From this full the context reads in `err`: the agent is about to compact or stall.
-const CONTEXT_NEARLY_FULL: u8 = 85;
-
-/// The context a row shows (`72` for `72%`) and whether it is nearly full, once past half
-/// full. Rounded first, so the number drawn is the number judged.
-fn context_shown(context: Option<f32>) -> Option<(u8, bool)> {
-    let pct = context?.clamp(0.0, 100.0).round() as u8;
-    (pct > CONTEXT_SHOWN_ABOVE).then_some((pct, pct >= CONTEXT_NEARLY_FULL))
-}
-
-/// The right of a session's row, at most `room` wide: its agent's mark, its context once past
-/// half full, its checkout's uncommitted lines (`+N −N`) and its age. The lines give way
-/// first, then the mark, then the context. Also where the lines sit in it, as (offset,
-/// width), when they are shown.
+/// The right of a session's first line, at most `room` wide: `● you` when it needs you, else its
+/// agent's mark and the age its state began; the mark gives way first.
 fn row_meta(
     s: &Session,
-    ascii: bool,
-    changed: Option<(i64, i64)>,
+    (ascii, needs): (bool, Option<&str>),
     when: &str,
     room: usize,
     st: Style,
     t: &Theme,
-) -> (Vec<Seg>, Option<(u16, u16)>) {
+) -> Vec<Seg> {
+    if let Some(mark) = needs {
+        let you = vec![seg(
+            format!("{mark} you"),
+            st.fg(t.blocked).add_modifier(Modifier::BOLD),
+        )];
+        return if segs_width(&you) as usize <= room {
+            you
+        } else {
+            Vec::new()
+        };
+    }
     let mark = if s.is_agent {
         agent_mark(&s.agent, ascii)
     } else {
         String::new()
     };
-    // Never amber: amber is for needs you.
-    let context = context_shown(s.context)
-        .map(|(pct, full)| seg(format!("{pct}%"), st.fg(if full { t.err } else { t.muted })));
-    let lines: Vec<Seg> = match changed {
-        Some((a, r)) if a > 0 || r > 0 => vec![
-            seg(format!("+{a}"), st.fg(t.done)),
-            seg(format!(" −{r}"), st.fg(t.err)),
-        ],
-        _ => Vec::new(),
-    };
-    let gap = |v: &mut Vec<Seg>| {
-        if !v.is_empty() {
-            v.push(seg("  ", st));
-        }
-    };
-    let build = |with_mark: bool, with_context: bool, with_lines: bool| {
+    let build = |with_mark: bool| {
         let mut v: Vec<Seg> = Vec::new();
-        let mut span = None;
         if with_mark && !mark.is_empty() {
             v.push(seg(mark.clone(), st.fg(t.muted)));
         }
-        if let Some(c) = context.as_ref().filter(|_| with_context) {
-            // The agent's mark and its context read as one: `✻ 72%`.
+        if !when.is_empty() {
             if !v.is_empty() {
                 v.push(seg(" ", st));
             }
-            v.push(c.clone());
-        }
-        if with_lines && !lines.is_empty() {
-            gap(&mut v);
-            span = Some((segs_width(&v), segs_width(&lines)));
-            v.extend(lines.iter().cloned());
-        }
-        if !when.is_empty() {
-            gap(&mut v);
             v.push(seg(when.to_string(), st.fg(t.muted)));
         }
-        (v, span)
+        v
     };
-    [
-        (true, true, true),
-        (true, true, false),
-        (false, true, false),
-        (false, false, false),
-    ]
-    .into_iter()
-    .map(|(m, c, l)| build(m, c, l))
-    .find(|(v, _)| segs_width(v) as usize <= room)
-    .unwrap_or_default()
+    [true, false]
+        .into_iter()
+        .map(build)
+        .find(|v| segs_width(v) as usize <= room)
+        .unwrap_or_default()
 }
 
 /// A session's first line: its mark, its name in its state's colour, and at the right its
@@ -849,7 +1047,6 @@ fn draw_session(
     app: &mut App,
     buf: &mut Buffer,
     s: &Session,
-    changed: Option<(i64, i64)>,
     cols: Cols,
     y: u16,
     indent: u16,
@@ -900,11 +1097,8 @@ fn draw_session(
         String::new()
     };
     let nx = gx + gw + 1;
-    // The hovered row's ⋯ takes the last column, a space before it: over the age's place (at
-    // least two wide), else in two columns of its own. A row with `+N −N` and no age keeps
-    // those two free unhovered too, so the counts never move from under the pointer.
-    let counts = changed.is_some_and(|(a, r)| a > 0 || r > 0);
-    let meta_end = if when.is_empty() && (menu || counts) {
+    // The hovered row's ⋯ takes the last column, a space before it: over the age's place.
+    let meta_end = if when.is_empty() && menu {
         cols.rx.saturating_sub(1)
     } else {
         cols.rx + 1
@@ -914,10 +1108,10 @@ fn draw_session(
     let ascii = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons)
         .needs
         .is_ascii();
-    let (meta, lines_at) = row_meta(
+    let needs = (!s.down && check::needs_you(s)).then(|| check::marks(app).needs);
+    let meta = row_meta(
         s,
-        ascii,
-        changed,
+        (ascii, needs),
         &when,
         free.saturating_sub(NAME_MIN + 1),
         st,
@@ -951,20 +1145,6 @@ fn draw_session(
     if mw > 0 {
         let mx = meta_end.saturating_sub(mw);
         put(buf, mx, y, &meta, meta_end);
-        if let Some((at, width)) = lines_at
-            && let Some(term) = s.native_term
-        {
-            hit(
-                app,
-                Rect {
-                    x: mx + at,
-                    y,
-                    width,
-                    height: 1,
-                },
-                ScreenHit::RowChanges(term),
-            );
-        }
     }
     if menu {
         row_menu_button(
@@ -1030,6 +1210,22 @@ fn name_segs(
             )]
         }
     }
+}
+
+/// Whether a session has a second line: a receipt, a question, a check, a pause or a state with
+/// words. An idle or new agent has none: its name and glyph say it.
+fn says_something(app: &App, s: &Session) -> bool {
+    let t = &app.theme;
+    s.native_term
+        .and_then(|id| popover::receipt_segs(app, id, t))
+        .is_some()
+        || s.secret_ask.is_some()
+        || s.helpers_wanted > 0
+        || !check::reported(s).is_empty()
+        || check::shown(s).is_some()
+        || s.resume_at.is_some()
+        || s.question.is_some()
+        || !status_words(app, s, t).is_empty()
 }
 
 /// A session's second line, in `room` columns. With several checkpoints it is the headline
@@ -1105,11 +1301,6 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
             "done · not seen",
             Style::default().fg(t.done).add_modifier(Modifier::BOLD),
         )],
-        Status::Idle if is_new(s) => vec![
-            seg(format!("{} · ", s.agent), Style::default().fg(t.muted)),
-            seg("new · type to begin", Style::default().fg(t.accent)),
-        ],
-        Status::Idle if s.is_agent => muted("idle"),
         _ => Vec::new(),
     }
 }
@@ -1129,22 +1320,6 @@ fn quiet(app: &App, s: &Session, segs: Vec<Seg>, t: &Theme) -> Vec<Seg> {
         .collect()
 }
 
-/// A session's third line: its checkpoints by name, or a failed check's first failing line.
-fn third(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
-    let checks = check::reported(s);
-    if checks.len() > 1 {
-        return check::names(app, checks, t);
-    }
-    check::shown(s)
-        .map(|c| {
-            vec![seg(
-                c.first_failing_line.clone(),
-                Style::default().fg(t.muted),
-            )]
-        })
-        .unwrap_or_default()
-}
-
 /// A line that is not part of a session's row.
 #[allow(clippy::too_many_arguments)]
 fn draw_line(
@@ -1154,35 +1329,13 @@ fn draw_line(
     line: &Line,
     cols: Cols,
     y: u16,
-    indent: u16,
     pb: Color,
     t: &Theme,
     small: bool,
 ) {
     let row = cols.row(y);
-    let x = cols.x + 4 + indent;
-    let room = cols.end().saturating_sub(x) as usize;
     match line {
         Line::Proj(pi) => draw_proj(app, buf, model, *pi, cols, y, pb, t, small),
-        Line::Note(text, c, term) => {
-            if small {
-                return;
-            }
-            put(
-                buf,
-                x,
-                y,
-                &[seg(
-                    truncate(text, room),
-                    Style::default()
-                        .bg(pb)
-                        .fg(*c)
-                        .add_modifier(Modifier::ITALIC),
-                )],
-                cols.end(),
-            );
-            hit(app, row, ScreenHit::Session(*term));
-        }
         // Nothing running: one click starts a shell there.
         Line::Empty(pi) => {
             let st = Style::default().bg(pb);
@@ -1198,37 +1351,182 @@ fn draw_line(
             );
             hit(app, row, ScreenHit::ShellIn(*pi));
         }
-        Line::Tab(owner, tab) => {
-            let Some(line) = tab_line(app, model, *owner, *tab, t) else {
-                return;
-            };
-            let name_fg = if line.needs {
-                t.blocked
-            } else if line.current {
-                t.accent
-            } else {
-                t.text
-            };
-            // Right-aligned as the session row's age is, a column clear of the border.
-            let end = cols.rx + 1;
-            let x = cols.x + 2 + indent;
-            let segs = tab_segs(
-                &line,
-                end.saturating_sub(x),
-                Style::default().bg(pb),
-                name_fg,
-                t.muted,
-            );
-            draw_tab_line(app, buf, row, x, end, segs, *tab);
-        }
-        Line::Machine(machine) => {
-            machine_group::draw_header(app, buf, (cols.x, cols.rx + 1), y, *machine, pb, t)
-        }
-        Line::MachineNote(forms, color) => {
-            machine_group::draw_note(buf, (cols.x, cols.rx + 1), y, (forms, *color), pb)
-        }
-        Line::Sess(..) | Line::Detail(_) | Line::Third(_) | Line::Gap => {}
+        Line::Machine(machine) => draw_machine_row(app, buf, *machine, cols, y, pb, t),
+        Line::MachineState(machine) => draw_machine_state(app, buf, *machine, cols, y, pb, t),
+        Line::Tab(..) | Line::MachineNote(..) | Line::Sess(..) | Line::Detail(_) | Line::Gap => {}
     }
+}
+
+/// A card's last line: what the session is doing, in `muted`, or in amber when it needs you.
+fn activity(app: &App, s: &Session, rl: RowLook, t: &Theme, room: usize) -> Vec<Seg> {
+    let needs = check::needs_you(s) || s.question.is_some();
+    let words = detail(app, s, rl, t, room);
+    if needs {
+        words
+    } else {
+        quiet(app, s, words, t)
+    }
+}
+
+/// One of a session's other tabs under its card: `├ shell  2`, the last one `└`.
+fn draw_shell_row(
+    app: &mut App,
+    buf: &mut Buffer,
+    model: &[Proj],
+    (owner, tab): (ClientTerm, usize),
+    (cols, y): (Cols, u16),
+    pb: Color,
+    t: &Theme,
+) {
+    let Some(line) = tab_line(app, model, owner, tab, t) else {
+        return;
+    };
+    let number = app.screen.tabs[..=tab]
+        .iter()
+        .filter(|tb| tb.owner == owner)
+        .count();
+    let name = if line.needs {
+        t.blocked
+    } else if line.current {
+        t.accent
+    } else {
+        t.text
+    };
+    let st = Style::default().bg(pb);
+    let x = cols.x + 4;
+    let room = cols.end().saturating_sub(x) as usize;
+    // The state of what runs in the tab: an agent's mark (the spinner while it works), else a
+    // plain shell's `○`.
+    let mark = line.mark.as_ref().map_or_else(
+        || seg("○ ", st.fg(t.muted)),
+        |(glyph, _, colour)| {
+            seg(
+                format!("{glyph} "),
+                st.fg(*colour).add_modifier(Modifier::BOLD),
+            )
+        },
+    );
+    let number = format!("{number}");
+    let label = truncate(&line.label, room.saturating_sub(2 + number.width() + 1));
+    let left = vec![
+        mark,
+        seg(
+            label,
+            st.fg(name).add_modifier(if line.current {
+                Modifier::BOLD
+            } else {
+                Modifier::empty()
+            }),
+        ),
+    ];
+    draw_tab_line(
+        app,
+        buf,
+        cols.row(y),
+        x,
+        cols.end(),
+        (left, vec![seg(number, st.fg(t.muted))]),
+        tab,
+    );
+}
+
+/// A machine shown as one item: its badge, and at the right its connection. This computer with
+/// nothing running says so and starts a shell.
+fn draw_machine_row(
+    app: &mut App,
+    buf: &mut Buffer,
+    machine: MachineId,
+    cols: Cols,
+    y: u16,
+    pb: Color,
+    t: &Theme,
+) {
+    let st = Style::default().bg(pb);
+    let row = cols.row(y);
+    if machine == MachineId::LOCAL {
+        put(
+            buf,
+            cols.x + 2,
+            y,
+            &[
+                seg(
+                    "no sessions  ",
+                    st.fg(t.muted).add_modifier(Modifier::ITALIC),
+                ),
+                seg("new shell", st.fg(t.accent).add_modifier(Modifier::BOLD)),
+            ],
+            cols.end(),
+        );
+        hit(app, row, ScreenHit::NewShell);
+        return;
+    }
+    hit(app, row, ScreenHit::MachineRow(machine));
+    let (dot, dot_colour) = app.machine_dot(machine, t);
+    let dim = dot_colour != t.done;
+    let right = vec![seg(dot, st.fg(dot_colour))];
+    let rw = segs_width(&right);
+    let badge_style = if dim {
+        Style::default().fg(t.muted).bg(t.card2)
+    } else {
+        Style::default()
+            .fg(t.strong)
+            .bg(t.btn)
+            .add_modifier(Modifier::BOLD)
+    };
+    // With `ui.rounded = full` the badge is a pill.
+    let caps = Look::of(&app.cfg.ui).caps;
+    let room = (cols.end().saturating_sub(cols.x) as usize)
+        .saturating_sub(rw as usize + 1 + 2 * usize::from(caps));
+    let badge = seg(
+        truncate(
+            &format!(
+                " {} {} ",
+                machine_group::REMOTE_ICON,
+                app.machine_label_of(machine)
+            ),
+            room,
+        ),
+        badge_style,
+    );
+    let badge = if caps {
+        round_ends(vec![badge], pb)
+    } else {
+        vec![badge]
+    };
+    put(buf, cols.x, y, &badge, cols.end());
+    put(
+        buf,
+        cols.end().saturating_sub(rw + 1),
+        y,
+        &right,
+        cols.end(),
+    );
+    hit(app, row, ScreenHit::AddMachine);
+}
+
+/// The second row of a machine item: what is wrong, or that it has nothing running.
+fn draw_machine_state(
+    app: &mut App,
+    buf: &mut Buffer,
+    machine: MachineId,
+    cols: Cols,
+    y: u16,
+    pb: Color,
+    t: &Theme,
+) {
+    let text = match app.remotes.get(&machine).map(|r| &r.state) {
+        Some(ConnectionState::Connected) => "no sessions yet",
+        Some(ConnectionState::Connecting) => "connecting…",
+        _ => "disconnected · click for the fix",
+    };
+    put(
+        buf,
+        cols.x + 2,
+        y,
+        &[seg(text, Style::default().fg(t.muted).bg(pb))],
+        cols.end(),
+    );
+    hit(app, cols.row(y), ScreenHit::AddMachine);
 }
 
 /// A folder's header: its fold arrow and name, and right-aligned what it is (branch, its
@@ -1268,24 +1566,17 @@ fn draw_proj(
     if !app.screen.fold_colors.contains_key(&p.key) {
         app.pick_fold_color(&p.key);
     }
-    // A − (open) or + (closed) in a colour of its own, in the state bars' column: a caret is
-    // too small to read as a button.
-    let button = app
-        .screen
-        .fold_colors
-        .get(&p.key)
-        .copied()
-        .unwrap_or(t.accent);
-    put(
-        buf,
-        cols.x,
-        y,
-        &[seg(
-            if open { "−" } else { "+" },
-            st.fg(button).add_modifier(Modifier::BOLD),
-        )],
-        text_end,
-    );
+    // ▾ (open) or ▸ (closed) in the state bars' column; `v` and `>` with the ASCII glyph set.
+    let ascii = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons)
+        .needs
+        .is_ascii();
+    let fold = match (open, ascii) {
+        (true, false) => "▾",
+        (false, false) => "▸",
+        (true, true) => "v",
+        (false, true) => ">",
+    };
+    put(buf, cols.x, y, &[seg(fold, st.fg(t.muted))], text_end);
     let name = truncate(&p.name, cols.rx.saturating_sub(cols.x + 2) as usize);
     let mut left = vec![
         seg("  ", st),
@@ -1339,65 +1630,75 @@ fn draw_proj(
         .saturating_sub(1)
         .saturating_sub(lx + segs_width(&left));
     if room >= META_MIN_COLS {
-        let meta = truncate(&proj_meta(app, p, open), room as usize);
+        let meta = proj_meta(app, p, open, room as usize, st, t);
         put(
             buf,
-            text_end.saturating_sub(meta.width() as u16),
+            text_end.saturating_sub(segs_width(&meta)),
             y,
-            &[seg(meta, st.fg(t.muted))],
+            &meta,
             text_end,
         );
     }
 }
 
-/// "⎇ main · check: test", "⎇ main · 2 checkpoints", "no git"; folded, how many it hides.
-fn proj_meta(app: &App, p: &Proj, open: bool) -> String {
+/// A project's right-hand side in `room` cells: its branch (`⎇ main`, or `no git`) and, once any of
+/// its sessions has a check result, `✓` or, if one failed, `✕`. Folded, how many sessions it hides,
+/// with an amber `●` when one of them needs you.
+fn proj_meta(app: &App, p: &Proj, open: bool, room: usize, st: Style, t: &Theme) -> Vec<Seg> {
+    let marks = check::marks(app);
     if !open {
         let n = p.sessions().count();
-        return if n == 0 {
-            "empty".into()
+        let words = if n == 0 {
+            "empty".to_string()
         } else {
             format!("{n} hidden")
         };
+        let mut out = Vec::new();
+        if p.sessions().any(|s| !s.down && check::needs_you(s)) {
+            out.push(seg(
+                format!("{} ", marks.needs),
+                st.fg(t.blocked).add_modifier(Modifier::BOLD),
+            ));
+        }
+        out.push(seg(truncate(&words, room), st.fg(t.muted)));
+        return out;
     }
     let place = if p.git {
         p.wts
             .iter()
             .find(|w| w.main && !w.branch.is_empty())
-            .map(|w| format!("{} {}", check::marks(app).branch, w.branch))
+            .map(|w| format!("{} {}", marks.branch, w.branch))
             .unwrap_or_default()
     } else {
         "no git".into()
     };
-    let names = checkpoint_names(app, p);
-    let checks = match names.as_slice() {
-        [] => String::new(),
-        [one] => format!("check: {one}"),
-        many => format!("{} checkpoints", many.len()),
+    let result = if p
+        .sessions()
+        .any(|s| check::shown(s).is_some_and(check::failed))
+    {
+        Some((marks.failed, t.err))
+    } else if p
+        .sessions()
+        .any(|s| check::shown(s).is_some_and(|c| c.state == CheckState::Passed))
+    {
+        Some((marks.done, t.done))
+    } else {
+        None
     };
-    [place, checks]
-        .into_iter()
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join(" · ")
-}
-
-/// The project's checkpoints: the ones its config names, then any its sessions report.
-fn checkpoint_names(app: &App, p: &Proj) -> Vec<String> {
-    let mut names: Vec<String> = app
-        .cfg
-        .check
-        .iter()
-        .filter(|c| crate::config::same_path(&c.project, &p.path))
-        .map(|c| c.name().to_string())
-        .collect();
-    for c in p.sessions().flat_map(|s| &s.checks) {
-        let name = check::name(c);
-        if !names.iter().any(|n| n == name) {
-            names.push(name.to_string());
-        }
+    let glyph_room = result.map_or(0, |_| 2);
+    let mut out = vec![seg(
+        truncate(&place, room.saturating_sub(glyph_room)),
+        st.fg(t.muted),
+    )];
+    if let Some((glyph, colour)) = result
+        && room >= segs_width(&out) as usize + glyph_room
+    {
+        out.push(seg(
+            format!(" {glyph}"),
+            st.fg(colour).add_modifier(Modifier::BOLD),
+        ));
     }
-    names
+    out
 }
 
 fn release_chip(
@@ -1532,52 +1833,7 @@ fn row_glyph(
 
 #[cfg(test)]
 mod frame_tests {
-    use crate::client::reference_fixture::{LAYOUTS, Layout, SIZES, STAGES, Stage, frame, world};
-
-    /// The reference's sidebar rows, as the fixture should draw them (see the file's header).
-    const FRAMES: &str = include_str!("side_frames.txt");
-    /// A cell the reference leaves to the app: the working spinner's frame.
-    const ANY: char = '◌';
-
-    struct Want {
-        counts: String,
-        rows: Vec<String>,
-        foot: String,
-    }
-
-    fn wanted(stage: Stage, layout: Layout, (w, h): (u16, u16), glyphs: &str) -> Option<Want> {
-        let head = format!(
-            "===== {stage:?} | {} | {w}x{h} | {glyphs}",
-            format!("{layout:?}").to_lowercase()
-        );
-        let mut block = FRAMES.lines().skip_while(|l| *l != head).skip(1);
-        let counts = block.next()?.strip_prefix("+++++ ")?.to_string();
-        let rows: Vec<String> = block
-            .by_ref()
-            .take_while(|l| !l.starts_with("-----"))
-            .map(String::from)
-            .collect();
-        let foot = FRAMES
-            .lines()
-            .skip_while(|l| *l != head)
-            .find_map(|l| l.strip_prefix("----- "))?
-            .to_string();
-        (!rows.is_empty()).then_some(Want { counts, rows, foot })
-    }
-
-    /// The title's counts: right-aligned a column in from the corner.
-    fn counts(text: &str, r: ratatui::layout::Rect, n: usize) -> String {
-        let row: Vec<char> = text
-            .lines()
-            .nth(r.y as usize)
-            .unwrap_or_default()
-            .chars()
-            .collect();
-        let end = (r.right() - 2) as usize;
-        (end - n..end)
-            .map(|x| row.get(x).copied().unwrap_or(' '))
-            .collect()
-    }
+    use crate::client::reference_fixture::{Layout, Stage, frame, world};
 
     /// The sidebar's inner rows: columns X-1..RX+1 of the card, between its border rows.
     fn inner(text: &str, r: ratatui::layout::Rect) -> Vec<String> {
@@ -1593,173 +1849,6 @@ mod frame_tests {
                     .to_string()
             })
             .collect()
-    }
-
-    /// The reference's folders in the order the app lists them: a folder with a session that
-    /// needs you goes first, where the reference's sample keeps its own order.
-    fn in_app_order(rows: &[String], got: &[String]) -> Vec<String> {
-        let blocks: Vec<&[String]> = rows
-            .split(String::is_empty)
-            .filter(|b| !b.is_empty())
-            .collect();
-        let name = |b: &[String]| {
-            b[0].split_whitespace()
-                .nth(1)
-                .unwrap_or_default()
-                .to_string()
-        };
-        let at = |b: &[String]| {
-            got.iter()
-                .position(|g| g.split_whitespace().nth(1) == Some(name(b).as_str()))
-                .unwrap_or(usize::MAX)
-        };
-        let mut sorted = blocks.clone();
-        sorted.sort_by_key(|b| at(b));
-        let mut out = vec![String::new()];
-        for b in sorted {
-            out.extend(b.iter().cloned());
-            out.push(String::new());
-        }
-        while out.last().is_some_and(String::is_empty) {
-            out.pop();
-        }
-        out
-    }
-
-    /// `claude · working` read as `working`: the line has nothing to its right.
-    fn without_agent_on_working(row: &str) -> String {
-        row.replacen("claude · working", "working", 1)
-    }
-
-    fn same(want: &str, got: &str) -> bool {
-        let (w, g): (Vec<char>, Vec<char>) = (want.chars().collect(), got.chars().collect());
-        w.len() == g.len() && w.iter().zip(&g).all(|(a, b)| a == b || *a == ANY)
-    }
-
-    fn check(stage: Stage, layout: Layout, size: (u16, u16), glyphs: &str) {
-        let want = wanted(stage, layout, size, glyphs)
-            .unwrap_or_else(|| panic!("no reference for {stage:?} {layout:?} {size:?} {glyphs}"));
-        let mut app = world(stage);
-        let text = frame(&mut app, layout, size.0, size.1, glyphs);
-        let got = inner(&text, app.screen.side_rect);
-        // The app leaves the agent's name off a working line; it is in the pane's title.
-        let rows: Vec<Vec<char>> = want
-            .rows
-            .iter()
-            .map(|r| without_agent_on_working(r).chars().collect())
-            .collect();
-        // Sessions are one line now, each with its agent's mark (ADR 0021).
-        let rows = crate::client::reference_fixture::as_one_line_rows(rows, glyphs == "ascii", ANY);
-        let rows: Vec<String> = rows
-            .iter()
-            .map(|r| r.iter().collect::<String>().trim_end().to_string())
-            .collect();
-        let want = Want {
-            rows: in_app_order(&rows, &got),
-            ..want
-        };
-        let n = want.rows.len();
-        let ok = got.len() > n
-            && want.rows.iter().zip(&got).all(|(w, g)| same(w, g))
-            && got[n..got.len() - 1].iter().all(String::is_empty)
-            && got.last() == Some(&want.foot);
-        assert!(
-            ok,
-            "{stage:?} {layout:?} {size:?} {glyphs}\nwant:\n{}\n----- {}\ngot:\n{}",
-            want.rows.join("\n"),
-            want.foot,
-            got.join("\n")
-        );
-        assert!(
-            text.lines()
-                .nth(app.screen.side_rect.y as usize)
-                .is_some_and(|l| l.contains(" SESSIONS 5 ")),
-            "{stage:?} {layout:?} {size:?}: the title"
-        );
-        assert_eq!(
-            counts(&text, app.screen.side_rect, want.counts.chars().count()),
-            want.counts,
-            "{stage:?} {layout:?} {size:?} {glyphs}: the title's counts"
-        );
-    }
-
-    fn rows_at(stage: Stage, layout: Layout, w: u16, h: u16) -> Vec<String> {
-        let mut app = world(stage);
-        let text = frame(&mut app, layout, w, h, "unicode");
-        inner(&text, app.screen.side_rect)
-    }
-
-    fn has(rows: &[String], needle: &str) -> bool {
-        rows.iter().any(|r| r.contains(needle))
-    }
-
-    #[test]
-    fn a_folder_s_fold_button_is_a_coloured_mark_in_the_state_bars_column() {
-        let mut app = world(Stage::Failed);
-        let buf =
-            crate::client::reference_fixture::cells(&mut app, Layout::Tiled, 160, 45, "unicode");
-        let side = app.screen.side_rect;
-        let y = (side.y..side.bottom())
-            .find(|&y| (side.x..side.right()).any(|x| buf[(x, y)].symbol() == "−"))
-            .expect("an open folder");
-        let x = (side.x..side.right())
-            .find(|&x| buf[(x, y)].symbol() == "−")
-            .unwrap();
-        let bar_x = (side.y..side.bottom())
-            .find_map(|y| (side.x..side.right()).find(|&x| buf[(x, y)].symbol() == "▎"))
-            .expect("a row's state bar");
-        assert_eq!(x, bar_x, "in the state bars' column");
-        let (cell, ground) = (&buf[(x, y)], buf[(x + 1, y)].bg);
-        assert_eq!(cell.bg, ground, "no box of its own");
-        let key = app
-            .screen_model()
-            .into_iter()
-            .find(|p| {
-                (x..side.right())
-                    .map(|x| buf[(x, y)].symbol())
-                    .collect::<String>()
-                    .contains(&p.name)
-            })
-            .expect("the folder")
-            .key;
-        assert_eq!(
-            cell.fg,
-            app.screen
-                .fold_colors
-                .get(&key)
-                .copied()
-                .unwrap_or(app.theme.accent),
-            "the mark is the folder's colour"
-        );
-    }
-
-    #[test]
-    fn rows_give_way_in_order_meta_age_then_third_line() {
-        let at = |w| rows_at(Stage::Failed, Layout::Floating, w, 30);
-        let wide = at(160);
-        assert!(
-            has(&wide, "⎇ main · ch…") && has(&wide, "2m") && has(&wide, "✗ src/pages"),
-            "{wide:#?}"
-        );
-        let narrow = at(140);
-        assert!(
-            has(&narrow, "✗ src/pages"),
-            "140 columns are still wide: {narrow:#?}"
-        );
-        let slim = at(139);
-        assert!(
-            !has(&slim, "⎇ main") && has(&slim, "2m"),
-            "the meta goes first, the age stays: {slim:#?}"
-        );
-        assert!(!has(&slim, "✗ src/pages"), "then line 3: {slim:#?}");
-        assert!(
-            has(&slim, "failed: test · exit") && has(&slim, "asks: use pnpm"),
-            "a result and a question keep theirs: {slim:#?}"
-        );
-        assert!(
-            has(&at(100), "2m") && !has(&at(99), "2m"),
-            "the age goes below 100 columns"
-        );
     }
 
     #[test]
@@ -1803,7 +1892,11 @@ mod frame_tests {
             .position(|r| r.contains("add-payments"))
             .expect("the working row");
         (
-            rows[at].trim().trim_start_matches('▎').trim().to_string(),
+            rows[at]
+                .trim()
+                .trim_start_matches(['▎', '│', '▏', '|'])
+                .trim()
+                .to_string(),
             rows[at + 1].trim().to_string(),
         )
     }
@@ -1826,20 +1919,6 @@ mod frame_tests {
         );
         let (tiled, _) = working_rows(crate::config::BARS_FRAMES, "unicode", Layout::Tiled);
         assert!(tiled.starts_with("⣶⡆ add-payments"), "{tiled:?}");
-    }
-
-    #[test]
-    fn the_ascii_glyph_set_draws_the_bars_in_ascii_and_leaves_other_choices_alone() {
-        let (bars, _) = working_rows(crate::config::BARS_FRAMES, "ascii", Layout::Floating);
-        assert!(
-            bars.is_ascii() && bars.starts_with("O  add-payments"),
-            "{bars:?}"
-        );
-        let (custom, _) = working_rows(&["a", "b", "c"], "ascii", Layout::Floating);
-        assert!(
-            custom.starts_with("c add-payments"),
-            "a custom choice is the user's: {custom:?}"
-        );
     }
 
     #[test]
@@ -1867,17 +1946,6 @@ mod frame_tests {
             name.windows(2).all(|w| w[0] == w[1]),
             "no shimmer band without motion: {name:?}"
         );
-    }
-
-    #[test]
-    fn the_sidebar_rows_match_the_reference_in_every_layout_and_size() {
-        for stage in STAGES {
-            for layout in LAYOUTS {
-                for size in SIZES {
-                    check(stage, layout, size, "unicode");
-                }
-            }
-        }
     }
 }
 
@@ -1926,11 +1994,6 @@ mod v8_tests {
         }));
     }
 
-    /// A sidebar row's words, without its border, bar and padding.
-    fn said(row: &str) -> &str {
-        row.trim_matches(|c| "│▎ ".contains(c))
-    }
-
     /// The cell where `needle` starts on the first row that has it, among the sidebar's rows.
     fn find(buf: &ratatui::buffer::Buffer, app: &App, needle: &str) -> (u16, u16) {
         let r = app.screen.side_rect;
@@ -1955,401 +2018,6 @@ mod v8_tests {
             has(&rows, "quiet 12m") && !has(&rows, "working"),
             "the quiet spell, not the state: {rows:#?}"
         );
-    }
-
-    #[test]
-    fn line_two_says_only_what_the_row_does_not() {
-        let mut app = world(Stage::None);
-        app.snap.terms.get_mut(&2).unwrap().subagents = vec!["a".into(), "b".into()];
-        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(
-            rows.iter().any(|r| said(r) == "2 agents"),
-            "a count when the agent reports helpers: {rows:#?}"
-        );
-        app.cfg.ui.subagent_count = false;
-        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(
-            !has(&rows, "agents"),
-            "Settings > Agents can turn the count off: {rows:#?}"
-        );
-        app.cfg.ui.subagent_count = true;
-        for state_only in ["working", "done · not seen", "needs you"] {
-            assert!(
-                !rows.iter().any(|r| said(r) == state_only),
-                "the mark and the name say {state_only:?}: {rows:#?}"
-            );
-        }
-        assert!(has(&rows, "asks: use pnpm or npm?"), "{rows:#?}");
-        // Seen and finished is one line; one that has been told nothing is new.
-        app.snap.terms.get_mut(&4).unwrap().status = Status::Idle;
-        let new = app.snap.terms.get_mut(&5).unwrap();
-        (new.asleep, new.status, new.label) = (false, Status::Idle, String::new());
-        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(!rows.iter().any(|r| said(r) == "idle"), "{rows:#?}");
-        assert!(has(&rows, "codex · new · type to begin"), "{rows:#?}");
-    }
-
-    #[test]
-    fn a_row_ends_in_its_agent_s_mark_its_uncommitted_lines_and_its_age() {
-        let mut app = world(Stage::None);
-        let path = app
-            .screen_model()
-            .iter()
-            .flat_map(|p| p.wts.iter())
-            .find(|w| {
-                w.sessions
-                    .iter()
-                    .any(|s| s.native_term.unwrap() == ClientTerm::local(2))
-            })
-            .expect("add-payments' checkout")
-            .path
-            .clone();
-        app.screen.lines_changed.insert(path, (12, 3));
-        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        let row = rows
-            .iter()
-            .find(|r| r.contains("add-payments"))
-            .expect("the row");
-        assert!(row.contains("✻  +12 −3  0s"), "{row:?}");
-        assert!(
-            rows.iter()
-                .any(|r| r.contains("warm-finch") && r.contains("◆  3m")),
-            "no lines counted: the mark and the age: {rows:#?}"
-        );
-        let ascii = raw_text(&mut app, Layout::Floating, 160, 45, "ascii");
-        assert!(
-            ascii
-                .lines()
-                .any(|l| l.contains("warm-finch") && l.contains("X  3m")),
-            "the ASCII set marks Codex with a letter"
-        );
-    }
-
-    /// add-payments (term 2) with 12 lines added and 3 removed, and its checkout.
-    fn payments_with_changes() -> (App, std::path::PathBuf) {
-        let mut app = world(Stage::None);
-        let path = app
-            .screen_model()
-            .iter()
-            .flat_map(|p| p.wts.iter())
-            .find(|w| {
-                w.sessions
-                    .iter()
-                    .any(|s| s.native_term.unwrap() == ClientTerm::local(2))
-            })
-            .expect("add-payments' checkout")
-            .path
-            .clone();
-        app.screen.lines_changed.insert(path.clone(), (12, 3));
-        (app, path)
-    }
-
-    /// add-payments' row at a screen `w` wide, its context `context` full.
-    fn payments_row(app: &mut App, context: Option<f32>, w: u16) -> String {
-        app.snap.terms.get_mut(&2).unwrap().usage.context = context;
-        let h = if w < 100 { 24 } else { 45 };
-        let text = raw_text(app, Layout::Floating, w, h, "unicode");
-        if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
-            println!("--- {w}x{h}, context {context:?}\n{text}");
-        }
-        side_rows(app, Layout::Floating, w, h)
-            .into_iter()
-            .find(|r| r.contains("add-pay"))
-            .expect("add-payments' row")
-    }
-
-    #[test]
-    fn a_row_shows_its_context_once_past_half_full() {
-        let mut app = world(Stage::None);
-        for (context, said) in [
-            (None, None),
-            (Some(49.0), None),
-            (Some(50.0), None),
-            (Some(50.6), Some("51%")),
-            (Some(84.0), Some("84%")),
-            (Some(85.0), Some("85%")),
-            (Some(100.0), Some("100%")),
-        ] {
-            let row = payments_row(&mut app, context, 160);
-            match said {
-                Some(pct) => assert!(
-                    row.contains(&format!("✻ {pct}  0s")),
-                    "{context:?}: beside the agent's mark: {row:?}"
-                ),
-                None => assert!(
-                    !row.contains('%') && row.contains("✻  0s"),
-                    "{context:?}: nothing: {row:?}"
-                ),
-            }
-        }
-    }
-
-    #[test]
-    fn context_is_muted_until_nearly_full_then_err_and_never_amber() {
-        let mut app = world(Stage::None);
-        let t = app.theme.clone();
-        for (context, colour) in [(84.0, t.muted), (85.0, t.err), (100.0, t.err)] {
-            app.snap.terms.get_mut(&2).unwrap().usage.context = Some(context);
-            let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
-            let pct = format!("{}%", context as u8);
-            let at = find(&buf, &app, &pct);
-            assert_eq!(buf[at].fg, colour, "{pct}");
-            assert_ne!(buf[at].fg, t.blocked, "{pct}: amber is for needs you");
-        }
-    }
-
-    #[test]
-    fn a_narrow_row_keeps_its_context_over_its_lines() {
-        let (mut app, _) = payments_with_changes();
-        for (w, said) in [
-            (160, "✻ 72%  +12 −3  0s"),
-            (120, "✻ 72%  0s"),
-            (100, "✻ 72%  0s"),
-            (80, "✻ 72%"),
-        ] {
-            let row = payments_row(&mut app, Some(72.0), w);
-            assert!(row.contains(said), "{w}: {row:?}");
-            assert!(
-                w == 160 || !row.contains("+12"),
-                "{w}: the lines go first: {row:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn the_meta_gives_way_lines_then_mark_then_context() {
-        let (mut app, _) = payments_with_changes();
-        app.snap.terms.get_mut(&2).unwrap().usage.context = Some(72.0);
-        app.screen_fresh();
-        let s = app
-            .screen_model()
-            .iter()
-            .flat_map(Proj::sessions)
-            .find(|s| s.native_term.unwrap() == ClientTerm::local(2))
-            .cloned()
-            .expect("add-payments");
-        let t = app.theme.clone();
-        let said = |room| {
-            let (segs, _) = row_meta(&s, false, Some((12, 3)), "2m", room, Style::default(), &t);
-            segs.iter().map(|g| g.0.as_str()).collect::<String>()
-        };
-        assert_eq!(said(40), "✻ 72%  +12 −3  2m");
-        assert_eq!(said(16), "✻ 72%  2m", "the lines first");
-        assert_eq!(said(8), "72%  2m", "then the agent's mark");
-        assert_eq!(said(6), "2m", "then the context; the age stays");
-    }
-
-    fn mouse(app: &mut App, kind: crossterm::event::MouseEventKind, (column, row): (u16, u16)) {
-        app.on_mouse(crossterm::event::MouseEvent {
-            kind,
-            column,
-            row,
-            modifiers: KeyModifiers::NONE,
-        });
-    }
-
-    fn click(app: &mut App, at: (u16, u16)) {
-        use crossterm::event::{MouseButton, MouseEventKind};
-        mouse(app, MouseEventKind::Down(MouseButton::Left), at);
-        mouse(app, MouseEventKind::Up(MouseButton::Left), at);
-    }
-
-    /// The pointer moved onto add-payments' `+12` where an unhovered frame drew it, and the
-    /// frame drawn with it there.
-    fn hover_counts(app: &mut App, w: u16, h: u16) -> ratatui::buffer::Buffer {
-        let buf = cells(app, Layout::Floating, w, h, "unicode");
-        let counts = find(&buf, app, "+12");
-        mouse(app, crossterm::event::MouseEventKind::Moved, counts);
-        cells(app, Layout::Floating, w, h, "unicode")
-    }
-
-    fn opened_changes(app: &App) -> bool {
-        matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, crate::client::menu::Act::GitInit(_)))
-    }
-
-    #[test]
-    fn the_changed_lines_stay_put_when_the_pointer_lands_on_them() {
-        // An agent's row has an age (the ⋯ takes its place); a shell's has none (two columns kept).
-        for agent in [true, false] {
-            let (mut app, _) = payments_with_changes();
-            if !agent {
-                app.snap.terms.get_mut(&2).unwrap().agent = None;
-                app.screen_sync();
-            }
-            let before = find(
-                &cells(&mut app, Layout::Floating, 160, 45, "unicode"),
-                &app,
-                "+12",
-            );
-            let after = find(&hover_counts(&mut app, 160, 45), &app, "+12");
-            assert_eq!(
-                after, before,
-                "agent {agent}: hovering the row doesn't move the counts"
-            );
-            click(&mut app, before);
-            assert!(
-                opened_changes(&app),
-                "agent {agent}: a click where they were drawn opens Changes"
-            );
-        }
-    }
-
-    #[test]
-    fn right_clicking_a_row_s_changed_lines_opens_its_menu() {
-        let (mut app, _) = payments_with_changes();
-        let counts = find(&hover_counts(&mut app, 160, 45), &app, "+12");
-        mouse(
-            &mut app,
-            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Right),
-            counts,
-        );
-        assert!(
-            matches!(app.mode, Mode::ScreenMenu(_)),
-            "the session's menu, as on the rest of the row"
-        );
-    }
-
-    #[test]
-    fn dragging_from_a_row_s_changed_lines_moves_the_row() {
-        use crossterm::event::{MouseButton, MouseEventKind};
-        let (mut app, _) = payments_with_changes();
-        let counts = find(&hover_counts(&mut app, 160, 45), &app, "+12");
-        let onto = find(
-            &cells(&mut app, Layout::Floating, 160, 45, "unicode"),
-            &app,
-            "fix-footer",
-        );
-        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), counts);
-        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), onto);
-        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), onto);
-        assert!(!opened_changes(&app), "a drag is not a click");
-        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        let at = |name: &str| {
-            rows.iter()
-                .position(|r| r.contains(name))
-                .unwrap_or_else(|| panic!("{name}: {rows:#?}"))
-        };
-        assert!(
-            at("add-payments") < at("fix-footer"),
-            "add-payments took fix-footer's place: {rows:#?}"
-        );
-    }
-
-    #[test]
-    fn clicking_a_row_s_changed_lines_opens_its_changes_like_d() {
-        let (mut app, path) = payments_with_changes();
-        let buf = hover_counts(&mut app, 160, 45);
-        let counts = find(&buf, &app, "+12");
-        click(&mut app, counts);
-        let Mode::Confirm(c) = &app.mode else {
-            panic!("the checkout's Changes (here: not a repo yet) opens")
-        };
-        assert_eq!(
-            c.act,
-            crate::client::menu::Act::GitInit(path),
-            "for this row's checkout"
-        );
-        let clicked = app.mode.clone();
-        let mut by_key = payments_with_changes().0;
-        by_key.screen.cursor = Some(ClientSession::local(SessionKey::Pane(2)));
-        by_key.act(Action::Changes);
-        assert_eq!(by_key.mode, clicked, "the same as d on that session");
-    }
-
-    #[test]
-    fn clicking_the_rest_of_a_row_with_changed_lines_still_opens_the_session() {
-        let (mut app, _) = payments_with_changes();
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        app.out = tx;
-        let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
-        let at = find(&buf, &app, "add-payments");
-        mouse(&mut app, crossterm::event::MouseEventKind::Moved, at);
-        let _ = cells(&mut app, Layout::Floating, 160, 45, "unicode");
-        click(&mut app, at);
-        assert!(
-            !matches!(app.mode, Mode::Confirm(_)) && app.view.is_none(),
-            "no Changes"
-        );
-        assert!(
-            std::iter::from_fn(|| rx.try_recv().map(|o| o.msg).ok()).any(|m| matches!(
-                m,
-                crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane {
-                    term: 2
-                })
-            )),
-            "the session opens"
-        );
-    }
-
-    #[test]
-    fn the_hover_tint_shows_on_the_changed_lines_alone() {
-        let (mut app, _) = payments_with_changes();
-        let buf = hover_counts(&mut app, 160, 45);
-        let (x, y) = find(&buf, &app, "+12");
-        let (nx, _) = find(&buf, &app, "add-payments");
-        let counts_bg = buf[(x, y)].bg;
-        assert_eq!(
-            buf[(x + "+12 −3".chars().count() as u16 - 1, y)].bg,
-            counts_bg,
-            "the whole of +12 −3 is lit"
-        );
-        assert_ne!(buf[(x - 1, y)].bg, counts_bg, "not the gap before it");
-        assert_ne!(buf[(nx, y)].bg, counts_bg, "not the row's name");
-    }
-
-    #[test]
-    fn a_row_with_no_changed_lines_has_no_changes_target() {
-        let mut app = world(Stage::None);
-        let _ = cells(&mut app, Layout::Floating, 160, 45, "unicode");
-        assert!(
-            !app.hits
-                .iter()
-                .any(|(_, h)| matches!(h, crate::client::Hit::Screen(ScreenHit::RowChanges(_))))
-        );
-    }
-
-    #[test]
-    fn legacy_full_rounding_keeps_session_rows_square() {
-        use crate::client::screen::{CAP_L, CAP_R};
-        let mut app = world(Stage::None);
-        app.cfg.ui.rounded = crate::config::Rounding::Full;
-        let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
-        let (x, y) = find(&buf, &app, "fix-footer");
-        let r = app.screen.side_rect;
-        let row: Vec<String> = (r.x..r.right())
-            .map(|xx| buf[(xx, y)].symbol().to_string())
-            .collect();
-        assert!(
-            !row.iter().any(|c| c == CAP_L || c == CAP_R),
-            "rounding applies to boxes, not session row chips at x={x}: {row:?}"
-        );
-    }
-
-    #[test]
-    fn a_finished_seen_row_is_one_line_at_every_width() {
-        let mut app = world(Stage::None);
-        app.snap.terms.get_mut(&4).unwrap().status = Status::Idle;
-        for layout in LAYOUTS {
-            let rows = side_rows(&mut app, layout, 100, 30);
-            assert!(
-                !rows.iter().any(|r| said(r) == "working"),
-                "{layout:?}: a working row is one line: {rows:#?}"
-            );
-            assert!(has(&rows, "asks: use pnpm"), "{layout:?}: {rows:#?}");
-            assert!(
-                !rows.iter().any(|r| said(r) == "idle"),
-                "{layout:?}: a plain idle row is one line: {rows:#?}"
-            );
-            let rows = side_rows(&mut app, layout, 160, 45);
-            assert!(
-                !rows.iter().any(|r| said(r) == "idle"),
-                "{layout:?}: wide, it is one line too: {rows:#?}"
-            );
-            assert!(
-                !rows.iter().any(|r| said(r) == "working"),
-                "{layout:?}: wide too: {rows:#?}"
-            );
-        }
     }
 
     #[test]
@@ -2405,52 +2073,6 @@ mod v8_tests {
         assert_eq!(at(0), Some(base), "a pulse starts dim");
         assert_ne!(at(PULSE_FRAMES / 2), Some(base), "brightens");
         assert_eq!(at(PULSE_FRAMES), Some(base), "and dims again");
-    }
-
-    #[test]
-    fn a_row_that_wants_a_look_is_bold_in_its_state_s_colour_and_its_words_quiet() {
-        let mut app = world(Stage::None);
-        app.snap.terms.get_mut(&5).unwrap().asleep = false;
-        app.snap.terms.get_mut(&5).unwrap().status = Status::Idle;
-        let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
-        let t = app.theme.clone();
-        let style = |name: &str| {
-            let (x, y) = find(&buf, &app, name);
-            (
-                buf[(x, y)].modifier.contains(Modifier::BOLD),
-                buf[(x, y)].fg,
-            )
-        };
-        let glyph = |name: &str| {
-            let (x, y) = find(&buf, &app, name);
-            buf[(x - 2, y)].fg
-        };
-        assert_eq!(
-            style("warm-finch"),
-            (true, t.blocked),
-            "needs you: bold, in the amber"
-        );
-        assert_eq!(
-            style("quick-fox"),
-            (true, glyph("quick-fox")),
-            "done, not seen: bold, in its mark's colour"
-        );
-        assert_eq!(
-            style("old-moth"),
-            (false, t.text),
-            "done and seen: text, not bold"
-        );
-        let (x, y) = find(&buf, &app, "asks:");
-        assert_eq!(
-            buf[(x, y)].fg,
-            t.muted,
-            "line two is muted: its glyph is the amber"
-        );
-        assert_eq!(
-            glyph("warm-finch"),
-            t.blocked,
-            "the glyph keeps the state's colour"
-        );
     }
 
     #[test]
@@ -2559,15 +2181,13 @@ mod v8_tests {
         let _ = raw_text(&mut app, Layout::Floating, w, h, "unicode");
         let text = raw_text(&mut app, Layout::Floating, w, h, "unicode");
         let column: Vec<String> = text.lines().map(|l| l.chars().take(8).collect()).collect();
-        for letter in ['F', 'A', 'W', 'Q', 'O'] {
-            assert!(
-                column.iter().any(|l| l.contains(letter)),
-                "{letter} (a session's first letter) is in the column: {column:?}"
-            );
-        }
         assert!(
-            column[0].trim_start().starts_with('»'),
-            "the expand chip comes first: {column:?}"
+            column[0].contains('»'),
+            "the expand chip is set into the box's top edge: {column:?}"
+        );
+        assert!(
+            column.iter().any(|l| l.contains('⌂')),
+            "this computer's mark: {column:?}"
         );
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
@@ -2620,23 +2240,19 @@ mod v8_tests {
         let mut app = world(Stage::None);
         app.sidebar = false;
         let t = app.theme.clone();
-        let chip = |app: &mut App| {
+        // The chosen row has a tinted ground, and with the keys the accent bar at its left.
+        let bar = |app: &mut App| {
             let buf = cells(app, Layout::Floating, 160, 45, "unicode");
-            let (x, y) = (0..8u16)
+            (0..8u16)
                 .flat_map(|x| (0..45u16).map(move |y| (x, y)))
-                .find(|&(x, y)| buf[(x, y)].symbol() == "F")
-                .expect("fix-footer's letter");
-            (buf[(x, y)].bg, buf[(x, y)].fg)
+                .find(|&(x, y)| buf[(x, y)].symbol() == "▌" && buf[(x, y)].fg == t.accent)
+                .map(|(x, y)| buf[(x + 1, y)].bg)
         };
-        chip(&mut app);
+        assert_eq!(bar(&mut app), None, "no bar before the column has the keys");
         app.act(Action::BrowseTree);
-        assert_eq!(
-            chip(&mut app),
-            (t.accent, t.acc_ink),
-            "the strip has the keys"
-        );
+        assert_eq!(bar(&mut app), Some(t.card2), "the strip has the keys");
         app.mode = Mode::Normal;
         app.screen.cursor = None;
-        assert_eq!(chip(&mut app).0, t.btn, "else raised");
+        assert_eq!(bar(&mut app), None, "else just the tint");
     }
 }

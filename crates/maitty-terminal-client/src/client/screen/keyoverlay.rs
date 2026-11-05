@@ -600,7 +600,10 @@ fn frame(
     };
     let mut c = Card::new(t, title).lit(t.sky());
     c.title_fg = t.accent;
-    c.bg = t.card;
+    // No fill: the card's own ground is the app's, and the modal's lifted rows are flattened to it.
+    c.bg = t.bg;
+    c.close = Some(ScreenHit::Close);
+    app.screen.modal_rects.push(r);
     let inside = card(app, buf, r, &c, t);
     hit(app, r, ScreenHit::Noop);
     (r, inside)
@@ -645,14 +648,11 @@ pub(in crate::client) fn draw_keymap(
     }
 }
 
-/// The bar of key hints in the overlay's last row.
+/// The key hints as chips on the card's bottom border, the way the other modals wear theirs.
 fn bar(buf: &mut Buffer, inside: Rect, t: &Theme, keys: &[(&str, &str)]) {
-    let row = Rect {
-        y: inside.bottom().saturating_sub(1),
-        height: 1,
-        ..inside
-    };
-    action_bar(buf, row, t, t.card2, keys);
+    let border = inside.bottom();
+    let segs = cap_hints_gap(t, t.bg, " ", keys);
+    put(buf, inside.x + 1, border, &segs, inside.right());
 }
 
 fn draw_grid(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap, all: bool) {

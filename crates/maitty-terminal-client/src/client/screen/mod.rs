@@ -72,6 +72,10 @@ pub(super) struct Saved {
     pub recent: Vec<String>,
     /// The side sheet's width per kind of view (`SheetKind::key`), as you sized it.
     pub sheet_w: HashMap<String, u16>,
+    /// The tool drawer floats over the terminal instead of being a column beside it (which
+    /// shrinks the terminal, so nothing is hidden under it).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub drawer_floats: bool,
     /// `session_order` and `placed` of every other machine, by its configured name. The top-level
     /// ones are this machine's, so a file from before machines reads as it always did. A machine
     /// that is no longer configured keeps its entry.
@@ -215,6 +219,10 @@ pub(super) struct Screen {
     pub side_scroll: u16,
     pub follow: bool,
     pub side_rect: Rect,
+    /// The sidebar's Remote half (its header row and list) as last drawn, and how far its list is
+    /// scrolled; empty while the sidebar is too short to split.
+    pub remote_rect: Rect,
+    pub remote_scroll: u16,
     /// The sidebar drew the Update or Restart chip this frame.
     pub release_in_side: bool,
     /// Where the side sheet was drawn, and the widest it could be there (its edge's drag and
@@ -255,6 +263,11 @@ pub(super) struct Screen {
     pub drag_key: Option<String>,
     /// The splash's selected button.
     pub splash_sel: usize,
+    /// The wide splash: the away box holds the keys, its chosen session, and whether the last
+    /// frame drew it (the keys differ).
+    pub splash_away: bool,
+    pub splash_away_sel: usize,
+    pub splash_wide: bool,
     /// The colour of each project's +/− button, picked at random when it opens (key -> colour).
     pub fold_colors: HashMap<String, Color>,
     /// The scrollbar being dragged: (pane, track, lines of history).
@@ -525,8 +538,6 @@ pub(super) struct Session {
     pub check: Option<CheckInfo>,
     /// Every checkpoint, in the project's order.
     pub checks: Vec<CheckInfo>,
-    /// How full the agent's context is, 0–100, when the agent reports it.
-    pub context: Option<f32>,
     /// Its machine's line is down: what the row says is the last report, not live.
     pub down: bool,
 }
@@ -589,8 +600,9 @@ pub(super) fn side_focused(app: &App) -> bool {
 }
 
 /// A split is one session: the pane it was split from keeps its row, the panes opened
-/// beside it don't get rows of their own. The row shows the most urgent of them, so an agent
-/// in a split that needs you still says so (and what it asks).
+/// beside it don't get rows of their own. The row shows the most urgent of the panes in its own
+/// tab, so an agent in a split that needs you still says so (and what it asks). Another tab of
+/// the session has a row of its own in the sidebar and says its own state there.
 pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
     let mut owners: Vec<ClientTerm> = tabs.iter().map(|t| t.owner).collect();
     owners.sort_unstable();
@@ -602,6 +614,12 @@ pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
             .filter(|t| t.owner == owner)
             .flat_map(|t| t.leaves())
             .filter(|id| *id != owner)
+            .collect();
+        // The panes sharing the session's own tab.
+        let own: Vec<ClientTerm> = tabs
+            .iter()
+            .filter(|t| t.owner == owner && t.contains(owner))
+            .flat_map(|t| t.leaves())
             .collect();
         let has_row = projs
             .iter()
@@ -633,6 +651,7 @@ pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
         };
         if let Some(m) = members
             .into_iter()
+            .filter(|m| m.native_term.is_some_and(|id| own.contains(&id)))
             .filter(|m| rank(m.status) < rank(row.status))
             .min_by_key(|m| rank(m.status))
         {
@@ -1032,7 +1051,6 @@ impl App {
                     queued: t.queued.clone(),
                     check: t.check().cloned(),
                     checks: t.checks.clone(),
-                    context: t.usage.context,
                     down: self.machine_down(m.id),
                 });
             }
@@ -1107,7 +1125,6 @@ impl App {
                 queued: Vec::new(),
                 check,
                 checks,
-                context: None,
                 down: self.machine_down(m.id),
             });
         }
@@ -1588,6 +1605,16 @@ pub(super) enum ScreenHit {
     SplashKey(char),
     /// A splash card: a click chooses it, a click on the chosen one opens it.
     SplashCard(usize),
+    /// A chip on the tool rail: the drawer's tab at that place in `DRAWER_TABS`.
+    Tool(usize),
+    /// A remote machine's line in the sidebar: a right-click offers to reconnect or remove it.
+    MachineRow(MachineId),
+    /// A recent project on the wide splash (its index among them).
+    SplashProject(usize),
+    /// A session in the wide splash's away list.
+    SplashAway(usize),
+    /// A click in one of the wide splash's boxes: true for the away box.
+    SplashFocus(bool),
     /// A right-click menu item.
     MenuPick(usize),
     /// The ✕ of a view in the sheet (Changes): it closes.
@@ -1601,14 +1628,16 @@ pub(super) enum ScreenHit {
     /// The sidebar's empty space: the keys go to it.
     SideFocus,
     ExpandSidebar,
+    /// The `«` chip on the sidebar's border: shrink it to the narrow column.
+    CollapseSidebar,
     /// Install the newer the app (in Settings › General).
     Update,
     /// Restart the daemon onto the installed version (after an update).
     Restart,
+    /// The sidebar's Remote half, empty: open the Machines dialog to add one.
+    AddMachine,
     NewShell,
     Why(ClientTerm),
-    /// The `+N −N` on a session's row: its checkout's Changes.
-    RowChanges(ClientTerm),
     /// The why popover of a session with a check: its evidence sheet.
     CheckEvidence(ClientTerm),
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
@@ -1738,6 +1767,8 @@ mod sheet;
 mod side;
 mod side_tabs;
 mod splash;
+mod tools;
+mod splash_wide;
 mod tidy;
 pub(in crate::client) use self::{
     branch_sheet::*, card::*, check_actions::*, check_approve::*, check_sheet::*, dialogs::*,

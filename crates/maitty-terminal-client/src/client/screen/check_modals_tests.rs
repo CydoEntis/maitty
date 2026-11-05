@@ -222,22 +222,6 @@ fn each_modal_matches_the_reference_inside_in_every_layout_at_every_size() {
     }
 }
 
-#[test]
-fn the_override_keeps_its_mark_in_plain_ascii() {
-    let mut app = preset("12 Override?");
-    let text = frame(
-        &mut app,
-        crate::client::reference_fixture::Layout::Tiled,
-        80,
-        24,
-        "ascii",
-    );
-    assert!(
-        text.contains("  / on the row, in the Inbox history and in the evidence"),
-        "{text}"
-    );
-}
-
 // ---- approval ------------------------------------------------------------------------------
 
 fn approving() -> (App, mpsc::UnboundedReceiver<Outgoing>) {

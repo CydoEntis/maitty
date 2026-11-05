@@ -64,50 +64,51 @@ commands: new session, shell, pane, tab, Inbox, Search commands, All keys, the s
 and your configured custom ones; rows click and the wheel scrolls.
 
 ```
-┌─ SESSIONS 5 ──────────── ●1 ✕1 ┐
+╭─ LOCAL ────────────────────────╮
 │                                │
-│  ▾ affiliate-site ⎇ main · ch… │
-│ ▎ ✕ fix-footer    ◆  +8 −2  2m │
-│ ▎   failed: test · exit 1      │
-│ ▎   footer shows current year  │
-│   ⣶ add-payments  ✻ +40 −3 now │
+│ ▾  maitty                ⎇ dev ✓│
+│   ● bold-raven            ● you │
+│     asks: what should the…     │
+│   ○ shell                   2   │
 │                                │
-│  ▾ pixls                no git │
-│   ● warm-finch           ◆  3m │
-│     asks: use pnpm or npm?     │
+│ ▾  AeVoxGrowth          ⎇ main ✓│
+│   ⣻ Growth Tests           12m  │
+│   ✓ Confirm Modal           1h  │
 │                                │
-│  ▾ orbit                 ⎇ dev │
-│   ✓ quick-fox            ✻  9h │
-└────────────────────────────────┘
+├─ REMOTE 1 ────────────── + Add ┤
+│                                │
+│  ⇄ kingdom                  ●  │
+│ ▾  maitty         ⎇ fixes/fir ✓│
+│   ⣻ Maitty GUI Work       48m  │
+╰────────────────────────────────╯
 ```
 
-- The title counts the sessions, then `●` what needs you and `✕` the checks that failed.
-- A project is its name, with its branch and check on the right (`⎇ main · check: test`), or
-  `no git` outside a repo.
-- Under it, its sessions, one line each: the state mark and the name (in its state's colour
-  while it is worth a look), then at the right the agent's mark (`✻` Claude, `◆` Codex, `✦`
-  Gemini, `◇` OpenCode, else its first letter), how full its context is once past half
-  (`✻ 72%`, red from 85%; Claude and Codex report it), the lines changed but not committed
-  (`+8 −2`) and the age. Click the `+N −N` to open its Changes.
-- A second line shows only when it says more: a question (`asks: …`), a check result
-  (`failed: test · exit 1`, with its first failing line on wide screens), helpers asked for,
-  a quiet spell or a message waiting. Every new claude / codex gets its own worktree (named
+- The top half, **Local**, is this computer. The bottom half, **Remote**, is every other
+  machine, each under its own header; `+ Add` opens
+  the Machines dialog. Each half scrolls on its own.
+- A project is its name with its branch and a `✓` (or `✕` if a check failed) on the right, or
+  `no git` outside a repo. Click it to fold it; a folded project says how many sessions it hides
+  and shows an amber `●` when one needs you.
+- A session is two rows. First: the state mark and the name (in its state's colour while it is
+  worth a look), then at the right `● you` when it needs you, else the agent's mark (`✻` Claude,
+  `◆` Codex, `✦` Gemini, `◇` OpenCode, else its first letter) and the age. Second: what it is doing,
+  or what it asks (`asks: …`, in amber), a check result (`failed: test · exit 1`), helpers asked
+  for, a quiet spell or a message waiting. Every new claude / codex gets its own worktree (named
   for you), so agents never edit the same files.
-- One row is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar has
-  the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
+- A session with other tabs lists them with a thin line beside them (`○ shell  2`); click one to show it. Each tab shows its own state; the session's row shows only its own tab's.
+- One card is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar
+  has the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
   keyboard. Hover is a separate, quieter tint.
-- Collapsing the sidebar (leader, then `z`) leaves a narrow column
-  down the side, each project as its first letter in its colour and each session as its mark and first letter: click a row to go to it, `»` (`«` with the sidebar on the right) or `…` to expand the sidebar again.
-- With a second machine, each machine's folders sit under a header of its own; see *Machines* below.
-- Nothing moves in the sidebar by itself: a session that needs you or finishes keeps its row (its mark and name say so, and the Inbox lists what needs you), and a session on another machine stays with the folder it was started from. Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
+- Collapsing the sidebar (the `«` chip on its top border, or leader then `z`) leaves a narrow box down the side with one state glyph per session and, in amber, how many need you: click a glyph to go to it, `»` (`«` with the sidebar on the right) or `…` to expand the sidebar again. `[` in the sidebar steps through full, narrow and hidden; hidden, a `»` chip at the start of the tabs brings it back.
+- A machine whose line is down, or that has no sessions, is its header and one line instead of its
+  projects; click it for the Machines dialog. See *Machines* below.
+- Nothing moves in the sidebar by itself: a session that needs you or finishes keeps its row (its mark and name say so, and the Inbox lists what needs you). Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
 - The sidebar footer keeps **+ new** and **Menu** available. **+ new**, `Ctrl+Space n` and a project's **+** open a plain shell where you are; type your agent there. `Ctrl+Space s` starts a session straight away (Settings › Sessions sets the agent and whether it gets a worktree).
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
-- Drag a group's name, or a session, up or down to reorder (what needs you still comes first);
-  drop a session on another group (its name or one of its sessions) to move it there, within its
-  section. Click to fold or open. With the sidebar focused
+- Drag a project, or a session within its project, up or down to reorder it. Click a project to fold or open it. With the sidebar focused
   (`Ctrl+Space e`), a row's menu letters work directly (a row's menu lists them): `x` (or
   Delete) asks to close, `r` renames. Settings › General › UPDATES shows the version; Settings warns at the top when the installed, window and daemon versions differ.
 
@@ -404,35 +405,36 @@ ssh_args = ["-p", "2222"]           # optional: extra ssh arguments, one per ent
 remote_cmd = "~/.local/bin/maitty"  # optional: where maitty is on that machine (default: maitty)
 ```
 
-Four more keys decide what a machine may do, all `false` until you turn them on. `clipboard` lets its panes
+Four more keys decide what a machine may do. `clipboard` is on unless you write `clipboard = false`: a copy made in its panes reaches your clipboard. The other three are `false` until you turn them on. `clipboard` lets its panes
 write your clipboard, `notices` lets it raise notices (which include bringing this window to the front) and
 `sounds` lets it play sounds; what it raises starts with `[build]`. `mcp` opens it to agents (see *Agents on a
 machine*). `config.example.toml` lists every key.
 
 Adding a machine starts maitty there if it is not running, so you can create the first session from this
 computer. If the connection drops later, maitty only reconnects to a maitty that is still running there; it
-never starts one you stopped. Press retry on the machine to start it there again. If maitty is not
+never starts one you stopped. Right-click the machine's line in the sidebar and choose Reconnect to start it there again. If maitty is not
 installed there, see *Install or update maitty on a machine*.
 
 ### What you see
 
-With a second machine, each machine's folders sit under a header: `this computer`, then `⇄ build` with how its
-connection is at the right. A session on another machine stays with the folder it was started from, its status
-is the one its own maitty reports, and what its agents need shows in the Inbox with `· on build`.
+Sessions on this computer are in the sidebar's **Local** half; every other machine's are in **Remote**,
+each machine under a `⇄ build` header. A machine that is not connected, or has no sessions, is one item: its name with
+how its connection is at the right. A session's status is the one its own maitty reports, and what its agents
+need shows in the Inbox with `· on build`.
 
 | Shown | What it means, and what to do |
 | --- | --- |
 | `connecting` | The first try this run. |
 | `connected` | The line is up. |
 | `reconnecting #2` | A line that was up dropped. maitty tries again at once, then after 250 ms, doubling up to 30 s; three tries in a row without an answer make it `unreachable`. |
-| `needs login` | ssh cannot log in without asking you. Make plain `ssh` to that machine work in a terminal (load your key, accept its host key), then press `r`. |
-| `needs update` | The machine runs another version of maitty, or has none on its PATH. Run `maitty machine update <name>` (add `--install` when there is none, or set `remote_cmd` to its path), then press `r`. |
+| `needs login` | ssh cannot log in without asking you. Make plain `ssh` to that machine work in a terminal (load your key, accept its host key), then right-click the machine and choose Reconnect. |
+| `needs update` | The machine runs another version of maitty, or has none on its PATH. Run `maitty machine update <name>` (add `--install` when there is none, or set `remote_cmd` to its path), then right-click the machine and choose Reconnect. |
 | `unreachable` | No answer, or maitty is not running there. The reason is written under it (ssh's last line, or "maitty is not running on that machine; retry to start it there"); maitty keeps trying in the background. |
 | `refused` | A different computer now answers at that name. If you replaced the machine, remove it and add it again; otherwise check the host name and DNS. |
 
-When a machine drops, its sessions stay in the sidebar, greyed, with `disconnected since 2m ago` and what to do
-about it. They come back by themselves when the line does, each pane showing its screen again. Its needs-you
-and failed marks leave the title's counts and the Inbox while it is down. Typing sent to a machine while it
+When a machine drops, its cards give way to one item saying `disconnected · click for the fix` (click it for the
+Machines dialog, which says what to do). They come back by themselves when the line does, each pane showing
+its screen again. Its needs-you and failed marks leave the Inbox while it is down. Typing sent to a machine while it
 was down is dropped, never queued (replaying keystrokes into a pane that moved on could run commands you no
 longer meant); when the machine is back, maitty says how much was not sent.
 
@@ -709,6 +711,8 @@ Copy mode has no default key: open it from search commands (leader, then `Space`
 
 `Esc` clears an active selection before exiting; **Ctrl+C** exits immediately.
 Without a selection, `y` or `Y` copies the current line; Enter exits without copying.
+**J** copies the selection as one line: each line's indentation goes and the lines join with a space (with nothing where a line ran to the last column, a word cut by the wrap), for a command that wrapped. With the mouse, hold **Alt** while you let go of a drag to copy the same way.
+
 **Ctrl+Y / Ctrl+E** scroll one line up / down. Full details: [Copy mode controls](shortcuts.md#copy-mode).
 
 Copies go to the system clipboard and, through OSC 52, to your outer terminal (works over SSH).

@@ -16,7 +16,6 @@ const SWITCH_ROW: &str = "Switch branch…";
 const LABEL_W: usize = 10;
 /// Rows under the list: a gap and the hints.
 const FOOT_ROWS: u16 = 2;
-const HINTS: [(&str, &str); 3] = [("Enter", "open"), ("↑↓", "choose"), ("Esc", "close")];
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Commit {
@@ -544,7 +543,6 @@ pub(in crate::client) fn draw_branch(
             );
         }
     }
-    status_bar(buf, body, t, &HINTS, &[]);
 }
 
 #[cfg(test)]

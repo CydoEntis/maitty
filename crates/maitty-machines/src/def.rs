@@ -11,7 +11,7 @@ pub const LOCAL_MACHINE: &str = "local";
 
 /// Another machine, reached over ssh (`[[machines]]`). Read only from the local config, never
 /// the synced one: where it points is this computer's business.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MachineDef {
     /// How the machine is addressed (`--on name`, `name/3`).
@@ -27,7 +27,9 @@ pub struct MachineDef {
     /// element `{command}` is replaced by the remote command; without one it is appended last.
     /// It is code this app runs, so it is read only from the local config.
     pub via: Option<Vec<String>>,
-    /// Let this machine's panes write to this computer's clipboard.
+    /// Let this machine's panes write to this computer's clipboard. On unless the entry says
+    /// `clipboard = false`: a machine you added is one you chose, and a copy made there should
+    /// reach the paste here without any setting.
     pub clipboard: bool,
     /// Let this machine raise notices.
     pub notices: bool,
@@ -36,6 +38,22 @@ pub struct MachineDef {
     /// Let an agent in a pane here reach this machine through its MCP tools (`machine` argument
     /// or a `name/id`), within that pane's own grants.
     pub mcp: bool,
+}
+
+impl Default for MachineDef {
+    fn default() -> MachineDef {
+        MachineDef {
+            name: String::new(),
+            target: String::new(),
+            ssh_args: Vec::new(),
+            remote_cmd: None,
+            via: None,
+            clipboard: true,
+            notices: false,
+            sounds: false,
+            mcp: false,
+        }
+    }
 }
 
 /// Refuse a `[[machines]]` entry that could not name or reach a machine, so the mistake shows
@@ -172,10 +190,14 @@ mod tests {
     }
 
     #[test]
-    fn a_machine_reads_with_its_defaults_and_opt_ins_off() {
+    fn a_machine_reads_with_its_defaults_clipboard_on_and_the_other_opt_ins_off() {
         let m: MachineDef = toml::from_str("name = 'box'\ntarget = 'me@box'").unwrap();
         assert_eq!(m, machine("box", "me@box"));
-        assert!(!(m.clipboard || m.notices || m.sounds) && m.ssh_args.is_empty());
+        assert!(m.clipboard, "a copy made there reaches the paste here");
+        assert!(!(m.notices || m.sounds) && m.ssh_args.is_empty());
+        let off: MachineDef =
+            toml::from_str("name = 'box'\ntarget = 'me@box'\nclipboard = false").unwrap();
+        assert!(!off.clipboard, "and an entry can turn it off");
         validate_machines(&[m]).unwrap();
     }
 

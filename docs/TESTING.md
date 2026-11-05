@@ -97,8 +97,9 @@ and compares it cell for cell with the reference in `client/reference_frames/<pr
 header lists the masks (the pane's terminal text, the working spinner and ages the fixture
 can't pin, the sample's checkpoint kinds) and every deliberate difference from the sample. A
 failure prints each differing row as got/want. The reference frames
-(`client/reference_frames/*.txt`, `client/screen/reference.txt`, `client/screen/check_modals_frames.txt`
-and `client/screen/side_frames.txt`) are fixed fixtures. Update them by hand, in the same
+(`client/reference_frames/*.txt`, `client/screen/reference.txt` and
+`client/screen/check_modals_frames.txt`) are fixed fixtures. The sidebar's column is masked in the
+presets; its cards are tested in `screen::side` and `screen::machine_group_tests`. Update them by hand, in the same
 change, only when the design itself changes; never to make a failing test pass.
 
 The website's screenshots are real frames: `client/site_frames.rs` draws made-up app states

@@ -162,6 +162,22 @@ impl App {
             }
             Mode::Themes { saving: true, .. } => {}
             Mode::Branch(v) => v.query.push_str(s.lines().next().unwrap_or("").trim()),
+            // The Add Machine input takes a pasted `user@host`; while a check or the result is
+            // shown there is no text box, and the paste is dropped, not sent to the pane behind.
+            Mode::Machines(v) => {
+                let line = s.lines().next().unwrap_or("").trim();
+                match &mut v.step {
+                    screen::machines::MachineStep::Browse => {
+                        v.query.push_str(line);
+                        (v.in_list, v.host_sel, v.notice) = (false, 0, None);
+                    }
+                    screen::machines::MachineStep::Name { name, error, .. } => {
+                        name.push_str(line);
+                        *error = None;
+                    }
+                    _ => {}
+                }
+            }
             Mode::Finder(fd) => {
                 fd.q.push_str(s.lines().next().unwrap_or("").trim());
                 fd.sel = 0;
@@ -738,20 +754,17 @@ impl App {
             && (!matches!(m.kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown)
                 || self.parsers.get(&term).is_some_and(|p| p.screen().alternate_screen())
                 || self.history(term).1 == 0)
+            // Scrolled back, the program's screen is not the one on view: a click there would land
+            // on the wrong cell, so it is not sent. The click is the app's (focus, selection).
+            && self.parsers.get(&term).is_some_and(|p| p.screen().scrollback() == 0)
             && let Some(bytes) = self.parsers.get(&term).and_then(|p| keys::mouse_bytes(p.screen(), &m, pos.x - inner.x, pos.y - inner.y))
         {
             if m.kind == MouseEventKind::Moved && self.hover != Some(pos) {
                 self.hover = Some(pos);
                 self.dirty = true;
             }
-            if matches!(m.kind, MouseEventKind::Down(_)) {
-                if Some(term) != self.focused() {
-                    self.cmd_on(term.machine, Command::FocusPane { term: term.term });
-                }
-                // Clicking for the program brings its view back to the bottom.
-                if let Some(p) = self.parsers.get_mut(&term) {
-                    p.screen_mut().set_scrollback(0);
-                }
+            if matches!(m.kind, MouseEventKind::Down(_)) && Some(term) != self.focused() {
+                self.cmd_on(term.machine, Command::FocusPane { term: term.term });
             }
             if !bytes.is_empty() {
                 self.send_input(term, bytes);
@@ -993,7 +1006,6 @@ impl App {
                         self.menu_for_session(term, at);
                     }
                 }
-                Some(Hit::Screen(screen::ScreenHit::RowChanges(t))) => self.menu_for_session(t, at),
                 Some(Hit::Screen(screen::ScreenHit::Why(t)))
                     if self.screen.side_rect.contains(pos) =>
                 {
@@ -1001,6 +1013,9 @@ impl App {
                 }
                 Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => {
                     self.menu_for_project(pi, at)
+                }
+                Some(Hit::Screen(screen::ScreenHit::MachineRow(machine))) => {
+                    self.menu_for_machine(machine, at)
                 }
                 _ => {
                     if let Some((term, _)) = self
@@ -1046,9 +1061,6 @@ impl App {
             // (on release).
             let session_press = match hit {
                 Some(Hit::Screen(press @ screen::ScreenHit::Session(s))) => Some((s, press)),
-                Some(Hit::Screen(press @ screen::ScreenHit::RowChanges(term))) => {
-                    Some((self.session_key(term), press))
-                }
                 _ => None,
             };
             if let Some((t, press)) = session_press {
@@ -1216,10 +1228,16 @@ impl App {
                     return;
                 }
                 if self.screen.side_rect.contains(pos) {
-                    self.screen.side_scroll = if up {
-                        self.screen.side_scroll.saturating_sub(3)
+                    // The Remote half scrolls on its own; the rest of the sidebar is Local's.
+                    let scroll = if self.screen.remote_rect.contains(pos) {
+                        &mut self.screen.remote_scroll
                     } else {
-                        self.screen.side_scroll + 3
+                        &mut self.screen.side_scroll
+                    };
+                    *scroll = if up {
+                        scroll.saturating_sub(3)
+                    } else {
+                        *scroll + 3
                     };
                     self.dirty = true;
                     return;
@@ -1491,7 +1509,12 @@ impl App {
                 if let Mode::Copy(c) = &self.mode
                     && c.mouse
                 {
-                    let text = c.selected_text();
+                    // Alt held on release: the selection as one line, for a wrapped command.
+                    let text = if m.modifiers.contains(KeyModifiers::ALT) {
+                        c.selected_one_line()
+                    } else {
+                        c.selected_text()
+                    };
                     self.yank(text);
                     return true;
                 }

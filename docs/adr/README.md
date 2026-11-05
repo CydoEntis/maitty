@@ -67,3 +67,4 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0047](0047-multiple-machines.md) | One terminal app, several machines | Accepted, amended by 0048 |
 | [0048](0048-machines-in-the-desktop-app.md) | Machines in the desktop app, through one shared crate | Accepted |
 | [0049](0049-image-paste-to-another-machine.md) | A pasted image reaches another machine as a file sent over its own ssh line | Proposed |
+| [0050](0050-local-and-remote-sidebar-with-session-cards.md) | A Local and Remote sidebar of session cards, with real pills as an option | Accepted |
