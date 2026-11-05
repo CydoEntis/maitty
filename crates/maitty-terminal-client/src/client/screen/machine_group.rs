@@ -77,12 +77,12 @@ impl App {
         }
     }
 
-    /// The mark that stands for another computer: a laptop with the Nerd glyph set, a plain
-    /// screen otherwise, `[]` in ASCII.
+    /// The mark that stands for another computer: a desktop monitor with the Nerd glyph set, a
+    /// plain screen otherwise, `[]` in ASCII.
     pub(super) fn machine_icon(&self) -> &'static str {
         let set = glyphs::chosen(&self.cfg.ui.glyphs, &self.cfg.icons);
         if set.close == "\u{f00d}" {
-            "\u{f0322}"
+            "\u{f108}"
         } else if self.ascii_marks() {
             "[]"
         } else {

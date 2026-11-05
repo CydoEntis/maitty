@@ -85,7 +85,7 @@ Inside a half, projects are rows that fold: `▾` open or `▸` closed (`v` and 
 name in `strong` bold, and at the right `⎇ branch` in `muted` and a `✓` in `done`, or a `✕` in `err`
 when one of its sessions failed a check; `no git` outside a repo. A folded project reads
 `n hidden`, with an amber `●` before it when one of them needs you. Remote starts each machine with
-a header: ` ▭ build ` as a badge on `btn` (a laptop in the Nerd glyph set, `[]` in ASCII) and its
+a header: ` ▭ build ` as a badge on `btn` (a desktop monitor in the Nerd glyph set, `[]` in ASCII) and its
 connection at the right as one dot: `done` when it is up, amber while it connects or reconnects, `err`
 when it cannot be reached. The words live in the Machines dialog.
 
