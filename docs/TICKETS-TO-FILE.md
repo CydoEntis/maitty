@@ -655,8 +655,8 @@ On Linux `is_app_daemon` (`crates/maitty-desktop-client/src/lib.rs`) accepted on
 name ends in `maitty`; the bundled daemon is `maitty-gui-daemon`, so the button answered "couldn't
 identify the local Maitty (maitty) daemon process". Windows and macOS skip the check.
 
-**State.** Fixed on the branch `fix/desktop-upgrade-path`, not committed: `is_daemon_command_line`
-accepts the terminal app's program or the bundled one, started with `daemon`, with a test. The gate
+**State.** Fixed on the branch `fix/desktop-upgrade-path`: `is_daemon_command_line`
+accepts the terminal app's program or the bundled one, started with `daemon`, with a test. The full gate
 has not been run on it.
 
 ## 31. Settings › Performance lists no daemons (bug, `client`)
