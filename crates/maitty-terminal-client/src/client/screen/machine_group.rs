@@ -78,13 +78,13 @@ impl App {
     }
 
     /// The mark that stands for another computer: a desktop monitor with the Nerd glyph set, a
-    /// plain screen otherwise, `[]` in ASCII.
+    /// plain screen otherwise, `<>` in ASCII.
     pub(super) fn machine_icon(&self) -> &'static str {
         let set = glyphs::chosen(&self.cfg.ui.glyphs, &self.cfg.icons);
         if set.close == "\u{f00d}" {
             "\u{f108}"
         } else if self.ascii_marks() {
-            "[]"
+            "<>"
         } else {
             "▭"
         }
@@ -101,7 +101,7 @@ impl App {
         (if self.ascii_marks() { "*" } else { "●" }, colour)
     }
 
-    fn ascii_marks(&self) -> bool {
+    pub(super) fn ascii_marks(&self) -> bool {
         glyphs::chosen(&self.cfg.ui.glyphs, &self.cfg.icons)
             .needs
             .is_ascii()
