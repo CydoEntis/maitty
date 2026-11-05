@@ -874,6 +874,7 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
         .fg(t.acc_ink)
         .bg(t.accent)
         .add_modifier(Modifier::BOLD);
+    let close_mark = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
     let chips = |n: usize, on: bool, name: &str| {
         let number = if on {
             current
@@ -915,7 +916,10 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
             } else {
                 (t.muted, t.card)
             };
-            pair.push(seg("× ", Style::default().fg(fg).bg(bg)));
+            pair.push(seg(
+                format!("{close_mark} "),
+                Style::default().fg(fg).bg(bg),
+            ));
         }
         if look.round_tabs {
             round_ends(pair, ground)

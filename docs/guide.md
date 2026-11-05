@@ -66,47 +66,49 @@ and your configured custom ones; rows click and the wheel scrolls.
 ```
 ╭─ LOCAL ────────────────────────╮
 │                                │
-│ ▎ ✕ fix-footer            ◆ 2m │
-│ ▎   ⌂ local  affiliate-site ⎇… │
-│ ▎   failed: test · exit 1      │
-│     └ add-payments  2          │
+│ ▾  maitty                ⎇ dev ✓│
+│   ● bold-raven            ● you │
+│     asks: what should the…     │
+│     └ ○ shell               2   │
 │                                │
-│   ● warm-finch          ● you  │
-│     ⌂ local  pixls             │
-│     asks: use pnpm or npm?     │
+│ ▾  AeVoxGrowth          ⎇ main ✓│
+│   ⣻ Growth Tests           12m  │
+│   ✓ Confirm Modal           1h  │
 │                                │
 ├─ REMOTE 1 ────────────── + add ┤
 │                                │
-│   ✓ ship-ui               ✻ 9m │
-│     ⇄ build  web ⎇ main        │
-│     claude                     │
+│  ⇄ kingdom        ● connected  │
+│ ▾  maitty         ⎇ fixes/fir ✓│
+│   ⣻ Maitty GUI Work       48m  │
 ╰────────────────────────────────╯
 ```
 
 - The top half, **Local**, is this computer. The bottom half, **Remote**, is every other
-  machine; `+ add` (or a click on "+ add one" when there is none) opens the Machines dialog. Each
-  half scrolls on its own.
-- A session is a card of three rows. First: the state mark and the name (in its state's colour
-  while it is worth a look), then at the right `● you` when it needs you, else the agent's mark
-  (`✻` Claude, `◆` Codex, `✦` Gemini, `◇` OpenCode, else its first letter) and the age.
-- Second: a badge for the machine it runs on (`⌂ local`, `⇄ build`), then its folder and branch.
-- Third: what it is doing, or what it asks (`asks: …`, in amber), a check result
-  (`failed: test · exit 1`), helpers asked for, a quiet spell or a message waiting. Every new
-  claude / codex gets its own worktree (named for you), so agents never edit the same files.
-- A session with other tabs lists them under its card (`├ shell  2`); click one to show it.
+  machine, each under its own header; `+ add` (or a click on "+ add one" when there is none) opens
+  the Machines dialog. Each half scrolls on its own.
+- A project is its name with its branch and a `✓` (or `✕` if a check failed) on the right, or
+  `no git` outside a repo. Click it to fold it; a folded project says how many sessions it hides
+  and shows an amber `●` when one needs you.
+- A session is two rows. First: the state mark and the name (in its state's colour while it is
+  worth a look), then at the right `● you` when it needs you, else the agent's mark (`✻` Claude,
+  `◆` Codex, `✦` Gemini, `◇` OpenCode, else its first letter) and the age. Second: what it is doing,
+  or what it asks (`asks: …`, in amber), a check result (`failed: test · exit 1`), helpers asked
+  for, a quiet spell or a message waiting. Every new claude / codex gets its own worktree (named
+  for you), so agents never edit the same files.
+- A session with other tabs lists them under it (`├ ○ shell  2`); click one to show it.
 - One card is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar
   has the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
   keyboard. Hover is a separate, quieter tint.
 - Collapsing the sidebar (leader, then `z`) leaves a narrow column down the side, each session as its mark and first letter: click a row to go to it, `»` (`«` with the sidebar on the right) or `…` to expand the sidebar again.
-- A machine whose line is down, or that has no sessions, is two rows instead of its cards (its
-  name, its state, and what to do); click it for the Machines dialog. See *Machines* below.
-- Nothing moves in the sidebar by itself: a session that needs you or finishes keeps its card (its mark and name say so, and the Inbox lists what needs you). Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
+- A machine whose line is down, or that has no sessions, is its header and one line instead of its
+  projects; click it for the Machines dialog. See *Machines* below.
+- Nothing moves in the sidebar by itself: a session that needs you or finishes keeps its row (its mark and name say so, and the Inbox lists what needs you). Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
-- The sidebar footer keeps **+ new** and **Menu** available. **+ new** and `Ctrl+Space n` open a plain shell where you are; type your agent there. `Ctrl+Space s` starts a session straight away (Settings › Sessions sets the agent and whether it gets a worktree).
+- The sidebar footer keeps **+ new** and **Menu** available. **+ new**, `Ctrl+Space n` and a project's **+** open a plain shell where you are; type your agent there. `Ctrl+Space s` starts a session straight away (Settings › Sessions sets the agent and whether it gets a worktree).
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
-- Drag a session up or down to reorder it. With the sidebar focused
+- Drag a project, or a session within its project, up or down to reorder it. Click a project to fold or open it. With the sidebar focused
   (`Ctrl+Space e`), a row's menu letters work directly (a row's menu lists them): `x` (or
   Delete) asks to close, `r` renames. Settings › General › UPDATES shows the version; Settings warns at the top when the installed, window and daemon versions differ.
 
@@ -416,7 +418,7 @@ installed there, see *Install or update maitty on a machine*.
 ### What you see
 
 Sessions on this computer are in the sidebar's **Local** half; every other machine's are in **Remote**,
-each card badged `⇄ build`. A machine that is not connected, or has no sessions, is one item: its name with
+each machine under a `⇄ build` header. A machine that is not connected, or has no sessions, is one item: its name with
 how its connection is at the right. A session's status is the one its own maitty reports, and what its agents
 need shows in the Inbox with `· on build`.
 

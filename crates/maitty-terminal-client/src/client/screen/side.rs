@@ -8,6 +8,7 @@ use super::side_tabs::{draw_tab_line, shown_tab_indexes, tab_line};
 use super::*;
 use crate::client::ids::ClientSession;
 use crate::client::link::ConnectionState;
+use crate::protocol::CheckState;
 
 /// A line of the sidebar tree.
 #[derive(Debug, Clone)]
@@ -15,8 +16,6 @@ pub(in crate::client) enum Line {
     Proj(usize),
     /// An agent or shell (pi, wi, si), and how deep it sits under the session that started it (0: not under anyone).
     Sess(usize, usize, usize, u8),
-    /// A session's second line: the machine it runs on, its folder and branch (pi, wi, si).
-    Badge(usize, usize, usize),
     /// A session's last line: its check result, its question, or what it is doing.
     Detail(ClientSession),
     /// One of a session's tabs (its owner, and where the tab is in `screen.tabs`), under its
@@ -175,7 +174,6 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
         for ((wi, si), depth) in placed {
             any = true;
             out.push(Line::Sess(pi, wi, si, depth));
-            out.push(Line::Badge(pi, wi, si));
             let s = &p.wts[wi].sessions[si];
             session_lines(app, s, &mut out);
         }
@@ -191,31 +189,29 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
     out
 }
 
-/// The lines drawn: this computer's cards, and the other machines' (a machine whose line is not
-/// up, or that has no sessions, is one two-row item instead of its cards). A blank line follows
-/// each card and each machine.
+/// The lines drawn: this computer's projects and their cards, and the other machines' (each
+/// under a header of its own; a machine whose line is not up, or that has no sessions, is that
+/// header and one line of state instead of its projects).
 fn card_lines(app: &App, model: &[Proj], t: &Theme) -> (Vec<Line>, Vec<Line>) {
     let mut by_machine: std::collections::BTreeMap<MachineId, Vec<Line>> = Default::default();
     let mut at = MachineId::LOCAL;
     for l in side_lines(app, model, t) {
-        match l {
-            Line::Sess(pi, ..) => {
-                at = model[pi].machine;
-                let lines = by_machine.entry(at).or_default();
-                if !lines.is_empty() {
-                    lines.push(Line::Gap);
-                }
-                lines.push(l);
+        match &l {
+            Line::Proj(pi) | Line::Empty(pi) => {
+                at = model[*pi].machine;
+                by_machine.entry(at).or_default().push(l);
             }
-            Line::Badge(..) | Line::Detail(_) | Line::Tab(..) => {
-                by_machine.entry(at).or_default().push(l)
+            Line::Sess(..) | Line::Detail(_) | Line::Tab(..) | Line::Gap => {
+                by_machine.entry(at).or_default().push(l);
             }
-            _ => {}
+            // Headers and their notes are drawn from the connection, not from these.
+            Line::Machine(m) => at = *m,
+            Line::MachineNote(..) | Line::MachineState(_) => {}
         }
     }
     let mut local = by_machine.remove(&MachineId::LOCAL).unwrap_or_default();
-    if local.is_empty() {
-        local.push(Line::Machine(MachineId::LOCAL));
+    if !local.iter().any(|l| matches!(l, Line::Proj(_))) {
+        local = vec![Line::Machine(MachineId::LOCAL)];
     }
     let mut remote = Vec::new();
     for machine in app.remotes.keys().copied() {
@@ -223,11 +219,16 @@ fn card_lines(app: &App, model: &[Proj], t: &Theme) -> (Vec<Line>, Vec<Line>) {
             .remotes
             .get(&machine)
             .is_some_and(|r| matches!(r.state, ConnectionState::Connected));
+        remote.push(Line::Machine(machine));
         match by_machine.remove(&machine) {
-            Some(lines) if up && !lines.is_empty() => remote.extend(lines),
-            _ => remote.extend([Line::Machine(machine), Line::MachineState(machine)]),
+            Some(lines) if up && lines.iter().any(|l| matches!(l, Line::Proj(_))) => {
+                remote.extend(lines);
+            }
+            _ => {
+                remote.push(Line::MachineState(machine));
+                remote.push(Line::Gap);
+            }
         }
-        remote.push(Line::Gap);
     }
     (local, remote)
 }
@@ -244,7 +245,6 @@ pub(in crate::client) fn line_term(model: &[Proj], l: &Line) -> Option<ClientSes
 fn row_term(model: &[Proj], l: &Line) -> Option<ClientSession> {
     match l {
         Line::Detail(term) => Some(*term),
-        Line::Badge(pi, wi, si) => Some(model[*pi].wts[*wi].sessions[*si].key),
         _ => line_term(model, l),
     }
 }
@@ -578,7 +578,7 @@ fn draw_rows(app: &mut App, buf: &mut Buffer, pass: &Pass, t: &Theme, lines: &[L
     let bottom = top + list_h as u16;
     let row_rect = |i: usize, y: u16| {
         let mut n = 1;
-        while matches!(lines.get(i + n), Some(Line::Badge(..) | Line::Detail(_))) {
+        while matches!(lines.get(i + n), Some(Line::Detail(_))) {
             n += 1;
         }
         Rect {
@@ -592,7 +592,7 @@ fn draw_rows(app: &mut App, buf: &mut Buffer, pass: &Pass, t: &Theme, lines: &[L
         let indent = 0;
         let row = cols.row(y);
         if let Some(term) = row_term(model, line)
-            && let Some((p, wt, s)) = find_key(model, term)
+            && let Some((_, _, s)) = find_key(model, term)
         {
             let rl = *looks.entry(term).or_insert_with(|| {
                 let picked = if focused_side {
@@ -649,7 +649,6 @@ fn draw_rows(app: &mut App, buf: &mut Buffer, pass: &Pass, t: &Theme, lines: &[L
                     }
                     draw_session(app, buf, s, cols, y, indent, rl, t, screen_w >= AGES_FROM);
                 }
-                Line::Badge(..) => draw_badge(app, buf, (p, wt), (x, y), cols.end(), t),
                 Line::Detail(_) => {
                     let text = activity(app, s, rl, t, cols.end().saturating_sub(x) as usize);
                     put(buf, x, y, &text, cols.end());
@@ -1238,51 +1237,8 @@ fn draw_line(
         }
         Line::Machine(machine) => draw_machine_row(app, buf, *machine, cols, y, pb, t),
         Line::MachineState(machine) => draw_machine_state(app, buf, *machine, cols, y, pb, t),
-        Line::Tab(..)
-        | Line::MachineNote(..)
-        | Line::Sess(..)
-        | Line::Badge(..)
-        | Line::Detail(_)
-        | Line::Gap => {}
+        Line::Tab(..) | Line::MachineNote(..) | Line::Sess(..) | Line::Detail(_) | Line::Gap => {}
     }
-}
-
-/// A card's badge line: the machine it runs on as a chip, then its folder and branch in `muted`,
-/// the branch dropped when fewer than four cells would be left for it.
-fn draw_badge(
-    app: &App,
-    buf: &mut Buffer,
-    (p, wt): (&Proj, &Wt),
-    (x, y): (u16, u16),
-    end: u16,
-    t: &Theme,
-) {
-    let name = if p.machine == MachineId::LOCAL {
-        "⌂ local".to_string()
-    } else {
-        format!("⇄ {}", app.machine_label_of(p.machine))
-    };
-    let room = end.saturating_sub(x) as usize;
-    let badge = seg(
-        truncate(&format!(" {name} "), room),
-        Style::default()
-            .fg(t.strong)
-            .bg(t.btn)
-            .add_modifier(Modifier::BOLD),
-    );
-    let used = badge.0.width();
-    put(buf, x, y, &[badge], end);
-    let px = x + used as u16 + 1;
-    let folder = truncate(&p.name, end.saturating_sub(px) as usize);
-    let avail = (end.saturating_sub(px) as usize).saturating_sub(folder.width() + 3);
-    let mut rest = vec![seg(folder, Style::default().fg(t.muted))];
-    if avail >= 4 {
-        rest.push(seg(
-            format!(" ⎇ {}", truncate(&wt.branch, avail)),
-            Style::default().fg(t.muted),
-        ));
-    }
-    put(buf, px, y, &rest, end);
 }
 
 /// A card's last line: what the session is doing, in `muted`, or in amber when it needs you.
@@ -1479,24 +1435,17 @@ fn draw_proj(
     if !app.screen.fold_colors.contains_key(&p.key) {
         app.pick_fold_color(&p.key);
     }
-    // A − (open) or + (closed) in a colour of its own, in the state bars' column: a caret is
-    // too small to read as a button.
-    let button = app
-        .screen
-        .fold_colors
-        .get(&p.key)
-        .copied()
-        .unwrap_or(t.accent);
-    put(
-        buf,
-        cols.x,
-        y,
-        &[seg(
-            if open { "−" } else { "+" },
-            st.fg(button).add_modifier(Modifier::BOLD),
-        )],
-        text_end,
-    );
+    // ▾ (open) or ▸ (closed) in the state bars' column; `v` and `>` with the ASCII glyph set.
+    let ascii = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons)
+        .needs
+        .is_ascii();
+    let fold = match (open, ascii) {
+        (true, false) => "▾",
+        (false, false) => "▸",
+        (true, true) => "v",
+        (false, true) => ">",
+    };
+    put(buf, cols.x, y, &[seg(fold, st.fg(t.muted))], text_end);
     let name = truncate(&p.name, cols.rx.saturating_sub(cols.x + 2) as usize);
     let mut left = vec![
         seg("  ", st),
@@ -1550,65 +1499,75 @@ fn draw_proj(
         .saturating_sub(1)
         .saturating_sub(lx + segs_width(&left));
     if room >= META_MIN_COLS {
-        let meta = truncate(&proj_meta(app, p, open), room as usize);
+        let meta = proj_meta(app, p, open, room as usize, st, t);
         put(
             buf,
-            text_end.saturating_sub(meta.width() as u16),
+            text_end.saturating_sub(segs_width(&meta)),
             y,
-            &[seg(meta, st.fg(t.muted))],
+            &meta,
             text_end,
         );
     }
 }
 
-/// "⎇ main · check: test", "⎇ main · 2 checkpoints", "no git"; folded, how many it hides.
-fn proj_meta(app: &App, p: &Proj, open: bool) -> String {
+/// A project's right-hand side in `room` cells: its branch (`⎇ main`, or `no git`) and, once any of
+/// its sessions has a check result, `✓` or, if one failed, `✕`. Folded, how many sessions it hides,
+/// with an amber `●` when one of them needs you.
+fn proj_meta(app: &App, p: &Proj, open: bool, room: usize, st: Style, t: &Theme) -> Vec<Seg> {
+    let marks = check::marks(app);
     if !open {
         let n = p.sessions().count();
-        return if n == 0 {
-            "empty".into()
+        let words = if n == 0 {
+            "empty".to_string()
         } else {
             format!("{n} hidden")
         };
+        let mut out = Vec::new();
+        if p.sessions().any(|s| !s.down && check::needs_you(s)) {
+            out.push(seg(
+                format!("{} ", marks.needs),
+                st.fg(t.blocked).add_modifier(Modifier::BOLD),
+            ));
+        }
+        out.push(seg(truncate(&words, room), st.fg(t.muted)));
+        return out;
     }
     let place = if p.git {
         p.wts
             .iter()
             .find(|w| w.main && !w.branch.is_empty())
-            .map(|w| format!("{} {}", check::marks(app).branch, w.branch))
+            .map(|w| format!("{} {}", marks.branch, w.branch))
             .unwrap_or_default()
     } else {
         "no git".into()
     };
-    let names = checkpoint_names(app, p);
-    let checks = match names.as_slice() {
-        [] => String::new(),
-        [one] => format!("check: {one}"),
-        many => format!("{} checkpoints", many.len()),
+    let result = if p
+        .sessions()
+        .any(|s| check::shown(s).is_some_and(check::failed))
+    {
+        Some((marks.failed, t.err))
+    } else if p
+        .sessions()
+        .any(|s| check::shown(s).is_some_and(|c| c.state == CheckState::Passed))
+    {
+        Some((marks.done, t.done))
+    } else {
+        None
     };
-    [place, checks]
-        .into_iter()
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join(" · ")
-}
-
-/// The project's checkpoints: the ones its config names, then any its sessions report.
-fn checkpoint_names(app: &App, p: &Proj) -> Vec<String> {
-    let mut names: Vec<String> = app
-        .cfg
-        .check
-        .iter()
-        .filter(|c| crate::config::same_path(&c.project, &p.path))
-        .map(|c| c.name().to_string())
-        .collect();
-    for c in p.sessions().flat_map(|s| &s.checks) {
-        let name = check::name(c);
-        if !names.iter().any(|n| n == name) {
-            names.push(name.to_string());
-        }
+    let glyph_room = result.map_or(0, |_| 2);
+    let mut out = vec![seg(
+        truncate(&place, room.saturating_sub(glyph_room)),
+        st.fg(t.muted),
+    )];
+    if let Some((glyph, colour)) = result
+        && room >= segs_width(&out) as usize + glyph_room
+    {
+        out.push(seg(
+            format!(" {glyph}"),
+            st.fg(colour).add_modifier(Modifier::BOLD),
+        ));
     }
-    names
+    out
 }
 
 fn release_chip(

@@ -498,15 +498,16 @@ fn sidebar_text(app: &mut App) -> String {
 }
 
 #[test]
-fn this_computer_is_local_and_says_so_on_its_cards() {
+fn this_computer_is_local_and_has_no_machine_header() {
     let mut app = world(Stage::None);
     let side = sidebar_text(&mut app);
     assert!(side.contains(" LOCAL "), "{side}");
     assert!(!side.contains("SESSIONS"), "{side}");
     assert!(
-        side.contains("⌂ local"),
-        "each card names its machine: {side}"
+        side.contains('▾') && side.contains("pixls"),
+        "its projects fold: {side}"
     );
+    assert!(!side.contains("⇄"), "no machine header in Local: {side}");
 }
 
 #[test]
@@ -527,7 +528,7 @@ fn with_no_other_machine_remote_says_so_and_offers_to_add_one() {
 }
 
 #[test]
-fn a_connected_machines_cards_sit_under_remote_with_its_name_on_their_badge() {
+fn a_connected_machine_is_a_header_with_its_projects_under_remote() {
     let mut app = two_machines(ConnectionState::Connected);
     let side = raw_text(&mut app, Layout::Floating, 160, 45, "unicode")
         .lines()
@@ -535,12 +536,13 @@ fn a_connected_machines_cards_sit_under_remote_with_its_name_on_their_badge() {
         .collect::<Vec<_>>()
         .join("\n");
     let remote = side.find("REMOTE 1").expect("REMOTE 1");
-    let badge = side.find("⇄ build").expect("a card on build");
+    let header = side.find("⇄ build").expect("build's header");
+    assert!(header > remote, "build is below the Remote rule: {side}");
     assert!(
-        badge > remote,
-        "build's cards are below the Remote rule: {side}"
+        side[header..].contains('▾') && side[header..].contains("api"),
+        "its projects sit under it: {side}"
     );
-    assert!(side.find("⌂ local").is_some_and(|i| i < remote), "{side}");
+    assert!(side.find('▾').is_some_and(|i| i < remote), "{side}");
 }
 
 #[test]

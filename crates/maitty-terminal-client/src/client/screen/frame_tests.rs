@@ -180,7 +180,7 @@ fn a_modal_is_centred_with_a_border_all_round_and_no_shadow() {
                 let fill = |n: usize| "─".repeat(n);
                 assert_eq!(
                     line(r.y, r.x, r.right()),
-                    format!("┌─ OVERRIDE A FAILED CHECK {} × ", fill(mw as usize - 30)),
+                    format!("┌─ OVERRIDE A FAILED CHECK {} ✕ ", fill(mw as usize - 30)),
                     "{at}"
                 );
                 assert_eq!(
@@ -238,7 +238,7 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
                 format!("{l} OVERRIDE {e}"),
                 "{at}"
             );
-            assert_eq!(row(esc, r.right()), format!("{l} × {e}"), "{at}");
+            assert_eq!(row(esc, r.right()), format!("{l} ✕ {e}"), "{at}");
             assert_eq!(
                 buf[(title + 2, r.y)].bg,
                 t.accent,
@@ -381,7 +381,7 @@ fn a_confirm_s_long_sub_is_cut_inside_its_title_chip() {
             text.starts_with(&format!("{tl}─{l} changes · a-folder")),
             "{at}: {text}"
         );
-        assert!(text.ends_with(&format!("─{l} × {e}")), "{at}: {text}");
+        assert!(text.ends_with(&format!("─{l} ✕ {e}")), "{at}: {text}");
         let esc = close.x - x0;
         assert_eq!(
             (
@@ -423,7 +423,7 @@ fn a_modal_too_narrow_for_its_esc_chip_keeps_its_corner_and_title() {
         .map(|x| buf[(x, r.y)].symbol().to_string())
         .collect();
     assert!(
-        row.starts_with("╭─") && row.ends_with("─╮") && !row.contains('×'),
+        row.starts_with("╭─") && row.ends_with("─╮") && !row.contains('✕'),
         "{row}"
     );
     assert!(
@@ -779,7 +779,7 @@ fn a_hovered_border_chip_is_whole() {
                         let x = r.x + r.width / 2;
                         assert_eq!(
                             buf[(x, r.y)].symbol(),
-                            "×",
+                            "✕",
                             "the ✕ is centred and whole: {at}"
                         );
                         assert!(

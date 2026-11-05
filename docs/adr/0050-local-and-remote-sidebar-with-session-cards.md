@@ -18,23 +18,27 @@ notifications without a fill, and for pills to stay an option beside plain round
   `REMOTE n` (other machines), on a `├ … ┤` rule that joins the card's sides, with a `+ add` chip
   that opens the Machines dialog. Each half scrolls on its own. With no other machine, Remote says
   so and offers to add one.
-- **Cards, not folders.** Every session is a three-row card: its mark, name and age (`● you` when
-  it needs you); a badge naming its machine (`⌂ local`, `⇄ build`) with its folder and branch; and
-  what it is doing. Its other tabs sit under it as `├ shell 2`. There are no folder rows, so
-  nothing folds. A machine that is not connected, or has no sessions, is one two-row item and its
-  cards are not drawn.
+- **Projects stay.** Under each half (and under each machine's header in Remote) projects are rows
+  that fold: `▾ maitty` with `⎇ branch` and a check mark (`✓`, or `✕` if a check failed) at the
+  right. A folded project says how many sessions it hides, with an amber `●` when one needs you.
+- **Two-row cards.** A session is its mark, name and age (`● you` when it needs you), then what it
+  is doing. Its other tabs hang under it as `├ ○ shell  2`.
+- **Machines.** Local has no header. Each Remote machine has a header, a ` ⇄ build ` badge with its
+  connection at the right. A machine that is not connected, or has no sessions, is that header and
+  one line of state instead of its projects.
 - **Removed from the row:** the agent's context percent, the clickable `+N −N` (Changes stays on
   leader `c`), the queued-follow-up line, the failing-check third line, and helper indentation.
 - **Rounding has three values again.** `ui.rounded` is `full` (half-circle pills, a Nerd Font
-  glyph), `corners` (rounded boxes with square, full-background chips; the handoff's look) or
-  `off`. An older `true` reads as `corners`; `full` is kept.
+  glyph), `corners` (rounded boxes with square, full-background chips) or `off`. An older `true`
+  reads as `corners`; `full` is kept.
+- **Close buttons** are the `✕` icon in the Unicode set (`x` in ASCII, the Nerd glyph in Nerd).
 - **Toasts** are drawn on the plain ground with no fill of their own.
 - **Pane and panels.** The focused session's machine is a badge on the first pane's top border.
-  The Branch and References sheets no longer repeat their keys; the mode bar shows them.
+  The Branch and References sheets no longer repeat the mode bar's key hints.
 
 ## Consequences
 
-Sessions are found by machine and card, not by project. A project's sessions are no longer grouped,
-and the background count of uncommitted lines has no reader left. The reference frames no longer
+Sessions are found by machine, then project. The background count of uncommitted lines has no
+reader left. The reference frames no longer
 compare the sidebar's column; `screen::side` and `machine_group_tests` hold its tests. Half the
 sidebar's height is held for Remote even when it is empty.

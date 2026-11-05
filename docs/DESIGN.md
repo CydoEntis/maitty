@@ -81,24 +81,27 @@ starts at a rule that joins the sides (`├ REMOTE 2 ──── + add ┤`) an
 `+ add` opens the Machines dialog. Each half scrolls on its own, and with no other machine Remote
 says `no remote machines` and offers `+ add one`. There are no folder rows and no machine headers.
 
-A session is a **card** of three rows:
+Inside a half, projects are rows that fold: `▾` open or `▸` closed (`v` and `>` in ASCII), the
+name in `strong` bold, and at the right `⎇ branch` in `muted` and a `✓` in `done`, or a `✕` in `err`
+when one of its sessions failed a check; `no git` outside a repo. A folded project reads
+`n hidden`, with an amber `●` before it when one of them needs you. Remote starts each machine with
+a header: ` ⇄ build ` as a badge on `btn` and its connection at the right (`connected` in `done`,
+`connecting` and `reconnecting` in `muted`, the failures in `err`).
+
+A session is a **card** of two rows:
 1. its mark, its name in its state's colour (shimmering while it works, pulsing when it needs you),
    and at the right the agent's mark and the age its state began, or `● you` in amber when it needs
    you;
-2. a badge naming its machine (`⌂ local`, or `⇄ build`) on `btn`, then its folder and `⎇ branch` in
-   `muted`, the branch dropped when fewer than four cells are left;
-3. what it is doing in `muted` (a check result, a plan-limit wait, `2 agents`), or in amber when it
+2. what it is doing in `muted` (a check result, a plan-limit wait, `2 agents`), or in amber when it
    asks something.
 
-Its other tabs hang under it, one row each: `├ shell  2`, the last `└`, the tab on screen in the
-accent and one that needs you in amber. A blank row follows each card. The selected card is a
-neutral tint on all three rows with an accent `▎` bar. A machine whose line is not up, or that has
-no sessions, is one two-row item in place of its cards: its badge (dim while it is down) with its
-connection at the right (`connected` in `done`, `connecting` and `reconnecting` in `muted`, the
-failures in `err`), then `no sessions yet`, `connecting…` or `disconnected · click for the fix`;
-a click opens the Machines dialog. The foot holds **+ New** and **Menu**. Collapsed, the sessions
-become a narrow column (each session its mark and first letter; a machine other than this one a row
-`●B`); hidden, the panes take everything. See UI › *sidebar check result* and *collapsed sidebar*.
+Its other tabs hang under it, one row each: `├ ○ shell  2`, the last `└`, the tab's state glyph
+before the name and its number at the right; the tab on screen is in the accent and one that needs
+you in amber. A blank row follows each project. The selected card is a neutral tint on both rows
+with an accent `▎` bar. A machine whose line is not up, or that has no sessions, is its header and
+one line: `no sessions yet`, `connecting…` or `disconnected · click for the fix`; a click opens the
+Machines dialog. The foot holds **+ New** and **Menu**. Collapsed, the sessions become a narrow
+column; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed sidebar*.
 
 The **Machines dialog** (leader `w`) is a standard modal: the same state chips and words, the fix
 of a down machine written in full under it in `text`, the Add field on `card2`, and a dim line for

@@ -215,7 +215,7 @@ fn failing_line(info: &CheckInfo, g: &Glyphs) -> Option<String> {
         return None;
     }
     let mark = if *g == glyphs::ASCII { g.failed } else { "✗" };
-    Some(if line.starts_with(['✗', '✕', '✘', '×']) {
+    Some(if line.starts_with(['✗', '✕', '✘', '✕']) {
         line.to_string()
     } else {
         format!("{mark} {line}")

@@ -486,7 +486,7 @@ fn a_lone_pane_has_no_title_row_and_its_tab_carries_its_close() {
         "the terminal starts at the pane's top: no title row, no rule"
     );
     let row = tab_row(&app, &buf);
-    let (x, y) = find_in(&buf, row, "×").expect("the tab's close glyph");
+    let (x, y) = find_in(&buf, row, "✕").expect("the tab's close glyph");
     assert_eq!(
         hit_at(&app, x, y),
         Some(Hit::Screen(ScreenHit::CloseSplit(focus))),
@@ -496,7 +496,7 @@ fn a_lone_pane_has_no_title_row_and_its_tab_carries_its_close() {
     (second.layout, second.focus) = (Node::Leaf(2), ClientTerm::local(2));
     app.screen.tabs.push(second);
     let buf = draw(&mut app, 160, 45);
-    let (x, y) = find_in(&buf, tab_row(&app, &buf), "×").unwrap();
+    let (x, y) = find_in(&buf, tab_row(&app, &buf), "✕").unwrap();
     assert_eq!(
         hit_at(&app, x, y),
         Some(Hit::Screen(ScreenHit::CloseTab(app.screen.tab))),
@@ -825,7 +825,7 @@ fn in_floating_the_tab_row_is_level_with_the_sidebar_s_top_and_the_pane_box_is_u
             .map(|x| buf[(x, g.tabs.y)].symbol())
             .collect();
         assert!(
-            row.contains("fix-footer") && row.contains('×'),
+            row.contains("fix-footer") && row.contains('✕'),
             "{panes} pane(s): the tab row is there: {row}"
         );
     }

@@ -602,7 +602,7 @@ fn as_bordered_header(row: &mut [char], bottom: &[char], x0: usize, x1: usize) {
         '┘' => '┐',
         c => c,
     };
-    let tail: Vec<char> = " × ".chars().collect();
+    let tail: Vec<char> = " ✕ ".chars().collect();
     let mut header: Vec<char> = format!("{}─ {title} ", top(bottom[x0])).chars().collect();
     header.resize(x1 - x0 - tail.len(), '─');
     header.extend(tail);
@@ -880,7 +880,7 @@ fn pane_mark(stage: Stage, ascii: bool) -> String {
         Stage::Approve => ("●", "!", "needs you"),
         Stage::Stale => ("◷", "~", "done · stale"),
     };
-    let (g, close) = if ascii { (a, "x") } else { (u, "×") };
+    let (g, close) = if ascii { (a, "x") } else { (u, "✕") };
     format!("{g} {word}  {close} ")
 }
 

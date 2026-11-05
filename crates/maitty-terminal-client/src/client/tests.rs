@@ -1171,7 +1171,7 @@ mod screen_tests {
             "New and Actions stay in the sidebar foot"
         );
         assert!(
-            lines[0].contains(" claude ×")
+            lines[0].contains(" claude ✕")
                 && lines[0].contains(" + ")
                 && !lines[0].contains('◫')
                 && !lines[0].contains('⤢')
@@ -1188,8 +1188,8 @@ mod screen_tests {
         );
         // Projects and their sessions, nothing in between.
         assert!(
-            text.contains("shop-api") && text.contains(" LOCAL ") && text.contains("⌂ local"),
-            "a card: the machine and the project on its badge, under the Local title"
+            text.contains("shop-api") && text.contains(" LOCAL ") && text.contains('▾'),
+            "a project with its fold arrow, under the Local title"
         );
         assert!(
             !text.contains("AGENTS")
@@ -4449,7 +4449,7 @@ mod screen_tests {
             .position(|l| l.contains("codex · new · type to begin"))
             .expect("the new row");
         assert!(
-            o.lines().nth(at - 2).is_some_and(|l| l.contains('○')),
+            o.lines().nth(at - 1).is_some_and(|l| l.contains('○')),
             "the accent ring marks it"
         );
     }
@@ -10000,7 +10000,7 @@ second line
                 let row: String = (pane.x..pane.right())
                     .map(|x| buf[(x, pane.y)].symbol())
                     .collect();
-                // A lone pane's name, state and × are on its tab, which sits on its top border.
+                // A lone pane's name, state and ✕ are on its tab, which sits on its top border.
                 assert!(!row.contains("needs you"), "{layout} {mode}: {row}");
                 closes.push(row);
             }
@@ -10022,7 +10022,7 @@ second line
         let sheet = app.screen.sheet_rect;
         let close = (sheet.x..sheet.right())
             .rev()
-            .find(|&x| buf[(x, sheet.y)].symbol() == "×")
+            .find(|&x| buf[(x, sheet.y)].symbol() == "✕")
             .expect("the sheet's ✕");
         assert!(close + 5 >= sheet.right(), "at the corner");
         click_at(&mut app, close, sheet.y);
@@ -10178,7 +10178,7 @@ second line
             let o = draw(&mut app, 120, 34);
             show(&o);
             assert!(
-                o.contains(title) && o.contains('×'),
+                o.contains(title) && o.contains('✕'),
                 "{title}: a {APP_COMMAND} modal (title in its accent chip, a red ✕ to close)"
             );
         }
@@ -10909,7 +10909,7 @@ mod check_row_tests {
             let seen = (r.y..r.bottom().saturating_sub(3)).any(|y| {
                 added.iter().any(|n| text(y).contains(n.as_str()))
                     && !text(y + 1).contains("REMOTE")
-                    && !text(y + 2).contains("REMOTE")
+                    && !text(y + 1).contains("REMOTE")
             });
             if seen || added.is_empty() || app.screen.side_scroll > 60 {
                 return buf;
@@ -11165,10 +11165,10 @@ mod check_row_tests {
                         c.words
                     };
                     assert!(
-                        side_text(&buf, &app, y + 2).contains(words),
+                        side_text(&buf, &app, y + 1).contains(words),
                         "{at} {:?}: {words:?} under the row at every width, got {:?}",
                         c.state,
-                        side_text(&buf, &app, y + 2)
+                        side_text(&buf, &app, y + 1)
                     );
                 }
             }
@@ -11220,7 +11220,7 @@ mod check_row_tests {
                 let picked = app
                     .focused()
                     .is_some_and(|f| app.screen.row_y.get(&f) == Some(&y));
-                for line in [y, y + 1, y + 2] {
+                for line in [y, y + 1] {
                     let cell = &buf[(bar_x, line)];
                     assert_eq!(
                         cell.symbol() == EDGE_BAR,
@@ -11260,10 +11260,10 @@ mod check_row_tests {
             "{ask_line:?}"
         );
         assert!(
-            side_text(&buf, &app, bad + 2).contains("failed:"),
+            side_text(&buf, &app, bad + 1).contains("failed:"),
             "failed says so in words"
         );
-        assert!(!side_text(&buf, &app, bad + 2).contains("needs you"));
+        assert!(!side_text(&buf, &app, bad + 1).contains("needs you"));
     }
 
     #[test]
@@ -11293,11 +11293,11 @@ mod check_row_tests {
                     "{at}: glyph on its own row"
                 );
                 assert!(
-                    side_text(&buf, &app, far_y + 2).contains("failed:"),
+                    side_text(&buf, &app, far_y + 1).contains("failed:"),
                     "{at}: its line directly under it"
                 );
                 let bar_x = bar_column(&app);
-                let all: String = (bare_y..bare_y + 2)
+                let all: String = (bare_y..bare_y + 1)
                     .map(|y| side_text(&buf, &app, y))
                     .collect();
                 assert!(
@@ -11326,7 +11326,7 @@ mod check_row_tests {
             app.cfg.ui.glyphs = "auto".into();
             let buf = render(&mut app, w, h);
             let y = row_of(&buf, &app, NAME);
-            let (top, sub) = (side_text(&buf, &app, y), side_text(&buf, &app, y + 2));
+            let (top, sub) = (side_text(&buf, &app, y), side_text(&buf, &app, y + 1));
             assert!(
                 top.contains(c.plain),
                 "{:?}: {} on {top:?}",
@@ -11384,7 +11384,7 @@ mod check_row_tests {
                     let mut bare = scene(w, h, layout, &[(NAME, status, None)]);
                     let rows = |app: &App, buf: &Buffer| {
                         let y = row_of(buf, app, NAME);
-                        (y..y + 2)
+                        (y..y + 1)
                             .map(|y| side_text(buf, app, y))
                             .collect::<Vec<_>>()
                     };
@@ -11409,7 +11409,7 @@ mod check_row_tests {
             let y = row_of(&buf, &app, NAME);
             assert!(side_text(&buf, &app, y).contains('✕'), "the glyph stays");
             assert!(
-                side_text(&buf, &app, y + 2).contains("failed: ci"),
+                side_text(&buf, &app, y + 1).contains("failed: ci"),
                 "and so does the result's line"
             );
             assert!(
@@ -11448,7 +11448,7 @@ mod check_row_tests {
             let x = app.screen.side_rect.x + 10;
             assert_eq!(
                 buf[(x, y)].bg,
-                buf[(x, y + 2)].bg,
+                buf[(x, y + 1)].bg,
                 "{}: one tint over both lines",
                 label(layout, w, h)
             );
@@ -11468,7 +11468,7 @@ mod check_row_tests {
             show(&buf, &format!("hovered {}", label(layout, w, h)));
             assert_eq!(
                 buf[(x, y)].bg,
-                buf[(x, y + 2)].bg,
+                buf[(x, y + 1)].bg,
                 "{}: hover tints both lines",
                 label(layout, w, h)
             );
@@ -11487,7 +11487,7 @@ mod check_row_tests {
             &[(NAME, Status::Done, Some(long.clone()))],
         );
         let buf = render(&mut app, w, h);
-        let sub = side_text(&buf, &app, row_of(&buf, &app, NAME) + 2);
+        let sub = side_text(&buf, &app, row_of(&buf, &app, NAME) + 1);
         assert!(
             sub.contains("failed: ci · exit 1") && !sub.contains("npm"),
             "{sub:?}"
@@ -11504,7 +11504,7 @@ mod check_row_tests {
             &[(NAME, Status::Done, Some(approve))],
         );
         let buf = render(&mut app, w, h);
-        let sub = side_text(&buf, &app, row_of(&buf, &app, NAME) + 2);
+        let sub = side_text(&buf, &app, row_of(&buf, &app, NAME) + 1);
         assert!(
             sub.contains("approve check: npm run test") && !sub.contains("coverage"),
             "the command, cut at the edge: {sub:?}"
@@ -12005,7 +12005,7 @@ mod check_sheet_tests {
                 assert!(!tail.contains('…'), "{at}: one ellipsis: {header:?}");
                 let edge = |c: char| c == ' ' || "─╮┐".contains(c);
                 assert!(
-                    tail.trim_matches(edge) == "×",
+                    tail.trim_matches(edge) == "✕",
                     "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}"
                 );
             }
@@ -17997,7 +17997,7 @@ mod references_view_tests {
         dir
     }
 
-    /// The app at w×h with session 1 in `dir` and References open, the folder read.
+    /// The app at w✕h with session 1 in `dir` and References open, the folder read.
     fn opened(dir: &std::path::Path, w: u16, h: u16) -> (App, mpsc::UnboundedReceiver<Bg>) {
         let (_, mut app) = super::design_tests::render_with(w, h);
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -18033,15 +18033,15 @@ mod references_view_tests {
             show(&o);
             assert!(
                 o.contains("REFERENCES"),
-                "in the side panel at {w}×{h}:\n{o}"
+                "in the side panel at {w}✕{h}:\n{o}"
             );
             assert!(
                 o.contains("No references yet · paste an image or add a file"),
-                "the empty state at {w}×{h}:\n{o}"
+                "the empty state at {w}✕{h}:\n{o}"
             );
             assert!(
                 o.contains("Refs") || o.contains("References"),
-                "its tab in the strip at {w}×{h}"
+                "its tab in the strip at {w}✕{h}"
             );
             if w >= 160 {
                 assert!(
