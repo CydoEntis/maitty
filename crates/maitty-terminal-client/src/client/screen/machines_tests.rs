@@ -149,7 +149,6 @@ fn it_asks_for_the_machine_and_lists_the_hosts_with_the_chosen_one_marked() {
             "FROM ~/.ssh/config",
             "build dev@build.example.com",
             "tab fill · ⏎ connect",
-            "EXAMPLES",
             "Enter connect",
             "Tab complete",
             "Esc cancel",

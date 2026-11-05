@@ -105,7 +105,7 @@ Machines dialog. The foot holds **+ New** and **Menu**. Collapsed, the sessions 
 column; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed sidebar*.
 
 The **Add Machine dialog** (leader `w`, or `+ add`) is a standard modal: one input typed like scp on
-`card2` with a parse line under it, the hosts of `~/.ssh/config` to complete it from, examples, and a
+`card2` with a parse line under it, the hosts of `~/.ssh/config` to complete it from, and a
 dim line for Windows; after Enter a checklist of the steps connecting takes. Its behaviour is in [UI](UI.md#project-specific-machines-dialog).
 
 ## Pane titles and tabs

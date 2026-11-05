@@ -531,7 +531,7 @@ choice does), `client/machine_config.rs` (where `config.local.toml` is; the `[[m
   bold value, a faint `—` while unknown. A host that is a `Host` of `~/.ssh/config` fills its user and host
   name. Under it, `FROM ~/.ssh/config` lists the hosts (read off the UI thread; `loading hosts from
   ~/.ssh/config…`, then `alias  user@hostname`), filtered by the host part of the input; a host that is
-  already a machine is not offered. The chosen one shows `tab fill · ⏎ connect`. `EXAMPLES` closes the page.
+  already a machine is not offered. The chosen one shows `tab fill · ⏎ connect`.
   Keys: typing, `Tab` fills the input with the chosen host, `↑↓` choose, `Enter` connects, `Esc` cancels. A
   `:path` after the host is refused for now (opening a folder after connecting is not built). The dialog does
   not list machines: *Reconnect* and *Remove* are on a machine's line in the sidebar (see below).

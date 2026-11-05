@@ -284,8 +284,10 @@ const WIDTH: u16 = 96;
 const HEIGHT: u16 = 26;
 const MOST_SUGGESTIONS: usize = 6;
 /// Rows the dialog keeps for everything but the suggestions: the question, the input, the parse
-/// line, two headings, a gap and the examples with their hint.
-const FIXED_ROWS: u16 = 12;
+/// line and the heading, with the gaps between.
+const FIXED_ROWS: u16 = 6;
+/// What the Windows hint takes under the list: a gap and its lines.
+const WINDOWS_ROWS: u16 = 3;
 
 /// A step of the checklist.
 #[derive(Clone, Copy, PartialEq)]
@@ -398,8 +400,11 @@ fn draw_input(app: &mut App, buf: &mut Buffer, inner: Rect, v: &MachinesView, t:
     let notice_rows = v.notice.as_ref().map_or(0, |n| {
         popover::wrap(&sanitize(&n.text, false), inner.width as usize).len() as u16
     });
-    let room =
-        (inner.height.saturating_sub(FIXED_ROWS + notice_rows) as usize).clamp(1, MOST_SUGGESTIONS);
+    let windows = if v.windows { WINDOWS_ROWS } else { 0 };
+    let room = (inner
+        .height
+        .saturating_sub(FIXED_ROWS + windows + notice_rows) as usize)
+        .clamp(1, MOST_SUGGESTIONS);
     let mut y = inner.y;
     put(
         buf,
@@ -510,42 +515,21 @@ fn draw_input(app: &mut App, buf: &mut Buffer, inner: Rect, v: &MachinesView, t:
             );
         }
     }
-    y += room as u16 + 1;
-    heading(buf, inner, y, "EXAMPLES", t);
-    y += 1;
-    let hint = if v.windows {
-        WINDOWS_HINT
-    } else {
-        "Keys or an ssh agent work best. Passwords work too but are not remembered."
-    };
-    let mut example = |at: u16, what: &str, means: &str| {
-        put(
-            buf,
-            inner.x + 2,
-            at,
-            &[
-                seg(
-                    format!("{what:<30}"),
-                    c.fg(t.strong).add_modifier(Modifier::BOLD),
-                ),
-                seg(means.to_string(), c.fg(t.muted)),
-            ],
-            inner.right(),
-        );
-    };
-    example(y, "dev@kingdom.lan", "just the machine");
-    example(y + 1, "pi", "a Host from ~/.ssh/config");
-    for (i, line) in popover::wrap(hint, inner.width.saturating_sub(2) as usize)
-        .into_iter()
-        .enumerate()
-    {
-        put(
-            buf,
-            inner.x + 2,
-            y + 2 + i as u16,
-            &[seg(line, c.fg(t.muted))],
-            inner.right(),
-        );
+    // Windows has no agent service to remember a password in; the other systems say nothing.
+    if v.windows {
+        y += room as u16 + 1;
+        for (i, line) in popover::wrap(WINDOWS_HINT, inner.width as usize)
+            .into_iter()
+            .enumerate()
+        {
+            put(
+                buf,
+                inner.x,
+                y + i as u16,
+                &[seg(line, c.fg(t.muted))],
+                inner.right(),
+            );
+        }
     }
 }
 
