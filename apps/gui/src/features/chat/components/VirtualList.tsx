@@ -13,6 +13,8 @@ type Props<T> = {
   label: string
   /** Rows drawn beyond the view, each way. */
   overscan?: number
+  /** Scrolls the row with this key to the top of the view; a new `nonce` scrolls again to the same row. */
+  scrollTarget?: { key: string; nonce: number } | null
 }
 
 /** Used until the list has been laid out, and where there is no layout (tests). */
@@ -25,7 +27,7 @@ const DEFAULT_OVERSCAN = 6
  * heights are measured as they are drawn, and the list follows its newest row until the reader
  * scrolls away; then it offers a way back to it.
  */
-export function VirtualList<T>({ items, getKey, estimate, renderItem, label, overscan = DEFAULT_OVERSCAN }: Props<T>) {
+export function VirtualList<T>({ items, getKey, estimate, renderItem, label, overscan = DEFAULT_OVERSCAN, scrollTarget = null }: Props<T>) {
   const scroller = useRef<HTMLDivElement>(null)
   const following = useRef(true)
   const [heights, setHeights] = useState<ReadonlyMap<string, number>>(new Map())
@@ -102,6 +104,20 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
     element.scrollTop = layout.total
     setScrollTop(element.scrollTop)
   }, [layout.total])
+
+  // A link to a row (an approval's step) moves the view there and stops following the newest row.
+  const handled = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    const element = scroller.current
+    if (!element || scrollTarget === null || handled.current === scrollTarget.nonce) return
+    const at = keys.indexOf(scrollTarget.key)
+    if (at === -1) return
+    handled.current = scrollTarget.nonce
+    following.current = false
+    element.scrollTop = layout.offsets[at] ?? 0
+    setScrollTop(element.scrollTop)
+    setAtBottom(false)
+  }, [scrollTarget, keys, layout])
 
   const onScroll = () => {
     const element = scroller.current

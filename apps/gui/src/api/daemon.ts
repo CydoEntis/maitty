@@ -497,6 +497,8 @@ const ChatPageSchema = z.object({
     completeness: HistoryCompletenessSchema,
   }),
   approvals: z.array(z.unknown()),
+  // Approvals a person already answered; the chat projection validates each one. Absent from an older daemon.
+  answered_approvals: z.array(z.unknown()).default([]),
 })
 export type HistoryCursor = z.infer<typeof HistoryCursorSchema>
 export type ChatPage = z.infer<typeof ChatPageSchema>
@@ -553,6 +555,33 @@ export async function loadConversationFile(
     generation: conversation.generation,
     path,
   })
+}
+
+/**
+ * The same three project questions for a session's chat link (the daemon conversation a pane is
+ * linked to), which is what the session panel holds; `loadConversation*` above take a whole
+ * `Conversation`, which the panel does not have.
+ */
+export type ConversationTarget = { conversation: number; generation: number }
+
+function requireProjectAccess(target: ConversationTarget): void {
+  if (!isDesktop()) throw new Error('Project files are available in the desktop app')
+  if (!Number.isSafeInteger(target.conversation) || target.conversation < 0) throw new Error('Conversation id is invalid')
+}
+
+export async function loadTargetDiff(target: ConversationTarget): Promise<ConversationDiff> {
+  requireProjectAccess(target)
+  return invokeParsed('conversation_diff', ConversationDiffSchema, { id: target.conversation, generation: target.generation })
+}
+
+export async function loadTargetFiles(target: ConversationTarget, path: string | null): Promise<ConversationFileEntry[]> {
+  requireProjectAccess(target)
+  return invokeParsed('conversation_files', z.array(ConversationFileEntrySchema), { id: target.conversation, generation: target.generation, path })
+}
+
+export async function loadTargetFile(target: ConversationTarget, path: string): Promise<string> {
+  requireProjectAccess(target)
+  return invokeParsed('conversation_file', z.string(), { id: target.conversation, generation: target.generation, path })
 }
 
 /** The folder a new session starts in when none is chosen: the home folder. */

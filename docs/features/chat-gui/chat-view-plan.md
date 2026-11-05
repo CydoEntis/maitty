@@ -1,6 +1,6 @@
 # Plan: the Terminal / Chat view switch
 
-Status: in progress (CV-0 to CV-3 and CV-13 done) · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
+Status: in progress (CV-0 to CV-7, CV-9, CV-10 and CV-13 done; CV-8 shell, checklist and Agents done; CV-11 and CV-12 done) · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
 
 ## What it is
 
@@ -62,9 +62,8 @@ check for the view). Acceptance criteria are the bullets.
    daemon allows (see UI.md: the daemon makes a cursor stale on every change, so the feed re-reads from the start
    then and applies only entries that changed), a fresh projection on a new generation, a resume after a failed
    read without duplicates, pending approvals polled into `applyApprovals`. Cards are plain and complete; the
-   polished chips, diffs and approval card are CV-4..7. Known limits: adjacent agent messages of a turn are joined,
-   not all of a turn's messages (that would reorder text against its steps); a command card shows no exit code yet
-   (the history carries it, the projection does not); `answered_approvals` are not read; no markdown rendering.
+   polished chips, diffs and approval card are CV-4..7. Known limit: adjacent agent messages of a turn are joined,
+   not all of a turn's messages (that would reorder text against its steps).
    Original brief:  Read the conversation on open and follow the cursor. Your
    messages as right-aligned bubbles; one agent message per turn with a lead
    sentence; turn dividers "Cooked for 7s · done 10:11 AM".
@@ -80,38 +79,38 @@ check for the view). Acceptance criteria are the bullets.
    ("Queue a message for when Claude finishes this step"); it is sent at the turn
    boundary. Disabled while an approval is pending.
    - Daemon: a queued send is held per conversation and delivered once, in order.
-4. **CV-4 Tool steps.** Every tool call is a compact mono chip indented under the
+4. **CV-4 Tool steps.** **Done** (`StepCards.tsx`: name, target from the tool's input, status mark, expand to input and result). Every tool call is a compact mono chip indented under the
    message: spinner while running, green check on success, terminal glyph otherwise.
    Click expands the input and result, bounded.
-5. **CV-5 Edit blocks.** Claude `Edit` / `MultiEdit` / `Write` and Codex patch
+5. **CV-5 Edit blocks.** **Done** (`EditCard`: relative path, counts, tinted hunks, fold at 12 lines; the header opens the panel's diff). Claude `Edit` / `MultiEdit` / `Write` and Codex patch
    items become a diff card: "Edited `RecipeStore.swift` +5", unified diff with
    added and removed lines, "23 more lines" fold past 12 lines.
    - Paths are shown relative to the session's project root.
-6. **CV-6 Command cards.** Claude `Bash` and Codex `exec_command` become a card
+6. **CV-6 Command cards.** **Done** (`CommandCard`: live Running time, elapsed from the provider's duration or the daemon's times, exit code for Codex and "unavailable" for Claude, last 3 lines). Claude `Bash` and Codex `exec_command` become a card
    with the command, **Running** with elapsed time, then the exit code; output is
    folded with the tail shown.
-7. **CV-7 Approvals.** The amber card with the exact command and **Yes, once (y) /
+7. **CV-7 Approvals.** **Done** (answers by id, y/a/n on the focused card, `answered_approvals`, link to the tool step). The amber card with the exact command and **Yes, once (y) /
    This session (a) / No (n)**, answered through the daemon's approval id. After an
    answer the card reads "You answered: …" and the buttons are gone in every view.
    - Keys y / a / n work while the card is focused.
-8. **CV-8 Checklist and session panel (§C.2).** The docked panel (right by
+8. **CV-8 Checklist and session panel (§C.2).** **Done** (`features/panel/`, sidebar progress row for sessions this window has read: `Ctrl/Cmd+\` toggle, docked 320px or overlay under 1100px, checklist card, Agents card, empty states). The docked panel (right by
    default, overlay under 1100px, `Ctrl/Cmd+\`), its header, the "Nothing to
    track yet" state, and the checklist card. Claude's `TodoWrite` and Codex's plan items feed a
    side panel: items with done / current / pending marks, "2 of 5" with a progress
    bar, elapsed time on the current item. The sidebar row shows the current item.
-9. **CV-9 Helper agents.** Claude `Task` calls (the helpers maitty already tracks)
+9. **CV-9 Helper agents.** **Done in the chat** (`AgentsCard`; the panel's Agents list is the session panel work; the history carries no phase line or step count, so rows show title, type, elapsed). Claude `Task` calls (the helpers maitty already tracks)
    become a "2 agents, 2 working" card inline and an **Agents** list in the side
    panel: title, phase ("Reading EmptyState.swift"), elapsed; done ones say
    "Done · 2 steps · 5m 30s".
-10. **CV-10 Working line and shimmer.** "claude is working · 1:40 · 238k tokens"
+10. **CV-10 Working line and shimmer.** **Working line done** with live elapsed; **no token count** (the history has no usage events) and the sidebar shimmer is not built. "claude is working · 1:40 · 238k tokens"
     with the spinner under the last item; sidebar rows in *working* get a slow
     shimmer (CSS only, off under reduce motion). Token counts come from the
     provider's usage events when present, else hidden.
-11. **CV-11 Line comments (§C.2 Changes).** The panel's Changes segment for
+11. **CV-11 Line comments (§C.2 Changes).** **Done** except the structured send: the daemon takes text, so the comment is one formatted message (see UI.md); no staged/unstaged groups or ahead/behind (not in the daemon's diff). The panel's Changes segment for
     this agent's worktree, the diff view, the per-line composer, the count
     marker, the comment bubble in chat, delivered as a structured comment
     `{file, line, text}` or queued while a step runs.
-12. **CV-12 Files and Artifacts segments (§C.2).**
+12. **CV-12 Files and Artifacts segments (§C.2).** **Done** (touched files with kind; artifacts are created documents, reports, data and pictures by extension, previewed as text through `conversation_file`; pictures are not previewable).
 13. **CV-13 Claude parity check.** Confirm the Claude adapter delivers approvals
     with ids and turn boundaries the way Codex's does (the roadmap did Codex
     first). Fill any gap in the adapter, with fake-provider tests.
@@ -151,9 +150,9 @@ check for the view). Acceptance criteria are the bullets.
   from the provider's session id, hydrating from its saved history).
 - **A daemon-held queue and a push of history.** Queued sends are window-only, and the history is polled (1 s while
   working) because a cursor goes stale on every change.
-- Left for CV-4..CV-7 and CV-9, CV-10: exit codes and live elapsed time on commands, polished chips and diffs,
-  `answered_approvals`, key bindings y/a/n on the card, helper-agent and checklist panels, token counts, markdown in
-  agent text.
+- Left: token counts (no usage events in the history), a helper agent's phase line and step count (not in the
+  history), the sidebar working shimmer, an external-link route (agent links copy their address, see UI.md), a
+  Claude exit code (the provider reports none), and the session panel (CV-8, CV-11, CV-12).
 
 ## Out of scope
 

@@ -5,6 +5,7 @@ import { errorMessage } from '@/lib/error-message'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
 import { hasPendingApproval, runningTurnStartedAt, type ChatFeed } from '../chatFeed'
 import { buildRows, type ChatRow } from '../chatRows'
+import { usePublishChecklistProgress } from '@/features/panel/progressStore'
 import { useChatFeed } from '../useChatFeed'
 import { useChatComposer } from '../useChatComposer'
 import type { ApprovalDecision } from '../chatEvents'
@@ -51,13 +52,19 @@ type Props = {
   agent: ChatAgent
   /** The daemon is connected: a message or an answer can be sent. */
   online: boolean
+  /** The session's folder, so file names read relative to it. */
+  root?: string | null
+  /** Opens a file's diff in the session panel; absent where there is none. */
+  onOpenDiff?: ((file: string) => void) | null
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online }: Props) {
+export function ChatSession({ link, agent, online, root = null, onOpenDiff = null }: Props) {
   const { feed, events, offline, refresh, recordAnswer } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const working = feed.status === 'Working'
-  const rows = useMemo(() => buildRows(events, working), [events, working])
+  // The sidebar row shows the checklist's progress for a conversation the window has read.
+  usePublishChecklistProgress(link.conversation, events)
+  const rows = useMemo(() => buildRows(events, working, root), [events, working, root])
   const workingSince = working ? runningTurnStartedAt(feed) : null
   const incomplete = incompleteReason(feed.completeness)
   const composer = useChatComposer({ link, feed, online, refresh })
@@ -72,9 +79,13 @@ export function ChatSession({ link, agent, online }: Props) {
   }, [link.conversation, link.generation, recordAnswer, refresh])
   const approval = useMemo(() => (online ? { answer, busy: answering } : null), [online, answer, answering])
 
+  // An approval's link to its tool step scrolls the list there; the nonce makes a second click on the same link scroll again.
+  const [scrollTarget, setScrollTarget] = useState<{ key: string; nonce: number } | null>(null)
+  const goToStep = useCallback((key: string) => { setScrollTarget((current) => ({ key, nonce: (current?.nonce ?? 0) + 1 })) }, [])
+
   const renderRow = useCallback(
-    (row: ChatRow) => <ChatItem row={row} agent={agent} workingSince={workingSince} approval={approval} />,
-    [agent, workingSince, approval],
+    (row: ChatRow) => <ChatItem row={row} agent={agent} workingSince={workingSince} approval={approval} root={root} openDiff={onOpenDiff} goToStep={goToStep} />,
+    [agent, workingSince, approval, root, onOpenDiff, goToStep],
   )
 
   return (
@@ -90,7 +101,7 @@ export function ChatSession({ link, agent, online }: Props) {
       {feed.loaded && rows.length === 0 ? (
         <p className="m-0 flex flex-1 items-center justify-center px-6 text-center text-[13px] text-dim">No messages yet. Send one below, or type in the terminal.</p>
       ) : feed.loaded ? (
-        <VirtualList items={rows} getKey={rowKey} estimate={ESTIMATED_ROW_PX} renderItem={renderRow} label={`Conversation with ${agent}`} />
+        <VirtualList items={rows} getKey={rowKey} estimate={ESTIMATED_ROW_PX} renderItem={renderRow} label={`Conversation with ${agent}`} scrollTarget={scrollTarget} />
       ) : (
         <p className="m-0 flex flex-1 items-center justify-center px-6 text-center text-[13px] text-dim">Reading the conversation…</p>
       )}

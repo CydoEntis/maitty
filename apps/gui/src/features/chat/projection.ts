@@ -7,7 +7,7 @@ import type {
   ItemStatus,
 } from './chatEvents'
 import { changeKindOf, diffForChange } from './codexFileChange'
-import { parseApprovalRequest, parseHistoryEntry, type ApprovalRequest } from './historyInput'
+import { parseAnsweredApproval, parseApprovalRequest, parseHistoryEntry, type ApprovalRequest } from './historyInput'
 import { projectItem, statusOf } from './projectItem'
 
 /**
@@ -107,7 +107,8 @@ export function applyHistoryEntries(state: ChatProjection, entries: readonly unk
     const previous = turn.items.get(id)
     const firstSeenAtMs = previous?.firstSeenAtMs ?? nowMs
     const settledAtMs = previous?.settledAtMs ?? (status === 'running' ? null : nowMs)
-    const base: ItemFields = { id, turnId: entry.source.turn, status, observed: { firstSeenAtMs, settledAtMs } }
+    const timing = { startedAtMs: entry.started_at_ms ?? null, completedAtMs: entry.completed_at_ms ?? null }
+    const base: ItemFields = { id, turnId: entry.source.turn, status, observed: { firstSeenAtMs, settledAtMs }, timing }
     if (!previous) turn.itemOrder.push(id)
     turn.items.set(id, { events: projectItem(state.provider, entry.content, base), firstSeenAtMs, settledAtMs })
   }
@@ -123,6 +124,7 @@ function approvalEventOf(request: ApprovalRequest): ApprovalEvent {
     requestId: request.request_id,
     turnId: request.turn_id ?? null,
     itemId: request.item_id ?? null,
+    stepId: request.turn_id && request.item_id ? `${request.turn_id}:${request.item_id}` : null,
     approvalKind: request.kind,
     command: request.command ?? null,
     reason: request.reason ?? null,
@@ -161,6 +163,45 @@ export function applyApprovals(state: ChatProjection, pending: readonly unknown[
     if (!known.has(approvalId(request.request_id))) approvals.push(approvalEventOf(request))
   }
   return { ...state, approvals, rejectedInputs }
+}
+
+/**
+ * Applies the daemon's record of approvals a person answered, wherever they answered them. A known
+ * request is marked answered with the real choice (replacing `unknown`); one never seen pending is
+ * added as answered, so a chat opened after the answer still shows what happened. A choice this app
+ * recorded itself is kept.
+ */
+export function applyAnsweredApprovals(state: ChatProjection, answered: readonly unknown[]): ChatProjection {
+  if (answered.length === 0) return state
+  let rejectedInputs = state.rejectedInputs
+  const approvals = [...state.approvals]
+  const indexOf = new Map(approvals.map((approval, index) => [approval.id, index]))
+  let changed = false
+  for (const raw of answered) {
+    const record = parseAnsweredApproval(raw)
+    if (record === null) {
+      rejectedInputs += 1
+      changed = true
+      continue
+    }
+    const resolution = { status: 'answered', answer: record.decision, answeredAtMs: record.answered_at_ms ?? null } as const
+    const id = approvalId(record.request.request_id)
+    const at = indexOf.get(id)
+    if (at === undefined) {
+      indexOf.set(id, approvals.length)
+      approvals.push({ ...approvalEventOf(record.request), resolution })
+      changed = true
+      continue
+    }
+    const known = approvals[at]
+    if (known === undefined) continue
+    // A choice this app recorded itself is the person's own click; only its time is filled in.
+    const own = known.resolution.status === 'answered' && known.resolution.answer !== 'unknown' ? known.resolution : null
+    if (own !== null && own.answeredAtMs !== undefined) continue
+    approvals[at] = { ...known, resolution: own === null ? resolution : { ...own, answeredAtMs: resolution.answeredAtMs } }
+    changed = true
+  }
+  return changed ? { ...state, approvals, rejectedInputs } : state
 }
 
 /** Marks a pending request answered with the user's choice, before the daemon confirms it. */
@@ -204,6 +245,8 @@ export function projectConversation(
   entries: readonly unknown[],
   approvals: readonly unknown[],
   nowMs: number,
+  answered: readonly unknown[] = [],
 ): ChatEvent[] {
-  return selectChatEvents(applyApprovals(applyHistoryEntries(createChatProjection(provider), entries, nowMs), approvals))
+  const projected = applyApprovals(applyHistoryEntries(createChatProjection(provider), entries, nowMs), approvals)
+  return selectChatEvents(applyAnsweredApprovals(projected, answered))
 }

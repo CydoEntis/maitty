@@ -12,9 +12,9 @@ export type ChatProvider = 'claude' | 'codex'
 export type ItemStatus = 'running' | 'completed' | 'failed' | 'interrupted'
 
 /**
- * When this app first saw an item and when it first saw it finished. The daemon's history
- * carries no timestamps, so these are local observation times: an item loaded already finished
- * has `firstSeenAtMs === settledAtMs`, and its elapsed time is not known.
+ * When this app first saw an item and when it first saw it finished. These are local observation
+ * times, the fallback for a running item the daemon gave no start time: an item loaded already
+ * finished has `firstSeenAtMs === settledAtMs`, and its elapsed time is not known from these.
  */
 export type Observed = {
   readonly firstSeenAtMs: number
@@ -37,12 +37,19 @@ export type FileDiff =
 
 export type FileChangeKind = 'add' | 'update' | 'delete' | 'unknown'
 
+/** The daemon's own times for an item (Unix ms). `null` for an item read back from a provider's saved history. */
+export type ItemTiming = {
+  readonly startedAtMs: number | null
+  readonly completedAtMs: number | null
+}
+
 /** What every event built from one history entry shares. */
 export type ItemFields = {
   readonly id: string
   readonly turnId: string
   readonly status: ItemStatus
   readonly observed: Observed
+  readonly timing: ItemTiming
 }
 
 export type MessageEvent = ItemFields & {
@@ -65,6 +72,10 @@ export type CommandEvent = ItemFields & {
   readonly kind: 'command'
   readonly command: string
   readonly output: string
+  /** The process exit code; `null` when the provider does not report one (Claude never does). */
+  readonly exitCode: number | null
+  /** The provider's own measured duration; `null` when it reports none. */
+  readonly durationMs: number | null
 }
 
 export type TodoItemState = 'pending' | 'current' | 'done'
@@ -80,6 +91,8 @@ export type SubagentEvent = ItemFields & {
   readonly kind: 'subagent'
   readonly title: string | null
   readonly agentType: string | null
+  /** What the helper was asked to do, when the history kept the call's input. */
+  readonly prompt: string | null
   /** The helper's final report (the tool result); empty while it runs. */
   readonly report: string
 }
@@ -88,6 +101,10 @@ export type SubagentEvent = ItemFields & {
 export type ToolEvent = ItemFields & {
   readonly kind: 'tool'
   readonly name: string
+  /** What the tool acted on (a path, a pattern, a URL), when its input or label names one. */
+  readonly target: string | null
+  /** The tool's input as indented JSON, bounded; `null` when the history kept none. */
+  readonly input: string | null
   readonly detail: string
 }
 
@@ -103,7 +120,7 @@ export type ApprovalChange = {
 export type ApprovalResolution =
   | { readonly status: 'pending' }
   /** `answer` is `unknown` when the daemon dropped the request before this app recorded a choice. */
-  | { readonly status: 'answered'; readonly answer: ApprovalDecision | 'unknown' }
+  | { readonly status: 'answered'; readonly answer: ApprovalDecision | 'unknown'; readonly answeredAtMs?: number | null }
 
 export type ApprovalEvent = {
   readonly kind: 'approval'
@@ -113,6 +130,8 @@ export type ApprovalEvent = {
   readonly turnId: string | null
   /** The history item the request is about, when the provider names one (Codex does). */
   readonly itemId: string | null
+  /** The id of the tool step this request is about (`turn:item`), when the provider names both. */
+  readonly stepId: string | null
   readonly approvalKind: ApprovalKind
   readonly command: string | null
   readonly reason: string | null

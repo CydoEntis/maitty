@@ -11,6 +11,7 @@ export const ESC_LADDER = [
   'palette',
   'inbox',
   'settings',
+  'session-panel',
   'drawer',
   'usage',
   'focus-mode',

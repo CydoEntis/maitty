@@ -161,7 +161,8 @@ describe('the shortcut lists', () => {
     expect(hotkeyRows('linux').some((row) => row.action.startsWith('Jump to the next'))).toBe(false)
     expect(hotkeyRows('mac').some((row) => row.action.startsWith('Jump to the next'))).toBe(true)
     expect(hotkeyRows('mac').some((row) => row.action === 'Overview')).toBe(true)
-    expect(hotkeyRows('mac').some((row) => row.action === 'Session panel')).toBe(false)
+    expect(hotkeyRows('mac').some((row) => row.action === 'Session panel')).toBe(true)
+    expect(hotkeyRows('mac').some((row) => row.action === 'Undo close')).toBe(false)
   })
 
   it('puts every hotkey in a group of the overlay, and every group has some', () => {

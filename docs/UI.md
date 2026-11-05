@@ -737,9 +737,29 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   ids as keys), follows the newest row until the reader scrolls away, then offers "Jump to the latest message". Rows
   are `buildRows(events)`: one agent message per turn (adjacent agent messages of a turn are joined; a step between
   two messages keeps their order), user bubbles, step cards, approvals, turn dividers, and the working line last.
-- **Cards.** Plain and complete: every fact the history carries is shown, and a missing one is said to be
-  unavailable (a diff the history did not keep, a checklist without items, a turn without the daemon's times shows
-  "Turn finished", not an invented duration). No card animates.
+- **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
+  unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
+  does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step
+  that is running animates (its spinner).
+  - *Tool chip:* a 28px mono chip with the tool's name and what it acted on (read from the tool's input; Codex: its
+    label); click opens the input and the result, bounded.
+  - *Edit block:* header (pencil, verb, file relative to the session's folder, `+N` `-N`), the diff with tinted
+    lines (theme tokens at 10%), folded past 12 lines with "N more lines" / "Show less". The header opens the file's
+    diff in the session panel when the window has one.
+  - *Command card:* the command, then `Running · m:ss` (live) or the elapsed time and an `exit N` pill, and the last
+    3 lines of output with "Show all N lines". The elapsed time is the provider's duration, else the daemon's start
+    and completion times; the exit code exists for Codex only, so for Claude it reads "exit code unavailable".
+  - *Approval card:* see Approvals. *Helper agents:* consecutive helper calls are one card, "3 agents, 2 working",
+    a row each (title, type, elapsed or "Done · 5m 30s"); a row opens what it was asked and its report. *Checklist:*
+    the agent's own to-do items with a progress bar. *Working line:* "claude is working · m:ss"; no token count,
+    because the daemon's history carries none.
+  - *Markdown* (`markdown.ts`, `components/Markdown.tsx`): an agent message is read into a data tree and drawn as
+    elements. There is no HTML anywhere (no `dangerouslySetInnerHTML`), raw tags are text, images are never loaded
+    (their alt text shows), and a link is kept only for an `http(s)` address. The app has no route that opens an
+    address outside the window, so a link is a button that copies its address; it never navigates the webview.
+    Supported: paragraphs, headings, fenced code, lists, quotes, rules, inline code, bold, italic.
+  - *Rows* are memoised on their events (`ChatItem`), and the virtual list measures heights, so a card that expands
+    resizes its own row only.
 - **Composer.** `useChatComposer` sends through the conversation's own send (`send_conversation`) with an operation
   number (the receipt's plus one; a failed send is retried with the same number so the daemon can tell a retry from a
   new message). Enter sends, Shift+Enter adds a line (not while an input method is composing), Esc or Stop interrupts
@@ -750,7 +770,69 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   is starting), one at a time and in order, only while the chat is open. The daemon has no queue, so delivery is at
   the end of the turn, not at a step boundary, and closing the window drops what is queued.
 - **Approvals.** The card answers through `approve_conversation` by request id and then reads "You answered: ...",
-  with the buttons gone. A request that asks the person a question (`UserInput`) is answered in the terminal.
+  with the buttons gone. While it is pending and focused, `y` (once), `a` (this session) and `n` (no) answer it, the
+  same letters as typing into the terminal, which stays a working fallback. The daemon's `answered_approvals` are
+  read with every page, so a request answered in the terminal or in another window shows as answered with the real
+  choice, even when this chat was opened afterwards. The card names the tool step it is about (`item_id`) and its
+  "For: ..." link scrolls the list to that step. A request that asks the person a question (`UserInput`) is answered
+  in the terminal.
 - **Screen readers.** The history is a labelled region, not a live region. A separate polite status line says only
   that the agent is working, is waiting for an answer, or finished.
 - **Styling.** Tailwind utilities on theme tokens only; the keyframes for the view change live in `workspace.css`.
+
+## Project-specific: desktop session panel
+
+The panel beside the panes for the focused agent session ([chat view plan](features/chat-gui/chat-view-plan.md),
+v18 C.2). It reads the same daemon conversation as the chat, through `useChatFeed`, so it works in the terminal
+view too. Local sessions only.
+
+- **Toggle.** `Ctrl/Cmd+\` (`session-panel`), or the panel button in a pane head beside the Terminal | Chat
+  switch. Both flip the one window-level state in `features/panel/useSessionPanelState.ts`.
+- **Placement.** A window of 1100px or more (`COMPACT_WIDTH_PX`) docks it: a 320px floating card (`mx-card`)
+  beside the panes, which shrink; the choice is remembered (`maitty.gui.sessionPanel.v1`). Under 1100px it is an
+  overlay from the window edge over a scrim, closed by default and not remembered, closed by the scrim, Hide, or
+  Esc (`session-panel` in `model/escLadder.ts`, below Settings and above the sidebar drawer). It sits on the side
+  opposite the sidebar. A docked panel offsets the Inspect drawer by `--session-panel-w`, so both can be open.
+  The panel's width does not animate (a layout property); Reduce motion changes nothing for it.
+- **Content.** `panelModel.ts` derives everything from the chat projection and adds nothing: the **Checklist** is
+  the agent's last to-do list that carried its items ("Checklist · 2 of 5", a 3px progress bar, the current item
+  with a spinner and its running time only while the agent works; the time is that of the first list in an
+  unbroken run that named the item current), and **Agents** is every helper call ("Agents · 2 working" or "all
+  done"). A session with no agent, no event stream, or on another machine shows "Nothing to track yet" and one
+  sentence saying why (`emptyReason`); an agent with neither list nor helpers says so too.
+- **Changes** (`ChangesSegment.tsx`, `DiffView.tsx`). The agent's worktree through `conversation_diff` (read every
+  4 s while the panel is open, and at once when the agent edits a file): the branch name from the session list,
+  then one list of changed files (directory dim, file name, a comment badge, `+a` `-d`). The daemon's diff does
+  not say which files are staged, how far the branch is ahead or behind, or whether it was pushed, so none of that
+  is shown. A file opens its diff in the panel, which widens to 520px: back arrow, the path truncated from the
+  start, `+a -d`, then numbered lines (the new side's numbers, from the hunk headers; a removed line has none and
+  takes no comment). Hovering a line shows a **+**; it opens a composer under the line ("Tell claude what to change
+  here...", Enter or Ctrl/Cmd+Enter sends, Shift+Enter adds a line, Cancel or Esc closes it; Esc is the top layer
+  of the ladder, `comment-composer`). Diffs over 1,500 lines draw in steps. An edit block's header opens its file
+  here (`panelCommands.ts`), opening the panel first.
+- **Line comments.** The daemon's send takes text only, so a comment goes as one message,
+  `Comment on <file>:<line>`, the line's code quoted, a blank line, the text (`chat/commentMessage.ts`); the chat
+  draws that message as a comment bubble. It is handed to the composer's own queue (`composerStore`), which sends
+  it once the agent's turn is over and never while an approval waits; the note under the composer says which. Exactly
+  one `useChatComposer` delivers a conversation's queue: the chat's when it is open, otherwise the panel's
+  (`QueueDelivery`), so a comment is sent once. A line with comments shows a count pill whose label lists them, and
+  the file row a badge. The written comments are the window's memory only (`commentStore.ts`).
+- **Files and Artifacts** (`FilesSegment.tsx`, `ArtifactsSegment.tsx`, `artifacts.ts`). The segment bar is
+  Changes, Files, Artifacts, each with a count. **Files** lists what the agent's tool calls named, in the order it
+  first touched them: Edited (amber), Created (green), Read (dim), with `+a -d` for edits. An edited or created file
+  that the worktree still has a diff for opens that diff; any other (a file only read, or one committed since) opens
+  in the Inspect drawer's Files view. Claude's `Write` does not say whether it created the file, but Claude Code
+  will not overwrite a file it has not read, so a `Write` to an untouched path counts as a new file (Codex says
+  `add`). **Artifacts** are the created files that are documents, reports, data or pictures (by extension: md, mdx,
+  txt, rst, html, json, csv, xml, log, png, jpg, gif, webp, svg); the daemon has no artifact concept. A card has a
+  tinted tile, the file name and a subtitle. Opening one reads it with `conversation_file` (UTF-8 text, size
+  limited by the daemon, path relative to the session's folder) and shows it as text, markdown drawn through the
+  safe renderer; a picture cannot be shown because files arrive as text, so it offers the Files drawer. The
+  daemon's `conversation_files` listing is not used: the panel shows what the session touched, not the project tree.
+- **Sidebar progress.** A session row shows the agent's checklist under the name, "2 of 5 · Write the fix" and a 2px
+  bar (`progressStore.ts`). The daemon reports no per-session progress and the sidebar must not poll every
+  conversation, so the row appears only for a session whose conversation this window has read (its chat or its
+  panel was open) and shows the last list read; a session never opened has no such row.
+- **Cost.** The panel reads the conversation with its own `useChatFeed`, so an open chat and an open panel each
+  poll (a read of the last page, 1 s while the agent works). The panel polls the worktree diff every 4 s and
+  stops while the window is hidden.

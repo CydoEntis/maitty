@@ -30,7 +30,7 @@ const WriteInputSchema = z.object({ file_path: z.string(), content: z.string() }
 const TodoInputSchema = z.object({
   todos: z.array(z.object({ content: z.string(), status: z.enum(['pending', 'in_progress', 'completed']) })),
 })
-const SubagentInputSchema = z.object({ description: z.string(), subagent_type: z.string().optional() })
+const SubagentInputSchema = z.object({ description: z.string(), prompt: z.string().optional(), subagent_type: z.string().optional() })
 
 const TODO_STATES: Record<'pending' | 'in_progress' | 'completed', TodoItemState> = {
   pending: 'pending',
@@ -41,8 +41,8 @@ const TODO_STATES: Record<'pending' | 'in_progress' | 'completed', TodoItemState
 export type ClaudeToolMapping =
   | { readonly kind: 'edit'; readonly tool: string; readonly file: string | null; readonly change: FileChangeKind; readonly diff: FileDiff }
   | { readonly kind: 'todo'; readonly items: readonly TodoItem[] | null }
-  | { readonly kind: 'subagent'; readonly title: string | null; readonly agentType: string | null }
-  | { readonly kind: 'tool'; readonly name: string }
+  | { readonly kind: 'subagent'; readonly title: string | null; readonly agentType: string | null; readonly prompt: string | null }
+  | { readonly kind: 'tool'; readonly name: string; readonly target: string | null; readonly input: string | null }
 
 const UNAVAILABLE: FileDiff = { status: 'unavailable' }
 
@@ -93,7 +93,32 @@ export function mapClaudeTool(name: string, input: unknown): ClaudeToolMapping {
       kind: 'subagent',
       title: parsed.success ? parsed.data.description : null,
       agentType: parsed.success ? (parsed.data.subagent_type ?? null) : null,
+      prompt: parsed.success ? (parsed.data.prompt ?? null) : null,
     }
   }
-  return { kind: 'tool', name }
+  return { kind: 'tool', name, target: toolTarget(input), input: inputText(input) }
+}
+
+// The input fields that name what a tool acted on, most specific first.
+const TARGET_KEYS = ['file_path', 'notebook_path', 'path', 'pattern', 'command', 'url', 'query', 'description'] as const
+const TARGET_LIMIT = 160
+const INPUT_TEXT_LIMIT = 4000
+const INPUT_INDENT = 2
+
+/** What a tool call acted on, read from its input; `null` when the input names nothing. */
+export function toolTarget(input: unknown): string | null {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return null
+  const fields = input as Record<string, unknown>
+  for (const key of TARGET_KEYS) {
+    const value = fields[key]
+    if (typeof value === 'string' && value.trim() !== '') return value.trim().split('\n')[0]?.slice(0, TARGET_LIMIT) ?? null
+  }
+  return null
+}
+
+/** The tool's input as indented JSON for the expanded chip, cut so one huge input never fills the list. */
+export function inputText(input: unknown): string | null {
+  if (input === undefined || input === null) return null
+  const text = JSON.stringify(input, null, INPUT_INDENT)
+  return text.length > INPUT_TEXT_LIMIT ? `${text.slice(0, INPUT_TEXT_LIMIT)}\n[cut]` : text
 }

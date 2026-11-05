@@ -48,6 +48,14 @@ export const ApprovalRequestSchema = z.object({
 })
 export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>
 
+/** An approval a person already answered: the request, the choice, and when the daemon relayed it. */
+export const AnsweredApprovalSchema = z.object({
+  request: ApprovalRequestSchema,
+  decision: ApprovalChoiceSchema,
+  answered_at_ms: z.number().int().nonnegative().nullable().optional(),
+})
+export type AnsweredApproval = z.infer<typeof AnsweredApprovalSchema>
+
 export function parseHistoryEntry(raw: unknown): HistoryEntry | null {
   const parsed = HistoryEntrySchema.safeParse(raw)
   return parsed.success ? parsed.data : null
@@ -55,5 +63,10 @@ export function parseHistoryEntry(raw: unknown): HistoryEntry | null {
 
 export function parseApprovalRequest(raw: unknown): ApprovalRequest | null {
   const parsed = ApprovalRequestSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
+export function parseAnsweredApproval(raw: unknown): AnsweredApproval | null {
+  const parsed = AnsweredApprovalSchema.safeParse(raw)
   return parsed.success ? parsed.data : null
 }

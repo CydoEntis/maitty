@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { ChatEvent, MessageEvent, TurnEvent } from './chatEvents'
+import type { TurnEvent } from './chatEvents'
+import { approvalEvent, commandEvent, messageEvent } from './eventFixtures'
 import { buildRows, dividerText, formatDuration, paragraphsOf, splitLead } from './chatRows'
 
-const observed = { firstSeenAtMs: 0, settledAtMs: 0 }
-const message = (id: string, role: 'user' | 'agent', text: string, turnId = 't1'): MessageEvent => ({ id, turnId, status: 'completed', observed, kind: 'message', role, text })
-const command = (id: string, turnId = 't1'): ChatEvent => ({ id, turnId, status: 'completed', observed, kind: 'command', command: 'ls', output: '' })
+const message = messageEvent
+const command = (id: string, turnId = 't1') => ({ ...commandEvent(id), turnId })
 const turn = (outcome: TurnEvent['outcome'], timed: boolean): TurnEvent => ({ kind: 'turn', id: 'turn:t1', turnId: 't1', outcome, startedAtMs: 1_000, endedAtMs: 8_000, timed })
 
 describe('buildRows', () => {
@@ -35,7 +35,7 @@ describe('buildRows', () => {
   })
 
   it('turns an approval and a divider into rows of their own', () => {
-    const rows = buildRows([{ kind: 'approval', id: 'approval:number:3', requestId: 3, turnId: 't1', itemId: null, approvalKind: 'Command', command: 'ls', reason: null, changes: [], choices: [], resolution: { status: 'pending' } }, turn('completed', true)], false)
+    const rows = buildRows([approvalEvent(3), turn('completed', true)], false)
 
     expect(rows.map((row) => row.kind)).toEqual(['approval', 'divider'])
   })

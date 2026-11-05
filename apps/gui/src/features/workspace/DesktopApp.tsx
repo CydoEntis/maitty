@@ -41,6 +41,10 @@ import { ColumnHandle } from './components/ColumnHandle'
 import { CommandPalette } from './components/CommandPalette'
 import { InboxPanel, type Answer, type InboxEntry } from './components/InboxPanel'
 import { InspectPanel, type InspectView } from '@/features/inspect/InspectPanel'
+import { cancelCommentComposer, isCommentComposerOpen } from '@/features/panel/commentStore'
+import { requestDiff } from '@/features/panel/panelCommands'
+import { SessionPanelHost } from '@/features/panel/SessionPanelHost'
+import { useSessionPanelState } from '@/features/panel/useSessionPanelState'
 import { runsProgram } from './components/useArmed'
 import { rememberSessions, withEnded } from './model/ended'
 import { advanceLoginWatch, LOGIN_CHECK_MS, startLoginWatch, type LoginWatch } from './model/loginWatch'
@@ -247,6 +251,9 @@ export function DesktopApp() {
   const [usageOpen, setUsageOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
   const [inspectOpen, setInspectOpen] = useState(false)
+  const sessionPanel = useSessionPanelState(compact)
+  // The docked panel's width, so the Inspect drawer that overlays the window stays beside it and not under it.
+  const [panelDockedWidth, setPanelDockedWidth] = useState(0)
   const [findOpen, setFindOpen] = useState(false)
   // Under 1100px the sidebar is a drawer over the panes, opened from the tab bar's Sessions button.
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -1051,6 +1058,11 @@ export function DesktopApp() {
     else setInspectOpen((open) => !open)
   }, [inspectRefusal])
   const openDrawer = useCallback(() => { setDrawerOpen(true) }, [])
+  // An edit block's header: show that file's diff in the panel, opening the panel first if it is hidden.
+  const showDiffInPanel = useCallback((file: string) => {
+    requestDiff(file)
+    if (!sessionPanel.open) sessionPanel.toggle()
+  }, [sessionPanel])
   const setThemeMode = useCallback((themeMode: SettingsPreferences['themeMode']) => { setPreferences((current) => ({ ...current, themeMode })) }, [])
   const pickTheme = useCallback((name: string) => { setPreferences((current) => (findTheme(name).light ? { ...current, lightTheme: name } : { ...current, darkTheme: name })) }, [])
   const openAppearance = useCallback(() => { setSettingsSection('appearance') }, [])
@@ -1145,9 +1157,11 @@ export function DesktopApp() {
       case 'performance':
         setSettingsSection('performance')
         return
+      case 'session-panel':
+        sessionPanel.toggle()
+        return
       // Registered in the table but not built (or not undoable): the key does nothing until the feature ships.
       case 'undo-close':
-      case 'session-panel':
       case 'usage':
         setUsageOpen((open) => !open)
         return
@@ -1189,7 +1203,7 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, platform, paneSessions, armedClose, toggleInspect, sessions, showSessionById, activeGroupKey, selectTabById, overviewOpen, jumped, chatOf, paneViews])
+  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, platform, paneSessions, armedClose, toggleInspect, sessions, showSessionById, activeGroupKey, selectTabById, overviewOpen, jumped, chatOf, paneViews, sessionPanel])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
@@ -1197,8 +1211,9 @@ export function DesktopApp() {
   const dialogOpen = settingsSection !== null || renameId !== null || remoteStart !== null || newAgentOpen
   const modalOpen = dialogOpen || overlayOpen || usageOpen
   const drawerShown = compact && drawerOpen
-  const shortcutState = useRef({ runShortcut, settingsOpen: dialogOpen, newAgentOpen, overlayOpen, paletteOpen, inboxOpen, overviewOpen, usageOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
-  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: dialogOpen, newAgentOpen, overlayOpen, paletteOpen, inboxOpen, overviewOpen, usageOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
+  const panelOverlayShown = compact && sessionPanel.open
+  const shortcutState = useRef({ runShortcut, panelOverlayShown, closePanel: sessionPanel.close, settingsOpen: dialogOpen, newAgentOpen, overlayOpen, paletteOpen, inboxOpen, overviewOpen, usageOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
+  useEffect(() => { shortcutState.current = { runShortcut, panelOverlayShown, closePanel: sessionPanel.close, settingsOpen: dialogOpen, newAgentOpen, overlayOpen, paletteOpen, inboxOpen, overviewOpen, usageOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
   useEffect(() => {
     // How each layer of the Esc ladder closes. A new dialog adds its closer here and its id to ESC_LADDER.
     const closers: Partial<Record<EscLayer, () => void>> = {
@@ -1208,6 +1223,8 @@ export function DesktopApp() {
       inbox: () => { setInboxOpen(false) },
       settings: () => { setSettingsSection(null) },
       drawer: () => { setDrawerOpen(false) },
+      'session-panel': () => { shortcutState.current.closePanel() },
+      'comment-composer': cancelCommentComposer,
       usage: () => { setUsageOpen(false) },
       'focus-mode': () => { setFocusMode(false) },
     }
@@ -1227,7 +1244,7 @@ export function DesktopApp() {
       if (event.key === 'Escape') {
         // A menu or list that is open (the spinner picker in Settings) takes Esc itself.
         if (event.target instanceof Element && event.target.closest('[role="menu"]')) return
-        const top = topmostOpen({ 'new-agent': state.newAgentOpen, overview: state.overviewOpen, palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, drawer: state.drawerShown, usage: state.usageOpen, 'focus-mode': state.focusMode })
+        const top = topmostOpen({ 'comment-composer': isCommentComposerOpen(), 'new-agent': state.newAgentOpen, overview: state.overviewOpen, palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, 'session-panel': state.panelOverlayShown, drawer: state.drawerShown, usage: state.usageOpen, 'focus-mode': state.focusMode })
         if (top === null) return
         // What Esc closes is not also sent on to the terminal, where it would interrupt an agent.
         event.preventDefault()
@@ -1548,7 +1565,7 @@ export function DesktopApp() {
       <EffectsContext.Provider value={effects}>
         <div ref={setRoot} className={`mx-app${narrow ? ' is-narrow' : ''}`} style={rootStyle} data-motion={reducedMotion ? 'reduced' : 'full'} data-theme-kind={theme.light ? 'light' : 'dark'} data-side={preferences.sidebarSide}>
           <TitleBar />
-          <div className="mx-window" role="application" aria-label="Maitty">
+          <div className="mx-window" role="application" aria-label="Maitty" style={panelDockedWidth > 0 ? ({ '--session-panel-w': `${String(panelDockedWidth)}px` } as CSSProperties) : undefined}>
             {!focusMode && !compact && renderSidebar(sidebarMode, noop)}
             {!focusMode && drawerShown && (
               <div className="mx-drawer-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawerOpen(false) }}>
@@ -1639,9 +1656,13 @@ export function DesktopApp() {
                               workingSince={tracks.get(session.id)?.workingSince ?? null}
                               view={chat.view}
                               onViewChange={(view) => { paneViews.choose(session.id, view) }}
+                              onTogglePanel={sessionPanel.toggle}
+                              panelOpen={sessionPanel.open}
                               chat={chat.view === 'chat' ? (
                                 <ChatPane
                                   availability={chat.availability}
+                                  root={session.repoRoot ?? session.cwd}
+                                  onOpenDiff={showDiffInPanel}
                                   process={session.process}
                                   online={online}
                                   onBackToTerminal={() => { paneViews.choose(session.id, 'terminal') }}
@@ -1745,6 +1766,22 @@ export function DesktopApp() {
                 )}
               </main>
             </div>
+            {!focusMode && sessionPanel.open && focusedSession && (
+              <SessionPanelHost
+                mode={sessionPanel.mode}
+                title={displayName(focusedSession)}
+                process={focusedSession.process}
+                availability={chatOf(focusedSession).availability}
+                root={focusedSession.repoRoot ?? focusedSession.cwd}
+                folder={focusedSession.cwd}
+                branch={focusedSession.branch}
+                onOpenInFiles={(file) => { openPath(focusedSession, file) }}
+                online={online}
+                chatOpen={chatOf(focusedSession).view === 'chat'}
+                onClose={sessionPanel.close}
+                onDockedWidth={setPanelDockedWidth}
+              />
+            )}
             {inspectOpen && !focusMode && inspectTerm !== null && focusedSession && (
               <InspectPanel
                 key={inspectTerm}

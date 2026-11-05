@@ -16,6 +16,7 @@ export class FakeDaemonHistory {
   generation = 1
   status: ChatPage['status'] = 'Idle'
   approvals: unknown[] = []
+  answeredApprovals: unknown[] = []
   /** Every read, as the cursor it asked from (`null`: the start). */
   reads: Array<HistoryCursor | null> = []
   /** While set, every read fails with it. */
@@ -80,6 +81,7 @@ export class FakeDaemonHistory {
       cancelling: false,
       history: { entries, next, completeness: 'Complete' },
       approvals: this.approvals,
+      answered_approvals: this.answeredApprovals,
     })
   }
 }
