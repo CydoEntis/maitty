@@ -35,11 +35,8 @@ const SHEET_STEP: u16 = 4;
 const FILES_SHARE: u32 = 55;
 /// Narrower than this, Files shows the tree or the open file, not both side by side.
 const FILES_BOTH_FROM: u16 = 60;
-/// A floating drawer is narrower for the same screen: the tree and the open file take turns
-/// (Enter opens the file, Esc is back to the tree) until it is this wide.
-const FILES_BOTH_FROM_OVERLAID: u16 = 90;
 /// The drawer's width, one for all four tools, before you size it.
-pub(super) const DRAWER_W: u16 = 60;
+pub(super) const DRAWER_W: u16 = 84;
 /// The widest it floats, and the columns of the terminal it always leaves.
 const DRAWER_MAX: u16 = 110;
 const OVERLAY_KEEP: u16 = 24;
@@ -447,12 +444,7 @@ pub(in crate::client) fn draw_sheet(
                     inner,
                     t,
                     &mut v,
-                    r.width
-                        < if overlaid(app, SheetKind::Files) {
-                            FILES_BOTH_FROM_OVERLAID
-                        } else {
-                            FILES_BOTH_FROM
-                        },
+                    r.width < FILES_BOTH_FROM,
                 );
                 app.view = Some(crate::client::View::Files(v));
             }

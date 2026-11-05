@@ -408,6 +408,11 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         );
     }
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {
+        // A floating drawer clears what it covers first, or the chips of the tabs under it show
+        // through its border.
+        if overlaid(app, kind) {
+            fill(f.buffer_mut(), g.sheet, t.bg);
+        }
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
         draw_sheet_edge(app, f.buffer_mut(), &g, t);
         tools::draw_drawer_foot(app, f.buffer_mut(), g.sheet, kind, t);

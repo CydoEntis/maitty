@@ -350,17 +350,20 @@ fn action_row(
     tail: &[Seg],
 ) {
     let y = r.bottom().saturating_sub(1);
-    super::screen::strip(buf, Rect { y, height: 1, ..r }, t.card2);
-    // Keycap first: in a tool window you just press the key (no Ctrl+Space).
+    // Keycap first: in a tool window you just press the key (no Ctrl+Space). No band behind
+    // them: the row is the view's own ground, and a button that does not fit whole is left out.
     let mut x = r.x + 2;
     for (label, key, kind, hit) in buttons {
         let cap = format!(" {key} ");
         let text = format!(" {label} ");
         let w = (cap.width() + text.width()) as u16;
+        if x + w > r.right().saturating_sub(1) {
+            break;
+        }
         let br = Rect {
             x,
             y,
-            width: w.min(r.right().saturating_sub(x)),
+            width: w,
             height: 1,
         };
         let cap_st = if *kind == BtnKind::Primary {
@@ -374,7 +377,7 @@ fn action_row(
                 .fg(t.accent)
                 .add_modifier(Modifier::BOLD)
         };
-        let text_st = Style::default().bg(t.card2).fg(t.strong);
+        let text_st = Style::default().bg(t.bg).fg(t.strong);
         let mut segs = super::screen::chip(key, cap_st);
         segs.push(seg(text, text_st));
         x = put(buf, x, y, &segs, r.right()) + 2;
@@ -382,9 +385,11 @@ fn action_row(
     }
     let tail: Vec<Seg> = tail
         .iter()
-        .map(|(s, st)| (s.clone(), st.bg(t.card2)))
+        .map(|(s, st)| (s.clone(), st.bg(t.bg)))
         .collect();
-    put(buf, x + 2, y, &tail, r.right());
+    if x + segs_width(&tail) + 2 <= r.right() {
+        put(buf, x + 2, y, &tail, r.right());
+    }
 }
 
 pub(super) fn diff_line(t: &Theme, l: &str, old: &mut u32, new: &mut u32) -> Vec<Seg> {
@@ -1120,7 +1125,13 @@ pub(super) fn draw_files(
         .and_then(|id| app.term_info(id))
         .map(pane_name)
         .unwrap_or_else(|| "the pane".into());
-    let insert = format!("Insert path into {who}");
+    // A narrow view says less on each button.
+    let short = area.width < 80;
+    let insert = if short {
+        "Insert path".to_string()
+    } else {
+        format!("Insert path into {who}")
+    };
     let mut buttons = vec![(
         insert.as_str(),
         "Enter",
@@ -1137,7 +1148,7 @@ pub(super) fn draw_files(
     }
     buttons.extend([
         (
-            "Edit here",
+            if short { "Edit" } else { "Edit here" },
             "i",
             BtnKind::Normal,
             Hit::Button(super::Btn::ViewKey('i')),
@@ -1155,7 +1166,7 @@ pub(super) fn draw_files(
             Hit::Button(super::Btn::ViewKey('o')),
         ),
         (
-            "Copy path",
+            if short { "Copy" } else { "Copy path" },
             "y",
             BtnKind::Normal,
             Hit::Button(super::Btn::ViewKey('y')),
