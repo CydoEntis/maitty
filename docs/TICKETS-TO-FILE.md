@@ -579,3 +579,100 @@ Do this last, after timing a release made with ticket 23. It may not be worth th
   in both apps. Amend the ADR or record the change in a new one.
 - A branch cut before these merges (the terminal fixes for v0.65.1) should merge `dev` before its
   pull request: #268 changed about 500 lines of `crates/maitty-terminal-client`.
+
+
+## Added 2026-11-05 (afternoon): found testing the v0.65.0 desktop app on Linux
+
+Found by the owner on the first run of the v0.65.0 AppImage (Arch Linux, Hyprland, NVIDIA RTX 4060,
+WebKitGTK). Do 28 first: the desktop app is not usable until it is fixed.
+
+## 28. The desktop terminal runs one action behind (bug, `client`)
+
+Typing in a pane shows late, and a menu in Claude Code shows the choice before the last key: Enter
+then acts on a row the screen did not show. Clicking away and back brings the pane up to date.
+
+**Evidence**
+- The overlay read 63 fps, 0% CPU and 121 B/s of output arriving while the pane still showed the old
+  screen. Settings › Performance at rest: 63 frames/s, 0 slow, WebGL 2 on both panes, 1 animation.
+- Starting with `WEBKIT_DISABLE_DMABUF_RENDERER=1` changed nothing, so it is not how frames reach
+  the driver.
+- `Cargo.lock` and `apps/gui/package.json` did not change between v0.64.0 and v0.65.0 apart from the
+  new workspace crates, so no library moved.
+- The path a pane's bytes take is new in v0.65.0: `apps/gui/src-tauri/src/hub.rs` and `streams.rs`
+  are new, `terminal_stream.rs` and `TerminalView.tsx` were rewritten around them (about 2,700 lines
+  across those and `api/daemon.ts`, `maitty-machines/src/connections.rs`).
+
+**Not yet known.** Whether the wait is on the way in (the key reaching the daemon) or on the way
+out (the output reaching xterm). Read so far without finding it: the host loop in
+`terminal_stream.rs` (`due` and `timeout_at` around `hub.next()`), `Streams::output` and
+`flush_into`, `Hub::next`, `Connections::recv_burst`, and `enqueue` / `flushOnFrame` / `apply` in
+`TerminalView.tsx`.
+
+**What**
+1. Reproduce outside the owner's window: a dev build on a nested socket (`MAITTY_SOCKET=<name>`).
+2. Time one key at each hop: xterm `onData`, the `terminal_input` command, the daemon's `Output`,
+   `Streams::flush`, the channel message in the window, `emulator.write`. The hop where the time
+   goes is the bug.
+3. Check first: a frame of 1,024 bytes or more goes to the window through Tauri's channel fetch,
+   smaller ones by direct eval, and the window delivers channel messages in order, so one slow
+   fetch holds every frame behind it.
+4. Fix it there, with a test that fails before the fix.
+
+**Acceptance**
+- A key's echo shows without another key or a refocus, in a shell and in Claude Code's menus.
+- A test covers the hop that was wrong.
+
+## 29. Agent hooks point into the AppImage's temporary mount (bug, `agents`, `client`)
+
+The desktop app's daemon installs the Claude Code hooks and status line with its own path, which
+for an AppImage is `/tmp/.mount_Maitty<random>/usr/bin/maitty-gui-daemon`. The folder changes on
+every launch and is gone when the app exits. `~/.claude/settings.json` is global, so every Claude
+session on the machine runs those hooks, in the terminal app too.
+
+**Seen**
+- Every hook event listed twice, one path dead: `SessionStart:startup hook error … Transport
+  endpoint is not connected`, the same on `UserPromptSubmit`, `Stop` and `SessionEnd`.
+- Old entries are never replaced: `runs_our_hook` (`crates/adapters/maitty-provider-claude/src/hooks.rs`)
+  takes the program's file stem and looks for `maitty`, and the bundled daemon's is
+  `maitty-gui-daemon`. The groups in the file carry no `_maitty` tag either.
+- Once the window closes, no hook path is left that works, and no session can report its state.
+
+**What (owner to confirm the first point)**
+- Keep a copy of the bundled daemon at a fixed path under the app's data folder
+  (`~/.local/share/maitty/`), refreshed when the version changes, and name that path in the hooks
+  and the status line.
+- Treat the bundled daemon's name as this app's when replacing hook groups, so a launch replaces
+  the old groups and does not add to them. Remove groups whose program is under `/tmp/.mount_`.
+- The same for every other agent `integrate` writes to.
+
+**Acceptance**
+- After two launches and a quit, `~/.claude/settings.json` has one Maitty group per event, its
+  program exists, and a Claude session started with the app closed reports no hook error.
+
+## 30. Restart and restore cannot stop a daemon the desktop app started (bug, `client`)
+
+On Linux `is_app_daemon` (`crates/maitty-desktop-client/src/lib.rs`) accepted only a program whose
+name ends in `maitty`; the bundled daemon is `maitty-gui-daemon`, so the button answered "couldn't
+identify the local Maitty (maitty) daemon process". Windows and macOS skip the check.
+
+**State.** Fixed on the branch `fix/desktop-upgrade-path`, not committed: `is_daemon_command_line`
+accepts the terminal app's program or the bundled one, started with `daemon`, with a test. The gate
+has not been run on it.
+
+## 31. Settings › Performance lists no daemons (bug, `client`)
+
+The Daemons row read `0 · none` with seven daemons running on the machine, the app's own among
+them. Likely the same name test as ticket 30. Confirm and fix with it.
+
+## Design changes the owner asked for on 2026-11-05 (to ticket)
+
+- **Chat on any session.** Switching a pane to chat should give an empty chat that can be typed
+  into, for a `claude` typed into a shell too. ADR 0052 makes those read-only, and the pane showed
+  "The daemon has no conversation for this claude session". Needs the ADR changed.
+- **Remove Overview** from the sidebar.
+- **Remove "New agent on a branch"** from the sidebar header.
+- **The remote machines section** of the sidebar is not the original design: compare with the
+  reference designs before changing it.
+- **The block cursor hides the letter under it.** May be ticket 28 (the letter not drawn yet);
+  check again once 28 is fixed.
+- **Claude Code is slow to start** in a pane. May be 28 or 29; check again once both are fixed.
