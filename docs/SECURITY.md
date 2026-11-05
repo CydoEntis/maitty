@@ -430,9 +430,9 @@ is a fixed set of host commands that take a machine's name or number, never a pr
   (`BatchMode`, stdin closed), ended by a 12 s limit or Cancel, and the entry is written only when that held
   up. The one time ssh may ask a person is the first login, which runs as a session on this computer, with
   the probe's hardening and a command line that refuses a word it cannot quote.
-- **Opt-ins** (`clipboard`, `notices`) are off for every machine until its entry in `config.local.toml` says
-  `true`, which the Machines page writes through the shared editor before the host changes what it lets
-  through. A notice is one clean line led by `[machine]` and a copy is cut to 64 KiB. `sounds` is read but
+- **Grants.** `clipboard` is on for a machine until its entry in `config.local.toml` says `false`, and
+  `notices` is off until it says `true`. The Machines page writes either through the shared editor before
+  the host changes what it lets through. A notice is one clean line led by `[machine]` and a copy is cut to 64 KiB. `sounds` is read but
   never acted on: the desktop app plays none.
 - **Files stay on their machine.** Features that read a pane's files or repository are refused for another
   machine's pane by the window and again by the host's commands, in the terminal app's words, so a pane

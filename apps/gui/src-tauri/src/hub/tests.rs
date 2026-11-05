@@ -362,18 +362,22 @@ async fn a_machines_opt_ins_are_what_its_entry_says_and_nothing_for_a_stranger()
     // Ids follow the names in order: box, then other.
     assert!(handle.opts_of(MachineId(1)).notices);
     assert!(!handle.opts_of(MachineId(1)).sounds);
-    assert_eq!(handle.opts_of(MachineId(2)), Default::default());
+    let untouched = MachineOpts {
+        clipboard: true,
+        ..Default::default()
+    };
+    assert_eq!(handle.opts_of(MachineId(2)), untouched);
     assert_eq!(handle.opts_of(MachineId(9)), Default::default());
 }
 
 #[tokio::test]
 async fn a_grant_changes_what_the_hub_lets_through_at_once_and_only_for_that_machine() {
     let sandbox = Sandbox::new();
-    let watch = Watch::new(
-        &[machine("box", &sandbox, "hang"), machine("other", &sandbox, "hang")],
-        &sandbox,
-        quick(WAIT),
-    );
+    let refusing = |name: &str| MachineDef {
+        clipboard: false,
+        ..machine(name, &sandbox, "hang")
+    };
+    let watch = Watch::new(&[refusing("box"), refusing("other")], &sandbox, quick(WAIT));
     let handle = watch.hub.handle();
     assert_eq!(handle.id_of("BOX"), Some(MachineId(1)));
     assert_eq!(handle.id_of("this computer"), None);

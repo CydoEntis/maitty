@@ -86,7 +86,8 @@ fn write(file: &Path, doc: &toml_edit::DocumentMut) -> Result<()> {
     crate::files::write_atomic(file, doc.to_string()).context("writing config.local.toml")
 }
 
-/// What a machine may do to this computer, each off unless its entry says `true`.
+/// What a machine may do to this computer. Clipboard is on unless its entry says `false`; the
+/// others are off unless it says `true`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Grant {
     Clipboard,
@@ -104,6 +105,11 @@ impl Grant {
         }
     }
 
+    /// What a machine has when its entry does not name this grant (`MachineDef`'s default).
+    fn on_by_default(self) -> bool {
+        matches!(self, Grant::Clipboard)
+    }
+
     pub fn parse(key: &str) -> Option<Grant> {
         [Grant::Clipboard, Grant::Notices, Grant::Sounds]
             .into_iter()
@@ -111,8 +117,9 @@ impl Grant {
     }
 }
 
-/// Turn one of the entry's grants on or off. Off removes the key (a missing key means off), so the
-/// entry stays as short as it was. False when the file has no entry called `name`.
+/// Turn one of the entry's grants on or off. The grant's default removes the key, so the entry
+/// stays as short as it was; anything else is written, or a missing key would undo it on the next
+/// read. False when the file has no entry called `name`.
 pub fn set_grant(file: &Path, name: &str, grant: Grant, on: bool) -> Result<bool> {
     let mut doc = read(file)?;
     let Some(list) = doc
@@ -128,10 +135,10 @@ pub fn set_grant(file: &Path, name: &str, grant: Grant, on: bool) -> Result<bool
     }) else {
         return Ok(false);
     };
-    if on {
-        entry.insert(grant.key(), toml_edit::value(true));
-    } else {
+    if on == grant.on_by_default() {
         entry.remove(grant.key());
+    } else {
+        entry.insert(grant.key(), toml_edit::value(on));
     }
     write(file, &doc)?;
     Ok(true)
@@ -236,6 +243,19 @@ mod tests {
         assert!(machines[0].get("notices").is_none(), "{on}");
         assert!(on.contains("# mine") && on.contains("# here"), "{on}");
         assert!(set_grant(&file, "build", Grant::Notices, false).unwrap());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+    }
+
+    #[test]
+    fn turning_the_clipboard_off_is_written_so_the_next_read_keeps_it_off() {
+        let file = dir("grant-clipboard").join("config.local.toml");
+        let before = "[[machines]]\nname = 'build'\ntarget = 'build'\n";
+        std::fs::write(&file, before).unwrap();
+        let loaded = |file: &Path| machines_of(&read(file).unwrap());
+        assert!(loaded(&file)[0].clipboard, "on until the entry says otherwise");
+        assert!(set_grant(&file, "build", Grant::Clipboard, false).unwrap());
+        assert!(!loaded(&file)[0].clipboard);
+        assert!(set_grant(&file, "build", Grant::Clipboard, true).unwrap());
         assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
     }
 

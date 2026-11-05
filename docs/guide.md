@@ -635,11 +635,11 @@ A machine that needs an update or no app at all says `needs update`, with the ex
 `maitty machine update build --install`) and a **Copy command** button. The desktop app never installs or restarts
 anything on a machine: you run the command in a terminal.
 
-Each machine on that page has two switches, both off until you turn them on: **Copy to your clipboard** (what
-that machine's sessions ask to copy is put on your clipboard) and **Notifications** (its notices, and a notice when
-its sessions need you or finish, each starting with `[name]`). They are written to the machine's entry in
-`config.local.toml`, as `clipboard = true` and `notices = true`. The desktop app plays no sounds, so there is no
-switch for them.
+Each machine on that page has two switches. **Copy to your clipboard** (what that machine's sessions ask to
+copy is put on your clipboard) is on until you turn it off. **Notifications** (its notices, and a notice when
+its sessions need you or finish, each starting with `[name]`) is off until you turn it on. They are written to
+the machine's entry in `config.local.toml`, as `clipboard = false` and `notices = true`. The desktop app plays
+no sounds, so there is no switch for them.
 
 A new session (**New session**, ⌘T) starts where the focused session is. On another machine it asks for a
 folder there, starting at `~`, because the folder picker is this computer's; a folder that does not exist
