@@ -47,10 +47,11 @@ is_greater() {
 
 # True when every file that differs between commit $1 and dev's head is one ci never runs for.
 only_ci_ignored_paths_since() {
-  local checked
+  local changed
   git merge-base --is-ancestor "$1" "$dev" || return 1
-  checked=$(git diff --name-only "$1" "$dev" | grep -vE "$NO_CI_PATHS" || true)
-  [ -z "$checked" ]
+  # Without renames a source file moved into docs/ is listed under its old path as well.
+  changed=$(git diff --name-only --no-renames "$1" "$dev") || return 1
+  [ -z "$changed" ] || ! grep -qvE "$NO_CI_PATHS" <<<"$changed"
 }
 
 check_ci() {
@@ -99,19 +100,24 @@ worktree_head() {
   fi
 }
 
-remove_worktree() {
+# Runs however the script ends, an interrupt included. A tag made here that did not reach the
+# remote would make the next run refuse.
+clean_up() {
+  if [ -n "$tag_to_drop" ]; then git tag -d "$tag_to_drop"; fi
   git worktree remove --force "$worktree" 2>/dev/null || rm -rf "$worktree"
 }
 
 print_release_run() {
   local url='' try
+  echo "release: $tag is pushed"
   for try in $(seq "$RELEASE_RUN_POLLS"); do
+    # The release is out by now. A lookup that fails must not end the script as a failure.
     url=$(gh run list --workflow release --event push --limit 5 --json headBranch,url \
-      --jq "map(select(.headBranch == \"$tag\"))[0].url // empty")
+      --jq "map(select(.headBranch == \"$tag\"))[0].url // empty") || url=''
     if [ -n "$url" ]; then break; fi
     sleep "$RELEASE_RUN_POLL_SECONDS"
   done
-  echo "release: $tag is pushed. Its release run: ${url:-not listed yet, see the release workflow on GitHub}"
+  echo "release: its release run: ${url:-not listed yet, see the release workflow on GitHub}"
 }
 
 version=''
@@ -148,7 +154,8 @@ is_greater "$version" "$current" || die "$version is not greater than $current, 
 if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
   die "the tag $tag already exists in this repository"
 fi
-[ -z "$(remote_sha "refs/tags/$tag")" ] || die "the tag $tag already exists on $REMOTE"
+remote_tag=$(remote_sha "refs/tags/$tag") || die "could not read the tags on $REMOTE"
+[ -z "$remote_tag" ] || die "the tag $tag already exists on $REMOTE"
 
 if $skip_ci_check; then
   echo "release: --skip-ci-check: not checking that ci passed on dev's head ${dev:0:8}"
@@ -161,7 +168,8 @@ if $dry_run; then
   worktree='<temporary worktree>'
 else
   worktree=$(mktemp -d)
-  trap remove_worktree EXIT
+  tag_to_drop=''
+  trap clean_up EXIT
 fi
 
 run git worktree add --quiet --detach "$worktree" "$dev"
@@ -176,11 +184,18 @@ run git -C "$worktree" checkout --quiet --detach "$main"
 run git -C "$worktree" merge --quiet --no-ff -m "Merge dev into main for $tag" "$bump"
 merge=$(worktree_head '<merge commit>')
 run git tag "$tag" "$merge"
+if ! $dry_run; then tag_to_drop=$tag; fi
 
 if ! run git push --atomic "$REMOTE" "$bump:refs/heads/dev" "$merge:refs/heads/main" "refs/tags/$tag"; then
-  git tag -d "$tag"
-  die "the push was refused, so nothing was released"
+  # A push also fails when the connection drops after the remote has applied it.
+  if ! remote_tag=$(remote_sha "refs/tags/$tag"); then
+    tag_to_drop=''
+    die "the push failed and $REMOTE cannot be read to see whether $tag arrived. The local tag is kept: look before running this again"
+  fi
+  [ "$remote_tag" = "$merge" ] || die "the push was refused, so nothing was released"
+  echo "release: git push reported a failure, but $tag is on $REMOTE" >&2
 fi
+tag_to_drop=''
 
 if $dry_run; then
   echo "release: dry run: nothing was committed, tagged or pushed"
