@@ -1764,7 +1764,9 @@ export function DesktopApp() {
                 process={focusedSession.process}
                 availability={chatOf(focusedSession).availability}
                 root={focusedSession.repoRoot ?? focusedSession.cwd}
+                folder={focusedSession.cwd}
                 branch={focusedSession.branch}
+                onOpenInFiles={(file) => { openPath(focusedSession, file) }}
                 online={online}
                 chatOpen={chatOf(focusedSession).view === 'chat'}
                 onClose={sessionPanel.close}

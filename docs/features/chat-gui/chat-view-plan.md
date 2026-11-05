@@ -1,6 +1,6 @@
 # Plan: the Terminal / Chat view switch
 
-Status: in progress (CV-0 to CV-7, CV-9, CV-10 and CV-13 done; CV-8 shell, checklist and Agents done; CV-11 done; CV-12 follows) · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
+Status: in progress (CV-0 to CV-7, CV-9, CV-10 and CV-13 done; CV-8 shell, checklist and Agents done; CV-11 and CV-12 done) · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
 
 ## What it is
 
@@ -110,7 +110,7 @@ check for the view). Acceptance criteria are the bullets.
     this agent's worktree, the diff view, the per-line composer, the count
     marker, the comment bubble in chat, delivered as a structured comment
     `{file, line, text}` or queued while a step runs.
-12. **CV-12 Files and Artifacts segments (§C.2).**
+12. **CV-12 Files and Artifacts segments (§C.2).** **Done** (touched files with kind; artifacts are created documents, reports, data and pictures by extension, previewed as text through `conversation_file`; pictures are not previewable).
 13. **CV-13 Claude parity check.** Confirm the Claude adapter delivers approvals
     with ids and turn boundaries the way Codex's does (the roadmap did Codex
     first). Fill any gap in the adapter, with fake-provider tests.

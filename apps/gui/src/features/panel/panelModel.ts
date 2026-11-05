@@ -74,8 +74,14 @@ export type TouchedFile = {
 
 const READ_TOOLS: readonly string[] = ['Read', 'NotebookRead']
 
-function editKind(event: EditEvent): 'edited' | 'created' {
-  return event.change === 'add' ? 'created' : 'edited'
+/**
+ * Codex says whether a patch adds a file. Claude's `Write` does not, but Claude Code refuses to
+ * overwrite a file it has not read in the session, so a `Write` to a file the agent had not touched
+ * before is a new file. Anything else that changes a file is an edit.
+ */
+function editKind(event: EditEvent, before: TouchedFile | undefined): 'edited' | 'created' {
+  if (event.change === 'add') return 'created'
+  return event.tool === 'Write' && event.change === 'unknown' && before === undefined ? 'created' : 'edited'
 }
 
 /**
@@ -90,7 +96,7 @@ export function touchedFilesOf(events: readonly ChatEvent[]): TouchedFile[] {
       const diff = event.diff.status === 'available' ? event.diff : null
       files.set(event.file, {
         file: event.file,
-        kind: before?.kind === 'created' ? 'created' : editKind(event),
+        kind: before?.kind === 'created' ? 'created' : editKind(event, before),
         added: (before?.kind === 'read' ? 0 : before?.added ?? 0) + (diff?.added ?? 0),
         removed: (before?.kind === 'read' ? 0 : before?.removed ?? 0) + (diff?.removed ?? 0),
       })

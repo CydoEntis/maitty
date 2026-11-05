@@ -799,3 +799,15 @@ view too. Local sessions only.
   one `useChatComposer` delivers a conversation's queue: the chat's when it is open, otherwise the panel's
   (`QueueDelivery`), so a comment is sent once. A line with comments shows a count pill whose label lists them, and
   the file row a badge. The written comments are the window's memory only (`commentStore.ts`).
+- **Files and Artifacts** (`FilesSegment.tsx`, `ArtifactsSegment.tsx`, `artifacts.ts`). The segment bar is
+  Changes, Files, Artifacts, each with a count. **Files** lists what the agent's tool calls named, in the order it
+  first touched them: Edited (amber), Created (green), Read (dim), with `+a -d` for edits. An edited or created file
+  that the worktree still has a diff for opens that diff; any other (a file only read, or one committed since) opens
+  in the Inspect drawer's Files view. Claude's `Write` does not say whether it created the file, but Claude Code
+  will not overwrite a file it has not read, so a `Write` to an untouched path counts as a new file (Codex says
+  `add`). **Artifacts** are the created files that are documents, reports, data or pictures (by extension: md, mdx,
+  txt, rst, html, json, csv, xml, log, png, jpg, gif, webp, svg); the daemon has no artifact concept. A card has a
+  tinted tile, the file name and a subtitle. Opening one reads it with `conversation_file` (UTF-8 text, size
+  limited by the daemon, path relative to the session's folder) and shows it as text, markdown drawn through the
+  safe renderer; a picture cannot be shown because files arrive as text, so it offers the Files drawer. The
+  daemon's `conversation_files` listing is not used: the panel shows what the session touched, not the project tree.

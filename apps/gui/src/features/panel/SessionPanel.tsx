@@ -14,11 +14,14 @@ import { relativePath } from '@/features/chat/stepInfo'
 import { useTipWithKeys } from '@/features/shortcuts/platform'
 import { AppIcon } from '@/features/workspace/components/glyphs'
 import type { ChatAgent, ChatAvailability, ChatLink } from '@/features/workspace/model/chatView'
+import { ArtifactsSegment } from './ArtifactsSegment'
+import { artifactsOf } from './artifacts'
 import { ChangesSegment } from './ChangesSegment'
 import { ChecklistCard } from './ChecklistCard'
 import { addComment, useComments } from './commentStore'
 import { DiffView } from './DiffView'
-import { checklistOf, currentItemSince, emptyReason, helperAgentsOf } from './panelModel'
+import { FilesSegment } from './FilesSegment'
+import { checklistOf, currentItemSince, emptyReason, helperAgentsOf, touchedFilesOf } from './panelModel'
 import { consumeDiffRequest, useDiffRequest } from './panelCommands'
 
 /** The docked panel is 320px wide, 520px while a diff is open (v18 C.2). */
@@ -34,8 +37,10 @@ type Props = {
   title: string
   process: string
   availability: ChatAvailability
-  /** The session's folder, so an edit's absolute path finds its file in the diff. */
+  /** The repository's root, so an edit's absolute path finds its file in the diff. */
   root: string | null
+  /** The session's own folder, which the daemon reads project files from. */
+  folder: string | null
   branch: string | null
   /** The daemon is connected, so a comment can be delivered. */
   online: boolean
@@ -43,6 +48,8 @@ type Props = {
   chatOpen: boolean
   width: number
   onWide: (wide: boolean) => void
+  /** Shows a file in the Inspect drawer's Files view. */
+  onOpenInFiles: (file: string) => void
   onClose: () => void
 }
 
@@ -83,16 +90,22 @@ function QueueDelivery({ link, feed, online, refresh }: { link: ChatLink; feed: 
 const SEGMENT = 'h-7 flex-1 rounded-md px-2 text-[12px] text-dim data-[state=active]:bg-hover data-[state=active]:text-fg hover:text-fg'
 
 /** What the session's own events say: its checklist, helper agents and worktree changes. Mounted only for a session with a chat link. */
-function AgentBody({ link, agent, root, branch, online, chatOpen, onWide }: { link: ChatLink; agent: ChatAgent; root: string | null; branch: string | null; online: boolean; chatOpen: boolean; onWide: (wide: boolean) => void }) {
+function AgentBody({ link, agent, root, folder, branch, online, chatOpen, onWide, onOpenInFiles }: { link: ChatLink; agent: ChatAgent; root: string | null; folder: string | null; branch: string | null; online: boolean; chatOpen: boolean; onWide: (wide: boolean) => void; onOpenInFiles: (file: string) => void }) {
   const { feed, events, refresh } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const working = feed.status === 'Working'
   const { checklist, unreadable } = useMemo(() => checklistOf(events), [events])
   const helpers = useMemo(() => helperAgentsOf(events), [events])
   const since = useMemo(() => (checklist === null ? null : currentItemSince(events, checklist)), [events, checklist])
   const comments = useComments(link.conversation)
+  const touched = useMemo(() => touchedFilesOf(events), [events])
+  // The agent names files by absolute path; the panel shows and asks the daemon for them relative to the project.
+  const showPath = useCallback((file: string) => relativePath(file.replace(/\\/g, '/'), root), [root])
+  const readPathOf = useCallback((file: string) => relativePath(file.replace(/\\/g, '/'), folder ?? root), [folder, root])
+  const artifacts = useMemo(() => artifactsOf(touched, showPath), [touched, showPath])
 
   const [segment, setSegment] = useState('changes')
   const [diffFile, setDiffFile] = useState<string | null>(null)
+  const [artifactFile, setArtifactFile] = useState<string | null>(null)
 
   const diff = useQuery({
     queryKey: ['session-diff', link.conversation, link.generation],
@@ -179,10 +192,24 @@ function AgentBody({ link, agent, root, branch, online, chatOpen, onWide }: { li
       <Tabs.Root value={segment} onValueChange={setSegment} className="flex flex-col gap-2">
         <Tabs.List aria-label="Session panel sections" className="flex gap-1 rounded-lg border border-line2 bg-raise p-0.5">
           <Tabs.Trigger value="changes" className={SEGMENT}>Changes{changeCount === undefined ? '' : ` · ${String(changeCount)}`}</Tabs.Trigger>
+          <Tabs.Trigger value="files" className={SEGMENT}>Files · {touched.length}</Tabs.Trigger>
+          <Tabs.Trigger value="artifacts" className={SEGMENT}>Artifacts · {artifacts.length}</Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content value="changes" className="outline-none">
           {missing !== null && <p role="status" className="m-0 mb-2 rounded-lg border border-line2 bg-raise px-2.5 py-1.5 text-[12px] text-dim">{missing} has no changes in the worktree now.</p>}
           <ChangesSegment query={diff} branch={branch} comments={comments} onOpen={(path) => { setMissing(null); setDiffFile(path) }} />
+        </Tabs.Content>
+        <Tabs.Content value="files" className="outline-none">
+          <FilesSegment
+            files={touched}
+            displayPath={showPath}
+            hasDiff={(path) => diff.data?.files.some((file) => file.path === path) === true}
+            onOpenDiff={(file) => { setSegment('changes'); setDiffFile(showPath(file)) }}
+            onOpenInFiles={onOpenInFiles}
+          />
+        </Tabs.Content>
+        <Tabs.Content value="artifacts" className="outline-none">
+          <ArtifactsSegment artifacts={artifacts} target={link} readPathOf={readPathOf} open={artifactFile} onOpen={setArtifactFile} onOpenInFiles={onOpenInFiles} />
         </Tabs.Content>
       </Tabs.Root>
     </>
@@ -195,7 +222,7 @@ function AgentBody({ link, agent, root, branch, online, chatOpen, onWide }: { li
  * session with no agent or no event stream says why there is nothing to show. Docked beside the
  * panes on a wide window, an overlay on a compact one.
  */
-export function SessionPanel({ mode, title, process, availability, root, branch, online, chatOpen, width, onWide, onClose }: Props) {
+export function SessionPanel({ mode, title, process, availability, root, folder, branch, online, chatOpen, width, onWide, onOpenInFiles, onClose }: Props) {
   const agent = availability.kind === 'ready' ? availability.agent : null
   const body = (
     <aside
@@ -206,7 +233,7 @@ export function SessionPanel({ mode, title, process, availability, root, branch,
       <Header title={title} process={process} agent={agent} onClose={onClose} />
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
         {availability.kind === 'ready'
-          ? <AgentBody key={availability.link.conversation} link={availability.link} agent={availability.agent} root={root} branch={branch} online={online} chatOpen={chatOpen} onWide={onWide} />
+          ? <AgentBody key={availability.link.conversation} link={availability.link} agent={availability.agent} root={root} folder={folder} branch={branch} online={online} chatOpen={chatOpen} onWide={onWide} onOpenInFiles={onOpenInFiles} />
           : <Nothing>{emptyReason(availability)}</Nothing>}
       </div>
     </aside>

@@ -8,9 +8,11 @@ type Props = {
   process: string
   availability: ChatAvailability
   root: string | null
+  folder: string | null
   branch: string | null
   online: boolean
   chatOpen: boolean
+  onOpenInFiles: (file: string) => void
   onClose: () => void
   /** Tells the window how wide the docked panel is (0 once it is gone), so other drawers can sit beside it. */
   onDockedWidth: (width: number) => void

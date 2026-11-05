@@ -57,6 +57,7 @@ const link = { conversation: FAKE_CONVERSATION, generation: 1 }
 const ready = { kind: 'ready', agent: 'claude', link } as const
 
 let widths: boolean[] = []
+let opened: string[] = []
 
 function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }))
@@ -77,9 +78,10 @@ function open(options: { chatOpen?: boolean; online?: boolean; status?: 'Idle' |
   fake.history = history
   fake.diff = () => Promise.resolve(DIFF)
   widths = []
+  opened = []
   render(
     <Providers>
-      <SessionPanel mode="docked" title="fix tests" process="claude" availability={ready} root="/repo" branch="feat/fix" online={options.online ?? true} chatOpen={options.chatOpen ?? false} width={320} onWide={(wide) => { widths.push(wide) }} onClose={() => undefined} />
+      <SessionPanel mode="docked" title="fix tests" process="claude" availability={ready} root="/repo" folder="/repo" onOpenInFiles={(file) => { opened.push(file) }} branch="feat/fix" online={options.online ?? true} chatOpen={options.chatOpen ?? false} width={320} onWide={(wide) => { widths.push(wide) }} onClose={() => undefined} />
       <QueueProbe />
     </Providers>,
   )

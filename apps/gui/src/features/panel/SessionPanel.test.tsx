@@ -18,7 +18,7 @@ vi.mock('@/api/daemon', async (importOriginal) => ({
   loadTargetDiff: () => Promise.resolve({ files: [], additions: 0, deletions: 0, total_files: 0, truncated: false }),
 }))
 
-const base = { root: null, branch: null, online: true, chatOpen: false, width: 320, onWide: () => undefined } as const
+const base = { root: null, folder: null, branch: null, online: true, chatOpen: false, width: 320, onWide: () => undefined, onOpenInFiles: () => undefined } as const
 
 function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }))
