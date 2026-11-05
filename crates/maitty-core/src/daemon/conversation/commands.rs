@@ -1265,6 +1265,14 @@ impl Daemon {
                     .terms
                     .values()
                     .find(|term| term.conversation_id == Some(c.id));
+                // Read for a chat session only: a native record has its pane, which carries this.
+                let checkout = (c.execution == ExecutionKind::Structured)
+                    .then(|| {
+                        crate::gitfs::head(
+                            c.binding.worktree.as_deref().unwrap_or(&c.binding.cwd),
+                        )
+                    })
+                    .flatten();
                 ConversationSummary {
                     id: c.id,
                     generation: c.generation,
@@ -1300,6 +1308,8 @@ impl Daemon {
                     checks: state.map_or_else(Vec::new, |s| s.checks.infos()),
                     title: c.title.clone(),
                     archived: c.archived,
+                    root: checkout.as_ref().map(|head| head.main_root.clone()),
+                    branch: checkout.map(|head| head.branch),
                 }
             })
             .collect();
@@ -1319,6 +1329,8 @@ impl Daemon {
                 checks: Vec::new(),
                 title: None,
                 archived: false,
+                root: None,
+                branch: None,
             })
         }));
         summaries.extend(self.pending_starts.iter().map(|p| {
@@ -1338,6 +1350,8 @@ impl Daemon {
                 checks: Vec::new(),
                 title: None,
                 archived: false,
+                root: None,
+                branch: None,
             }
         }));
         summaries

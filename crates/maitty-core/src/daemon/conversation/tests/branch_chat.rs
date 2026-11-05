@@ -151,6 +151,12 @@ async fn a_chat_on_a_branch_starts_in_its_own_worktree_and_the_daemon_owns_it() 
         assert_eq!(summary.execution, crate::conversation::ExecutionKind::Structured);
         assert_eq!(summary.native_term, None);
         assert_eq!(summary.cwd, folder);
+        // The list groups it with its project and shows its branch.
+        assert_eq!(summary.branch.as_deref(), Some("chat/one"));
+        assert_eq!(
+            summary.root.as_ref().map(|root| root.canonicalize().unwrap()),
+            Some(repo.canonicalize().unwrap())
+        );
 
         // A branch that is taken says so and starts nothing.
         let message = start_on(settings(&session), "chat/one");

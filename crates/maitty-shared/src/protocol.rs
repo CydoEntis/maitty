@@ -60,6 +60,13 @@ pub struct ConversationSummary {
     /// Put away: hidden from the lists, still running.
     #[serde(default)]
     pub archived: bool,
+    /// The main checkout of the repository the conversation works in, so a chat session sits with its
+    /// project in a list (ADR 0054). Absent outside git.
+    #[serde(default)]
+    pub root: Option<PathBuf>,
+    /// The branch checked out there.
+    #[serde(default)]
+    pub branch: Option<String>,
 }
 
 /// Which app a client is. A terminal session belongs to the app that started it, and only
@@ -1676,6 +1683,8 @@ mod tests {
             summary.execution,
             crate::conversation::ExecutionKind::Structured
         );
+        // `root` and `branch` (a chat session's project, ADR 0054) are defaulted too.
+        assert_eq!((summary.root, summary.branch), (None, None));
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
