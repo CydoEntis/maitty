@@ -479,6 +479,8 @@ impl App {
                                         cmd,
                                         split: None,
                                         from: None,
+                                        agent: None,
+                                        prompt: None,
                                     });
                                 }
                             }

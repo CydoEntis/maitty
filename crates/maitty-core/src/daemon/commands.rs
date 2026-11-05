@@ -395,7 +395,33 @@ impl Daemon {
                 cmd,
                 split,
                 from,
+                agent,
+                prompt,
             } => {
+                // A start that names an agent is the "new agent on a branch" request: every
+                // part of it is checked here, before anything is made.
+                let cmd = if agent.is_some() || prompt.is_some() {
+                    if cmd.is_some() {
+                        anyhow::bail!("name an agent or give a command, not both");
+                    }
+                    if let Some(problem) = branch_agent::branch_problem(&branch) {
+                        anyhow::bail!("{problem}");
+                    }
+                    let project = from
+                        .clone()
+                        .map(clean_path)
+                        .filter(|d| d.is_dir() && self.is_known_project(d))
+                        .ok_or_else(|| anyhow::anyhow!("that is not a project in the app"))?;
+                    if crate::gitfs::head(&project).is_none() {
+                        anyhow::bail!("{} is not in a git repository", project.display());
+                    }
+                    Some(
+                        branch_agent::start_line(&self.cfg, agent.as_deref(), prompt.as_deref())
+                            .map_err(anyhow::Error::msg)?,
+                    )
+                } else {
+                    cmd
+                };
                 let by =
                     self.starting(client, &helpers::task_label(cmd.as_deref(), Some(&branch)))?;
                 let ws_dir = self.ws_mut(ws)?.cwd.clone();

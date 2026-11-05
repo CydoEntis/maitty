@@ -1330,6 +1330,8 @@ pub fn worktree(
         cmd: join_command(cmd),
         split: None,
         from: None,
+        agent: None,
+        prompt: None,
     })
 }
 

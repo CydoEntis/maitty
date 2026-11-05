@@ -5,6 +5,7 @@
 //! channel, so there is no locking around the model.
 
 mod approvals;
+mod branch_agent;
 mod check;
 pub use check::first_failing_line;
 mod check_source;
@@ -2929,6 +2930,8 @@ fn home() -> PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
 }
 
+#[cfg(test)]
+mod branch_agent_tests;
 #[cfg(test)]
 mod logic_tests;
 
