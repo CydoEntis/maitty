@@ -327,3 +327,15 @@ on another machine (needs remote chat; reuse `send_files_to_machine` / `send_pas
 far-side path in the message, behind the `machine` argument that already exists), a structured field
 (Codex `localImage`, Claude image blocks) if path-in-text proves weak, and thumbnails for picked or
 dropped images (the window never reads those files).
+
+## 21. An intermittent Rust test failure (bug, `tooling`)
+
+On the merged tree (948786e) one `cargo test` run (without `--no-fail-fast`, so it stopped early at 832
+tests) exited 101 with 1 test failed; two reruns of the whole suite passed (2293 passed, 0 failed) and
+the first run's log did not keep the test name. A daemon helper saw
+`structured_local_ipc_create_send_read_reconnect_and_exact_identity` fail once under load, but it
+passes 6 of 6 in isolation, so the culprit is not confirmed. Next time it happens, keep the log, name
+the test, and fix its timing instead of retrying. The three slow `maitty-terminal-client` shell tests
+(`remote_status_tests::a_remote_agents_row_is_what_its_daemon_reported_and_follows_its_next_report`,
+`cli_machine_tests::send_and_wait_use_the_remote_pane_s_screen`,
+`mcp_machine_tests::an_agent_lists_reads_and_sends_to_another_machine_s_panes`) also time out under load.
