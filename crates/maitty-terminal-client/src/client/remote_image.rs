@@ -1,6 +1,6 @@
 //! Pasting the clipboard image, or sending any file, into a pane of another machine. The file is
 //! on this computer and the pane's programs run there, so it is sent over the machine's own
-//! hardened ssh line as a file the far side keeps (`remote_paste`, ADR 0049 and 0050), and the
+//! hardened ssh line as a file the far side keeps (`remote_paste`, ADR 0049 and 0055), and the
 //! path it names is typed into the pane, as a local paste types a local path. Run it off the UI
 //! thread: reading the clipboard and the upload both take a while.
 

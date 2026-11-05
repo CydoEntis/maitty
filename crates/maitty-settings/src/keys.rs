@@ -237,7 +237,7 @@ pub enum Action {
     /// Save the clipboard's image to a file and paste its path (agents attach it).
     PasteImage,
     /// Send a file from this computer to the machine the pane is on, and paste its path there;
-    /// pressed again while a file is being sent, stop it (ADR 0050).
+    /// pressed again while a file is being sent, stop it (ADR 0055).
     SendFile,
     /// Find a file (0) or search the code (1).
     Find(u8),

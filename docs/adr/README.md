@@ -67,8 +67,8 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0047](0047-multiple-machines.md) | One terminal app, several machines | Accepted, amended by 0048 |
 | [0048](0048-machines-in-the-desktop-app.md) | Machines in the desktop app, through one shared crate | Accepted |
 | [0049](0049-image-paste-to-another-machine.md) | A pasted image reaches another machine as a file sent over its own ssh line | Proposed |
-| [0050](0050-send-files-to-another-machine.md) | Any file can be sent to another machine, over the same ssh line as an image | Proposed |
 | [0051](0051-the-daemon-keeps-provider-reported-usage.md) | The daemon keeps provider-reported usage per session per day, never estimated | Accepted |
 | [0052](0052-an-agent-in-a-pane-gets-a-read-only-conversation.md) | An agent in a pane gets a read-only conversation that follows its own transcript | Accepted |
 | [0053](0053-chat-attachments-are-files-named-in-the-message.md) | A chat attachment is a file in a private cache, named by path in the message text | Proposed |
 | [0054](0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md) | A chat session is a daemon-owned structured conversation started from the desktop | Proposed |
+| [0055](0055-send-files-to-another-machine.md) | Any file can be sent to another machine, over the same ssh line as an image | Proposed |

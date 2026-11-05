@@ -11,7 +11,7 @@ export type DropRoute =
 /**
  * Where files dropped on a pane go. On this computer their paths are typed into the pane. On
  * another machine a path here names nothing there, so the files are sent to it and the paths they
- * land at are typed instead (ADR 0050); more than the limit are refused whole, never cut.
+ * land at are typed instead (ADR 0055); more than the limit are refused whole, never cut.
  */
 export function routeDrop(sessionId: string, paths: readonly string[], windows: boolean): DropRoute | null {
   const named = paths.filter((path) => path !== '')

@@ -27,7 +27,7 @@ export type SentAttachment = { readonly path: string; readonly name: string; rea
 /** Characters that are not text: control, format (zero-width, direction overrides) and separators. */
 const NOT_TEXT = /[\p{C}\p{Zl}\p{Zp}]/gu
 
-// A file kept on this computer is `attach-…`; one sent to another machine is `paste-…` (ADR 0050).
+// A file kept on this computer is `attach-…`; one sent to another machine is `paste-…` (ADR 0055).
 const KEPT_PREFIX = /^(?:attach|paste)-\d+-[0-9a-f]{8}-/
 const PASTED = /^paste-\d+-[0-9a-f]{8}(?:-image)?(\.[A-Za-z0-9]+)$/
 const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp)$/i

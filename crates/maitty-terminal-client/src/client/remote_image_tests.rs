@@ -180,7 +180,7 @@ fn a_login_that_fails_says_so_and_sends_nothing() {
     assert!(remote.pastes().is_empty());
 }
 
-// Sending any file (ADR 0050).
+// Sending any file (ADR 0055).
 
 impl Remote {
     fn file(&self, name: &str, bytes: &[u8]) -> PathBuf {

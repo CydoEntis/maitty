@@ -1,4 +1,4 @@
-# 0050. Any file can be sent to another machine, over the same ssh line as an image
+# 0055. Any file can be sent to another machine, over the same ssh line as an image
 
 - **Status:** Proposed
 - **Date:** 2026-11-04

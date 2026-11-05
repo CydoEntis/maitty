@@ -24,7 +24,7 @@ const noun = (count: number) => (count === 1 ? 'file' : 'files')
 
 /**
  * Sends files for a chat on another machine and tells `onLanded` of each one that arrived (ADR 0053).
- * It is the pane's send (ADR 0050: the host's `send_files_to_machine` / `send_pasted_image`, its caps,
+ * It is the pane's send (ADR 0055: the host's `send_files_to_machine` / `send_pasted_image`, its caps,
  * its private far-side folder, its progress toast with Cancel) with the chat's ending: the far-side path
  * is not typed into a pane but kept for the message. Resolves when the send has ended, however it ended.
  */

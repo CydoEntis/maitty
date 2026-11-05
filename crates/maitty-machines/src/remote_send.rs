@@ -1,5 +1,5 @@
 //! Sending a pasted image, or any file, to another machine over its own hardened ssh line
-//! (ADR 0049, 0050), shared by the terminal app and the desktop app. The caller runs it off its
+//! (ADR 0049, 0055), shared by the terminal app and the desktop app. The caller runs it off its
 //! UI thread: the upload takes a while. It returns the file's path on the far side, already
 //! checked by `remote_paste::pasted_path`; typing that path into a pane is the caller's job.
 

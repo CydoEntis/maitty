@@ -330,7 +330,7 @@ on disk. A zip is never unpacked. Nothing but `attach-` files of that folder is 
 to probe the disk. The message stores the path and name, never the bytes; sending a file to the agent is the person's
 own act and is not scanned (secrets stay out of chat, ADR 0036).
 
-Sending any file to another machine (`client/send_file.rs`, ADR 0050) is the same line and the same script;
+Sending any file to another machine (`client/send_file.rs`, ADR 0055) is the same line and the same script;
 only the name, the cap and the trigger differ. A file is read from this computer only when the person
 names it in the send prompt (a terminal cannot tell a drop from a paste, so a paste of text never
 uploads a file, even when the text is a path); it must be a regular file, at most 100 MB, checked before ssh

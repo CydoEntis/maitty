@@ -443,7 +443,7 @@ enum PromptKind {
     ConfirmRemoveWorktree(WsId),
     /// A file to copy into the project's references: (project root, folder a relative path starts from).
     AddReference(PathBuf, PathBuf),
-    /// A file on this computer to send to the machine this pane is on (ADR 0050).
+    /// A file on this computer to send to the machine this pane is on (ADR 0055).
     SendFile(ClientTerm),
 }
 
@@ -518,7 +518,7 @@ pub struct App {
     notice_restart: bool,
     /// The toast is a hint about keys, not news: it is marked `i`, not ✓.
     notice_hint: bool,
-    /// The file being sent to another machine, if any (ADR 0050).
+    /// The file being sent to another machine, if any (ADR 0055).
     sending: Option<send_file::Sending>,
     /// The toast's second and third rows, when the notice has them.
     notice_card: Option<NoticeCard>,

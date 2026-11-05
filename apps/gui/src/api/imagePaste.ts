@@ -1,7 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 
 /**
- * Pasting an image into a pane (ticket 19, ADRs 0049 and 0050). The image travels as the raw body of
+ * Pasting an image into a pane (ticket 19, ADRs 0049 and 0055). The image travels as the raw body of
  * a command, never as base64 in an event; the machine and the send's id ride in headers. The host
  * checks the bytes (a PNG, JPEG, GIF or WebP signature, at most 25 MB), keeps them in its private
  * cache and either returns the path on this computer or sends them to the machine as files are sent,

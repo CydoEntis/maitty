@@ -1,4 +1,4 @@
-//! Pasting an image into a pane (tickets 19 and 20, ADR 0049, 0050). The window reads the
+//! Pasting an image into a pane (tickets 19 and 20, ADR 0049, 0055). The window reads the
 //! clipboard image and hands the host its bytes as the raw body of a command, never as base64 in
 //! an event. The host checks them at the boundary (a PNG, JPEG, GIF or WebP signature, at most
 //! 25 MB), keeps them in the app's private cache and either

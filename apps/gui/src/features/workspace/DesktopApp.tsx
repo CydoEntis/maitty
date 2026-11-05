@@ -473,7 +473,7 @@ export function DesktopApp() {
   })
   // Files dropped on a pane type their paths into it; the pane under the pointer, else the focused one.
   // On another machine's pane a path here names nothing there, so the files are sent to it and the
-  // paths they land at are typed instead (ADR 0050).
+  // paths they land at are typed instead (ADR 0055).
   useFileDrop((paths, at) => {
     const under = document.elementFromPoint(at.x, at.y)
     // A drop on a chat composer attaches the files to its message; it is not a drop on the pane around it (ticket 20).

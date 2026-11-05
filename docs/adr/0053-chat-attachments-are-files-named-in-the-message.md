@@ -4,7 +4,7 @@
 - **Date:** 2026-11-04
 - **Relates to:** [0036](0036-secrets-never-enter-chat.md) (secrets and chat);
   [0049](0049-image-paste-to-another-machine.md) and
-  [0050](0050-send-files-to-another-machine.md) (the image and file caps, the private cache, the
+  [0055](0055-send-files-to-another-machine.md) (the image and file caps, the private cache, the
   transfer to another machine); [0052](0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)
   (read-only chats have no composer)
 
@@ -55,7 +55,7 @@ terminal pane works today (ADR 0049).
    it as ordinary text.
 8. **Another machine.** The composer's attachment intake takes a machine (null for this computer).
    For a machine, a picked or dropped file goes through `send_files_to_machine` and a pasted
-   image (Ctrl+Shift+V, Cmd+V) through `send_pasted_image`, the paths of ADR 0049/0050 and nothing
+   image (Ctrl+Shift+V, Cmd+V) through `send_pasted_image`, the paths of ADR 0049/0055 and nothing
    new on the host: the same checks (regular file, 100 MB; image signature, 25 MB; at most 10),
    the same far-side private folder and name (`paste-<ms>-<salt>-<cleaned name>`), the same
    one-send-at-a-time rule, and the same progress toast with Cancel. Each file is sent when it is
@@ -65,7 +65,7 @@ terminal pane works today (ADR 0049).
    line to the message block); it is written in the message as-is, a line of text and not a
    shell word, so no quoting applies. The `sent` event carries the file's size for the chip. A
    send that stops half way keeps the files that landed. No local copy is made. The far side
-   keeps the file for a week like any send (0050); removing a chip, or never sending the
+   keeps the file for a week like any send (0055); removing a chip, or never sending the
    message, does not delete it, because there is no remote delete. A sent message's chips for a
    far-side path cannot be checked with `attachments_exist`, which only knows this computer.
    A chat on another machine does not exist yet (0047, 0054), so nothing sets the chat link's

@@ -29,7 +29,7 @@ const noun = (count: number) => (count === 1 ? 'file' : 'files')
 
 /**
  * Files dropped on a pane of another machine: starts the send, shows a progress toast with Cancel,
- * and types each path the machine kept the file at into the pane as it lands (ADR 0050). The host
+ * and types each path the machine kept the file at into the pane as it lands (ADR 0055). The host
  * does the work off the UI thread and only reports back.
  */
 export function useFileSends({ typeInto }: Options) {
