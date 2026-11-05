@@ -655,11 +655,10 @@ impl App {
                 self.screen_new_session(dir, None, false);
             }
             // One place: what needs you on top, and type to go anywhere.
-            Action::Message | Action::Why => {
+            Action::Message => {
                 let side = self.mode == Mode::Side || self.screen.cursor.is_some();
                 match self.selected_term() {
-                    Some(term) if *a == Action::Message => self.start_compose(term, side, None),
-                    Some(term) => self.mode = Mode::Why { term, side },
+                    Some(term) => self.start_compose(term, side, None),
                     None => self.notify("no session to ask about".into(), true),
                 }
             }
@@ -1843,13 +1842,12 @@ impl App {
                     self.screen_side_set(SideItem::Proj(key));
                 }
             }
-            // Opens it, and the arrows keep walking the sidebar until you type or press Enter.
-            ScreenHit::Session(t) => {
-                if let Some(term) = self.session_term(t) {
-                    self.screen_focus(term);
-                }
-                self.screen_side_set(SideItem::Sess(t));
-            }
+            // Opens it, as a click on one of its tabs does: the keys go to its pane. A session
+            // with no pane has nothing to type into, so the sidebar keeps them on its row.
+            ScreenHit::Session(t) => match self.session_term(t) {
+                Some(term) => self.screen_focus(term),
+                None => self.screen_side_set(SideItem::Sess(t)),
+            },
             // From the splash's banner too, which then goes.
             ScreenHit::Update => {
                 self.splash = false;
@@ -1860,13 +1858,6 @@ impl App {
                 self.ask_restart();
             }
             ScreenHit::AddMachine => self.open_machines(),
-            ScreenHit::Why(term) => {
-                self.mode = Mode::Why {
-                    term,
-                    side: matches!(self.mode, Mode::Side),
-                };
-            }
-            ScreenHit::CheckEvidence(term) => self.open_check_sheet(term),
             ScreenHit::TidyRow(i) => self.tidy_click(i),
             ScreenHit::TidyGo => {
                 if let Mode::Tidy(v) = std::mem::replace(&mut self.mode, Mode::Normal) {
@@ -2140,8 +2131,9 @@ impl App {
                     self.screen.splash_away_sel = i;
                 }
             }
-            // Left-clicking a machine line does nothing; its menu is on the right-click.
-            ScreenHit::MachineRow(_) => {}
+            // A click on a machine's line opens the dialog on that machine: how it stands, the
+            // fix, and the keys that reconnect, update or remove it.
+            ScreenHit::MachineRow(machine) => self.open_machines_on(machine),
             // The tool rail: its chip opens that tool, or closes it when it is the one open.
             ScreenHit::Tool(i) => {
                 if let Some((_, _, _, action)) = sheet::DRAWER_TABS.get(i) {

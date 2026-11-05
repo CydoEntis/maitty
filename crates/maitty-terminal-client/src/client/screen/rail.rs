@@ -31,11 +31,18 @@ fn session_segs(app: &App, s: &Session, on: bool, lit: bool, ground: Color, t: &
     let plain = super::side::plain_shell(s);
     let (glyph, colour) = if plain {
         ("›", t.muted)
-    } else if super::side::is_new(s) {
-        (mark.glyph, t.accent)
     } else {
         (mark.glyph, mark.color)
     };
+    // With `ui.rounded = full` the selection is the pill the open sidebar's rows wear, the glyph
+    // between its two caps, and no bar.
+    if on && Look::of(&app.cfg.ui).caps {
+        let st = Style::default().bg(t.sel_bg());
+        return round_ends(
+            vec![seg(glyph, st.fg(colour).add_modifier(Modifier::BOLD))],
+            ground,
+        );
+    }
     let bg = if on { t.card2 } else { ground };
     let st = Style::default().bg(bg);
     vec![
@@ -49,7 +56,19 @@ fn session_segs(app: &App, s: &Session, on: bool, lit: bool, ground: Color, t: &
     ]
 }
 
+/// What fills the three cells inside the box as a chip: `text` on the raised ground. With
+/// `ui.rounded = full` one character is a pill, between two caps on `ground`; anything wider
+/// has no cell to spare for them and stays square.
+fn chip_segs(app: &App, text: &str, style: Style, ground: Color) -> Vec<Seg> {
+    if Look::of(&app.cfg.ui).caps && text.width() == 1 {
+        round_ends(vec![seg(text, style)], ground)
+    } else {
+        vec![seg(format!("{text:^3}"), style)]
+    }
+}
+
 /// A small chip (`»`, `+`, `≡`) filling the three cells inside the box, on the raised ground.
+#[allow(clippy::too_many_arguments)]
 fn chip(
     app: &mut App,
     buf: &mut Buffer,
@@ -57,21 +76,15 @@ fn chip(
     y: u16,
     symbol: &str,
     hit_as: ScreenHit,
+    ground: Color,
     t: &Theme,
 ) {
-    put(
-        buf,
-        inner.x,
-        y,
-        &[seg(
-            format!(" {symbol} "),
-            Style::default()
-                .fg(t.strong)
-                .bg(t.btn)
-                .add_modifier(Modifier::BOLD),
-        )],
-        inner.right(),
-    );
+    let style = Style::default()
+        .fg(t.strong)
+        .bg(t.btn)
+        .add_modifier(Modifier::BOLD);
+    let segs = chip_segs(app, symbol, style, ground);
+    put(buf, inner.x, y, &segs, inner.right());
     hit(
         app,
         Rect {
@@ -150,7 +163,16 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
     } else {
         "»"
     };
-    chip(app, buf, inner, area.y, arrow, ScreenHit::ExpandSidebar, t);
+    chip(
+        app,
+        buf,
+        inner,
+        area.y,
+        arrow,
+        ScreenHit::ExpandSidebar,
+        ground,
+        t,
+    );
     // How many need you, in amber, under it.
     let needing = model
         .iter()
@@ -158,19 +180,16 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
         .filter(|s| check::needs_you(s))
         .count();
     if needing > 0 {
-        put(
-            buf,
-            inner.x,
-            inner.y,
-            &[seg(
-                format!("{needing:^3}"),
-                Style::default()
-                    .fg(t.blocked)
-                    .bg(t.btn)
-                    .add_modifier(Modifier::BOLD),
-            )],
-            inner.right(),
+        let count = chip_segs(
+            app,
+            &needing.to_string(),
+            Style::default()
+                .fg(t.blocked)
+                .bg(t.btn)
+                .add_modifier(Modifier::BOLD),
+            ground,
         );
+        put(buf, inner.x, inner.y, &count, inner.right());
         hit(
             app,
             Rect {
@@ -188,6 +207,7 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
         inner.bottom() - 2,
         "+",
         ScreenHit::NewShell,
+        ground,
         t,
     );
     chip(
@@ -197,6 +217,7 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
         inner.bottom() - 1,
         "≡",
         ScreenHit::Actions,
+        ground,
         t,
     );
 

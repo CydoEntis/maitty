@@ -43,7 +43,6 @@ impl App {
                     | Action::Resize(_)
                     | Action::Swap(_)
                     | Action::Message
-                    | Action::Why
                     | Action::PrevPrompt
                     | Action::NextPrompt
                     | Action::CopyMode
@@ -332,7 +331,6 @@ impl App {
             Action::CloseSplit,
             Action::StopAgent,
             Action::Message,
-            Action::Why,
             Action::AgentStatusSetup,
             Action::Files,
             Action::Find(0),

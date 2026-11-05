@@ -104,6 +104,24 @@ impl App {
     }
 }
 
+/// A machine item's second row, longest form first: how its connection stands, and that a click
+/// shows what to do when it takes a person to bring it back.
+pub(super) fn state_forms(app: &App, machine: MachineId) -> Vec<String> {
+    let word = if app.refused.contains_key(&machine) {
+        "refused"
+    } else {
+        match app.remotes.get(&machine).map(|r| &r.state) {
+            Some(ConnectionState::Connected) => return vec!["no sessions yet".to_string()],
+            Some(ConnectionState::Connecting) | None => return vec!["connecting…".to_string()],
+            Some(ConnectionState::Reconnecting { .. }) => return vec!["reconnecting…".to_string()],
+            Some(ConnectionState::NeedsLogin { .. }) => "needs login",
+            Some(ConnectionState::NeedsUpdate { .. }) => "needs update",
+            Some(ConnectionState::Unreachable { .. }) => "unreachable",
+        }
+    };
+    vec![format!("{word} · click for the fix"), word.to_string()]
+}
+
 /// The lines that open a machine's group: its header, why it is down, what its daemon reports.
 pub(super) fn lines(app: &App, machine: MachineId, t: &Theme) -> Vec<Line> {
     let mut out = vec![Line::Machine(machine)];

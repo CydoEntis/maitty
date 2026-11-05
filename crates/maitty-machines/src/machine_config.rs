@@ -38,6 +38,29 @@ pub fn add_machine(file: &Path, name: &str, target: &str) -> Result<()> {
     write(file, &doc)
 }
 
+/// Point the entry named `name` (in any case) at `target`, its other keys and the rest of the
+/// file left as they were. False when the file had none. Nothing is written when the entry
+/// would not load with that target.
+pub fn set_target(file: &Path, name: &str, target: &str) -> Result<bool> {
+    let mut doc = read(file)?;
+    let named = |t: &toml_edit::Table| {
+        t.get("name")
+            .and_then(|n| n.as_str())
+            .is_some_and(|n| n.eq_ignore_ascii_case(name))
+    };
+    let Some(entry) = doc
+        .get_mut(KEY)
+        .and_then(toml_edit::Item::as_array_of_tables_mut)
+        .and_then(|list| list.iter_mut().find(|t| named(t)))
+    else {
+        return Ok(false);
+    };
+    entry.insert("target", toml_edit::value(target));
+    validate_machines(&machines_of(&doc)).map_err(|e| anyhow::anyhow!("{e}"))?;
+    write(file, &doc)?;
+    Ok(true)
+}
+
 /// Drop the entry named `name` (in any case). False when the file had none.
 pub fn remove_machine(file: &Path, name: &str) -> Result<bool> {
     let mut doc = read(file)?;
@@ -367,6 +390,35 @@ mod tests {
             refusal(&existing, "x", "-oProxyCommand=x")
                 .unwrap()
                 .contains("starts with `-`")
+        );
+    }
+
+    #[test]
+    fn a_machine_s_target_is_changed_in_place_and_the_rest_of_the_file_is_kept() {
+        let file = dir("set-target").join("config.local.toml");
+        std::fs::write(
+            &file,
+            "# mine\n[[machines]]\nname = \"build\"\ntarget = \"old-host\"\nnotices = true\n",
+        )
+        .unwrap();
+        assert!(set_target(&file, "BUILD", "ci@new-host").unwrap());
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(
+            text.contains("# mine")
+                && text.contains("target = \"ci@new-host\"")
+                && text.contains("notices = true")
+                && !text.contains("old-host"),
+            "{text}"
+        );
+        assert!(!set_target(&file, "nobody", "x").unwrap(), "no such entry");
+        assert!(
+            set_target(&file, "build", "-oProxyCommand=x").is_err(),
+            "a target ssh would read as an option is refused"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            text,
+            "and nothing is written"
         );
     }
 }

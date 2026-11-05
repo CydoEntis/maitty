@@ -10,7 +10,7 @@
 
 use super::design::{
     BtnKind, SRow, Seg, SettingsView, button, cap_hints, cap_hints_fit, cap_hints_gap, fill, glyph,
-    key_text, keycaps, path_key, put, question, seg, segs_width, state_label, tilde,
+    key_text, keycaps, path_key, put, question, seg, segs_width, tilde,
 };
 use super::render::{blend, render_screen, truncate};
 use super::{App, Hit, Mode};
@@ -595,7 +595,7 @@ pub(super) fn rank(s: Status) -> u8 {
 pub(super) fn side_focused(app: &App) -> bool {
     matches!(
         app.mode,
-        Mode::Side | Mode::Why { side: true, .. } | Mode::Helpers { side: true, .. }
+        Mode::Side | Mode::Helpers { side: true, .. }
     )
 }
 
@@ -1637,9 +1637,6 @@ pub(super) enum ScreenHit {
     /// The sidebar's Remote half, empty: open the Machines dialog to add one.
     AddMachine,
     NewShell,
-    Why(ClientTerm),
-    /// The why popover of a session with a check: its evidence sheet.
-    CheckEvidence(ClientTerm),
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
     TidyRow(usize),
     TidyGo,

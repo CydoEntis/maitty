@@ -105,7 +105,6 @@ enum Over {
     Evidence,
     Inbox,
     Override,
-    Why,
     Settings,
     Approve,
 }
@@ -123,7 +122,6 @@ fn preset(id: &str) -> (Stage, Over) {
         "10" => (Stage::Passed, Over::Evidence),
         "11" => (Stage::Failed, Over::Inbox),
         "12" => (Stage::Failed, Over::Override),
-        "13" => (Stage::Failed, Over::Why),
         "14" | "16" => (Stage::None, Over::Settings),
         "15" => (Stage::Passed, Over::Settings),
         "17" => (Stage::Couldnt, Over::Settings),
@@ -168,7 +166,6 @@ fn frames(id: &str) -> &'static str {
         "10" => include_str!("reference_frames/10.txt"),
         "11" => include_str!("reference_frames/11.txt"),
         "12" => include_str!("reference_frames/12.txt"),
-        "13" => include_str!("reference_frames/13.txt"),
         "14" => include_str!("reference_frames/14.txt"),
         "15" => include_str!("reference_frames/15.txt"),
         "16" => include_str!("reference_frames/16.txt"),
@@ -269,12 +266,6 @@ fn open(id: &str) -> App {
             }
         }
         Over::Inbox => select_in_inbox(&mut app, if id == "C2" { 3 } else { 1 }),
-        Over::Why => {
-            app.mode = Mode::Why {
-                term: ClientTerm::local(1),
-                side: true,
-            }
-        }
         Over::Settings => app.open_project_check(ClientTerm::local(1)),
         Over::Approve => {
             app.open_approval(ClientTerm::local(1));
@@ -349,15 +340,6 @@ fn geometry(id: &str, b: &Block) -> Geometry {
         Over::Override => modal((w - 2).min(70), 15),
         Over::Approve => modal((w - 2).min(84), (h - 1).min(20) - u16::from(h < 30)),
         Over::Settings => modal((w - 2).min(80), (h - 2).min(20)),
-        Over::Why => {
-            let x = (side_w + 2).min(w - 40);
-            with_shadow(Rect {
-                x,
-                y: if h < 30 { 3 } else { 5 },
-                width: 60.min(w - x - 2),
-                height: 8,
-            })
-        }
         _ => Vec::new(),
     };
     let side_inner = Rect {
@@ -812,40 +794,10 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
             }
         }
     }
-    if let Some(pop) = g.overlays.first().filter(|_| preset(id).1 == Over::Why) {
-        // Its text stops a column before its right edge.
-        let (x0, x1) = (pop.x as usize, pop.right() as usize - 1);
-        for row in want
-            .iter_mut()
-            .take(pop.bottom() as usize)
-            .skip(pop.y as usize)
-        {
-            swap_tail(row, " · 1 of 59", "", x0, x1);
-        }
-    }
     // The reference casts a hard shadow; the app casts none, so what shows there is the app's.
     if let [frame, shadow] = g.overlays[..] {
         for y in shadow.y..shadow.bottom().min(b.h) {
             for x in shadow.x..shadow.right().min(b.w) {
-                if !frame.contains(ratatui::layout::Position { x, y }) {
-                    want[y as usize][x as usize] = ANY;
-                }
-            }
-        }
-    }
-    // The reference's popover has no box; the app boxes it as a pane is, a cell outside it
-    // (ADR 0028), so that ring is the app's.
-    if matches!(preset(id).1, Over::Why)
-        && let Some(frame) = g.overlays.first()
-    {
-        let ring = Rect {
-            x: frame.x.saturating_sub(1),
-            y: frame.y.saturating_sub(1),
-            width: frame.width + 2,
-            height: frame.height + 2,
-        };
-        for y in ring.y..ring.bottom().min(b.h) {
-            for x in ring.x..ring.right().min(b.w) {
                 if !frame.contains(ratatui::layout::Position { x, y }) {
                     want[y as usize][x as usize] = ANY;
                 }
@@ -1008,11 +960,6 @@ fn preset_12_override() {
 }
 
 #[test]
-fn preset_13_why() {
-    conforms("13");
-}
-
-#[test]
 fn preset_14_settings_empty() {
     conforms("14");
 }
@@ -1075,33 +1022,6 @@ fn preset_c1_several_checkpoints_rows() {
 #[test]
 fn preset_c2_several_checkpoints_inbox() {
     conforms("C2");
-}
-
-#[test]
-fn the_sidebar_keeps_its_focus_while_its_why_popover_is_open() {
-    let border = |app: &mut App| {
-        (app.cfg.ui.layout, app.cfg.ui.panes) = ("cards".into(), "floating".into());
-        app.screen_fresh();
-        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45))
-            .expect("a test terminal");
-        term.draw(|f| render::draw(app, f)).expect("a frame");
-        let r = app.screen.side_rect;
-        let buf = term.backend().buffer();
-        (r.y..r.bottom())
-            .map(|y| buf[(r.x, y)].fg)
-            .collect::<Vec<_>>()
-    };
-    let mut app = open("13");
-    assert!(matches!(app.mode, Mode::Why { side: true, .. }));
-    let why = border(&mut app);
-    app.mode = Mode::Side;
-    assert_eq!(
-        why,
-        border(&mut app),
-        "lit as when the sidebar has the keys"
-    );
-    app.mode = Mode::Normal;
-    assert_ne!(why, border(&mut app), "and not as when the pane has them");
 }
 
 // ---- colour roles: the cells that carry a meaning, and the Flat ground ----------------------

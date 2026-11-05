@@ -10,33 +10,94 @@ const NAME_MAX: usize = 40;
 /// Menu doesn't show it: a bare letter beside a row reads as a key that works anywhere.
 pub(in crate::client) type MenuItem = (&'static str, Action);
 
-/// The Menu's groups, a blank row apart, in the reference's order. "Shell here" starts a plain
-/// shell (what `n` does); "Session" starts an agent straight away (`s`).
-pub(in crate::client) fn menu_groups() -> Vec<Vec<MenuItem>> {
+/// A section of the Menu: what its rows are for (nothing for one that needs no saying) and
+/// the rows.
+pub(in crate::client) type MenuGroup = (&'static str, Vec<MenuItem>);
+
+/// The Menu's sections in order, each under its title. "Shell here" starts a plain shell (what
+/// `n` does); "Session" starts an agent straight away (`s`). The tools are here because the
+/// rail that also opens them is hidden unless asked for (`ui.tool_rail`).
+pub(in crate::client) fn menu_groups() -> Vec<MenuGroup> {
     vec![
-        vec![
-            ("Shell here", Action::ShellHere),
-            ("Session", Action::StartSession),
-            ("Pane beside this", Action::SplitRight),
-            ("Tab", Action::NewTab),
-        ],
-        vec![
-            ("Inbox", Action::Jump),
-            ("Search commands", Action::Palette),
-            ("All keys", Action::Help),
-        ],
-        vec![
-            ("Collapse sidebar", Action::ToggleSidebar),
-            ("Hide sidebar", Action::HideSidebar),
-        ],
-        vec![("Settings", Action::Settings)],
+        (
+            "NEW",
+            vec![
+                ("Shell here", Action::ShellHere),
+                ("Session", Action::StartSession),
+                ("Pane beside this", Action::SplitRight),
+                ("Tab", Action::NewTab),
+            ],
+        ),
+        (
+            "TOOLS",
+            vec![
+                ("Files", Action::Files),
+                ("Changes", Action::Changes),
+                ("Branch", Action::Branches),
+                ("References", Action::References),
+            ],
+        ),
+        (
+            "FIND",
+            vec![
+                ("Inbox", Action::Jump),
+                ("Search commands", Action::Palette),
+                ("All keys", Action::Help),
+            ],
+        ),
+        (
+            "SIDEBAR",
+            vec![
+                ("Collapse sidebar", Action::ToggleSidebar),
+                ("Hide sidebar", Action::HideSidebar),
+            ],
+        ),
+        ("", vec![("Settings", Action::Settings)]),
     ]
 }
 
 /// The Menu's rows in the order they are numbered.
 pub(in crate::client) fn action_items() -> Vec<MenuItem> {
-    menu_groups().into_iter().flatten().collect()
+    menu_groups()
+        .into_iter()
+        .flat_map(|(_, items)| items)
+        .collect()
 }
+
+/// How much of the Menu's layout a window has rows for. The blank rows between sections give
+/// way first, then the titles; a row that does something is the last thing dropped.
+#[derive(Clone, Copy)]
+struct MenuRoom {
+    titles: bool,
+    gaps: bool,
+}
+
+impl MenuRoom {
+    /// The rows the sections take laid out this way.
+    fn rows(self, groups: &[MenuGroup]) -> u16 {
+        let items: usize = groups.iter().map(|(_, items)| items.len()).sum();
+        let titles = groups.iter().filter(|(title, _)| !title.is_empty()).count();
+        (items
+            + if self.titles { titles } else { 0 }
+            + if self.gaps { groups.len() - 1 } else { 0 }) as u16
+    }
+
+    /// The fullest layout that fits a card of at most `most` rows.
+    fn of(groups: &[MenuGroup], most: u16) -> MenuRoom {
+        [(true, true), (true, false), (false, false)]
+            .into_iter()
+            .map(|(titles, gaps)| MenuRoom { titles, gaps })
+            .find(|room| room.rows(groups) + MENU_FRAME_ROWS <= most)
+            .unwrap_or(MenuRoom {
+                titles: false,
+                gaps: false,
+            })
+    }
+}
+
+/// The rows of the Menu's card that are not its sections: the two borders and a blank row
+/// inside each.
+const MENU_FRAME_ROWS: u16 = 4;
 
 /// The label a Menu row shows now: the sidebar's rows say what the next press does.
 fn menu_label(app: &App, a: &Action, label: &'static str) -> &'static str {
@@ -60,9 +121,10 @@ pub(in crate::client) fn draw_actions(
     dim_all(app, buf, area, t);
     hit(app, area, ScreenHit::Close);
     let groups = menu_groups();
-    let lines: u16 = groups.iter().map(|items| items.len() as u16 + 1).sum();
+    let most = area.height.saturating_sub(2);
+    let room = MenuRoom::of(&groups, most);
     let w = 46.min(area.width.saturating_sub(4));
-    let h = (lines + 3).min(area.height.saturating_sub(2));
+    let h = (room.rows(&groups) + MENU_FRAME_ROWS).min(most);
     let side = grid(app, framed(app, area)).side;
     let x = (if side.width > 0 {
         side.x + 1
@@ -89,11 +151,21 @@ pub(in crate::client) fn draw_actions(
         .count();
     let mut yy = r.y + 2;
     let mut i = 0usize;
-    for (g, items) in groups.iter().enumerate() {
+    for (g, (title, items)) in groups.iter().enumerate() {
         if yy >= inside.bottom().saturating_sub(1) {
             break;
         }
-        if g > 0 {
+        if g > 0 && room.gaps {
+            yy += 1;
+        }
+        if room.titles && !title.is_empty() {
+            put(
+                buf,
+                r.x + 4,
+                yy,
+                &[seg(*title, Style::default().bg(t.bg).fg(t.muted))],
+                r.right().saturating_sub(6),
+            );
             yy += 1;
         }
         for (label, a) in items {

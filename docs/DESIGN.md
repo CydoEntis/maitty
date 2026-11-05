@@ -96,12 +96,12 @@ A session is a **card** of two rows:
 2. what it is doing in `muted` (a check result, a plan-limit wait, `2 agents`), or in amber when it
    asks something.
 
-Its other tabs follow it, one row each (`○ shell  2`), beside a thin `muted` line that groups them: the tab's state glyph
-before the name and its number at the right, so only the tab doing the work shows the working mark; the tab on screen is in the accent and one that needs
-you in amber. A blank row follows each project, and one separates the Remote rule from the first machine. The selected card is a neutral tint on both rows
+Its other tabs follow it, one row each (`○ shell  2`), in line with it; a thin `muted` line down the left of the session and its tabs groups them: the tab's state glyph
+before the name and its number at the right, so only the tab doing the work shows the working mark; the tab on screen is lit as the selected card is and one that needs
+you is in amber. One highlight serves a session, a tab and a project: the same cells and the same ends, for the selection and for the pointer. It runs from the left edge, with the accent bar there, and only its right end is rounded. A blank row follows each project, and one separates the Remote rule from the first machine. The selected card is a neutral tint on both rows
 with an accent `▎` bar. A machine whose line is not up, or that has no sessions, is its header and
-one line: `no sessions yet`, `connecting…` or `disconnected · click for the fix`; a click opens the
-Machines dialog. The foot holds **+ New** and **Menu**. Collapsed, the sessions become a narrow
+one line of how it stands: `no sessions yet`, `connecting…`, `reconnecting…`, or `needs update · click for the fix` (and so for `needs login`, `unreachable`, `refused`); a click opens the
+Machines dialog on that machine and a right-click its menu. The foot holds **+ New** and **Menu**. Collapsed, the sessions become a narrow
 column; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed sidebar*.
 
 The **Add Machine dialog** (leader `w`, or `+ Add`) is a standard modal: one input typed like scp on
@@ -145,14 +145,14 @@ groups* and *check evidence sheet*.
 ## Modals and popovers
 
 The Menu and a row's context menu have no fill of their own: they are drawn on the ground like the panes. Everything else that floats over the screen is boxed as the look boxes a pane: a `line` box round
-`card` with corners by `ui.rounded`
+`card` with corners by `ui.rounded` (the outline's own cells keep the ground behind them, so none of the body's colour shows outside the line; what sits on the top border stands on that ground too)
 ([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)). Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
 a red × chip at the right), its border in the accent because it holds the keys, the screen behind
 left as it is (no dimming, no fill: the modal clears its own area to the ground), no shadow. Settings, override, command
 approval and the key overlay are modals. Small explanations (why, a row's menu, the message and
 helpers popovers) open beside their row with a `◂` pointer; a menu row ends in its key, the bound leader
 key when there is one. Every panel ends in an action bar
-of keycaps. See UI › *UI conventions*, *check modals and settings* and *why popover*.
+of keycaps. See UI › *UI conventions* and *check modals and settings*.
 
 ## Toasts
 
@@ -190,9 +190,11 @@ the chosen one with an accent `▌` edge. On the first start of a version the le
 the deep colour one by one and the swell fades in. Night has its own wordmark, swell and deep
 colours; other themes take them from their text and accent. See UI › *splash*.
 
-A terminal of 140 columns and 40 rows or more draws the wide splash instead of the cards: the
-wordmark in an outer box, with the START box (choices and recent projects) and the WHILE YOU WERE
-AWAY box (agents by urgency and the machines) side by side under it.
+The splash is the wordmark on the plain ground, with nothing round the screen, and under it the
+START box (choices and recent projects) and the WHILE YOU WERE AWAY box (agents by urgency and the
+machines) side by side. A smaller terminal shows less of the same splash: START alone with the
+counts over it when there is no room for both boxes, then no wordmark when there are too few rows.
+Only one too small for the START box draws the cards.
 
 ## Desktop app
 

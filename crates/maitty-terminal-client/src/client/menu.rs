@@ -25,6 +25,10 @@ pub(super) const RESTORE_WHILE_WORKING: &str =
 pub enum Act {
     /// Dial a machine again.
     ReconnectMachine(String),
+    /// Install or update the app on a machine, in a popup that asks first.
+    UpdateMachine(String),
+    /// Change where a machine is: the dialog, on its address.
+    EditMachine(MachineId),
     /// Take a machine out of the list; its sessions keep running there.
     RemoveMachine(String),
     Beside(ClientTerm),
@@ -483,6 +487,8 @@ impl App {
         }
         let items = vec![
             ("Reconnect".to_string(), Act::ReconnectMachine(name.clone())),
+            ("Update…".to_string(), Act::UpdateMachine(name.clone())),
+            ("Edit…".to_string(), Act::EditMachine(machine)),
             ("Remove".to_string(), Act::RemoveMachine(name.clone())),
         ];
         self.menu(name, items, at);
@@ -897,6 +903,11 @@ impl App {
             }
             Act::ReconnectMachine(name) => {
                 let said = self.machine_retry(&name);
+                self.notify(said.text, said.error);
+            }
+            Act::EditMachine(machine) => self.open_machine_edit(machine),
+            Act::UpdateMachine(name) => {
+                let said = self.machine_update(&name);
                 self.notify(said.text, said.error);
             }
             Act::RemoveMachine(name) => {

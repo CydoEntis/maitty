@@ -68,10 +68,13 @@ pub(in crate::client) fn panel_at(
     }
     let look = Look::of(&app.cfg.ui);
     app.screen.modal_rects.push(r);
-    fill(buf, r, t.card);
-    // A modal holds the keys, so its edge is lit like the focused pane's: `line` on `card` is
-    // too faint to tell where it stands.
-    panel_box(buf, r, look, Style::default().fg(t.accent).bg(t.card));
+    // The outline keeps the ground behind it, as a card's does: a box-drawing line sits
+    // mid-cell, so a border cell on the body's colour would show a band of it outside the line.
+    let behind_top = top_ground(buf, r);
+    fill(buf, inside_outline(r), t.card);
+    // A modal holds the keys, so its edge is lit like the focused pane's: `line` is too faint
+    // to tell where it stands.
+    panel_box(buf, r, look, Style::default().fg(t.accent));
     let red = Style::default()
         .fg(t.strong)
         .bg(t.err)
@@ -117,6 +120,7 @@ pub(in crate::client) fn panel_at(
         t.card,
     );
     put(buf, chip_x, r.y, &chip, rx.saturating_sub(1));
+    border_on_ground(buf, r, t.card, &behind_top);
     hit(app, r, ScreenHit::Noop);
     if shows_esc {
         hit(
@@ -131,6 +135,32 @@ pub(in crate::client) fn panel_at(
         );
     }
     r
+}
+
+/// The cells a box's outline encloses: the ones its body fills.
+pub(in crate::client) fn inside_outline(r: Rect) -> Rect {
+    Rect {
+        x: r.x + 1,
+        y: r.y + 1,
+        width: r.width.saturating_sub(2),
+        height: r.height.saturating_sub(2),
+    }
+}
+
+/// The ground under each cell of `r`'s top row, read before a box is drawn there.
+pub(in crate::client) fn top_ground(buf: &Buffer, r: Rect) -> Vec<Color> {
+    (r.x..r.right()).map(|x| buf[(x, r.y)].bg).collect()
+}
+
+/// What sits on a box's top border (a chip's caps, the words at its right) was drawn on the
+/// `body`'s colour: put it on the ground that was `behind`, like the line it interrupts.
+pub(in crate::client) fn border_on_ground(buf: &mut Buffer, r: Rect, body: Color, behind: &[Color]) {
+    for (x, ground) in (r.x..r.right()).zip(behind) {
+        let cell = &mut buf[(x, r.y)];
+        if cell.bg == body {
+            cell.set_bg(*ground);
+        }
+    }
 }
 
 pub(in crate::client) fn flatten_modals(app: &App, buf: &mut Buffer, t: &Theme) {
@@ -176,79 +206,6 @@ fn header_chip(look: Look, segs: Vec<Seg>, ground: Color) -> Vec<Seg> {
     } else {
         plain(segs)
     }
-}
-
-/// A popover keeps at least this many columns from its left edge to the screen's.
-const POPOVER_ROOM: u16 = 40;
-/// Below this many rows a popover sits higher.
-const POPOVER_SHORT: u16 = 30;
-
-/// Where a popover goes: beside the sidebar's rows (two right of it, five down, three on a
-/// short screen), narrower rather than over the sidebar when the screen is small.
-pub(in crate::client) fn popover_rect(screen: Rect, side: Rect, w: u16, h: u16) -> Rect {
-    let x = (side.right() + 2)
-        .min(screen.right().saturating_sub(POPOVER_ROOM))
-        .max(screen.x);
-    let w = w.min(screen.right().saturating_sub(x + 2));
-    let h = h.min(screen.height.saturating_sub(1));
-    let y = (screen.y + if screen.height < POPOVER_SHORT { 3 } else { 5 })
-        .min(screen.bottom().saturating_sub(h + 1));
-    Rect {
-        x,
-        y,
-        width: w,
-        height: h,
-    }
-}
-
-/// A popover's frame at `r`: a body of `card` and a title row of `btn` with
-/// ` TITLE ` in `strong` bold, a column in, boxed as the look boxes a pane (`popover_outline`).
-pub(in crate::client) fn popover_at(
-    app: &mut App,
-    buf: &mut Buffer,
-    r: Rect,
-    title: &str,
-    t: &Theme,
-) -> Rect {
-    let r = r.intersection(buf.area);
-    let look = Look::of(&app.cfg.ui);
-    popover_outline(buf, r, look, t);
-    fill(buf, r, t.card);
-    fill(buf, Rect { height: 1, ..r }, t.btn);
-    put(
-        buf,
-        r.x + 1,
-        r.y,
-        &[seg(
-            format!(" {title} "),
-            Style::default()
-                .fg(t.strong)
-                .bg(t.btn)
-                .add_modifier(Modifier::BOLD),
-        )],
-        r.right(),
-    );
-    hit(app, r, ScreenHit::Noop);
-    r
-}
-
-/// A popover's box, drawn as the look draws a pane's (ADR 0028): a `line` box one cell outside
-/// `r`, so it floats over the panes without covering any of its own text; on `card` with
-/// corners by `ui.rounded` in Floating, square on the ground in Hairline.
-fn popover_outline(buf: &mut Buffer, r: Rect, look: Look, t: &Theme) {
-    let outer = Rect {
-        x: r.x.saturating_sub(1),
-        y: r.y.saturating_sub(1),
-        width: r.width + 2,
-        height: r.height + 2,
-    }
-    .intersection(buf.area);
-    if outer.width < 2 || outer.height < 2 {
-        return;
-    }
-    let ground = if look.hairline { t.bg } else { t.card };
-    fill(buf, outer, ground);
-    panel_box(buf, outer, look, Style::default().fg(t.line).bg(ground));
 }
 
 pub(in crate::client) fn sel_row(
