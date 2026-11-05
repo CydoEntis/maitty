@@ -552,6 +552,9 @@ that cannot be bounded in shape is dropped (`tool_input.rs`). There is no secret
 redaction of history text, input included; do not assume one. Answered approvals
 keep the request's command and diff in daemon memory only, never in the cache, and
 the answers to user-input requests are not kept at all.
+A message queued while a turn runs is held in daemon memory only, never in the session file or the history
+cache, and goes through the same admission checks as a direct send (invisible characters, size, write grant)
+when it is queued and the same durable-receipt path when it is delivered. Removing one needs a human client.
 Prompts are checked for invisible characters at daemon admission. Launch inputs
 are validated in background and explicit sandbox/approval posture is checked in
 the provider response. Native profile-v2 and ambiguous identity are refused.
