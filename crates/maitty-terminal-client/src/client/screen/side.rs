@@ -1439,6 +1439,7 @@ fn draw_machine_row(
         hit(app, row, ScreenHit::NewShell);
         return;
     }
+    hit(app, row, ScreenHit::MachineRow(machine));
     let (dot, dot_colour) = app.machine_dot(machine, t);
     let dim = dot_colour != t.done;
     let right = vec![seg(dot, st.fg(dot_colour))];

@@ -2115,6 +2115,8 @@ impl App {
                     self.screen.splash_away_sel = i;
                 }
             }
+            // Left-clicking a machine line does nothing; its menu is on the right-click.
+            ScreenHit::MachineRow(_) => {}
             ScreenHit::SplashFocus(away) => self.screen.splash_away = away,
             ScreenHit::MenuPick(i) => self.menu_pick(i),
             ScreenHit::HistRow(i) => {

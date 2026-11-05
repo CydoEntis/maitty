@@ -4,7 +4,9 @@
 //! takes the machine out of the config, the sidebar and the window's records, and leaves the
 //! machine itself, its sessions and its saved layout alone.
 
-use super::screen::machines::{MachineNotice, MachineStep, MachinesView, add_rows, removal_note};
+use super::screen::machines::{
+    MachineNotice, MachineStep, MachinesView, Outcome, connect_target, parse_target, removal_note,
+};
 use super::*;
 use crate::client::link::ConnectionState;
 use crate::client::machine_config;
@@ -97,14 +99,19 @@ impl App {
         }
     }
 
-    /// Enter on the Add side: the chosen row, or the typed text.
+    /// Enter on the input: what was typed, or the chosen suggestion.
     pub(in crate::client) fn machines_add_chosen(&mut self, v: &mut MachinesView) {
-        let rows = add_rows(v, &self.cfg.machines);
-        let Some(row) = rows.get(v.host_sel.min(rows.len().saturating_sub(1))) else {
-            v.notice = Some(say("Pick a host, or type user@host.", true));
+        if parse_target(&v.query).is_some_and(|p| p.path.is_some()) {
+            v.notice = Some(say(
+                "Opening a folder after connecting is not built yet: type just user@host.",
+                true,
+            ));
+            return;
+        }
+        let Some(target) = connect_target(v, &self.cfg.machines) else {
+            v.notice = Some(say("Type user@host, or pick a host.", true));
             return;
         };
-        let target = row.target().to_string();
         let taken: Vec<String> = self.cfg.machines.iter().map(|m| m.name.clone()).collect();
         match machine_config::suggest_name(&target, &taken) {
             Some(name) => self.machines_add_named(v, target, name),
@@ -188,26 +195,43 @@ impl App {
         self.with_machines_view(|v| v.step = MachineStep::Browse);
         let notice = match result {
             Probe::Cancelled => return,
-            Probe::Ready { version } => self.machine_added(&def, Added::Connect, &version),
-            Probe::Failed(FailureClass::Login) => self.machine_added(&def, Added::Login, ""),
+            Probe::Ready { version } => {
+                self.machine_added(&def, Added::Connect, &version, Outcome::Ready(version.clone()))
+            }
+            Probe::Failed(FailureClass::Login) => {
+                self.machine_added(&def, Added::Login, "", Outcome::Login)
+            }
             Probe::Failed(FailureClass::Unreachable(why)) => {
                 say(format!("{}: {why}", def.target), true)
             }
             // Reached, but the app is missing, old, or not running: the connection's own state
             // says which, with the fix, once it dials.
-            Probe::Failed(_) => self.machine_added(&def, Added::Connect, ""),
+            Probe::Failed(_) => self.machine_added(&def, Added::Connect, "", Outcome::Fix),
         };
         self.machines_say(notice);
     }
 
     /// Write the machine to the config and bring it up: dialled now, or after a login in a popup.
-    fn machine_added(&mut self, def: &MachineDef, how: Added, version: &str) -> MachineNotice {
+    fn machine_added(
+        &mut self,
+        def: &MachineDef,
+        how: Added,
+        version: &str,
+        outcome: Outcome,
+    ) -> MachineNotice {
         if let Err(e) =
             machine_config::add_machine(&self.machine_flow.local_config, &def.name, &def.target)
         {
             return say(format!("Could not add {}: {e:#}", def.name), true);
         }
         self.cfg.machines.push(def.clone());
+        self.with_machines_view(|v| {
+            v.step = MachineStep::Added {
+                name: def.name.clone(),
+                target: def.target.clone(),
+                how: outcome,
+            }
+        });
         if how == Added::Login {
             match self.machine_first_login(def) {
                 Ok(()) => {
@@ -277,6 +301,7 @@ impl App {
             .collect()
     }
 
+    #[cfg(test)]
     pub(super) fn machine_login_waiting(&self, name: &str) -> bool {
         self.machine_flow
             .logins
@@ -401,6 +426,7 @@ impl App {
             machine_ids::save(&self.machine_ids);
         }
         self.screen_sync();
+        self.screen_fresh();
         self.dirty = true;
         say(removal_note(&def.name), false)
     }

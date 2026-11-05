@@ -411,8 +411,8 @@ fn keys_holder(app: &App) -> Option<Holder> {
             ("Esc", "close"),
         ),
         Mode::Machines(_) => holder(
-            "MACHINES",
-            &[("Tab", "yours / add"), ("Enter", "add or retry")],
+            "ADD MACHINE",
+            &[("Tab", "complete"), ("Enter", "connect")],
             ("Esc", "close"),
         ),
         Mode::Tidy(_) => holder(

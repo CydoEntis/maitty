@@ -104,9 +104,9 @@ one line: `no sessions yet`, `connecting…` or `disconnected · click for the f
 Machines dialog. The foot holds **+ New** and **Menu**. Collapsed, the sessions become a narrow
 column; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed sidebar*.
 
-The **Machines dialog** (leader `w`) is a standard modal: the same state chips and words, the fix
-of a down machine written in full under it in `text`, the Add field on `card2`, and a dim line for
-Windows. Its behaviour is in [UI](UI.md#project-specific-machines-dialog).
+The **Add Machine dialog** (leader `w`, or `+ add`) is a standard modal: one input typed like scp on
+`card2` with a parse line under it, the hosts of `~/.ssh/config` to complete it from, examples, and a
+dim line for Windows; after Enter a checklist of the steps connecting takes. Its behaviour is in [UI](UI.md#project-specific-machines-dialog).
 
 ## Pane titles and tabs
 

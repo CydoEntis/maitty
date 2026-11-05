@@ -412,7 +412,7 @@ machine*). `config.example.toml` lists every key.
 
 Adding a machine starts maitty there if it is not running, so you can create the first session from this
 computer. If the connection drops later, maitty only reconnects to a maitty that is still running there; it
-never starts one you stopped. Press retry on the machine to start it there again. If maitty is not
+never starts one you stopped. Right-click the machine's line in the sidebar and choose Reconnect to start it there again. If maitty is not
 installed there, see *Install or update maitty on a machine*.
 
 ### What you see
@@ -427,8 +427,8 @@ need shows in the Inbox with `· on build`.
 | `connecting` | The first try this run. |
 | `connected` | The line is up. |
 | `reconnecting #2` | A line that was up dropped. maitty tries again at once, then after 250 ms, doubling up to 30 s; three tries in a row without an answer make it `unreachable`. |
-| `needs login` | ssh cannot log in without asking you. Make plain `ssh` to that machine work in a terminal (load your key, accept its host key), then press `r`. |
-| `needs update` | The machine runs another version of maitty, or has none on its PATH. Run `maitty machine update <name>` (add `--install` when there is none, or set `remote_cmd` to its path), then press `r`. |
+| `needs login` | ssh cannot log in without asking you. Make plain `ssh` to that machine work in a terminal (load your key, accept its host key), then right-click the machine and choose Reconnect. |
+| `needs update` | The machine runs another version of maitty, or has none on its PATH. Run `maitty machine update <name>` (add `--install` when there is none, or set `remote_cmd` to its path), then right-click the machine and choose Reconnect. |
 | `unreachable` | No answer, or maitty is not running there. The reason is written under it (ssh's last line, or "maitty is not running on that machine; retry to start it there"); maitty keeps trying in the background. |
 | `refused` | A different computer now answers at that name. If you replaced the machine, remove it and add it again; otherwise check the host name and DNS. |
 

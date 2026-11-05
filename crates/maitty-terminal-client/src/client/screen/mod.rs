@@ -1601,6 +1601,8 @@ pub(super) enum ScreenHit {
     SplashKey(char),
     /// A splash card: a click chooses it, a click on the chosen one opens it.
     SplashCard(usize),
+    /// A remote machine's line in the sidebar: a right-click offers to reconnect or remove it.
+    MachineRow(MachineId),
     /// A recent project on the wide splash (its index among them).
     SplashProject(usize),
     /// A session in the wide splash's away list.

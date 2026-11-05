@@ -10,7 +10,7 @@ use crate::client::link::{Backoff, Links, Timing};
 use crate::client::machine_ids::{IdCheck, check_daemon_id};
 use crate::client::reference_fixture::term;
 use crate::client::remote_status_tests::{Runtime, Sandbox};
-use crate::client::screen::machines::{MachineSection, MachinesView};
+use crate::client::screen::machines::{MachinesView, Outcome};
 use crate::client::ssh_hosts::SshHost;
 use crate::link_failure::{FIX_INSTALL, FIX_LOGIN};
 use crate::protocol::{ServerMsg, SessionKey, Snapshot, Status};
@@ -131,12 +131,13 @@ impl Harness {
         std::fs::read_to_string(&self.app.machine_flow.local_config).ok()
     }
 
+    /// What the dialog says, or the toast when it is closed (a menu in the sidebar answers there).
     fn notice(&self) -> String {
-        self.view()
-            .notice
-            .as_ref()
-            .map(|n| n.text.clone())
-            .unwrap_or_default()
+        match &self.app.mode {
+            Mode::Machines(v) => v.notice.as_ref().map(|n| n.text.clone()),
+            _ => self.app.notice.as_ref().map(|(text, ..)| text.clone()),
+        }
+        .unwrap_or_default()
     }
 
     fn take_sent(&mut self) {
@@ -345,7 +346,10 @@ fn adding_from_the_picker_writes_one_entry_after_the_existing_ones_and_never_the
     assert_eq!(h.app.cfg.machines[1].target, "build");
     assert!(h.popups().is_empty(), "a host that logs in needs no popup");
     assert!(h.notice().contains("Added build"), "{}", h.notice());
-    assert!(matches!(h.view().step, MachineStep::Browse));
+    assert!(
+        matches!(&h.view().step, MachineStep::Added { name, how: Outcome::Ready(_), .. } if name == "build"),
+        "the dialog shows the checklist done"
+    );
 }
 
 #[test]
@@ -741,15 +745,21 @@ fn removing_forgets_the_machine_here_and_leaves_its_sessions_and_the_saved_layou
             "its daemon id was recorded"
         );
 
-        h.key(KeyCode::Tab);
-        assert!(matches!(&h.app.mode, Mode::Machines(v) if v.section == MachineSection::Machines));
-        h.key(KeyCode::Char('x'));
-        assert!(matches!(&h.view().step, MachineStep::Remove { name } if name == "box"));
+        // From the machine's line in the sidebar: its right-click menu.
+        h.app.menu_for_machine(id, (5, 5));
         assert!(
             h.local_config().unwrap().contains("[[machines]]"),
-            "asking removes nothing"
+            "opening the menu removes nothing"
         );
-        h.key(KeyCode::Enter);
+        let Mode::ScreenMenu(m) = &h.app.mode else {
+            panic!("the machine's menu")
+        };
+        let remove = m.items.iter().position(|(l, _)| l == "Remove").unwrap();
+        assert!(
+            m.items.iter().any(|(l, _)| l == "Reconnect") && remove == m.items.len() - 1,
+            "reconnect, then remove last"
+        );
+        h.app.menu_pick(remove);
         h.pump().await;
 
         let kept = h.local_config().unwrap_or_default();
@@ -812,8 +822,12 @@ fn retry_clears_a_refusal_and_dials_again() {
         .await;
         assert_eq!(dials(&h), before, "a refused machine is not dialled");
 
-        h.key(KeyCode::Tab);
-        h.key(KeyCode::Char('r'));
+        h.app.menu_for_machine(id, (5, 5));
+        let Mode::ScreenMenu(m) = &h.app.mode else {
+            panic!("the machine's menu")
+        };
+        let reconnect = m.items.iter().position(|(l, _)| l == "Reconnect").unwrap();
+        h.app.menu_pick(reconnect);
         assert!(h.app.refused.is_empty(), "the refusal is cleared");
         assert_eq!(h.notice(), "Trying box again.");
         h.until("the machine to connect again", |h| h.connected("box"))

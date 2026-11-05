@@ -526,13 +526,15 @@ choice does), `client/machine_config.rs` (where `config.local.toml` is; the `[[m
 `maitty-core/src/machine_probe.rs` (the look at a machine). Opened by leader `w` or the command palette
 (`Machines`); `Mode::Machines`.
 
-- **Two lists.** *Yours*: the configured machines in name order, each as a state chip (the words of
-  [machines in the sidebar](#project-specific-machines-in-the-sidebar), plus `refused`, `waiting for login`
-  and `not started`), its name and its target, and under every machine that is not up the reason and the fix
-  in full, wrapped to the dialog and never cut. *Add*: a field and the hosts of `~/.ssh/config` (read off the
-  UI thread; `loading hosts from ~/.ssh/config…`, then `alias  user@hostname`). Typing filters the hosts and
-  adds a last row, `add as typed`, for the text itself (`user@host`). A host that is already a machine is not
-  offered again. `Tab` moves between the lists; the keys are in the bar under the dialog.
+- **One input, typed like scp.** `ADD MACHINE`: `Where's the machine? Type it like scp or ssh.`, the
+  input (`› user@host`, on `card2`) and under it a parse line, `user` and `host` each a faint label and a
+  bold value, a faint `—` while unknown. A host that is a `Host` of `~/.ssh/config` fills its user and host
+  name. Under it, `FROM ~/.ssh/config` lists the hosts (read off the UI thread; `loading hosts from
+  ~/.ssh/config…`, then `alias  user@hostname`), filtered by the host part of the input; a host that is
+  already a machine is not offered. The chosen one shows `tab fill · ⏎ connect`. `EXAMPLES` closes the page.
+  Keys: typing, `Tab` fills the input with the chosen host, `↑↓` choose, `Enter` connects, `Esc` cancels. A
+  `:path` after the host is refused for now (opening a folder after connecting is not built). The dialog does
+  not list machines: *Reconnect* and *Remove* are on a machine's line in the sidebar (see below).
 - **Windows.** The dialog says, in a dim line at its top and on Windows only, `Windows: use ssh keys or an
   agent. Password prompts work in the popup but are not remembered.`
 - **Adding is one step for a key-based host.** Enter on a host row (or on the typed text) first refuses a
@@ -563,14 +565,21 @@ choice does), `client/machine_config.rs` (where `config.local.toml` is; the `[[m
     under the lists, and nothing is added. Nothing hangs: every look ends at its limit, on `Esc`, or when
     ssh does.
   A Windows remote is not supported in v1; the dialog does not guess one from the probe.
-- **Retry** (`r` or Enter on a machine in *Yours*) dials it now and clears a refusal. A machine with no
-  supervisor gets one.
-- **Remove** (`x`) asks first: `Removes build from this list. Its sessions keep running on build.` It then
-  deletes the entry from `config.local.toml`, stops the supervisor and the connection, takes the machine out
+- **Checklist.** After Enter the dialog shows the steps connecting takes: `reach host`, `verify host
+  key`, `sign in as user`, `maitty-daemon`, with `✓` done, a spinner while running, `●` (amber) waiting on you,
+  `○` pending and `✕` failed. While ssh is being asked, the first step runs. When the machine is written the
+  title becomes `MACHINE ADDED` and the steps show how it stands: all `✓` with the daemon's version; `●` at
+  the sign-in with `log in in the popup`; or `✕` at `maitty-daemon` with `the connection shows the fix`.
+  `Enter` or `Esc` closes. The host key, password and daemon install are still asked by ssh in its popup,
+  not inline.
+- **Reconnect** and **Remove** are in the menu of a right-click on a remote machine's line in the sidebar
+  (the machine's name as its title, `Remove` last). Reconnect dials it now and clears a refusal; a machine
+  with no supervisor gets one. Remove says `Removes build from this list. Its sessions keep running on
+  build.` in a toast. It deletes the entry from `config.local.toml`, stops the supervisor and the connection, takes the machine out
   of the sidebar and the window's records, and forgets the daemon id recorded for the name. The machine, its
   daemon, its sessions and its saved layout (kept under its name) are not touched.
 - **A refused machine** (a different daemon answers at its name) shows `refused` with the reason and the
-  fix: remove it and add it again, or fix the host name or DNS and retry.
+  fix: remove it and add it again, or fix the host name or DNS and reconnect.
 - Adding and removing take effect in the running window. Editing the file by hand still takes effect at the
   next start.
 

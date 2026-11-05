@@ -1001,6 +1001,9 @@ impl App {
                 Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => {
                     self.menu_for_project(pi, at)
                 }
+                Some(Hit::Screen(screen::ScreenHit::MachineRow(machine))) => {
+                    self.menu_for_machine(machine, at)
+                }
                 _ => {
                     if let Some((term, _)) = self
                         .pane_frames
