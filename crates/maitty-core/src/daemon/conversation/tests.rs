@@ -2544,6 +2544,40 @@ async fn structured_read_acknowledgement_waits_for_durable_receipt_barrier() {
     }
 }
 
+/// The send is acknowledged before the provider's streamed items reach the
+/// daemon, so a read right after the ack can legitimately miss them. Read until
+/// the message is in the history, bounded by a deadline.
+async fn wait_for_history_message(
+    session: &mut TestSession,
+    id: crate::conversation::ConversationId,
+    wanted: &str,
+) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    for client in 1000u64.. {
+        let read = exchange(
+            session,
+            client,
+            crate::protocol::ClientMsg::Query(crate::protocol::Query::ConversationRead {
+                id,
+                cursor: None,
+                limit: 128,
+            }),
+            None,
+        )
+        .await;
+        let found = matches!(read, ServerMsg::Reply(crate::protocol::Reply::ConversationRead(ref r))
+            if r.history.entries.iter().any(|e| matches!(&e.content, super::history::Content::Message { text, .. } if text == wanted)));
+        if found {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "history never contained {wanted:?}"
+        );
+        tokio::task::yield_now().await;
+    }
+}
+
 #[tokio::test]
 async fn structured_local_ipc_create_send_read_reconnect_and_exact_identity() {
     let mut s = conversation_fixture("conversation").await;
@@ -2553,8 +2587,7 @@ async fn structured_local_ipc_create_send_read_reconnect_and_exact_identity() {
         assert_eq!(s.daemon.conversations[0].binding.session_id,"exact-thread");
         let sent=exchange(&mut s,101,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend { id,generation,operation:1,text:"Synthetic prompt".into() }),None).await;
         assert!(matches!(sent,ServerMsg::Reply(crate::protocol::Reply::ConversationSent(crate::conversation::Receipt { delivery:crate::conversation::Delivery::Acknowledged {..},.. }))));
-        let read=exchange(&mut s,102,crate::protocol::ClientMsg::Query(crate::protocol::Query::ConversationRead { id,cursor:None,limit:128 }),None).await;
-        assert!(matches!(read,ServerMsg::Reply(crate::protocol::Reply::ConversationRead(ref r)) if r.history.entries.iter().any(|e|matches!(&e.content,super::history::Content::Message {text,..} if text=="Synthetic stream complete"))));
+        wait_for_history_message(&mut s,id,"Synthetic stream complete").await;
         let retry=exchange(&mut s,103,crate::protocol::ClientMsg::Command(crate::protocol::Command::ConversationSend { id,generation,operation:1,text:"Synthetic prompt".into() }),None).await;
         assert!(matches!(retry,ServerMsg::Reply(crate::protocol::Reply::ConversationSent(_))));
         let root=s.fixture.directory.path().to_owned();

@@ -110,7 +110,31 @@ pub(super) fn panes(target: &Target) -> Vec<TermId> {
 
 pub(super) fn open_workspace(target: &Target, name: &str) -> TermId {
     cli::new_workspace(target, None, Some(name.into()), Vec::new()).expect("open a workspace");
-    until("the workspace's pane", || panes(target).first().copied())
+    let pane = until("the workspace's pane", || panes(target).first().copied());
+    wait_for_shell(target, pane);
+    pane
+}
+
+/// Block until the pane's shell reads and runs what is typed. A login shell can still be
+/// running its profile (a banner, `fastfetch`) when the pane exists, and input typed then is
+/// dropped, so a test that sends at once waits for output that never comes. Each round types a
+/// fresh probe; a dropped probe costs one short round, and a stale probe's output is harmless.
+pub(super) fn wait_for_shell(target: &Target, pane: TermId) {
+    const PROBE: Duration = Duration::from_secs(2);
+    let start = Instant::now();
+    for round in 0.. {
+        let marker = format!("shell-ready-{round}");
+        cli::send(target, Some(pane), format!("echo {marker}"), true).expect("send a probe");
+        let seen = cli::wait_on(target, pane, Some(&format!(r"^{marker}\s*$")), PROBE, false)
+            .expect("wait for a probe");
+        if matches!(seen, Waited::Matched(_)) {
+            return;
+        }
+        assert!(
+            start.elapsed() < WAIT,
+            "timed out waiting for the pane's shell to run a command"
+        );
+    }
 }
 
 #[test]
