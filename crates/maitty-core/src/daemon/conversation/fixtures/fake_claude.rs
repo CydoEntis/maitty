@@ -103,6 +103,44 @@ fn main() {
         return;
     }
 
+    // A Write of a .env and a command that echoes a token. The agent must get its own input back
+    // untouched (`updatedInput`); only Maitty's stored copy is masked. The token is built from
+    // pieces so no secret-shaped literal sits in the source.
+    if scenario == "tool-secret" {
+        let token = format!("{}{}", "ghp_", "aB3d".repeat(9));
+        let write_input = r#"{"content":"DB_PASSWORD=hunter2hunter2\n","file_path":"app/.env"}"#;
+        for frame in [
+            r#"{"isReplay":true,"message":{"content":[{"text":"hello fake Claude","type":"text"}]},"type":"user"}"#.to_owned(),
+            r#"{"event":{"message":{"id":"secret-message","model":"fake-model"},"type":"message_start"},"type":"stream_event"}"#.to_owned(),
+            r#"{"event":{"content_block":{"id":"toolu_write","input":{},"name":"Write","type":"tool_use"},"index":1,"type":"content_block_start"},"type":"stream_event"}"#.to_owned(),
+            r#"{"event":{"delta":{"partial_json":"{\"file_path\":\"app/.env\",\"content\":\"DB_PASSWORD=hunter2hunter2\\n\"}","type":"input_json_delta"},"index":1,"type":"content_block_delta"},"type":"stream_event"}"#.to_owned(),
+            r#"{"event":{"index":1,"type":"content_block_stop"},"type":"stream_event"}"#.to_owned(),
+            format!(r#"{{"request_id":"write-request","request":{{"input":{write_input},"subtype":"can_use_tool","tool_name":"Write","tool_use_id":"toolu_write"}},"type":"control_request"}}"#),
+        ] {
+            writeln!(output, "{frame}").unwrap();
+        }
+        output.flush().unwrap();
+
+        line.clear();
+        input.read_line(&mut line).unwrap();
+        assert!(
+            line.contains("hunter2hunter2"),
+            "the agent gets its own input back unchanged: {line}"
+        );
+        for frame in [
+            r#"{"message":{"content":[{"content":"created","tool_use_id":"toolu_write","type":"tool_result"}]},"type":"user"}"#.to_owned(),
+            r#"{"event":{"content_block":{"id":"toolu_echo","input":{},"name":"Bash","type":"tool_use"},"index":2,"type":"content_block_start"},"type":"stream_event"}"#.to_owned(),
+            r#"{"event":{"delta":{"partial_json":"{\"command\":\"echo $TOKEN\"}","type":"input_json_delta"},"index":2,"type":"content_block_delta"},"type":"stream_event"}"#.to_owned(),
+            r#"{"event":{"index":2,"type":"content_block_stop"},"type":"stream_event"}"#.to_owned(),
+            format!(r#"{{"message":{{"content":[{{"content":"token is {token}","tool_use_id":"toolu_echo","type":"tool_result"}}]}},"type":"user"}}"#),
+            r#"{"is_error":false,"result":"done","session_id":"fixture-session","type":"result"}"#.to_owned(),
+        ] {
+            writeln!(output, "{frame}").unwrap();
+        }
+        output.flush().unwrap();
+        return;
+    }
+
     if scenario == "interrupt" {
         writeln!(output, "{}", r#"{"isReplay":true,"message":{"content":[{"text":"hello fake Claude","type":"text"}]},"type":"user"}"#).unwrap();
         output.flush().unwrap();

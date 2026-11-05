@@ -105,7 +105,10 @@ impl History {
         self.track.stamp = next_revision;
         let changed = match update {
             Update::ProviderError { .. } => false,
-            Update::UpsertItem(entry) => self.upsert(entry),
+            Update::UpsertItem(mut entry) => {
+                super::redact::redact_entry(&mut entry);
+                self.upsert(entry)
+            }
             Update::AppendDelta { source, delta } => self.append_delta(source, &delta),
             Update::SetTurnStatus {
                 turn,
@@ -218,6 +221,9 @@ impl History {
             && let Content::Message { text, .. } = &mut self.entries[index].content
         {
             text.push_str(delta);
+            // A secret can arrive split across deltas, so the whole text is masked again; masking
+            // is idempotent, so what was masked before stays as it is.
+            super::redact::redact_in_place(text);
             self.touch(index);
             return !delta.is_empty();
         }
@@ -266,6 +272,7 @@ impl History {
         }
         // The native pager supplies canonical order; IDs and timestamps are not sorting keys.
         self.entries = entries;
+        self.redact_stored();
         self.rebuilt();
         self.drafts = self
             .entries
@@ -286,6 +293,13 @@ impl History {
         };
         self.revision = next_revision;
         Ok(())
+    }
+    /// Masks every entry again. Entries pass the choke point as they arrive; this covers the ones
+    /// that did not: a history read back from the cache, or from a native pager.
+    pub(in crate::daemon) fn redact_stored(&mut self) {
+        for entry in &mut self.entries {
+            super::redact::redact_entry(entry);
+        }
     }
     pub fn durable(&self) -> Self {
         let mut copy = self.clone();

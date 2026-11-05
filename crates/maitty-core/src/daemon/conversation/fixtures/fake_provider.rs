@@ -127,6 +127,7 @@ fn main() {
             || mode == "conversation-file-approval"
             || mode == "conversation-file-approval-no-patch"
             || mode == "conversation-file-approval-malformed"
+            || mode == "conversation-file-approval-secret"
             || mode == "conversation-permission-approval"
             || mode == "conversation-user-input")
             && line.contains("\"result\":")
@@ -225,6 +226,16 @@ fn main() {
                 );
                 println!(
                     "{{\"id\":\"file-approval-private\",\"method\":\"item/fileChange/requestApproval\",\"params\":{{\"threadId\":\"exact-thread\",\"turnId\":\"{turn}\",\"itemId\":\"file-change-1\",\"grantRoot\":\"C:/synthetic/project\",\"reason\":\"Synthetic file change\"}}}}"
+                );
+            } else if mode == "conversation-file-approval-secret" {
+                // A write to a .env and a reason that echoes a token. The token is built from
+                // pieces so no secret-shaped literal sits in the source.
+                let token = format!("{}{}", "ghp_", "aB3d".repeat(9));
+                println!(
+                    "{{\"method\":\"item/fileChange/patchUpdated\",\"params\":{{\"threadId\":\"exact-thread\",\"turnId\":\"{turn}\",\"itemId\":\"file-change-1\",\"changes\":[{{\"path\":\"app/.env\",\"kind\":\"add\",\"diff\":\"+DB_PASSWORD=hunter2hunter2\\n\"}}]}}}}"
+                );
+                println!(
+                    "{{\"id\":\"file-approval-private\",\"method\":\"item/fileChange/requestApproval\",\"params\":{{\"threadId\":\"exact-thread\",\"turnId\":\"{turn}\",\"itemId\":\"file-change-1\",\"grantRoot\":\"C:/synthetic/project\",\"reason\":\"Write the token {token} to .env\"}}}}"
                 );
             } else if mode == "conversation-file-approval-no-patch" {
                 println!(

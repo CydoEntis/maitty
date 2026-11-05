@@ -290,7 +290,11 @@ fn file_change_output(item: &Value) -> String {
             output.push('\n');
         }
         output.push_str(&format!("{} ({})\n", change_path(change), change_kind(change)));
-        output.push_str(change.get("diff").and_then(Value::as_str).unwrap_or_default());
+        // The content of a secret file never enters the history; its path and kind do.
+        output.push_str(&super::redact::redact_diff(
+            change_path(change),
+            change.get("diff").and_then(Value::as_str).unwrap_or_default(),
+        ));
     }
     if output.len() > MAX_FILE_CHANGE_OUTPUT_BYTES {
         let mut end = MAX_FILE_CHANGE_OUTPUT_BYTES;

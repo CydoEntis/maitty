@@ -248,7 +248,7 @@ fn is_secret_value(name: &str, inner: &str, quoted: bool, separator: &str) -> bo
 /// tool input. Returns whether anything changed.
 pub(super) fn redact_input(value: &mut Value) -> bool {
     match value {
-        Value::String(text) => replace_if_changed(text),
+        Value::String(text) => redact_in_place(text),
         Value::Array(items) => items.iter_mut().fold(false, |any, item| redact_input(item) | any),
         Value::Object(fields) => {
             let mut changed = false;
@@ -274,7 +274,8 @@ fn is_secret_json_value(value: &Value) -> bool {
         .is_some_and(|text| is_secret_value("", text, true, ":"))
 }
 
-fn replace_if_changed(text: &mut String) -> bool {
+/// Masks `text` where it stands. Returns whether anything changed.
+pub(super) fn redact_in_place(text: &mut String) -> bool {
     match redact_text(text) {
         Cow::Owned(masked) => {
             *text = masked;
@@ -426,7 +427,7 @@ fn command_prints_secret_file(command: &str) -> bool {
 pub(super) fn redact_entry(entry: &mut Entry) {
     match &mut entry.content {
         Content::Message { text, .. } => {
-            replace_if_changed(text);
+            redact_in_place(text);
         }
         Content::Tool {
             output,
@@ -434,7 +435,7 @@ pub(super) fn redact_entry(entry: &mut Entry) {
             input,
             ..
         } => {
-            replace_if_changed(label);
+            redact_in_place(label);
             let mut prints_secret_file = false;
             if let Some(input) = input.as_mut() {
                 prints_secret_file = input
@@ -449,7 +450,7 @@ pub(super) fn redact_entry(entry: &mut Entry) {
                     *output = OMITTED.into();
                 }
             } else {
-                replace_if_changed(output);
+                redact_in_place(output);
             }
         }
         Content::TurnStatus | Content::Unsupported { .. } => {}

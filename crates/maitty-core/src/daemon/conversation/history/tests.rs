@@ -681,3 +681,56 @@ fn cursors_and_pages_from_before_epochs_still_decode_and_work() {
         ["2"]
     );
 }
+
+fn fake_token() -> String {
+    format!("{}{}", "ghp_", "aB3d".repeat(9))
+}
+
+fn message_text(history: &History, item: usize) -> String {
+    match &history.entries[item].content {
+        Content::Message { text, .. } => text.clone(),
+        other => panic!("not a message: {other:?}"),
+    }
+}
+
+#[test]
+fn a_token_split_across_streamed_deltas_is_masked_once_whole() {
+    let token = fake_token();
+    let (first, second) = token.split_at(20);
+    let source = entry(1).source;
+    let mut h = History::new(ConversationId(1));
+    for delta in [format!("key {first}"), format!("{second} done")] {
+        h.apply(Update::AppendDelta { source: source.clone(), delta }).unwrap();
+    }
+    assert_eq!(message_text(&h, 0), "key [redacted] done");
+}
+
+#[test]
+fn entries_hydrated_or_loaded_from_an_older_cache_are_masked() {
+    let mut stored = entry(1);
+    stored.content = Content::Message {
+        role: Role::Assistant,
+        text: format!("old cache {}", fake_token()),
+    };
+    let mut h = History::new(ConversationId(1));
+    h.hydrate(vec![stored.clone()], Completeness::Complete).unwrap();
+    assert_eq!(message_text(&h, 0), "old cache [redacted]");
+
+    // A history written before redaction existed decodes, and is masked when loaded.
+    let mut old: History = serde_json::from_value(json!({
+        "conversation": 1, "revision": 3, "completeness": "Complete",
+        "entries": [{
+            "source": {"conversation": 1, "turn": "t", "item": "i"},
+            "content": {"Tool": {"kind": "commandExecution", "output": format!("x {}", fake_token()),
+                                 "label": "ls", "input": {"file_path": ".env", "content": "A=1"}}},
+            "state": "Completed"
+        }]
+    }))
+    .unwrap();
+    old.redact_stored();
+    let Content::Tool { output, input, .. } = &old.entries[0].content else {
+        panic!("a tool row");
+    };
+    assert_eq!(output, "x [redacted]");
+    assert_eq!(input.as_ref().unwrap()["content"], "[content of a secret file omitted]");
+}
