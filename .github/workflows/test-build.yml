@@ -1,0 +1,79 @@
+# Manual build of the desktop app installers for trying a branch before a release.
+# Unlike release.yml it never creates a tag or a GitHub Release, and it uses no signing key:
+# the installers are only uploaded as workflow artifacts (kept 7 days).
+name: test-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit to build (default: the branch you run it on)"
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-gui:
+    name: test build GUI ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, platform: windows-x64 }
+          - { os: macos-latest, platform: macos }
+          - { os: ubuntu-latest, platform: linux-x64 }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/gui/pnpm-lock.yaml
+
+      - name: Install Tauri Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential curl file libayatana-appindicator3-dev libssl-dev \
+            libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf rpm wget
+
+      - name: Install GUI dependencies
+        working-directory: apps/gui
+        run: pnpm install --frozen-lockfile
+
+      - name: Build GUI installers
+        working-directory: apps/gui
+        run: pnpm desktop:build
+
+      - name: Collect GUI installers
+        shell: bash
+        run: |
+          mkdir -p dist
+          case "${{ runner.os }}" in
+            Windows) find target/release/bundle -type f \( -iname '*.msi' -o -iname '*.exe' \) -exec cp {} dist/ \; ;;
+            macOS) find target/release/bundle -type f -iname '*.dmg' -exec cp {} dist/ \; ;;
+            Linux) find target/release/bundle -type f \( -iname '*.deb' -o -iname '*.rpm' -o -iname '*.appimage' \) -exec cp {} dist/ \; ;;
+          esac
+          test -n "$(find dist -maxdepth 1 -type f -print -quit)" \
+            || { echo "No GUI installers were collected" >&2; exit 1; }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: maitty-test-gui-${{ matrix.platform }}
+          path: dist/*
+          retention-days: 7
