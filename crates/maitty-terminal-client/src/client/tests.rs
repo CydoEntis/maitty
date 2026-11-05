@@ -1309,15 +1309,16 @@ mod screen_tests {
             "the tagline, no art"
         );
         assert!(
-            o.contains("while you were away")
-                && o.contains("1 need you")
+            o.contains("WHILE YOU WERE AWAY")
+                && o.contains("RECENT PROJECTS")
+                && o.contains("MACHINES")
                 && o.contains("Resume where you left off")
                 && o.contains("New session")
                 && o.contains("Open a project…")
         );
-        // Small windows keep it all.
+        // Small windows keep it all, in the cards and the counters line.
         let o = draw(&mut app, 100, 30);
-        assert!(!o.contains("⣿") && o.contains("New session"));
+        assert!(!o.contains("⣿") && o.contains("New session") && o.contains("1 need you"));
     }
 
     #[test]
@@ -1340,7 +1341,7 @@ mod screen_tests {
                     .iter()
                     .position(|l| {
                         l.contains(concat!("↑ ", env!("APP_COMMAND"), " 9.9.9 is out"))
-                            && l.contains("u  update")
+                            && (l.contains("u  update") || l.contains("u update"))
                     })
                     .unwrap_or_else(|| {
                         panic!(
@@ -1353,8 +1354,9 @@ mod screen_tests {
                     .position(|l| l.contains("New session"))
                     .expect("the cards");
                 assert!(at < cards, "{look} {w}x{h}: over the cards");
+                // The wide splash wears it on its top edge; the cards' splash boxes it.
                 assert!(
-                    lines[at - 1].contains('─') && lines[at + 1].contains('─'),
+                    w >= 142 || lines[at - 1].contains('─') && lines[at + 1].contains('─'),
                     "{look} {w}x{h}: boxed"
                 );
                 assert!(
@@ -1371,7 +1373,7 @@ mod screen_tests {
     /// last place under it until the window is short, the hints, the version bottom right.
     #[test]
     fn the_splash_holds_at_the_designs_sizes() {
-        for (w, h) in [(160u16, 45u16), (120, 34), (80, 24)] {
+        for (w, h) in [(120u16, 34u16), (80, 24)] {
             let (_, mut app) = super::design_tests::render_with(w, h);
             app.splash = true;
             let o = draw(&mut app, w, h);
@@ -1410,6 +1412,57 @@ mod screen_tests {
                 "{w}x{h}: the version, bottom right"
             );
         }
+    }
+
+    /// The splash on a roomy terminal: START with its choices and recent projects, WHILE YOU WERE
+    /// AWAY with the agents and the machines, the keys under them and the version bottom right.
+    #[test]
+    fn the_wide_splash_has_a_start_box_and_an_away_box() {
+        for (w, h) in [(172u16, 56u16), (160, 45)] {
+            let (_, mut app) = super::design_tests::render_with(w, h);
+            app.splash = true;
+            let o = draw(&mut app, w, h);
+            show(&o);
+            let lines: Vec<&str> = o.lines().collect();
+            let at = |needle: &str| {
+                lines
+                    .iter()
+                    .position(|l| l.contains(needle))
+                    .unwrap_or_else(|| panic!("{w}x{h}: no {needle:?}\n{o}"))
+            };
+            let start = at(" START ");
+            assert_eq!(start, at(" WHILE YOU WERE AWAY "), "{w}x{h}: side by side");
+            assert!(start < at("Resume where you left off"));
+            assert!(at("Resume where you left off") < at(" RECENT PROJECTS "));
+            assert!(lines[at("choose")].contains("switch box"), "{w}x{h}: the keys");
+            let version = concat!(env!("APP_COMMAND"), " ", env!("APP_VERSION"));
+            assert!(
+                lines.last().unwrap().trim_end().ends_with(version),
+                "{w}x{h}: the version, bottom right"
+            );
+        }
+    }
+
+    #[test]
+    fn tab_moves_the_wide_splash_between_its_boxes_and_enter_opens_the_chosen_row() {
+        let (_, mut app) = super::design_tests::render_with(172, 56);
+        let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
+        app.splash = true;
+        draw(&mut app, 172, 56);
+        assert!(!app.screen.splash_away);
+        app.on_key(key(KeyCode::Tab));
+        assert!(app.screen.splash_away, "Tab goes to the away box");
+        app.on_key(key(KeyCode::Tab));
+        assert!(!app.screen.splash_away, "and back");
+        // The projects are rows after the choices.
+        let choices = screen::splash_options(&app).len();
+        for _ in 0..choices {
+            app.on_key(key(KeyCode::Down));
+        }
+        assert_eq!(app.screen.splash_sel, choices, "the first project");
+        app.on_key(key(KeyCode::Enter));
+        assert!(!app.splash, "a project opens");
+        assert!(matches!(app.mode, Mode::Side), "with the keys in the sidebar");
     }
 
     #[test]
@@ -11053,7 +11106,8 @@ mod check_row_tests {
     ) -> String {
         let mut app = scene(w, h, layout, extra);
         app.splash = true;
-        let buf = render(&mut app, w, h);
+        // The wide splash counts in chips; the counters line is the compact one's.
+        let buf = render(&mut app, w.min(139), h);
         show(&buf, &format!("splash {}", label(layout, w, h)));
         away_line(&buf)
     }
@@ -12728,7 +12782,8 @@ mod check_inbox_tests {
 
     fn home_finished(app: &mut App, w: u16, h: u16) -> usize {
         app.splash = true;
-        let buf = buffer(app, w, h);
+        // The wide splash counts in chips; the counters line is the compact one's.
+        let buf = buffer(app, w.min(139), h);
         let line = lines(&buf, 0)
             .into_iter()
             .find(|l| l.contains("need you") && l.contains("still working"))

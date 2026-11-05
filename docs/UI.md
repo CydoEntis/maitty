@@ -447,6 +447,19 @@ accent `▌` down its edge, a bold strong label and an accent keycap. Arrows or 
 key, choose; Enter opens the chosen one; a click chooses and a click on the chosen card opens it.
 Below 30 rows Resume loses its second row and the gaps between and above the cards close.
 
+**Wide** (140 columns and 40 rows or more, `client/screen/splash_wide.rs`): an outer box with
+a ` MAITTY ` chip, the version and a `⌂ Local` badge on its top edge (a waiting release is an accent
+chip beside the version, `u` or a click acts); the wordmark, swell and tagline as above; under them
+two boxes side by side, **START** (64 columns: the three choices as 3-row highlights with the
+sub-text and a key chip on the middle row, then a `RECENT PROJECTS` rule and up to five projects
+with a machine badge and `⎇ branch`) and **WHILE YOU WERE AWAY** (72 columns: `●n ✻n ✓n` chips on
+its top edge, up to five agents, the ones that need you first, each two rows: glyph, name, machine
+badge, project, `● you` or its age, then what it asks or does; a `MACHINES` rule with each
+machine's badge and dot). The box that has the keys has the accent border and title chip. Tab
+switches box, the arrows walk the one that has them, Enter opens: a choice, a project (the splash
+goes, the project is unfolded and selected in the sidebar) or a session. The hints sit under the
+box and the version at the bottom right. Smaller terminals keep the cards above.
+
 The intro, at 50 ms a frame: letter k rises from the deep colour to its own from frame 3k over 8
 frames (eased out), nothing moving; the swell fades in over 14 frames and rolls a step every 3; the
 tagline fades in over frames 10–20. Cards and hints are drawn from the first frame and keys act at

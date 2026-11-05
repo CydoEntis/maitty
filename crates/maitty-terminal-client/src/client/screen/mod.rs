@@ -259,6 +259,11 @@ pub(super) struct Screen {
     pub drag_key: Option<String>,
     /// The splash's selected button.
     pub splash_sel: usize,
+    /// The wide splash: the away box holds the keys, its chosen session, and whether the last
+    /// frame drew it (the keys differ).
+    pub splash_away: bool,
+    pub splash_away_sel: usize,
+    pub splash_wide: bool,
     /// The colour of each project's +/− button, picked at random when it opens (key -> colour).
     pub fold_colors: HashMap<String, Color>,
     /// The scrollbar being dragged: (pane, track, lines of history).
@@ -1596,6 +1601,12 @@ pub(super) enum ScreenHit {
     SplashKey(char),
     /// A splash card: a click chooses it, a click on the chosen one opens it.
     SplashCard(usize),
+    /// A recent project on the wide splash (its index among them).
+    SplashProject(usize),
+    /// A session in the wide splash's away list.
+    SplashAway(usize),
+    /// A click in one of the wide splash's boxes: true for the away box.
+    SplashFocus(bool),
     /// A right-click menu item.
     MenuPick(usize),
     /// The ✕ of a view in the sheet (Changes): it closes.
@@ -1746,6 +1757,7 @@ mod sheet;
 mod side;
 mod side_tabs;
 mod splash;
+mod splash_wide;
 mod tidy;
 pub(in crate::client) use self::{
     branch_sheet::*, card::*, check_actions::*, check_approve::*, check_sheet::*, dialogs::*,

@@ -56,7 +56,7 @@ const NARROW: u16 = 100;
 const CARD_MAX: u16 = 56;
 /// The swell reaches this far past the wordmark on each side, and fades out over `SWELL_FADE`
 /// cells at each end.
-const SWELL_REACH: u16 = 4;
+pub(super) const SWELL_REACH: u16 = 4;
 const SWELL_FADE: f32 = 6.0;
 const SWELL: [&str; 8] = ["▁", "▂", "▃", "▄", "▅", "▄", "▃", "▂"];
 /// The swell moves one step every this many frames (a frame is 50 ms), and fades in over
@@ -100,7 +100,7 @@ fn logo_columns() -> u16 {
 }
 
 /// Cells per font pixel at this width.
-fn pixel_width(screen_w: u16) -> u16 {
+pub(super) fn pixel_width(screen_w: u16) -> u16 {
     if screen_w >= WIDE_PIXELS_FROM && logo_columns() * 2 + 2 <= screen_w {
         2
     } else {
@@ -108,7 +108,7 @@ fn pixel_width(screen_w: u16) -> u16 {
     }
 }
 
-fn logo_width(screen_w: u16) -> u16 {
+pub(super) fn logo_width(screen_w: u16) -> u16 {
     logo_columns() * pixel_width(screen_w)
 }
 
@@ -165,7 +165,7 @@ pub(in crate::client) fn draw_logo(
 
 /// The swell: one rolling line `w` wide, fading into the ground at both ends. `roll` is the
 /// frame it rolls by (0 holds it still), `t` the intro's frame.
-fn draw_swell(buf: &mut Buffer, (x, y): (u16, u16), w: u16, roll: u64, t: u64, th: &Theme) {
+pub(super) fn draw_swell(buf: &mut Buffer, (x, y): (u16, u16), w: u16, roll: u64, t: u64, th: &Theme) {
     let shown = (t as f32 / SWELL_FADE_IN).min(1.0);
     for k in 0..w {
         let edge = (k.min(w - 1 - k) as f32 / SWELL_FADE).min(1.0);
@@ -295,7 +295,7 @@ fn foot(t: &Theme) -> Seg {
 
 /// A newer release, or one installed and waiting for a restart: what the splash's banner says,
 /// and what `u` and a click on it do.
-fn release_news(app: &App) -> Option<(String, &'static str, ScreenHit)> {
+pub(super) fn release_news(app: &App) -> Option<(String, &'static str, ScreenHit)> {
     if let Some(v) = &app.update_available {
         Some((
             format!(concat!("↑ ", env!("APP_COMMAND"), " {} is out"), v),
@@ -368,6 +368,11 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
         SETTLED
     };
     let model = app.screen_model();
+    app.screen.splash_wide = false;
+    if super::splash_wide::is_wide(area) {
+        super::splash_wide::draw_wide(app, f, area, &model, (intro, clock), t);
+        return;
+    }
     let opts = splash_options(app);
     let compact = area.height < COMPACT_BELOW;
     let away = away_line(app, &model, t, area.width);

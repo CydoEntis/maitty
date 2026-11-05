@@ -190,6 +190,10 @@ the chosen one with an accent `▌` edge. On the first start of a version the le
 the deep colour one by one and the swell fades in. Night has its own wordmark, swell and deep
 colours; other themes take them from their text and accent. See UI › *splash*.
 
+A terminal of 140 columns and 40 rows or more draws the wide splash instead of the cards: the
+wordmark in an outer box, with the START box (choices and recent projects) and the WHILE YOU WERE
+AWAY box (agents by urgency and the machines) side by side under it.
+
 ## Desktop app
 
 The desktop app is a terminal multiplexer window ([ADR 0046](adr/0046-desktop-app-is-a-terminal-multiplexer.md)):

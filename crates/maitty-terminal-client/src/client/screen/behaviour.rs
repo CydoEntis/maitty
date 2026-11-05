@@ -1686,6 +1686,9 @@ impl App {
     pub(in crate::client) fn on_hy_splash_key(&mut self, k: &KeyEvent) {
         let opts = splash_options(self);
         let last = opts.len().saturating_sub(1);
+        if self.screen.splash_wide && self.on_wide_splash_key(k, opts.len()) {
+            return;
+        }
         let sel = self.screen.splash_sel.min(last);
         match k.code {
             KeyCode::Up | KeyCode::BackTab | KeyCode::Char('k') => {
@@ -1716,6 +1719,79 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// The wide splash's own keys: Tab changes box, the arrows walk the box that has the keys,
+    /// Enter opens its chosen row. True when the key was one of those.
+    fn on_wide_splash_key(&mut self, k: &KeyEvent, menu: usize) -> bool {
+        let model = self.screen_model();
+        let (projects, away) = (
+            splash_wide::recent_projects(&model).len(),
+            splash_wide::away_sessions(&model).len(),
+        );
+        let going = match k.code {
+            KeyCode::Up | KeyCode::Char('k') => -1i32,
+            KeyCode::Down | KeyCode::Char('j') => 1,
+            KeyCode::Tab | KeyCode::BackTab => {
+                self.screen.splash_away = !self.screen.splash_away;
+                return true;
+            }
+            KeyCode::Enter => {
+                if self.screen.splash_away {
+                    self.splash_open_away(self.screen.splash_away_sel);
+                } else {
+                    self.splash_open_start(self.screen.splash_sel, menu);
+                }
+                return true;
+            }
+            KeyCode::Char('r' | 'n' | 'o') => {
+                self.screen.splash_away = false;
+                return false;
+            }
+            _ => return false,
+        };
+        let step = |at: usize, len: usize| {
+            (at as i32 + going).clamp(0, len.saturating_sub(1) as i32) as usize
+        };
+        if self.screen.splash_away {
+            self.screen.splash_away_sel = step(self.screen.splash_away_sel, away);
+        } else {
+            self.screen.splash_sel = step(self.screen.splash_sel, menu + projects);
+        }
+        true
+    }
+
+    /// Open the wide splash's START row: a choice, or a recent project (the splash goes, the
+    /// project opens in the sidebar and the keys are there).
+    pub(in crate::client) fn splash_open_start(&mut self, i: usize, menu: usize) {
+        if i < menu {
+            self.screen_splash_open(i);
+            return;
+        }
+        let model = self.screen_model();
+        let Some(key) = splash_wide::recent_projects(&model)
+            .get(i - menu)
+            .map(|p| p.key.clone())
+        else {
+            return;
+        };
+        self.splash = false;
+        self.screen.splash_sel = 0;
+        self.screen_fold(&key, Some(true));
+        self.screen_side_set(SideItem::Proj(key));
+    }
+
+    /// Open the wide splash's away-list session.
+    pub(in crate::client) fn splash_open_away(&mut self, i: usize) {
+        let model = self.screen_model();
+        let Some(key) = splash_wide::away_sessions(&model).get(i).map(|(s, _)| s.key) else {
+            return;
+        };
+        self.splash = false;
+        if let Some(term) = self.session_term(key) {
+            self.screen_focus(term);
+        }
+        self.screen_side_set(SideItem::Sess(key));
     }
 
     /// Open the splash's `i`th choice.
@@ -2015,12 +2091,31 @@ impl App {
                 self.screen_splash_action(c);
             }
             ScreenHit::SplashCard(i) => {
+                self.screen.splash_away = false;
                 if self.screen.splash_sel == i || double {
                     self.screen_splash_open(i);
                 } else {
                     self.screen.splash_sel = i;
                 }
             }
+            ScreenHit::SplashProject(j) => {
+                let at = splash_options(self).len() + j;
+                self.screen.splash_away = false;
+                if self.screen.splash_sel == at || double {
+                    self.splash_open_start(at, splash_options(self).len());
+                } else {
+                    self.screen.splash_sel = at;
+                }
+            }
+            ScreenHit::SplashAway(i) => {
+                if self.screen.splash_away && self.screen.splash_away_sel == i || double {
+                    self.splash_open_away(i);
+                } else {
+                    self.screen.splash_away = true;
+                    self.screen.splash_away_sel = i;
+                }
+            }
+            ScreenHit::SplashFocus(away) => self.screen.splash_away = away,
             ScreenHit::MenuPick(i) => self.menu_pick(i),
             ScreenHit::HistRow(i) => {
                 if let Mode::History { sel } = &mut self.mode {
