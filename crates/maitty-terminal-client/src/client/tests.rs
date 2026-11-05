@@ -2149,9 +2149,10 @@ mod screen_tests {
             text: "hello".into(),
         });
         assert!(
-            app.notice
+            app.notice_card
                 .as_ref()
-                .is_some_and(|(m, ..)| m.contains("copied 5 characters"))
+                .is_some_and(|c| c.detail.contains("5 characters")),
+            "the same card as a copy made here"
         );
     }
 

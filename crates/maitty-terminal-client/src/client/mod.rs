@@ -577,6 +577,8 @@ pub struct App {
     /// Pages the wheel has sent up to an agent that scrolls itself, less those sent down:
     /// The app can't see where it is, so this is how far "Back to bottom" has to page down.
     paged_up: std::collections::HashMap<ClientTerm, u32>,
+    /// When a remote machine's refused copy was last told, so it is told once a minute.
+    copy_refusal_told: Option<Instant>,
     out: mpsc::UnboundedSender<Outgoing>,
     quit: Option<String>,
     dirty: bool,
@@ -821,6 +823,7 @@ impl App {
             pane_frames: Vec::new(),
             wheel_page: None,
             paged_up: std::collections::HashMap::new(),
+            copy_refusal_told: None,
             out,
             quit: None,
             dirty: true,
@@ -1783,10 +1786,16 @@ impl App {
         if text.is_empty() {
             return;
         }
-        let chars = text.chars().count();
-        let lines = text.lines().count().max(1);
         let native = copy::to_clipboard(&text);
         let from = src.map(|t| self.session_name(t)).filter(|n| !n.is_empty());
+        self.announce_copy(&text, native, from);
+    }
+
+    /// The one toast for a copy, whether you selected the text here or a program asked for it:
+    /// what was copied, how much, from where, and a line of it.
+    pub(super) fn announce_copy(&mut self, text: &str, native: bool, from: Option<String>) {
+        let chars = text.chars().count();
+        let lines = text.lines().count().max(1);
         let mut detail = format!(
             "{chars} character{} · {lines} line{}",
             if chars == 1 { "" } else { "s" },

@@ -47,6 +47,20 @@ mod tests {
         copied();
         off.on_machine_server(THERE, clip());
         assert_eq!(copied(), None, "off by default");
+        // Said, not silent: nothing was copied, and the toast says how to allow it.
+        let told = off.notice_card.clone().expect("a refused copy is told");
+        assert!(
+            off.notice
+                .as_ref()
+                .is_some_and(|(title, ..)| title.contains("tried to copy"))
+                && told.detail.contains("not copied")
+                && told
+                    .preview
+                    .as_deref()
+                    .is_some_and(|p| p.contains("clipboard = true")),
+            "{:?} {told:?}",
+            off.notice
+        );
 
         let mut on = app_with_machine(|d| d.clipboard = true);
         on.on_machine_server(THERE, clip());
@@ -54,8 +68,12 @@ mod tests {
         assert!(
             on.notice
                 .as_ref()
-                .is_some_and(|(text, ..)| text.starts_with("[build] ")),
-            "{:?}",
+                .is_some_and(|(title, ..)| title == "Copied to clipboard")
+                && on
+                    .notice_card
+                    .as_ref()
+                    .is_some_and(|c| c.detail.contains("on build")),
+            "the same card as a local copy, naming the machine: {:?}",
             on.notice
         );
     }
