@@ -26,6 +26,8 @@ export type ChatLink = {
    * it did, but sending, answering and interrupting happen in the terminal.
    */
   readonly readOnly?: boolean
+  /** The machine the agent runs on, so attachments are sent there (ADR 0053); absent for this computer. */
+  readonly machine?: string | null
 }
 
 export type ChatAvailability =

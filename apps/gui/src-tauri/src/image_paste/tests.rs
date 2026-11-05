@@ -256,6 +256,7 @@ fn the_far_side_path_is_reported_for_an_image_named_image() {
         index: 0,
         count: 1,
         remote_path: "/home/me/.cache/pastes/p.png".into(),
+        bytes: PNG.len() as u64,
     }));
     assert_eq!(
         events.last(),

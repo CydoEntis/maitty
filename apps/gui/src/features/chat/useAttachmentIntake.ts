@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { attachLocalFile, chooseFilesToAttach, MOST_ATTACHMENTS } from '@/api/attachments'
-import { oversizeMessage, saveImageLocally } from '@/api/imagePaste'
+import { sendFilesToMachine } from '@/api/fileSends'
+import { oversizeMessage, saveImageLocally, sendImageToMachine } from '@/api/imagePaste'
 import { errorMessage } from '@/lib/error-message'
+import { kindOf } from './attachmentMessage'
 import { peekComposer, updateComposer, type DraftAttachment } from './composerStore'
+import { sendAttachments, type Landed } from './sendAttachments'
 
 /** What the composer can do with files; every refusal is one error toast and nothing is added. */
 export type AttachmentIntake = {
@@ -21,9 +24,9 @@ type Input = {
   /** Why nothing can be attached now (offline, an approval waits, read-only), or null. */
   blocked: string | null
   /**
-   * The machine the agent runs on, or null for this computer. Only this computer is built (ADR 0053):
-   * the other-machine form would send the file with `send_files_to_machine` / `send_pasted_image`
-   * and name the far-side path in the message.
+   * The machine the agent runs on, or null for this computer. For a machine the files are sent there
+   * (`send_files_to_machine` / `send_pasted_image`, ADR 0050) and the far-side path goes in the message
+   * (ADR 0053).
    */
   machine?: string | null
 }
@@ -55,9 +58,8 @@ export function useAttachmentIntake({ conversation, blocked, machine = null }: I
 
   /** The words for why nothing is added now, or null when files can be added. */
   const refusal = useCallback((incoming: number): string | null => {
-    const { conversation: id, blocked: reason, machine: where } = latest.current
+    const { conversation: id, blocked: reason } = latest.current
     if (reason !== null) return reason
-    if (where !== null) return `Attaching files to a chat on ${where} is not available yet`
     const have = peekComposer(id).attachments.length
     if (have + incoming > MOST_ATTACHMENTS) {
       return have === 0
@@ -71,6 +73,18 @@ export function useAttachmentIntake({ conversation, blocked, machine = null }: I
     updateComposer(latest.current.conversation, (state) => ({ ...state, attachments: [...state.attachments, item] }))
   }, [])
 
+  /** Keeps a file the other machine now holds; `preview` is the thumbnail of a pasted image. */
+  const keepLanded = useCallback((target: number, landed: Landed, preview: string | null) => {
+    // The message may have been filled by another add while this file was on its way.
+    if (peekComposer(target).attachments.length >= MOST_ATTACHMENTS) {
+      toast.error(`A message holds at most ${String(MOST_ATTACHMENTS)} files`)
+      return
+    }
+    const name = preview === null ? baseName(landed.file) : 'Pasted image'
+    const kind = preview === null ? kindOf(name) : 'image'
+    updateComposer(target, (state) => ({ ...state, attachments: [...state.attachments, { id: newId(), path: landed.remotePath, name, size: landed.bytes, kind, preview }] }))
+  }, [])
+
   const addPaths = useCallback((paths: readonly string[]) => {
     const chosen = paths.filter((path) => path !== '')
     if (chosen.length === 0) return
@@ -80,6 +94,18 @@ export function useAttachmentIntake({ conversation, blocked, machine = null }: I
       return
     }
     const target = latest.current.conversation
+    const where = latest.current.machine
+    if (where !== null) {
+      void sendAttachments({
+        machine: where,
+        label: chosen.length === 1 ? baseName(chosen[0] ?? '') : `${String(chosen.length)} files`,
+        image: false,
+        count: chosen.length,
+        start: (transfer) => sendFilesToMachine(where, chosen, transfer),
+        onLanded: (landed) => { keepLanded(target, landed, null) },
+      })
+      return
+    }
     const toastId = `attach-${String(target)}`
     toast.loading(`Adding ${chosen.length === 1 ? baseName(chosen[0] ?? '') : `${String(chosen.length)} ${noun(chosen.length)}`}…`, { id: toastId })
     void (async () => {
@@ -102,7 +128,7 @@ export function useAttachmentIntake({ conversation, blocked, machine = null }: I
       if (failed === chosen.length) toast.dismiss(toastId)
       else toast.success(`Attached ${String(chosen.length - failed)} ${noun(chosen.length - failed)}`, { id: toastId, duration: 2000 })
     })()
-  }, [refusal])
+  }, [refusal, keepLanded])
 
   const addImage = useCallback((image: Blob) => {
     const refused = refusal(1)
@@ -115,6 +141,26 @@ export function useAttachmentIntake({ conversation, blocked, machine = null }: I
       toast.error(tooBig)
       return
     }
+    const where = latest.current.machine
+    if (where !== null) {
+      const target = latest.current.conversation
+      const preview = previewOf(image)
+      void image.arrayBuffer().then(
+        (buffer) => sendAttachments({
+          machine: where,
+          label: 'image',
+          image: true,
+          count: 1,
+          start: (transfer) => sendImageToMachine(where, new Uint8Array(buffer), transfer),
+          onLanded: (landed) => { keepLanded(target, landed, preview) },
+        }),
+        (error: unknown) => { toast.error(errorMessage(error, 'Could not read the image')) },
+      ).then(() => {
+        // Nothing landed (refused, failed or cancelled): the thumbnail has no chip to belong to.
+        if (preview !== null && !peekComposer(target).attachments.some((item) => item.preview === preview)) URL.revokeObjectURL(preview)
+      })
+      return
+    }
     const toastId = `attach-${String(latest.current.conversation)}`
     toast.loading('Adding the image…', { id: toastId })
     image.arrayBuffer()
@@ -124,7 +170,7 @@ export function useAttachmentIntake({ conversation, blocked, machine = null }: I
         toast.success('Attached the image', { id: toastId, duration: 2000 })
       })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not attach the image'), { id: toastId }) })
-  }, [refusal, append])
+  }, [refusal, append, keepLanded])
 
   const pick = useCallback(() => {
     const refused = refusal(1)

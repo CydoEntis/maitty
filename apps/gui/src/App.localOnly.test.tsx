@@ -122,7 +122,7 @@ describe('a pane of another machine and the features that need its files', () =>
     const [machine, paths, transfer] = sends.send.mock.calls[0] ?? []
     expect([machine, paths]).toEqual(['build', ['/home/casey/a.png']])
     expect(terminal.pasted, 'nothing is typed until the machine has the file').toEqual([])
-    act(() => { sends.emit.current?.({ kind: 'sent', transfer, file: 'a.png', index: 0, count: 1, remotePath: '/home/dev/.cache/maitty/pastes/p-a.png' }) })
+    act(() => { sends.emit.current?.({ kind: 'sent', transfer, file: 'a.png', index: 0, count: 1, remotePath: '/home/dev/.cache/maitty/pastes/p-a.png', bytes: 1 }) })
     expect(terminal.pasted).toEqual([['build/t7', '/home/dev/.cache/maitty/pastes/p-a.png ']])
     act(() => { sends.emit.current?.({ kind: 'done', transfer, sent: 1, count: 1 }) })
     expect(await screen.findByText('Sent 1 file to build')).toBeInTheDocument()

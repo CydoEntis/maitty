@@ -803,8 +803,10 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   (an object URL, revoked on remove or send). Sending builds the text with `buildAttachmentMessage` (the text, then a
   fixed block naming each kept file by path); a message may be only files. A failed send gives text and files back.
   A sent message is shown by `parseAttachmentMessage` as its text and chips (icon and name; "no longer available"
-  when `attachments_exist` says the kept file was swept). The composer takes a `machine`; only this computer is built,
-  and another machine's chat says attaching is not available yet. A read-only chat shows no paperclip.
+  when `attachments_exist` says the kept file was swept). The composer takes a `machine` (the chat link's):
+  for another machine the same picker, drop and paste send the file there (`sendAttachments` over `send_files_to_machine` /
+  `send_pasted_image`, with the terminal's progress toast and Cancel) and the chip holds the far-side path, checked
+  before it is used; see ADR 0053 point 8. No chat sets a machine yet. A read-only chat shows no paperclip.
 - **Read-only chat.** For a link with `readOnly` the composer is off with "Read-only: talk to the agent in the
   terminal" as its placeholder, and offers no Stop or queue wording; the daemon refuses send, approve and cancel
   for such a conversation. The history and status still follow the agent.
