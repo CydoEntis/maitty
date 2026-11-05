@@ -656,8 +656,19 @@ fn draw_rows(app: &mut App, buf: &mut Buffer, pass: &Pass, t: &Theme, lines: &[L
                 };
                 row_look(picked, pb, t)
             });
+            // A pill leaves the first cell alone: the project's line down the left stays, and the
+            // highlight is what says the row has the focus.
+            let tint = if look.round_rows && rl.bg != pb && row.width > 2 {
+                Rect {
+                    x: row.x + 1,
+                    width: row.width - 1,
+                    ..row
+                }
+            } else {
+                row
+            };
             if rl.bg != pb {
-                fill(buf, row, rl.bg);
+                fill(buf, tint, rl.bg);
             }
             if look.round_rows && rl.bg != pb && row.width > 2 {
                 // A one-line row is a pill. A block of lines keeps square ends: caps would
@@ -667,7 +678,7 @@ fn draw_rows(app: &mut App, buf: &mut Buffer, pass: &Pass, t: &Theme, lines: &[L
                     .find(|&j| matches!(lines[j], Line::Sess(..)) || j == scroll)
                     .unwrap_or(i);
                 if row_rect(first, top + (first - scroll) as u16).height == 1 {
-                    buf[(row.x, y)].set_symbol(CAP_L).set_fg(rl.bg).set_bg(pb);
+                    buf[(tint.x, y)].set_symbol(CAP_L).set_fg(rl.bg).set_bg(pb);
                     buf[(row.right() - 1, y)]
                         .set_symbol(CAP_R)
                         .set_fg(rl.bg)

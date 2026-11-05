@@ -577,19 +577,44 @@ pub fn to_clipboard(text: &str) -> bool {
 #[cfg(not(test))]
 pub fn to_clipboard(text: &str) -> bool {
     use std::io::Write;
-    let native = arboard::Clipboard::new()
-        .and_then(|mut c| c.set_text(text.to_string()))
-        .is_ok();
     // On Linux the clipboard is only there while a program owns it, and a desktop with no
     // clipboard manager loses what a short-lived owner set: `wl-copy` or `xclip` stay behind to
-    // serve it.
+    // serve it. They are the one owner: setting it a second way too (through X11 as well as
+    // Wayland) has the two take it from each other, and the copy comes out some of the time.
     #[cfg(target_os = "linux")]
-    let native = external_copy(text) || native;
+    let native = external_copy(text) || set_with_arboard(text);
+    #[cfg(not(target_os = "linux"))]
+    let native = set_with_arboard(text);
     let osc = format!("\x1b]52;c;{}\x07", base64(text.as_bytes()));
     let mut out = std::io::stdout();
     let _ = out.write_all(osc.as_bytes());
     let _ = out.flush();
     native
+}
+
+/// The clipboard handle, kept for the life of the program: on Linux the text is only there while
+/// the program that set it is, and dropping the handle straight after writing loses it (and the
+/// library prints a warning over the screen). One handle serves every copy.
+#[cfg(not(test))]
+static CLIPBOARD: std::sync::Mutex<Option<arboard::Clipboard>> = std::sync::Mutex::new(None);
+
+#[cfg(not(test))]
+fn set_with_arboard(text: &str) -> bool {
+    let Ok(mut held) = CLIPBOARD.lock() else {
+        return false;
+    };
+    if held.is_none() {
+        *held = arboard::Clipboard::new().ok();
+    }
+    let Some(clipboard) = held.as_mut() else {
+        return false;
+    };
+    let set = clipboard.set_text(text.to_string()).is_ok();
+    if !set {
+        // A handle that failed may be a dead connection: the next copy opens a new one.
+        *held = None;
+    }
+    set
 }
 
 /// Hand `text` to the desktop's own clipboard tool, which keeps serving it after this program's

@@ -17763,6 +17763,35 @@ mod tool_rail_tests {
         );
     }
 
+    #[test]
+    fn a_pill_row_keeps_the_projects_line_at_its_left() {
+        let mut app = app();
+        app.cfg.ui.rounded = crate::config::Rounding::Full;
+        draw(&mut app);
+        // Put the cursor on each session in turn until one is a one-line row (a pill).
+        app.act(Action::BrowseTree);
+        for key in app.screen.visible.clone() {
+            app.screen.cursor = Some(key);
+            let buf = draw(&mut app);
+            let side = app.screen.side_rect;
+            // A session's pill starts near the left of a row under the title.
+            let found = (side.y + 2..side.y + 14).find_map(|y| {
+                (side.x..side.x + 8)
+                    .find(|&x| buf[(x, y)].symbol() == "\u{e0b6}")
+                    .map(|x| (x, y))
+            });
+            if let Some((x, y)) = found {
+                assert_eq!(
+                    buf[(x - 1, y)].symbol(),
+                    "▏",
+                    "the project's line runs on beside the pill"
+                );
+                return;
+            }
+        }
+        panic!("no row became a pill");
+    }
+
     fn hit_rect(app: &App, h: screen::ScreenHit) -> Rect {
         app.hits
             .iter()
