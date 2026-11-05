@@ -435,6 +435,18 @@ background storage lock. Attachments never submit independent cache revisions.
 See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 process boundary and event/approval handling rules.
 
+**An agent in a pane has a read-only conversation** ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)),
+with no protocol change. For an owned desktop pane whose hook-verified agent is `claude` or `codex` and
+whose hook gave a session id (and, for Claude, its transcript path), the snapshot's `conversations` holds
+a `ConversationSummary` with `execution: Native`, `native_term: <pane>`, the pane's `status` and no
+checks; `Query::ConversationRead` serves its history. The id is the daemon's, stays while the pane runs
+the agent, and its `generation` rises when the pane's session id changes. It is in memory only (never in
+the session file or history cache). `ConversationSend`, `Approve`, `AnswerInput`, `Cancel` and `End` on it
+fail with a "read-only" error; `Rename` and `Archive` fail as for an unknown id (the pane is named and
+closed as a pane). A client the pane does not belong to (ADR 0045) gets "No such conversation". The
+history is the provider's own transcript projected through the same entries a structured runtime
+produces (`conversation/follow_transcript.rs`); nothing read from the file sets any status.
+
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
 ([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)): totals, one entry per

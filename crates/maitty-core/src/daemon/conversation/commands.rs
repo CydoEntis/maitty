@@ -509,6 +509,8 @@ impl Daemon {
             .iter()
             .map(|c| c.id.0)
             .chain(self.pending_starts.iter().map(|p| p.id.0))
+            .chain(self.followed.iter().map(|f| f.id.0))
+            .chain(std::iter::once(self.followed_high_water))
             .max()
             .unwrap_or(0);
         last.checked_add(1)
@@ -607,6 +609,7 @@ impl Daemon {
         request_id: ProviderRequestId,
         decision: ApprovalDecision,
     ) -> Result<()> {
+        self.refuse_if_followed(id)?;
         if self
             .clients
             .get(&client)
@@ -707,6 +710,7 @@ impl Daemon {
         request_id: ProviderRequestId,
         answers: std::collections::BTreeMap<String, Vec<String>>,
     ) -> Result<()> {
+        self.refuse_if_followed(id)?;
         if self
             .clients
             .get(&client)
@@ -811,6 +815,7 @@ impl Daemon {
         id: ConversationId,
         generation: u64,
     ) -> Result<()> {
+        self.refuse_if_followed(id)?;
         if self
             .clients
             .get(&client)
@@ -894,6 +899,7 @@ impl Daemon {
         id: ConversationId,
         generation: u64,
     ) -> Result<()> {
+        self.refuse_if_followed(id)?;
         if self
             .clients
             .get(&client)
@@ -940,6 +946,7 @@ impl Daemon {
         operation: u64,
         text: String,
     ) -> Result<()> {
+        self.refuse_if_followed(id)?;
         self.may(client, Grant::Write, None)?;
         self.durable_conversation()?;
         crate::hidden::check(&text).map_err(anyhow::Error::msg)?;
@@ -1102,6 +1109,24 @@ impl Daemon {
                 }
             })
             .collect();
+        summaries.extend(self.followed.iter().filter_map(|f| {
+            let term = self.terms.get(&f.term)?;
+            Some(ConversationSummary {
+                id: f.id,
+                generation: f.generation,
+                provider: f.provider,
+                execution: ExecutionKind::Native,
+                cwd: term.cwd.clone(),
+                worktree: None,
+                state: RecoveryState::Running,
+                // The pane's own status; reading its transcript never changes it.
+                status: term.status,
+                native_term: Some(f.term),
+                checks: Vec::new(),
+                title: None,
+                archived: false,
+            })
+        }));
         summaries.extend(self.pending_starts.iter().map(|p| {
             ConversationSummary {
                 id: p.id,
@@ -1924,6 +1949,9 @@ impl Daemon {
                 "History limit must be between 1 and {}",
                 history::MAX_READ_ENTRIES
             );
+        }
+        if self.is_followed(id) {
+            return self.followed_read(client, id, cursor, limit);
         }
         let c = self
             .conversations

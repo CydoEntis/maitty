@@ -187,8 +187,9 @@ The desktop window is terminal-only today; the chat body (G15-G18) does not exis
 - **G15 Event projection (CV-0)** (feature / client). Needs question 1.
 - **G16 Chat switch, history, composer (CV-1..3)** (feature / client, daemon). Blocked by G15, G1.
   Client side built (CV-1..3, see the chat view plan). Two daemon gaps found, proposed as new tickets:
-  **G23** a Claude/Codex agent running in a terminal pane has no daemon conversation, so no pane has a chat yet
-  (the desktop links a pane to the conversation whose native terminal it is; the daemon must create or attach one);
+  **G23** (daemon part DONE, see ADR 0052; GUI link in the next commit) a Claude/Codex agent running in a terminal
+  pane had no daemon conversation, so no pane had a chat: the daemon now follows the agent's own transcript as a
+  read-only `Native` conversation whose `native_term` is the pane. Open: a composer for these panes (owner decision);
   **G24** a daemon-held send queue delivered at step boundaries, and a pushed or cheaper-to-follow history (a cursor
   goes stale on every change, so the client polls and re-reads).
 - **G17 Chat items (CV-4..7, 9, 10)** (feature / client). Blocked by G16.

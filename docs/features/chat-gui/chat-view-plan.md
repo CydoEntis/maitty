@@ -144,11 +144,13 @@ check for the view). Acceptance criteria are the bullets.
 
 ## What is still missing (client and daemon)
 
-- **A session's chat needs a daemon conversation for its pane.** The desktop app lists terminal sessions only, and
-  a shell where `claude` or `codex` was typed has no conversation, so today no pane is `ready` and the chat shows
-  "no event stream" for it. The client side is finished (it links a pane to the conversation whose native terminal
-  it is); the daemon must start or attach a Claude/Codex conversation for an agent running in a pane (for example
-  from the provider's session id, hydrating from its saved history).
+- **A composer, approvals and a queue for a pane's chat.** A Claude or Codex agent running in a pane now has a
+  **read-only** daemon conversation that follows the agent's own transcript (G23, [ADR 0052](../../adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)):
+  `native_term` is the pane, so the chat opens with its history, and the status stays the pane's. Sending, answering
+  approvals and cancelling still happen in the terminal. Giving these panes a composer needs the owner's decision
+  (ADR 0052, *To confirm*): typing into the pane's PTY when the agent is idle, or starting new sessions as
+  daemon-owned structured conversations. Not tried against a live Claude or Codex; Codex's rollout shape is read
+  from its observed format and is covered by fixtures only.
 - **A daemon-held queue and a push of history.** Queued sends are window-only, and the history is polled (1 s while
   working) because a cursor goes stale on every change.
 - Left for CV-4..CV-7 and CV-9, CV-10: exit codes and live elapsed time on commands, polished chips and diffs,
