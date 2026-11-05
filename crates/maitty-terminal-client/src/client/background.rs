@@ -9,7 +9,15 @@ impl App {
         if !self.admits(machine, &msg) {
             return;
         }
+        // What a refused copy would have said, to tell the person it was refused.
+        let copy_size = match &msg {
+            ServerMsg::Clipboard { text, .. } => Some(text.chars().count()),
+            _ => None,
+        };
         let Some(msg) = self.vetted(machine, msg) else {
+            if let Some(n) = copy_size {
+                self.say_copy_refused(machine, n);
+            }
             return;
         };
         if machine != MachineId::LOCAL && matches!(msg, ServerMsg::Reply(_) | ServerMsg::Error(_)) {
@@ -17,6 +25,28 @@ impl App {
         }
         self.apply_server(machine, msg);
         self.keep_shortcut_mode();
+    }
+
+    /// A program on another machine copied text and that machine may not write this clipboard:
+    /// nothing was copied, and the toast says how to allow it (once a minute, so a selection
+    /// dragged over many cells does not repeat it).
+    fn say_copy_refused(&mut self, machine: MachineId, chars: usize) {
+        let name = self.machine_name(machine).to_string();
+        if self
+            .copy_refusal_told
+            .is_some_and(|at| at.elapsed() < Duration::from_secs(60))
+        {
+            return;
+        }
+        self.copy_refusal_told = Some(Instant::now());
+        self.notify_card(
+            format!("{name} tried to copy"),
+            format!("{chars} characters, not copied: {name} may not write your clipboard"),
+            Some(format!(
+                "allow it: clipboard = true under [[machines]] {name} in config.local.toml"
+            )),
+            true,
+        );
     }
 
     /// Whether to act on a message from `machine`. Another machine's state is held back when a
@@ -226,19 +256,16 @@ impl App {
             }
             ServerMsg::Clipboard { term, text } => {
                 let term = ClientTerm::on(machine, term);
-                let n = text.chars().count();
-                copy::to_clipboard(&text);
+                let native = copy::to_clipboard(&text);
+                // The same card as a copy made here, naming the session and, for another
+                // machine, which one.
                 let who = self.session_name(term);
-                let told = format!(
-                    "{who} copied {n} character{} to your clipboard",
-                    if n == 1 { "" } else { "s" }
-                );
-                let told = if machine == MachineId::LOCAL {
-                    told
+                let from = if machine == MachineId::LOCAL {
+                    who
                 } else {
-                    remote_policy::tagged(self.machine_name(machine), &told)
+                    format!("{who} on {}", self.machine_name(machine))
                 };
-                self.notify(told, false);
+                self.announce_copy(&text, native, Some(from));
             }
             ServerMsg::Error(e) => {
                 // The output a failure waited for may be what failed; a later reply is not its.

@@ -159,6 +159,8 @@ pub struct Ui {
     pub sidebar: bool,
     /// "left" or "right".
     pub sidebar_position: String,
+    /// The column of tool chips (Files, Changes, Branch, References) on the right edge.
+    pub tool_rail: bool,
     /// Milliseconds after the prefix before the which-key popup shows (0 = immediately).
     pub which_key_delay_ms: u64,
     pub which_key: bool,
@@ -198,8 +200,8 @@ pub struct Ui {
     /// Older files' Cards spacing, "floating" or "tiled": read only while `layout` is unset or
     /// "cards".
     pub panes: String,
-    /// Which glyph set marks sessions and checks: "auto" (ASCII when the blocked, done and idle
-    /// icons are all ASCII, else Unicode), "unicode", "ascii" or "nerd".
+    /// Which glyph set marks sessions and checks: "dots" (a coloured dot and a word) or "unicode"
+    /// (a shape per state). Older "auto", "ascii" and "nerd" read as "dots".
     pub glyphs: String,
     /// Space between floating cards: one of `SIZES` (or a legacy value before loading).
     pub gap: String,
@@ -209,7 +211,7 @@ pub struct Ui {
     pub dim: String,
     /// The focused card's border: "accent", "bright" or "none".
     pub focus_border: String,
-    /// Whether card corners are rounded. Kept as a drawing enum internally; config writes a bool.
+    /// How round the shapes are: `full` (pills), `corners` (rounded boxes, square chips) or `off`.
     pub rounded: Rounding,
     /// Floating: each pane's border in its own colour, by its place in the tab (ADR 0027).
     pub pane_colors: bool,
@@ -221,8 +223,8 @@ pub struct Ui {
     pub retired_layout: Option<RetiredLayout>,
     /// Show `· N agents` on a working session's row when the agent reports helpers.
     pub subagent_count: bool,
-    /// The cursor's shape when the program in a pane doesn't ask for one: "terminal" (the
-    /// terminal's own), "block", "underline" or "bar" (`CURSOR_SHAPES`).
+    /// The cursor's shape when the program in a pane doesn't ask for one: "block", "underline"
+    /// or "line" (`CURSOR_SHAPES`). An older "terminal" reads as block and "bar" as line.
     pub cursor: String,
     /// That cursor blinks.
     pub cursor_blink: bool,
@@ -611,7 +613,11 @@ pub enum Rounding {
 
 impl Serialize for Rounding {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bool(*self != Rounding::Off)
+        serializer.serialize_str(match self {
+            Rounding::Full => "full",
+            Rounding::Corners => "corners",
+            Rounding::Off => "off",
+        })
     }
 }
 
@@ -624,13 +630,13 @@ impl Rounding {
         self != Rounding::Off
     }
 
-    /// Chips, buttons, rows and the hover end in half-circles.
+    /// Chips, buttons, titles, rows and the hover end in half-circles (pills, a Nerd Font glyph).
     pub fn caps(self) -> bool {
         self == Rounding::Full
     }
 }
 
-/// Older files wrote `rounded = true` / `false`: on is `full`, off is `off`.
+/// Older files wrote `rounded = true` / `false`: on is `corners`, off is `off`.
 impl<'de> Deserialize<'de> for Rounding {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
@@ -642,7 +648,7 @@ impl<'de> Deserialize<'de> for Rounding {
         match Written::deserialize(d)? {
             Written::Switch(on) => Ok(if on { Rounding::Corners } else { Rounding::Off }),
             Written::Name(name) => match name.as_str() {
-                "full" => Ok(Rounding::Corners),
+                "full" => Ok(Rounding::Full),
                 "corners" => Ok(Rounding::Corners),
                 "off" => Ok(Rounding::Off),
                 _ => Err(serde::de::Error::custom(format!(
@@ -658,7 +664,7 @@ impl<'de> Deserialize<'de> for Rounding {
 pub const SIDEBAR_TABS: &[&str] = &["all", "busy", "off"];
 
 /// `ui.cursor`'s choices, in Settings' order.
-pub const CURSOR_SHAPES: &[&str] = &["terminal", "block", "underline", "bar"];
+pub const CURSOR_SHAPES: &[&str] = &["block", "underline", "line"];
 
 /// Reject cursor names outside the shapes supported by the terminal client.
 pub fn validate_cursor(ui: &Ui) -> Result<()> {
@@ -756,8 +762,17 @@ impl Ui {
         });
     }
 
-    /// Convert older padding, gap and dim names to the values Settings now offers.
+    /// Convert older padding, gap, dim and glyph-set names to the values Settings now offers.
     pub fn fold_legacy_sizes(&mut self) {
+        // Only Unicode is supported: the ASCII and Nerd sets, and `auto`, read as dots.
+        if matches!(self.glyphs.as_str(), "ascii" | "nerd" | "auto") {
+            self.glyphs = "dots".into();
+        }
+        match self.cursor.as_str() {
+            "terminal" => self.cursor = "block".into(),
+            "bar" => self.cursor = "line".into(),
+            _ => {}
+        }
         for size in [&mut self.padding, &mut self.gap] {
             match size.as_str() {
                 "top" | "1" => *size = "small".into(),
@@ -783,8 +798,7 @@ impl Ui {
     }
 }
 
-/// The reference frames' working spinner: three Braille bars, two columns wide. The ASCII glyph set
-/// swaps it for `BARS_ASCII` (see `client::render::status_icon`).
+/// The reference frames' working spinner: three Braille bars, two columns wide.
 pub const BARS_FRAMES: &[&str] = &["⣰⡄", "⣼⡀", "⣶⡆", "⣧⡇", "⣆⡆", "⣤⡄", "⣸⡆", "⣴⡇", "⣇⡄", "⣦⡀"];
 
 pub const SPINNERS: &[(&str, &[&str])] = &[
@@ -817,6 +831,7 @@ impl Default for Ui {
         Ui {
             sidebar: true,
             sidebar_position: "left".into(),
+            tool_rail: true,
             which_key_delay_ms: 600,
             which_key: false,
             mouse: true,
@@ -848,7 +863,7 @@ impl Default for Ui {
             tab_gap: true,
             retired_layout: None,
             subagent_count: true,
-            cursor: "terminal".into(),
+            cursor: "block".into(),
             cursor_blink: true,
         }
     }
@@ -920,7 +935,7 @@ mod tests {
 
         assert_eq!(ui.rounded, Rounding::Off);
         assert_eq!(ui.background, "solid");
-        assert_eq!(ui.cursor, "terminal");
+        assert_eq!(ui.cursor, "block");
         assert_eq!(ui.padding, "small");
         assert_eq!(ui.gap, "small");
         assert_eq!(ui.dim, "normal");
@@ -933,7 +948,7 @@ mod tests {
         for (written, expected) in [
             ("true", Rounding::Corners),
             ("false", Rounding::Off),
-            ("\"full\"", Rounding::Corners),
+            ("\"full\"", Rounding::Full),
             ("\"corners\"", Rounding::Corners),
             ("\"off\"", Rounding::Off),
         ] {
@@ -953,10 +968,10 @@ mod tests {
             (ui.padding.as_str(), ui.gap.as_str(), ui.dim.as_str()),
             ("small", "medium", "light")
         );
-        assert_eq!(ui.rounded, Rounding::Corners);
+        assert_eq!(ui.rounded, Rounding::Full);
         assert_eq!(size_cells("large"), 3);
         assert_eq!(size_cells("0"), 0);
-        assert!(toml::to_string(&ui).unwrap().contains("rounded = true"));
+        assert!(toml::to_string(&ui).unwrap().contains("rounded = \"full\""));
     }
 
     #[test]
@@ -979,6 +994,16 @@ mod tests {
             ui.retired_layout.map(|layout| layout.name),
             Some("Hairline")
         );
+    }
+
+    #[test]
+    fn an_older_terminal_or_bar_cursor_reads_as_block_or_line() {
+        for (old, now) in [("terminal", "block"), ("bar", "line"), ("underline", "underline")] {
+            let mut ui: Ui = toml::from_str(&format!("cursor = '{old}'")).unwrap();
+            ui.fold_legacy_sizes();
+            assert_eq!(ui.cursor, now, "{old}");
+            assert!(validate_cursor(&ui).is_ok());
+        }
     }
 
     #[test]

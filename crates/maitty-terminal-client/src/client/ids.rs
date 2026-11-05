@@ -176,6 +176,7 @@ mod tests {
             Remote {
                 name: "build".into(),
                 snap: there,
+                state: crate::client::link::ConnectionState::Connected,
                 ..Remote::default()
             },
         );

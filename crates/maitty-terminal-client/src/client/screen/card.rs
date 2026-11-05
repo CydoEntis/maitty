@@ -116,9 +116,9 @@ impl Look {
                 "heavy" | "60%" => DIM_STRONG,
                 _ => DIM_DEFAULT,
             },
-            caps: false,
-            round_tabs: false,
-            round_rows: false,
+            caps: rounding.caps(),
+            round_tabs: rounding.caps(),
+            round_rows: rounding.caps(),
         }
     }
 }
@@ -676,12 +676,12 @@ mod tests {
     }
 
     #[test]
-    fn rounded_setting_rounds_boxes_but_keeps_chips_square() {
+    fn rounded_setting_rounds_boxes_and_gives_chips_pill_ends() {
         let rounded_look = look("floating", true);
         assert!(rounded_look.rounded, "the setting rounds box corners");
-        assert!(!rounded_look.caps, "chips keep square ends");
-        assert!(!rounded_look.round_tabs, "tab chips keep square ends");
-        assert!(!rounded_look.round_rows, "sidebar rows keep square ends");
+        assert!(rounded_look.caps, "chips are pills");
+        assert!(rounded_look.round_tabs, "tab chips are pills");
+        assert!(rounded_look.round_rows, "sidebar rows are pills");
 
         let square = look("floating", false);
         assert!(!square.rounded, "rounding can be turned off");
@@ -689,7 +689,7 @@ mod tests {
     }
 
     #[test]
-    fn a_rounded_setting_keeps_pill_ends_square() {
+    fn a_rounded_setting_ends_pills_in_half_circles() {
         let (pill_bg, ground) = (Color::Rgb(40, 40, 40), Color::Rgb(10, 20, 30));
         let mut buf = Buffer::empty(Rect::new(0, 0, 8, 1));
         row_pill(look("floating", true), &mut buf, 1, 0, 6, pill_bg, ground);
@@ -697,8 +697,8 @@ mod tests {
             let cell = &buf[(x, 0)];
             assert_eq!(
                 (cell.symbol(), cell.bg),
-                (" ", pill_bg),
-                "end at {x} is square"
+                (if x == 1 { CAP_L } else { CAP_R }, ground),
+                "end at {x} is a half-circle"
             );
         }
         assert_eq!(buf[(3, 0)].bg, pill_bg);

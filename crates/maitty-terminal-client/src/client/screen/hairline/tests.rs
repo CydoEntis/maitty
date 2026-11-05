@@ -670,14 +670,14 @@ fn a_tab_out_of_view_shows_its_agents_state() {
 
 #[test]
 fn a_toast_is_a_round_outline_in_floating_and_a_solid_block_in_hairline() {
-    for (look, above, ground) in [("hairline", "┃", "card2"), ("floating", "╭", "card")] {
+    for (look, above, ground) in [("hairline", "┃", "card2"), ("floating", "╭", "bg")] {
         let mut app = hairline_world(1);
         app.cfg.ui.layout = look.into();
         app.notify("Saved the theme".into(), false);
         let buf = draw(&mut app, 160, 45);
         show(look, &buf);
         let t = app.theme.clone();
-        let want = if ground == "card" { t.card } else { t.card2 };
+        let want = if ground == "bg" { t.bg } else { t.card2 };
         let (x, y) = find_text(&buf, "Saved the theme").expect("the toast");
         assert_eq!(buf[(x, y)].bg, want, "{look}: its words on its ground");
         let side = if look == "floating" { "│" } else { "┃" };

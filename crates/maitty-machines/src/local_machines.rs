@@ -122,13 +122,13 @@ mod tests {
     #[test]
     fn the_entries_of_the_local_file_are_the_list() {
         let list = list_of(
-            "theme = 'night'\n[[machines]]\nname = 'build'\ntarget = 'me@build'\nssh_args = ['-p', '2222']\nclipboard = true\n\n[[machines]]\nname = 'box'\ntarget = 'box'\n",
+            "theme = 'night'\n[[machines]]\nname = 'build'\ntarget = 'me@build'\nssh_args = ['-p', '2222']\nclipboard = false\n\n[[machines]]\nname = 'box'\ntarget = 'box'\n",
         );
         assert_eq!(list.error, None);
         let names: Vec<_> = list.machines.iter().map(|m| m.name.as_str()).collect();
         assert_eq!(names, ["build", "box"]);
         assert_eq!(list.machines[0].ssh_args, ["-p", "2222"]);
-        assert!(list.machines[0].clipboard && !list.machines[1].clipboard);
+        assert!(!list.machines[0].clipboard && list.machines[1].clipboard);
     }
 
     #[test]

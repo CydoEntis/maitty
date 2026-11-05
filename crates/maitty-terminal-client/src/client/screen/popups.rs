@@ -5,33 +5,11 @@ use crate::client::ids::ClientTerm;
 
 // ---- overlays ------------------------------------------------------------------------------
 
-/// What a popup does to everything behind it: text toward its ground, and every ground toward
-/// black. The ground must darken too: a modal's `card` is only a step above `bg`, so a backdrop
-/// that kept its ground would leave the modal's edge unreadable.
-const BEHIND_TEXT: f32 = 0.6;
-const BEHIND_GROUND: f32 = 0.45;
-
-/// Dim everything already drawn behind a popup: text toward its ground and every ground darker.
-/// Pill ends keep their shape (their colour darkens like the pill's). What is under it takes no
-/// hover from here on (`hits_under_overlay`).
-pub(in crate::client) fn dim_all(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
+/// Mark everything already drawn as behind a popup: it takes no hover from here on
+/// (`hits_under_overlay`). It is not dimmed or filled: a popup is a lit border over the screen as
+/// it is, with the popup's own area cleared.
+pub(in crate::client) fn dim_all(app: &mut App, _buf: &mut Buffer, _area: Rect, _t: &Theme) {
     app.hits_under_overlay = app.hits.len();
-    let area = area.intersection(buf.area);
-    for y in area.top()..area.bottom() {
-        for x in area.left()..area.right() {
-            let c = &mut buf[(x, y)];
-            let bg = if c.bg == Color::Reset { t.bg } else { c.bg };
-            let fg = if c.fg == Color::Reset { t.fg } else { c.fg };
-            let cap = c.symbol() == CAP_L || c.symbol() == CAP_R;
-            let ground = blend(bg, Color::Black, BEHIND_GROUND);
-            c.bg = ground;
-            c.fg = if cap {
-                blend(fg, Color::Black, BEHIND_GROUND)
-            } else {
-                blend(fg, ground, BEHIND_TEXT)
-            };
-        }
-    }
 }
 
 /// The one size every tool window opens at (files, search, changes, pull requests).

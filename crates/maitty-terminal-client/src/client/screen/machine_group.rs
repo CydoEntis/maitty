@@ -12,6 +12,10 @@ use crate::hidden::sanitize;
 use std::time::Duration;
 use unicode_width::UnicodeWidthChar;
 
+/// This computer's mark on the pane badge, and another machine's (here and on the sidebar).
+pub(super) const LOCAL_ICON: &str = "⌂";
+pub(super) const REMOTE_ICON: &str = "⇄";
+
 /// What the header calls the machine the window runs on, once there is another to tell it from.
 pub(super) const THIS_COMPUTER: &str = "this computer";
 
@@ -77,13 +81,24 @@ impl App {
         }
     }
 
-    fn ascii_marks(&self) -> bool {
+    /// The machine's connection as one dot: `done` when it is up, amber while it connects or
+    /// reconnects, `err` when it cannot be reached (it needs a login or an update, or is down).
+    pub(super) fn machine_dot(&self, machine: MachineId, t: &Theme) -> (&'static str, Color) {
+        let colour = match self.remotes.get(&machine).map(|r| &r.state) {
+            Some(ConnectionState::Connected) => t.done,
+            Some(ConnectionState::Connecting | ConnectionState::Reconnecting { .. }) => t.blocked,
+            _ => t.err,
+        };
+        ("●", colour)
+    }
+
+    pub(super) fn ascii_marks(&self) -> bool {
         glyphs::chosen(&self.cfg.ui.glyphs, &self.cfg.icons)
             .needs
             .is_ascii()
     }
 
-    fn machine_mark(&self, machine: MachineId, t: &Theme) -> Option<StateMark> {
+    pub(super) fn machine_mark(&self, machine: MachineId, t: &Theme) -> Option<StateMark> {
         let remote = self.remotes.get(&machine)?;
         Some(state_mark(&remote.state, self.ascii_marks(), t))
     }
@@ -290,24 +305,6 @@ pub(super) fn draw_note(
         &[seg(text, Style::default().fg(color).bg(ground))],
         end,
     );
-}
-
-/// The collapsed sidebar's mark for a machine: its state glyph and its first letter.
-pub(super) fn rail_segs(app: &App, machine: MachineId, ground: Color, t: &Theme) -> Vec<Seg> {
-    let Some(mark) = app.machine_mark(machine, t) else {
-        return Vec::new();
-    };
-    let initial = app
-        .machine_label(machine)
-        .chars()
-        .find(|c| !c.is_whitespace())
-        .map_or_else(|| "·".to_string(), |c| c.to_uppercase().collect());
-    let st = Style::default().bg(ground).add_modifier(Modifier::BOLD);
-    vec![
-        seg(" ", st),
-        seg(mark.glyph, st.fg(mark.color)),
-        seg(initial, st.fg(t.muted)),
-    ]
 }
 
 /// A down machine's row, drawn again in the quiet colour: whatever it said is the last report,

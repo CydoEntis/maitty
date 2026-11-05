@@ -321,9 +321,9 @@ pub const SETTINGS: &[Setting] = &[
     Setting {
         path: "ui.rounded",
         label: "Rounded",
-        kind: Kind::Bool,
+        kind: Kind::Choice(crate::config::Rounding::NAMES),
         cat: Cat::Appearance,
-        help: "Round card corners. Tab ends remain square.",
+        help: "Corners round every box; full also makes chips, tabs and rows pills (needs a Nerd Font).",
     },
     Setting {
         path: "ui.dim",
@@ -344,7 +344,7 @@ pub const SETTINGS: &[Setting] = &[
         label: "Cursor",
         kind: Kind::Choice(crate::config::CURSOR_SHAPES),
         cat: Cat::Appearance,
-        help: "The caret where a pane's program picks none: the terminal's own, block, underline or bar. vim keeps its own.",
+        help: "The caret where a pane's program picks none: block, underline or line. vim keeps its own.",
     },
     Setting {
         path: "ui.cursor_blink",
@@ -354,11 +354,18 @@ pub const SETTINGS: &[Setting] = &[
         help: "Blink that caret. No effect with your terminal's own cursor.",
     },
     Setting {
+        path: "ui.tool_rail",
+        label: "Tool rail",
+        kind: Kind::Bool,
+        cat: Cat::Appearance,
+        help: "The column of f, c, b and a chips on the right edge that opens Files, Changes, Branch and References.",
+    },
+    Setting {
         path: "ui.glyphs",
         label: "Status glyphs",
-        kind: Kind::Choice(&["auto", "dots", "unicode", "ascii", "nerd"]),
+        kind: Kind::Choice(&["dots", "unicode"]),
         cat: Cat::Appearance,
-        help: "dots: a coloured dot and a word per session. unicode, ascii, nerd: a shape per state. auto: dots, or ascii if your icons are.",
+        help: "dots: a coloured dot and a word per session. unicode: a shape per state.",
     },
     Setting {
         path: "ui.spinner",
