@@ -736,6 +736,16 @@ impl Fixture {
         let directory = self.directory.path().to_owned();
         let executable = self.record.binding.executable.clone();
         tokio::task::spawn_blocking(move || {
+            // Windows refuses to delete a folder while a just-killed process or a scanner still
+            // holds a handle in it, and the guard's own removal tries once and ignores failure.
+            // Retry here until a deadline, then let the assertions judge the result.
+            let until = std::time::Instant::now() + Duration::from_secs(10);
+            while directory.exists() && std::fs::remove_dir_all(&directory).is_err() {
+                if std::time::Instant::now() >= until {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
             drop(self);
             assert!(!directory.exists(), "fixture directory survived cleanup");
             assert!(!executable.exists(), "compiled provider survived cleanup");

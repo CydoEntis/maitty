@@ -50,9 +50,21 @@ fn start_on(settings: crate::conversation::LaunchSettings, branch: &str) -> Clie
     })
 }
 
-fn close_panes(session: &mut TestSession) {
+/// Closes every pane and waits until its shell is gone. `close_term` only starts the kill and
+/// forgets the pane, so the fixture cleanup can no longer see these shells; on Windows one that
+/// is still alive keeps the repo folder as its working directory and blocks its removal.
+async fn close_panes(session: &mut TestSession) {
+    let pids: Vec<_> = session
+        .daemon
+        .terms
+        .values()
+        .filter_map(|term| term.pid)
+        .collect();
     for term in session.daemon.terms.keys().copied().collect::<Vec<_>>() {
         session.daemon.close_term(term);
+    }
+    if !pids.is_empty() {
+        stopped(pids).await;
     }
 }
 
@@ -95,7 +107,7 @@ async fn a_chat_on_a_branch_is_refused_before_anything_is_made_when_a_part_is_wr
     })
     .catch_unwind()
     .await;
-    close_panes(&mut session);
+    close_panes(&mut session).await;
     session.cleanup().await;
     if let Err(panic) = outcome {
         std::panic::resume_unwind(panic);
@@ -175,7 +187,7 @@ async fn a_chat_on_a_branch_starts_in_its_own_worktree_and_the_daemon_owns_it() 
     })
     .catch_unwind()
     .await;
-    close_panes(&mut session);
+    close_panes(&mut session).await;
     session.cleanup().await;
     if let Err(panic) = outcome {
         std::panic::resume_unwind(panic);
