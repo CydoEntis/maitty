@@ -339,3 +339,15 @@ the test, and fix its timing instead of retrying. The three slow `maitty-termina
 (`remote_status_tests::a_remote_agents_row_is_what_its_daemon_reported_and_follows_its_next_report`,
 `cli_machine_tests::send_and_wait_use_the_remote_pane_s_screen`,
 `mcp_machine_tests::an_agent_lists_reads_and_sends_to_another_machine_s_panes`) also time out under load.
+
+## Decisions on 2026-11-04 (night)
+
+- Image paste key: Ctrl+Shift+V on Windows and Linux (plain Ctrl+V stays with the terminal, per the shortcut
+  rule), Cmd+V on macOS. Alt+V is NOT used: Claude Code takes Alt+V (image paste on Windows) and Alt+T
+  (ADR 0029).
+- G25 (new): a composer, approvals, queue and Stop for chats. Owner approved the recommendation: sessions
+  started from the GUI as daemon-owned structured Claude/Codex conversations; panes where the user typed
+  `claude` or `codex` in a plain shell stay read-only (ADR 0052).
+- Ticket 18 (secrets in history): owner delegated. Mask token- and key-shaped strings and omit the content of
+  obviously secret files (`.env`, keys, credentials) from stored tool input; keep the file name and kind.
+- Push: after the three items above are done.
