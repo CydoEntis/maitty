@@ -127,6 +127,7 @@ pub(super) fn term(
         cpu: 0.0,
         bell: false,
         said: String::new(),
+        last_lines: String::new(),
         branch: None,
         linked: false,
         subagents: Vec::new(),
@@ -160,6 +161,10 @@ pub(super) fn term(
 }
 
 /// A pane in a checkout of `root` on `branch`.
+/// What quick-fox, the sample's finished agent, last said: its Inbox item says it where the
+/// reference frames say `finished · not seen`.
+pub(super) const QUICK_FOX_SAID: &str = "Trimmed the cache; 14 tests pass.";
+
 pub(super) fn in_repo(mut t: TermInfo, root: &Path, branch: &str) -> TermInfo {
     t.linked = t.cwd != root;
     (t.root, t.top, t.branch) = (
@@ -425,7 +430,7 @@ pub(super) fn world(stage: Stage) -> App {
         &pixls,
         now() - 3 * 60,
     );
-    let fox = in_repo(
+    let mut fox = in_repo(
         term(
             4,
             "quick-fox",
@@ -437,6 +442,7 @@ pub(super) fn world(stage: Stage) -> App {
         &orbit,
         "dev",
     );
+    fox.said = QUICK_FOX_SAID.into();
     let mut moth = in_repo(
         term(
             5,

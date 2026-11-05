@@ -168,6 +168,8 @@ pub struct Term {
     pub summary: String,
     /// The agent's last message.
     pub said: String,
+    /// The pane's last lines when its turn ended, kept only while `said` is empty.
+    pub last_lines: String,
     /// Git facts for `cwd`: branch, and whether it's a linked worktree.
     pub head: Option<crate::gitfs::Head>,
     /// Running subagents: (id, kind).
@@ -833,6 +835,7 @@ impl Term {
             cwd: spec.cwd.to_path_buf(),
             summary: String::new(),
             said: String::new(),
+            last_lines: String::new(),
             head: crate::gitfs::head(spec.cwd),
             subagents: Vec::new(),
             subagent_hooks_seen: false,
@@ -1160,6 +1163,11 @@ impl Term {
 
     pub fn title(&self) -> &str {
         &self.parser.callbacks().title
+    }
+
+    /// What the agent last said, as its screen shows it: the lines above its input line.
+    pub fn screen_last_lines(&self) -> String {
+        super::last_lines::of_screen(&self.tail_text(super::last_lines::ROWS))
     }
 
     /// The bottom `n` rows for status patterns, joining soft wraps but keeping hard newlines.

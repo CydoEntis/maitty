@@ -4788,6 +4788,33 @@ fn working_agent(d: &mut Daemon) -> TermId {
     t
 }
 
+#[test]
+fn an_agent_that_reports_no_last_message_gets_its_screen_s_last_lines() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    d.terms.get_mut(&t).unwrap().parser.process(
+        b"All three migrations ran clean.\r\nWant me to open the pull request?\r\n\r\n> \r\n",
+    );
+    d.set_status(t, Status::Done, "test");
+    assert_eq!(
+        d.terms[&t].last_lines,
+        "All three migrations ran clean.\nWant me to open the pull request?",
+        "what stands above its input line when the turn ends"
+    );
+
+    d.set_status(t, Status::Working, "test");
+    assert!(
+        d.terms[&t].last_lines.is_empty(),
+        "a turn under way has said nothing yet"
+    );
+
+    // An agent whose hooks told us what it said needs nothing read off its screen.
+    d.terms.get_mut(&t).unwrap().said = "Opened the pull request.".into();
+    d.set_status(t, Status::Blocked, "test");
+    assert!(d.terms[&t].last_lines.is_empty());
+    close(&mut d, &[t]);
+}
+
 fn overdue(d: &mut Daemon, t: TermId) {
     d.terms.get_mut(&t).unwrap().alert_due.as_mut().unwrap().1 =
         Instant::now() - Duration::from_millis(1);
