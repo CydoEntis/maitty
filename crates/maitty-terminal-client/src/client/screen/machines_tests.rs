@@ -100,7 +100,7 @@ fn assert_box_whole(text: &str, r: Rect, buf: &ratatui::buffer::Buffer) {
     }
     let (top, bottom) = (line(r.y), line(r.bottom() - 1));
     assert!(
-        top.starts_with(['┌', '╭']) && top.trim_end().ends_with('✕'),
+        top.starts_with(['┌', '╭']) && top.trim_end().ends_with('×'),
         "top edge: {top:?}
 {text}"
     );

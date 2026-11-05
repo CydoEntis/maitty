@@ -1657,14 +1657,14 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
         );
     }
     // Floating: the close is the red chip modals wear on their top border; Hairline keeps a
-    // quiet ✕ on the title row.
+    // quiet × on the title row.
     let close_chip = if look.hairline {
-        vec![seg("✕", Style::default().fg(ink(t.muted, bg)).bg(bg))]
+        vec![seg("×", Style::default().fg(ink(t.muted, bg)).bg(bg))]
     } else {
         pill(
             look,
             vec![seg(
-                "✕",
+                "×",
                 Style::default()
                     .fg(ink(t.ink_on(t.err), t.err))
                     .add_modifier(Modifier::BOLD),

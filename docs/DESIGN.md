@@ -113,7 +113,7 @@ Windows. Its behaviour is in [UI](UI.md#project-specific-machines-dialog).
 The session's tabs sit on the first
 pane's top border, as the sidebar's `LOCAL` chip sits on its own ([ADR 0038](adr/0038-tabs-sit-on-the-pane-border.md)),
 the border running on between the chips (`ui.tab_gap`, on by default, leaves a cell of it between one tab and the next; off, they touch). A chip's ends follow `ui.rounded`: square, rounded corners, or a pill. Each chip is led by its state's glyph (on screen or
-not) and ended by its ✕, the current one in the accent and the others one `btn` chip with a muted
+not) and ended by its ×, the current one in the accent and the others one `btn` chip with a muted
 number, then a **+** chip for a new tab. At the right, in the first stretch of plain border that
 fits it, a badge names where the focused session runs: `⌂ Local` or `⇄ build`.
 is named the same everywhere: its own name, else its focused session's. Panes are titled as an
@@ -122,7 +122,7 @@ title of its own (its border carries the tabs), its tab naming it, showing its s
 closing it. A split's panes have no title at all ([ADR 0031](adr/0031-tabs-name-a-project-and-splits-have-no-title.md)):
 the tab names where you are, and a pane's top edge says its state, teal when focused and amber
 when it needs you. The tabs list the session's tabs, numbered 1–n, each with
-a ✕ on the open one only, and ends in `◫` (split) and `⤢` (zoom the
+a × on the open one only, and ends in `◫` (split) and `⤢` (zoom the
 focused pane). A pane closes with Alt+x, leader `x` or its menu. Closing always
 asks first (ADR 0029), naming the pane (`Close pane 2 · claude`) and lighting its lines in the
 red until you answer. Unfocused panes fade;
@@ -138,7 +138,7 @@ tree beside the open file (Markdown drawn), Changes the changed files and their 
 branch, ahead/behind, recent commits, the last check and snapshots, References the project's
 screenshots and design files, one line each (name, then kind, size and age muted at the right).
 The lit tab names the open view, so the sheet's top border does not repeat it: Every tab
-carries only the ✕. The sheets draw no key-hint row of their own; the mode bar shows their keys. The Inbox and the check evidence
+carries only the ×. The sheets draw no key-hint row of their own; the mode bar shows their keys. The Inbox and the check evidence
 sheet dock in the same place without the strip. See UI › *the frame* (Sheet), *Inbox check
 groups* and *check evidence sheet*.
 
@@ -147,7 +147,7 @@ groups* and *check evidence sheet*.
 The Menu and a row's context menu have no fill of their own: they are drawn on the ground like the panes. Everything else that floats over the screen is boxed as the look boxes a pane: a `line` box round
 `card` with corners by `ui.rounded`
 ([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)). Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
-a red ✕ chip at the right), its border in the accent because it holds the keys, the screen behind
+a red × chip at the right), its border in the accent because it holds the keys, the screen behind
 dimmed in text and ground alike so the card stands out, no shadow. Settings, override, command
 approval and the key overlay are modals. Small explanations (why, a row's menu, the message and
 helpers popovers) open beside their row with a `◂` pointer; a menu row ends in its key, the bound leader
@@ -159,7 +159,7 @@ of keycaps. See UI › *UI conventions*, *check modals and settings* and *why po
 One component for every notice: bottom right, above the agent's input area, a small floating
 pane: a box on the plain ground (no fill of its own) in the notice's colour (`err`, `blocked` for needs you, `done`, else the
 accent) with a kind chip carrying the notice's mark on the top border (`▲ Needs you`,
-`✕ Error`, `✓ Done`, `i Hint`, `✓ Notice`) and the modals' red ✕ chip at its right, then a bold
+`✕ Error`, `✓ Done`, `i Hint`, `✓ Notice`) and the modals' red × chip at its right, then a bold
 title, a detail and an optional preview in italics. Every text row wraps at the toast's width
 instead of being cut: the title and the detail onto up to three lines, the preview (an excerpt) onto
 up to two, the last line ending in `…` only past that; the box grows with the lines. A question waiting on you also has its

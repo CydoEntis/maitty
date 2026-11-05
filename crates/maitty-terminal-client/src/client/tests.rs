@@ -1171,7 +1171,7 @@ mod screen_tests {
             "New and Actions stay in the sidebar foot"
         );
         assert!(
-            lines[0].contains(" claude ✕")
+            lines[0].contains(" claude ×")
                 && lines[0].contains(" + ")
                 && !lines[0].contains('◫')
                 && !lines[0].contains('⤢')
@@ -1182,7 +1182,7 @@ mod screen_tests {
         assert!(
             !lines[1].contains("claude")
                 && !lines[1].contains("needs you")
-                && !lines[1].contains('✕'),
+                && !lines[1].contains('×'),
             "a lone pane has no title: its tab names it: {}",
             lines[1]
         );
@@ -5956,7 +5956,7 @@ mod screen_tests {
             row_text(&buf, top + 1)
         );
         assert!(
-            row_text(&buf, top).contains(" ✕ "),
+            row_text(&buf, top).contains(" × "),
             "the close chip sits on the top border"
         );
         assert!(row_text(&buf, top + 2).contains("214 characters · 5 lines from swift-lynx"));
@@ -10098,7 +10098,7 @@ second line
         let sheet = app.screen.sheet_rect;
         let close = (sheet.x..sheet.right())
             .rev()
-            .find(|&x| buf[(x, sheet.y)].symbol() == "✕")
+            .find(|&x| buf[(x, sheet.y)].symbol() == "×")
             .expect("the sheet's ✕");
         assert!(close + 5 >= sheet.right(), "at the corner");
         click_at(&mut app, close, sheet.y);
@@ -10254,7 +10254,7 @@ second line
             let o = draw(&mut app, 120, 34);
             show(&o);
             assert!(
-                o.contains(title) && o.contains('✕'),
+                o.contains(title) && o.contains('×'),
                 "{title}: a {APP_COMMAND} modal (title in its accent chip, a red ✕ to close)"
             );
         }
@@ -12043,7 +12043,7 @@ mod check_sheet_tests {
                 assert!(!tail.contains('…'), "{at}: one ellipsis: {header:?}");
                 let edge = |c: char| c == ' ' || "─╮┐".contains(c);
                 assert!(
-                    tail.trim_matches(edge) == "✕",
+                    tail.trim_matches(edge) == "×",
                     "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}"
                 );
             }

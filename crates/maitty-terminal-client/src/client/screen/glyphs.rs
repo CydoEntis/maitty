@@ -47,7 +47,7 @@ pub(in crate::client) const UNICODE: Glyphs = Glyphs {
     pend: "…",
     bar: "▎",
     branch: "⎇",
-    close: "✕",
+    close: "×",
     fold: "▾",
     warn: "⚠",
     arrow: "›",

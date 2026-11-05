@@ -32,7 +32,7 @@ notifications without a fill, and for pills to stay an option beside plain round
   glyph), `corners` (rounded boxes with square, full-background chips) or `off`. An older `true`
   reads as `corners`; `full` is kept.
 - **Unicode only.** The ASCII and Nerd glyph sets are removed: `ui.glyphs` is `dots` or `unicode`, and
-  an older `auto`, `ascii` or `nerd` reads as `dots`. Close buttons are the `✕` icon; remote machines
+  an older `auto`, `ascii` or `nerd` reads as `dots`. Close buttons are a small centred `×`; remote machines
   are marked `⇄` and this computer `⌂`.
 - **Toasts** are drawn on the plain ground with no fill of their own.
 - **Pane and panels.** The focused session's machine is a badge on the first pane's top border.

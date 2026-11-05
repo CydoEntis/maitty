@@ -182,7 +182,7 @@ Only the area with the keyboard is lit: the focused pane's whole border, or the 
 
 - Popups are centred `panel()`s (`panel_at()` for a given rectangle) framed like a
   pane, in every layout: a box in the `accent` (a modal holds the keys) with corners by
-  `ui.rounded`, the title as an accent chip on the top border two in, and a red ✕ chip
+  `ui.rounded`, the title as an accent chip on the top border two in, and a red × chip
   before the top right corner (the whole chip closes it); with `ui.rounded = full`
   both chips have caps. There is no accent bar across the top: the user chose the
   pane-like frame over an accent title bar (2026-10-24), and the frame
