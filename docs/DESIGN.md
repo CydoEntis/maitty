@@ -372,7 +372,11 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   16/16/5/16); an agent message has a 24px agent tile, a lead sentence in `--fg` and paragraphs in `--fg2`;
   turn dividers read "Cooked for 7s · done 10:11 AM" (only with the daemon's times); tool steps are mono chips;
   edits, commands, checklists, helper agents and approvals are cards on `--term` or `--raise` with a hairline.
-  Colour is a token everywhere (`--ok`, `--danger`, `--warn`), and a diff tints its lines 10%.
+  Colour is a token everywhere (`--ok`, `--danger`, `--warn`), and a diff tints its lines 10%. A command card
+  shows the command, a `Running · m:ss` pill or the elapsed time and an `exit N` pill (green at 0, red otherwise),
+  and the last 3 output lines. An edit block folds past 12 diff lines. Consecutive helper agents are one card
+  ("3 agents, 2 working"). The approval card is amber (`--warn-soft`, `--warn-line`); once answered it reads "You
+  answered: ...". Agent text is rendered as markdown (headings, lists, code, bold, italic, links as copy buttons).
 - **Composer.** A well (`--raise`, hairline, radius 14, accent ring on focus) under the list: a growing text box, Stop
   while a turn runs, and a round send button. Footer hint "Same session as the terminal · switching views never
   restarts claude"; while a turn runs it reads "Enter queues it · Esc interrupts claude" and queued messages show as

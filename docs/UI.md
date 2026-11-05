@@ -719,9 +719,29 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   ids as keys), follows the newest row until the reader scrolls away, then offers "Jump to the latest message". Rows
   are `buildRows(events)`: one agent message per turn (adjacent agent messages of a turn are joined; a step between
   two messages keeps their order), user bubbles, step cards, approvals, turn dividers, and the working line last.
-- **Cards.** Plain and complete: every fact the history carries is shown, and a missing one is said to be
-  unavailable (a diff the history did not keep, a checklist without items, a turn without the daemon's times shows
-  "Turn finished", not an invented duration). No card animates.
+- **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
+  unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
+  does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step
+  that is running animates (its spinner).
+  - *Tool chip:* a 28px mono chip with the tool's name and what it acted on (read from the tool's input; Codex: its
+    label); click opens the input and the result, bounded.
+  - *Edit block:* header (pencil, verb, file relative to the session's folder, `+N` `-N`), the diff with tinted
+    lines (theme tokens at 10%), folded past 12 lines with "N more lines" / "Show less". The header opens the file's
+    diff in the session panel when the window has one.
+  - *Command card:* the command, then `Running · m:ss` (live) or the elapsed time and an `exit N` pill, and the last
+    3 lines of output with "Show all N lines". The elapsed time is the provider's duration, else the daemon's start
+    and completion times; the exit code exists for Codex only, so for Claude it reads "exit code unavailable".
+  - *Approval card:* see Approvals. *Helper agents:* consecutive helper calls are one card, "3 agents, 2 working",
+    a row each (title, type, elapsed or "Done · 5m 30s"); a row opens what it was asked and its report. *Checklist:*
+    the agent's own to-do items with a progress bar. *Working line:* "claude is working · m:ss"; no token count,
+    because the daemon's history carries none.
+  - *Markdown* (`markdown.ts`, `components/Markdown.tsx`): an agent message is read into a data tree and drawn as
+    elements. There is no HTML anywhere (no `dangerouslySetInnerHTML`), raw tags are text, images are never loaded
+    (their alt text shows), and a link is kept only for an `http(s)` address. The app has no route that opens an
+    address outside the window, so a link is a button that copies its address; it never navigates the webview.
+    Supported: paragraphs, headings, fenced code, lists, quotes, rules, inline code, bold, italic.
+  - *Rows* are memoised on their events (`ChatItem`), and the virtual list measures heights, so a card that expands
+    resizes its own row only.
 - **Composer.** `useChatComposer` sends through the conversation's own send (`send_conversation`) with an operation
   number (the receipt's plus one; a failed send is retried with the same number so the daemon can tell a retry from a
   new message). Enter sends, Shift+Enter adds a line (not while an input method is composing), Esc or Stop interrupts
@@ -732,7 +752,12 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   is starting), one at a time and in order, only while the chat is open. The daemon has no queue, so delivery is at
   the end of the turn, not at a step boundary, and closing the window drops what is queued.
 - **Approvals.** The card answers through `approve_conversation` by request id and then reads "You answered: ...",
-  with the buttons gone. A request that asks the person a question (`UserInput`) is answered in the terminal.
+  with the buttons gone. While it is pending and focused, `y` (once), `a` (this session) and `n` (no) answer it, the
+  same letters as typing into the terminal, which stays a working fallback. The daemon's `answered_approvals` are
+  read with every page, so a request answered in the terminal or in another window shows as answered with the real
+  choice, even when this chat was opened afterwards. The card names the tool step it is about (`item_id`) and its
+  "For: ..." link scrolls the list to that step. A request that asks the person a question (`UserInput`) is answered
+  in the terminal.
 - **Screen readers.** The history is a labelled region, not a live region. A separate polite status line says only
   that the agent is working, is waiting for an answer, or finished.
 - **Styling.** Tailwind utilities on theme tokens only; the keyframes for the view change live in `workspace.css`.

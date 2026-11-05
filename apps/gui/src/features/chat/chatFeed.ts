@@ -1,6 +1,6 @@
 import type { ChatPage, HistoryCursor } from '@/api/daemon'
 import type { ChatProvider } from './chatEvents'
-import { applyApprovals, applyHistoryEntries, createChatProjection, type ChatProjection } from './projection'
+import { applyAnsweredApprovals, applyApprovals, applyHistoryEntries, createChatProjection, type ChatProjection } from './projection'
 
 /**
  * The chat view's live copy of one conversation: the projection plus where the daemon's history was
@@ -155,5 +155,6 @@ export async function syncFeed(start: ChatFeed, read: ReadPage, now: () => numbe
   }
 
   // The approvals come with every page and are the daemon's list of those still waiting: the last one is current.
-  return { ...feed, projection: applyApprovals(feed.projection, page.approvals), resume }
+  const projection = applyAnsweredApprovals(applyApprovals(feed.projection, page.approvals), page.answered_approvals)
+  return { ...feed, projection, resume }
 }

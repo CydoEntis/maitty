@@ -497,6 +497,8 @@ const ChatPageSchema = z.object({
     completeness: HistoryCompletenessSchema,
   }),
   approvals: z.array(z.unknown()),
+  // Approvals a person already answered; the chat projection validates each one. Absent from an older daemon.
+  answered_approvals: z.array(z.unknown()).default([]),
 })
 export type HistoryCursor = z.infer<typeof HistoryCursorSchema>
 export type ChatPage = z.infer<typeof ChatPageSchema>

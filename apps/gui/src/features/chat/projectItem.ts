@@ -1,5 +1,6 @@
 import type { ChatEvent, ChatProvider, ItemFields, ItemStatus, TodoItem } from './chatEvents'
-import { claudeToolName, mapClaudeTool } from './claudeTools'
+import { z } from 'zod'
+import { claudeToolName, inputText, mapClaudeTool } from './claudeTools'
 import { fileNamedByLabel, parseCodexFileChanges } from './codexFileChange'
 import type { HistoryEntry } from './historyInput'
 
@@ -36,14 +37,28 @@ function planItems(text: string): readonly TodoItem[] | null {
   return items.length > 0 ? items : null
 }
 
+// The daemon sends a Codex helper call with the same input shape as Claude's Task.
+const HelperInputSchema = z.object({ prompt: z.string().optional() })
+
+function commandEvent(tool: ToolContent, command: string, base: ItemFields): ChatEvent {
+  return { ...base, kind: 'command', command, output: tool.output, exitCode: tool.exit_code ?? null, durationMs: tool.duration_ms ?? null }
+}
+
+/** A tool the design has no card for: its name, what it acted on (its label), and its input. */
+function genericTool(tool: ToolContent, name: string, base: ItemFields): ChatEvent {
+  const label = (tool.label ?? '').trim()
+  return { ...base, kind: 'tool', name, target: label === '' ? null : label, input: inputText(tool.input), detail: tool.output }
+}
+
 function codexTool(tool: ToolContent, base: ItemFields): ChatEvent[] {
   const label = tool.label ?? ''
-  if (tool.kind === COMMAND_ITEM) return [{ ...base, kind: 'command', command: label, output: tool.output }]
+  if (tool.kind === COMMAND_ITEM) return [commandEvent(tool, label, base)]
   if (tool.kind === CODEX_PLAN_ITEM) return [{ ...base, kind: 'todo', items: planItems(tool.output) }]
   if (tool.kind === CODEX_HELPER_ITEM) {
-    return [{ ...base, kind: 'subagent', title: label === '' ? null : label, agentType: null, report: tool.output }]
+    const input = HelperInputSchema.safeParse(tool.input)
+    return [{ ...base, kind: 'subagent', title: label === '' ? null : label, agentType: null, prompt: input.success ? (input.data.prompt ?? null) : null, report: tool.output }]
   }
-  if (tool.kind !== FILE_CHANGE_ITEM) return [{ ...base, kind: 'tool', name: tool.kind, detail: tool.output }]
+  if (tool.kind !== FILE_CHANGE_ITEM) return [genericTool(tool, tool.kind, base)]
 
   const files = parseCodexFileChanges(label, tool.output)
   if (files.length === 0) {
@@ -63,10 +78,10 @@ function codexTool(tool: ToolContent, base: ItemFields): ChatEvent[] {
 
 function claudeTool(tool: ToolContent, base: ItemFields): ChatEvent[] {
   const label = tool.label ?? ''
-  if (tool.kind !== COMMAND_ITEM) return [{ ...base, kind: 'tool', name: tool.kind, detail: tool.output }]
+  if (tool.kind !== COMMAND_ITEM) return [genericTool(tool, tool.kind, base)]
   const name = claudeToolName(label)
   // No tool name in the label means the label is the Bash command.
-  if (name === null) return [{ ...base, kind: 'command', command: label, output: tool.output }]
+  if (name === null) return [commandEvent(tool, label, base)]
 
   const mapping = mapClaudeTool(name, tool.input)
   switch (mapping.kind) {
@@ -75,18 +90,18 @@ function claudeTool(tool: ToolContent, base: ItemFields): ChatEvent[] {
     case 'todo':
       return [{ ...base, kind: 'todo', items: mapping.items }]
     case 'subagent':
-      return [{ ...base, kind: 'subagent', title: mapping.title, agentType: mapping.agentType, report: tool.output }]
+      return [{ ...base, kind: 'subagent', title: mapping.title, agentType: mapping.agentType, prompt: mapping.prompt, report: tool.output }]
     case 'tool':
-      return [{ ...base, kind: 'tool', name: mapping.name, detail: tool.output }]
+      return [{ ...base, kind: 'tool', name: mapping.name, target: mapping.target, input: mapping.input, detail: tool.output }]
   }
 }
 
 function unsupportedItem(provider: ChatProvider, kind: string, base: ItemFields): ChatEvent[] {
   if (provider === 'codex' && kind === CODEX_PLAN_ITEM) return [{ ...base, kind: 'todo', items: null }]
   if (provider === 'codex' && kind === CODEX_HELPER_ITEM) {
-    return [{ ...base, kind: 'subagent', title: null, agentType: null, report: '' }]
+    return [{ ...base, kind: 'subagent', title: null, agentType: null, prompt: null, report: '' }]
   }
-  return [{ ...base, kind: 'tool', name: kind, detail: '' }]
+  return [{ ...base, kind: 'tool', name: kind, target: null, input: null, detail: '' }]
 }
 
 /** Maps one history item (not a turn marker) to the events it shows as. Never throws. */
