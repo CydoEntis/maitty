@@ -23,6 +23,8 @@ export class FakeDaemonHistory {
   generation = 1
   status: ChatPage['status'] = 'Idle'
   approvals: unknown[] = []
+  /** Messages held until the turn ends. */
+  queued: Array<{ operation: number; text: string }> = []
   /** Every read, as the cursor it asked from (`null`: the start). */
   reads: Array<HistoryCursor | null> = []
   /** While set, every read fails with it. */
@@ -140,6 +142,7 @@ export class FakeDaemonHistory {
         ...(this.legacy ? {} : { resume, reset }),
       },
       approvals: this.approvals,
+      queued: this.queued.map((message) => ({ ...message })),
     })
   }
 }

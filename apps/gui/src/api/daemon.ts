@@ -113,6 +113,13 @@ const ConversationReceiptSchema = z.object({
     z.object({ Acknowledged: z.object({ turn_id: z.string() }) }),
   ]),
 })
+// The daemon held the message because a turn was running (see `ReadResult.queued`).
+const QueuedReceiptSchema = z.object({
+  conversation: z.number().int().nonnegative(),
+  generation: z.number().int().nonnegative(),
+  operation: z.number().int().nonnegative(),
+})
+const QueuedMessageSchema = z.object({ operation: z.number().int().nonnegative(), text: z.string() })
 const FileChangePreviewSchema = z.object({ path: z.string(), kind: z.string(), diff: z.string() })
 const UserInputQuestionSchema = z.object({
   id: z.string(),
@@ -146,6 +153,8 @@ const ReadResultSchema = z.object({
   history: HistoryPageSchema,
   checks: z.array(z.unknown()),
   approvals: z.array(ApprovalRequestSchema),
+  // Messages the daemon holds until the running turn ends; absent from a daemon that predates the queue.
+  queued: z.array(QueuedMessageSchema).default([]),
   // Approvals a person already answered (most recent last); absent from a daemon that predates it.
   answered_approvals: z
     .array(
@@ -512,6 +521,7 @@ const ChatPageSchema = z.object({
     reset: z.boolean().optional(),
   }),
   approvals: z.array(z.unknown()),
+  queued: z.array(QueuedMessageSchema).default([]),
 })
 export type HistoryCursor = z.infer<typeof HistoryCursorSchema>
 export type ChatPage = z.infer<typeof ChatPageSchema>
@@ -643,8 +653,14 @@ export async function resizeTerminal(conversation: Pick<Conversation, 'id'> & { 
   })
 }
 
-export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string): Promise<ConversationReceipt> {
-  return invokeParsed('send_conversation', ConversationReceiptSchema, {
+export type QueuedReceipt = z.infer<typeof QueuedReceiptSchema>
+
+/**
+ * Sends a message. A conversation that is mid-turn does not refuse it: the daemon holds it and sends it
+ * when the turn ends, in order, even if this window closes, and answers with a `QueuedReceipt`.
+ */
+export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string): Promise<ConversationReceipt | QueuedReceipt> {
+  return invokeParsed('send_conversation', z.union([ConversationReceiptSchema, QueuedReceiptSchema]), {
     id: Number(conversation.id),
     generation: conversation.generation,
     operation,
@@ -664,6 +680,15 @@ export function classifySubmissionFailure(
   if (receipt.generation !== expectedGeneration || receipt.operation > operation) return 'unknown'
   if (receipt.operation < operation) return 'not-delivered'
   return receipt.delivery === 'SubmissionUncertain' ? 'unknown' : 'delivered'
+}
+
+/** Takes a message back out of the daemon's queue before it is sent; it fails when it was already sent. */
+export async function dequeueMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number): Promise<void> {
+  await invokeParsed('dequeue_conversation', NullSchema, {
+    id: Number(conversation.id),
+    generation: conversation.generation,
+    operation,
+  })
 }
 
 export async function approveRequest(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel'): Promise<void> {

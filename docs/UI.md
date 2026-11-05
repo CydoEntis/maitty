@@ -732,10 +732,13 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   new message). Enter sends, Shift+Enter adds a line (not while an input method is composing), Esc or Stop interrupts
   the running turn (`cancel_conversation`). It is off, with the reason as its placeholder, while an approval is
   pending ("Answer the request above first") or the daemon is offline. While the daemon reports the turn working,
-  Enter queues: the queue is the window's memory (`composerStore.ts`), shown as dashed pending bubbles with Remove,
-  and its oldest message is delivered once the turn has ended (after a 2.5 s grace so it never lands in the turn that
-  is starting), one at a time and in order, only while the chat is open. The daemon has no queue, so delivery is at
-  the end of the turn, not at a step boundary, and closing the window drops what is queued.
+  Enter still sends: the daemon holds the message (`ReadResult.queued`) and delivers it when the turn ends, in order
+  and once each, so it is shown as a dashed pending bubble with Remove (`dequeue_conversation`) for as long as the
+  daemon holds it, and closing the window loses nothing. The queue is the daemon's memory: a daemon restart drops it,
+  and a message queued for a conversation that has since started over is dropped, not sent into the new one. The
+  boundary is the end of the turn, the one the daemon can observe for both providers; a message is never delivered
+  into a running turn. A send that the daemon refuses as `stale or reused` (another window sent in between) is read
+  and sent again under a new number; a retry of any other failure keeps its number.
 - **Read-only chat.** For a link with `readOnly` the composer is off with "Read-only: talk to the agent in the
   terminal" as its placeholder, and offers no Stop or queue wording; the daemon refuses send, approve and cancel
   for such a conversation. The history and status still follow the agent.

@@ -72,10 +72,10 @@ check for the view). Acceptance criteria are the bullets.
    - Reconnecting the daemon resumes from the last cursor, no duplicates.
 3. **CV-3 Composer.** **Done in the client** (`useChatComposer.ts`, `components/Composer.tsx`): Enter sends,
    Shift+Enter adds a line, Esc or Stop interrupts, disabled while an approval is pending or the daemon is offline,
-   and a minimal approval card answers by request id. **Not done: the daemon-held queue.** There is no queue API,
-   so a message sent while a turn runs waits in the window (a pending bubble with Remove) and is sent once the daemon
-   reports the turn finished, in order and once each, only while the chat is open and not at a step boundary.
-   Closing the window drops it. Original brief:  Enter sends, Shift+Enter newlines, Esc or **Stop**
+   and a minimal approval card answers by request id. **The queue is the daemon's** (G24): a message sent while a
+   turn runs is held by the daemon (`ReadResult.queued`, removed with `ConversationDequeue`) and delivered when the
+   turn ends, in order and once each, whether or not the window stays open; the chat shows it as a pending bubble
+   with Remove. Delivery is at the end of the turn, not mid-turn. Original brief:  Enter sends, Shift+Enter newlines, Esc or **Stop**
    interrupts. While a turn runs the composer **queues** the message and says so
    ("Queue a message for when Claude finishes this step"); it is sent at the turn
    boundary. Disabled while an approval is pending.
@@ -151,7 +151,6 @@ check for the view). Acceptance criteria are the bullets.
   (ADR 0052, *To confirm*): typing into the pane's PTY when the agent is idle, or starting new sessions as
   daemon-owned structured conversations. Not tried against a live Claude or Codex; Codex's rollout shape is read
   from its observed format and is covered by fixtures only.
-- **A daemon-held queue.** Queued sends are window-only (G24 part 1).
 - History is still polled (1 s while working), but a poll is now one small read: every page carries a `resume`
   cursor that returns only the entries changed since (G24 part 2). A push of events is not built.
 - Left for CV-4..CV-7 and CV-9, CV-10: exit codes and live elapsed time on commands, polished chips and diffs,

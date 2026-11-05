@@ -34,6 +34,8 @@ export type ChatFeed = {
   readonly cancelling: boolean
   readonly completeness: ChatPage['history']['completeness'] | null
   readonly receipt: ChatPage['receipt']
+  /** Messages the daemon holds until the running turn ends, oldest first. */
+  readonly queued: ChatPage['queued']
   /** At least one page has been read. */
   readonly loaded: boolean
 }
@@ -51,6 +53,7 @@ export function createFeed(provider: ChatProvider, conversation: number): ChatFe
     cancelling: false,
     completeness: null,
     receipt: null,
+    queued: [],
     loaded: false,
   }
 }
@@ -90,6 +93,7 @@ export function applyPage(feed: ChatFeed, page: ChatPage, nowMs: number): ChatFe
     cancelling: page.cancelling,
     completeness: page.history.completeness,
     receipt: page.receipt,
+    queued: page.queued,
     loaded: true,
   }
 }
