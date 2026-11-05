@@ -860,6 +860,10 @@ window's `onmessage`, and it ends when the window gets an event. The figures, th
 and how to run the measurement again are in [PERFORMANCE](PERFORMANCE.md), *Input latency*. Start
 there, at *The fix, in order*.
 
+**Seen on Windows too (2026-11-05, evening).** The owner ran the 0.65.0 desktop app on Windows 11
+(WebView2): a subtle lag, not as bad as on Linux, after a shorter look, so not certain. If it holds,
+the cause is not Linux only, and step 1 of the fix can be run on Windows.
+
 ## 40. Replayed output makes the pane answer old queries as typed input (bug, `client`)
 
 After the desktop window opened, a shell's input line held `11;rgb:0505/0d0d/1515` and `1;2c`
@@ -926,6 +930,13 @@ The owner's verdict on the v0.65.0 desktop app: the design is wrong in places, i
 smaller screens, the remote machines section is not the design, and there are elements that should
 not be there. Fixing these one complaint at a time is how it drifted, so review it whole first.
 
+**Source of truth (owner, 2026-11-05, evening).** The owner's view is that the app was built from
+parts of the v18 handoff and does not match it as a whole. The owner offered a v19 from the
+designer, to be copied whole. When it arrives it goes in
+`docs/features/chat-gui/design-handoff/v19/`, its reference images in `.maitty/references/`, and it
+replaces v17 and v18 as what the app is built from. That settles step 1 below. No design ticket
+starts before it, and a screen counts as done only when its screenshot sits beside the design's.
+
 **What**
 1. Agree the source of truth with the owner before anything else. `.maitty/references/` is empty,
    so the candidates are `docs/DESIGN.md`, the v17 and v18 handoffs under `docs/features/`, and for
@@ -960,6 +971,19 @@ not be there. Fixing these one complaint at a time is how it drifted, so review 
 - **The block cursor hides the letter under it.** May be ticket 35 (the letter not drawn yet);
   check again once 35 is fixed.
 - **Claude Code is slow to start** in a pane. May be 35 or 36; check again once both are fixed.
+
+Added the same evening, from the 0.65.0 desktop app on Windows:
+
+- **The tab bar is too tall:** too much padding around the tabs.
+- **The title bar needs a colour of its own,** apart from the app's ground.
+- **Usage moves into Settings.** Its icon in the sidebar footer goes.
+- **The terminal and its panel are one surface.** The terminal's ground is a different colour from
+  the panel around it and reads as a box inside a card.
+- **Chat is the same session drawn another way.** Switching a pane between terminal and chat is
+  seamless: the same data, from the same daemon, the same Claude or Codex subscription. Only how
+  it is drawn changes. This is *Chat on any session* above, stated in full. Seen: chat on a
+  `claude` typed into a shell showed "Reading… Reconnecting to the daemon. What is shown may be out
+  of date.", then "Reading the conversation…" and a read-only composer.
 
 ## Added 2026-11-05 (evening): found while fixing the intermittent Windows tests
 
