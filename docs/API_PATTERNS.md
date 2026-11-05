@@ -478,6 +478,18 @@ Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links an
   only, over the panes the client may use. The text is the pane's replay with escape sequences
   removed, so it is what was printed, not what is on screen now.
 
+`NewWorktree` also carries `agent` and `prompt` (`Option<String>`, `#[serde(default)]`; added without
+a `PROTOCOL_VERSION` bump, and a test decodes the old shape): the desktop app's "New agent on a
+branch" (`new_branch_agent`). When either is set the daemon, before anything is made, refuses
+a `cmd` beside them, checks `branch` (`[A-Za-z0-9_./-]+` plus git's ref rules, at most 200
+characters; `daemon/branch_agent.rs`), requires `from` to be a project the app shows (a repository some
+workspace or pane is in), requires the agent to be a configured preset or built-in agent, and bounds the
+prompt (8000 characters, no control characters but line breaks and tabs, no leading dash so the agent
+cannot read it as an option). The prompt goes in the agent's command line quoted for the pane's shell
+(`Config::agent_command`), as the MCP `start` tool does, never interpolated. The worktree itself is the
+usual one (`create_trusted_worktree`, the repo's setup hook, the `[worktree] dir` naming, clean-up when
+its last session closes). Local projects only: the window refuses another machine's project.
+
 Protocol 65 removes the handoff between chat and terminal
 (`ConversationHandoffToNative`, `ConversationHandoffToChat`; see
 [ADR 0044](adr/0044-chat-and-terminal-are-separate-sessions.md)): a session is a chat
@@ -732,7 +744,7 @@ focus never takes the keys.
 | `NewTab` (`SpawnTab`) | this computer | `target_machine()` with that machine's active workspace |
 | `RenameTab`, `CloseWorkspace` (prompts carrying `WsId` / `TabId`) | this computer | `focus_machine()` (the ids came from its active workspace) |
 | `ConversationRename`, `ConversationArchive` | this computer | `conversation_machine(id)`: the selected session's machine if it lists the chat, else the first machine that does |
-| `NewWorktree`, `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree` | this computer | this computer; refused for another machine's project or pane |
+| `NewWorktree` (also with `agent` and `prompt`), `RemoveWorktree`, `TidyWorktrees`, `CloseWorktree`, `AgentWorktree` | this computer | this computer; refused for another machine's project or pane |
 | `ForgetCheckApproval`, `ReloadConfig`, `KillServer`, first-state `SelectWorkspace` / `NewWorkspace` | this computer | this computer (no owning machine) |
 
 **Local-only features.** `Feature` (Files, Changes, Find, Branches, References, image paste, agent

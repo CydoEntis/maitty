@@ -247,6 +247,28 @@ async fn new_worktree_session(
 }
 
 #[tauri::command]
+async fn new_branch_agent(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    project: PathBuf,
+    branch: String,
+    agent: String,
+    prompt: String,
+) -> Result<serde_json::Value, String> {
+    wire.require_local(machine, "A new agent on a branch")?;
+    maitty_desktop_client::new_branch_agent(
+        project,
+        branch,
+        agent,
+        prompt,
+        daemon_executable(&app)?,
+    )
+    .await
+    .map_err(|error| format!("{error:#}"))
+}
+
+#[tauri::command]
 async fn search_panes(app: tauri::AppHandle, query: String) -> Result<serde_json::Value, String> {
     maitty_desktop_client::search_panes(query, daemon_executable(&app)?)
         .await
@@ -604,6 +626,7 @@ pub fn run() {
             search_panes,
             usage_report,
             new_worktree_session,
+            new_branch_agent,
             restore_snapshot,
             start_terminal_session,
             start_shell_session,

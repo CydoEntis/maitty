@@ -398,6 +398,8 @@ impl App {
             cmd,
             split: None,
             from: Some(proj.path.clone()),
+            agent: None,
+            prompt: None,
         });
     }
 

@@ -349,6 +349,8 @@ pub enum Command {
     /// `git worktree add` next to the workspace's repo, then open it as a new workspace.
     /// `split`: open the worktree as a pane beside this one instead of as a workspace.
     /// `from`: the repo to branch from (default: the workspace's folder).
+    /// `agent` / `prompt`: start a known agent preset in it with a first prompt, in place of
+    /// `cmd` (naming both is an error). The daemon checks both and quotes the prompt itself.
     NewWorktree {
         ws: WsId,
         branch: String,
@@ -356,6 +358,10 @@ pub enum Command {
         cmd: Option<String>,
         split: Option<TermId>,
         from: Option<PathBuf>,
+        #[serde(default)]
+        agent: Option<String>,
+        #[serde(default)]
+        prompt: Option<String>,
     },
     /// From a pane about to start an agent in `dir`: a new worktree for it when `dir` is
     /// in a repo's main checkout (and per-agent worktrees are on). Replies with the folder
@@ -1673,6 +1679,47 @@ mod tests {
             panic!("expected a swap")
         };
         assert_eq!((a, b), (3, 4));
+    }
+
+    /// `agent` and `prompt` were added to `NewWorktree` as defaulted fields: a peer that does not
+    /// send them still decodes, as "no agent", so the version stays as it was.
+    #[test]
+    fn a_worktree_request_from_before_agent_and_prompt_still_decodes() {
+        #[derive(Serialize)]
+        enum OldCommand {
+            NewWorktree {
+                ws: WsId,
+                branch: String,
+                base: Option<String>,
+                cmd: Option<String>,
+                split: Option<TermId>,
+                from: Option<PathBuf>,
+            },
+        }
+        let bytes = encode(&OldCommand::NewWorktree {
+            ws: 1,
+            branch: "feat/x".into(),
+            base: None,
+            cmd: Some("claude".into()),
+            split: None,
+            from: None,
+        })
+        .unwrap();
+        let Command::NewWorktree {
+            branch,
+            cmd,
+            agent,
+            prompt,
+            ..
+        } = decode(&bytes).unwrap()
+        else {
+            panic!("expected a worktree request")
+        };
+        assert_eq!(
+            (branch.as_str(), cmd.as_deref()),
+            ("feat/x", Some("claude"))
+        );
+        assert_eq!((agent, prompt), (None, None));
     }
 
     /// A `Snapshot` as a daemon built before `daemon_id` encoded it.

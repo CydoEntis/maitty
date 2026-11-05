@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { displayName, MAX_SESSION_NAME_LENGTH, statusText, STATUS_WORD, type SessionView } from '../model/session'
+import { branchLineOf } from '../model/branchLine'
 import { MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
 import { useRecent } from '@/lib/clock'
 import { Ago } from './times'
@@ -45,6 +46,7 @@ export function SessionRow(props: SessionRowProps) {
   const rowClass = ['mx-row', selected && 'is-selected', loud && 'is-loud', props.swapped && 'is-swapped', moved ? 'is-moved' : effect.className].filter(Boolean).join(' ')
   // The first line names the program, a working row has its spinner and an idle one is the default: say only what they do not.
   const line2 = status === 'working' || status === 'idle' ? '' : statusText(session)
+  const branchLine = branchLineOf(session)
   const line2Class = status === 'needs' ? 'is-needs' : status === 'error' ? 'is-error' : status === 'working' ? 'is-working' : ''
   const body = (
     <>
@@ -64,6 +66,7 @@ export function SessionRow(props: SessionRowProps) {
               {changedAt !== null && <span className="mx-row-meta"><Ago at={changedAt} /></span>}
             </span>
             {line2 && <span className={`mx-row-line2 ${line2Class}`}>{line2}</span>}
+            {branchLine && <span className="flex min-w-0 items-center gap-1 overflow-hidden font-mono text-[11.5px] leading-[1.35] text-[var(--ansi-mag)]" title={`Branch ${branchLine}`}><Icon name="branch" size={11} /><span className="truncate">{branchLine}</span></span>}
           </span>
     </>
   )

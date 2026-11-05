@@ -667,6 +667,51 @@ pub async fn new_worktree_session(
             cmd: None,
             split: None,
             from: None,
+            agent: None,
+            prompt: None,
+        }),
+        daemon_executable,
+    )
+    .await?;
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected worktree reply"),
+    }
+}
+
+/// A new branch in its own worktree of `project` (a folder of a project the app shows), with
+/// `agent` started in it and `prompt` as its first prompt. The daemon checks every part and
+/// opens the session as a new workspace of the project.
+pub async fn new_branch_agent(
+    project: PathBuf,
+    branch: String,
+    agent: String,
+    prompt: String,
+    daemon_executable: PathBuf,
+) -> Result<Value> {
+    let snapshot = match request(ClientMsg::Query(Query::List), daemon_executable.clone()).await? {
+        Reply::List(snapshot) => snapshot,
+        _ => bail!("daemon returned an unexpected session list reply"),
+    };
+    // Any workspace will do as the anchor: `from` names the repository, and the daemon opens the
+    // new session as a workspace of its own.
+    let ws = snapshot
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.cwd == project)
+        .or_else(|| snapshot.workspaces.first())
+        .map(|workspace| workspace.id)
+        .context("no session is open to start from")?;
+    let reply = request(
+        ClientMsg::Command(Command::NewWorktree {
+            ws,
+            branch,
+            base: None,
+            cmd: None,
+            split: None,
+            from: Some(project),
+            agent: Some(agent),
+            prompt: Some(prompt),
         }),
         daemon_executable,
     )

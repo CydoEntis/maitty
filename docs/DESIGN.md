@@ -438,6 +438,18 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   project's right-click menu has a **Worktrees** submenu that opens a shell in any of the repo's
   worktrees, and a **New worktree…** row. Worktrees group under their parent repo. A folder's row shows
   only its name: a branch belongs to a session, and a worktree's branch is not the folder's.
+- **New agent on a branch (v18 C.4).** A 500px shadcn dialog (`features/worktrees/NewAgentDialog.tsx`,
+  mounted in the themed window root): **Project** chips (this computer's git repositories; it opens
+  on the focused session's), an optional **First prompt**, a mono **Branch** that is `agent/<slug>`
+  (the first four meaningful words of the prompt) until you edit it, then the **Agent** choice (Claude
+  or Codex) and a **Folder** preview (`<repo>-worktrees/<branch>` beside the repo, the daemon's default
+  naming). A branch outside `[\w./-]+` or git's ref rules gets a red ring and its reason; a prompt
+  that starts with a dash is refused. **Start** (Ctrl+Enter, ⌘↵ on macOS) opens the session in a
+  new tab. Entries: the branch button beside **+** in the sidebar head and the rail, **New agent on a
+  branch…** in ⌘K, and a repository's right-click menu. It is not offered for another machine's
+  project (v1). A session row that says something other than its branch gets a branch line (glyph and
+  name, mono, `--ansi-mag`) under it; the checklist, progress bar and sub-step lines of the same
+  row wait for the chat view. Esc closes it first (`new-agent` in the ladder).
 - **Close ends the session.** A pane's ×, a tab's × (and its menu's **Close tab** and **Close other
   tabs**), a session's **Close session**, **Close project tabs** and Ctrl+W all end the sessions they
   close, and a notice says so. When a program such as an agent is running, the first click only arms the
