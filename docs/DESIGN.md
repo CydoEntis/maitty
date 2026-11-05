@@ -417,6 +417,9 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   `(2 of 3)` for a drop of several, a thin `role="progressbar"` named `Sending <file>`, and sonner's own
   action button **Cancel**. It has no close mark while it runs. It is then replaced by a success, error or
   plain toast. See UI › *features that need a pane's files*.
+- **A pasted image.** The same toast, titled `Sending the image to <machine>` (a progress bar named
+  `Sending image`, **Cancel**), ending as `Sent the image to <machine>`. For a pane of this computer there is
+  no progress: a short `Saving the image…` toast becomes `Pasted the image`.
 - **Project menu.** Right-clicking a project, in the
   sidebar or the rail, offers New session here, Collapse or Expand, and Copy path.
 - **Inspect (⌘I).** A card docked at the right of the window (over the panes under 900px) that

@@ -661,8 +661,10 @@ Not applicable: the Hairline look was removed ([ADR 0039](adr/0039-floating-is-t
 
 ## Project-specific: features that need a pane's files
 
-Files, Changes, Find, Branches, References, image paste, connecting an agent, and worktree
-actions read or change the files of the pane they apply to. For a pane on another machine they do
+Files, Changes, Find, Branches, References, connecting an agent, and worktree
+actions read or change the files of the pane they apply to. (Pasting an image is not on this list in
+the desktop app: it works for panes on other machines, see below. The terminal app's own list is
+unchanged.) For a pane on another machine they do
 nothing but show one error toast, always in this form: "<Feature> is local-only in v1: the files
 are on <machine>, not on this computer." The check is per pane: moving the focus or the sidebar
 selection between a local and a remote pane turns the feature off and on. Menu entries that would
@@ -682,6 +684,22 @@ failed one are not tried), or `Stopped sending to build`. Cancel cuts the file n
 What the machine reports is untrusted: the window types a path only if it is absolute, at most 4096
 characters and free of control and invisible characters, and a path that is not typed is named in the final
 toast instead.
+
+**Pasting an image into a pane** (`features/terminal/clipboardImage.ts`, `useImagePaste.ts`, `api/imagePaste.ts`,
+host `image_paste.rs`, ADR 0049 and the amendment to 0050). Ctrl+V (Cmd+V on macOS) or Ctrl+Shift+V pastes through the
+webview's paste event, whose clipboard holds text, an image or both. **Text comes first**: any text and the
+terminal pastes it as it always has (bracketed paste included); only an image with no text becomes an image
+paste. On Linux and Windows Ctrl+V therefore pastes rather than sending `^V` to the program, because a
+terminal's `^V` never reaches the browser's paste. PNG, JPEG, GIF and WebP are taken (the host checks the
+first bytes, not the name the webview gives); another image type is refused with one error toast. At most 25 MB,
+refused before the image is read. On a pane of this computer the host keeps the image in its private cache
+(`pastes` in the app's cache folder, mode 600, cleared after a week) and the path is typed into the pane, quoted
+for the shell. On a pane of another machine the image is sent as a dropped file is, by the same runner and events:
+the same progress toast (`Sending the image to build`, progress bar, **Cancel**), the same error toasts, and the
+far-side path typed only if it is absolute, at most 4096 characters and free of control and invisible characters.
+A machine that is not `connected`, one reached by a custom transport (`via`), or an unknown one is refused with one
+error toast, in the words used for dropped files. The image never goes through an event and is never logged: it is
+the raw body of the command.
 
 ## Project-specific: frame presentation
 

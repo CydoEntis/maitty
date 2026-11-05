@@ -62,6 +62,7 @@ import { useIdleUpdate } from '@/features/updates/useIdleUpdate'
 import { routeDrop } from '@/features/terminal/dropRoute'
 import { useFileDrop } from '@/features/terminal/useFileDrop'
 import { useFileSends } from '@/features/terminal/useFileSends'
+import { useImagePaste } from '@/features/terminal/useImagePaste'
 import { updaterSummary, useUpdater } from '@/features/updates/useUpdater'
 import { sendNativeNotice } from '@/features/notifications/native'
 import { chooseProjectFolder } from '@/api/folderPicker'
@@ -439,13 +440,20 @@ export function DesktopApp() {
   }, [])
   const focusedSession = focusedId ? sessionMap.get(focusedId) : undefined
   // A path the machine kept a sent file at is typed into the pane the drop was for, if that pane is still open.
-  const sendFiles = useFileSends({
-    typeInto: (sessionId, text) => {
-      const handle = terminalHandles.current.get(sessionId)
-      if (!handle) return false
-      handle.paste(text)
-      return true
-    },
+  const typeIntoPane = (sessionId: string, text: string) => {
+    const handle = terminalHandles.current.get(sessionId)
+    if (!handle) return false
+    handle.paste(text)
+    return true
+  }
+  const { sendFiles, sendImage } = useFileSends({ typeInto: typeIntoPane })
+  // A pasted image goes the same two ways (ticket 19): saved here and its path typed, or sent to the pane's machine.
+  const pasteImage = useImagePaste({
+    sendImage,
+    typeInto: typeIntoPane,
+    isConnected: (name) => [...machinesRef.current.values()].some((candidate) => candidate.state.name.toLowerCase() === name.toLowerCase() && candidate.state.state === 'connected'),
+    online,
+    windows: /Windows/i.test(navigator.userAgent),
   })
   // Files dropped on a pane type their paths into it; the pane under the pointer, else the focused one.
   // On another machine's pane a path here names nothing there, so the files are sent to it and the
@@ -1658,6 +1666,7 @@ export function DesktopApp() {
                                   focused={focused && !modalOpen && !overviewOpen && chat.view === 'terminal'}
                                   onInput={(data) => { mirrorInput(session.id, data) }}
                                   onOpenPath={(path, line) => { openPath(session, path, line) }}
+                                  onPasteImage={(image) => { pasteImage(session.id, image) }}
                                   onHandle={(handle) => {
                                     if (handle) terminalHandles.current.set(session.id, handle)
                                     else terminalHandles.current.delete(session.id)

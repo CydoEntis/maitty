@@ -154,6 +154,7 @@ fn scripted(files: Vec<PathBuf>, script: &str) -> Job {
         machine: Machine::ssh("box", vec![program.display().to_string()], "maitty"),
         name: "box".into(),
         files,
+        kind: SendKind::Files,
     }
 }
 

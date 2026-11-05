@@ -16,7 +16,6 @@ describe('features that need a pane\'s files', () => {
 
   it('says the same as the terminal app, word for word', () => {
     expect(localOnlyMessage('files', 'kingdom')).toBe('Files is local-only in v1: the files are on kingdom, not on this computer.')
-    expect(localOnlyMessage('paste-image', 'kingdom')).toBe('Pasting an image is local-only in v1: the files are on kingdom, not on this computer.')
     expect(localOnlyMessage('agent-status', 'kingdom')).toBe('Connecting an agent is local-only in v1: the files are on kingdom, not on this computer.')
   })
 
