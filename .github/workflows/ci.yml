@@ -32,7 +32,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      # Saved on failure too: a run that fails its tests has still done the build, and
+      # without this a failing job compiles from nothing every time.
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Install Tauri Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -55,7 +59,10 @@ jobs:
       # One test at a time: CI's Windows machines stall when several tests start real
       # shells (ConPTY) at once. It also names a stuck test in the log.
       # A test that still stalls would hold the job for its whole 45 minute limit, so the
-      # step has its own, well above the 5 to 10 minutes a passing run takes.
+      # step has its own, well above the 5 to 10 minutes a passing run takes. The tests
+      # are built in the step before it: on Windows a cold build takes 13 minutes, and
+      # that is not a stalled test.
+      - run: cargo test --locked --no-run
       - run: cargo test --locked -- --test-threads=1
         timeout-minutes: 15
       - run: cargo clippy --locked --all-targets -- -D warnings
