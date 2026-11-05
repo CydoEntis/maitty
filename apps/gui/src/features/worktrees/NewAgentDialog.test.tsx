@@ -30,7 +30,7 @@ describe('the New agent on a branch dialog', () => {
 
   it('offers a chip for each project and the claude / codex choice', () => {
     open()
-    expect(screen.getAllByRole('radio').map((chip) => chip.textContent)).toEqual(['app', 'api', 'Claude', 'Codex'])
+    expect(screen.getAllByRole('radio').map((chip) => chip.textContent)).toEqual(['app', 'api', 'Claude', 'Codex', 'Terminal', 'Chat'])
   })
 
   it('fills the branch from the prompt and shows where the worktree goes', async () => {
@@ -73,7 +73,28 @@ describe('the New agent on a branch dialog', () => {
     await user.type(promptField(), '  Fix the login bug  ')
     fireEvent.keyDown(promptField(), { key: 'Enter', ctrlKey: true })
     await waitFor(() => { expect(onStart).toHaveBeenCalledTimes(1) })
-    expect(onStart).toHaveBeenCalledWith({ project: PROJECTS[1], agent: 'codex', prompt: 'Fix the login bug', branch: 'agent/fix-login-bug' })
+    expect(onStart).toHaveBeenCalledWith({ project: PROJECTS[1], agent: 'codex', mode: 'terminal', prompt: 'Fix the login bug', branch: 'agent/fix-login-bug' })
+  })
+
+  it('starts as a terminal session unless Chat is chosen', () => {
+    open()
+    expect(screen.getByRole('radio', { name: 'Terminal' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Chat' })).not.toBeChecked()
+  })
+
+  it('says what a chat session is when it is chosen: no terminal, and it asks first', async () => {
+    const { user } = open()
+    await user.click(screen.getByRole('radio', { name: 'Chat' }))
+    expect(screen.getByText(/has no terminal, and asks before it runs a tool/)).toBeInTheDocument()
+  })
+
+  it('sends the chat choice with the agent, the prompt and the branch', async () => {
+    const { user, onStart } = open({ initialKey: '/home/dev/code/api' })
+    await user.click(screen.getByRole('radio', { name: 'Chat' }))
+    await user.click(screen.getByRole('radio', { name: 'Codex' }))
+    await user.type(promptField(), 'Fix the login bug')
+    await user.click(startButton())
+    await waitFor(() => { expect(onStart).toHaveBeenCalledWith({ project: PROJECTS[1], agent: 'codex', mode: 'chat', prompt: 'Fix the login bug', branch: 'agent/fix-login-bug' }) })
   })
 
   it('does not start with Ctrl+Enter while the branch is missing or invalid', () => {
@@ -86,7 +107,7 @@ describe('the New agent on a branch dialog', () => {
     const { user, onStart } = open()
     await user.type(branchField(), 'agent/scratch')
     await user.click(startButton())
-    await waitFor(() => { expect(onStart).toHaveBeenCalledWith({ project: PROJECTS[0], agent: 'claude', prompt: '', branch: 'agent/scratch' }) })
+    await waitFor(() => { expect(onStart).toHaveBeenCalledWith({ project: PROJECTS[0], agent: 'claude', mode: 'terminal', prompt: '', branch: 'agent/scratch' }) })
   })
 
   it('shows what went wrong and stays open for another try', async () => {

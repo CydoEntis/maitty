@@ -37,6 +37,7 @@ export const approvalEvent = (requestId: number | string, over: Partial<Approval
   command: 'rm -rf build',
   reason: null,
   changes: [],
+  questions: [],
   choices: ['Accept', 'AcceptForSession', 'Decline'],
   resolution: { status: 'pending' },
   ...over,

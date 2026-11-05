@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { approveRequest } from '@/api/daemon'
+import { answerUserInput, approveRequest } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
 import { hasPendingApproval, runningTurnStartedAt, type ChatFeed } from '../chatFeed'
@@ -52,6 +52,8 @@ type Props = {
   agent: ChatAgent
   /** The daemon is connected: a message or an answer can be sent. */
   online: boolean
+  /** False for a chat session: the agent has no terminal to type in, so no text sends the reader there. */
+  hasTerminal?: boolean
   /** The session's folder, so file names read relative to it. */
   root?: string | null
   /** Opens a file's diff in the session panel; absent where there is none. */
@@ -59,7 +61,7 @@ type Props = {
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, root = null, onOpenDiff = null }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null }: Props) {
   const { feed, events, offline, refresh, recordAnswer } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const working = feed.status === 'Working'
   // The sidebar row shows the checklist's progress for a conversation the window has read.
@@ -77,7 +79,16 @@ export function ChatSession({ link, agent, online, root = null, onOpenDiff = nul
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not send your answer')) })
       .finally(() => { setAnswering(false) })
   }, [link.conversation, link.generation, recordAnswer, refresh])
-  const approval = useMemo(() => (online ? { answer, busy: answering } : null), [online, answer, answering])
+  // A user-input answer is relayed once and recorded nowhere: it can be a secret.
+  const answerInput = useCallback((requestId: number | string, answers: Record<string, string[]>) => {
+    setAnswering(true)
+    answerUserInput({ id: String(link.conversation), generation: link.generation }, requestId, answers)
+      .then(refresh)
+      .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not send your answer')) })
+      .finally(() => { setAnswering(false) })
+  }, [link.conversation, link.generation, refresh])
+  // A chat that follows a terminal pane is answered in that terminal (ADR 0052), so it offers no buttons.
+  const approval = useMemo(() => (online && link.readOnly !== true ? { answer, answerInput, busy: answering } : null), [online, link.readOnly, answer, answerInput, answering])
 
   // An approval's link to its tool step scrolls the list there; the nonce makes a second click on the same link scroll again.
   const [scrollTarget, setScrollTarget] = useState<{ key: string; nonce: number } | null>(null)
@@ -95,11 +106,12 @@ export function ChatSession({ link, agent, online, root = null, onOpenDiff = nul
         {offline && <span role="status" className="text-[var(--warn)]">Reconnecting to the daemon. What is shown may be out of date.</span>}
         {!offline && incomplete !== null && <span className="text-dim">History is incomplete: {incomplete}.</span>}
         {feed.error !== null && <span className="text-[var(--danger)]">{feed.error}</span>}
+        {!hasTerminal && <span className="ml-auto text-dim">Chat session &middot; no terminal</span>}
       </div>
       {/* Politely announces a change of state only; the log itself is not a live region, so streaming text never floods a screen reader. */}
       <div role="status" aria-live="polite" className="sr-only">{announcement(feed, agent)}</div>
       {feed.loaded && rows.length === 0 ? (
-        <p className="m-0 flex flex-1 items-center justify-center px-6 text-center text-[13px] text-dim">No messages yet. Send one below, or type in the terminal.</p>
+        <p className="m-0 flex flex-1 items-center justify-center px-6 text-center text-[13px] text-dim">{hasTerminal ? 'No messages yet. Send one below, or type in the terminal.' : 'No messages yet. Send one below.'}</p>
       ) : feed.loaded ? (
         <VirtualList items={rows} getKey={rowKey} estimate={ESTIMATED_ROW_PX} renderItem={renderRow} label={`Conversation with ${agent}`} scrollTarget={scrollTarget} />
       ) : (

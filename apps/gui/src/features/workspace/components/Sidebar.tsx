@@ -14,6 +14,7 @@ import { RailPopoverLayer } from './RailPopovers'
 import { hoverHandlers, useRailHover, type RailHover } from './railHover'
 import { LOCAL_MACHINE } from '@/api/machines'
 import type { MachineHead } from '../model/machines'
+import { isChatSession } from '../model/chatSession'
 import { WorktreeMenu } from '@/features/worktrees/WorktreeMenu'
 import { useTipWithKeys } from '@/features/shortcuts/platform'
 import { OverviewEntry, type OverviewEntryProps } from '@/features/overview/components/OverviewEntry'
@@ -267,7 +268,8 @@ function RailFolderButton(props: { group: SessionGroup; open: boolean; online: b
 
 /** Right-click a project, in the sidebar or the rail: start a shell in it, fold it, copy its path. */
 function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle, onNewSessionIn, onNewWorktree, onNewAgent, onEnd, children }: { group: SessionGroup; open: boolean; canStart: boolean; online: boolean; portalContainer: HTMLElement | null; onToggle: () => void; onNewSessionIn: (folder: string) => void; onNewWorktree: () => void; onNewAgent: () => void; onEnd: () => void; children: ReactNode }) {
-  const lead = group.sessions[0]
+  // A worktree is made from a terminal's checkout; a chat session has no terminal to ask.
+  const lead = group.sessions.find((session) => !isChatSession(session.conversation))
   return (
     <ContextMenuPrimitive.Root>
       <ContextMenuPrimitive.Trigger asChild>{children}</ContextMenuPrimitive.Trigger>

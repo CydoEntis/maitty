@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 import {
   archiveConversationOnDaemon,
+  closeChatSession,
   markSeenOnDaemon,
   pinSessionOnDaemon,
   defaultSessionFolder,
@@ -15,6 +16,8 @@ import {
   renameConversationOnDaemon,
   restartMismatchedDaemon,
   sendTerminalInput,
+  submitMessage,
+  startChatSession,
   startShellSession,
 } from '@/api/daemon'
 import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, setMachineGrant, startSessionOnMachine, terminalOf, unregisterMachine, type Grant, type MachineState } from '@/api/machines'
@@ -47,6 +50,7 @@ import { SessionPanelHost } from '@/features/panel/SessionPanelHost'
 import { useSessionPanelState } from '@/features/panel/useSessionPanelState'
 import { runsProgram } from './components/useArmed'
 import { rememberSessions, withEnded } from './model/ended'
+import { isChatSession, isListedChatSession } from './model/chatSession'
 import { advanceLoginWatch, LOGIN_CHECK_MS, startLoginWatch, type LoginWatch } from './model/loginWatch'
 import { announcementFor, idsOfMachinesNotHeard, machineHeads, remoteStartRefusal, remoteTargetOf, remoteTerminals, type RemoteMachine } from './model/machines'
 import { UsagePage } from '@/features/usage/UsagePage'
@@ -82,8 +86,10 @@ import type { TerminalHandle } from '@/features/terminal/handle'
 import type { LookAt } from '@/features/inspect/FilesTab'
 import { PaneCard } from './components/PaneCard'
 import { ChatPane } from '@/features/chat/components/ChatPane'
+import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
+import { reserveOperation } from '@/features/chat/sendOperation'
 import { usePaneViews } from './usePaneViews'
-import { chatAvailability, chatSourceOf, effectiveView, type PaneView } from './model/chatView'
+import { chatAvailability, chatSourceOf, effectiveView, type ChatAgent, type PaneView } from './model/chatView'
 import { RemoteSessionDialog } from './components/RemoteSessionDialog'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar } from './components/Sidebar'
@@ -407,7 +413,8 @@ export function DesktopApp() {
     }
   }, [])
   const everySession = useMemo(() => {
-    const terminals = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal')
+    // Terminal sessions, and the chat sessions the daemon owns that are not put away (ADR 0054).
+    const terminals = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal' || isListedChatSession(item))
     const here = online ? terminals : markConversationsDisconnected(terminals)
     return [...here, ...remoteTerminals(machines)].map((conversation) => toSessionView(conversation, home))
   }, [sessionsQuery.data, online, home, machines])
@@ -771,14 +778,55 @@ export function DesktopApp() {
   }, [sessions, newSessionSince, flash])
 
   const branchProjects = useMemo(() => agentProjects(groups), [groups])
+  // Lists again and opens the chat session the daemon just started, with its first prompt if there is one.
+  const openStartedChat = useCallback(async (started: { id: number; generation: number }, prompt: string) => {
+    const id = String(started.id)
+    await queryClient.invalidateQueries({ queryKey: ['conversations'] })
+    await queryClient.query({ queryKey: ['conversations'], queryFn: loadConversations, staleTime: 0 })
+    setLayout((current) => openInNewTab(current, id, makeId))
+    if (prompt !== '') {
+      // The start has answered, so the agent is up: the first prompt is an ordinary send, number 1.
+      const operation = reserveOperation(started.id, { receipt: null, queued: [] })
+      await submitMessage({ id, generation: started.generation }, operation, prompt)
+    }
+  }, [queryClient])
+
   const startBranchAgent = useCallback(async (request: NewAgentRequest) => {
+    if (request.mode === 'chat') {
+      const started = await startChatSession(request.project.path, request.agent, request.branch)
+      setNewAgent(null)
+      try {
+        await openStartedChat(started, request.prompt)
+      } catch (error) {
+        // The session exists and is open; only its first prompt did not go, and the composer is there to retry.
+        toast.error(errorMessage(error, 'The chat started, but its first prompt was not sent'))
+      }
+      flash(`${request.agent} chat started on ${request.branch}`)
+      return
+    }
     const known = new Set(sessions.map((session) => session.id))
     await newBranchAgent({ project: request.project.path, branch: request.branch, agent: request.agent, prompt: request.prompt })
     const id = await newSessionSince(known)
     setNewAgent(null)
     if (id) setLayout((current) => openInNewTab(current, id, makeId))
     flash(`${request.agent} started on ${request.branch}`)
-  }, [sessions, newSessionSince, flash])
+  }, [sessions, newSessionSince, flash, openStartedChat])
+
+  // "Start a Claude chat" on a shell's empty chat card: a chat session in that shell's folder.
+  const startChatHere = useCallback((from: SessionView, agent: ChatAgent) => {
+    const refusal = remoteStartRefusal(from.machine !== LOCAL_MACHINE, from.machineName, 'A chat session')
+    if (refusal) {
+      toast.message(refusal)
+      return
+    }
+    if (!online || starting) return
+    setStarting(true)
+    startChatSession(from.cwd, agent)
+      .then((started) => openStartedChat(started, ''))
+      .then(() => { flash(`${agent} chat started`) })
+      .catch((error: unknown) => { toast.error(errorMessage(error, `Could not start a ${agent} chat`)) })
+      .finally(() => { setStarting(false) })
+  }, [online, starting, openStartedChat, flash])
 
   const openNewAgent = useCallback((projectKey: string | null) => {
     if (!online) return
@@ -886,7 +934,7 @@ export function DesktopApp() {
       setLayout((current) => removeSessions(current, gone, tabGroup))
       return
     }
-    void Promise.all(running.map((session) => archiveConversationOnDaemon({ id: session.id }, true)))
+    void Promise.all(running.map((session) => (isChatSession(session.conversation) ? closeChatSession(session.conversation) : archiveConversationOnDaemon({ id: session.id }, true))))
       .then(async () => {
         setLayout((current) => removeSessions(current, gone, tabGroup))
         flash(`${what} closed · ${running.length === 1 ? 'session' : `${String(running.length)} sessions`} ended`)
@@ -918,6 +966,10 @@ export function DesktopApp() {
     const pane = layout.tabs.flatMap((tab) => tab.panes).find((candidate) => candidate.id === paneId)
     const old = pane ? paneSessions.get(pane.sessionId) : undefined
     if (!old) return
+    if (isChatSession(old.conversation)) {
+      toast.message('A chat session cannot be restarted. Close it and start a new one.')
+      return
+    }
     const refusal = remoteStartRefusal(old.machine !== LOCAL_MACHINE, old.machineName, 'Restarting this pane')
     if (refusal) {
       toast.message(refusal)
@@ -1079,6 +1131,8 @@ export function DesktopApp() {
   // Which view a session shows, and whether it has a chat. Switching views only changes the window; no daemon command is sent.
   const chatOf = useCallback((session: SessionView) => {
     const availability = chatAvailability(chatSourceOf(session))
+    // A chat session has no terminal to switch to: its pane is the chat, always.
+    if (isChatSession(session.conversation)) return { availability, view: 'chat' as const }
     return { availability, view: effectiveView(paneViews.choices.get(session.id), availability, preferences.chatViewDefault) }
   }, [paneViews.choices, preferences.chatViewDefault])
 
@@ -1170,7 +1224,8 @@ export function DesktopApp() {
         setUsageOpen((open) => !open)
         return
       case 'chat-toggle': {
-        if (!focusedSession) return
+        // A chat session has only its chat; there is nothing to switch to.
+        if (!focusedSession || isChatSession(focusedSession.conversation)) return
         const next: PaneView = chatOf(focusedSession).view === 'chat' ? 'terminal' : 'chat'
         paneViews.choose(focusedSession.id, next)
         return
@@ -1303,7 +1358,7 @@ export function DesktopApp() {
 
   // Inspect looks at the focused pane's own repository; the tab bar's +N −N comes from the same daemon question.
   // A pane of another machine has no checkout on this computer, so there is nothing to inspect.
-  const inspectTerm = online && isDesktop() && focusedSession && focusedSession.machine === LOCAL_MACHINE ? focusedSession.pane : null
+  const inspectTerm = online && isDesktop() && focusedSession && focusedSession.machine === LOCAL_MACHINE && !isChatSession(focusedSession.conversation) ? focusedSession.pane : null
   const diffStat = useQuery({
     queryKey: ['repo', inspectTerm, 'diff-stat'],
     queryFn: async () => {
@@ -1345,7 +1400,11 @@ export function DesktopApp() {
     return () => { window.removeEventListener('focus', onFocus) }
   }, [showSessionById])
 
-  const sendTo = useCallback((target: SessionView, data: string) => sendTerminalInput({ id: target.id, generation: target.conversation.generation ?? 0 }, data), [])
+  const sendTo = useCallback((target: SessionView, data: string) => {
+    // A chat session has no terminal to type into; its answers go through the chat, by request id.
+    if (isChatSession(target.conversation)) return Promise.reject(new Error('A chat session has no terminal. Use its chat.'))
+    return sendTerminalInput({ id: target.id, generation: target.conversation.generation ?? 0 }, data)
+  }, [])
 
   const answerSession = useCallback((sessionId: string, answer: Answer) => {
     const target = sessionMap.get(sessionId)
@@ -1380,7 +1439,8 @@ export function DesktopApp() {
         const target = sessionMap.get(notice.sessionId)
         const card = target && sessionNoticeFor(target, projectOf.get(target.id), {
           open: () => { showSessionById(notice.sessionId) },
-          allow: online ? () => { answerSession(notice.sessionId, 'y') } : null,
+          // A chat session's approval is answered in its chat, by the request's id, never by typing a letter.
+          allow: online && !isChatSession(target.conversation) ? () => { answerSession(notice.sessionId, 'y') } : null,
         })
         if (card) showSessionNotice(notice.sessionId, card)
         continue
@@ -1420,7 +1480,7 @@ export function DesktopApp() {
     if (!showing?.broadcast || typeof data !== 'string') return
     for (const pane of showing.panes) {
       const other = pane.sessionId === fromSessionId ? undefined : sessionMap.get(pane.sessionId)
-      if (other?.status === 'idle') void sendTo(other, data).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not broadcast to a pane')) })
+      if (other?.status === 'idle' && !isChatSession(other.conversation)) void sendTo(other, data).catch((error: unknown) => { toast.error(errorMessage(error, 'Could not broadcast to a pane')) })
     }
   }, [layout, sessionMap, sendTo])
 
@@ -1645,6 +1705,7 @@ export function DesktopApp() {
                           if (!session) return null
                           const focused = pane.id === tab.focus
                           const chat = chatOf(session)
+                          const chatOnly = isChatSession(session.conversation)
                           return (
                             <PaneCard
                               key={pane.id}
@@ -1659,12 +1720,13 @@ export function DesktopApp() {
                               dropTarget={dropId === pane.id && dragId !== pane.id}
                               workingSince={tracks.get(session.id)?.workingSince ?? null}
                               view={chat.view}
-                              onViewChange={(view) => { paneViews.choose(session.id, view) }}
+                              {...(chatOnly ? {} : { onViewChange: (view: PaneView) => { paneViews.choose(session.id, view) } })}
                               onTogglePanel={sessionPanel.toggle}
                               panelOpen={sessionPanel.open}
                               chat={chat.view === 'chat' ? (
                                 <ChatPane
                                   availability={chat.availability}
+                                  hasTerminal={!chatOnly}
                                   root={session.repoRoot ?? session.cwd}
                                   onOpenDiff={showDiffInPanel}
                                   process={session.process}
@@ -1674,11 +1736,12 @@ export function DesktopApp() {
                                     paneViews.choose(session.id, 'terminal')
                                     void sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, `${agent}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })
                                   }}
+                                  onStartChat={(agent) => { startChatHere(session, agent) }}
                                 />
                               ) : undefined}
                               online={online}
                               portalContainer={root}
-                              terminal={
+                              terminal={chatOnly ? <NoTerminalNote /> :
                                 <TerminalView
                                   key={session.id}
                                   conversation={session.conversation}

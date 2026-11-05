@@ -133,6 +133,7 @@ function approvalEventOf(request: ApprovalRequest): ApprovalEvent {
       kind: change.kind,
       diff: diffForChange(changeKindOf(change.kind), change.diff, false),
     })),
+    questions: request.questions.map((question) => ({ id: question.id, header: question.header, question: question.question, isOther: question.is_other, isSecret: question.is_secret, options: question.options })),
     choices: request.choices,
     resolution: { status: 'pending' },
   }
