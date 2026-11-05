@@ -103,3 +103,13 @@ The desktop app sends a drop of up to 10 files in turn, over the runner that now
 - The machine must be `connected`, since the path is typed through its line.
 - The window types a far-side path only if it is absolute, at most 4096 characters and free of control
   and invisible characters, on top of the host's own check of the same shape.
+
+### The desktop app's image paste
+
+A clipboard image pasted in the desktop app (0049's feature, ticket 19) reuses this send. The window hands the
+host the bytes as the raw body of a command, never as base64 in an event. The host checks them (PNG, JPEG, GIF
+or WebP signature; 25 MB), stages them as a private file in the app's cache and runs the same job, events and
+cancel with the image cap and the two-minute limit; the staged copy is removed when the send ends. The
+far-side name is `…-image.<ext>` from the checked type, so a JPEG is not named `.png`. For a pane of this
+computer the host keeps the image in the same cache folder and the window types its path. Ctrl+V pastes
+through the webview, so outside macOS it no longer sends `^V` to the program; to confirm with the owner.

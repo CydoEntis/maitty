@@ -310,6 +310,15 @@ from the line after the marker and only when it is absolute and free of control 
 what ssh says when a send fails is cut to 200 characters and cleaned the same way. The image is
 capped at 25 MB and the send at two minutes. A machine reached by a custom transport is not sent an image.
 
+The desktop app's image paste (`image_paste.rs`, ticket 19) hands the host the bytes the webview read from the
+clipboard, so the host trusts nothing about them: the type comes from the first bytes (PNG, JPEG, GIF, WebP;
+anything else is refused), the size is capped at 25 MB before a byte is written, and the machine must be a known
+ssh machine that is connected, all before anything is staged. The staged copy and the copy kept for a local pane
+are created `create_new` and mode 600 in an owner-only folder of the app's cache, and nothing but this app's own
+`paste-` and `staged-` files is ever swept. The far-side name is `paste-<ms>-<8 hex>-image.<ext>` with the
+extension from the checked type, never from the webview. The image is the raw body of a command, not a logged
+event, and is never written to a log. What the far side prints is checked as for any file.
+
 Sending any file to another machine (`client/send_file.rs`, ADR 0050) is the same line and the same script;
 only the name, the cap and the trigger differ. A file is read from this computer only when the person
 names it in the send prompt (a terminal cannot tell a drop from a paste, so a paste of text never
