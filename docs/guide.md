@@ -77,7 +77,7 @@ and your configured custom ones; rows click and the wheel scrolls.
 │                                │
 ├─ REMOTE 1 ────────────── + add ┤
 │                                │
-│  ▭ kingdom                  ●  │
+│  ⇄ kingdom                  ●  │
 │ ▾  maitty         ⎇ fixes/fir ✓│
 │   ⣻ Maitty GUI Work       48m  │
 ╰────────────────────────────────╯
@@ -418,7 +418,7 @@ installed there, see *Install or update maitty on a machine*.
 ### What you see
 
 Sessions on this computer are in the sidebar's **Local** half; every other machine's are in **Remote**,
-each machine under a `▭ build` header. A machine that is not connected, or has no sessions, is one item: its name with
+each machine under a `⇄ build` header. A machine that is not connected, or has no sessions, is one item: its name with
 how its connection is at the right. A session's status is the one its own maitty reports, and what its agents
 need shows in the Inbox with `· on build`.
 

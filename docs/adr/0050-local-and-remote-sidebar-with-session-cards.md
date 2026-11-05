@@ -23,7 +23,7 @@ notifications without a fill, and for pills to stay an option beside plain round
   right. A folded project says how many sessions it hides, with an amber `●` when one needs you.
 - **Two-row cards.** A session is its mark, name and age (`● you` when it needs you), then what it
   is doing. Its other tabs follow it as `○ shell  2`, grouped by a thin line.
-- **Machines.** Local has no header. Each Remote machine has a header, a ` ▭ build ` badge with its
+- **Machines.** Local has no header. Each Remote machine has a header, a ` ⇄ build ` badge with its
   connection as a dot at the right. A machine that is not connected, or has no sessions, is that header and
   one line of state instead of its projects.
 - **Removed from the row:** the agent's context percent, the clickable `+N −N` (Changes stays on
