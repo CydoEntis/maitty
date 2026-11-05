@@ -303,21 +303,24 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
   for (const key of lastGoodTerm.keys()) {
     if (isOfMachine(key, from) && !(String(termOfKey(key)) in snapshot.terms)) lastGoodTerm.delete(key)
   }
+  const summaries = machine === undefined
+    ? snapshot.conversations.flatMap((raw) => {
+      const parsed = ConversationSummarySchema.safeParse(raw)
+      return parsed.success ? [parsed.data] : []
+    })
+    : []
+  // A terminal session has a chat when the daemon holds a conversation whose native terminal is that pane.
+  const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation }] as const])))
   const terminals = Object.values(snapshot.terms)
     .flatMap((term) => {
       const read = readTerminal(term, from)
       return read ? [read] : []
     })
     .filter(isTerminalSession)
-    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine))
+    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, machine === undefined ? chatOf.get(term.id) : undefined))
   if (machine !== undefined) return terminals
   return [
-    ...snapshot.conversations
-      .flatMap((raw) => {
-        const parsed = ConversationSummarySchema.safeParse(raw)
-        return parsed.success ? [parsed.data] : []
-      })
-      .map((conversation) => toConversation(conversation, snapshot.workspaces)),
+    ...summaries.map((conversation) => toConversation(conversation, snapshot.workspaces)),
     ...terminals,
   ]
 }
@@ -723,7 +726,7 @@ export async function resumeConversation(conversation: Conversation): Promise<{ 
   })
 }
 
-function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[], machine?: SnapshotMachine): Conversation {
+function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[], machine?: SnapshotMachine, chat?: Conversation['chat']): Conversation {
   const folder = term.root ?? term.cwd
   const repo = term.root ? (term.root.split(/[\\/]/).filter(Boolean).at(-1) ?? null) : null
   const workspace = workspaces.find((candidate) => candidate.cwd === folder || candidate.cwd === term.cwd)
@@ -763,6 +766,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     process: term.process,
     summary: term.summary,
     details: { asking: term.asking, interrupted: term.interrupted, timeline: term.timeline, usage: term.usage },
+    ...(chat ? { chat } : {}),
   }
 }
 

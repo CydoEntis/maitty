@@ -45,7 +45,12 @@ check for the view). Acceptance criteria are the bullets.
      provider's saved history has none, and the GUI measures its elapsed time from
      when it first saw it.
 
-1. **CV-1 Switch and empty chat card.** The floating two-button switch (§B.3),
+1. **CV-1 Switch and empty chat card.** **Done:** the Terminal | Chat switch sits in each pane head (not a single
+   switch at the tab bar's right: each pane has its own view), `Ctrl/Cmd+Shift+E` toggles the focused pane, the
+   transition is transform/opacity only and off under Reduce motion, and Settings › General › Chat view sets the
+   per-agent default. The chat card has no header of its own: the pane head already shows process, name, cwd,
+   machine chip and status, so a second header would repeat it. Not built: the pane switcher and "the project's
+   running agents to jump to" on the shell card. Original brief: The floating two-button switch (§B.3),
    the slide-and-fade transition (off under reduce motion), a `Settings → Claude /
    Codex` default of terminal or chat, and the chat card with its header (process,
    session name, cwd, machine chip, pane switcher, status pill with timer).

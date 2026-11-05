@@ -684,3 +684,19 @@ Keep pane padding and the card interior on the same surface as a terminal app
 when at least three screen corners use one explicit background color. Preserve
 the pane insets; isolated colored panels keep their existing theme treatment.
 Preserve colors applications paint explicitly.
+
+## Project-specific: desktop chat view
+
+The desktop app's chat view is a second view of a Claude Code or Codex session, never a second session
+([chat view plan](features/chat-gui/chat-view-plan.md), ADR 0036). Rules:
+
+- **Source.** It renders only the daemon's structured events, through `features/chat/` (the projection).
+  It never reads terminal output. A session has a chat only when `conversationsFromSnapshot` found a daemon
+  conversation whose native terminal is that pane (`Conversation.chat`); `model/chatView.ts` decides
+  availability: `ready`, `no-events`, `remote` (local-only in v1), `unsupported` (another agent) or `shell`.
+- **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
+  mounted and its pane keeps its size, and no daemon command is sent. The shortcut is `chat-toggle`
+  (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.
+- **Keyboard.** While the chat covers a pane its terminal is not focused (`TerminalView focused` is false) and is
+  hidden from Tab and screen readers. The chat adds no layer to the Esc ladder.
+- **Styling.** Tailwind utilities on theme tokens only; the keyframes for the view change live in `workspace.css`.

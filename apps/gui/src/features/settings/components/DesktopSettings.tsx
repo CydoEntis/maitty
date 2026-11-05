@@ -8,6 +8,7 @@ import { ThemePicker } from './ThemePicker'
 import { SpinnerPicker, SpinnerPreview } from './SpinnerPicker'
 import { PerformanceSection } from './PerformanceSection'
 import { hotkeyRows, type Platform } from '@/features/workspace/model/shortcuts'
+import { CHAT_AGENTS } from '@/features/workspace/model/chatView'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { Icon } from '@/features/workspace/components/glyphs'
 import { errorMessage } from '@/lib/error-message'
@@ -346,6 +347,13 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
           <button type="button" className="mx-scard-button" onClick={onShowWelcome}>Show the welcome again</button>
         </Row>
       </Card>
+      <Card title="Chat view" color="var(--accent)" iconPath={<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />}>
+        {CHAT_AGENTS.map((agent) => (
+          <Row key={agent} label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} detail="Only a session with a chat opens in it; the switch on each pane changes one session.">
+            <Segmented label={`${agent === 'claude' ? 'Claude' : 'Codex'} sessions open in`} value={preferences.chatViewDefault[agent]} options={CHAT_VIEW_OPTIONS} onChange={(value) => { update('chatViewDefault', { ...preferences.chatViewDefault, [agent]: value }) }} />
+          </Row>
+        ))}
+      </Card>
     </>
   )
 }
@@ -355,6 +363,7 @@ const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string;
   { id: 'tiled', name: 'Tiled', blurb: 'Edge-to-edge panes, square corners, hairline dividers', foot: 'Edge-to-edge panes with square corners. Status sweeps start off.' },
   { id: 'glass', name: 'Glass', blurb: 'Floating frosted cards, colour icons, status sweeps', foot: 'Floating glass cards and glow.' },
 ]
+const CHAT_VIEW_OPTIONS = [['terminal', 'Terminal'], ['chat', 'Chat']] as const
 const ICON_COLOR_OPTIONS = [['color', 'Color'], ['grayscale', 'Grayscale']] as const
 const TRAY_OPTIONS = [['names', 'With names'], ['icons', 'Icons'], ['stacked', 'Stacked']] as const
 const UPDATE_CHIP: Record<UpdaterState['status'], string> = { idle: 'Not checked', checking: 'Checking…', current: 'Up to date', available: 'Update available', downloading: 'Downloading', ready: 'Ready to restart', failed: 'Failed' }

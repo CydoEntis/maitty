@@ -72,6 +72,9 @@ import { newWorktreeSession } from '@/features/worktrees/api'
 import type { TerminalHandle } from '@/features/terminal/handle'
 import type { LookAt } from '@/features/inspect/FilesTab'
 import { PaneCard } from './components/PaneCard'
+import { ChatPane } from '@/features/chat/components/ChatPane'
+import { usePaneViews } from './usePaneViews'
+import { chatAvailability, chatSourceOf, effectiveView, type PaneView } from './model/chatView'
 import { RemoteSessionDialog } from './components/RemoteSessionDialog'
 import { RenameDialog } from './components/RenameDialog'
 import { Sidebar } from './components/Sidebar'
@@ -225,6 +228,7 @@ export function DesktopApp() {
   const [welcomeOpen, setWelcomeOpen] = useState(isFirstRun)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [preferences, setPreferences] = useState(readSettingsPreferences)
+  const paneViews = usePaneViews()
   const [layout, setLayout] = useState<Layout>(() => (preferences.restoreTabs ? readLayout() : EMPTY_LAYOUT))
   // The width while the sidebar's edge is being dragged; it is saved when the pointer is released.
   const [liveSidebarWidth, setLiveSidebarWidth] = useState<number | null>(null)
@@ -1011,6 +1015,12 @@ export function DesktopApp() {
   const shortcutChord = useMemo(() => shortcutChords(bindingFor('shortcuts'), platform)[0] ?? [], [platform])
   const focusModeChord = useMemo(() => shortcutChords(bindingFor('focus-mode'), platform)[0] ?? [], [platform])
 
+  // Which view a session shows, and whether it has a chat. Switching views only changes the window; no daemon command is sent.
+  const chatOf = useCallback((session: SessionView) => {
+    const availability = chatAvailability(chatSourceOf(session))
+    return { availability, view: effectiveView(paneViews.choices.get(session.id), availability, preferences.chatViewDefault) }
+  }, [paneViews.choices, preferences.chatViewDefault])
+
   const runShortcut = useCallback((action: ShortcutAction, tab?: number) => {
     switch (action) {
       case 'new-session':
@@ -1090,8 +1100,13 @@ export function DesktopApp() {
       case 'overview':
       case 'session-panel':
       case 'usage':
-      case 'chat-toggle':
         return
+      case 'chat-toggle': {
+        if (!focusedSession) return
+        const next: PaneView = chatOf(focusedSession).view === 'chat' ? 'terminal' : 'chat'
+        paneViews.choose(focusedSession.id, next)
+        return
+      }
       case 'focus-mode':
         setFocusMode((on) => !on)
         return
@@ -1124,7 +1139,7 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, platform, paneSessions, armedClose, toggleInspect, sessions, showSessionById, activeGroupKey, selectTabById])
+  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, platform, paneSessions, armedClose, toggleInspect, sessions, showSessionById, activeGroupKey, selectTabById, chatOf, paneViews])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
@@ -1534,6 +1549,7 @@ export function DesktopApp() {
                           const session = paneSessions.get(pane.sessionId)
                           if (!session) return null
                           const focused = pane.id === tab.focus
+                          const chat = chatOf(session)
                           return (
                             <PaneCard
                               key={pane.id}
@@ -1547,6 +1563,20 @@ export function DesktopApp() {
                               maximized={tab.max === pane.id}
                               dropTarget={dropId === pane.id && dragId !== pane.id}
                               workingSince={tracks.get(session.id)?.workingSince ?? null}
+                              view={chat.view}
+                              onViewChange={(view) => { paneViews.choose(session.id, view) }}
+                              chat={chat.view === 'chat' ? (
+                                <ChatPane
+                                  availability={chat.availability}
+                                  process={session.process}
+                                  online={online}
+                                  onBackToTerminal={() => { paneViews.choose(session.id, 'terminal') }}
+                                  onStartAgent={(agent) => {
+                                    paneViews.choose(session.id, 'terminal')
+                                    void sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, `${agent}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })
+                                  }}
+                                />
+                              ) : undefined}
                               online={online}
                               portalContainer={root}
                               terminal={
@@ -1559,7 +1589,7 @@ export function DesktopApp() {
                                   label={`Shell in ${session.cwdLabel}`}
                                   inputDisabled={!online}
                                   ended={session.ended}
-                                  focused={focused && !modalOpen}
+                                  focused={focused && !modalOpen && chat.view === 'terminal'}
                                   onInput={(data) => { mirrorInput(session.id, data) }}
                                   onOpenPath={(path, line) => { openPath(session, path, line) }}
                                   onHandle={(handle) => {

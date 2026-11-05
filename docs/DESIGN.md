@@ -191,7 +191,9 @@ colours; other themes take them from their text and accent. See UI › *splash*.
 ## Desktop app
 
 The desktop app is a terminal multiplexer window ([ADR 0046](adr/0046-desktop-app-is-a-terminal-multiplexer.md)):
-no chat, every session a shell that maittyd owns. The design handoff (v10, terminal-first) is the
+every session a shell that maittyd owns. Claude Code and Codex sessions also have a chat view
+(owner decision 2026-11-04, [chat view plan](features/chat-gui/chat-view-plan.md)); every other agent
+and every plain shell stays terminal-only. The design handoff (v10, terminal-first) is the
 reference for exact sizes, shadows and timings; `workspace.css` carries them.
 
 - **Floating cards on a flat ground.** The window is the theme's `--bg`. The sidebar, the tab tray, each pane
@@ -354,9 +356,18 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   Ctrl+letter always goes to the terminal, so the window uses Ctrl+Shift (T, W, D, F, K, I, B, N,
   J ...); where two actions want the same Ctrl+Shift letter the second takes Ctrl+Alt+Shift (split
   down, broadcast). Ctrl with a non-letter (`,` `.` `/` `[` `]` `=` `1`-`9` Tab) is the window's
-  too. A binding with `available: false` (Overview, Session panel, Usage, Terminal/Chat, Undo
+  too. A binding with `available: false` (Overview, Session panel, Usage, Undo
   close) is registered but its key does nothing and the overlay hides it until the feature lands.
   Jump to the next session that needs you is ⌘J on macOS only: Ctrl+J is a terminal key.
+- **Terminal | Chat switch.** Every pane head carries a two-button switch (terminal glyph, chat bubble) with a
+  raised thumb that slides by `transform` (.32s). The chat covers the pane body while the terminal stays mounted
+  underneath, hidden by `visibility`, so it keeps streaming and keeps its size: switching sends nothing to the
+  daemon. The incoming view slides 18px from its side and fades (.42s; chat from the right, terminal from the
+  left), `transform` and `opacity` only, no blur; Reduce motion turns both off at the window root. A shell, an
+  unsupported agent, a session on another machine and a Claude/Codex session the daemon holds no conversation for
+  show the chat card's empty state, "Chat view is for agent sessions", with the reason, **Start claude here** /
+  **Start codex here** (shells only) and **Back to terminal**. Settings › General › Chat view picks the view each
+  of Claude and Codex opens in (Terminal by default); a session never switched by hand follows it.
 - **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
   open (`model/escLadder.ts`): comment composer, New agent and What's new, Overview, palette,
   inbox, Settings, the sidebar drawer, Focus mode. A new dialog adds its id there.

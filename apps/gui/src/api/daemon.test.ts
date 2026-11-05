@@ -477,6 +477,20 @@ describe('terminal sessions shown beside chats', () => {
     expect(sessions[2]).toMatchObject({ id: 't10', agent: 'gemini' })
   })
 
+  it('links a terminal to the daemon conversation whose native terminal it is, and only on this computer', async () => {
+    const summary = (overrides: Record<string, unknown>) => ({ id: 40, generation: 3, execution: 'Native', provider: 'Claude', cwd: '/home/casey/sample', worktree: null, state: 'Running', status: 'Idle', native_term: null, checks: [], ...overrides })
+    vi.mocked(invoke).mockResolvedValue({
+      conversations: [summary({ id: 40, generation: 3, native_term: 5 }), summary({ id: 41, native_term: null })],
+      workspaces: [],
+      terms: { '5': term({}), '6': term({ id: 6, agent: null }) },
+    })
+
+    const sessions = await loadConversations()
+
+    expect(sessions.find((session) => session.id === 't5')?.chat).toEqual({ conversation: 40, generation: 3 })
+    expect(sessions.find((session) => session.id === 't6')?.chat).toBeUndefined()
+  })
+
   it('reads, types into, resizes, names and closes a terminal session by its pane number', async () => {
     vi.mocked(invoke).mockResolvedValue(null)
     const target = { id: 't5', generation: 0 }
