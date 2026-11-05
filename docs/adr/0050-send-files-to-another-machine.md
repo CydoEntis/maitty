@@ -111,5 +111,6 @@ host the bytes as the raw body of a command, never as base64 in an event. The ho
 or WebP signature; 25 MB), stages them as a private file in the app's cache and runs the same job, events and
 cancel with the image cap and the two-minute limit; the staged copy is removed when the send ends. The
 far-side name is `…-image.<ext>` from the checked type, so a JPEG is not named `.png`. For a pane of this
-computer the host keeps the image in the same cache folder and the window types its path. Ctrl+V pastes
-through the webview, so outside macOS it no longer sends `^V` to the program; to confirm with the owner.
+computer the host keeps the image in the same cache folder and the window types its path. The paste key
+is Ctrl+Shift+V on Windows and Linux and Cmd+V on macOS. Plain Ctrl+V on Windows and Linux still sends `^V` to the
+program, as every plain Ctrl+letter there does (0029 keeps Alt+V for Claude Code).

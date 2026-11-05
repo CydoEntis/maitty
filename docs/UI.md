@@ -686,11 +686,12 @@ characters and free of control and invisible characters, and a path that is not 
 toast instead.
 
 **Pasting an image into a pane** (`features/terminal/clipboardImage.ts`, `useImagePaste.ts`, `api/imagePaste.ts`,
-host `image_paste.rs`, ADR 0049 and the amendment to 0050). Ctrl+V (Cmd+V on macOS) or Ctrl+Shift+V pastes through the
+host `image_paste.rs`, ADR 0049 and the amendment to 0050). Ctrl+Shift+V on Windows and Linux, or Cmd+V on macOS, pastes through the
 webview's paste event, whose clipboard holds text, an image or both. **Text comes first**: any text and the
 terminal pastes it as it always has (bracketed paste included); only an image with no text becomes an image
-paste. On Linux and Windows Ctrl+V therefore pastes rather than sending `^V` to the program, because a
-terminal's `^V` never reaches the browser's paste. PNG, JPEG, GIF and WebP are taken (the host checks the
+paste. Plain Ctrl+V on Windows and Linux is never taken: like every plain Ctrl+letter there, it goes to the program
+in the pane as a raw `^V` (so Claude Code's own clipboard handling and vim's `^V` work). The chat composer takes any
+paste chord, since its paste event is not behind a terminal. PNG, JPEG, GIF and WebP are taken (the host checks the
 first bytes, not the name the webview gives); another image type is refused with one error toast. At most 25 MB,
 refused before the image is read. On a pane of this computer the host keeps the image in its private cache
 (`pastes` in the app's cache folder, mode 600, cleared after a week) and the path is typed into the pane, quoted

@@ -653,11 +653,12 @@ a week, readable by you only, so do not send a secret you would not leave there.
 computer types the file's path, as before.
 
 **Pasting an image** works in the desktop app too: copy a screenshot or an image, click the session and press
-Ctrl+V (⌘V on a Mac). On a session of this computer the image is saved in the app's private cache folder and its
+Ctrl+Shift+V on Windows and Linux, or ⌘V on a Mac. On a session of this computer the image is saved in the app's private cache folder and its
 path is typed; on a session of another machine it is sent over ssh (up to 25 MB, not a custom transport) into
 `~/.cache/maitty/pastes` there, with the same progress toast and **Cancel** as a file, and its path there is typed.
 If the clipboard holds text as well, the text is pasted and the image is left alone. On Linux and Windows
-Ctrl+V now pastes in the terminal; it no longer sends the raw `^V` character to the program.
+plain Ctrl+V still goes to the program in the pane as the raw `^V`, so Claude Code and vim see it; use Ctrl+Shift+V
+to paste. In the chat box any paste key attaches an image.
 
 ## Never leave maitty
 

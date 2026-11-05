@@ -519,7 +519,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         void fonts?.ready.then(() => { refitTerminal.current?.() })
 
         // A terminal sends the same byte for Shift+Enter as for Enter. Agents read ESC then Enter (Alt+Enter) as "new line", so that is what goes.
-        // Ctrl+V outside macOS would be sent on as ^V; the browser pastes instead, which is the only way to learn that the clipboard holds an image (ticket 19).
+        // Ctrl+Shift+V is left to the browser, whose paste event is how an image on the clipboard is found (ticket 19). Plain Ctrl+V still reaches the program as ^V.
         terminalInstance.attachCustomKeyEventHandler((event) => {
           if (isPasteChord(event, navigator.userAgent)) return false
           if (event.key !== 'Enter' || !event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return true

@@ -51,11 +51,13 @@ export function listenForImagePaste(host: HTMLElement, onImage: (image: File) =>
 }
 
 /**
- * Whether a key press is Ctrl+V outside macOS. A terminal sends it on as the control character, so
- * it never reaches the browser's paste; the pane lets the browser paste instead, which is how an
- * image on the clipboard is found. (Cmd+V on macOS already pastes.)
+ * Whether a key press is Ctrl+Shift+V outside macOS. Plain Ctrl+V is never taken: on Windows and
+ * Linux a plain Ctrl+letter belongs to the program in the pane (a raw ^V, which Claude Code reads
+ * for its own clipboard handling and vim for a literal insert). Ctrl+Shift+V is the terminal paste
+ * chord; the pane leaves it to the browser, whose paste event is how an image on the clipboard is
+ * found. (Cmd+V on macOS already pastes and needs no help.)
  */
 export function isPasteChord(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'>, userAgent: string): boolean {
   if (/Macintosh|Mac OS X/i.test(userAgent)) return false
-  return event.key.toLowerCase() === 'v' && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey
+  return event.key.toLowerCase() === 'v' && event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey
 }
