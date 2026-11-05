@@ -304,7 +304,7 @@ The colour slot is the glyph's; line 2 is always `muted` (see above).
 | working | the spinner you chose (Bars is 3-bar), bold | `accent` | none; `4 agents` only when the agent reports helpers, `quiet 12m` when it has gone quiet |
 | needs you | `●` / `!` | `blocked` | `asks: <question>`, else none |
 | done, not seen / seen | `✓` / `+`; `○` / `o` | `done`; `muted` | none: the row is one line |
-| new (an agent told nothing yet) | `○` / `o`, bold | `accent` | `claude · new · type to begin` |
+| new (an agent told nothing yet), idle | `○` / `o`, bold | `accent` | none: the card is one line |
 | asleep | `z` | `muted` | `asleep zzZ` |
 | checking | `◜◝◞◟` / `- \ \| /` | `sky()` | `checking test · 6s` |
 | passed | `✓` / `+` | `done` | `passed: test · 14.2s · 14:22` (local clock) |

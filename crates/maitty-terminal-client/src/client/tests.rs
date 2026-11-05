@@ -4566,19 +4566,19 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_just_started_agent_reads_new_type_to_begin_with_the_accent_ring() {
+    fn a_just_started_agent_is_its_name_and_the_accent_ring_with_no_words() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let t = app.snap.terms.get_mut(&2).unwrap();
         (t.asleep, t.status, t.label, t.summary) =
             (false, Status::Idle, String::new(), String::new());
         let o = draw(&mut app, 160, 45);
         show(&o);
-        let at = o
-            .lines()
-            .position(|l| l.contains("codex · new · type to begin"))
-            .expect("the new row");
         assert!(
-            o.lines().nth(at - 1).is_some_and(|l| l.contains('○')),
+            !o.contains("type to begin") && !o.contains("codex · new") && !o.contains(" idle"),
+            "no words under a new or idle agent:\n{o}"
+        );
+        assert!(
+            o.lines().any(|l| l.contains('○')),
             "the accent ring marks it"
         );
     }

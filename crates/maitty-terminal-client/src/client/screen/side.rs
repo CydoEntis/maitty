@@ -64,8 +64,9 @@ fn agent_count(s: &Session) -> usize {
 }
 
 pub(in crate::client) fn session_lines(app: &App, s: &Session, out: &mut Vec<Line>) {
-    // A card is its name and what it is doing; a plain shell has nothing to add to its name.
-    if !plain_shell(s) {
+    // A card is its name and what it is doing; a session with nothing to say, a plain shell or
+    // an agent that is idle or just started, is its name alone.
+    if !plain_shell(s) && says_something(app, s) {
         out.push(Line::Detail(s.key));
     }
     if let Some(term) = s.native_term {
@@ -1192,6 +1193,22 @@ fn name_segs(
     }
 }
 
+/// Whether a session has a second line: a receipt, a question, a check, a pause or a state with
+/// words. An idle or new agent has none: its name and glyph say it.
+fn says_something(app: &App, s: &Session) -> bool {
+    let t = &app.theme;
+    s.native_term
+        .and_then(|id| popover::receipt_segs(app, id, t))
+        .is_some()
+        || s.secret_ask.is_some()
+        || s.helpers_wanted > 0
+        || !check::reported(s).is_empty()
+        || check::shown(s).is_some()
+        || s.resume_at.is_some()
+        || s.question.is_some()
+        || !status_words(app, s, t).is_empty()
+}
+
 /// A session's second line, in `room` columns. With several checkpoints it is the headline
 /// word, then a glyph per checkpoint; the glyphs give way, never the word.
 fn detail(app: &App, s: &Session, rl: RowLook, t: &Theme, room: usize) -> Vec<Seg> {
@@ -1265,11 +1282,6 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
             "done · not seen",
             Style::default().fg(t.done).add_modifier(Modifier::BOLD),
         )],
-        Status::Idle if is_new(s) => vec![
-            seg(format!("{} · ", s.agent), Style::default().fg(t.muted)),
-            seg("new · type to begin", Style::default().fg(t.accent)),
-        ],
-        Status::Idle if s.is_agent => muted("idle"),
         _ => Vec::new(),
     }
 }
@@ -1330,16 +1342,6 @@ fn draw_line(
 fn activity(app: &App, s: &Session, rl: RowLook, t: &Theme, room: usize) -> Vec<Seg> {
     let needs = check::needs_you(s) || s.question.is_some();
     let words = detail(app, s, rl, t, room);
-    let words = if words.is_empty() {
-        let who = if s.is_agent {
-            s.agent.as_str()
-        } else {
-            "shell"
-        };
-        rl.on(vec![seg(who.to_string(), Style::default().fg(t.muted))], t)
-    } else {
-        words
-    };
     if needs {
         words
     } else {
