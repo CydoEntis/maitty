@@ -461,7 +461,7 @@ fn draw_machine_badge(app: &App, buf: &mut Buffer, (from, to, y): (u16, u16, u16
         return;
     };
     let name = if focus.machine == MachineId::LOCAL {
-        format!("{} Local", if app.ascii_marks() { "^" } else { "⌂" })
+        "⌂ Local".to_string()
     } else {
         format!(
             "{} {}",
