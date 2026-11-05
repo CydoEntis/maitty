@@ -579,6 +579,8 @@ pub struct App {
     paged_up: std::collections::HashMap<ClientTerm, u32>,
     /// When a remote machine's refused copy was last told, so it is told once a minute.
     copy_refusal_told: Option<Instant>,
+    /// The panes drawn at the last `sync_sizes`, to see which have just come into view.
+    shown_panes: std::collections::HashSet<ClientTerm>,
     out: mpsc::UnboundedSender<Outgoing>,
     quit: Option<String>,
     dirty: bool,
@@ -824,6 +826,7 @@ impl App {
             wheel_page: None,
             paged_up: std::collections::HashMap::new(),
             copy_refusal_told: None,
+            shown_panes: std::collections::HashSet::new(),
             out,
             quit: None,
             dirty: true,
@@ -1633,6 +1636,14 @@ impl App {
         }
         let panes = self.panes.clone();
         let dragging = self.screen.drag.is_some();
+        // A pane that was out of sight (another tab, a hidden session) and is shown again has its
+        // size told to the daemon afresh: another window on the same daemon may have set it to
+        // its own in the meantime, and the program then draws for a width this screen is not.
+        let now: std::collections::HashSet<ClientTerm> = panes.iter().map(|(t, _)| *t).collect();
+        for term in now.difference(&self.shown_panes) {
+            self.sizes.remove(term);
+        }
+        self.shown_panes = now;
         for (term, r) in panes {
             let want = (r.width.max(2), r.height.max(2));
             // An agent's screen is drawn by cursor moves and erases that are only right at the

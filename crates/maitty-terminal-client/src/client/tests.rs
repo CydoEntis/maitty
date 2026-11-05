@@ -2164,6 +2164,7 @@ mod screen_tests {
         // Narrow pane: a long line wraps over several rows.
         let long = "word ".repeat(40);
         app.sizes.insert(ClientTerm::local(1), (40, 20));
+        app.shown_panes.insert(ClientTerm::local(1));
         app.parsers
             .insert(ClientTerm::local(1), vt100::Parser::new(20, 40, 1000));
         app.on_server(ServerMsg::Output {
@@ -2242,6 +2243,36 @@ mod screen_tests {
             "its screen was not rebuilt from the old output; the program redraws on the new size"
         );
         assert_eq!(app.parsers[&ClientTerm::local(1)].screen().size(), (20, 120));
+    }
+
+    #[test]
+    fn a_pane_shown_again_has_its_size_told_to_the_daemon_afresh() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        let term = ClientTerm::local(1);
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 30,
+        };
+        let resizes = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<Outgoing>| {
+            std::iter::from_fn(|| rx.try_recv().ok())
+                .filter(|o| matches!(o.msg, ClientMsg::Resize { .. }))
+                .count()
+        };
+        app.panes = vec![(term, rect)];
+        app.sync_sizes();
+        assert_eq!(resizes(&mut rx), 1, "told once when first shown");
+        app.sync_sizes();
+        assert_eq!(resizes(&mut rx), 0, "not again while nothing changed");
+        // Another tab for a while, then back: another window on the daemon may have set a size.
+        app.panes.clear();
+        app.sync_sizes();
+        app.panes = vec![(term, rect)];
+        app.sync_sizes();
+        assert_eq!(resizes(&mut rx), 1, "told again on coming back into view");
     }
 
     #[test]

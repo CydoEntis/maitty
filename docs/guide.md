@@ -405,7 +405,7 @@ ssh_args = ["-p", "2222"]           # optional: extra ssh arguments, one per ent
 remote_cmd = "~/.local/bin/maitty"  # optional: where maitty is on that machine (default: maitty)
 ```
 
-Four more keys decide what a machine may do, all `false` until you turn them on. `clipboard` lets its panes
+Four more keys decide what a machine may do. `clipboard` is on unless you write `clipboard = false`: a copy made in its panes reaches your clipboard. The other three are `false` until you turn them on. `clipboard` lets its panes
 write your clipboard, `notices` lets it raise notices (which include bringing this window to the front) and
 `sounds` lets it play sounds; what it raises starts with `[build]`. `mcp` opens it to agents (see *Agents on a
 machine*). `config.example.toml` lists every key.
