@@ -105,14 +105,14 @@ const MIX = {
   fg2: 80, muted: 62, dim: 52, accentSoft: 13, accentLine: 50, paneLine: 10, contrastStep: 2, full: 100,
 }
 
-const DARKEN_STEP = 2
+const SHIFT_STEP = 2
 
-/** Mixes a colour toward black one step at a time until it reads as text on every ground. */
-function darkenUntilReadable(colour: string, grounds: readonly string[]): string {
+/** Mixes a colour toward black (light themes) or white (dark themes) a step at a time until it reads as text on every ground. */
+function shiftUntilReadable(colour: string, grounds: readonly string[], toward: string): string {
   let percent = 0
   const passes = (candidate: string) => grounds.every((ground) => contrastRatio(candidate, ground) >= MIN_TEXT_CONTRAST)
-  while (percent < MIX.full && !passes(mixOklab(colour, '#000000', percent))) percent += DARKEN_STEP
-  return mixOklab(colour, '#000000', percent)
+  while (percent < MIX.full && !passes(mixOklab(colour, toward, percent))) percent += SHIFT_STEP
+  return mixOklab(colour, toward, percent)
 }
 
 /** Builds every token from a theme's six inputs, as the TUI themes import. */
@@ -129,7 +129,12 @@ export function generateTheme(inputs: ThemeInputs): ThemeTokens {
   }
   // A light theme's published hues (Solarized cyan, Latte green) are pastel against its own ground, so
   // they are darkened in place (same hue, less lightness) until they read as text on both grounds.
-  const hue = (colour: string) => (light ? darkenUntilReadable(colour, [bg, windowBg]) : colour)
+  // A dark theme's mid-tone hues (Solarized blue, Zenburn red) fall short the other way, so they are
+  // lightened in place instead.
+  const hue = (colour: string) => shiftUntilReadable(colour, [bg, windowBg], light ? '#000000' : '#FFFFFF')
+  const baseStatus = light ? LIGHT_STATUS : DARK_STATUS
+  // Only the text colours move; the soft and line tints keep the published hue.
+  const status = { ...baseStatus, warn: hue(baseStatus.warn), danger: hue(baseStatus.danger) }
   const [accentText, magText, blueText, greenText] = [hue(accent), hue(mag), hue(blue), hue(green)]
   return {
     bg: windowBg,
@@ -149,7 +154,7 @@ export function generateTheme(inputs: ThemeInputs): ThemeTokens {
     accentSoft: withAlpha(accentText, MIX.accentSoft),
     accentLine: withAlpha(accentText, MIX.accentLine),
     onAccent: light ? '#FFFFFF' : bg,
-    ...(light ? LIGHT_STATUS : DARK_STATUS),
+    ...status,
     ok: greenText,
     ansiBlue: blueText,
     ansiMag: magText,
