@@ -158,6 +158,19 @@ A new `maitty` that finds a server of another version replaces it on the way in.
 
 Rules for keys and their labels: one key per action (no alias keys; a user's own `[keys.prefix]` entries still load), no default needing Shift, keys other apps use (ADR 0017), sentence case, no bracketed explanations (the group gives the context). Every action has a leader key or is search only; nothing in the sidebar acts on a bare letter. `docs/shortcuts.md` documents the other screens' keys and is not embedded in the app.
 
+**Tool rail and drawer** (`client/screen/tools.rs`, `sheet.rs`). A 5-column rail on the right edge,
+always drawn from 100 columns (`ui.tool_rail`, on by default; a left sidebar only), has a chip per tool
+(`f` Files, `c` Changes, `b` Branch, `a` References, two rows apart, the keys of the keymap). A click opens that
+tool in the drawer, switches to another, or closes the one open. The drawer **floats** over the right of the
+terminal by default: the panes keep the whole column, so the terminal is never resized by opening, closing or
+sizing it. One width (`60` columns, kept as `drawer` in the saved sheet widths) serves all four tools: drag its
+left edge, or `[` `]` or `<` `>` (4 at a time) while it has the keys. Its bottom border says ` < > 60 cols ` and
+` overlay · terminal untouched `; a click on that chip pins the drawer (`drawer_pinned` in the saved UI state): it
+is then a column beside the terminal, as before, each tool keeping its own width, and the chip reads ` docked ·
+terminal resized `. Files shows the tree and the open file by turns while a floating drawer is under 90 columns
+wide. The Inbox and the check sheets stay docked. A draggable edge (the sidebar's, the drawer's) wears a quiet
+three-row `┃` grip, in the accent while pointed at or dragged.
+
 **Cursor.** The focused pane shows the cursor its program asked for (DECSCUSR, read from its output); where it asks for none, or for the default, Settings › Appearance › Cursor (`ui.cursor`: `block` by default, `underline` or `line`; an older `terminal` reads as `block` and `bar` as `line`) and Cursor blink (`ui.cursor_blink`) decide (`client/mod.rs` `cursor_code`). An unknown `ui.cursor` is refused when the config loads.
 
 **Background.** Settings › Appearance › Background (`ui.background`): `solid`, the default, paints every cell the theme's `bg` and sets the terminal's own background to it (OSC 11, given back with OSC 111 on exit) so a plain terminal shows the whole theme; `terminal` leaves the chrome on the terminal's background (SGR 49) for transparent or image backgrounds (`client/render.rs` `draw`).

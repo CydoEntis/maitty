@@ -72,6 +72,9 @@ pub(super) struct Saved {
     pub recent: Vec<String>,
     /// The side sheet's width per kind of view (`SheetKind::key`), as you sized it.
     pub sheet_w: HashMap<String, u16>,
+    /// The tool drawer is a column of its own (the terminal shrinks) instead of an overlay.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub drawer_pinned: bool,
     /// `session_order` and `placed` of every other machine, by its configured name. The top-level
     /// ones are this machine's, so a file from before machines reads as it always did. A machine
     /// that is no longer configured keeps its entry.
@@ -1601,6 +1604,10 @@ pub(super) enum ScreenHit {
     SplashKey(char),
     /// A splash card: a click chooses it, a click on the chosen one opens it.
     SplashCard(usize),
+    /// A chip on the tool rail: the drawer's tab at that place in `DRAWER_TABS`.
+    Tool(usize),
+    /// The drawer's overlay / docked chip: pin it into a column or let it float again.
+    DrawerPin,
     /// A remote machine's line in the sidebar: a right-click offers to reconnect or remove it.
     MachineRow(MachineId),
     /// A recent project on the wide splash (its index among them).
@@ -1759,6 +1766,7 @@ mod sheet;
 mod side;
 mod side_tabs;
 mod splash;
+mod tools;
 mod splash_wide;
 mod tidy;
 pub(in crate::client) use self::{

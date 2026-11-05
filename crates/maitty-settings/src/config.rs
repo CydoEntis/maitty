@@ -159,6 +159,8 @@ pub struct Ui {
     pub sidebar: bool,
     /// "left" or "right".
     pub sidebar_position: String,
+    /// The column of tool chips (Files, Changes, Branch, References) on the right edge.
+    pub tool_rail: bool,
     /// Milliseconds after the prefix before the which-key popup shows (0 = immediately).
     pub which_key_delay_ms: u64,
     pub which_key: bool,
@@ -829,6 +831,7 @@ impl Default for Ui {
         Ui {
             sidebar: true,
             sidebar_position: "left".into(),
+            tool_rail: true,
             which_key_delay_ms: 600,
             which_key: false,
             mouse: true,

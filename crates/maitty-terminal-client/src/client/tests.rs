@@ -164,7 +164,10 @@ mod design_tests {
         cfg.ui.glyphs = "unicode".into();
         // The reference has no padding round the screen; its frames are compared cell for cell.
         cfg.ui.padding = "0".into();
+        // The reference has no tool rail, and its sheets sit beside the panes.
+        cfg.ui.tool_rail = false;
         let mut app = App::new(cfg, tx, None, bg_tx);
+        app.screen.saved.drawer_pinned = true;
         app.splash = false;
         let layout = Node::Leaf(1);
         // A project folder in this platform's own style (tests run on Windows and Linux).
@@ -17555,6 +17558,160 @@ mod leader_key_tests {
         assert_eq!(bound("d"), Some(Action::Changes));
         assert_eq!(bound("f1"), Some(Action::Help));
         assert_eq!(bound("y"), Some(Action::CopyMode));
+    }
+}
+
+/// The tool rail on the right edge and the drawer that floats over the terminal.
+mod tool_rail_tests {
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+
+    const W: u16 = 172;
+    const H: u16 = 56;
+
+    /// The main screen with the rail on, the drawer floating, and the focused pane in a git repo.
+    fn app() -> App {
+        let (_, mut app) = super::design_tests::render_with(W, H);
+        app.cfg.ui.tool_rail = true;
+        app.screen.saved.drawer_pinned = false;
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-rail-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::proc::git(&dir, &["init", "-q"]).unwrap();
+        std::fs::write(dir.join("notes.txt"), "remember the milk\n").unwrap();
+        let pane = app.snap.terms.get_mut(&1).expect("the focused pane");
+        pane.cwd = dir.clone();
+        pane.top = Some(dir.clone());
+        pane.root = Some(dir);
+        app
+    }
+
+    fn draw(app: &mut App) -> Buffer {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(W, H)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    fn tool(app: &App, i: usize) -> Rect {
+        app.hits
+            .iter()
+            .find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Tool(i))).then_some(*r))
+            .expect("the chip is clickable")
+    }
+
+    fn click(app: &mut App, r: Rect) {
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            app.on_mouse(MouseEvent {
+                kind,
+                column: r.x + 1,
+                row: r.y,
+                modifiers: KeyModifiers::NONE,
+            });
+        }
+    }
+
+    fn click_tool(app: &mut App, i: usize) {
+        let r = tool(app, i);
+        click(app, r);
+    }
+
+    fn pane_right(app: &App) -> u16 {
+        app.panes.iter().map(|(_, r)| r.right()).max().unwrap_or(0)
+    }
+
+    #[test]
+    fn the_rail_is_always_on_the_right_edge_with_the_four_tools_stacked_down_it() {
+        let mut app = app();
+        let buf = draw(&mut app);
+        let chips: Vec<Rect> = (0..4).map(|i| tool(&app, i)).collect();
+        assert!(chips.windows(2).all(|w| w[1].y == w[0].y + 2), "two rows apart");
+        assert!(chips.iter().all(|c| c.right() < W), "inside the edge");
+        let x = chips[0].x;
+        let keys: String = chips.iter().map(|c| buf[(x + 1, c.y)].symbol().to_string()).collect();
+        assert_eq!(keys, "fcba");
+        assert!(
+            ["┌", "╭"].contains(&buf[(x - 1, chips[0].y - 1)].symbol()),
+            "in a box"
+        );
+    }
+
+    #[test]
+    fn a_chip_opens_its_tool_and_the_same_chip_again_closes_it() {
+        let mut app = app();
+        draw(&mut app);
+        click_tool(&mut app, 1);
+        assert_eq!(screen::open_sheet(&app), Some(screen::SheetKind::Changes));
+        draw(&mut app);
+        click_tool(&mut app, 2);
+        assert_eq!(screen::open_sheet(&app), Some(screen::SheetKind::Branch), "another switches");
+        draw(&mut app);
+        click_tool(&mut app, 2);
+        assert_eq!(screen::open_sheet(&app), None, "the open one closes");
+    }
+
+    #[test]
+    fn a_floating_drawer_never_resizes_the_terminal_and_a_pinned_one_does() {
+        let mut app = app();
+        draw(&mut app);
+        let closed = pane_right(&app);
+        click_tool(&mut app, 0);
+        draw(&mut app);
+        let drawer = app.screen.sheet_rect;
+        assert!(drawer.width >= 32 && drawer.x < closed && drawer.right() <= W - 5, "{drawer:?}");
+        assert_eq!(pane_right(&app), closed, "the terminal is where it was");
+        // Pinned: a column of its own, and the terminal gives it room.
+        app.screen.saved.drawer_pinned = true;
+        draw(&mut app);
+        assert!(pane_right(&app) < closed, "the terminal shrank");
+    }
+
+    #[test]
+    fn the_drawer_says_its_width_and_where_it_sits_and_a_click_pins_it() {
+        let mut app = app();
+        draw(&mut app);
+        click_tool(&mut app, 0);
+        let buf = draw(&mut app);
+        if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
+            for y in 0..H {
+                println!("{}", (0..W).map(|x| buf[(x, y)].symbol()).collect::<String>());
+            }
+        }
+        let r = app.screen.sheet_rect;
+        let foot: String = (r.x..r.right()).map(|x| buf[(x, r.bottom() - 1)].symbol()).collect();
+        assert!(
+            foot.contains(&format!("< > {} cols", r.width)) && foot.contains("overlay · terminal untouched"),
+            "{foot}"
+        );
+        let pin = app
+            .hits
+            .iter()
+            .find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::DrawerPin)).then_some(*r))
+            .expect("the state chip");
+        click(&mut app, pin);
+        assert!(app.screen.saved.drawer_pinned);
+        let buf = draw(&mut app);
+        let r = app.screen.sheet_rect;
+        let foot: String = (r.x..r.right()).map(|x| buf[(x, r.bottom() - 1)].symbol()).collect();
+        assert!(foot.contains("docked · terminal resized"), "{foot}");
+    }
+
+    #[test]
+    fn a_draggable_edge_shows_a_grip_before_it_is_pointed_at() {
+        let mut app = app();
+        let buf = draw(&mut app);
+        let side = app.screen.side_rect;
+        let grips = (side.y..side.bottom())
+            .filter(|y| (side.right()..side.right() + 3).any(|x| buf[(x, *y)].symbol() == "┃"))
+            .count();
+        assert_eq!(grips, 3, "a three-row grip on the sidebar's edge");
     }
 }
 

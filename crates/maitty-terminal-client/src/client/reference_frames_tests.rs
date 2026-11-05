@@ -904,7 +904,13 @@ fn conforms(id: &str) {
         let want = expected(id, &b);
         let mut diff = String::new();
         for (y, (gr, wr)) in got.iter().zip(&want).enumerate() {
-            let same = gr.len() == wr.len() && gr.iter().zip(wr).all(|(a, w)| a == w || *w == ANY);
+            // The grip on a draggable edge (`┃`) is the app's, on a column the reference leaves
+            // blank or draws as a line.
+            let same = gr.len() == wr.len()
+                && gr
+                    .iter()
+                    .zip(wr)
+                    .all(|(a, w)| a == w || *w == ANY || (*a == '┃' && matches!(*w, ' ' | '│')));
             if !same {
                 let shown = |r: &Vec<char>| {
                     r.iter()

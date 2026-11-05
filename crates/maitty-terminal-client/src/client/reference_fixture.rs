@@ -360,11 +360,14 @@ pub(super) fn world(stage: Stage) -> App {
     let cfg = Config {
         ui: crate::config::Ui {
             padding: "0".into(),
+            // The reference has no tool rail, and its sheets sit beside the panes.
+            tool_rail: false,
             ..Default::default()
         },
         ..Default::default()
     };
     let mut app = App::new(cfg, tx, None, bg_tx);
+    app.screen.saved.drawer_pinned = true;
     app.splash = false;
     let dev = home();
     let (site, pixls, orbit) = (

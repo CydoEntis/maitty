@@ -2117,6 +2117,16 @@ impl App {
             }
             // Left-clicking a machine line does nothing; its menu is on the right-click.
             ScreenHit::MachineRow(_) => {}
+            // The tool rail: its chip opens that tool, or closes it when it is the one open.
+            ScreenHit::Tool(i) => {
+                if let Some((_, _, _, action)) = sheet::DRAWER_TABS.get(i) {
+                    self.act(action.clone());
+                }
+            }
+            ScreenHit::DrawerPin => {
+                self.screen.saved.drawer_pinned = !self.screen.saved.drawer_pinned;
+                self.screen.save();
+            }
             ScreenHit::SplashFocus(away) => self.screen.splash_away = away,
             ScreenHit::MenuPick(i) => self.menu_pick(i),
             ScreenHit::HistRow(i) => {

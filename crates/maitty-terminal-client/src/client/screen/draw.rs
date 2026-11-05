@@ -40,9 +40,15 @@ pub(in crate::client) struct Grid {
     pub edge: Rect,
     /// The sheet docked right of the panes, when one is open (else empty).
     pub sheet: Rect,
+    /// The tool rail on the right edge (empty when the screen is too narrow for it).
+    pub tools: Rect,
     /// The tab row: over the panes and the sheet in Hairline, over the panes in Floating.
     pub tabs: Rect,
 }
+
+/// The tool rail's width, and the screen width from which it is drawn.
+pub(in crate::client) const TOOLS_W: u16 = 5;
+const TOOLS_FROM: u16 = 100;
 
 /// Most the padding round the screen may be, in cells.
 const PADDING_MAX: u16 = 3;
@@ -173,6 +179,28 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
             (Rect::default(), r)
         }
     };
+    // The tool rail: a column on the right edge that is always there, so the drawer has a place
+    // to open from. The screen's too narrow for it, or a right-hand sidebar, and it is left out.
+    let (tools, col) = if !look.hairline
+        && app.cfg.ui.tool_rail
+        && app.cfg.ui.sidebar_position != "right"
+        && area.width >= TOOLS_FROM
+    {
+        let gap = look.gap.max(1);
+        (
+            Rect {
+                x: col.right().saturating_sub(TOOLS_W),
+                width: TOOLS_W,
+                ..col
+            },
+            Rect {
+                width: col.width.saturating_sub(TOOLS_W + gap),
+                ..col
+            },
+        )
+    } else {
+        (Rect::default(), col)
+    };
     let (hair_tabs, col) = if look.hairline {
         carve(col)
     } else {
@@ -192,6 +220,23 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         }
     };
     let (sheet, panes) = match open_sheet(app) {
+        // A tool floats over the panes' right side: the panes keep the whole column.
+        Some(kind) if overlaid(app, kind) => {
+            let full = if area.width < NARROW {
+                col.width
+            } else {
+                wanted_w(app, kind, area.width).clamp(SHEET_MIN, overlay_widest(col).max(SHEET_MIN))
+            };
+            let w = ((full as f32 * app.sheet_frac.clamp(0.0, 1.0)).round() as u16).min(col.width);
+            (
+                Rect {
+                    x: col.right() - w,
+                    width: w,
+                    ..col
+                },
+                col,
+            )
+        }
         Some(kind) => split_for_sheet(
             area.width,
             col,
@@ -211,6 +256,7 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         panes,
         edge,
         sheet,
+        tools,
         tabs,
     }
 }
@@ -224,9 +270,14 @@ fn note_sheet(app: &mut App, g: &Grid, screen_w: u16) {
         width: g.sheet.right().saturating_sub(g.panes.x),
         ..g.panes
     };
-    let sizable = open_sheet(app).is_some() && screen_w >= NARROW && widest(col, look) >= SHEET_MIN;
+    // A floating drawer is sized against the terminal under it, which it does not take room from.
+    let room = match open_sheet(app) {
+        Some(kind) if overlaid(app, kind) => overlay_widest(g.panes),
+        _ => widest(col, look),
+    };
+    let sizable = open_sheet(app).is_some() && screen_w >= NARROW && room >= SHEET_MIN;
     app.screen.sheet_rect = g.sheet;
-    app.screen.sheet_widest = if sizable { widest(col, look) } else { 0 };
+    app.screen.sheet_widest = if sizable { room } else { 0 };
     app.screen.sheet_screen_w = screen_w;
 }
 
@@ -243,16 +294,37 @@ fn draw_sheet_edge(app: &mut App, buf: &mut Buffer, g: &Grid, t: &Theme) {
         width: g.sheet.x.saturating_sub(g.panes.right()).max(1),
         ..g.sheet
     };
+    let ex = edge.x + edge.width / 2;
     if app.screen.drag == Some(Drag::Sheet) || hovered(app, edge) {
-        let ex = edge.x + edge.width / 2;
         for yy in g.sheet.top() + 1..g.sheet.bottom().saturating_sub(1) {
             if let Some(px) = buf.cell_mut((ex, yy)) {
                 px.set_symbol("│")
                     .set_style(Style::default().fg(t.accent).bg(t.bg));
             }
         }
+        draw_grip(buf, ex, (g.sheet.top(), g.sheet.bottom()), true, t);
+    } else {
+        draw_grip(buf, ex, (g.sheet.top(), g.sheet.bottom()), false, t);
     }
     hit(app, edge, ScreenHit::SheetEdge);
+}
+
+/// Rows the grip on a draggable edge is tall.
+const GRIP_ROWS: u16 = 3;
+
+/// The mark that an edge can be dragged: a short heavy bar at the middle of the line (`lit` when
+/// it is pointed at or dragged, else quiet), drawn in the column `x` between `top` and `bottom`.
+fn draw_grip(buf: &mut Buffer, x: u16, (top, bottom): (u16, u16), lit: bool, t: &Theme) {
+    let mid = top + bottom.saturating_sub(top) / 2;
+    let colour = if lit { t.accent } else { t.muted };
+    for y in mid.saturating_sub(GRIP_ROWS / 2)..mid.saturating_sub(GRIP_ROWS / 2) + GRIP_ROWS {
+        if y < bottom.saturating_sub(1)
+            && y > top
+            && let Some(px) = buf.cell_mut((x, y))
+        {
+            px.set_symbol("┃").set_style(Style::default().fg(colour).bg(t.bg));
+        }
+    }
 }
 
 /// The sessions are collapsed into the narrow column (`z`), not hidden (`Z`).
@@ -288,14 +360,18 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
             draw_side(app, f.buffer_mut(), g.side, &model, t);
         }
         // The edge beside the sidebar: drag it. It lights up while you point at it.
+        let ex = g.edge.x + g.edge.width / 2;
         if app.screen.drag == Some(Drag::Side) || hovered(app, g.edge) {
-            let ex = g.edge.x + g.edge.width / 2;
             for yy in g.side.top() + 1..g.side.bottom().saturating_sub(1) {
                 if let Some(px) = f.buffer_mut().cell_mut((ex, yy)) {
                     px.set_symbol("│")
                         .set_style(Style::default().fg(t.accent).bg(t.bg));
                 }
             }
+            draw_grip(f.buffer_mut(), ex, (g.side.top(), g.side.bottom()), true, t);
+        } else {
+            // Always a small grip, so a person can see the edge moves.
+            draw_grip(f.buffer_mut(), ex, (g.side.top(), g.side.bottom()), false, t);
         }
         hit(app, g.edge, ScreenHit::SideEdge);
     } else if !app.side_hidden {
@@ -334,7 +410,9 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
         draw_sheet_edge(app, f.buffer_mut(), &g, t);
+        tools::draw_drawer_foot(app, f.buffer_mut(), g.sheet, kind, t);
     }
+    tools::draw_tools(app, f.buffer_mut(), g.tools, t);
     draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), t);
     app.screen.crumb_x = g.panes.x + 1;
     // A popup (`<app> popup`) floats over everything, the rest dimmed.

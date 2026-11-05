@@ -35,6 +35,14 @@ const SHEET_STEP: u16 = 4;
 const FILES_SHARE: u32 = 55;
 /// Narrower than this, Files shows the tree or the open file, not both side by side.
 const FILES_BOTH_FROM: u16 = 60;
+/// A floating drawer is narrower for the same screen: the tree and the open file take turns
+/// (Enter opens the file, Esc is back to the tree) until it is this wide.
+const FILES_BOTH_FROM_OVERLAID: u16 = 90;
+/// The drawer's width, one for all four tools, before you size it.
+pub(super) const DRAWER_W: u16 = 60;
+/// The widest it floats, and the columns of the terminal it always leaves.
+const DRAWER_MAX: u16 = 110;
+const OVERLAY_KEEP: u16 = 24;
 
 impl SheetKind {
     /// Its name in the saved UI state, where its width is kept.
@@ -48,6 +56,11 @@ impl SheetKind {
             SheetKind::Branch => "branch",
             SheetKind::References => "references",
         }
+    }
+
+    /// Where its width is kept: the four tools share one.
+    fn width_key(self) -> &'static str {
+        self.key()
     }
 
     /// Its width before you size it, on a screen `screen_w` wide.
@@ -64,12 +77,19 @@ impl SheetKind {
 
 /// The width the sheet showing `kind` wants: what you sized it to, else its default.
 pub(in crate::client) fn wanted_w(app: &App, kind: SheetKind, screen_w: u16) -> u16 {
-    app.screen
-        .saved
-        .sheet_w
-        .get(kind.key())
-        .copied()
-        .unwrap_or_else(|| kind.default_w(screen_w))
+    // A floating drawer has one width for all four tools; a pinned one keeps each its own.
+    let key = if overlaid(app, kind) {
+        "drawer"
+    } else {
+        kind.width_key()
+    };
+    app.screen.saved.sheet_w.get(key).copied().unwrap_or_else(|| {
+        if overlaid(app, kind) {
+            DRAWER_W
+        } else {
+            kind.default_w(screen_w)
+        }
+    })
 }
 
 /// The widest the sheet can be beside the panes in `col`: they keep `PANES_KEEP` and the gap.
@@ -77,10 +97,21 @@ pub(in crate::client) fn widest(col: Rect, look: Look) -> u16 {
     col.width.saturating_sub(look.gap + PANES_KEEP)
 }
 
+/// Whether `kind` floats over the panes: a tool of the drawer that is not pinned. The terminal
+/// is then never resized by opening, closing or sizing it.
+pub(in crate::client) fn overlaid(app: &App, kind: SheetKind) -> bool {
+    drawer_tab(kind).is_some() && !app.screen.saved.drawer_pinned
+}
+
+/// The widest a floating drawer gets over `col`: the terminal keeps `OVERLAY_KEEP` columns.
+pub(in crate::client) fn overlay_widest(col: Rect) -> u16 {
+    col.width.saturating_sub(OVERLAY_KEEP).min(DRAWER_MAX)
+}
+
 /// The side panel's tabs, in Tab's order: the view, its name, its name where room is short and
 /// the action that opens it.
 /// The Inbox and the check sheets are not among them.
-const DRAWER_TABS: [(SheetKind, &str, &str, Action); 4] = [
+pub(super) const DRAWER_TABS: [(SheetKind, &str, &str, Action); 4] = [
     (SheetKind::Files, "Files", "Files", Action::Files),
     (SheetKind::Changes, "Changes", "Chg", Action::Changes),
     (SheetKind::Branch, "Branch", "Br", Action::Branches),
@@ -93,7 +124,7 @@ const DRAWER_TABS: [(SheetKind, &str, &str, Action); 4] = [
 ];
 
 /// Where `kind` sits in the tab strip, if it has a tab.
-fn drawer_tab(kind: SheetKind) -> Option<usize> {
+pub(super) fn drawer_tab(kind: SheetKind) -> Option<usize> {
     DRAWER_TABS.iter().position(|(k, ..)| *k == kind)
 }
 
@@ -129,7 +160,12 @@ impl App {
     pub(in crate::client) fn set_sheet_w(&mut self, w: u16) {
         let Some(kind) = open_sheet(self) else { return };
         let w = w.clamp(SHEET_MIN, self.screen.sheet_widest.max(SHEET_MIN));
-        self.screen.saved.sheet_w.insert(kind.key().into(), w);
+        let key = if overlaid(self, kind) {
+            "drawer"
+        } else {
+            kind.width_key()
+        };
+        self.screen.saved.sheet_w.insert(key.into(), w);
     }
 
     /// `[` narrows the open sheet, `]` widens it and `=` puts its default back, while it has
@@ -140,7 +176,7 @@ impl App {
         };
         if k.modifiers
             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
-            || !matches!(k.code, KeyCode::Char('[' | ']' | '='))
+            || !matches!(k.code, KeyCode::Char('[' | ']' | '<' | '>' | '='))
         {
             return false;
         }
@@ -154,10 +190,15 @@ impl App {
         // mid-slide, or another view's, when keys come before the next frame.
         let now = wanted_w(self, kind, self.screen.sheet_screen_w).clamp(SHEET_MIN, widest);
         match k.code {
-            KeyCode::Char('[') => self.set_sheet_w(now.saturating_sub(SHEET_STEP)),
-            KeyCode::Char(']') => self.set_sheet_w(now + SHEET_STEP),
+            KeyCode::Char('[' | '<') => self.set_sheet_w(now.saturating_sub(SHEET_STEP)),
+            KeyCode::Char(']' | '>') => self.set_sheet_w(now + SHEET_STEP),
             KeyCode::Char('=') => {
-                self.screen.saved.sheet_w.remove(kind.key());
+                let key = if overlaid(self, kind) {
+                    "drawer"
+                } else {
+                    kind.width_key()
+                };
+                self.screen.saved.sheet_w.remove(key);
             }
             _ => return false,
         }
@@ -406,7 +447,12 @@ pub(in crate::client) fn draw_sheet(
                     inner,
                     t,
                     &mut v,
-                    r.width < FILES_BOTH_FROM,
+                    r.width
+                        < if overlaid(app, SheetKind::Files) {
+                            FILES_BOTH_FROM_OVERLAID
+                        } else {
+                            FILES_BOTH_FROM
+                        },
                 );
                 app.view = Some(crate::client::View::Files(v));
             }

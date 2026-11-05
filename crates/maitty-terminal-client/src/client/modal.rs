@@ -354,6 +354,13 @@ pub const SETTINGS: &[Setting] = &[
         help: "Blink that caret. No effect with your terminal's own cursor.",
     },
     Setting {
+        path: "ui.tool_rail",
+        label: "Tool rail",
+        kind: Kind::Bool,
+        cat: Cat::Appearance,
+        help: "The column of f, c, b and a chips on the right edge that opens Files, Changes, Branch and References.",
+    },
+    Setting {
         path: "ui.glyphs",
         label: "Status glyphs",
         kind: Kind::Choice(&["dots", "unicode"]),
