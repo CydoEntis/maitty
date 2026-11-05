@@ -16,6 +16,25 @@ Phase 1 follows.
 is next. What is left of phase 2: ticket 26 (draft #281), ten passes in a row on `windows-latest`
 for 28 and 29, and ticket 27.
 
+**Resume here (written 2026-11-05, evening).**
+- **State.** v0.65.1 is released from `dev`. The desktop app is held out of releases by
+  `apps/gui/RELEASE-HOLD`; its last good version is 0.64.0.
+- **The design to build from** is the revised v18 handoff the owner supplied this evening:
+  `docs/features/chat-gui/design-handoff/v18/` (read `README.md` section D first; D.6 to D.9 are
+  new). Its screens are in `.maitty/references/`. Build each screen whole from it, and put a
+  screenshot of the build beside the design's before calling the screen done.
+- **Next, in order.** Phase 1 (tickets 35, 40, 36, 37, 38), then tickets 48, 49 and 50 from the
+  revised handoff, then the rest of phase 4. Ticket 51 (terminal app) is small and can go at any
+  point once the owner has answered its question.
+- **Ticket 35 starts with step 1** of *The fix, in order* in [PERFORMANCE](PERFORMANCE.md): count
+  frames at the host's `channel.send` and at the window's `countOutput`. The owner saw the lag on
+  Windows too, so it can be measured there.
+- **Where to work.** The owner's remote Linux dev box has no graphical session: build and test
+  there, but look at the desktop window on the Windows machine (0.65.0 is installed there) or the
+  Linux work machine. On the dev box `cargo` is in `~/.cargo/bin`; `node`, `pnpm` and the Tauri
+  Linux packages are in the `devbox` container. A fresh worktree needs `pnpm bundle:daemon:dev` in
+  `apps/gui` before `cargo build`.
+
 **How to work**
 - One ticket, one branch from `dev`, one pull request into `dev`. Read `AGENTS.md` and the docs the
   ticket touches before planning it.
@@ -60,13 +79,15 @@ for 28 and 29, and ticket 27.
 | 13 | 33 | A click on a project row moves the keys into the sidebar | nothing |
 | 14 | 30 | What Codex, Gemini and OpenCode send as their last message (spike) | nothing |
 | 15 | 32, 34 | Rename a machine; choose the alert sounds | **owner**: these are features, built when the owner asks |
+| any | 51 | Updating moves into the Menu | **owner**: a mark on the Menu button when an update is out, or not |
 
 **Phase 4. The desktop app's design.** Only after phase 1: a layout cannot be judged in a window that lags.
 
 | Order | Ticket | What | Needs |
 | --- | --- | --- | --- |
 | 16 | 39 | Review every screen with the owner: keep, change or cut. Agree the smallest window. Put the reference designs in `.maitty/references/` | **owner**, throughout |
-| 17 | from 39 | The cuts and changes it produces, cuts first. The list so far is under *Design changes the owner asked for* | **owner** marks each screen first |
+| 17 | 48, 49, 50 | What the revised handoff changed, cuts first: the removals (D.6), usage in Settings (D.7), sidebar sessions keep their place (D.8) | nothing: the handoff says what |
+| 17a | from 39 | The other cuts and changes. The list so far is under *Design changes the owner asked for* | **owner** where the handoff is silent |
 | 18 | ADR | Chat on any session reverses ADR 0052 | **owner** |
 
 **When to stop and ask instead of pressing on**
@@ -931,11 +952,11 @@ smaller screens, the remote machines section is not the design, and there are el
 not be there. Fixing these one complaint at a time is how it drifted, so review it whole first.
 
 **Source of truth (owner, 2026-11-05, evening).** The owner's view is that the app was built from
-parts of the v18 handoff and does not match it as a whole. The owner offered a v19 from the
-designer, to be copied whole. When it arrives it goes in
-`docs/features/chat-gui/design-handoff/v19/`, its reference images in `.maitty/references/`, and it
-replaces v17 and v18 as what the app is built from. That settles step 1 below. No design ticket
-starts before it, and a screen counts as done only when its screenshot sits beside the design's.
+parts of the v18 handoff and does not match it as a whole. The owner supplied a revised v18 the
+same evening and confirmed it is the design to build from. It is in
+`docs/features/chat-gui/design-handoff/v18/` (the README and the prototype changed; D.6 to D.9 of
+the README are new), with its screens in `.maitty/references/`. That settles step 1 below. A
+screen counts as done only when a screenshot of the build sits beside the design's.
 
 **What**
 1. Agree the source of truth with the owner before anything else. `.maitty/references/` is empty,
@@ -984,6 +1005,15 @@ Added the same evening, from the 0.65.0 desktop app on Windows:
   it is drawn changes. This is *Chat on any session* above, stated in full. Seen: chat on a
   `claude` typed into a shell showed "Reading… Reconnecting to the daemon. What is shown may be out
   of date.", then "Reading the conversation…" and a read-only composer.
+
+Where the revised handoff stands on this list, from its README:
+- **In it:** Overview and New agent on a branch are removed (D.6, ticket 48); usage is in Settings
+  (D.7, ticket 49).
+- **The tab bar:** section 3.3 gives a 36px tab in a pill tray. Compare the build with that
+  before changing anything; the build may be off the design.
+- **Not found in its new sections:** the title bar's colour, the terminal and its panel as one
+  surface, chat on any session, small windows, the remote machines section. Look in the prototype
+  (`Maitty Desktop v18.dc.html`) and the older sections; where they are silent, ask the owner.
 
 ## Added 2026-11-05 (evening): found while fixing the intermittent Windows tests
 
@@ -1040,3 +1070,49 @@ On a Windows host `cargo check --target x86_64-unknown-linux-gnu` and
 
 - `docs/COMMIT-STANDARDS.md`, *Project-specific: tooling*, still says there is no release tooling.
   `scripts/release.sh` is that tooling now. **owner** to change the line.
+
+## Added 2026-11-05 (evening): from the revised v18 handoff and the owner
+
+Tickets 48 to 50 are the new sections of
+`docs/features/chat-gui/design-handoff/v18/README.md`. The handoff is the specification; these
+entries only say what to do and how to tell it is done.
+
+## 48. Remove what the revised v18 removes (chore, `client`)
+
+README D.6. Out of the desktop app, with their shortcuts, rail buttons and command palette
+entries:
+- the Overview screen (Ctrl/Cmd+J, jump to the next session needing you, stays);
+- New agent on a branch (sessions still show their branch under the name);
+- the session side panel (Checklist, Agents, Changes, Files, Artifacts) and its toggle. Changes,
+  Files, Branches, History and References stay in the activity bar;
+- step details in sidebar rows: the current checklist item, the progress bar, the sub-step line;
+- project colours (also ticket 9).
+
+**Acceptance:** nothing in `apps/gui/src` still refers to Overview, New agent on a branch or the
+session panel; `pnpm test`, `pnpm lint` and `pnpm build` pass; `docs/DESIGN.md` and `docs/UI.md`
+no longer describe them; screenshots beside the design's. Do this first: it makes the rest fit.
+
+## 49. Usage and cost moves into Settings (feature, `client`)
+
+README D.7. Settings, Workspace, **Usage & cost**, above Notifications, as one Settings card with
+the contents of C.7 unchanged. Ctrl/Cmd+Shift+U and the command palette open Settings on that
+page. Remove the bar-chart button in the sidebar footer (expanded and rail) and the full-screen
+usage view.
+
+## 50. Sidebar sessions keep their place (feature, `client`)
+
+README D.8. Sessions in a project always show in creation order; status, pin and focus never
+reorder them. The focused session is the full card in its own position, and clicking a compact
+row grows it into the card in place. Remove the Settings option "Main row shows". The "N more"
+cap applies only to rows after the card.
+
+## 51. Updating moves into the Menu (change, `client`; terminal app)
+
+Owner idea, 2026-11-05. Today the terminal app offers an update in three places: the button in
+the sidebar footer, the banner at the top of Settings, and the Version row under it. Put it in
+one: the Menu gets an entry that reads **Check for updates**, or **Update to X.Y.Z** when one is
+out. Remove the sidebar button and the Settings banner. Settings keeps the switch for checking
+and shows the version as plain information.
+
+**owner:** with the sidebar button gone nothing says an update is out until the Menu is opened.
+Either a small mark on the Menu button when one is out, or nothing. Not answered yet.
