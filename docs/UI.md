@@ -713,6 +713,17 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
 - **Cards.** Plain and complete: every fact the history carries is shown, and a missing one is said to be
   unavailable (a diff the history did not keep, a checklist without items, a turn without the daemon's times shows
   "Turn finished", not an invented duration). No card animates.
+- **Composer.** `useChatComposer` sends through the conversation's own send (`send_conversation`) with an operation
+  number (the receipt's plus one; a failed send is retried with the same number so the daemon can tell a retry from a
+  new message). Enter sends, Shift+Enter adds a line (not while an input method is composing), Esc or Stop interrupts
+  the running turn (`cancel_conversation`). It is off, with the reason as its placeholder, while an approval is
+  pending ("Answer the request above first") or the daemon is offline. While the daemon reports the turn working,
+  Enter queues: the queue is the window's memory (`composerStore.ts`), shown as dashed pending bubbles with Remove,
+  and its oldest message is delivered once the turn has ended (after a 2.5 s grace so it never lands in the turn that
+  is starting), one at a time and in order, only while the chat is open. The daemon has no queue, so delivery is at
+  the end of the turn, not at a step boundary, and closing the window drops what is queued.
+- **Approvals.** The card answers through `approve_conversation` by request id and then reads "You answered: ...",
+  with the buttons gone. A request that asks the person a question (`UserInput`) is answered in the terminal.
 - **Screen readers.** The history is a labelled region, not a live region. A separate polite status line says only
   that the agent is working, is waiting for an answer, or finished.
 - **Styling.** Tailwind utilities on theme tokens only; the keyframes for the view change live in `workspace.css`.

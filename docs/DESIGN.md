@@ -373,6 +373,10 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   turn dividers read "Cooked for 7s · done 10:11 AM" (only with the daemon's times); tool steps are mono chips;
   edits, commands, checklists, helper agents and approvals are cards on `--term` or `--raise` with a hairline.
   Colour is a token everywhere (`--ok`, `--danger`, `--warn`), and a diff tints its lines 10%.
+- **Composer.** A well (`--raise`, hairline, radius 14, accent ring on focus) under the list: a growing text box, Stop
+  while a turn runs, and a round send button. Footer hint "Same session as the terminal · switching views never
+  restarts claude"; while a turn runs it reads "Enter queues it · Esc interrupts claude" and queued messages show as
+  dashed bubbles. Disabled, it shows its reason in place of the placeholder.
 - **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
   open (`model/escLadder.ts`): comment composer, New agent and What's new, Overview, palette,
   inbox, Settings, the sidebar drawer, Focus mode. A new dialog adds its id there.

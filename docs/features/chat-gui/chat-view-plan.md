@@ -1,6 +1,6 @@
 # Plan: the Terminal / Chat view switch
 
-Status: proposed · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
+Status: in progress (CV-0 to CV-3 and CV-13 done) · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
 
 ## What it is
 
@@ -70,7 +70,12 @@ check for the view). Acceptance criteria are the bullets.
    sentence; turn dividers "Cooked for 7s · done 10:11 AM".
    - A history of 1,000 items renders without jank (virtualised list).
    - Reconnecting the daemon resumes from the last cursor, no duplicates.
-3. **CV-3 Composer.** Enter sends, Shift+Enter newlines, Esc or **Stop**
+3. **CV-3 Composer.** **Done in the client** (`useChatComposer.ts`, `components/Composer.tsx`): Enter sends,
+   Shift+Enter adds a line, Esc or Stop interrupts, disabled while an approval is pending or the daemon is offline,
+   and a minimal approval card answers by request id. **Not done: the daemon-held queue.** There is no queue API,
+   so a message sent while a turn runs waits in the window (a pending bubble with Remove) and is sent once the daemon
+   reports the turn finished, in order and once each, only while the chat is open and not at a step boundary.
+   Closing the window drops it. Original brief:  Enter sends, Shift+Enter newlines, Esc or **Stop**
    interrupts. While a turn runs the composer **queues** the message and says so
    ("Queue a message for when Claude finishes this step"); it is sent at the turn
    boundary. Disabled while an approval is pending.
@@ -136,6 +141,19 @@ check for the view). Acceptance criteria are the bullets.
     Not verified against a live Claude CLI: that its `can_use_tool` request carries
     `tool_use_id` (the code falls back to the request id when it does not).
     GUI follow-up: render `answered_approvals` and the timestamps (G17, G18).
+
+## What is still missing (client and daemon)
+
+- **A session's chat needs a daemon conversation for its pane.** The desktop app lists terminal sessions only, and
+  a shell where `claude` or `codex` was typed has no conversation, so today no pane is `ready` and the chat shows
+  "no event stream" for it. The client side is finished (it links a pane to the conversation whose native terminal
+  it is); the daemon must start or attach a Claude/Codex conversation for an agent running in a pane (for example
+  from the provider's session id, hydrating from its saved history).
+- **A daemon-held queue and a push of history.** Queued sends are window-only, and the history is polled (1 s while
+  working) because a cursor goes stale on every change.
+- Left for CV-4..CV-7 and CV-9, CV-10: exit codes and live elapsed time on commands, polished chips and diffs,
+  `answered_approvals`, key bindings y/a/n on the card, helper-agent and checklist panels, token counts, markdown in
+  agent text.
 
 ## Out of scope
 

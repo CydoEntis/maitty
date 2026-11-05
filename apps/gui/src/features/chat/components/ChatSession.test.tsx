@@ -2,12 +2,21 @@ import { act, cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { ACTIVE_POLL_MS, forgetChatFeeds, IDLE_POLL_MS } from '../useChatFeed'
+import { forgetComposers } from '../composerStore'
 import { ChatSession } from './ChatSession'
 
-const fake = vi.hoisted(() => ({ current: null as null | { read: (cursor: never) => Promise<unknown> } }))
+const fake = vi.hoisted(() => ({
+  current: null as null | { read: (cursor: never) => Promise<unknown> },
+  submitMessage: vi.fn<(conversation: { id: string; generation: number }, operation: number, text: string) => Promise<unknown>>(),
+  cancelTurn: vi.fn<(conversation: { id: string; generation: number }) => Promise<void>>(),
+  approveRequest: vi.fn<(conversation: { id: string; generation: number }, requestId: number | string, decision: string) => Promise<void>>(),
+}))
 
 vi.mock('@/api/daemon', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/daemon')>()),
+  submitMessage: fake.submitMessage,
+  cancelTurn: fake.cancelTurn,
+  approveRequest: fake.approveRequest,
   readConversationPage: (_id: number, cursor: unknown) => {
     if (fake.current === null) throw new Error('no fake daemon')
     return fake.current.read(cursor as never)
@@ -21,6 +30,13 @@ const VIEWPORT_PX = 600
 beforeEach(() => {
   vi.useFakeTimers()
   forgetChatFeeds()
+  forgetComposers()
+  fake.submitMessage.mockReset()
+  fake.cancelTurn.mockReset()
+  fake.approveRequest.mockReset()
+  fake.submitMessage.mockResolvedValue({})
+  fake.cancelTurn.mockResolvedValue(undefined)
+  fake.approveRequest.mockResolvedValue(undefined)
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => VIEWPORT_PX })
   Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
     configurable: true,
@@ -53,7 +69,7 @@ function conversation(count: number): FakeDaemonHistory {
 describe('the chat history', () => {
   it('draws only the rows near the view for a history of 1,500 items, ending at the newest', async () => {
     conversation(1500)
-    render(<ChatSession link={link()} agent="claude" />)
+    render(<ChatSession link={link()} agent="claude" online />)
     await settle()
     await settle()
 
@@ -66,7 +82,7 @@ describe('the chat history', () => {
 
   it('keys rows by the event id, so a re-read leaves the same rows', async () => {
     conversation(3)
-    render(<ChatSession link={link()} agent="claude" />)
+    render(<ChatSession link={link()} agent="claude" online />)
     await settle()
     const keys = () => Array.from(document.querySelectorAll('[data-key]')).map((row) => row.getAttribute('data-key'))
     const before = keys()
@@ -79,7 +95,7 @@ describe('the chat history', () => {
 
   it('follows new messages on its next read, with no duplicates', async () => {
     const daemon = conversation(2)
-    render(<ChatSession link={link()} agent="claude" />)
+    render(<ChatSession link={link()} agent="claude" online />)
     await settle()
     expect(screen.getByText('message 1')).toBeInTheDocument()
 
@@ -93,7 +109,7 @@ describe('the chat history', () => {
   it('polls faster while the agent works', async () => {
     const daemon = conversation(2)
     daemon.status = 'Working'
-    render(<ChatSession link={link()} agent="claude" />)
+    render(<ChatSession link={link()} agent="claude" online />)
     await settle()
     daemon.reads.length = 0
 
@@ -105,7 +121,7 @@ describe('the chat history', () => {
   it('shows the working line and the daemon status while a turn runs', async () => {
     const daemon = conversation(2)
     daemon.status = 'Working'
-    render(<ChatSession link={link()} agent="claude" />)
+    render(<ChatSession link={link()} agent="claude" online />)
     await settle()
 
     expect(screen.getAllByText(/claude is working/).length).toBeGreaterThan(0)
@@ -114,7 +130,7 @@ describe('the chat history', () => {
 
   it('says it is reconnecting when a read fails, keeps what it showed, and resumes without duplicates', async () => {
     const daemon = conversation(2)
-    render(<ChatSession link={link()} agent="claude" />)
+    render(<ChatSession link={link()} agent="claude" online />)
     await settle()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
@@ -137,13 +153,13 @@ describe('the chat history', () => {
 
   it('shows a fresh conversation when the generation changes', async () => {
     const daemon = conversation(2)
-    const view = render(<ChatSession link={link(1)} agent="claude" />)
+    const view = render(<ChatSession link={link(1)} agent="claude" online />)
     await settle()
     expect(screen.getByText('message 1')).toBeInTheDocument()
 
     daemon.restart()
     daemon.upsert(daemon.message('t9', 'n0', 'User', 'a different conversation'))
-    view.rerender(<ChatSession link={link(2)} agent="claude" />)
+    view.rerender(<ChatSession link={link(2)} agent="claude" online />)
     await settle()
 
     expect(screen.getByText('a different conversation')).toBeInTheDocument()
@@ -152,11 +168,11 @@ describe('the chat history', () => {
 
   it('reopens at once from what it already read, without a loading state', async () => {
     conversation(2)
-    const first = render(<ChatSession link={link()} agent="claude" />)
+    const first = render(<ChatSession link={link()} agent="claude" online />)
     await settle()
     first.unmount()
 
-    render(<ChatSession link={link()} agent="claude" />)
+    render(<ChatSession link={link()} agent="claude" online />)
 
     expect(screen.queryByText('Reading the conversation…')).not.toBeInTheDocument()
     expect(screen.getByText('message 1')).toBeInTheDocument()
@@ -165,7 +181,7 @@ describe('the chat history', () => {
   it('announces a change of state once, without reading the conversation out', async () => {
     const daemon = conversation(2)
     daemon.status = 'Working'
-    render(<ChatSession link={link()} agent="codex" />)
+    render(<ChatSession link={link()} agent="codex" online />)
     await settle()
 
     const announcer = screen.getAllByRole('status').find((node) => node.getAttribute('aria-live') === 'polite')
@@ -177,7 +193,7 @@ describe('the chat history', () => {
     const daemon = conversation(0)
     daemon.upsert(daemon.message('t1', 'u', 'User', 'edit it'))
     daemon.upsert({ source: { conversation: FAKE_CONVERSATION, turn: 't1', item: 'e' }, content: { Tool: { kind: 'commandExecution', label: 'Edit ', output: '' } }, state: 'Completed' })
-    render(<ChatSession link={link()} agent="claude" />)
+    render(<ChatSession link={link()} agent="claude" online />)
     await settle()
 
     expect(screen.getByText(/did not keep this change/)).toBeInTheDocument()

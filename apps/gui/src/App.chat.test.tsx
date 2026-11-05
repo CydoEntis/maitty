@@ -6,6 +6,7 @@ import type { Conversation } from '@/data/preview'
 import App from './App'
 import { FakeDaemonHistory } from './features/chat/fakeDaemonHistory'
 import { forgetChatFeeds } from './features/chat/useChatFeed'
+import { forgetComposers } from './features/chat/composerStore'
 
 const daemon = vi.hoisted(() => ({
   loadConversations: vi.fn<() => Promise<Conversation[]>>(),
@@ -24,6 +25,9 @@ const daemon = vi.hoisted(() => ({
   resizeTerminal: vi.fn(() => Promise.resolve()),
   loadMachines: vi.fn(() => Promise.resolve({ names: [], error: null })),
   readConversationPage: vi.fn(),
+  submitMessage: vi.fn(() => Promise.resolve({})),
+  approveRequest: vi.fn(() => Promise.resolve()),
+  cancelTurn: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('@/api/daemon', () => ({
@@ -104,6 +108,7 @@ describe('the Terminal | Chat view of a pane', () => {
     terminal.mounts = 0
     terminal.focused.length = 0
     forgetChatFeeds()
+    forgetComposers()
     daemon.defaultSessionFolder.mockResolvedValue(HOME)
     daemon.loadDaemonRestartStatus.mockResolvedValue({ daemonProtocol: 49, guiProtocol: 59, canRestart: false, sessionCount: 1, activeTurnCount: 0 })
   })
@@ -196,6 +201,32 @@ describe('the Terminal | Chat view of a pane', () => {
     expect(daemon.readConversationPage).toHaveBeenCalledWith(42, null)
     expect(daemon.sendTerminalInput).not.toHaveBeenCalled()
     expect(daemon.resizeTerminal).not.toHaveBeenCalled()
+  })
+
+  it('sends a message from the chat through the conversation, and holds the composer while an approval waits', async () => {
+    const user = userEvent.setup()
+    const history = new FakeDaemonHistory()
+    history.upsert(history.message('t1', 'u', 'User', 'deploy it'))
+    history.status = 'Blocked'
+    history.approvals = [{ request_id: 'req-1', kind: 'Command', turn_id: 't1', command: 'git push', choices: ['Accept', 'Decline'] }]
+    daemon.loadConversations.mockResolvedValue([claude(2)])
+    renderDesktopApp()
+    const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
+    daemon.readConversationPage.mockImplementation((_id: number, cursor: never) => history.read(cursor))
+
+    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+    const box = await within(pane).findByRole('textbox', { name: 'Message claude' })
+    await waitFor(() => { expect(box).toBeDisabled() })
+    expect(box).toHaveAttribute('placeholder', 'Answer the request above first')
+
+    await user.click(within(pane).getByRole('button', { name: 'Yes, once (y)' }))
+    expect(daemon.approveRequest).toHaveBeenCalledWith({ id: '42', generation: 1 }, 'req-1', 'Accept')
+    await waitFor(() => { expect(box).not.toBeDisabled() })
+    history.approvals = []
+    history.status = 'Idle'
+
+    await user.type(box, 'thanks{Enter}')
+    expect(daemon.submitMessage).toHaveBeenCalledWith({ id: '42', generation: 1 }, 1, 'thanks')
   })
 
   it('does not hand the keyboard to the terminal while the chat covers it', async () => {

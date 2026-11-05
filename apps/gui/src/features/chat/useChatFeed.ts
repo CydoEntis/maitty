@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { readConversationPage } from '@/api/daemon'
-import type { ChatProvider } from './chatEvents'
+import type { ApprovalDecision, ChatProvider } from './chatEvents'
 import { afterFailure, createFeed, hasPendingApproval, syncFeed, type ChatFeed, type ReadPage } from './chatFeed'
-import { selectChatEvents } from './projection'
+import { recordApprovalAnswer, selectChatEvents } from './projection'
 
 /** How often an open chat asks the daemon for news: quickly while the agent works or waits on a person, slowly otherwise. */
 export const ACTIVE_POLL_MS = 1000
@@ -115,6 +115,14 @@ export function useChatFeed({ conversation, generation, provider }: Options) {
   /** Reads again now, for after an answer or a message was sent. */
   const refresh = useCallback(() => { wake.current() }, [])
 
+  /** Shows an approval as answered with the person's choice as soon as the daemon has taken it. */
+  const recordAnswer = useCallback((requestId: number | string, decision: ApprovalDecision) => {
+    const next = { ...latest.current, projection: recordApprovalAnswer(latest.current.projection, requestId, decision) }
+    latest.current = next
+    remember(next)
+    setFeed(next)
+  }, [])
+
   const events = useMemo(() => selectChatEvents(feed.projection), [feed.projection])
-  return { feed, events, offline, refresh }
+  return { feed, events, offline, refresh, recordAnswer }
 }

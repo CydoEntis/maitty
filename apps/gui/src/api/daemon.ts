@@ -628,7 +628,7 @@ export async function resizeTerminal(conversation: Pick<Conversation, 'id'> & { 
   })
 }
 
-export async function submitMessage(conversation: Conversation, operation: number, text: string): Promise<ConversationReceipt> {
+export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string): Promise<ConversationReceipt> {
   return invokeParsed('send_conversation', ConversationReceiptSchema, {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -651,7 +651,7 @@ export function classifySubmissionFailure(
   return receipt.delivery === 'SubmissionUncertain' ? 'unknown' : 'delivered'
 }
 
-export async function approveRequest(conversation: Conversation, requestId: number | string, decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel'): Promise<void> {
+export async function approveRequest(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel'): Promise<void> {
   await invokeParsed('approve_conversation', NullSchema, {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -669,7 +669,7 @@ export async function answerUserInput(conversation: Conversation, requestId: num
   })
 }
 
-export async function cancelTurn(conversation: Conversation): Promise<void> {
+export async function cancelTurn(conversation: Pick<Conversation, 'id' | 'generation'>): Promise<void> {
   await invokeParsed('cancel_conversation', NullSchema, {
     id: Number(conversation.id),
     generation: conversation.generation,
