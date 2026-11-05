@@ -9,6 +9,7 @@ mod history_provider;
 mod tool_input;
 pub(super) mod history_storage;
 mod process;
+mod redact;
 mod runtime;
 pub(super) mod transport;
 
