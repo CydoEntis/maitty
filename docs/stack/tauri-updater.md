@@ -44,6 +44,8 @@ builds no installers or update bundles and attaches the newest release's `latest
 release unchanged. The app asks the newest release for that file, so desktop users go on being
 offered the last version released with the desktop app, and the release notes say where its
 installers are. The file says why the app is held; delete it to release the desktop app again.
+Don't rebuild the release that manifest points at while the hold is on: its signatures are a copy,
+and rebuilt bundles would no longer match them.
 
 CI builds the installers on a push to `dev`, without `createUpdaterArtifacts` because it has no private key. On Windows
 the installer runs in `passive` mode and closes the app while it installs. The `.deb`, `.rpm`, `.msi`
