@@ -590,16 +590,22 @@ mod screen_tests {
             .into_iter()
             .any(|(x, y)| buffer[(x, y)].fg == app.theme.muted);
         assert!(plus, "combo parts are joined with a dim +");
-        // Its hints sit in a bar of their own, on a lifted ground, as the last row of the card.
-        let last_bar = (0..45)
-            .rev()
-            .find(|&y| {
-                (0..160)
-                    .any(|x| buffer[(x, y)].bg == app.theme.card2 && buffer[(x, y)].symbol() != " ")
-            })
-            .expect("an action bar");
-        let row: String = (0..160).map(|x| buffer[(x, last_bar)].symbol()).collect();
-        assert!(row.contains("run it") && row.contains("Esc"), "{row}");
+        // Its hints are chips on the card's bottom border, and its top border has the close.
+        let row_of = |needle: &str| {
+            (0..45)
+                .map(|y| (y, (0..160).map(|x| buffer[(x, y)].symbol()).collect::<String>()))
+                .find(|(_, r)| r.contains(needle))
+        };
+        let (_, row) = row_of("run it").expect("the hints");
+        assert!(
+            row.contains("Esc") && row.contains(['└', '╰']) && row.contains(['┘', '╯']),
+            "{row}"
+        );
+        let top = (0..45)
+            .map(|y| (0..160).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+            .find(|r| r.contains("Ctrl+Space ─"))
+            .expect("the title row");
+        assert!(top.contains('×'), "the close on the top border: {top}");
     }
 
     #[test]
