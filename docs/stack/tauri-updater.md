@@ -39,6 +39,14 @@ publishes the signed bundles and `latest.json` beside the installers:
 | macOS Apple Silicon | `Maitty_<version>_aarch64.app.tar.gz` |
 | Linux x64 | `Maitty_<version>_amd64.AppImage` |
 
+While `apps/gui/RELEASE-HOLD` exists, a release leaves the desktop app out. The release workflow
+builds no installers or update bundles and attaches the newest release's `latest.json` to the new
+release unchanged. The app asks the newest release for that file, so desktop users go on being
+offered the last version released with the desktop app, and the release notes say where its
+installers are. The file says why the app is held; delete it to release the desktop app again.
+Don't rebuild the release that manifest points at while the hold is on: its signatures are a copy,
+and rebuilt bundles would no longer match them.
+
 CI builds the installers on a push to `dev`, without `createUpdaterArtifacts` because it has no private key. On Windows
 the installer runs in `passive` mode and closes the app while it installs. The `.deb`, `.rpm`, `.msi`
 and `.dmg` installers are not update bundles; a user who installed one reinstalls to update.
