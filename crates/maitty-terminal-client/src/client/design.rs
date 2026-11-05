@@ -246,6 +246,11 @@ pub(super) fn cap_hints_gap(t: &Theme, bg: Color, gap: &str, pairs: &[(&str, &st
         if i > 0 {
             out.push(seg(gap, Style::default().bg(bg)));
         }
+        // A hint with no key ("type to filter") is just words, not an empty keycap.
+        if k.is_empty() {
+            out.push(seg(*what, Style::default().bg(bg).fg(t.text)));
+            continue;
+        }
         out.extend(keycap(t, k));
         out.push(seg(format!(" {what}"), Style::default().bg(bg).fg(t.text)));
     }
