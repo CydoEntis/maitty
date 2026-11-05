@@ -89,17 +89,6 @@ fn rounded_corners_round_every_card() {
 }
 
 #[test]
-fn a_failed_session_reads_failed_in_plain_ascii() {
-    let mut app = world(Stage::Failed);
-    let text = reference_fixture::frame(&mut app, Layout::Tiled, 80, 24, "ascii");
-    let tabs = text.lines().next().unwrap_or_default();
-    assert!(
-        tabs.contains("x 1  fix-footer"),
-        "its tab says failed by its glyph: {text}"
-    );
-}
-
-#[test]
 fn a_sheet_docks_72_wide_at_160_and_takes_the_pane_column_below_140() {
     for open in [
         |app: &mut App| app.open_check_sheet(ClientTerm::local(1)),

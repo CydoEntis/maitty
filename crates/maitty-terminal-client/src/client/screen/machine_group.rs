@@ -12,6 +12,10 @@ use crate::hidden::sanitize;
 use std::time::Duration;
 use unicode_width::UnicodeWidthChar;
 
+/// This computer's mark on the pane badge, and another machine's (here and on the sidebar).
+pub(super) const LOCAL_ICON: &str = "⌂";
+pub(super) const REMOTE_ICON: &str = "⇄";
+
 /// What the header calls the machine the window runs on, once there is another to tell it from.
 pub(super) const THIS_COMPUTER: &str = "this computer";
 
@@ -77,23 +81,6 @@ impl App {
         }
     }
 
-    /// Whether the Nerd glyph set is chosen, which has icons of its own for machines.
-    fn nerd_icons(&self) -> bool {
-        glyphs::chosen(&self.cfg.ui.glyphs, &self.cfg.icons).close == "\u{f00d}"
-    }
-
-    /// The mark that stands for another computer: the arrows `⇄`, or a laptop with the Nerd
-    /// glyph set.
-    pub(super) fn machine_icon(&self) -> &'static str {
-        if self.nerd_icons() { "\u{f109}" } else { "⇄" }
-    }
-
-    /// The mark that stands for this computer: a house, or a desktop monitor with the Nerd glyph
-    /// set.
-    pub(super) fn local_icon(&self) -> &'static str {
-        if self.nerd_icons() { "\u{f108}" } else { "⌂" }
-    }
-
     /// The machine's connection as one dot: `done` when it is up, amber while it connects or
     /// reconnects, `err` when it cannot be reached (it needs a login or an update, or is down).
     pub(super) fn machine_dot(&self, machine: MachineId, t: &Theme) -> (&'static str, Color) {
@@ -102,7 +89,7 @@ impl App {
             Some(ConnectionState::Connecting | ConnectionState::Reconnecting { .. }) => t.blocked,
             _ => t.err,
         };
-        (if self.ascii_marks() { "*" } else { "●" }, colour)
+        ("●", colour)
     }
 
     pub(super) fn ascii_marks(&self) -> bool {

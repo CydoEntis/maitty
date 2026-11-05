@@ -14,7 +14,7 @@ Most of this document describes the TUI. The desktop app's look is in
 
 - **Status first.** Every session reads as working, needs you, done or idle at a glance, and
   that mark stays in view longest when space runs out.
-- **Shape and word carry the meaning; colour backs them.** Every state reads in the ASCII
+- **Shape and word carry the meaning; colour backs them.** Every state reads in the Unicode
   glyph set and without colour.
 - **Amber means needs you.** Nothing else is drawn in it: no heading, no decoration.
 - **Only what has the keys is lit.** The focused pane, the open sheet or the selected row;
@@ -49,8 +49,8 @@ needs you never looks like failed. See UI › *design system*.
 
 The terminal's own font. Bold marks names and states worth a look; italic only the splash
 tagline and a toast's preview. Status glyphs come from Settings › Appearance › Status glyphs:
-**Dots** (the default: a coloured `●` for what wants you, `○` at rest), or **Unicode**,
-**ASCII** and **Nerd**, where each state has a glyph of its own (`✓` passed, `✕` failed,
+**Dots** (the default: a coloured `●` for what wants you, `○` at rest) or **Unicode**,
+where each state has a glyph of its own (`✓` passed, `✕` failed,
 `●` needs you, `◷` stale, `⊘` overridden, `?` could not run). Working is the spinner you
 pick; checking is a sweeping ring. An agent's own mark is `✻` Claude, `◆` Codex, `✦` Gemini,
 `◇` OpenCode. See UI › *sidebar check result* and *working spinner picker*.
@@ -81,11 +81,11 @@ starts at a rule that joins the sides (`├ REMOTE 2 ──── + add ┤`) an
 `+ add` opens the Machines dialog. Each half scrolls on its own, and with no other machine Remote
 says `no remote machines` and offers `+ add one`. There are no folder rows and no machine headers.
 
-Inside a half, projects are rows that fold: `▾` open or `▸` closed (`v` and `>` in ASCII), the
+Inside a half, projects are rows that fold: `▾` open or `▸` closed, the
 name in `strong` bold, and at the right `⎇ branch` in `muted` and a `✓` in `done`, or a `✕` in `err`
 when one of its sessions failed a check; `no git` outside a repo. A folded project reads
 `n hidden`, with an amber `●` before it when one of them needs you. Remote starts each machine with
-a header: ` ⇄ build ` as a badge on `btn` (a laptop in the Nerd glyph set) and its
+a header: ` ⇄ build ` as a badge on `btn` and its
 connection at the right as one dot: `done` when it is up, amber while it connects or reconnects, `err`
 when it cannot be reached. The words live in the Machines dialog.
 
@@ -115,7 +115,7 @@ pane's top border, as the sidebar's `LOCAL` chip sits on its own ([ADR 0038](adr
 the border running on between the chips (`ui.tab_gap`, on by default, leaves a cell of it between one tab and the next; off, they touch). A chip's ends follow `ui.rounded`: square, rounded corners, or a pill. Each chip is led by its state's glyph (on screen or
 not) and ended by its ✕, the current one in the accent and the others one `btn` chip with a muted
 number, then a **+** chip for a new tab. At the right, in the first stretch of plain border that
-fits it, a badge names where the focused session runs: `⌂ Local` or `⇄ build` (a desktop monitor and a laptop in the Nerd glyph set). A tab
+fits it, a badge names where the focused session runs: `⌂ Local` or `⇄ build`.
 is named the same everywhere: its own name, else its focused session's. Panes are titled as an
 editor's are ([ADR 0030](adr/0030-panes-titled-like-an-editor.md)): a tab's only pane has no
 title of its own (its border carries the tabs), its tab naming it, showing its state (the glyph opens why) and

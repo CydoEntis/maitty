@@ -356,9 +356,9 @@ pub const SETTINGS: &[Setting] = &[
     Setting {
         path: "ui.glyphs",
         label: "Status glyphs",
-        kind: Kind::Choice(&["auto", "dots", "unicode", "ascii", "nerd"]),
+        kind: Kind::Choice(&["dots", "unicode"]),
         cat: Cat::Appearance,
-        help: "dots: a coloured dot and a word per session. unicode, ascii, nerd: a shape per state. auto: dots, or ascii if your icons are.",
+        help: "dots: a coloured dot and a word per session. unicode: a shape per state.",
     },
     Setting {
         path: "ui.spinner",

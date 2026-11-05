@@ -592,3 +592,30 @@ fn a_project_has_a_line_down_its_contents_and_a_rule_divides_it_from_the_next() 
         "the rule has a project after it: {side}"
     );
 }
+
+#[test]
+fn full_rounding_makes_the_machine_badges_pills() {
+    for rounded in [
+        crate::config::Rounding::Corners,
+        crate::config::Rounding::Full,
+    ] {
+        let mut app = two_machines(ConnectionState::Connected);
+        app.cfg.ui.rounded = rounded;
+        let text = raw_text(&mut app, Layout::Floating, 160, 45, "unicode");
+        let header = text
+            .lines()
+            .find(|l| l.contains("⇄ build"))
+            .expect("the machine's header");
+        assert_eq!(
+            header.contains(CAP_L),
+            rounded == crate::config::Rounding::Full,
+            "{rounded:?}: {header}"
+        );
+        let badge = text
+            .lines()
+            .next()
+            .expect("the top border")
+            .contains("⌂ Local");
+        assert!(badge, "the local pane badge is on the top border");
+    }
+}

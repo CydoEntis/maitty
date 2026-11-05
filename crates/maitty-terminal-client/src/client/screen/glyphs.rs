@@ -61,55 +61,11 @@ pub(in crate::client) const DOTS: Glyphs = Glyphs {
     ..UNICODE
 };
 
-pub(in crate::client) const ASCII: Glyphs = Glyphs {
-    ring: ["-", "\\", "|", "/"],
-    needs: "!",
-    done: "+",
-    failed: "x",
-    over: "/",
-    couldnt: "?",
-    stale: "~",
-    idle: "o",
-    asleep: "z",
-    pend: ".",
-    bar: "|",
-    branch: "git:",
-    close: "x",
-    fold: "v",
-    warn: "!",
-    arrow: ">",
-    dots: false,
-};
-
-/// Unicode with Nerd Font icons where the reference has one; each is drawn in one cell.
-pub(in crate::client) const NERD: Glyphs = Glyphs {
-    needs: "\u{f0f3}",
-    done: "\u{f00c}",
-    failed: "\u{f00d}",
-    over: "\u{f05e}",
-    couldnt: "\u{f128}",
-    stale: "\u{f017}",
-    idle: "\u{f10c}",
-    branch: "\u{e0a0}",
-    close: "\u{f00d}",
-    warn: "\u{f071}",
-    ..UNICODE
-};
-
-/// The set `[ui] glyphs` names. `auto` (or anything unknown): ASCII when the blocked, done and
-/// idle icons are all ASCII, else dots.
-pub(in crate::client) fn chosen(setting: &str, icons: &Icons) -> &'static Glyphs {
+/// The set `[ui] glyphs` names: `unicode` is a shape per state; `dots` and anything else (an older
+/// `auto`, `ascii` or `nerd`) a coloured dot and a word.
+pub(in crate::client) fn chosen(setting: &str, _icons: &Icons) -> &'static Glyphs {
     match setting {
-        "dots" => &DOTS,
         "unicode" => &UNICODE,
-        "ascii" => &ASCII,
-        "nerd" => &NERD,
-        _ if [&icons.blocked, &icons.done, &icons.idle]
-            .iter()
-            .all(|icon| icon.is_ascii()) =>
-        {
-            &ASCII
-        }
         _ => &DOTS,
     }
 }
@@ -238,7 +194,7 @@ mod tests {
     use super::*;
     use unicode_width::UnicodeWidthStr;
 
-    const SETS: [(&str, &Glyphs); 3] = [("unicode", &UNICODE), ("ascii", &ASCII), ("nerd", &NERD)];
+    const SETS: [(&str, &Glyphs); 1] = [("unicode", &UNICODE)];
 
     fn info(state: CheckState) -> CheckInfo {
         CheckInfo {
@@ -480,45 +436,22 @@ mod tests {
     }
 
     #[test]
-    fn every_glyph_is_one_cell_but_the_ascii_branch() {
-        for (name, g) in SETS {
-            let all = [
-                g.needs, g.done, g.failed, g.over, g.couldnt, g.stale, g.idle, g.asleep, g.pend,
-                g.bar, g.close, g.fold, g.warn, g.arrow,
-            ];
-            for s in all
-                .iter()
-                .chain(&g.ring)
-                .chain((name != "ascii").then_some(&g.branch))
-            {
-                assert_eq!((s.chars().count(), s.width()), (1, 1), "{s:?} in {name}");
-            }
+    fn only_unicode_is_a_shape_set_and_everything_else_reads_as_dots() {
+        let icons = Icons::default();
+        assert_eq!(chosen("unicode", &icons), &UNICODE);
+        for older in ["dots", "auto", "ascii", "nerd", "nonsense"] {
+            assert_eq!(chosen(older, &icons), &DOTS, "{older}");
         }
-        assert_eq!(ASCII.branch, "git:");
-        assert!(
-            ASCII
-                .ring
-                .iter()
-                .chain([&ASCII.needs, &ASCII.done, &ASCII.stale])
-                .all(|s| s.is_ascii())
-        );
     }
 
     #[test]
-    fn auto_is_dots_unless_the_icons_are_plain_and_a_setting_wins() {
-        let fancy = Icons::default();
-        let plain = Icons {
-            blocked: "!".into(),
-            done: "*".into(),
-            idle: "-".into(),
-            ..Icons::default()
-        };
-        assert_eq!(chosen("auto", &fancy), &DOTS);
-        assert_eq!(chosen("dots", &plain), &DOTS);
-        assert_eq!(chosen("auto", &plain), &ASCII);
-        assert_eq!(chosen("unicode", &plain), &UNICODE);
-        assert_eq!(chosen("ascii", &fancy), &ASCII);
-        assert_eq!(chosen("nerd", &fancy), &NERD);
-        assert_eq!(chosen("nonsense", &fancy), &DOTS, "unknown reads as auto");
+    fn every_glyph_is_one_cell() {
+        for (name, g) in SETS {
+            for glyph in [
+                g.needs, g.done, g.failed, g.over, g.couldnt, g.stale, g.idle, g.branch,
+            ] {
+                assert_eq!(glyph.width(), 1, "{name}: {glyph:?}");
+            }
+        }
     }
 }

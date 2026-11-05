@@ -266,8 +266,7 @@ meaning.
 
 The **Bars** preset is the 3-bar Braille spinner the reference frames draw. A frame is one column, or
 two when every character is Braille; a two-column mark moves the sidebar row's name one
-column right. The ASCII glyph set draws Bars as `. o O o`; other choices are never
-rewritten. Working also shimmers its sidebar name in the working colour. With
+column right. Other choices are never rewritten. Working also shimmers its sidebar name in the working colour. With
 motion off (`app.motion_on()`) the spinner rests on its third frame and the shimmer stands
 still, so nothing depends on motion.
 
@@ -279,7 +278,7 @@ The sidebar is two halves of session cards ([ADR 0050](adr/0050-local-and-remote
 
 - **Halves:** `LOCAL` is a title chip on the card's top border (the accent while the sidebar has the keys, else `btn`, with ` ⇄ host` after it when the whole window is on a remote server). The Remote half starts on a rule across the card, `├ REMOTE n ── + add ┤`, n the machines known (omitted at none), the `+ add` chip opening the Machines dialog (`ScreenHit::AddMachine`). The list below the title is shared evenly (`halve`: one row for the rule, Local keeping an odd one); under four list rows only Local shows. Each half has its own scroll (`Screen::side_scroll`, `remote_scroll`; the wheel scrolls the half under the pointer) and the selected or open card is kept in view in whichever half holds it.
 - **Project row** (`draw_proj`): `▾` or `▸` in the state bars' column, the name (`strong`, bold, never cut before the meta) and right-aligned `proj_meta`: `⎇ main` and `✓` or `✕` in `done` or `err` once a session has a check result, or `no git`. Folded, `n hidden` with an amber `●` when one needs you. A click or the fold button folds it; a project drags within its machine.
-- **Card, row 1:** the session's mark (`client/screen/glyphs.rs` `Kind`; bold for failed, needs you and approve; a new session's `○` is `accent`, bold), the name, then right-aligned `● you` in `blocked` when it needs you, else the agent's mark (`muted`: `✻` Claude, `◆` Codex, `✦` Gemini, `◇` OpenCode, else its first letter; `C`, `X`, `G`, `O` with the ASCII glyph set), a space and the age (`muted`, from 100 columns). The mark gives way first, so the name keeps 8 columns. A name in a state worth a look (working, checking, done and not seen, needs you) is drawn in its state's colour, the glyph's, and bold; with motion on it shimmers up toward `strong` (working, checking, not seen) or pulses (needs you) (`side.rs` `NameMotion`). Another row that wants a look (failed, new, a check result other than a plain pass) has a `strong` bold name; a done, seen or asleep row a `text` name, not bold, `strong` only while selected. The hovered row's `⋯` takes the age's place.
+- **Card, row 1:** the session's mark (`client/screen/glyphs.rs` `Kind`; bold for failed, needs you and approve; a new session's `○` is `accent`, bold), the name, then right-aligned `● you` in `blocked` when it needs you, else the agent's mark (`muted`: `✻` Claude, `◆` Codex, `✦` Gemini, `◇` OpenCode, else its first letter), a space and the age (`muted`, from 100 columns). The mark gives way first, so the name keeps 8 columns. A name in a state worth a look (working, checking, done and not seen, needs you) is drawn in its state's colour, the glyph's, and bold; with motion on it shimmers up toward `strong` (working, checking, not seen) or pulses (needs you) (`side.rs` `NameMotion`). Another row that wants a look (failed, new, a check result other than a plain pass) has a `strong` bold name; a done, seen or asleep row a `text` name, not bold, `strong` only while selected. The hovered row's `⋯` takes the age's place.
 - **Card, row 2** (`activity`): the headline check's result by checkpoint name, the question (`asks: …`, in `blocked`), helpers it asks for, a plan-limit wait, a new agent's first step, `asleep zzZ`, a message just sent, or for a working agent its helpers (`2 agents`, `ui.subagent_count`) and a quiet spell (`quiet 12m`); else the agent's name or `shell`. `muted` and never bold, except a question or an approval, which stay amber. While the agent works or asks, its last result is about an older turn and is not shown.
 - **Machine header and items:** each Remote machine starts with ` ⇄ build ` (a badge on `btn`, the icon from `App::machine_icon`; dim while it is down) and its connection at the right as one dot (`App::machine_dot`: `done` up, `blocked` amber while it connects or reconnects, `err` unreachable). The amber here is the one place it does not mean needs you, at the user's request. Local has none. A machine that is not connected, or has no sessions, is that header and one line (`no sessions yet`, `connecting…` or `disconnected · click for the fix`) in place of its projects; a click on either opens the Machines dialog. This computer with nothing running says `no sessions  new shell` and a click starts a shell. Sessions of a machine whose line is down are not drawn and not counted; its needs-you and failed marks leave the Inbox until the line is back.
 - **Blank rows:** one follows each project. A helper session is listed like any other, not stepped in under the session that started it.
@@ -295,11 +294,11 @@ The sidebar is two halves of session cards ([ADR 0050](adr/0050-local-and-remote
 - **Foot:** one row off the bottom (Cards: the last row inside the border), a `line` divider above it, no band behind it. Two `btn` chips: `+ New` a column in (the `+` in `accent` bold) and `Menu` at the right, the words in `text`, no letter lit (`side.rs` `word_chip`). `Menu` drops first when the sidebar is too narrow for both. Chips are square on the plain `bg`, since a cap there has no ground of its own; `ui.rounded` rounds them where the ground is raised.
 - **Amber is for needs you.** `blocked` colours only what needs you (its mark, question, counts and approvals), never a heading: Inbox "HEADS UP", the both-diffs sheet and the tidy list use `sky()`.
 
-Settings › Appearance › Status glyphs picks how a session is marked. **Dots** (the default, and what `auto` gives unless your status icons are plain ASCII) draws a coloured `●` for every state that wants you or says something (needs you, done, failed, stale, overridden, not checked) and `○` at rest (idle, asleep); the colour and the word beside the mark carry the meaning. Working keeps your spinner and checking its ring. A check's own `✓` and `✕` beside its name (`build ✓ · test ✕`) keep their shapes. **Unicode**, **ASCII** and **Nerd** are the full sets, where every state has a glyph of its own, as the table shows.
+Settings › Appearance › Status glyphs picks how a session is marked. **Dots** (the default; an older `auto`, `ascii` or `nerd` reads as dots) draws a coloured `●` for every state that wants you or says something (needs you, done, failed, stale, overridden, not checked) and `○` at rest (idle, asleep); the colour and the word beside the mark carry the meaning. Working keeps your spinner and checking its ring. A check's own `✓` and `✕` beside its name (`build ✓ · test ✕`) keep their shapes. **Unicode** is the full set, where every state has a glyph of its own, as the table shows.
 
 The colour slot is the glyph's; line 2 is always `muted` (see above).
 
-| State | Glyph (Unicode / ASCII) | Colour slot | Line 2 |
+| State | Glyph | Colour slot | Line 2 |
 | --- | --- | --- | --- |
 | working | the spinner you chose (Bars is 3-bar), bold | `accent` | none; `4 agents` only when the agent reports helpers, `quiet 12m` when it has gone quiet |
 | needs you | `●` / `!` | `blocked` | `asks: <question>`, else none |
@@ -326,9 +325,9 @@ The colour slot is the glyph's; line 2 is always `muted` (see above).
 - **Selection:** the keyboard's card (while the sidebar has the keys) or the open session is tinted (`Theme::sel_bg()`) across both rows with `▎` at X: `accent` while the sidebar has the keys, else `muted`; while the keyboard browses, the open card keeps a `muted` bar. A failed card carries `▎` in `err` on every row, selected or not. X is 2 columns in, RX 3 from the right. With `ui.rounded = full` the block keeps square ends: both lines lit across the same columns.
 - **Foot:** `+ New` at the left and `Menu` right-aligned, on the last row inside.
 - Shape and word carry the meaning; colour only backs them, so every state reads in the
-  ASCII set and without colour. Glyphs come from `[ui] glyphs` (`unicode`, `ascii`,
-  `nerd`, or `auto`: ASCII when the `blocked`, `done` and `idle` icons are all ASCII);
-  a Nerd icon is clipped to one cell. Take marks from `check::marks`, never a literal.
+  Unicode set and without colour. Glyphs come from `[ui] glyphs` (`dots` or `unicode`; an older
+  `auto`, `ascii` or `nerd` reads as `dots`, `Ui::fold_legacy_sizes`). Take marks from
+  `check::marks`, never a literal.
 - Colours are existing theme slots only; there is no check role. `Theme::violet()` and
   `sky()` are derived, not roles. Code: `client/screen/side.rs` (the card),
   `client/screen/check.rs` (a result's words and marks).

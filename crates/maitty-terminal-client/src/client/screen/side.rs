@@ -1451,15 +1451,27 @@ fn draw_machine_row(
             .bg(t.btn)
             .add_modifier(Modifier::BOLD)
     };
-    let room = (cols.end().saturating_sub(cols.x) as usize).saturating_sub(rw as usize + 1);
+    // With `ui.rounded = full` the badge is a pill.
+    let caps = Look::of(&app.cfg.ui).caps;
+    let room = (cols.end().saturating_sub(cols.x) as usize)
+        .saturating_sub(rw as usize + 1 + 2 * usize::from(caps));
     let badge = seg(
         truncate(
-            &format!(" {} {} ", app.machine_icon(), app.machine_label_of(machine)),
+            &format!(
+                " {} {} ",
+                machine_group::REMOTE_ICON,
+                app.machine_label_of(machine)
+            ),
             room,
         ),
         badge_style,
     );
-    put(buf, cols.x, y, &[badge], cols.end());
+    let badge = if caps {
+        round_ends(vec![badge], pb)
+    } else {
+        vec![badge]
+    };
+    put(buf, cols.x, y, &badge, cols.end());
     put(
         buf,
         cols.end().saturating_sub(rw + 1),
@@ -1885,20 +1897,6 @@ mod frame_tests {
         );
         let (tiled, _) = working_rows(crate::config::BARS_FRAMES, "unicode", Layout::Tiled);
         assert!(tiled.starts_with("⣶⡆ add-payments"), "{tiled:?}");
-    }
-
-    #[test]
-    fn the_ascii_glyph_set_draws_the_bars_in_ascii_and_leaves_other_choices_alone() {
-        let (bars, _) = working_rows(crate::config::BARS_FRAMES, "ascii", Layout::Floating);
-        assert!(
-            bars.is_ascii() && bars.starts_with("O  add-payments"),
-            "{bars:?}"
-        );
-        let (custom, _) = working_rows(&["a", "b", "c"], "ascii", Layout::Floating);
-        assert!(
-            custom.starts_with("c add-payments"),
-            "a custom choice is the user's: {custom:?}"
-        );
     }
 
     #[test]

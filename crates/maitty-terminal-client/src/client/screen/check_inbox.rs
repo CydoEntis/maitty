@@ -209,12 +209,12 @@ fn check_line(info: &CheckInfo, t: &Theme) -> Vec<Words> {
 }
 
 /// The first failing line, marked as one (`x` in plain ASCII).
-fn failing_line(info: &CheckInfo, g: &Glyphs) -> Option<String> {
+fn failing_line(info: &CheckInfo) -> Option<String> {
     let line = info.first_failing_line.trim();
     if line.is_empty() {
         return None;
     }
-    let mark = if *g == glyphs::ASCII { g.failed } else { "✗" };
+    let mark = "✗";
     Some(if line.starts_with(['✗', '✕', '✘', '✕']) {
         line.to_string()
     } else {
@@ -286,7 +286,7 @@ pub(super) fn item(app: &App, model: &[Proj], row: &GoRow, t: &Theme) -> Option<
         age: age(s.since),
         line,
         strip,
-        third: info.filter(|_| failed).and_then(|i| failing_line(i, g)),
+        third: info.filter(|_| failed).and_then(failing_line),
         buttons: buttons(row, info),
         failed,
     })

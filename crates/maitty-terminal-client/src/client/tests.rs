@@ -10833,7 +10833,6 @@ mod check_row_tests {
         state: CheckState,
         exit: Option<i32>,
         glyph: &'static str,
-        plain: &'static str,
         words: &'static str,
     }
 
@@ -10844,56 +10843,48 @@ mod check_row_tests {
             state: CheckState::Checking,
             exit: None,
             glyph: "◜",
-            plain: "-",
             words: "checking ci",
         },
         Case {
             state: CheckState::Passed,
             exit: Some(0),
             glyph: "✓",
-            plain: "+",
             words: "passed: ci · 14.2s",
         },
         Case {
             state: CheckState::Failed,
             exit: Some(1),
             glyph: "✕",
-            plain: "x",
             words: "failed: ci · exit 1",
         },
         Case {
             state: CheckState::Overridden,
             exit: Some(1),
             glyph: "⊘",
-            plain: "/",
             words: "failed, overridden",
         },
         Case {
             state: CheckState::CouldNotRun,
             exit: Some(127),
             glyph: "?",
-            plain: "?",
             words: "ci could not run",
         },
         Case {
             state: CheckState::Stale,
             exit: Some(0),
             glyph: "◷",
-            plain: "~",
             words: "stale pass: ci",
         },
         Case {
             state: CheckState::Never,
             exit: None,
             glyph: "?",
-            plain: "?",
             words: "not checked: never",
         },
         Case {
             state: CheckState::NeedsApproval,
             exit: None,
             glyph: "●",
-            plain: "!",
             words: "approve check: just",
         },
     ];
@@ -11386,35 +11377,6 @@ mod check_row_tests {
                     "{at}: no red bar on a session with no check"
                 );
             }
-        }
-    }
-
-    #[test]
-    fn plain_icons_use_the_ascii_check_glyphs() {
-        let (w, h) = (160, 45);
-        for c in &CASES {
-            let mut app = one(w, h, ("cards", "floating"), c);
-            (
-                app.cfg.icons.blocked,
-                app.cfg.icons.done,
-                app.cfg.icons.idle,
-            ) = ("!".into(), "+".into(), "o".into());
-            app.cfg.ui.glyphs = "auto".into();
-            let buf = render(&mut app, w, h);
-            let y = row_of(&buf, &app, NAME);
-            let (top, sub) = (side_text(&buf, &app, y), side_text(&buf, &app, y + 1));
-            assert!(
-                top.contains(c.plain),
-                "{:?}: {} on {top:?}",
-                c.state,
-                c.plain
-            );
-            let unicode = ["◜", "✓", "✕", "⊘"];
-            assert!(
-                !unicode.iter().any(|g| top.contains(g) || sub.contains(g)),
-                "{:?}: no Unicode marks left: {top:?} {sub:?}",
-                c.state
-            );
         }
     }
 
@@ -14072,74 +14034,6 @@ mod check_wiring_tests {
                 press(&mut app, KeyCode::Esc);
                 assert!(commands(&mut rx).is_empty(), "{at}: Esc sends nothing");
             }
-        }
-    }
-
-    #[test]
-    fn plain_icons_leave_no_unicode_check_mark_on_the_sheet_popover_or_override() {
-        let plain = |app: &mut App| {
-            (
-                app.cfg.icons.blocked,
-                app.cfg.icons.done,
-                app.cfg.icons.idle,
-            ) = ("!".into(), "+".into(), "o".into());
-            app.cfg.ui.glyphs = "auto".into();
-        };
-        let (w, h) = (80, 24);
-        for (name, layout) in layouts() {
-            let at = format!("{name} {w}x{h}");
-            let (mut app, _rx) = rig(
-                w,
-                h,
-                layout,
-                Some(info(CheckState::Overridden)),
-                Status::Done,
-            );
-            plain(&mut app);
-            app.open_check_sheet(PANE);
-            let sheet = words(&draw(&mut app, w, h));
-            assert!(
-                sheet.contains("/ Overridden by you") && !sheet.contains('⊘'),
-                "{at}: the sheet's override banner\n{sheet}"
-            );
-
-            for (state, want) in [
-                (CheckState::Passed, "+ exit 0 after"),
-                (CheckState::Failed, "x exit 1 after"),
-                (CheckState::Overridden, "/ failed, overridden:"),
-            ] {
-                let (mut app, _rx) = rig(w, h, layout, Some(info(state)), Status::Done);
-                plain(&mut app);
-                app.mode = Mode::Why {
-                    term: PANE,
-                    side: false,
-                };
-                let why = words(&draw(&mut app, w, h));
-                assert!(
-                    why.contains(want),
-                    "{at} {state:?}: the popover's timeline says {want:?}\n{why}"
-                );
-                assert!(
-                    !["✓ exit", "✕ exit", "⊘"].iter().any(|g| why.contains(g)),
-                    "{at} {state:?}: no Unicode mark\n{why}"
-                );
-            }
-
-            let (mut app, _rx) = rig(w, h, layout, Some(info(CheckState::Failed)), Status::Done);
-            plain(&mut app);
-            app.open_check_sheet(PANE);
-            ask_override(&mut app);
-            let confirm = words(&draw(&mut app, w, h));
-            assert!(
-                confirm.contains("/ on the row, in the Inbox history") && !confirm.contains('⊘'),
-                "{at}: the override confirm\n{confirm}"
-            );
-            press(&mut app, KeyCode::Enter);
-            let (said, _) = toast(&app);
-            assert!(
-                said.contains("Overridden.") && !said.contains('⊘'),
-                "{at}: the toast: {said:?}"
-            );
         }
     }
 

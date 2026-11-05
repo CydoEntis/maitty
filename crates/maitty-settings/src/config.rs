@@ -198,8 +198,8 @@ pub struct Ui {
     /// Older files' Cards spacing, "floating" or "tiled": read only while `layout` is unset or
     /// "cards".
     pub panes: String,
-    /// Which glyph set marks sessions and checks: "auto" (ASCII when the blocked, done and idle
-    /// icons are all ASCII, else Unicode), "unicode", "ascii" or "nerd".
+    /// Which glyph set marks sessions and checks: "dots" (a coloured dot and a word) or "unicode"
+    /// (a shape per state). Older "auto", "ascii" and "nerd" read as "dots".
     pub glyphs: String,
     /// Space between floating cards: one of `SIZES` (or a legacy value before loading).
     pub gap: String,
@@ -760,8 +760,12 @@ impl Ui {
         });
     }
 
-    /// Convert older padding, gap and dim names to the values Settings now offers.
+    /// Convert older padding, gap, dim and glyph-set names to the values Settings now offers.
     pub fn fold_legacy_sizes(&mut self) {
+        // Only Unicode is supported: the ASCII and Nerd sets, and `auto`, read as dots.
+        if matches!(self.glyphs.as_str(), "ascii" | "nerd" | "auto") {
+            self.glyphs = "dots".into();
+        }
         for size in [&mut self.padding, &mut self.gap] {
             match size.as_str() {
                 "top" | "1" => *size = "small".into(),
@@ -787,8 +791,7 @@ impl Ui {
     }
 }
 
-/// The reference frames' working spinner: three Braille bars, two columns wide. The ASCII glyph set
-/// swaps it for `BARS_ASCII` (see `client::render::status_icon`).
+/// The reference frames' working spinner: three Braille bars, two columns wide.
 pub const BARS_FRAMES: &[&str] = &["⣰⡄", "⣼⡀", "⣶⡆", "⣧⡇", "⣆⡆", "⣤⡄", "⣸⡆", "⣴⡇", "⣇⡄", "⣦⡀"];
 
 pub const SPINNERS: &[(&str, &[&str])] = &[

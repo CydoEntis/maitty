@@ -461,11 +461,11 @@ fn draw_machine_badge(app: &App, buf: &mut Buffer, (from, to, y): (u16, u16, u16
         return;
     };
     let name = if focus.machine == MachineId::LOCAL {
-        format!("{} Local", app.local_icon())
+        format!("{} Local", super::machine_group::LOCAL_ICON)
     } else {
         format!(
             "{} {}",
-            app.machine_icon(),
+            super::machine_group::REMOTE_ICON,
             app.machine_label_of(focus.machine)
         )
     };
@@ -476,14 +476,21 @@ fn draw_machine_badge(app: &App, buf: &mut Buffer, (from, to, y): (u16, u16, u16
             .bg(t.btn)
             .add_modifier(Modifier::BOLD),
     );
-    let w = badge.0.width() as u16;
+    // With `ui.rounded = full` the badge is a pill, its ends on the border's own ground.
+    let caps = Look::of(&app.cfg.ui).caps;
+    let w = badge.0.width() as u16 + 2 * u16::from(caps);
     // One border cell is kept either side of the badge.
     let mut run = 0u16;
     for x in (from..to.saturating_sub(1)).rev() {
         if buf[(x, y)].symbol() == "─" {
             run += 1;
             if run >= w + 2 {
-                put(buf, x + 1, y, &[badge], x + 1 + w);
+                let segs = if caps {
+                    round_ends(vec![badge], buf[(x, y)].bg)
+                } else {
+                    vec![badge]
+                };
+                put(buf, x + 1, y, &segs, x + 1 + w);
                 return;
             }
         } else {
