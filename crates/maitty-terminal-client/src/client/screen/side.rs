@@ -214,6 +214,9 @@ fn card_lines(app: &App, model: &[Proj], t: &Theme) -> (Vec<Line>, Vec<Line>) {
         local = vec![Line::Machine(MachineId::LOCAL)];
     }
     let mut remote = Vec::new();
+    if !app.remotes.is_empty() {
+        remote.push(Line::Gap);
+    }
     for machine in app.remotes.keys().copied() {
         let up = app
             .remotes
@@ -667,8 +670,7 @@ fn draw_rows(app: &mut App, buf: &mut Buffer, pass: &Pass, t: &Theme, lines: &[L
             continue;
         }
         if let Line::Tab(owner, tab) = line {
-            let last = !matches!(lines.get(i + 1), Some(Line::Tab(o, _)) if o == owner);
-            draw_shell_row(app, buf, model, (*owner, *tab, last), (cols, y), pb, t);
+            draw_shell_row(app, buf, model, (*owner, *tab), (cols, y), pb, t);
             continue;
         }
         draw_line(app, buf, model, line, cols, y, pb, t, screen_w < NARROW);
@@ -1267,7 +1269,7 @@ fn draw_shell_row(
     app: &mut App,
     buf: &mut Buffer,
     model: &[Proj],
-    (owner, tab, last): (ClientTerm, usize, bool),
+    (owner, tab): (ClientTerm, usize),
     (cols, y): (Cols, u16),
     pb: Color,
     t: &Theme,
@@ -1287,7 +1289,7 @@ fn draw_shell_row(
         t.text
     };
     let st = Style::default().bg(pb);
-    let x = cols.x + 4;
+    let x = cols.x + 2;
     let room = cols.end().saturating_sub(x) as usize;
     // The state of what runs in the tab: an agent's mark (the spinner while it works), else a
     // plain shell's `○`.
@@ -1301,9 +1303,8 @@ fn draw_shell_row(
         },
     );
     let number = format!("{number}");
-    let label = truncate(&line.label, room.saturating_sub(4 + number.width() + 1));
+    let label = truncate(&line.label, room.saturating_sub(2 + number.width() + 1));
     let left = vec![
-        seg(if last { "└ " } else { "├ " }, st.fg(t.muted)),
         mark,
         seg(
             label,
@@ -1374,12 +1375,12 @@ fn draw_machine_row(
             .bg(t.btn)
             .add_modifier(Modifier::BOLD)
     };
-    let room = (cols.end().saturating_sub(cols.x + 2) as usize).saturating_sub(rw as usize + 1);
+    let room = (cols.end().saturating_sub(cols.x) as usize).saturating_sub(rw as usize + 1);
     let badge = seg(
         truncate(&format!(" ⇄ {} ", app.machine_label_of(machine)), room),
         badge_style,
     );
-    put(buf, cols.x + 2, y, &[badge], cols.end());
+    put(buf, cols.x, y, &[badge], cols.end());
     put(buf, cols.end().saturating_sub(rw), y, &right, cols.end());
     hit(app, row, ScreenHit::AddMachine);
 }
@@ -1401,7 +1402,7 @@ fn draw_machine_state(
     };
     put(
         buf,
-        cols.x + 4,
+        cols.x + 2,
         y,
         &[seg(text, Style::default().fg(t.muted).bg(pb))],
         cols.end(),

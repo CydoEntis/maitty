@@ -95,9 +95,9 @@ A session is a **card** of two rows:
 2. what it is doing in `muted` (a check result, a plan-limit wait, `2 agents`), or in amber when it
    asks something.
 
-Its other tabs hang under it, one row each: `├ ○ shell  2`, the last `└`, the tab's state glyph
+Its other tabs follow it on the same level, one row each (`○ shell  2`): the tab's state glyph
 before the name and its number at the right; the tab on screen is in the accent and one that needs
-you in amber. A blank row follows each project. The selected card is a neutral tint on both rows
+you in amber. A blank row follows each project, and one separates the Remote rule from the first machine. The selected card is a neutral tint on both rows
 with an accent `▎` bar. A machine whose line is not up, or that has no sessions, is its header and
 one line: `no sessions yet`, `connecting…` or `disconnected · click for the fix`; a click opens the
 Machines dialog. The foot holds **+ New** and **Menu**. Collapsed, the sessions become a narrow

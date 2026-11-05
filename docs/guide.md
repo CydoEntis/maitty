@@ -69,7 +69,7 @@ and your configured custom ones; rows click and the wheel scrolls.
 │ ▾  maitty                ⎇ dev ✓│
 │   ● bold-raven            ● you │
 │     asks: what should the…     │
-│     └ ○ shell               2   │
+│   ○ shell                   2   │
 │                                │
 │ ▾  AeVoxGrowth          ⎇ main ✓│
 │   ⣻ Growth Tests           12m  │
@@ -95,7 +95,7 @@ and your configured custom ones; rows click and the wheel scrolls.
   or what it asks (`asks: …`, in amber), a check result (`failed: test · exit 1`), helpers asked
   for, a quiet spell or a message waiting. Every new claude / codex gets its own worktree (named
   for you), so agents never edit the same files.
-- A session with other tabs lists them under it (`├ ○ shell  2`); click one to show it.
+- A session with other tabs lists them after it on the same level (`○ shell  2`); click one to show it.
 - One card is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar
   has the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
   keyboard. Hover is a separate, quieter tint.
