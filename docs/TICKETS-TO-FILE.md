@@ -356,6 +356,39 @@ the test, and fix its timing instead of retrying. The three slow `maitty-termina
 `cli_machine_tests::send_and_wait_use_the_remote_pane_s_screen`,
 `mcp_machine_tests::an_agent_lists_reads_and_sends_to_another_machine_s_panes`) also time out under load.
 
+## 22. Update a machine from the GUI and the TUI (feature, `client`, `ssh`)
+
+Asked for 2026-11-05. Today a machine whose Maitty is older than this computer's shows
+"run `maitty machine update <name>`" as text, and the update exists only as that command
+(ADR 0047, D8; `crates/maitty-terminal-client/src/cli/machine_update.rs`). The owner wants an
+**Update** action on each machine instead of having to type the command.
+
+**Scope**
+- GUI: an Update button on a machine in the sidebar group and on its Machines screen, shown when the
+  machine is older, missing the app, or refused for a protocol mismatch (the "needs update" state).
+- TUI: the same action in the machine list.
+- One shared flow, not a copy of the command's logic: look first (the machine's platform and installed
+  version), show what was found, install only after a yes, then show progress and a plain error.
+- The far-side daemon is never signalled; it keeps its sessions and is offered a restart only when none
+  is open (the existing rule). Say so in the confirmation.
+- The binary comes from the existing source logic (`machine_update/binary.rs`): this computer's own when
+  the platform matches, else the checked release. Say plainly when there is nothing to fetch (for
+  example before a release exists).
+- A downgrade (`--force`) stays a command-line choice.
+
+**Acceptance**
+- A machine that needs an update shows the button; clicking it, confirming and finishing leaves the
+  machine connected at the current protocol with its sessions intact.
+- Cancel, an ssh failure and a failed checksum each leave the machine as it was and say so.
+- Reuses the file-send transport (`maitty-machines` ssh runner); no new ssh code path.
+- Tests with the scripted-ssh fixtures. Real ssh is checked by hand.
+
+**Notes**
+- Blocked in practice until a release exists, because only a release carries a protocol-72 `maitty`
+  to push to a machine whose platform differs from this computer's.
+- Needs an ADR amendment to 0047 or 0048 (the desktop app may now change another machine).
+
+
 ## Decisions on 2026-11-04 (night)
 
 - Image paste key: Ctrl+Shift+V on Windows and Linux (plain Ctrl+V stays with the terminal, per the shortcut
