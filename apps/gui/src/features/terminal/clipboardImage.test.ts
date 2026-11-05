@@ -120,20 +120,19 @@ describe('the paste chord', () => {
   const windows = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebView2'
   const mac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15'
 
-  it('is Ctrl+V on Linux and Windows, which the terminal would send on as ^V', () => {
-    expect(isPasteChord(key({}), linux)).toBe(true)
-    expect(isPasteChord(key({ key: 'V' }), windows)).toBe(true)
-  })
-
-  it('is not Cmd+V on macOS, which already pastes, nor Ctrl+V there', () => {
-    expect(isPasteChord(key({ ctrlKey: false, metaKey: true }), mac)).toBe(false)
-    expect(isPasteChord(key({}), mac)).toBe(false)
-  })
-
-  it('is not another key, nor Ctrl+V with another modifier', () => {
-    expect(isPasteChord(key({ key: 'c' }), linux)).toBe(false)
-    expect(isPasteChord(key({ shiftKey: true }), linux)).toBe(false)
-    expect(isPasteChord(key({ altKey: true }), linux)).toBe(false)
-    expect(isPasteChord(key({ ctrlKey: false }), linux)).toBe(false)
+  // true: the pane's key handler returns false and the browser pastes; false: the key goes on to the program as before.
+  it.each([
+    ['Linux Ctrl+Shift+V pastes', linux, key({ shiftKey: true }), true],
+    ['Windows Ctrl+Shift+V pastes', windows, key({ key: 'V', shiftKey: true }), true],
+    ['Linux plain Ctrl+V is the program\'s ^V', linux, key({}), false],
+    ['Windows plain Ctrl+V is the program\'s ^V', windows, key({}), false],
+    ['macOS Cmd+V already pastes, untouched', mac, key({ ctrlKey: false, metaKey: true }), false],
+    ['macOS Cmd+Shift+V already pastes, untouched', mac, key({ ctrlKey: false, metaKey: true, shiftKey: true }), false],
+    ['macOS Ctrl+V is the program\'s', mac, key({}), false],
+    ['Ctrl+Shift+C is another key', linux, key({ key: 'c', shiftKey: true }), false],
+    ['Ctrl+Alt+Shift+V is not the chord', linux, key({ shiftKey: true, altKey: true }), false],
+    ['Shift+V without Ctrl is typing', linux, key({ ctrlKey: false, shiftKey: true }), false],
+  ])('%s', (_name, agent, event, expected) => {
+    expect(isPasteChord(event, agent)).toBe(expected)
   })
 })
