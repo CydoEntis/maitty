@@ -955,6 +955,11 @@ fn repo_with_two_made_worktrees(
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    // A pane's shell reports its folder by its real name, and the temp folder may be spelled
+    // another way (an 8.3 name such as `RUNNER~1` on Windows). Named as the shell names them,
+    // the folders match a pane both before and after its first prompt.
+    let root = clean_path(root.canonicalize().unwrap());
     let repo = root.join("repo");
     std::fs::create_dir_all(&repo).unwrap();
     let git = |dir: &std::path::Path, args: &[&str]| crate::proc::git(dir, args).unwrap();
@@ -1015,7 +1020,14 @@ fn closing_a_worktrees_last_pane_removes_it_only_when_nothing_lives_only_there()
             .values()
             .find(|t| same_path(&t.cwd, wt))
             .map(|t| t.id)
-            .expect("a pane there")
+            .unwrap_or_else(|| {
+                let panes: Vec<_> = d.terms.values().map(|t| (t.id, &t.cwd)).collect();
+                panic!(
+                    "no pane in {}; panes: {panes:?}; made worktrees: {:?}",
+                    wt.display(),
+                    d.made_worktrees
+                )
+            })
     };
 
     let t = last_pane(&d, &mine);

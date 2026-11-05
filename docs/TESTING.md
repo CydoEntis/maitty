@@ -122,6 +122,10 @@ Live checks use a nested
 server: `MAITTY_SOCKET=test maitty`, then `maitty send` / `maitty read` against it.
 Tests never touch the user's real config (`MAITTY_CONFIG` or in-memory configs).
 
+A daemon test that finds a pane by its folder names that folder canonically
+(`clean_path(root.canonicalize())`). The pane's shell reports the folder's real name at its first
+prompt, and the temp folder can be spelled another way (an 8.3 name such as `RUNNER~1` on Windows).
+
 ## Project-specific: testing over ssh (fake-ssh)
 
 Anything that reaches another machine is tested through a stand-in for `ssh`, never a real
