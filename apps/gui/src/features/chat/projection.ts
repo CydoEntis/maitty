@@ -34,6 +34,8 @@ type TurnRecord = {
   readonly status: ItemStatus | null
   readonly startedAtMs: number
   readonly endedAtMs: number | null
+  /** The daemon sent the turn's own start and end times, so its duration is real and not what this app saw. */
+  readonly timed: boolean
   readonly itemOrder: readonly string[]
   readonly items: ReadonlyMap<string, ItemRecord>
 }
@@ -43,6 +45,7 @@ type WorkingTurn = {
   status: ItemStatus | null
   startedAtMs: number
   endedAtMs: number | null
+  timed: boolean
   itemOrder: string[]
   items: Map<string, ItemRecord>
 }
@@ -75,7 +78,7 @@ export function applyHistoryEntries(state: ChatProjection, entries: readonly unk
     const previous = state.turns.get(turnId)
     const copy: WorkingTurn = previous
       ? { ...previous, itemOrder: [...previous.itemOrder], items: new Map(previous.items) }
-      : { turnId, status: null, startedAtMs: nowMs, endedAtMs: null, itemOrder: [], items: new Map() }
+      : { turnId, status: null, startedAtMs: nowMs, endedAtMs: null, timed: false, itemOrder: [], items: new Map() }
     if (!previous) turnOrder.push(turnId)
     working.set(turnId, copy)
     return copy
@@ -93,6 +96,10 @@ export function applyHistoryEntries(state: ChatProjection, entries: readonly unk
     if (entry.content === 'TurnStatus') {
       turn.status = status
       if (status !== 'running') turn.endedAtMs ??= nowMs
+      // The daemon's own times replace the ones this app saw, so a turn read from history still has its duration.
+      if (entry.started_at_ms !== undefined) turn.startedAtMs = entry.started_at_ms
+      if (entry.completed_at_ms !== undefined) turn.endedAtMs = entry.completed_at_ms
+      turn.timed = entry.started_at_ms !== undefined && entry.completed_at_ms !== undefined
       continue
     }
 
@@ -184,7 +191,7 @@ export function selectChatEvents(state: ChatProjection): ChatEvent[] {
     }
     events.push(...state.approvals.filter((approval) => approval.turnId === turnId))
     if (turn.status !== null && turn.status !== 'running' && turn.endedAtMs !== null) {
-      events.push({ kind: 'turn', id: `turn:${turnId}`, turnId, outcome: turn.status, startedAtMs: turn.startedAtMs, endedAtMs: turn.endedAtMs })
+      events.push({ kind: 'turn', id: `turn:${turnId}`, turnId, outcome: turn.status, startedAtMs: turn.startedAtMs, endedAtMs: turn.endedAtMs, timed: turn.timed })
     }
   }
   events.push(...state.approvals.filter((approval) => approval.turnId === null || !state.turns.has(approval.turnId)))

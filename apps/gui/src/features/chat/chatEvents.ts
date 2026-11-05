@@ -129,6 +129,11 @@ export type TurnEvent = {
   readonly outcome: Exclude<ItemStatus, 'running'>
   readonly startedAtMs: number
   readonly endedAtMs: number
+  /**
+   * The times are the daemon's. When false they are when this app saw the turn start and end, so
+   * the duration and the clock time are not shown as facts.
+   */
+  readonly timed: boolean
 }
 
 export type ChatEvent =

@@ -303,21 +303,24 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
   for (const key of lastGoodTerm.keys()) {
     if (isOfMachine(key, from) && !(String(termOfKey(key)) in snapshot.terms)) lastGoodTerm.delete(key)
   }
+  const summaries = machine === undefined
+    ? snapshot.conversations.flatMap((raw) => {
+      const parsed = ConversationSummarySchema.safeParse(raw)
+      return parsed.success ? [parsed.data] : []
+    })
+    : []
+  // A terminal session has a chat when the daemon holds a conversation whose native terminal is that pane.
+  const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation }] as const])))
   const terminals = Object.values(snapshot.terms)
     .flatMap((term) => {
       const read = readTerminal(term, from)
       return read ? [read] : []
     })
     .filter(isTerminalSession)
-    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine))
+    .map((term) => toTerminalConversation(term, snapshot.workspaces, machine, machine === undefined ? chatOf.get(term.id) : undefined))
   if (machine !== undefined) return terminals
   return [
-    ...snapshot.conversations
-      .flatMap((raw) => {
-        const parsed = ConversationSummarySchema.safeParse(raw)
-        return parsed.success ? [parsed.data] : []
-      })
-      .map((conversation) => toConversation(conversation, snapshot.workspaces)),
+    ...summaries.map((conversation) => toConversation(conversation, snapshot.workspaces)),
     ...terminals,
   ]
 }
@@ -479,6 +482,38 @@ export async function loadMessages(
   }
 }
 
+// The chat view's read of a conversation: entries and approvals stay raw (`unknown`) because the chat
+// projection validates each one itself, so a single entry this app cannot read never hides the rest.
+const ChatPageSchema = z.object({
+  conversation: z.number().int().nonnegative(),
+  generation: z.number().int().nonnegative(),
+  status: StatusSchema,
+  receipt: ConversationReceiptSchema.nullable(),
+  error: z.string().nullable(),
+  cancelling: z.boolean(),
+  history: z.object({
+    entries: z.array(z.unknown()),
+    next: HistoryCursorSchema.nullable(),
+    completeness: HistoryCompletenessSchema,
+  }),
+  approvals: z.array(z.unknown()),
+})
+export type HistoryCursor = z.infer<typeof HistoryCursorSchema>
+export type ChatPage = z.infer<typeof ChatPageSchema>
+
+/**
+ * One page of a conversation's history from `cursor` (null: the start), with the approvals waiting
+ * and the conversation's status. A cursor goes stale when the history changes; the caller then
+ * reads again from the start.
+ */
+export async function readConversationPage(id: number, cursor: HistoryCursor | null): Promise<ChatPage> {
+  if (!isDesktop()) throw new Error('Chat needs the desktop app')
+  if (!Number.isSafeInteger(id) || id < 0) throw new Error('Conversation id is invalid')
+  const page = await invokeParsed('read_conversation', ChatPageSchema, { id, cursor, limit: ReadPageLimit })
+  if (page.conversation !== id) throw new Error('Daemon returned a different conversation')
+  return page
+}
+
 export async function loadConversationDiff(conversation: Conversation): Promise<ConversationDiff> {
   if (terminalOf(conversation.id) !== null) throw new Error('Changes are shown for chat sessions')
   if (!isDesktop() || conversation.generation === undefined) {
@@ -593,7 +628,7 @@ export async function resizeTerminal(conversation: Pick<Conversation, 'id'> & { 
   })
 }
 
-export async function submitMessage(conversation: Conversation, operation: number, text: string): Promise<ConversationReceipt> {
+export async function submitMessage(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number, text: string): Promise<ConversationReceipt> {
   return invokeParsed('send_conversation', ConversationReceiptSchema, {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -616,7 +651,7 @@ export function classifySubmissionFailure(
   return receipt.delivery === 'SubmissionUncertain' ? 'unknown' : 'delivered'
 }
 
-export async function approveRequest(conversation: Conversation, requestId: number | string, decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel'): Promise<void> {
+export async function approveRequest(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel'): Promise<void> {
   await invokeParsed('approve_conversation', NullSchema, {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -634,7 +669,7 @@ export async function answerUserInput(conversation: Conversation, requestId: num
   })
 }
 
-export async function cancelTurn(conversation: Conversation): Promise<void> {
+export async function cancelTurn(conversation: Pick<Conversation, 'id' | 'generation'>): Promise<void> {
   await invokeParsed('cancel_conversation', NullSchema, {
     id: Number(conversation.id),
     generation: conversation.generation,
@@ -723,7 +758,7 @@ export async function resumeConversation(conversation: Conversation): Promise<{ 
   })
 }
 
-function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[], machine?: SnapshotMachine): Conversation {
+function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSummary[], machine?: SnapshotMachine, chat?: Conversation['chat']): Conversation {
   const folder = term.root ?? term.cwd
   const repo = term.root ? (term.root.split(/[\\/]/).filter(Boolean).at(-1) ?? null) : null
   const workspace = workspaces.find((candidate) => candidate.cwd === folder || candidate.cwd === term.cwd)
@@ -763,6 +798,7 @@ function toTerminalConversation(term: TerminalSession, workspaces: WorkspaceSumm
     process: term.process,
     summary: term.summary,
     details: { asking: term.asking, interrupted: term.interrupted, timeline: term.timeline, usage: term.usage },
+    ...(chat ? { chat } : {}),
   }
 }
 

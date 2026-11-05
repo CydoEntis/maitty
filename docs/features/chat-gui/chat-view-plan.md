@@ -1,6 +1,6 @@
 # Plan: the Terminal / Chat view switch
 
-Status: proposed · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
+Status: in progress (CV-0 to CV-3 and CV-13 done) · Date: 2026-11-04 · Design: [v17 handoff §C.1, §C.2](design-handoff/v17/README.md) (refines v16 §B.3) · Spec: [spec.md](spec.md)
 
 ## What it is
 
@@ -45,19 +45,37 @@ check for the view). Acceptance criteria are the bullets.
      provider's saved history has none, and the GUI measures its elapsed time from
      when it first saw it.
 
-1. **CV-1 Switch and empty chat card.** The floating two-button switch (§B.3),
+1. **CV-1 Switch and empty chat card.** **Done:** the Terminal | Chat switch sits in each pane head (not a single
+   switch at the tab bar's right: each pane has its own view), `Ctrl/Cmd+Shift+E` toggles the focused pane, the
+   transition is transform/opacity only and off under Reduce motion, and Settings › General › Chat view sets the
+   per-agent default. The chat card has no header of its own: the pane head already shows process, name, cwd,
+   machine chip and status, so a second header would repeat it. Not built: the pane switcher and "the project's
+   running agents to jump to" on the shell card. Original brief: The floating two-button switch (§B.3),
    the slide-and-fade transition (off under reduce motion), a `Settings → Claude /
    Codex` default of terminal or chat, and the chat card with its header (process,
    session name, cwd, machine chip, pane switcher, status pill with timer).
    - Switching a working agent changes nothing in the daemon (assert no command sent).
    - A shell tab shows "Chat view is for agent sessions" with **Start claude here**
      and **Back to terminal**.
-2. **CV-2 History.** Read the conversation on open and follow the cursor. Your
+2. **CV-2 History.** **Done:** `features/chat/` (`chatFeed.ts`, `useChatFeed.ts`, `chatRows.ts`, `components/`).
+   A virtualised list (1,500 items draw under 40 rows), stable event ids as keys, the cursor followed as far as the
+   daemon allows (see UI.md: the daemon makes a cursor stale on every change, so the feed re-reads from the start
+   then and applies only entries that changed), a fresh projection on a new generation, a resume after a failed
+   read without duplicates, pending approvals polled into `applyApprovals`. Cards are plain and complete; the
+   polished chips, diffs and approval card are CV-4..7. Known limits: adjacent agent messages of a turn are joined,
+   not all of a turn's messages (that would reorder text against its steps); a command card shows no exit code yet
+   (the history carries it, the projection does not); `answered_approvals` are not read; no markdown rendering.
+   Original brief:  Read the conversation on open and follow the cursor. Your
    messages as right-aligned bubbles; one agent message per turn with a lead
    sentence; turn dividers "Cooked for 7s · done 10:11 AM".
    - A history of 1,000 items renders without jank (virtualised list).
    - Reconnecting the daemon resumes from the last cursor, no duplicates.
-3. **CV-3 Composer.** Enter sends, Shift+Enter newlines, Esc or **Stop**
+3. **CV-3 Composer.** **Done in the client** (`useChatComposer.ts`, `components/Composer.tsx`): Enter sends,
+   Shift+Enter adds a line, Esc or Stop interrupts, disabled while an approval is pending or the daemon is offline,
+   and a minimal approval card answers by request id. **Not done: the daemon-held queue.** There is no queue API,
+   so a message sent while a turn runs waits in the window (a pending bubble with Remove) and is sent once the daemon
+   reports the turn finished, in order and once each, only while the chat is open and not at a step boundary.
+   Closing the window drops it. Original brief:  Enter sends, Shift+Enter newlines, Esc or **Stop**
    interrupts. While a turn runs the composer **queues** the message and says so
    ("Queue a message for when Claude finishes this step"); it is sent at the turn
    boundary. Disabled while an approval is pending.
@@ -123,6 +141,19 @@ check for the view). Acceptance criteria are the bullets.
     Not verified against a live Claude CLI: that its `can_use_tool` request carries
     `tool_use_id` (the code falls back to the request id when it does not).
     GUI follow-up: render `answered_approvals` and the timestamps (G17, G18).
+
+## What is still missing (client and daemon)
+
+- **A session's chat needs a daemon conversation for its pane.** The desktop app lists terminal sessions only, and
+  a shell where `claude` or `codex` was typed has no conversation, so today no pane is `ready` and the chat shows
+  "no event stream" for it. The client side is finished (it links a pane to the conversation whose native terminal
+  it is); the daemon must start or attach a Claude/Codex conversation for an agent running in a pane (for example
+  from the provider's session id, hydrating from its saved history).
+- **A daemon-held queue and a push of history.** Queued sends are window-only, and the history is polled (1 s while
+  working) because a cursor goes stale on every change.
+- Left for CV-4..CV-7 and CV-9, CV-10: exit codes and live elapsed time on commands, polished chips and diffs,
+  `answered_approvals`, key bindings y/a/n on the card, helper-agent and checklist panels, token counts, markdown in
+  agent text.
 
 ## Out of scope
 

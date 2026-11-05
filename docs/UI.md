@@ -693,3 +693,46 @@ Keep pane padding and the card interior on the same surface as a terminal app
 when at least three screen corners use one explicit background color. Preserve
 the pane insets; isolated colored panels keep their existing theme treatment.
 Preserve colors applications paint explicitly.
+
+## Project-specific: desktop chat view
+
+The desktop app's chat view is a second view of a Claude Code or Codex session, never a second session
+([chat view plan](features/chat-gui/chat-view-plan.md), ADR 0036). Rules:
+
+- **Source.** It renders only the daemon's structured events, through `features/chat/` (the projection).
+  It never reads terminal output. A session has a chat only when `conversationsFromSnapshot` found a daemon
+  conversation whose native terminal is that pane (`Conversation.chat`); `model/chatView.ts` decides
+  availability: `ready`, `no-events`, `remote` (local-only in v1), `unsupported` (another agent) or `shell`.
+- **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
+  mounted and its pane keeps its size, and no daemon command is sent. The shortcut is `chat-toggle`
+  (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.
+- **Keyboard.** While the chat covers a pane its terminal is not focused (`TerminalView focused` is false) and is
+  hidden from Tab and screen readers. The chat adds no layer to the Esc ladder.
+- **History.** `useChatFeed` follows one conversation while its chat is open (`chatFeed.ts` is the pure core). The
+  first read pages the whole history; later polls (1 s while the agent works or waits on a person, 3 s otherwise,
+  none while the window is hidden) ask only for the last page they read (`resume`). The daemon makes a cursor stale
+  on every change, so a stale cursor, a failed read or a new generation falls back to a read from the start; entries
+  already applied unchanged are skipped, so nothing is shown twice and unchanged events stay the same objects. A new
+  generation shows a fresh projection. Pending approvals come with every page and go to `applyApprovals`. The last
+  feed per conversation is kept (8 at most), so reopening a chat shows it at once.
+- **List.** `VirtualList` draws only the rows near the view (`transform` placement, measured heights, stable event
+  ids as keys), follows the newest row until the reader scrolls away, then offers "Jump to the latest message". Rows
+  are `buildRows(events)`: one agent message per turn (adjacent agent messages of a turn are joined; a step between
+  two messages keeps their order), user bubbles, step cards, approvals, turn dividers, and the working line last.
+- **Cards.** Plain and complete: every fact the history carries is shown, and a missing one is said to be
+  unavailable (a diff the history did not keep, a checklist without items, a turn without the daemon's times shows
+  "Turn finished", not an invented duration). No card animates.
+- **Composer.** `useChatComposer` sends through the conversation's own send (`send_conversation`) with an operation
+  number (the receipt's plus one; a failed send is retried with the same number so the daemon can tell a retry from a
+  new message). Enter sends, Shift+Enter adds a line (not while an input method is composing), Esc or Stop interrupts
+  the running turn (`cancel_conversation`). It is off, with the reason as its placeholder, while an approval is
+  pending ("Answer the request above first") or the daemon is offline. While the daemon reports the turn working,
+  Enter queues: the queue is the window's memory (`composerStore.ts`), shown as dashed pending bubbles with Remove,
+  and its oldest message is delivered once the turn has ended (after a 2.5 s grace so it never lands in the turn that
+  is starting), one at a time and in order, only while the chat is open. The daemon has no queue, so delivery is at
+  the end of the turn, not at a step boundary, and closing the window drops what is queued.
+- **Approvals.** The card answers through `approve_conversation` by request id and then reads "You answered: ...",
+  with the buttons gone. A request that asks the person a question (`UserInput`) is answered in the terminal.
+- **Screen readers.** The history is a labelled region, not a live region. A separate polite status line says only
+  that the agent is working, is waiting for an answer, or finished.
+- **Styling.** Tailwind utilities on theme tokens only; the keyframes for the view change live in `workspace.css`.

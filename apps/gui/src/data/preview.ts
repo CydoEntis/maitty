@@ -56,6 +56,12 @@ export type Conversation = {
   /** The last prompt the agent in a terminal session was given, as one line; empty when unknown. */
   summary?: string
   details?: TerminalDetails
+  /**
+   * The daemon conversation that carries this terminal session's structured events, when it holds
+   * one (a conversation whose native terminal is this pane). The chat view reads and writes
+   * through it; without it the session has no chat.
+   */
+  chat?: { conversation: number; generation: number }
 }
 
 export type Message = {

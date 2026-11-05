@@ -4,6 +4,7 @@ import type { AnimationMode } from '@/lib/animation-auto'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
+import { DEFAULT_CHAT_VIEWS, type ChatViewDefaults, type PaneView } from '@/features/workspace/model/chatView'
 
 export type ToastPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
 export type CursorStyle = 'block' | 'bar' | 'underline'
@@ -96,6 +97,8 @@ export type SettingsPreferences = {
   leadMode: LeadMode
   style: StyleChoice
   iconColor: IconColor
+  /** Which view a Claude or Codex session opens in. Terminal until you change it. */
+  chatViewDefault: ChatViewDefaults
   /** The bottom line of the window: daemon, branch, counts and the focused session. */
   statusBar: boolean
   /** A small readout of frames and process load over the window, for finding what lags. */
@@ -188,6 +191,7 @@ function defaults(): SettingsPreferences {
     trayStyle: 'stacked',
     leadMode: 'focused',
     iconColor: 'color',
+    chatViewDefault: DEFAULT_CHAT_VIEWS,
     statusBar: true,
     perfOverlay: false,
     terminalSeeThrough: false,
@@ -263,6 +267,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
       trayStyle: preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
       style: styleOf(preferences.style) ?? fallback.style,
+      chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),
       statusBar: bool(preferences.statusBar, fallback.statusBar),
       perfOverlay: bool(preferences.perfOverlay, fallback.perfOverlay),
       terminalSeeThrough: bool(preferences.terminalSeeThrough, fallback.terminalSeeThrough),
@@ -338,6 +343,14 @@ function themeChoice(saved: Partial<Record<string, unknown>>, fallback: Settings
     darkTheme: themeOfKind(saved.darkTheme, false) ?? (migrating && !old.light ? old.name : fallback.darkTheme),
     lightTheme: themeOfKind(saved.lightTheme, true) ?? (migrating && old.light ? old.name : fallback.lightTheme),
   }
+}
+
+const paneView = (value: unknown, fallback: PaneView): PaneView => (value === 'chat' || value === 'terminal' ? value : fallback)
+
+function chatViewDefault(value: unknown, fallback: ChatViewDefaults): ChatViewDefaults {
+  if (typeof value !== 'object' || value === null) return fallback
+  const saved = value as Partial<Record<keyof ChatViewDefaults, unknown>>
+  return { claude: paneView(saved.claude, fallback.claude), codex: paneView(saved.codex, fallback.codex) }
 }
 
 function isCursorStyle(value: unknown): value is CursorStyle {
