@@ -725,6 +725,14 @@ New worktrees go to `{repo_parent}/{repo}-worktrees/{branch}` (set `[worktree] d
 local or `origin/` branch is checked out instead of created. Set `[worktree] command = "claude"`
 to start an agent in every new worktree.
 
+In the desktop app, **New agent on a branch** (the branch button in the sidebar, ⌘K, or a
+repository's right-click menu) takes a project, Claude or Codex, an optional first prompt and a
+branch (`agent/<words of the prompt>` until you type your own). It makes the worktree the usual way
+(same folder naming, same repo setup hook, same clean-up when its last session closes), starts the
+agent in it with the prompt, and opens it in a new tab under its project. The prompt is handed to the
+agent as one argument, never run by the shell, and cannot start with a dash. It is for projects on
+this computer.
+
 With **Own worktree per agent** enabled (the default), typing `claude`, `codex`, `gemini`,
 `opencode` (or a quick agent's name) in a Maitty shell in a Git repository's main checkout
 creates a worktree and starts the agent in it, including with `-c` configuration

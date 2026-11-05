@@ -53,6 +53,10 @@ export type SidebarProps = {
   onNewSessionIn: (folder: string) => void
   /** The New worktree dialog for a project, by its key. */
   onNewWorktree: (groupKey: string) => void
+  /** The New agent on a branch dialog, on a project (by its key) or on the default one (null). */
+  onNewAgent: (groupKey: string | null) => void
+  /** False while no project can take one: none is a local git repository, or the daemon is away. */
+  canNewAgent: boolean
   onShowSession: (id: string) => void
   onEndSession: (id: string) => void
   /** Ends every session in a project; the app asks first. */
@@ -118,7 +122,7 @@ function Expanded(props: GroupProps) {
     const open = isOpen(group)
     return (
       <div key={group.key} className={`mx-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`}>
-        <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
+        <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onNewAgent={() => { props.onNewAgent(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
         <button type="button" className="mx-group-head" aria-expanded={open} {...hoverHandlers(hover, { kind: 'folder', key: group.key })} onClick={() => { hover.close(); onToggleGroup(group.key) }}>
           <Icon name="chevron" />
           <span className={`mx-folder-tile${group.containsFocused ? ' is-focused' : ''}`}><Icon name="folder" /></span>
@@ -160,6 +164,7 @@ function Expanded(props: GroupProps) {
       <div className="mx-sidebar-head">
         <span className="mx-sidebar-title">Projects</span>
         <span className="mx-spacer" />
+        <button type="button" className="mx-new-button" aria-label="New agent on a branch" title="New agent on a branch" disabled={!props.canStart || !props.canNewAgent} onClick={() => { props.onNewAgent(null) }}><Icon name="branch" size={15} /></button>
         <button type="button" className="mx-new-button" aria-label="New session" title={tip(`New session in ${props.startFolderLabel}`, 'new-session')} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" size={15} /></button>
         {mode === 'docked' && (
           <button type="button" className="mx-icon-button mx-collapse" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
@@ -255,7 +260,7 @@ function RailFolderButton(props: { group: SessionGroup; open: boolean; online: b
 }
 
 /** Right-click a project, in the sidebar or the rail: start a shell in it, fold it, copy its path. */
-function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle, onNewSessionIn, onNewWorktree, onEnd, children }: { group: SessionGroup; open: boolean; canStart: boolean; online: boolean; portalContainer: HTMLElement | null; onToggle: () => void; onNewSessionIn: (folder: string) => void; onNewWorktree: () => void; onEnd: () => void; children: ReactNode }) {
+function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle, onNewSessionIn, onNewWorktree, onNewAgent, onEnd, children }: { group: SessionGroup; open: boolean; canStart: boolean; online: boolean; portalContainer: HTMLElement | null; onToggle: () => void; onNewSessionIn: (folder: string) => void; onNewWorktree: () => void; onNewAgent: () => void; onEnd: () => void; children: ReactNode }) {
   const lead = group.sessions[0]
   return (
     <ContextMenuPrimitive.Root>
@@ -264,6 +269,7 @@ function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle,
         <ContextMenuPrimitive.Content className="mx-menu mx-project-menu" aria-label={`${group.name} project`}>
           <ContextMenuPrimitive.Label className="mx-menu-caps">{group.name}</ContextMenuPrimitive.Label>
           <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!canStart || group.machineName !== null} onSelect={() => { onNewSessionIn(group.key) }}>New session here</ContextMenuPrimitive.Item>
+          {group.machineName === null && group.kind === 'repo' && <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!canStart} onSelect={onNewAgent}>New agent on a branch…</ContextMenuPrimitive.Item>}
           {lead && lead.machine === LOCAL_MACHINE && <WorktreeMenu term={lead.pane} portalContainer={portalContainer} canStart={canStart} onOpenFolder={onNewSessionIn} onNewWorktree={onNewWorktree} />}
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={onToggle}>{open ? 'Collapse' : 'Expand'}</ContextMenuPrimitive.Item>
@@ -286,6 +292,7 @@ function Rail(props: GroupProps) {
       <div className="mx-rail-top">
         {props.canExpand && <button type="button" className="mx-icon-button mx-rail-button" aria-label="Expand sidebar" title={tip('Expand sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="expand" /></button>}
         <button type="button" className="mx-icon-button mx-rail-button mx-rail-new" aria-label="New session" title={tip('New session', 'new-session')} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" /></button>
+        <button type="button" className="mx-icon-button mx-rail-button" aria-label="New agent on a branch" title="New agent on a branch" disabled={!props.canStart || !props.canNewAgent} onClick={() => { props.onNewAgent(null) }}><Icon name="branch" size={15} /></button>
       </div>
       <div className="mx-rail-divider" />
       <div className="mx-rail-list mx-no-scrollbar">
@@ -294,7 +301,7 @@ function Rail(props: GroupProps) {
           const label = `${group.name} · ${String(group.sessions.length)} session${group.sessions.length === 1 ? '' : 's'} · click to ${open ? 'collapse' : 'expand'}`
           return (
             <div key={group.key} className={`mx-rail-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`}>
-              <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
+              <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onNewAgent={() => { props.onNewAgent(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
                 <RailFolderButton group={group} open={open} online={online} label={label} hover={hover} onToggle={() => { onToggleGroup(group.key) }} />
               </ProjectMenu>
               {open && (

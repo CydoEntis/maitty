@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionGroup } from '../model/session'
 import { machineHeads, type RemoteMachine } from '../model/machines'
@@ -12,14 +12,15 @@ function group(key: string, name: string, machineName: string | null): SessionGr
   return { key, name, kind: 'folder', path: `/${name}`, machineName, sessions: [], containsFocused: false, needsCount: 0, workingCount: 0 }
 }
 
-function show(heads: SidebarProps['machineHeads'], groups: SessionGroup[]) {
+function show(heads: SidebarProps['machineHeads'], groups: SessionGroup[], more: Partial<SidebarProps> = {}) {
   const none = vi.fn()
   render(
     <Sidebar
       groups={groups} machineHeads={heads} focusedId={null} tracks={new Map()} mode="docked" online sessionCount={0}
       startFolderLabel="~" canStart portalContainer={null} onToggleRail={none} canExpand tabOf={new Map()} tabPanes={new Map()}
       openIds={new Set()} paneOf={new Map()} trayStyle="stacked" leadMode="focused" side="left" width={280} onResize={none}
-      onResizeEnd={none} onNewSession={none} onNewSessionIn={none} onNewWorktree={none} onShowSession={none} onEndSession={none}
+      onResizeEnd={none} onNewSession={none} onNewSessionIn={none} onNewWorktree={none} onNewAgent={none} canNewAgent
+      {...more} onShowSession={none} onEndSession={none}
       onEndProject={none} onSetName={none} onRenameSession={none} onPinSession={none} onOpenSettings={none} updateSlot={null} railUpdateSlot={null}
     />,
   )
@@ -61,5 +62,43 @@ describe('the sidebar with machines', () => {
     show(machineHeads(new Map([machine(1, 'build', 'reconnecting', 'leftover', 2)])), [])
     expect(screen.getByText(/reconnecting #2/)).toBeTruthy()
     expect(screen.queryByText('leftover')).toBeNull()
+  })
+})
+
+describe('the sidebar entries for a new agent on a branch', () => {
+  const repo = (): SessionGroup => ({ ...group('/code/app', 'app', null), kind: 'repo' })
+
+  it('opens the dialog from the button at the top, with no project chosen', () => {
+    const onNewAgent = vi.fn()
+    show([], [repo()], { onNewAgent })
+    fireEvent.click(screen.getByRole('button', { name: 'New agent on a branch' }))
+    expect(onNewAgent).toHaveBeenCalledWith(null)
+  })
+
+  it('disables the button while no project can take one', () => {
+    show([], [group('a', 'notes', null)], { canNewAgent: false })
+    expect(screen.getByRole('button', { name: 'New agent on a branch' })).toBeDisabled()
+  })
+
+  it('opens it on a project from the project menu', async () => {
+    const onNewAgent = vi.fn()
+    show([], [repo()], { onNewAgent })
+    fireEvent.contextMenu(screen.getByRole('button', { name: /app/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New agent on a branch…' }))
+    expect(onNewAgent).toHaveBeenCalledWith('/code/app')
+  })
+
+  it('offers nothing in the menu of a folder that is not a repository, or of another machine', async () => {
+    show([], [group('/code/notes', 'notes', null)])
+    fireEvent.contextMenu(screen.getByRole('button', { name: /notes/ }))
+    await screen.findByRole('menu')
+    expect(screen.queryByRole('menuitem', { name: 'New agent on a branch…' })).toBeNull()
+  })
+
+  it('offers nothing in the menu of a repository on another machine', async () => {
+    show(machineHeads(new Map([machine(1, 'build', 'connected')])), [{ ...repo(), machineName: 'build' }])
+    fireEvent.contextMenu(screen.getByRole('button', { name: /app/ }))
+    await screen.findByRole('menu')
+    expect(screen.queryByRole('menuitem', { name: 'New agent on a branch…' })).toBeNull()
   })
 })

@@ -68,7 +68,9 @@ import { dismissSessionNotice, showSessionNotice } from '@/features/notification
 import { sessionNoticeFor } from '@/features/notifications/noticeForSession'
 import { noticesFor } from '@/features/notifications/transitions'
 import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
-import { newWorktreeSession } from '@/features/worktrees/api'
+import { newBranchAgent, newWorktreeSession } from '@/features/worktrees/api'
+import { NewAgentDialog, type NewAgentRequest } from '@/features/worktrees/NewAgentDialog'
+import { agentProjects, newAgentPaletteItem } from '@/features/worktrees/newAgent'
 import type { TerminalHandle } from '@/features/terminal/handle'
 import type { LookAt } from '@/features/inspect/FilesTab'
 import { PaneCard } from './components/PaneCard'
@@ -243,6 +245,8 @@ export function DesktopApp() {
   const [dismissedRestores, setDismissedRestores] = useState<ReadonlySet<string>>(new Set())
   // The session a new worktree is made from, while the dialog is open.
   const [worktreeFrom, setWorktreeFrom] = useState<SessionView | null>(null)
+  // The New agent on a branch dialog, with the project it opens on (null: the focused session's).
+  const [newAgent, setNewAgent] = useState<{ projectKey: string | null } | null>(null)
   const [inspectView, setInspectView] = useState<InspectView>('changes')
   const [lookAt, setLookAt] = useState<LookAt | null>(null)
   const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
@@ -737,6 +741,26 @@ export function DesktopApp() {
     flash(`Worktree ${branch} ready`)
   }, [sessions, newSessionSince, flash])
 
+  const branchProjects = useMemo(() => agentProjects(groups), [groups])
+  const startBranchAgent = useCallback(async (request: NewAgentRequest) => {
+    const known = new Set(sessions.map((session) => session.id))
+    await newBranchAgent({ project: request.project.path, branch: request.branch, agent: request.agent, prompt: request.prompt })
+    const id = await newSessionSince(known)
+    setNewAgent(null)
+    if (id) setLayout((current) => openInNewTab(current, id, makeId))
+    flash(`${request.agent} started on ${request.branch}`)
+  }, [sessions, newSessionSince, flash])
+
+  const openNewAgent = useCallback((projectKey: string | null) => {
+    if (!online) return
+    if (branchProjects.length === 0) {
+      toast.message('A new agent on a branch needs a git project on this computer')
+      return
+    }
+    setSettingsSection(null)
+    setNewAgent({ projectKey: projectKey ?? (focusedSession ? groupKeyOf(focusedSession, preferences.groupBy) : null) })
+  }, [online, branchProjects, focusedSession, preferences.groupBy])
+
   const runStart = useCallback((folder: () => Promise<string>, place: (sessionId: string) => void) => {
     if (!online || starting) return
     setStarting(true)
@@ -1128,13 +1152,16 @@ export function DesktopApp() {
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
-  const modalOpen = settingsSection !== null || renameId !== null || remoteStart !== null || overlayOpen
+  const newAgentOpen = newAgent !== null
+  const dialogOpen = settingsSection !== null || renameId !== null || remoteStart !== null || newAgentOpen
+  const modalOpen = dialogOpen || overlayOpen
   const drawerShown = compact && drawerOpen
-  const shortcutState = useRef({ runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
-  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: settingsSection !== null || renameId !== null || remoteStart !== null, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
+  const shortcutState = useRef({ runShortcut, settingsOpen: dialogOpen, newAgentOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen })
+  useEffect(() => { shortcutState.current = { runShortcut, settingsOpen: dialogOpen, newAgentOpen, overlayOpen, paletteOpen, inboxOpen, focusMode, drawerShown, welcomeOpen, shortcutsOpen } })
   useEffect(() => {
     // How each layer of the Esc ladder closes. A new dialog adds its closer here and its id to ESC_LADDER.
     const closers: Partial<Record<EscLayer, () => void>> = {
+      'new-agent': () => { setNewAgent(null) },
       palette: () => { setPaletteOpen(false) },
       inbox: () => { setInboxOpen(false) },
       settings: () => { setSettingsSection(null) },
@@ -1157,7 +1184,7 @@ export function DesktopApp() {
       if (event.key === 'Escape') {
         // A menu or list that is open (the spinner picker in Settings) takes Esc itself.
         if (event.target instanceof Element && event.target.closest('[role="menu"]')) return
-        const top = topmostOpen({ palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, drawer: state.drawerShown, 'focus-mode': state.focusMode })
+        const top = topmostOpen({ 'new-agent': state.newAgentOpen, palette: state.paletteOpen, inbox: state.inboxOpen, settings: state.settingsOpen, drawer: state.drawerShown, 'focus-mode': state.focusMode })
         if (top === null) return
         // What Esc closes is not also sent on to the terminal, where it would interrupt an agent.
         event.preventDefault()
@@ -1352,6 +1379,7 @@ export function DesktopApp() {
     const keys = (shortcut: ShortcutAction) => shortcutText(shortcut, platform)
     const action = (id: string, label: string, run: () => void, shortcut?: string): PaletteItem => ({ id, label, kind: 'Action', run, ...(shortcut ? { shortcut } : {}) })
     const showing = activeTab(layout)
+    const newAgentEntry = newAgentPaletteItem(branchProjects, online, undefined, () => { openNewAgent(null) })
     const items: PaletteItem[] = [
       action('new-here', activeGroupKey ? `New session in ${projectName ?? 'this project'}` : 'New session', newProjectSession, keys('new-session')),
       action('new-start', 'New session in the start folder', newSession),
@@ -1361,6 +1389,7 @@ export function DesktopApp() {
       action('inbox', 'Open the inbox', () => { setInboxOpen(true) }, keys('inbox')),
       action('jump-needs', 'Jump to the next session that needs you', () => { runShortcut('jump-needs') }, keys('jump-needs')),
       action('inspect', 'Inspect the repository', () => { if (inspectRefusal !== null) toast.message(inspectRefusal); else setInspectOpen(true) }, keys('inspect')),
+      ...(newAgentEntry ? [newAgentEntry] : []),
       ...(focusedSession ? [action('new-worktree', 'New worktree', () => { runShortcut('new-worktree') }, keys('new-worktree'))] : []),
       action('find', 'Find in the pane or every session', () => { setFindOpen(true) }, keys('find')),
       action('broadcast', showing?.broadcast ? 'Stop broadcasting' : 'Broadcast typing to this tab', () => { runShortcut('broadcast') }, keys('broadcast')),
@@ -1389,7 +1418,7 @@ export function DesktopApp() {
     }
     for (const candidate of THEMES) items.push({ id: `theme-${candidate.name}`, label: candidate.name, detail: candidate.family, kind: 'Theme', needsQuery: true, run: () => { setPreferences((current) => ({ ...current, themeMode: candidate.light ? 'light' : 'dark', ...(candidate.light ? { lightTheme: candidate.name } : { darkTheme: candidate.name }) })) } })
     return items
-  }, [paletteOpen, platform, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal])
+  }, [paletteOpen, branchProjects, online, openNewAgent, platform, layout, activeGroupKey, projectName, newProjectSession, newSession, split, runShortcut, startAgent, sessions, projectOf, groups, focusedId, focusedSession, showSessionById, preferences.sidebarSide, inspectRefusal])
 
   const restartOffer: RestartOffer | null = mismatch
     ? {
@@ -1453,6 +1482,8 @@ export function DesktopApp() {
           setWorktreeFrom(lead)
         }
       }}
+      onNewAgent={(groupKey) => { afterPick(); openNewAgent(groupKey) }}
+      canNewAgent={branchProjects.length > 0}
       onShowSession={(id) => { afterPick(); showSessionById(id) }}
       onEndSession={endSession}
       onEndProject={endProject}
@@ -1686,6 +1717,9 @@ export function DesktopApp() {
                 onCreate={(branch, base) => createWorktree(worktreeFrom, branch, base)}
                 onCancel={() => { setWorktreeFrom(null) }}
               />
+            )}
+            {newAgent !== null && (
+              <NewAgentDialog projects={branchProjects} initialKey={newAgent.projectKey} home={home} container={root} onStart={startBranchAgent} onCancel={() => { setNewAgent(null) }} />
             )}
             {remoteStart !== null && (
               <RemoteSessionDialog machineName={remoteStart.name} onStart={(folder) => startOnMachine(remoteStart, folder)} onCancel={() => { setRemoteStart(null) }} />
