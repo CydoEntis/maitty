@@ -1,4 +1,4 @@
-//! Chat attachments kept on this computer (ticket 20, ADR 0053). The window hands the host a path
+//! Chat attachments kept on this computer (ticket 20). The window hands the host a path
 //! the operating system gave on a drop or from the file picker; the host checks that it is a regular
 //! file within the caps, copies it into a private folder of the app's cache and returns the copy's
 //! path and cleaned name. The agent is told the copy's path, never the original: the original may

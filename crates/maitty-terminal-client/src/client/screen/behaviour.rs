@@ -986,7 +986,7 @@ impl App {
                 }
             }
             // Nothing else acts from the sidebar: an action is the leader and its key, or a key
-            // with no leader (ADR 0014, ADR 0029).
+            // with no leader.
             // Anything else is typing: leave the sidebar and hand the key over.
             _ => {
                 if let Some(key) = self.screen.cursor

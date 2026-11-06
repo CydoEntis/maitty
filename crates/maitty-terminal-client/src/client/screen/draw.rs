@@ -77,7 +77,7 @@ pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
     }
 }
 
-/// The mode bar's row (ADR 0024): the bottom row inside the padding.
+/// The mode bar's row: the bottom row inside the padding.
 pub(in crate::client) fn mode_bar_row(app: &App, area: Rect) -> Rect {
     let r = padded(app, area);
     Rect {
@@ -154,7 +154,7 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
             },
         )
     };
-    // The tabs have a row of their own over the panes in both looks (ADR 0028): Hairline's
+    // The tabs have a row of their own over the panes in both looks: Hairline's
     // over a rule across the whole column, Floating's chips right over the boxes only, the side
     // sheet being a card of its own.
     let tab_rows = if look.hairline {
@@ -447,7 +447,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
 }
 
 /// What a tab's ✕ does: close the tab, or a session's only tab's only pane. Panes have no ✕
-/// of their own (ADR 0030), so every tab has one. Each asks first.
+/// of their own, so every tab has one. Each asks first.
 pub(in crate::client) fn tab_close(app: &App, tab: usize, tabs: usize) -> Option<ScreenHit> {
     if tabs > 1 {
         return Some(ScreenHit::CloseTab(tab));
@@ -923,7 +923,7 @@ pub(in crate::client) fn armed(app: &App) -> bool {
     matches!(app.mode, Mode::Prefix { .. } | Mode::KeyMap(_))
 }
 
-/// Shortcut mode is held while a popup or view it opened has the keys (ADR 0021). Normal with
+/// Shortcut mode is held while a popup or view it opened has the keys. Normal with
 /// no view is the moment before it comes back, when keys still reach the pane.
 pub(in crate::client) fn shortcut_waits(app: &App) -> bool {
     app.shortcut_held && !armed(app) && (app.mode != Mode::Normal || app.view_has_keys())
@@ -1202,7 +1202,7 @@ fn grid_color(app: &App, term: ClientTerm, t: &Theme) -> Color {
 }
 
 /// A pane as a card, or Hairline's zone. A split pane's title is its number, state glyph (it
-/// opens why) and name; a lone pane has none (ADR 0030). The terminal sits inside, 3 columns
+/// opens why) and name; a lone pane has none. The terminal sits inside, 3 columns
 /// and 2 rows in.
 /// Unfocused cards fade; one that needs you keeps its amber.
 pub(in crate::client) fn draw_session(
@@ -1688,7 +1688,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     // Floating: framed like a pane (a box on the plain ground, round corners whatever
     // `ui.rounded` says, no fill of its own), its border and a kind chip on the top border in the
     // notice's colour. Hairline, which has no boxes: a solid block in `card2` (its `card` is the
-    // ground), its left edge a heavy rule (ADR 0028).
+    // ground), its left edge a heavy rule.
     let bg = if look.hairline { t.card2 } else { t.bg };
     let bar = Style::default().fg(ink(colour, bg)).bg(bg);
     // A box's outline keeps the ground behind it, as a modal's does: a border cell on the

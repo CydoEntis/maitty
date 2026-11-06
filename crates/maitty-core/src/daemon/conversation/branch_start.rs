@@ -1,4 +1,4 @@
-//! A chat session on a branch (ADR 0054): the checkout is made with the usual machinery
+//! A chat session on a branch (ADR 0003): the checkout is made with the usual machinery
 //! (`worktrees.rs`: naming, trust copy, the repo's setup hook), then the conversation starts in it.
 
 use crate::conversation::{LaunchSettings, StartTarget};

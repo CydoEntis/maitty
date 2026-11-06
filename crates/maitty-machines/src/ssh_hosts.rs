@@ -1,4 +1,4 @@
-//! The named hosts in `~/.ssh/config`, for choosing a machine to add (ADR 0047).
+//! The named hosts in `~/.ssh/config`, for choosing a machine to add (ADR 0007).
 //!
 //! v1 lists names only. Settings before the first `Host` line or under a pattern such as
 //! `Host *` are not merged into the hosts listed, and `Match` blocks are ignored. An

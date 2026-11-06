@@ -896,7 +896,7 @@ fn validate_appearance(appearance: &str) -> Result<()> {
     }
 }
 
-/// The app's own themes were once named after it ("seshi-night", ADR 0019), and the first set
+/// The app's own themes were once named after it ("seshi-night", ADR 0008), and the first set
 /// gave way to Night and Day: an old choice moves to the one of the same lightness.
 fn retired_theme(theme: &str) -> Option<&'static str> {
     let plain = theme

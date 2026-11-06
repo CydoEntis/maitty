@@ -61,7 +61,7 @@ export type Conversation = {
    * one (a conversation whose native terminal is this pane). The chat view reads and writes
    * through it; without it the session has no chat.
    */
-  chat?: { conversation: number; generation: number; /** Follows an agent the user started in the terminal (ADR 0052): the chat reads, it does not write. */ readOnly?: boolean }
+  chat?: { conversation: number; generation: number; /** Follows an agent the user started in the terminal (ADR 0003): the chat reads, it does not write. */ readOnly?: boolean }
 }
 
 export type Message = {

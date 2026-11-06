@@ -38,7 +38,7 @@ const hear = (event: Record<string, unknown>) => { act(() => { sends.emit.curren
 const transferOf = () => sends.sendFilesToMachine.mock.calls[0]?.[2] ?? sends.sendImageToMachine.mock.calls[0]?.[2] ?? ''
 
 
-describe('attaching in a chat on another machine (ADR 0053)', () => {
+describe('attaching in a chat on another machine', () => {
   const intake = () => renderHook(() => useAttachmentIntake({ conversation: 7, blocked: null, machine: 'build-box' }))
 
   it('sends a picked file there and keeps the far-side path as the attachment, never the local copy', async () => {

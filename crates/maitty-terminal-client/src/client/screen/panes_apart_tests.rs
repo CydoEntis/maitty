@@ -206,7 +206,7 @@ fn every_split() -> impl Iterator<Item = (String, App, Buffer)> {
 fn no_pane_has_a_title_in_any_look() {
     for (label, app, buf) in every_split() {
         // A lone pane's top row is its terminal's first line; a split's is its edge. In Floating the
-        // first pane's top border carries the tabs (ADR 0038), which are words.
+        // first pane's top border carries the tabs, which are words.
         let first = app
             .screen
             .leaf_rects

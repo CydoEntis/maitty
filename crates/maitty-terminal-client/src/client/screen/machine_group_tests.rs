@@ -489,7 +489,7 @@ fn the_hairline_look_wraps_the_reason_too() {
     assert_eq!(rows[since + 1..since + 1 + reason.len()], reason[..]);
 }
 
-// ---- the sidebar's Local and Remote halves (ADR 0050) -------------------------------------------
+// ---- the sidebar's Local and Remote halves -------------------------------------------
 
 /// The sidebar's rows as text at 100×30, the first 30 columns.
 fn sidebar_text(app: &mut App) -> String {

@@ -33,7 +33,7 @@ type PageProps = {
   onOpenSession: (id: string) => void
 }
 
-/** Settings › Usage & cost (v18 D.7): what agents reported using, by session, from the daemon's usage store (ADR 0051). */
+/** Settings › Usage & cost (v18 D.7): what agents reported using, by session, from the daemon's usage store (ADR 0009). */
 export function UsagePage({ budget, onBudget, sessionForTerm, onOpenSession }: PageProps) {
   const [period, setPeriod] = useState<UsagePeriod>('week')
 

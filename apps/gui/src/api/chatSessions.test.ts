@@ -8,7 +8,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   isTauri: vi.fn(),
 }))
 
-// Chat sessions (ADR 0054): structured conversations the daemon owns, listed beside terminal sessions.
+// Chat sessions (ADR 0003): structured conversations the daemon owns, listed beside terminal sessions.
 describe('chat sessions', () => {
   beforeEach(() => {
     vi.mocked(isTauri).mockReturnValue(true)

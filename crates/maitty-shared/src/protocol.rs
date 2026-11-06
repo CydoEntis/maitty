@@ -61,7 +61,7 @@ pub struct ConversationSummary {
     #[serde(default)]
     pub archived: bool,
     /// The main checkout of the repository the conversation works in, so a chat session sits with its
-    /// project in a list (ADR 0054). Absent outside git.
+    /// project in a list (ADR 0003). Absent outside git.
     #[serde(default)]
     pub root: Option<PathBuf>,
     /// The branch checked out there.
@@ -70,7 +70,7 @@ pub struct ConversationSummary {
 }
 
 /// Which app a client is. A terminal session belongs to the app that started it, and only
-/// that app may list, type into or resize it (ADR 0045). Clients that don't say are terminal
+/// that app may list, type into or resize it (ADR 0004). Clients that don't say are terminal
 /// clients, which is what the terminal app has always been.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -189,7 +189,7 @@ pub enum Command {
     ConversationStart {
         target: crate::conversation::StartTarget,
         /// Start in a new checkout of the project at the target's folder, on this branch (a chat
-        /// session on a branch, ADR 0054). Only a new conversation takes one. A peer that
+        /// session on a branch, ADR 0003). Only a new conversation takes one. A peer that
         /// predates it would start in the main checkout instead, which is why the protocol
         /// version was raised with it.
         #[serde(default)]
@@ -1747,7 +1747,7 @@ mod tests {
             summary.execution,
             crate::conversation::ExecutionKind::Structured
         );
-        // `root` and `branch` (a chat session's project, ADR 0054) are defaulted too.
+        // `root` and `branch` (a chat session's project, ADR 0003) are defaulted too.
         assert_eq!((summary.root, summary.branch), (None, None));
     }
 

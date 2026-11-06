@@ -67,7 +67,7 @@ pub(in crate::client) fn pane_frame(
             ink.bg,
         );
     }
-    // A tab's only pane has no rule: the tab row over it names it (ADR 0030).
+    // A tab's only pane has no rule: the tab row over it names it.
     if lone_pane(app, term) {
         fill(buf, body, surface);
         return body;

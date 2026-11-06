@@ -58,7 +58,7 @@ type Props = {
   root?: string | null
   /** Opens a file's diff in the Changes panel; absent where there is none. */
   onOpenDiff?: ((file: string) => void) | null
-  /** Types into the terminal the agent runs in, for a chat that follows it (ADR 0056). */
+  /** Types into the terminal the agent runs in, for a chat that follows it (ADR 0003). */
   typeInto?: ((text: string) => Promise<void>) | undefined
 }
 
@@ -89,7 +89,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not send your answer')) })
       .finally(() => { setAnswering(false) })
   }, [link.conversation, link.generation, refresh])
-  // A chat that follows a terminal pane is answered in that terminal (ADR 0052), so it offers no buttons.
+  // A chat that follows a terminal pane is answered in that terminal (ADR 0003), so it offers no buttons.
   const approval = useMemo(() => (online && link.readOnly !== true ? { answer, answerInput, busy: answering } : null), [online, link.readOnly, answer, answerInput, answering])
 
   // An approval's link to its tool step scrolls the list there; the nonce makes a second click on the same link scroll again.

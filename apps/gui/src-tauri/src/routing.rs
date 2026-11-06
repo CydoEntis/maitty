@@ -1,4 +1,4 @@
-//! Which machine a request goes to and what the host may take for an answer (ADR 0048). The
+//! Which machine a request goes to and what the host may take for an answer (ADR 0007). The
 //! window names a pane by its machine and its number; a request for a pane of another machine
 //! goes down that machine's line, and the daemon on it is someone else's computer, so a reply or
 //! an error from it counts only while the host has a request out to it.

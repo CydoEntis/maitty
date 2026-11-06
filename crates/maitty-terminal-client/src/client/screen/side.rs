@@ -1,5 +1,5 @@
 //! The sidebar card: projects, their sessions in one to three lines each, and the lines they
-//! are drawn from. Its cards are held to the sidebar handoff (ADR 0050).
+//! are drawn from. Its cards are held to the sidebar handoff.
 
 use super::check;
 use super::glyphs::Kind as State;

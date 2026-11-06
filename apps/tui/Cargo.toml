@@ -6,7 +6,7 @@ description = "All agents on deck: run many coding agents side by side, see whic
 license = "MIT"
 build = "build.rs"
 
-# The app's name lives here and nowhere else (ADR 0019): the package name above is the command,
+# The app's name lives here and nowhere else (ADR 0008): the package name above is the command,
 # and build.rs hands these to the code as APP_NAME, APP_TAGLINE, APP_COMMAND, APP_ENV and
 # APP_PREVIOUS.
 [package.metadata.brand]

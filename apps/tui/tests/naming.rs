@@ -1,4 +1,4 @@
-//! The app's name lives in `Cargo.toml` (ADR 0019): code, adapters and comments name their parts
+//! The app's name lives in `Cargo.toml` (ADR 0008): code, adapters and comments name their parts
 //! by role and take the name from `brand`, so a rename is that file and the docs. Names the app
 //! had before may appear only where it carries over what an old install left behind.
 

@@ -1,5 +1,5 @@
 //! `<app> secret run <reference> --env NAME -- <command>`: run one command with a secret in its
-//! environment (ADR-0036). The reference came from `<app>_request_secret`; it works once, so the
+//! environment (ADR 0006). The reference came from `<app>_request_secret`; it works once, so the
 //! value reaches nothing but this command: not the chat, not a file, not our output.
 
 use super::{block_on, request};

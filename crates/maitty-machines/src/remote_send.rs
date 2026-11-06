@@ -1,5 +1,5 @@
 //! Sending a pasted image, or any file, to another machine over its own hardened ssh line
-//! (ADR 0049, 0055), shared by the terminal app and the desktop app. The caller runs it off its
+//! (ADR 0007, 0055), shared by the terminal app and the desktop app. The caller runs it off its
 //! UI thread: the upload takes a while. It returns the file's path on the far side, already
 //! checked by `remote_paste::pasted_path`; typing that path into a pane is the caller's job.
 
@@ -62,7 +62,7 @@ pub fn upload_image(machine: &Machine, name: &str, png: &Path) -> Result<String,
 
 /// Send the image file at `image` to `machine`, kept there as `image.<extension>` so a JPEG is
 /// not named `.png`. `extension` is cleaned like any name. Like `send_file` it reports bytes sent
-/// and can be cancelled through `watch`, but it has the image's cap and time limit (ADR 0049).
+/// and can be cancelled through `watch`, but it has the image's cap and time limit (ADR 0007).
 pub fn send_image(
     machine: &Machine,
     name: &str,

@@ -1,4 +1,4 @@
-//! Sending a file from this computer to the machine the focused pane is on (ADR 0055). The leader
+//! Sending a file from this computer to the machine the focused pane is on (ADR 0007). The leader
 //! key opens a prompt for the file's path (a file dropped on the terminal pastes its path into
 //! it); the upload runs off the UI thread over the machine's own ssh line (`remote_image`), shows
 //! its progress in a toast, and can be stopped by the same key or by closing the toast. When it

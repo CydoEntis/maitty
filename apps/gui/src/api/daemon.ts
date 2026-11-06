@@ -329,7 +329,7 @@ export function conversationsFromSnapshot(raw: unknown, machine?: SnapshotMachin
     })
     : []
   // A terminal session has a chat when the daemon holds a conversation whose native terminal is that pane.
-  // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0052).
+  // The daemon only follows an agent the user started there, so that chat is read-only (ADR 0003).
   const chatOf = new Map(summaries.flatMap((summary) => (summary.native_term === null ? [] : [[summary.native_term, { conversation: summary.id, generation: summary.generation, ...(summary.execution === 'Native' ? { readOnly: true } : {}) }] as const])))
   const listed = Object.values(snapshot.terms)
     .flatMap((term) => {
@@ -393,8 +393,8 @@ function readTerminal(raw: unknown, machine: number): TerminalSession | null {
 export { terminalOf, terminalSessionId }
 
 // A terminal this app can show as a session: a shell (with or without an agent running in it) in
-// a pane of its own, not a chat's terminal, a popup, or another machine's (ADR 0046). The daemon
-// already leaves out panes another app owns (ADR 0045).
+// a pane of its own, not a chat's terminal, a popup, or another machine's. The daemon
+// already leaves out panes another app owns (ADR 0004).
 function isTerminalSession(term: TerminalSession): boolean {
   return term.conversation_id === null && !term.popup && term.remote === null
 }
@@ -800,7 +800,7 @@ export async function archiveConversationOnDaemon(conversation: Pick<Conversatio
 /**
  * Closing a chat session in the window ends it, as closing a terminal session ends its program: the
  * agent is stopped first (its record stays, so the history can be read) and then the session is put
- * away (ADR 0054). If the agent cannot be stopped nothing is put away, so a session the user believes
+ * away (ADR 0003). If the agent cannot be stopped nothing is put away, so a session the user believes
  * ended is never left running out of sight.
  */
 export async function closeChatSession(conversation: Conversation): Promise<void> {
@@ -824,9 +824,9 @@ export async function createConversation(
 
 /**
  * Starts a chat session: a Claude or Codex conversation the daemon owns, in `folder` or, with a
- * `branch`, in a new checkout of the project at `folder` (ADR 0054). It always asks before a tool
+ * `branch`, in a new checkout of the project at `folder` (ADR 0003). It always asks before a tool
  * use the provider does not allow by itself, unless `fullAccess` asks for the provider's own
- * skip-permissions mode (no sandbox, no prompts; ADR 0043 and 0054).
+ * skip-permissions mode (no sandbox, no prompts; ADR 0005 and 0054).
  */
 export async function startChatSession(folder: string, agent: 'claude' | 'codex', branch: string | null = null, fullAccess = false): Promise<{ id: number; generation: number }> {
   return invokeParsed('start_chat_session', CreatedConversationSchema, {
@@ -837,7 +837,7 @@ export async function startChatSession(folder: string, agent: 'claude' | 'codex'
   })
 }
 
-/** Starts a plain shell in a folder; the user types what to run (ADR 0046). */
+/** Starts a plain shell in a folder; the user types what to run. */
 export async function startShellSession(folder: string): Promise<void> {
   await invokeParsed('start_shell_session', NullSchema, { cwd: folder })
 }
@@ -913,7 +913,7 @@ function toConversation(summary: ConversationSummary, workspaces: WorkspaceSumma
           : 'idle'
   const project = cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Project'
   // A chat session is a conversation the daemon started itself: it has no terminal, and the window writes to it
-  // (ADR 0054). A followed pane's conversation is read-only and belongs to that pane, so it is not one.
+  // (ADR 0003). A followed pane's conversation is read-only and belongs to that pane, so it is not one.
   const chatSession = summary.execution === 'Structured' && summary.native_term === null
   const root = summary.root
 

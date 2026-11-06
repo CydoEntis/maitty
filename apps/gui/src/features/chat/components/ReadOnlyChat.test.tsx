@@ -36,7 +36,7 @@ afterEach(() => {
   fake.current = null
 })
 
-describe('a chat that follows an agent started in the terminal (ADR 0052)', () => {
+describe('a chat that follows an agent started in the terminal (ADR 0003)', () => {
   it('shows the history, turns the composer off with the reason, and offers no Stop while the agent works', async () => {
     const daemon = new FakeDaemonHistory()
     daemon.upsert(daemon.message('t1', 'u', 'User', 'earlier'))

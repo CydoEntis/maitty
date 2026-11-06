@@ -237,7 +237,7 @@ pub enum Action {
     /// Save the clipboard's image to a file and paste its path (agents attach it).
     PasteImage,
     /// Send a file from this computer to the machine the pane is on, and paste its path there;
-    /// pressed again while a file is being sent, stop it (ADR 0055).
+    /// pressed again while a file is being sent, stop it (ADR 0007).
     SendFile,
     /// Find a file (0) or search the code (1).
     Find(u8),
@@ -560,8 +560,8 @@ impl FromStr for Action {
     }
 }
 
-/// Bindings in shortcut mode (after the leader), ADR 0017: one key each, none needing Shift
-/// but `?` for all keys (ADR 0022), chosen from what other apps use. Copy mode, hide sidebar,
+/// Bindings in shortcut mode (after the leader): one key each, none needing Shift
+/// but `?` for all keys, chosen from what other apps use. Copy mode, hide sidebar,
 /// prompt jumps, new worktree, rename workspace and send-prefix have no default key; search
 /// commands finds them.
 pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
@@ -929,7 +929,7 @@ mod tests {
     /// Characters a US keyboard types only with Shift.
     const SHIFTED: &str = "~!@#$%^&*()_+{}|:\"<>?";
 
-    /// The one default that needs Shift, at the user's request (ADR 0022).
+    /// The one default that needs Shift, at the user's request.
     const SHIFTED_ALLOWED: &[(&str, &str)] = &[("?", "help")];
 
     #[test]

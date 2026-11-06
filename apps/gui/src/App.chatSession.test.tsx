@@ -9,7 +9,7 @@ import { forgetChatFeeds } from './features/chat/useChatFeed'
 import { forgetComposers } from './features/chat/composerStore'
 import { forgetOperations } from './features/chat/sendOperation'
 
-// A chat session (ADR 0054) in the desktop window: a structured conversation the daemon owns, listed
+// A chat session (ADR 0003) in the desktop window: a structured conversation the daemon owns, listed
 // beside terminal sessions, with a chat that can be written to and no terminal.
 
 const daemon = vi.hoisted(() => ({

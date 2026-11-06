@@ -518,7 +518,7 @@ async fn end_conversation(
         .map_err(|error| format!("{error:#}"))
 }
 
-/// A chat session (ADR 0054): a structured Claude or Codex conversation the daemon owns, in `cwd` or,
+/// A chat session (ADR 0003): a structured Claude or Codex conversation the daemon owns, in `cwd` or,
 /// with `branch`, in a new worktree of the project at `cwd`. The session asks before a tool use the
 /// provider does not allow by itself, unless `full_access` is true (the provider's skip-permissions mode).
 #[tauri::command]

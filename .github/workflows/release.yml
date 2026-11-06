@@ -1,6 +1,6 @@
 # Builds the app for every platform when a version tag (v1.2.3) is pushed, and attaches the
 # archives and their checksums to a GitHub Release. The install scripts download from it.
-# The command name lives in apps/tui/Cargo.toml (ADR 0019).
+# The command name lives in apps/tui/Cargo.toml (ADR 0008).
 name: release
 
 on:

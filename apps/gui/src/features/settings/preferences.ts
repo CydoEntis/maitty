@@ -56,7 +56,7 @@ export type SettingsPreferences = {
   terminalFontFamily: string
   terminalFontWeight: TerminalFontWeight
   terminalFontWeightBold: TerminalFontWeight
-  /** Where a new session starts. Empty: your home folder (ADR 0046). */
+  /** Where a new session starts. Empty: your home folder. */
   startFolder: string
   /** How the sidebar groups sessions: by git repository, or by the folder they are in. */
   groupBy: 'repo' | 'folder'

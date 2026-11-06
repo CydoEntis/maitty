@@ -3,7 +3,7 @@
 //! Both halves are pure functions of strings, so a Windows, Linux or macOS client builds the
 //! same remote command. The remote command is read by the remote user's login shell (bash,
 //! zsh, fish or sh), never by the client's shell, so it is quoted for a POSIX shell whatever
-//! the client runs. The machine is untrusted (ADR 0047): a host or `remote_cmd` must not
+//! the client runs. The machine is untrusted (ADR 0007): a host or `remote_cmd` must not
 //! become an ssh option or extra shell code.
 
 use self::SshCommandError::*;
@@ -259,7 +259,7 @@ pub(crate) fn ssh_argv_install(
     Ok(build(ssh, target, remote, Shape::PROXY))
 }
 
-/// The longest name a pasted or sent file may have: the 28-character stamp and salt (ADR 0055)
+/// The longest name a pasted or sent file may have: the 28-character stamp and salt (ADR 0007)
 /// and the 48 kept of the original name fit with room to spare.
 const PASTE_NAME_MAX: usize = 96;
 

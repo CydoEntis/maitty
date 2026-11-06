@@ -106,7 +106,7 @@ pub enum Ev {
         token: u64,
         result: Result<conversation::transport::Launch, String>,
     },
-    /// A background read of a followed pane's transcript finished (ADR 0052).
+    /// A background read of a followed pane's transcript finished (ADR 0003).
     FollowRead(Box<conversation::follow::Done>),
     ConversationStorage {
         id: crate::conversation::ConversationId,
@@ -151,7 +151,7 @@ pub enum Ev {
         set_up: bool,
         result: Result<(PathBuf, String), String>,
     },
-    /// The worktree a chat session on a branch starts in is made (or failed): start it, ADR 0054.
+    /// The worktree a chat session on a branch starts in is made (or failed): start it, ADR 0003.
     ChatWorktreeCreated {
         client: ClientId,
         settings: crate::conversation::LaunchSettings,
@@ -415,7 +415,7 @@ struct Daemon {
     spent: Vec<(u64, f64, String, String)>,
     /// Turns agents finished over the last day: (when, agent, folder, seconds working).
     turns: Vec<(u64, String, String, u64)>,
-    /// Provider-reported usage per session per day, kept on disk (ADR 0051).
+    /// Provider-reported usage per session per day, kept on disk (ADR 0009).
     usage_store: usage_store::UsageStore,
     codex_busy: bool,
     last_codex: Instant,
@@ -2620,7 +2620,7 @@ impl Daemon {
     }
 
     /// The state one app is shown: its own terminal sessions, the workspaces made of them, and
-    /// its own native conversation terminals (ADR 0045).
+    /// its own native conversation terminals (ADR 0004).
     fn snapshot_for(&self, surface: Surface) -> Snapshot {
         let mut snap = self.snapshot();
         snap.terms.retain(|id, _| self.shown_to(*id, surface));

@@ -504,7 +504,7 @@ pub async fn pane_terminal_resize(
 }
 
 /// A live stream of the terminal panes this app owns: each pane's replay, then its output as
-/// it happens. Pushed by the daemon, so the window never polls (ADR 0045).
+/// it happens. Pushed by the daemon, so the window never polls (ADR 0004).
 pub struct TerminalStream {
     reader: ipc::Reader,
 }
@@ -553,7 +553,7 @@ pub async fn open_terminal_stream(
     Ok((TerminalStream { reader }, TerminalInput { writer }))
 }
 
-/// Start a plain shell in a folder. The user types what they want to run in it (ADR 0046).
+/// Start a plain shell in a folder. The user types what they want to run in it.
 pub async fn start_shell_session(cwd: PathBuf, daemon_executable: PathBuf) -> Result<Value> {
     let cwd = cwd.canonicalize().context("resolving the start folder")?;
     if !cwd.is_dir() {
@@ -1027,7 +1027,7 @@ impl Permissions {
 }
 
 /// The posture of a chat session: it asks before a tool use the provider does not allow by itself,
-/// unless the caller asks for the provider's own skip-permissions mode (ADR 0043, ADR 0054).
+/// unless the caller asks for the provider's own skip-permissions mode (ADR 0005, ADR 0003).
 fn chat_session_permissions(full_access: bool) -> Permissions {
     if full_access {
         Permissions::FullAccess
@@ -1036,7 +1036,7 @@ fn chat_session_permissions(full_access: bool) -> Permissions {
     }
 }
 
-/// Start a chat session: a structured conversation the daemon owns (ADR 0054). With `full_access` the
+/// Start a chat session: a structured conversation the daemon owns (ADR 0003). With `full_access` the
 /// provider runs unsandboxed and without approvals; there is no other posture to choose. With a
 /// `branch` the daemon makes a worktree for it from the project at `cwd` and starts there.
 pub async fn start_chat_session(

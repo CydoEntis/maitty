@@ -127,7 +127,7 @@ pub struct Term {
     pub remote: Option<String>,
     /// A floating pane (`<app> popup`), in no workspace.
     pub popup: bool,
-    /// The app that started it. Only that app may list, type into or resize it (ADR 0045).
+    /// The app that started it. Only that app may list, type into or resize it (ADR 0004).
     pub owner: Surface,
     pub agent: Option<String>,
     pub status: Status,

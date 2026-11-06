@@ -80,7 +80,7 @@ pub struct SavedPane {
     /// The pane that started it, by its id when this was saved (a key of some tab's `panes`).
     #[serde(default)]
     pub started_by: Option<TermId>,
-    /// The app that started it: only that app may use it after a restart (ADR 0045).
+    /// The app that started it: only that app may use it after a restart (ADR 0004).
     #[serde(default)]
     pub owner: crate::protocol::Surface,
     /// The session whose tab it is in, by its id when this was saved; none: its own.

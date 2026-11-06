@@ -1099,7 +1099,7 @@ mod screen_tests {
             "no logo"
         );
         // The grid: no margin, the sidebar and first pane start at the top edge, and the tab
-        // chips sit on the pane's top border (ADR 0038).
+        // chips sit on the pane's top border.
         assert!(
             lines[0].starts_with("┌─"),
             "the sidebar card from the very corner: {}",
@@ -3188,8 +3188,8 @@ mod screen_tests {
                     let title: String = (card.x..card.right())
                         .map(|x| buf[(x, card.y)].symbol())
                         .collect();
-                    // The tabs have their own row over the panes (ADR 0028).
-                    // Floating's tabs sit on the top border (ADR 0038): a row of one cell's height.
+                    // The tabs have their own row over the panes.
+                    // Floating's tabs sit on the top border: a row of one cell's height.
                     let row = Rect {
                         height: 1,
                         ..screen::grid(&app, buf.area).panes
@@ -3984,7 +3984,7 @@ mod screen_tests {
         app.on_key(key(KeyCode::Down));
         assert_eq!(app.screen.cursor, Some(first));
         draw(&mut app, 160, 45);
-        // No bare letter acts from the sidebar (ADR 0014): x is typing, it doesn't ask to close.
+        // No bare letter acts from the sidebar: x is typing, it doesn't ask to close.
         app.on_key(key(KeyCode::Char('x')));
         assert!(!matches!(&app.mode, Mode::Confirm(_)), "x closes nothing");
         app.screen_side_set(screen::SideItem::Sess(first));
@@ -4876,7 +4876,7 @@ mod screen_tests {
 
         assert!(
             !matches!(&app.mode, Mode::Confirm(_)),
-            "x does not even ask to close session {term:?} (ADR 0014)"
+            "x does not even ask to close session {term:?}"
         );
     }
 
@@ -6720,7 +6720,7 @@ second line
             assert!(o.contains(line), "the row's line at {w}x{h}");
             assert!(o.contains("● you"), "it needs you: its card says so");
         }
-        // Bare letters and digits do not answer from the sidebar (ADR 0014).
+        // Bare letters and digits do not answer from the sidebar.
         app.screen_side_set(screen::SideItem::Sess(ClientSession::local(
             SessionKey::Pane(2),
         )));
@@ -6967,7 +6967,7 @@ second line
         app.on_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE));
         assert!(
             !matches!(app.mode, Mode::Actions { .. }),
-            "a bare m does not open the menu from the sidebar (ADR 0014)"
+            "a bare m does not open the menu from the sidebar"
         );
         app.act(Action::Menu);
         assert!(
@@ -13880,7 +13880,7 @@ mod check_wiring_tests {
 
     #[test]
     fn the_sidebar_keys_act_on_the_rows_check_and_say_why_when_they_cant() {
-        // No bare letter acts from the sidebar (ADR 0014): r, O and u are typing, so they
+        // No bare letter acts from the sidebar: r, O and u are typing, so they
         // re-run, override and undo nothing.
         for (state, key) in [
             (CheckState::Failed, KeyCode::Char('r')),

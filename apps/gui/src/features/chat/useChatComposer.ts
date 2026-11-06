@@ -30,8 +30,8 @@ type Input = {
   /** Reads the conversation again now. */
   refresh: () => void
   /**
-   * Types into the terminal the agent runs in (ADR 0056). When given, a chat that only follows the
-   * agent (ADR 0052) has a working composer while the agent is idle: the message is pasted into the
+   * Types into the terminal the agent runs in (ADR 0003). When given, a chat that only follows the
+   * agent (ADR 0003) has a working composer while the agent is idle: the message is pasted into the
    * agent's own prompt, so the chat and the terminal are one session.
    */
   typeInto?: (text: string) => Promise<void>
@@ -44,7 +44,7 @@ export type ChatComposer = {
   attachments: readonly DraftAttachment[]
   /** Adding and removing them. */
   attach: AttachmentIntake
-  /** The chat only follows an agent running in the terminal (ADR 0052): there is nothing to attach to. */
+  /** The chat only follows an agent running in the terminal (ADR 0003): there is nothing to attach to. */
   readOnly: boolean
   /** What the daemon holds for the running turn, oldest first. */
   queue: readonly QueuedItem[]
@@ -135,7 +135,7 @@ export function useChatComposer({ link, feed, online, refresh, typeInto }: Input
 
   const submit = useCallback(() => {
     const text = draft.trim()
-    // A message may be only attachments; the block naming them is then the whole text (ADR 0053).
+    // A message may be only attachments; the block naming them is then the whole text.
     if ((text === '' && attachments.length === 0) || disabledReason !== null || sending) return
     const files = attachments
     updateComposer(conversation, (state) => ({ ...state, draft: '', attachments: [] }))

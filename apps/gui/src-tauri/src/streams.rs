@@ -1,6 +1,6 @@
 //! What the window is given of every machine's panes, in one place and without Tauri: each
 //! pane's history, its sequence number, each machine's last whole snapshot, and the coalescing
-//! that turns a pane's many small reads into one frame (ADR 0048).
+//! that turns a pane's many small reads into one frame (ADR 0007).
 //!
 //! A frame is the machine as 2 big-endian bytes, the pane as 4, the sequence number as 8, one
 //! byte that is 1 for a replay, then the output. `apps/gui/src/api/terminalStream.ts` decodes it.

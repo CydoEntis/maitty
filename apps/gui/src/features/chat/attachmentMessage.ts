@@ -1,7 +1,7 @@
 import type { AttachmentKind } from '@/api/attachments'
 
 /**
- * How attachments travel inside a message (ADR 0053). The daemon's send is text, so the message
+ * How attachments travel inside a message. The daemon's send is text, so the message
  * names each kept file by path in a block after the text; the agent reads the files with its own
  * tools. `buildAttachmentMessage` is the one place that makes the block, and `parseAttachmentMessage`
  * reads it back so a sent message shows chips, not paths. When the daemon takes a structured
@@ -27,7 +27,7 @@ export type SentAttachment = { readonly path: string; readonly name: string; rea
 /** Characters that are not text: control, format (zero-width, direction overrides) and separators. */
 const NOT_TEXT = /[\p{C}\p{Zl}\p{Zp}]/gu
 
-// A file kept on this computer is `attach-…`; one sent to another machine is `paste-…` (ADR 0055).
+// A file kept on this computer is `attach-…`; one sent to another machine is `paste-…` (ADR 0007).
 const KEPT_PREFIX = /^(?:attach|paste)-\d+-[0-9a-f]{8}-/
 const PASTED = /^paste-\d+-[0-9a-f]{8}(?:-image)?(\.[A-Za-z0-9]+)$/
 const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp)$/i

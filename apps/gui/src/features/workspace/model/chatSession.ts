@@ -2,7 +2,7 @@ import type { Conversation } from '@/data/preview'
 
 /**
  * A chat session is a conversation the daemon started itself as a structured Claude or Codex run
- * (ADR 0054). It has no terminal: the window shows its chat and nothing else, and writes to it.
+ * (ADR 0003). It has no terminal: the window shows its chat and nothing else, and writes to it.
  * A terminal session, and the read-only conversation that follows an agent in a pane, are not one.
  */
 export function isChatSession(conversation: Pick<Conversation, 'kind' | 'execution' | 'chat'>): boolean {

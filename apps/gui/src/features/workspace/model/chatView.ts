@@ -2,7 +2,7 @@
  * Which view a pane shows, the terminal or the chat (v18 B.3), and whether a session has a chat to
  * show at all. Pure: the window keeps the choices, this decides what they mean.
  *
- * The chat reads the daemon's structured events (ADR 0036), never the terminal's text. So a session
+ * The chat reads the daemon's structured events (ADR 0006), never the terminal's text. So a session
  * has a chat only when the daemon holds a conversation for it, and only for the agents that speak
  * an event stream: Claude Code and Codex. Any other agent, and a plain shell, stay terminal-only.
  */
@@ -22,11 +22,11 @@ export type ChatLink = {
   readonly conversation: number
   readonly generation: number
   /**
-   * The conversation follows an agent the user started in the terminal (ADR 0052): the chat shows what
+   * The conversation follows an agent the user started in the terminal (ADR 0003): the chat shows what
    * it did, but sending, answering and interrupting happen in the terminal.
    */
   readonly readOnly?: boolean
-  /** The machine the agent runs on, so attachments are sent there (ADR 0053); absent for this computer. */
+  /** The machine the agent runs on, so attachments are sent there; absent for this computer. */
   readonly machine?: string | null
 }
 

@@ -124,7 +124,7 @@ pub struct Options {
 #[derive(Debug, Clone, PartialEq)]
 enum Mode {
     Normal,
-    /// Shortcut mode (ADR 0016): each key runs its leader action and the mode stays.
+    /// Shortcut mode: each key runs its leader action and the mode stays.
     /// `acted`: a shortcut has run, so the key map no longer opens on a pause.
     Prefix {
         since: Instant,
@@ -290,7 +290,7 @@ fn cursor_code(program: Option<u8>, ui: &crate::config::Ui) -> u8 {
     }
 }
 
-/// Say once that the config file named a retired look (ADR 0027), and write what stands for it
+/// Say once that the config file named a retired look, and write what stands for it
 /// into the file, so it is not said again.
 fn settle_retired_layout(app: &mut App) {
     let Some(r) = app.cfg.ui.retired_layout.take() else {
@@ -437,7 +437,7 @@ enum PromptKind {
     ConfirmRemoveWorktree(WsId),
     /// A file to copy into the project's references: (project root, folder a relative path starts from).
     AddReference(PathBuf, PathBuf),
-    /// A file on this computer to send to the machine this pane is on (ADR 0055).
+    /// A file on this computer to send to the machine this pane is on (ADR 0007).
     SendFile(ClientTerm),
 }
 
@@ -512,7 +512,7 @@ pub struct App {
     notice_restart: bool,
     /// The toast is a hint about keys, not news: it is marked `i`, not ✓.
     notice_hint: bool,
-    /// The file being sent to another machine, if any (ADR 0055).
+    /// The file being sent to another machine, if any (ADR 0007).
     sending: Option<send_file::Sending>,
     /// The toast's second and third rows, when the notice has them.
     notice_card: Option<NoticeCard>,

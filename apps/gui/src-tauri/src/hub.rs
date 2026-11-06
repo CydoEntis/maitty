@@ -1,4 +1,4 @@
-//! The host's connections to other machines (ADR 0048). One supervisor per configured machine
+//! The host's connections to other machines (ADR 0007). One supervisor per configured machine
 //! keeps its line up through `maitty-machines`; this takes what the supervisors and the lines
 //! report and decides what the host may act on. The web view never connects.
 //!
@@ -39,7 +39,7 @@ pub type LocalDial = Arc<
 const LOCAL_REDIAL: Duration = Duration::from_secs(1);
 
 /// What a connection says about the host in its Hello: it attaches to the panes this app owns
-/// (ADR 0045) and asks for a pane's replay when a view opens on it. A desktop has no pane of
+/// (ADR 0004) and asks for a pane's replay when a view opens on it. A desktop has no pane of
 /// its own, so there is no claim to make.
 fn dial() -> anyhow::Result<Dial> {
     Ok(Dial {

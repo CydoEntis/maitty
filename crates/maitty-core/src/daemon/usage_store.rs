@@ -1,4 +1,4 @@
-//! The durable record of what agents reported using, per session per day (ADR 0051).
+//! The durable record of what agents reported using, per session per day (ADR 0009).
 //!
 //! Only what Claude Code and Codex themselves report goes in: tokens, cost, and the turns and
 //! working time the daemon itself observed. Nothing is estimated, and a subscription session

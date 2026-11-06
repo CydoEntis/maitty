@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { z } from 'zod'
 
 /**
- * Machines, as the window knows them (ADR 0048): a name, and a number the host gave it for this
+ * Machines, as the window knows them (ADR 0007): a name, and a number the host gave it for this
  * run. The number is what the host's commands take; the name is what the window shows and what a
  * saved layout keeps, because the number changes whenever the machine list does. This computer is
  * machine 0 and has no name in a session's id.

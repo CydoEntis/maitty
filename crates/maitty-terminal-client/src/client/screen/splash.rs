@@ -4,7 +4,7 @@
 use super::*;
 use crate::theme::mix;
 
-/// 5-row block letters for the app's name, whatever it is (ADR 0019): A–Z, 0–9 and a space;
+/// 5-row block letters for the app's name, whatever it is (ADR 0008): A–Z, 0–9 and a space;
 /// `#` is a lit pixel. One empty column sits between letters; anything else is left out.
 const FONT: [(char, [&str; 5]); 37] = [
     ('A', [".##.", "#..#", "####", "#..#", "#..#"]),
@@ -316,7 +316,7 @@ pub(super) fn release_news(app: &App) -> Option<(String, &'static str, ScreenHit
 /// Rows the release banner takes: its box and a blank row under it.
 const BANNER_ROWS: u16 = 4;
 
-/// The release banner at `r`: boxed as the look boxes a pane (ADR 0028), the news in the accent
+/// The release banner at `r`: boxed as the look boxes a pane, the news in the accent
 /// and `u` with what it does at the right; a click on it does the same.
 fn draw_banner(
     app: &mut App,

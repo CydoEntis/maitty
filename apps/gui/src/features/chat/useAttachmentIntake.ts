@@ -25,8 +25,8 @@ type Input = {
   blocked: string | null
   /**
    * The machine the agent runs on, or null for this computer. For a machine the files are sent there
-   * (`send_files_to_machine` / `send_pasted_image`, ADR 0055) and the far-side path goes in the message
-   * (ADR 0053).
+   * (`send_files_to_machine` / `send_pasted_image`, ADR 0007) and the far-side path goes in the message
+   *.
    */
   machine?: string | null
 }

@@ -1,4 +1,4 @@
-//! A read-only conversation for an agent a user started in a pane (ADR 0052).
+//! A read-only conversation for an agent a user started in a pane (ADR 0003).
 //!
 //! The pane stays an ordinary pane. The daemon follows the transcript its own status hooks named
 //! (Claude's `<session>.jsonl`, Codex's `rollout-…-<session>.jsonl`), turns it into the same
@@ -359,7 +359,7 @@ impl Daemon {
             .iter()
             .find(|f| f.id == id)
             .ok_or_else(|| anyhow::anyhow!("No such conversation"))?;
-        // Only the app that owns the pane may read what its agent did (ADR 0045).
+        // Only the app that owns the pane may read what its agent did (ADR 0004).
         anyhow::ensure!(
             self.shown_to(follower.term, self.surface_of(client)),
             "No such conversation"

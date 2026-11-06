@@ -1,4 +1,4 @@
-//! Installing and updating the app on another machine (ADR 0047, D6 and D8): what the probe
+//! Installing and updating the app on another machine (ADR 0007, D6 and D8): what the probe
 //! of the far side means, whether to go ahead, and the one script that puts a binary there.
 //!
 //! Everything here is a pure function of strings and numbers, so every client OS checks the

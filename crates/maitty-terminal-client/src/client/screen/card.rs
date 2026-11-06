@@ -76,11 +76,11 @@ pub(in crate::client) fn pane_bg(t: &Theme) -> Color {
 /// How the cards are laid out and drawn, from the settings.
 #[derive(Clone, Copy)]
 pub(in crate::client) struct Look {
-    /// Pane colours: each pane a box in its own colour (Floating only, ADR 0027).
+    /// Pane colours: each pane a box in its own colour (Floating only).
     pub pane_colors: bool,
     /// Leave a border cell between tab chips (`ui.tab_gap`).
     pub tab_gap: bool,
-    /// Hairline: no boxes, only `│` / `─` hairlines, and always square (ADR 0026). Drawing
+    /// Hairline: no boxes, only `│` / `─` hairlines, and always square. Drawing
     /// asks this, and takes its colours from `hairline::Ink`.
     pub hairline: bool,
     pub rounded: bool,

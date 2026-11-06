@@ -1,4 +1,4 @@
-//! Terminal output on a socket the web view reads itself (ADR 0057).
+//! Terminal output on a socket the web view reads itself (ADR 0004).
 //!
 //! A Tauri channel is delivered through the host's main loop, and on Linux the web view did not
 //! run a message the host had sent until the window next got an event: every pane ran one step

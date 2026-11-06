@@ -33,7 +33,7 @@ fn world(stage: Stage) -> App {
     app
 }
 
-/// The row a lone pane's top border is on: under the tab row, which is level with the sidebar's top edge (ADR 0035).
+/// The row a lone pane's top border is on: under the tab row, which is level with the sidebar's top edge.
 fn pane_y(_: Layout) -> u16 {
     0
 }

@@ -1,4 +1,4 @@
-//! The mode bar along the bottom of the screen (ADR 0024): which mode the keys are in, always in
+//! The mode bar along the bottom of the screen: which mode the keys are in, always in
 //! view: in shortcut mode what the keys do, read from the keymap so a rebinding shows, and when
 //! something else has the keys, what it is and how to use and leave it.
 

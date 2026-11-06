@@ -20,8 +20,8 @@ const TOAST_MS = 4000
 export const PLAIN_TOAST = { description: undefined, action: undefined, dismissible: true, closeButton: true, duration: TOAST_MS } as const
 
 /**
- * The progress toast of a send to another machine, with Cancel (ADR 0055). A pane's drop and a chat
- * attachment (ADR 0053) show the same toast; the toast is named by `transfer`, so each update replaces it.
+ * The progress toast of a send to another machine, with Cancel (ADR 0007). A pane's drop and a chat
+ * attachment show the same toast; the toast is named by `transfer`, so each update replaces it.
  */
 export function showSendProgress(transfer: string, send: SendToastState, index: number, percent: number | null): void {
   const where = send.count > 1 ? ` (${String(index + 1)} of ${String(send.count)})` : ''

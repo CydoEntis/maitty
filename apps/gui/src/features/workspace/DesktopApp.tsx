@@ -201,7 +201,7 @@ function useSystemDark(): boolean {
 }
 
 /**
- * The desktop app: a terminal multiplexer window over sessions maittyd owns (ADR 0046). Tabs and
+ * The desktop app: a terminal multiplexer window over sessions maittyd owns. Tabs and
  * splits are this window's arrangement; closing them only detaches.
  */
 /** What restarting an older service does to the sessions it owns, in words. */
@@ -305,7 +305,7 @@ export function DesktopApp() {
   const mismatch = sessionsQuery.isError ? daemonProtocolMismatch(sessionsQuery.error) : null
   const restartStatusQuery = useQuery({ queryKey: ['daemon-restart-status', mismatch?.daemonProtocol], queryFn: loadDaemonRestartStatus, enabled: Boolean(mismatch), retry: false })
 
-  // Other machines (ADR 0048): the host holds their connections and tells the window each one's state
+  // Other machines (ADR 0007): the host holds their connections and tells the window each one's state
   // and, when it changes, the sessions it lists. The window never connects.
   const [machines, setMachines] = useState<ReadonlyMap<number, RemoteMachine>>(new Map())
   const machinesRef = useRef(machines)
@@ -400,7 +400,7 @@ export function DesktopApp() {
     }
   }, [])
   const everySession = useMemo(() => {
-    // Terminal sessions, and the chat sessions the daemon owns that are not put away (ADR 0054).
+    // Terminal sessions, and the chat sessions the daemon owns that are not put away (ADR 0003).
     const terminals = (sessionsQuery.data ?? []).filter((item) => item.kind === 'terminal' || isListedChatSession(item))
     const here = online ? terminals : markConversationsDisconnected(terminals)
     return [...here, ...remoteTerminals(machines)].map((conversation) => toSessionView(conversation, home))
@@ -459,7 +459,7 @@ export function DesktopApp() {
   })
   // Files dropped on a pane type their paths into it; the pane under the pointer, else the focused one.
   // On another machine's pane a path here names nothing there, so the files are sent to it and the
-  // paths they land at are typed instead (ADR 0055).
+  // paths they land at are typed instead (ADR 0007).
   useFileDrop((paths, at) => {
     const under = document.elementFromPoint(at.x, at.y)
     // A drop on a chat composer attaches the files to its message; it is not a drop on the pane around it (ticket 20).
@@ -810,7 +810,7 @@ export function DesktopApp() {
 
   // A new session is the default agent, running in a terminal the daemon owns, shown as its chat or
   // as its terminal as Settings says. It is one session either way: the view can be switched at any
-  // time without restarting the agent (ADR 0056). A plain shell is `runStart` and has no chat view.
+  // time without restarting the agent (ADR 0003). A plain shell is `runStart` and has no chat view.
   const startAgentSession = useCallback((folder: () => Promise<string>) => {
     const agent = preferences.defaultAgent
     const view = preferences.newSessionView
@@ -1452,7 +1452,7 @@ export function DesktopApp() {
   // the daemon (below), which decides it once per event; diffing statuses here as well would alert twice.
   useEffect(() => {
     const previousStatuses = lastStatuses.current
-    // What another machine's agents do raises no system notice unless its entry says notices = true (ADR 0007).
+    // What another machine's agents do raises no system notice unless its entry says notices = true.
     const mine = sessions.filter((item) => item.machine === LOCAL_MACHINE || machines.get(item.machine)?.state.notices === true)
     const chats = mine.filter((item) => isChatSession(item.conversation))
     const notices = online

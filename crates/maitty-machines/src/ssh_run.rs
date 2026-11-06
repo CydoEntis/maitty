@@ -19,7 +19,7 @@ pub const ASK_LIMIT: Duration = Duration::from_secs(30);
 pub const UPLOAD_LIMIT: Duration = Duration::from_secs(15 * 60);
 
 /// What the caller can see and do while a long send runs: how many bytes have gone into the
-/// line, and a flag that ends it (ADR 0055).
+/// line, and a flag that ends it (ADR 0007).
 #[derive(Clone, Default)]
 pub struct Watch {
     /// The size being sent, set once the sender knows it.

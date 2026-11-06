@@ -1,5 +1,5 @@
 //! `<app> machine update <name>`: install or update the app on a configured machine over ssh
-//! (ADR 0047, D8). It looks first (the machine's platform, the version there), says what it
+//! (ADR 0007, D8). It looks first (the machine's platform, the version there), says what it
 //! found, and installs nothing without a yes. The binary is this computer's own when the
 //! platform matches, else the release fetched here and checked; it is streamed through ssh to
 //! a fixed script that swaps it in only after it has arrived whole and run. The far side's

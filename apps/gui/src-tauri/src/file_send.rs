@@ -1,4 +1,4 @@
-//! Sending files dropped on a pane of another machine (ADR 0055). The window hands the host the
+//! Sending files dropped on a pane of another machine (ADR 0007). The window hands the host the
 //! paths the operating system gave on the drop and the machine's name; the host checks them,
 //! sends them one after another over the machine's own ssh line (`maitty-machines`' `remote_send`,
 //! the runner the terminal app uses), and tells the window how it goes as `file-send` events.
@@ -20,7 +20,7 @@ use tauri::{Emitter, Manager};
 /// The event the window follows.
 pub const FILE_SEND_EVENT: &str = "file-send";
 
-/// The most files one drop may send (ADR 0055).
+/// The most files one drop may send (ADR 0007).
 pub const MOST_FILES: usize = 10;
 
 /// The longest id the window may name a send by.
@@ -53,7 +53,7 @@ pub enum SendEvent {
         index: usize,
         count: usize,
         remote_path: String,
-        /// The size of the file that was sent, for a chip that shows it (a chat attachment, ADR 0053).
+        /// The size of the file that was sent, for a chip that shows it (a chat attachment).
         bytes: u64,
     },
     /// A file could not be sent; the ones after it were not tried.
@@ -77,9 +77,9 @@ pub enum SendEvent {
 /// What a send carries. The same runner, events and cancel serve both (tickets 11 and 19).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SendKind {
-    /// Files the person named, up to 100 MB each (ADR 0055).
+    /// Files the person named, up to 100 MB each (ADR 0007).
     Files,
-    /// A pasted image the host staged in its private cache, up to 25 MB (ADR 0049). The window
+    /// A pasted image the host staged in its private cache, up to 25 MB (ADR 0007). The window
     /// is told it is `image`, not the staged file's name, which means nothing to a person.
     Image { extension: &'static str },
 }

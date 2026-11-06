@@ -1,4 +1,4 @@
-//! The app's name (ADR 0019). It is set in `Cargo.toml` and nowhere else: the package name is the
+//! The app's name (ADR 0008). It is set in `Cargo.toml` and nowhere else: the package name is the
 //! command, `[package.metadata.brand]` holds the name people see and the names it had before.
 //! Code writes it with `env!("APP_COMMAND")`, `env!("APP_NAME")` and `env!("APP_ENV")` inside
 //! `concat!`, so a file, variable or message stays a constant; a format string with arguments

@@ -11,14 +11,14 @@ export type ChatPaneProps = {
   root?: string | null
   /** Shows a file's diff in the Changes panel. */
   onOpenDiff?: ((file: string) => void) | null
-  /** Types into the terminal the agent runs in, so a chat that follows it can talk to it (ADR 0056). */
+  /** Types into the terminal the agent runs in, so a chat that follows it can talk to it (ADR 0003). */
   typeInto?: ((text: string) => Promise<void>) | undefined
   /** What runs in the pane: the agent, or the shell's own name. */
   process: string
   /** The computer is connected to the daemon; starting an agent types into the shell. */
   online: boolean
   onBackToTerminal: () => void
-  /** False for a chat session (ADR 0054): the agent has no terminal, so nothing here points to one. */
+  /** False for a chat session (ADR 0003): the agent has no terminal, so nothing here points to one. */
   hasTerminal?: boolean
   /** Types the agent's command into the shell (a shell tab only). */
   onStartAgent: (agent: ChatAgent) => void
