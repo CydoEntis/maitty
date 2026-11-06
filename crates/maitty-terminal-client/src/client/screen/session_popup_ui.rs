@@ -3,8 +3,7 @@
 
 use super::popups::{dim_all, panel, panel_bar, sel_row};
 use super::session_popup::{
-    Chip, ChipState, Go, Listing, NewSession, ProjectRow, RECENT_KEEP, Row, Scope, delete_segment, ghost,
-    host_of, scope_of, typed,
+    Chip, ChipState, Go, Listing, NewSession, ProjectRow, Row, Scope, delete_segment, ghost, host_of, scope_of,
 };
 use super::*;
 use crate::protocol::{ClientMsg, FolderListing, Query};
@@ -96,7 +95,7 @@ fn marks(app: &App) -> &'static Marks {
 
 impl App {
     /// The machines the popup can start on: this computer first, then the others in sidebar order.
-    fn ns_chips(&self) -> Vec<Chip> {
+    pub(in crate::client) fn ns_chips(&self) -> Vec<Chip> {
         self.machines()
             .iter()
             .map(|m| {
@@ -313,33 +312,8 @@ impl App {
                 self.notify(notice.text, false);
                 self.mode = Mode::NewSession(Box::new(ns));
             }
-            Go::Start { machine, path } => self.ns_start(machine, &path, chips),
+            Go::Start { machine, path } => self.create_session(machine, &path),
         }
-    }
-
-    /// Start the default agent in `path` on `machine`, close the popup and remember the path.
-    fn ns_start(&mut self, machine: MachineId, path: &str, chips: &[Chip]) {
-        let agent = self.ns_default_agent();
-        let cmd = np_command(self, &agent, 0, "");
-        let name = path
-            .trim_end_matches('/')
-            .rsplit('/')
-            .next()
-            .filter(|n| !n.is_empty())
-            .unwrap_or(path)
-            .to_string();
-        let remembered = typed(chips, machine, path);
-        self.screen.saved.recent_paths.retain(|p| *p != remembered);
-        self.screen.saved.recent_paths.insert(0, remembered);
-        self.screen.saved.recent_paths.truncate(RECENT_KEEP);
-        self.screen.save();
-        self.screen_new_session_on(machine, PathBuf::from(path), cmd, false);
-        // The daemon focuses the new session; the sidebar's own cursor must not hold the
-        // selection, and the focused card is scrolled into view when the focus arrives.
-        self.screen.cursor_proj = None;
-        self.screen.follow = true;
-        self.bar_flash = Some((format!("+ {name} started"), Instant::now()));
-        self.notify(format!("+ {name} started"), false);
     }
 }
 
@@ -386,7 +360,15 @@ pub(in crate::client) fn draw_session_popup(app: &mut App, f: &mut Frame, area: 
     let m = marks(app);
     let buf = f.buffer_mut();
     dim_all(app, buf, area, t);
-    let r = panel(app, buf, area, POPUP_W, POPUP_H, TITLE, &[], t);
+    // Browsing one machine says so: NEW SESSION ON KINGDOM, or ON LOCAL for this computer.
+    let title = match &scope {
+        Scope::Path { machine, .. } => {
+            let name = chips.iter().find(|c| c.id == *machine).map_or("", |c| c.name.as_str());
+            format!("{TITLE} ON {}", if name.is_empty() { "LOCAL".to_string() } else { name.to_uppercase() })
+        }
+        Scope::Plain => TITLE.to_string(),
+    };
+    let r = panel(app, buf, area, POPUP_W, POPUP_H, &title, &[], t);
     let inner_left = r.x + 3;
     let inner_right = r.right().saturating_sub(3);
     let c = card(t);

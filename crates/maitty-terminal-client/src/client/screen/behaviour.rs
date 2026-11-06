@@ -638,6 +638,7 @@ impl App {
         match a {
             Action::Settings => self.screen_settings(),
             Action::StartSession => self.screen_start_session(None),
+            Action::PickSession => self.screen_open_session_popup(""),
             // A plain shell in the project's own folder (the repo itself, not a worktree).
             Action::ShellHere => {
                 let dir = self
@@ -901,8 +902,10 @@ impl App {
         match spec.code {
             // [: full, then the narrow column, then hidden, then full again.
             KeyCode::Char('[') if plain => self.cycle_sidebar(),
-            // New session: the popup that starts one on any project, folder or machine.
-            KeyCode::Char('n') if plain => self.screen_open_session_popup(""),
+            // New session: at once where the sidebar is (`quick_target`); `N` is the popup that
+            // starts one on any project, folder or machine.
+            KeyCode::Char('n') if plain => self.quick_new(),
+            KeyCode::Char('N') if plain => self.screen_open_session_popup(""),
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.screen_side_move(-1)
             }
@@ -1934,7 +1937,7 @@ impl App {
             ScreenHit::ExpandSidebar | ScreenHit::CollapseSidebar => {
                 self.act(Action::ToggleSidebar)
             }
-            ScreenHit::NewShell => self.screen_open_session_popup(""),
+            ScreenHit::NewShell => self.quick_new(),
             ScreenHit::Actions => self.act(Action::Menu),
             ScreenHit::ActionRow(i) => self.actions_run(i),
             ScreenHit::Leader => self.open_keymap(None),
@@ -1987,12 +1990,7 @@ impl App {
                 self.dismiss_notice();
             }
             ScreenHit::SettingsBody => {}
-            ScreenHit::NsMachine(machine) => {
-                let name = self.remotes.get(&machine).map(|r| r.name.clone());
-                if let Some(name) = name {
-                    self.screen_open_session_popup(&format!("{name}:~/"));
-                }
-            }
+            ScreenHit::NsMachine(machine) => self.screen_open_scoped(machine),
             ScreenHit::NsRow(i) => self.session_popup_row_click(i),
             ScreenHit::NsChip(i) => self.session_popup_chip_click(i),
             ScreenHit::FinderPick(i) => {

@@ -101,7 +101,7 @@ const PASTE_MAX_WAIT: Duration = Duration::from_secs(1);
 const COPY_PREVIEW_CHARS: usize = 72;
 const NOTICE_FOR: Duration = Duration::from_secs(5);
 /// How long the mode bar's flash line stays.
-pub(in crate::client) const BAR_FLASH_FOR: Duration = Duration::from_millis(2400);
+pub(in crate::client) const BAR_FLASH_FOR: Duration = Duration::from_millis(2500);
 /// What a toast says beyond its title: a detail row and an optional preview row.
 #[derive(Debug, Clone, PartialEq)]
 struct NoticeCard {
@@ -2104,5 +2104,7 @@ mod mcp_machine_tests;
 mod remote_status_tests;
 #[cfg(test)]
 mod routing_tests;
+#[cfg(test)]
+mod quick_new_tests;
 #[cfg(test)]
 mod session_popup_tests;

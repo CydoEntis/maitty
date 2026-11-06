@@ -1590,7 +1590,8 @@ pub(super) enum ScreenHit {
     /// A row of the New Session popup, and one of its machine chips.
     NsRow(usize),
     NsChip(usize),
-    /// A connected machine with nothing running: opens the popup on its home folder.
+    /// A ` + ` chip on this computer's title or an online machine's badge, or a connected machine
+    /// with nothing running: opens the popup on that machine's home folder.
     NsMachine(MachineId),
     NpProj(usize),
     NpRun(usize),
@@ -1749,6 +1750,7 @@ pub(in crate::client) mod machines;
 #[cfg(test)]
 mod machines_tests;
 mod newsession;
+pub(in crate::client) mod quick_new;
 mod session_popup;
 mod session_popup_ui;
 pub(in crate::client) use session_popup::NewSession;

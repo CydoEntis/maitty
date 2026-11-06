@@ -203,7 +203,7 @@ fn a_session_started_from_the_popup_is_remembered_and_announced() {
     key(&mut app, KeyCode::Enter);
 
     assert_eq!(app.screen.saved.recent_paths, vec!["build:/home/x".to_string()]);
-    assert!(app.notice.as_ref().is_some_and(|(text, _, _)| text.starts_with("+ ") && text.ends_with(" started")));
+    assert!(app.notice.as_ref().is_some_and(|(text, _, _)| text.starts_with("+ ") && text.ends_with(" on build")));
 }
 
 #[test]
@@ -294,13 +294,13 @@ fn starting_a_session_flashes_the_mode_bar_for_a_moment() {
     let last = |s: &str| s.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").to_string();
     let shown = frame(&mut app, 120, 40);
     let bar = last(&shown);
-    assert!(bar.contains("started"), "the bar flashes the start:\n{shown}");
+    assert!(bar.contains(" on build"), "the bar flashes the start:\n{shown}");
     assert!(bar.contains("TYPING"), "the mode tag stays: {bar}");
 
     let (text, _) = app.bar_flash.take().expect("flash set");
     app.bar_flash = Some((text, std::time::Instant::now() - BAR_FLASH_FOR - std::time::Duration::from_millis(1)));
     let bar = last(&frame(&mut app, 120, 40));
-    assert!(!bar.contains("started"), "the flash ends: {bar}");
+    assert!(!bar.contains(" on build"), "the flash ends: {bar}");
     assert!(bar.contains("Ctrl+Space"), "the hint is back: {bar}");
 }
 

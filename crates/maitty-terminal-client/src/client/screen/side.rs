@@ -407,7 +407,7 @@ pub(in crate::client) fn draw_side(
         .host()
         .map(|h| format!(" ⇄ {h}"))
         .unwrap_or_default();
-    draw_title(
+    let title_end = draw_title(
         app,
         buf,
         (r.x + 2, r.y),
@@ -415,6 +415,16 @@ pub(in crate::client) fn draw_side(
         Color::Reset,
         t,
         focused_side,
+    );
+    // The scoped ` + ` chip sits a cell after the title: x = sidebar.x + 10 for ` LOCAL `.
+    draw_new_chip(
+        app,
+        buf,
+        (title_end + 1, r.y),
+        r.right().saturating_sub(BORDER_RIGHT_KEEP),
+        MachineId::LOCAL,
+        Color::Reset,
+        t,
     );
     draw_collapse_chip(app, buf, r, t);
 
@@ -443,7 +453,7 @@ pub(in crate::client) fn draw_side(
     if remote_rows > 0 {
         let head_y = top + local_rows as u16;
         // The Remote title sits on a rule that joins the card's sides, as Local's sits on the
-        // top border: `├ REMOTE 2 ───── + Add ┤`.
+        // top border: `├ REMOTE 2 ───── m add ┤`.
         let rule = Style::default()
             .fg(if focused_side { t.accent } else { t.line })
             .bg(pb);
@@ -512,7 +522,7 @@ pub(in crate::client) fn draw_side(
     }
 }
 
-/// What the Remote half says while no other machine is known; the `+ Add` chip on its rule is
+/// What the Remote half says while no other machine is known; the `m add` chip on its rule is
 /// the way to add one.
 fn draw_no_machines(buf: &mut Buffer, pass: &Pass, t: &Theme, top: u16) {
     let st = Style::default().bg(pass.pb);
@@ -935,7 +945,7 @@ fn draw_title(
     outer: Color,
     t: &Theme,
     lit: bool,
-) {
+) -> u16 {
     let (chip_bg, ink) = if lit {
         (t.accent, t.acc_ink)
     } else {
@@ -951,15 +961,56 @@ fn draw_title(
     if Look::of(&app.cfg.ui).caps {
         title = round_ends(title, outer);
     }
-    put(buf, at.0, at.1, &title, buf.area.right());
+    put(buf, at.0, at.1, &title, buf.area.right())
 }
 
-/// The Remote rule's `+ Add` chip, ending at `end`: a click opens the Machines dialog.
+/// The room kept free at the right of the top border for the collapse chip.
+const BORDER_RIGHT_KEEP: u16 = 8;
+
+/// A ` + ` chip at `x` that opens the picker already browsing `machine`: orange on the chip
+/// ground. Left out when it would run into `limit`.
+fn draw_new_chip(
+    app: &mut App,
+    buf: &mut Buffer,
+    (x, y): (u16, u16),
+    limit: u16,
+    machine: MachineId,
+    ground: Color,
+    t: &Theme,
+) {
+    let mut segs = vec![seg(
+        " + ",
+        Style::default()
+            .fg(t.accent)
+            .bg(t.btn)
+            .add_modifier(Modifier::BOLD),
+    )];
+    if Look::of(&app.cfg.ui).caps {
+        segs = round_ends(segs, ground);
+    }
+    let w = segs_width(&segs);
+    if x + w > limit {
+        return;
+    }
+    put(buf, x, y, &segs, limit);
+    hit(
+        app,
+        Rect {
+            x,
+            y,
+            width: w,
+            height: 1,
+        },
+        ScreenHit::NsMachine(machine),
+    );
+}
+
+/// The Remote rule's `m add` chip, ending at `end`: a click opens the Machines dialog.
 fn draw_add_chip(app: &mut App, buf: &mut Buffer, (end, y): (u16, u16), ground: Color, t: &Theme) {
     let chip = Style::default().bg(t.btn);
     let mut segs = vec![
-        seg(" + ", chip.fg(t.accent).add_modifier(Modifier::BOLD)),
-        seg("Add ", chip.fg(t.text)),
+        seg(" m ", chip.fg(t.accent).add_modifier(Modifier::BOLD)),
+        seg("add ", chip.fg(t.text)),
     ];
     if Look::of(&app.cfg.ui).caps {
         segs = round_ends(segs, ground);
@@ -1492,14 +1543,18 @@ fn draw_machine_row(
     } else {
         vec![badge]
     };
-    put(buf, cols.x, y, &badge, cols.end());
-    put(
-        buf,
-        cols.end().saturating_sub(rw + 1),
-        y,
-        &right,
-        cols.end(),
-    );
+    let badge_end = put(buf, cols.x, y, &badge, cols.end());
+    let dot_x = cols.end().saturating_sub(rw + 1);
+    put(buf, dot_x, y, &right, cols.end());
+    // An online machine offers a session of its own right after its badge; a machine that is
+    // down has `r reconnect` instead.
+    if app
+        .remotes
+        .get(&machine)
+        .is_some_and(|r| r.state.is_connected())
+    {
+        draw_new_chip(app, buf, (badge_end + 1, y), dot_x, machine, pb, t);
+    }
 }
 
 /// The second row of a machine item: how its connection stands, or that it has nothing running.

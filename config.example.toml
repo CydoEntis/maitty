@@ -126,7 +126,7 @@ pattern_rows = 12
 #   new-workspace close-workspace rename-workspace
 #   toggle-sidebar hide-sidebar browse-tree side-up side-down scroll-up scroll-down
 #   copy-mode search prev-prompt next-prompt
-#   shell-here start-session new-pane new-session message stop-agent why jump history
+#   shell-here start-session pick-session new-pane new-session message stop-agent why jump history
 #   files find-file search-code changes branch worktrees new-worktree new-worktree:<cmd>
 #   remove-worktree tidy-worktrees paste-image
 #   palette menu settings help agent-status-setup pane-info

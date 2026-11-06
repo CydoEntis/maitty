@@ -4644,7 +4644,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn the_new_chip_opens_the_new_session_popup_and_leader_n_a_plain_shell_where_you_are() {
+    fn the_new_chip_starts_a_session_at_once_and_leader_n_a_plain_shell_where_you_are() {
         for cursor in [None, Some(2)] {
             for by_mouse in [false, true] {
                 let (_, mut app) = super::design_tests::render_with(100, 30);
@@ -4662,15 +4662,21 @@ mod screen_tests {
                     assert!(screen.contains("+ New"), "a visible new chip");
                     click_new_chip(&mut app);
                     assert!(
-                        matches!(app.mode, Mode::NewSession(_)),
-                        "the chip opens the popup: {:?}",
+                        !matches!(app.mode, Mode::NewSession(_)),
+                        "the chip starts at once, with no popup: {:?}",
                         app.mode
                     );
+                    let commands = sent(&mut rx);
                     assert!(
-                        !sent(&mut rx)
-                            .iter()
-                            .any(|c| matches!(c, Command::NewWorkspace { .. })),
-                        "opening the popup starts nothing"
+                        matches!(
+                            commands.as_slice(),
+                            [Command::NewWorkspace {
+                                cwd: Some(_),
+                                name: None,
+                                ..
+                            }]
+                        ),
+                        "one session in the selected project's folder: {commands:?}"
                     );
                     continue;
                 }
@@ -4768,8 +4774,8 @@ mod screen_tests {
         );
         assert_eq!(
             app.keymap.prefixed.get(&key("o")),
-            None,
-            "the options dialog is gone, so `o` is free"
+            Some(&Action::PickSession),
+            "`o` opens the full picker (the options dialog it once named is gone)"
         );
         let (_, mut app) = super::design_tests::render_with(100, 30);
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -9090,12 +9096,12 @@ second line
         (
             "sidebar",
             true,
-            "SIDEBAR  · ↑↓ move · Enter open · shortcut mode waits · Esc back",
+            "SIDEBAR  · ↑↓ move · Enter open · n new in shop-api · shortcut mode waits · Esc back",
         ),
         (
             "sidebar",
             false,
-            "SIDEBAR  · ↑↓ move · Enter open · Esc back",
+            "SIDEBAR  · ↑↓ move · Enter open · n new in shop-api · Esc back",
         ),
         (
             "settings",

@@ -607,6 +607,11 @@ fn view_holder(app: &App) -> Option<Holder> {
 
 /// One hint after a `·`: its key bold, what it does plain, both quiet on the screen's ground.
 fn hint_piece((key, words): Hint, t: &Theme) -> Piece {
+    live_hint_piece(key, words, t)
+}
+
+/// A hint whose words are worked out as the bar is drawn (the sidebar's `n`).
+fn live_hint_piece(key: &str, words: &str, t: &Theme) -> Piece {
     let quiet = Style::default().fg(t.muted).bg(t.bg);
     let mut segs = vec![seg("· ", quiet)];
     if !key.is_empty() {
@@ -650,6 +655,10 @@ fn holding(app: &App, h: &Holder, t: &Theme) -> (Piece, Vec<Piece>, Vec<Piece>) 
         hit: None,
     };
     let mut middle: Vec<Piece> = h.hints.iter().map(|&hint| hint_piece(hint, t)).collect();
+    // The sidebar says what `n` will do now, so nobody has to guess where it starts.
+    if matches!(app.mode, Mode::Side) {
+        middle.push(live_hint_piece("n", &app.quick_hint(), t));
+    }
     if shortcut_waits(app) {
         middle.push(hint_piece(("", "shortcut mode waits"), t));
     }
@@ -841,7 +850,7 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
         middle = vec![Piece {
             segs: vec![seg(
                 text.clone(),
-                Style::default().fg(t.accent).bg(ground).add_modifier(Modifier::BOLD),
+                Style::default().fg(t.done).bg(ground).add_modifier(Modifier::BOLD),
             )],
             gap: GAP,
             hit: None,

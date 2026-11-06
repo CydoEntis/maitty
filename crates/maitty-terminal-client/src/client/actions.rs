@@ -294,6 +294,7 @@ impl App {
             Action::Jump,
             Action::BrowseTree,
             Action::StartSession,
+            Action::PickSession,
             Action::ShellHere,
             Action::SplitRight,
             Action::SplitDown,
