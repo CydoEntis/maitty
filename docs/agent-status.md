@@ -125,6 +125,25 @@ integrations. A known executable alone does not guarantee native lifecycle suppo
 The pin is Herdr commit `143bf5fd4781d164260c63fe28e7dc08054ad32f`; its license and
 notices are in `vendor/herdr-detection/`.
 
+What each agent sends at turn end (measured 2026-11-06 on Linux with a one-word turn, no tools,
+in a scratch folder, the payload dumped by a stand-in script):
+
+| Agent | Version | Last assistant message | Field |
+| --- | --- | --- | --- |
+| Claude Code | 2.1.319 | yes | `Stop` hook stdin: `last_assistant_message` (also `transcript_path`, `background_tasks`, `stop_hook_active`) |
+| Codex | 0.166.0 | yes | `notify` argument: `last-assistant-message` (also `thread-id`, `turn-id`, `input-messages`, `client`). The Windows `Stop` hook check above saw `last_assistant_message`; the Linux `Stop` hook was not re-run because it needs a trusted hook |
+| Gemini CLI | not installed | not measured | |
+| OpenCode | not installed | not measured | |
+
+The screen fallback (`daemon/last_lines.rs`) was not run against a live Claude or Codex screen:
+that needs a pane inside a running daemon, and Claude and Codex already send the message, so
+the fallback is not used for them. Its readability on a real screen stays unmeasured.
+
+Permission-prompt lifetime (ticket 31, `NEEDS_SETTLES`) was not measured. A prompt only
+appears in the interactive interface; `claude -p` and `codex exec` deny or skip an unapproved
+tool at once, so a headless turn says nothing about how long a prompt shows before it settles
+itself. `NEEDS_SETTLES` stays 300 ms.
+
 Not yet verified, so Maitty does not claim exact Herdr parity:
 
 - every identity against real process entry points, including npm and native
