@@ -901,6 +901,8 @@ impl App {
         match spec.code {
             // [: full, then the narrow column, then hidden, then full again.
             KeyCode::Char('[') if plain => self.cycle_sidebar(),
+            // New session: the popup that starts one on any project, folder or machine.
+            KeyCode::Char('n') if plain => self.screen_open_session_popup(""),
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.screen_side_move(-1)
             }
@@ -1823,7 +1825,7 @@ impl App {
         self.splash = false;
         self.screen.splash_sel = 0;
         match c {
-            'n' => self.act(Action::StartSession),
+            'n' => self.screen_open_session_popup(""),
             'o' => self.screen_open_finder(),
             ',' => self.screen_settings(),
             '?' => self.open_keymap(None),
@@ -1932,7 +1934,7 @@ impl App {
             ScreenHit::ExpandSidebar | ScreenHit::CollapseSidebar => {
                 self.act(Action::ToggleSidebar)
             }
-            ScreenHit::NewShell => self.act(Action::ShellHere),
+            ScreenHit::NewShell => self.screen_open_session_popup(""),
             ScreenHit::Actions => self.act(Action::Menu),
             ScreenHit::ActionRow(i) => self.actions_run(i),
             ScreenHit::Leader => self.open_keymap(None),
@@ -1985,6 +1987,8 @@ impl App {
                 self.dismiss_notice();
             }
             ScreenHit::SettingsBody => {}
+            ScreenHit::NsRow(i) => self.session_popup_row_click(i),
+            ScreenHit::NsChip(i) => self.session_popup_chip_click(i),
             ScreenHit::FinderPick(i) => {
                 if let Mode::Finder(fd) = &self.mode {
                     let mut fd = (**fd).clone();

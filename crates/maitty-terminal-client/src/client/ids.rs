@@ -210,6 +210,8 @@ mod tests {
             let file = file.as_object_mut().unwrap();
             file.remove("session_order");
             file.remove("placed");
+            // A field added since, which an old file does not have and a new one writes empty.
+            file.remove("recent_paths");
         }
         assert_eq!(again, old);
 

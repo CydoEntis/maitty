@@ -356,6 +356,16 @@ fn keys_holder(app: &App) -> Option<Holder> {
             &[("", "type a path"), ("Tab", "complete"), ("Enter", "open")],
             ("Esc", "close"),
         ),
+        Mode::NewSession(_) => holder(
+            "NEW SESSION",
+            &[
+                ("", "type search all · ~/ · host:~/"),
+                ("Tab", "complete"),
+                ("↑↓", "move"),
+                ("Enter", "start"),
+            ],
+            ("Esc", "close"),
+        ),
         Mode::ScreenPane(_) => holder(
             "NEW PANE",
             &[("↑↓", "rows"), ("←→", "choose"), ("Enter", "start")],

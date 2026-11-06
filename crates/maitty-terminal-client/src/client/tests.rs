@@ -1594,8 +1594,8 @@ mod screen_tests {
         show(&o);
         app.on_key(key(KeyCode::Enter));
         assert!(
-            !app.splash && matches!(app.mode, Mode::Normal),
-            "Enter picks the selected one (New session: an agent, straight away)"
+            !app.splash && matches!(app.mode, Mode::NewSession(_)),
+            "Enter picks the selected one (New session: the popup that starts one anywhere)"
         );
         app.mode = Mode::Normal;
 
@@ -4630,7 +4630,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn the_new_chip_and_leader_n_open_a_plain_shell_where_you_are() {
+    fn the_new_chip_opens_the_new_session_popup_and_leader_n_a_plain_shell_where_you_are() {
         for cursor in [None, Some(2)] {
             for by_mouse in [false, true] {
                 let (_, mut app) = super::design_tests::render_with(100, 30);
@@ -4647,9 +4647,20 @@ mod screen_tests {
                 if by_mouse {
                     assert!(screen.contains("+ New"), "a visible new chip");
                     click_new_chip(&mut app);
-                } else {
-                    leader(&mut app, 'n');
+                    assert!(
+                        matches!(app.mode, Mode::NewSession(_)),
+                        "the chip opens the popup: {:?}",
+                        app.mode
+                    );
+                    assert!(
+                        !sent(&mut rx)
+                            .iter()
+                            .any(|c| matches!(c, Command::NewWorkspace { .. })),
+                        "opening the popup starts nothing"
+                    );
+                    continue;
                 }
+                leader(&mut app, 'n');
                 assert!(
                     matches!(app.mode, Mode::Normal | Mode::Prefix { .. }),
                     "new opens no form: {:?}",

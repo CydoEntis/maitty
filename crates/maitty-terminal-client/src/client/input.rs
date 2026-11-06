@@ -178,6 +178,7 @@ impl App {
                     _ => {}
                 }
             }
+            Mode::NewSession(_) => self.session_popup_paste(&s),
             Mode::Finder(fd) => {
                 fd.q.push_str(s.lines().next().unwrap_or("").trim());
                 fd.sel = 0;
@@ -372,6 +373,7 @@ impl App {
                 }
             }
             Mode::Finder(fd) => self.on_finder_key(*fd, &k),
+            Mode::NewSession(ns) => self.on_session_popup_key(*ns, &k),
             Mode::ScreenPane(np) => self.on_hy_pane_key(np, &k),
             Mode::ScreenSettings(_) => self.screen_settings_key(&k),
             Mode::Themes { query, sel, saving } => self.on_theme_key(query, sel, saving, &k),

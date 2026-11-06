@@ -576,6 +576,41 @@ Code: `client/screen/machine_group.rs` (header, notes, grey), `side.rs` (`Line::
   history named by its machine. Its toast and sound still wait for that machine's `notices` and
   `sounds` opt-ins.
 
+## Project-specific: New Session popup
+
+One popup starts the default agent anywhere: on an open project, in any folder, on any machine
+(`client/screen/session_popup.rs` is the model, `session_popup_ui.rs` the keys and drawing). It opens
+from `n` in the sidebar, the `+ New` chip, the rail's `+` and the splash's New session, with an empty
+query. Leader `n` (a plain shell where you are) and leader `s` (the default agent at once) are unchanged.
+Every row is a path you can type, written as scp writes it: `~/code/maitty` is this computer and
+`kingdom:~/maitty` is the machine named kingdom.
+
+- **The query** is read on every key: `host:path` with a host that is a machine's name browses that
+  machine (`host:` alone is its home folder); a first character of `~`, `/` or `.` browses this
+  computer; anything else is a search.
+- **A search** lists OPEN (open projects whose name or `host:path` fuzzy-matches, this computer first)
+  and FOLDERS · every machine (a fuzzy match on the folder name in the listings read when the popup
+  opened: each online machine's home folder and the folders its projects sit in; prefix matches first,
+  then shallower paths, at most 9, none already under OPEN). With nothing typed it lists OPEN and
+  RECENT, the last five paths a session was started in (`recent_paths` in the saved UI file).
+- **A path** lists the folders inside the folder before the last `/` that start with what follows it,
+  or fuzzy-match it when none start with it. When the typed folder exists and nothing follows its last
+  `/`, the first row is **start here**. Hidden folders appear once a `.` is typed.
+- **Reading a folder** is `Query::ListFolders` to that machine's daemon (protocol 73,
+  [API_PATTERNS](API_PATTERNS.md)), asked once per folder while the popup is open; the breadcrumb says
+  `reading…` until it answers. An answer nobody asked for, or from the wrong machine, is dropped.
+- **Keys.** ↑ ↓ move through the list rows only. ← → move between the machine chips; → on a list row
+  (not start here) is Tab. Tab fills the selected row's path into the query. Backspace deletes a
+  character, Ctrl or Alt + Backspace a path segment. Enter: on start here, an open project, or a git
+  repo or leaf folder it starts a session there; on a folder that only holds folders it opens it (the
+  same as Tab); on an online machine chip it browses that machine's home folder; on an offline one it
+  reconnects. A click selects a row, and a click on the selected row is Enter. Esc closes.
+- **Starting** closes the popup, starts the default agent in that folder on that machine (a worktree
+  is not made: another machine has none), remembers the path, and toasts `+ <folder> started`.
+- **Not in this version:** the status-bar flash (the toast is used), selecting the new card in the
+  sidebar (the new session takes focus and the sidebar follows it), and the ASCII fallback for the
+  glyphs whose width differs between terminals.
+
 ## Project-specific: Machines dialog
 
 Code: `client/screen/machines.rs` (the view, its keys and its drawing), `client/machine_flow.rs` (what a
