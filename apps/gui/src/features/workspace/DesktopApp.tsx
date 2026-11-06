@@ -283,6 +283,8 @@ export function DesktopApp() {
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropId, setDropId] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  // The sessions there were when a start began: one the daemon lists before its tab is placed is kept off the sidebar until it is.
+  const [startedFrom, setStartedFrom] = useState<ReadonlySet<string> | null>(null)
   // A new session on another machine asks for a folder there first.
   const [remoteStart, setRemoteStart] = useState<{ machine: number; name: string } | null>(null)
   const [failures, setFailures] = useState(0)
@@ -599,6 +601,15 @@ export function DesktopApp() {
     )
   }, [])
   const groups = useMemo(() => groupSessions(sessions, preferences.groupBy, focusedId, home), [sessions, preferences.groupBy, focusedId, home])
+  // A session the daemon lists a moment before its tab exists would show in the sidebar and then move (or fold away) once placed.
+  const sidebarGroups = useMemo(() => {
+    if (startedFrom === null) return groups
+    const unplaced = (session: SessionView) => !startedFrom.has(session.id) && !openIds.has(session.id)
+    return groups.flatMap((group) => {
+      const sessions = group.sessions.filter((session) => !unplaced(session))
+      return sessions.length === group.sessions.length ? [group] : sessions.length === 0 ? [] : [{ ...group, sessions }]
+    })
+  }, [groups, startedFrom, openIds])
   // A tab belongs to the project of the session in its focused pane, so it moves when that shell cds into another repo.
   const tabGroup = useCallback((candidate: Tab): string => {
     const sessionId = candidate.panes.find((pane) => pane.id === candidate.focus)?.sessionId ?? candidate.panes[0]?.sessionId
@@ -827,12 +838,13 @@ export function DesktopApp() {
   const runStart = useCallback((folder: () => Promise<string>, place: (sessionId: string) => void) => {
     if (!online || starting) return
     setStarting(true)
+    setStartedFrom(new Set(sessionMap.keys()))
     void folder()
       .then((path) => startShell(path))
       .then((id) => { if (id) place(id) })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not start a shell')) })
-      .finally(() => { setStarting(false) })
-  }, [online, starting, startShell])
+      .finally(() => { setStarting(false); setStartedFrom(null) })
+  }, [online, starting, startShell, sessionMap])
 
   // A new session is the default agent, running in a terminal the daemon owns, shown as its chat or
   // as its terminal as Settings says. It is one session either way: the view can be switched at any
@@ -1685,7 +1697,7 @@ export function DesktopApp() {
   // The sidebar, as the docked column or rail, or inside the drawer of a window under 1100px.
   const renderSidebar = (mode: 'docked' | 'rail', afterPick: () => void) => (
     <Sidebar
-      groups={groups}
+      groups={sidebarGroups}
       machineHeads={heads}
       focusedId={focusedId}
       tracks={tracks}
