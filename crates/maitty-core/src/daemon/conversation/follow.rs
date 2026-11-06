@@ -441,6 +441,23 @@ fn apply_notes(follower: &mut Followed, notes: Vec<Note>, start_missing: bool) {
 
 /// Reads the lines a followed file gained since `offset` (everything, or the end of a long file,
 /// when `None`). Runs on a blocking thread.
+/// The file to read: the hook's path when it is this session's, else (Codex only) the file found by
+/// the session id. Claude's file is known only from its hook, so a wrong hint stays an error; Codex's
+/// is findable, so a hint that is not this session's file, or not written yet, is no reason to give up.
+fn resolve_path(
+    provider: Provider,
+    session: &str,
+    hint: Option<&Path>,
+    home: &Path,
+    find: impl FnOnce() -> Option<PathBuf>,
+) -> Result<PathBuf, ReadFailure> {
+    match hint.map(|path| checked_path(path, provider, session, home)) {
+        Some(Ok(path)) => Ok(path),
+        Some(Err(failure)) if provider != Provider::Codex => Err(failure),
+        _ => checked_path(&find().ok_or(ReadFailure::NotFound)?, provider, session, home),
+    }
+}
+
 fn read_new(
     provider: Provider,
     session: &str,
@@ -449,11 +466,7 @@ fn read_new(
     mut parser: Transcript,
     home: &Path,
 ) -> Result<Chunk, ReadFailure> {
-    let path = match hint {
-        Some(path) => path.to_path_buf(),
-        None => find_by_session(provider, session).ok_or(ReadFailure::NotFound)?,
-    };
-    let path = checked_path(&path, provider, session, home)?;
+    let path = resolve_path(provider, session, hint, home, || find_by_session(provider, session))?;
     let mut file = std::fs::File::open(&path).map_err(|_| ReadFailure::Io)?;
     let len = file.metadata().map_err(|_| ReadFailure::Io)?.len();
     let mut restarted = false;

@@ -251,7 +251,10 @@ fn a_codex_rollout_is_matched_by_the_end_of_its_name() {
     };
 
     assert!(codex(&good).is_ok());
-    assert!(matches!(codex(&wrong), Err(ReadFailure::Refused(_))));
+    // Another session's file is never read. A Codex hint that is not this session's is not trusted:
+    // the file is looked for by the session id instead (`resolve_path`), and a file named for another
+    // session is not what that finds either.
+    assert!(codex(&wrong).is_err());
 }
 
 // ---- the daemon ----
@@ -438,6 +441,36 @@ async fn a_session_with_no_transcript_file_yet_is_followed_empty_and_without_an_
         ]
     );
     assert!(read.error.is_none());
+}
+
+#[test]
+fn a_codex_hint_that_is_not_this_sessions_file_falls_back_to_finding_it_by_its_session_id() {
+    let home = Home::new();
+    let dir = home.dir.path();
+    let other = dir.join("rollout-2026-11-06T09-00-00-99999999-aaaa-bbbb-cccc-dddddddddddd.jsonl");
+    let mine = dir.join(format!("rollout-2026-11-06T11-17-51-{SESSION}.jsonl"));
+    std::fs::write(&other, "{}\n").unwrap();
+    std::fs::write(&mine, "{}\n").unwrap();
+
+    let found = resolve_path(Provider::Codex, SESSION, Some(&other), dir, || Some(mine.clone()));
+
+    assert_eq!(found.ok(), Some(std::fs::canonicalize(&mine).unwrap()));
+    // A hint for a file not written yet is not a reason to give up either.
+    let missing = dir.join("rollout-not-yet.jsonl");
+    let found = resolve_path(Provider::Codex, SESSION, Some(&missing), dir, || Some(mine.clone()));
+    assert_eq!(found.ok(), Some(std::fs::canonicalize(&mine).unwrap()));
+}
+
+#[test]
+fn a_claude_hint_that_is_not_this_sessions_file_stays_an_error() {
+    let home = Home::new();
+    let dir = home.dir.path();
+    let other = dir.join("99999999-aaaa-bbbb-cccc-dddddddddddd.jsonl");
+    std::fs::write(&other, "{}\n").unwrap();
+
+    let found = resolve_path(Provider::Claude, SESSION, Some(&other), dir, || None);
+
+    assert!(matches!(found, Err(ReadFailure::Refused(_))));
 }
 
 #[tokio::test]
