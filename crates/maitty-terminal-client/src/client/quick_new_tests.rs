@@ -261,7 +261,7 @@ fn local_and_each_online_machine_have_a_plus_chip_and_an_offline_one_has_none() 
 
     let local = chip_rects(&app, MachineId::LOCAL);
     assert_eq!(local.len(), 1, "{local:?}");
-    assert_eq!((local[0].x, local[0].y), (side.x + 10, side.y), "after the LOCAL title on the border");
+    assert_eq!((local[0].x, local[0].y), (side.x + 12, side.y), "after the fold arrow and the LOCAL title on the border");
     assert_eq!(rows[local[0].y as usize].chars().skip(local[0].x as usize).take(3).collect::<String>(), " + ");
     let cell = &buf[(local[0].x + 1, local[0].y)];
     assert_eq!((cell.fg, cell.bg), (app.theme.accent, app.theme.btn), "orange on the chip ground");
