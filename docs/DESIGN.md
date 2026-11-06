@@ -57,7 +57,7 @@ pick; checking is a sweeping ring. An agent's own mark is `✻` Claude, `◆` Co
 
 ## Layouts
 
-There is one look, **Floating** ([ADR 0039](adr/0039-floating-is-the-only-look.md)): each pane a
+There is one look, **Floating**: each pane a
 box, `ui.gap` between them. **Pane colours** (`ui.pane_colors`) gives each pane's border its own
 colour by its place in the tab.
 
@@ -68,14 +68,13 @@ panes. See UI › *layout and navigation* and *the frame*.
 ## Chips, rounding and padding
 
 Anything you click or read as a control (a button, tab, tag or key) is a chip on `btn`, or on
-the accent when it is current. `ui.rounded` is the one shape setting
-([ADR 0050](adr/0050-local-and-remote-sidebar-with-session-cards.md)): `off` is square, `corners` (the default when on) rounds every box (`╭╮╰╯`) and keeps chips as square-ended full-background rectangles, and `full` also ends chips, tabs, buttons, titles, rows and the hover in half-circle pills (a Nerd Font glyph). Keys are keycaps: ` key ` on `btn`, `strong` and bold. The
+the accent when it is current. `ui.rounded` is the one shape setting: `off` is square, `corners` (the default when on) rounds every box (`╭╮╰╯`) and keeps chips as square-ended full-background rectangles, and `full` also ends chips, tabs, buttons, titles, rows and the hover in half-circle pills (a Nerd Font glyph). Keys are keycaps: ` key ` on `btn`, `strong` and bold. The
 pointer's hover is one quiet tint; selection is a neutral tint with an accent `▎` bar, never an
 accent fill. See UI › *UI conventions*.
 
 ## Sidebar
 
-Two halves in one card ([ADR 0050](adr/0050-local-and-remote-sidebar-with-session-cards.md)). The
+Two halves in one card. The
 top is `LOCAL`, a title chip on the card's border: this computer's sessions. The bottom half
 starts at a rule that joins the sides (`├ REMOTE 2 ──── m add ┤`) and holds the other machines;
 `m add` opens the Add Machine dialog. Each half scrolls on its own, and with no other machine Remote
@@ -112,20 +111,20 @@ dim line for Windows; after Enter a checklist of the steps connecting takes. Its
 ## Pane titles and tabs
 
 The session's tabs sit on the first
-pane's top border, as the sidebar's `LOCAL` chip sits on its own ([ADR 0038](adr/0038-tabs-sit-on-the-pane-border.md)),
+pane's top border, as the sidebar's `LOCAL` chip sits on its own,
 the border running on between the chips (`ui.tab_gap`, on by default, leaves a cell of it between one tab and the next; off, they touch). A chip's ends follow `ui.rounded`: square, rounded corners, or a pill. Each chip is led by its state's glyph (on screen or
 not) and ended by its ×, the current one in the accent and the others one `btn` chip with a muted
 number, then a **+** chip for a new tab. At the right, in the first stretch of plain border that
 fits it, a badge names where the focused session runs: `⌂ Local` or `⇄ build`.
 is named the same everywhere: its own name, else its focused session's. Panes are titled as an
-editor's are ([ADR 0030](adr/0030-panes-titled-like-an-editor.md)): a tab's only pane has no
+editor's are: a tab's only pane has no
 title of its own (its border carries the tabs), its tab naming it, showing its state (the glyph opens why) and
-closing it. A split's panes have no title at all ([ADR 0031](adr/0031-tabs-name-a-project-and-splits-have-no-title.md)):
+closing it. A split's panes have no title at all:
 the tab names where you are, and a pane's top edge says its state, teal when focused and amber
 when it needs you. The tabs list the session's tabs, numbered 1–n, each with
 a × on the open one only, and ends in `◫` (split) and `⤢` (zoom the
 focused pane). A pane closes with Alt+x, leader `x` or its menu. Closing always
-asks first (ADR 0029), naming the pane (`Close pane 2 · claude`) and lighting its lines in the
+asks first, naming the pane (`Close pane 2 · claude`) and lighting its lines in the
 red until you answer. Unfocused panes fade;
 the focused border is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane
 focus*.
@@ -146,8 +145,7 @@ groups* and *check evidence sheet*.
 ## Modals and popovers
 
 The Menu and a row's context menu have no fill of their own: they are drawn on the ground like the panes. Everything else that floats over the screen is boxed as the look boxes a pane: a `line` box round
-`card` with corners by `ui.rounded` (the outline's own cells keep the ground behind them, so none of the body's colour shows outside the line; what sits on the top border stands on that ground too)
-([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)). Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
+`card` with corners by `ui.rounded` (the outline's own cells keep the ground behind them, so none of the body's colour shows outside the line; what sits on the top border stands on that ground too). Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
 a red × chip at the right), its border in the accent because it holds the keys, the screen behind
 left as it is (no dimming, no fill: the modal clears its own area to the ground), no shadow. Settings, override, command
 approval and the key overlay are modals. Small explanations (why, a row's menu, the message and
@@ -165,15 +163,14 @@ title, a detail and an optional preview in italics. Every text row wraps at the 
 instead of being cut: the title and the detail onto up to three lines, the preview (an excerpt) onto
 up to two, the last line ending in `…` only past that; the box grows with the lines. A question waiting on you also has its
 two answers as buttons on the bottom border: a green `Answer` that goes to the session and a
-red `Later esc` that dismisses it. Always round corners (ADR 0030). It slides in and fades out
+red `Later esc` that dismisses it. Always round corners. It slides in and fades out
 with motion on. See UI › *the frame* (Toast).
 
 ## Mode bar
 
-The one full-width row, along the bottom ([ADR 0024](adr/0024-the-mode-lives-in-a-bottom-bar.md)).
+The one full-width row, along the bottom.
 Typing: a quiet ` TYPING ` chip and the leader key. Shortcut mode: the whole row in `sky()`, a
-` SHORTCUT ` chip and the next keys you can press; starting a pane ends it
-([ADR 0025](adr/0025-a-new-pane-ends-shortcut-mode.md)). When something other than the panes
+` SHORTCUT ` chip and the next keys you can press; starting a pane ends it. When something other than the panes
 has the keys, the bar stays on `bg`, never sky: a calm chip (`strong` bold on `btn`) names the
 holder, then its keys and the way out (`SIDEBAR · ↑↓ move · Enter open · n new in maitty · Esc back`, the `n` hint computed from what `n` would do), with
 `· shortcut mode waits` while the mode is held. Under a popup the bar is words only and takes
@@ -199,7 +196,7 @@ Only one too small for the START box draws the cards.
 
 ## Desktop app
 
-The desktop app is a terminal multiplexer window ([ADR 0046](adr/0046-desktop-app-is-a-terminal-multiplexer.md)):
+The desktop app is a terminal multiplexer window:
 every session a shell that maittyd owns. Claude Code and Codex sessions also have a chat view
 (owner decision 2026-11-04, [chat view plan](features/chat-gui/chat-view-plan.md)); every other agent
 and every plain shell stays terminal-only. The design handoff (v10, terminal-first) is the
@@ -398,7 +395,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   session never switched by hand follows it. The same card holds **New agent sessions start as** (Chat by
   default; Terminal stays one click away in the dialog) and **Full access in new chats** (off by default).
   A chat started with full access shows a red **Full access** tag in the chat header.
-- **Chat session ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).**
+- **Chat session ([ADR 0003](adr/0003-status-and-conversation-trust.md)).**
   A row, tab and pane like any session, with the agent's mark and its branch line. Its pane head has no
   Terminal | Chat switch; the pane is the chat, and the chat's status strip ends with "Chat session · no
   terminal". The composer, approvals (y / a / n), user-input form, Stop and the daemon's queue are the chat's own.
@@ -532,7 +529,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   preference (client-side; the daemon serves none). States: skeleton while loading, plain words with
   Retry on failure (a failed refresh keeps the old figures and says they may be stale), "Nothing
   recorded yet" when the store is empty. Refreshes on open, when the period changes and every 60 s
-  while open. Source: `features/usage/`, ADR 0051.
+  while open. Source: `features/usage/`.
 - **Usage pill.** A pane's header shows what the provider reports the session has used (tokens,
   context filled, cost). It is not drawn when the provider said nothing, so no number is invented.
 - **Turn timeline.** Inspect › Timeline lists the focused pane's latest events, newest first: the

@@ -81,14 +81,14 @@ daemon or restart a remote service from the GUI.
 The target OS floor is the existing project support floor; do not raise it
 without updating this section and the release workflow.
 
-Machines (ADR 0048): the host reads the `[[machines]]` list of `config.local.toml` once at start
+Machines: the host reads the `[[machines]]` list of `config.local.toml` once at start
 through `maitty-machines` (`machines.rs`, command `list_machines`); a hand edit applies on the next
 start. The window is told names only, plus the error when the file is bad, and shows it as a toast
 without stopping the app. The host may link `maitty-machines`, `maitty-desktop-client`,
 `maitty-shared` and `maitty-ipc-transport`, never `maitty-core`, `maitty-settings` or
 `maitty-terminal-client` (`scripts/check-gui-deps.sh` checks it).
 
-Connections (ADR 0048): `hub.rs` holds one supervised connection per configured machine through
+Connections: `hub.rs` holds one supervised connection per configured machine through
 `maitty-machines` (`Links`, `Connections`), dials with the desktop surface and no pane claim, and
 tells the window each machine's state as `machine-state` (`{machine, name, state, why, attempt}`;
 this computer's own line is machine 0, named `local`, and is held by the same hub). All output
@@ -109,7 +109,7 @@ as it is and left in place). Until the machine has listed its sessions, a layout
 The glue's per-update logic is `terminal_stream::react` (no window involved), so the host's behaviour
 is tested end to end against real daemons (`hub/tests/end_to_end.rs`).
 
-File sends (ADR 0055): `file_send.rs` takes the paths of files dropped on a pane of another machine and
+File sends: `file_send.rs` takes the paths of files dropped on a pane of another machine and
 that machine's name (`send_files_to_machine`), checks them in Rust (a known ssh machine; each path absolute, an
 existing regular file of at most 100 MB; at most 10; one send at a time), and sends them in turn on a blocking
 worker through `maitty-machines`' `remote_send` and `ssh_run`, the runner the terminal app uses. It reports

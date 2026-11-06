@@ -64,7 +64,7 @@ src/
   prompt.rs      the question and numbered choices an agent is stopped on, read off its screen (the MCP answer tool and the inbox card share it)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
   ipc.rs         local sockets and the `proxy` command; opening a connection to another machine (ssh or a custom transport) is `maitty-machines`, which this module re-exports
-  remote_paste.rs (now `maitty-machines`' `remote_paste`, re-exported here) sending a pasted image or a file to another machine (ADR 0049, 0055): the file name, the check of the path the far side prints, the failure words; the script itself is also in `maitty-machines`, as is `remote_send` (the upload) and `ssh_run` (the runner that counts bytes and takes a cancel flag; the desktop app uses them too)
+  remote_paste.rs (now `maitty-machines`' `remote_paste`, re-exported here) sending a pasted image or a file to another machine: the file name, the check of the path the far side prints, the failure words; the script itself is also in `maitty-machines`, as is `remote_send` (the upload) and `ssh_run` (the runner that counts bytes and takes a cancel flag; the desktop app uses them too)
   remote_install.rs installing the app on another machine, as pure rules: the `uname -sm` parser, the installed-version check, the decision table (nothing is installed without a yes), the destination, the install script's exit-code table (the script itself is in `maitty-machines`)
   machine_probe.rs (now `maitty-machines`' `machine_probe`, re-exported here) a look at a machine before it is added: `ssh ... maitty --version` with no prompt, ended by a limit or a cancel flag, and its result classified (ready, a failure class, cancelled); `locate` asks the same way where the login shell finds the app (`command -v`)
   config.rs      config.toml (+ config.local.toml) loading, atomic state files
@@ -107,7 +107,7 @@ src/
     doctor_machine_tests.rs `doctor`'s machine checks against the shim: a good machine, another protocol, a login needed, machines that never answer and are ended
     mcp_machine_tests.rs the MCP tools against a real daemon behind the shim: list, read, send, wait with `machine/id` ids, the opt-in, the caller's grants, local-only operations
     machine_ids.rs which file the daemon ids are kept in (`machine-ids.json` in the data folder); the store and the check that refuses a different id are `maitty-machines`' `machine_ids`
-    ssh_hosts.rs loads the named hosts in `~/.ssh/config` off the UI thread; the pure parser (Include followed, patterns skipped, read through a file trait) is `maitty-machines`' `ssh_hosts`; the Machines dialog lists its hosts (ADR 0047)
+    ssh_hosts.rs loads the named hosts in `~/.ssh/config` off the UI thread; the pure parser (Include followed, patterns skipped, read through a file trait) is `maitty-machines`' `ssh_hosts`; the Machines dialog lists its hosts
     routing_tests.rs which machine each outgoing message goes to, the reply bookkeeping and the local-only gate
     remote_status_tests.rs a remote agent's row is the status its own daemon reported, against a real daemon behind the shim
     remote_image.rs sends the clipboard image to the machine a pane is on over its ssh line and gives the path it is kept at there; `remote_image_tests.rs` runs it against the fake remote
@@ -256,7 +256,7 @@ ownership, stale-hook projection, native event mapping and status-line config
 policy live in `maitty-provider-claude`. JSONC configuration editing remains in
 the terminal client; live process transports and session ownership are in core.
 Completing the package split is tracked by
-[ADR 0042](adr/0042-decouple-desktop-clients-and-providers.md).
+ADR 0004.
 
 Rust, edition 2024, stable toolchain. Key libraries: `tokio` (async runtime),
 `ratatui` 0.30 + `crossterm` (TUI), `portable-pty` (PTYs / ConPTY), `vt100`
@@ -315,7 +315,7 @@ docs/                             architecture, roadmap and design specs
 
 ## Project-specific: patterns and conventions
 
-**The app's name** lives in `apps/tui/Cargo.toml` and nowhere else in the code (ADR 0019): the package
+**The app's name** lives in `apps/tui/Cargo.toml` and nowhere else in the code: the package
 name is the command, `[package.metadata.brand]` holds the name people see and the names it had
 before. `build.rs` hands them to the code as `APP_COMMAND`, `APP_NAME`, `APP_ENV` and
 `APP_PREVIOUS`; `crates/maitty-core/src/brand.rs` wraps them. Write a
@@ -396,12 +396,10 @@ outside Maitty. No provider-specific status adapter is needed.
   `hints()` for the key line.
 
 
-Decisions: [0001 daemon owns sessions](adr/0001-daemon-owns-sessions.md),
-[0002 portable-pty + vt100](adr/0002-portable-pty-and-vt100.md),
-[0003 msgpack over local sockets](adr/0003-msgpack-over-local-sockets.md),
-[0004 one layout](adr/0004-one-layout.md),
-[0005 herdr-compatible keys](adr/0005-herdr-compatible-keys.md),
-[0031 optional chat GUI and shared conversations](adr/0041-chat-gui-shared-conversations.md).
+Decisions are the nine in [`adr/`](adr/README.md): the daemon owns every session (0001), the
+terminal substrate and wire protocol (0002), status trust (0003), the client split (0004),
+provider adapters (0005), secrets (0006), multiple machines (0007), Windows and the product
+name (0008), and provider-reported usage (0009).
 
 ## Project-specific: planned structured conversations
 

@@ -13,7 +13,7 @@ and Codex.
 
 - The daemon owns structured conversations: `ConversationSend`, `ConversationRead`
   (ordered history with a cursor), approvals with ids, turn boundaries. See
-  [spec.md](spec.md) and ADR 0036.
+  [spec.md](spec.md) and ADR 0003.
 - The Claude adapter (`crates/adapters/maitty-provider-claude`) projects every
   tool call with its complete input JSON; the Codex adapter projects app-server
   items (`item/`, `turn/`). So edits, commands, to-do lists and helper agents are
@@ -149,9 +149,9 @@ check for the view). Acceptance criteria are the bullets.
 ## What is still missing (client and daemon)
 
 - **A composer, approvals and a queue for a pane's chat.** A Claude or Codex agent the user typed in a shell pane has a
-  **read-only** daemon conversation that follows the agent's own transcript (G23, [ADR 0052](../../adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)):
+  **read-only** daemon conversation that follows the agent's own transcript (G23, [ADR 0003](../../adr/0003-status-and-conversation-trust.md)):
   sending, answering approvals and cancelling stay in the terminal. The composer, approvals, queue and Stop live in
-  **chat sessions** instead (G25, [ADR 0054](../../adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)):
+  **chat sessions** instead (G25, [ADR 0003](../../adr/0003-status-and-conversation-trust.md)):
   Claude or Codex started from the desktop as a structured conversation the daemon owns, chosen with **Session: Chat**
   in New agent on a branch or **Start a Claude chat** on a shell's empty chat card (Terminal is the default). Done:
   start (in a folder or a new branch worktree), list, composer, Stop, daemon queue, approvals by id, user-input form,

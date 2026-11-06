@@ -129,7 +129,7 @@ default.
 ## Project-specific: usage store
 
 `daemon/usage_store.rs` keeps provider-reported usage per session per day in
-`usage-<socket>.json` in the data folder ([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)).
+`usage-<socket>.json` in the data folder.
 It is a small versioned JSON file (`version`, `rows`, `cursors`), not a database. A row is
 (UTC day, session) with agent, folder name, input and output tokens, cost, turns and seconds
 working; a cursor is the last running total seen for a session, so only the growth is added and a

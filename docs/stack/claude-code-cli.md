@@ -43,8 +43,8 @@ through the installed CLI. Anthropic's Help Center currently says third-party
 app usage continues to draw from Claude subscription limits; Maitty does not
 provide a separate Claude login or implement its own agent harness. The official
 Agent SDK uses `--permission-prompt-tool=stdio` for its `canUseTool` callback.
-The Maitty adapter follows that wire contract. See [ADR
-0039](../adr/0039-claude-code-cli-streaming.md) and
+The Maitty adapter follows that wire contract. See ADR
+0039 and
 the [transport research](../research/claude-code-gui-transport.md).
 
 Windows Claude Code 2.1.314 was verified directly and through Maitty's daemon on

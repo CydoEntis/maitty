@@ -16,12 +16,12 @@ Evidence baseline: dev at c08354ce6afc7888774f309e9d7c4873ed721abd.
 - Privacy: extend current private atomic-file storage; no new database. With
   restore.output=false, remove/prevent Maitty chat caches. Native provider history
   is not deleted; it may hydrate memory for this attachment but is never recached.
-- Compatibility: new IPC variants require a protocol bump under ADR 0003.
+- Compatibility: new IPC variants require a protocol bump under ADR 0002.
   Record verified Codex versions/capabilities before enabling the adapter.
 - Scope: [current TUI design](../../DESIGN.md) remains authoritative for TUI controls.
-  The GUI framework is selected in [ADR 0037](../../adr/0037-tauri-react-desktop-shell.md).
+  The GUI framework is selected in ADR 0004.
   Claude uses the installed CLI's streaming protocol per
-  [ADR 0039](../../adr/0039-claude-code-cli-streaming.md); supported CLI versions,
+  ADR 0005; supported CLI versions,
   permission-control compatibility and authentication still require verification.
 
 ## Requirements

@@ -179,7 +179,7 @@ asking in chat. Only you answer (`AnswerSecret`, refused from any pane). The dae
 you type in memory only (a delivered file is `0600` in a `0700` folder on unix; on Windows it
 sits in your own app data, which only you and administrators can read, and is removed within a
 day or when the daemon starts), and gives the agent a single-use reference that runs out after 24 hours
-and works only for the pane that asked ([ADR-0036](adr/0036-secrets-never-enter-chat.md)). The
+and works only for the pane that asked (ADR-0036). The
 value is never in the snapshot or a log line (`SecretText` prints as `<hidden>`), and the label
 and reason an agent supplies are checked for control and hidden characters before you read them.
 A project may name several check commands. Each one runs under the same rules, one after
@@ -297,7 +297,7 @@ cannot become an option or a second command whichever shell reads the line. The 
 `config.local.toml` (never the synced file), validates the entry with `validate_machines` first, and
 changes nothing else; removing a machine does not touch the machine, only this computer's records of it.
 
-Pasting an image into a pane of another machine (`client/remote_image.rs`, ADR 0049) is the same kind of
+Pasting an image into a pane of another machine (`client/remote_image.rs`) is the same kind of
 line: a fixed script (`maitty_core::remote_install::PASTE_SCRIPT`) run as `sh -c '<script>' sh <name> <bytes>`, the image
 on stdin, over the hardened ssh line (`BatchMode`, no agent forwarding, the host after `--`). The file's name
 is chosen by this computer from letters, digits, `.`, `_` and `-` and checked twice (before the line is
@@ -319,7 +319,7 @@ are created `create_new` and mode 600 in an owner-only folder of the app's cache
 extension from the checked type, never from the webview. The image is the raw body of a command, not a logged
 event, and is never written to a log. What the far side prints is checked as for any file.
 
-A chat attachment (`attachment.rs`, ticket 20, ADR 0053) is a path from a drop or the file picker, so it is a string
+A chat attachment (`attachment.rs`, ticket 20) is a path from a drop or the file picker, so it is a string
 from outside: the host follows it only to a regular file (not a folder, device or pipe), refuses an empty file, caps an
 image (by its first bytes, not its name) at 25 MB and any other file at 100 MB while copying (so a file that grows is
 cut off and removed), and copies it `create_new`, mode 600, into an owner-only `attachments` folder of the app's
@@ -328,9 +328,9 @@ invisible characters become `_`), so the path the agent is told never needs quot
 on disk. A zip is never unpacked. Nothing but `attach-` files of that folder is swept (after a week).
 `attachments_exist` answers only for files directly inside the attachments or paste folder, so the window cannot use it
 to probe the disk. The message stores the path and name, never the bytes; sending a file to the agent is the person's
-own act and is not scanned (secrets stay out of chat, ADR 0036).
+own act and is not scanned (secrets stay out of chat).
 
-Sending any file to another machine (`client/send_file.rs`, ADR 0055) is the same line and the same script;
+Sending any file to another machine (`client/send_file.rs`) is the same line and the same script;
 only the name, the cap and the trigger differ. A file is read from this computer only when the person
 names it in the send prompt (a terminal cannot tell a drop from a paste, so a paste of text never
 uploads a file, even when the text is a path); it must be a regular file, at most 100 MB, checked before ssh
@@ -408,14 +408,14 @@ that is not this one (`remote_policy.rs`, `remote_snapshot.rs` in `maitty-machin
 | `Notice` | gated by `notices` | a toast, cleaned and led by `[machine]`; it does not touch this computer's undo hint |
 | `Raise` | gated by `notices` | brings the window to the front, the same "may get my attention" grant as a toast (there is no separate `raise` setting) |
 | `Error`, `Reply` | answer, cleaned | applied only while this window has a command or query out to that machine that nothing has answered yet (client-side bookkeeping, see API_PATTERNS "client routing"; the wire is unchanged); otherwise ignored. An error's toast leads with `[machine]`; reply text is cleaned and cut to 256 KiB. A `Worktrees` reply never fills this computer's picker, and a check's output is taken only when the open sheet or the failure waiting for it is on that machine |
-| `AskRemoveWorktree` | ignore | names a folder on this computer's disk to delete; remote worktree management is out of scope (ADR 0047) |
+| `AskRemoveWorktree` | ignore | names a folder on this computer's disk to delete; remote worktree management is out of scope |
 | `AutoWorkspace` | ignore | announces a workspace and arms this computer's undo |
 
 The opt-ins are read from the machine's `[[machines]]` entry by name; a machine no entry names
 has all of them off. `AskRemoveWorktree` from this computer's own daemon still shows its path
 as the daemon sent it; the folder is removed by that daemon when you answer.
 
-**The desktop app and other machines** ([ADR 0048](adr/0048-machines-in-the-desktop-app.md)). The web view
+**The desktop app and other machines**. The web view
 never connects to a machine and never starts `ssh`: the Rust host holds every connection, runs the same
 `remote_policy` and `remote_snapshot` checks as the terminal app on everything that arrives (`hub.rs`,
 before anything is kept or shown), and hands the web view cleaned data only. The Tauri capabilities did not
@@ -530,7 +530,7 @@ clients only: an agent pane or a structured runtime cannot read what other sessi
 
 ## Project-specific: followed transcripts
 
-The daemon reads an agent's own transcript for a pane it follows ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)).
+The daemon reads an agent's own transcript for a pane it follows ([ADR 0003](adr/0003-status-and-conversation-trust.md)).
 The path comes from a hook report, so it is input, not trust:
 
 - It is read only if its real path (links followed) is a regular `.jsonl` file inside the user's home folder
@@ -545,13 +545,13 @@ The path comes from a hook report, so it is input, not trust:
 
 ## Project-specific: chat sessions started from the desktop
 
-A chat session is a Claude or Codex run the daemon starts itself ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).
+A chat session is a Claude or Codex run the daemon starts itself ([ADR 0003](adr/0003-status-and-conversation-trust.md)).
 The agent runs with the user's permissions, so the window's start path is narrow:
 
 - **Posture.** `start_chat_session` takes one optional boolean, `full_access`, and no other permission argument. By
   default the daemon starts the provider with workspace write and approval on request (Claude `--permission-mode
   default` with the stdio permission prompt; Codex `workspace-write`, `on-request`). With `full_access` it starts
-  the provider's own skip-permissions mode (ADR 0043: Claude `bypassPermissions` with
+  the provider's own skip-permissions mode (ADR 0005: Claude `bypassPermissions` with
   `--allow-dangerously-skip-permissions`; Codex `danger-full-access` with approval `never`). It is the user's
   explicit choice per chat (a labelled checkbox with a warning; the Settings default is off), is never selected
   silently, and is fixed for the session: Maitty never widens a running session, and a chat started with it shows
@@ -683,7 +683,7 @@ The functions never log or return what a pattern matched.
 ## Project-specific: terminal output socket
 
 The desktop host listens on `127.0.0.1` (a port the system picks) and sends terminal output to its own
-window as WebSocket messages ([ADR 0057](adr/0057-terminal-output-on-a-local-websocket.md)). Output
+window as WebSocket messages. Output
 is what the panes show, so the rules are those of a credential:
 
 - **Loopback only.** The listener binds the loopback address and nothing else.

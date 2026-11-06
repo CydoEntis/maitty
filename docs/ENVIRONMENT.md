@@ -217,7 +217,7 @@ through `.profile` or `.zprofile` would otherwise be missing. The client never r
   `gh`), every pane's `PATH` and the environment handed to conversation providers use it. The
   agent launchers stay first on a plain shell pane's `PATH`; the resolved PATH replaces only the
   inherited part after them. `[env]` in `config.toml` still overrides a pane's `PATH`.
-- Windows keeps today's behaviour; the Windows remote is out of v1 (ADR 0047).
+- Windows keeps today's behaviour; the Windows remote is out of v1.
 
 ## Project-specific: variables
 
@@ -257,7 +257,7 @@ release archives and installers are published through the GitHub release workflo
 
 The daemon keeps `usage-<socket>.json` in the data folder beside `session-<socket>.json`: 90 days
 of provider-reported usage per session per day ([DATABASE](DATABASE.md#project-specific-usage-store),
-[ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)). It adds no setting or variable.
+ADR 0009). It adds no setting or variable.
 Deleting the file starts the history over; nothing else depends on it.
 
 ## Project-specific: structured history retention foundation

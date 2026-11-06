@@ -6,7 +6,7 @@ in Settings › Keys or under `[keys.prefix]` in your config.
 ## Default shortcuts
 
 Press `Ctrl+Space` for shortcut mode, then the key. Only `?` needs Shift, and each key does
-one thing (ADR 0017, 0022).
+one thing.
 
 ### Sessions
 
@@ -78,7 +78,7 @@ history, open the worktree picker, rename a session, send `Ctrl+Space` itself to
 The leader is `Ctrl+Space`. Press it and you are in **shortcut mode**: each key runs its
 action, and the mode stays for the next, so a run of actions is one key each. `Esc`, the
 leader again or a click go back to **input mode**, where keys type into the pane. So does
-an action that starts a pane for you to type into (ADR 0025): `n` a shell, `s` a session,
+an action that starts a pane for you to type into: `n` a shell, `s` a session,
 `t` a tab, `v` / `h` a split, and `o` once its dialog starts the session; the next key goes
 to the new pane. An action that opens a popup or sheet hands it the keys, and closing it
 returns to shortcut mode; `Enter` (message the agent) is one of those. The bar along the bottom always says which mode you are in: `TYPING · Ctrl+Space for
@@ -103,8 +103,7 @@ reference; it is not a second palette:
   need no leader, and the commands that only search finds.
 
 Keys are drawn as keycaps; `Ctrl+Space` is two caps joined by a dim `+`. On Windows,
-Caps Lock does not change shortcut meaning, and no default but `?` needs Shift (ADR 0017,
-0022). The
+Caps Lock does not change shortcut meaning, and no default but `?` needs Shift. The
 [README](../README.md#shortcuts) lists the defaults.
 
 Mouse entry: **Menu** has a chip (`≡`) in the collapsed column; with the sessions hidden
@@ -129,8 +128,7 @@ or another program follow that program's own help.
 | Esc | Close; no command runs while reading |
 
 Every key is a leader key: there is no letter that acts by itself in the sidebar.
-The defaults are one key each, none but `?` needing Shift, chosen from what other apps use
-(ADR 0017, 0022): `v` / `h` split stacked / side by side, `c` Changes, `i` Inbox, `y` why, `k` stop
+The defaults are one key each, none but `?` needing Shift, chosen from what other apps use: `v` / `h` split stacked / side by side, `c` Changes, `i` Inbox, `y` why, `k` stop
 the agent, `Enter` message it, `p` find a file, `g` worktrees, `b`
 Branch, `a` references, `l` what happened, `w` machines, `?` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image, `d` send a file to the pane's machine,
 `Ctrl`+arrows resize, `Alt`+arrows swap panes, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.

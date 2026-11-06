@@ -461,7 +461,7 @@ background storage lock. Attachments never submit independent cache revisions.
 See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 process boundary and event/approval handling rules.
 
-**An agent in a pane has a read-only conversation** ([ADR 0052](adr/0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)),
+**An agent in a pane has a read-only conversation** ([ADR 0003](adr/0003-status-and-conversation-trust.md)),
 with no protocol change. For an owned desktop pane whose hook-verified agent is `claude` or `codex` and
 whose hook gave a session id (and, for Claude, its transcript path), the snapshot's `conversations` holds
 a `ConversationSummary` with `execution: Native`, `native_term: <pane>`, the pane's `status` and no
@@ -469,7 +469,7 @@ checks; `Query::ConversationRead` serves its history. The id is the daemon's, st
 the agent, and its `generation` rises when the pane's session id changes. It is in memory only (never in
 the session file or history cache). `ConversationSend`, `Approve`, `AnswerInput`, `Cancel` and `End` on it
 fail with a "read-only" error; `Rename` and `Archive` fail as for an unknown id (the pane is named and
-closed as a pane). A client the pane does not belong to (ADR 0045) gets "No such conversation". The
+closed as a pane). A client the pane does not belong to gets "No such conversation". The
 history is the provider's own transcript projected through the same entries a structured runtime
 produces (`conversation/follow_transcript.rs`); nothing read from the file sets any status.
 
@@ -491,7 +491,7 @@ the version was raised to 71; tests assert an older peer cannot read them and th
 still decodes.
 
 Protocol 72 adds `branch: Option<String>` (`#[serde(default)]`) to `Command::ConversationStart`, for a
-chat session on a branch ([ADR 0054](adr/0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)).
+chat session on a branch ([ADR 0003](adr/0003-status-and-conversation-trust.md)).
 The daemon, before anything is made, refuses a `branch` beside anything but a new conversation
 (`StartTarget::Create`), checks the name with the branch agent's rules (`branch_agent::branch_problem`),
 and requires the target's folder to be a project the app shows and a git repository
@@ -501,7 +501,7 @@ is the usual `ConversationStarted`. The field is defaulted, so the old shape dec
 peer that predates it would drop the field and start in the main checkout, so the version was raised
 to 72 and the two refuse to talk. The window's Tauri command `start_chat_session` asks for
 workspace write with approval on request, or, with its optional `full_access` flag, for `Sandbox::FullAccess`
-with `ApprovalPolicy::Never` (ADR 0043 and 0054). It adds no wire field: the choice rides in the existing
+with `ApprovalPolicy::Never`. It adds no wire field: the choice rides in the existing
 `LaunchSettings`, so the protocol version is unchanged. It is local-only.
 
 Protocol 73 adds `Query::ListFolders { path, tag }` and `Reply::Folders { tag, listing }`: the folders
@@ -517,8 +517,7 @@ snapshot is (`remote_policy::vet`): control characters out, names that are paths
 cut, and it is passed on only while a request to that machine is waiting.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
-ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
-([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)): totals, one entry per
+ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store: totals, one entry per
 session and one per day with usage, as `UsageReport` in `crates/maitty-shared/src/usage_report.rs`
 (camelCase when it reaches the desktop app as JSON). Human clients only. A figure no provider
 reported is `null`, never zero. `Usage` also gains the defaulted `tokens_in` and `tokens_out`
@@ -572,8 +571,7 @@ usual one (`create_trusted_worktree`, the repo's setup hook, the `[worktree] dir
 its last session closes). Local projects only: the window refuses another machine's project.
 
 Protocol 65 removes the handoff between chat and terminal
-(`ConversationHandoffToNative`, `ConversationHandoffToChat`; see
-[ADR 0044](adr/0044-chat-and-terminal-are-separate-sessions.md)): a session is a chat
+(`ConversationHandoffToNative`, `ConversationHandoffToChat`): a session is a chat
 or a terminal session from the moment it starts. It adds the human-only
 `ConversationRename` and `ConversationArchive` commands, and `title` and `archived` on
 `ConversationSummary` and the saved conversation record (both defaulted, so older files
@@ -800,7 +798,7 @@ Every message the window sends is an `Outgoing { machine, msg }`; `client/routin
    the `ClientSession` / `Proj.machine`, or the focus machine for a workspace or tab id read from
    the active workspace (`active_ws`, `active_tab`).
 3. A new session, pane, tab or workspace goes to `target_machine()`: the machine of the session
-   selected in the sidebar, else the focused one (ADR 0047); this computer when neither is anywhere else.
+   selected in the sidebar, else the focused one; this computer when neither is anywhere else.
    A project's own "new" (its row, a recipe, "+ New") goes to `Proj.machine`.
 4. Things with no owning machine (settings, themes, reload config, kill server, UI state) and
    anything that acts on this computer's disk stay local.
