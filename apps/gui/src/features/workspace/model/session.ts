@@ -1,5 +1,5 @@
 import { terminalOf } from '@/api/daemon'
-import type { Conversation, TerminalDetails } from '@/data/preview'
+import type { Conversation, PermissionAsk, TerminalDetails } from '@/data/preview'
 
 /** The status vocabulary of the desktop app. Each one has its own shape, never colour alone. */
 export type SessionStatus = 'working' | 'needs' | 'done' | 'error' | 'idle' | 'unknown'
@@ -37,6 +37,8 @@ export type SessionView = {
   lastPrompt: string
   /** What a stopped agent is asking (the exact command and choices); empty when it is not stopped on a choice. */
   asking: string
+  /** The permission prompt the agent's own hook says it is stopped on. */
+  ask: PermissionAsk | null
   interrupted: TerminalDetails['interrupted']
   timeline: TerminalDetails['timeline']
   usage: TerminalDetails['usage']
@@ -164,6 +166,7 @@ export function toSessionView(conversation: Conversation, home: string): Session
     process: processName(conversation.agent, conversation.process),
     lastPrompt: (conversation.summary ?? '').trim(),
     asking: conversation.details?.asking ?? '',
+    ask: conversation.details?.ask ?? null,
     interrupted: conversation.details?.interrupted ?? null,
     timeline: conversation.details?.timeline ?? [],
     usage: conversation.details?.usage ?? { context: null, cost: null, tokens: null },
