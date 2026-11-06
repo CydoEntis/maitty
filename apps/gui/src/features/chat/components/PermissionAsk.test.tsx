@@ -98,7 +98,7 @@ describe('the chat of an agent stopped on a permission prompt', () => {
 
     expect(screen.getByText('Which database?')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Approve once' })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Postgres' }))
+    await user.click(screen.getByRole('button', { name: /Postgres/ }))
 
     expect(typeInto).toHaveBeenCalledExactlyOnceWith('2')
     expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveAttribute('placeholder', PENDING_APPROVAL_NOTE)

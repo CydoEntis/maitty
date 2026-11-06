@@ -43,30 +43,37 @@ export function PermissionAskCard({ agent, ask, online, answer, pick }: Props) {
     if (pick === undefined || busy) return
     run(pick(index))
   }
+  const isQuestion = ask?.tool === QUESTION_TOOL
   return (
-    <section aria-label={`${agent} needs your permission`} className="mx-4 mb-2 shrink-0 rounded-md border border-[var(--warn)] px-3 py-2.5 text-[13px]">
-      <p className="m-0 font-semibold text-fg">
-        {ask === null ? `${agent} is waiting for you` : ask.tool === QUESTION_TOOL ? `${agent} has a question for you` : `${agent} wants to use ${ask.tool}`}
-      </p>
-      {ask !== null && ask.detail !== '' && (
-        <pre className="m-0 mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[12px] text-fg2 [overflow-wrap:anywhere]">{ask.detail}</pre>
-      )}
+    <section aria-label={`${agent} needs your permission`} className="mx-ask">
+      <header className="mx-ask-head">
+        <span className="mx-ask-dot" aria-hidden="true" />
+        <strong>{ask === null ? `${agent} is waiting for you` : isQuestion ? `${agent} has a question for you` : `${agent} wants to use ${ask.tool}`}</strong>
+      </header>
+      {ask !== null && ask.detail !== '' && (isQuestion
+        ? <p className="mx-ask-question">{ask.detail}</p>
+        : <pre className="mx-ask-detail">{ask.detail}</pre>)}
       {canPick ? (
         <>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <ul className="mx-ask-choices" aria-label="Choices">
             {choices.map((choice, index) => (
-              <Button key={`${String(index)}-${choice}`} size="sm" variant="outline" disabled={busy} onClick={() => { choose(index) }}>{choice}</Button>
+              <li key={`${String(index)}-${choice}`}>
+                <button type="button" className="mx-ask-choice" disabled={busy} onClick={() => { choose(index) }}>
+                  <kbd>{index + 1}</kbd>
+                  <span>{choice}</span>
+                </button>
+              </li>
             ))}
-          </div>
-          <p className="m-0 mt-1 text-dim">Or type your own answer in the terminal.</p>
+          </ul>
+          <p className="mx-ask-foot">Or type your own answer in the terminal.</p>
         </>
       ) : canAnswer ? (
-        <div className="mt-2 flex gap-2">
+        <div className="mx-ask-actions">
           <Button size="sm" disabled={busy} onClick={() => { send('approve') }}>Approve once</Button>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => { send('deny') }}>Deny</Button>
         </div>
       ) : (
-        <p className="m-0 mt-1 text-dim">Answer in the terminal.</p>
+        <p className="mx-ask-foot">Answer in the terminal.</p>
       )}
     </section>
   )
