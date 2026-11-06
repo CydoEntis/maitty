@@ -23,11 +23,13 @@ export const INTERRUPT_KEY = '\x1b'
 
 /** How long a message just sent stays on screen before the history shows it; past this it is dropped rather than left as a claim. */
 const ECHO_MAX_MS = 20_000
+/** How long a message just sent claims the agent is thinking; after this the status itself has to say it. */
+const ECHO_THINKING_MS = 4_000
 /** A second read soon after a send, because a quiet chat is read only every few seconds. */
 const FOLLOW_UP_REFRESH_MS = 700
 
 /** What was just sent into the terminal, and how many times those words were already in the history. */
-export type SentEcho = { readonly text: string; readonly baseline: number }
+export type SentEcho = { readonly text: string; readonly baseline: number; readonly quiet: boolean }
 
 /** A message the daemon holds until the running turn ends. `id` is its operation number. */
 export type QueuedItem = { readonly id: number; readonly text: string }
@@ -121,7 +123,9 @@ export function useChatComposer({ link, feed, online, refresh, typeInto, answers
         // One paste, then Enter: the agent takes a multi-line message as one message.
         await typeText(`${PASTE_START}${text}${PASTE_END}\r`)
         // Drawn at once: the history only has it when the agent next writes its file.
-        setEcho({ text, baseline: countUserMessages(selectChatEvents(feed.projection), text) })
+        setEcho({ text, baseline: countUserMessages(selectChatEvents(feed.projection), text), quiet: false })
+        // The "thinking" line it brings is only a stand-in until the agent's own status says so: it stops after a few seconds, the message stays.
+        window.setTimeout(() => { setEcho((current) => (current?.text === text ? { ...current, quiet: true } : current)) }, ECHO_THINKING_MS)
         window.setTimeout(() => { setEcho((current) => (current?.text === text ? null : current)) }, ECHO_MAX_MS)
         refresh()
         window.setTimeout(refresh, FOLLOW_UP_REFRESH_MS)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { answerUserInput, approveRequest } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
@@ -18,6 +18,9 @@ import { ChatItem } from './ChatItems'
 import { ChatSkeleton } from './ChatSkeleton'
 import { PermissionAskCard } from './PermissionAskCard'
 import { VirtualList } from './VirtualList'
+
+/** When a turn ends the status changes at once, but the agent's last words may not be read yet: read now and again soon, instead of waiting for the idle poll. */
+const END_OF_TURN_READ_MS = 600
 
 /** The id of a held first message in the composer's list of waiting messages; real ones carry operation numbers. */
 const HELD_MESSAGE_ID = -1
@@ -84,6 +87,15 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const working = feed.status === 'Working'
   const workingSince = working ? runningTurnStartedAt(feed) : null
   const incomplete = incompleteReason(feed.completeness)
+  const wasWorking = useRef(false)
+  useEffect(() => {
+    const ended = wasWorking.current && !working
+    wasWorking.current = working
+    if (!ended) return undefined
+    refresh()
+    const timer = window.setTimeout(refresh, END_OF_TURN_READ_MS)
+    return () => { window.clearTimeout(timer) }
+  }, [working, refresh])
   // The transcript has no entry for a terminal agent's prompt until it is answered, so the chat shows it from the hook's report.
   const stoppedOnPrompt = link.readOnly === true && feed.status === 'Blocked'
   const answersPrompt = stoppedOnPrompt && typeInto !== undefined && ask?.answerable === true
@@ -92,7 +104,8 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const { sendText, setDraft: setComposerDraft, disabledReason, sending, echo } = composer
   // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
   const echoText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
-  const rows = useMemo(() => buildRows(events, working, root, echoText), [events, working, root, echoText])
+  const echoThinking = echo !== null && !echo.quiet
+  const rows = useMemo(() => buildRows(events, working, root, echoText, echoThinking), [events, working, root, echoText, echoThinking])
   // A draft typed while the agent started comes over once, and a message sent then goes out as soon as the agent takes input.
   const held = useHeldFirstMessage(sessionId)
   useEffect(() => {

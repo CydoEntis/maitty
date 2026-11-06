@@ -62,7 +62,7 @@ function mergedStatus(a: ItemStatus, b: ItemStatus): ItemStatus {
  * single message (v18 C.1: one agent message per turn, paragraphs never split into messages). A tool
  * step between two messages ends the first, so the text and the steps keep the order they happened in.
  */
-export function buildRows(events: readonly ChatEvent[], working: boolean, root: string | null = null, echoText: string | null = null): ChatRow[] {
+export function buildRows(events: readonly ChatEvent[], working: boolean, root: string | null = null, echoText: string | null = null, echoThinking = true): ChatRow[] {
   const rows: ChatRow[] = []
   for (const event of events) {
     switch (event.kind) {
@@ -100,7 +100,7 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
   }
   // A message just sent is drawn at once, and the agent is taken to be at work on it, until the history says so itself.
   if (echoText !== null) rows.push({ kind: 'echo', key: ECHO_ROW_KEY, text: echoText })
-  if (working || echoText !== null) rows.push({ kind: 'working', key: WORKING_ROW_KEY, phrase: describeWork(events, root) })
+  if (working || (echoText !== null && echoThinking)) rows.push({ kind: 'working', key: WORKING_ROW_KEY, phrase: describeWork(events, root) })
   return linkApprovals(rows, events, root)
 }
 

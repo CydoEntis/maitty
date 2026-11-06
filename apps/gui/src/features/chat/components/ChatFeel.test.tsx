@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers } from '../composerStore'
 import { forgetFirstMessages } from '../firstMessage'
-import { forgetChatFeeds, IDLE_POLL_MS } from '../useChatFeed'
+import { ACTIVE_POLL_MS, forgetChatFeeds, IDLE_POLL_MS } from '../useChatFeed'
 import { ChatSession } from './ChatSession'
 
 const fake = vi.hoisted(() => ({ current: null as null | { read: (cursor: never) => Promise<unknown> } }))
@@ -36,8 +36,9 @@ async function settle(ms = 0) {
   await act(async () => { await vi.advanceTimersByTimeAsync(ms) })
 }
 
-function open() {
+function open(status: 'Idle' | 'Working' = 'Idle') {
   const daemon = new FakeDaemonHistory()
+  daemon.status = status
   daemon.upsert(daemon.message('t1', 'u1', 'User', 'earlier'))
   fake.current = daemon
   const typeInto = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
@@ -74,6 +75,33 @@ describe('how the chat feels while it waits', () => {
 
     expect(screen.queryByLabelText('Sending')).not.toBeInTheDocument()
     expect(screen.getAllByText('hello there')).toHaveLength(1)
+  })
+
+  it('stops saying the agent is thinking after a few seconds, when its own status does not, while the message stays', async () => {
+    const { user } = open()
+    await settle()
+    await user.type(screen.getByRole('textbox', { name: 'Message claude' }), 'hello there{Enter}')
+    await settle()
+    expect(screen.getByText(/claude is thinking/)).toBeInTheDocument()
+
+    await settle(4_100)
+
+    expect(screen.queryByText(/claude is thinking/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Sending')).toHaveTextContent('hello there')
+  })
+
+  it('reads again as a turn ends, so the last words are not left to the slow idle poll', async () => {
+    const { daemon } = open('Working')
+    await settle()
+    expect(screen.getByText(/claude is thinking/)).toBeInTheDocument()
+
+    // The turn ends; the agent's last message is written a moment after the status changes.
+    daemon.status = 'Idle'
+    await settle(ACTIVE_POLL_MS + 1)
+    daemon.upsert(daemon.message('t1', 'a1', 'Assistant', 'the answer'))
+    await settle(700)
+
+    expect(screen.getByText('the answer')).toBeInTheDocument()
   })
 
   it('drops a message the history never showed, rather than leaving it standing as sent', async () => {
