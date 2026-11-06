@@ -249,6 +249,100 @@ fn codex(timestamp: &str, kind: &str, mut payload: serde_json::Value) -> String 
     line(json!({ "timestamp": timestamp, "type": outer, "payload": payload }))
 }
 
+/// Codex 0.156 writes the person's words as a user-role response item, with no `user_message` event.
+#[test]
+fn a_codex_user_message_written_only_as_a_response_item_is_shown_and_its_injected_context_is_not() {
+    let at = "2026-11-06T11:17:51.000Z";
+    let lines = vec![
+        line(json!({ "timestamp": at, "type": "session_meta", "payload": { "id": SESSION } })),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "developer", "content": [{ "type": "input_text", "text": "<permissions instructions>" }] }),
+        ),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "user", "content": [
+                { "type": "input_text", "text": "# AGENTS.md instructions for /w" },
+                { "type": "input_text", "text": "<environment_context><cwd>/w</cwd></environment_context>" },
+            ] }),
+        ),
+        codex(at, "event_msg:task_started", json!({ "turn_id": "turn-a" })),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "user", "content": [{ "type": "input_text", "text": "Hey" }] }),
+        ),
+        codex(at, "event_msg:item_completed", json!({ "item": { "type": "UserMessage", "content": [] } })),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "assistant", "content": [{ "type": "output_text", "text": "Hey! What can I help you with?" }] }),
+        ),
+        codex(at, "event_msg:task_complete", json!({ "turn_id": "turn-a" })),
+        codex(at, "event_msg:task_started", json!({ "turn_id": "turn-b" })),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "user", "content": [{ "type": "input_text", "text": "Hey" }] }),
+        ),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "assistant", "content": [{ "type": "output_text", "text": "Again." }] }),
+        ),
+        codex(at, "event_msg:task_complete", json!({ "turn_id": "turn-b" })),
+    ];
+
+    let history = history_of(Format::Codex, &lines);
+
+    let said: Vec<_> = history
+        .entries
+        .iter()
+        .filter(|e| matches!(e.content, Content::Message { .. }))
+        .map(|e| {
+            let (role, text) = message(e);
+            (role.clone(), text.to_string())
+        })
+        .collect();
+    assert_eq!(
+        said,
+        [
+            (Role::User, "Hey".to_string()),
+            (Role::Assistant, "Hey! What can I help you with?".to_string()),
+            // The same words in a later turn are a new message, not a repeat.
+            (Role::User, "Hey".to_string()),
+            (Role::Assistant, "Again.".to_string()),
+        ]
+    );
+}
+
+/// An older Codex wrote both the event and the response item for one message: shown once.
+#[test]
+fn a_codex_user_message_written_as_an_event_and_a_response_item_is_shown_once() {
+    let at = "2026-11-04T10:00:00.000Z";
+    let lines = vec![
+        codex(at, "event_msg:task_started", json!({ "turn_id": "turn-a" })),
+        codex(at, "event_msg:user_message", json!({ "message": "list files" })),
+        codex(
+            at,
+            "response_item:message",
+            json!({ "role": "user", "content": [{ "type": "input_text", "text": "list files" }] }),
+        ),
+        codex(at, "event_msg:task_complete", json!({ "turn_id": "turn-a" })),
+    ];
+
+    let history = history_of(Format::Codex, &lines);
+
+    let users = history
+        .entries
+        .iter()
+        .filter(|e| matches!(&e.content, Content::Message { role, .. } if *role == Role::User))
+        .count();
+    assert_eq!(users, 1);
+}
+
 #[test]
 fn a_codex_turn_becomes_messages_commands_a_patch_and_a_finished_turn() {
     let at = "2026-11-04T10:00:00.000Z";
