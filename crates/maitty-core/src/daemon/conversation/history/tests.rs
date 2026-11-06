@@ -734,3 +734,23 @@ fn entries_hydrated_or_loaded_from_an_older_cache_are_masked() {
     assert_eq!(output, "x [redacted]");
     assert_eq!(input.as_ref().unwrap()["content"], "[content of a secret file omitted]");
 }
+
+/// The largest whole number a web page keeps exactly. The desktop app reads the cursor with a
+/// schema that refuses anything above it, and a cursor goes back to the daemon as it came, so a
+/// larger epoch makes every history read fail.
+const LARGEST_EXACT_JS_INTEGER: u64 = 9_007_199_254_740_991;
+
+#[test]
+fn a_cursor_the_desktop_app_reads_stays_inside_what_a_web_page_holds_exactly() {
+    let history = History::new(ConversationId(1));
+    let page = history
+        .read(None, 10, MAX_READ_BYTES)
+        .expect("an empty history reads");
+    let cursor = page.resume.as_ref().expect("a read hands back a cursor to resume from");
+    assert!(
+        cursor.epoch != 0 && cursor.epoch <= LARGEST_EXACT_JS_INTEGER,
+        "epoch {} is out of range for a web page",
+        cursor.epoch
+    );
+    assert!(super::fresh_epoch() <= LARGEST_EXACT_JS_INTEGER);
+}
