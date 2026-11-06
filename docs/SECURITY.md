@@ -179,7 +179,7 @@ asking in chat. Only you answer (`AnswerSecret`, refused from any pane). The dae
 you type in memory only (a delivered file is `0600` in a `0700` folder on unix; on Windows it
 sits in your own app data, which only you and administrators can read, and is removed within a
 day or when the daemon starts), and gives the agent a single-use reference that runs out after 24 hours
-and works only for the pane that asked (ADR-0036). The
+and works only for the pane that asked ([ADR 0006](adr/0006-secrets-never-enter-chat.md)). The
 value is never in the snapshot or a log line (`SecretText` prints as `<hidden>`), and the label
 and reason an agent supplies are checked for control and hidden characters before you read them.
 A project may name several check commands. Each one runs under the same rules, one after
@@ -297,7 +297,7 @@ cannot become an option or a second command whichever shell reads the line. The 
 `config.local.toml` (never the synced file), validates the entry with `validate_machines` first, and
 changes nothing else; removing a machine does not touch the machine, only this computer's records of it.
 
-Pasting an image into a pane of another machine (`client/remote_image.rs`) is the same kind of
+Pasting an image into a pane of another machine (`client/remote_image.rs`, ADR 0007) is the same kind of
 line: a fixed script (`maitty_core::remote_install::PASTE_SCRIPT`) run as `sh -c '<script>' sh <name> <bytes>`, the image
 on stdin, over the hardened ssh line (`BatchMode`, no agent forwarding, the host after `--`). The file's name
 is chosen by this computer from letters, digits, `.`, `_` and `-` and checked twice (before the line is
@@ -328,9 +328,9 @@ invisible characters become `_`), so the path the agent is told never needs quot
 on disk. A zip is never unpacked. Nothing but `attach-` files of that folder is swept (after a week).
 `attachments_exist` answers only for files directly inside the attachments or paste folder, so the window cannot use it
 to probe the disk. The message stores the path and name, never the bytes; sending a file to the agent is the person's
-own act and is not scanned (secrets stay out of chat).
+own act and is not scanned (secrets stay out of chat, ADR 0006).
 
-Sending any file to another machine (`client/send_file.rs`) is the same line and the same script;
+Sending any file to another machine (`client/send_file.rs`, ADR 0007) is the same line and the same script;
 only the name, the cap and the trigger differ. A file is read from this computer only when the person
 names it in the send prompt (a terminal cannot tell a drop from a paste, so a paste of text never
 uploads a file, even when the text is a path); it must be a regular file, at most 100 MB, checked before ssh
@@ -408,14 +408,14 @@ that is not this one (`remote_policy.rs`, `remote_snapshot.rs` in `maitty-machin
 | `Notice` | gated by `notices` | a toast, cleaned and led by `[machine]`; it does not touch this computer's undo hint |
 | `Raise` | gated by `notices` | brings the window to the front, the same "may get my attention" grant as a toast (there is no separate `raise` setting) |
 | `Error`, `Reply` | answer, cleaned | applied only while this window has a command or query out to that machine that nothing has answered yet (client-side bookkeeping, see API_PATTERNS "client routing"; the wire is unchanged); otherwise ignored. An error's toast leads with `[machine]`; reply text is cleaned and cut to 256 KiB. A `Worktrees` reply never fills this computer's picker, and a check's output is taken only when the open sheet or the failure waiting for it is on that machine |
-| `AskRemoveWorktree` | ignore | names a folder on this computer's disk to delete; remote worktree management is out of scope |
+| `AskRemoveWorktree` | ignore | names a folder on this computer's disk to delete; remote worktree management is out of scope (ADR 0007) |
 | `AutoWorkspace` | ignore | announces a workspace and arms this computer's undo |
 
 The opt-ins are read from the machine's `[[machines]]` entry by name; a machine no entry names
 has all of them off. `AskRemoveWorktree` from this computer's own daemon still shows its path
 as the daemon sent it; the folder is removed by that daemon when you answer.
 
-**The desktop app and other machines**. The web view
+**The desktop app and other machines** ([ADR 0007](adr/0007-multiple-machines.md)). The web view
 never connects to a machine and never starts `ssh`: the Rust host holds every connection, runs the same
 `remote_policy` and `remote_snapshot` checks as the terminal app on everything that arrives (`hub.rs`,
 before anything is kept or shown), and hands the web view cleaned data only. The Tauri capabilities did not
@@ -683,7 +683,7 @@ The functions never log or return what a pattern matched.
 ## Project-specific: terminal output socket
 
 The desktop host listens on `127.0.0.1` (a port the system picks) and sends terminal output to its own
-window as WebSocket messages. Output
+window as WebSocket messages ([ADR 0004](adr/0004-client-split-and-desktop-host.md)). Output
 is what the panes show, so the rules are those of a credential:
 
 - **Loopback only.** The listener binds the loopback address and nothing else.

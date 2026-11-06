@@ -469,7 +469,7 @@ checks; `Query::ConversationRead` serves its history. The id is the daemon's, st
 the agent, and its `generation` rises when the pane's session id changes. It is in memory only (never in
 the session file or history cache). `ConversationSend`, `Approve`, `AnswerInput`, `Cancel` and `End` on it
 fail with a "read-only" error; `Rename` and `Archive` fail as for an unknown id (the pane is named and
-closed as a pane). A client the pane does not belong to gets "No such conversation". The
+closed as a pane). A client the pane does not belong to (ADR 0004) gets "No such conversation". The
 history is the provider's own transcript projected through the same entries a structured runtime
 produces (`conversation/follow_transcript.rs`); nothing read from the file sets any status.
 
@@ -501,7 +501,7 @@ is the usual `ConversationStarted`. The field is defaulted, so the old shape dec
 peer that predates it would drop the field and start in the main checkout, so the version was raised
 to 72 and the two refuse to talk. The window's Tauri command `start_chat_session` asks for
 workspace write with approval on request, or, with its optional `full_access` flag, for `Sandbox::FullAccess`
-with `ApprovalPolicy::Never`. It adds no wire field: the choice rides in the existing
+with `ApprovalPolicy::Never` ([ADR 0005](adr/0005-provider-adapters-and-permissions.md)). It adds no wire field: the choice rides in the existing
 `LaunchSettings`, so the protocol version is unchanged. It is local-only.
 
 Protocol 73 adds `Query::ListFolders { path, tag }` and `Reply::Folders { tag, listing }`: the folders
@@ -517,7 +517,8 @@ snapshot is (`remote_policy::vet`): control characters out, names that are paths
 cut, and it is passed on only while a request to that machine is waiting.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
-ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store: totals, one entry per
+ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
+([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)): totals, one entry per
 session and one per day with usage, as `UsageReport` in `crates/maitty-shared/src/usage_report.rs`
 (camelCase when it reaches the desktop app as JSON). Human clients only. A figure no provider
 reported is `null`, never zero. `Usage` also gains the defaulted `tokens_in` and `tokens_out`
@@ -798,7 +799,7 @@ Every message the window sends is an `Outgoing { machine, msg }`; `client/routin
    the `ClientSession` / `Proj.machine`, or the focus machine for a workspace or tab id read from
    the active workspace (`active_ws`, `active_tab`).
 3. A new session, pane, tab or workspace goes to `target_machine()`: the machine of the session
-   selected in the sidebar, else the focused one; this computer when neither is anywhere else.
+   selected in the sidebar, else the focused one (ADR 0007); this computer when neither is anywhere else.
    A project's own "new" (its row, a recipe, "+ New") goes to `Proj.machine`.
 4. Things with no owning machine (settings, themes, reload config, kill server, UI state) and
    anything that acts on this computer's disk stay local.

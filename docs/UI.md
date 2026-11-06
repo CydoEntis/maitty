@@ -106,9 +106,10 @@ app instead of showing an error; a terminal session opens in both apps. A sessio
 chat or a terminal session from the moment it starts,
 and nothing switches a live session between them. The desktop app shows terminal sessions
 only: a new session there is a plain shell, closing a pane or tab detaches, and ending a
-session is its own action (its look is in [DESIGN](DESIGN.md#desktop-app)).
+session is its own action (ADR 0046;
+its look is in [DESIGN](DESIGN.md#desktop-app)).
 
-The desktop app also shows other machines' terminal sessions.
+The desktop app also shows other machines' terminal sessions (ADR 0007).
 Its host holds one supervised connection per machine and the web view only renders: it knows a machine by
 name, never by where it points. A session of another machine has the id `build/t12` (the machine's name, so a
 saved layout survives a restart; this computer's stay `t12`). **Settings › Machines** retries, removes and
@@ -169,7 +170,7 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
 ## Project-specific: usage and cost page (desktop)
 
 The Usage and cost page, a section of Settings (`apps/gui/src/features/usage/`, look in [DESIGN](DESIGN.md#desktop-app)) shows only
-what providers reported through the daemon's usage store.
+what providers reported through the daemon's usage store ([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)).
 A figure nobody reported is a dash in the UI, never zero and never computed from tokens. The monthly
 budget is a client preference (`monthlyBudget`, validated in `preferences.ts`); the ring needs a budget, a
 known cost and the Month window. The report is fetched with a query (no polling faster than 60 s), and
@@ -183,7 +184,7 @@ Maitty has one terminal interface: a sidebar of projects and session cards (this
 
 The leader is `Ctrl+Space` by default. Inbox (`i`), Changes (`c`), Files (`f`), Branch (`b`) and References (`a`) use the right-hand sheet. Settings (`,`) opens as a centred modal over the workspace so the pane layout does not change. The key overlay (`Ctrl+Space`; `Space` searches, `?` lists all), the branch switcher and new agents use popups. The minimum supported size is about 80 by 24; popups clamp to the screen. Mouse users can reach every visible control; support click, right-click menus, drag dividers, scrolling and Ctrl+click paths. A click on a toast (a finished session's note, the Restart now button) is the toast's even where it covers a pane whose program asked for the mouse; the program never sees it (`Screen::toast_rect`). A right-click menu answers each item's key while it is open but does not draw it, as the Menu doesn't (a bare letter beside an item reads as a key that works anywhere): the leader key bound to the same action in the live keymap (`menu.rs` `menu_keys`: split `v` / `h`, close `x`, move `Alt`+arrows, Changes `c`), else a letter of its own, clear of those keys. A bound key the menu answers itself (`j` / `k` and the arrows, Enter, Esc, Delete, a check's `r` `o` `O` `u`, or the `x` that closes) goes to the menu, and that item takes a letter instead. Prefer Maitty's retained history when it has lines; when an agent has no retained history, pass wheel and Page Up/Down input to the agent so its own transcript can scroll. Branch (`b`, `client/screen/branch_sheet.rs`) uses the right-hand sheet: the session's branch, ahead/behind its upstream and its base branch (the main checkout's, else `main`, else `master`), the last 10 commits, the session's last check and its snapshots, all read by git in a background task. Its first row, **Switch branch…**, opens the switcher popup; Enter on a snapshot starts the row menu's restore (asked first). A folder outside git says so instead of the lists; an upstream whose remote branch is gone reads `gone from the remote`, and a git error shows in the place of what it was reading. References (`a`, `client/screen/references_sheet.rs`, files through `crates/maitty-terminal-client/src/references.rs`) lists the project's screenshots and design files from `.maitty/references/` at the repo's main checkout (a folder outside git keeps its own), so agents in every worktree see one set: name, kind, size and age per row, newest first, the selected row a neutral tint with an accent `▎`. Enter (or `o`) opens one in the system viewer as a Ctrl+click path does, `p` (or Ctrl+V) adds the clipboard image as `screenshot-<UTC time>.png`, `n` asks for a file's path (typed or pasted; a drop's quotes come off) and copies it in, `d` (or Delete) removes the chosen one after a danger confirm, `y` copies its absolute path; `a` again or Esc closes it. A paste while it has the keys stays in it: one line naming a file (a file dropped on the terminal) is added, an empty paste adds the clipboard image, and anything else gets the toast "References has the keys: …", which never repeats what was pasted. A name starting with a dot is refused. Entries the listing left out (unreadable, or links out of the folder) are counted on the list's last row in `err`, with the first reason. Empty, it reads "No references yet · paste an image or add a file", where they are kept and that agents find them through MCP, and its action bar holds only the ways to add one. Every file step runs in `spawn_bg`; the first time Maitty makes the folder in a repo it adds `.maitty/references/` to the repo's `info/exclude`. Over `--remote` it is refused with a toast, like Files. The minimum supported size is about 80 by 24; popups clamp to the screen. Mouse users can reach every visible control; support click, right-click menus, drag dividers, scrolling and Ctrl+click paths. Prefer Maitty's retained history when it has lines; when an agent has no retained history, pass wheel and Page Up/Down input to the agent so its own transcript can scroll.
 
-**Send a file** (`client/send_file.rs`). In a pane on another machine the leader key `d` opens the prompt `Send a file to this machine: its path` (mode bar `SEND FILE`; a paste or a drop puts its first line in the box, a drop's quotes come off). Enter starts the upload in `spawn_bg`; a toast reads `sending <file> to <machine>… <n>%` and is refreshed once a second from the byte count, without adding to the notification history. `d` again, or a click on the toast's close mark, stops it (`stopping the send to <machine>…`, then `stopped sending the file to <machine>`); Esc only dismisses the toast and does not stop it, because Esc also belongs to the program in the pane. One file is sent at a time. On success the far-side path is typed into the pane like a local paste, and the toast says `sent <file> to <machine>`; every failure is an error toast (not a file, over 100 MB, no ssh to the machine, a login that needs a prompt, the machine could not keep it). On a local pane the key says there is nothing to send.
+**Send a file** (`client/send_file.rs`, ADR 0007). In a pane on another machine the leader key `d` opens the prompt `Send a file to this machine: its path` (mode bar `SEND FILE`; a paste or a drop puts its first line in the box, a drop's quotes come off). Enter starts the upload in `spawn_bg`; a toast reads `sending <file> to <machine>… <n>%` and is refreshed once a second from the byte count, without adding to the notification history. `d` again, or a click on the toast's close mark, stops it (`stopping the send to <machine>…`, then `stopped sending the file to <machine>`); Esc only dismisses the toast and does not stop it, because Esc also belongs to the program in the pane. One file is sent at a time. On success the far-side path is typed into the pane like a local paste, and the toast says `sent <file> to <machine>`; every failure is an error toast (not a file, over 100 MB, no ssh to the machine, a login that needs a prompt, the machine could not keep it). On a local pane the key says there is nothing to send.
 
 The sidebar's **+ New** chip and `n` start a session at once (see *New Session popup*). A project row's **+**, the empty project row's new action and leader + `n` are one action (`Action::ShellHere`): a plain shell where you are, whose tab opens with focus. You type your agent in it (see *Agent launchers* below). Leader + `s` starts an agent session straight away with the defaults in Settings › Sessions (`Action::StartSession`, Menu › Session). **Menu** is in the sidebar footer. Every row of the key overlay and the Menu is clickable and wheel-scrollable. Include configured commands and retain existing confirmations.
 
@@ -751,7 +752,8 @@ selection between a local and a remote pane turns the feature off and on. Menu e
 run git in a remote pane's folder (Changes, Snapshots, Make it a git repo) are left out of that
 pane's menu instead.
 
-**Dropping files on a pane** (`features/terminal/dropRoute.ts`, `useFileSends.tsx`, host `file_send.rs`). On a pane of this computer the dropped paths are typed into it, quoted for its shell. On a
+**Dropping files on a pane** (`features/terminal/dropRoute.ts`, `useFileSends.tsx`, host `file_send.rs`,
+ADR 0007). On a pane of this computer the dropped paths are typed into it, quoted for its shell. On a
 pane of another machine a path here names nothing there, so the files are sent to that machine over its ssh
 line (regular files only, 100 MB each, at most 10 at a time; more are refused whole with one error toast,
 never cut) and the path each one is kept at is typed into the pane as it lands. A machine that is not
@@ -765,7 +767,7 @@ characters and free of control and invisible characters, and a path that is not 
 toast instead.
 
 **Pasting an image into a pane** (`features/terminal/clipboardImage.ts`, `useImagePaste.ts`, `api/imagePaste.ts`,
-host `image_paste.rs` and the amendment to 0055). Ctrl+Shift+V on Windows and Linux, or Cmd+V on macOS, pastes through the
+host `image_paste.rs`, ADR 0007 and the amendment to 0055). Ctrl+Shift+V on Windows and Linux, or Cmd+V on macOS, pastes through the
 webview's paste event, whose clipboard holds text, an image or both. **Text comes first**: any text and the
 terminal pastes it as it always has (bracketed paste included); only an image with no text becomes an image
 paste. Plain Ctrl+V on Windows and Linux is never taken: like every plain Ctrl+letter there, it goes to the program
@@ -795,7 +797,7 @@ Preserve colors applications paint explicitly.
 ## Project-specific: desktop chat view
 
 The desktop app's chat view is a second view of a Claude Code or Codex session, never a second session
-([chat view plan](features/chat-gui/chat-view-plan.md)). Rules:
+([chat view plan](features/chat-gui/chat-view-plan.md), ADR 0006). Rules:
 
 - **Source.** It renders only the daemon's structured events, through `features/chat/` (the projection).
   It never reads terminal output. A session has a chat only when `conversationsFromSnapshot` found a daemon

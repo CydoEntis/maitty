@@ -30,7 +30,7 @@ Codex and Claude sessions, local IPC, CLI, TUI and optional desktop client.
   safe at idle.
 - Daemon owns all processes. Closing either client leaves work running.
 - Build a usable GUI before the dedicated GUI design pass.
-- See ADR 0004.
+- See [ADR 0004](../../adr/0004-client-split-and-desktop-host.md).
 
 ## Out of scope
 

@@ -13,7 +13,7 @@ and Codex.
 
 - The daemon owns structured conversations: `ConversationSend`, `ConversationRead`
   (ordered history with a cursor), approvals with ids, turn boundaries. See
-  [spec.md](spec.md) and ADR 0003.
+  [spec.md](spec.md) and ADR 0006.
 - The Claude adapter (`crates/adapters/maitty-provider-claude`) projects every
   tool call with its complete input JSON; the Codex adapter projects app-server
   items (`item/`, `turn/`). So edits, commands, to-do lists and helper agents are

@@ -529,7 +529,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   preference (client-side; the daemon serves none). States: skeleton while loading, plain words with
   Retry on failure (a failed refresh keeps the old figures and says they may be stale), "Nothing
   recorded yet" when the store is empty. Refreshes on open, when the period changes and every 60 s
-  while open. Source: `features/usage/`.
+  while open. Source: `features/usage/`, ADR 0009.
 - **Usage pill.** A pane's header shows what the provider reports the session has used (tokens,
   context filled, cost). It is not drawn when the provider said nothing, so no number is invented.
 - **Turn timeline.** Inspect › Timeline lists the focused pane's latest events, newest first: the

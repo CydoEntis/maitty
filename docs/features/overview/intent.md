@@ -28,7 +28,7 @@ the equivalents and is unchanged.
 
 ## Constraints
 
-- Status comes only from the daemon (ADR 0036). The grid never derives it.
+- Status comes only from the daemon (ADR 0006). The grid never derives it.
 - Sidebar order rules hold: rows keep creation order; groups never reorder on
   status changes (v16 §1). The grid is ordered by *need*, then creation.
 - Sessions are never hidden automatically (guide: "Sessions stay visible").

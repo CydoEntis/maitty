@@ -64,7 +64,7 @@ src/
   prompt.rs      the question and numbered choices an agent is stopped on, read off its screen (the MCP answer tool and the inbox card share it)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
   ipc.rs         local sockets and the `proxy` command; opening a connection to another machine (ssh or a custom transport) is `maitty-machines`, which this module re-exports
-  remote_paste.rs (now `maitty-machines`' `remote_paste`, re-exported here) sending a pasted image or a file to another machine: the file name, the check of the path the far side prints, the failure words; the script itself is also in `maitty-machines`, as is `remote_send` (the upload) and `ssh_run` (the runner that counts bytes and takes a cancel flag; the desktop app uses them too)
+  remote_paste.rs (now `maitty-machines`' `remote_paste`, re-exported here) sending a pasted image or a file to another machine ([ADR 0007](adr/0007-multiple-machines.md)): the file name, the check of the path the far side prints, the failure words; the script itself is also in `maitty-machines`, as is `remote_send` (the upload) and `ssh_run` (the runner that counts bytes and takes a cancel flag; the desktop app uses them too)
   remote_install.rs installing the app on another machine, as pure rules: the `uname -sm` parser, the installed-version check, the decision table (nothing is installed without a yes), the destination, the install script's exit-code table (the script itself is in `maitty-machines`)
   machine_probe.rs (now `maitty-machines`' `machine_probe`, re-exported here) a look at a machine before it is added: `ssh ... maitty --version` with no prompt, ended by a limit or a cancel flag, and its result classified (ready, a failure class, cancelled); `locate` asks the same way where the login shell finds the app (`command -v`)
   config.rs      config.toml (+ config.local.toml) loading, atomic state files
@@ -86,7 +86,7 @@ src/
     check_stale.rs  a pass gone stale: the worktree's tree when a run starts, compared on the git poll
     helpers.rs   sessions starting helpers: the ask / always / never rule, the request a session's row shows, and the projects you said Always for (helper-projects.json)
     identity.rs  the daemon's random id, made on first start and kept in the data folder (daemon-id); sent in every snapshot
-    secrets.rs   secrets agents ask you for: the pending requests, and what you typed, held in memory as single-use references (ADR-0036)
+    secrets.rs   secrets agents ask you for: the pending requests, and what you typed, held in memory as single-use references (ADR 0006)
     pr.rs        each pane's pull request read through `gh`: the poll, the answer parsed, what changed between two readings, and the message queued for the agent
     approvals.rs your Always / Never / Once for repo-supplied check commands (kept in Maitty's data folder, read at start), and the ApproveCheck / ForgetCheckApproval commands
     term.rs      one pane: PTY, input thread, vt100 emulator
@@ -107,7 +107,7 @@ src/
     doctor_machine_tests.rs `doctor`'s machine checks against the shim: a good machine, another protocol, a login needed, machines that never answer and are ended
     mcp_machine_tests.rs the MCP tools against a real daemon behind the shim: list, read, send, wait with `machine/id` ids, the opt-in, the caller's grants, local-only operations
     machine_ids.rs which file the daemon ids are kept in (`machine-ids.json` in the data folder); the store and the check that refuses a different id are `maitty-machines`' `machine_ids`
-    ssh_hosts.rs loads the named hosts in `~/.ssh/config` off the UI thread; the pure parser (Include followed, patterns skipped, read through a file trait) is `maitty-machines`' `ssh_hosts`; the Machines dialog lists its hosts
+    ssh_hosts.rs loads the named hosts in `~/.ssh/config` off the UI thread; the pure parser (Include followed, patterns skipped, read through a file trait) is `maitty-machines`' `ssh_hosts`; the Machines dialog lists its hosts (ADR 0007)
     routing_tests.rs which machine each outgoing message goes to, the reply bookkeeping and the local-only gate
     remote_status_tests.rs a remote agent's row is the status its own daemon reported, against a real daemon behind the shim
     remote_image.rs sends the clipboard image to the machine a pane is on over its ssh line and gives the path it is kept at there; `remote_image_tests.rs` runs it against the fake remote
@@ -256,7 +256,7 @@ ownership, stale-hook projection, native event mapping and status-line config
 policy live in `maitty-provider-claude`. JSONC configuration editing remains in
 the terminal client; live process transports and session ownership are in core.
 Completing the package split is tracked by
-ADR 0004.
+[ADR 0004](adr/0004-client-split-and-desktop-host.md).
 
 Rust, edition 2024, stable toolchain. Key libraries: `tokio` (async runtime),
 `ratatui` 0.30 + `crossterm` (TUI), `portable-pty` (PTYs / ConPTY), `vt100`
@@ -315,7 +315,7 @@ docs/                             architecture, roadmap and design specs
 
 ## Project-specific: patterns and conventions
 
-**The app's name** lives in `apps/tui/Cargo.toml` and nowhere else in the code: the package
+**The app's name** lives in `apps/tui/Cargo.toml` and nowhere else in the code (ADR 0008): the package
 name is the command, `[package.metadata.brand]` holds the name people see and the names it had
 before. `build.rs` hands them to the code as `APP_COMMAND`, `APP_NAME`, `APP_ENV` and
 `APP_PREVIOUS`; `crates/maitty-core/src/brand.rs` wraps them. Write a
