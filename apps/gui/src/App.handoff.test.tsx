@@ -1274,15 +1274,31 @@ describe('desktop sidebar projects', () => {
 
   const sidebar = () => screen.findByRole('navigation', { name: 'Sessions by project' })
 
-  it('leads with the session you are in and tucks the others into a tray, most urgent first', async () => {
+  it('keeps creation order: the session you are in is the card in its own place, the others are tree rows around it', async () => {
     daemon.loadConversations.mockResolvedValue([at(2), at(3, { status: 'working' }), at(4, { status: 'needs-you' })])
     renderDesktopApp()
 
     const nav = await sidebar()
-    const tray = await within(nav).findByRole('group', { name: 'Other sessions in maitty' })
-    expect(within(nav).getByRole('button', { name: 'maitty/p2, shell, idle'.replace('maitty/', '') })).toHaveAttribute('aria-current', 'page')
-    const items = within(tray).getAllByRole('button').map((item) => item.getAttribute('aria-label'))
-    expect(items).toEqual(['p4, shell, needs you, detached', 'p3, shell, working, detached'])
+    const tree = await within(nav).findAllByRole('group', { name: 'Other sessions in maitty' })
+    expect(tree).toHaveLength(1)
+    expect(within(nav).getByRole('button', { name: 'p2, shell, idle' })).toHaveAttribute('aria-current', 'page')
+    const items = within(tree[0] as HTMLElement).getAllByRole('button').map((item) => item.getAttribute('aria-label'))
+    expect(items).toEqual(['p3, shell, working, detached', 'p4, shell, needs you, detached'])
+    expect(tree[0]?.querySelectorAll('.mx-tree-item')).toHaveLength(2)
+  })
+
+  it('puts the rows created before the card above it, and does not move them when another is picked', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockResolvedValue([at(2), at(3), at(4)])
+    renderDesktopApp()
+
+    const nav: HTMLElement = await sidebar()
+    await within(nav).findByRole('button', { name: 'p2, shell, idle' })
+    await user.click(await within(nav).findByRole('button', { name: 'p3, shell, idle, detached' }))
+    await waitFor(() => { expect(nav.querySelector('.mx-row')).toHaveAttribute('aria-label', 'p3, shell, idle') })
+    const labels = Array.from(nav.querySelectorAll<HTMLElement>('.mx-tree-item, .mx-row')).map((element) => element.getAttribute('aria-label') ?? '')
+    expect(labels.map((label) => label.split(',')[0])).toEqual(['p2', 'p3', 'p4'])
+    expect(nav.querySelectorAll('.mx-tree-item')[1]).toHaveClass('is-last')
   })
 
   it('folds sessions beyond what fits behind +N, and lists every one in a menu that opens that session', async () => {
@@ -1292,9 +1308,9 @@ describe('desktop sidebar projects', () => {
 
     const nav = await sidebar()
     const more = await within(nav).findByRole('button', { name: /^All 6 sessions in maitty, some hidden ones need you$/ })
-    expect(more).toHaveTextContent('+3')
+    expect(more).toHaveTextContent('3 more')
     expect(more).toHaveAttribute('aria-expanded', 'false')
-    expect(within(nav).getByRole('group', { name: 'Other sessions in maitty' }).querySelectorAll('.mx-tray-item')).toHaveLength(2)
+    expect(within(nav).getByRole('group', { name: 'Other sessions in maitty' }).querySelectorAll('.mx-tree-item')).toHaveLength(2)
 
     await user.click(more)
     const menu = await screen.findByRole('menu', { name: 'maitty' })
@@ -1338,29 +1354,18 @@ describe('desktop sidebar projects', () => {
     expect(nav.querySelector('.mx-tray-where')).toHaveTextContent('p')
   })
 
-  it('can lead with the session that needs you most instead of the one you are in', async () => {
-    window.localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ leadMode: 'attention' }))
-    daemon.loadConversations.mockResolvedValue([at(2), at(3, { status: 'needs-you' })])
-    renderDesktopApp()
-
-    const nav = await sidebar()
-    expect(await within(nav).findByRole('button', { name: 'p3, shell, needs you' })).toBeInTheDocument()
-    expect(within(nav).getByRole('group', { name: 'Other sessions in maitty' })).toHaveTextContent('p2')
-    expect(within(nav).getByRole('button', { name: 'p2, shell, idle, pane 1' })).toBeInTheDocument()
-  })
-
-  it('saves the tray style and the lead from Settings › Appearance', async () => {
+  it('saves the tray style from Settings › Appearance, and has no "Main row shows" option', async () => {
     const user = userEvent.setup()
     renderDesktopApp()
     await screen.findByRole('heading', { name: 'No sessions running' })
     await user.keyboard('{Control>},{/Control}')
     await user.keyboard('a')
 
+    expect(screen.queryByRole('radio', { name: 'Needs attention' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('radio', { name: 'Icons' }))
-    await user.click(screen.getByRole('radio', { name: 'Needs attention' }))
 
-    const saved = JSON.parse(window.localStorage.getItem('maitty.gui.settings.v1') ?? '{}') as { trayStyle?: string; leadMode?: string }
-    expect(saved).toMatchObject({ trayStyle: 'icons', leadMode: 'attention' })
+    const saved = JSON.parse(window.localStorage.getItem('maitty.gui.settings.v1') ?? '{}') as { trayStyle?: string }
+    expect(saved).toMatchObject({ trayStyle: 'icons' })
   })
 
   it('opens the + after the tabs in the project you are in', async () => {

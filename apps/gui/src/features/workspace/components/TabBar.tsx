@@ -39,6 +39,8 @@ type TabBarProps = {
   onToggleInspect: () => void
   /** Present in a window too narrow for the sidebar: the button that slides it in over the panes. */
   onOpenSessions?: () => void
+  /** A narrow window: Repository and Inbox fold into one Panels menu (v18 B.7). */
+  foldPanels?: boolean
 }
 
 /** How far one press of an edge button scrolls: most of a screenful, never less than a tab or so. */
@@ -122,7 +124,7 @@ export const TabBar = memo(function TabBar(props: TabBarProps) {
   return (
     <div className="mx-tabbar">
       {props.onOpenSessions && (
-        <button type="button" className="mx-inbox-button mx-sessions-button" aria-label="Sessions" title={tip('Sessions', 'toggle-sidebar')} onClick={props.onOpenSessions}>Sessions</button>
+        <button type="button" className="mx-inbox-button mx-sessions-button" aria-label={props.inboxNeeds ? 'Sessions, something needs you' : 'Sessions'} title={tip('Sessions', 'toggle-sidebar')} onClick={props.onOpenSessions}>Sessions{props.inboxNeeds && <span className="mx-sessions-needs" aria-hidden="true" />}</button>
       )}
       {tabs.length > 0 && (
         <div className="mx-tabstrip">
@@ -138,6 +140,7 @@ export const TabBar = memo(function TabBar(props: TabBarProps) {
       <button type="button" className="mx-icon-button mx-new-tab" aria-label={props.newTabLabel} title={props.newTabLabel} disabled={!props.canStart} onClick={props.onNewTab}><Icon name="plus" /></button>
       {edges.over && <AllTabs tabs={tabs} activeTabId={activeTabId} sessions={props.sessions} onSelect={props.onSelect} />}
       <span className="mx-spacer" />
+      {props.foldPanels ? <PanelsMenu {...props} /> : <>
       {props.inspect && (
         <button type="button" className={`mx-inbox-button${props.inspect.open ? ' is-open' : ''}`} aria-pressed={props.inspect.open} aria-disabled={props.inspect.refusal !== undefined} aria-label="Repository" title={props.inspect.refusal ?? tip('Repository', 'inspect')} onClick={props.onToggleInspect}>
           <Icon name="repo" />
@@ -150,9 +153,55 @@ export const TabBar = memo(function TabBar(props: TabBarProps) {
         <Icon name="inbox" />
         {props.inboxCount > 0 && <span key={props.inboxCount} className={`mx-inbox-count${props.inboxNeeds ? ' is-needs' : ''}`}>{props.inboxCount}</span>}
       </button>
+      </>}
     </div>
   )
 })
+
+/** Repository and Inbox as one menu, for a window too narrow to give each its own button. */
+function PanelsMenu(props: TabBarProps) {
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.stopPropagation()
+      setOpen(false)
+    }
+    const onPointer = (event: MouseEvent) => {
+      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false)
+    }
+    window.addEventListener('keydown', onKey, true)
+    window.addEventListener('mousedown', onPointer, true)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('mousedown', onPointer, true)
+    }
+  }, [open])
+  const pick = (action: () => void) => () => { setOpen(false); action() }
+  return (
+    <div ref={root} className="mx-panels">
+      <button type="button" className={`mx-inbox-button${open ? ' is-open' : ''}`} aria-haspopup="menu" aria-expanded={open} aria-label={`Panels${props.inboxCount > 0 ? `, inbox ${String(props.inboxCount)}` : ''}${props.inboxNeeds ? ', something needs you' : ''}`} title="Panels" onClick={() => { setOpen(!open) }}>
+        <Icon name="grid" />
+        {props.inboxCount > 0 && <span className={`mx-inbox-count${props.inboxNeeds ? ' is-needs' : ''}`}>{props.inboxCount}</span>}
+      </button>
+      {open && (
+        <div role="menu" aria-label="Panels" className="mx-panels-menu">
+          {props.inspect && (
+            <button type="button" role="menuitem" className="mx-panels-row" aria-disabled={props.inspect.refusal !== undefined} title={props.inspect.refusal} onClick={pick(props.onToggleInspect)}>
+              <Icon name="repo" /><span>Repository</span>
+            </button>
+          )}
+          <button type="button" role="menuitem" className="mx-panels-row" onClick={pick(props.onOpenInbox)}>
+            <Icon name="inbox" /><span>Inbox</span>
+            {props.inboxCount > 0 && <span className={`mx-inbox-count${props.inboxNeeds ? ' is-needs' : ''}`}>{props.inboxCount}</span>}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 /** Every tab of the project with its state, for when they run off the bar. Opens leftward from its button. */
 function AllTabs({ tabs, activeTabId, sessions, onSelect }: { tabs: Tab[]; activeTabId: string | null; sessions: ReadonlyMap<string, SessionView>; onSelect: (tabId: string) => void }) {

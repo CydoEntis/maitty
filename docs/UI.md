@@ -153,6 +153,20 @@ Rules for `apps/gui/`. Owner-approved 2026-11-04.
 files in `features/workspace/theme/`, and `TerminalView.tsx` (the xterm.js
 palette takes literal colours). Don't widen the exemptions to pass a change.
 
+## Project-specific: desktop window sizes and sidebar order
+
+Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
+
+1. The window is at least 720px wide. Under 1100px the sidebar is a drawer; under
+   900px panes stack, tabs shrink and Repository and Inbox share a Panels menu.
+   The widths are constants in `features/workspace/model/windowSize.ts`; change
+   them there and in DESIGN, nowhere else.
+2. Sessions in a project render in creation order. Nothing (status, pin, focus,
+   a click) reorders them. The card is chosen by `chooseCard` and the rows around
+   it by `planStack` in `model/stack.ts`; the cap applies only to rows after the card.
+3. A new surface that sits on the terminal's ground uses `--term`, not `--main`,
+   so a terminal pane reads as one surface.
+
 ## Project-specific: usage and cost page (desktop)
 
 The Usage and cost page, a section of Settings (`apps/gui/src/features/usage/`, look in [DESIGN](DESIGN.md#desktop-app)) shows only

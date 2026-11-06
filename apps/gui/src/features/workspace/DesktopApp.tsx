@@ -127,18 +127,17 @@ import { folderExists, resolveStartFolder } from './model/startFolder'
 import { markSeen, trackSessions, tracksEqual, type SessionTrack } from './model/tracking'
 import type { PaletteItem } from './model/palette'
 import { activeThemeName, findTheme, terminalMinimumContrast, themeStyle, THEMES, xtermTheme } from './theme/themes'
+import { COMPACT_WIDTH_PX, NARROW_WIDTH_PX } from './model/windowSize'
 import './workspace.css'
 
 /** The daemon pushes every change (`sessions-changed`); this slow poll only catches a stream that went quiet. */
 const SESSION_REFRESH_MS = 15_000
-const COMPACT_WIDTH_PX = 1100
 /** How long a new session on another machine is waited for, and how often its list is looked at. */
 const REMOTE_START_WAIT_MS = 8000
 const REMOTE_START_POLL_MS = 250
 const MIN_TABS_FOR_NUMBERS = 2
 /** A tab's hover card lists its panes only when it has more than one. */
 const MIN_PANES_FOR_LIST = 2
-const NARROW_WIDTH_PX = 900
 const TOAST_MS = 2600
 /** What clicking the status bar's size resets the terminal text to. */
 const DEFAULT_TEXT_SIZE = 14
@@ -1601,7 +1600,6 @@ export function DesktopApp() {
       openIds={openIds}
       paneOf={paneOf}
       trayStyle={preferences.trayStyle}
-      leadMode={preferences.leadMode}
       onResize={setLiveSidebarWidth}
       onResizeEnd={(width) => {
         setPreferences((current) => ({ ...current, sidebarWidth: width }))
@@ -1666,6 +1664,7 @@ export function DesktopApp() {
                   onOpenInbox={openInbox}
                   inspect={inspect}
                   onToggleInspect={toggleInspect}
+                  foldPanels={narrow}
                   {...(compact ? { onOpenSessions: openDrawer } : {})}
                 />}
                 {findOpen && (

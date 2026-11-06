@@ -89,7 +89,7 @@ export function PaneCard(props: PaneCardProps) {
     <ContextMenuPrimitive.Root>
       <ContextMenuPrimitive.Trigger asChild>
     <section
-      className={`mx-pane${focused ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
+      className={`mx-pane${view === 'chat' ? '' : ' is-terminal'}${focused ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}`}
       aria-label={`Terminal ${String(props.index + 1)}: ${session.cwdLabel}${focused ? ', focused' : ''}`}
       data-session-id={session.id}
       data-pane={pane.id}

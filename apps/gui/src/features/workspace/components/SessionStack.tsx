@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { displayName, iconSaysProcess, STATUS_WORD, type SessionGroup, type SessionView } from '../model/session'
-import { chooseLead, planTray, byPriority, type Activity } from '../model/stack'
+import { displayName, iconSaysProcess, STATUS_WORD, type SessionGroup, type SessionStatus, type SessionView } from '../model/session'
+import { chooseCard, planStack, byPriority, type Activity } from '../model/stack'
 import type { SessionTrack } from '../model/tracking'
 import { Ago, ElapsedSince } from './times'
 import type { TrayStyle } from '@/features/settings/preferences'
-import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
+import { AppIcon, Icon, PauseBars, Spinner, StatusBadge } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
 import { SessionRow } from './SessionRow'
 import { hoverHandlers, type RailHover } from './railHover'
@@ -35,7 +35,6 @@ export type StackProps = {
   /** The session last picked in this project, used as its main row while you are in another project. */
   remembered: string | undefined
   trayStyle: TrayStyle
-  leadMode: 'focused' | 'attention'
   tracks: ReadonlyMap<string, SessionTrack>
   online: boolean
   /** The pane (counting from 1) each session has in its tab; absent for a session no tab shows. */
@@ -68,45 +67,57 @@ function useChanged(value: string | undefined): boolean {
 }
 
 /**
- * One project in the sidebar: its main row (the session that leads) and a tray of the others,
- * most urgent first. A project with many sessions folds the extras behind +N and a side menu.
+ * One project in the sidebar. Its sessions keep creation order: the ones created before the card are
+ * compact tree rows above it, the card is the focused session in its own place, and the ones after it
+ * follow in the chosen style. Clicking a compact row grows it into the card where it is; nothing moves.
  */
 export function SessionStack(props: StackProps) {
   const { group, tracks } = props
   const activity: Activity = (id) => tracks.get(id)?.changedAt ?? 0
-  const lead = chooseLead(group.sessions, props.leadMode, props.focusedId, props.remembered, activity)
-  const swapped = useChanged(lead?.id)
+  const card = chooseCard(group.sessions, props.focusedId, props.remembered)
+  const swapped = useChanged(card?.id)
   const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null)
-  if (!lead) return null
-  const plan = planTray(group.sessions.filter((session) => session.id !== lead.id), props.trayStyle, activity)
-  const hasTray = plan.shown.length > 0
+  if (!card) return null
+  const plan = planStack(group.sessions, card, props.trayStyle)
+  const hasAfter = plan.shown.length > 0
   const trayLabel = `Other sessions in ${group.name}`
   const moreLabel = `All ${String(group.sessions.length)} sessions in ${group.name}${plan.hiddenNeeds ? ', some hidden ones need you' : ''}`
   const stacked = props.trayStyle === 'stacked'
+  const tree = props.trayStyle === 'tree'
+  const itemActions = (session: SessionView): SessionMenuActions => ({ online: props.online, portalContainer: props.portalContainer, onShow: () => { props.onShowSession(session.id) }, onRename: () => { props.onRenameSession(session.id) }, onPin: (pinned) => { props.onPinSession(session.id, pinned) }, onEnd: () => { props.onEndSession(session.id) } })
+  const treeRow = (session: SessionView, lastOfTree: boolean) => <TreeRow key={session.id} hover={props.hover} session={session} track={tracks.get(session.id)} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} last={lastOfTree} actions={itemActions(session)} />
+  const moreButton = (
+    <button type="button" className={`mx-tray-more${plan.hiddenNeeds ? ' is-needs' : ''}${menuAnchor ? ' is-open' : ''}`} aria-haspopup="menu" aria-expanded={menuAnchor !== null} aria-label={moreLabel} title={moreLabel} onClick={(event) => { setMenuAnchor(menuAnchor ? null : event.currentTarget.getBoundingClientRect()) }}>
+      {stacked || tree ? `${String(plan.hidden)} more` : `+${String(plan.hidden)}`}
+    </button>
+  )
   return (
-    <div className={`mx-stack${hasTray ? ' has-tray' : ''}`}>
+    <div className={`mx-stack${hasAfter ? ' has-tray' : ''}`}>
+      {plan.before.length > 0 && <div role="group" aria-label={trayLabel} className="mx-tree">{plan.before.map((session) => treeRow(session, false))}</div>}
       <SessionRow
-        key={lead.id}
-        session={lead}
-        track={tracks.get(lead.id)}
-        selected={lead.id === props.focusedId}
+        key={card.id}
+        session={card}
+        track={tracks.get(card.id)}
+        selected={card.id === props.focusedId}
         online={props.online}
         swapped={swapped}
         portalContainer={props.portalContainer}
         hover={props.hover}
-        onShow={() => { props.onShowSession(lead.id) }}
-        onSetName={(name) => { props.onSetName(lead.id, name) }}
-        onPin={(pinned) => { props.onPinSession(lead.id, pinned) }}
-        onEnd={() => { props.onEndSession(lead.id) }}
+        onShow={() => { props.onShowSession(card.id) }}
+        onSetName={(name) => { props.onSetName(card.id, name) }}
+        onPin={(pinned) => { props.onPinSession(card.id, pinned) }}
+        onEnd={() => { props.onEndSession(card.id) }}
       />
-      {hasTray && (
+      {hasAfter && tree && (
+        <div role="group" aria-label={trayLabel} className="mx-tree">
+          {plan.shown.map((session, index) => treeRow(session, plan.hidden === 0 && index === plan.shown.length - 1))}
+          {plan.hidden > 0 && <div className="mx-tree-more">{moreButton}</div>}
+        </div>
+      )}
+      {hasAfter && !tree && (
         <div role="group" aria-label={trayLabel} className={`mx-tray is-${props.trayStyle}${plan.hidden > 0 ? ' has-more' : ''}`} style={stacked ? undefined : { gridTemplateColumns: trayColumns(props.trayStyle, plan.shown.length, plan.hidden > 0) }}>
-          {plan.shown.map((session) => <TrayItem key={session.id} hover={props.hover} session={session} style={props.trayStyle} track={tracks.get(session.id)} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} actions={{ online: props.online, portalContainer: props.portalContainer, onShow: () => { props.onShowSession(session.id) }, onRename: () => { props.onRenameSession(session.id) }, onPin: (pinned) => { props.onPinSession(session.id, pinned) }, onEnd: () => { props.onEndSession(session.id) } }} />)}
-          {plan.hidden > 0 && (
-            <button type="button" className={`mx-tray-more${plan.hiddenNeeds ? ' is-needs' : ''}${menuAnchor ? ' is-open' : ''}`} aria-haspopup="menu" aria-expanded={menuAnchor !== null} aria-label={moreLabel} title={moreLabel} onClick={(event) => { setMenuAnchor(menuAnchor ? null : event.currentTarget.getBoundingClientRect()) }}>
-              {stacked ? `+${String(plan.hidden)} more` : `+${String(plan.hidden)}`}
-            </button>
-          )}
+          {plan.shown.map((session) => <TrayItem key={session.id} hover={props.hover} session={session} style={props.trayStyle} track={tracks.get(session.id)} selected={session.id === props.focusedId} pane={props.paneOf.get(session.id)} actions={itemActions(session)} />)}
+          {plan.hidden > 0 && moreButton}
         </div>
       )}
       {menuAnchor && props.portalContainer && createPortal(<StackMenu {...props} anchor={menuAnchor} activity={activity} onClose={() => { setMenuAnchor(null) }} />, props.portalContainer)}
@@ -118,6 +129,42 @@ export function SessionStack(props: StackProps) {
 function trayColumns(style: TrayStyle, shown: number, more: boolean): string {
   const columns = style === 'icons' ? `repeat(${String(more ? shown : Math.max(shown, ICON_COLUMNS))}, minmax(0, 1fr))` : `repeat(${String(shown)}, minmax(0, 1fr))`
   return more ? `${columns} 30px` : columns
+}
+
+type TreeRowProps = { session: SessionView; track: SessionTrack | undefined; selected: boolean; pane: number | undefined; last: boolean; actions: SessionMenuActions; hover: RailHover }
+
+/** The state as one small mark: a spinner, the needs-you square, a check, a bang, a quiet dot or a dashed square. */
+function TreeMark({ status }: { status: SessionStatus }) {
+  switch (status) {
+    case 'working': return <Spinner className="mx-tree-spin" />
+    case 'needs': return <span className="mx-tree-needs"><PauseBars /></span>
+    case 'done': return <span className="mx-tree-done"><Icon name="check" size={11} strokeWidth={3.2} /></span>
+    case 'error': return <span className="mx-tree-error">!</span>
+    case 'unknown': return <span className="mx-tree-unknown" />
+    case 'idle': return <span className="mx-tree-idle" />
+  }
+}
+
+/** A compact tree row: guide line and elbow, the state, the program, where it is and a state word. */
+function TreeRow({ session, track, selected, pane, last, actions, hover }: TreeRowProps) {
+  const menu = useSessionMenu(session, actions)
+  const unread = Boolean(track?.unread) && !selected
+  const where = pane === undefined ? 'detached' : `pane ${String(pane)}`
+  const label = `${displayName(session)}, ${session.process}, ${STATUS_WORD[session.status]}, ${where}`
+  return (
+    <>
+      <button type="button" className={`mx-tree-item is-${session.status}${last ? ' is-last' : ''}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(SESSION_DRAG_TYPE, session.id) }} {...hoverHandlers(hover, { kind: 'session', id: session.id })} onContextMenu={(event) => { hover.close(); menu.onContextMenu(event) }} aria-label={label} onClick={actions.onShow}>
+        <span className="mx-tree-guide" aria-hidden="true" />
+        <span className="mx-tree-elbow" aria-hidden="true" />
+        <span className="mx-tree-mark"><TreeMark status={session.status} /></span>
+        <span className="mx-tree-proc">{session.process.split(/\s+/)[0]}</span>
+        <span className="mx-tree-where">{displayName(session)}</span>
+        {unread && <span className="mx-tree-unread" aria-label="Unread" />}
+        <span className={`mx-tree-word is-${session.status}`}>{stateWord(session, track)}</span>
+      </button>
+      {menu.element}
+    </>
+  )
 }
 
 type TrayItemProps = { session: SessionView; style: TrayStyle; track: SessionTrack | undefined; selected: boolean; pane: number | undefined; actions: SessionMenuActions; hover: RailHover }

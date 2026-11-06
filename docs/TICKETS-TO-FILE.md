@@ -31,10 +31,12 @@ for 28 and 29, and ticket 27.
   opens as chat or terminal; the chat's composer types into the terminal while the agent is idle. **Not yet tried
   with a real Claude or Codex.** First things to check: the message arrives intact (multi-line), Stop (Esc) works,
   the composer turns off while a permission prompt is showing, the switch never restarts the agent.
-- **Not done:** ticket 50 (sidebar sessions keep their place; the compact row's look is not in the README, look in
-  `Maitty Desktop v18.dc.html` or ask the owner), the small-window work (39), the title bar colour, the tab bar
-  height, the terminal and its panel as one surface, the terminal app's tickets 31, 33 and 30, the Windows test
-  failures 26 to 29, and the diff line comments the session panel's removal dropped (54).
+- **Built on `feat/gui-layout-pass`, not yet looked at in a window:** ticket 50 (sidebar sessions keep their place,
+  compact tree rows), the small-window rules (39: sidebar drawer under 1100px, Panels menu and stacked panes under
+  900px), the title bar colour, and the terminal and its panel as one surface. Ticket 54 is cancelled. Check each
+  against the prototype in a real window; the tab bar height was left at the prototype's 56px (40px in Tiled).
+- **Not done:** the terminal app's tickets 31, 33 and 30, the Windows test failures 26 to 29, and the screen-by-screen
+  review table of ticket 39.
 - **The TUI popup lacks:** the ASCII fallback for ambiguous-width glyphs, selecting the new card by hand, and a
   status-bar flash (a toast is used). Remote image paste (ticket 19) is merged but was not tried against `kingdom`.
 
@@ -1000,6 +1002,11 @@ screen counts as done only when a screenshot of the build sits beside the design
 **Notes**
 - Do this after ticket 35. A layout cannot be judged in a window that runs a step behind.
 
+**State (small windows).** Built: the sidebar is a drawer under 1100px, with a **Sessions** button that carries an
+amber mark when something needs you; under 900px panes stack, tabs shrink to 96px and Repository and Inbox fold into one
+**Panels** menu; the window cannot go under 720px wide. The review table and the owner's keep/change/cut marks are
+still to do.
+
 ## Design changes the owner asked for on 2026-11-05 (to ticket)
 
 - **Small screens.** The app does not work at smaller window sizes.
@@ -1121,12 +1128,18 @@ the contents of C.7 unchanged. Ctrl/Cmd+Shift+U and the command palette open Set
 page. Remove the bar-chart button in the sidebar footer (expanded and rail) and the full-screen
 usage view.
 
-## 50. Sidebar sessions keep their place (feature, `client`)
+## 50. Sidebar sessions keep their place (feature, `client`) — built
 
 README D.8. Sessions in a project always show in creation order; status, pin and focus never
 reorder them. The focused session is the full card in its own position, and clicking a compact
 row grows it into the card in place. Remove the Settings option "Main row shows". The "N more"
 cap applies only to rows after the card.
+
+**Built** on `feat/gui-layout-pass`. Sessions render in creation order; the focused one (else the last one picked in
+the project, else the first) is the full card in its own place; the ones before it are always compact tree rows
+(26px, a guide line and elbow, the state mark, the program, where, a state word) and the ones after it follow the
+"Other sessions in a project" style, **Tree** by default (Names, Icons and Stacked stay, as the prototype keeps them).
+"Main row shows" is removed. Not checked in a window.
 
 ## 51. Updating moves into the Menu (change, `client`; terminal app)
 
@@ -1159,11 +1172,11 @@ session is the agent in a terminal, opened as chat or terminal, and the chat's c
 while the agent is idle. **Still to do:** show a permission prompt's question in the chat, a daemon-side typing
 gate, attachments, and the owner's acceptance of the ADR. Verify in a real window with Claude and with Codex.
 
-## 54. Line comments on a diff are gone with the session panel (decision, `client`)
+## 54. Line comments on a diff are gone with the session panel (decision, `client`) — cancelled
 
-The panel's Changes diff let you comment on a line and send it to the agent. The panel was removed
-(README D.6), so nothing writes those comments now; a comment already in a chat still draws as a bubble.
-**owner:** bring it back in the Inspect panel's Changes tab, or leave it out.
+**Dropped** by the owner, 2026-11-06. The panel's Changes diff let you comment on a line and send it to the
+agent; the panel was removed (README D.6) and the comment is not coming back in the Inspect panel. The leftover
+code that drew such a comment as a bubble in the chat is removed.
 
 ## 55. Per-project defaults for a new session (feature, `client`)
 

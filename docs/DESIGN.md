@@ -230,7 +230,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   entrance), no outline on the selected row or open tab, and the session tray flush under its main row with no
   box. **Tiled** is Flat's finish as a hairline grid: no gap between panes or at the window's edge, every region
   divided by a 1px `--pane-line`, radius 0 and no shadows. The sidebar is flush with a hairline; the title bar is
-  `--main` with a hairline under it; the 40px tab bar is a flush strip (tabs, **+**, Repository and Inbox divided
+  `--main` with a 1px `--line` under it; the 40px tab bar is a flush strip (tabs, **+**, Repository and Inbox divided
   by hairlines, one line under the bar); each pane draws its own right and bottom line and a line under its
   header; and a static 9px `+` tick (`--tick`, `--line2`) marks each of the four corners of the pane area.
   Popovers, menus and dialogs are hairline-only (`0 0 0 1px var(--line2)`), square and with no blur. Chrome type
@@ -243,6 +243,16 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   in Settings wins. Settings saved as `minimal` read as Flat and `expressive` as Glass. **Icons** (Settings › Appearance › Icons, `iconColor`, set on the root as
   `data-icons`) is separate from the style: `color` keeps app icons in their own colours in every
   style; `grayscale` makes them neutral `--raise` tiles with the glyph in `--fg2`. Project tiles are always neutral.
+- **Title bar, tab bar and terminal surface.** The title bar (32px) has a colour of its own, apart from the ground,
+  through `--tbar` and `--tbar-b` on the app root: on dark themes a veil of `rgba(10,12,12,.35)` over the ground, on
+  light themes `--main`, no border; Tiled uses `--main` and a hairline. The tab bar is `--tbh` tall: 56px in Glass and
+  Flat (a 36px tab in a tray with 4px padding, centred), 40px in Tiled. A terminal pane is one surface: its header
+  and its text sit on the theme's `--term` ground (`.mx-pane.is-terminal`), so the terminal does not read as a box
+  inside the card; a pane in chat view stays on `--main`.
+- **Small windows.** The window is never narrower than 720px (`minWidth`). Under **1100px** the sidebar becomes
+  a drawer opened by the tab bar's Sessions button. Under **900px** the panes stack in one column, tabs shrink to a
+  96px minimum, and Repository and Inbox fold into one **Panels** button (a grid icon with the Inbox count) whose
+  220px menu lists both. The widths are `COMPACT_WIDTH_PX` and `NARROW_WIDTH_PX` in `model/windowSize.ts`.
 - **Settings dialog** (⌘,). A section list at the left and, at the right, a fixed header (the page title,
   a one-line description and a 30x30 **×** icon button, tooltip "Close (Esc)", no label) above a body that scrolls; the page
   itself never scrolls. The title and description slide with the page. Under Advanced, **Performance** shows live
@@ -256,8 +266,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
 - **Session menu: name, pin, close.** Right-click a sidebar row, a tray item or a rail icon for a 260px
   menu: a **Name** field (the folder is its placeholder; Enter saves and an empty name clears it), **Pin to
   top** or **Unpin**, **Open** and **Close session** (ends it). A name replaces the folder title everywhere.
-  A pinned session shows a pin on its main row, leads its project when no focused session is in it, and
-  sorts first in the tray. There is no Archive; a session archived by an older version shows as an ordinary
+  A pinned session shows a pin on its main row; pinning does not reorder it. There is no Archive; a session archived by an older version shows as an ordinary
   row. The daemon stores the name and pinned per session (`RenamePane`, `PinPane`; they survive a daemon
   restart), so the TUI shows the names too and ignores the pin.
 - **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
@@ -269,18 +278,26 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   Status bar (on by default).
 - **Sidebar.** A `Projects` title with a **+** button (a bordered square that lights up in the accent on hover) and the collapse button at the right; groups by git repo (or by folder, in Settings), sorted by
   name. A shell outside any repo is grouped by its own folder, so there is no catch-all group.
-  A group's tile carries a ring when it holds the focused session. Each group is one **main row**
-  with a **tray** of its other sessions hanging off its bottom edge. The main row is the process
+  A group's tile carries a ring when it holds the focused session. A group's sessions **keep their place**:
+  they always show in creation order, and status, pin and focus never reorder them. The focused session is
+  the full **card** (the **main row**) in its own position; the others are compact rows above and below it.
+  The card is the process
   icon with its status badge, then the program and where it works (`claude · dev`: the branch at the
   checkout's root, the folder within the repo deeper in, the `~` path outside a repo), then a status
-  phrase when the session is not just working or idle. The lead is the session you are in, else the last one picked in that project, else
-  the most urgent; Settings › Appearance › Sidebar can make it always the one that most needs you.
-  Urgency runs needs you, error, done, working, idle, then most recently changed. The tray comes in
-  three styles: **With names** (icon and process; two fit, more go behind **+N**), **Icons** (six
-  fit) and **Stacked** (one line each with folder and state; three fit; the default). **+N** turns amber when a
-  hidden session needs you and opens a side menu listing every session of the project. Clicking a
+  phrase when the session is not just working or idle. The card is the session you are in, else the last one
+  picked in that project, else the first by creation order. **Compact tree rows** (26px tall, no gap between
+  them) are what the sessions before the card always are: a 1px `--line2` guide at 19px from the row's left and
+  an elbow, a 12px state mark (spinner, amber needs-you square, green check, red `!`, a quiet dot, a dashed square for
+  unknown), the program in mono 12/500, where it is in 12 `--dim`, an unread dot and a state word (11), on a 34px
+  left inset; hover tints the row. Clicking one grows it into the card where it is (`v18grow`, opacity .55 to 1 and
+  scale .97 to 1, .28s, off under Reduce motion) and the old card shrinks to a row; nothing moves. The sessions
+  after the card follow Settings › Appearance › Sidebar › "Other sessions in a project": **Tree** (the default;
+  the same rows, four fit, then two and **N more**), **Names** (icon and process; two fit, then **+N**), **Icons**
+  (six fit) or **Stacked** (one line each with folder and state; three fit). The cap applies only to rows after the
+  card. **N more** (or **+N**) turns amber when a hidden session needs you and opens a side menu listing every
+  session of the project, most urgent first. A pin shows on the card and in the menu but does not move the session. Clicking a
   session focuses its pane where it is open, else opens it in a **new tab**; it never replaces
-  another pane. When the lead changes the new main row fades in. ⌘B folds
+  another pane. ⌘B folds
   it to a 60px rail. Every project tile is the same neutral (`--raise` with the glyph in `--fg2`); a project has no colour of its own.
   In the rail each project is a 48px group (radius 14, square in Tiled) tinted in `--fg2` (6% collapsed,
   9% open, 4% more when it holds the focused session) with an inset ring (20%, 34% focused); the focused
@@ -295,7 +312,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   each one clickable, and the hint "Click the folder to collapse · right-click for more". A session's
   (240px) shows its project and name, its state, process and path, a mono well with the pending approval
   command (amber) or the last prompt (none for a plain shell), and "In tab N" when it is open in one.
-  They replace the browser's `title` tooltips in the rail. Under 1100px the sidebar is not on screen: a **Sessions** button at the start of the tab bar (and ⌘B) slides it in over the panes on a scrim, and picking a session, starting one or opening Settings, a click on the scrim or Esc closes it.
+  They replace the browser's `title` tooltips in the rail. Under 1100px the sidebar is not on screen: a **Sessions** button at the start of the tab bar (and ⌘B) slides it in over the panes on a scrim, and picking a session, starting one or opening Settings, a click on the scrim or Esc closes it. The button carries an amber mark when something needs you.
 - **First-run welcome.** On the first launch (no saved settings and no earlier welcome) a 560px dialog opens
   over a blurred scrim with a progress bar per step: **Welcome** (the same sessions as the TUI, closing never
   stops an agent, and the **New sessions start in** folder, checked before it continues) and **You're set**

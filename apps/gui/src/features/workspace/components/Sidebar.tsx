@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui'
-import type { LeadMode, TrayStyle } from '@/features/settings/preferences'
+import type { TrayStyle } from '@/features/settings/preferences'
 import { displayName, groupInitials, STATUS_WORD, type SessionGroup, type SessionView } from '../model/session'
 import { MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
 import { useRecent } from '@/lib/clock'
@@ -43,7 +43,6 @@ export type SidebarProps = {
   paneOf: ReadonlyMap<string, number>
   /** How a project's other sessions sit under its main row, and which session leads it. */
   trayStyle: TrayStyle
-  leadMode: LeadMode
   /** The docked sidebar's width in px, and how the user changes it by dragging its edge. */
   side: 'left' | 'right'
   width: number
@@ -146,7 +145,6 @@ function Expanded(props: GroupProps) {
               focusedId={props.focusedId}
               remembered={props.remembered.get(group.key)}
               trayStyle={props.trayStyle}
-              leadMode={props.leadMode}
               tracks={props.tracks}
               online={online}
               paneOf={props.paneOf}

@@ -16,15 +16,13 @@ export type IconSize = 'small' | 'medium' | 'large'
 /** Which working rows and tabs show the working effect: every one, only the one you are in, or none. */
 export type WorkingScope = 'all' | 'selected' | 'off'
 /** How a project's other sessions sit under its main row in the sidebar. */
-export type TrayStyle = 'names' | 'icons' | 'stacked'
+export type TrayStyle = 'tree' | 'names' | 'icons' | 'stacked'
 /** Which side of the window the sidebar sits on. */
 export type SidebarSide = 'left' | 'right'
 /** The window style: Flat is solid panels, Tiled is edge-to-edge panes with square corners, Glass is floating frosted cards with sweeps. */
 export type StyleChoice = 'flat' | 'tiled' | 'glass'
 /** App and folder icons keep their colours, or drop to neutral gray tiles. Independent of the style. */
 export type IconColor = 'color' | 'grayscale'
-/** Which session leads a project: the one you are in, or the one that most needs you. */
-export type LeadMode = 'focused' | 'attention'
 
 const SCROLLBACK_SHORT = 5000
 const SCROLLBACK_DEFAULT = 10000
@@ -94,7 +92,6 @@ export type SettingsPreferences = {
   sidebarSide: SidebarSide
   iconSize: IconSize
   trayStyle: TrayStyle
-  leadMode: LeadMode
   style: StyleChoice
   iconColor: IconColor
   /** Which view a Claude or Codex session opens in. Terminal until you change it. */
@@ -194,8 +191,7 @@ function defaults(): SettingsPreferences {
     sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
     sidebarSide: 'left',
     iconSize: 'medium',
-    trayStyle: 'stacked',
-    leadMode: 'focused',
+    trayStyle: 'tree',
     iconColor: 'color',
     chatViewDefault: DEFAULT_CHAT_VIEWS,
     defaultAgent: 'claude',
@@ -274,7 +270,7 @@ export function readSettingsPreferences(): SettingsPreferences {
       sidebarWidth: clampNumber(preferences.sidebarWidth, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX, fallback.sidebarWidth),
       sidebarSide: preferences.sidebarSide === 'left' || preferences.sidebarSide === 'right' ? preferences.sidebarSide : fallback.sidebarSide,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
-      trayStyle: preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
+      trayStyle: preferences.trayStyle === 'tree' || preferences.trayStyle === 'names' || preferences.trayStyle === 'icons' || preferences.trayStyle === 'stacked' ? preferences.trayStyle : fallback.trayStyle,
       style: styleOf(preferences.style) ?? fallback.style,
       chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),
       defaultAgent: preferences.defaultAgent === 'claude' || preferences.defaultAgent === 'codex' ? preferences.defaultAgent : fallback.defaultAgent,
@@ -289,7 +285,6 @@ export function readSettingsPreferences(): SettingsPreferences {
       restartWhenIdle: bool(preferences.restartWhenIdle, fallback.restartWhenIdle),
       monthlyBudget: validBudget(preferences.monthlyBudget),
       iconColor: preferences.iconColor === 'color' || preferences.iconColor === 'grayscale' ? preferences.iconColor : fallback.iconColor,
-      leadMode: preferences.leadMode === 'focused' || preferences.leadMode === 'attention' ? preferences.leadMode : fallback.leadMode,
     }
   } catch {
     console.warn('Ignoring invalid Maitty settings')

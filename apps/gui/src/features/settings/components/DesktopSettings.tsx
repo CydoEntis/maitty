@@ -383,7 +383,13 @@ const STYLE_CARDS: ReadonlyArray<{ id: StyleChoice; name: string; blurb: string;
 ]
 const CHAT_VIEW_OPTIONS = [['terminal', 'Terminal'], ['chat', 'Chat']] as const
 const ICON_COLOR_OPTIONS = [['color', 'Color'], ['grayscale', 'Grayscale']] as const
-const TRAY_OPTIONS = [['names', 'With names'], ['icons', 'Icons'], ['stacked', 'Stacked']] as const
+const TRAY_NOTES = {
+  tree: 'Indented under the main row with guide lines, like a file tree.',
+  stacked: 'One per line under the main row, with folder and status.',
+  icons: 'Small icon tabs under the main row.',
+  names: 'Small named tabs under the main row.',
+} as const
+const TRAY_OPTIONS = [['tree', 'Tree'], ['names', 'Names'], ['icons', 'Icons'], ['stacked', 'Stacked']] as const
 const UPDATE_CHIP: Record<UpdaterState['status'], string> = { idle: 'Not checked', checking: 'Checking…', current: 'Up to date', available: 'Update available', downloading: 'Downloading', ready: 'Ready to restart', failed: 'Failed' }
 
 /** The one button that fits where the update is. */
@@ -400,7 +406,6 @@ function updateAction(updates: NonNullable<DesktopSettingsProps['updates']>): { 
 }
 const TOAST_POSITIONS = [['top-left', 'Top left'], ['top-center', 'Top center'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom center'], ['bottom-right', 'Bottom right']] as const
 const SIDE_OPTIONS = [['left', 'Left'], ['right', 'Right']] as const
-const LEAD_OPTIONS = [['focused', 'Focused'], ['attention', 'Needs attention']] as const
 const ICON_OPTIONS = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']] as const
 const DENSITY_OPTIONS = [['compact', 'Compact'], ['comfortable', 'Comfortable'], ['spacious', 'Spacious']] as const
 const UI_TEXT_OPTIONS = [[UI_TEXT_SIZE_SMALL, 'Small'], [UI_TEXT_SIZE_DEFAULT, 'Medium'], [UI_TEXT_SIZE_LARGE, 'Large']] as const
@@ -586,16 +591,13 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
         </Row>
       </Card>
       <Card title="Sidebar" color="var(--accent)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></>}
-        foot={<>{preferences.trayStyle === 'stacked' ? 'One per line under the main row, with folder and status.' : preferences.trayStyle === 'icons' ? 'Small icon tabs under the main row.' : 'Small named tabs under the main row.'} {preferences.leadMode === 'attention' ? 'The session that most needs you leads: needs you, error, done, working.' : 'The session you are in leads; the others are sorted by attention.'}</>}
+        foot={<>{TRAY_NOTES[preferences.trayStyle]} Sessions keep the order they were created in; the one you are in is the full card where it sits.</>}
       >
         <Row label="Sidebar position" detail="Which side of the window the sidebar sits on. Inspect and the inbox open from the other side.">
           <Segmented label="Sidebar position" value={preferences.sidebarSide} options={SIDE_OPTIONS} onChange={(value) => { update('sidebarSide', value) }} />
         </Row>
-        <Row label="Other sessions in a project" detail="How a project's extra sessions sit under its main row.">
+        <Row label="Other sessions in a project" detail="How the sessions after the main row sit. Those before it are always tree rows.">
           <Segmented label="Other sessions in a project" value={preferences.trayStyle} options={TRAY_OPTIONS} onChange={(value) => { update('trayStyle', value) }} />
-        </Row>
-        <Row label="Main row shows" detail="Which session leads each project.">
-          <Segmented label="Main row shows" value={preferences.leadMode} options={LEAD_OPTIONS} onChange={(value) => { update('leadMode', value) }} />
         </Row>
       </Card>
       <Card title="Interface size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>

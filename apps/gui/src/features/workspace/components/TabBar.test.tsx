@@ -152,3 +152,53 @@ describe('all tabs menu', () => {
     expect(screen.queryByRole('menu', { name: 'All tabs' })).not.toBeInTheDocument()
   })
 })
+
+describe('tab bar in a small window', () => {
+  const base = { tabs: makeTabs(1), activeTabId: 'tab-0', sessions: new Map(), canStart: true, portalContainer: null, onSelect: vi.fn(), onClose: vi.fn(), onCloseOthers: vi.fn(), onRenameSession: vi.fn(), newTabLabel: 'New tab', onNewTab: vi.fn(), inboxCount: 2, inboxNeeds: true, onOpenInbox: vi.fn(), inspect: { open: false, additions: 0, deletions: 0 }, onToggleInspect: vi.fn() }
+
+  it('keeps Repository and Inbox as their own buttons in a wide window', () => {
+    render(<TabBar {...base} />)
+
+    expect(screen.getByRole('button', { name: 'Repository' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Inbox, 2/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Panels/ })).not.toBeInTheDocument()
+  })
+
+  it('folds them into one Panels menu that carries the inbox count and the needs-you mark', () => {
+    const onOpenInbox = vi.fn()
+    const onToggleInspect = vi.fn()
+    render(<TabBar {...base} foldPanels onOpenInbox={onOpenInbox} onToggleInspect={onToggleInspect} />)
+
+    expect(screen.queryByRole('button', { name: 'Repository' })).not.toBeInTheDocument()
+    const panels = screen.getByRole('button', { name: 'Panels, inbox 2, something needs you' })
+    fireEvent.click(panels)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Repository' }))
+    expect(onToggleInspect).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('menu', { name: 'Panels' })).not.toBeInTheDocument()
+
+    fireEvent.click(panels)
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Inbox/ }))
+    expect(onOpenInbox).toHaveBeenCalledOnce()
+  })
+
+  it('closes the Panels menu with Escape', () => {
+    render(<TabBar {...base} foldPanels />)
+
+    fireEvent.click(screen.getByRole('button', { name: /^Panels/ }))
+    expect(screen.getByRole('menu', { name: 'Panels' })).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('menu', { name: 'Panels' })).not.toBeInTheDocument()
+  })
+
+  it('marks the Sessions button when something needs you', () => {
+    render(<TabBar {...base} onOpenSessions={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Sessions, something needs you' })).toBeInTheDocument()
+  })
+
+  it('has a plain Sessions button when nothing does', () => {
+    render(<TabBar {...base} inboxNeeds={false} onOpenSessions={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Sessions' })).toBeInTheDocument()
+  })
+})
