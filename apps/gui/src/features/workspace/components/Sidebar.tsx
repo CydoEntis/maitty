@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ContextMenu as ContextMenuPrimitive } from 'radix-ui'
+import { ContextMenu as ContextMenuPrimitive, DropdownMenu } from 'radix-ui'
 import type { TrayStyle } from '@/features/settings/preferences'
 import { displayName, groupInitials, STATUS_WORD, type SessionGroup, type SessionView } from '../model/session'
 import { MOVED_HIGHLIGHT_MS, type SessionTrack } from '../model/tracking'
@@ -130,6 +130,9 @@ function Expanded(props: GroupProps) {
   const tip = useTipWithKeys()
   const hover = useRailHover()
   const heads = props.machineHeads
+  // Which machine's sessions the list shows; every machine until one is picked in the header's menu.
+  const [machineFilter, setMachineFilter] = useState<number | null>(null)
+  const shownHeads = machineFilter === null ? heads : heads.filter((head) => head.machine === machineFilter)
   const renderGroup = (group: SessionGroup) => {
     const open = isOpen(group)
     return (
@@ -173,7 +176,9 @@ function Expanded(props: GroupProps) {
     <div className="mx-sidebar-expanded">
       <RailPopoverLayer hover={hover} groups={groups} tabOf={props.tabOf} tabPanes={props.tabPanes} openIds={props.openIds} tracks={props.tracks} portalContainer={props.portalContainer} onShowSession={props.onShowSession} />
       <div className="mx-sidebar-head">
-        <span className="mx-sidebar-title">Projects</span>
+        {heads.length === 0
+          ? <span className="mx-sidebar-title">Projects</span>
+          : <MachineSwitcher heads={heads} filter={machineFilter} onFilter={setMachineFilter} portalContainer={props.portalContainer} />}
         <span className="mx-spacer" />
         <button type="button" className="mx-new-button" aria-label="New terminal" title={tip('New terminal: a plain shell, terminal view only', 'new-terminal')} disabled={!props.canStart} onClick={props.onNewTerminal}><Icon name="prompt" size={15} /></button>
         <button type="button" className="mx-new-button" aria-label="New session" title={tip(`New session in ${props.startFolderLabel}`, 'new-session')} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" size={15} /></button>
@@ -185,7 +190,7 @@ function Expanded(props: GroupProps) {
       <div className="mx-sidebar-list">
         {heads.length === 0
           ? groups.map(renderGroup)
-          : heads.map((head) => <MachineSection key={head.key} head={head} online={props.online} onNewSessionOn={props.onNewSessionOn} groups={groups.filter((group) => (group.machineName?.toLowerCase() ?? null) === (head.name?.toLowerCase() ?? null))} renderGroup={renderGroup} />)}
+          : shownHeads.map((head) => <MachineSection key={head.key} head={head} online={props.online} onNewSessionOn={props.onNewSessionOn} groups={groups.filter((group) => (group.machineName?.toLowerCase() ?? null) === (head.name?.toLowerCase() ?? null))} renderGroup={renderGroup} />)}
         {groups.length === 0 && <div className="mx-empty-note">No sessions. Projects show up here when a session cds into a git repo.</div>}
       </div>
       <div className="mx-sidebar-foot">
@@ -358,5 +363,35 @@ function Rail(props: GroupProps) {
         <button type="button" className="mx-icon-button mx-rail-button" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" /></button>
       </div>
     </div>
+  )
+}
+
+/** The sidebar header's machine menu (v19 §8): which machine's sessions the list shows. An amber dot says some machine is not up. */
+function MachineSwitcher({ heads, filter, onFilter, portalContainer }: { heads: readonly MachineHead[]; filter: number | null; onFilter: (machine: number | null) => void; portalContainer: HTMLElement | null }) {
+  const picked = filter === null ? undefined : heads.find((head) => head.machine === filter)
+  const anyDown = heads.some((head) => head.down)
+  const nameOf = (head: MachineHead) => head.name ?? 'This computer'
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger className="mx-machine-switcher" aria-label={`Show sessions on: ${picked === undefined ? 'all machines' : nameOf(picked)}`}>
+        <span className="mx-sidebar-title">{picked === undefined ? 'All machines' : nameOf(picked)}</span>
+        <Icon name="chevron" />
+        {anyDown && <span className="mx-machine-switcher-dot" role="img" aria-label="A machine is not connected" />}
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal container={portalContainer}>
+        <DropdownMenu.Content className="mx-menu mx-machine-menu" sideOffset={6} align="start">
+          <DropdownMenu.Label className="mx-menu-caps">Show sessions on</DropdownMenu.Label>
+          <DropdownMenu.Item className="mx-menu-item" onSelect={() => { onFilter(null) }}>
+            All machines{filter === null && <span className="mx-menu-hint">✓</span>}
+          </DropdownMenu.Item>
+          {heads.map((head) => (
+            <DropdownMenu.Item key={head.key} className="mx-menu-item" onSelect={() => { onFilter(head.machine) }}>
+              {nameOf(head)}
+              <span className="mx-menu-hint">{head.chip?.word ?? 'local'}{filter === head.machine ? ' ✓' : ''}</span>
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   )
 }

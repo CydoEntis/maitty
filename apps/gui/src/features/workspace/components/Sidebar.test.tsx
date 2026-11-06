@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionGroup } from '../model/session'
 import { machineHeads, type RemoteMachine } from '../model/machines'
@@ -97,5 +98,25 @@ describe('the project menu\'s Inspect project', () => {
     fireEvent.contextMenu(screen.getByRole('button', { name: /app/ }))
     await screen.findByRole('menu')
     expect(screen.getByRole('menuitem', { name: 'Inspect project' }).getAttribute('aria-disabled')).toBe('true')
+  })
+})
+
+describe('the machine menu in the sidebar header', () => {
+  it('shows all machines by default and narrows the list to the machine picked', async () => {
+    const user = userEvent.setup()
+    show(machineHeads(new Map([machine(1, 'build', 'connected')])), [group('a', 'app', null), group('b', 'svc', 'build')])
+    expect(screen.getByText('app')).toBeTruthy()
+    expect(screen.getByText('svc')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Show sessions on: all machines' }))
+    await user.click(await screen.findByRole('menuitem', { name: /^build/ }))
+    expect(screen.queryByText('app')).toBeNull()
+    expect(screen.getByText('svc')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Show sessions on: build' })).toBeTruthy()
+  })
+
+  it('keeps the plain Projects title while this computer is the only machine', () => {
+    show([], [group('a', 'app', null)])
+    expect(screen.getByText('Projects')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Show sessions on/ })).toBeNull()
   })
 })
