@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState, useSyncExternalStore } from 'react'
-import { isWindowActive, subscribeWindowActivity } from './window-activity'
+import { isWindowShown, subscribeWindowActivity } from './window-activity'
 
 export const CLOCK_TICK_MS = 1000
 
@@ -19,7 +19,7 @@ function tick() {
 }
 
 function syncTimer() {
-  const shouldRun = listeners.size > 0 && isWindowActive()
+  const shouldRun = listeners.size > 0 && isWindowShown()
   if (shouldRun && timer === undefined) {
     // Coming back to the front, the stale minutes catch up at once rather than a second later.
     tick()

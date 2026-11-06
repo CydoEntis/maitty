@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { isWindowActive, subscribeWindowActivity } from './window-activity'
+import { isWindowShown, subscribeWindowActivity } from './window-activity'
 
 /** The Maitty TUI's spinners: a few Braille characters stepped by the shared clock. */
 export type TuiSpinner = 'braille' | 'snake' | 'bars'
@@ -72,7 +72,7 @@ function tick() {
 
 /** One shared clock runs while something shows a spinner and the window is in front. */
 function syncTimer() {
-  const shouldRun = targets.size > 0 && isWindowActive()
+  const shouldRun = targets.size > 0 && isWindowShown()
   if (shouldRun && timer === undefined) timer = setInterval(tick, SPINNER_TICK_MS)
   if (!shouldRun && timer !== undefined) {
     clearInterval(timer)

@@ -1,4 +1,4 @@
-import { isWindowActive } from './window-activity'
+import { isWindowShown } from './window-activity'
 
 /** How long one measurement watches the frames. */
 export const SAMPLE_MS = 3000
@@ -64,7 +64,7 @@ export type FrameEnvironment = {
 const BROWSER: FrameEnvironment = {
   requestFrame: (callback) => requestAnimationFrame(callback),
   cancelFrame: (handle) => { cancelAnimationFrame(handle) },
-  isActive: isWindowActive,
+  isActive: isWindowShown,
 }
 
 /**

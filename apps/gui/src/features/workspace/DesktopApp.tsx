@@ -32,7 +32,7 @@ import { daemonConnectionError, daemonProtocolMismatch } from '@/lib/daemon-conn
 import { errorMessage } from '@/lib/error-message'
 import { guardLocal } from '@/lib/localOnly'
 import { markGpu } from '@/lib/gpu'
-import { isWindowActive, subscribeWindowActivity } from '@/lib/window-activity'
+import { isWindowShown, subscribeWindowActivity } from '@/lib/window-activity'
 import { styleUnderCap, type EffectStyle } from '@/lib/animation-level'
 import { levelFor, useAutoState } from '@/lib/animation-auto'
 import { useAdaptiveAnimations } from './useAdaptiveAnimations'
@@ -626,7 +626,7 @@ export function DesktopApp() {
   // Looping effects pause in the stylesheet while the window is hidden or in the background. It is an
   // attribute on <html>, not React state, so a focus change repaints nothing and re-renders nothing.
   useEffect(() => {
-    const mark = () => { document.documentElement.dataset.window = isWindowActive() ? 'active' : 'inactive' }
+    const mark = () => { document.documentElement.dataset.window = isWindowShown() ? 'active' : 'inactive' }
     mark()
     return subscribeWindowActivity(mark)
   }, [])

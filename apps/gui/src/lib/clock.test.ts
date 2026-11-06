@@ -21,10 +21,21 @@ describe('shared clock', () => {
     expect(result.current).toBeGreaterThanOrEqual(first + CLOCK_TICK_MS)
   })
 
-  it('stands still while the window is in the background', () => {
+  it('keeps running while the window is visible with focus elsewhere, so it can be read from another window', () => {
     const { result } = renderHook(() => useNow())
     vi.spyOn(document, 'hasFocus').mockReturnValue(false)
     act(() => { window.dispatchEvent(new Event('blur')) })
+    const before = result.current
+
+    act(() => { vi.advanceTimersByTime(CLOCK_TICK_MS * 5) })
+
+    expect(result.current).toBeGreaterThan(before)
+  })
+
+  it('stands still while the window is hidden', () => {
+    const { result } = renderHook(() => useNow())
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
     const held = result.current
 
     act(() => { vi.advanceTimersByTime(CLOCK_TICK_MS * 5) })

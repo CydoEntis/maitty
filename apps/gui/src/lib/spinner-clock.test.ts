@@ -44,18 +44,29 @@ describe('spinner clock', () => {
     detachTwo()
   })
 
-  it('stops stepping while the window is in the background and resumes when it is back', () => {
+  it('keeps stepping while the window is visible with focus elsewhere', () => {
     const element = document.createElement('span')
     const detach = attachSpinner(element)
 
     focusedWindow(false)
     window.dispatchEvent(new Event('blur'))
+    const before = element.textContent
+    vi.advanceTimersByTime(SPINNER_TICK_MS * 5)
+    expect(element.textContent).not.toBe(before)
+    detach()
+  })
+
+  it('stops stepping while the window is hidden and resumes when it is shown', () => {
+    const element = document.createElement('span')
+    const detach = attachSpinner(element)
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    document.dispatchEvent(new Event('visibilitychange'))
     const held = element.textContent
     vi.advanceTimersByTime(SPINNER_TICK_MS * 5)
     expect(element.textContent).toBe(held)
 
-    focusedWindow(true)
-    window.dispatchEvent(new Event('focus'))
+    hidden.mockReturnValue(false)
+    document.dispatchEvent(new Event('visibilitychange'))
     vi.advanceTimersByTime(SPINNER_TICK_MS)
     expect(element.textContent).not.toBe(held)
     detach()
