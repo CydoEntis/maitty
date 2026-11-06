@@ -161,7 +161,7 @@ pub enum ClientMsg {
 }
 
 /// The question an agent's permission prompt asks, as the agent's own hook reported it (never read
-/// off the screen, ADR 0036). Only the tool and a one-line subject (the command, the file or the
+/// off the screen, ADR 0003). Only the tool and a one-line subject (the command, the file or the
 /// address) are carried: not the content a tool would write, which can hold secrets.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PermissionAsk {

@@ -1,8 +1,8 @@
-//! The question a permission prompt asks, as the agent's own hook reported it (ADR 0056).
+//! The question a permission prompt asks, as the agent's own hook reported it (ADR 0003).
 //!
 //! It comes from the owning runtime's `PermissionRequest` hook payload, which reaches the daemon
 //! through the same checked path as every status report (AGENTS.md non-negotiable 5), never from
-//! the screen (ADR 0036). It is cleaned here before it is kept or sent to any client.
+//! the screen (ADR 0003). It is cleaned here before it is kept or sent to any client.
 
 use super::conversation::mask_secrets;
 use crate::protocol::{PermissionAsk, Status};

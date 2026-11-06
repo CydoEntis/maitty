@@ -21,7 +21,7 @@ Evidence baseline: dev at c08354ce6afc7888774f309e9d7c4873ed721abd.
 - Scope: [current TUI design](../../DESIGN.md) remains authoritative for TUI controls.
   The GUI framework is selected in [ADR 0004](../../adr/0004-client-split-and-desktop-host.md).
   Claude uses the installed CLI's streaming protocol per
-  ADR 0039; supported CLI versions,
+  ADR 0005; supported CLI versions,
   permission-control compatibility and authentication still require verification.
 
 ## Requirements

@@ -15,7 +15,7 @@ type Props = {
 }
 
 /**
- * What a stopped agent is asking, shown in the chat (ADR 0056). The question comes from the agent's
+ * What a stopped agent is asking, shown in the chat (ADR 0003). The question comes from the agent's
  * own hook, never the screen. The buttons exist only where the daemon knows the key that answers
  * this agent; otherwise the card says to answer in the terminal rather than guess.
  */

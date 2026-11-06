@@ -106,8 +106,7 @@ app instead of showing an error; a terminal session opens in both apps. A sessio
 chat or a terminal session from the moment it starts,
 and nothing switches a live session between them. The desktop app shows terminal sessions
 only: a new session there is a plain shell, closing a pane or tab detaches, and ending a
-session is its own action (ADR 0046;
-its look is in [DESIGN](DESIGN.md#desktop-app)).
+session is its own action (its look is in [DESIGN](DESIGN.md#desktop-app)).
 
 The desktop app also shows other machines' terminal sessions (ADR 0007).
 Its host holds one supervised connection per machine and the web view only renders: it knows a machine by
