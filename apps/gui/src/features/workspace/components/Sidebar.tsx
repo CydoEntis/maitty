@@ -8,6 +8,8 @@ import { RailFolder } from './FolderTile'
 import { SidebarResizer } from './SidebarResizer'
 import { AppIcon, Icon, Spinner, StatusBadge } from './glyphs'
 import { SessionStack } from './SessionStack'
+import { AgentMenu } from './AgentMenu'
+import type { ChatAgent } from '../model/chatView'
 import { DisconnectedSince } from './times'
 import { useSessionMenu, type SessionMenuActions } from './SessionMenu'
 import { RailPopoverLayer } from './RailPopovers'
@@ -49,6 +51,10 @@ export type SidebarProps = {
   onResize: (width: number) => void
   onResizeEnd: (width: number) => void
   onNewSession: () => void
+  /** A new chat with this agent, whatever the default is. */
+  onNewSessionWith: (agent: ChatAgent) => void
+  /** The agent the + button starts. */
+  defaultAgent: ChatAgent
   /** A new shell in a project's folder. */
   onNewSessionIn: (folder: string) => void
   /** A plain shell, in the start folder or in a project's folder. */
@@ -169,6 +175,7 @@ function Expanded(props: GroupProps) {
         <span className="mx-spacer" />
         <button type="button" className="mx-new-button" aria-label="New terminal" title={tip('New terminal: a plain shell, terminal view only', 'new-terminal')} disabled={!props.canStart} onClick={props.onNewTerminal}><Icon name="prompt" size={15} /></button>
         <button type="button" className="mx-new-button" aria-label="New session" title={tip(`New session in ${props.startFolderLabel}`, 'new-session')} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" size={15} /></button>
+        <AgentMenu disabled={!props.canStart} defaultAgent={props.defaultAgent} onPick={props.onNewSessionWith} />
         {mode === 'docked' && (
           <button type="button" className="mx-icon-button mx-collapse" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
         )}

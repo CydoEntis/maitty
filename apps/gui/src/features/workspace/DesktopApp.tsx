@@ -812,8 +812,7 @@ export function DesktopApp() {
   // A new session is the default agent, running in a terminal the daemon owns, shown as its chat or
   // as its terminal as Settings says. It is one session either way: the view can be switched at any
   // time without restarting the agent (ADR 0003). A plain shell is `runStart` and has no chat view.
-  const startAgentSession = useCallback((folder: () => Promise<string>) => {
-    const agent = preferences.defaultAgent
+  const startAgentSession = useCallback((folder: () => Promise<string>, agent: ChatAgent = preferences.defaultAgent) => {
     const view = preferences.newSessionView
     runStart(folder, (id) => {
       setLayout((current) => openInNewTab(current, id, makeId))
@@ -832,6 +831,18 @@ export function DesktopApp() {
       return
     }
     startAgentSession(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())))
+  }, [startAgentSession, preferences.startFolder, home, focusedSession])
+
+  // The agent menu next to +: this agent for this session, the default left as Settings has it. Chats run on this
+  // computer only, so beside a session on another machine it opens that machine's folder dialog as + does.
+  const newSessionWith = useCallback((agent: ChatAgent) => {
+    setSettingsSection(null)
+    const remote = remoteTargetOf(focusedSession)
+    if (remote !== null) {
+      setRemoteStart(remote)
+      return
+    }
+    startAgentSession(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), agent)
   }, [startAgentSession, preferences.startFolder, home, focusedSession])
 
   // A plain shell in the start folder: terminal view only, whatever the default agent is.
@@ -1652,6 +1663,8 @@ export function DesktopApp() {
         setLiveSidebarWidth(null)
       }}
       onNewSession={() => { afterPick(); newSession() }}
+      onNewSessionWith={(agent) => { afterPick(); newSessionWith(agent) }}
+      defaultAgent={preferences.defaultAgent}
       onNewSessionIn={(folder) => { afterPick(); startIn(folder) }}
       onNewTerminal={() => { afterPick(); newTerminal() }}
       onNewTerminalIn={(folder, machineName) => { afterPick(); startTerminalIn(folder, machineName) }}

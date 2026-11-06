@@ -831,6 +831,9 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   a project's **New terminal here**, the palette) is a plain shell with no chat view. A chat session of ADR 0003, with
   no terminal, still starts from a shell's empty chat card (**Start a Claude chat** / **Start a Codex chat**) and
   stops the agent when closed (`closeChatSession`: end, then put away; if the stop fails it stays open).
+- **Choosing the agent for one session.** A small chevron beside the sidebar's + opens **New Claude chat** / **New Codex chat**
+  (the default is marked); the + still starts the default from Settings. It starts the chosen agent in the start folder and
+  opens in the view Settings names. Beside a session on another machine it opens that machine's folder dialog, as + does.
 - **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
   mounted and its pane keeps its size, and no daemon command is sent. The shortcut is `chat-toggle`
   (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.
