@@ -107,6 +107,29 @@ pub fn maitty_binary() -> PathBuf {
         .clone()
 }
 
+/// `pwsh` 7 keeps one PSReadLine history file per user, whatever `USERPROFILE` says, so shells
+/// in different sandboxes recall each other's typed lines. Saving nothing and predicting
+/// nothing keeps each sandbox's shells to what they were typed.
+const PWSH_PRIVATE_HISTORY: &str =
+    "Set-PSReadLineOption -HistorySaveStyle SaveNothing -PredictionSource None";
+
+/// The sandbox's `config.toml`, if it needs one. Only Windows with `pwsh` does: the options are
+/// set by the shell's own start-up script, which is why `shell_integration` is off (it would
+/// add a second `-Command`).
+fn config_text(windows: bool, pwsh: bool) -> Option<String> {
+    (windows && pwsh).then(|| {
+        format!(
+            "shell = \"pwsh.exe\"\nshell_integration = false\n\
+             shell_args = [\"-NoExit\", \"-Command\", '{PWSH_PRIVATE_HISTORY}']\n"
+        )
+    })
+}
+
+fn pwsh_on_path() -> bool {
+    std::env::var_os("PATH")
+        .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join("pwsh.exe").is_file()))
+}
+
 /// A private daemon's worth of environment for a test: its own socket, data folder and config,
 /// and the shim's calls log. The daemon is stopped and the folder removed when it drops.
 pub struct Sandbox {
@@ -123,6 +146,9 @@ impl Sandbox {
         let socket = format!("sandbox-{}-{n}", std::process::id());
         let dir = std::env::temp_dir().join(&socket);
         std::fs::create_dir_all(dir.join("data")).expect("create the sandbox");
+        if let Some(text) = config_text(cfg!(windows), pwsh_on_path()) {
+            std::fs::write(dir.join("config.toml"), text).expect("write the sandbox config");
+        }
         Sandbox {
             dir,
             socket,
@@ -256,5 +282,31 @@ impl Drop for Sandbox {
             let _ = child.wait();
         }
         let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn windows_with_pwsh_gets_a_config_that_turns_history_off() {
+        let text = config_text(true, true).expect("a config");
+        let parsed: toml::Table = text.parse().expect("valid toml");
+        assert_eq!(parsed["shell"].as_str(), Some("pwsh.exe"));
+        assert_eq!(parsed["shell_integration"].as_bool(), Some(false));
+        let args: Vec<_> = parsed["shell_args"]
+            .as_array()
+            .expect("an array")
+            .iter()
+            .filter_map(|a| a.as_str())
+            .collect();
+        assert_eq!(args, ["-NoExit", "-Command", PWSH_PRIVATE_HISTORY]);
+    }
+
+    #[test]
+    fn other_setups_keep_the_default_config() {
+        assert_eq!(config_text(false, true), None);
+        assert_eq!(config_text(true, false), None);
     }
 }

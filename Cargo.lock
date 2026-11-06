@@ -2926,6 +2926,9 @@ dependencies = [
 [[package]]
 name = "maitty-test-support"
 version = "0.1.0"
+dependencies = [
+ "toml 0.9.12+spec-1.1.0",
+]
 
 [[package]]
 name = "markup5ever"
