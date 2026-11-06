@@ -49,3 +49,32 @@ export const FOLLOW_THRESHOLD_PX = 48
 export function isAtBottom(scrollTop: number, viewport: number, total: number): boolean {
   return total - scrollTop - viewport <= FOLLOW_THRESHOLD_PX
 }
+
+/** Where the list was last seen, so the next scroll has a direction. */
+export type FollowState = {
+  readonly following: boolean
+  readonly top: number
+  readonly total: number
+}
+
+/**
+ * Whether the list follows its newest row after a scroll. It goes by the direction the reader
+ * moves, not by how far from the bottom they are: any move up stops following at once (a streaming
+ * reply growing under a reader who nudged up would otherwise pull them back down), and only a move
+ * down that ends within `FOLLOW_THRESHOLD_PX` of the bottom starts it again. A scroll the list
+ * caused itself, and the browser pulling the view in because the list got shorter, say nothing
+ * about what the reader wants.
+ */
+export function followAfterScroll(
+  previous: FollowState,
+  now: { readonly scrollTop: number; readonly viewport: number; readonly total: number },
+  causedByList: boolean,
+): FollowState {
+  const next: FollowState = { following: previous.following, top: now.scrollTop, total: now.total }
+  if (causedByList) return next
+  const pulledIn = now.total < previous.total && now.scrollTop >= now.total - now.viewport
+  if (pulledIn) return next
+  if (now.scrollTop < previous.top) return { ...next, following: false }
+  if (now.scrollTop > previous.top && isAtBottom(now.scrollTop, now.viewport, now.total)) return { ...next, following: true }
+  return next
+}
