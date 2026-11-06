@@ -82,6 +82,8 @@ conversation continuity are planned in phases 34–37:
 - Fleet work declined 2026-10-24 (the fleet was removed in phase 19): the phase 9 live fleet check, the designed team view, pause the fleet, stop all, cost per fleet.
 - Maitty writing Codex hook trust hashes itself — declined 2026-11-01: it would bypass Codex's own review of hook commands. You trust Maitty's hooks once in Codex's `/hooks`; a pane without trusted hooks keeps the screen guess.
 
+- Brain dump (split a pasted plan into sessions, v19 section 12) — declined 2026-11-06, the user's call.
+
 ## Later
 
 - Non-blocking validation follow-ups: use the four Phase 10 features in real work; address the squash-merged-branch detection gap.
@@ -91,4 +93,6 @@ conversation continuity are planned in phases 34–37:
 - Checkpoint kinds beyond the first (`commits`, `approval`, `review`) and a project-defined checkpoint list — deferred 2026-10-22 until Phase 15's verify check has been used in real work. `approval` and `review` sit close to the workflow runner cut on 2026-10-18; each needs the user's explicit re-approval before any ticket.
 - Threads between agents, take over and hand back — deferred 2026-10-11: waiting on a design for it. Comes back when the prototype is in.
 - Live GUI-to-native-TUI Codex transfer and platform acceptance — deferred until the standalone Codex/Claude GUI is usable and packaged. Existing TUI support remains required.
-
+- Extensions store and extension panels (v19 section 9) — deferred 2026-11-06: not built yet, on the list to add.
+- Project defaults in the project menu (Start in, Run when it opens; v19 section 3) — on hold 2026-11-06: it needs a shared-config key the terminal app also reads, and the user is not sure they want it.
+- Close with a six-second Undo (v19 section 5) — open 2026-11-06: it needs the daemon to delay the kill, so it is a daemon change.
