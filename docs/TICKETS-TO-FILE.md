@@ -1235,7 +1235,7 @@ From a comparison with https://github.com/KenKaiii/gg-framework. Ideas only: its
 and is not copied. ADRs are named by title as well as number, because the ADR folder is being
 renumbered. A ticket that says `Blocked by N` is not started until ticket N is merged.
 
-## P5-1. Stopping the daemon leaves provider processes running on Linux and macOS (bug, `daemon`)
+## P5-1. Stopping the daemon leaves provider processes running on Linux and macOS (bug, `daemon`) — built, merged to test/integration, PR #289
 
 A structured conversation's provider (Codex app-server, Claude stream-json) runs in its own process
 group and is stopped only by `OwnedChild::stop` or its `Drop`
@@ -1268,7 +1268,7 @@ recovery-required.
 **Not this ticket:** a daemon that dies without `KillServer` (SIGKILL, a crash) on Linux and macOS:
 ticket 54. Windows is already covered by its job object.
 
-## P5-2. A new daemon stops the provider processes an old one left (bug, `daemon`)
+## P5-2. A new daemon stops the provider processes an old one left (bug, `daemon`) — built, merged to test/integration (branch fix/sweep-orphaned-providers)
 
 Blocked by P5-1
 
@@ -1299,7 +1299,7 @@ marks the record recovery-required (`restore_startup` in `daemon/restore.rs`).
 `daemon/mod.rs`). The sweep runs only after this daemon is the one daemon for its socket, or it
 would kill a live daemon's providers.
 
-## P5-3. A table in a chat message is drawn as a table (feature, `client`)
+## P5-3. A table in a chat message is drawn as a table (feature, `client`) — built, merged to test/integration, PR #291
 
 The chat's markdown reader has no tables (the list of what is supported at the top of `apps/gui/src/features/chat/markdown.ts`), so an
 agent's table shows as lines of pipes.
@@ -1327,7 +1327,7 @@ agent's table shows as lines of pipes.
 **Not this ticket:** sorting, copying a table, resizing columns, tables in the terminal app's
 markdown preview.
 
-## P5-4. Half-arrived markdown does not flash while a reply streams (feature, `client`)
+## P5-4. Half-arrived markdown does not flash while a reply streams (feature, `client`) — built, merged to test/integration, PR #292
 
 Blocked by P5-3
 
@@ -1355,7 +1355,7 @@ header shows as a line of pipes until its delimiter row arrives.
 **Not this ticket:** fading words in, pacing the text, parsing only the last block, folding long
 code. Nothing has measured a need for them.
 
-## P5-5. The chat stops following the newest message as soon as the reader scrolls up (change, `client`)
+## P5-5. The chat stops following the newest message as soon as the reader scrolls up (change, `client`) — built, merged to test/integration, PR #290
 
 `VirtualList` follows the newest row while the view is within 48 px of the bottom
 (`isAtBottom` in `components/windowing.ts`, `onScroll` in `components/VirtualList.tsx`). While a reply streams, a
@@ -1384,7 +1384,7 @@ this way; it is how the list was first written.
 **Not this ticket:** keeping the view still when rows above it are measured; a count of new
 messages on the button.
 
-## P5-6. `maitty hook` reports a fingerprint of each tool call (feature, `daemon`)
+## P5-6. `maitty hook` reports a fingerprint of each tool call (feature, `daemon`) — built, merged to test/integration (branch feat/hook-call-fingerprint)
 
 Intent: [a working agent that repeats itself says so](features/repeating-agent/intent.md).
 
@@ -1399,22 +1399,21 @@ name and input on stdin.
   fills it for a tool-start event read from stdin: `PreToolUse` (Claude, Qwen, Codex) and
   `BeforeTool` (Gemini). It is `None` for every other event and agent.
 - The tool's name and input are not sent, kept or logged.
-- The daemon checks the value at the boundary (16 hex characters, else dropped) and does nothing
-  more with it yet.
+- The daemon checks the value where it first uses it, in P5-7 (16 hex characters, else dropped).
 - No `PROTOCOL_VERSION` bump: a test decodes a hook from before the field, as the existing
   "a hook from before the field" test in `protocol.rs` does.
 
 **Acceptance**
 - Tests: the same name and input give the same fingerprint; another input gives another; an event
-  with no tool gives none; a hook without the field decodes; a value that is not 16 hex characters
-  is dropped.
+  with no tool gives none; a hook without the field decodes. (The daemon's check of the value is
+  P5-7's, with its test.)
 - `docs/API_PATTERNS.md` lists the field; `docs/SECURITY.md` says the report carries a fingerprint
   and never the input. The gate passes.
 
 **Not this ticket:** new hook events for any agent (Codex would ask for its hooks to be trusted
 again); Kimi, Mastracode, Kilo, OpenCode, Pi and OMP, whose hooks pass no tool input.
 
-## P5-7. The daemon marks a working agent that repeats itself (feature, `daemon`)
+## P5-7. The daemon marks a working agent that repeats itself (feature, `daemon`) — built, merged to test/integration (branch feat/repeating-mark)
 
 Blocked by P5-6
 
@@ -1441,7 +1440,7 @@ Blocked by P5-6
 
 **Not this ticket:** failed calls in a row (Later); stopping or nudging the agent.
 
-## P5-8. The terminal app, `ls`, `maitty_list` and `wait` say when an agent is repeating itself (feature, `client`)
+## P5-8. The terminal app, `ls`, `maitty_list` and `wait` say when an agent is repeating itself (feature, `client`) — built, merged to test/integration (branch feat/repeating-display)
 
 Blocked by P5-7
 
@@ -1450,8 +1449,8 @@ Blocked by P5-7
   (`status_words` in `crates/maitty-terminal-client/src/client/screen/side.rs`).
 - `ls` reads `claude: working · repeating 6x` (`agent_tag` in `cli.rs`); `ls --json` has
   `repeats` while working (`pane_json`); `maitty_list` shows it on the row
-  (where `cli/mcp.rs` adds `quiet_since`); `wait` and `maitty_wait` say `still working, but repeating the same call
-  (6x)` when they time out (the `Waited::TimedOut` messages in `cli.rs` and `cli/mcp.rs`).
+  (where `cli/mcp.rs` adds `quiet_since`); `wait` and `maitty_wait` say `still working, but repeating itself
+  (6x)` when they time out (it can be two calls taking turns, so not "the same call") (the `Waited::TimedOut` messages in `cli.rs` and `cli/mcp.rs`).
 - Nothing in the Inbox, no popup, no sound, nothing in the desktop app.
 
 **Acceptance**
