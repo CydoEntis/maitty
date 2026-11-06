@@ -51,6 +51,8 @@ export function useChatFeed({ conversation, generation, provider }: Options) {
   const [feed, setFeed] = useState<ChatFeed>(() => startFeed(provider, conversation, generation))
   const [forGeneration, setForGeneration] = useState(generation)
   const [offline, setOffline] = useState(false)
+  // Why the last read failed, so the chat can say it; never the conversation's own text.
+  const [readError, setReadError] = useState<string | null>(null)
   // A conversation that started over (a new generation) shows nothing of the old one while the new one is read.
   if (forGeneration !== generation) {
     setForGeneration(generation)
@@ -88,12 +90,15 @@ export function useChatFeed({ conversation, generation, provider }: Options) {
         remember(next)
         setFeed(next)
         setOffline(false)
+        setReadError(null)
       } catch (error) {
         if (gone()) return
         // Not the text of the conversation: only that the read failed.
-        console.warn('Could not read the conversation', error instanceof Error ? error.message : String(error))
+        const reason = error instanceof Error ? error.message : String(error)
+        console.warn('Could not read the conversation', reason)
         latest.current = afterFailure(latest.current)
         setOffline(true)
+        setReadError(reason)
       } finally {
         running = false
       }
@@ -124,5 +129,5 @@ export function useChatFeed({ conversation, generation, provider }: Options) {
   }, [])
 
   const events = useMemo(() => selectChatEvents(feed.projection), [feed.projection])
-  return { feed, events, offline, refresh, recordAnswer }
+  return { feed, events, offline, readError, refresh, recordAnswer }
 }
