@@ -44,13 +44,20 @@ describe('the sidebar with machines', () => {
     expect(within(there).getByText(/connected/)).toBeTruthy()
   })
 
-  it('starts a session on the machine whose header + is pressed, and not on one that is not connected', () => {
+  it('opens a terminal on the machine whose header + is pressed, and not on one that is not connected', () => {
     const onNewSessionOn = vi.fn()
     show(machineHeads(new Map([machine(1, 'build', 'connected'), machine(2, 'lost', 'unreachable')])), [], { onNewSessionOn })
-    expect(screen.queryByRole('button', { name: 'New session on this computer' })).toBeNull()
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'New session on lost' }).disabled).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: 'New session on build' }))
+    expect(screen.queryByRole('button', { name: 'New terminal on this computer' })).toBeNull()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'New terminal on lost' }).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'New terminal on build' }))
     expect(onNewSessionOn).toHaveBeenCalledWith(1, 'build')
+  })
+
+  it('tells a connected machine with nothing running where to start, and a machine that is down why it cannot', () => {
+    show(machineHeads(new Map([machine(1, 'build', 'connected'), machine(2, 'lost', 'unreachable')])), [])
+    expect(screen.getByText('No sessions. Use + to open a terminal here.')).toBeTruthy()
+    expect(screen.getAllByText('No sessions. Use + to open a terminal here.')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'New terminal on lost' }).getAttribute('title')).toBe('lost is unreachable · can’t open a terminal')
   })
 
   it('tells a machine that is down by its word, with the fix under it', () => {

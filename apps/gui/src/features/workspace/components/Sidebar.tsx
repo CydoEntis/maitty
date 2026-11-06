@@ -195,18 +195,23 @@ function Expanded(props: GroupProps) {
 function MachineSection(props: { head: MachineHead; online: boolean; onNewSessionOn: (machine: number, name: string) => void; groups: SessionGroup[]; renderGroup: (group: SessionGroup) => ReactNode }) {
   const { head, groups, renderGroup, onNewSessionOn } = props
   const target = head.name
+  const up = props.online && head.chip?.tone === 'ok'
+  // What the + says when it cannot be used: the machine's own state, in words.
+  const why = target === null ? '' : `${target} is ${head.chip?.word ?? 'not connected'} · can’t open a terminal`
   return (
     <section className={`mx-machine${head.down ? ' is-down' : ''}`} aria-label={head.label}>
       <div className="mx-machine-head">
+        <span className="mx-machine-tile" aria-hidden="true">{(head.label.at(0) ?? '?').toUpperCase()}</span>
         <span className="mx-machine-name">{head.label}</span>
         <span className="mx-spacer" />
         {head.chip && <span className={`mx-machine-chip is-${head.chip.tone}`}><span aria-hidden="true">{head.chip.glyph}</span> {head.chip.word}</span>}
         {target !== null && (
-          <button type="button" className="mx-machine-new" aria-label={`New session on ${target}`} title={`New session on ${target}`} disabled={!props.online || head.chip?.tone !== 'ok'} onClick={() => { onNewSessionOn(head.machine, target) }}><Icon name="plus" size={13} /></button>
+          <button type="button" className="mx-machine-new" aria-label={`New terminal on ${target}`} title={up ? `New terminal on ${target}` : why} aria-disabled={!up} disabled={!up} onClick={() => { onNewSessionOn(head.machine, target) }}><Icon name="plus" size={13} /></button>
         )}
       </div>
       {head.down && <p className="mx-machine-why"><DisconnectedSince at={head.downSince} /></p>}
       {head.why !== null && head.chip?.tone === 'bad' && <p className="mx-machine-why">{head.why}</p>}
+      {target !== null && up && groups.length === 0 && <p className="mx-machine-why">No sessions. Use + to open a terminal here.</p>}
       {groups.map(renderGroup)}
     </section>
   )
