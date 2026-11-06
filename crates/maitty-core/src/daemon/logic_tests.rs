@@ -6742,6 +6742,53 @@ fn restored_claude_pane(d: &mut Daemon) -> TermId {
 }
 
 #[test]
+fn restore_gives_no_shell_to_a_layout_slot_whose_pane_was_not_saved() {
+    let (mut d, _rx) = daemon();
+    let dir = std::env::temp_dir();
+    // Pane 2 was closed (or lost) before the save: the layout still names it, the panes map doesn't.
+    let tab = persist::SavedTab {
+        name: String::new(),
+        layout: crate::layout::Node::Split {
+            horizontal: true,
+            ratio: 0.5,
+            a: Box::new(crate::layout::Node::Leaf(1)),
+            b: Box::new(crate::layout::Node::Leaf(2)),
+        },
+        focus: 1,
+        panes: [(
+            1,
+            persist::SavedPane {
+                cwd: Some(dir.clone()),
+                ..Default::default()
+            },
+        )]
+        .into(),
+    };
+    d.restore(persist::Saved {
+        workspaces: vec![persist::SavedWs {
+            name: "w".into(),
+            cwd: dir,
+            worktree: false,
+            color: None,
+            group: None,
+            tabs: vec![tab],
+            active_tab: 0,
+        }],
+        active: 0,
+        made_worktrees: Vec::new(),
+        conversations: Vec::new(),
+        pending_starts: Vec::new(),
+        conversation_operations: Vec::new(),
+    });
+    let panes = d.terms.len();
+    let leaves = d.workspaces[0].tabs[0].layout.leaves().len();
+    let ids: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &ids);
+    assert_eq!(panes, 1, "only the saved pane comes back, not a bare shell");
+    assert_eq!(leaves, 1, "the layout shrinks to the pane that exists");
+}
+
+#[test]
 fn an_agent_that_quits_stays_saved_until_the_server_outlives_the_hold() {
     let (mut d, _rx) = daemon();
     let id = restored_claude_pane(&mut d);
