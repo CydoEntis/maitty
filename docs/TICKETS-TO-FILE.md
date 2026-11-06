@@ -684,7 +684,11 @@ next, which fits a suggestion and not a misrouted frame.
 shell in one sandbox recalls a line typed in another sandbox's shell: #281's own test failed with
 the second sandbox's pane showing `echo TYPED_IN_FIRST`. So the shared history is real there.
 Setting `USERPROFILE` for each sandbox moves the history file for Windows PowerShell 5.1 but not
-for `pwsh` 7. Next: another lever (the test shells naming their own `HistorySavePath`, or saving
+for `pwsh` 7. Attempt (branch `fix/windows-shared-history`): on Windows with `pwsh`, `Sandbox`
+writes a `config.toml` whose shell starts with `Set-PSReadLineOption -HistorySaveStyle
+SaveNothing -PredictionSource None` and `shell_integration = false` (integration would add a second
+`-Command`). Linux/macOS unchanged. CI evidence: see the draft PR; until ten Windows passes are
+recorded this stays unverified. Earlier idea: another lever (the test shells naming their own `HistorySavePath`, or saving
 no history), tried on `windows-latest`. #281's first commit, the assertion that prints the pane,
 is good by itself.
 
