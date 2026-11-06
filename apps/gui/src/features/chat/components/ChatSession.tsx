@@ -10,6 +10,7 @@ import { buildRows, type ChatRow } from '../chatRows'
 import { useChatFeed } from '../useChatFeed'
 import { useChatComposer } from '../useChatComposer'
 import { countUserMessages } from '../workPhase'
+import { BYPASS_MODE, modeLabel, modelLabel } from '../chatMeta'
 import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
 import { ANSWER_KEYS, type AskChoice } from '../permissionAsk'
@@ -165,6 +166,14 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
         {offline && <span role="status" className="text-[var(--warn)]">Reconnecting to the daemon. What is shown may be out of date.{readError !== null && ` (${truncateError(readError)})`}</span>}
         {!offline && incomplete !== null && <span className="text-dim">History is incomplete: {incomplete}.</span>}
         {feed.error !== null && <span className="text-[var(--danger)]">{feed.error}</span>}
+        {feed.meta !== null && (feed.meta.mode !== null || feed.meta.model !== null) && (
+          <span
+            className={`rounded border px-1.5 text-[11px] font-semibold ${feed.meta.mode === BYPASS_MODE ? 'border-[var(--danger-line)] text-[var(--danger)]' : 'border-line2 text-fg2'}`}
+            title={feed.meta.mode === null ? 'The model answering. Change it in the terminal with /model.' : 'The permission mode, then the model. Cycle the mode in the terminal with Shift+Tab; change the model with /model.'}
+          >
+            {[modeLabel(feed.meta.mode), modelLabel(feed.meta.model)].filter((part) => part !== null).join(' · ')}
+          </span>
+        )}
         {fullAccess && <span className="rounded border border-[var(--danger-line)] px-1.5 text-[11px] font-semibold text-[var(--danger)]" title="No sandbox and no approval prompts. End the session and start a new one to change this.">Full access</span>}
         {!hasTerminal && <span className="ml-auto text-dim">Chat session &middot; no terminal</span>}
       </div>

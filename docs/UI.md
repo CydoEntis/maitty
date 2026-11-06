@@ -893,6 +893,11 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   dropped after 20 s rather than left standing as sent. The **working line** says what the agent is doing from the newest
   step still running (`workPhase.ts`): "reading src/app.ts", "writing hello.txt", "running npm test", "thinking". It says
   only what the history says.
+- **Mode and model.** A chip in the chat header says how Claude is set up, from its own transcript and never a guess:
+  the permission mode (`Auto`, `Plan`, `Accept edits`, `Default`) then the model (`sonnet 5.5`). `Bypass permissions` is drawn
+  in the danger colour, like Full access. It is read-only: the mode cycles with Shift+Tab in the terminal and the model with
+  `/model`, and the chip follows at the agent's next line in its file. Nothing shows until the file has said it, and a
+  Codex chat shows none yet (`chatMeta.ts`, `SessionMeta` in the read result).
 - **Composer.** `useChatComposer` sends through the conversation's own send (`send_conversation`) with an operation
   number (the receipt's plus one; a failed send is retried with the same number so the daemon can tell a retry from a
   new message). Enter sends, Shift+Enter adds a line (not while an input method is composing), Esc or Stop interrupts

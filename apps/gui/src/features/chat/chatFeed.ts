@@ -36,6 +36,8 @@ export type ChatFeed = {
   readonly receipt: ChatPage['receipt']
   /** Messages the daemon holds until the running turn ends, oldest first. */
   readonly queued: ChatPage['queued']
+  /** The agent's permission mode and model from its own file; null until it has said. */
+  readonly meta: ChatPage['meta']
   /** At least one page has been read. */
   readonly loaded: boolean
 }
@@ -54,6 +56,7 @@ export function createFeed(provider: ChatProvider, conversation: number): ChatFe
     completeness: null,
     receipt: null,
     queued: [],
+    meta: null,
     loaded: false,
   }
 }
@@ -94,6 +97,7 @@ export function applyPage(feed: ChatFeed, page: ChatPage, nowMs: number): ChatFe
     completeness: page.history.completeness,
     receipt: page.receipt,
     queued: page.queued,
+    meta: page.meta,
     loaded: true,
   }
 }

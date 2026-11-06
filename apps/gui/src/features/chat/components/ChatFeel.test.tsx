@@ -128,6 +128,26 @@ describe('how the chat feels while it waits', () => {
     expect(screen.queryByText(/claude is thinking/)).not.toBeInTheDocument()
   })
 
+  it('says in the header how the agent is set up, from its own file', async () => {
+    const { daemon } = open()
+    daemon.meta = { mode: 'auto', model: 'claude-sonnet-5-5' }
+    await settle(IDLE_POLL_MS)
+
+    expect(screen.getByText('Auto · sonnet 5.5')).toBeInTheDocument()
+  })
+
+  it('marks a mode that asks about nothing, and shows nothing when the file said nothing', async () => {
+    const { daemon } = open()
+    await settle()
+    expect(screen.queryByTitle(/permission mode|model answering/)).not.toBeInTheDocument()
+
+    daemon.meta = { mode: 'bypassPermissions', model: null }
+    await settle(IDLE_POLL_MS)
+
+    const chip = screen.getByText('Bypass permissions')
+    expect(chip.className).toContain('danger')
+  })
+
   it('drops a message the history never showed, rather than leaving it standing as sent', async () => {
     const { user } = open()
     await settle()

@@ -23,6 +23,8 @@ export class FakeDaemonHistory {
   generation = 1
   status: ChatPage['status'] = 'Idle'
   approvals: unknown[] = []
+  /** What the agent's own file says of its mode and model, or null. */
+  meta: { mode: string | null; model: string | null } | null = null
   answeredApprovals: unknown[] = []
   /** Messages held until the turn ends. */
   queued: Array<{ operation: number; text: string }> = []
@@ -145,6 +147,7 @@ export class FakeDaemonHistory {
       approvals: this.approvals,
       answered_approvals: this.answeredApprovals,
       queued: this.queued.map((message) => ({ ...message })),
+      meta: this.meta,
     })
   }
 }

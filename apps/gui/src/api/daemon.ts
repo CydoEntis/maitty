@@ -529,6 +529,8 @@ const ChatPageSchema = z.object({
   // Approvals a person already answered; the chat projection validates each one. Absent from an older daemon.
   answered_approvals: z.array(z.unknown()).default([]),
   queued: z.array(QueuedMessageSchema).default([]),
+  // How the agent is set up, from its own file (Claude: permission mode and model); absent from an older daemon.
+  meta: z.object({ mode: z.string().nullable().default(null), model: z.string().nullable().default(null) }).nullable().default(null),
 })
 export type HistoryCursor = z.infer<typeof HistoryCursorSchema>
 export type ChatPage = z.infer<typeof ChatPageSchema>
