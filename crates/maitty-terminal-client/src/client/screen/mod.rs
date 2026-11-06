@@ -1590,6 +1590,8 @@ pub(super) enum ScreenHit {
     /// A row of the New Session popup, and one of its machine chips.
     NsRow(usize),
     NsChip(usize),
+    /// A connected machine with nothing running: opens the popup on its home folder.
+    NsMachine(MachineId),
     NpProj(usize),
     NpRun(usize),
     NpBeside(usize),

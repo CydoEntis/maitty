@@ -1987,6 +1987,12 @@ impl App {
                 self.dismiss_notice();
             }
             ScreenHit::SettingsBody => {}
+            ScreenHit::NsMachine(machine) => {
+                let name = self.remotes.get(&machine).map(|r| r.name.clone());
+                if let Some(name) = name {
+                    self.screen_open_session_popup(&format!("{name}:~/"));
+                }
+            }
             ScreenHit::NsRow(i) => self.session_popup_row_click(i),
             ScreenHit::NsChip(i) => self.session_popup_chip_click(i),
             ScreenHit::FinderPick(i) => {
