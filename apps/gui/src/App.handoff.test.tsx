@@ -366,8 +366,12 @@ describe('desktop terminal multiplexer', () => {
     expect(list).toHaveTextContent('2 panes in this tab')
     expect(list).toHaveTextContent('claude')
     expect(list).toHaveTextContent('shell')
+    // Each pane row jumps to its pane and has its own close button.
+    expect(within(list as HTMLElement).getAllByRole('button', { name: /^Go to / })).toHaveLength(2)
+    expect(within(list as HTMLElement).getAllByRole('button', { name: /^Close / })).toHaveLength(2)
     await user.unhover(tab)
-    expect(document.querySelector('.mx-rail-popover.is-tab')).toBeNull()
+    // It lingers a moment so the pointer can cross onto it.
+    await waitFor(() => { expect(document.querySelector('.mx-rail-popover.is-tab')).toBeNull() })
   })
 
   it('renames a session in place from its row menu, and the name shows on the row, the tab and the pane', async () => {

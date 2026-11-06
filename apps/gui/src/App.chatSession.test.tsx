@@ -179,7 +179,7 @@ describe('a chat session in the desktop window', () => {
     daemon.loadConversations.mockResolvedValue([term(3, { repo: null, folder: HOME, cwd: HOME })])
     renderDesktopApp()
     const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
-    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+    await user.keyboard('{Control>}{Shift>}e{/Shift}{/Control}')
 
     await user.click(within(pane).getByRole('button', { name: 'Start claude here' }))
     expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't3', generation: 0 }, 'claude\r')
@@ -196,7 +196,7 @@ describe('a chat session in the desktop window', () => {
     })
     renderDesktopApp()
     const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
-    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+    await user.keyboard('{Control>}{Shift>}e{/Shift}{/Control}')
 
     await user.click(within(pane).getByRole('button', { name: 'Start a Claude chat' }))
 
@@ -223,7 +223,7 @@ describe('full access in a chat session', () => {
     })
     renderDesktopApp()
     const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
-    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+    await user.keyboard('{Control>}{Shift>}e{/Shift}{/Control}')
 
     await user.click(within(pane).getByRole('checkbox', { name: 'Full access (skip permission prompts)' }))
     await user.click(within(pane).getByRole('button', { name: 'Start a Claude chat' }))
@@ -259,7 +259,7 @@ describe('the chat that follows an agent in a pane', () => {
     renderDesktopApp()
     const pane = await screen.findByRole('region', { name: /^Terminal 1/ })
     // The terminal view with its switch is still there.
-    await user.click(within(pane).getByRole('radio', { name: /^Chat view/ }))
+    await user.keyboard('{Control>}{Shift>}e{/Shift}{/Control}')
     const chat = await within(pane).findByRole('region', { name: 'Chat' })
     await within(chat).findByText('On it.')
 

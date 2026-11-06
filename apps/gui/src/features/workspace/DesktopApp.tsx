@@ -138,6 +138,11 @@ const SESSION_REFRESH_MS = 15_000
 /** How long a new session on another machine is waited for, and how often its list is looked at. */
 const REMOTE_START_WAIT_MS = 8000
 /** How long a session started as an agent is taken to be it while the daemon has not said so; a command that never starts one stops claiming it. */
+/** Whether a session can show a chat at all: an agent the app reads. A shell or another program has none, so it gets no switch. */
+function hasChat(availability: ReturnType<typeof chatAvailability>): boolean {
+  return availability.kind === 'ready' || availability.kind === 'no-events'
+}
+
 const EXPECTED_AGENT_MS = 30_000
 function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   return Object.fromEntries(Object.entries(record).filter(([name]) => name !== key))
@@ -1767,6 +1772,8 @@ export function DesktopApp() {
                   portalContainer={root}
                   onSelect={selectTabById}
                   onClose={closeTabById}
+                  onFocusPane={(paneId) => { setLayout((current) => focusPane(current, paneId)) }}
+                  onClosePane={closePaneById}
                   onCloseOthers={closeOtherTabs}
                   onRenameSession={saveName}
                   newTabLabel={projectName ? `New session in ${projectName}` : 'New tab'}
@@ -1829,7 +1836,7 @@ export function DesktopApp() {
                               dropTarget={dropId === pane.id && dragId !== pane.id}
                               workingSince={tracks.get(session.id)?.workingSince ?? null}
                               view={chat.view}
-                              {...(chatOnly ? {} : { onViewChange: (view: PaneView) => { paneViews.choose(session.id, view) } })}
+                              {...(chatOnly || !hasChat(chat.availability) ? {} : { onViewChange: (view: PaneView) => { paneViews.choose(session.id, view) } })}
                               chat={chat.view === 'chat' ? (
                                 <ChatPane
                                   availability={chat.availability}

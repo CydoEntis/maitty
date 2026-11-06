@@ -16,7 +16,8 @@ export function foldSplits(
   const leadOf = new Map<string, string>()
   const visible = sessions.filter((session) => {
     const lead = tabPanes.get(session.id)?.[0]
-    const quietShell = session.process === SHELL_PROCESS && session.status === 'idle'
+    // A new split has no status for a moment: it counts as quiet from the start, so it never takes a row and then loses it.
+    const quietShell = session.process === SHELL_PROCESS && (session.status === 'idle' || session.status === 'unknown')
     if (lead === undefined || lead.id === session.id || !quietShell || !listed.has(lead.id)) return true
     folded.set(lead.id, (folded.get(lead.id) ?? 0) + 1)
     leadOf.set(session.id, lead.id)

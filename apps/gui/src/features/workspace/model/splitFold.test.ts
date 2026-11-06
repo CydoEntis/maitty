@@ -21,6 +21,13 @@ describe('folding the quiet shell splits of a tab', () => {
     expect(leadOf.get('b')).toBe('a')
   })
 
+  it('folds a split that has no status yet, so a new one never takes a row and then loses it', () => {
+    const fresh = session('e', 'shell', 'unknown')
+    const group = [lead, fresh]
+    const { visible } = foldSplits(group, new Map(group.map((item) => [item.id, group])))
+    expect(visible.map((item) => item.id)).toEqual(['a'])
+  })
+
   it('leaves a session that is not a split, and a split whose first pane is in another project', () => {
     expect(foldSplits([quiet], new Map()).visible).toEqual([quiet])
     expect(foldSplits([quiet], panes).visible).toEqual([quiet])

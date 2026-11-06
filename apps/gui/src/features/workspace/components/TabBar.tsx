@@ -24,6 +24,10 @@ type TabBarProps = {
   onClose: (tabId: string) => void
   /** Ends every other tab of the showing project, with their sessions. */
   onCloseOthers: (tabId: string) => void
+  /** Jumps to one pane of a tab: its tab comes forward and it takes the focus. */
+  onFocusPane: (paneId: string) => void
+  /** Closes one pane of a tab, which ends its session (a running program asks for a second click first). */
+  onClosePane: (paneId: string) => void
   /** Names the session a tab shows; an empty name clears it. */
   onRenameSession: (sessionId: string, name: string) => void
   /** What the + button says it does: it opens a shell in the showing project. */
@@ -131,7 +135,7 @@ export const TabBar = memo(function TabBar(props: TabBarProps) {
           {edges.left && <button type="button" className="mx-icon-button mx-tab-scroll is-left" aria-label="Scroll tabs left" title="Scroll tabs left" onClick={() => { scroll(-1) }}><Icon name="chevron" /></button>}
           <div ref={listRef} role="tablist" aria-label="Tabs" className={`mx-tablist mx-no-scrollbar${edges.left ? ' has-left' : ''}${edges.right ? ' has-right' : ''}`} onKeyDown={onKeyDown} onScroll={measure}>
             {tabs.map((tab) => (
-              <TabButton key={tab.id} tab={tab} active={tab.id === activeTabId} sessions={props.sessions} canStart={props.canStart} otherTabs={props.tabs.length - 1} othersRun={props.tabs.some((other) => other.id !== tab.id && other.panes.some((pane) => { const found = props.sessions.get(pane.sessionId); return found !== undefined && runsProgram(found) }))} portalContainer={props.portalContainer} onSelect={props.onSelect} onClose={props.onClose} onCloseOthers={props.onCloseOthers} onNewTab={props.onNewTab} onRenameSession={props.onRenameSession} />
+              <TabButton key={tab.id} tab={tab} active={tab.id === activeTabId} sessions={props.sessions} canStart={props.canStart} otherTabs={props.tabs.length - 1} othersRun={props.tabs.some((other) => other.id !== tab.id && other.panes.some((pane) => { const found = props.sessions.get(pane.sessionId); return found !== undefined && runsProgram(found) }))} portalContainer={props.portalContainer} onSelect={props.onSelect} onClose={props.onClose} onCloseOthers={props.onCloseOthers} onFocusPane={props.onFocusPane} onClosePane={props.onClosePane} onNewTab={props.onNewTab} onRenameSession={props.onRenameSession} />
             ))}
           </div>
           {edges.right && <button type="button" className="mx-icon-button mx-tab-scroll" aria-label="Scroll tabs right" title="Scroll tabs right" onClick={() => { scroll(1) }}><Icon name="chevron" /></button>}
@@ -250,17 +254,29 @@ const TAB_ICON_LIMIT = 3
 /** The gap between a tab and the popover listing its panes. */
 const TAB_POPOVER_GAP_PX = 8
 
-/** Every pane in a tab, with what each is running and its state. */
-function TabPopover({ sessions, anchor }: { sessions: readonly SessionView[]; anchor: DOMRect }) {
+/** How long the card stays after the pointer leaves the tab or the card, so it can cross the gap between them. */
+const POPOVER_LINGER_MS = 160
+
+/** Every pane in a tab, with what each is running and its state: a click jumps to the pane, and × closes it. */
+function TabPopover({ tab, sessions, anchor, onHold, onLetGo, onFocusPane, onClosePane }: { tab: Tab; sessions: ReadonlyMap<string, SessionView>; anchor: DOMRect; onHold: () => void; onLetGo: () => void; onFocusPane: (paneId: string) => void; onClosePane: (paneId: string) => void }) {
+  const rows = tab.panes.flatMap((pane) => {
+    const session = sessions.get(pane.sessionId)
+    return session ? [{ pane, session }] : []
+  })
   return (
-    <div role="tooltip" className="mx-rail-popover is-tab" style={{ top: anchor.bottom + TAB_POPOVER_GAP_PX, left: anchor.left }}>
-      <div className="mx-pop-title-line">{sessions.length} {sessions.length === 1 ? 'pane' : 'panes'} in this tab</div>
+    <div role="group" aria-label="Panes in this tab" className="mx-rail-popover is-tab is-live" style={{ top: anchor.bottom + TAB_POPOVER_GAP_PX, left: anchor.left }} onMouseEnter={onHold} onMouseLeave={onLetGo}>
+      <div className="mx-pop-title-line">{rows.length} {rows.length === 1 ? 'pane' : 'panes'} in this tab</div>
       <ul className="mx-pop-sessions">
-        {sessions.map((session) => (
-          <li key={session.id} className="mx-pop-pane">
-            <AppIcon process={session.process} size={20} dimmed={session.status === 'unknown'} />
-            <span className="mx-pop-pane-text"><span className="mx-pop-title">{session.process} <span className="mx-pop-status">{session.cwdLabel}</span></span></span>
-            <span className={`mx-pop-state is-${session.status}`}>{STATUS_LABEL[session.status]}</span>
+        {rows.map(({ pane, session }) => (
+          <li key={pane.id} className={`mx-pop-pane${pane.id === tab.focus ? ' is-focused' : ''}`}>
+            <button type="button" className="mx-pop-pane-main" aria-label={`Go to ${session.process} in ${session.cwdLabel}, ${STATUS_LABEL[session.status]}`} onClick={() => { onFocusPane(pane.id) }}>
+              <AppIcon process={session.process} size={20} dimmed={session.status === 'unknown'} />
+              <span className="mx-pop-pane-text"><span className="mx-pop-title">{session.process} <span className="mx-pop-status">{session.cwdLabel}</span></span></span>
+              <span className={`mx-pop-state is-${session.status}`}>{STATUS_LABEL[session.status]}</span>
+            </button>
+            <button type="button" className="mx-pop-pane-close" aria-label={`Close ${session.process} in ${session.cwdLabel}`} title="Close pane · ends its session" onClick={() => { onClosePane(pane.id) }}>
+              <Icon name="close" size={11} strokeWidth={2.25} />
+            </button>
           </li>
         ))}
       </ul>
@@ -268,9 +284,9 @@ function TabPopover({ sessions, anchor }: { sessions: readonly SessionView[]; an
   )
 }
 
-type TabButtonProps = { tab: Tab; active: boolean; sessions: ReadonlyMap<string, SessionView>; canStart: boolean; otherTabs: number; othersRun: boolean; portalContainer: HTMLElement | null; onSelect: (id: string) => void; onClose: (id: string) => void; onCloseOthers: (id: string) => void; onNewTab: () => void; onRenameSession: (sessionId: string, name: string) => void }
+type TabButtonProps = { tab: Tab; active: boolean; sessions: ReadonlyMap<string, SessionView>; canStart: boolean; otherTabs: number; othersRun: boolean; portalContainer: HTMLElement | null; onSelect: (id: string) => void; onClose: (id: string) => void; onCloseOthers: (id: string) => void; onFocusPane: (paneId: string) => void; onClosePane: (paneId: string) => void; onNewTab: () => void; onRenameSession: (sessionId: string, name: string) => void }
 
-function TabButton({ tab, active, sessions, canStart, otherTabs, othersRun, portalContainer, onSelect, onClose, onCloseOthers, onNewTab, onRenameSession }: TabButtonProps) {
+function TabButton({ tab, active, sessions, canStart, otherTabs, othersRun, portalContainer, onSelect, onClose, onCloseOthers, onFocusPane, onClosePane, onNewTab, onRenameSession }: TabButtonProps) {
   const shortcutText = useShortcutText()
   const focused = sessions.get(tab.panes.find((pane) => pane.id === tab.focus)?.sessionId ?? tab.panes[0]?.sessionId ?? '')
   const shown = tab.panes.flatMap((pane) => {
@@ -284,6 +300,11 @@ function TabButton({ tab, active, sessions, canStart, otherTabs, othersRun, port
   const path = focused?.promptPath ?? ''
   const multi = tab.panes.length > 1
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
+  // The card lists the tab's panes and can be clicked, so it outlives the pointer's trip from the tab onto it.
+  const goTimer = useRef<number | null>(null)
+  const holdPopover = () => { if (goTimer.current !== null) { window.clearTimeout(goTimer.current); goTimer.current = null } }
+  const letPopoverGo = () => { holdPopover(); goTimer.current = window.setTimeout(() => { setAnchor(null) }, POPOVER_LINGER_MS) }
+  useEffect(() => holdPopover, [])
   const [renaming, setRenaming] = useState(false)
   const handFocusToField = useRef(false)
   const agent = shown.find((session) => runsProgram(session))
@@ -298,8 +319,8 @@ function TabButton({ tab, active, sessions, canStart, otherTabs, othersRun, port
       tabIndex={active ? 0 : -1}
       aria-selected={active}
       className={`mx-tab${active ? ' is-active' : ''} ${effect.className}`}
-      onMouseEnter={(event) => { setAnchor(event.currentTarget.getBoundingClientRect()) }}
-      onMouseLeave={() => { setAnchor(null) }}
+      onMouseEnter={(event) => { holdPopover(); setAnchor(event.currentTarget.getBoundingClientRect()) }}
+      onMouseLeave={letPopoverGo}
       onFocus={(event) => { setAnchor(event.currentTarget.getBoundingClientRect()) }}
       onBlur={() => { setAnchor(null) }}
       onClick={() => { onSelect(tab.id) }}
@@ -338,7 +359,7 @@ function TabButton({ tab, active, sessions, canStart, otherTabs, othersRun, port
       </button>
     </div>
       </ContextMenuPrimitive.Trigger>
-      {anchor && portalContainer && createPortal(<TabPopover sessions={shown} anchor={anchor} />, portalContainer)}
+      {anchor && portalContainer && createPortal(<TabPopover tab={tab} sessions={sessions} anchor={anchor} onHold={holdPopover} onLetGo={letPopoverGo} onFocusPane={(paneId) => { setAnchor(null); onFocusPane(paneId) }} onClosePane={onClosePane} />, portalContainer)}
       <ContextMenuPrimitive.Portal container={portalContainer}>
         {/* The name field takes focus itself; the menu must not hand it back to the tab. */}
         <ContextMenuPrimitive.Content className="mx-menu" onCloseAutoFocus={(event) => { if (handFocusToField.current) { event.preventDefault(); handFocusToField.current = false } }}>
