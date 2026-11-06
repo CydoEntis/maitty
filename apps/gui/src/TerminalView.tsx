@@ -14,7 +14,7 @@ import { appendToScreen, cachedScreen, replaceScreen, screenKey } from '@/featur
 import { isWindowActive, useWindowActive } from '@/lib/window-activity'
 import { hasWebgl2 } from '@/lib/gpu'
 import { oscColor } from '@/lib/osc-color'
-import { beginFlush, forgetRenderer, reportRenderer } from '@/lib/perf-meter'
+import { beginFlush, countKeyReply, forgetRenderer, reportRenderer } from '@/lib/perf-meter'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, fontStackFor, type TerminalFontWeight } from '@/lib/terminalFont'
 import '@xterm/xterm/css/xterm.css'
 
@@ -174,7 +174,6 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   // Each machine numbers its own panes: the stream and its history are kept by machine and pane.
   const machine = conversation.machine ?? 0
   const binding: TerminalBinding = useMemo(() => ({ id: conversation.id, generation: conversation.generation }), [conversation.id, conversation.generation])
-  const inputQueue = useRef(Promise.resolve())
   const terminalHost = useRef<HTMLDivElement>(null)
   const terminal = useRef<XtermTerminal | null>(null)
   const inputFailedRef = useRef(false)
@@ -214,11 +213,13 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
       setInputFailed(false)
     }
     onInputRef.current?.(data)
-    inputQueue.current = inputQueue.current.then(async () => {
-      // Anything typed behind a key that failed is dropped with it, never sent out of order.
-      if (inputFailedRef.current) return
-      // The daemon echoes what was typed through the stream, so there is nothing to write here.
-      await sendTerminalInput(binding, data)
+    // A key goes out at once and is not held for the one before it to be answered: a reply can take
+    // as long as the web view's next event, and each letter waited for it. The host takes keys in the
+    // order they arrive (`terminal_input` is not async), so nothing is reordered. The daemon echoes
+    // what was typed through the stream, so there is nothing to write here.
+    const sentAt = performance.now()
+    sendTerminalInput(binding, data).then(() => {
+      countKeyReply(performance.now() - sentAt)
     }).catch(() => {
       inputFailedRef.current = true
       inputFailedAt.current = Date.now()

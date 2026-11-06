@@ -68,6 +68,9 @@ export function buildPerformanceReport(environment: PerformanceEnvironment, samp
       `  terminal renderers: ${String(sample.renderers.webgl)} WebGL, ${String(sample.renderers.dom)} DOM`,
       `  output ${formatRate(sample.outputBytesPerSecond)} in ${String(sample.outputFramesPerSecond)} frames/s; ${String(sample.flushesPerSecond)} xterm writes/s, ${String(sample.writeLatencyMs)} ms each`,
       `  output frames received since the window opened: ${String(sample.outputFramesTotal)}, of which over the local socket: ${String(sample.socketFramesTotal)}`,
+      sample.keyReplies.count === 0
+        ? '  key replies from the host: no keys typed yet'
+        : `  key replies from the host (last ${String(sample.keyReplies.count)} keys): median ${String(sample.keyReplies.medianMs)} ms, worst ${String(sample.keyReplies.worstMs)} ms`,
       `  animations running ${String(sample.animations)}; DOM nodes ${String(sample.domNodes)}`,
     )
   }

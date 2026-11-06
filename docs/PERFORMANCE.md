@@ -383,6 +383,16 @@ keys nobody pressed. Ticket 40.
    replay, what xterm sends through `onData` is dropped; only live output may be answered.
 4. **Then the probe and the budgets below**, so the next release is measured.
 
+**Keys no longer wait for replies (2026-11-06).** With step 2 built, a release build on the owner's
+machine received 420 of 421 output frames over the local socket, at 62 fps and 0% CPU, and typing was
+still a step behind. The input path was the other half: `TerminalView` sent each key only after the
+previous key's `invoke` had been answered, and an answer is delivered by the same host-to-window
+path that stalled output. A letter therefore waited for the next event. Keys now go out at once;
+`terminal_input` is a plain (non-`async`) Tauri command, which runs on the main thread in arrival
+order, so nothing is reordered. Settings › Performance reports **key replies from the host** (median
+and worst of the last 100 keys): a large worst figure with typing now fast confirms the cause, and a
+small one with typing still late points elsewhere (xterm's render or the web view presenting it).
+
 ### How to run measurement 2 again
 
 ```sh

@@ -259,6 +259,20 @@ describe('terminal view', () => {
     }
   })
 
+  it('sends each key at once, without waiting for the host to answer the one before', async () => {
+    renderTerminal()
+    await screen.findByRole('region', { name: 'Native Codex terminal' })
+    await waitFor(() => { expect(terminalState.onData).toBeDefined() })
+    // No reply ever comes: a reply can take as long as the web view's next event.
+    sendTerminalInput.mockReturnValue(new Promise<void>(() => undefined))
+
+    terminalState.onData?.('h')
+    terminalState.onData?.('i')
+    terminalState.onData?.('\x7f')
+
+    expect(sendTerminalInput.mock.calls.map(([, data]) => data)).toEqual(['h', 'i', '\x7f'])
+  })
+
   it('holds output that arrives while the history loads, so nothing is lost or repeated', async () => {
     let resolveHistory: (history: TerminalHistory) => void = () => {}
     loadTerminalHistory.mockReturnValue(new Promise<TerminalHistory>((resolve) => { resolveHistory = resolve }))

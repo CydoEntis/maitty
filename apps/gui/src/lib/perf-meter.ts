@@ -27,11 +27,15 @@ export type PerfSample = {
   animations: number
   domNodes: number
   renderers: { webgl: number; dom: number }
+  /** How long the host took to answer the last keys typed (up to `KEY_REPLIES_KEPT`); count 0 until one is typed. */
+  keyReplies: { count: number; medianMs: number; worstMs: number }
 }
 
 export type TerminalRenderer = 'webgl' | 'dom'
 
 const MS_PER_SECOND = 1000
+const KEY_REPLIES_KEPT = 100
+const MEDIAN_POSITION = 0.5
 export const SAMPLE_EVERY_MS = MS_PER_SECOND
 /** A frame over this long is felt as a hitch (the RAIL long-task threshold). */
 export const SLOW_FRAME_MS = 50
@@ -42,6 +46,7 @@ const zeroCounters = (): Counters => ({ outputBytes: 0, outputFrames: 0, flushes
 
 let counters = zeroCounters()
 let outputFramesTotal = 0
+const keyReplyMs: number[] = []
 let socketFramesTotal = 0
 const renderers = new Map<object, TerminalRenderer>()
 const listeners = new Set<() => void>()
@@ -60,6 +65,18 @@ export function countOutput(bytes: number): void {
 /** An output frame arrived over the local socket (it is also counted by `countOutput`). */
 export function countSocketOutput(): void {
   socketFramesTotal += 1
+}
+
+/** The host answered a key typed into a pane, `ms` after it was sent. */
+export function countKeyReply(ms: number): void {
+  keyReplyMs.push(ms)
+  if (keyReplyMs.length > KEY_REPLIES_KEPT) keyReplyMs.shift()
+}
+
+function summariseKeyReplies(): PerfSample['keyReplies'] {
+  if (keyReplyMs.length === 0) return { count: 0, medianMs: 0, worstMs: 0 }
+  const sorted = [...keyReplyMs].sort((a, b) => a - b)
+  return { count: sorted.length, medianMs: Math.round(sorted[Math.floor(sorted.length * MEDIAN_POSITION)] ?? 0), worstMs: Math.round(sorted[sorted.length - 1] ?? 0) }
 }
 
 /** A view flushed a write into xterm; call the result once xterm has parsed it. */
@@ -120,6 +137,7 @@ function takeSample(): void {
     animations: typeof document.getAnimations === 'function' ? document.getAnimations().length : 0,
     domNodes: document.getElementsByTagName('*').length,
     renderers: countRenderers(),
+    keyReplies: summariseKeyReplies(),
   }
   for (const listener of listeners) listener()
 }

@@ -321,8 +321,13 @@ pub fn list_folders(
 }
 
 /// `machine` is left out for this computer's own panes.
+///
+/// Not `async` on purpose: Tauri runs a plain command on the main thread, one request at a time in
+/// the order they arrive, so keys the window sends without waiting for each reply still reach the
+/// pane in the order they were typed. An `async` command runs on any worker and could swap two.
+/// The body only queues the bytes (`Wire::command` does not wait), so the main thread is not held.
 #[tauri::command]
-pub async fn terminal_input(
+pub fn terminal_input(
     wire: tauri::State<'_, Wire>,
     machine: Option<u16>,
     term: u32,
