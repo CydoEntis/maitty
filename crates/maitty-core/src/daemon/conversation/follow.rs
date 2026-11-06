@@ -310,6 +310,17 @@ impl Daemon {
         };
         follower.in_flight = false;
         match done.result {
+            // Nothing has been read yet and there is no file: the agent has not been given its first
+            // prompt, which is where it writes it. That is an empty chat, not a fault.
+            Err(ReadFailure::NotFound) if follower.offset.is_none() => {
+                follower.error = None;
+                if follower.parser.is_none() {
+                    follower.parser = Some(Transcript::new(
+                        format_of(follower.provider),
+                        &follower.session,
+                    ));
+                }
+            }
             Err(failure) => {
                 // The parser went with the failed read, so what was read cannot be continued:
                 // start over, once, and say why.

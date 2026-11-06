@@ -394,6 +394,53 @@ async fn a_hooked_claude_pane_gets_a_read_only_conversation_the_desktop_can_link
 }
 
 #[tokio::test]
+async fn a_session_with_no_transcript_file_yet_is_followed_empty_and_without_an_error() {
+    let mut world = World::new();
+    // A session that has not been given its first prompt: the agent has not written the file.
+    std::fs::remove_file(&world.path).unwrap();
+
+    world.follow().await;
+
+    let read = world.read_all(61).unwrap();
+    assert!(read.history.entries.is_empty());
+    assert!(
+        read.error.is_none(),
+        "nothing written yet is not a fault: {:?}",
+        read.error
+    );
+    assert!(!matches!(
+        read.history.completeness,
+        Completeness::Incomplete(_)
+    ));
+
+    // The first prompt writes the file, and the chat then shows it.
+    std::fs::write(
+        &world.path,
+        format!("{}{}", claude_prompt("hello"), claude_reply("hi")),
+    )
+    .unwrap();
+    world.follow().await;
+    let read = world.read_all(61).unwrap();
+    let said: Vec<_> = read
+        .history
+        .entries
+        .iter()
+        .filter_map(|e| match &e.content {
+            Content::Message { role, text } => Some((role.clone(), text.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        said,
+        [
+            (Role::User, "hello".to_string()),
+            (Role::Assistant, "hi".to_string())
+        ]
+    );
+    assert!(read.error.is_none());
+}
+
+#[tokio::test]
 async fn commands_that_would_drive_the_agent_are_refused_with_a_reason() {
     let mut world = World::new();
     world.follow().await;

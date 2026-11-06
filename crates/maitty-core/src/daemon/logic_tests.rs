@@ -2863,6 +2863,24 @@ fn a_popup_floats_in_no_workspace_and_goes_when_done() {
 }
 
 #[test]
+fn a_hook_that_names_a_transcript_not_written_yet_still_gives_the_pane_its_path() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let secret = d.terms[&t].token.clone();
+    let not_yet = std::env::temp_dir().join("session-before-its-first-prompt.jsonl");
+    let _ = std::fs::remove_file(&not_yet);
+    let mut start = report(t, &secret, 0, HookStatus::Idle, "SessionStart");
+    if let ClientMsg::Hook { transcript, .. } = &mut start {
+        *transcript = Some(not_yet.clone());
+    }
+
+    d.apply_hook(start, Some(true), Vec::new());
+
+    // Its chat can then exist from the start, instead of only after a first prompt.
+    assert_eq!(d.terms[&t].transcript.as_deref(), Some(not_yet.as_path()));
+}
+
+#[test]
 fn an_agent_stays_in_the_folder_it_started_in() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);

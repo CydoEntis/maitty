@@ -53,6 +53,8 @@ static CHOICES: std::sync::LazyLock<regex::Regex> =
 static CODEX_QUEUED_QUESTION: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new(crate::config::CODEX_QUEUED_QUESTION_PATTERN).unwrap()
 });
+/// What an agent's conversation file is called before it exists (Claude's `<session>.jsonl`).
+const TRANSCRIPT_EXTENSION: &str = "jsonl";
 const CODEX_QUESTION_WHY: &str = "screen: Codex has an unanswered question";
 /// Why a turn that ended without a turn-end report is read as cancelled; nothing was finished,
 /// so nothing is checked.
@@ -274,7 +276,10 @@ impl Daemon {
             if let Some(s) = said {
                 t.said = s;
             }
-            if let Some(tr) = transcript.filter(|p| p.is_file()) {
+            // Kept before the file exists: a new session's hook names it at SessionStart, and the agent
+            // writes it only at the first prompt. Waiting for the file left a chat-first session with no
+            // chat to type its first message in. A read checks the path itself (`follow::checked_path`).
+            if let Some(tr) = transcript.filter(|p| p.is_file() || p.extension().is_some_and(|ext| ext == TRANSCRIPT_EXTENSION)) {
                 t.transcript = Some(tr);
             }
             if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
