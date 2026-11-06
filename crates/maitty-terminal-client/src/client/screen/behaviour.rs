@@ -15,8 +15,21 @@ const NEW_TAB_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 impl App {
     /// Where a session that just got the focus shows: beside the one it was opened from, in
     /// a new tab, in the tab that already shows it, or in place of the one you were on.
+    /// A session is about to open beside `f`: pair them when it appears, and keep it off the sidebar until then.
+    pub(in crate::client) fn begin_split(&mut self, f: ClientTerm) {
+        self.screen.pending_split = Some((f, Instant::now()));
+        self.screen.split_known = self
+            .machines()
+            .iter()
+            .flat_map(|m| m.snap.terms.keys().map(move |id| ClientTerm::on(m.id, *id)))
+            .collect();
+        *self.screen.model_cache.borrow_mut() = None;
+    }
+
     pub(in crate::client) fn screen_place(&mut self, f: ClientTerm, prev: Option<ClientTerm>) {
         use crate::layout::{Dir, Node};
+        // Whatever was held off the sidebar for a split is placed now, or never will be.
+        *self.screen.model_cache.borrow_mut() = None;
         let beside = match self.screen.pending_split {
             Some((p, _)) if p == f => None,
             Some((p, at)) => {
@@ -333,7 +346,7 @@ impl App {
         beside: bool,
     ) {
         if beside && let Some(f) = self.focused() {
-            self.screen.pending_split = Some((f, Instant::now()));
+            self.begin_split(f);
         }
         self.screen.cursor = None;
         self.mode = Mode::Normal;
@@ -387,7 +400,7 @@ impl App {
             return;
         };
         if beside && let Some(f) = self.focused() {
-            self.screen.pending_split = Some((f, Instant::now()));
+            self.begin_split(f);
         }
         self.leave_shortcut_mode();
         self.notify(format!("new worktree {branch} in {}", proj.name), false);

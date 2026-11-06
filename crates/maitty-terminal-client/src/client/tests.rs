@@ -3389,6 +3389,39 @@ mod screen_tests {
     }
 
     #[test]
+    fn a_split_s_new_session_stays_off_the_sidebar_until_it_is_placed() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.screen.tabs.clear();
+        app.screen_place(ClientTerm::local(1), None);
+        let rows = |app: &App| app.screen_model().iter().flat_map(|p| p.sessions()).count();
+        let before = rows(&app);
+
+        app.begin_split(ClientTerm::local(1));
+        app.snap.terms.insert(4, app.snap.terms[&3].clone());
+        let fresh = app.snap.terms.get_mut(&4).unwrap();
+        fresh.id = 4;
+        // Its own session, not the copy of another's conversation (which the sidebar leaves out).
+        fresh.conversation_id = None;
+        app.snap.workspaces[0].tabs.push(TabInfo {
+            id: 99,
+            name: String::new(),
+            layout: crate::layout::Node::Leaf(4),
+            focus: 4,
+        });
+        *app.screen.model_cache.borrow_mut() = None;
+        assert_eq!(rows(&app), before, "the new session is not a row while the split waits for it");
+
+        // Without the hold it would be a row of its own for a moment, which is the jump.
+        let pending = app.screen.pending_split.take();
+        *app.screen.model_cache.borrow_mut() = None;
+        assert_eq!(rows(&app), before + 1, "that is what the hold keeps off the sidebar");
+        app.screen.pending_split = pending;
+
+        app.screen_place(ClientTerm::local(4), Some(ClientTerm::local(1)));
+        assert!(app.screen.pending_split.is_none(), "placing it ends the wait");
+    }
+
+    #[test]
     fn splitting_left_or_up_puts_the_new_pane_before_the_one_split() {
         for (dir, horizontal) in [
             (crate::layout::Dir::Left, true),

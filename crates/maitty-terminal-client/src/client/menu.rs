@@ -800,7 +800,7 @@ impl App {
                 if self.focused() != Some(t) {
                     self.cmd_on(t.machine, Command::FocusPane { term: t.term });
                 }
-                self.screen.pending_split = Some((t, std::time::Instant::now()));
+                self.begin_split(t);
                 self.leave_shortcut_mode();
                 self.cmd_on(
                     t.machine,

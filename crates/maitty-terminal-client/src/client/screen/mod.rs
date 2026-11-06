@@ -213,6 +213,9 @@ pub(super) struct Screen {
     pub fresh: HashSet<String>,
     /// A session about to open beside this one: pair them when it appears.
     pub pending_split: Option<(ClientTerm, Instant)>,
+    /// The sessions there were when that split began: a new one the daemon lists before the client has placed it beside the
+    /// other is kept off the sidebar until it is, so its row neither shows nor moves.
+    pub split_known: HashSet<ClientTerm>,
     /// The focus last time the state came in.
     pub last_focus: Option<ClientTerm>,
     /// Modal frames drawn this frame, flattened onto the workspace ground afterward.
@@ -935,6 +938,9 @@ impl App {
                     continue;
                 };
                 let term = ClientTerm::on(m.id, *id);
+                if self.screen.pending_split.is_some() && !self.screen.split_known.contains(&term) {
+                    continue;
+                }
                 let key = t
                     .conversation_id
                     .map(SessionKey::Conversation)
