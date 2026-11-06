@@ -1,6 +1,6 @@
 # 0057. Terminal output reaches the window on a local WebSocket
 
-- **Status:** Proposed (the owner asked for this fix on 2026-11-05; they have not reviewed the design)
+- **Status:** Accepted (2026-11-06)
 - **Date:** 2026-11-05
 - **Relates to:** AGENTS.md non-negotiables 1 and 6; [PERFORMANCE](../PERFORMANCE.md) (*Input latency*);
   [SECURITY](../SECURITY.md) (*Project-specific: terminal output socket*)

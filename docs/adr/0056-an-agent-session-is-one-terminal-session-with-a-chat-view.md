@@ -1,7 +1,6 @@
 # 0056. An agent session is one terminal session with a chat view
 
-- **Status:** Proposed (the owner decided the product shape on 2026-11-05; the points under *To confirm*
-  are open)
+- **Status:** Accepted (2026-11-06). The points under *To confirm* stay open as follow-up work.
 - **Date:** 2026-11-05
 - **Supersedes in part:** [0054](0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md)
   (point 2: a chat session has no terminal) and [0052](0052-an-agent-in-a-pane-gets-a-read-only-conversation.md)
