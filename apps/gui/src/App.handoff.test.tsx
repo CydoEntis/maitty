@@ -144,16 +144,19 @@ describe('desktop terminal multiplexer', () => {
     expect(screen.getByRole('region', { name: /^Terminal 1: ~/ })).toBeInTheDocument()
   })
 
-  it('starts the default agent as a chat in the home folder with Ctrl+T', async () => {
+  it('starts the default agent in a new shell in the home folder with Ctrl+T, and opens it as a chat', async () => {
     const user = userEvent.setup()
-    daemon.startChatSession.mockResolvedValue({ id: 44, generation: 1 })
     renderDesktopApp()
     await screen.findByRole('heading', { name: 'No sessions running' })
+    daemon.loadConversations.mockResolvedValue([term(5, HOME)])
 
     await user.keyboard('{Control>}{Shift>}t{/Shift}{/Control}')
 
-    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(HOME, 'claude', null, false) })
-    expect(daemon.startShellSession).not.toHaveBeenCalled()
+    await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(HOME) })
+    await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't5', generation: 0 }, 'claude\r') })
+    // One session: the agent runs in the terminal, and the pane shows its chat first (Settings: Chat).
+    expect(daemon.startChatSession).not.toHaveBeenCalled()
+    expect(await screen.findByRole('region', { name: 'Chat' })).toBeInTheDocument()
   })
 
   it('starts the chosen agent in a terminal when new sessions are set to open as one', async () => {
@@ -1365,12 +1368,10 @@ describe('desktop sidebar projects', () => {
     daemon.loadConversations.mockResolvedValue([at(2)])
     renderDesktopApp()
 
-    daemon.startChatSession.mockResolvedValue({ id: 44, generation: 1 })
-
     await user.click(await screen.findByRole('button', { name: 'New session in maitty' }))
 
-    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(root, 'claude', null, false) })
-    expect(daemon.startShellSession).not.toHaveBeenCalled()
+    await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(root) })
+    expect(daemon.startChatSession).not.toHaveBeenCalled()
   })
 })
 
@@ -1525,10 +1526,9 @@ describe('desktop overlays and tab tools', () => {
     expect(within(set).getAllByRole('listitem')).toHaveLength(6)
     expect(set).toHaveTextContent('New session')
 
-    daemon.startChatSession.mockResolvedValue({ id: 44, generation: 1 })
     await user.click(within(set).getByRole('button', { name: 'Start a session' }))
     expect(screen.queryByRole('dialog', { name: "You're set" })).not.toBeInTheDocument()
-    expect(daemon.startChatSession).toHaveBeenCalled()
+    expect(daemon.startShellSession).toHaveBeenCalled()
 
     app.unmount()
     renderDesktopApp({ firstRun: true })
@@ -1712,13 +1712,16 @@ describe('desktop overlays and tab tools', () => {
 
     fireEvent.contextMenu(await within(nav).findByRole('button', { name: /^maitty/, expanded: true }))
     expect(await screen.findByText('maitty', { selector: '.mx-menu-caps' })).toBeInTheDocument()
-    daemon.startChatSession.mockResolvedValue({ id: 44, generation: 1 })
     await user.click(screen.getByRole('menuitem', { name: 'New session here' }))
-    await waitFor(() => { expect(daemon.startChatSession).toHaveBeenCalledWith(root, 'claude', null, false) })
+    await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(root) })
 
+    // A plain terminal here starts a shell too, but types no agent into it.
+    daemon.sendTerminalInput.mockClear()
+    daemon.startShellSession.mockClear()
     fireEvent.contextMenu(await within(nav).findByRole('button', { name: /^maitty/, expanded: true }))
     await user.click(await screen.findByRole('menuitem', { name: 'New terminal here' }))
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalledWith(root) })
+    expect(daemon.sendTerminalInput).not.toHaveBeenCalled()
   })
 
   it('broadcasts typing from one pane to the tab\'s idle panes only', async () => {

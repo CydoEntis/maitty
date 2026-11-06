@@ -1132,8 +1132,10 @@ new session stays a shell, because chats are this computer's.
 
 ## 53. Switch one agent session between terminal and chat (feature, `daemon`, `client`) — **owner**
 
-Needs [ADR 0056](adr/0056-an-agent-session-is-one-terminal-session-with-a-chat-view.md) accepted. Until then
-a chat session started by a new session has no terminal view (ADR 0054). Open points are in the ADR.
+**Built in the window** (see [ADR 0056](adr/0056-an-agent-session-is-one-terminal-session-with-a-chat-view.md)): a new
+session is the agent in a terminal, opened as chat or terminal, and the chat's composer types into the terminal
+while the agent is idle. **Still to do:** show a permission prompt's question in the chat, a daemon-side typing
+gate, attachments, and the owner's acceptance of the ADR. Verify in a real window with Claude and with Codex.
 
 ## 54. Line comments on a diff are gone with the session panel (decision, `client`)
 

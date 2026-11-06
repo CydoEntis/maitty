@@ -725,15 +725,19 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   (`NoTerminalNote`), and nothing that needs a pane number (find, restart, paste, broadcast, typed answers, the
   worktree menu, Inspect) is offered for it. Its composer is on (send, queue with Remove, Stop, attachments); an
   approval is answered by request id (y / a / n) and a user-input request by a form (`UserInputForm`), so neither
-  points to a terminal. A new session (the sidebar +, Ctrl/Cmd+T, a project's **New session here**, the tab bar's +) starts one with the
-  default agent from Settings › General › Chat view (**Default agent**, Claude or Codex, and **New sessions open
-  as**, Chat by default); it can also start from a shell's empty chat card (**Start a Claude chat** / **Start a
-  Codex chat**). With **New sessions open as: Terminal** a new session is the default agent typed into a new shell.
-  A plain shell is **New terminal** (the sidebar button, a project's **New terminal here**, the palette): terminal
-  view only. Switching one agent session between its terminal and its chat is not built; it is
-  [ADR 0056](adr/0056-an-agent-session-is-one-terminal-session-with-a-chat-view.md). Closing it stops
-  the agent (`closeChatSession`: end, then put away); if the stop fails it stays open. The read-only chat that
-  follows an agent typed in a shell keeps its pane, its switch and its disabled composer.
+  points to a terminal.
+  **A new session** (the sidebar +, Ctrl/Cmd+T, a project's **New session here**, the tab bar's +) starts the default
+  agent (Settings › General › Chat view › **Default agent**, Claude or Codex) in a new shell the daemon owns and types
+  the agent's command into it, and opens the pane in the view **New sessions open as** names (Chat by default). It is
+  one session either way: **the switch between Terminal and Chat never restarts the agent**
+  ([ADR 0056](adr/0056-an-agent-session-is-one-terminal-session-with-a-chat-view.md), v18 B.3). The chat reads the
+  agent's own transcript (ADR 0052), and its composer **types into the agent's terminal** as one bracketed paste and
+  Enter, only while the pane's trusted status says the agent is idle or done; while it works the composer is off and
+  **Stop** sends Esc, and while it asks something in the terminal the composer says to answer it there, because typed
+  text would answer that prompt. Attachments are off for it. **New terminal** (the sidebar button, Ctrl/Cmd+Shift+T,
+  a project's **New terminal here**, the palette) is a plain shell with no chat view. A chat session of ADR 0054, with
+  no terminal, still starts from a shell's empty chat card (**Start a Claude chat** / **Start a Codex chat**) and
+  stops the agent when closed (`closeChatSession`: end, then put away; if the stop fails it stays open).
 - **Switching changes the window, not the session.** The choice is per session (`usePaneViews`), the terminal stays
   mounted and its pane keeps its size, and no daemon command is sent. The shortcut is `chat-toggle`
   (Ctrl+Shift+E, Cmd+Shift+E) on the focused pane.

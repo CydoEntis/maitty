@@ -360,7 +360,7 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
         <Row label="Default agent" detail="The agent a new session starts. A plain terminal is always one click away.">
           <Segmented label="Default agent" value={preferences.defaultAgent} options={AGENT_OPTIONS} onChange={(value) => { update('defaultAgent', value) }} />
         </Row>
-        <Row label="New sessions open as" detail="A chat with the default agent, or that agent running in a terminal. A terminal session can still switch to its chat.">
+        <Row label="New sessions open as" detail="Which view a new session opens in. The agent runs in a terminal either way, so you can switch between its chat and its terminal at any time.">
           <Segmented label="New sessions open as" value={preferences.newSessionView} options={VIEW_OPTIONS} onChange={(value) => { update('newSessionView', value) }} />
         </Row>
         <Row label="Full access in new chats" detail="Start new chats with the agent's skip-permissions mode: no sandbox and no approval prompts, so the agent can change files and run commands without asking. Each chat can still turn it off or on when it starts.">

@@ -251,7 +251,7 @@ describe('the chat that follows an agent in a pane', () => {
     daemon.loadDaemonRestartStatus.mockResolvedValue({ daemonProtocol: 49, guiProtocol: 59, canRestart: false, sessionCount: 1, activeTurnCount: 0 })
   })
 
-  it('stays read-only: the composer is off with its reason, and it is not a chat session', async () => {
+  it('types into the agent\'s terminal from the composer when the agent is idle, so the chat and the terminal are one session', async () => {
     const user = userEvent.setup()
     serveHistory()
     daemon.loadConversations.mockResolvedValue([term(2, { provider: 'Claude', agent: 'claude', process: 'claude', chat: { conversation: 41, generation: 1, readOnly: true } })])
@@ -262,9 +262,15 @@ describe('the chat that follows an agent in a pane', () => {
     const chat = await within(pane).findByRole('region', { name: 'Chat' })
     await within(chat).findByText('On it.')
 
-    expect(within(chat).getByRole('textbox')).toBeDisabled()
-    expect(within(chat).getByText(/terminal/i)).toBeInTheDocument()
+    const composer = within(chat).getByRole('textbox')
+    await waitFor(() => { expect(composer).toBeEnabled() })
     expect(within(chat).queryByText(/Chat session · no terminal/)).not.toBeInTheDocument()
     expect(within(pane).getByRole('radiogroup', { name: 'Pane view' })).toBeInTheDocument()
+
+    await user.type(composer, 'run the tests{Enter}')
+
+    // One paste then Enter, into the terminal; nothing goes to the daemon's conversation.
+    await waitFor(() => { expect(daemon.sendTerminalInput).toHaveBeenCalledWith({ id: 't2', generation: 0 }, '\x1b[200~run the tests\x1b[201~\r') })
+    expect(daemon.submitMessage).not.toHaveBeenCalled()
   })
 })

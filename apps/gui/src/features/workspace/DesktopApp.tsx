@@ -808,24 +808,18 @@ export function DesktopApp() {
       .finally(() => { setStarting(false) })
   }, [online, starting, startShell])
 
-  // A new session is the default agent: a chat, or the agent typed into a new shell, as Settings says.
-  // A plain shell is `runStart` and is only ever a terminal.
+  // A new session is the default agent, running in a terminal the daemon owns, shown as its chat or
+  // as its terminal as Settings says. It is one session either way: the view can be switched at any
+  // time without restarting the agent (ADR 0056). A plain shell is `runStart` and has no chat view.
   const startAgentSession = useCallback((folder: () => Promise<string>) => {
     const agent = preferences.defaultAgent
-    if (preferences.newSessionView === 'terminal') {
-      runStart(folder, (id) => {
-        setLayout((current) => openInNewTab(current, id, makeId))
-        void sendTerminalInput({ id, generation: 0 }, `${agent}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })
-      })
-      return
-    }
-    if (!online || starting) return
-    setStarting(true)
-    void folder()
-      .then((path) => startChat(path, agent, preferences.chatFullAccessDefault))
-      .catch((error: unknown) => { toast.error(errorMessage(error, `Could not start a ${agent} chat`)) })
-      .finally(() => { setStarting(false) })
-  }, [preferences.defaultAgent, preferences.newSessionView, preferences.chatFullAccessDefault, online, starting, runStart, startChat])
+    const view = preferences.newSessionView
+    runStart(folder, (id) => {
+      setLayout((current) => openInNewTab(current, id, makeId))
+      if (view === 'chat') paneViews.choose(id, 'chat')
+      void sendTerminalInput({ id, generation: 0 }, `${agent}\r`).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start ${agent}`)) })
+    })
+  }, [preferences.defaultAgent, preferences.newSessionView, runStart, paneViews])
 
   const newSession = useCallback(() => {
     setSettingsSection(null)
@@ -1731,6 +1725,7 @@ export function DesktopApp() {
                                   hasTerminal={!chatOnly}
                                   root={session.repoRoot ?? session.cwd}
                                   onOpenDiff={showChanges}
+                                  {...(chatOnly ? {} : { typeInto: (text: string) => sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, text) })}
                                   process={session.process}
                                   online={online}
                                   onBackToTerminal={() => { paneViews.choose(session.id, 'terminal') }}

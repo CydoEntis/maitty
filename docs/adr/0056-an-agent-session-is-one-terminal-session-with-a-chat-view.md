@@ -61,6 +61,11 @@ provider speaks JSON on pipes. A person gets one or the other, and cannot switch
 
 ## Consequences
 
-- The desktop window can offer chat-first sessions without losing the native terminal.
-- Until it is built, the window starts a chat session of ADR 0054 for a new session when Settings says
-  Chat, and that session has no terminal view.
+- The desktop window offers chat-first sessions without losing the native terminal.
+- **Built in the window (2026-11-05):** a new session runs the default agent in a terminal and opens in the
+  chosen view; the chat's composer pastes into the terminal while the agent is idle or done, and Stop sends
+  Esc. This needs no daemon change, because it uses the follow of ADR 0052 and the terminal input that
+  already exists. Not built: showing what a permission prompt asks inside the chat (the chat says to answer
+  in the terminal), attachments, and a daemon-side gate that refuses typing when the pane is not idle (the
+  window gates it today).
+- The structured chat sessions of ADR 0054 are unchanged and still start from a shell's empty chat card.

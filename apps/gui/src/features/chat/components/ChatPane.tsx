@@ -11,6 +11,8 @@ export type ChatPaneProps = {
   root?: string | null
   /** Shows a file's diff in the Changes panel. */
   onOpenDiff?: ((file: string) => void) | null
+  /** Types into the terminal the agent runs in, so a chat that follows it can talk to it (ADR 0056). */
+  typeInto?: ((text: string) => Promise<void>) | undefined
   /** What runs in the pane: the agent, or the shell's own name. */
   process: string
   /** The computer is connected to the daemon; starting an agent types into the shell. */
@@ -34,7 +36,7 @@ export function ChatPane(props: ChatPaneProps) {
   const { availability } = props
   return (
     <section className="mx-chat-layer mx-chat-in" aria-label="Chat">
-      {availability.kind === 'ready' ? <ChatSession key={availability.link.conversation} link={availability.link} agent={availability.agent} online={props.online} hasTerminal={props.hasTerminal ?? true} root={props.root ?? null} onOpenDiff={props.onOpenDiff ?? null} /> : <NoChat {...props} availability={availability} />}
+      {availability.kind === 'ready' ? <ChatSession key={availability.link.conversation} link={availability.link} agent={availability.agent} online={props.online} hasTerminal={props.hasTerminal ?? true} root={props.root ?? null} onOpenDiff={props.onOpenDiff ?? null} typeInto={props.typeInto} /> : <NoChat {...props} availability={availability} />}
     </section>
   )
 }

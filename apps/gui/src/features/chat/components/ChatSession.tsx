@@ -58,16 +58,18 @@ type Props = {
   root?: string | null
   /** Opens a file's diff in the Changes panel; absent where there is none. */
   onOpenDiff?: ((file: string) => void) | null
+  /** Types into the terminal the agent runs in, for a chat that follows it (ADR 0056). */
+  typeInto?: ((text: string) => Promise<void>) | undefined
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null, typeInto }: Props) {
   const { feed, events, offline, refresh, recordAnswer } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const working = feed.status === 'Working'
   const rows = useMemo(() => buildRows(events, working, root), [events, working, root])
   const workingSince = working ? runningTurnStartedAt(feed) : null
   const incomplete = incompleteReason(feed.completeness)
-  const composer = useChatComposer({ link, feed, online, refresh })
+  const composer = useChatComposer({ link, feed, online, refresh, ...(typeInto ? { typeInto } : {}) })
   // The daemon does not report how a session was started, so the window remembers the sessions it started with full access.
   const fullAccess = useMemo(() => readConversationPermissions()[String(link.conversation)] === 'full-access', [link.conversation])
 
