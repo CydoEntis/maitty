@@ -535,6 +535,11 @@ the folder's name and the agent's session id. It holds no prompts, output, paths
 file is private to the user (0600 in a 0700 folder on Unix). `Query::UsageReport` is for human
 clients only: an agent pane or a structured runtime cannot read what other sessions cost.
 
+A hook report never carries what a tool was asked to do. A tool-start report carries `call`, a
+fingerprint (the first 8 bytes of SHA-256 over the tool's name and input, as 16 hex characters),
+which cannot be turned back into the input and is never logged. The name and input stay in the
+agent.
+
 ## Project-specific: followed transcripts
 
 The daemon reads an agent's own transcript for a pane it follows ([ADR 0003](adr/0003-status-and-conversation-trust.md)).
