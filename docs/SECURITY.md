@@ -679,3 +679,23 @@ wrecking ordinary text: prose, git hashes, UUIDs and plain base64 are not touche
 sensitive anyway: it still reaches any client with a read grant and the private cache. A person who
 approves a command reads the masked text, so a command's masked part cannot be checked from the chat.
 The functions never log or return what a pattern matched.
+
+## Project-specific: terminal output socket
+
+The desktop host listens on `127.0.0.1` (a port the system picks) and sends terminal output to its own
+window as WebSocket messages ([ADR 0057](adr/0057-terminal-output-on-a-local-websocket.md)). Output
+is what the panes show, so the rules are those of a credential:
+
+- **Loopback only.** The listener binds the loopback address and nothing else.
+- **A one-time token.** The window asks the host for a 256-bit random token (`open_terminal_socket`),
+  valid for 60 seconds and one use, sends it as the first message, and gets nothing until the host
+  says `ready`. At most 8 tokens are outstanding. The comparison does not stop at the first
+  difference. The token is never in the address and never logged.
+- **Origin allow-list.** The upgrade is refused unless the `Origin` header is the app's own
+  (`tauri://localhost`, `http://tauri.localhost`, `https://tauri.localhost`), plus the dev server's
+  origin in a debug build. A web page in the user's browser cannot connect.
+- **Bounded.** At most 4 connections may be waiting to prove a token, each has 5 seconds, and at most
+  4,096 frames wait for a window that has stopped reading, after which the socket is dropped and the
+  channel takes over.
+- **One window.** A new connection replaces the old one.
+- **CSP.** `connect-src` allows `ws://127.0.0.1:*` and no other socket.

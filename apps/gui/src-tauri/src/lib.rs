@@ -4,6 +4,7 @@ mod attachment;
 mod image_paste;
 pub mod hub;
 mod machines;
+mod output_socket;
 mod performance;
 mod project_files;
 pub mod routing;
@@ -627,6 +628,11 @@ pub fn run() {
         .manage(add_machine::AddProbe::default())
         .manage(file_send::Transfers::default())
         .setup(|app| {
+            // The development server's origin is let in only by a debug build.
+            let dev_origin = cfg!(debug_assertions)
+                .then(|| app.config().build.dev_url.as_ref().map(|url| url.origin().ascii_serialization()))
+                .flatten();
+            app.manage(output_socket::OutputSocket::start(dev_origin));
             terminal_stream::start(
                 app.handle().clone(),
                 app.state::<machines::Machines>().0.machines.clone(),
@@ -658,6 +664,7 @@ pub fn run() {
             default_session_folder,
             terminal_stream::terminal_history,
             terminal_stream::watch_terminal_output,
+            output_socket::open_terminal_socket,
             terminal_screen,
             terminal_replay,
             send_terminal_input,
