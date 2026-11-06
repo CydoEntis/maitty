@@ -1077,13 +1077,7 @@ impl Daemon {
                 tracing::info!(
                     "pane {term}: windows told Blocked by its check (they may play its sound)"
                 );
-                self.broadcast(
-                    |c| c.attach,
-                    ServerMsg::Attention {
-                        term,
-                        status: Status::Blocked,
-                    },
-                );
+                self.tell_attention(term, Status::Blocked);
                 self.broadcast(
                     |c| c.attach,
                     ServerMsg::Notice(format!("{place}: check failed")),
@@ -1095,13 +1089,7 @@ impl Daemon {
                 tracing::info!(
                     "pane {term}: windows told Blocked by its check (they may play its sound)"
                 );
-                self.broadcast(
-                    |c| c.attach,
-                    ServerMsg::Attention {
-                        term,
-                        status: Status::Blocked,
-                    },
-                );
+                self.tell_attention(term, Status::Blocked);
                 self.broadcast(
                     |c| c.attach,
                     ServerMsg::Notice(format!("{place}: approve check: {command}")),

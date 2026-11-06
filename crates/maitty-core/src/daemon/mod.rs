@@ -336,6 +336,9 @@ struct Daemon {
     active_ws: Option<WsId>,
     next_id: u32,
     clients: HashMap<ClientId, Client>,
+    /// The client a person last typed or acted in: the one told when a pane needs them, so several
+    /// open windows do not each ring for one event.
+    last_used: Option<ClientId>,
     tx: mpsc::Sender<Ev>,
     /// To the hook thread (see `hook_thread`).
     hook_jobs: std::sync::mpsc::Sender<HookJob>,
@@ -995,6 +998,7 @@ impl Daemon {
             active_ws: None,
             next_id: 1,
             clients: HashMap::new(),
+            last_used: None,
             hook_jobs,
             tx,
             scan,
@@ -2096,6 +2100,9 @@ impl Daemon {
                 ServerMsg::Error("Structured runtime identity is stale or revoked".into()),
             );
             return;
+        }
+        if matches!(msg, ClientMsg::Input { .. } | ClientMsg::Command(_)) {
+            self.last_used = Some(client);
         }
         if self
             .clients

@@ -603,7 +603,28 @@ impl Daemon {
         }
     }
 
-    /// Tell attached clients `term` needs attention, and queue the desktop alert for it.
+    /// Tell one window that `term` needs attention: the one a person used last, else the newest
+    /// that can hear it. Every window hearing it would make each play its own sound.
+    pub(super) fn tell_attention(&self, term: TermId, status: Status) {
+        let hears = |c: &Client| {
+            c.attach && !c.rejected && c.structured.is_none() && self.shown_to(term, c.surface)
+        };
+        let used = self
+            .last_used
+            .filter(|id| self.clients.get(id).is_some_and(hears));
+        let newest = || {
+            self.clients
+                .iter()
+                .filter(|(_, c)| hears(c))
+                .map(|(id, _)| *id)
+                .max()
+        };
+        if let Some(id) = used.or_else(newest) {
+            self.send(id, ServerMsg::Attention { term, status });
+        }
+    }
+
+    /// Tell a window `term` needs attention, and queue the desktop alert for it.
     pub(super) fn announce(&mut self, term: TermId, status: Status) {
         if status == Status::Done && self.terms.get(&term).is_some_and(|t| t.awaiting_background) {
             return;
@@ -630,7 +651,7 @@ impl Daemon {
         // Every sound a window plays starts here or in `check_settled`: log it, so a sound
         // nobody expected can be traced.
         tracing::info!("pane {term}: windows told {status:?} (they may play its sound)");
-        self.broadcast(|c| c.attach, ServerMsg::Attention { term, status });
+        self.tell_attention(term, status);
         if (status != Status::Done || !self.is_helper(term))
             && let Some(t) = self.terms.get_mut(&term)
             && let Some(delay) = crate::alert::settle_delay(status)

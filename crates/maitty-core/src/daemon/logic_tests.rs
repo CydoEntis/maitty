@@ -4849,6 +4849,53 @@ fn heard(rx: &mut mpsc::Receiver<ServerMsg>) -> Vec<ServerMsg> {
     std::iter::from_fn(|| rx.try_recv().ok()).collect()
 }
 
+fn viewer_as(d: &mut Daemon, id: u64) -> mpsc::Receiver<ServerMsg> {
+    let (tx, mut rx) = mpsc::channel(64);
+    d.handle(Ev::Connected(
+        id,
+        tx,
+        true,
+        crate::protocol::Surface::Terminal,
+        true,
+    ));
+    while rx.try_recv().is_ok() {}
+    rx
+}
+
+fn told_attention(rx: &mut mpsc::Receiver<ServerMsg>) -> bool {
+    heard(rx)
+        .iter()
+        .any(|m| matches!(m, ServerMsg::Attention { .. }))
+}
+
+#[test]
+fn only_the_window_a_person_used_last_is_told_a_pane_needs_it() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut first = viewer_as(&mut d, 40);
+    let mut second = viewer_as(&mut d, 41);
+    let typed = |d: &mut Daemon, id| {
+        d.handle(Ev::Msg(
+            id,
+            ClientMsg::Input {
+                term: t,
+                data: b"x".to_vec(),
+            },
+        ))
+    };
+    typed(&mut d, 40);
+    heard(&mut first);
+    heard(&mut second);
+    d.announce(t, Status::Blocked);
+    let told_first = (told_attention(&mut first), told_attention(&mut second));
+    typed(&mut d, 41);
+    d.announce(t, Status::Blocked);
+    let told_second = (told_attention(&mut first), told_attention(&mut second));
+    close(&mut d, &[t]);
+    assert_eq!(told_first, (true, false), "the window used last hears it");
+    assert_eq!(told_second, (false, true), "and it follows the person");
+}
+
 #[test]
 fn a_finished_alert_waits_for_the_check_and_rings_once_it_passes() {
     let (mut d, _rx) = daemon();
