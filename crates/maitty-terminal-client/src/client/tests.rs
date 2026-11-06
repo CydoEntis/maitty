@@ -3389,6 +3389,36 @@ mod screen_tests {
     }
 
     #[test]
+    fn splitting_left_or_up_puts_the_new_pane_before_the_one_split() {
+        for (dir, horizontal) in [
+            (crate::layout::Dir::Left, true),
+            (crate::layout::Dir::Up, false),
+        ] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            app.screen.tabs.clear();
+            app.screen_place(ClientTerm::local(1), None);
+            app.menu_do(menu::Act::Split(ClientTerm::local(1), dir));
+            app.snap.terms.insert(4, app.snap.terms[&3].clone());
+            app.snap.terms.get_mut(&4).unwrap().id = 4;
+            app.screen_place(ClientTerm::local(4), Some(ClientTerm::local(1)));
+            let layout = &app.screen.tabs[app.screen.tab].layout;
+            let crate::layout::Node::Split {
+                horizontal: got,
+                a,
+                ..
+            } = layout
+            else {
+                panic!("a split expected for {dir:?}");
+            };
+            assert_eq!(*got, horizontal, "{dir:?} runs the way its name says");
+            assert!(
+                matches!(**a, crate::layout::Node::Leaf(4)),
+                "{dir:?}: the new pane is first"
+            );
+        }
+    }
+
+    #[test]
     fn split_intent_survives_the_focus_change_to_its_target_pane() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.screen.tabs.clear();

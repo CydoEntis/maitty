@@ -8,7 +8,7 @@ export type PaneSlot = { id: string; sessionId: string; col: number }
 /** `widths` are the columns' relative widths (by column index); absent means equal. `broadcast` sends a typed line to every idle pane. */
 export type Tab = { id: string; panes: PaneSlot[]; focus: string; max: string | null; widths?: number[]; broadcast?: boolean }
 export type Layout = { tabs: Tab[]; activeTabId: string | null }
-export type SplitDirection = 'right' | 'down'
+export type SplitDirection = 'right' | 'down' | 'left' | 'up'
 export type MakeId = (prefix: 'tab' | 'pane') => string
 
 export const EMPTY_LAYOUT: Layout = { tabs: [], activeTabId: null }
@@ -48,17 +48,23 @@ export function openInNewTab(layout: Layout, sessionId: string, makeId: MakeId):
   return { tabs: [...layout.tabs, tab], activeTabId: tab.id }
 }
 
-/** Split right adds a column after the pane; split down adds to the pane's column. */
+/**
+ * Right adds a column after the pane and left one before it; down adds a pane below in the pane's column
+ * and up one above it. The new pane takes the focus.
+ */
 export function splitPane(layout: Layout, paneId: string | null, direction: SplitDirection, sessionId: string, makeId: MakeId): Layout {
   const tab = activeTab(layout)
   if (!tab || tab.panes.length >= MAX_PANES) return layout
   const index = tab.panes.findIndex((pane) => pane.id === (paneId ?? tab.focus))
   const current = tab.panes[index]
   if (!current) return layout
-  const col = direction === 'right' ? current.col + 1 : current.col
-  const shifted = direction === 'right' ? tab.panes.map((pane) => (pane.col > current.col ? { ...pane, col: pane.col + 1 } : pane)) : tab.panes
-  const added: PaneSlot = { id: makeId('pane'), sessionId, col }
-  const panes = [...shifted.slice(0, index + 1), added, ...shifted.slice(index + 1)]
+  const before = direction === 'left' || direction === 'up'
+  // A new column pushes every column from its place on to the right.
+  const columnAt = direction === 'right' ? current.col + 1 : direction === 'left' ? current.col : null
+  const shifted = columnAt === null ? tab.panes : tab.panes.map((pane) => (pane.col >= columnAt ? { ...pane, col: pane.col + 1 } : pane))
+  const added: PaneSlot = { id: makeId('pane'), sessionId, col: columnAt ?? current.col }
+  const at = before ? index : index + 1
+  const panes = [...shifted.slice(0, at), added, ...shifted.slice(at)]
   return replaceTab(layout, { ...tab, panes, focus: added.id, max: null })
 }
 

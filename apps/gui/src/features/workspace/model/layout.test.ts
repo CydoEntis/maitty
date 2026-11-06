@@ -63,6 +63,19 @@ describe('tab layout', () => {
     expect(focusedSessionId(layout)).toBe('d')
   })
 
+  it('splits left and up as well: the new pane goes before the one split', () => {
+    const makeId = ids()
+    let layout = openInNewTab(EMPTY_LAYOUT, 'a', makeId)
+    layout = splitPane(layout, null, 'left', 'b', makeId)
+    expect(cols(layout)).toEqual(['b@0', 'a@1'])
+    expect(focusedSessionId(layout)).toBe('b')
+    layout = splitPane(layout, null, 'up', 'c', makeId)
+    expect(cols(layout)).toEqual(['c@0', 'b@0', 'a@1'])
+    const last = activeTab(layout)?.panes[2]?.id ?? null
+    layout = splitPane(layout, last, 'left', 'd', makeId)
+    expect(cols(layout)).toEqual(['c@0', 'b@0', 'd@1', 'a@2'])
+  })
+
   it('holds at most four panes', () => {
     const { layout, makeId } = withPanes('a', 'b', 'c', 'd')
     expect(splitPane(layout, null, 'down', 'e', makeId)).toBe(layout)

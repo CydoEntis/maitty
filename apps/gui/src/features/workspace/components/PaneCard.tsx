@@ -1,6 +1,6 @@
 import { useEffect, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui'
-import { MAX_PANES, type PaneSlot } from '../model/layout'
+import { MAX_PANES, type PaneSlot, type SplitDirection } from '../model/layout'
 import type { SessionView } from '../model/session'
 import { AppIcon, Icon } from './glyphs'
 import { SESSION_DRAG_TYPE } from './dragSession'
@@ -34,7 +34,7 @@ export type PaneCardProps = {
   /** Where portalled menus mount, so they read the theme's colours. */
   portalContainer: HTMLElement | null
   onFocus: (paneId: string) => void
-  onSplit: (paneId: string, direction: 'right' | 'down') => void
+  onSplit: (paneId: string, direction: SplitDirection) => void
   onToggleMaximize: (paneId: string) => void
   onClose: (paneId: string) => void
   /** Starts a new shell in an ended pane's folder, in its place. */
@@ -156,8 +156,17 @@ export function PaneCard(props: PaneCardProps) {
       </ContextMenuPrimitive.Trigger>
       <ContextMenuPrimitive.Portal container={props.portalContainer}>
         <ContextMenuPrimitive.Content className="mx-menu" onCloseAutoFocus={keepFocus}>
-          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={full} onSelect={() => { props.onSplit(pane.id, 'right') }}>Split right<span className="mx-menu-hint">{shortcutText('split-right')}</span></ContextMenuPrimitive.Item>
-          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={full} onSelect={() => { props.onSplit(pane.id, 'down') }}>Split down<span className="mx-menu-hint">{shortcutText('split-down')}</span></ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Sub>
+            <ContextMenuPrimitive.SubTrigger className="mx-menu-item" disabled={full}>Split<span className="mx-menu-hint">›</span></ContextMenuPrimitive.SubTrigger>
+            <ContextMenuPrimitive.Portal container={props.portalContainer}>
+              <ContextMenuPrimitive.SubContent className="mx-menu" sideOffset={6}>
+                <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onSplit(pane.id, 'up') }}>Split up</ContextMenuPrimitive.Item>
+                <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onSplit(pane.id, 'down') }}>Split down<span className="mx-menu-hint">{shortcutText('split-down')}</span></ContextMenuPrimitive.Item>
+                <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onSplit(pane.id, 'left') }}>Split left</ContextMenuPrimitive.Item>
+                <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onSplit(pane.id, 'right') }}>Split right<span className="mx-menu-hint">{shortcutText('split-right')}</span></ContextMenuPrimitive.Item>
+              </ContextMenuPrimitive.SubContent>
+            </ContextMenuPrimitive.Portal>
+          </ContextMenuPrimitive.Sub>
           <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!multi && !maximized} onSelect={() => { props.onToggleMaximize(pane.id) }}>{maximized ? 'Restore layout' : 'Maximize pane'}</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { props.onRenameSession(session.id) }}>Rename…</ContextMenuPrimitive.Item>

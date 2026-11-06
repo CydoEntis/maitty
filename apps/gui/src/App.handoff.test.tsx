@@ -324,7 +324,11 @@ describe('desktop terminal multiplexer', () => {
     expect(await screen.findByRole('menuitem', { name: /^Close session/ })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: /^Close pane/ })).not.toBeInTheDocument()
     daemon.startShellSession.mockResolvedValue(undefined)
-    await user.click(screen.getByRole('menuitem', { name: /^Split right/ }))
+    // Split is a submenu of four directions.
+    await user.click(screen.getByRole('menuitem', { name: /^Split/ }))
+    const right = await screen.findByRole('menuitem', { name: /^Split right/ })
+    act(() => { right.focus() })
+    await user.keyboard('{Enter}')
     // A split opens a new shell beside this one.
     await waitFor(() => { expect(daemon.startShellSession).toHaveBeenCalled() })
   })

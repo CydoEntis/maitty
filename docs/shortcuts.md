@@ -32,6 +32,8 @@ one thing.
 | `PgUp` / `PgDn` | Scroll half a pane |
 | `z` | Collapse the sidebar (again brings it back) |
 
+The pane's right-click menu also has **Split left** and **Split up**, which put the new pane before the one you split; they have no leader key.
+
 ### Tabs
 
 | Key | Action |

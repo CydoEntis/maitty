@@ -321,6 +321,14 @@ impl App {
                 "Split vertically".to_string(),
                 Act::Split(term, crate::layout::Dir::Down),
             ),
+            (
+                "Split left".to_string(),
+                Act::Split(term, crate::layout::Dir::Left),
+            ),
+            (
+                "Split up".to_string(),
+                Act::Split(term, crate::layout::Dir::Up),
+            ),
         ];
         use crate::layout::Dir;
         for (dir, way) in [
