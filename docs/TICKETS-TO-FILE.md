@@ -8,38 +8,28 @@ from the home network, so they are parked here. **Delete this file once they are
 Read this first. It orders every open fix in this file. The order is a proposal: the owner can
 change it, and an agent does not.
 
-**Order changed by the owner (2026-11-05, evening).** Phase 2 goes first, then v0.65.1 without the
-desktop app (`apps/gui/RELEASE-HOLD` holds it out), so the terminal fixes in #275 and #276 ship.
-Phase 1 follows.
+**v0.66.0 was released on 2026-11-06**, the first release with the desktop app back (`apps/gui/RELEASE-HOLD` is
+deleted). v0.65.1 (2026-11-05) was the last without it. Check the release run's result before relying on the installers.
 
-**v0.65.1 is out (2026-11-05)**, without the desktop app: the updater still offers 0.64.0. Phase 1
-is next. What is left of phase 2: ticket 26 (draft #281), ten passes in a row on `windows-latest`
-for 28 and 29, and ticket 27.
-
-**Resume here (rewritten 2026-11-06, afternoon). Read this block first; the two below it are older.**
-- **State.** `dev` holds everything from the day's sessions (the integration branch `test/integration` was fast-forwarded
-  into it; nothing is ahead of it). v0.65.1 is still the last release and the desktop app is still held out by
-  `apps/gui/RELEASE-HOLD`. **The owner plans to lift the hold and do a full release at home.** The release script needs
-  `dev`'s head to have passed CI, so merge first, then wait for one green run, then `scripts/release.sh X.Y.Z`.
-- **Merge before releasing:** pull requests #281 (`fix/hub-test-shell-isolation`) and #271
-  (`ci/time-tests-not-the-build`), the two aimed at Windows test hangs. Leave `fix/desktop-upgrade-path` alone: its fix is
-  already in `dev` from `fix/desktop-upgrade-path-v2`, and the rest is older docs. `debug/windows-hang-probe` was deleted.
-  `main` stays behind until the owner says.
-- **Not checked anywhere but Linux:** the desktop app on macOS and Windows (the release workflow builds those installers,
-  CI does not). Typing lag is fixed on WebKitGTK by drawing the terminal with the DOM renderer; Windows and macOS were not
-  re-measured on this build.
-- **Built today, hand-checked by the owner:** the mode and model chip, live working status, agent chevron menu, calm
-  Inspect error screens, spinners that keep turning when unfocused, Inspect project, the status bar machine.
-  **Built, tests pass, not looked at on screen:** the activity bar and Inspect drawer (v19 section 9), four-way splits
-  (desktop menu; terminal menu has Split left and Split up), folding quiet shell splits into "+N panes", the tab hover
-  card's clickable rows, the machine filter in the sidebar header, the narrow pane header, the terminal app folding its
-  sidebar when panes would be under 20 columns, and the fix that keeps a new split off the sidebar until it is placed
-  (desktop and terminal; the owner reported the jump twice, so check both).
+**Resume here (rewritten 2026-11-06, evening). Read this block first; the notes below it are older.**
+- **State.** `dev` holds everything and `main` was brought up to it by `scripts/release.sh 0.66.0`. No branch or worktree
+  holds unmerged work except `feat/remote-image-paste-stacked` (two patches not in `dev`).
+- **Closed without merging:** #281 and #271 (their fixes were already in `dev`: the sandbox config that turns PowerShell
+  history off, and the separate `cargo test --no-run` step). #287 duplicates `dev` and can be closed.
+- **CI failures met on the way, both fixed or cleared:** the Windows test
+  `a_tilde_is_the_home_folder_and_a_relative_path_is_nothing` used a fake home of `/home/me`, which is not an absolute path
+  on Windows (it now uses `C:\Users\me` there); and Ubuntu timed out installing the Tauri Linux packages, which passed on
+  the next run.
+- **Not checked anywhere but Linux:** the desktop app on macOS and Windows (CI builds the installers but nobody has run
+  them), and nothing was looked at in a real window before the release: the activity bar and Inspect drawer, four-way
+  splits and the sidebar jump, "+N panes", the tab hover card's clickable rows, the machine filter, and the terminal app
+  folding its sidebar in a small window.
 - **Decided 2026-11-06:** Brain dump is out; the extensions store and panels are later; project defaults are on hold; a
-  shell gets no Terminal/Chat switch. See [FEATURES](FEATURES.md).
-- **v19 left, if wanted (the owner starts this at home):** close with Undo (needs the daemon to delay the kill),
-  the "service is down" card (needs a real start-service command), the shared TUI config card and TUI import, the
-  Performance page's live strip, the 900 to 1099px rail rule, and dragging the line between stacked panes.
+  shell gets no Terminal/Chat switch. See [FEATURES](FEATURES.md). The owner may change how the whole system works, so
+  the v19 handoff is not being built yet.
+- **v19 left, if wanted:** close with Undo (needs the daemon to delay the kill), the "service is down" card (needs a
+  real start-service command), the shared TUI config card and TUI import, the Performance page's live strip, the 900 to
+  1099px rail rule, and dragging the line between stacked panes.
 - **Open, not fixed:** Stop in the chat can lag a moment behind the agent winding down (not reproduced from code);
   several old daemons from earlier test servers still run and ring on their own (list them with
   `ps -eo pid,args | grep "maitty.* daemon"`, stop them with `maitty kill-server` and that socket); Codex chat user
