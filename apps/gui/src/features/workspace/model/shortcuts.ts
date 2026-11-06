@@ -20,6 +20,7 @@ export function isMacPlatform(userAgent: string): boolean {
 
 export type ShortcutAction =
   | 'new-session'
+  | 'new-terminal'
   | 'split-right'
   | 'split-down'
   | 'focus-previous'
@@ -87,6 +88,7 @@ const ctrlShift = (key: string, ...more: Modifier[]): Combo => ({ mods: ['ctrl',
  */
 export const BINDINGS: readonly Binding[] = [
   { action: 'new-session', label: 'New session', group: 'Sessions', mac: [cmd('T')], other: [ctrlShift('T')], available: true },
+  { action: 'new-terminal', label: 'New terminal', group: 'Sessions', mac: [cmd('T', 'shift')], other: [ctrlShift('T', 'alt')], available: true },
   // Ctrl+Shift+N stays "new worktree" until brain dump (v18 C.6), which takes this key, is built.
   { action: 'new-worktree', label: 'New worktree', group: 'Sessions', mac: [cmd('N', 'shift')], other: [ctrlShift('N')], available: true },
   { action: 'split-right', label: 'Split right', group: 'Panes', mac: [cmd('D')], other: [ctrlShift('D')], available: true },

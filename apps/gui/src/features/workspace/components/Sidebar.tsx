@@ -54,7 +54,10 @@ export type SidebarProps = {
   onNewSessionIn: (folder: string) => void
   /** A plain shell, in the start folder or in a project's folder. */
   onNewTerminal: () => void
-  onNewTerminalIn: (folder: string) => void
+  /** A shell in a project's folder, on the machine the project is on (null: this computer). */
+  onNewTerminalIn: (folder: string, machineName: string | null) => void
+  /** "New session here" on a project of another machine: chats run on this computer only. */
+  onLocalOnly: (machineName: string) => void
   /** A new shell on another machine; it asks for a folder there. */
   onNewSessionOn: (machine: number, name: string) => void
   /** The New worktree dialog for a project, by its key. */
@@ -124,7 +127,7 @@ function Expanded(props: GroupProps) {
     const open = isOpen(group)
     return (
       <div key={group.key} className={`mx-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`}>
-        <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewTerminalIn={props.onNewTerminalIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
+        <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewTerminalIn={props.onNewTerminalIn} onLocalOnly={props.onLocalOnly} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
         <button type="button" className="mx-group-head" aria-expanded={open} {...hoverHandlers(hover, { kind: 'folder', key: group.key })} onClick={() => { hover.close(); onToggleGroup(group.key) }}>
           <Icon name="chevron" />
           <span className={`mx-folder-tile${group.containsFocused ? ' is-focused' : ''}`}><Icon name="folder" /></span>
@@ -166,7 +169,7 @@ function Expanded(props: GroupProps) {
       <div className="mx-sidebar-head">
         <span className="mx-sidebar-title">Projects</span>
         <span className="mx-spacer" />
-        <button type="button" className="mx-new-button" aria-label="New terminal" title="New terminal: a plain shell, terminal view only" disabled={!props.canStart} onClick={props.onNewTerminal}><Icon name="prompt" size={15} /></button>
+        <button type="button" className="mx-new-button" aria-label="New terminal" title={tip('New terminal: a plain shell, terminal view only', 'new-terminal')} disabled={!props.canStart} onClick={props.onNewTerminal}><Icon name="prompt" size={15} /></button>
         <button type="button" className="mx-new-button" aria-label="New session" title={tip(`New session in ${props.startFolderLabel}`, 'new-session')} disabled={!props.canStart} onClick={props.onNewSession}><Icon name="plus" size={15} /></button>
         {mode === 'docked' && (
           <button type="button" className="mx-icon-button mx-collapse" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
@@ -266,7 +269,7 @@ function RailFolderButton(props: { group: SessionGroup; open: boolean; online: b
 }
 
 /** Right-click a project, in the sidebar or the rail: start a shell in it, fold it, copy its path. */
-function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle, onNewSessionIn, onNewTerminalIn, onNewWorktree, onEnd, children }: { group: SessionGroup; open: boolean; canStart: boolean; online: boolean; portalContainer: HTMLElement | null; onToggle: () => void; onNewSessionIn: (folder: string) => void; onNewTerminalIn: (folder: string) => void; onNewWorktree: () => void; onEnd: () => void; children: ReactNode }) {
+function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle, onNewSessionIn, onNewTerminalIn, onLocalOnly, onNewWorktree, onEnd, children }: { group: SessionGroup; open: boolean; canStart: boolean; online: boolean; portalContainer: HTMLElement | null; onToggle: () => void; onNewSessionIn: (folder: string) => void; onNewTerminalIn: (folder: string, machineName: string | null) => void; onLocalOnly: (machineName: string) => void; onNewWorktree: () => void; onEnd: () => void; children: ReactNode }) {
   // A worktree is made from a terminal's checkout; a chat session has no terminal to ask.
   const lead = group.sessions.find((session) => !isChatSession(session.conversation))
   return (
@@ -275,8 +278,8 @@ function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle,
       <ContextMenuPrimitive.Portal container={portalContainer}>
         <ContextMenuPrimitive.Content className="mx-menu mx-project-menu" aria-label={`${group.name} project`}>
           <ContextMenuPrimitive.Label className="mx-menu-caps">{group.name}</ContextMenuPrimitive.Label>
-          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!canStart || group.machineName !== null} onSelect={() => { onNewSessionIn(group.key) }}>New session here</ContextMenuPrimitive.Item>
-          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!canStart || group.machineName !== null} onSelect={() => { onNewTerminalIn(group.key) }}>New terminal here</ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!canStart} onSelect={() => { if (group.machineName === null) onNewSessionIn(group.key); else onLocalOnly(group.machineName) }}>New session here{group.machineName !== null && <span className="mx-menu-hint"> · local only</span>}</ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={!canStart} onSelect={() => { onNewTerminalIn(group.machineName === null ? group.key : group.path, group.machineName) }}>New terminal here</ContextMenuPrimitive.Item>
           {lead && lead.machine === LOCAL_MACHINE && <WorktreeMenu term={lead.pane} portalContainer={portalContainer} canStart={canStart} onOpenFolder={onNewSessionIn} onNewWorktree={onNewWorktree} />}
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={onToggle}>{open ? 'Collapse' : 'Expand'}</ContextMenuPrimitive.Item>
@@ -307,7 +310,7 @@ function Rail(props: GroupProps) {
           const label = `${group.name} · ${String(group.sessions.length)} session${group.sessions.length === 1 ? '' : 's'} · click to ${open ? 'collapse' : 'expand'}`
           return (
             <div key={group.key} className={`mx-rail-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`}>
-              <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewTerminalIn={props.onNewTerminalIn} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
+              <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewTerminalIn={props.onNewTerminalIn} onLocalOnly={props.onLocalOnly} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
                 <RailFolderButton group={group} open={open} online={online} label={label} hover={hover} onToggle={() => { onToggleGroup(group.key) }} />
               </ProjectMenu>
               {open && (

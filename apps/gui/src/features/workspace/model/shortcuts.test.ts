@@ -18,6 +18,7 @@ function pressOf(text: string, platform: Platform): Key {
 /** One row per binding: what the keycap says on macOS and on Windows and Linux ('' = no key there). */
 const TABLE: readonly [ShortcutAction, string, string][] = [
   ['new-session', '⌘T', 'Ctrl+Shift+T'],
+  ['new-terminal', '⌘⇧T', 'Ctrl+Alt+Shift+T'],
   ['new-worktree', '⌘⇧N', 'Ctrl+Shift+N'],
   ['split-right', '⌘D', 'Ctrl+Shift+D'],
   ['split-down', '⌘⇧D', 'Ctrl+Alt+Shift+D'],
@@ -119,9 +120,13 @@ describe('matching a key press', () => {
     expect(matchShortcut({ key: 't', ctrlKey: false, metaKey: true, shiftKey: false, altKey: false }, 'linux')).toBeNull()
   })
 
-  it('needs the modifiers exactly, so Ctrl+Shift+T is not Ctrl+Alt+Shift+T', () => {
-    expect(matchShortcut({ key: 'T', ctrlKey: true, metaKey: false, shiftKey: true, altKey: true }, 'linux')).toBeNull()
+  it('needs the modifiers exactly, so Ctrl+Shift+T is a new session and Ctrl+Alt+Shift+T a new terminal', () => {
+    expect(matchShortcut({ key: 'T', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false }, 'linux')).toEqual({ action: 'new-session' })
+    expect(matchShortcut({ key: 'T', ctrlKey: true, metaKey: false, shiftKey: true, altKey: true }, 'linux')).toEqual({ action: 'new-terminal' })
     expect(matchShortcut({ key: 't', ctrlKey: false, metaKey: false, shiftKey: true, altKey: false }, 'linux')).toBeNull()
+    // macOS spends Cmd and Cmd+Shift on the two.
+    expect(matchShortcut({ key: 't', ctrlKey: false, metaKey: true, shiftKey: false, altKey: false }, 'mac')).toEqual({ action: 'new-session' })
+    expect(matchShortcut({ key: 'T', ctrlKey: false, metaKey: true, shiftKey: true, altKey: false }, 'mac')).toEqual({ action: 'new-terminal' })
   })
 
   it('passes keys the window does not own to the shell', () => {

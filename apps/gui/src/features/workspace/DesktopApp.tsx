@@ -881,10 +881,20 @@ export function DesktopApp() {
     setSettingsSection(null)
     startAgentSession(() => Promise.resolve(folder))
   }, [startAgentSession])
-  const startTerminalIn = useCallback((folder: string) => {
+  const startTerminalIn = useCallback((folder: string, machineName: string | null = null) => {
     setSettingsSection(null)
+    if (machineName !== null) {
+      // The project is on another machine: the shell starts there, in its folder.
+      const head = heads.find((candidate) => candidate.name?.toLowerCase() === machineName.toLowerCase())
+      if (head?.name == null) return
+      void startOnMachine({ machine: head.machine, name: head.name }, folder).catch((error: unknown) => { toast.error(errorMessage(error, `Could not start a shell on ${machineName}`)) })
+      return
+    }
     runStart(() => Promise.resolve(folder), (id) => { setLayout((current) => openInNewTab(current, id, makeId)) })
-  }, [runStart])
+  }, [runStart, heads, startOnMachine])
+  const explainLocalOnly = useCallback((machineName: string) => {
+    toast.message(remoteStartRefusal(true, machineName, 'A chat session') ?? `Chats run on this computer only; use New terminal here for a shell on ${machineName}.`)
+  }, [])
   const activeGroup = groups.find((group) => group.key === activeGroupKey)
   const projectName = activeGroup?.name
   // A project of another machine is keyed by that machine and its folder: not a folder to start a shell in here.
@@ -1150,6 +1160,9 @@ export function DesktopApp() {
       case 'new-session':
         newSession()
         return
+      case 'new-terminal':
+        newTerminal()
+        return
       case 'split-right':
         split(null, 'right')
         return
@@ -1263,7 +1276,7 @@ export function DesktopApp() {
         }
         return
     }
-  }, [newSession, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, platform, paneSessions, armedClose, toggleInspect, sessions, showSessionById, activeGroupKey, selectTabById, chatOf, paneViews])
+  }, [newSession, newTerminal, split, layout, flash, toggleSidebar, tabGroup, focusedSession, online, preferences.terminalFontSize, setTextSize, endSessions, platform, paneSessions, armedClose, toggleInspect, sessions, showSessionById, activeGroupKey, selectTabById, chatOf, paneViews])
 
   // Captured on the window before xterm sees the key, so only these few keys leave the shell.
   const overlayOpen = paletteOpen || inboxOpen
@@ -1594,7 +1607,8 @@ export function DesktopApp() {
       onNewSession={() => { afterPick(); newSession() }}
       onNewSessionIn={(folder) => { afterPick(); startIn(folder) }}
       onNewTerminal={() => { afterPick(); newTerminal() }}
-      onNewTerminalIn={(folder) => { afterPick(); startTerminalIn(folder) }}
+      onNewTerminalIn={(folder, machineName) => { afterPick(); startTerminalIn(folder, machineName) }}
+      onLocalOnly={(machineName) => { afterPick(); explainLocalOnly(machineName) }}
       onNewSessionOn={(machine, name) => { afterPick(); newSessionOn(machine, name) }}
       onNewWorktree={(groupKey) => {
         const group = groups.find((candidate) => candidate.key === groupKey)
