@@ -34,6 +34,14 @@ describe('buildRows', () => {
     expect(buildRows(events, true).map((row) => row.key)).toEqual(['u', 'a', 'working'])
   })
 
+  it('draws a message just sent before the history has it, and takes the agent to be at work on it', () => {
+    const rows = buildRows([message('a', 'agent', 'Earlier.')], false, null, 'hello')
+
+    expect(rows.map((row) => row.kind)).toEqual(['agent', 'echo', 'working'])
+    expect(rows[1]).toMatchObject({ kind: 'echo', text: 'hello' })
+    expect(rows[2]).toMatchObject({ kind: 'working', phrase: 'thinking' })
+  })
+
   it('turns an approval and a divider into rows of their own', () => {
     const rows = buildRows([approvalEvent(3), turn('completed', true)], false)
 

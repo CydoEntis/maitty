@@ -54,6 +54,7 @@ export function StartingChat({ agent, sessionId, onBackToTerminal }: StartingCha
     disabledReason: null,
     error: null,
     sendText: () => Promise.resolve(false),
+    echo: null,
   }), [draft, held, sessionId])
 
   return (

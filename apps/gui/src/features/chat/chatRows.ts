@@ -1,6 +1,7 @@
 import type { ApprovalEvent, ChatEvent, CommandEvent, EditEvent, ItemStatus, MessageEvent, SubagentEvent, TodoEvent, ToolEvent, TurnEvent } from './chatEvents'
 import { startsTable, streamingText } from './markdown'
 import { describeStep } from './stepInfo'
+import { describeWork } from './workPhase'
 
 /** What the list draws. One row per thing on screen; the events beneath keep their own ids. */
 export type ChatRow =
@@ -12,13 +13,16 @@ export type ChatRow =
   | { readonly kind: 'agents'; readonly key: string; readonly events: readonly SubagentEvent[] }
   | { readonly kind: 'approval'; readonly key: string; readonly event: ApprovalEvent; readonly step: StepRef | null }
   | { readonly kind: 'divider'; readonly key: string; readonly event: TurnEvent }
-  /** The line under the last item while a turn runs. */
-  | { readonly kind: 'working'; readonly key: string }
+  /** What the person just sent, shown before the history has it; `echoText` of `buildRows`. */
+  | { readonly kind: 'echo'; readonly key: string; readonly text: string }
+  /** The line under the last item while a turn runs, with what the agent is doing (`describeWork`). */
+  | { readonly kind: 'working'; readonly key: string; readonly phrase: string }
 
 /** The tool step an approval is about: the row to scroll to and the words that name it. */
 export type StepRef = { readonly key: string; readonly label: string }
 
 export const WORKING_ROW_KEY = 'working'
+export const ECHO_ROW_KEY = 'echo'
 
 const FENCE = /^\s{0,3}(```|~~~)/
 
@@ -58,7 +62,7 @@ function mergedStatus(a: ItemStatus, b: ItemStatus): ItemStatus {
  * single message (v18 C.1: one agent message per turn, paragraphs never split into messages). A tool
  * step between two messages ends the first, so the text and the steps keep the order they happened in.
  */
-export function buildRows(events: readonly ChatEvent[], working: boolean, root: string | null = null): ChatRow[] {
+export function buildRows(events: readonly ChatEvent[], working: boolean, root: string | null = null, echoText: string | null = null): ChatRow[] {
   const rows: ChatRow[] = []
   for (const event of events) {
     switch (event.kind) {
@@ -94,7 +98,9 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
         rows.push({ kind: 'step', key: event.id, event })
     }
   }
-  if (working) rows.push({ kind: 'working', key: WORKING_ROW_KEY })
+  // A message just sent is drawn at once, and the agent is taken to be at work on it, until the history says so itself.
+  if (echoText !== null) rows.push({ kind: 'echo', key: ECHO_ROW_KEY, text: echoText })
+  if (working || echoText !== null) rows.push({ kind: 'working', key: WORKING_ROW_KEY, phrase: describeWork(events, root) })
   return linkApprovals(rows, events, root)
 }
 

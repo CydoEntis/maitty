@@ -56,7 +56,9 @@ function sameRow(a: ChatRow, b: ChatRow): boolean {
     case 'approval':
       return b.kind === 'approval' && a.event === b.event && a.step?.key === b.step?.key && a.step?.label === b.step?.label
     case 'working':
-      return true
+      return b.kind === 'working' && a.phrase === b.phrase
+    case 'echo':
+      return b.kind === 'echo' && a.text === b.text
     case 'user':
     case 'step':
     case 'divider':
@@ -86,6 +88,12 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
         </div>
       )
     }
+    case 'echo':
+      return (
+        <div className={`${COLUMN} flex justify-end py-[7px]`} aria-label="Sending">
+          <p className="m-0 max-w-[85%] rounded-[16px_16px_5px_16px] border border-line2 bg-raise px-3.5 py-2 text-[14px] leading-[1.55] whitespace-pre-wrap text-fg2 opacity-80 [overflow-wrap:anywhere]">{row.text}</p>
+        </div>
+      )
     case 'agent': {
       // A reply still arriving is read in its finished form, so a half-typed mark does not flash; a finished one is read as written.
       const { lead, rest } = splitLead(row.status === 'running' ? streamingParagraphs(row.paragraphs) : row.paragraphs)
@@ -127,7 +135,7 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
       return (
         <div className={`${COLUMN} flex items-center gap-2 py-3 text-[12.5px] text-fg2`}>
           <Spinner className="mx-spin text-[var(--accent)]" />
-          <span>{agent} is working{workingSince !== null && <> · <ElapsedSince since={workingSince} /></>}</span>
+          <span>{agent} is {row.phrase}{workingSince !== null && <> · <ElapsedSince since={workingSince} /></>}</span>
         </div>
       )
   }

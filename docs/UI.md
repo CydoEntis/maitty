@@ -882,6 +882,14 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
     Supported: paragraphs, headings, fenced code, lists, quotes, rules, inline code, bold, italic.
   - *Rows* are memoised on their events (`ChatItem`), and the virtual list measures heights, so a card that expands
     resizes its own row only.
+- **While it waits.** The chat never looks stuck. First read of a history: `ChatSkeleton`, the shape of a conversation,
+  static (an endless animation costs a repaint every frame, PERFORMANCE). A new session's chat is `StartingChat`, there
+  at once with its message box; what is typed then is held per session (`firstMessage.ts`) and sent when the real chat can
+  send, and a half-typed draft carries over. A message sent into the terminal is drawn at once as an `echo` row, with the
+  working line under it, until the history has those words (`countUserMessages` against the count at send time); it is
+  dropped after 20 s rather than left standing as sent. The **working line** says what the agent is doing from the newest
+  step still running (`workPhase.ts`): "reading src/app.ts", "writing hello.txt", "running npm test", "thinking". It says
+  only what the history says.
 - **Composer.** `useChatComposer` sends through the conversation's own send (`send_conversation`) with an operation
   number (the receipt's plus one; a failed send is retried with the same number so the daemon can tell a retry from a
   new message). Enter sends, Shift+Enter adds a line (not while an input method is composing), Esc or Stop interrupts

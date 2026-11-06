@@ -8,12 +8,14 @@ import { hasPendingApproval, runningTurnStartedAt, type ChatFeed } from '../chat
 import { buildRows, type ChatRow } from '../chatRows'
 import { useChatFeed } from '../useChatFeed'
 import { useChatComposer } from '../useChatComposer'
+import { countUserMessages } from '../workPhase'
 import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
 import { ANSWER_KEYS, type AskChoice } from '../permissionAsk'
 import { releaseFirstMessage, takeCarriedDraft, useHeldFirstMessage } from '../firstMessage'
 import { Composer } from './Composer'
 import { ChatItem } from './ChatItems'
+import { ChatSkeleton } from './ChatSkeleton'
 import { PermissionAskCard } from './PermissionAskCard'
 import { VirtualList } from './VirtualList'
 
@@ -80,7 +82,6 @@ type Props = {
 export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null, typeInto, ask = null, sessionId }: Props) {
   const { feed, events, offline, readError, refresh, recordAnswer } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const working = feed.status === 'Working'
-  const rows = useMemo(() => buildRows(events, working, root), [events, working, root])
   const workingSince = working ? runningTurnStartedAt(feed) : null
   const incomplete = incompleteReason(feed.completeness)
   // The transcript has no entry for a terminal agent's prompt until it is answered, so the chat shows it from the hook's report.
@@ -88,7 +89,10 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
   const answersPrompt = stoppedOnPrompt && typeInto !== undefined && ask?.answerable === true
   const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
   const composer = useChatComposer({ link, feed, online, refresh, answersPrompt, ...(typeInto ? { typeInto } : {}) })
-  const { sendText, setDraft: setComposerDraft, disabledReason, sending } = composer
+  const { sendText, setDraft: setComposerDraft, disabledReason, sending, echo } = composer
+  // A message just sent shows at once, with the agent taken to be at work on it, until the history has it.
+  const echoText = echo !== null && countUserMessages(events, echo.text) <= echo.baseline ? echo.text : null
+  const rows = useMemo(() => buildRows(events, working, root, echoText), [events, working, root, echoText])
   // A draft typed while the agent started comes over once, and a message sent then goes out as soon as the agent takes input.
   const held = useHeldFirstMessage(sessionId)
   useEffect(() => {
@@ -151,7 +155,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
       ) : feed.loaded ? (
         <VirtualList items={rows} getKey={rowKey} estimate={ESTIMATED_ROW_PX} renderItem={renderRow} label={`Conversation with ${agent}`} scrollTarget={scrollTarget} />
       ) : (
-        <p className="m-0 flex flex-1 items-center justify-center px-6 text-center text-[13px] text-dim">Reading the conversation…</p>
+        <ChatSkeleton />
       )}
       {stoppedOnPrompt && <PermissionAskCard agent={agent} ask={ask} online={online} answer={answerPrompt} />}
       <Composer agent={agent} composer={shownComposer} />

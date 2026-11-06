@@ -4,6 +4,8 @@ import { errorMessage } from '@/lib/error-message'
 import type { ChatLink } from '@/features/workspace/model/chatView'
 import { hasPendingApproval, type ChatFeed } from './chatFeed'
 import { buildAttachmentMessage } from './attachmentMessage'
+import { selectChatEvents } from './projection'
+import { countUserMessages } from './workPhase'
 import { peekComposer, updateComposer, useComposerState, type DraftAttachment } from './composerStore'
 import { revokePreviews, useAttachmentIntake, type AttachmentIntake } from './useAttachmentIntake'
 import { reserveOperation, STALE_OPERATION } from './sendOperation'
@@ -18,6 +20,14 @@ export const PASTE_START = '\x1b[200~'
 export const PASTE_END = '\x1b[201~'
 /** The key that interrupts the agent's turn. */
 export const INTERRUPT_KEY = '\x1b'
+
+/** How long a message just sent stays on screen before the history shows it; past this it is dropped rather than left as a claim. */
+const ECHO_MAX_MS = 20_000
+/** A second read soon after a send, because a quiet chat is read only every few seconds. */
+const FOLLOW_UP_REFRESH_MS = 700
+
+/** What was just sent into the terminal, and how many times those words were already in the history. */
+export type SentEcho = { readonly text: string; readonly baseline: number }
 
 /** A message the daemon holds until the running turn ends. `id` is its operation number. */
 export type QueuedItem = { readonly id: number; readonly text: string }
@@ -63,6 +73,8 @@ export type ChatComposer = {
   error: string | null
   /** Sends this text now, as `submit` would send the draft; true when it went. For a message held while the agent started. */
   sendText: (text: string) => Promise<boolean>
+  /** The message just sent, until the history shows it; null otherwise. */
+  echo: SentEcho | null
 }
 
 /**
@@ -76,6 +88,7 @@ export function useChatComposer({ link, feed, online, refresh, typeInto, answers
   const { draft, attachments } = useComposerState(link.conversation)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [echo, setEcho] = useState<SentEcho | null>(null)
   // A send that failed is tried again with the same operation number, so the daemon can tell it is the same message.
   const retry = useRef<{ text: string; operation: number } | null>(null)
 
@@ -107,7 +120,11 @@ export function useChatComposer({ link, feed, online, refresh, typeInto, answers
       try {
         // One paste, then Enter: the agent takes a multi-line message as one message.
         await typeText(`${PASTE_START}${text}${PASTE_END}\r`)
+        // Drawn at once: the history only has it when the agent next writes its file.
+        setEcho({ text, baseline: countUserMessages(selectChatEvents(feed.projection), text) })
+        window.setTimeout(() => { setEcho((current) => (current?.text === text ? null : current)) }, ECHO_MAX_MS)
         refresh()
+        window.setTimeout(refresh, FOLLOW_UP_REFRESH_MS)
         return true
       } catch (failure) {
         setError(errorMessage(failure, 'Could not type into the terminal'))
@@ -179,5 +196,5 @@ export function useChatComposer({ link, feed, online, refresh, typeInto, answers
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not interrupt the turn')) })
   }, [running, feed.cancelling, conversation, link.generation, refresh, typeText])
 
-  return { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error, sendText: send }
+  return { draft, setDraft, attachments, attach, readOnly, queue, removeQueued, submit, stop, running, sending, disabledReason, error, sendText: send, echo }
 }
