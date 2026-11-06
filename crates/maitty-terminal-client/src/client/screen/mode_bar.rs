@@ -3,6 +3,7 @@
 //! something else has the keys, what it is and how to use and leave it.
 
 use super::*;
+use crate::client::BAR_FLASH_FOR;
 use crate::keys::{Action, KeySpec};
 
 /// What shortcut mode suggests after its tag, left to right; a narrow bar drops them from the
@@ -830,6 +831,22 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
         (tag, hint, Vec::new())
     };
     let calm = ground == t.bg;
+    // A line that just happened (`+ name started`) takes the hint's place for a moment, but never
+    // the suggestions of shortcut mode or what a holder says.
+    if holder.is_none()
+        && !armed(app)
+        && let Some((text, at)) = &app.bar_flash
+        && at.elapsed() < BAR_FLASH_FOR
+    {
+        middle = vec![Piece {
+            segs: vec![seg(
+                text.clone(),
+                Style::default().fg(t.accent).bg(ground).add_modifier(Modifier::BOLD),
+            )],
+            gap: GAP,
+            hit: None,
+        }];
+    }
     if calm
         && holder.is_none()
         && let Some(p) = layout_piece(app, t)

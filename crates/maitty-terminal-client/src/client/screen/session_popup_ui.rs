@@ -19,6 +19,81 @@ const BRANCH_MAX: usize = 20;
 /// The title chip's text.
 const TITLE: &str = "NEW SESSION";
 
+/// The glyphs the popup draws whose width differs between terminals, and their plain-ASCII twins.
+struct Marks {
+    prompt: &'static str,
+    cursor: &'static str,
+    find: &'static str,
+    start: &'static str,
+    project: &'static str,
+    needs: &'static str,
+    folder: &'static str,
+    leaf: &'static str,
+    local: &'static str,
+    remote: &'static str,
+    branch: &'static str,
+    ellipsis: &'static str,
+    rule: &'static str,
+    online: &'static str,
+    connecting: &'static str,
+    offline: &'static str,
+    switch: &'static str,
+    move_keys: &'static str,
+}
+
+const UNICODE_MARKS: Marks = Marks {
+    prompt: "❯ ",
+    cursor: "█",
+    find: "⌕ ",
+    start: "▶ ",
+    project: "◆",
+    needs: "●",
+    folder: "▸",
+    leaf: "·",
+    local: "⌂",
+    remote: "⇄",
+    branch: "⎇ ",
+    ellipsis: "…",
+    rule: "─",
+    online: "●",
+    connecting: "◌",
+    offline: "○",
+    switch: "← →  switch machine",
+    move_keys: "↑↓",
+};
+
+const ASCII_MARKS: Marks = Marks {
+    prompt: "> ",
+    cursor: "_",
+    find: "",
+    start: "> ",
+    project: "*",
+    needs: "!",
+    folder: ">",
+    leaf: "-",
+    local: "~",
+    remote: "@",
+    branch: "git:",
+    ellipsis: "...",
+    rule: "-",
+    online: "*",
+    connecting: "~",
+    offline: "o",
+    switch: "Left/Right  switch machine",
+    move_keys: "Up/Down",
+};
+
+/// ASCII marks when `[ui] glyphs` says `ascii`, or `MAITTY_ASCII` is set. The setting's own
+/// choices (`dots`, `unicode`) are both Unicode, and a saved `ascii` is rewritten to `dots` on load,
+/// so the variable is how a terminal that draws these glyphs at the wrong width asks for plain ones.
+fn marks(app: &App) -> &'static Marks {
+    if app.cfg.ui.glyphs == "ascii" || std::env::var_os("MAITTY_ASCII").is_some_and(|v| !v.is_empty()) {
+        &ASCII_MARKS
+    } else {
+        &UNICODE_MARKS
+    }
+}
+
 impl App {
     /// The machines the popup can start on: this computer first, then the others in sidebar order.
     fn ns_chips(&self) -> Vec<Chip> {
@@ -259,6 +334,11 @@ impl App {
         self.screen.saved.recent_paths.truncate(RECENT_KEEP);
         self.screen.save();
         self.screen_new_session_on(machine, PathBuf::from(path), cmd, false);
+        // The daemon focuses the new session; the sidebar's own cursor must not hold the
+        // selection, and the focused card is scrolled into view when the focus arrives.
+        self.screen.cursor_proj = None;
+        self.screen.follow = true;
+        self.bar_flash = Some((format!("+ {name} started"), Instant::now()));
         self.notify(format!("+ {name} started"), false);
     }
 }
@@ -277,13 +357,10 @@ fn split_host(shown: &str) -> (&str, &str) {
     }
 }
 
-fn branch_text(branch: &str) -> String {
+fn branch_text(branch: &str, m: &Marks) -> String {
     let b: String = branch.chars().take(BRANCH_MAX).collect();
-    if branch.chars().count() > BRANCH_MAX {
-        format!("⎇ {b}…")
-    } else {
-        format!("⎇ {b}")
-    }
+    let more = if branch.chars().count() > BRANCH_MAX { m.ellipsis } else { "" };
+    format!("{}{b}{more}", m.branch)
 }
 
 pub(in crate::client) fn draw_session_popup(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, ns: &NewSession) {
@@ -306,6 +383,7 @@ pub(in crate::client) fn draw_session_popup(app: &mut App, f: &mut Frame, area: 
         Go::Nothing => "",
     };
     let loading = ns.loading(&chips);
+    let m = marks(app);
     let buf = f.buffer_mut();
     dim_all(app, buf, area, t);
     let r = panel(app, buf, area, POPUP_W, POPUP_H, TITLE, &[], t);
@@ -317,10 +395,10 @@ pub(in crate::client) fn draw_session_popup(app: &mut App, f: &mut Frame, area: 
     let input = Rect { x: r.x + 1, y: r.y + 2, width: r.width - 2, height: 1 };
     strip(buf, input, t.card2);
     let s = Style::default().bg(t.card2);
-    let mut parts = vec![seg("❯ ", s.fg(t.accent).add_modifier(Modifier::BOLD))];
+    let mut parts = vec![seg(m.prompt, s.fg(t.accent).add_modifier(Modifier::BOLD))];
     if ns.q.is_empty() {
         parts.push(seg("project, folder, ~/path or kingdom:~/path", s.fg(t.muted)));
-        parts.push(seg("█", s.fg(t.accent)));
+        parts.push(seg(m.cursor, s.fg(t.accent)));
     } else {
         let remote = matches!(scope, Scope::Path { machine, .. } if machine != MachineId::LOCAL);
         let (host, rest) = if remote { split_host(&ns.q) } else { ("", ns.q.as_str()) };
@@ -335,7 +413,7 @@ pub(in crate::client) fn draw_session_popup(app: &mut App, f: &mut Frame, area: 
                 parts.push(seg(first, Style::default().fg(t.card2).bg(t.muted)));
                 parts.push(seg(chars.collect::<String>(), s.fg(t.muted)));
             }
-            None => parts.push(seg("█", s.fg(t.accent))),
+            None => parts.push(seg(m.cursor, s.fg(t.accent))),
         }
     }
     put(buf, r.x + 3, input.y, &parts, inner_right);
@@ -351,17 +429,21 @@ pub(in crate::client) fn draw_session_popup(app: &mut App, f: &mut Frame, area: 
         Scope::Plain => format!("{online} machines online"),
         Scope::Path { .. } => {
             let n = rows.iter().filter(|r| matches!(r, Row::Folder { .. })).count();
-            if loading { "reading…".to_string() } else if n == 1 { "1 folder".to_string() } else { format!("{n} folders") }
+            if loading { format!("reading{}", m.ellipsis) } else if n == 1 { "1 folder".to_string() } else { format!("{n} folders") }
         }
     };
     match &scope {
         Scope::Plain => {
-            let text = if ns.q.trim().is_empty() { "⌕ everything open, plus recent paths" } else { "⌕ matches on every machine" };
+            let text = if ns.q.trim().is_empty() {
+                format!("{}everything open, plus recent paths", m.find)
+            } else {
+                format!("{}matches on every machine", m.find)
+            };
             put(buf, inner_left, crumb_y, &[seg(text, c.fg(t.muted))], inner_right);
         }
         Scope::Path { machine, path } => {
             let name = chips.iter().find(|m| m.id == *machine).map_or("", |m| m.name.as_str());
-            let badge = if name.is_empty() { " ⌂ local ".to_string() } else { format!(" ⇄ {name} ") };
+            let badge = if name.is_empty() { format!(" {} local ", m.local) } else { format!(" {} {name} ", m.remote) };
             let (folder, _) = super::session_popup::split_folder(path);
             let segments: Vec<&str> = folder.split('/').filter(|p| !p.is_empty()).collect();
             let mut crumb = vec![seg(badge, Style::default().fg(t.text).bg(t.btn)), seg("  ", c)];
@@ -377,7 +459,7 @@ pub(in crate::client) fn draw_session_popup(app: &mut App, f: &mut Frame, area: 
         }
     }
     put(buf, inner_right.saturating_sub(right_note.width() as u16), crumb_y, &[seg(right_note, c.fg(t.muted))], r.right() - 1);
-    let rule = "─".repeat(r.width.saturating_sub(6) as usize);
+    let rule = m.rule.repeat(r.width.saturating_sub(6) as usize);
     put(buf, r.x + 3, r.y + 5, &[seg(rule.clone(), c.fg(t.line))], r.right() - 1);
 
     // The list.
@@ -388,12 +470,12 @@ pub(in crate::client) fn draw_session_popup(app: &mut App, f: &mut Frame, area: 
     for (offset, (i, row)) in rows.iter().enumerate().skip(start).take(room).enumerate() {
         let y = first_y + offset as u16;
         let is_sel = selected.is_some_and(|(s, _)| s == i);
-        draw_row(app, buf, &r, y, row, is_sel, i, &chips, &scope, t);
+        draw_row(app, buf, &r, y, row, is_sel, i, &chips, &scope, t, m);
     }
 
     // The machine strip.
     let strip_y = r.bottom().saturating_sub(4);
-    put(buf, r.x + 3, strip_y.saturating_sub(1), &[seg("─".repeat(r.width.saturating_sub(6) as usize), c.fg(t.line))], r.right() - 1);
+    put(buf, r.x + 3, strip_y.saturating_sub(1), &[seg(m.rule.repeat(r.width.saturating_sub(6) as usize), c.fg(t.line))], r.right() - 1);
     let mut x = r.x + 3;
     x = put(buf, x, strip_y, &[seg("on ", c.fg(t.muted))], inner_right);
     let browsing = match &scope {
@@ -401,7 +483,7 @@ pub(in crate::client) fn draw_session_popup(app: &mut App, f: &mut Frame, area: 
         Scope::Plain => None,
     };
     for (i, chip) in chips.iter().enumerate() {
-        let label = if chip.name.is_empty() { " ⌂ local ".to_string() } else { format!(" ⇄ {} ", chip.name) };
+        let label = if chip.name.is_empty() { format!(" {} local ", m.local) } else { format!(" {} {} ", m.remote, chip.name) };
         let style = if ns.chip == Some(i) {
             Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD)
         } else if browsing == Some(chip.id) {
@@ -412,27 +494,27 @@ pub(in crate::client) fn draw_session_popup(app: &mut App, f: &mut Frame, area: 
             Style::default().fg(t.text).bg(t.btn)
         };
         let (glyph, color) = match chip.state {
-            ChipState::Online => ("●", t.done),
-            ChipState::Connecting => ("◌", t.accent),
-            ChipState::Offline => ("○", t.muted),
+            ChipState::Online => (m.online, t.done),
+            ChipState::Connecting => (m.connecting, t.accent),
+            ChipState::Offline => (m.offline, t.muted),
         };
         let start = x;
         x = put(buf, x, strip_y, &[seg(label, style), seg(" ", c), seg(glyph, c.fg(color)), seg("   ", c)], inner_right);
         hit(app, Rect { x: start, y: strip_y, width: x - start, height: 1 }, ScreenHit::NsChip(i));
     }
-    let switch = "← →  switch machine";
+    let switch = m.switch;
     put(buf, inner_right.saturating_sub(switch.width() as u16), strip_y, &[seg(switch, c.fg(t.muted))], r.right() - 1);
 
     let mut bar: Vec<(&str, &str)> = Vec::new();
     if !enter_label.is_empty() {
         bar.push(("Enter", enter_label));
     }
-    bar.extend([("Tab", "fill"), ("↑↓", "move"), ("Esc", "close")]);
+    bar.extend([("Tab", "fill"), (m.move_keys, "move"), ("Esc", "close")]);
     panel_bar(buf, r, t, &bar);
 }
 
 #[allow(clippy::too_many_arguments)]
-fn draw_row(app: &mut App, buf: &mut Buffer, r: &Rect, y: u16, row: &Row, selected: bool, index: usize, chips: &[Chip], scope: &Scope, t: &Theme) {
+fn draw_row(app: &mut App, buf: &mut Buffer, r: &Rect, y: u16, row: &Row, selected: bool, index: usize, chips: &[Chip], scope: &Scope, t: &Theme, m: &Marks) {
     let c = card(t);
     let left = r.x + 3;
     let right = r.right().saturating_sub(3);
@@ -449,7 +531,7 @@ fn draw_row(app: &mut App, buf: &mut Buffer, r: &Rect, y: u16, row: &Row, select
             let s = Style::default().bg(bg);
             let (host, rest) = split_host(shown);
             let mut parts = vec![
-                seg("▶ start here", s.fg(t.accent).add_modifier(if selected { Modifier::BOLD } else { Modifier::empty() })),
+                seg(format!("{}start here", m.start), s.fg(t.accent).add_modifier(if selected { Modifier::BOLD } else { Modifier::empty() })),
                 seg("  ", s),
             ];
             if !host.is_empty() {
@@ -457,14 +539,14 @@ fn draw_row(app: &mut App, buf: &mut Buffer, r: &Rect, y: u16, row: &Row, select
             }
             parts.push(seg(rest, s.fg(t.text)));
             put(buf, left, y, &parts, right.saturating_sub(24));
-            let tag = branch.as_deref().map_or("no git".to_string(), branch_text);
+            let tag = branch.as_deref().map_or("no git".to_string(), |b| branch_text(b, m));
             put(buf, right.saturating_sub(tag.width() as u16), y, &[seg(tag, s.fg(t.muted))], r.right() - 1);
             hit(app, Rect { x: r.x + 1, y, width: r.width - 2, height: 1 }, ScreenHit::NsRow(index));
         }
         Row::Project { shown, branch, sessions, needs, .. } => {
             let bg = sel_row(app, buf, *r, y, selected, t);
             let s = Style::default().bg(bg);
-            let glyph = if *needs { ("●", t.blocked) } else { ("◆", t.accent) };
+            let glyph = if *needs { (m.needs, t.blocked) } else { (m.project, t.accent) };
             let mut parts = vec![seg(glyph.0, s.fg(glyph.1)), seg(" ", s)];
             parts.extend(path_parts(shown, 0, &[], selected, s, t, false));
             put(buf, left, y, &parts, right.saturating_sub(34));
@@ -472,7 +554,7 @@ fn draw_row(app: &mut App, buf: &mut Buffer, r: &Rect, y: u16, row: &Row, select
             tail.push(seg(format!("{sessions} open"), s.fg(if *needs { t.blocked } else { t.muted })));
             if let Some(b) = branch {
                 tail.push(seg("   ", s));
-                tail.push(seg(branch_text(b), s.fg(if selected { t.text } else { t.muted })));
+                tail.push(seg(branch_text(b, m), s.fg(if selected { t.text } else { t.muted })));
             }
             let width = segs_width(&tail);
             put(buf, right.saturating_sub(width), y, &tail, r.right() - 1);
@@ -481,7 +563,7 @@ fn draw_row(app: &mut App, buf: &mut Buffer, r: &Rect, y: u16, row: &Row, select
         Row::Folder { shown, typed, matched, branch, has_children, open, needs, .. } => {
             let bg = sel_row(app, buf, *r, y, selected, t);
             let s = Style::default().bg(bg);
-            let glyph = if *has_children { "▸" } else { "·" };
+            let glyph = if *has_children { m.folder } else { m.leaf };
             let mut parts = vec![seg(glyph, s.fg(t.muted)), seg(" ", s)];
             let browse = matches!(scope, Scope::Path { .. });
             parts.extend(path_parts(shown, *typed, matched, selected, s, t, browse));
@@ -494,7 +576,7 @@ fn draw_row(app: &mut App, buf: &mut Buffer, r: &Rect, y: u16, row: &Row, select
                 if !tail.is_empty() {
                     tail.push(seg("   ", s));
                 }
-                tail.push(seg(branch_text(b), s.fg(if selected { t.text } else { t.muted })));
+                tail.push(seg(branch_text(b, m), s.fg(if selected { t.text } else { t.muted })));
             } else if *has_children {
                 if !tail.is_empty() {
                     tail.push(seg("   ", s));

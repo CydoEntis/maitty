@@ -627,9 +627,16 @@ Every row is a path you can type, written as scp writes it: `~/code/maitty` is t
   reconnects. A click selects a row, and a click on the selected row is Enter. Esc closes.
 - **Starting** closes the popup, starts the default agent in that folder on that machine (a worktree
   is not made: another machine has none), remembers the path, and toasts `+ <folder> started`.
-- **Not in this version:** the status-bar flash (the toast is used), selecting the new card in the
-  sidebar (the new session takes focus and the sidebar follows it), and the ASCII fallback for the
-  glyphs whose width differs between terminals.
+- **After starting**, the mode bar's hint is replaced for `BAR_FLASH_FOR` (2.4 s) by `+ <folder> started`
+  in the accent (`App::bar_flash`); shortcut mode's suggestions and a holder's hints are never replaced. The
+  toast stays as well. The sidebar's project cursor is cleared and `follow` is set, so the new session, which the
+  daemon focuses, is the open card and is scrolled into view when the focus arrives. A card is not
+  selected by the keyboard cursor: the popup returns the keys to the panes.
+- **ASCII marks.** The popup's own glyphs (`❯ █ ⌕ ▶ ◆ ● ○ ◌ ▸ · ⌂ ⇄ ⎇ …`, the rule, the arrow keys in the bar)
+  have plain twins (`Marks` in `session_popup_ui.rs`), used when `MAITTY_ASCII` is set to anything or
+  `[ui] glyphs` is `ascii`. The setting's choices are `dots` and `unicode`, and a saved `ascii` is rewritten to
+  `dots` on load, so the variable is the way in. The shared panel frame, its title and close mark, and the
+  sidebar are not covered.
 
 ## Project-specific: Machines dialog
 

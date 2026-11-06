@@ -100,6 +100,8 @@ const PASTE_MAX_WAIT: Duration = Duration::from_secs(1);
 /// The most characters of the copied text a toast previews.
 const COPY_PREVIEW_CHARS: usize = 72;
 const NOTICE_FOR: Duration = Duration::from_secs(5);
+/// How long the mode bar's flash line stays.
+pub(in crate::client) const BAR_FLASH_FOR: Duration = Duration::from_millis(2400);
 /// What a toast says beyond its title: a detail row and an optional preview row.
 #[derive(Debug, Clone, PartialEq)]
 struct NoticeCard {
@@ -516,6 +518,8 @@ pub struct App {
     notice_card: Option<NoticeCard>,
     /// The selection just copied, glowing for a moment after copy mode closed.
     copy_flash: Option<copy::Flash>,
+    /// A line the mode bar shows in place of its hint for `BAR_FLASH_FOR` (`+ name started`).
+    bar_flash: Option<(String, Instant)>,
     /// What happened lately, newest last: (unix secs, pane, kind, text). Kinds: '!' needs
     /// you, '✓' finished, 'i' a message, 'x' an error.
     pub(super) history: std::collections::VecDeque<(u64, Option<ClientTerm>, char, String)>,
@@ -804,6 +808,7 @@ impl App {
             sending: None,
             notice_card: None,
             copy_flash: None,
+            bar_flash: None,
             history: Default::default(),
             right_down: None,
             snap: Snapshot::default(),
@@ -966,6 +971,10 @@ impl App {
                         self.dirty = true;
                     }
                     self.expire_unseen_logins();
+                    if self.bar_flash.as_ref().is_some_and(|(_, at)| at.elapsed() >= BAR_FLASH_FOR) {
+                        self.bar_flash = None;
+                        self.dirty = true;
+                    }
                     if self.copy_flash.as_ref().is_some_and(|f| !f.live()) {
                         self.copy_flash = None;
                         self.dirty = true;
