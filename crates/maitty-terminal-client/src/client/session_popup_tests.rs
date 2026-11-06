@@ -231,3 +231,106 @@ fn the_new_button_and_the_n_key_open_it() {
     app.screen_splash_action('n');
     assert!(matches!(app.mode, Mode::NewSession(_)));
 }
+
+/// The glyphs of the popup whose width differs between terminals.
+const AMBIGUOUS: &[char] = &['❯', '█', '⌕', '▶', '◆', '●', '○', '◌', '▸', '·', '⌂', '⇄', '⎇', '…', '↑', '↓', '←', '→'];
+
+fn answered_popup(app: &mut App, rx: &mut mpsc::UnboundedReceiver<Outgoing>) {
+    app.screen_open_session_popup("");
+    for (m, _, t) in asked(&sent(rx)) {
+        answer(app, m, t, listing("/home/x", &[("maitty", Some("main"), true), ("notes", None, false)]));
+    }
+}
+
+/// The popup's own cells: its columns, from its title row down to its bottom edge (the sidebar
+/// beside it and the mode bar under it are drawn by other code).
+fn popup_text(shown: &str) -> String {
+    let lines: Vec<Vec<char>> = shown.lines().map(|l| l.chars().collect()).collect();
+    let top = lines.iter().position(|l| l.iter().collect::<String>().contains("NEW SESSION")).expect("title row");
+    let left = lines[top].iter().position(|c| *c == '┌').expect("corner");
+    let mut out = Vec::new();
+    for l in &lines[top..] {
+        out.push(l.iter().skip(left).take(92).collect::<String>());
+        if l.get(left) == Some(&'└') {
+            break;
+        }
+    }
+    out.join("
+")
+}
+
+#[test]
+fn ascii_glyphs_replace_the_ambiguous_width_ones_in_the_popup() {
+    let (mut app, mut rx) = two_machines();
+    app.cfg.ui.glyphs = "ascii".into();
+    answered_popup(&mut app, &mut rx);
+    type_text(&mut app, "build:~/");
+    let shown = frame(&mut app, 120, 40);
+    println!("{shown}");
+    let popup = popup_text(&shown);
+    for ch in AMBIGUOUS {
+        assert!(!popup.contains(*ch), "{ch} drawn in ASCII mode:\n{popup}");
+    }
+    assert!(popup.contains("> build:~/"), "{popup}");
+    assert!(popup.contains("start here"), "{popup}");
+    assert!(popup.contains("@ build"), "{popup}");
+    assert!(popup.contains("Left/Right  switch machine"), "{popup}");
+    assert!(popup.contains("git:main"), "{popup}");
+
+    key(&mut app, KeyCode::Esc);
+    app.cfg.ui.glyphs = "dots".into();
+    app.screen_open_session_popup("");
+    let plain = frame(&mut app, 120, 40);
+    assert!(plain.contains("❯") && plain.contains("⇄ build"), "Unicode stays the default:\n{plain}");
+}
+
+#[test]
+fn starting_a_session_flashes_the_mode_bar_for_a_moment() {
+    let (mut app, mut rx) = two_machines();
+    answered_popup(&mut app, &mut rx);
+    type_text(&mut app, "build:~/");
+    key(&mut app, KeyCode::Enter);
+
+    let last = |s: &str| s.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").to_string();
+    let shown = frame(&mut app, 120, 40);
+    let bar = last(&shown);
+    assert!(bar.contains("started"), "the bar flashes the start:\n{shown}");
+    assert!(bar.contains("TYPING"), "the mode tag stays: {bar}");
+
+    let (text, _) = app.bar_flash.take().expect("flash set");
+    app.bar_flash = Some((text, std::time::Instant::now() - BAR_FLASH_FOR - std::time::Duration::from_millis(1)));
+    let bar = last(&frame(&mut app, 120, 40));
+    assert!(!bar.contains("started"), "the flash ends: {bar}");
+    assert!(bar.contains("Ctrl+Space"), "the hint is back: {bar}");
+}
+
+#[test]
+fn the_new_session_becomes_the_focused_card_with_the_sidebar_following() {
+    let (mut app, mut rx) = two_machines();
+    answered_popup(&mut app, &mut rx);
+    // The sidebar had a project cursor and was scrolled by hand.
+    app.screen.cursor_proj = Some("somewhere".into());
+    app.screen.follow = false;
+    type_text(&mut app, "~/");
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Enter);
+    assert!(matches!(app.mode, Mode::Normal));
+    assert!(app.screen.cursor_proj.is_none() && app.screen.follow);
+
+    // The daemon answers with the new session, focused.
+    let started = sent(&mut rx);
+    assert!(started.iter().any(|o| matches!(&o.msg, ClientMsg::Command(Command::NewWorkspace { .. }))), "{started:?}");
+    let mut next = app.snap.clone();
+    let dir = std::path::PathBuf::from("/home/x/notes");
+    let new_term = crate::client::reference_fixture::term(900, "notes", "claude", crate::protocol::Status::Working, &dir, 0);
+    next.terms.insert(900, new_term);
+    next.workspaces.push(crate::client::reference_fixture::workspace(900, "notes", &dir, &[900], None, 3));
+    next.active_ws = Some(900);
+    app.got_state = true;
+    app.on_server(ServerMsg::State(next));
+
+    let shown = frame(&mut app, 120, 40);
+    assert_eq!(app.focused(), Some(ClientTerm::local(900)));
+    assert!(app.screen.row_y.contains_key(&ClientTerm::local(900)), "the new card is in the sidebar:\n{shown}");
+}
