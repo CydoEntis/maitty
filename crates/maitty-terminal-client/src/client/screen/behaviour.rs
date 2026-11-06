@@ -1839,9 +1839,9 @@ impl App {
         match h {
             ScreenHit::ToggleProj(i) => {
                 if let Some(key) = self.screen.proj_keys.get(i).cloned() {
+                    // Only folds: the keys stay where they were, as after a click on a session
+                    // or a tab row.
                     self.screen_fold(&key, None);
-                    // The keys follow you into the sidebar.
-                    self.screen_side_set(SideItem::Proj(key));
                 }
             }
             // Opens it, as a click on one of its tabs does: the keys go to its pane. A session
