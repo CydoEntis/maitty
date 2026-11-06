@@ -196,19 +196,43 @@ fn stop_mismatched_daemon() -> Result<()> {
 fn is_app_daemon(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
-        let Ok(command_line) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
-            return false;
-        };
-        let args = command_line.split(|byte| *byte == 0).collect::<Vec<_>>();
-        args.first()
-            .is_some_and(|program| program.ends_with(APP_COMMAND.as_bytes()))
-            && args.get(1).is_some_and(|arg| *arg == b"daemon")
+        std::fs::read(format!("/proc/{pid}/cmdline"))
+            .is_ok_and(|command_line| is_daemon_command_line(&command_line))
     }
     #[cfg(not(target_os = "linux"))]
     {
         let _ = pid;
         true
     }
+}
+
+/// Whether a process's NUL-separated command line is this product's daemon: the terminal app's
+/// program, or the copy the desktop app bundles (named with `-gui-daemon`, and with the target
+/// triple when it runs from a development build), started with `daemon`.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn is_daemon_command_line(command_line: &[u8]) -> bool {
+    let mut args = command_line.split(|byte| *byte == 0);
+    let program = args.next().unwrap_or_default();
+    is_daemon_invocation(program, args.next())
+}
+
+const EXE_SUFFIX: &[u8] = b".exe";
+
+/// Whether a program (a path or a bare name) started with this first argument is this product's
+/// daemon. One rule for stopping a daemon and for listing them.
+pub fn is_daemon_invocation(program: &[u8], first_argument: Option<&[u8]>) -> bool {
+    let file = program
+        .rsplit(|byte| matches!(byte, b'/' | b'\\'))
+        .next()
+        .unwrap_or_default();
+    // Windows names the program with its extension.
+    let name = match file.len().checked_sub(EXE_SUFFIX.len()) {
+        Some(stem) if file[stem..].eq_ignore_ascii_case(EXE_SUFFIX) => &file[..stem],
+        _ => file,
+    };
+    let bundled = format!("{APP_COMMAND}-gui-daemon");
+    (name == APP_COMMAND.as_bytes() || name.starts_with(bundled.as_bytes()))
+        && first_argument == Some(b"daemon".as_slice())
 }
 
 /// Stop only the exact older local daemon the user confirmed replacing.
@@ -1338,9 +1362,34 @@ async fn receive_reply(reader: &mut ipc::Reader) -> Result<Reply> {
 #[cfg(test)]
 mod restart_confirmation_tests {
     use super::{
-        Activity, can_restart_mismatched_daemon, validate_restart_activity,
-        validate_restart_confirmation,
+        Activity, can_restart_mismatched_daemon, is_daemon_command_line,
+        validate_restart_activity, validate_restart_confirmation,
     };
+
+    #[test]
+    fn the_daemon_to_restart_may_be_the_terminal_apps_or_the_one_the_desktop_app_bundles() {
+        let command = env!("MAITTY_APP_COMMAND");
+        let line = |program: &str, args: &str| format!("{program}\0{args}\0").into_bytes();
+        for program in [
+            format!("/home/me/.local/bin/{command}"),
+            command.to_string(),
+            format!("/tmp/.mount_AppXyZ/usr/bin/{command}-gui-daemon"),
+            format!("/repo/target/debug/{command}-gui-daemon-x86_64-unknown-linux-gnu"),
+            format!(r"C:\Users\me\AppData\Local\Maitty\{command}.exe"),
+            format!(r"C:\Program Files\Maitty\{command}-gui-daemon.EXE"),
+        ] {
+            assert!(is_daemon_command_line(&line(&program, "daemon")), "{program}");
+        }
+        for (program, args) in [
+            (format!("/usr/bin/not{command}"), "daemon"),
+            (format!("/usr/bin/{command}"), "mcp"),
+            (format!("/usr/bin/{command}"), ""),
+            ("/usr/bin/bash".to_string(), "daemon"),
+        ] {
+            assert!(!is_daemon_command_line(&line(&program, args)), "{program} {args}");
+        }
+        assert!(!is_daemon_command_line(b""));
+    }
 
     #[test]
     fn accepts_only_the_confirmed_older_protocol() {

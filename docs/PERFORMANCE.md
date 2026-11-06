@@ -371,7 +371,9 @@ keys nobody pressed. Ticket 40.
    If the host's count rises while the window's stays at 0, the frames are lost between the two,
    and step 2 is the fix. If the host's count does not rise, the host is not sending while the
    window is idle: follow that in `terminal_stream.rs` before anything else.
-2. **Carry terminal output on a socket the web view reads itself**, not on a Tauri channel. The
+2. **Carry terminal output on a socket the web view reads itself**, not on a Tauri channel. **Built, not yet
+   measured in a real window** ([ADR 0057](adr/0057-terminal-output-on-a-local-websocket.md)); run
+   *How to run measurement 2 again* on a build from the branch before calling it fixed. The
    host listens on `127.0.0.1` on a port it picks, the window connects with a one-time token the
    host hands it through a command, and frames keep the header they have now. A WebSocket is read
    by the web process's own network stack and does not wait for the host's main loop or for

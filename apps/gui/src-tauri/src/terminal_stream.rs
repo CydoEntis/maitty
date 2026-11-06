@@ -613,6 +613,15 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                 );
             }
             Reaction::Frame(frame) => {
+                // The window's own socket first: the channel waits for the host's main loop and
+                // the web view's next event, which is what held a pane a step behind (ticket 35).
+                let frame = match app.state::<crate::output_socket::OutputSocket>().send(frame) {
+                    Ok(()) => {
+                        crate::performance::count_terminal_frame_sent();
+                        continue;
+                    }
+                    Err(frame) => frame,
+                };
                 let channel = app
                     .state::<TerminalOutput>()
                     .0
@@ -623,6 +632,7 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                 // opens from the history.
                 if let Some(channel) = channel {
                     let _ = channel.send(Response::new(frame));
+                    crate::performance::count_terminal_frame_sent();
                 }
             }
             Reaction::Sessions { machine, snapshot } if machine == MachineId::LOCAL => {
