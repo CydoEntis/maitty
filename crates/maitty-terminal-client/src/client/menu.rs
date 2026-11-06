@@ -314,11 +314,11 @@ impl App {
         let mut items = vec![
             ("Rename pane".to_string(), Act::RenamePane(term)),
             (
-                "Split side by side".to_string(),
+                "Split horizontally".to_string(),
                 Act::Split(term, crate::layout::Dir::Right),
             ),
             (
-                "Split stacked".to_string(),
+                "Split vertically".to_string(),
                 Act::Split(term, crate::layout::Dir::Down),
             ),
         ];

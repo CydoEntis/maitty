@@ -290,8 +290,8 @@ impl Action {
             Down => "down",
         };
         match self {
-            Action::SplitRight => "Split side by side".into(),
-            Action::SplitDown => "Split stacked".into(),
+            Action::SplitRight => "Split horizontally".into(),
+            Action::SplitDown => "Split vertically".into(),
             Action::SplitLeft => "Split left".into(),
             Action::SplitUp => "Split up".into(),
             Action::Spawn(d, c) => format!("Run `{c}` {}", dir(d)),
