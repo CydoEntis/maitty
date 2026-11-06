@@ -504,6 +504,18 @@ workspace write with approval on request, or, with its optional `full_access` fl
 with `ApprovalPolicy::Never` (ADR 0043 and 0054). It adds no wire field: the choice rides in the existing
 `LaunchSettings`, so the protocol version is unchanged. It is local-only.
 
+Protocol 73 adds `Query::ListFolders { path, tag }` and `Reply::Folders { tag, listing }`: the folders
+directly inside `path` on the daemon's computer (`FolderListing`, `FolderEntry` in
+`crates/maitty-shared/src/protocol.rs`), for a client choosing where to start a session (the terminal
+app's New Session popup, the desktop app's folder dialog). `path` is absolute or starts with `~`
+(the daemon's home folder), at most 4,096 bytes; anything else answers `exists: false`. Only folder
+names are listed, never file names or contents. Each entry carries the git branch when it is a
+checkout (read from `.git/HEAD`, no git run) and whether it holds a folder worth browsing into
+(hidden folders do not count). At most 1,000 entries, with `truncated` set past that. Human
+clients only; the reads run off the event loop. A listing from another machine is cleaned the way a
+snapshot is (`remote_policy::vet`): control characters out, names that are paths dropped, the count
+cut, and it is passed on only while a request to that machine is waiting.
+
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
 ([ADR 0051](adr/0051-the-daemon-keeps-provider-reported-usage.md)): totals, one entry per
