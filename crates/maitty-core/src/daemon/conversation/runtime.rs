@@ -242,6 +242,22 @@ impl Registry {
         Ok(())
     }
 
+    /// Ask every runtime to stop, for a daemon that is about to end its process and will not
+    /// run their destructors. Each handle says when its actor has finished, which is after the
+    /// provider's process tree is stopped. A runtime already stopping, or whose actor has
+    /// already gone, is only waited for.
+    pub(super) fn stop_all(&mut self) -> Vec<tokio::task::AbortHandle> {
+        self.entries
+            .values_mut()
+            .map(|runtime| {
+                if runtime.phase != Phase::Stopping && runtime.stop.try_send(()).is_ok() {
+                    runtime.phase = Phase::Stopping;
+                }
+                runtime.task.abort_handle()
+            })
+            .collect()
+    }
+
     pub(super) fn accept(&mut self, event: &Event, generation: u64) -> bool {
         let Some(runtime) = self.entries.get_mut(&event.owner.conversation) else {
             return false;

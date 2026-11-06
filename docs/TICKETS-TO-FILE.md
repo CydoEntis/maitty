@@ -1189,3 +1189,20 @@ code that drew such a comment as a bubble in the chat is removed.
 
 The v18 prototype's project defaults (folder inside the project, a command to run, a preset) decide what
 "New session here" opens. Not built; the default agent is global.
+
+## 52. No way to start a session on another machine from the terminal app (bug, `client`, `ssh`)
+
+Found by the owner on 2026-11-05, right after updating a machine from the sidebar. A machine with
+no sessions is one line in the sidebar, and its right-click menu has Reconnect, Update…, Edit… and
+Remove: nothing starts a session there. The guide says adding a machine lets you "create the first
+session from this computer", but the only way is the command line:
+`maitty new --on <machine> <folder> -- claude`.
+
+**What**
+- **New session…** on a machine's right-click menu and in the Machines dialog, asking for the
+  folder on that machine and what to run, as New does for this computer.
+- Check whether New can aim at a machine once it has sessions, and make the two agree.
+- The guide's *Machines* section says how.
+
+**Acceptance:** from a machine with no sessions, a session is started in a chosen folder without
+leaving the app, with a test on the scripted-ssh fixtures.

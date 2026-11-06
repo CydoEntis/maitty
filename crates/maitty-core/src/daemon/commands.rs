@@ -3,6 +3,10 @@
 use super::*;
 use crate::brand::APP_COMMAND;
 
+/// How long `kill-server` waits for the providers' process trees to be stopped before the daemon
+/// exits anyway. A Claude provider is given its own two seconds to leave on a closed stdin.
+const PROVIDER_STOP_WAIT: Duration = Duration::from_secs(5);
+
 impl Daemon {
     /// Apply a command. `Ok(false)` means the reply is sent later (background git work).
     pub(super) fn command(&mut self, client: ClientId, cmd: Command) -> Result<bool> {
@@ -931,6 +935,9 @@ impl Daemon {
                 for t in self.terms.values_mut() {
                     t.kill_tree();
                 }
+                // The process ends below without dropping the daemon, so a provider's process
+                // tree is stopped here, on purpose, and waited for.
+                let providers = self.stop_conversations();
                 if let Some((_, path, _)) = self.spare.take() {
                     // Shutting down, so there's nothing else to serve: let the spare's agent
                     // release its folder, then remove it before the process ends.
@@ -944,6 +951,15 @@ impl Daemon {
                         && let Err(error) = save.await
                     {
                         tracing::error!(%error,"final session persistence task failed");
+                    }
+                    let gone_by = tokio::time::Instant::now() + PROVIDER_STOP_WAIT;
+                    while providers.iter().any(|p| !p.is_finished())
+                        && tokio::time::Instant::now() < gone_by
+                    {
+                        tokio::time::sleep(Duration::from_millis(25)).await;
+                    }
+                    if providers.iter().any(|p| !p.is_finished()) {
+                        tracing::warn!("a provider process tree was still stopping when the daemon exited");
                     }
                     tokio::time::sleep(Duration::from_millis(150)).await;
                     // Removed while this still answers, so a server started next can't
