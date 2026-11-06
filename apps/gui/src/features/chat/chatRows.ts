@@ -1,5 +1,5 @@
 import type { ApprovalEvent, ChatEvent, CommandEvent, EditEvent, ItemStatus, MessageEvent, SubagentEvent, TodoEvent, ToolEvent, TurnEvent } from './chatEvents'
-import { startsTable } from './markdown'
+import { startsTable, streamingText } from './markdown'
 import { describeStep } from './stepInfo'
 
 /** What the list draws. One row per thing on screen; the events beneath keep their own ids. */
@@ -149,6 +149,15 @@ const LEAD_LIMIT = 220
 
 // A first paragraph that is a code block, list, heading, quote or table has no lead sentence to lift out of it.
 const BLOCK_START = /^(?:\s{0,3}(?:```|~~~|#{1,6}\s|>|[-*+]\s|\d+[.)]\s)|\|)/
+
+/** The paragraphs of a reply that is still arriving, ready to read: only the last can be unfinished (`streamingText`). */
+export function streamingParagraphs(paragraphs: readonly string[]): string[] {
+  const last = paragraphs.at(-1)
+  if (last === undefined) return []
+  const shown = streamingText(last)
+  const earlier = paragraphs.slice(0, -1)
+  return shown.trim() === '' ? earlier : [...earlier, shown]
+}
 
 export function splitLead(paragraphs: readonly string[]): { lead: string; rest: readonly string[] } {
   const [first, ...others] = paragraphs
