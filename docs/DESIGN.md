@@ -249,8 +249,8 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   inside the card; a pane in chat view stays on `--main`.
 - **Small windows.** The window is never narrower than 720px (`minWidth`). Under **1100px** the sidebar becomes
   a drawer opened by the tab bar's Sessions button. Under **900px** the panes stack in one column, tabs shrink to a
-  96px minimum, and Repository and Inbox fold into one **Panels** button (a grid icon with the Inbox count) whose
-  220px menu lists both. The widths are `COMPACT_WIDTH_PX` and `NARROW_WIDTH_PX` in `model/windowSize.ts`.
+  96px minimum, and the activity bar folds into one **Panels** button (a grid icon with the Inbox count) whose
+  220px menu lists its items. The widths are `COMPACT_WIDTH_PX` and `NARROW_WIDTH_PX` in `model/windowSize.ts`.
 - **Settings dialog** (⌘,). A section list at the left and, at the right, a fixed header (the page title,
   a one-line description and a 30x30 **×** icon button, tooltip "Close (Esc)", no label) above a body that scrolls; the page
   itself never scrolls. The title and description slide with the page. Under Advanced, **Performance** shows live
@@ -364,8 +364,8 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   card carries `data-hovercard` and gets no tip.
 - **Tabs hold layouts, panes hold sessions.** A tab is one to four panes in columns; closing a
   pane or tab detaches and the session stays in the sidebar. Ending a session is its own action
-  on the sidebar row, a pane's menu or a row's menu. Right-click opens a menu on a pane (split,
-  maximize, rename, copy folder path, close pane, close session), a tab (new tab, close tab) and a
+  on the sidebar row, a pane's menu or a row's menu. Right-click opens a menu on a pane (a Split submenu of up, down,
+  left and right, maximize, rename, copy folder path, close pane, close session), a tab (new tab, close tab) and a
   session in the sidebar, expanded or collapsed (show in pane, rename, close session). Rename opens a
   small dialog; the name is the daemon's, so every app shows it, and it replaces the folder on the
   row, the tab and the pane header. An empty name goes back to the folder.
@@ -449,15 +449,31 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   `Sending image`, **Cancel**), ending as `Sent the image to <machine>`. For a pane of this computer there is
   no progress: a short `Saving the image…` toast becomes `Pasted the image`.
 - **Project menu.** Right-clicking a project, in the
-  sidebar or the rail, offers New session here, New terminal here, Collapse or Expand, and Copy path.
-- **Inspect (⌘I).** A card docked at the right of the window (over the panes under 900px) that
-  reads the focused pane's repository and never changes it: **Files** (folders and a text
+  sidebar or the rail, offers New session here, New terminal here, Collapse or Expand, Inspect project (the
+  repository drawer on that project's terminal on this computer) and Copy path. Project defaults (Start in, Run
+  when it opens) are not built: they need a shared-config key the terminal app also reads.
+- **Activity bar.** A 48px card on the side opposite the sessions sidebar (so it follows Sidebar position),
+  hidden under 900px where the Panels button replaces it. Top to bottom: the **Inbox** (count badge, amber
+  when something needs you), a divider, then **Files**, **Changes** (badge: changed files), **Branches**,
+  **History** and **References**. A button opens its drawer over the panes; pressing it again, another button,
+  the scrim or Esc closes it. One drawer is open at a time and a drawer never pushes the panes. The open one has
+  a 2px accent bar on the bar's outer edge. Extensions and Brain dump are not built.
+- **Inspect (⌘I).** A drawer opened from the activity bar, over a scrim and beside the bar (full width minus
+  24px under 900px), that
+  reads the focused pane's repository and never changes it. It is 680px wide on every tab, resizable from its
+  inner edge (420px to the window minus 300px, snapping to 680, double-click resets, remembered), and its header is the
+  project and branch, then text tabs with a 2px underline that slides the way the tab changed. It closes with a
+  210ms exit animation. Views: **Files** (folders and a text
   preview), **Changes** (the working tree's diff, one file at a time), **Branches** (the current
-  one, its distance from the upstream), **History** and **References**. The tab bar's **Inspect**
-  button carries the focused pane's `+N −N`. History lists commits and the daemon's snapshots
+  one, its distance from the upstream), **History** and **References**. History lists commits and the daemon's snapshots
   (taken before each agent turn) newest first. **Restore** on a snapshot asks first, says that
   what is there now is saved first, and is disabled while the agent works. **Compare** picks any
   two entries and shows what differs between them.
+  A tab that cannot load shows one calm screen in place of its content: what happened in plain words, that
+  nothing in the project changed and the terminals are unaffected, a Try again button (and an automatic retry
+  every 3 seconds while git is busy), and the daemon's own words only behind **Show details for support**. A
+  folder that is not a git project is a calm, non-error screen. Timeouts and an unreachable daemon have no
+  wording of their own yet: they read as the generic "couldn't load" screen.
 - **Quick-look links.** ⌘-click (Ctrl-click elsewhere) on a file name in a pane's output, with an
   optional `:line`, opens it in Inspect › Files at that line. A name that is not a file in the
   pane's repository says so in a toast.
@@ -498,7 +514,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   notes and "No session was interrupted."
 - **Sidebar position.** Settings › Appearance › Sidebar › Sidebar position, or the palette, puts the sidebar
   on the left or right. On the right the window mirrors: the resize edge is on its left, the narrow-window
-  drawer slides from the right, Inspect and the Inbox open from the left, and popovers open toward the middle.
+  drawer slides from the right, the activity bar is on the left, Inspect and the Inbox open from the left, and popovers open toward the middle.
 - **Notifications.** Settings › Notifications has one switch each for needs you, done and error. With
   one on, a session that changes to that state while you are not looking at it (the window is in the
   background, or it is not the focused pane) sends a system notification, once per change. It names
