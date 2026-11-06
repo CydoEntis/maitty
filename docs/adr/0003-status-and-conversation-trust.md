@@ -43,12 +43,13 @@ and the same bugs came back.
 
 The daemon decides that an alert is due, once per finish or request. It tells exactly one
 window, the one a person last typed or acted in (else the newest that can hear it), and that
-window plays the sound. With no window attached, the daemon plays it. Other windows are not
-told, so several open windows never each ring for one event.
+window alerts: the terminal app rings, the desktop app shows its toast or system notice and
+plays its tone. With no window attached, the daemon rings itself. Other windows are not told,
+so several open windows never each alert for one event. A window never derives an alert for a
+terminal session from its own status diffs; the desktop app diffs statuses only for chat
+sessions, which the daemon does not announce.
 
 ## To confirm
 
 1. What owns "seen": a per-client report to the daemon (a turn counter against a shared
    seen-turn), or a daemon-wide focus.
-2. The desktop app still derives its own notifications from its 15 s poll. It should take the
-   daemon's decision instead, so the TUI and the desktop app do not both alert.

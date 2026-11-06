@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionStatus, SessionView } from '@/features/workspace/model/session'
-import { noticesFor, type NotifySwitches } from './transitions'
+import { noticeForAttention, noticesFor, type NotifySwitches } from './transitions'
 
 const ALL: NotifySwitches = { needs: true, finished: true, error: true }
 
@@ -45,5 +45,17 @@ describe('noticesFor', () => {
     const remote = { ...session('build/t7', 'needs'), machineName: 'build', name: 'deploy' } as SessionView
     const notices = noticesFor(seen([['build/t7', 'working']]), [remote], ALL, null)
     expect(notices.map((notice) => notice.title)).toEqual(['[build] deploy needs you'])
+  })
+})
+
+describe('noticeForAttention', () => {
+  it('names the session for a daemon that said it needs you or finished, never what it asked', () => {
+    expect(noticeForAttention(session('t1', 'working'), 'blocked', ALL)).toEqual({ sessionId: 't1', title: 'maitty needs you', body: 'codex in ~/code/maitty' })
+    expect(noticeForAttention(session('t1', 'working'), 'done', ALL)?.title).toBe('maitty finished')
+  })
+
+  it('says nothing for a kind of notice that is switched off', () => {
+    expect(noticeForAttention(session('t1', 'working'), 'blocked', { ...ALL, needs: false })).toBeNull()
+    expect(noticeForAttention(session('t1', 'working'), 'done', { ...ALL, finished: false })).toBeNull()
   })
 })

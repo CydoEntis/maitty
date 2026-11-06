@@ -1,3 +1,4 @@
+import { LOCAL_MACHINE } from '@/api/machines'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
@@ -40,6 +41,8 @@ const terminal = vi.hoisted(() => ({
 }))
 
 // The window follows other machines through the host; there are none here.
+const alerts = vi.hoisted(() => ({ emit: null as ((attention: { machine: number; term: number; status: 'blocked' | 'done' }) => void) | null }))
+
 vi.mock('@/api/machines', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/machines')>()),
   loadMachinesOverview: () => Promise.resolve([]),
@@ -48,6 +51,10 @@ vi.mock('@/api/machines', async (importOriginal) => ({
   listenMachineError: () => Promise.resolve(() => undefined),
   listenMachineRemoved: () => Promise.resolve(() => undefined),
   listenMachineNotice: () => Promise.resolve(() => undefined),
+  listenAttention: (onAttention: (attention: { machine: number; term: number; status: 'blocked' | 'done' }) => void) => {
+    alerts.emit = onAttention
+    return Promise.resolve(() => undefined)
+  },
   listenMachineClipboard: () => Promise.resolve(() => undefined),
 }))
 
@@ -1437,6 +1444,10 @@ describe('desktop overlays and tab tools', () => {
       await screen.findByRole('navigation', { name: 'Sessions by project' })
       daemon.loadConversations.mockResolvedValue([at(2), at(3, { status: 'needs-you', details: { asking: '$ git push origin main', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null } } })])
       await act(async () => { await client.refetchQueries({ queryKey: ['conversations'] }) })
+
+      // The poll alone raises nothing for a terminal session: the daemon decides the alert and says so.
+      expect(screen.queryByText('Needs you · maitty')).not.toBeInTheDocument()
+      act(() => { alerts.emit?.({ machine: LOCAL_MACHINE, term: 3, status: 'blocked' }) })
 
       const card = (await screen.findByText('Needs you · maitty')).closest('.mx-notice')
       expect(card).not.toBeNull()

@@ -433,6 +433,30 @@ fn what_another_machine_says_went_wrong_is_given_and_this_computers_is_not() {
 }
 
 #[test]
+fn the_daemon_s_decision_to_alert_reaches_the_window_from_this_computer_and_from_another() {
+    use maitty_shared::protocol::Status;
+    let mut streams = Streams::default();
+    let now = Instant::now();
+    for machine in [LOCAL, BOX] {
+        let told = streams.on_message(
+            machine,
+            ServerMsg::Attention {
+                term: 7,
+                status: Status::Done,
+            },
+            now,
+        );
+        assert!(
+            matches!(
+                &told[..],
+                [Out::Attention { machine: m, term: 7, status: Status::Done }] if *m == machine
+            ),
+            "{told:?}"
+        );
+    }
+}
+
+#[test]
 fn what_another_machine_wants_shown_is_given_and_this_computers_is_not() {
     let mut streams = Streams::default();
     let now = Instant::now();

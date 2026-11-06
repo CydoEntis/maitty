@@ -14,7 +14,7 @@
 
 use maitty_machines::MachineId;
 use maitty_machines::remote_snapshot::sanitize_snapshot;
-use maitty_shared::protocol::{FolderListing, Reply, ServerMsg, Snapshot, TermId};
+use maitty_shared::protocol::{FolderListing, Reply, ServerMsg, Snapshot, Status, TermId};
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 
@@ -64,6 +64,12 @@ pub enum Out {
     Error { machine: MachineId, text: String },
     /// What another machine's daemon wants shown, already cleaned and led by the machine's name.
     Notice { machine: MachineId, text: String },
+    /// A daemon decided a pane needs a person (it needs them, or it finished) and told this window.
+    Attention {
+        machine: MachineId,
+        term: TermId,
+        status: Status,
+    },
     /// Text another machine's daemon asks to be put on this computer's clipboard (it was allowed to).
     Clipboard { machine: MachineId, text: String },
     /// Ask the machine's daemon for the pane's replay.
@@ -150,6 +156,7 @@ impl Streams {
             ServerMsg::Notice(text) if machine != MachineId::LOCAL => {
                 out.push(Out::Notice { machine, text });
             }
+            ServerMsg::Attention { term, status } => out.push(Out::Attention { machine, term, status }),
             ServerMsg::Reply(Reply::Folders { tag, listing }) => {
                 out.push(Out::Folders { machine, tag, listing });
             }

@@ -23,7 +23,7 @@ use maitty_machines::link::Timing;
 use maitty_machines::machine_config::Grant;
 use maitty_machines::machine_ids::MachineIds;
 use maitty_machines::{MachineDef, MachineId, Outgoing};
-use maitty_shared::protocol::{ClientMsg, Command, FolderListing, Query, Snapshot};
+use maitty_shared::protocol::{ClientMsg, Command, FolderListing, Query, Snapshot, Status, TermId};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -43,6 +43,8 @@ const MACHINE_REMOVED_EVENT: &str = "machine-removed";
 const MACHINE_NOTICE_EVENT: &str = "machine-notice";
 /// Carries text an opted-in machine asks to be copied: `{machine, text}`.
 const MACHINE_CLIPBOARD_EVENT: &str = "machine-clipboard";
+/// Carries a daemon's decision to alert for a pane: `{machine, term, status}` (`blocked` or `done`).
+const SESSION_ATTENTION_EVENT: &str = "session-attention";
 const MACHINE_ERROR_EVENT: &str = "machine-error";
 const FOLDER_LISTING_EVENT: &str = "folder-listing";
 
@@ -435,6 +437,12 @@ pub enum Reaction {
     Notice { machine: MachineId, text: String },
     /// Text an opted-in machine asks to be copied.
     Clipboard { machine: MachineId, text: String },
+    /// A daemon decided a pane needs a person, and told this window.
+    Attention {
+        machine: MachineId,
+        term: TermId,
+        status: Status,
+    },
     /// A machine was taken out of the list.
     Removed { machine: MachineId },
     /// A machine's answer about a folder, for the window that asked.
@@ -522,6 +530,7 @@ fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
             Out::Error { machine, text } => Some(Reaction::Error { machine, text }),
             Out::Notice { machine, text } => Some(Reaction::Notice { machine, text }),
             Out::Clipboard { machine, text } => Some(Reaction::Clipboard { machine, text }),
+            Out::Attention { machine, term, status } => Some(Reaction::Attention { machine, term, status }),
             Out::Folders { machine, tag, listing } => Some(Reaction::Folders { machine, tag, listing }),
             Out::Sessions { machine, snapshot } => Some(Reaction::Sessions { machine, snapshot }),
             Out::WantReplay { machine, term } => {
@@ -539,6 +548,13 @@ fn apply(app: &AppHandle, handle: &HubHandle, update: Update) {
     let now = Instant::now();
     let done = streams(app, |streams| react(streams, handle, update, now));
     perform(app, done.unwrap_or_default());
+}
+
+#[derive(Clone, Serialize)]
+struct AttentionPayload {
+    machine: u16,
+    term: TermId,
+    status: &'static str,
 }
 
 #[derive(Clone, Serialize)]
@@ -575,6 +591,21 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
                     MachineError {
                         machine: machine.0,
                         text,
+                    },
+                );
+            }
+            Reaction::Attention { machine, term, status } => {
+                let status = match status {
+                    Status::Blocked => "blocked",
+                    Status::Done => "done",
+                    _ => continue,
+                };
+                let _ = app.emit(
+                    SESSION_ATTENTION_EVENT,
+                    AttentionPayload {
+                        machine: machine.0,
+                        term,
+                        status,
                     },
                 );
             }

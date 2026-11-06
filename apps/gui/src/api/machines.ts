@@ -220,6 +220,21 @@ export function listenMachineNotice(onNotice: (text: string) => void): Promise<(
   })
 }
 
+const AttentionSchema = z.object({
+  machine: z.number().int().positive(),
+  term: z.number().int().nonnegative(),
+  status: z.enum(['blocked', 'done']),
+})
+export type Attention = z.infer<typeof AttentionSchema>
+
+/** Calls back each time a daemon decides a pane needs a person: it asks, or it finished. The daemon says it once per event. */
+export function listenAttention(onAttention: (attention: Attention) => void): Promise<() => void> {
+  return listen<unknown>('session-attention', (event) => {
+    const attention = AttentionSchema.safeParse(event.payload)
+    if (attention.success) onAttention(attention.data)
+  })
+}
+
 /** What a machine may be allowed to do to this computer, that the window can act on. */
 export type Grant = 'clipboard' | 'notices'
 

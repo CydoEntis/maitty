@@ -56,6 +56,7 @@ vi.mock('@/api/machines', async (importOriginal) => ({
   listenMachineError: () => Promise.resolve(() => undefined),
   listenMachineRemoved: () => Promise.resolve(() => undefined),
   listenMachineNotice: () => Promise.resolve(() => undefined),
+  listenAttention: () => Promise.resolve(() => undefined),
   listenMachineClipboard: () => Promise.resolve(() => undefined),
 }))
 

@@ -20,7 +20,7 @@ import {
   startChatSession,
   startShellSession,
 } from '@/api/daemon'
-import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, setMachineGrant, startSessionOnMachine, terminalOf, unregisterMachine, type Grant, type MachineState } from '@/api/machines'
+import { LOCAL_MACHINE, addMachine, cancelAddMachine, listSshHosts, listenAttention, listenMachineClipboard, listenMachineError, listenMachineNotice, listenMachineRemoved, listenMachineSessions, listenMachineState, loadMachinesOverview, removeMachine, retryMachine, setMachineGrant, startSessionOnMachine, terminalOf, unregisterMachine, type Attention, type Grant, type MachineState } from '@/api/machines'
 import { TitleBar } from '@/components/TitleBar'
 import { Toaster } from '@/components/ui/sonner'
 import { markConversationsDisconnected } from '@/data/connection'
@@ -72,7 +72,8 @@ import { sendNativeNotice } from '@/features/notifications/native'
 import { chooseProjectFolder } from '@/api/folderPicker'
 import { dismissSessionNotice, showSessionNotice } from '@/features/notifications/notify'
 import { sessionNoticeFor } from '@/features/notifications/noticeForSession'
-import { noticesFor } from '@/features/notifications/transitions'
+import { noticeForAttention, noticesFor, type Notice } from '@/features/notifications/transitions'
+import { enableNotificationSound, playNotificationSound } from '@/data/notificationSound'
 import { NewWorktreeDialog } from '@/features/worktrees/NewWorktreeDialog'
 import { newWorktreeSession } from '@/features/worktrees/api'
 import type { TerminalHandle } from '@/features/terminal/handle'
@@ -1429,35 +1430,77 @@ export function DesktopApp() {
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not answer the session')) })
   }, [sessionMap, sendTo, flash])
 
-  // A session that just started needing you, finished or failed: tell the system, if you are looking elsewhere.
-  const { notifyNeedsYou, notifyFinished, notifyError } = preferences
+  // In the window but on another pane: a toast you can click. Away from the window: the system's.
+  const raiseNotice = useCallback((notice: Notice) => {
+    if (document.hasFocus()) {
+      const target = sessionMap.get(notice.sessionId)
+      const card = target && sessionNoticeFor(target, projectOf.get(target.id), {
+        open: () => { showSessionById(notice.sessionId) },
+        // A chat session's approval is answered in its chat, by the request's id, never by typing a letter.
+        allow: online && !isChatSession(target.conversation) ? () => { answerSession(notice.sessionId, 'y') } : null,
+      })
+      if (card) showSessionNotice(notice.sessionId, card)
+      return
+    }
+    lastNotified.current = { sessionId: notice.sessionId, at: Date.now() }
+    sendNativeNotice(notice.title, notice.body).catch((error: unknown) => { console.warn('Could not show a system notification', error) })
+  }, [sessionMap, projectOf, showSessionById, online, answerSession])
+
+  const { notifyNeedsYou, notifyFinished, notifyError, notificationSound } = preferences
+
+  // A chat session that just started needing you, finished or failed. A terminal session's alert comes from
+  // the daemon (below), which decides it once per event; diffing statuses here as well would alert twice.
   useEffect(() => {
     const previousStatuses = lastStatuses.current
-    // What another machine's agents do raises no system notice unless its entry says notices = true (ADR 0048).
+    // What another machine's agents do raises no system notice unless its entry says notices = true (ADR 0007).
     const mine = sessions.filter((item) => item.machine === LOCAL_MACHINE || machines.get(item.machine)?.state.notices === true)
+    const chats = mine.filter((item) => isChatSession(item.conversation))
     const notices = online
-      ? noticesFor(lastStatuses.current, mine, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
+      ? noticesFor(lastStatuses.current, chats, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError }, document.hasFocus() ? focusedId : null)
       : []
     lastStatuses.current = new Map(mine.map((item) => [item.id, item.status]))
-    // In the window but on another pane: a toast you can click. Away from the window: the system's.
-    const inWindow = document.hasFocus()
     // A card that said "Needs you" goes when the session stops needing you.
     for (const item of sessions) if (item.status !== 'needs' && previousStatuses?.get(item.id) === 'needs') dismissSessionNotice(item.id)
-    for (const notice of notices) {
-      if (inWindow) {
-        const target = sessionMap.get(notice.sessionId)
-        const card = target && sessionNoticeFor(target, projectOf.get(target.id), {
-          open: () => { showSessionById(notice.sessionId) },
-          // A chat session's approval is answered in its chat, by the request's id, never by typing a letter.
-          allow: online && !isChatSession(target.conversation) ? () => { answerSession(notice.sessionId, 'y') } : null,
-        })
-        if (card) showSessionNotice(notice.sessionId, card)
-        continue
-      }
-      lastNotified.current = { sessionId: notice.sessionId, at: Date.now() }
-      sendNativeNotice(notice.title, notice.body).catch((error: unknown) => { console.warn('Could not show a system notification', error) })
+    for (const notice of notices) raiseNotice(notice)
+  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, machines, raiseNotice])
+
+  // A terminal session the daemon says needs you, or finished. Kept in a ref so the one listener below always
+  // reads the latest sessions and settings.
+  const onAttention = useRef<(attention: Attention) => void>(() => undefined)
+  useEffect(() => {
+    onAttention.current = (attention) => {
+      const target = sessions.find((item) => item.machine === attention.machine && item.pane === attention.term)
+      if (!target || isChatSession(target.conversation)) return
+      if (target.machine !== LOCAL_MACHINE && machines.get(target.machine)?.state.notices !== true) return
+      if (document.hasFocus() && target.id === focusedId) return
+      const notice = noticeForAttention(target, attention.status, { needs: notifyNeedsYou, finished: notifyFinished, error: notifyError })
+      if (!notice) return
+      raiseNotice(notice)
+      if (notificationSound) playNotificationSound()
     }
-  }, [sessions, online, focusedId, notifyNeedsYou, notifyFinished, notifyError, showSessionById, sessionMap, projectOf, answerSession, machines])
+  }, [sessions, machines, focusedId, notifyNeedsYou, notifyFinished, notifyError, notificationSound, raiseNotice])
+
+  useEffect(() => {
+    if (!isDesktop()) return undefined
+    let gone = false
+    let stop: (() => void) | null = null
+    listenAttention((attention) => { onAttention.current(attention) })
+      .then((off) => { if (gone) off(); else stop = off })
+      .catch((error: unknown) => { console.warn('Could not listen for alerts from the daemon', error) })
+    return () => { gone = true; stop?.() }
+  }, [])
+
+  // A browser only lets a tone play once the person has clicked or typed in the page.
+  useEffect(() => {
+    if (!notificationSound) return
+    const enable = () => { enableNotificationSound() }
+    window.addEventListener('pointerdown', enable, { once: true })
+    window.addEventListener('keydown', enable, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', enable)
+      window.removeEventListener('keydown', enable)
+    }
+  }, [notificationSound])
 
   // Types the resume command into the session, as you would. Nothing resumes without this click.
   const resumeInterrupted = useCallback((target: SessionView) => {
