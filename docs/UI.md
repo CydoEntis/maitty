@@ -842,7 +842,9 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   objects. A new generation shows a fresh projection. Pending approvals come with every page and go to `applyApprovals`. The last
   feed per conversation is kept (8 at most), so reopening a chat shows it at once.
 - **List.** `VirtualList` draws only the rows near the view (`transform` placement, measured heights, stable event
-  ids as keys), follows the newest row until the reader scrolls away, then offers "Jump to the latest message". Rows
+  ids as keys), follows the newest row until the reader moves up (any move up, however small, and a wheel move up at once),
+  then offers "Jump to the latest message"; it follows again when the reader scrolls back down to within 48 px of the
+  bottom (`followAfterScroll`). Rows
   are `buildRows(events)`: one agent message per turn (adjacent agent messages of a turn are joined; a step between
   two messages keeps their order), user bubbles, step cards, approvals, turn dividers, and the working line last.
 - **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
