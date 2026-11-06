@@ -50,6 +50,9 @@ describe('paragraphs and the lead sentence', () => {
     expect(splitLead(['I fixed it. The test passes now.', 'Details follow.'])).toEqual({ lead: 'I fixed it.', rest: ['The test passes now.', 'Details follow.'] })
     expect(splitLead(['No full stop here'])).toEqual({ lead: 'No full stop here', rest: [] })
     expect(splitLead([])).toEqual({ lead: '', rest: [] })
+    // A table with no outer pipes is not a sentence either.
+    const table = 'a | b\n--- | ---\n1 | 2'
+    expect(splitLead([table, 'After.'])).toEqual({ lead: '', rest: [table, 'After.'] })
   })
 })
 
