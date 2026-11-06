@@ -149,8 +149,30 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
             &cut_bytes(text, REPLY_TEXT_MAX),
             true,
         ))),
+        ServerMsg::Reply(Reply::Folders { tag, listing }) => {
+            ServerMsg::Reply(Reply::Folders {
+                tag,
+                listing: sanitize_listing(listing),
+            })
+        }
         other => other,
     })
+}
+
+/// A folder listing from another machine: every name and branch one clean line, no more entries
+/// than the protocol allows, and no name that is a path.
+fn sanitize_listing(mut listing: maitty_shared::protocol::FolderListing) -> maitty_shared::protocol::FolderListing {
+    listing.path = sanitize(&cut_bytes(listing.path, PATH_MAX), false);
+    listing.entries.truncate(maitty_shared::protocol::FOLDERS_MAX);
+    listing.entries.retain_mut(|entry| {
+        entry.name = sanitize(&cut_bytes(std::mem::take(&mut entry.name), NAME_MAX), false);
+        entry.git = entry
+            .git
+            .take()
+            .map(|branch| sanitize(&cut_bytes(branch, NAME_MAX), false));
+        !entry.name.is_empty() && !entry.name.contains(['/', '\\'])
+    });
+    listing
 }
 
 /// A remote's words for a toast: one clean line, cut short, led by the machine so the source
@@ -159,6 +181,10 @@ pub fn tagged(machine: &str, text: &str) -> String {
     let head: String = text.chars().take(NOTICE_MAX).collect();
     format!("[{}] {}", sanitize(machine, false), sanitize(&head, false))
 }
+
+/// The longest folder path or name a listing from another machine may carry.
+const PATH_MAX: usize = 4096;
+const NAME_MAX: usize = 255;
 
 fn cut_bytes(mut text: String, max: usize) -> String {
     if text.len() > max {
@@ -176,6 +202,59 @@ mod tests {
     use super::*;
     use maitty_shared::protocol::{Reply, Snapshot, Status};
     use std::path::PathBuf;
+
+    #[test]
+    fn a_folder_listing_from_another_machine_is_cleaned_and_cut() {
+        use maitty_shared::protocol::{FOLDERS_MAX, FolderEntry, FolderListing};
+        let entry = |name: &str, git: Option<&str>| FolderEntry {
+            name: name.into(),
+            git: git.map(str::to_string),
+            has_children: false,
+        };
+        let mut entries = vec![
+            entry("fine", Some("main")),
+            entry("bell\x07and\x1b[31mred", Some("ref\nname")),
+            entry("a/b", None),
+            entry("", None),
+        ];
+        entries.extend((0..FOLDERS_MAX + 10).map(|n| entry(&format!("d{n}"), None)));
+        let listing = FolderListing {
+            path: "/home/me\x1b]0;title\x07".into(),
+            exists: true,
+            entries,
+            truncated: false,
+        };
+
+        let Some(ServerMsg::Reply(Reply::Folders { tag, listing })) = vet(
+            &nothing_on(),
+            true,
+            "box",
+            ServerMsg::Reply(Reply::Folders { tag: 3, listing }),
+        ) else {
+            panic!("a listing that was asked for is passed on");
+        };
+
+        assert_eq!(tag, 3);
+        assert!(listing.entries.len() <= FOLDERS_MAX);
+        assert!(!listing.path.contains(['\x1b', '\x07']));
+        for entry in &listing.entries {
+            assert!(!entry.name.is_empty());
+            assert!(!entry.name.contains(['/', '\\', '\x1b', '\x07', '\n']), "{:?}", entry.name);
+            assert!(entry.git.as_deref().is_none_or(|branch| !branch.contains('\n')));
+        }
+        assert_eq!(listing.entries[0].name, "fine");
+        assert!(listing.entries.iter().all(|entry| entry.name != "a/b"));
+    }
+
+    #[test]
+    fn a_folder_listing_nobody_asked_for_is_dropped() {
+        use maitty_shared::protocol::FolderListing;
+        let reply = ServerMsg::Reply(Reply::Folders {
+            tag: 1,
+            listing: FolderListing::missing("/x"),
+        });
+        assert!(vet(&nothing_on(), false, "box", reply).is_none());
+    }
 
     fn nothing_on() -> MachineOpts {
         MachineOpts::default()

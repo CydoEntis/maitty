@@ -13,6 +13,7 @@ mod check_stale;
 mod commands;
 mod contain;
 mod conversation;
+mod folders;
 mod git;
 mod helpers;
 mod identity;
@@ -199,6 +200,11 @@ pub enum Ev {
     SearchReady {
         client: ClientId,
         hits: Vec<crate::protocol::SearchHit>,
+    },
+    FoldersReady {
+        client: ClientId,
+        tag: u64,
+        listing: crate::protocol::FolderListing,
     },
     RepoReady {
         client: ClientId,
@@ -1904,6 +1910,11 @@ impl Daemon {
             Ev::SearchReady { client, hits } => {
                 self.send(client, ServerMsg::Reply(Reply::Search(hits)));
             }
+            Ev::FoldersReady {
+                client,
+                tag,
+                listing,
+            } => self.send(client, ServerMsg::Reply(Reply::Folders { tag, listing })),
             Ev::RepoReady {
                 client,
                 tag,
@@ -2419,6 +2430,29 @@ impl Daemon {
                     }
                     Query::UsageReport { period } => {
                         ServerMsg::Reply(Reply::UsageReport(self.usage_report(period)))
+                    }
+                    Query::ListFolders { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can list folders".into())
+                    }
+                    Query::ListFolders { path, tag } => {
+                        if path.len() > folders::PATH_MAX_BYTES {
+                            self.send(
+                                client,
+                                ServerMsg::Error("That path is too long to list".into()),
+                            );
+                            return;
+                        }
+                        let home = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf());
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let listing = folders::list(&path, home.as_deref());
+                            let _ = tx.blocking_send(Ev::FoldersReady { client, tag, listing });
+                        });
+                        return;
                     }
                     Query::PaneSearch { query } => {
                         let query = query.trim().to_string();

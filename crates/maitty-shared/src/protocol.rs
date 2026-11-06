@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 72;
+pub const PROTOCOL_VERSION: u32 = 73;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -580,6 +580,13 @@ pub enum Query {
     UsageReport {
         period: crate::usage_report::UsagePeriod,
     },
+    /// The folders inside `path` on this daemon's computer, for a client choosing where to start a
+    /// session (human clients only). `path` is absolute or starts with `~`. The answer echoes
+    /// `tag`, so a client typing a path can tell which of its questions this answers.
+    ListFolders {
+        path: String,
+        tag: u64,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
@@ -766,6 +773,46 @@ pub enum Reply {
     },
     Search(Vec<SearchHit>),
     UsageReport(crate::usage_report::UsageReport),
+    Folders {
+        tag: u64,
+        listing: FolderListing,
+    },
+}
+
+/// The most folders one listing carries; a folder with more says so in `truncated`.
+pub const FOLDERS_MAX: usize = 1000;
+
+/// What `Query::ListFolders` found: the folders directly inside a folder.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FolderListing {
+    /// The folder, absolute with `/` separators.
+    pub path: String,
+    /// False when there is no such folder or it cannot be read; `entries` is then empty.
+    pub exists: bool,
+    pub entries: Vec<FolderEntry>,
+    pub truncated: bool,
+}
+
+impl FolderListing {
+    /// A listing of a folder that is not there.
+    pub fn missing(path: &str) -> FolderListing {
+        FolderListing {
+            path: path.to_string(),
+            exists: false,
+            entries: Vec::new(),
+            truncated: false,
+        }
+    }
+}
+
+/// One folder inside a listed folder.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FolderEntry {
+    pub name: String,
+    /// The branch it is on when it is a git checkout (a short commit for a detached HEAD).
+    pub git: Option<String>,
+    /// Whether it holds a folder worth browsing into (hidden ones do not count).
+    pub has_children: bool,
 }
 
 /// One line of a pane's output that matched a search.
@@ -1647,6 +1694,19 @@ mod tests {
             },
             ServerMsg::Reply(Reply::Ok),
             ServerMsg::Reply(Reply::Text("screen".into())),
+            ServerMsg::Reply(Reply::Folders {
+                tag: 7,
+                listing: FolderListing {
+                    path: "/home/me/code".into(),
+                    exists: true,
+                    entries: vec![FolderEntry {
+                        name: "maitty".into(),
+                        git: Some("dev".into()),
+                        has_children: true,
+                    }],
+                    truncated: false,
+                },
+            }),
             ServerMsg::Reply(Reply::TerminalReplay(vec![27, b'[', b'H'])),
             ServerMsg::Error("nope".into()),
             ServerMsg::Notice("saved".into()),
@@ -1853,7 +1913,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 72);
+        assert_eq!(PROTOCOL_VERSION, 73);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
