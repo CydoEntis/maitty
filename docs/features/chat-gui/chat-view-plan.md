@@ -106,10 +106,7 @@ check for the view). Acceptance criteria are the bullets.
     with the spinner under the last item; sidebar rows in *working* get a slow
     shimmer (CSS only, off under reduce motion). Token counts come from the
     provider's usage events when present, else hidden.
-11. **CV-11 Line comments (§C.2 Changes).** **Done** except the structured send: the daemon takes text, so the comment is one formatted message (see UI.md); no staged/unstaged groups or ahead/behind (not in the daemon's diff). The panel's Changes segment for
-    this agent's worktree, the diff view, the per-line composer, the count
-    marker, the comment bubble in chat, delivered as a structured comment
-    `{file, line, text}` or queued while a step runs.
+11. **CV-11 Line comments (§C.2 Changes).** **Dropped** (owner decision, 2026-11-06): the session panel is gone (v18 D.6) and diff line comments are not coming back. Nothing in the app sends or draws them.
 12. **CV-12 Files and Artifacts segments (§C.2).** **Done** (touched files with kind; artifacts are created documents, reports, data and pictures by extension, previewed as text through `conversation_file`; pictures are not previewable).
 13. **CV-13 Claude parity check.** Confirm the Claude adapter delivers approvals
     with ids and turn boundaries the way Codex's does (the roadmap did Codex

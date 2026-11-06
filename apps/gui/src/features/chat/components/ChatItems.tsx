@@ -4,8 +4,6 @@ import { ElapsedSince } from '@/features/workspace/components/times'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import { dividerText, splitLead, type ChatRow } from '../chatRows'
 import { parseAttachmentMessage } from '../attachmentMessage'
-import { parseComment } from '../commentMessage'
-import { relativePath } from '../stepInfo'
 import { AgentsCard } from './AgentsCard'
 import { SentAttachments } from './Attachments'
 import { ApprovalCard, type ApprovalActions } from './ApprovalCard'
@@ -74,8 +72,7 @@ function sameProps(a: RowProps, b: RowProps): boolean {
 export const ChatItem = memo(function ChatItem({ row, agent, workingSince, approval, root, openDiff, goToStep }: RowProps) {
   switch (row.kind) {
     case 'user': {
-      const comment = parseComment(row.event.text)
-      const attached = comment === null ? parseAttachmentMessage(row.event.text) : null
+      const attached = parseAttachmentMessage(row.event.text)
       return (
         <div className={`${COLUMN} flex justify-end py-[7px]`}>
           {attached !== null ? (
@@ -83,14 +80,8 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
               {attached.text !== '' && <p className="m-0 rounded-[16px_16px_5px_16px] border border-line2 bg-raise px-3.5 py-2 text-[14px] leading-[1.55] whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">{attached.text}</p>}
               <SentAttachments files={attached.files} />
             </div>
-          ) : comment === null ? (
-            <p className="m-0 max-w-[85%] rounded-[16px_16px_5px_16px] border border-line2 bg-raise px-3.5 py-2 text-[14px] leading-[1.55] whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">{row.event.text}</p>
           ) : (
-            <div role="group" aria-label={`Comment on ${comment.file}:${String(comment.line)}`} className="max-w-[85%] rounded-[16px_16px_5px_16px] border border-line2 bg-raise px-3.5 py-2 text-[14px] leading-[1.55] text-fg [overflow-wrap:anywhere]">
-              <p className="m-0 text-[11.5px] font-semibold text-fg2">Comment on <code className="font-mono">{relativePath(comment.file, root)}:{comment.line}</code></p>
-              <pre className="my-1.5 overflow-x-auto rounded-lg border border-line2 bg-term px-2.5 py-1.5 font-mono text-[12px] leading-[1.5] whitespace-pre-wrap text-fg2">{comment.code === '' ? ' ' : comment.code}</pre>
-              <p className="m-0 whitespace-pre-wrap">{comment.text}</p>
-            </div>
+            <p className="m-0 max-w-[85%] rounded-[16px_16px_5px_16px] border border-line2 bg-raise px-3.5 py-2 text-[14px] leading-[1.55] whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">{row.event.text}</p>
           )}
         </div>
       )
