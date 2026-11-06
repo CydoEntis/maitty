@@ -5,6 +5,9 @@ import { errorMessage } from '@/lib/error-message'
 import type { PermissionAsk } from '@/data/preview'
 import type { AskChoice } from '../permissionAsk'
 
+/** The tool Claude asks a multiple-choice question with; it is a question to the person, not a request to act. */
+const QUESTION_TOOL = 'AskUserQuestion'
+
 type Props = {
   agent: string
   ask: PermissionAsk | null
@@ -32,7 +35,7 @@ export function PermissionAskCard({ agent, ask, online, answer }: Props) {
   return (
     <section aria-label={`${agent} needs your permission`} className="mx-4 mb-2 shrink-0 rounded-md border border-[var(--warn)] px-3 py-2.5 text-[13px]">
       <p className="m-0 font-semibold text-fg">
-        {ask === null ? `${agent} is waiting for you` : `${agent} wants to use ${ask.tool}`}
+        {ask === null ? `${agent} is waiting for you` : ask.tool === QUESTION_TOOL ? `${agent} has a question for you` : `${agent} wants to use ${ask.tool}`}
       </p>
       {ask !== null && ask.detail !== '' && (
         <pre className="m-0 mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[12px] text-fg2 [overflow-wrap:anywhere]">{ask.detail}</pre>

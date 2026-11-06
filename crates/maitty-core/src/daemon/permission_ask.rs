@@ -12,6 +12,10 @@ use maitty_shared::hidden;
 const MAX_ASK_TOOL_CHARS: usize = 64;
 pub(super) const MAX_ASK_DETAIL_CHARS: usize = 300;
 
+/// The tool Claude asks a multiple-choice question with. Its menu is not the allow-or-refuse menu,
+/// so the key that allows a tool there would pick the first choice for the person.
+const QUESTION_TOOL: &str = "AskUserQuestion";
+
 /// The agents whose permission prompt the daemon knows how to answer with a key.
 pub(super) fn knows_answer_keys(agent: &str) -> bool {
     agent == "claude"
@@ -32,10 +36,11 @@ pub(super) fn clean_ask(ask: PermissionAsk, agent: &str) -> Option<PermissionAsk
     // Mask first, so a secret cut in half by the length limit is not left half showing.
     let detail = mask_secrets(&hidden::sanitize(&ask.detail, false));
     let detail = detail.trim().chars().take(MAX_ASK_DETAIL_CHARS).collect();
+    let answerable = knows_answer_keys(agent) && tool != QUESTION_TOOL;
     Some(PermissionAsk {
         tool,
         detail,
-        answerable: knows_answer_keys(agent),
+        answerable,
     })
 }
 
@@ -69,6 +74,8 @@ mod tests {
         let codex = clean_ask(ask("Bash", "cargo test"), "codex").unwrap();
         assert!(!codex.answerable, "a hook cannot claim a key the daemon does not know");
         assert!(clean_ask(ask("  ", "x"), "claude").is_none());
+        let question = clean_ask(ask("AskUserQuestion", "Which? 1 A · 2 B"), "claude").unwrap();
+        assert!(!question.answerable, "the allow key would pick the first choice of a question");
     }
 
     #[test]

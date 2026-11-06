@@ -83,6 +83,16 @@ describe('the chat of an agent stopped on a permission prompt', () => {
     expect(typeInto).not.toHaveBeenCalled()
   })
 
+  it('shows a question with its choices as a question, with no allow button that would pick for you', async () => {
+    const { typeInto } = await open('Blocked', { tool: 'AskUserQuestion', detail: 'Which database? 1 SQLite · 2 Postgres', answerable: false })
+
+    expect(screen.getByText('claude has a question for you')).toBeInTheDocument()
+    expect(screen.getByText('Which database? 1 SQLite · 2 Postgres')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve once' })).not.toBeInTheDocument()
+    expect(screen.getByText('Answer in the terminal.')).toBeInTheDocument()
+    expect(typeInto).not.toHaveBeenCalled()
+  })
+
   it('still says the agent is waiting when its hook reported no question', async () => {
     await open('Blocked', null)
 

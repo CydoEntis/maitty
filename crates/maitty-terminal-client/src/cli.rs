@@ -2296,6 +2296,32 @@ fn call_fingerprint(agent: &str, event: &str, payload: &Value) -> Option<String>
 /// content a tool would write is never among them: it can hold secrets.
 const ASK_SUBJECT_FIELDS: &[&str] = &["command", "file_path", "path", "url", "pattern", "query"];
 
+/// The tool Claude uses to put a multiple-choice question to the person, not to ask leave to act.
+const QUESTION_TOOL: &str = "AskUserQuestion";
+
+/// A question Claude asks with its choices, on one line: `Which? 1 Fast · 2 Safe`. A tool input
+/// without a question gives an empty subject, like any tool with no subject field.
+fn question_subject(input: Option<&Value>) -> String {
+    let questions = input.and_then(|input| input.get("questions")).and_then(Value::as_array);
+    let parts: Vec<String> = questions
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let question = entry.get("question")?.as_str()?.trim();
+            let choices: Vec<String> = entry
+                .get("options")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .enumerate()
+                .filter_map(|(index, option)| Some(format!("{} {}", index + 1, option.get("label")?.as_str()?.trim())))
+                .collect();
+            Some(if choices.is_empty() { question.to_string() } else { format!("{question} {}", choices.join(" · ")) })
+        })
+        .collect();
+    one_line(&parts.join(" / "), 2000)
+}
+
 /// What a `PermissionRequest` hook says is being asked: the tool and a one-line subject.
 fn permission_ask(payload: &Value) -> Option<PermissionAsk> {
     let tool = payload.get("tool_name")?.as_str()?.trim();
@@ -2303,11 +2329,15 @@ fn permission_ask(payload: &Value) -> Option<PermissionAsk> {
         return None;
     }
     let input = payload.get("tool_input");
-    let detail = ASK_SUBJECT_FIELDS
-        .iter()
-        .find_map(|key| input?.get(*key)?.as_str().filter(|text| !text.trim().is_empty()))
-        .map(|text| one_line(text, 2000))
-        .unwrap_or_default();
+    let detail = if tool == QUESTION_TOOL {
+        question_subject(input)
+    } else {
+        ASK_SUBJECT_FIELDS
+            .iter()
+            .find_map(|key| input?.get(*key)?.as_str().filter(|text| !text.trim().is_empty()))
+            .map(|text| one_line(text, 2000))
+            .unwrap_or_default()
+    };
     Some(PermissionAsk {
         tool: tool.to_string(),
         detail,
@@ -4574,6 +4604,16 @@ mod tests {
         .expect("a Write request");
         assert_eq!((write.tool.as_str(), write.detail.as_str()), ("Write", "/work/x.txt"));
         assert!(!format!("{write:?}").contains("hunter2"));
+
+        // A question Claude puts to the person shows its text and numbered choices.
+        let question = report(json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "AskUserQuestion",
+            "tool_input": {"questions": [{"question": "Which database?", "header": "DB", "multiSelect": false,
+                "options": [{"label": "SQLite", "description": "file"}, {"label": "Postgres", "description": "server"}]}]},
+        }))
+        .expect("a question");
+        assert_eq!(question.detail, "Which database? 1 SQLite · 2 Postgres");
 
         // A tool with no subject field is still a question; one with no tool is not reported.
         let bare = report(json!({"hook_event_name": "PermissionRequest", "tool_name": "ExitPlanMode"}))
