@@ -215,10 +215,12 @@ fn handshake(stream: TcpStream, inner: &Arc<Inner>) -> Option<(Client, Receiver<
     socket.get_ref().set_write_timeout(None).ok()?;
     socket.get_ref().set_read_timeout(None).ok()?;
     let (queue, frames) = sync_channel(inner.queue_frames);
-    socket.send(Message::text(READY)).ok()?;
-    socket.flush().ok()?;
+    // Registered before `ready` is said, so a frame sent the moment the window believes the socket is up
+    // is queued behind `ready` instead of being turned away in the gap and sent down the channel.
     // A window that reloads takes the place of the one before it.
     *inner.sink.lock().ok()? = Some(queue);
+    socket.send(Message::text(READY)).ok()?;
+    socket.flush().ok()?;
     Some((socket, frames))
 }
 
