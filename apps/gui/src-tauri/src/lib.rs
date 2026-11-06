@@ -636,6 +636,7 @@ pub fn run() {
             default_session_folder,
             terminal_stream::terminal_history,
             terminal_stream::watch_terminal_output,
+            terminal_stream::list_folders,
             terminal_screen,
             terminal_replay,
             send_terminal_input,

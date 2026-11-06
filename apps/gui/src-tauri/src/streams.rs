@@ -14,7 +14,7 @@
 
 use maitty_machines::MachineId;
 use maitty_machines::remote_snapshot::sanitize_snapshot;
-use maitty_shared::protocol::{ServerMsg, Snapshot, TermId};
+use maitty_shared::protocol::{FolderListing, Reply, ServerMsg, Snapshot, TermId};
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 
@@ -68,6 +68,12 @@ pub enum Out {
     Clipboard { machine: MachineId, text: String },
     /// Ask the machine's daemon for the pane's replay.
     WantReplay { machine: MachineId, term: TermId },
+    /// A machine's answer to a question about a folder, already cleaned.
+    Folders {
+        machine: MachineId,
+        tag: u64,
+        listing: FolderListing,
+    },
 }
 
 #[derive(Default)]
@@ -143,6 +149,9 @@ impl Streams {
             }
             ServerMsg::Notice(text) if machine != MachineId::LOCAL => {
                 out.push(Out::Notice { machine, text });
+            }
+            ServerMsg::Reply(Reply::Folders { tag, listing }) => {
+                out.push(Out::Folders { machine, tag, listing });
             }
             ServerMsg::State(snapshot) => self.publish(machine, snapshot, &mut out),
             ServerMsg::TermsChanged { changed, removed } => {
