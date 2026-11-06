@@ -84,9 +84,15 @@ export function noChatReason(availability: Exclude<ChatAvailability, { kind: 're
     case 'remote':
       return `Chat view is local-only in v1: this session runs on ${availability.machineName}, so its conversation is not read from this computer. The terminal works as usual.`
     case 'no-events':
-      return `Waiting for this ${availability.agent} session to report in. The chat fills in once its first prompt is sent. If it stays empty, ${availability.agent}'s status hooks may be from another version: run "maitty integrate ${availability.agent}". The terminal works as usual.`
+      return `The chat fills in as soon as ${availability.agent} is ready. The terminal works as usual.`
   }
 }
+
+/** How long a new session may take to report in before the chat suggests its hooks are the problem. */
+export const NO_EVENTS_HINT_AFTER_MS = 10_000
+
+/** Shown once a session has stayed empty past `NO_EVENTS_HINT_AFTER_MS`: the usual cause is hooks from another version. */
+export const noEventsHint = (agent: ChatAgent): string => `Still nothing. ${agent}'s status hooks may be from another version: run "maitty integrate ${agent}".`
 
 /** What a session tells the chat view about itself, from the fields every session view carries. */
 export function chatSourceOf(session: { machineName: string | null; conversation: { agent?: string | null; chat?: ChatLink | undefined } }): ChatSource {

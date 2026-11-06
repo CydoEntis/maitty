@@ -1,6 +1,7 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { NO_EVENTS_HINT_AFTER_MS } from '@/features/workspace/model/chatView'
 import { ChatPane } from './ChatPane'
 
 vi.mock('./ChatSession', () => ({
@@ -60,5 +61,29 @@ describe('the chat of a ready session', () => {
   it('assumes a terminal unless told otherwise', () => {
     render(<ChatPane availability={ready} process="claude" online onBackToTerminal={noop} onStartAgent={noop} />)
     expect(screen.getByText('chat session, terminal: true')).toBeInTheDocument()
+  })
+})
+
+describe('the chat of a session that has just started', () => {
+  const starting = { kind: 'no-events', agent: 'claude' } as const
+
+  it('says it is starting, in a few quiet words, and keeps the hooks hint back at first', () => {
+    render(<ChatPane availability={starting} process="claude" online onBackToTerminal={noop} onStartAgent={noop} />)
+    expect(screen.getByRole('heading', { name: 'Starting claude…' })).toBeInTheDocument()
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+    expect(screen.queryByText(/maitty integrate/)).not.toBeInTheDocument()
+  })
+
+  it('suggests the hooks only when it is still empty after a while', () => {
+    vi.useFakeTimers()
+    try {
+      render(<ChatPane availability={starting} process="claude" online onBackToTerminal={noop} onStartAgent={noop} />)
+      act(() => { vi.advanceTimersByTime(NO_EVENTS_HINT_AFTER_MS - 1) })
+      expect(screen.queryByRole('note')).not.toBeInTheDocument()
+      act(() => { vi.advanceTimersByTime(1) })
+      expect(screen.getByRole('note')).toHaveTextContent('maitty integrate claude')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
