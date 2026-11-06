@@ -7057,6 +7057,49 @@ second line
     }
 
     #[test]
+    fn a_finish_right_after_a_needs_you_does_not_ring_a_second_time() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let others: Vec<TermId> = app
+            .snap
+            .terms
+            .keys()
+            .copied()
+            .filter(|t| *t != 1)
+            .take(2)
+            .collect();
+        let [asking, finishing] = others[..] else {
+            panic!("two sessions besides the one you are on")
+        };
+        let said = |app: &mut App, term: TermId, status: Status| {
+            app.snap.terms.get_mut(&term).unwrap().status = status;
+            app.on_server(crate::protocol::ServerMsg::Attention { term, status });
+            app.settling.get_mut(&ClientTerm::local(term)).unwrap().1 =
+                Instant::now() - Duration::from_millis(1);
+            app.settle_alerts();
+        };
+        said(&mut app, asking, Status::Blocked);
+        assert!(app.alerted.contains_key(&ClientTerm::local(asking)), "it rings");
+
+        said(&mut app, finishing, Status::Done);
+
+        assert!(
+            !app.alerted.contains_key(&ClientTerm::local(finishing)),
+            "a second sound inside the quiet spell is held back"
+        );
+        assert!(
+            app.notice
+                .as_ref()
+                .is_some_and(|(m, ..)| m.ends_with("finished")),
+            "the card still says it finished"
+        );
+        assert_eq!(
+            app.last_alert.map(|(kind, _)| kind),
+            Some(crate::alert::Kind::Needs),
+            "the last thing heard is still the needs-you"
+        );
+    }
+
+    #[test]
     fn finished_is_only_said_once_it_has_stayed_finished() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let attention = |app: &mut App, term: TermId, status: Status| {

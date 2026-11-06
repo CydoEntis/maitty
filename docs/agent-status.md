@@ -159,6 +159,13 @@ asks nothing, so there is nothing to time). The prompt text itself was never see
 for the auto-approved cases, and is drawn in pieces for the person case, so the hooks are the
 only timing source here.
 
+**Sounds.** A window rings at most once per `ANY_AGAIN_AFTER` (4 s), whichever kind it was: a
+needs-you (two notes) followed by a finish inside that spell is held back, so a burst never
+reads as three dings. The same agent saying the same thing again within `SAME_AGAIN_AFTER`
+(120 s) stays quiet too. The card and toast still say what happened; only the sound waits. The
+spell is kept per window: a daemon with no window open rings for itself, and two windows on one
+daemon each keep their own. `maitty test-alert` plays both sounds.
+
 Not yet verified, so Maitty does not claim exact Herdr parity:
 
 - every identity against real process entry points, including npm and native

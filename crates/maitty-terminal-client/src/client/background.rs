@@ -407,9 +407,9 @@ impl App {
             && crate::alert::should_alert(
                 &status,
                 self.alerted.get(&term).map(|(s, at)| (s, *at)),
-                self.last_alert
-                    .filter(|(previous, _)| *previous == kind)
-                    .map(|(_, at)| at),
+                // Any sound starts the quiet spell, whichever kind it was: a "needs you" and a
+                // "finished" a moment apart would be three notes, which reads as noise.
+                self.last_alert.map(|(_, at)| at),
                 now,
             )
         {
