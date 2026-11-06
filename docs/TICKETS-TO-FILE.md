@@ -809,8 +809,11 @@ are kept under its name, so a rename has to move both.
 ## 33. A click on a project row moves the keys into the sidebar (change, `client`)
 
 #275 made a click on a session row open it and leave the keys in its pane, as a click on a tab row
-does. A click on a project row still folds it and gives the sidebar the keys
+does. A click on a project row folded it and gave the sidebar the keys
 (`ScreenHit::ToggleProj` in `screen/behaviour.rs`). The owner has not said which they want.
+**Built (2026-11-06, simplest reading):** the click only folds, so the three kinds of row agree;
+the keyboard still reaches a project row through the sidebar. Revert is one line if the owner
+wants the old behaviour.
 
 ## 34. Choose the alert sounds (feature, `client`)
 

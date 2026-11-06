@@ -3939,9 +3939,23 @@ mod screen_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
         draw(&mut app, 160, 45);
-        // Clicking a project puts the keys in the sidebar, on that project.
+        // Clicking a project folds it and leaves the keys where they were.
+        app.mode = Mode::Normal;
+        let mode_before = std::mem::discriminant(&app.mode);
         app.on_hy_hit(screen::ScreenHit::ToggleProj(0), false);
+        assert!(
+            app.screen.saved.closed.iter().any(|k| k.starts_with("p:")),
+            "the click folded it"
+        );
+        assert_eq!(
+            std::mem::discriminant(&app.mode),
+            mode_before,
+            "the click did not move the keys"
+        );
         app.on_hy_hit(screen::ScreenHit::ToggleProj(0), false);
+        // The sidebar's own keys start from the project row.
+        let proj = app.screen.proj_keys[0].clone();
+        app.screen_side_set(screen::SideItem::Proj(proj));
         assert!(
             matches!(app.mode, Mode::Side) && app.screen.cursor_proj.is_some(),
             "on the project row"
