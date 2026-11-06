@@ -504,10 +504,10 @@ fn sidebar_text(app: &mut App) -> String {
 fn this_computer_is_local_and_has_no_machine_header() {
     let mut app = world(Stage::None);
     let side = sidebar_text(&mut app);
-    assert!(side.contains(" LOCAL "), "{side}");
+    assert!(side.contains(" ▾ LOCAL "), "{side}");
     assert!(!side.contains("SESSIONS"), "{side}");
     assert!(
-        side.contains('▾') && side.contains("pixls"),
+        side.lines().any(|r| r.contains('▾') && r.contains("pixls")),
         "its projects fold: {side}"
     );
     assert!(!side.contains("⇄"), "no machine header in Local: {side}");
@@ -518,7 +518,7 @@ fn with_no_other_machine_remote_says_so_and_offers_to_add_one() {
     let mut app = world(Stage::None);
     let side = sidebar_text(&mut app);
     assert!(
-        side.contains("├─ REMOTE "),
+        side.contains("├─ ▾ REMOTE "),
         "the rule joins the card's sides: {side}"
     );
     assert!(side.contains("no remote machines"), "{side}");
@@ -545,7 +545,118 @@ fn a_connected_machine_is_a_header_with_its_projects_under_remote() {
         side[header..].contains('▾') && side[header..].contains("api"),
         "its projects sit under it: {side}"
     );
-    assert!(side.find('▾').is_some_and(|i| i < remote), "{side}");
+    assert!(
+        side.lines()
+            .take_while(|r| !r.contains("REMOTE"))
+            .any(|r| r.contains('▾') && !r.contains("LOCAL")),
+        "a local project is above the rule: {side}"
+    );
+}
+
+/// The sidebar's columns on a screen tall enough to show both halves.
+fn tall_sidebar(app: &mut App) -> String {
+    raw_text(app, Layout::Floating, 160, 45, "unicode")
+        .lines()
+        .map(|l| l.chars().take(34).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn title_hit(app: &App, remote: bool) -> Option<Rect> {
+    app.hits
+        .iter()
+        .find(|(_, h)| *h == crate::client::Hit::Screen(ScreenHit::ToggleRegion(remote)))
+        .map(|(r, _)| *r)
+}
+
+#[test]
+fn folding_remote_leaves_its_title_and_says_what_needs_you() {
+    let mut app = two_machines(ConnectionState::Connected);
+    let open = tall_sidebar(&mut app);
+    assert!(
+        open.contains("▾ REMOTE 1") && open.contains("⇄ build"),
+        "{open}"
+    );
+    assert!(
+        title_hit(&app, true).is_some(),
+        "the title is a click target"
+    );
+
+    app.toggle_region(true);
+    let folded = tall_sidebar(&mut app);
+
+    let mark = crate::client::screen::check::marks(&app).needs;
+    assert!(
+        folded.contains(&format!("▸ REMOTE 1 {mark}1")),
+        "the title shows the count, even where the words do not fit: {folded}"
+    );
+    assert!(
+        !folded.contains("⇄ build") && !folded.contains("api"),
+        "its rows are gone: {folded}"
+    );
+    assert!(
+        folded.contains("pixls"),
+        "Local is untouched and has the room: {folded}"
+    );
+
+    app.toggle_region(true);
+    let again = tall_sidebar(&mut app);
+    assert!(
+        again.contains("▾ REMOTE 1") && again.contains("⇄ build"),
+        "{again}"
+    );
+}
+
+#[test]
+fn a_folded_title_says_it_in_words_when_the_sidebar_is_wide_enough() {
+    let mut app = two_machines(ConnectionState::Connected);
+    app.screen.saved.side_w = Some(50);
+    app.toggle_region(true);
+    let side = raw_text(&mut app, Layout::Floating, 160, 45, "unicode");
+    assert!(side.contains("▸ REMOTE 1 · 1 need you"), "{side}");
+}
+
+#[test]
+fn folding_local_gives_its_rows_to_remote_and_keeps_its_title() {
+    let mut app = two_machines(ConnectionState::Connected);
+    app.toggle_region(false);
+    let side = tall_sidebar(&mut app);
+
+    assert!(side.contains("▸ LOCAL"), "{side}");
+    assert!(
+        !side.contains("pixls"),
+        "its projects are folded away: {side}"
+    );
+    assert!(
+        side.contains("⇄ build") && side.contains("api"),
+        "Remote is still shown: {side}"
+    );
+    assert!(
+        title_hit(&app, false).is_some(),
+        "Local's title still unfolds it"
+    );
+}
+
+#[test]
+fn a_fold_is_kept_with_the_folded_projects() {
+    let mut app = two_machines(ConnectionState::Connected);
+    app.toggle_region(true);
+    assert!(app.screen.saved.closed.iter().any(|c| c == "r:remote"));
+    app.toggle_region(true);
+    assert!(app.screen.saved.closed.iter().all(|c| c != "r:remote"));
+}
+
+#[test]
+fn folding_both_halves_leaves_two_titles_and_no_rows() {
+    let mut app = two_machines(ConnectionState::Connected);
+    app.toggle_region(false);
+    app.toggle_region(true);
+    let side = tall_sidebar(&mut app);
+    assert!(
+        side.contains("▸ LOCAL") && side.contains("▸ REMOTE 1"),
+        "{side}"
+    );
+    assert!(!side.contains("pixls") && !side.contains("api"), "{side}");
 }
 
 #[test]
@@ -669,12 +780,10 @@ fn a_project_has_a_line_down_its_contents_and_a_rule_divides_it_from_the_next() 
     let mut app = world(Stage::None);
     let side = sidebar_text(&mut app);
     let rows: Vec<&str> = side.lines().collect();
-    let first = rows
-        .iter()
-        .position(|r| r.contains('▾'))
-        .expect("a project");
+    let is_project = |r: &&str| r.contains('▾') && !r.contains("LOCAL") && !r.contains("REMOTE");
+    let first = rows.iter().position(is_project).expect("a project");
     assert!(
-        rows[first + 1].chars().nth(2) == Some('▏'),
+        rows[first + 1].chars().nth(2) == Some('▎'),
         "a line starts under the project row: {side}"
     );
     let divider = rows
@@ -683,9 +792,7 @@ fn a_project_has_a_line_down_its_contents_and_a_rule_divides_it_from_the_next() 
         .position(|r| r.chars().filter(|c| *c == '─').count() > 8 && !r.contains("REMOTE"))
         .expect("a rule between two projects");
     assert!(
-        rows.iter()
-            .skip(first + 1 + divider + 1)
-            .any(|r| r.contains('▾')),
+        rows.iter().skip(first + 1 + divider + 1).any(is_project),
         "the rule has a project after it: {side}"
     );
 }

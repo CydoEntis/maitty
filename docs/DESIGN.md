@@ -96,7 +96,7 @@ A session is a **card** of two rows:
 2. what it is doing in `muted` (a check result, a plan-limit wait, `2 agents`), or in amber when it
    asks something.
 
-Its other tabs follow it, one row each (`○ shell  2`), in line with it; a thin `muted` line down the left of the session and its tabs groups them: the tab's state glyph
+Its other tabs follow it, one row each (`○ shell  2`), in line with it; a `muted` `▎` line down the left of the session and its tabs, as thick as the selection bar, groups them: the tab's state glyph
 before the name and its number at the right, so only the tab doing the work shows the working mark; the tab on screen is lit as the selected card is and one that needs
 you is in amber. One highlight serves a session, a tab and a project: the same cells and the same ends, for the selection and for the pointer. It runs from the left edge, with the accent bar there, and only its right end is rounded. A blank row follows each project, and one separates the Remote rule from the first machine. The selected card is a neutral tint on both rows
 with an accent `▎` bar. A machine whose line is not up, or that has no sessions, is its header and

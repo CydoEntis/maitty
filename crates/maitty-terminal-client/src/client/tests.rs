@@ -793,10 +793,10 @@ mod screen_tests {
         )));
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = terminal.backend().buffer();
-        assert_ne!(
-            buf[(x + 2, active_y)].symbol(),
-            "▎",
-            "while the keyboard browses, only its row has a bar"
+        assert!(
+            !(buf[(x + 2, active_y)].symbol() == "▎"
+                && buf[(x + 2, active_y)].fg == app.theme.accent),
+            "while the keyboard browses, only its row has an accent bar"
         );
         assert_eq!(
             (buf[(x + 2, hover_y)].symbol(), buf[(x + 2, hover_y)].fg),
@@ -1641,8 +1641,8 @@ mod screen_tests {
         show(&o);
         for item in [
             "Rename pane",
-            "Split side by side",
-            "Split stacked",
+            "Split horizontally",
+            "Split vertically",
             "Send right-clicks to pane",
             "Close pane",
         ] {
@@ -2692,7 +2692,7 @@ mod screen_tests {
         for row in [own, two, three] {
             assert_eq!(
                 buf[(side.x + 3, y(row))].symbol(),
-                "▏",
+                "▎",
                 "one line down the left of the session and its tabs: {}",
                 rows[row]
             );
@@ -2706,7 +2706,7 @@ mod screen_tests {
         for row in [two, three] {
             assert_eq!(
                 buf[(side.x + 2, y(row))].symbol(),
-                "▏",
+                "▎",
                 "and the project's line outside it: {}",
                 rows[row]
             );
@@ -2717,7 +2717,7 @@ mod screen_tests {
             .expect("the project's row");
         assert_ne!(
             buf[(side.x + 2, y(project))].symbol(),
-            "▏",
+            "▎",
             "the lines start under the project row"
         );
     }
@@ -3086,7 +3086,7 @@ mod screen_tests {
         );
         for (label, key) in [
             ("Close pane", "Alt + x"),
-            ("Split stacked", "Alt + d"),
+            ("Split vertically", "Alt + d"),
             ("Go to tab 1–9", "Alt + 1–9"),
         ] {
             assert!(
@@ -7063,6 +7063,49 @@ second line
     }
 
     #[test]
+    fn a_finish_right_after_a_needs_you_does_not_ring_a_second_time() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let others: Vec<TermId> = app
+            .snap
+            .terms
+            .keys()
+            .copied()
+            .filter(|t| *t != 1)
+            .take(2)
+            .collect();
+        let [asking, finishing] = others[..] else {
+            panic!("two sessions besides the one you are on")
+        };
+        let said = |app: &mut App, term: TermId, status: Status| {
+            app.snap.terms.get_mut(&term).unwrap().status = status;
+            app.on_server(crate::protocol::ServerMsg::Attention { term, status });
+            app.settling.get_mut(&ClientTerm::local(term)).unwrap().1 =
+                Instant::now() - Duration::from_millis(1);
+            app.settle_alerts();
+        };
+        said(&mut app, asking, Status::Blocked);
+        assert!(app.alerted.contains_key(&ClientTerm::local(asking)), "it rings");
+
+        said(&mut app, finishing, Status::Done);
+
+        assert!(
+            !app.alerted.contains_key(&ClientTerm::local(finishing)),
+            "a second sound inside the quiet spell is held back"
+        );
+        assert!(
+            app.notice
+                .as_ref()
+                .is_some_and(|(m, ..)| m.ends_with("finished")),
+            "the card still says it finished"
+        );
+        assert_eq!(
+            app.last_alert.map(|(kind, _)| kind),
+            Some(crate::alert::Kind::Needs),
+            "the last thing heard is still the needs-you"
+        );
+    }
+
+    #[test]
     fn finished_is_only_said_once_it_has_stayed_finished() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let attention = |app: &mut App, term: TermId, status: Status| {
@@ -7717,8 +7760,8 @@ second line
         show(&o);
         assert!(
             o.contains(" matches")
-                && o.contains("Split side by side")
-                && o.contains("Split stacked")
+                && o.contains("Split horizontally")
+                && o.contains("Split vertically")
                 && o.contains("Panes")
                 && !o.contains("Settings"),
             "typing narrows it, each with its group"
@@ -11577,7 +11620,7 @@ mod check_row_tests {
                 for line in [y, y + 1] {
                     let cell = &buf[(bar_x, line)];
                     assert_eq!(
-                        cell.symbol() == EDGE_BAR,
+                        cell.symbol() == EDGE_BAR && cell.fg == app.theme.accent,
                         picked,
                         "{} {:?} line {line}: {:?}",
                         label(layout, w, h),

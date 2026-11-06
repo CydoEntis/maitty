@@ -617,6 +617,17 @@ impl App {
         }
     }
 
+    /// Fold or unfold the Local or the Remote half of the sidebar, remembered like a folded project.
+    pub(in crate::client) fn toggle_region(&mut self, remote: bool) {
+        let key = super::side::region_key(remote);
+        if super::side::region_folded(self, remote) {
+            self.screen.saved.closed.retain(|c| c != key);
+        } else {
+            self.screen.saved.closed.push(key.to_string());
+        }
+        self.screen.save();
+    }
+
     pub(in crate::client) fn screen_fold(&mut self, key: &str, open: Option<bool>) {
         let k = format!("p:{key}");
         let is_open = !self.screen.saved.closed.contains(&k);
@@ -1863,6 +1874,7 @@ impl App {
                 self.ask_restart();
             }
             ScreenHit::AddMachine => self.open_machines(),
+            ScreenHit::ToggleRegion(remote) => self.toggle_region(remote),
             ScreenHit::TidyRow(i) => self.tidy_click(i),
             ScreenHit::TidyGo => {
                 if let Mode::Tidy(v) = std::mem::replace(&mut self.mode, Mode::Normal) {

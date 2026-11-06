@@ -314,11 +314,11 @@ impl App {
         let mut items = vec![
             ("Rename pane".to_string(), Act::RenamePane(term)),
             (
-                "Split side by side".to_string(),
+                "Split horizontally".to_string(),
                 Act::Split(term, crate::layout::Dir::Right),
             ),
             (
-                "Split stacked".to_string(),
+                "Split vertically".to_string(),
                 Act::Split(term, crate::layout::Dir::Down),
             ),
         ];
@@ -686,6 +686,24 @@ impl App {
                 Some(c) => Some(c),
                 None => return,
             },
+            Act::RemoveMachine(name) => Some(Confirm {
+                title: "Remove machine".into(),
+                sub: String::new(),
+                what: name.clone(),
+                detail: self
+                    .cfg
+                    .machines
+                    .iter()
+                    .find(|m| m.name == *name)
+                    .map(|m| m.target.clone())
+                    .unwrap_or_default(),
+                note: "It's taken off this list. Its sessions keep running on it, and you can add it again.".into(),
+                list: Vec::new(),
+                yes: "Remove".into(),
+                key: '\n',
+                danger: true,
+                act: a.clone(),
+            }),
             Act::CloseProject(pi) => model.get(*pi).map(|p| {
                 let n = p.sessions().count();
                 Confirm {

@@ -9,8 +9,11 @@ import { buildRows, type ChatRow } from '../chatRows'
 import { useChatFeed } from '../useChatFeed'
 import { useChatComposer } from '../useChatComposer'
 import type { ApprovalDecision } from '../chatEvents'
+import type { PermissionAsk } from '@/data/preview'
+import { ANSWER_KEYS, type AskChoice } from '../permissionAsk'
 import { Composer } from './Composer'
 import { ChatItem } from './ChatItems'
+import { PermissionAskCard } from './PermissionAskCard'
 import { VirtualList } from './VirtualList'
 
 /** A row not yet measured is drawn as if it were this tall, which a message or a card usually is. */
@@ -39,7 +42,7 @@ function incompleteReason(completeness: ChatFeed['completeness']): string | null
 
 /** What a screen reader hears when the conversation changes state: one short line per change, never the text. */
 function announcement(feed: ChatFeed, agent: ChatAgent): string {
-  if (hasPendingApproval(feed)) return `${agent} is waiting for your answer`
+  if (hasPendingApproval(feed) || feed.status === 'Blocked') return `${agent} is waiting for your answer`
   if (feed.status === 'Working') return `${agent} is working`
   if (feed.status === 'Done') return `${agent} finished`
   return ''
@@ -60,16 +63,22 @@ type Props = {
   onOpenDiff?: ((file: string) => void) | null
   /** Types into the terminal the agent runs in, for a chat that follows it (ADR 0003). */
   typeInto?: ((text: string) => Promise<void>) | undefined
+  /** The permission prompt the agent's hook says its terminal is stopped on, for a chat that follows it. */
+  ask?: PermissionAsk | null
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null, typeInto }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, root = null, onOpenDiff = null, typeInto, ask = null }: Props) {
   const { feed, events, offline, refresh, recordAnswer } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const working = feed.status === 'Working'
   const rows = useMemo(() => buildRows(events, working, root), [events, working, root])
   const workingSince = working ? runningTurnStartedAt(feed) : null
   const incomplete = incompleteReason(feed.completeness)
-  const composer = useChatComposer({ link, feed, online, refresh, ...(typeInto ? { typeInto } : {}) })
+  // The transcript has no entry for a terminal agent's prompt until it is answered, so the chat shows it from the hook's report.
+  const stoppedOnPrompt = link.readOnly === true && feed.status === 'Blocked'
+  const answersPrompt = stoppedOnPrompt && typeInto !== undefined && ask?.answerable === true
+  const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
+  const composer = useChatComposer({ link, feed, online, refresh, answersPrompt, ...(typeInto ? { typeInto } : {}) })
   // The daemon does not report how a session was started, so the window remembers the sessions it started with full access.
   const fullAccess = useMemo(() => readConversationPermissions()[String(link.conversation)] === 'full-access', [link.conversation])
 
@@ -120,6 +129,7 @@ export function ChatSession({ link, agent, online, hasTerminal = true, root = nu
       ) : (
         <p className="m-0 flex flex-1 items-center justify-center px-6 text-center text-[13px] text-dim">Reading the conversation…</p>
       )}
+      {stoppedOnPrompt && <PermissionAskCard agent={agent} ask={ask} online={online} answer={answerPrompt} />}
       <Composer agent={agent} composer={composer} />
     </div>
   )

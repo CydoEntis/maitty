@@ -80,6 +80,7 @@ import type { TerminalHandle } from '@/features/terminal/handle'
 import type { LookAt } from '@/features/inspect/FilesTab'
 import { PaneCard } from './components/PaneCard'
 import { ChatPane } from '@/features/chat/components/ChatPane'
+import { ANSWER_KEYS } from '@/features/chat/permissionAsk'
 import { NoTerminalNote } from '@/features/chat/components/NoTerminalNote'
 import { rememberConversationPermissions } from '@/data/conversationPermissions'
 import { reserveOperation } from '@/features/chat/sendOperation'
@@ -1425,7 +1426,9 @@ export function DesktopApp() {
       return
     }
     // The answer is typed into the session's own prompt; the GUI never decides for it.
-    void sendTo(target, answer)
+    // Claude Code's permission menu numbers its choices and ignores a bare `y`; only that key is verified.
+    const keys = target.process === 'claude' && answer === 'y' ? ANSWER_KEYS.approve : answer
+    void sendTo(target, keys)
       .then(() => { flash(`Sent “${answer}” to ${displayName(target)}`) })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not answer the session')) })
   }, [sessionMap, sendTo, flash])
@@ -1768,6 +1771,7 @@ export function DesktopApp() {
                                   root={session.repoRoot ?? session.cwd}
                                   onOpenDiff={showChanges}
                                   {...(chatOnly ? {} : { typeInto: (text: string) => sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, text) })}
+                                  ask={session.ask}
                                   process={session.process}
                                   online={online}
                                   onBackToTerminal={() => { paneViews.choose(session.id, 'terminal') }}

@@ -460,13 +460,13 @@ fn press(app: &mut App, code: KeyCode, mods: KeyModifiers) {
 fn the_pane_menu_shows_the_real_bound_keys() {
     let mut app = split_world("floating", 2);
     let rows = pane_menu(&mut app);
-    assert_eq!(key_of(&app, "Split side by side"), "h");
-    assert_eq!(key_of(&app, "Split stacked"), "v");
+    assert_eq!(key_of(&app, "Split horizontally"), "h");
+    assert_eq!(key_of(&app, "Split vertically"), "v");
     assert_eq!(key_of(&app, "Close pane"), "x");
     assert_eq!(key_of(&app, "Move pane right"), "Alt+→");
     let split = rows
         .iter()
-        .find(|r| r.contains("Split side by side"))
+        .find(|r| r.contains("Split horizontally"))
         .expect("drawn");
     assert!(!split.contains(" h "), "the key isn't drawn: {split}");
     let rename = key_of(&app, "Rename pane");
@@ -511,7 +511,7 @@ fn a_bound_key_the_menu_moves_with_gives_way_to_a_letter() {
     app.keymap.prefixed_order.retain(|k| *k != j);
     app.keymap.prefixed_order.push(j);
     pane_menu(&mut app);
-    let key = key_of(&app, "Split side by side");
+    let key = key_of(&app, "Split horizontally");
     assert!(
         key.len() == 1 && key != "j",
         "j moves in the menu, so the item takes a letter: {key}"
@@ -529,7 +529,7 @@ fn a_bound_key_the_menu_moves_with_gives_way_to_a_letter() {
     let i = m
         .items
         .iter()
-        .position(|(l, _)| l == "Split side by side")
+        .position(|(l, _)| l == "Split horizontally")
         .expect("the item");
     assert_eq!(
         keys[i].map(String::from),

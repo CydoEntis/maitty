@@ -1644,6 +1644,8 @@ pub(super) enum ScreenHit {
     Restart,
     /// The sidebar's Remote half, empty: open the Machines dialog to add one.
     AddMachine,
+    /// A click on the Local (`false`) or Remote (`true`) title: fold or unfold that half.
+    ToggleRegion(bool),
     NewShell,
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
     TidyRow(usize),
