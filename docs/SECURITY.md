@@ -166,8 +166,12 @@ A structured conversation's provider (Codex app-server, Claude) is a process the
 started in its own process group (a job object on Windows). `kill-server` stops every provider's
 process tree before the daemon exits and waits up to five seconds for each to be stopped. If the
 daemon dies without that, a provider dies with it on Windows (the job closes). On Linux and macOS
-it and the processes it started keep running: the parent-death signal that ends a check cannot
-be used, because a provider is started from a thread that does not live as long as the daemon.
+it and the processes it started keep running until the next daemon starts: the parent-death signal
+that ends a check cannot be used, because a provider is started from a thread that does not live as
+long as the daemon. Each provider's process group is recorded in `<socket id>.providers`, and a
+daemon that holds the socket stops every recorded group that still has processes before it restores
+anything. A group whose leader's start time differs from the recorded one is left alone, so an id
+that has been given to another process is never signalled; ids 0 and 1 and negatives never are.
 
 An agent can start helpers only if you say so. Who is asking is proven the way status reports are
 (the pane's `MAITTY_PANE_TOKEN` on the connection); the answer is `AnswerHelpers`, which the daemon
