@@ -49,6 +49,9 @@ fn row_of(t: &TermInfo, me: Option<TermId>) -> Value {
     if let Some(at) = t.quiet_since.filter(|_| t.status == Status::Working) {
         row["quiet_since"] = json!(at);
     }
+    if let Some(n) = t.repeats.filter(|_| t.status == Status::Working) {
+        row["repeats"] = json!(n);
+    }
     if Some(t.id) == me {
         row["you"] = json!(true);
     }
@@ -414,11 +417,12 @@ impl Server {
         .map_err(|e| format!("{e:#}"))?
         {
             cli::Waited::Matched(l) => Ok(format!("matched: {l}")),
-            cli::Waited::TimedOut { quiet: Some(at) } => Err(format!(
-                "still working, but quiet for {} (waited {secs}s)",
-                cli::quiet_for(at)
-            )),
-            cli::Waited::TimedOut { quiet: None } => Err(format!("still going after {secs}s")),
+            cli::Waited::TimedOut { quiet, repeats } => Err(
+                match cli::still_working_note(quiet, repeats) {
+                    Some(note) => format!("{note} (waited {secs}s)"),
+                    None => format!("still going after {secs}s"),
+                },
+            ),
             cli::Waited::Turn(s, said, check) => {
                 let reply = if said.trim().is_empty() {
                     let screen = self.screen_on(at, term)?;
@@ -1027,6 +1031,22 @@ mod tests {
         );
         t.quiet_since = Some(1_000);
         assert_eq!(row_of(&t, None)["quiet_since"], 1_000);
+    }
+
+    #[test]
+    fn the_list_gives_a_repeating_working_agent_its_repeats() {
+        let mut t: TermInfo = serde_json::from_value(json!({
+            "id": 4, "cols": 80, "rows": 24, "title": "", "process": "node", "agent": "claude",
+            "status": "Working", "cwd": "/code", "summary": "", "name": "", "model": "", "said": "",
+            "branch": null, "linked": false, "subagents": [], "root": null, "top": null,
+            "since": 0, "asleep": false, "win32_input": false,
+        }))
+        .unwrap();
+        assert!(row_of(&t, None).get("repeats").is_none(), "not repeating, no key");
+        t.repeats = Some(6);
+        assert_eq!(row_of(&t, None)["repeats"], 6);
+        t.status = Status::Done;
+        assert!(row_of(&t, None).get("repeats").is_none(), "only a working agent repeats");
     }
 
     /// Two plain folders side by side: `mine` (with one reference) and `other`.

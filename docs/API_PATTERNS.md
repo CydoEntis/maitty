@@ -377,6 +377,10 @@ the notice `<place>: approve check: <command>` once a turn; it is never a finish
 A working agent the daemon marks quiet (`TermInfo::quiet_since`) reads `[claude: working · quiet
 12m]` in `maitty ls`; `ls --json` and `maitty_list` add `quiet_since` (unix seconds) only then. A
 `maitty wait` or `maitty_wait` that times out on one says `still working, but quiet for 12m`.
+A working agent the daemon marks repeating (`TermInfo::repeats`, the calls the repeat has reached)
+reads `[claude: working · repeating 6x]` in `maitty ls`; `ls --json` and `maitty_list` add `repeats`
+only then; and a wait that times out on one says `still working, but repeating itself (6x)`. A quiet
+agent says so first. The count is a hint, never a status: nothing waits on it or rings for it.
 
 `maitty ls`, `maitty ls --json` and MCP `maitty_list` report a check next to the status, never in
 place of it: `status` keeps its value (`done`) and `TermInfo::reported_check` decides whether a

@@ -1428,8 +1428,8 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
         return muted(&format!("⏸ resumes in {}", until(at)));
     }
     match s.status {
-        // The spinner and the name's colour already say working: only its helpers and a quiet
-        // spell are left to say.
+        // The spinner and the name's colour already say working: only its helpers, a quiet
+        // spell and a repeat are left to say.
         Status::Working => {
             let mut words: Vec<Seg> = Vec::new();
             // Only an agent that reports helpers has a count (Codex reports none).
@@ -1445,6 +1445,13 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
                 let sep = if words.is_empty() { "" } else { " · " };
                 words.push(seg(
                     format!("{sep}quiet {}", age(at)),
+                    Style::default().fg(t.muted),
+                ));
+            }
+            if let Some(n) = s.repeats {
+                let sep = if words.is_empty() { "" } else { " · " };
+                words.push(seg(
+                    format!("{sep}repeating {n}x"),
                     Style::default().fg(t.muted),
                 ));
             }
@@ -2192,6 +2199,41 @@ mod v8_tests {
             has(&rows, "quiet 12m") && !has(&rows, "working"),
             "the quiet spell, not the state: {rows:#?}"
         );
+    }
+
+    #[test]
+    fn a_repeating_agent_says_how_many_calls_on_its_row() {
+        let mut app = world(Stage::None);
+        let before = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(!before.iter().any(|r| r.contains("repeating")), "{before:#?}");
+        app.snap.terms.get_mut(&2).unwrap().repeats = Some(6);
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(
+            has(&rows, "repeating 6x") && !has(&rows, "working"),
+            "the repeat, not the state: {rows:#?}"
+        );
+        let narrow = side_rows(&mut app, Layout::Floating, 80, 24);
+        assert!(has(&narrow, "repeating 6x"), "at 80x24: {narrow:#?}");
+    }
+
+    #[test]
+    fn a_repeating_agent_with_helpers_or_a_quiet_spell_keeps_both_words() {
+        let mut app = world(Stage::None);
+        let t = app.snap.terms.get_mut(&2).unwrap();
+        t.repeats = Some(9);
+        t.quiet_since = Some(crate::client::screen::now_secs() - 12 * 60);
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(has(&rows, "quiet 12m · repeating 9x"), "{rows:#?}");
+    }
+
+    #[test]
+    fn only_a_working_agent_shows_a_repeat() {
+        let mut app = world(Stage::None);
+        let t = app.snap.terms.get_mut(&2).unwrap();
+        t.repeats = Some(6);
+        t.status = Status::Done;
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(!has(&rows, "repeating"), "{rows:#?}");
     }
 
     #[test]

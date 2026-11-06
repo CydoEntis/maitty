@@ -519,6 +519,8 @@ pub(super) struct Session {
     pub since: u64,
     /// Working with no output or report since then (unix seconds): it may be stuck.
     pub quiet_since: Option<u64>,
+    /// Working, and its last calls repeat: how many calls the repeat has reached.
+    pub repeats: Option<u32>,
     /// You marked this quiet spell seen in the Inbox.
     pub quiet_seen: bool,
     pub question: Option<String>,
@@ -1023,6 +1025,7 @@ impl App {
                     status: t.status,
                     since: t.since,
                     quiet_since: t.quiet_since,
+                    repeats: t.repeats,
                     quiet_seen: t
                         .quiet_since
                         .is_some_and(|at| self.screen.quiet_seen.get(&term) == Some(&at)),
@@ -1114,6 +1117,7 @@ impl App {
                 status: c.status,
                 since: now_secs(),
                 quiet_since: None,
+                repeats: None,
                 quiet_seen: false,
                 question: None,
                 is_agent: true,

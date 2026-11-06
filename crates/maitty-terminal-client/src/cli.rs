@@ -525,8 +525,12 @@ pub enum Waited {
     Turn(Status, String, Option<Box<CheckInfo>>),
     /// The regex matched this line.
     Matched(String),
-    /// Out of time; `quiet` when the session was working but silent, since then (unix seconds).
-    TimedOut { quiet: Option<u64> },
+    /// Out of time; `quiet` when the session was working but silent, since then (unix seconds);
+    /// `repeats` when it was working and repeating itself, how many calls the repeat had reached.
+    TimedOut {
+        quiet: Option<u64>,
+        repeats: Option<u32>,
+    },
 }
 
 /// `<app> wait` exits with this when the turn ended but its check failed (2: timed out;
@@ -652,10 +656,11 @@ pub fn checks_note(p: &TermInfo) -> Option<String> {
 fn agent_tag(p: &TermInfo) -> Option<String> {
     let agent = p.agent.as_deref()?;
     let quiet = quiet_note(p).map(|n| format!(" · {n}")).unwrap_or_default();
+    let repeating = repeat_note(p).map(|n| format!(" · {n}")).unwrap_or_default();
     let note = checks_note(p)
         .map(|n| format!(" · {n}"))
         .unwrap_or_default();
-    Some(format!("{agent}: {}{quiet}{note}", p.status.label()))
+    Some(format!("{agent}: {}{quiet}{repeating}{note}", p.status.label()))
 }
 
 /// `quiet 12m` for a working agent that has gone silent: it may be stuck.
@@ -663,6 +668,24 @@ pub fn quiet_note(p: &TermInfo) -> Option<String> {
     p.quiet_since
         .filter(|_| p.status == Status::Working)
         .map(|at| format!("quiet {}", quiet_for(at)))
+}
+
+/// `repeating 6x` for a working agent whose last tool calls are one call over and over, or two
+/// taking turns: it may be going nowhere. Its status stays working.
+pub fn repeat_note(p: &TermInfo) -> Option<String> {
+    p.repeats
+        .filter(|_| p.status == Status::Working)
+        .map(|n| format!("repeating {n}x"))
+}
+
+/// What a wait that ran out of time says about an agent still working, when something looks
+/// wrong with it. Silence is the stronger sign, so a quiet agent says that first.
+pub fn still_working_note(quiet: Option<u64>, repeats: Option<u32>) -> Option<String> {
+    match (quiet, repeats) {
+        (Some(at), _) => Some(format!("still working, but quiet for {}", quiet_for(at))),
+        (None, Some(n)) => Some(format!("still working, but repeating itself ({n}x)")),
+        (None, None) => None,
+    }
 }
 
 /// How long since `at` (unix seconds), shortest unit: `45s`, `12m`, `3h`, `2d`.
@@ -688,6 +711,9 @@ fn pane_json(p: &TermInfo) -> Value {
     });
     if let Some(at) = p.quiet_since.filter(|_| p.status == Status::Working) {
         v["quiet_since"] = json!(at);
+    }
+    if let Some(n) = p.repeats.filter(|_| p.status == Status::Working) {
+        v["repeats"] = json!(n);
     }
     if let Some(pr) = &p.pr {
         v["pr"] = pr_json(pr);
@@ -739,6 +765,7 @@ pub fn wait_on(
     let start = std::time::Instant::now();
     let mut seen_working = !just_sent;
     let mut quiet = None;
+    let mut repeats = None;
     loop {
         if let Some(re) = &re {
             if let Reply::Text(screen) =
@@ -755,6 +782,7 @@ pub fn wait_on(
                 .ok_or_else(|| anyhow!("pane {term} is gone"))?;
             seen_working |= t.status == Status::Working;
             quiet = t.quiet_since.filter(|_| t.status == Status::Working);
+            repeats = t.repeats.filter(|_| t.status == Status::Working);
             if let Some(done) = turn_over(
                 t.status,
                 &t.said,
@@ -766,7 +794,7 @@ pub fn wait_on(
             }
         }
         if start.elapsed() >= timeout {
-            return Ok(Waited::TimedOut { quiet });
+            return Ok(Waited::TimedOut { quiet, repeats });
         }
         std::thread::sleep(Duration::from_millis(400));
     }
@@ -826,12 +854,9 @@ fn wait_print(
                 std::process::exit(code);
             }
         }
-        Waited::TimedOut { quiet } => {
-            match quiet {
-                Some(at) => eprintln!(
-                    "timed out waiting on pane {term}: still working, but quiet for {}",
-                    quiet_for(at)
-                ),
+        Waited::TimedOut { quiet, repeats } => {
+            match still_working_note(quiet, repeats) {
+                Some(note) => eprintln!("timed out waiting on pane {term}: {note}"),
                 None => eprintln!("timed out waiting on pane {term}"),
             }
             std::process::exit(2);
@@ -3745,6 +3770,52 @@ mod tests {
             "only a working agent is quiet"
         );
         assert!(pane_json(&p).get("quiet_since").is_none());
+    }
+
+    #[test]
+    fn ls_says_a_working_agent_is_repeating_itself() {
+        let mut p = pane("Working", Some("claude"), None);
+        p.repeats = Some(6);
+        assert_eq!(
+            agent_tag(&p).as_deref(),
+            Some("claude: working · repeating 6x")
+        );
+        assert_eq!(pane_json(&p)["repeats"], json!(6));
+        p.status = Status::Done;
+        assert_eq!(
+            agent_tag(&p).as_deref(),
+            Some("claude: done"),
+            "only a working agent repeats"
+        );
+        assert!(pane_json(&p).get("repeats").is_none());
+        let mut plain = pane("Working", Some("claude"), None);
+        assert!(pane_json(&plain).get("repeats").is_none(), "not repeating, no key");
+        plain.repeats = None;
+        assert_eq!(agent_tag(&plain).as_deref(), Some("claude: working"));
+    }
+
+    #[test]
+    fn a_wait_that_times_out_on_a_working_agent_says_why_it_looks_stuck() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let twelve_minutes_ago = now - 12 * 60;
+        assert_eq!(still_working_note(None, None), None);
+        assert_eq!(
+            still_working_note(Some(twelve_minutes_ago), None).as_deref(),
+            Some("still working, but quiet for 12m")
+        );
+        assert_eq!(
+            still_working_note(None, Some(6)).as_deref(),
+            Some("still working, but repeating itself (6x)")
+        );
+        // Silence is the stronger sign: a quiet agent says so first.
+        assert!(
+            still_working_note(Some(twelve_minutes_ago), Some(6))
+                .unwrap()
+                .starts_with("still working, but quiet for")
+        );
     }
 
     #[test]

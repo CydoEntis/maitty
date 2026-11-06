@@ -959,6 +959,24 @@ mod tests {
     }
 
     #[test]
+    fn a_repeating_agent_is_not_in_the_inbox() {
+        let (mut app, term) = quiet_world();
+        let t = app.snap.terms.get_mut(&term).unwrap();
+        t.quiet_since = None;
+        t.repeats = Some(9);
+        app.screen_fresh();
+        let rows = inbox_rows(&app.screen_model(), 0);
+        assert!(
+            !rows.contains(&GoRow::Quiet(ClientTerm::local(term))),
+            "repeating is a word on its row, not an item: {rows:?}"
+        );
+        let mut calm = quiet_world().0;
+        calm.snap.terms.get_mut(&term).unwrap().quiet_since = None;
+        calm.screen_fresh();
+        assert_eq!(inbox_count(&app), inbox_count(&calm), "and it is not counted");
+    }
+
+    #[test]
     fn a_quiet_agent_is_listed_under_needs_you_after_questions() {
         let (app, term) = quiet_world();
         let rows = inbox_rows(&app.screen_model(), 0);
