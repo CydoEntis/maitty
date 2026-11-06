@@ -37,4 +37,4 @@ Mastracode, Kilo, OpenCode, Pi, OMP).
 
 ## Links
 
-- Tickets: 58, 59, 60 in [TICKETS-TO-FILE](../../TICKETS-TO-FILE.md)
+- Tickets: P5-6, P5-7, P5-8 in [TICKETS-TO-FILE](../../TICKETS-TO-FILE.md)

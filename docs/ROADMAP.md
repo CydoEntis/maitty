@@ -1346,7 +1346,7 @@ conversation continuity are planned in phases 34–37:
 - Checkpoint kinds beyond the first (`commits`, `approval`, `review`) and a project-defined checkpoint list — deferred 2026-10-22 until Phase 15's verify check has been used in real work. `approval` and `review` sit close to the workflow runner cut on 2026-10-18; each needs the user's explicit re-approval before any ticket.
 - Threads between agents, take over and hand back — deferred 2026-10-11: waiting on a design for it. Comes back when the prototype is in.
 - Live GUI-to-native-TUI Codex transfer and platform acceptance — deferred until the standalone Codex/Claude GUI is usable and packaged; see [ADR 0038](adr/0038-standalone-gui-first.md). Existing TUI support remains required.
-- Phase 5 follow-ups, deferred 2026-11-06: failed calls in a row as a second signal for the repeating mark (needs new hook events for Claude and Qwen, a look at what Codex reports, and Codex's hooks trusted again; comes back once repeats-only has been used in real work); the repeating mark in the desktop app (comes back when the desktop app shows quiet); a launch smoke for the rpm, AppImage, Arch and macOS packages (comes back once tickets 61 and 62 have run for a while).
+- Phase 5 follow-ups, deferred 2026-11-06: failed calls in a row as a second signal for the repeating mark (needs new hook events for Claude and Qwen, a look at what Codex reports, and Codex's hooks trusted again; comes back once repeats-only has been used in real work); the repeating mark in the desktop app (comes back when the desktop app shows quiet); a launch smoke for the rpm, AppImage, Arch and macOS packages (comes back once tickets P5-9 and P5-10 have run for a while).
 
 ## Decisions
 

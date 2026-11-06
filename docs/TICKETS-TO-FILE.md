@@ -95,10 +95,10 @@ Ideas only, written fresh: that project is AGPL-3.0 and Maitty is MIT, so nothin
 
 | Order | Ticket | What | Needs |
 | --- | --- | --- | --- |
-| 19 | 53, 54 | A stopped or killed daemon leaves no provider processes behind. Ownership has to be right, so this is first here | nothing |
-| 20 | 61, 62 | The built desktop package is launched on every push to `dev` | nothing |
-| 21 | 58, 59, 60 | A working agent that repeats itself says so on its row | nothing |
-| 22 | 55, 56, 57 | Chat: tables, no flashing while a reply streams, following the newest message | 55 sends screenshots to the **owner** |
+| 19 | P5-1, P5-2 | A stopped or killed daemon leaves no provider processes behind. Ownership has to be right, so this is first here | nothing |
+| 20 | P5-9, P5-10 | The built desktop package is launched on every push to `dev` | nothing |
+| 21 | P5-6, P5-7, P5-8 | A working agent that repeats itself says so on its row | nothing |
+| 22 | P5-3, P5-4, P5-5 | Chat: tables, no flashing while a reply streams, following the newest message | P5-3 sends screenshots to the **owner** |
 
 **When to stop and ask instead of pressing on**
 - The lag in ticket 35 does not show on the machine in use. It was measured on Hyprland, NVIDIA
@@ -1150,7 +1150,7 @@ From a comparison with https://github.com/KenKaiii/gg-framework. Ideas only: its
 and is not copied. ADRs are named by title as well as number, because the ADR folder is being
 renumbered. A ticket that says `Blocked by N` is not started until ticket N is merged.
 
-## 53. Stopping the daemon leaves provider processes running on Linux and macOS (bug, `daemon`)
+## P5-1. Stopping the daemon leaves provider processes running on Linux and macOS (bug, `daemon`)
 
 A structured conversation's provider (Codex app-server, Claude stream-json) runs in its own process
 group and is stopped only by `OwnedChild::stop` or its `Drop`
@@ -1170,7 +1170,7 @@ recovery-required.
 - Not the parent-death signal a check uses (`PR_SET_PDEATHSIG` in `daemon/check.rs`): it is tied to
   the thread that started the process, and a provider is started from a `spawn_blocking` thread
   (`OwnedChild::spawn`) that ends after about ten idle seconds, which would kill a healthy
-  provider. A provider that outlives a daemon that died is ticket 54's.
+  provider. A provider that outlives a daemon that died is ticket P5-2's.
 
 **Acceptance**
 - A new test fails before the fix and passes after it, unedited: a stand-in daemon (the test binary
@@ -1183,9 +1183,9 @@ recovery-required.
 **Not this ticket:** a daemon that dies without `KillServer` (SIGKILL, a crash) on Linux and macOS:
 ticket 54. Windows is already covered by its job object.
 
-## 54. A new daemon stops the provider processes an old one left (bug, `daemon`)
+## P5-2. A new daemon stops the provider processes an old one left (bug, `daemon`)
 
-Blocked by 53
+Blocked by P5-1
 
 After a SIGKILL or a crash nothing in the dead daemon can run. A provider's children keep its
 process group, and on macOS the provider itself survives. Nothing on disk records them: the saved
@@ -1214,7 +1214,7 @@ marks the record recovery-required (`restore_startup` in `daemon/restore.rs`).
 `daemon/mod.rs`). The sweep runs only after this daemon is the one daemon for its socket, or it
 would kill a live daemon's providers.
 
-## 55. A table in a chat message is drawn as a table (feature, `client`)
+## P5-3. A table in a chat message is drawn as a table (feature, `client`)
 
 The chat's markdown reader has no tables (the list of what is supported at the top of `apps/gui/src/features/chat/markdown.ts`), so an
 agent's table shows as lines of pipes.
@@ -1242,12 +1242,12 @@ agent's table shows as lines of pipes.
 **Not this ticket:** sorting, copying a table, resizing columns, tables in the terminal app's
 markdown preview.
 
-## 56. Half-arrived markdown does not flash while a reply streams (feature, `client`)
+## P5-4. Half-arrived markdown does not flash while a reply streams (feature, `client`)
 
-Blocked by 55
+Blocked by P5-3
 
 The parser reads every state of a streaming reply as a finished document. An opened `**` shows as
-two asterisks until its closer arrives, then the text jumps to bold; with ticket 55 a table's
+two asterisks until its closer arrives, then the text jumps to bold; with ticket P5-3 a table's
 header shows as a line of pipes until its delimiter row arrives.
 
 **What**, only for a message whose status is `running` (the `agent` row in `chatRows.ts`)
@@ -1270,7 +1270,7 @@ header shows as a line of pipes until its delimiter row arrives.
 **Not this ticket:** fading words in, pacing the text, parsing only the last block, folding long
 code. Nothing has measured a need for them.
 
-## 57. The chat stops following the newest message as soon as the reader scrolls up (change, `client`)
+## P5-5. The chat stops following the newest message as soon as the reader scrolls up (change, `client`)
 
 `VirtualList` follows the newest row while the view is within 48 px of the bottom
 (`isAtBottom` in `components/windowing.ts`, `onScroll` in `components/VirtualList.tsx`). While a reply streams, a
@@ -1299,7 +1299,7 @@ this way; it is how the list was first written.
 **Not this ticket:** keeping the view still when rows above it are measured; a count of new
 messages on the button.
 
-## 58. `maitty hook` reports a fingerprint of each tool call (feature, `daemon`)
+## P5-6. `maitty hook` reports a fingerprint of each tool call (feature, `daemon`)
 
 Intent: [a working agent that repeats itself says so](features/repeating-agent/intent.md).
 
@@ -1329,9 +1329,9 @@ name and input on stdin.
 **Not this ticket:** new hook events for any agent (Codex would ask for its hooks to be trusted
 again); Kimi, Mastracode, Kilo, OpenCode, Pi and OMP, whose hooks pass no tool input.
 
-## 59. The daemon marks a working agent that repeats itself (feature, `daemon`)
+## P5-7. The daemon marks a working agent that repeats itself (feature, `daemon`)
 
-Blocked by 58
+Blocked by P5-6
 
 **What**
 - Per pane, in memory only, the daemon keeps the fingerprints of the current turn's tool calls. A
@@ -1356,9 +1356,9 @@ Blocked by 58
 
 **Not this ticket:** failed calls in a row (Later); stopping or nudging the agent.
 
-## 60. The terminal app, `ls`, `maitty_list` and `wait` say when an agent is repeating itself (feature, `client`)
+## P5-8. The terminal app, `ls`, `maitty_list` and `wait` say when an agent is repeating itself (feature, `client`)
 
-Blocked by 59
+Blocked by P5-7
 
 **What:** everywhere quiet is shown, except the Inbox.
 - The sidebar row's second line reads `repeating 6x` in the muted colour, beside `N agents`
@@ -1377,7 +1377,7 @@ Blocked by 59
 - `docs/agent-status.md`, `docs/UI.md` (card row 2 and the working row of the status table),
   `docs/API_PATTERNS.md` and `docs/guide.md` describe it where they describe quiet. The gate passes.
 
-## 61. The built Linux package is launched on every push to `dev` (chore, `tooling`)
+## P5-9. The built Linux package is launched on every push to `dev` (chore, `tooling`)
 
 CI builds the desktop installers on each push to `dev` and never starts one
 (the four `desktop package` jobs in `.github/workflows/ci.yml`). A package that builds but cannot start, or cannot find its
@@ -1406,9 +1406,9 @@ bundled daemon, is only found by hand: the package checks of 2026-10-29 recorded
 **Not this ticket:** the rpm, AppImage, Arch and macOS packages; clicking anything; the
 **Key to echo** figure.
 
-## 62. The built Windows package is launched on every push to `dev` (chore, `tooling`, `windows`)
+## P5-10. The built Windows package is launched on every push to `dev` (chore, `tooling`, `windows`)
 
-Blocked by 61
+Blocked by P5-9
 
 The same rule on Windows. `scripts/smoke-desktop-windows.ps1 <msi>` unpacks the MSI with
 `msiexec /a` (an admin image, nothing installed, as was done by hand on 2026-10-29), starts the
@@ -1416,5 +1416,5 @@ exe with the same isolated variables, applies the same pass rule and stops both.
 `desktop package (Windows)` job runs it as one command, so the script's exit code is the step's
 (a PowerShell step of several lines reports only its last line).
 
-**Acceptance:** as ticket 61, on `windows-latest`: green on a push to `dev`, shown red once with
+**Acceptance:** as ticket P5-9, on `windows-latest`: green on a push to `dev`, shown red once with
 the bundled daemon removed, no process left behind, `docs/TESTING.md` updated. The gate passes.
