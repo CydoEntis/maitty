@@ -219,6 +219,11 @@ impl Daemon {
         self.conversation_runtimes.start(launch, self.tx.clone())
     }
 
+    /// Stop every provider process tree; see `Registry::stop_all`.
+    pub(in crate::daemon) fn stop_conversations(&mut self) -> Vec<tokio::task::AbortHandle> {
+        self.conversation_runtimes.stop_all()
+    }
+
     #[cfg(test)]
     pub(in crate::daemon) fn dispose_conversation(&mut self, id: ConversationId) -> Result<()> {
         self.conversation_runtimes.dispose(id)

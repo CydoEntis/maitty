@@ -3465,6 +3465,128 @@ async fn history_projection_accepts_only_current_owned_events_and_drops_disconne
     }).await;
 }
 
+/// The stand-in daemon for `kill_server_stops_every_provider_before_the_daemon_exits` is this
+/// same test binary run again with this variable set to a scratch folder. `KillServer` ends in
+/// `process::exit`, which would end the test runner, so the daemon has to be a process of its own.
+#[cfg(unix)]
+const STAND_IN_DAEMON_ENV: &str = concat!(env!("APP_ENV"), "_TEST_KILL_SERVER_STAND_IN");
+
+/// Not a test unless the parent started it: a daemon with one live provider that is told to kill
+/// the server.
+#[cfg(unix)]
+#[tokio::test]
+async fn kill_server_stand_in_daemon() {
+    let Ok(root) = std::env::var(STAND_IN_DAEMON_ENV) else {
+        return;
+    };
+    let root = PathBuf::from(root);
+    let fixture = Fixture::new().await;
+    let (mut d, mut rx) = daemon(fixture.record.clone());
+    let (client, _messages) = mpsc::channel::<ServerMsg>(8);
+    d.handle(Ev::Connected(11, client, false, crate::protocol::Surface::Terminal, true));
+    d.start_conversation(fixture.launch("normal")).unwrap();
+    let ready = next(&mut rx).await;
+    assert!(matches!(ready.payload, Payload::Ready));
+    d.handle(Ev::Conversation(ready));
+    let notification = next(&mut rx).await;
+    d.handle(Ev::Conversation(notification));
+    let pids = fixture.pids().await;
+    assert_eq!(pids.len(), 2, "the provider and the child it started");
+    let observed = pids.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut system = sysinfo::System::new();
+        system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        for pid in observed {
+            assert!(system.process(sysinfo::Pid::from_u32(pid)).is_some(), "{pid} runs");
+        }
+    })
+    .await
+    .unwrap();
+    let listed: Vec<String> = pids.iter().map(u32::to_string).collect();
+    std::fs::write(root.join("fixture"), fixture.directory.path().as_os_str().as_encoded_bytes()).unwrap();
+    std::fs::write(root.join("pids"), listed.join(" ")).unwrap();
+    d.handle(Ev::Msg(
+        11,
+        crate::protocol::ClientMsg::Command(crate::protocol::Command::KillServer { forget: true }),
+    ));
+    // The daemon ends the process itself; the loop keeps its runtime turning until it does.
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            if let Some(event) = rx.recv().await {
+                d.handle(event);
+            }
+        }
+    })
+    .await
+    .expect_err("the daemon exits after kill-server");
+    panic!("kill-server did not end the daemon");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn kill_server_stops_every_provider_before_the_daemon_exits() {
+    if std::env::var(STAND_IN_DAEMON_ENV).is_ok() {
+        return;
+    }
+    let scratch = crate::daemon::persist::scratch_dir();
+    let root = scratch.path().to_owned();
+    let data = root.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let mut daemon = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "daemon::conversation::tests::kill_server_stand_in_daemon",
+            "--nocapture",
+        ])
+        .env(STAND_IN_DAEMON_ENV, &root)
+        .env(concat!(env!("APP_ENV"), "_DATA_DIR"), &data)
+        .env(concat!(env!("APP_ENV"), "_CONFIG"), root.join("config.toml"))
+        .env(concat!(env!("APP_ENV"), "_SOCKET"), format!("killserver-{}", std::process::id()))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("start the stand-in daemon");
+    let status = tokio::task::spawn_blocking(move || {
+        let until = std::time::Instant::now() + Duration::from_secs(60);
+        loop {
+            if let Some(status) = daemon.try_wait().unwrap() {
+                return Some(status);
+            }
+            if std::time::Instant::now() > until {
+                let _ = daemon.kill();
+                let _ = daemon.wait();
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    })
+    .await
+    .unwrap();
+    let pids: Vec<u32> = std::fs::read_to_string(root.join("pids"))
+        .expect("the stand-in daemon had a live provider before it was told to exit")
+        .split_whitespace()
+        .map(|pid| pid.parse().unwrap())
+        .collect();
+    let fixture_dir = std::fs::read_to_string(root.join("fixture")).ok().map(PathBuf::from);
+    let outcome = AssertUnwindSafe(stopped(pids.clone())).catch_unwind().await;
+    if outcome.is_err() {
+        for pid in &pids {
+            // SAFETY: stops processes this test started so a failure leaves nothing behind.
+            unsafe { libc::kill(*pid as libc::pid_t, libc::SIGKILL) };
+        }
+    }
+    if let Some(dir) = fixture_dir {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    assert!(
+        status.is_some_and(|status| status.success()),
+        "the stand-in daemon exits cleanly after kill-server: {status:?}"
+    );
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
 mod queue;
 mod branch_chat;
 mod claude_chat;
