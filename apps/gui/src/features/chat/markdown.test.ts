@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { INLINE_PARSE_LIMIT, parseInline, parseMarkdown, safeHref, type Block, type Inline } from './markdown'
+import { INLINE_PARSE_LIMIT, parseInline, parseMarkdown, safeHref, streamingText, type Block, type Inline } from './markdown'
 
 describe('safeHref', () => {
   it.each([
@@ -166,6 +166,82 @@ describe('tables', () => {
 
   it('does not read a table inside a fence', () => {
     expect(parseMarkdown('```\n| a | b |\n|---|---|\n```').map((block) => block.kind)).toEqual(['code'])
+  })
+})
+
+describe('a reply that is still streaming', () => {
+  const inlines = (text: string) => parseInline(streamingText(text))
+  const textOf = (nodes: readonly Inline[]): string[] => nodes.flatMap((node) => (node.kind === 'text' ? [node.text] : node.kind === 'code' ? [] : textOf(node.children)))
+
+  it('reads an opened bold, italic or code span as if it closed at the end', () => {
+    expect(inlines('This is **bol')).toMatchObject([{ kind: 'text' }, { kind: 'strong', children: [{ kind: 'text', text: 'bol' }] }])
+    expect(inlines('an *it')).toMatchObject([{ kind: 'text' }, { kind: 'em', children: [{ kind: 'text', text: 'it' }] }])
+    expect(inlines('run `cargo te')).toMatchObject([{ kind: 'text' }, { kind: 'code', text: 'cargo te' }])
+    expect(inlines('**bold and `co')).toMatchObject([{ kind: 'strong', children: [{ kind: 'text' }, { kind: 'code', text: 'co' }, { kind: 'text' }] }])
+    expect(inlines('**bold and *ital')).toMatchObject([{ kind: 'strong', children: [{ kind: 'text', text: 'bold and ' }, { kind: 'em' }, { kind: 'text' }] }])
+  })
+
+  it('reads a link with its address still arriving as a link', () => {
+    expect(inlines('see [the docs](https://example.com/gu')).toMatchObject([{ kind: 'text' }, { kind: 'link', children: [{ kind: 'text', text: 'the docs' }] }])
+    expect(textOf(inlines('see [the docs]('))).not.toContain('](')
+  })
+
+  it('drops a mark that has nothing after it yet, rather than showing it', () => {
+    expect(streamingText('Use **')).toBe('Use ')
+    expect(streamingText('Use `')).toBe('Use ')
+    expect(streamingText('Use **bold*')).toBe('Use **bold**')
+  })
+
+  it('leaves a complete reply as it is', () => {
+    const done = 'Use **bold**, *it*, `code` and [a link](https://example.com).'
+    expect(streamingText(done)).toBe(done)
+  })
+
+  it('leaves marks that are not emphasis alone', () => {
+    expect(streamingText('snake_case_name and 2 * 3')).toBe('snake_case_name and 2 * 3')
+    expect(streamingText('- one *item*\n* two items')).toBe('- one *item*\n* two items')
+  })
+
+  it('shows no raw mark at any point while a reply whose marks all close grows', () => {
+    const reply = 'Use **bold** and `code` and *it* and **more *nested* text** to finish.'
+    for (let end = 1; end <= reply.length; end += 1) {
+      const shown = textOf(inlines(reply.slice(0, end))).join('')
+      expect(shown, `after ${String(end)} characters`).not.toMatch(/[*`]/)
+    }
+  })
+
+  it('holds a table back until its delimiter row is complete for every header column', () => {
+    expect(streamingText('| a | b |')).toBe('')
+    expect(streamingText('| a | b |\n|')).toBe('')
+    expect(streamingText('| a | b |\n|---')).toBe('')
+    expect(streamingText('| a | b |\n|---|')).toBe('')
+    expect(streamingText('Intro\n| a | b |\n|---')).toBe('Intro')
+    expect(parseMarkdown(streamingText('| a | b |\n|---|--'))[0]?.kind).toBe('table')
+    const table = '| a | b |\n|---|---|'
+    expect(parseMarkdown(streamingText(table))[0]?.kind).toBe('table')
+    const rows = `${table}\n| 1 | 2 |\n| 3 |`
+    expect(parseMarkdown(streamingText(rows))[0]).toMatchObject({ kind: 'table', rows: [expect.anything(), expect.anything()] })
+  })
+
+  it('does not hold back a line of prose with a pipe in it', () => {
+    expect(streamingText('pipe it through grep | sort')).toBe('pipe it through grep | sort')
+  })
+
+  it('holds back a last line that is only a list, quote or heading marker', () => {
+    expect(streamingText('-')).toBe('')
+    expect(streamingText('Items:\n-')).toBe('Items:')
+    expect(streamingText('Steps\n1.')).toBe('Steps')
+    expect(streamingText('text\n#')).toBe('text')
+    expect(streamingText('text\n>')).toBe('text')
+    expect(streamingText('- one\n- ')).toBe('- one')
+    expect(streamingText('- one\n- two')).toBe('- one\n- two')
+  })
+
+  it('changes nothing inside an open code fence', () => {
+    for (const open of ['```ts\nconst a = **x', '```\n| a | b |\n|---', '~~~\n-', 'before\n\n```\n`tick']) {
+      expect(streamingText(open)).toBe(open)
+    }
+    expect(streamingText('```\ncode\n```\nafter **bo')).toBe('```\ncode\n```\nafter **bo**')
   })
 })
 
