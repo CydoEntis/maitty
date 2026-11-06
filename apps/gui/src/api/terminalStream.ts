@@ -1,7 +1,7 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { z } from 'zod'
 import { bytesOf } from './ipcBytes'
-import { countOutput } from '@/lib/perf-meter'
+import { countOutput, countSocketOutput } from '@/lib/perf-meter'
 
 /** One piece of a pane's output, in order. A replay replaces what the view shows. */
 /** `machine` is 0 for this computer, else the id the host gave the machine. */
@@ -48,9 +48,10 @@ function decodeFrame(frame: Uint8Array): TerminalChunk {
 const lastSeq = new Map<string, number>()
 
 /** Sends a frame to the views of its pane. A gap in the numbers means a frame was lost on the way. */
-function deliver(frame: Uint8Array): void {
+function deliver(frame: Uint8Array, overSocket = false): void {
   const chunk = decodeFrame(frame)
   countOutput(chunk.bytes.length)
+  if (overSocket) countSocketOutput()
   const key = paneKey(chunk.machine, chunk.term)
   const views = handlers.get(key)
   // Nobody is watching this pane: a view that opens later starts from the host's history.
@@ -147,7 +148,7 @@ async function connectSocket(failures = 0, wait = SOCKET_RETRY_FIRST_MS): Promis
       resyncAll()
       return
     }
-    if (event.data instanceof ArrayBuffer) deliver(new Uint8Array(event.data))
+    if (event.data instanceof ArrayBuffer) deliver(new Uint8Array(event.data), true)
   }
   let closed = false
   const closedOnce = () => {

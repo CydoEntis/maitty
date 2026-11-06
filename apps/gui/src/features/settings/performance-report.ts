@@ -67,7 +67,7 @@ export function buildPerformanceReport(environment: PerformanceEnvironment, samp
       `  frames/s ${String(sample.framesPerSecond)}${sample.visible ? '' : ' (window hidden)'}; slow frames ${String(sample.slowFrames)}; worst frame ${String(sample.worstFrameMs)} ms`,
       `  terminal renderers: ${String(sample.renderers.webgl)} WebGL, ${String(sample.renderers.dom)} DOM`,
       `  output ${formatRate(sample.outputBytesPerSecond)} in ${String(sample.outputFramesPerSecond)} frames/s; ${String(sample.flushesPerSecond)} xterm writes/s, ${String(sample.writeLatencyMs)} ms each`,
-      `  output frames received since the window opened: ${String(sample.outputFramesTotal)}`,
+      `  output frames received since the window opened: ${String(sample.outputFramesTotal)}, of which over the local socket: ${String(sample.socketFramesTotal)}`,
       `  animations running ${String(sample.animations)}; DOM nodes ${String(sample.domNodes)}`,
     )
   }

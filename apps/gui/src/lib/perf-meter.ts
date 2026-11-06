@@ -18,6 +18,8 @@ export type PerfSample = {
   outputFramesPerSecond: number
   /** Output frames received since the window opened; never reset. */
   outputFramesTotal: number
+  /** Of those, the frames that came over the local socket and not the channel. */
+  socketFramesTotal: number
   flushesPerSecond: number
   /** How long a flushed write waited until xterm had parsed it, on average. */
   writeLatencyMs: number
@@ -40,6 +42,7 @@ const zeroCounters = (): Counters => ({ outputBytes: 0, outputFrames: 0, flushes
 
 let counters = zeroCounters()
 let outputFramesTotal = 0
+let socketFramesTotal = 0
 const renderers = new Map<object, TerminalRenderer>()
 const listeners = new Set<() => void>()
 let sample: PerfSample | null = null
@@ -52,6 +55,11 @@ export function countOutput(bytes: number): void {
   counters.outputBytes += bytes
   counters.outputFrames += 1
   outputFramesTotal += 1
+}
+
+/** An output frame arrived over the local socket (it is also counted by `countOutput`). */
+export function countSocketOutput(): void {
+  socketFramesTotal += 1
 }
 
 /** A view flushed a write into xterm; call the result once xterm has parsed it. */
@@ -106,6 +114,7 @@ function takeSample(): void {
     outputBytesPerSecond: Math.round(taken.outputBytes / seconds),
     outputFramesPerSecond: Math.round(taken.outputFrames / seconds),
     outputFramesTotal,
+    socketFramesTotal,
     flushesPerSecond: Math.round(taken.flushes / seconds),
     writeLatencyMs: taken.writesTimed === 0 ? 0 : Math.round(taken.writeLatencyMs / taken.writesTimed),
     animations: typeof document.getAnimations === 'function' ? document.getAnimations().length : 0,
