@@ -139,10 +139,25 @@ The screen fallback (`daemon/last_lines.rs`) was not run against a live Claude o
 that needs a pane inside a running daemon, and Claude and Codex already send the message, so
 the fallback is not used for them. Its readability on a real screen stays unmeasured.
 
-Permission-prompt lifetime (ticket 31, `NEEDS_SETTLES`) was not measured. A prompt only
-appears in the interactive interface; `claude -p` and `codex exec` deny or skip an unapproved
-tool at once, so a headless turn says nothing about how long a prompt shows before it settles
-itself. `NEEDS_SETTLES` stays 300 ms.
+Permission-prompt lifetime (ticket 31, `NEEDS_SETTLES`), measured 2026-11-06 on Linux with
+interactive Claude Code 2.1.319 in a PTY (`scripts/measure-permission-prompt.py MODE TURNS`;
+one "create x.txt" turn each, 24 real turns). The time is from the `PermissionRequest` hook to
+the `PostToolUse` hook, which includes the hook's own process start (about 50 ms) and the write:
+
+| Case | n | min | median | p95 | max |
+| --- | --- | --- | --- | --- | --- |
+| Approved at once by a `PermissionRequest` hook | 8 | 111 ms | 147 ms | 179 ms | 179 ms |
+| Auto permission mode (`--permission-mode auto`) | 8 | no `PermissionRequest` event and no prompt on screen | | | |
+| Waits for a person (answered after 3.0 s on purpose) | 7 | 3164 ms | 3187 ms | 3215 ms | 3215 ms |
+
+So a prompt that settles itself is gone within about 180 ms, 120 ms under 300 ms, and the
+agent never reports one in auto mode. The person row only shows the harness's chosen wait plus
+about 165 ms; a real wait is unbounded. `NEEDS_SETTLES` stays 300 ms (the margin is about 1.7x
+the slowest sample). Not measured: Codex (the turn budget was spent on Claude), a slow hook
+(one that does network work holds the prompt as long as it runs), and an allowlist (the agent
+asks nothing, so there is nothing to time). The prompt text itself was never seen on the PTY
+for the auto-approved cases, and is drawn in pieces for the person case, so the hooks are the
+only timing source here.
 
 Not yet verified, so Maitty does not claim exact Herdr parity:
 
