@@ -19,7 +19,7 @@ function show(heads: SidebarProps['machineHeads'], groups: SessionGroup[], more:
       groups={groups} machineHeads={heads} focusedId={null} tracks={new Map()} mode="docked" online sessionCount={0}
       startFolderLabel="~" canStart portalContainer={null} onToggleRail={none} canExpand tabOf={new Map()} tabPanes={new Map()}
       openIds={new Set()} paneOf={new Map()} trayStyle="stacked" side="left" width={280} onResize={none}
-      onResizeEnd={none} onNewSession={none} onNewSessionWith={none} defaultAgent="claude" onNewSessionIn={none} onNewTerminal={none} onNewTerminalIn={none} onLocalOnly={none} onNewSessionOn={none} onNewWorktree={none}
+      onResizeEnd={none} onNewSession={none} onNewSessionWith={none} defaultAgent="claude" onNewSessionIn={none} onNewTerminal={none} onNewTerminalIn={none} onLocalOnly={none} onNewSessionOn={none} onNewWorktree={none} onInspectProject={none}
       {...more} onShowSession={none} onEndSession={none}
       onEndProject={none} onSetName={none} onRenameSession={none} onPinSession={none} onOpenSettings={none} updateSlot={null} railUpdateSlot={null}
     />,
@@ -88,5 +88,14 @@ describe('the sidebar after New agent on a branch was removed', () => {
     fireEvent.contextMenu(screen.getByRole('button', { name: /app/ }))
     await screen.findByRole('menu')
     expect(screen.queryByRole('menuitem', { name: /New agent on a branch/ })).toBeNull()
+  })
+})
+
+describe('the project menu\'s Inspect project', () => {
+  it('is offered, and turned off for a project with no terminal on this computer to inspect', async () => {
+    show([], [{ ...group('/code/app', 'app', null), kind: 'repo' }])
+    fireEvent.contextMenu(screen.getByRole('button', { name: /app/ }))
+    await screen.findByRole('menu')
+    expect(screen.getByRole('menuitem', { name: 'Inspect project' }).getAttribute('aria-disabled')).toBe('true')
   })
 })

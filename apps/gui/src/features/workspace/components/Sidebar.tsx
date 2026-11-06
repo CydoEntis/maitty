@@ -67,6 +67,8 @@ export type SidebarProps = {
   onNewSessionOn: (machine: number, name: string) => void
   /** The New worktree dialog for a project, by its key. */
   onNewWorktree: (groupKey: string) => void
+  /** Shows the project's repository in the Inspect panel, on the session that lives in it. */
+  onInspectProject: (groupKey: string) => void
   onShowSession: (id: string) => void
   onEndSession: (id: string) => void
   /** Ends every session in a project; the app asks first. */
@@ -132,7 +134,7 @@ function Expanded(props: GroupProps) {
     const open = isOpen(group)
     return (
       <div key={group.key} className={`mx-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`}>
-        <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewTerminalIn={props.onNewTerminalIn} onLocalOnly={props.onLocalOnly} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
+        <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewTerminalIn={props.onNewTerminalIn} onLocalOnly={props.onLocalOnly} onNewWorktree={() => { props.onNewWorktree(group.key) }} onInspect={() => { props.onInspectProject(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
         <button type="button" className="mx-group-head" aria-expanded={open} {...hoverHandlers(hover, { kind: 'folder', key: group.key })} onClick={() => { hover.close(); onToggleGroup(group.key) }}>
           <Icon name="chevron" />
           <span className={`mx-folder-tile${group.containsFocused ? ' is-focused' : ''}`}><Icon name="folder" /></span>
@@ -279,7 +281,7 @@ function RailFolderButton(props: { group: SessionGroup; open: boolean; online: b
 }
 
 /** Right-click a project, in the sidebar or the rail: start a shell in it, fold it, copy its path. */
-function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle, onNewSessionIn, onNewTerminalIn, onLocalOnly, onNewWorktree, onEnd, children }: { group: SessionGroup; open: boolean; canStart: boolean; online: boolean; portalContainer: HTMLElement | null; onToggle: () => void; onNewSessionIn: (folder: string) => void; onNewTerminalIn: (folder: string, machineName: string | null) => void; onLocalOnly: (machineName: string) => void; onNewWorktree: () => void; onEnd: () => void; children: ReactNode }) {
+function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle, onNewSessionIn, onNewTerminalIn, onLocalOnly, onNewWorktree, onInspect, onEnd, children }: { group: SessionGroup; open: boolean; canStart: boolean; online: boolean; portalContainer: HTMLElement | null; onToggle: () => void; onNewSessionIn: (folder: string) => void; onNewTerminalIn: (folder: string, machineName: string | null) => void; onLocalOnly: (machineName: string) => void; onNewWorktree: () => void; onInspect: () => void; onEnd: () => void; children: ReactNode }) {
   // A worktree is made from a terminal's checkout; a chat session has no terminal to ask.
   const lead = group.sessions.find((session) => !isChatSession(session.conversation))
   return (
@@ -293,6 +295,7 @@ function ProjectMenu({ group, open, canStart, online, portalContainer, onToggle,
           {lead && lead.machine === LOCAL_MACHINE && <WorktreeMenu term={lead.pane} portalContainer={portalContainer} canStart={canStart} onOpenFolder={onNewSessionIn} onNewWorktree={onNewWorktree} />}
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={onToggle}>{open ? 'Collapse' : 'Expand'}</ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item className="mx-menu-item" disabled={lead === undefined || lead.machine !== LOCAL_MACHINE} onSelect={onInspect}>Inspect project</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Item className="mx-menu-item" onSelect={() => { void navigator.clipboard.writeText(group.path) }}>Copy path</ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Separator className="mx-menu-sep" />
           <ContextMenuPrimitive.Item className="mx-menu-item is-danger" disabled={!online} onSelect={onEnd}>Close project tabs ({group.sessions.length})<span className="mx-menu-hint">ends {group.sessions.length === 1 ? '1 session' : `${String(group.sessions.length)} sessions`}</span></ContextMenuPrimitive.Item>
@@ -320,7 +323,7 @@ function Rail(props: GroupProps) {
           const label = `${group.name} · ${String(group.sessions.length)} session${group.sessions.length === 1 ? '' : 's'} · click to ${open ? 'collapse' : 'expand'}`
           return (
             <div key={group.key} className={`mx-rail-group${open ? ' is-open' : ''}${group.containsFocused ? ' has-focused' : ''}`}>
-              <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewTerminalIn={props.onNewTerminalIn} onLocalOnly={props.onLocalOnly} onNewWorktree={() => { props.onNewWorktree(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
+              <ProjectMenu group={group} open={open} canStart={props.canStart} online={props.online} portalContainer={props.portalContainer} onToggle={() => { onToggleGroup(group.key) }} onNewSessionIn={props.onNewSessionIn} onNewTerminalIn={props.onNewTerminalIn} onLocalOnly={props.onLocalOnly} onNewWorktree={() => { props.onNewWorktree(group.key) }} onInspect={() => { props.onInspectProject(group.key) }} onEnd={() => { props.onEndProject(group.sessions.map((session) => session.id), group.name) }}>
                 <RailFolderButton group={group} open={open} online={online} label={label} hover={hover} onToggle={() => { onToggleGroup(group.key) }} />
               </ProjectMenu>
               {open && (

@@ -1678,6 +1678,17 @@ export function DesktopApp() {
           setWorktreeFrom(lead)
         }
       }}
+      onInspectProject={(groupKey) => {
+        const group = groups.find((candidate) => candidate.key === groupKey)
+        // The repository belongs to a terminal on this computer; a chat session or another machine's pane has none to read.
+        const lead = group?.sessions.find((member) => member.machine === LOCAL_MACHINE && !isChatSession(member.conversation) && member.id === focusedId)
+          ?? group?.sessions.find((member) => member.machine === LOCAL_MACHINE && !isChatSession(member.conversation))
+        if (lead === undefined) return
+        afterPick()
+        showSessionById(lead.id)
+        setInspectView('changes')
+        setInspectOpen(true)
+      }}
       onShowSession={(id) => { afterPick(); showSessionById(id) }}
       onEndSession={endSession}
       onEndProject={endProject}
