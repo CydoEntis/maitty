@@ -10,6 +10,9 @@ export default defineConfig({
   resolve: {
     alias: { '@': path.resolve(fileURLToPath(new URL('.', import.meta.url)), 'src') },
   },
+  // The window loads this exact address (`devUrl` in tauri.conf.json). With strictPort a taken port is an
+  // error, not a quiet move to another one, which would show the window some other project's dev server.
+  server: { port: 1420, strictPort: true },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
