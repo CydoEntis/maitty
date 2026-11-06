@@ -443,7 +443,9 @@ pub fn run(on_start: impl FnOnce()) -> Result<()> {
         .enable_all()
         .build()?;
     rt.block_on(async move {
-        // Refuse to start a second daemon on the same socket.
+        // The lock is what stops two racing starts; the connect check still catches a running
+        // daemon of an older version, which does not take the lock.
+        let _daemon_lock = ipc::lock_daemon()?;
         if ipc::connect().await.is_ok() {
             anyhow::bail!(
                 concat!(

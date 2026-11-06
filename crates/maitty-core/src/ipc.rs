@@ -202,6 +202,44 @@ pub async fn connect() -> Result<Stream> {
     Ok(Stream::connect(name()?).await?)
 }
 
+/// Proof that this process is the one daemon for its socket. The OS releases it when the process
+/// ends, so a crashed daemon never leaves a stale lock.
+#[derive(Debug)]
+pub struct DaemonLock {
+    _file: std::fs::File,
+}
+
+fn lock_path() -> std::path::PathBuf {
+    crate::config::data_dir().join(format!("{}.lock", socket_id()))
+}
+
+/// Take the right to be the daemon. Two clients starting at once both pass the "does a daemon
+/// answer?" check, and `listen` then deletes the other's socket; each restores the saved session
+/// and spawns every pane. Only one process can hold this lock, so only one gets that far.
+pub fn lock_daemon() -> Result<DaemonLock> {
+    lock_daemon_at(&lock_path())
+}
+
+fn lock_daemon_at(path: &std::path::Path) -> Result<DaemonLock> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).context("creating the daemon data folder")?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(path)
+        .context("opening the daemon lock file")?;
+    match file.try_lock() {
+        Ok(()) => Ok(DaemonLock { _file: file }),
+        Err(std::fs::TryLockError::WouldBlock) => anyhow::bail!(
+            "a {APP_COMMAND} daemon is already running on {}",
+            socket_id()
+        ),
+        Err(std::fs::TryLockError::Error(e)) => Err(e).context("locking the daemon lock file"),
+    }
+}
+
 pub fn listen() -> Result<interprocess::local_socket::tokio::Listener> {
     // A stale socket file from a crashed daemon would make bind fail. (Callers check
     // that no daemon answers first.)
@@ -337,6 +375,20 @@ fn daemon_command(exe: Option<&std::path::Path>) -> Result<std::process::Command
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_second_daemon_is_refused_while_the_first_holds_the_lock() {
+        let path =
+            std::env::temp_dir().join(format!("daemon-lock-test-{}.lock", std::process::id()));
+        let first = super::lock_daemon_at(&path).unwrap();
+        let second = super::lock_daemon_at(&path).unwrap_err();
+        assert!(
+            format!("{second:#}").contains("already running"),
+            "a second daemon must be refused, got: {second:#}"
+        );
+        drop(first);
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn daemon_command_starts_daemon() {
         let command = super::daemon_command(None).unwrap();
