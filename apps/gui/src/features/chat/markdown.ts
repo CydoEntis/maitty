@@ -5,7 +5,7 @@
  * only when it is an http(s) address. Images are never loaded; they show as their alt text.
  *
  * Supported: paragraphs, `#` headings, fenced code, bullet and numbered lists, `>` quotes, rules,
- * and inline code, bold, italic and links. Anything else reads as the plain text it is.
+ * tables, and inline code, bold, italic and links. Anything else reads as the plain text it is.
  */
 
 export type Inline =
@@ -23,6 +23,10 @@ export type Block =
   | { readonly kind: 'list'; readonly ordered: boolean; readonly items: readonly (readonly Inline[])[] }
   | { readonly kind: 'quote'; readonly inlines: readonly Inline[] }
   | { readonly kind: 'rule' }
+  /** Every row has one cell per header cell; `align` is each column's, `null` when the column has none. */
+  | { readonly kind: 'table'; readonly align: readonly TableAlign[]; readonly header: readonly (readonly Inline[])[]; readonly rows: readonly (readonly (readonly Inline[])[])[] }
+
+export type TableAlign = 'left' | 'center' | 'right' | null
 
 /** Inline parsing rescans for closers, so a paragraph longer than this is shown as plain text, never as a quadratic scan. */
 export const INLINE_PARSE_LIMIT = 6000
@@ -164,6 +168,44 @@ const BULLET = /^\s{0,3}[-*+]\s+(.*)$/
 const NUMBERED = /^\s{0,3}\d{1,9}[.)]\s+(.*)$/
 const QUOTE = /^\s{0,3}>\s?(.*)$/
 const RULE = /^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/
+const DELIMITER_CELL = /^:?-+:?$/
+/** A table's header line and the delimiter row under it. */
+const TABLE_HEAD_LINES = 2
+
+/** The cells of one table row: the outer pipes dropped, `\|` kept as a pipe. */
+function tableCells(line: string): string[] {
+  const body = line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '')
+  const cells: string[] = []
+  let current = ''
+  for (let i = 0; i < body.length; i += 1) {
+    const char = body.charAt(i)
+    if (char === '\\' && body.charAt(i + 1) === '|') {
+      current += '|'
+      i += 1
+    } else if (char === '|') {
+      cells.push(current.trim())
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  cells.push(current.trim())
+  return cells
+}
+
+/** A header line with the delimiter row under it (`| --- | :-: |`), as wide as the header, makes a table. */
+export function startsTable(header: string, delimiter: string | undefined): boolean {
+  if (delimiter === undefined || !header.includes('|') || !delimiter.includes('|')) return false
+  const marks = tableCells(delimiter)
+  return marks.length === tableCells(header).length && marks.every((mark) => DELIMITER_CELL.test(mark))
+}
+
+function alignOf(mark: string): TableAlign {
+  const left = mark.startsWith(':')
+  const right = mark.endsWith(':')
+  if (left && right) return 'center'
+  return right ? 'right' : left ? 'left' : null
+}
 
 /** The blocks of a message. Never throws; any text is a valid document. */
 export function parseMarkdown(source: string): readonly Block[] {
@@ -193,6 +235,21 @@ export function parseMarkdown(source: string): readonly Block[] {
     }
     if (line.trim() === '') {
       endParagraph()
+      continue
+    }
+    if (startsTable(line, lines[i + 1])) {
+      endParagraph()
+      const header = tableCells(line)
+      const align = tableCells(lines[i + 1] ?? '').map(alignOf)
+      const rows: (readonly Inline[])[][] = []
+      i += TABLE_HEAD_LINES
+      while (i < lines.length && (lines[i] ?? '').trim() !== '' && (lines[i] ?? '').includes('|')) {
+        const cells = tableCells(lines[i] ?? '')
+        rows.push(header.map((_, column) => [...parseInline(cells[column] ?? '')]))
+        i += 1
+      }
+      i -= 1
+      blocks.push({ kind: 'table', align, header: header.map((cell) => parseInline(cell)), rows })
       continue
     }
     const heading = HEADING.exec(line)
