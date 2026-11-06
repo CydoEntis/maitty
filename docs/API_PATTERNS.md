@@ -549,7 +549,7 @@ Protocol 67 adds, for the desktop app's Inspect panel, find, quick-look links an
 
 `NewWorktree` also carries `agent` and `prompt` (`Option<String>`, `#[serde(default)]`; added without
 a `PROTOCOL_VERSION` bump, and a test decodes the old shape): the desktop app's "New agent on a
-branch" (`new_branch_agent`). When either is set the daemon, before anything is made, refuses
+branch", which the revised v18 removed from the window; the daemon keeps accepting them. When either is set the daemon, before anything is made, refuses
 a `cmd` beside them, checks `branch` (`[A-Za-z0-9_./-]+` plus git's ref rules, at most 200
 characters; `daemon/branch_agent.rs`), requires `from` to be a project the app shows (a repository some
 workspace or pane is in), requires the agent to be a configured preset or built-in agent, and bounds the

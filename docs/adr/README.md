@@ -73,3 +73,4 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0053](0053-chat-attachments-are-files-named-in-the-message.md) | A chat attachment is a file in a private cache, named by path in the message text | Proposed |
 | [0054](0054-a-chat-session-is-a-daemon-owned-conversation-started-from-the-desktop.md) | A chat session is a daemon-owned structured conversation started from the desktop | Proposed |
 | [0055](0055-send-files-to-another-machine.md) | Any file can be sent to another machine, over the same ssh line as an image | Proposed |
+| [0056](0056-an-agent-session-is-one-terminal-session-with-a-chat-view.md) | An agent session is one terminal session with a chat view | Proposed |
