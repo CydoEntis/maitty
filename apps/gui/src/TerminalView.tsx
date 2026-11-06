@@ -92,6 +92,8 @@ export type TerminalLook = {
   seeThrough?: boolean
   /** xterm's own cursor blink, for the focused pane only. Off unless asked for. */
   cursorBlink?: boolean
+  /** Draw with the DOM renderer even where WebGL 2 exists (Settings › Performance). Read when the view opens. */
+  plainDrawing?: boolean
   screenReader?: boolean
   theme?: ITheme
   /** xterm's own floor for the contrast of any foreground a program picks; 1 leaves colours as asked. */
@@ -202,7 +204,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
   const [loadError, setLoadError] = useState(false)
   const [inputFailed, setInputFailed] = useState(false)
   const [resizeError, setResizeError] = useState('')
-  const [transparent, setTransparent] = useState(() => hasWebgl2() && (look.seeThrough ?? false))
+  const [transparent, setTransparent] = useState(() => hasWebgl2() && !(look.plainDrawing ?? false) && (look.seeThrough ?? false))
 
   const send = useCallback((data: string | Uint8Array) => {
     if (!data || inputDisabledRef.current) return
@@ -315,7 +317,7 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
         ])
         if (!isMounted) return
 
-        const wantsWebgl = hasWebgl2()
+        const wantsWebgl = hasWebgl2() && !(lookRef.current.plainDrawing ?? false)
         const startRenderer: Renderer = wantsWebgl ? 'webgl' : 'dom'
         const startSeeThrough = seeThroughOf(lookRef.current, startRenderer)
         emulator = new TerminalEmulator({
