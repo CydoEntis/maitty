@@ -561,6 +561,10 @@ pub struct App {
     sidebar: bool,
     /// With the full sidebar off: the sessions are hidden completely, not shown as the top strip.
     side_hidden: bool,
+    /// No sidebar key was pressed yet, so a narrow window may fold the sessions into the strip by itself (`screen::draw`).
+    side_auto: bool,
+    /// The sessions were folded into the strip by the rule above, not by a key, so they come back when there is room.
+    side_folded: bool,
     /// The last alert per agent (its status, when) and for any agent: the same news again
     /// soon doesn't ring twice.
     alerted: HashMap<ClientTerm, (Status, Instant)>,
@@ -793,6 +797,8 @@ impl App {
             theme: cfg.theme(),
             sidebar: cfg.ui.sidebar,
             side_hidden: false,
+            side_auto: true,
+            side_folded: false,
             alerted: HashMap::new(),
             last_alert: None,
             settling: HashMap::new(),

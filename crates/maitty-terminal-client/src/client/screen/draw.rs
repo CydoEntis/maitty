@@ -327,6 +327,19 @@ fn draw_grip(buf: &mut Buffer, x: u16, (top, bottom): (u16, u16), lit: bool, t: 
     }
 }
 
+/// The least a pane's share of the width may come to before the sessions fold into the narrow column by
+/// themselves (until a sidebar key is pressed): a full sidebar would leave the panes too little room to read.
+const PANE_COMFORT_COLS: u16 = 20;
+
+/// Whether a full sidebar leaves `panes` panes a readable share of a screen `width` wide. One pane always fits.
+fn sidebar_fits(width: u16, panes: usize) -> bool {
+    if panes < 2 {
+        return true;
+    }
+    let share = usize::from(width.saturating_sub(side_w(width))) / panes;
+    share >= usize::from(PANE_COMFORT_COLS)
+}
+
 /// The sessions are collapsed into the narrow column (`z`), not hidden (`Z`).
 pub(in crate::client) fn strip_on(app: &App) -> bool {
     !app.sidebar && !app.side_hidden
@@ -334,6 +347,16 @@ pub(in crate::client) fn strip_on(app: &App) -> bool {
 
 /// Draw the main screen; returns the pane area.
 pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Theme) -> Rect {
+    // The Hairline look draws nothing boxed, and the strip is a box, so it keeps the sidebar it was given.
+    if app.side_auto && !app.side_hidden && !Look::of(&app.cfg.ui).hairline {
+        let panes = app.screen.tabs.get(app.screen.tab).map_or(1, |tab| tab.layout.leaves().len());
+        let fits = sidebar_fits(area.width, panes);
+        if app.sidebar && !fits {
+            (app.sidebar, app.side_folded) = (false, true);
+        } else if app.side_folded && fits {
+            (app.sidebar, app.side_folded) = (true, false);
+        }
+    }
     // How far the sidebar and the sheet are in this frame (they slide when they change).
     popover::refresh_receipts(app);
     let on = app.motion_on();
@@ -1882,5 +1905,18 @@ mod tests {
             toast_rect(Rect::new(0, 0, 80, 24), 40, 4, 0.0),
             Some(Rect::new(38, 15, 40, 4))
         );
+    }
+}
+
+#[cfg(test)]
+mod sidebar_fit_tests {
+    use super::sidebar_fits;
+
+    #[test]
+    fn many_panes_in_a_small_window_fold_the_sessions_and_a_few_or_a_wide_window_do_not() {
+        assert!(!sidebar_fits(80, 6), "six panes in 80 columns would each get about 9");
+        assert!(sidebar_fits(80, 1), "one pane always fits");
+        assert!(sidebar_fits(80, 2), "two panes get 27 each");
+        assert!(sidebar_fits(200, 6), "a wide window keeps the sidebar");
     }
 }

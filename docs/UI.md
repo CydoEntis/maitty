@@ -549,6 +549,11 @@ Leader `z` (`Action::ToggleSidebar`) swaps full and collapsed; Hide sidebar (`Ac
 the sessions or brings the sidebar back. The `»` chip (`«` with the sidebar on the right) and the `…` row
 restore it. There are no bare-letter keys for this in the sidebar.
 
+Until a sidebar key is pressed (`App::side_auto`), a full sidebar folds into the collapsed column by itself when
+the tab's panes would each get under `PANE_COMFORT_COLS` (20) columns of the width the sidebar leaves, and comes
+back when there is room again (`App::side_folded`; `sidebar_fits` in `screen/draw.rs`). A single pane always keeps
+the sidebar, and the Hairline look never folds, since its collapsed column is a box.
+
 - **Collapsed** (`screen/rail.rs`): a box `RAIL_W` (5) wide down the sidebar's side; the panes take the rest.
   With `ui.rounded = full` its chips and its selected row are pills (the glyph between two caps), as the open sidebar's are.
   A `»` chip (`«` with the sidebar on the right) is set into its top edge; under it, in amber, how many sessions need

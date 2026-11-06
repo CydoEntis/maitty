@@ -76,9 +76,9 @@ describe('tab layout', () => {
     expect(cols(layout)).toEqual(['c@0', 'b@0', 'd@1', 'a@2'])
   })
 
-  it('holds at most four panes', () => {
-    const { layout, makeId } = withPanes('a', 'b', 'c', 'd')
-    expect(splitPane(layout, null, 'down', 'e', makeId)).toBe(layout)
+  it('holds at most eight panes', () => {
+    const { layout, makeId } = withPanes('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h')
+    expect(splitPane(layout, null, 'down', 'i', makeId)).toBe(layout)
   })
 
   it('removes a pane with its session and closes the columns up', () => {

@@ -1642,8 +1642,8 @@ mod screen_tests {
         show(&o);
         for item in [
             "Rename pane",
-            "Split horizontally",
-            "Split vertically",
+            "Split right",
+            "Split down",
             "Send right-clicks to pane",
             "Close pane",
         ] {
@@ -3087,7 +3087,7 @@ mod screen_tests {
         );
         for (label, key) in [
             ("Close pane", "Alt + x"),
-            ("Split vertically", "Alt + d"),
+            ("Split down", "Alt + d"),
             ("Go to tab 1–9", "Alt + 1–9"),
         ] {
             assert!(
@@ -7791,8 +7791,8 @@ second line
         show(&o);
         assert!(
             o.contains(" matches")
-                && o.contains("Split horizontally")
-                && o.contains("Split vertically")
+                && o.contains("Split right")
+                && o.contains("Split down")
                 && o.contains("Panes")
                 && !o.contains("Settings"),
             "typing narrows it, each with its group"

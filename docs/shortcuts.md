@@ -24,8 +24,8 @@ one thing.
 | Key | Action |
 |---|---|
 | `←` `↓` `↑` `→` | Move to the pane that way (left past the edge: the sidebar) |
-| `v` | Split vertically (new pane underneath) |
-| `h` | Split horizontally (new pane beside) |
+| `v` | Split down (new pane underneath) |
+| `h` | Split right (new pane beside) |
 | `x` | Close what has the keys: the side panel (Files, Changes, Branch, a check) when it has them, else the focused pane, after asking |
 | `Ctrl`+arrows | Resize the pane |
 | `Alt`+arrows | Swap the pane with the one that way |

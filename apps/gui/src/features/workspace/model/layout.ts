@@ -2,7 +2,7 @@
  * Tabs hold layouts; panes hold sessions. A tab is one to four panes in columns. A pane goes only
  * when you close it (`removeSessions`): one whose session stops being listed stays, as an ended pane.
  */
-export const MAX_PANES = 4
+export const MAX_PANES = 8
 
 export type PaneSlot = { id: string; sessionId: string; col: number }
 /** `widths` are the columns' relative widths (by column index); absent means equal. `broadcast` sends a typed line to every idle pane. */

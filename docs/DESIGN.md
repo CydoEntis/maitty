@@ -362,7 +362,7 @@ reference for exact sizes, shadows and timings; `workspace.css` carries them.
   keycaps and text after ` · ` a muted second line. It sits above the control, below it within 56px
   of the top, and beside it for a control marked `data-tip-side`. A control that opens its own hover
   card carries `data-hovercard` and gets no tip.
-- **Tabs hold layouts, panes hold sessions.** A tab is one to four panes in columns; closing a
+- **Tabs hold layouts, panes hold sessions.** A tab is one to eight panes in columns; closing a
   pane or tab detaches and the session stays in the sidebar. Ending a session is its own action
   on the sidebar row, a pane's menu or a row's menu. Right-click opens a menu on a pane (a Split submenu of up, down,
   left and right, maximize, rename, copy folder path, close pane, close session), a tab (new tab, close tab) and a

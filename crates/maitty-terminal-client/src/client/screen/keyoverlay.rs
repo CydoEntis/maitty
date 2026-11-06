@@ -68,8 +68,8 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
         (
             "PANES",
             vec![
-                r("Split horizontally", vec![A::SplitRight], true),
-                r("Split vertically", vec![A::SplitDown], true),
+                r("Split right", vec![A::SplitRight], true),
+                r("Split down", vec![A::SplitDown], true),
                 r("Close pane", vec![A::ClosePane], true),
                 r(
                     "Move focus",

@@ -1303,3 +1303,14 @@ button.mx-sb-item:hover { background: rgba(255, 255, 255, .07); color: var(--fg)
 .mx-machine-switcher .mx-sidebar-title { color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-machine-switcher-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
 .mx-machine-menu { min-width: 220px; }
+
+/* A narrow pane folds its header (v19 §2.1): under 600px Broadcast, Split and Maximize move into the ⋯ menu and the
+   project and usage pills go first; under 420px the folder goes too. Close stays. */
+.mx-pane-head { container-type: inline-size; container-name: panehead; }
+.mx-pane-more { display: none; }
+@container panehead (max-width: 600px) {
+  .mx-pane-control.is-foldable { display: none; }
+  .mx-pane-more { display: inline-flex; align-items: center; justify-content: center; }
+  .mx-usage-pill, .mx-repo-pill { display: none; }
+}
+@container panehead (max-width: 420px) { .mx-pane-cwd { display: none; } }

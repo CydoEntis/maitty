@@ -751,12 +751,14 @@ impl App {
             Action::CloseTab => self.close_tab(self.screen.tab),
             // z: the sessions move into the top strip, or back into the sidebar.
             Action::ToggleSidebar => {
+                self.side_auto = false;
                 self.sidebar = !self.sidebar;
                 self.side_hidden = false;
                 self.screen.follow = true;
             }
             // Z: no sessions at all; the same key brings the sidebar back.
             Action::HideSidebar => {
+                self.side_auto = false;
                 self.side_hidden = self.sidebar || !self.side_hidden;
                 self.sidebar = !self.side_hidden;
                 self.screen.follow = true;
@@ -860,6 +862,7 @@ impl App {
     /// type goes to the pane you're on.
     /// Full, then the narrow column, then hidden, then full again.
     pub(in crate::client) fn cycle_sidebar(&mut self) {
+        self.side_auto = false;
         if self.side_hidden {
             (self.side_hidden, self.sidebar) = (false, true);
         } else if self.sidebar {
