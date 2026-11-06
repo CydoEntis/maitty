@@ -350,14 +350,93 @@ struct Window {
 /// A sidebar shorter than this many list rows is not split: it keeps only the Local half.
 const SPLIT_MIN_ROWS: usize = 4;
 
+/// Where a folded Local or Remote half is kept in `Saved::closed`.
+pub(in crate::client) fn region_key(remote: bool) -> &'static str {
+    if remote { "r:remote" } else { "r:local" }
+}
+
+/// Whether the Local (`false`) or the Remote (`true`) half is folded to its title.
+pub(in crate::client) fn region_folded(app: &App, remote: bool) -> bool {
+    app.screen
+        .saved
+        .closed
+        .iter()
+        .any(|c| c == region_key(remote))
+}
+
 /// The rows of the Local and the Remote half of a list `rows` tall: the Remote title takes one
-/// row and the rest is shared evenly, Local keeping any odd one.
-fn halve(rows: usize) -> (usize, usize) {
+/// row and the rest is shared evenly, Local keeping any odd one. A folded half keeps only its
+/// title and gives its rows to the other.
+fn halve(rows: usize, folded: (bool, bool)) -> (usize, usize) {
     if rows < SPLIT_MIN_ROWS {
         return (rows, 0);
     }
-    let remote = (rows - 1) / 2;
-    (rows - 1 - remote, remote)
+    let body = rows - 1;
+    match folded {
+        (false, false) => {
+            let remote = body / 2;
+            (body - remote, remote)
+        }
+        (true, false) => (0, body),
+        (false, true) => (body, 0),
+        (true, true) => (0, 0),
+    }
+}
+
+/// Columns the chip at the right of a title takes (Local's collapse chip, Remote's `+ Add`),
+/// so a long title gives way to it instead of running under it.
+const LOCAL_CHIP_COLS: usize = 6;
+const REMOTE_CHIP_COLS: usize = 10;
+
+/// A half's title: a fold arrow, the name, and while folded how many sessions in it need you,
+/// so folding never hides one. In `room` columns it is the words when they fit, else the mark
+/// and the number, else the name cut to fit.
+fn region_label(app: &App, model: &[Proj], name: &str, remote: bool, room: usize) -> String {
+    let ascii = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons)
+        .needs
+        .is_ascii();
+    let folded = region_folded(app, remote);
+    let arrow = match (folded, ascii) {
+        (true, false) => "▸",
+        (false, false) => "▾",
+        (true, true) => ">",
+        (false, true) => "v",
+    };
+    let needs = if folded {
+        model
+            .iter()
+            .filter(|p| (p.machine != MachineId::LOCAL) == remote)
+            .flat_map(Proj::sessions)
+            .filter(|s| !s.down && check::needs_you(s))
+            .count()
+    } else {
+        0
+    };
+    let plain = format!("{arrow} {name}");
+    if needs == 0 {
+        return truncate(&plain, room);
+    }
+    let words = format!("{plain} · {needs} need you");
+    if words.chars().count() <= room {
+        return words;
+    }
+    let mark = check::marks(app).needs;
+    truncate(&format!("{plain} {mark}{needs}"), room)
+}
+
+/// A title's click area: its text and the one cell either side.
+fn title_hit(app: &mut App, (x, y): (u16, u16), label: &str, remote: bool) {
+    let width = label.chars().count() as u16 + 2;
+    hit(
+        app,
+        Rect {
+            x,
+            y,
+            width,
+            height: 1,
+        },
+        ScreenHit::ToggleRegion(remote),
+    );
 }
 
 /// The sidebar card: Local on top, Remote below it, each with its title and counts, projects
@@ -382,7 +461,14 @@ pub(in crate::client) fn draw_side(
     let cols = Cols::of(r, look.round_rows);
     let screen_w = buf.area.width;
     let (local_lines, remote_lines) = card_lines(app, model, t);
-    let lines: Vec<Line> = local_lines.iter().chain(&remote_lines).cloned().collect();
+    let folded = (region_folded(app, false), region_folded(app, true));
+    // What a folded half holds is not on screen, so the keyboard does not walk into it.
+    let lines: Vec<Line> = local_lines
+        .iter()
+        .filter(|_| !folded.0)
+        .chain(remote_lines.iter().filter(|_| !folded.1))
+        .cloned()
+        .collect();
     let focus = open_row(app).map(|term| app.session_key(term));
     let top = r.y + 2;
     // The foot is lifted a row off the bottom (Cards: it sits above the border), a divider over it.
@@ -397,7 +483,7 @@ pub(in crate::client) fn draw_side(
         .saturating_sub(1 + u16::from(release.is_some()))
         .saturating_sub(top) as usize;
     note_rows(app, model, &lines);
-    let (local_rows, remote_rows) = halve(list_h);
+    let (local_rows, remote_rows) = halve(list_h, folded);
     let local_scroll = region_scroll(app, model, &local_lines, focus, local_rows, false);
     let remote_scroll = region_scroll(app, model, &remote_lines, focus, remote_rows, true);
     app.screen.follow = false;
@@ -407,15 +493,27 @@ pub(in crate::client) fn draw_side(
         .host()
         .map(|h| format!(" ⇄ {h}"))
         .unwrap_or_default();
+    let title_room = |chip: usize| {
+        let row = r.width.saturating_sub(4) as usize;
+        row - chip.min(row)
+    };
+    let local_title = region_label(
+        app,
+        model,
+        &format!("LOCAL{host}"),
+        false,
+        title_room(LOCAL_CHIP_COLS),
+    );
     draw_title(
         app,
         buf,
         (r.x + 2, r.y),
-        &format!("LOCAL{host}"),
+        &local_title,
         Color::Reset,
         t,
         focused_side,
     );
+    title_hit(app, (r.x + 2, r.y), &local_title, false);
     draw_collapse_chip(app, buf, r, t);
 
     let pass = Pass {
@@ -440,7 +538,7 @@ pub(in crate::client) fn draw_side(
         },
     );
     app.screen.remote_rect = Rect::default();
-    if remote_rows > 0 {
+    if list_h >= SPLIT_MIN_ROWS {
         let head_y = top + local_rows as u16;
         // The Remote title sits on a rule that joins the card's sides, as Local's sits on the
         // top border: `├ REMOTE 2 ───── + Add ┤`.
@@ -457,18 +555,26 @@ pub(in crate::client) fn draw_side(
             )],
             r.right(),
         );
-        draw_title(
+        let remote_title = region_label(
             app,
-            buf,
-            (r.x + 2, head_y),
+            model,
             &match app.remotes.len() {
                 0 => "REMOTE".to_string(),
                 n => format!("REMOTE {n}"),
             },
+            true,
+            title_room(REMOTE_CHIP_COLS),
+        );
+        draw_title(
+            app,
+            buf,
+            (r.x + 2, head_y),
+            &remote_title,
             pb,
             t,
             focused_side,
         );
+        title_hit(app, (r.x + 2, head_y), &remote_title, true);
         draw_add_chip(app, buf, (r.right().saturating_sub(2), head_y), pb, t);
         let remote_top = head_y + 1;
         app.screen.remote_rect = Rect {
@@ -477,9 +583,10 @@ pub(in crate::client) fn draw_side(
             width: r.width,
             height: remote_rows as u16 + 1,
         };
-        if remote_lines.is_empty() {
+        // Folded, the half is its rule alone: no rows, and not even the "no remote machines" note.
+        if !folded.1 && remote_lines.is_empty() {
             draw_no_machines(buf, &pass, t, remote_top);
-        } else {
+        } else if !folded.1 {
             draw_rows(
                 app,
                 buf,
@@ -543,7 +650,7 @@ fn draw_rails(
 ) {
     // The line hugs the left of its cell, as the selection's `▎` bar does, so a selected card's
     // bar sits where the line was instead of beside it.
-    let (vertical, horizontal) = if ascii { ("|", "-") } else { ("▏", "─") };
+    let (vertical, horizontal) = if ascii { ("|", "-") } else { ("▎", "─") };
     // Rows `from..to` of `lines` that are on screen, drawn at column `x` as `symbol` in `colour`.
     let mut draw = |from: usize, to: usize, (x0, x1): (u16, u16), symbol: &str, colour: Color| {
         for j in from.max(scroll)..to.min(scroll + rows) {
@@ -2039,7 +2146,7 @@ mod v8_tests {
         let side = app.screen.side_rect;
         let bars: Vec<(u16, Color)> = (side.y..side.bottom())
             .flat_map(|y| (side.x..side.right()).map(move |x| (x, y)))
-            .filter(|&p| buf[p].symbol() == "▎")
+            .filter(|&p| buf[p].symbol() == "▎" && buf[p].fg == app.theme.accent)
             .map(|(_, y)| (y, buf[(side.x + 2, y)].fg))
             .collect();
         let open = app.screen.row_y[&app.focused().expect("an open session")];

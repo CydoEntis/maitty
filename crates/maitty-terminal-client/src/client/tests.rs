@@ -793,10 +793,10 @@ mod screen_tests {
         )));
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = terminal.backend().buffer();
-        assert_ne!(
-            buf[(x + 2, active_y)].symbol(),
-            "▎",
-            "while the keyboard browses, only its row has a bar"
+        assert!(
+            !(buf[(x + 2, active_y)].symbol() == "▎"
+                && buf[(x + 2, active_y)].fg == app.theme.accent),
+            "while the keyboard browses, only its row has an accent bar"
         );
         assert_eq!(
             (buf[(x + 2, hover_y)].symbol(), buf[(x + 2, hover_y)].fg),
@@ -2692,7 +2692,7 @@ mod screen_tests {
         for row in [own, two, three] {
             assert_eq!(
                 buf[(side.x + 3, y(row))].symbol(),
-                "▏",
+                "▎",
                 "one line down the left of the session and its tabs: {}",
                 rows[row]
             );
@@ -2706,7 +2706,7 @@ mod screen_tests {
         for row in [two, three] {
             assert_eq!(
                 buf[(side.x + 2, y(row))].symbol(),
-                "▏",
+                "▎",
                 "and the project's line outside it: {}",
                 rows[row]
             );
@@ -2717,7 +2717,7 @@ mod screen_tests {
             .expect("the project's row");
         assert_ne!(
             buf[(side.x + 2, y(project))].symbol(),
-            "▏",
+            "▎",
             "the lines start under the project row"
         );
     }
@@ -11571,7 +11571,7 @@ mod check_row_tests {
                 for line in [y, y + 1] {
                     let cell = &buf[(bar_x, line)];
                     assert_eq!(
-                        cell.symbol() == EDGE_BAR,
+                        cell.symbol() == EDGE_BAR && cell.fg == app.theme.accent,
                         picked,
                         "{} {:?} line {line}: {:?}",
                         label(layout, w, h),
